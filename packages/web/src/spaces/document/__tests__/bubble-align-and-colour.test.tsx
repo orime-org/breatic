@@ -20,6 +20,8 @@ import { TextSelection } from '@tiptap/pm/state';
 
 import en from '../../../../../../locales/en.json';
 
+import { COLOUR_HUES } from '../document-colour-run';
+
 import {
   mountDocumentEditor,
   hoverOpenSlot,
@@ -215,6 +217,79 @@ describe('the alignment slot, wired', () => {
   });
 });
 
+/**
+ * The lucide class on the icon an opener draws.
+ *
+ * Which icon is rendered is the observable identity of this face, so the
+ * assertion reads the drawn svg rather than an attribute carrying the value
+ * the icon is meant to come from — the rows and the greying already read that
+ * value correctly, and a test on it would pass with the icon still nailed
+ * down.
+ * @param testId - The opener's test id.
+ * @returns The `lucide-*` class, or undefined where no icon is drawn.
+ */
+function faceIcon(testId: string): string | undefined {
+  const svg = screen.getByTestId(testId).querySelector('svg');
+  return [...(svg?.classList ?? [])].find(
+    (name) => name.startsWith('lucide-') && name !== 'lucide',
+  );
+}
+
+describe('the alignment slot face', () => {
+  it('draws the centre icon over a centred block', async () => {
+    await barOver(
+      '<p data-text-alignment="center">plain words</p>',
+      'plain words',
+    );
+
+    expect(faceIcon('doc-bubble-align')).toBe('lucide-text-align-center');
+  });
+
+  it('draws the right icon over a right-aligned block', async () => {
+    await barOver(
+      '<p data-text-alignment="right">plain words</p>',
+      'plain words',
+    );
+
+    expect(faceIcon('doc-bubble-align')).toBe('lucide-text-align-end');
+  });
+
+  it('draws the left icon over a block that was never aligned', async () => {
+    // The prop's own default is `left`, so this block reads as left rather
+    // than as nothing.
+    await barOver('<p>plain words</p>', 'plain words');
+
+    expect(faceIcon('doc-bubble-align')).toBe('lucide-text-align-start');
+  });
+
+  it('falls back to the left icon where the covered blocks disagree', async () => {
+    // No single alignment is in force, and naming one of them on the bar would
+    // claim the whole selection is where that one block is. CKEditor 5 binds
+    // the opener to the command's value and falls back to the writing
+    // direction's default for exactly this state (`alignmentui.ts`).
+    const editor = openSharedBody(
+      '<p data-text-alignment="center">first words</p>'
+        + '<p data-text-alignment="right">second words</p>',
+    );
+    mountDocumentEditor(editor);
+    focusBody(editor);
+    selectTwoBlocks(editor);
+    await waitForBar();
+
+    expect(faceIcon('doc-bubble-align')).toBe('lucide-text-align-start');
+  });
+
+  it('falls back to the left icon where alignment reaches no block', async () => {
+    await barOver('<ul><li><p>an item</p></li></ul>', 'an item');
+
+    expect(screen.getByTestId('doc-bubble-align')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(faceIcon('doc-bubble-align')).toBe('lucide-text-align-start');
+  });
+});
+
 describe('the colour slot, wired', () => {
   it('colours the selected words when a text hue is pressed', async () => {
     const editor = await barOver('<p>plain words</p>', 'plain words');
@@ -289,6 +364,25 @@ describe('the colour slot, wired', () => {
     expect(
       screen.getByTestId('doc-bubble-color-fill-none'),
     ).not.toHaveAttribute('data-selected');
+  });
+
+  it('leaves every fill cell border to the stylesheet', async () => {
+    await barOver('<p>plain words</p>', 'plain words');
+    await hoverOpenSlot('doc-bubble-color');
+    await screen.findByTestId('doc-bubble-color-fill-pink');
+
+    // The hue reaches each cell as a custom property and the border itself
+    // stays a class, which is the only arrangement the `hover:` variant can
+    // win under: an inline `borderColor` outranks every class, hover
+    // included. Measured in a real browser 2026-09-19, all seven fill cells
+    // read the same border under the pointer as at rest, while the text
+    // cells — which set no inline border — moved from
+    // `rgba(30, 30, 30, 0.12)` to `rgb(95, 95, 95)`.
+    for (const hue of COLOUR_HUES) {
+      const cell = screen.getByTestId(`doc-bubble-color-fill-${hue}`);
+      expect(cell.style.borderColor).toBe('');
+      expect(cell.style.getPropertyValue('--cell-edge')).not.toBe('');
+    }
   });
 
   it('takes both marks off from the reset button', async () => {

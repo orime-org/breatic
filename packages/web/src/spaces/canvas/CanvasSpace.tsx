@@ -1204,8 +1204,24 @@ function CanvasSpaceInner({
   const noteCameraPlaced = React.useCallback((): void => {
     cameraPlaced.current = true;
   }, []);
+  /**
+   * Whether this canvas has already been left.
+   *
+   * Tearing the canvas down resets the library's transform, and that reset
+   * reaches this component as one more `onPanZoomEnd` — the same event a
+   * reader's pan ends with, except that it reports the identity transform and
+   * arrives after the cleanup below has stored the real camera. Measured on a
+   * Space the reader had panned: `{-2004.5, -1395, 1}` written from the
+   * cleanup, then `{0, 0, 1}` written from `onPanZoomEnd`, which is what the
+   * next visit read.
+   *
+   * The effect body clears it again, so a run that ends because one of the
+   * ids changed goes on storing the camera.
+   */
+  const left = React.useRef(false);
   /** Store where the camera sits right now. */
   const storeCamera = React.useCallback((): void => {
+    if (left.current) return;
     const [x, y, zoom] = rfStoreApi.getState().transform;
     writeSpaceViewport(viewerId, projectId, spaceId, { x, y, zoom });
   }, [rfStoreApi, viewerId, projectId, spaceId]);
@@ -1220,6 +1236,7 @@ function CanvasSpaceInner({
   // being put into the back/forward cache fires `pagehide` and runs no effect
   // cleanup at all.
   React.useEffect(() => {
+    left.current = false;
     /** Store the camera, once there is one worth storing. */
     const flush = (): void => {
       if (!cameraPlaced.current) return;
@@ -1229,6 +1246,7 @@ function CanvasSpaceInner({
     return () => {
       window.removeEventListener('pagehide', flush);
       flush();
+      left.current = true;
     };
   }, [storeCamera]);
   // Panel ⇄ selection binding (user-ratified 2026-07-11) — one state machine,

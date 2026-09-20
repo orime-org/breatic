@@ -18,19 +18,10 @@
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 /** A 64x64 red PNG — square, so the crop dialog opens on a valid selection. */
 const SQUARE_PNG = Buffer.from(
@@ -40,10 +31,9 @@ const SQUARE_PNG = Buffer.from(
   'base64',
 );
 
-test('an avatar reaches storage and comes back as a fetchable URL', async ({
+test('an avatar reaches storage and comes back as a fetchable URL @needs-storage', async ({
   page,
 }) => {
-  await signIn(page, email as string, password as string);
 
   // `/studio` is a cross-studio landing page, so the slug comes from the
   // switcher's own endpoint. The account's personal studio is the one it

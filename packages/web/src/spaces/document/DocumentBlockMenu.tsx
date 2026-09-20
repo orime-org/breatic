@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The five rows of the block handle menu, and what each one runs.
+ * The seven rows of the block handle menu, and what each one runs.
  *
  * Every row acts on the block the pointer is over, never on the reader's
  * selection (A5) — which is why each command here is handed that block's id
@@ -12,8 +12,8 @@
  * this file is the wiring.
  */
 
-import { Check } from 'lucide-react';
 import * as React from 'react';
+import type { Selection } from '@tiptap/pm/state';
 
 import {
   DropdownMenuItem,
@@ -29,6 +29,27 @@ import {
   type BlockMenuRow,
 } from '@web/spaces/document/document-block-menu-rows';
 import { runBlockType } from '@web/spaces/document/document-block-run';
+import {
+  NO_ALIGNABLE_BLOCK,
+  alignFaceOver,
+  runAlignment,
+  type AlignFace,
+} from '@web/spaces/document/document-align-run';
+import {
+  clearColours,
+  colourFaceOver,
+  sameColours,
+  setColour,
+  type ColourFace,
+  type ColourHue,
+  type ColourKind,
+} from '@web/spaces/document/document-colour-run';
+import {
+  ALIGN_ITEMS,
+  alignFaceIcon,
+} from '@web/spaces/document/document-align-items';
+import { DocumentColourPanel } from '@web/spaces/document/document-colour-panel';
+import { MenuTick } from '@web/spaces/document/document-menu-tick';
 import {
   DIMENSION_OF_ROW,
   tickedOver,
@@ -79,6 +100,60 @@ function rulesAfter(id: BlockTypeId, next: BlockTypeId | undefined): boolean {
   return next !== undefined && DIMENSION_OF_ROW[id] !== DIMENSION_OF_ROW[next];
 }
 
+/**
+ * The keys Radix opens a submenu with, reading left to right.
+ *
+ * `MenuSubTrigger`'s own handler opens on these three and cancels the event;
+ * cancelling them first is what keeps a row out of reach from opening. Every
+ * other key is left alone, so arrowing up and down the menu still works on a
+ * greyed row — which is the whole reason it is `aria-disabled` rather than
+ * Radix's `disabled` (the ARIA authoring practices: "Disabled menu items are
+ * focusable but cannot be activated").
+ */
+const OPENS_SUBMENU = new Set(['ArrowRight', 'Enter', ' ']);
+
+/**
+ * What a submenu trigger carries while the hovered row is out of the
+ * command's reach.
+ *
+ * A row that greys owes three things (`document-bubble-slots.tsx`), and in a
+ * menu the first of them — take the menu away — means this one must not open
+ * at all. GREYING ALONE DOES NOT DO THAT: Radix's `MenuSubTrigger` hands
+ * `MenuItemImpl` its own `onClick` and `onPointerMove`, and those consult
+ * `props.disabled` and `event.defaultPrevented` and nothing else, so
+ * `aria-disabled` and a class are invisible to them. Cancelling the event is
+ * what they read.
+ *
+ * The third thing — say so — is the treatment itself, the same dimming the
+ * reader has already met on the bubble bar's own two slots when the selection
+ * moved out of reach. No extra words: the commands ARE built, so the comment
+ * row's "not open yet" would say something false here.
+ * @param unavailable - Whether the command is out of reach on this row.
+ * @returns Attributes to spread onto the trigger, empty where it can act.
+ */
+function whenOutOfReach(
+  unavailable: boolean,
+): React.ComponentProps<typeof DropdownMenuSubTrigger> {
+  if (!unavailable) {
+    return {};
+  }
+  return {
+    'aria-disabled': 'true',
+    className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
+    onClick: (event) => {
+      event.preventDefault();
+    },
+    onPointerMove: (event) => {
+      event.preventDefault();
+    },
+    onKeyDown: (event) => {
+      if (OPENS_SUBMENU.has(event.key)) {
+        event.preventDefault();
+      }
+    },
+  };
+}
+
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
   editor: HandleEditor;
@@ -100,8 +175,69 @@ function ticksFor(editor: HandleEditor, blockId: string): Set<BlockTypeId> {
   );
 }
 
+/** What the two style rows read off the hovered block. */
+interface StyleFaces {
+  /** Which alignment row is lit, or that alignment reaches nothing. */
+  readonly align: AlignFace;
+  /** Which colour cells are marked, and whether a press reaches anything. */
+  readonly colour: ColourFace;
+}
+
 /**
- * The menu's five rows.
+ * Whether two readings say the same thing.
+ * @param a - One reading.
+ * @param b - The other.
+ * @returns True when they match.
+ */
+function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
+  return a.align === b.align && sameColours(a.colour, b.colour);
+}
+
+/**
+ * What the two style rows read off the hovered block.
+ *
+ * Both readings walk the block's own content rather than the editor's state,
+ * and that is not a refinement: the handle is on screen only while the reader
+ * holds no selection (`DocumentBlockHandle.tsx`'s `holdsSelection` guard), so a
+ * state-based reading
+ * would answer about the reader's caret on every single press.
+ * @param editor - The editor to read from.
+ * @param blockId - The block the pointer is over.
+ * @returns What each row draws and whether it can act.
+ */
+function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
+  return editor.transact((tr) => {
+    const over = selectionOverBlockContent(tr.doc, blockId);
+    return {
+      align: alignFaceOver(tr.doc, over),
+      colour: colourFaceOver(tr.doc, over),
+    };
+  });
+}
+
+/**
+ * The same reading, held by value across renders.
+ *
+ * It is rebuilt on every render, and the colour panel is memoised — so a fresh
+ * object each time would leave that memo unable to bail, which
+ * `packages/web/CLAUDE.md` names as a defect of its own. The previous reading
+ * is kept while it says the same thing. Written during render because that is
+ * when the comparison happens, the way `useEditorSnapshot` keeps its own.
+ * @param editor - The editor to read from.
+ * @param blockId - The block the pointer is over.
+ * @returns The reading, stable while nothing it says has moved.
+ */
+function useFacesOf(editor: HandleEditor, blockId: string): StyleFaces {
+  const held = React.useRef<StyleFaces | null>(null);
+  const next = facesFor(editor, blockId);
+  if (held.current === null || !sameFaces(held.current, next)) {
+    held.current = next;
+  }
+  return held.current;
+}
+
+/**
+ * The menu's seven rows.
  * @param props - See {@link DocumentBlockMenuProps}.
  * @param props.editor - The editor to write to.
  * @param props.block - The block the pointer is over.
@@ -115,6 +251,7 @@ export function DocumentBlockMenu({
 }: DocumentBlockMenuProps): React.JSX.Element {
   const t = useTranslation();
   const ticked = ticksFor(editor, block.id);
+  const faces = useFacesOf(editor, block.id);
 
   /**
    * The row this menu is about, as the document holds it right now.
@@ -131,9 +268,49 @@ export function DocumentBlockMenu({
    * screen was duplicated as `alpha`.
    * @returns The row, or undefined once it is gone.
    */
-  function rowNow(): PressedBlock | undefined {
-    return editor.getBlock(block.id) as PressedBlock | undefined;
-  }
+  const rowNow = React.useCallback(
+    (): PressedBlock | undefined =>
+      editor.getBlock(block.id) as PressedBlock | undefined,
+    [editor, block.id],
+  );
+
+  /**
+   * The range standing for this row, read off the document as it is now.
+   *
+   * Built and handed to the command without being dispatched, so the reader's
+   * own caret, selection and stored marks stay where they were
+   * (`document-hovered-block.ts`). Read at press time for the reason
+   * {@link rowNow} is: the menu stays open however long the reader takes.
+   * @returns The range, or undefined once the row is gone.
+   */
+  const rangeNow = React.useCallback((): Selection | undefined => {
+    const live = rowNow();
+    return live === undefined
+      ? undefined
+      : editor.transact((tr) => selectionOverBlockContent(tr.doc, live.id));
+  }, [editor, rowNow]);
+
+  const onSetColour = React.useCallback(
+    (kind: ColourKind, hue: ColourHue): void => {
+      const over = rangeNow();
+      if (over !== undefined) {
+        setColour(editor, kind, hue, over);
+      }
+      close();
+    },
+    [editor, rangeNow, close],
+  );
+
+  const onClearColour = React.useCallback(
+    (kinds: readonly ColourKind[]): void => {
+      const over = rangeNow();
+      if (over !== undefined) {
+        clearColours(editor, kinds, over);
+      }
+      close();
+    },
+    [editor, rangeNow, close],
+  );
 
   /**
    * Runs one row and closes the menu.
@@ -194,24 +371,12 @@ export function DocumentBlockMenu({
                       >
                         <ItemIcon />
                         <span className='flex-1 text-left'>{t(item.labelKey)}</span>
-                        {/* What the block already is (A5). Drawn the way the
-                          bubble bar's own type menu draws it
-                          (`document-bubble-slots.tsx`): the glyph at that
-                          weight, and the column on every row whether it is
-                          ticked or not, so a ticked row does not lay out
-                          narrower than the rest. */}
-                        <span
-                          data-testid={`doc-block-type-tickcol-${item.id}`}
-                          className='ml-1 flex size-4 shrink-0 items-center justify-center'
-                        >
-                          {ticked.has(item.id) ? (
-                            <Check
-                              data-testid={`doc-block-type-tick-${item.id}`}
-                              className='size-4'
-                              strokeWidth={3}
-                            />
-                          ) : null}
-                        </span>
+                        {/* What the block already is (A5). */}
+                        <MenuTick
+                          on={ticked.has(item.id)}
+                          testId={`doc-block-type-tickcol-${item.id}`}
+                          tickTestId={`doc-block-type-tick-${item.id}`}
+                        />
                       </DropdownMenuItem>
                       {ruled ? <DropdownMenuSeparator className='my-0' /> : null}
                     </React.Fragment>
@@ -262,6 +427,80 @@ export function DocumentBlockMenu({
           );
         }
 
+        if (row.id === 'align') {
+          const unavailable = faces.align === NO_ALIGNABLE_BLOCK;
+          // The face of the block under the pointer, not a still icon: this
+          // row is the only entry in the menu that can say, without being
+          // opened, what the block it is about already is. The bubble bar's
+          // alignment slot draws its opener the same way, off the same
+          // reading, so the two carriers of this command agree on screen.
+          const AlignIcon = alignFaceIcon(faces.align);
+          return (
+            <DropdownMenuSub key={row.id}>
+              <DropdownMenuSubTrigger
+                data-testid='doc-block-row-align'
+                {...whenOutOfReach(unavailable)}
+              >
+                <AlignIcon />
+                {label}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent
+                sideOffset={SUBMENU_SIDE_OFFSET}
+                className='flex flex-col gap-1'
+              >
+                {ALIGN_ITEMS.map((item) => {
+                  const ItemIcon = item.Icon;
+                  const ticks = item.id === faces.align;
+                  return (
+                    <DropdownMenuItem
+                      key={item.id}
+                      data-testid={`doc-block-align-${item.id}`}
+                      data-ticked={ticks ? 'true' : undefined}
+                      onSelect={() => {
+                        const over = rangeNow();
+                        if (over !== undefined) {
+                          runAlignment(editor, item.id, over);
+                        }
+                        close();
+                      }}
+                    >
+                      <ItemIcon />
+                      <span className='flex-1 text-left'>{t(item.labelKey)}</span>
+                      {/* The row the block is on. */}
+                      <MenuTick on={ticks} />
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          );
+        }
+
+        if (row.id === 'color') {
+          return (
+            <DropdownMenuSub key={row.id}>
+              <DropdownMenuSubTrigger
+                data-testid='doc-block-row-color'
+                {...whenOutOfReach(!faces.colour.appliesHere)}
+              >
+                <Icon />
+                {label}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent
+                sideOffset={SUBMENU_SIDE_OFFSET}
+                className='py-2'
+              >
+                <DocumentColourPanel
+                  idStem='doc-block-color'
+                  face={faces.colour}
+                  onSet={onSetColour}
+                  onClear={onClearColour}
+                />
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          );
+        }
+
         if (row.id === 'comment') {
           // Stands in the menu so the shape is whole, and says it cannot be
           // used: the treatment is the bubble bar's, which the reader has
@@ -293,6 +532,41 @@ export function DocumentBlockMenu({
               <Icon />
               {comingLabel}
             </DropdownMenuItem>
+          );
+        }
+
+        if (row.id === 'delete') {
+          // Six things and one that takes a row away. The rule is where the
+          // canvas node menu puts its own (`NodeContextMenu.tsx`'s delete):
+          // the pointer running down the list meets something before the last
+          // row, and the row above this one is a greyed one it slides past.
+          //
+          // The colour is the repo's error text, the same token every other
+          // place that says "this went wrong" uses. It reads 4.00:1 on
+          // the menu surface and 3.43:1 on the hover fill (light; 3.87 and
+          // 3.37 dark) — below what AA asks of body text, and a known,
+          // ratified property of the palette rather than anything this row
+          // introduces: the identity hues were settled on screen and
+          // `tokens.css` says so in as many words ("a contrast figure
+          // describes a coordinate distance; it does not describe how a
+          // colour reads"). Backlog #103 holds that question open for the
+          // palette as a whole. The red is not carrying the meaning alone
+          // here anyway — the word, the bin, and the rule above it each say
+          // the same thing (WCAG 1.4.1).
+          return (
+            <React.Fragment key={row.id}>
+              <DropdownMenuSeparator className='my-0' />
+              <DropdownMenuItem
+                data-testid={`doc-block-row-${row.id}`}
+                className='text-status-error-foreground'
+                onSelect={() => {
+                  press(row);
+                }}
+              >
+                <Icon />
+                {label}
+              </DropdownMenuItem>
+            </React.Fragment>
           );
         }
 

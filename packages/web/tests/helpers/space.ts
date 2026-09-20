@@ -6,10 +6,12 @@
  *
  * Every spec below `tests/smoke/` that needs a document or a canvas makes its
  * own Space, because a run must not depend on what an earlier run left behind.
- * That leaves the account's project holding one more Space per test: a full
- * suite adds thirty, and a tier caps how many a project may have
- * (`config/membership.yaml`). So a spec that creates one also removes it, and
- * both halves live here rather than being written out four times.
+ * That leaves the account's project holding one more Space per test, and a
+ * project that opens them all holds a writable seat per document, which the
+ * collab server caps (`packages/collab/src/services/connection-registry.ts`,
+ * #1421) — past it a Space opens read-only and the read-only notice swallows
+ * the clicks a case is making. So a spec that creates one also removes it,
+ * and both halves live here rather than being written out four times.
  *
  * Removal goes through the Space drawer, the same path a person uses. The
  * `space:delete` RPC underneath is authorized and audited server-side, and an
@@ -17,6 +19,9 @@
  * `meta.spaces` directly — so reaching into the Yjs document to drop the entry
  * is not an option, however much shorter it would look here.
  */
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+
 import { expect, type Page } from 'playwright/test';
 
 export type SpaceKind = 'canvas' | 'document';
@@ -57,6 +62,37 @@ export async function createSpace(
   const testId = await tabName.getAttribute('data-testid');
   if (testId === null) throw new Error(`no id on the tab for "${name}"`);
   return testId.replace('space-tab-name-', '');
+}
+
+/**
+ * Where a removal that failed is written down.
+ *
+ * Removal stays non-throwing: a teardown that throws replaces the failure the
+ * case actually found. What a warning alone cannot do is change the exit code,
+ * and a Space that stays behind is not inert — it holds one of the writable
+ * connections the collab server allows per document, and once those are gone
+ * the Spaces after it open read-only and their cases go red for a reason
+ * nothing in the report names.
+ *
+ * A file rather than a module-level list: the teardown that reads it is a
+ * project of its own and runs in a worker of its own, and a worker is
+ * discarded after a failed case. Setup empties it as the run opens.
+ */
+export const REMOVALS_FILE = 'playwright/.auth/unremoved-spaces.txt';
+
+/**
+ * Write one failed removal down for the teardown to read.
+ * @param spaceId - The Space that stayed behind.
+ * @param err - What the removal threw.
+ */
+function noteRemovalFailure(spaceId: string, err: unknown): void {
+  try {
+    mkdirSync(dirname(REMOVALS_FILE), { recursive: true });
+    appendFileSync(REMOVALS_FILE, `${spaceId}: ${String(err)}\n`, 'utf8');
+  } catch {
+    // The warning below still goes out. A run that cannot write here is one
+    // whose checkout is read-only, which is not a shape this suite runs in.
+  }
 }
 
 /**
@@ -109,6 +145,7 @@ export async function deleteSpace(page: Page, spaceId: string): Promise<void> {
     await drawer.getByRole('button', { name: 'Close' }).click();
     await expect(drawer).toHaveCount(0, { timeout: 10_000 });
   } catch (err) {
+    noteRemovalFailure(spaceId, err);
     console.warn(`[smoke] could not delete Space ${spaceId}:`, err);
   }
 }

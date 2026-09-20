@@ -683,6 +683,57 @@ body {
   content: attr(data-label);
 }
 
+/* ---- A line's text fills the row it sits on ----
+   BlockNote lays a block's content out as a flex row carrying a marker and the
+   inline content. Neither of them grows, so the width between the last glyph
+   and the block's right edge belongs to no box — and a reader presses there
+   all the time, both to put the caret at the end of a short line and while
+   dragging across one to select it.
+
+   Asked for a caret position out in that width, the browser takes the nearest
+   box that has height, and what it finds decides the answer. Measured across
+   the four kinds of line on one document, clicking halfway between the text
+   and the block's right edge:
+
+     paragraph  marker is a 0x0 `::before`                  end of the text
+     numbered   marker is a `::before`, 21.8 wide, 0 high   end of the text
+     to-do      marker is a real 24x24 `div` holding a box  end of the text
+     bulleted   marker is a `::before`, 24 wide, 22.5 high  START of the line
+
+   The bullet is the one drawn here rather than by the library, with a
+   gradient, and a gradient needs a box with height to paint in — which is what
+   `[data-bullet-level]::before` gives it. A pseudo-element carries no DOM node and
+   so holds no caret position at all, so once its box is the nearest one the
+   browser falls back to the position before the inline content, which is the
+   head of the line. Dragging rightwards then collapses the selection backwards
+   the moment the pointer passes the end of the text.
+
+   Growing the inline content leaves no width outside a box for that fallback
+   to happen in, which is what a block-level paragraph gives every editor that
+   does not lay its blocks out with flex. The other three kinds work today by
+   way of a marker that happens to have no height, and this states it for all
+   four instead.
+
+   Alignment is unaffected: BlockNote states it as `justify-content` on the
+   block AND `text-align`, and the second is what carries it once the text
+   fills the row — measured, a bulleted line's text box is identical under
+   left, centre and right with this rule and without it.
+
+   Direct children only, so a table cell's paragraph, which is not a flex item,
+   keeps its own width.
+
+   A block drawing the looks-empty hint keeps its own width, because that hint
+   is an `::after` on the block — another item on the same row — and it follows
+   the line rather than leading it (`[data-block-placeholder]::after` above
+   says why it follows rather than leads). Measured
+   on a fresh document, growing the line moved the hint from x 618.5 to 1285.2,
+   the far end of the row. Nothing is lost by leaving those lines alone: a line
+   with no text in it holds one caret position, so there is no second answer
+   for the room to its right to give. */
+.doc-body .bn-block-content:not([data-block-placeholder]) > .bn-inline-content {
+  flex-grow: 1;
+}
+
 /* ---- The document Space's block numbers ----
    BlockNote draws an ordered item's number through `content: var(--index) "."`,
    keyed off `data-content-type=numberedListItem`. Neither shape this Space
@@ -1367,63 +1418,120 @@ body {
    them. Moving one of them into a layer without the others changes which of
    the two paints a coloured link.
 
-   The tint is `--color-palette-*-bg`, the same token the panel's own swatch
-   reads, so the cell the reader presses and the text they get are one value.
-   Both sides are tokens, so the dark theme follows without a second rule. */
+   The tint is `--color-palette-*-highlight`, the same token the panel's own
+   swatch reads, so the cell the reader presses and the text they get are one
+   value. Both sides are tokens, so the dark theme follows without a second
+   rule. It is a depth of its own rather than the `-bg` a status chip and a
+   canvas group lie under: behind a run of words the colour is the only thing
+   saying this part is marked, and `-bg` was too faint to read there (#999). */
 .doc-body [data-style-type='textColor'][data-value='red'] {
-  color: var(--color-palette-red);
+  --doc-run-hue: var(--color-palette-red);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='orange'] {
-  color: var(--color-palette-orange);
+  --doc-run-hue: var(--color-palette-orange);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='green'] {
-  color: var(--color-palette-green);
+  --doc-run-hue: var(--color-palette-green);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='blue'] {
-  color: var(--color-palette-blue);
+  --doc-run-hue: var(--color-palette-blue);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='violet'] {
-  color: var(--color-palette-violet);
+  --doc-run-hue: var(--color-palette-violet);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='pink'] {
-  color: var(--color-palette-pink);
+  --doc-run-hue: var(--color-palette-pink);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='textColor'][data-value='teal'] {
-  color: var(--color-palette-teal);
+  --doc-run-hue: var(--color-palette-teal);
+  color: var(--doc-run-hue);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='red'] {
-  background-color: var(--color-palette-red-bg);
+  --doc-run-hue: var(--color-palette-red);
+  background-color: var(--color-palette-red-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='orange'] {
-  background-color: var(--color-palette-orange-bg);
+  --doc-run-hue: var(--color-palette-orange);
+  background-color: var(--color-palette-orange-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='green'] {
-  background-color: var(--color-palette-green-bg);
+  --doc-run-hue: var(--color-palette-green);
+  background-color: var(--color-palette-green-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='blue'] {
-  background-color: var(--color-palette-blue-bg);
+  --doc-run-hue: var(--color-palette-blue);
+  background-color: var(--color-palette-blue-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='violet'] {
-  background-color: var(--color-palette-violet-bg);
+  --doc-run-hue: var(--color-palette-violet);
+  background-color: var(--color-palette-violet-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='pink'] {
-  background-color: var(--color-palette-pink-bg);
+  --doc-run-hue: var(--color-palette-pink);
+  background-color: var(--color-palette-pink-highlight);
 }
 
 .doc-body [data-style-type='backgroundColor'][data-value='teal'] {
-  background-color: var(--color-palette-teal-bg);
+  --doc-run-hue: var(--color-palette-teal);
+  background-color: var(--color-palette-teal-highlight);
+}
+
+/* ---- A quoted run steps back with the rest of the line ----
+   A quote says the words belong to someone else, and it says so by taking the
+   text to `--color-muted-foreground` (the rule on `[data-quoted='true']`
+   further down). Plain words follow that by inheritance; a coloured run
+   carries its own `color` on the inline span and a fill its own
+   `background-color`, so neither was reached — measured, a red run read
+   rgb(220, 62, 66) on both sides of quoting, and a filled line put quoted grey
+   words on a full-strength blue.
+
+   The hue takes 55% of that same grey (user 2026-09-19, from the four depths
+   in `2026-09-19-1002-quote-grey-depth.html`; he asked for the colour and the
+   fill both to grey when quoted, and for the whole line to step back
+   together). One number moves the words and the fill, so they arrive at the
+   same distance from the page.
+
+   Each of the fourteen rules above hands its hue over as `--doc-run-hue`, so
+   the list of seven is stated once and these three rules name no hue at all.
+   The 30% is the depth `--color-palette-*-highlight` is built at
+   (`tokens.css`, #999): the fill keeps the weight it has outside a quote and
+   changes only which hue it is built from. */
+.doc-body [data-quoted='true'] [data-style-type] {
+  --doc-run-quoted: color-mix(
+    in srgb,
+    var(--color-muted-foreground) 55%,
+    var(--doc-run-hue)
+  );
+}
+
+.doc-body [data-quoted='true'] [data-style-type='textColor'] {
+  color: var(--doc-run-quoted);
+}
+
+.doc-body [data-quoted='true'] [data-style-type='backgroundColor'] {
+  background-color: color-mix(
+    in srgb,
+    var(--doc-run-quoted) 30%,
+    transparent
+  );
 }
 
 /* A to-do's tick is drawn here. BlockNote renders a bare

@@ -28,63 +28,54 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
-/**
- * Sign in and open the account's first project.
- * @param p - The page to drive.
- * @returns Nothing.
- * @throws {Error} When sign-in never reaches a project.
- */
-async function openProject(p: Page): Promise<void> {
-  await signIn(p, email as string, password as string);
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
-}
-
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
-  await openProject(page);
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1400, height: 900 },
+  });
+  await openSmokeProject(page);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await page.close();
 });
 
-test('the question and its options arrive as a numbered list', async () => {
-  // A real turn, so the wait is on a model rather than on this machine. The
-  // file's own default of 30s is what a page is given, and it caps every
-  // wait inside a case regardless of what that wait asks for.
-  test.setTimeout(120_000);
-  const composer = page.getByTestId('chat-composer-textarea');
+/**
+ * Run a turn that leaves a question waiting, in a conversation of its own.
+ *
+ * Both cases need one, and each opens its own page. Opening a Project hands
+ * back the conversation this account used last, which is where the other case
+ * left its own unanswered question -- and a model shown one of those writes
+ * the next answer out in prose instead of asking again.
+ * @param target - The page to run the turn in.
+ * @throws {Error} When no question is waiting at the end of it, which is what
+ *   a run where the model answered instead looks like.
+ */
+async function aQuestionWaitingForAnswer(target: Page): Promise<void> {
+  const composer = target.getByTestId('chat-composer-textarea');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
-  const waiting = page.getByTestId('message-bubble-blocked');
-  // Its own conversation, so that what this measures is what this turn
-  // produced. Reusing the one chat opens with reads a question an earlier run
-  // left there, which satisfies every assertion below without this turn
-  // having run at all.
-  await page.getByTestId('new-conversation').click();
-  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+  await target.getByTestId('new-conversation').click();
+  await expect(target.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   await composer.fill(
     '我要做一条短视频，时长在 20~25 秒到 30~35 秒之间还没定，预算 $$100 或 $$300，' +
-      '素材在 https://a.com/photo_1.jpg。你先问我一个问题把还没定的那件事定下来，' +
+      '素材在 https://a.example/photo_1.jpg。你先问我一个问题把还没定的那件事定下来，' +
       '把每个选项都放进这次提问里。',
   );
   await composer.press('Enter');
 
-  await expect(waiting).toHaveCount(1, { timeout: 60_000 });
+  await expect(target.getByTestId('message-bubble-blocked')).toHaveCount(1, {
+    timeout: 60_000,
+  });
+}
+
+test('the question and its options arrive as a numbered list @needs-model', async () => {
+  await aQuestionWaitingForAnswer(page);
 
   const body = page.locator('[data-testid="markdown-body"]').last();
   const list = body.locator('ol').last();
@@ -108,7 +99,9 @@ test('the question and its options arrive as a numbered list', async () => {
   expect(await body.locator('.katex').count()).toBe(0);
 });
 
-test('the reader gets the same question back after a reload', async () => {
+test('the reader gets the same question back after a reload @needs-model', async () => {
+  await aQuestionWaitingForAnswer(page);
+
   const before = (await page.locator('[data-testid="markdown-body"]').last().innerText()).trim();
 
   await page.reload();

@@ -20,22 +20,12 @@
  * Needs a running dev stack (`pnpm dev`, which includes the ingest Worker), a
  * provider key for the model below, and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 let context: BrowserContext;
 let page: Page;
@@ -107,21 +97,13 @@ async function soleImageNodeId(target: Page): Promise<string> {
   return id;
 }
 
-test.beforeAll(async ({ browser }) => {
-  // A hook keeps the config's budget until it raises its own, and seeding a
-  // Space behind a sign-in outlasts 30s.
-  test.setTimeout(120_000);
-  context = await browser.newContext();
+test.beforeEach(async ({ browser }) => {
+  context = await browser.newContext({ storageState: STATE_FILE.A });
   page = await context.newPage();
-  await signIn(page, email as string, password as string);
 
   // Reuse an existing Project: this spec is about what a generation does with
   // its output, and minting one per run burns the tier's allowance.
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await page.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(page);
   // The route is `/project/{slug}-{uuid}`: the slug is decorative and the
   // backend keys on the bare uuid (URL design §5.7).
   const routeParam = (await page.evaluate(() => window.location.pathname)).split('/')[2] ?? '';
@@ -129,12 +111,12 @@ test.beforeAll(async ({ browser }) => {
   spaceId = await createSpace(page, 'canvas', `lanes-${Date.now()}`);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (spaceId !== '') await deleteSpace(page, spaceId);
   await context.close();
 });
 
-test('a generated image lands on the node under our own url, not the provider’s', async () => {
+test('a generated image lands on the node under our own url, not the provider’s @needs-model @needs-ingest @needs-storage', async () => {
   // The provider takes as long as it takes, and the transfer that follows is a
   // second network hop.
   test.setTimeout(300_000);

@@ -3,6 +3,7 @@ import { dirname } from 'path';
 // @ts-expect-error -- Node.js built-in, not covered by web tsconfig
 import { fileURLToPath } from 'url';
 import js from '@eslint/js';
+import playwrightPlugin from 'eslint-plugin-playwright';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import pluginReact from 'eslint-plugin-react';
@@ -218,17 +219,73 @@ export default [
   },
   {
     // The package's own tooling: ES modules that run in Node rather than in
-    // the browser this package otherwise targets. They read the build output
-    // and report to a terminal, so `process` and `console.log` are the
-    // interface, not a slip.
-    files: ['*.mjs'],
+    // the browser this package otherwise targets. They read the build output,
+    // drive the test runners, and report to a terminal, so `process` and
+    // `console.log` are the interface, not a slip — a run that says nothing
+    // about what it left out is the thing `default-run.mjs` exists to prevent.
+    files: ['*.mjs', 'scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
+    // The playwright suites, which every other group in this file leaves
+    // alone: each of those is scoped to `src/**`, so a rule declared the usual
+    // way would not reach a single spec. These are about how a case is
+    // written, so `tests/**` is the only place they have any effect at all.
+    //
+    // Whose Project a case opens, which tags it declares and which public
+    // hosts it reaches are the same questions in both suites.
+    files: ['tests/**/*.ts'],
     languageOptions: {
       globals: {
         ...globals.node,
       },
     },
+    // Serial order is what turns one red case into a file's worth of cases
+    // that never ran: the run that started this work reported 54 unexecuted,
+    // 44 of them from one file. Both suites carry that risk, and the 44 now
+    // live under `tests/visual/`.
+    plugins: { breatic: breaticPlugin },
     rules: {
-      'no-console': 'off',
+      'breatic/no-borrowed-project': 'error',
+      'breatic/declared-scenario-tags': 'error',
+      'breatic/no-untagged-public-host': 'error',
+      'breatic/no-serial-tests': 'error',
+    },
+  },
+  {
+    // Green means every case ran, which is a promise the smoke suite makes. A
+    // visual case whose precondition is how many rows a vendor's catalogue
+    // holds — five voices, say — has no tag that says so and no way to ask for
+    // it, so it says so at runtime and skips; which is why this ban stops at
+    // this directory. Its two cases are `@needs-tts`, so the default run never
+    // reaches them (#275 gives them a catalogue of their own).
+    files: ['tests/smoke/**/*.ts'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-runtime-test-skip': 'error',
+    },
+  },
+  {
+    // A case that asserts nothing passes for as long as the product is
+    // broken. Setup and teardown are excluded because they are not cases:
+    // they build the run's preconditions and take them away again, and
+    // saying so with an assertion would be inventing one.
+    //
+    // Zero cases in the suite violate this today. It is here for the ones
+    // written next, which is the only moment anybody could catch it: an
+    // assertion nobody wrote leaves nothing behind to notice later.
+    files: ['tests/**/*.spec.ts'],
+    plugins: { playwright: playwrightPlugin },
+    rules: {
+      'playwright/expect-expect': 'error',
     },
   },
   {

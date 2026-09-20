@@ -10,16 +10,9 @@
  * pinned by the unit and integration suites, and are not repeated here.
  *
  * Needs a running dev server and the smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
-
-import { signIn } from './helpers/session';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
 
 
 /**
@@ -48,7 +41,7 @@ async function openCredits(page: Page, section: string): Promise<void> {
 }
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`the confirm dialog holds its own in ${theme}`, async ({ page }) => {
+  test(`the confirm dialog holds its own in ${theme} @needs-payments`, async ({ page }) => {
     // Through the store's own persisted value rather than by stamping the
     // root: `openCredits` navigates, and a stamped attribute does not survive
     // that. The inline script in `index.html` reads this key before React
@@ -59,7 +52,6 @@ for (const theme of ['light', 'dark'] as const) {
         JSON.stringify({ state: { theme: t }, version: 1 }),
       );
     }, theme);
-    await signIn(page, email as string, password as string);
     await openCredits(page, 'buy');
     await page
       .locator('[data-testid="credit-pack"]')
@@ -183,7 +175,6 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 test('the checkout wait can be left with a keyboard', async ({ page }) => {
-  await signIn(page, email as string, password as string);
   // Hold the settle request open so the cover stays up long enough to be
   // measured. Without this it comes down the instant the answer lands.
   await page.route('**/payment/confirm**', async (route) => {
@@ -227,8 +218,7 @@ test('the checkout wait can be left with a keyboard', async ({ page }) => {
   await expect(cover).toHaveCount(0);
 });
 
-test('the buy screen and its confirm dialog measure up', async ({ page }) => {
-  await signIn(page, email as string, password as string);
+test('the buy screen and its confirm dialog measure up @needs-payments', async ({ page }) => {
   await openCredits(page, 'buy');
 
   const panel = page.getByRole('tabpanel');
@@ -303,45 +293,19 @@ test('the buy screen and its confirm dialog measure up', async ({ page }) => {
   expect(dialog.tick).not.toBeNull();
 });
 
-test('the refunds screen measures up', async ({ page }) => {
-  await signIn(page, email as string, password as string);
+// Two deployments, two screens: one that charges lists the refunds it made,
+// one that does not has nothing to list and says so. Only the second is
+// reachable from here, and what it draws is the empty state
+// (`RefundsSection.tsx:143`) carrying `credits.refundsEmpty` — a sentence out
+// of the locale, which is what makes it the reader's language rather than a
+// string in the code. Pinning what a charging deployment draws needs a
+// deployment that charges (#277).
+test('the refunds screen draws its empty state', async ({ page }) => {
   await openCredits(page, 'refunds');
 
   const panel = page.getByRole('tabpanel');
-  const measured = await panel.evaluate((root) => {
-    const read = (el: Element | null): Record<string, string> | null => {
-      if (!el) return null;
-      const s = getComputedStyle(el);
-      const r = el.getBoundingClientRect();
-      return {
-        text: (el.textContent ?? '').slice(0, 120),
-        color: s.color,
-        fontSize: s.fontSize,
-        width: String(Math.round(r.width)),
-        height: String(Math.round(r.height)),
-      };
-    };
-    const cards = [...root.querySelectorAll('[data-slot="card"], section, article')];
-    const footnote = root.querySelector('footer, small, [data-slot="footnote"]');
-    const refundBtn = [...root.querySelectorAll('button')].find((b) =>
-      // Simplified and traditional Chinese spell this one the same way.
-      /refund|退款/i.test(b.textContent ?? ''),
-    );
-    return {
-      cardCount: cards.length,
-      panelText: (root.textContent ?? '').slice(0, 400),
-      footnote: read(footnote),
-      refundButton: refundBtn
-        ? {
-          ...read(refundBtn),
-          ariaDisabled: refundBtn.getAttribute('aria-disabled'),
-          opacity: getComputedStyle(refundBtn).opacity,
-        }
-        : null,
-    };
-  });
-
-  // eslint-disable-next-line no-console
-  console.log('REFUNDS_SCREEN', JSON.stringify(measured, null, 2));
-  expect(measured.panelText.length).toBeGreaterThan(0);
+  await expect(panel).toContainText('Nothing can be refunded.');
+  // Nothing to refund means nothing to ask about either: the button that asks
+  // belongs to a purchase, and there are none.
+  await expect(panel.getByRole('button', { name: 'Ask for a refund' })).toHaveCount(0);
 });

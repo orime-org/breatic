@@ -17,44 +17,28 @@
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite. Beyond one Project to put a Space in, it reads
- * nothing from the account: the Space and both image nodes are built by the
- * run itself.
+ *   pnpm --filter @breatic/web test:visual
  */
 import { test, expect, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
+import { createSpace, deleteSpace } from '../helpers/space';
 
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-// One sign-in for the whole file, on a page these cases share. Sign-in is rate
-// limited to 5 a minute (`config/rate-limits.yaml`), a budget the suite spends
-// across every spec — three more logins from here is enough to push a later
-// spec past it. Same shape as selection-bubble-bar.spec.ts.
-//
 // The viewport is set on `browser.newPage` rather than through `test.use`,
 // which configures the `page` fixture no case here takes. Desktop-web is the
 // only supported platform, and below ~1280px the studio sidebar collapses to
 // icons whose buttons lose their accessible names.
-test.describe.configure({ mode: 'serial' });
 
 let page: Page;
 
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await signIn(page, email as string, password as string);
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1680, height: 950 },
+  });
 });
 
-test.afterAll(async () => {
-  await page?.close();
-});
 
 // Each case builds its own Space and drops it again when it is done. Three
 // cases leaving three behind, every run, in the same Project, is what a tier's
@@ -65,12 +49,8 @@ test.afterEach(async () => {
   while (createdSpaceIds.length > 0) {
     await deleteSpace(page, createdSpaceIds.pop() as string);
   }
+  await page.close();
 });
-
-// Each case creates a Space and seeds two nodes before it can assert anything,
-// which outlasts the suite-wide 30s budget on its own. The teardown adds a
-// drawer round-trip on top of that.
-test.setTimeout(90_000);
 
 /**
  * A 320x240 solid PNG, inline so it decodes with no network.
@@ -102,19 +82,12 @@ async function seedTwoImageNodes(
   projectId: string,
   spaceName: string,
 ): Promise<string[]> {
+  const managerAt = await liveModuleUrl(page, YJS_MANAGER);
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
   const ids = await page.evaluate(
-    async ([pid, name, png]: string[]) => {
-      // Vite serves each module under a versioned URL; importing the bare path
-      // would evaluate a SECOND copy whose caches are empty.
-      const live = (re: RegExp): string =>
-        performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n)) ?? '';
-      const mgr = await import(/* @vite-ignore */ live(/data\/yjs\/manager\.ts/));
-      const canvas = await import(
-        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
-      );
+    async ([pid, name, png, mgrUrl, canvasUrl]: string[]) => {
+      const mgr = await import(/* @vite-ignore */ mgrUrl as string);
+      const canvas = await import(/* @vite-ignore */ canvasUrl as string);
       const meta = mgr.getDoc(mgr.docName.projectMeta(pid));
       const entry = [...meta.getMap('spaces').entries()].find(
         ([, v]: [string, { get: (k: string) => unknown }]) =>
@@ -142,7 +115,7 @@ async function seedTwoImageNodes(
       }
       return made;
     },
-    [projectId, spaceName, SOLID_4_3_PNG],
+    [projectId, spaceName, SOLID_4_3_PNG, managerAt, canvasAt],
   );
 
   await page.waitForFunction(
@@ -173,11 +146,7 @@ async function openCropOverlay(): Promise<void> {
   // Reuse an existing Project: this spec is about the crop overlay, and
   // minting one per run burns the tier's projects-per-studio allowance. The
   // Space inside it is ours, so nothing about the Project's contents matters.
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await page.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(page);
   const projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] as string;
 
   // A fresh Canvas Space, which opens active — so the run lands on a canvas

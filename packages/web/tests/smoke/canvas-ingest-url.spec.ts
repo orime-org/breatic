@@ -16,22 +16,12 @@
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 let context: BrowserContext;
 let page: Page;
@@ -153,19 +143,13 @@ async function rowsIn(
   return target.locator('[data-testid="node-task-row"]').count();
 }
 
-test.beforeAll(async ({ browser }) => {
-  test.setTimeout(120_000);
-  context = await browser.newContext();
+test.beforeEach(async ({ browser }) => {
+  context = await browser.newContext({ storageState: STATE_FILE.A });
   page = await context.newPage();
-  await signIn(page, email as string, password as string);
 
   // Reuse an existing Project: this spec is about one endpoint, and minting
   // one per run burns the tier's projects-per-studio allowance.
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await page.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(page);
   // The route param is `<slug>-<uuid>`, and what the API reads is the uuid —
   // the same rule `projectUuidFromRouteParam` applies for the app itself.
   const param = new URL(page.url()).pathname.split('/')[2] ?? '';
@@ -183,13 +167,12 @@ test.beforeAll(async ({ browser }) => {
   });
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (spaceId !== '') await deleteSpace(page, spaceId);
   await context.close();
 });
 
-test('an address that can be stored reaches the node as a finished task', async () => {
-  test.setTimeout(120_000);
+test('an address that can be stored reaches the node as a finished task @needs-internet @needs-ingest @needs-storage', async () => {
   const nodeId = await dropANode(page);
 
   const answer = await submit(page, STORABLE, nodeId);
@@ -204,8 +187,7 @@ test('an address that can be stored reaches the node as a finished task', async 
     .toBe(2);
 });
 
-test('an address that cannot be stored reaches it as a failed one', async () => {
-  test.setTimeout(120_000);
+test('an address that cannot be stored reaches it as a failed one @needs-internet @needs-ingest @needs-storage', async () => {
   const nodeId = await dropANode(page);
 
   const answer = await submit(page, NOT_STORABLE, nodeId);
