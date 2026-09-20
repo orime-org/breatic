@@ -424,7 +424,11 @@ test('the comment row is drawn unusable and does nothing when pressed (A10)', as
   // measured, dispatching one at the menu element moved no focus at all, so
   // the case passed nothing and failed on an empty walk.
   const walked: { testid: string | null; background: string }[] = [];
-  for (let i = 0; i < 5; i += 1) {
+  // As many steps as the menu has rows, counted rather than written down: the
+  // comment row sits second from the bottom, so a fixed count stops short of
+  // it the moment a row is added above.
+  const rowCount = await page.getByTestId(/^doc-block-row-/).count();
+  for (let i = 0; i < rowCount; i += 1) {
     await page.keyboard.press('ArrowDown');
     // The row's background arrives through `transition-colors`, so a reading
     // taken in the same tick catches it part-way: measured, all five came back
@@ -1231,28 +1235,40 @@ test('keeps the handle menu’s rows 4px apart', async () => {
   await typeLines(page, ['a row to act on']);
   await openHandleMenu(page);
 
-  const gaps = await page.evaluate(() => {
-    const rows = [
-      'blockType',
-      'duplicate',
-      'insertBelow',
-      'comment',
-      'delete',
-    ].map((id) =>
-      document
-        .querySelector(`[data-testid="doc-block-row-${id}"]`)
-        ?.getBoundingClientRect(),
-    );
-    return rows
-      .slice(1)
-      .map((box, i) =>
-        box === undefined || rows[i] === undefined
-          ? null
-          : Math.round((box.top - rows[i].bottom) * 100) / 100,
-      );
+  // Every row in the menu, in the order it draws them, rather than a list
+  // written out here: a row added to the menu belongs in this measurement,
+  // and a written-out list would go on measuring the old menu and reporting
+  // the distance across whatever was inserted as one gap.
+  //
+  // The rule above the delete row counts as one of the things being spaced,
+  // not as part of a gap: measuring row-to-row across it reports 4 + the
+  // rule + 4 and reads like a menu that spaces one pair differently.
+  const laid = await page.evaluate(() => {
+    const parts = [
+      ...document.querySelectorAll(
+        '[data-testid^="doc-block-row-"], [role="menu"] [role="separator"]',
+      ),
+    ].map((part) => ({
+      rule: part.getAttribute('role') === 'separator',
+      box: part.getBoundingClientRect(),
+    }));
+    return {
+      gaps: parts
+        .slice(1)
+        .map(
+          (part, i) =>
+            Math.round((part.box.top - parts[i].box.bottom) * 100) / 100,
+        ),
+      ruleHeights: parts
+        .filter((part) => part.rule)
+        .map((part) => Math.round(part.box.height)),
+    };
   });
 
-  expect(gaps).toEqual([4, 4, 4, 4]);
+  // Seven rows and one rule: seven gaps, every one of them 4.
+  expect(laid.gaps.length).toBe(7);
+  expect(new Set(laid.gaps)).toEqual(new Set([4]));
+  expect(laid.ruleHeights).toEqual([1]);
 
   await closeHandleMenu(page);
 });
