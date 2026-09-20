@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { REFUND_LIFECYCLES } from '@breatic/shared';
+import { isRefundLifecycle } from '@breatic/shared';
 import type { PurchaseRow } from '@breatic/shared';
 
 import { Badge } from '@web/components/ui/badge';
@@ -106,12 +106,7 @@ export function PurchasesSection({
               ))}
             </Rows>
           </Card>
-          <ListEnd
-            sentinelRef={paging.sentinelRef}
-            loading={paging.isFetchingNextPage}
-            more={paging.hasNextPage}
-            failed={paging.pageFailed}
-          />
+          <ListEnd paging={paging} />
           {/* Counted only once the list is read through. While there is
               another page this figure is of the pages fetched so far, and a
               number that climbs as you scroll says less than none. */}
@@ -246,7 +241,7 @@ const PurchaseLine = React.memo(function PurchaseLine({
         // Studio the money went to.
         purchase.lifecycle === null
           ? undefined
-          : REFUND_LIFECYCLES.has(purchase.lifecycle)
+          : isRefundLifecycle(purchase.lifecycle)
             ? t(`credits.lifecycle.${purchase.lifecycle}`)
             : purchase.designatedStudioName === null
               ? t('credits.unassigned')

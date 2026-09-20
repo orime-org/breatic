@@ -72,7 +72,13 @@
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
       "price_not_configured": "套餐 {tier} 的价格未配置",
       "consent-credits-v1": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用的积分可在 30 天内全额退款。",
+      "consent-credits-v2": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用且未指定给 Studio 的积分可在 30 天内全额退款。",
       "refund-credits-v1": {
+        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
+        "used": "只要花过其中任何一个，这一笔就不能再退了。",
+        "expired": "超过 30 天，不再受理退款。"
+      },
+      "refund-credits-v2": {
         "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
         "used": "只要花过其中任何一个，这一笔就不能再退了。",
         "expired": "超过 30 天，不再受理退款。",
@@ -1598,11 +1604,11 @@
       "skip": "查看购买记录"
     },
     "refundFailed": "申请退款没有成功，请再试一次。",
-    "underRefund": "退款中",
+    "underRefund": "退款流程中",
     "underRefundHint": "在有结果之前哪里都花不出去",
     "confirmRefund": {
       "title": "申请退款？",
-      "body": "这一笔将进入退款审核，期间不能指定给 Studio。",
+      "body": "这一笔将进入退款审核，期间不能指定给 Studio，申请提交后也无法撤回。",
       "cancel": "取消",
       "confirm": "申请退款"
     },

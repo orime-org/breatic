@@ -18,7 +18,6 @@ import {
 } from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
-import { ApiException } from '@web/data/api/types';
 import {
   fetchCreditLots,
   requestCreditLotRefund,
@@ -43,6 +42,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 type Translate = ReturnType<typeof useTranslation>;
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
+import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
 import { usePaymentTiers } from '@web/features/credits/use-payment-tiers';
 
@@ -164,9 +164,11 @@ export function RefundsSection({
   });
   const terms = usePaymentTiers(billing);
 
-  // One instant for the whole render, so two rows on the same screen cannot
-  // land on opposite sides of a window closing between them.
-  const now = new Date();
+  // One instant for the whole screen, so two rows cannot land on opposite
+  // sides of a window closing between them. Held across renders as well, so
+  // the rows it is handed to can be memoized: a fresh Date every render is a
+  // prop that never compares equal.
+  const now = React.useMemo(() => new Date(), []);
 
   return (
     <Section
@@ -220,12 +222,7 @@ export function RefundsSection({
                   ))}
                 </Rows>
               </Card>
-              <ListEnd
-                sentinelRef={paging.sentinelRef}
-                loading={paging.isFetchingNextPage}
-                more={paging.hasNextPage}
-                failed={paging.pageFailed}
-              />
+              <ListEnd paging={paging} />
             </>
           )}
         </>
@@ -258,7 +255,11 @@ interface LotRowProps {
  * @param props.now - The instant the window is judged against.
  * @returns The row.
  */
-function LotRow({ lot, userId, now }: LotRowProps): React.JSX.Element {
+const LotRow = React.memo(function LotRow({
+  lot,
+  userId,
+  now,
+}: LotRowProps): React.JSX.Element {
   const t = useTranslation();
   const client = useQueryClient();
   const [asking, setAsking] = React.useState(false);
@@ -288,15 +289,17 @@ function LotRow({ lot, userId, now }: LotRowProps): React.JSX.Element {
       // its answer is the only true thing there is to say. A generic line is
       // honest only when the request never reached us, where the message axios
       // supplies is English written for a developer.
-      toast.error(
-        err instanceof ApiException && err.fromServer && err.message
-          ? err.message
-          : t('credits.refundFailed'),
-      );
+      toast.error(serverMessage(err, t('credits.refundFailed')));
       // The row offered an ask the server turned down, which means what this
-      // screen holds is out of date. Reading it again redraws the row with the
-      // state it really is in, carrying the same reason as its badge.
-      void client.invalidateQueries({ queryKey: ['credits', 'lots', userId] });
+      // screen holds is out of date — and so are the other two. The refusal
+      // that matters here is the 409 saying the pack is already on its way
+      // out: the three figures and the history row are behind by the same
+      // beat this list is.
+      void Promise.all([
+        client.invalidateQueries({ queryKey: ['credits', 'lots', userId] }),
+        client.invalidateQueries({ queryKey: ['credits', 'overview', userId] }),
+        client.invalidateQueries({ queryKey: ['payment', 'history', userId] }),
+      ]);
     },
   });
 
@@ -354,4 +357,4 @@ function LotRow({ lot, userId, now }: LotRowProps): React.JSX.Element {
       }
     />
   );
-}
+});

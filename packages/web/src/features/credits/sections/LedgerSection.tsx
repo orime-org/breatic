@@ -155,12 +155,7 @@ export function LedgerSection({
                   ))}
                 </tbody>
               </table>
-              <ListEnd
-                sentinelRef={paging.sentinelRef}
-                loading={paging.isFetchingNextPage}
-                more={paging.hasNextPage}
-                failed={paging.pageFailed}
-              />
+              <ListEnd paging={paging} />
             </>
           )}
         </Card>

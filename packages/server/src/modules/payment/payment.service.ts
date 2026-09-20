@@ -31,13 +31,13 @@ import {
   db,
   env,
   logger,
-  encodeActivityCursor,
   decodeActivityCursor,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { claimWebhookEvent } from "@server/modules/subscription/webhook-events.repo.js";
 import { sendPurchaseConfirmation } from "@server/modules/payment/purchase-mail.js";
 import { renderPurchaseConfirmation } from "@server/modules/payment/purchase-mail-template.js";
+import { toPage } from "@server/utils/keyset-page.js";
 import {
   CONSENT_CREDITS_VERSION,
   REFUND_CREDITS_VERSION,
@@ -945,12 +945,10 @@ export async function getPurchaseHistory(
     size,
     cursor === null ? null : { createdAt: cursor.createdAt, id: cursor.id },
   );
-  const hasMore = rows.length > size;
-  const page = hasMore ? rows.slice(0, size) : rows;
-  const last = page[page.length - 1];
-
-  return {
-    items: page.map((row) => ({
+  return toPage(
+    rows,
+    size,
+    (row) => ({
       paymentId: row.paymentId,
       amountCents: row.amountCents,
       totalCents: row.totalCents,
@@ -965,10 +963,9 @@ export async function getPurchaseHistory(
       status: row.status,
       createdAt: row.createdAt.toISOString(),
       canResend: canResend(row.mailStatus, row.mailUpdatedAt),
-    })),
-    nextCursor:
-      hasMore && last ? encodeActivityCursor(last.cursorAt, last.paymentId) : null,
-  };
+    }),
+    (row) => ({ cursorAt: row.cursorAt, id: row.paymentId }),
+  );
 }
 
 /**

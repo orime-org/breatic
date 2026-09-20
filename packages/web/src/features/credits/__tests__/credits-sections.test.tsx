@@ -16,6 +16,7 @@ import type {
 
 import { setLocale } from '@breatic/shared';
 
+import { ApiException } from '@web/data/api/types';
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import type { CreditsSectionId } from '@web/features/credits/credits-sections';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -102,8 +103,12 @@ vi.mock('@web/lib/use-scrolled-to-end', () => ({
 }));
 
 const toastWarning = vi.fn();
+const toastError = vi.fn();
 vi.mock('@web/lib/toast', () => ({
-  toast: { warning: (...a: unknown[]) => toastWarning(...a), error: vi.fn() },
+  toast: {
+    warning: (...a: unknown[]) => toastWarning(...a),
+    error: (...a: unknown[]) => toastError(...a),
+  },
 }));
 
 const ALEX = {
@@ -295,6 +300,7 @@ describe('the credits overlay, section by section', () => {
       { id: 's2', name: 'Design squad', myStudioRole: 'guest' },
     ]);
     toastWarning.mockReset();
+    toastError.mockReset();
     reachEnd = null;
     watcherStopped = null;
     watched = null;
@@ -986,6 +992,43 @@ describe('the credits overlay, section by section', () => {
       });
     });
 
+    // The server writes a sentence for the one refusal this screen can earn —
+    // the purchase moved into the refund flow while the list was open — and it
+    // is the only true thing there is to say. "Try again" sends the reader
+    // back to an action that can never succeed.
+    it('says what the server said when a repoint is refused', async () => {
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ designatedStudioId: null, designatedStudioName: null })],
+        nextCursor: null,
+      });
+      designateCreditLot.mockRejectedValue(
+        new ApiException({
+          status: 409,
+          message: 'This purchase is being refunded and cannot be reassigned.',
+          fromServer: true,
+        }),
+      );
+      const user = await openOn('assign');
+      await panel();
+      fetchCreditLots.mockClear();
+
+      await user.click(screen.getByRole('combobox'));
+      await user.click(
+        await screen.findByRole('option', { name: 'Orime Studio' }),
+      );
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          'This purchase is being refunded and cannot be reassigned.',
+        );
+      });
+      // The row offered something the server turned down, so what this screen
+      // holds is out of date.
+      await waitFor(() => {
+        expect(fetchCreditLots).toHaveBeenCalled();
+      });
+    });
+
     it('makes the purchase history read again once a purchase is repointed', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [lot({ designatedStudioId: null, designatedStudioName: null })],
@@ -1099,6 +1142,58 @@ describe('the credits overlay, section by section', () => {
 
       expect(dialog).toHaveTextContent(/cannot be assigned/i);
       expect(dialog).not.toHaveTextContent(/cannot be spent/i);
+      // The one thing about pressing it that cannot be undone: there is no
+      // route back, and the decision is made elsewhere.
+      expect(dialog).toHaveTextContent(/cannot be taken back/i);
+    });
+
+    // A 409 on the ask means the pack is already in the refund flow, so the
+    // three figures the overview reports and the row the history repeats are
+    // as stale as this list is. The same three reads the success path moves.
+    it('reads the overview and the history again when an ask is refused', async () => {
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ id: 'l1', designatedStudioId: null })],
+        nextCursor: null,
+      });
+      requestCreditLotRefund.mockRejectedValue(
+        new ApiException({
+          status: 409,
+          message: 'This purchase is already on its way out.',
+          fromServer: true,
+        }),
+      );
+      // Open the history first so its query is in the cache: invalidating a
+      // key nothing has read does nothing at all.
+      const user = await openOn('lots', true);
+      await panel();
+      await user.click(document.getElementById('credits-tab-refunds')!);
+      const body = await panel();
+      fetchCreditOverview.mockClear();
+      paymentHistory.mockClear();
+
+      await user.click(within(body).getByRole('button', { name: /refund/i }));
+      const dialog = await screen.findByRole('alertdialog');
+      await user.click(
+        within(dialog).getByRole('button', { name: /^ask for a refund$/i }),
+      );
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          'This purchase is already on its way out.',
+        );
+      });
+      // The overview is on screen, so it reads again straight away.
+      await waitFor(() => {
+        expect(fetchCreditOverview).toHaveBeenCalled();
+      });
+      // The history is not, so it was marked stale: the reader going back to
+      // it gets the row as it now stands rather than the thirty-second-old
+      // answer saying the pack is theirs to spend.
+      await user.click(document.getElementById('credits-tab-lots')!);
+      await panel();
+      await waitFor(() => {
+        expect(paymentHistory).toHaveBeenCalled();
+      });
     });
 
     it('sends nothing when the buyer backs out of the confirmation', async () => {

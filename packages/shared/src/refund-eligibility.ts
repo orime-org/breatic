@@ -15,15 +15,30 @@
 import { withinRefundWindow } from "@shared/refund-window.js";
 import type { CreditLotLifecycle } from "@shared/types/entities.js";
 
+/** Lifecycles in which a purchase is on its way out of the account. */
+export const REFUND_LIFECYCLES: ReadonlySet<CreditLotLifecycle> = new Set([
+  "refund_pending",
+  "refunding",
+  "refunded",
+]);
+
 /**
- * Lifecycles in which a purchase is on its way out of the account.
+ * Whether a lifecycle read off the wire is one of those.
  *
- * Built over `CreditLotLifecycle` so a value that is not one cannot be added,
- * and read as a set of strings so a caller holding the wire's `string` can ask
- * without casting — the purchase history is one such caller.
+ * The purchase history's rows carry `lifecycle` as a plain string — a row
+ * whose payment never became a lot has none at all — so it asks here rather
+ * than through the set, which keeps the set able to reject a lifecycle that
+ * does not exist.
+ * @param lifecycle - The value as it arrived, or null on a purchase with no
+ *   lot behind it.
+ * @returns Whether it names one of the three.
  */
-export const REFUND_LIFECYCLES: ReadonlySet<string> =
-  new Set<CreditLotLifecycle>(["refund_pending", "refunding", "refunded"]);
+export function isRefundLifecycle(lifecycle: string | null): boolean {
+  return (
+    lifecycle !== null &&
+    REFUND_LIFECYCLES.has(lifecycle as CreditLotLifecycle)
+  );
+}
 
 /** Why a purchase cannot be asked about right now. */
 export type RefundRefusal =
@@ -49,11 +64,12 @@ export interface RefundCandidate {
   /**
    * Whether a credit was ever drawn from it.
    *
-   * Read off the ledger rather than off the balance: a failed generation
-   * gives the credits back, so a purchase that has been spent from can sit at
-   * its full count. `depleted` is spent to nothing, which the ledger answers
-   * for as well — naming that lifecycle here would be a second way to say the
-   * same thing.
+   * Read off the ledger, not off the balance. The promise turns on whether a
+   * credit was ever drawn, and the ledger is the record of that; the balance
+   * is a projection of it, so it answers the narrower question of what is
+   * left. `depleted` is spent to nothing, which the ledger answers for as
+   * well — naming that lifecycle here would be a second way to say the same
+   * thing.
    */
   everSpent: boolean;
   /** How many earlier asks were refused. */

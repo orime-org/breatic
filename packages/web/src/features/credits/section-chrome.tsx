@@ -53,8 +53,8 @@ export function Section({
           minimum height is its content, so without it this grows past the
           panel and the rows below the fold become unreachable. */}
       <div ref={scrollerRef} className='min-h-0 flex-1'>
-        <ScrollArea className='h-full' viewportClassName='px-7'>
-          <div className='flex flex-col gap-5 pb-1'>{children}</div>
+        <ScrollArea className='h-full' viewportClassName='px-7 pb-7'>
+          <div className='flex flex-col gap-5'>{children}</div>
         </ScrollArea>
       </div>
       {footer === undefined ? null : (
@@ -420,16 +420,21 @@ export function formatMoney(cents: number, currency: string): string {
   });
 }
 
-/** Where a list ends, and whether more is coming. */
+/** What the foot of a paging list reads from. */
 interface ListEndProps {
-  /** Goes on the empty element after the last row. */
-  sentinelRef: (node: HTMLElement | null) => void;
-  /** A further page is on its way. */
-  loading: boolean;
-  /** There are more pages to read. */
-  more: boolean;
-  /** The last page asked for did not arrive. */
-  failed: boolean;
+  /**
+   * The paging state, as `useCreditsPaging` returns it.
+   *
+   * The whole object rather than four fields off it: three of them are
+   * booleans, so a call site that mixed two of them up would type-check and
+   * draw the wrong thing, and every one of these lists is fed by that hook.
+   */
+  paging: {
+    sentinelRef: (node: HTMLElement | null) => void;
+    isFetchingNextPage: boolean;
+    hasNextPage: boolean;
+    pageFailed: boolean;
+  };
 }
 
 /**
@@ -440,19 +445,17 @@ interface ListEndProps {
  * slices back, so a page carrying a next cursor always carries a row — which
  * means a list with nothing in it is a list with nothing more coming, and the
  * sentinel has nothing to ask for.
- * @param props - The sentinel and the three states.
- * @param props.sentinelRef - Goes on the empty element after the last row.
- * @param props.loading - A further page is on its way.
- * @param props.more - There are more pages to read.
- * @param props.failed - The last page asked for did not arrive.
+ * @param props - The paging state.
+ * @param props.paging - The paging state, as `useCreditsPaging` returns it.
  * @returns The foot.
  */
-export function ListEnd({
-  sentinelRef,
-  loading,
-  more,
-  failed,
-}: ListEndProps): React.JSX.Element {
+export function ListEnd({ paging }: ListEndProps): React.JSX.Element {
+  const {
+    sentinelRef,
+    isFetchingNextPage: loading,
+    hasNextPage: more,
+    pageFailed: failed,
+  } = paging;
   const t = useTranslation();
   return (
     <div className='flex items-center justify-center py-2 text-2xs tracking-widest text-muted-foreground'>

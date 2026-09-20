@@ -70,7 +70,12 @@ export function OverviewSection({
         key: 'under-refund',
         name: t('credits.underRefund'),
         value: overview.underRefundCredits,
-        color: 'var(--color-status-warning)',
+        // Outside the identity palette, for the reason the unassigned slice
+        // is: a studio's colour is hashed from its id, so a palette colour
+        // here is one a studio can also be handed, and two segments of the
+        // same bar would read as one. A step lighter than that slice, which
+        // is the other neutral on this bar.
+        color: 'var(--color-foreground-disabled)',
       }
       : null;
   const parts = [slices, unassignedSlice, underRefundSlice]

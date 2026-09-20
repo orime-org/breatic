@@ -104,8 +104,8 @@ function view(over: Partial<ConfirmationView> = {}): ConfirmationView {
     currency: "usd",
     creditsGranted: 1700,
     grantedAt: new Date("2026-08-26T01:30:00.000Z"),
-    consentTextVersion: "consent-credits-v1",
-    refundTextVersion: "refund-credits-v1",
+    consentTextVersion: CONSENT_CREDITS_VERSION,
+    refundTextVersion: REFUND_CREDITS_VERSION,
     timeZone: "UTC",
     balanceCredits: 4200,
     ...over,
@@ -174,7 +174,7 @@ describe("the confirmation carries all eight things", () => {
     expect(mail.text).toContain(plainConsent("en"));
   });
 
-  it("repeats all three refund lines", () => {
+  it("repeats every refund line", () => {
     const mail = renderPurchaseConfirmation(view(), "UTC", SUPPORT);
     for (const line of refundLines("en")) {
       expect(mail.text).toContain(line);
@@ -326,6 +326,21 @@ describe("both versions name wording that exists", () => {
     expect(mail.text).toContain("server.payment.refund-credits-v99.unused");
     expect(mail.text).toContain("server.payment.consent-credits-v99");
     expect(mail.text).not.toContain(plainConsent("en"));
+  });
+
+  it("reads back the three lines a v1 purchase agreed to", () => {
+    // The version a purchase records names the wording it was made under, and
+    // that wording never changes afterwards. A fourth condition is a new
+    // version beside it, so a confirmation resent for a v1 purchase states
+    // what that buyer agreed to and not what is asked of buyers today.
+    const v1 = refundLinesAt("refund-credits-v1", "en");
+    expect(v1).toHaveLength(3);
+    expect(v1.join(" ")).not.toContain("assigned to a Studio");
+
+    const today = refundLinesAt(REFUND_CREDITS_VERSION, "en");
+    expect(REFUND_CREDITS_VERSION).toBe("refund-credits-v2");
+    expect(today).toHaveLength(4);
+    expect(today[3]).toContain("not assigned to a Studio");
   });
 
   it("says so when a version names wording that is not there", () => {

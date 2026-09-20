@@ -507,9 +507,9 @@ export async function designateLot(input: {
  * asked for on a lot the buyer has already released — we never release it for
  * them. The fourth keeps one lot to one ask at a time.
  *
- * "Nothing spent" asks the ledger, not the balance. A failed generation
- * returns the credits, so a purchase spent from can read as untouched by its
- * balance alone, and the promise turns on whether a credit was ever drawn.
+ * "Nothing spent" asks the ledger, not the balance. The promise turns on
+ * whether a credit was ever drawn, and the ledger is the record of that; the
+ * balance is a projection of it and answers a narrower question.
  *
  * The window is measured from the first ask. `refund_attempts` above zero
  * means the buyer already asked while it was open — the only path that raises

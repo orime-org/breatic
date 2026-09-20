@@ -31,6 +31,7 @@ import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
+import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
 
 /** Whose purchases, and whether billing is on at all. */
@@ -138,12 +139,7 @@ export function AssignSection({
               ))}
             </Rows>
           </Card>
-          <ListEnd
-            sentinelRef={paging.sentinelRef}
-            loading={paging.isFetchingNextPage}
-            more={paging.hasNextPage}
-            failed={paging.pageFailed}
-          />
+          <ListEnd paging={paging} />
         </>
       )}
     </Section>
@@ -204,8 +200,21 @@ function AssignRow({
         queryKey: ['payment', 'history', userId],
       });
     },
-    onError: () => {
-      toast.error(t('credits.designateFailed'));
+    onError: (err: unknown) => {
+      // The server writes a sentence for the one refusal this screen can
+      // earn — the purchase moved into the refund flow while the list was
+      // open — and it is the only true thing there is to say.
+      toast.error(serverMessage(err, t('credits.designateFailed')));
+      // The row offered a repoint the server turned down, which means what
+      // this screen holds is out of date. The same reads the success path
+      // moves: they are stale for the same reason.
+      void client.invalidateQueries({ queryKey: ['credits', 'lots', userId] });
+      void client.invalidateQueries({
+        queryKey: ['credits', 'overview', userId],
+      });
+      void client.invalidateQueries({
+        queryKey: ['payment', 'history', userId],
+      });
     },
   });
 

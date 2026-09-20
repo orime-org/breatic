@@ -41,6 +41,7 @@ import {
   projects,
   payments,
 } from "@breatic/core";
+import { IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
 import type {
   CreditLotEntity,
   CreditLotLifecycle,
@@ -560,7 +561,7 @@ export async function sumUnderRefundForUser(userId: string): Promise<string> {
     .where(
       and(
         eq(creditLots.userId, userId),
-        inArray(creditLots.lifecycle, ["refund_pending", "refunding"]),
+        inArray(creditLots.lifecycle, IN_FLIGHT_REFUND_LIFECYCLES),
         isNull(creditLots.deletedAt),
       ),
     );
@@ -630,10 +631,9 @@ export async function setDesignation(
  * Whether anything has ever been drawn from this purchase.
  *
  * Asked of the ledger rather than the balance, for the reason the read side
- * states at `everSpent`: a failed generation returns the credits, so a
- * purchase spent from can be back at its full count. The refund rule turns on
- * whether a credit was ever drawn, so both readers ask this one question and
- * name the same entry types.
+ * states at `everSpent`: the refund rule turns on whether a credit was ever
+ * drawn, and the ledger is the record of that. Both readers ask this one
+ * question and name the same entry types.
  * @param lotId - The lot to ask about.
  * @param tx - The transaction reading it.
  * @returns True if a generation or a debt repayment has drawn on this lot.
@@ -697,11 +697,10 @@ export interface LotContext {
   /**
    * Whether anything has ever been drawn from this purchase.
    *
-   * Read off the ledger, not off the balance: a failed generation gives the
-   * credits back, so a purchase that has been spent from can carry its full
-   * count again. The refund rule turns on this fact rather than on the
-   * balance for that reason. Counts both ways of drawing on a purchase, a
-   * generation and the repayment of a studio's debt.
+   * Read off the ledger, not off the balance: the refund rule turns on
+   * whether a credit was ever drawn, and the ledger is where that is
+   * written. Counts both ways of drawing on a purchase, a generation and the
+   * repayment of a studio's debt.
    */
   everSpent: boolean;
 }
@@ -758,8 +757,7 @@ export async function listLotsByUser(
       // which stays true after the studio is gone.
       designated: sql<boolean>`${creditLots.designatedStudioId} IS NOT NULL`,
       // Whether anything was ever drawn from this purchase. The refund rule
-      // asks the ledger rather than the balance: a failed generation returns
-      // the credits, so a purchase spent from can be back at its full count.
+      // asks the ledger rather than the balance, which is the record of it.
       // Both ways of drawing on it count — a generation and the repayment of
       // a studio's debt — which is what `SPENDING_ENTRY_TYPES` names.
       // Served by `credit_ledger_lot_idx`.

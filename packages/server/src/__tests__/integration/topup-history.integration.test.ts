@@ -95,6 +95,7 @@ import {
 import { creditLotService } from "@breatic/domain";
 import type { CreditPage, PurchaseRow } from "@breatic/shared";
 import { getConfirmationView } from "@server/modules/payment/payment.repo.js";
+import { CONSENT_CREDITS_VERSION } from "@server/modules/payment/legal-text.js";
 import {
   refundLinesAt,
   REFUND_CREDITS_VERSION,
@@ -233,6 +234,19 @@ async function seedLanded(
       WHERE id = ${lot.id}
     `;
   }
+  // What a purchase made today records: the wording in force when it was
+  // made. Left out, the mail falls back to the earliest version, and every
+  // assertion written against today's wording answers about a different one.
+  await sql`
+    INSERT INTO purchase_consents
+      (payment_id, user_id, locale, consent_text_version,
+       refund_text_version, consented_at)
+    VALUES (
+      ${paymentId}, ${userId}, ${metadata["locale"] ?? "en"},
+      ${CONSENT_CREDITS_VERSION}, ${REFUND_CREDITS_VERSION}, now()
+    )
+    ON CONFLICT (payment_id) DO NOTHING
+  `;
   await sql`
     INSERT INTO purchase_mail_outbox (payment_id, status)
     VALUES (${paymentId}, 'sent')

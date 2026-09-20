@@ -89,6 +89,18 @@ export const HELD_LIFECYCLES: readonly CreditLotLifecycle[] = [
 ];
 
 /**
+ * The lifecycles in which a refund decision is still coming.
+ *
+ * Narrower than {@link HELD_LIFECYCLES} by `active`, and narrower than
+ * `REFUND_LIFECYCLES` by `refunded`: this is the money the buyer still holds
+ * and cannot spend. The overview's third figure counts exactly this set.
+ */
+export const IN_FLIGHT_REFUND_LIFECYCLES: readonly CreditLotLifecycle[] = [
+  "refund_pending",
+  "refunding",
+];
+
+/**
  * What the account holds, counting everything it paid for.
  *
  * Three terms, and the third is the one that is easy to drop: leaving a pack
@@ -142,9 +154,9 @@ export interface CreditLotView {
   /**
    * Whether anything has ever been drawn from this purchase.
    *
-   * Read off the ledger, not off the balance. A failed generation gives the
-   * credits back, so a purchase that has been spent from can be back at its
-   * full count — and the refund rule refuses it either way. Being drawn on to
+   * Read off the ledger, not off the balance. The promise turns on whether a
+   * credit was ever drawn, and the ledger is where that is written; the
+   * balance answers the narrower question of what is left. Being drawn on to
    * repay a studio's debt counts as much as a generation does.
    */
   everSpent: boolean;

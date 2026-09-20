@@ -208,7 +208,11 @@ export type {
   CreditOverview,
 } from "@shared/types/index.js";
 
-export { accountTotal, HELD_LIFECYCLES } from "@shared/types/index.js";
+export {
+  accountTotal,
+  HELD_LIFECYCLES,
+  IN_FLIGHT_REFUND_LIFECYCLES,
+} from "@shared/types/index.js";
 
 export type {
   ApiResponse,
@@ -328,6 +332,7 @@ export {
   withinRefundWindow,
 } from "@shared/refund-window.js";
 export {
+  isRefundLifecycle,
   REFUND_LIFECYCLES,
   refundRefusal,
 } from "@shared/refund-eligibility.js";

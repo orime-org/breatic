@@ -69,7 +69,13 @@
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
       "price_not_configured": "方案 {tier} 的價格未設定",
       "consent-credits-v1": "我要求立即交付點數，並知悉**一旦我使用其中任何一個，這筆購買將不能再退款**。未使用的點數可在 30 天內全額退款。",
+      "consent-credits-v2": "我要求立即交付點數，並知悉**一旦我使用其中任何一個，這筆購買將不能再退款**。未使用且未指定給 Studio 的點數可在 30 天內全額退款。",
       "refund-credits-v1": {
+        "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
+        "used": "只要花過其中任何一個，這一筆就不能再退了。",
+        "expired": "超過 30 天，不再受理退款。"
+      },
+      "refund-credits-v2": {
         "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
         "used": "只要花過其中任何一個，這一筆就不能再退了。",
         "expired": "超過 30 天，不再受理退款。",
@@ -1565,8 +1571,8 @@
     "designateFailed": "指定沒能儲存，請重試。",
     "refundsEmpty": "還沒有買過點數包",
     "askRefund": "申請退款",
-    "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
-    "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
+    "refundPendingHint": "{credits} 點數 · 審核期間不能指定給 Studio",
+    "refundingHint": "{credits} 點數 · 退款進行中，不能指定給 Studio",
     "buy": {
       "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
       "assignNotice": "點數需要指定給某個 Studio 才能使用。",
@@ -1598,11 +1604,11 @@
       "skip": "查看購買記錄"
     },
     "refundFailed": "申請退款沒有成功，請再試一次。",
-    "underRefund": "退款中",
+    "underRefund": "退款流程中",
     "underRefundHint": "在有結果之前哪裡都花不出去",
     "confirmRefund": {
       "title": "申請退款？",
-      "body": "這一筆將進入退款審核，期間不能指定給 Studio。",
+      "body": "這一筆將進入退款審核，期間不能指定給 Studio，申請提交後也無法撤回。",
       "cancel": "取消",
       "confirm": "申請退款"
     },
