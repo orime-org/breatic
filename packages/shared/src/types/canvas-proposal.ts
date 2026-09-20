@@ -78,6 +78,25 @@ export function promptTextOf(segments: readonly PromptSegment[]): string {
 }
 
 /**
+ * The same words as they go into a text node's body.
+ *
+ * Apart from `promptTextOf` by one substitution, and it has to be: that one
+ * answers "how much will the prompt box hold once the editor has been through
+ * it", and an editor puts two line breaks between blocks. A text node's body
+ * cuts its own blocks on single breaks, so doubling them there turns a note
+ * with three breaks in it into six loose lines.
+ *
+ * The marks stay in the words either way -- a place the reader rewrites is
+ * bracketed in the body exactly as it is in a prompt.
+ * @param segments - The proposed words.
+ * @returns The text to write into the body.
+ * @throws {never} Never.
+ */
+export function promptPlainText(segments: readonly PromptSegment[]): string {
+  return segments.map((s) => (s.slot ? markText(s.slot) : s.text)).join("");
+}
+
+/**
  * What a proposed node is, in the group the reader is about to place.
  *
  * `source` stands empty for them to drop material into, `generate` waits for

@@ -192,6 +192,7 @@ export {
   REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
   markText,
+  promptPlainText,
   promptTextOf,
   sanitizeVoicePage,
 } from "@shared/types/index.js";
