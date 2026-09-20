@@ -106,7 +106,11 @@ function feedersOf(
   const out: ProposalSource[] = [];
   proposal.nodes.forEach((node, at) => {
     const id = ids[at];
-    if (node.role === 'source' && fedFrom.has(at) && id) out.push({ id, kind: node.type });
+    // A source is never a text node -- words are a click away, so the check
+    // turns that proposal away -- and this narrows the type to match.
+    if (node.role === 'source' && node.type !== 'text' && fedFrom.has(at) && id) {
+      out.push({ id, kind: node.type });
+    }
   });
   return out;
 }

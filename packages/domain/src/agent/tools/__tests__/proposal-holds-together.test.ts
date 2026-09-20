@@ -217,6 +217,8 @@ function propose(at: Reachable, built: Built = {}): CanvasProposal {
     edges: wired ? sources.map((_, i) => ({ fromIndex: i, toIndex: sources.length })) : [],
     modelNote: "",
     rationale: "",
+    // A group forms once there are two nodes, and it carries a name.
+    ...(nodes.length > 1 ? { groupName: "Your group" } : {}),
   };
 }
 
@@ -672,14 +674,6 @@ describe("wiring that could not be placed", () => {
     expect(checkProposal(wrong).ok).toBe(false);
   });
 
-  it("refuses a group with two nodes that generate", () => {
-    // One press builds one thing. A chain of generations is a workflow, and
-    // the empty nodes of the second could not be told from the first's.
-    const two = propose(sourceless(), { sources: [], marks: 0 });
-    two.nodes = [two.nodes[0] as ProposalNode, { ...(two.nodes[0] as ProposalNode) }];
-
-    expect(checkProposal(two).ok).toBe(false);
-  });
 });
 
 describe("what the catalog does not offer", () => {

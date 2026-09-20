@@ -126,6 +126,7 @@ function onePiece(
     edges: [],
     modelNote: "",
     rationale: "",
+    groupName: "Your group",
   };
 }
 
