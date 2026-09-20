@@ -15,7 +15,6 @@ import {
   CREDITS_SECTION_GROUPS,
 } from '@web/features/credits/credits-sections';
 import type { CreditsSectionId } from '@web/features/credits/credits-sections';
-import { CreditsScrollerContext } from '@web/features/credits/credits-scroller';
 import { CreditsSectionPanel } from '@web/features/credits/CreditsSectionPanel';
 import { OverlayClose } from '@web/features/credits/OverlayClose';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -68,19 +67,6 @@ export function CreditsOverlay({
   React.useEffect(() => {
     if (initialSection !== null) setActive(initialSection);
   }, [initialSection]);
-  // The element the paging sections watch. Held as state rather than a ref so
-  // that a section mounting after it is attached still re-renders with it.
-  const [scroller, setScroller] = React.useState<HTMLDivElement | null>(null);
-
-  // One scroll area serves all seven, so an offset left by one section is
-  // still there when the next one draws. Landing mid-list is the visible half;
-  // the other half is that the sentinel may already be in view, which asks for
-  // a page the reader never scrolled to.
-  React.useEffect(() => {
-    const viewport = scroller?.querySelector('[data-radix-scroll-area-viewport]');
-    if (viewport instanceof HTMLElement) viewport.scrollTop = 0;
-  }, [active, scroller]);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* `flex-row` explicitly: the primitive's own class list says `flex-col`,
@@ -91,27 +77,17 @@ export function CreditsOverlay({
         <DialogTitle className='sr-only'>{t('credits.panelTitle')}</DialogTitle>
         <OverlayClose label={t('credits.close')} />
         <CreditsIndex active={active} onSelect={setActive} />
-        {/* One scroll area for the whole right-hand column rather than one per
-            list: only the ledger is a heading over a single long list. The
-            rest put text above or below theirs, and a scroller inside the
-            list would clip that text with no way to reach it.
-
-            The wrapper exists because `useScrolledToEnd` is given the element
-            AROUND the scroll area and finds Radix's viewport inside it; the
-            sections that page do their own reading, so they are handed this
-            node rather than the hook being lifted up here. */}
-        {/* `min-h-0` is what makes it scroll at all: a flex child's default
-            minimum height is its content, so without it this column grows past
-            the panel and the panel's `overflow-hidden` clips the overflow —
-            leaving the rows below the fold unreachable rather than scrollable. */}
-        <div ref={setScroller} className='min-h-0 min-w-0 flex-1'>
-          <ScrollArea className='h-full' viewportClassName='px-7 py-7'>
-            <div id='credits-body' role='tabpanel' aria-labelledby={`credits-tab-${active}`}>
-              <CreditsScrollerContext.Provider value={scroller}>
-                <CreditsSectionPanel section={active} open={open} />
-              </CreditsScrollerContext.Provider>
-            </div>
-          </ScrollArea>
+        {/* Each section brings its own scroll area, around its rows alone, so
+            its heading and terms stay on screen while the rows move. Each is
+            a different component, so switching mounts a fresh one with its
+            scroll area at the top. */}
+        <div
+          id='credits-body'
+          role='tabpanel'
+          aria-labelledby={`credits-tab-${active}`}
+          className='min-h-0 min-w-0 flex-1'
+        >
+          <CreditsSectionPanel section={active} open={open} />
         </div>
       </DialogContent>
     </Dialog>

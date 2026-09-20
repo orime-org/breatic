@@ -15,7 +15,7 @@ import {
 import { designateCreditLot, fetchCreditLots } from '@web/data/api/credits';
 import { studiosApi } from '@web/data/api/studios';
 import {
-  Card,
+  ScrollCard,
   ListEnd,
   Notice,
   Row,
@@ -27,10 +27,15 @@ import {
   SectionSkeleton,
   formatMoney,
 } from '@web/features/credits/section-chrome';
+import {
+  invalidateAccountReads,
+  invalidateAfterLedgerWrite,
+} from '@web/features/credits/account-reads';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
+import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
 
 /** Whose purchases, and whether billing is on at all. */
@@ -90,7 +95,15 @@ export function AssignSection({
   );
 
   return (
-    <Section title={t('credits.section.assign')}>
+    <Section
+      scrolls={false}
+      title={t('credits.section.assign')}
+      // The rule holds whatever the list is doing, so it stays on screen
+      // for a reader whose list is empty or still arriving.
+      footer={
+        billing ? <Footnote>{t('credits.assignNote')}</Footnote> : undefined
+      }
+    >
       {!billing ? (
         <Notice
           title={t('credits.billingOff.title')}
@@ -117,27 +130,19 @@ export function AssignSection({
           />
         </>
       ) : (
-        <>
-          <Card>
-            <Rows>
-              {paging.rows.map((lot) => (
-                <AssignRow
-                  key={lot.id}
-                  lot={lot}
-                  studios={admins}
-                  userId={userId}
-                />
-              ))}
-            </Rows>
-          </Card>
-          <ListEnd
-            sentinelRef={paging.sentinelRef}
-            loading={paging.isFetchingNextPage}
-            more={paging.hasNextPage}
-            failed={paging.pageFailed}
-          />
-          <Footnote>{t('credits.assignNote')}</Footnote>
-        </>
+        <ScrollCard scrollerRef={paging.scrollerRef}>
+          <Rows>
+            {paging.rows.map((lot) => (
+              <AssignRow
+                key={lot.id}
+                lot={lot}
+                studios={admins}
+                userId={userId}
+              />
+            ))}
+          </Rows>
+          <ListEnd paging={paging} />
+        </ScrollCard>
       )}
     </Section>
   );
@@ -179,26 +184,21 @@ function AssignRow({
     mutationFn: (studioId: string | null) =>
       designateCreditLot(lot.id, studioId),
     onSuccess: () => {
-      // Every read of this account's money moves at once: the purchase changed
-      // hands, so the studio it left and the one it joined both have a
-      // different balance than a moment ago, and pointing it at a studio that
-      // owed writes a repayment into the ledger.
-      void client.invalidateQueries({ queryKey: ['credits', 'lots', userId] });
-      void client.invalidateQueries({
-        queryKey: ['credits', 'overview', userId],
-      });
-      void client.invalidateQueries({
-        queryKey: ['credits', 'ledger', userId],
-      });
-      // The purchase history reads payments under a key of its own, and every
-      // row of it names where its purchase points. Left out, that screen goes
-      // on saying "unassigned" about the one just assigned.
-      void client.invalidateQueries({
-        queryKey: ['payment', 'history', userId],
-      });
+      // The purchase changed hands, so the studio it left and the one it
+      // joined both hold a different balance than a moment ago — and pointing
+      // it at a studio that owed writes a repayment into the ledger.
+      void invalidateAfterLedgerWrite(client, userId);
     },
-    onError: () => {
-      toast.error(t('credits.designateFailed'));
+    onError: (err: unknown) => {
+      // The server writes a sentence for each refusal this screen can earn —
+      // the purchase moved into the refund flow, or this account stopped
+      // administering the studio it was pointed at — and both happen while
+      // the list sits open, which is why its own copy cannot say which.
+      toast.error(serverMessage(err, t('credits.designateFailed')));
+      // The row offered a repoint the server turned down, so what this screen
+      // holds is out of date and so is every other screen that names this
+      // purchase. The ledger is not among them: nothing was written.
+      void invalidateAccountReads(client, userId);
     },
   });
 

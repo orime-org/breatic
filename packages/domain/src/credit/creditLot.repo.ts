@@ -41,6 +41,7 @@ import {
   projects,
   payments,
 } from "@breatic/core";
+import { IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
 import type {
   CreditLotEntity,
   CreditLotLifecycle,
@@ -542,6 +543,32 @@ export async function sumUnassignedForUser(userId: string): Promise<string> {
 }
 
 /**
+ * What one account has under refund, in `numeric`.
+ *
+ * The two in-flight lifecycles only. A `refunded` lot is no longer held — the
+ * money is back with the buyer — so counting it would report as held
+ * something the account no longer has.
+ *
+ * No join: a lot under refund carries no designation, which the table itself
+ * enforces, so there is no studio to ask about.
+ * @param userId - The account to total.
+ * @returns The sum as a decimal string; "0" when there is none.
+ */
+export async function sumUnderRefundForUser(userId: string): Promise<string> {
+  const rows = await db
+    .select({ total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text` })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.userId, userId),
+        inArray(creditLots.lifecycle, IN_FLIGHT_REFUND_LIFECYCLES),
+        isNull(creditLots.deletedAt),
+      ),
+    );
+  return rows[0]?.total ?? "0";
+}
+
+/**
  * One account's lots pointed at one studio, in the order a charge takes them.
  *
  * Ids rather than rows: every caller locks each one before deciding anything,
@@ -600,6 +627,61 @@ export async function setDesignation(
   return toLotEntity(rows[0]!);
 }
 
+/**
+ * Whether anything has ever been drawn from this purchase.
+ *
+ * Asked of the ledger rather than the balance, for the reason the read side
+ * states at `everSpent`: the refund rule turns on whether a credit was ever
+ * drawn, and the ledger is the record of that. Both readers ask this one
+ * question and name the same entry types.
+ * @param lotId - The lot to ask about.
+ * @param tx - The transaction reading it.
+ * @returns True if a generation or a debt repayment has drawn on this lot.
+ */
+export async function hasEverSpent(lotId: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx
+    .select({ id: creditLedger.id })
+    .from(creditLedger)
+    .where(
+      and(
+        eq(creditLedger.lotId, lotId),
+        inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Take the one refund transition this repository writes: `active` to
+ * `refund_pending`.
+ *
+ * The other three edges — approve, refuse, settle — are decided in the back
+ * office, so naming this one edge is what the function can promise. A generic
+ * mover would compile `refunded` back to `active`, which hands credits to a
+ * buyer who has already been paid out.
+ *
+ * `active` is in the predicate so the write applies to the state the caller
+ * decided on. The caller holds the row lock, which is what makes the decision
+ * and the write see the same row; the predicate is what says so in the
+ * statement, and it turns a lock that is ever missing into no rows updated
+ * rather than a transition taken from a state nobody checked.
+ * @param lotId - The lot to move.
+ * @param tx - The transaction holding the lock.
+ * @returns The lot as it now stands, or null if it was not `active`.
+ */
+export async function markRefundPending(
+  lotId: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .update(creditLots)
+    .set({ lifecycle: "refund_pending" })
+    .where(and(eq(creditLots.id, lotId), eq(creditLots.lifecycle, "active")))
+    .returning();
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
 /** What a lot's row carries beyond the lot itself. */
 export interface LotContext {
   /**
@@ -610,14 +692,15 @@ export interface LotContext {
   currency: string;
   /** The studio it points at, named. Null when it points at none. */
   designatedStudioName: string | null;
+  /** Whether the column points at a studio at all, deleted or not. */
+  designated: boolean;
   /**
    * Whether anything has ever been drawn from this purchase.
    *
-   * Read off the ledger, not off the balance: a failed generation gives the
-   * credits back, so a purchase that has been spent from can carry its full
-   * count again. The refund rule turns on this fact rather than on the
-   * balance for that reason. Counts both ways of drawing on a purchase, a
-   * generation and the repayment of a studio's debt.
+   * Read off the ledger, not off the balance: the refund rule turns on
+   * whether a credit was ever drawn, and the ledger is where that is
+   * written. Counts both ways of drawing on a purchase, a generation and the
+   * repayment of a studio's debt.
    */
   everSpent: boolean;
 }
@@ -669,9 +752,12 @@ export async function listLotsByUser(
       designatedStudioName: sql<
         string | null
       >`CASE WHEN ${studios.deletedAt} IS NULL THEN ${studios.name} END`,
+      // The raw column, beside the projection above: the refund rule and the
+      // constraint behind it both turn on whether anything is pointed at,
+      // which stays true after the studio is gone.
+      designated: sql<boolean>`${creditLots.designatedStudioId} IS NOT NULL`,
       // Whether anything was ever drawn from this purchase. The refund rule
-      // asks the ledger rather than the balance: a failed generation returns
-      // the credits, so a purchase spent from can be back at its full count.
+      // asks the ledger rather than the balance, which is the record of it.
       // Both ways of drawing on it count — a generation and the repayment of
       // a studio's debt — which is what `SPENDING_ENTRY_TYPES` names.
       // Served by `credit_ledger_lot_idx`.
@@ -712,6 +798,7 @@ export async function listLotsByUser(
     paidCents: row.paidCents,
     currency: row.currency,
     designatedStudioName: row.designatedStudioName,
+    designated: row.designated,
     everSpent: row.everSpent,
     cursorAt: row.cursorAt,
   }));

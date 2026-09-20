@@ -735,8 +735,8 @@ describe("what a purchase agreed to is read off our own row", () => {
         UPDATE payments SET metadata = ${sql.json({
           locale: "ja",
           timeZone: "Asia/Tokyo",
-          consentTextVersion: "consent-credits-v1",
-          refundTextVersion: "refund-credits-v1",
+          consentTextVersion: "consent-credits-v2",
+          refundTextVersion: "refund-credits-v2",
           consentedAt: ticked,
         })} WHERE id = ${paymentId}
       `;
@@ -759,8 +759,8 @@ describe("what a purchase agreed to is read off our own row", () => {
         FROM purchase_consents WHERE payment_id = ${paymentId}
       `;
       expect(consent!.locale).toBe("ja");
-      expect(consent!.consent_text_version).toBe("consent-credits-v1");
-      expect(consent!.refund_text_version).toBe("refund-credits-v1");
+      expect(consent!.consent_text_version).toBe("consent-credits-v2");
+      expect(consent!.refund_text_version).toBe("refund-credits-v2");
       // The instant is the one checkout stamped, not the one this row was
       // written at: the tick happened a request earlier, and settling can
       // arrive days later by way of reconciliation.

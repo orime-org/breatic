@@ -6,7 +6,7 @@ import type { CreditOverview, StudioCreditSummary } from '@breatic/shared';
 
 import { Badge } from '@web/components/ui/badge';
 import {
-  Card,
+  ScrollCard,
   Notice,
   Row,
   Rows,
@@ -46,7 +46,11 @@ export function StudiosSection({
   const t = useTranslation();
 
   return (
-    <Section title={t('credits.section.studios')}>
+    <Section
+      scrolls={false}
+      title={t('credits.section.studios')}
+      footer={<Footnote>{t('credits.studiosNote')}</Footnote>}
+    >
       {overview.billing ? null : (
         <Notice
           title={t('credits.billingOff.title')}
@@ -58,7 +62,7 @@ export function StudiosSection({
         <SectionEmpty message={t('credits.studiosEmpty')} />
       ) : (
         <>
-          <Card>
+          <ScrollCard>
             <Rows>
               {overview.studios.map((studio) => (
                 <StudioRow
@@ -68,8 +72,7 @@ export function StudiosSection({
                 />
               ))}
             </Rows>
-          </Card>
-          <Footnote>{t('credits.studiosNote')}</Footnote>
+          </ScrollCard>
         </>
       )}
     </Section>

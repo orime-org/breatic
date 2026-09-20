@@ -12,7 +12,7 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ApiException } from '@web/data/api/types';
+import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
@@ -87,7 +87,7 @@ export function useSubscriptionActions(
         // one's click a 409. Without this the click did nothing at all — no
         // message, no explanation, the button simply came back — and the
         // reader had no way to tell a refusal from a dead app.
-        toast.error(errorMessage(err, t));
+        toast.error(serverMessage(err, t('membership.actionFailed')));
       } finally {
         setBusy(false);
       }
@@ -135,32 +135,4 @@ export function useSubscriptionActions(
   }, [run, refreshPanel]);
 
   return { choose, cancel, resume, busy };
-}
-
-/**
- * What to show the reader when an action failed.
- *
- * The server's own sentence when there is one: it is already localized (every
- * `AppError` message goes through `t()`) and it says which of the refusals
- * this was — already subscribed, already on this tier, payment overdue. Only
- * when there is no such sentence, which means the request never reached us, is
- * a generic line the honest answer.
- * @param err - Whatever the action threw.
- * @param t - The translation function.
- * @returns The line to show.
- */
-function errorMessage(
-  err: unknown,
-  t: ReturnType<typeof useTranslation>,
-): string {
-  // `fromServer`, not "is the message non-empty". When the request never
-  // reached us — network down, a gateway answering HTML, a timeout — axios
-  // still supplies a message, and it is English written for a developer
-  // ("Network Error", "Request failed with status code 502"). Handing that to
-  // a reader in any of our five languages is what this field exists to
-  // prevent.
-  if (err instanceof ApiException && err.fromServer && err.message) {
-    return err.message;
-  }
-  return t('membership.actionFailed');
 }

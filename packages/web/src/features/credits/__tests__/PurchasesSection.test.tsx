@@ -299,14 +299,13 @@ describe('the purchase history', () => {
     ]);
   });
 
-  it('counts what still needs assigning, and only once the list is read through', async () => {
+  it('tells a purchase pointed nowhere where to go, on its own row', async () => {
     history.mockResolvedValue({
       items: [
-        // Active and pointed nowhere: the one thing this figure counts.
+        // Active and pointed nowhere: the one row that carries the next step.
         row({ paymentId: 'a', designatedStudioId: null, designatedStudioName: null }),
-        // Pointed nowhere but with no lot to point: there is nothing here to
-        // assign. Drop the lifecycle half of the test and this becomes a
-        // second one.
+        // Pointed nowhere but with no lot to point: nothing here to assign.
+        // Drop the lifecycle half and this row would carry it too.
         row({
           paymentId: 'b',
           status: 'pending',
@@ -315,27 +314,57 @@ describe('the purchase history', () => {
           designatedStudioName: null,
         }),
         // A lot, already pointed somewhere. Drop the designation half and this
-        // becomes a second one.
+        // row would carry it too.
         row({ paymentId: 'c' }),
       ],
       nextCursor: null,
     });
     renderHistory();
-    await screen.findAllByTestId('purchase-row');
-    const notice = await screen.findByTestId('unassigned-notice');
-    expect(notice.textContent).toContain('1');
-    expect(notice.textContent).not.toContain('2');
+    const rows = await screen.findAllByTestId('purchase-row');
+    const carrying = rows.filter((r) =>
+      (r.textContent ?? '').includes('use Assign on the left'),
+    );
+    expect(carrying).toHaveLength(1);
+    expect(carrying[0]?.textContent).toContain('Unassigned');
   });
 
-  it('says nothing about assigning while another page is still coming', async () => {
+  it('says a spent purchase is spent, wherever it points', async () => {
+    history.mockResolvedValue({
+      items: [
+        // Spent and pointed nowhere. Assigning is about what is left to
+        // spend, and there is none: the row says what became of it.
+        row({
+          paymentId: 'a',
+          lifecycle: 'depleted',
+          remainingCredits: 0,
+          designatedStudioId: null,
+          designatedStudioName: null,
+        }),
+        // Spent and still pointed somewhere: where the money went is the one
+        // thing this row can still tell the buyer.
+        row({ paymentId: 'b', lifecycle: 'depleted', remainingCredits: 0 }),
+      ],
+      nextCursor: null,
+    });
+    renderHistory();
+    const rows = await screen.findAllByTestId('purchase-row');
+
+    expect(rows[0]?.textContent).toContain('Used up');
+    expect(rows[0]?.textContent).not.toContain('use Assign on the left');
+    expect(rows[1]?.textContent).toContain('Assigned to Orime Studio');
+    expect(rows[1]?.textContent).not.toContain('Used up');
+  });
+
+  it('says it on the row while another page is still coming', async () => {
+    // The sentence belongs to the purchase, so it does not wait on a count of
+    // the whole list the way a figure at the foot of the screen would.
     history.mockResolvedValue({
       items: [row({ designatedStudioId: null, designatedStudioName: null })],
       nextCursor: 'more',
     });
     renderHistory();
-    await screen.findByTestId('purchase-row');
-    // A figure that climbs as you scroll says less than none.
-    expect(screen.queryByTestId('unassigned-notice')).toBeNull();
+    const first = await screen.findByTestId('purchase-row');
+    expect(first.textContent).toContain('use Assign on the left');
   });
 
   it('offers nothing where this deployment sells nothing', async () => {

@@ -16,7 +16,11 @@
       "designation_locked": "这笔积分在退款流程中，不能改指定。",
       "in_debt": "这个 Studio 欠着 {owed} 积分，指定新的积分会先抵掉它。",
       "unassigned": "你有 {available} 积分未指定，指定给 Studio 后才能使用。",
-      "none": "积分不足，请先充值。"
+      "none": "积分不足，请先充值。",
+      "refund_already_asked": "这笔已经提交过退款。",
+      "refund_still_designated": "这笔已指定给某个 Studio，请先解除指定。",
+      "refund_already_spent": "这笔的积分已经用过，不能退款。",
+      "refund_window_closed": "这笔的退款期限已过。"
     },
     "text_tool": {
       "already_running": "另一个文本工具正在运行,请稍候。"
@@ -68,10 +72,17 @@
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
       "price_not_configured": "套餐 {tier} 的价格未配置",
       "consent-credits-v1": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用的积分可在 30 天内全额退款。",
+      "consent-credits-v2": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用且未指定给 Studio 的积分可在 30 天内全额退款。",
       "refund-credits-v1": {
         "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
         "used": "只要花过其中任何一个，这一笔就不能再退了。",
         "expired": "超过 30 天，不再受理退款。"
+      },
+      "refund-credits-v2": {
+        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
+        "used": "只要花过其中任何一个，这一笔就不能再退了。",
+        "expired": "超过 30 天，不再受理退款。",
+        "unassigned": "只有未指定给 Studio 的积分包才能退款。"
       },
       "not_found": "找不到这笔购买。",
       "unavailable": "这个部署不出售积分。"
@@ -1497,7 +1508,7 @@
       "refunds": "退款"
     },
     "lifecycle": {
-      "depleted": "已用完",
+      "depleted": "已消耗完毕",
       "refund_pending": "审核中",
       "refunding": "退款中",
       "refunded": "已退款"
@@ -1508,6 +1519,7 @@
     },
     "total": "账号总额",
     "unassigned": "未指定",
+    "unassignedWithNextStep": "未指定，去左侧「指定」分给要用的 Studio",
     "assigned": "已指定",
     "pricingHint": "1 积分 = 1 美分，永不过期。",
     "unassignedHint": "需要指定给某个 Studio 才能用。",
@@ -1523,10 +1535,6 @@
     },
     "assignedTo": "指定给 {studio}",
     "ofPurchased": "共 {amount}",
-    "unassignedNotice": {
-      "title": "有 {count} 个积分包还没指定，需要指定才能用",
-      "body": "去左侧「指定」把它们分给要用的 Studio。"
-    },
     "allSpending": "全部消耗",
     "allStudios": "全部 Studio",
     "filterByStudio": "按 Studio 筛选",
@@ -1558,22 +1566,14 @@
     "remaining": "还剩 {amount} 积分",
     "designationFor": "{amount} 这个积分包的指定去向",
     "designateFailed": "指定没能保存，请重试。",
-    "refundsEmpty": "没有可以退的积分。",
-    "refundable": "可以退的积分包",
-    "refundableHint": "还剩 {credits} 积分",
+    "refundsEmpty": "还没有买过积分包",
     "askRefund": "申请退款",
-    "refundNotOpen": "退款还没开放",
-    "refundsAsked": "已提交的申请",
-    "refundRefused": "已驳回",
-    "refundRefusedHint": "这个积分包已回到可用状态，重新指定时会先抵欠账",
     "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
     "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
-    "refundedHint": "{credits} 积分 · 已退款，不能再指定给 Studio",
-    "refundsNote": "一积分没花、且购买不满 30 天的，可全额原路退回，需要审核。",
+    "refundTitle": "退款规则",
     "buy": {
       "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
       "assignNotice": "积分需要指定给某个 Studio 才能使用。",
-      "refundTitle": "退款规则",
       "action": "购买",
       "confirmTitle": "确认购买",
       "confirmPack": "积分包",
@@ -1599,6 +1599,24 @@
       "title": "正在处理这笔购买",
       "body": "请不要关闭页面。",
       "skip": "查看购买记录"
+    },
+    "refundFailed": "申请退款没有成功，请再试一次。",
+    "underRefund": "退款流程中",
+    "underRefundHint": "在有结果之前哪里都花不出去",
+    "confirmRefund": {
+      "title": "申请退款？",
+      "body": "这一笔将进入退款审核，期间不能指定给 Studio，申请提交后也无法撤回。",
+      "cancel": "取消",
+      "confirm": "申请退款"
+    },
+    "refundReason": {
+      "spent": "已经用过",
+      "expired": "超过 30 天"
+    },
+    "refundHint": {
+      "assigned": "还剩 {credits} 积分 · 解除指定后可以申请退款",
+      "depleted": "共 {credits} 积分",
+      "refunded": "已退回原付款方式"
     }
   }
 }
