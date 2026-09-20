@@ -93,7 +93,7 @@ describe('what the browser refuses before it builds anything', () => {
   });
 });
 
-// The menu item and the three lines a refusal is said in. A key present only
+// The menu item and the four lines a press is answered with. A key present only
 // in English renders in English everywhere else, and nothing goes red: `t`
 // falls back rather than failing. So the catalogs are read directly.
 describe.each([
@@ -101,6 +101,7 @@ describe.each([
   'canvas.understand.unsupportedFormat',
   'canvas.understand.tooLarge',
   'canvas.understand.couldNotStart',
+  'canvas.understand.sourceGone',
 ])('%s', (key) => {
   it.each(LOCALE_CATALOGS)('is written in %s', (locale, catalog) => {
     expect(readPath(catalog, key), `${locale} is missing ${key}`).toBeTypeOf(

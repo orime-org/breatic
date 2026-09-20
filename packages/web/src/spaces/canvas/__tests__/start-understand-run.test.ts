@@ -144,7 +144,9 @@ describe('one press of Understand', () => {
 
     await startUnderstandRun(RUN);
 
-    expect(vi.mocked(toast.warning)).toHaveBeenCalled();
+    expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(
+      'The node being read is gone. This reading has no wire to it.',
+    );
     expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledTimes(1);
   });
 
@@ -255,5 +257,23 @@ describe('when the press cannot reach its end', () => {
     await startUnderstandRun(RUN);
 
     expect(toast.error).toHaveBeenCalledWith('请求过于频繁，请稍后再试');
+  });
+
+  // Not every sentence a server writes is written for the reader. An access
+  // check, a schema and a stack all reject with prose meant for whoever reads
+  // the log, and putting that on screen tells the reader something about our
+  // insides instead of about their press.
+  it('says its own line when the server was not talking to the reader', async () => {
+    vi.mocked(canvasApi.understand).mockRejectedValueOnce(
+      new ApiException({
+        status: 403,
+        message: 'Editor role required on this project',
+        fromServer: true,
+      }),
+    );
+
+    await startUnderstandRun(RUN);
+
+    expect(toast.error).toHaveBeenCalledWith('Could not start. Try again.');
   });
 });

@@ -327,7 +327,7 @@
       "unsupportedFormat": "{format, select, unknown {不支援理解未知格式。} other {不支援理解 {format} 格式。}}",
       "tooLarge": "檔案太大，無法理解。上限 {limit}，這個檔案 {size}。",
       "couldNotStart": "沒能開始，可以重試。",
-      "sourceGone": "被讀取的節點已不存在，這次理解照常進行，只是沒有連線。"
+      "sourceGone": "被讀取的節點已不存在。這次理解沒有連線。"
     },
     "generatePanel": {
       "style": "風格",

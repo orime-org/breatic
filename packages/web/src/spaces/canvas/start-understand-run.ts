@@ -26,6 +26,15 @@ import {
   type UnderstandableKind,
 } from '@web/spaces/canvas/node-understand';
 
+/**
+ * The rejections whose sentence is meant for the reader.
+ *
+ * 429 is the throttle, which names which window was hit; 503 is a row that
+ * could not be opened. Both are written through `t()` and arrive in the
+ * language the reader set.
+ */
+const SPEAKS_TO_THE_READER: ReadonlySet<number> = new Set([429, 503]);
+
 /** The node being read, as the canvas holds it. */
 export interface UnderstandSource {
   id: string;
@@ -142,11 +151,16 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
     // nothing on it and nothing coming, and the press is the only place the
     // reason can be said. The node stays either way; nothing here deletes one.
     //
-    // A sentence our own server wrote is already in the reader's language and
-    // already says which refusal this was; the short line is for the
-    // rejections that carry no sentence at all.
+    // Two of the statuses that reject carry a sentence written for the
+    // reader: the throttle says which of presses-too-fast and runs-too-many
+    // just happened, and a row that could not be opened says so. Every other
+    // rejection carries a sentence written for whoever reads the log — an
+    // access check, a schema, a stack — so the short line stands in for it.
     const said =
-      err instanceof ApiException && err.fromServer && err.message
+      err instanceof ApiException &&
+      err.fromServer &&
+      err.message &&
+      SPEAKS_TO_THE_READER.has(err.status)
         ? err.message
         : t('canvas.understand.couldNotStart');
     toast.error(said);

@@ -327,7 +327,7 @@
       "unsupportedFormat": "{format, select, unknown {不明な形式は読み取れません。} other {{format} 形式は読み取れません。}}",
       "tooLarge": "ファイルが大きすぎて読み取れません。上限 {limit}、このファイルは {size}。",
       "couldNotStart": "開始できませんでした。もう一度お試しください。",
-      "sourceGone": "読み取り元のノードがありません。読み取りはそのまま進みますが、線はつながりません。"
+      "sourceGone": "読み取り元のノードがありません。この読み取りに線はつながっていません。"
     },
     "generatePanel": {
       "style": "スタイル",
