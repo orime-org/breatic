@@ -13,12 +13,21 @@
 
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
+/**
+ * What a marked spot in the prompt asks of the reader.
+ *
+ * `asset` and `tweak` are things they do; `ref` is not -- it names an upstream
+ * node this generation draws on, and lands as a mention with no bracket of its
+ * own. Kept in one type because all three travel in the same prompt.
+ */
+export type SlotKind = "asset" | "tweak" | "ref";
+
 /** One stretch of the prompt: plain words, or a place the reader acts on. */
 export type PromptSegment =
   | { text: string; slot?: undefined }
   | {
       text?: undefined;
-      slot: { kind: "asset" | "tweak"; label: string; note: string };
+      slot: { kind: SlotKind; label: string; note: string };
     };
 
 /** What brackets a spot the reader still has to fill in (design §5.4). */
@@ -38,11 +47,16 @@ const MARK_SYMBOL: Readonly<Record<"asset" | "tweak", string>> = {
  * into the box, and the check that decides whether a proposal holds together
  * counts it against the model's input cap. Spelled out twice, a proposal could
  * pass a count of one shape and land as another.
+ *
+ * A `ref` spot puts nothing there: it lands as a mention of the upstream node,
+ * and a bracket counted here that never lands would put the count past what
+ * the reader's box actually holds.
  * @param slot - The spot the reader acts on.
  * @returns The bracketed text, as the reader will see it.
  * @throws {never} Never.
  */
 export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
+  if (slot.kind === "ref") return "";
   return `${MARK_OPEN}${MARK_SYMBOL[slot.kind]} ${slot.label}${MARK_CLOSE}`;
 }
 
@@ -63,10 +77,22 @@ export function promptTextOf(segments: readonly PromptSegment[]): string {
     .join("");
 }
 
+/**
+ * What a proposed node is, in the group the reader is about to place.
+ *
+ * `source` stands empty for them to drop material into, `generate` waits for
+ * them to press Generate, and `written` already holds the words -- the only
+ * one of the three whose content is finished before anything is placed.
+ */
+export type ProposalRole = "source" | "generate" | "written";
+
+/** Every node kind a proposal can place: the three that generate, plus text. */
+export type ProposalNodeType = GenerationNodeType | "text";
+
 /** One node of a proposal, before anything is placed. */
 export interface ProposalNode {
-  role: "source" | "generate";
-  type: GenerationNodeType;
+  role: ProposalRole;
+  type: ProposalNodeType;
   name: string;
   mode?: string;
   model?: string;
@@ -78,8 +104,16 @@ export interface ProposalNode {
 export interface CanvasProposal {
   nodes: ProposalNode[];
   edges: Array<{ fromIndex: number; toIndex: number }>;
-  modelNote: string;
+  modelNote?: string;
   rationale: string;
+  /**
+   * What to call the group these nodes land in.
+   *
+   * Two or more nodes arrive inside a group, and only the model knows what
+   * the group is for -- it just decided. One node places no group and needs
+   * no name.
+   */
+  groupName?: string;
 }
 
 /** What a refused proposal answers with, so the model can send a better one. */

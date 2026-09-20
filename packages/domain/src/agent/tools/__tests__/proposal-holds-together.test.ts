@@ -749,3 +749,149 @@ describe("what the schema turns away before any of this runs", () => {
     expect(accepted(withSlot({ kind: "tweak", label: " ", note: "pick one" }))).toBe(false);
   });
 });
+
+/**
+ * A proposal is a whole flow now, not one thing that generates (#263).
+ *
+ * The agent reads what the user asked for and decides the shape: one text
+ * node, an empty source feeding a generation, or a group carrying both. What
+ * the check still asks is whether that group states itself -- every empty node
+ * readable by someone, every edge standing for a reference, every written node
+ * actually able to hold the words it carries.
+ */
+describe("a flow of any shape", () => {
+  /** A node holding words the reader can read before pressing anything. */
+  const written = (name = "Your copy"): ProposalNode => ({
+    role: "written",
+    type: "text",
+    name,
+    prompt: [
+      { text: "A pour-over kettle, " },
+      { slot: { kind: "tweak", label: "your brand", note: "Put your own brand here" } },
+      { text: ", slow and warm." },
+    ],
+  });
+
+  it("places words alone, with nothing that generates", () => {
+    const verdict = checkProposal({
+      nodes: [written()],
+      edges: [],
+      rationale: "Copy you can use as it stands.",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("places one source feeding three generations", () => {
+    const at = pooled();
+    const one = propose(at);
+    const generate = one.nodes[one.nodes.length - 1];
+    if (!generate) throw new Error("the fixture built no generation");
+    const sources = one.nodes.slice(0, -1);
+
+    const verdict = checkProposal({
+      nodes: [...sources, generate, { ...generate }, { ...generate }],
+      edges: sources.flatMap((_, i) => [
+        { fromIndex: i, toIndex: sources.length },
+        { fromIndex: i, toIndex: sources.length + 1 },
+        { fromIndex: i, toIndex: sources.length + 2 },
+      ]),
+      modelNote: "",
+      rationale: "Three angles off the one photo.",
+      groupName: "Three angles",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("refuses words carried by a node that cannot hold them", () => {
+    const verdict = checkProposal({
+      nodes: [{ ...written(), type: "image" }],
+      edges: [],
+      rationale: "",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("text node") });
+  });
+
+  it("refuses an empty text node, which the reader makes in one click", () => {
+    const at = pooled();
+    const one = propose(at);
+
+    const verdict = checkProposal({
+      ...one,
+      nodes: [...one.nodes, { role: "source", type: "text", name: "Some words" }],
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("text node") });
+  });
+
+  it("refuses a written node dressed up as a generation", () => {
+    const at = pooled();
+    const verdict = checkProposal({
+      nodes: [{ ...written(), mode: at.mode, model: at.model }],
+      edges: [],
+      rationale: "",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("no mode") });
+  });
+
+  it("refuses words asking the reader for material", () => {
+    const verdict = checkProposal({
+      nodes: [
+        {
+          ...written(),
+          prompt: [{ slot: { kind: "asset", label: "your photo", note: "Drop it in" } }],
+        },
+      ],
+      edges: [],
+      rationale: "",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("mention") });
+  });
+
+  it("refuses a ring, which says nothing about what comes first", () => {
+    const at = pooled();
+    const one = propose(at);
+    const generate = one.nodes[one.nodes.length - 1];
+    if (!generate) throw new Error("the fixture built no generation");
+
+    const verdict = checkProposal({
+      ...one,
+      nodes: [...one.nodes, { ...generate }],
+      edges: [
+        { fromIndex: one.nodes.length - 1, toIndex: one.nodes.length },
+        { fromIndex: one.nodes.length, toIndex: one.nodes.length - 1 },
+      ],
+      groupName: "A ring",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("ring") });
+  });
+
+  it("refuses an edge ending at a place the reader fills", () => {
+    const at = pooled();
+    const one = propose(at);
+
+    const verdict = checkProposal({
+      ...one,
+      nodes: [...one.nodes, { role: "source", type: at.needs[0] ?? "image", name: "Another" }],
+      edges: [...one.edges, { fromIndex: one.nodes.length - 1, toIndex: one.nodes.length }],
+      groupName: "Two empties",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("flows into") });
+  });
+
+  it("refuses a group of two the model did not name", () => {
+    const at = pooled();
+    const one = propose(at);
+
+    expect(one.nodes.length).toBeGreaterThan(1);
+    const verdict = checkProposal({ ...one, groupName: undefined });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("name") });
+  });
+});
