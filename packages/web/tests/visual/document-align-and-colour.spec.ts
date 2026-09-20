@@ -97,6 +97,14 @@ async function selectTheLine(p: Page, slot: string): Promise<void> {
 
 /**
  * Types a line and selects it, so the bar is on screen.
+ *
+ * The line is read back before anything is selected. `keyboard.type` returns
+ * once the keystrokes are sent, not once the editor has taken them, and the
+ * keys that select arrive inside that window: measured, `End` moved the caret
+ * and the `Shift+Home` behind it produced no selection change at all, leaving
+ * a caret where the case wants a range and the bar therefore absent — the
+ * shape this file went red in, once or twice in every few runs. Reading the
+ * text back is the editor saying it has the line.
  * @param p - The page.
  * @param text - What to type.
  * @param slot - Which slot to wait for.
@@ -107,6 +115,16 @@ async function typeAndSelect(
   slot: string,
 ): Promise<void> {
   await p.keyboard.type(text);
+  await expect
+    .poll(
+      async () =>
+        p
+          .locator(`${EDITOR} .bn-block-content`)
+          .first()
+          .evaluate((block) => block.textContent ?? ''),
+      { timeout: 10_000, message: 'the typed line never reached the editor' },
+    )
+    .toBe(text);
   await selectTheLine(p, slot);
 }
 
