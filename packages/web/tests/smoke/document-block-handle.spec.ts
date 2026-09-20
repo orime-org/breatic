@@ -9,8 +9,8 @@
  * what is at a point — never appears there at all; and the two gestures on the
  * handle are a real drag and a real click, which only a browser tells apart.
  *
- * Wants dev running and a smoke account:
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ * Wants dev running:
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { test, expect, type Page } from 'playwright/test';
 
