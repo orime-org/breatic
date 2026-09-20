@@ -108,6 +108,9 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
       source_type: source.kind,
       source_url: source.url,
       node_ids: [node.id],
+      // The same judgement the gate above used, so the run cannot refuse a
+      // file this end just let through.
+      ...(source.mimeType !== undefined && { source_mime_type: source.mimeType }),
       // The answer becomes this node's body, and this is the only end that
       // knows which language the reader set. It travels as the code; the
       // sentence is the model's to write, four processes from here.

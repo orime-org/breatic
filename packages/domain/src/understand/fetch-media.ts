@@ -246,7 +246,8 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // leave the address itself for the GET to speak for.
   const settledPeek = peeked !== undefined && peeked.ok;
   const headers = settledPeek ? peeked.headers : undefined;
-  const declared = declaredType(headers) ?? typeFromAddress(request.url);
+  const declared =
+    request.ledgerType ?? declaredType(headers) ?? typeFromAddress(request.url);
   const settled = declared ? settle(declared) : undefined;
 
   // The size is judged the moment it is known, which for an address the peek
@@ -304,7 +305,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // the peek already settles by: a name is a guess and a server's statement is
   // not. A landing page served at a media name reaches the model as that media
   // otherwise — html read as an mp3, up to the whole limit of it, uploaded.
-  const fromGet = declaredType(res.headers);
+  const fromGet = request.ledgerType ?? declaredType(res.headers);
   const mediaType = fromGet ?? declared;
   const kind = fromGet ? settle(fromGet) : settled;
   if (!mediaType || !kind) {

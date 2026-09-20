@@ -188,6 +188,42 @@ describe("fetchMedia — video and audio become bytes", () => {
   });
 });
 
+describe("fetchMedia — a caller that already judged the bytes", () => {
+  // Our own storage answers with the type a ticket signed, which was guessed
+  // from a file name. The ledger's is read off the bytes that landed, so a
+  // caller holding it is holding the better answer — and the canvas gate that
+  // let this run start judged the file by that one.
+  it("takes the caller's judged type over what the server declares", async () => {
+    httpRequestMock
+      .mockResolvedValueOnce(head({ "content-type": "video/mp4" }))
+      .mockResolvedValueOnce(body(new Uint8Array([7])));
+
+    const media = await fetchMedia({
+      ...base,
+      url: "https://example.com/clip.mp4",
+      ledgerType: "video/webm",
+    });
+
+    expect(media).toMatchObject({ kind: "video", format: "video/webm" });
+  });
+
+  // A type the reading does not take is refused on the judged one too, and
+  // before a byte moves: the peek settles the address, the ledger settles
+  // the type.
+  it("refuses on the judged type without fetching the body", async () => {
+    httpRequestMock.mockResolvedValueOnce(head({ "content-type": "video/mp4" }));
+
+    const call = fetchMedia({
+      ...base,
+      url: "https://example.com/clip.mp4",
+      ledgerType: "application/pdf",
+    });
+
+    await expect(call).rejects.toMatchObject({ kind: "unsupported-type" });
+    expect(httpRequestMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("fetchMedia — settling the type", () => {
   it("falls back to the address when the server declares octet-stream", async () => {
     httpRequestMock

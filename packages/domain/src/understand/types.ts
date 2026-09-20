@@ -263,6 +263,15 @@ export interface FetchMediaRequest {
   minBytesPerSec: number;
   /** The smallest read budget, for a file too small for the rate to matter. */
   readFloorMs: number;
+  /**
+   * What this file already turned out to be, judged off its landed bytes.
+   *
+   * Our own storage answers with the type a ticket signed, which was guessed
+   * from a file name; a caller holding the ledger's judgement is holding the
+   * better answer, and the gate that let the run start used that one. Absent
+   * for a caller that has no such record — an address off the open web.
+   */
+  ledgerType?: string;
   /** Whether anyone still wants it. */
   signal?: AbortSignal;
 }

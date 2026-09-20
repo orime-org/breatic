@@ -269,6 +269,15 @@ export const understandSchema = z.object({
   source_type: z.enum(["image", "video", "audio"]),
   source_url: z.string(),
   node_ids: z.array(z.string()).min(1).optional(),
+  /**
+   * What the ledger judged this file to be, off the bytes that landed.
+   *
+   * The node carries it and the browser's own format gate judged by it, so
+   * the run judges by the same one — storage answers with the type a ticket
+   * signed, which was guessed from a file name. Absent on a node stored
+   * before the ledger reported it.
+   */
+  source_mime_type: z.string().optional(),
   prompt: z.string().optional(),
   /**
    * The language the answer is read in, as the browser's locale code.

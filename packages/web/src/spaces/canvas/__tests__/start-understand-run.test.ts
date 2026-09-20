@@ -88,6 +88,18 @@ describe('one press of Understand', () => {
     );
   });
 
+  // The gate above judged this file by the type the ledger recorded off its
+  // landed bytes. The run reads the same address from storage, which answers
+  // with the type a ticket signed — guessed from a file name. Sending the
+  // judged one is what keeps the two gates from disagreeing about one file.
+  it('sends the type the gate above judged by', async () => {
+    await startUnderstandRun(RUN);
+
+    expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledWith(
+      expect.objectContaining({ source_mime_type: RUN.source.mimeType }),
+    );
+  });
+
   // The answer becomes this node's body, and the reader opens it in the
   // language they set. Only this end knows which that is, so it travels with
   // the request; the model, four processes away, is what writes the sentence.

@@ -450,6 +450,9 @@ canvas.post("/understand", validate("json", understandSchema), async (c) => {
   const params: Record<string, unknown> = {
     source_type: body.source_type,
     source_url: body.source_url,
+    // What the ledger judged off the landed bytes, which is what the node
+    // carries and what the browser's format gate judged by.
+    source_mime_type: body.source_mime_type,
     prompt: body.prompt,
     // Carried between the two ends that know about it: the browser, which is
     // where the reader's language is set, and the run, which names that
