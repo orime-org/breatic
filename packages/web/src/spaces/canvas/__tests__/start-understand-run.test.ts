@@ -263,15 +263,29 @@ describe('when the press cannot reach its end', () => {
     expect(toast.error).toHaveBeenCalledWith('请求过于频繁，请稍后再试');
   });
 
-  // Not every sentence a server writes is written for the reader. An access
-  // check, a schema and a stack all reject with prose meant for whoever reads
-  // the log, and putting that on screen tells the reader something about our
-  // insides instead of about their press.
-  it('says its own line when the server was not talking to the reader', async () => {
+  // A permission refusal is written for the reader and it repeats: telling
+  // them to try again sends them at a door that answers the same way.
+  it('passes on a refusal the reader is the subject of', async () => {
     vi.mocked(canvasApi.understand).mockRejectedValueOnce(
       new ApiException({
         status: 403,
-        message: 'Editor role required on this project',
+        message: '没有权限执行此操作',
+        fromServer: true,
+      }),
+    );
+
+    await startUnderstandRun(RUN);
+
+    expect(toast.error).toHaveBeenCalledWith('没有权限执行此操作');
+  });
+
+  // A schema's complaint is written for whoever reads the log, and putting it
+  // on screen tells the reader about our insides instead of their press.
+  it('says its own line when the server was not talking to the reader', async () => {
+    vi.mocked(canvasApi.understand).mockRejectedValueOnce(
+      new ApiException({
+        status: 422,
+        message: 'Invalid input: expected string, received number',
         fromServer: true,
       }),
     );

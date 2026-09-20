@@ -43,23 +43,33 @@ describe('what the browser refuses before it builds anything', () => {
   it('names the format of the file it refused', () => {
     expect(
       understandRefusal({ kind: 'audio', mimeType: 'audio/mp4', sizeBytes: 1024, url: ASSET }, LIMIT),
-    ).toEqual({ kind: 'format', format: 'M4A', file: '1758_a1b2.aiff' });
+    ).toEqual({ kind: 'format', type: 'M4A', file: '1758_a1b2.aiff' });
     expect(
       understandRefusal({ kind: 'audio', mimeType: 'audio/webm', sizeBytes: 1024, url: ASSET }, LIMIT),
-    ).toEqual({ kind: 'format', format: 'WebM', file: '1758_a1b2.aiff' });
+    ).toEqual({ kind: 'format', type: 'WebM', file: '1758_a1b2.aiff' });
   });
 
   // Most of what a refusal is handed has no entry in that table: the types it
-  // lists are the ones we take. The subtype in capitals is the word anybody
-  // would use for the file, once the registry prefix an .avi arrives under is
-  // off it.
+  // lists are the ones we take. The subtype in capitals is what is left.
   it('falls back to the subtype for a format we have no word for', () => {
     expect(
       understandRefusal({ kind: 'image', mimeType: 'image/avif', sizeBytes: 1024, url: ASSET }, LIMIT),
-    ).toMatchObject({ kind: 'format', format: 'AVIF' });
+    ).toMatchObject({ kind: 'format', type: 'AVIF' });
     expect(
       understandRefusal({ kind: 'video', mimeType: 'video/x-msvideo', sizeBytes: 1024, url: ASSET }, LIMIT),
-    ).toMatchObject({ kind: 'format', format: 'MSVIDEO' });
+    ).toMatchObject({ kind: 'format', type: 'MSVIDEO' });
+  });
+
+  // The run asks whether a reading takes this type, and asks nothing about
+  // what the canvas draws the node as. A gate keyed on the node's kind would
+  // refuse a file the run reads — the two would disagree about one file.
+  it('asks about the type, not about what the node is drawn as', () => {
+    expect(
+      understandRefusal(
+        { kind: 'image', mimeType: 'video/mp4', sizeBytes: 1024, url: ASSET },
+        LIMIT,
+      ),
+    ).toBeNull();
   });
 
   it('refuses a file over the cap, and says how big it is', () => {
@@ -79,7 +89,7 @@ describe('what the browser refuses before it builds anything', () => {
   it('answers the format when a file fails both', () => {
     expect(
       understandRefusal({ kind: 'audio', mimeType: 'audio/webm', sizeBytes: LIMIT + 1, url: ASSET }, LIMIT),
-    ).toMatchObject({ kind: 'format', format: 'WebM' });
+    ).toMatchObject({ kind: 'format', type: 'WebM' });
   });
 
   // A node stored before the ledger reported either. The browser has nothing
@@ -100,7 +110,6 @@ describe('what the browser refuses before it builds anything', () => {
 // falls back rather than failing. So the catalogs are read directly.
 describe.each([
   'canvas.nodeMenu.understand',
-  'canvas.understand.unsupportedFormat',
   'canvas.understand.tooLarge',
   'canvas.understand.couldNotStart',
   'canvas.understand.sourceGone',
