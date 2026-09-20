@@ -197,6 +197,13 @@ test.beforeEach(async ({ browser }) => {
   await accept.click();
   await expect(accept).toHaveCount(0, { timeout: 15_000 });
 
+  // The owner's page asks for the roster when it loads and holds the answer,
+  // so an acceptance that happened on another page is not on it yet. Measured
+  // 2026-09-20: the whole run made one `GET /members`, before the invite went
+  // out, and the reading below found a roster of one. A reader in this spot
+  // reloads; so does this.
+  await owner.reload();
+
   // The membership that now stands is the viewer's, read off the owner's own
   // roster. Without this the case below could be measuring some other role.
   await expectTheViewerRole(owner);

@@ -83,19 +83,27 @@ async function hoverRow(p: Page, index: number): Promise<void> {
 }
 
 /**
- * Every row's text, in order, with a collaborator's caret label trimmed off.
+ * Every row's text, in order, with a collaborator's caret taken out.
  *
- * The awareness cursor renders the other reader's name into the row it stands
- * in, and that name is part of `textContent`.
+ * `documentCaretExtension` draws a remote caret as a span inside the row it
+ * stands in, and hangs a label carrying that collaborator's display name off
+ * it (`caret-render.ts:227-290`), so the name is part of the row's
+ * `textContent`. The caret is removed from a copy of the row rather than the
+ * name trimmed off the string: the element is what this build draws, whereas
+ * the name is whatever the account happens to be called.
  * @param p - The page to read.
  * @returns One string per row.
  */
 async function bodyOf(p: Page): Promise<string[]> {
   return p.evaluate((editorSelector) => {
     const root = document.querySelector(editorSelector);
-    return [...(root?.querySelectorAll('.bn-block-content') ?? [])].map((row) =>
-      (row.textContent ?? '').replace(/doc-smoke-[ab]$/, ''),
-    );
+    return [...(root?.querySelectorAll('.bn-block-content') ?? [])].map((row) => {
+      const copy = row.cloneNode(true) as HTMLElement;
+      for (const caret of copy.querySelectorAll('.collaboration-carets__caret')) {
+        caret.remove();
+      }
+      return copy.textContent ?? '';
+    });
   }, EDITOR);
 }
 
