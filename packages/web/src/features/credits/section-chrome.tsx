@@ -471,10 +471,11 @@ interface TableHeadProps {
 }
 
 /**
- * A table header that stays put while the panel scrolls.
+ * A table header that stays put while the rows scroll.
  *
- * Sticky against its own section's scroll viewport, which is the element that
- * actually moves — the panel around it stays put.
+ * Sticky against the `ScrollCard` viewport it sits in, which is the element
+ * that actually moves — the block around it, and the section around that,
+ * stay put.
  * @param props - The column headings.
  * @param props.columns - The headings, in order.
  * @returns The header.

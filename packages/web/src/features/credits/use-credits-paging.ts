@@ -43,7 +43,7 @@ interface CreditsPagingResult<T> {
  *
  * What is watched is the box around the rows, not the panel: the heading and
  * the terms stay on screen while the rows move. The caller places both refs
- * this returns — `scrollerRef` on `Section`, `sentinelRef` on `ListEnd`.
+ * this returns — `scrollerRef` on `ScrollCard`, `sentinelRef` on `ListEnd`.
  * @param options - The query key, the read, and whether to run it.
  * @param options.queryKey - The query's key, already carrying the account.
  * @param options.read - Reads one page, given the previous page's cursor.
