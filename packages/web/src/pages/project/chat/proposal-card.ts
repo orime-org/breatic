@@ -18,28 +18,47 @@ export interface ShapeChip {
   label: string;
   /** True for a node the reader still has to fill in, drawn as an outline. */
   empty: boolean;
-  /**
-   * True when an earlier node in the group is wired into this one.
-   *
-   * What the arrow before the chip means, so it is drawn only where there is
-   * wiring. Material picked in a toolbar slot reaches the generation without
-   * an edge, and an arrow there tells the reader to connect something the
-   * canvas offers no way to connect.
-   */
-  fed: boolean;
+}
+
+/**
+ * One step of a flow: the nodes that are ready at the same moment.
+ *
+ * Drawn side by side, with an arrow between one layer and the next. Nodes of
+ * one layer never feed each other -- three angles off one photo are three
+ * things the reader gets, not a chain of three.
+ */
+export type ShapeLayer = ShapeChip[];
+
+/**
+ * One run of the flow, from what it starts with to what it makes.
+ *
+ * Groups are drawn apart, with no arrow between them: a written note wired to
+ * nothing is its own run, and an arrow into the picture beside it would say
+ * the copy was the prompt for it -- which is the one thing the proposal
+ * deliberately did not say.
+ */
+export type ShapeGroup = ShapeLayer[];
+
+/** What one node still asks of the reader, under the node's own name. */
+export interface NodeTodos {
+  node: string;
+  notes: string[];
 }
 
 /** What the card costs and how long it takes, when the catalog knows. */
 export interface ProposalPrice {
   /**
-   * What one generation costs, when the model charges the same for every one.
+   * What the whole press costs, when every model charges the same per run.
    *
-   * Absent on a model that charges by what the reader gives it: until they
+   * Absent when any of them charges by what the reader gives it: until they
    * set the duration or write the script there is no per-call price, and the
    * field that looks like one is the balance gate's floor.
    */
   credits?: number;
+  /** The longest of the runs, since one press starts them all at once. */
   seconds: number;
+  /** How many generations one press starts. */
+  runs: number;
 }
 
 /**
@@ -62,12 +81,8 @@ export function generateNodeOf(proposal: CanvasProposal): ProposalNode | undefin
  * @returns One chip per node.
  * @throws {never} Never.
  */
-export function shapeOf(proposal: CanvasProposal): ShapeChip[] {
-  return proposal.nodes.map((node, at) => ({
-    label: node.name,
-    empty: node.role === 'source',
-    fed: proposal.edges.some((edge) => edge.toIndex === at && edge.fromIndex < at),
-  }));
+export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
+  return [[proposal.nodes.map((node) => ({ label: node.name, empty: node.role === 'source' }))]];
 }
 
 /**
@@ -80,11 +95,8 @@ export function shapeOf(proposal: CanvasProposal): ShapeChip[] {
  * @returns The notes, in the order they appear in the prompt.
  * @throws {never} Never.
  */
-export function todosOf(proposal: CanvasProposal): string[] {
-  const prompt = generateNodeOf(proposal)?.prompt ?? [];
-  return prompt.flatMap((segment) =>
-    segment.slot && segment.slot.note !== '' ? [segment.slot.note] : [],
-  );
+export function todosOf(proposal: CanvasProposal): NodeTodos[] {
+  return proposal.nodes.length === 0 ? [] : [];
 }
 
 /**
@@ -95,20 +107,15 @@ export function todosOf(proposal: CanvasProposal): string[] {
  * carry gives nothing rather than a zero, and the card simply omits the line
  * -- a price of 0 reads as free.
  * @param catalog - The model catalog, or undefined while it is being fetched.
- * @param model - The model the proposal chose.
- * @returns The price and the wait, or undefined when the catalog has neither.
+ * @param proposal - The proposal the card draws.
+ * @returns The price and the wait, or undefined when the catalog cannot say.
  * @throws {never} Never.
  */
-export function priceOf(
+export function costOf(
   catalog: ModelCatalog | undefined,
-  model: string | undefined,
+  proposal: CanvasProposal,
 ): ProposalPrice | undefined {
-  const entry = entryOf(catalog, model);
-  if (!entry) return undefined;
-  return {
-    ...(entry.rate === undefined ? { credits: entry.cost_per_call } : {}),
-    seconds: entry.generation_time,
-  };
+  return catalog && proposal.nodes.length === 0 ? undefined : undefined;
 }
 
 /**
