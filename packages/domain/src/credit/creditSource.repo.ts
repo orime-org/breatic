@@ -3,12 +3,22 @@
 
 import { creditSources, type DbTx } from "@breatic/core";
 
-/** What a lot of credits can come from. */
-export type CreditSourceKind =
-  | "payment"
-  | "compensation"
-  | "gift"
-  | "discount";
+/**
+ * What a lot of credits can come from.
+ *
+ * The same four words are the `credit_sources_kind_check` list in 0079. An
+ * integration test inserts every one of these, so a fifth added here without a
+ * migration widening that constraint fails there rather than at runtime.
+ */
+export const CREDIT_SOURCE_KINDS = [
+  "payment",
+  "compensation",
+  "gift",
+  "discount",
+] as const;
+
+/** One of {@link CREDIT_SOURCE_KINDS}. */
+export type CreditSourceKind = (typeof CREDIT_SOURCE_KINDS)[number];
 
 /**
  * Open a receipt for credits about to be granted.

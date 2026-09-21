@@ -52,6 +52,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
+import { creditSourceRepo } from "@breatic/domain";
 
 const PG_DRIVER_LOCAL = "credit-sources-schema-test-driver";
 
@@ -149,6 +150,18 @@ describe("credit_sources", () => {
     await expect(seedSource("bribe")).rejects.toThrow(
       /credit_sources_kind_check/,
     );
+  });
+
+  it("takes every kind the code declares", async () => {
+    // Iterated rather than listed, so the TypeScript union and the CHECK
+    // cannot drift apart: a fifth kind added to `CREDIT_SOURCE_KINDS` without
+    // a migration widening the constraint fails right here. On its own this
+    // pins nothing — it has meaning beside the rejection above, which says the
+    // constraint exists and lists exactly these four.
+    expect(creditSourceRepo.CREDIT_SOURCE_KINDS).toHaveLength(4);
+    for (const kind of creditSourceRepo.CREDIT_SOURCE_KINDS) {
+      await expect(seedSource(kind)).resolves.toBeTruthy();
+    }
   });
 
   it("holds a compensation that no payment paid for", async () => {
