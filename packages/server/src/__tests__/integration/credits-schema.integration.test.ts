@@ -13,12 +13,14 @@
  *
  * Structural promises no unit test can see, each with the failure it pins:
  *
- *   1. `credit_lots.payment_id` is NOT NULL and UNIQUE. This — and nothing
+ *   1. `credit_lots.source_id` is NOT NULL and UNIQUE. This — and nothing
  *      else — is what makes a payment land exactly once. `payments` cannot
  *      hold that line: `stripe_payment_intent_id` has no unique index at all,
  *      and the one on `stripe_session_id` sits on a nullable column, where
  *      Postgres admits any number of NULLs. Without the constraint here, a
- *      redelivered webhook grants the credits a second time.
+ *      redelivered webhook grants the credits a second time. What the column
+ *      points at is the receipt a lot came from (0079, #259), which for a
+ *      payment shares that payment's own id.
  *
  *   2. `credit_ledger.lot_id` is NULLABLE, and `payer_user_id` is NULL on
  *      `debt_incurred` alone, held there by a CHECK.
@@ -130,11 +132,18 @@ async function seedUserWithPayment(): Promise<{
     VALUES (${`lots-${seq++}@example.test`}, true) RETURNING id
   `;
   const userId = users[0]!.id;
-  const payments = await sql<{ id: string }[]>`
-    INSERT INTO payments (user_id, amount_cents, status, credits_granted)
-    VALUES (${userId}, 1000, 'completed', 880) RETURNING id
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const sources = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
   `;
-  return { userId, paymentId: payments[0]!.id };
+  const paymentId = sources[0]!.id;
+  await sql`
+    INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
+    VALUES (${paymentId}, ${userId}, 1000, 'completed', 880)
+  `;
+  return { userId, paymentId };
 }
 
 describe("credit_lots", () => {
@@ -146,7 +155,7 @@ describe("credit_lots", () => {
     // chaining would let a "column is nullable" assertion quietly pass.
     expect(cols.size, "credit_lots does not exist").toBeGreaterThan(0);
 
-    expect(cols.get("payment_id")?.is_nullable).toBe("NO");
+    expect(cols.get("source_id")?.is_nullable).toBe("NO");
     expect(cols.get("user_id")?.is_nullable).toBe("NO");
     expect(cols.get("lifecycle")?.is_nullable).toBe("NO");
     // Unassigned is the state a lot is born in, and it is spelled NULL.
@@ -175,14 +184,14 @@ describe("credit_lots", () => {
     const { userId, paymentId } = await seedUserWithPayment();
     await sql`
       INSERT INTO credit_lots
-        (payment_id, user_id, purchased_credits, remaining_credits, lifecycle)
+        (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
       VALUES (${paymentId}, ${userId}, 880, 880, 'active')
     `;
 
     await expect(
       sql`
         INSERT INTO credit_lots
-          (payment_id, user_id, purchased_credits, remaining_credits, lifecycle)
+          (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
         VALUES (${paymentId}, ${userId}, 880, 880, 'active')
       `,
     ).rejects.toThrow(/duplicate key|unique/i);
@@ -196,7 +205,7 @@ describe("credit_lots", () => {
     await expect(
       sql`
         INSERT INTO credit_lots
-          (payment_id, user_id, purchased_credits, remaining_credits, lifecycle)
+          (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
         VALUES (${paymentId}, ${userId}, 880, 880, 'pending')
       `,
     ).rejects.toThrow(/check constraint/i);
@@ -209,7 +218,7 @@ describe("credit_lots", () => {
     await expect(
       sql`
         INSERT INTO credit_lots
-          (payment_id, user_id, purchased_credits, remaining_credits, lifecycle)
+          (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
         VALUES (${paymentId}, ${userId}, 880, -1, 'active')
       `,
     ).rejects.toThrow(/check constraint/i);
@@ -393,7 +402,7 @@ describe("退款期间这笔积分不属于任何 studio（0063）", () => {
     const studioId = studios[0]!.id;
     const lots = await sql<{ id: string }[]>`
       INSERT INTO credit_lots
-        (payment_id, user_id, purchased_credits, remaining_credits,
+        (source_id, user_id, purchased_credits, remaining_credits,
          designated_studio_id, lifecycle)
       VALUES (${paymentId}, ${userId}, 880, 880, ${studioId}, 'active')
       RETURNING id
@@ -410,7 +419,7 @@ describe("退款期间这笔积分不属于任何 studio（0063）", () => {
     const { userId, paymentId } = await seedUserWithPayment();
     const lots = await sql<{ id: string }[]>`
       INSERT INTO credit_lots
-        (payment_id, user_id, purchased_credits, remaining_credits, lifecycle)
+        (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
       VALUES (${paymentId}, ${userId}, 880, 880, 'active')
       RETURNING id
     `;
