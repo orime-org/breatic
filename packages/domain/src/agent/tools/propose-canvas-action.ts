@@ -412,8 +412,13 @@ function checkGenerateNode(
   // answers for what is wired into it -- an empty node somewhere else in the
   // group belongs to whichever generation reads it, not to this one.
   const readsByEdge = byReference || needed.length === 0;
+  // On the slot path the group's other generations have empty nodes of their
+  // own, and those belong to them. What this one answers for is the material
+  // of the kinds it actually reads -- a sound node beside a picture-to-video
+  // generation is the voice-over's, and `checkProposal` has already made sure
+  // every empty node in the group is read by something.
   const sources = (readsByEdge ? feeders : placed).filter(
-    ({ node: n }) => n.role === "source",
+    ({ node: n }) => n.role === "source" && (readsByEdge || needed.includes(n.type)),
   );
   // An upstream generation supplies material as surely as an empty node does:
   // the picture it makes lands in the pool the same way. A written node
@@ -476,14 +481,17 @@ function checkGenerateNode(
   // catalog: the model says which of its parameters are slots and which may be
   // left empty, and the mode says whether every slot has to hold something or
   // any one of them is enough.
-  // Only a slot the reader clicks is counted here: on that path the panel
-  // never reads the pool, so an upstream generation wired in supplies nothing
-  // to this call however the edge reads on the canvas.
+  // Counted over everything that carries a kind this mode reads, whoever made
+  // it: a slot is filled by clicking any node of that kind on the canvas, and
+  // the picture the step before it made is one of those. So "draw the shoe,
+  // then animate it" is a flow of two generations and nothing for the reader
+  // to find.
   const asked = materialNeeded(nodeType, mode, model);
-  if (!byReference && sources.length !== asked) {
+  const supplied = supplying.filter(({ node: n }) => needed.includes(n.type)).length;
+  if (!byReference && supplied !== asked) {
     return {
       ok: false,
-      reason: `"${mode}" takes ${String(asked)} piece(s) of material from the reader, and the group carries ${String(sources.length)} empty node(s).`,
+      reason: `"${mode}" takes ${String(asked)} piece(s) of ${needed.join(", ")}, and ${String(supplied)} reach${supplied === 1 ? "es" : ""} node ${String(index)}.`,
     };
   }
   // The pool has a ceiling as well, stated by the model and enforced by the
@@ -513,8 +521,12 @@ function checkGenerateNode(
   // And one mark per node upstream, for the same reason the other way round:
   // an edge only makes that node's work available, and nothing in the prompt
   // naming it means the Generate button will not move.
+  // Only where a mention is what picks the material. On the slot path the
+  // reader picks by clicking, which is why a mark pointing upstream is
+  // refused there outright, and an edge into such a generation says what fed
+  // it without asking the prompt to name it.
   const upstream = feeders.filter(({ node: n }) => n.role !== "source");
-  if (points.length !== upstream.length) {
+  if (byReference && points.length !== upstream.length) {
     return {
       ok: false,
       reason: `${String(upstream.length)} node(s) feed node ${String(index)} with work of their own, and the prompt points at ${String(points.length)}. Mark the place in the prompt that points at each.`,

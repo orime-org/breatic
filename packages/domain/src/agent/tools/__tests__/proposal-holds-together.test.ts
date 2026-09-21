@@ -912,6 +912,62 @@ describe("a flow of any shape", () => {
     expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("mention") });
   });
 
+  it("places a generation the step before it feeds, through a panel slot", () => {
+    // "Draw the shoe, then animate it." The reader picks the picture in the
+    // panel's slot, and what they pick is the node upstream -- a slot is
+    // filled by clicking any node of that kind on the canvas, and a generated
+    // one is one of those. Nothing here is the reader's to supply.
+    const maker = sourcelessOn("image");
+    const taker = pick(
+      (at) => !at.byReference && at.needs.length === 1 && at.needs[0] === "image",
+      "mode fed by a panel slot that takes one picture",
+    );
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "generate", type: "image", name: "The shoe", mode: maker.mode,
+          model: maker.model, params: {}, prompt: [{ text: "a running shoe on white" }] },
+        { role: "generate", type: taker.nodeType, name: "It turns", mode: taker.mode,
+          model: taker.model, params: {}, prompt: [{ text: "slow turntable" }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "Draw it, then animate it.",
+      groupName: "Shoe spot",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("judges each slot-fed generation on the material of its own kind", () => {
+    // One job, two generations, each bringing its own empty node. Neither is
+    // answerable for the other's: the reader fills the picture slot from the
+    // picture node and the sound slot from the sound node.
+    const one = slotted();
+    const two = pick(
+      (at) => !at.byReference && at.needs.length === 1 && !one.needs.includes(at.needs[0] ?? ""),
+      "second slot-fed mode taking a kind the first does not",
+    );
+    const kindOf = (at: Reachable): GenerationNodeType => at.needs[0] as GenerationNodeType;
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "source", type: kindOf(one), name: "Yours for the first" },
+        { role: "source", type: kindOf(two), name: "Yours for the second" },
+        { role: "generate", type: one.nodeType, name: "First", mode: one.mode, model: one.model,
+          params: {}, prompt: [{ text: "make it" },
+            { slot: { kind: "asset", label: "yours", note: "Put it in" } }] },
+        { role: "generate", type: two.nodeType, name: "Second", mode: two.mode, model: two.model,
+          params: {}, prompt: [{ text: "make it" },
+            { slot: { kind: "asset", label: "yours", note: "Put it in" } }] },
+      ],
+      edges: [],
+      rationale: "Both halves of one listing.",
+      groupName: "One listing",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
   it("refuses a ring, which says nothing about what comes first", () => {
     const at = pooled();
     const one = propose(at);

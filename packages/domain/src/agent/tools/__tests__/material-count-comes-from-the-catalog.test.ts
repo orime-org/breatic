@@ -148,8 +148,7 @@ describe("how many pieces of material the tool asks for", () => {
 
     expect(checkProposal(onePiece("video", "i2v", "two-slot-model", "image"))).toEqual({
       ok: false,
-      reason:
-        '"i2v" takes 2 piece(s) of material from the reader, and the group carries 1 empty node(s).',
+      reason: '"i2v" takes 2 piece(s) of image, and 1 reaches node 1.',
     });
   });
 
