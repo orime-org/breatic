@@ -755,6 +755,14 @@
         "create": "Creating Space…"
       },
       "noActive": "No open spaces — open one from the drawer or click + to create."
+    },
+    "update": {
+      "available": "New version",
+      "title": "A new version is available",
+      "description": "Refresh to use the new version.",
+      "busy": "An upload or another operation is in progress. Refreshing will interrupt it. We recommend waiting until it finishes.",
+      "later": "Later",
+      "refresh": "Refresh"
     }
   },
   "common": {
