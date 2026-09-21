@@ -312,10 +312,12 @@ describe('StudioAccountMenu', () => {
       // Same place, same size as the tier on the row above: the two are the
       // things a person opens this menu to check, and one riding higher or
       // heavier than the other makes it look like the more important of them.
-      const trailing = (name: RegExp): string =>
-        screen
-          .getByRole('menuitem', { name })
-          .querySelector('.ml-auto')?.className ?? '';
+      // The last node in the row, so moving the figure to the other side of
+      // the word is a failure — `.ml-auto` would still be found there.
+      const trailing = (name: RegExp): string => {
+        const last = screen.getByRole('menuitem', { name }).lastChild;
+        return last instanceof HTMLElement ? last.className : '';
+      };
       expect(trailing(/Credits/)).toBe(trailing(/Membership/));
       expect(trailing(/Credits/)).not.toBe('');
     });
@@ -358,6 +360,15 @@ describe('StudioAccountMenu', () => {
       expect(creditsTrailing()).toBe('');
     });
 
+    it('asks for nothing until the menu is opened', () => {
+      // This menu is mounted by the studio layout, so every signed-in account
+      // reaches it on every page. Without the gate each navigation spends a
+      // request on a figure nobody has asked to see.
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      expect(overviewMock).not.toHaveBeenCalled();
+    });
+
     it('says nothing but the word when a later read fails, not the stale figure', async () => {
       // The menu reads on open, so a reader who opens it twice can have a
       // figure in hand from the first time and a failed read the second. A
@@ -366,17 +377,8 @@ describe('StudioAccountMenu', () => {
       // screen at that moment.
       const user = userEvent.setup();
       useCurrentUserStore.getState().setUser(ALEX);
-      const qc = new QueryClient({
-        defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: 0 } },
-      });
       overviewMock.mockResolvedValueOnce(overview());
-      render(
-        <MemoryRouter initialEntries={['/studio']}>
-          <QueryClientProvider client={qc}>
-            <StudioAccountMenu />
-          </QueryClientProvider>
-        </MemoryRouter>,
-      );
+      setup();
 
       await openMenu(user);
       await waitFor(() => {
