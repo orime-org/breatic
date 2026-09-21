@@ -762,7 +762,7 @@
       "description": "Refresh to use the new version.",
       "busy": "An upload or another operation is in progress. Refreshing will interrupt it. We recommend waiting until it finishes.",
       "later": "Later",
-      "refresh": "Refresh"
+      "refresh": "Update"
     }
   },
   "common": {
