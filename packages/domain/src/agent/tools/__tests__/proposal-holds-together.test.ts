@@ -825,6 +825,27 @@ describe("a flow of any shape", () => {
     });
   });
 
+  it("tells a proposal carrying no words that nothing generates, and stops there", () => {
+    // Refused for the same reason -- nothing here generates -- but the line
+    // about writing the words in the reply is about words, and this payload
+    // has none. Sent it anyway, the model goes off to write copy nobody
+    // asked for.
+    const verdict = checkProposal({
+      nodes: [
+        { role: "source", type: "image", name: "Your photo" },
+        { role: "source", type: "image", name: "Your logo" },
+      ],
+      edges: [],
+      rationale: "Two things to fill in.",
+      groupName: "Your material",
+    });
+
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error("expected a refusal");
+    expect(verdict.reason).toContain("Nothing here generates");
+    expect(verdict.reason).not.toContain("words");
+  });
+
   it("places words beside a generation, where they are part of the flow", () => {
     const at = pooled();
     const one = propose(at);

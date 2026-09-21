@@ -700,10 +700,15 @@ export function checkProposal(proposal: CanvasProposal): ProposalVerdict {
   // the reader reads them, takes them, and asks for another version in the
   // same breath, where placing, pressing and undoing buys them nothing.
   if (!proposal.nodes.some((node) => node.role === "generate")) {
+    // The second sentence is about words, so it is said only where there are
+    // words to say it about. On a group of empty nodes it would send the
+    // model off to write copy nobody asked for.
+    const words = proposal.nodes.some((node) => node.role === "written");
     return {
       ok: false,
-      reason:
-        "Nothing here generates, so this is words the reader can read and take from your message. Write them in your reply instead.",
+      reason: words
+        ? "Nothing here generates, so this is words the reader can read and take from your message. Write them in your reply instead."
+        : "Nothing here generates, so a card placed from this leaves the reader nothing to press. Propose what gets made, or say in your reply what they should do.",
     };
   }
 
