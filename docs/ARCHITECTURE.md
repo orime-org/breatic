@@ -654,4 +654,4 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 
 ## Deployment connection configuration
 
-See [Frontend and managed Redis connections](DEPLOYMENT-CONNECTIONS.md) for build-time API/WS endpoints, allowed frontend origins, host-only cookies, and authenticated TLS Redis URLs.
+See [Frontend and managed Redis connections](../deploy/DEPLOYMENT-CONNECTIONS.md) for build-time API/WS endpoints, allowed frontend origins, host-only cookies, and authenticated TLS Redis URLs.
