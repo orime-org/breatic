@@ -173,6 +173,37 @@ export function feedersOf(proposal: CanvasProposal, index: number): ProposalFeed
   return { sources, upstream };
 }
 
+/**
+ * How far downstream each node of a proposal sits, counting from what starts it.
+ *
+ * One further than the last thing that feeds it. Both the card's little
+ * diagram and the arrangement on the canvas are drawn from this, and they are
+ * the same picture -- read twice, the two drift the first time either is
+ * changed.
+ *
+ * The walk is bounded by the node count rather than run to a fixed point: the
+ * check refuses a ring before any of this is reached, so it settles long
+ * before the bound, and a stored row that arrived some other way cannot spin.
+ * @param proposal - The proposal being read.
+ * @returns One depth per node, in the proposal's own order.
+ * @throws {never} Never.
+ */
+export function layersOf(proposal: CanvasProposal): number[] {
+  const depth = proposal.nodes.map(() => 0);
+  for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
+    let moved = false;
+    for (const edge of proposal.edges) {
+      const from = depth[edge.fromIndex];
+      const to = depth[edge.toIndex];
+      if (from === undefined || to === undefined || to > from) continue;
+      depth[edge.toIndex] = from + 1;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return depth;
+}
+
 /** What a refused proposal answers with, so the model can send a better one. */
 export interface ProposalRefused {
   placed: false;

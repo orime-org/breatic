@@ -11,7 +11,7 @@
  * quote its own price.
  */
 
-import { feedersOf } from '@breatic/shared';
+import { feedersOf, layersOf } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 /** What one node contributes to the little shape drawn on the card. */
@@ -123,31 +123,6 @@ export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
   return [...groups.values()].map((layers) =>
     [...layers.keys()].sort((a, b) => a - b).map((depth) => layers.get(depth) ?? []),
   );
-}
-
-/**
- * How far downstream each node sits, counting from what starts the flow.
- * @param proposal - The proposal the card draws.
- * @returns One depth per node, in the proposal's own order.
- * @throws {never} Never.
- */
-function layersOf(proposal: CanvasProposal): number[] {
-  const depth = proposal.nodes.map(() => 0);
-  // Bounded by the node count: the check refuses a ring before a card is
-  // drawn, so this settles long before, and a stored row that reached here
-  // some other way cannot spin.
-  for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
-    let moved = false;
-    for (const edge of proposal.edges) {
-      const from = depth[edge.fromIndex];
-      const to = depth[edge.toIndex];
-      if (from === undefined || to === undefined || to > from) continue;
-      depth[edge.toIndex] = from + 1;
-      moved = true;
-    }
-    if (!moved) break;
-  }
-  return depth;
 }
 
 /**

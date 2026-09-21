@@ -13,7 +13,7 @@
  * so the arrangement can be read by a test with no canvas around it.
  */
 
-import { promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
+import { layersOf, promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
 
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 
@@ -96,22 +96,9 @@ export function estimateHeight(node: ProposalNode): number {
  * @throws {never} Never.
  */
 export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[] {
-  // How far downstream each node sits: one further than the last thing that
-  // feeds it. The check refuses a ring before a card is ever drawn, so walking
-  // the edges until nothing moves settles rather than running on -- and the
-  // bound keeps a payload that reached here another way from hanging.
-  const layer = proposal.nodes.map(() => 0);
-  for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
-    let moved = false;
-    for (const edge of proposal.edges) {
-      const from = layer[edge.fromIndex];
-      const to = layer[edge.toIndex];
-      if (from === undefined || to === undefined || to > from) continue;
-      layer[edge.toIndex] = from + 1;
-      moved = true;
-    }
-    if (!moved) break;
-  }
+  // The same depths the card's little diagram is drawn from, so what the
+  // reader saw before pressing is the arrangement they get.
+  const layer = layersOf(proposal);
 
   const height = proposal.nodes.map((node) => estimateHeight(node));
   const columns = new Map<number, number[]>();

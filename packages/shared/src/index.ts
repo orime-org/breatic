@@ -193,6 +193,7 @@ export {
   REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
   feedersOf,
+  layersOf,
   markText,
   promptPlainText,
   promptTextOf,
