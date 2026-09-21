@@ -65,7 +65,10 @@ describe('what the canvas puts the reader on', () => {
     expect(focus).toEqual({ select: ['g-1'] });
   });
 
-  it('points at nothing when the flow is words alone', () => {
+  it('points at nothing when nothing in the flow generates', () => {
+    // The check turns this shape away before a card is drawn, so reaching
+    // here means a payload came in some other way. Leaving the reader's
+    // selection alone beats pointing them at a guess.
     const proposal = flow([written('Copy')]);
 
     const focus = whatToFocus(proposal, { nodeIds: ['n-copy'] });

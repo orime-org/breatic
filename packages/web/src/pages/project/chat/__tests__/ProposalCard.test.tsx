@@ -223,7 +223,7 @@ describe('what the card says before it is pressed', () => {
 });
 
 describe('a flow that is more than one thing', () => {
-  /** A proposal of words alone, with a place the reader rewrites. */
+  /** Copy standing beside a generation, with a place the reader rewrites. */
   const COPY: CanvasProposal = {
     nodes: [
       {
@@ -236,12 +236,14 @@ describe('a flow that is more than one thing', () => {
           { text: '.' },
         ],
       },
+      ...PAIR.nodes,
     ],
-    edges: [],
-    rationale: 'Copy you can use as it stands',
+    edges: [{ fromIndex: 1, toIndex: 2 }],
+    rationale: 'Copy to publish, and the photo on white',
+    groupName: 'Kettle listing',
   };
 
-  it('draws a card for words alone, with the words in full', () => {
+  it('draws the words in full, beside what gets generated', () => {
     // The reader judges this version here. Given a title they would have to
     // place it, read it, and undo a node they never wanted.
     listModels.mockResolvedValue(CATALOG);
@@ -253,9 +255,14 @@ describe('a flow that is more than one thing', () => {
     );
   });
 
-  it('draws nothing about a model when nothing generates', () => {
+  it('draws nothing about a model the catalog does not carry', () => {
     listModels.mockResolvedValue(CATALOG);
-    renderCard(true, COPY);
+    renderCard(true, {
+      ...PAIR,
+      nodes: PAIR.nodes.map((n) =>
+        n.role === 'generate' ? { ...n, model: 'no-such-model' } : n,
+      ),
+    });
 
     expect(screen.queryByText(/Some Model/)).toBeNull();
   });

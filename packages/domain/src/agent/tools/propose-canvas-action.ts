@@ -667,10 +667,11 @@ function isReadBySomething(
  * Pure, so the rule it applies is the one a test can hold: the catalog goes
  * in through `entriesForNode` and `modelsForMode`, and nothing else is read.
  *
- * Shape is the model's to decide -- words on their own, one empty node feeding
- * three generations, or anything between. What is asked of every shape is that
- * it states itself: each node is what its role says, each edge stands for one
- * node drawing on another, and a group of two or more says what it is for.
+ * Shape is the model's to decide -- one generation, one empty node feeding
+ * three of them, words standing beside them -- within one bound: something
+ * here generates. What is asked of every shape is that it states itself: each
+ * node is what its role says, each edge stands for one node drawing on
+ * another, and a group of two or more says what it is for.
  * @param proposal - What the model proposed.
  * @returns Whether it stands, and what is missing when it does not.
  * @throws {never} Never.
@@ -679,6 +680,19 @@ export function checkProposal(proposal: CanvasProposal): ProposalVerdict {
   for (const node of proposal.nodes) {
     const verdict = checkNodeRole(node);
     if (!verdict.ok) return verdict;
+  }
+
+  // A node earns its place on the canvas one of two ways: something generates
+  // there, or it stands in a relation the reader would otherwise have to keep
+  // in their head. Words with neither are words, and a reply carries those --
+  // the reader reads them, takes them, and asks for another version in the
+  // same breath, where placing, pressing and undoing buys them nothing.
+  if (!proposal.nodes.some((node) => node.role === "generate")) {
+    return {
+      ok: false,
+      reason:
+        "Nothing here generates, so this is words the reader can read and take from your message. Write them in your reply instead.",
+    };
   }
 
   for (const edge of proposal.edges) {
@@ -763,9 +777,11 @@ export function renderProposalForModel(answer: ProposalAnswer): string {
 export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnswer> = tool({
   description:
     "Propose the canvas nodes for what the reader asked for, as a card they " +
-    "place with one press. You decide the shape: words alone for copy; an " +
-    "empty node and a generation for a picture; both for a flow; one empty " +
-    "node feeding several generations for several takes on one thing. " +
+    "place with one press. Something has to generate here: asked for words " +
+    "and nothing else, write them in your reply. You decide the shape: an " +
+    "empty node and a generation for a picture; words beside them when the " +
+    "next step reads those words; one empty node feeding several generations " +
+    "for several takes on one thing. " +
     "Before proposing any shape with an empty node in it, ask_user once " +
     "whether they have that material -- you cannot see their canvas, and the " +
     "answer decides the shape. Wire an edge only where one node draws on what " +

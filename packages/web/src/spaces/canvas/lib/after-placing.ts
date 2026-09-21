@@ -37,8 +37,10 @@ export interface Focus {
  * which is the same thing as moving the camera under the reader. The card
  * already says what each node needs; they open the one they want.
  *
- * None at all -- words on their own -- selects nothing. There is nothing
- * waiting on the reader, so there is nothing to point them at.
+ * Anything else selects nothing. A flow with nothing that generates is turned
+ * away before it reaches a card, so what is left here is a payload that took
+ * some other route in, and pointing the reader at a guess is worse than
+ * leaving their selection alone.
  * @param proposal - What was proposed.
  * @param placed - What placing it left on the canvas.
  * @returns What to select and what to open.

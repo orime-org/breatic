@@ -223,6 +223,9 @@ describe('what one press costs', () => {
   });
 
   it('says nothing about a flow with nothing that generates', () => {
+    // The check turns that shape away, so the card never draws one. Held here
+    // because the card does not re-check what it is handed, and a total of
+    // zero credits would read as free.
     expect(costOf(CATALOG, flow([written('Your copy')]))).toBeUndefined();
   });
 });

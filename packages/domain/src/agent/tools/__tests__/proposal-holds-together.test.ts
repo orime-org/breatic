@@ -809,11 +809,34 @@ describe("a flow of any shape", () => {
     ],
   });
 
-  it("places words alone, with nothing that generates", () => {
+  it("refuses words alone, which the reader can read in the reply", () => {
+    // Asked for a line of copy and nothing else, the answer is the copy, in
+    // the message. A node carrying it gives the reader something to place,
+    // press and undo for words they could already read and take.
     const verdict = checkProposal({
       nodes: [written()],
       edges: [],
       rationale: "Copy you can use as it stands.",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("Write them in your reply"),
+    });
+  });
+
+  it("places words beside a generation, where they are part of the flow", () => {
+    const at = pooled();
+    const one = propose(at);
+
+    const verdict = checkProposal({
+      ...one,
+      nodes: [written(), ...one.nodes],
+      edges: one.edges.map((edge) => ({
+        fromIndex: edge.fromIndex + 1,
+        toIndex: edge.toIndex + 1,
+      })),
+      groupName: "Copy and a photo on white",
     });
 
     expect(verdict).toEqual({ ok: true });
