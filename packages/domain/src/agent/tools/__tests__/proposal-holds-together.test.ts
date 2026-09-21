@@ -965,7 +965,10 @@ describe("a flow of any shape", () => {
     // picture node and the sound slot from the sound node.
     const one = slotted();
     const two = pick(
-      (at) => !at.byReference && at.needs.length === 1 && !one.needs.includes(at.needs[0] ?? ""),
+      (at) =>
+        !at.byReference &&
+        at.needs.length === 1 &&
+        at.needs.every((kind) => !one.needs.includes(kind)),
       "second slot-fed mode taking a kind the first does not",
     );
     const kindOf = (at: Reachable): GenerationNodeType => at.needs[0] as GenerationNodeType;
