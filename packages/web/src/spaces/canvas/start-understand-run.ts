@@ -148,11 +148,18 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
     // nothing on it and nothing coming, and the press is the only place the
     // reason can be said. The node stays either way; nothing here deletes one.
     //
-    // A sentence our server wrote is the reader's own: every branch of
-    // `error-handler.ts` writes its message through `t()`, and `fromServer`
-    // is true only when the answer carried one. The short line is for the
-    // rejections that carry no sentence at all — a request that never
-    // arrived, an answer that was not ours.
+    // A sentence our server wrote is the reader's own, and which layer put it
+    // in their language depends on the branch: `error-handler.ts` calls `t()`
+    // itself for an `HTTPException` and for the catch-all, and hands an
+    // `AppError`'s message on untouched because that message is the thrower's
+    // — so the thrower is where `t()` is, held there by
+    // `breatic/no-untranslated-error-message`. Both routes this press can be
+    // refused on are covered: `validate` raises
+    // `ValidationError(t("server.error.validation"))`, and the access check
+    // builds its own through `t()`. `fromServer` is true only when the answer
+    // carried a sentence at all; the short line below is for the rejections
+    // that carried none — a request that never arrived, an answer that was
+    // not ours.
     const said =
       err instanceof ApiException && err.fromServer && err.message
         ? err.message

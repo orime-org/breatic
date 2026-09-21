@@ -57,10 +57,13 @@ export const IMAGE_TYPES: ReadonlySet<string> = new Set([
 /**
  * What a reader calls each format, keyed on the subtype these tables use.
  *
- * The words are the ones `FORMAT_SPELLING` decides for the sentences a reader
- * sees; what is spelled here reaches a model instead — the agent tool telling
- * it what to say a clip has to be converted to — and the tables above are
- * keyed on a subtype where that one is keyed on a whole media type.
+ * The same words `FORMAT_SPELLING` decides for the sentences a reader sees,
+ * kept separately because the two are asked different questions. That one
+ * takes a whole media type, which is what a refusal holds; `names` below
+ * walks `AUDIO_FORMATS`' VALUES, which are bare subtypes (`mp3`, `wav`), and
+ * a bare subtype cannot be asked of a table keyed on `audio/mpeg`. Merging
+ * them would mean teaching that table to guess a medium for a subtype, and
+ * `mp4` is two formats depending on which one it guessed.
  */
 const READER_SPELLING: Readonly<Record<string, string>> = {
   png: "PNG",
