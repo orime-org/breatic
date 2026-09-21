@@ -33,29 +33,37 @@ CREATE TABLE "credit_sources" (
 	-- to give a child table something composite to reference.
 	CONSTRAINT "credit_sources_id_kind_key" UNIQUE ("id", "kind")
 );
+--> statement-breakpoint
 
 -- Every payment that already landed opens its own receipt, keeping its id and
 -- the moment it was made. The date on a receipt is the date of the thing it
 -- records, not of this migration.
 INSERT INTO "credit_sources" ("id", "kind", "created_at")
 	SELECT "id", 'payment', "created_at" FROM "payments";
+--> statement-breakpoint
 
 ALTER TABLE "payments" ADD COLUMN "source_kind" varchar(16) DEFAULT 'payment' NOT NULL;
+--> statement-breakpoint
 
 ALTER TABLE "payments" ADD CONSTRAINT "payments_source_kind_check"
 	CHECK ("source_kind" = 'payment');
+--> statement-breakpoint
 
 ALTER TABLE "payments" ADD CONSTRAINT "payments_source_fk"
 	FOREIGN KEY ("id", "source_kind") REFERENCES "credit_sources"("id", "kind")
 	ON DELETE restrict;
+--> statement-breakpoint
 
 -- The values stay put: a lot's `payment_id` already holds the id its source row
 -- was just given.
 ALTER TABLE "credit_lots" DROP CONSTRAINT "credit_lots_payment_id_fk";
+--> statement-breakpoint
 
 ALTER TABLE "credit_lots" RENAME COLUMN "payment_id" TO "source_id";
+--> statement-breakpoint
 
 ALTER INDEX "credit_lots_payment_id_idx" RENAME TO "credit_lots_source_id_idx";
+--> statement-breakpoint
 
 ALTER TABLE "credit_lots" ADD CONSTRAINT "credit_lots_source_id_fk"
 	FOREIGN KEY ("source_id") REFERENCES "credit_sources"("id")

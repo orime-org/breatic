@@ -181,13 +181,19 @@ async function seedPending(
 ): Promise<{ paymentId: string; sessionId: string }> {
   seq += 1;
   const sessionId = `cs_test_entry_${Date.now()}-${seq}`;
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO payments (
-      user_id, stripe_session_id, amount_cents, credits_granted, currency,
+      id, user_id, stripe_session_id, amount_cents, credits_granted, currency,
       status, created_at, updated_at
     )
     VALUES (
-      ${userId}, ${sessionId}, 2000, 1700, 'usd', ${over.status ?? "pending"},
+      ${source!.id}, ${userId}, ${sessionId}, 2000, 1700, 'usd', ${over.status ?? "pending"},
       now() - make_interval(secs => ${over.createdAgoSeconds ?? 600}),
       now() - make_interval(secs => ${over.createdAgoSeconds ?? 600})
     )
