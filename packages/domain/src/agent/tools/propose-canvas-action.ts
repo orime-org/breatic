@@ -103,7 +103,7 @@ const proposalNode = z
       .enum(["source", "generate", "written"])
       .describe("written holds finished words; source is empty for the reader to fill"),
     type: z.enum([...NODE_TYPES, "text"]),
-    name: z.string().min(1).describe("What the reader sees on the node"),
+    name: z.string().trim().min(1).describe("What the reader sees on the node"),
     mode: z.string().min(1).optional().describe("role generate only"),
     model: z.string().min(1).optional().describe("role generate only"),
     params: z
@@ -256,9 +256,15 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
       };
     }
     if (info.filledBySource === true) {
+      // Two ways that material arrives, and the sentence names the one this
+      // model uses: through the pool an edge carries it, through a slot the
+      // reader clicks a node on the canvas. Said the other way round, it
+      // sends the model off to wire an edge the panel never reads.
       return {
         ok: false,
-        reason: `"${key}" carries the reader's own material, which arrives by wiring an empty node in. Leave it out.`,
+        reason: info.fromReferencePool === true
+          ? `"${key}" carries the reader's own material, which arrives by wiring an empty node in. Leave it out.`
+          : `"${key}" carries the reader's own material, which they put in a slot on the panel. Leave it out.`,
       };
     }
     if (info.noControl === true) {
@@ -411,19 +417,28 @@ function checkGenerateNode(
   // A mode that asks for nothing has no intake path of either sort, so it too
   // answers for what is wired into it -- an empty node somewhere else in the
   // group belongs to whichever generation reads it, not to this one.
-  const readsByEdge = byReference || needed.length === 0;
+  //
+  // Counted over the edges that carry material, not over every edge: a node
+  // holding words is wired in to be read, and taking that edge for a hand on
+  // the material turns away a group whose empty node the reader was going to
+  // fill in the panel.
+  const carrying = feeders.filter(({ node: n }) => n.role !== "written");
   // Three readings, three names. They answer different questions and two of
   // them want opposite things, so one list serving all three is how a rule
   // ends up charging this generation for another's material.
   //
-  // `mine`: the empty nodes this generation answers for. Through the pool an
-  // edge says which ones; through a slot there is no edge, so it is the ones
-  // holding a kind it reads -- a sound node beside a picture-to-video
-  // generation is the voice-over's, and `checkProposal` has already made sure
-  // every empty node in the group is read by something.
-  const mine = (readsByEdge ? feeders : placed).filter(
-    ({ node: n }) => n.role === "source" && (readsByEdge || needed.includes(n.type)),
-  );
+  // `mine`: the empty nodes this generation answers for. An edge into it says
+  // which ones, whichever way the material gets in -- through the pool the
+  // edge also carries it, through a slot the edge is the proposal saying this
+  // node is the one to pick here. With nothing wired in, which is the shape
+  // the panel's toolbar is built for, it falls back to the group's nodes of a
+  // kind this mode reads: a sound node beside a picture-to-video generation is
+  // the voice-over's, and `checkProposal` has already made sure every empty
+  // node in the group is read by something.
+  const wired = byReference || needed.length === 0 || carrying.length > 0;
+  const mine = wired
+    ? feeders.filter(({ node: n }) => n.role === "source")
+    : placed.filter(({ node: n }) => n.role === "source" && needed.includes(n.type));
   // `reaching`: everything arriving here that carries work, whoever made it.
   // An upstream generation supplies material as surely as an empty node does.
   // A written node upstream is not material at all -- it is words this
@@ -438,17 +453,39 @@ function checkGenerateNode(
   // of it is asked of this one.
   const usable = reaching.filter(({ node: n }) => needed.includes(n.type));
   const marks = prompt.filter((s) => s.slot?.kind === "asset");
-  // A mark pointing upstream lands as a mention, and a mention only picks from
-  // what the reference pool holds. Judged before the early return below, so a
-  // mode generating from its prompt alone cannot carry one and have the words
-  // quietly swallowed on the way to the canvas.
   const points = prompt.filter((s) => s.slot?.kind === "ref");
-  if (points.length > 0 && !byReference) {
+  // One mark per node upstream this prompt can name, and no more: an edge
+  // makes that node's work available, and nothing in the prompt naming it
+  // means the Generate button will not move.
+  //
+  // Which of them can be named is not the same on the two paths. Through the
+  // pool a mention picks anything wired in. Through a slot the reader picks
+  // their material by clicking and the panel turns a mention of it away
+  // (`insertRefusal`) -- what stays nameable there is a node holding words,
+  // whose body substitutes into the prompt and asks the pool for nothing.
+  //
+  // Judged before the early return below, so a mode generating from its
+  // prompt alone cannot carry a mark whose words are quietly swallowed on the
+  // way to the canvas.
+  const upstream = feeders.filter(({ node: n }) => n.role !== "source");
+  const nameable = byReference
+    ? upstream
+    : upstream.filter(({ node: n }) => n.role === "written");
+  if (points.length !== nameable.length) {
+    // Where there is nothing to name at all, say why rather than counting:
+    // the count alone sends the model off to wire something the panel would
+    // not read either.
+    if (!byReference && nameable.length === 0) {
+      return {
+        ok: false,
+        reason: needed.length === 0
+          ? `"${mode}" generates from what the prompt says and reads nothing upstream, so a mark pointing there reaches nothing. Write what you mean into the prompt.`
+          : `"${mode}" takes its material from a slot on the toolbar, and only a node carrying words can be named in its prompt. Write what you mean into the prompt, or say in your message which slot to pick the material in.`,
+      };
+    }
     return {
       ok: false,
-      reason: needed.length === 0
-        ? `"${mode}" generates from what the prompt says and reads nothing upstream, so a mark pointing there reaches nothing. Write what you mean into the prompt.`
-        : `"${mode}" takes its material from a slot on the toolbar and never reads the pool a mention picks from, so a mark pointing upstream reaches nothing. Write what you mean into the prompt, or say in your message which slot to pick it in.`,
+      reason: `${String(nameable.length)} node(s) feed node ${String(index)} with work this prompt can name, and it points at ${String(points.length)}. Mark the place in the prompt that points at each.`,
     };
   }
   if (needed.length === 0) {
@@ -524,20 +561,6 @@ function checkGenerateNode(
     return {
       ok: false,
       reason: `The group carries ${String(mine.length)} empty node(s) and the prompt marks ${String(marks.length)} place(s). Mark each one where it belongs.`,
-    };
-  }
-  // And one mark per node upstream, for the same reason the other way round:
-  // an edge only makes that node's work available, and nothing in the prompt
-  // naming it means the Generate button will not move.
-  // Only where a mention is what picks the material. On the slot path the
-  // reader picks by clicking, which is why a mark pointing upstream is
-  // refused there outright, and an edge into such a generation says what fed
-  // it without asking the prompt to name it.
-  const upstream = feeders.filter(({ node: n }) => n.role !== "source");
-  if (byReference && points.length !== upstream.length) {
-    return {
-      ok: false,
-      reason: `${String(upstream.length)} node(s) feed node ${String(index)} with work of their own, and the prompt points at ${String(points.length)}. Mark the place in the prompt that points at each.`,
     };
   }
   return { ok: true };

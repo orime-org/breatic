@@ -367,7 +367,19 @@ describe("a mode whose material arrives through the reference pool", () => {
     const verdict = checkProposal({
       ...filled,
       nodes: [
-        ...filled.nodes,
+        // The pooled generation names the cut wired into it, so the only
+        // rule this proposal breaks is the one about how much the pool holds.
+        ...filled.nodes.map((node, at) =>
+          at === generation
+            ? {
+                ...node,
+                prompt: [
+                  ...(node.prompt ?? []),
+                  { slot: { kind: "ref" as const, label: "the first cut", note: "" } },
+                ],
+              }
+            : node,
+        ),
         {
           role: "generate",
           type: "video",
@@ -818,6 +830,37 @@ describe("what the schema turns away before any of this runs", () => {
     expect(accepted(withSlot({ kind: "tweak", label: "the voice", note: " " }))).toBe(false);
   });
 
+  it("refuses a node name that is nothing but space", () => {
+    // The name is what the reader sees on the node once it is placed, and on
+    // the card before that. A blank one leaves both unlabelled, the same way
+    // a blank label or note does.
+    const at = pick((m) => m.takesPrompt, "model driven by its prompt");
+    /**
+     * A one-node proposal carrying the given node name.
+     * @param name - What to call the node.
+     * @returns The call.
+     * @throws {never} Never.
+     */
+    const named = (name: string): unknown => ({
+      nodes: [
+        {
+          role: "generate",
+          type: at.nodeType,
+          name,
+          mode: at.mode,
+          model: at.model,
+          params: {},
+          prompt: [{ text: "something" }],
+        },
+      ],
+      edges: [],
+      rationale: "why this shape",
+    });
+
+    expect(accepted(named("Result"))).toBe(true);
+    expect(accepted(named(" "))).toBe(false);
+  });
+
   it("refuses a label that is nothing but space", () => {
     // The label is what goes between the brackets in the prompt, so a blank
     // one puts a mark in the reader's box that names nothing.
@@ -995,6 +1038,184 @@ describe("a flow of any shape", () => {
     });
 
     expect(verdict).toEqual({ ok: true });
+  });
+
+  it("lets words upstream be named in a slot-fed prompt", () => {
+    // A mention of a text node substitutes its words into the prompt; it
+    // never asks the reference pool for anything, and the panel lets it
+    // through for any model that takes a prompt. The reader can make this
+    // mention by hand, so the proposal may make it for them.
+    const at = slotted();
+    const kind = at.needs[0] as GenerationNodeType;
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "written", type: "text", name: "The slogan",
+          prompt: [{ text: "slow and warm" }] },
+        { role: "source", type: kind, name: "Yours" },
+        { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
+          model: at.model, params: {}, prompt: [
+            { text: "in the words of " },
+            { slot: { kind: "ref", label: "the slogan", note: "" } },
+            { text: ", using " },
+            { slot: { kind: "asset", label: "yours", note: "Put it in" } },
+          ] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
+      rationale: "The slogan, spoken over your material.",
+      groupName: "One spot",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("leaves the panel slot fed while words are wired in", () => {
+    // On the slot path the reader fills the material by clicking, so an
+    // empty node need not be wired at all. An edge carrying words says
+    // nothing about where the material comes from, and reading it as one
+    // turns away a group the panel would have run.
+    const at = slotted();
+    const kind = at.needs[0] as GenerationNodeType;
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "written", type: "text", name: "The slogan",
+          prompt: [{ text: "slow and warm" }] },
+        { role: "source", type: kind, name: "Yours" },
+        { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
+          model: at.model, params: {}, prompt: [
+            { text: "in the words of " },
+            { slot: { kind: "ref", label: "the slogan", note: "" } },
+            { text: ", using " },
+            { slot: { kind: "asset", label: "yours", note: "Put it in" } },
+          ] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 2 }],
+      rationale: "The slogan, spoken over material you pick in the panel.",
+      groupName: "One spot",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("refuses a mark pointing at what a panel slot will be filled from", () => {
+    // Draw it, then animate it: the step before is material, and on this path
+    // material is picked by clicking, not by mentioning. The panel turns such
+    // a mention away, so a proposal making it hands the reader a prompt they
+    // cannot reproduce.
+    const at = slotted();
+    const first = pick(
+      (m) => m.nodeType === (at.needs[0] as GenerationNodeType) && m.needs.length === 0,
+      `mode making a ${String(at.needs[0])} out of nothing`,
+    );
+
+    const verdict = checkProposal({
+      nodes: [
+        generation(first),
+        { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
+          model: at.model, params: {}, prompt: [
+            { text: "animate " },
+            { slot: { kind: "ref", label: "the step before", note: "" } },
+          ] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "Draw it, then animate it.",
+      groupName: "Two steps",
+    });
+
+    if (verdict.ok) throw new Error("expected a refusal");
+    expect(verdict.reason).toContain("only a node carrying words can be named");
+  });
+
+  it("names the panel slot when that is where the material goes", () => {
+    // Two ways the reader's material reaches a generation, and the sentence
+    // about a parameter carrying it has to name the one this model uses.
+    const at = slotted();
+    const key = Object.keys(at.params).find((name) => at.params[name]?.filledBySource);
+    if (key === undefined) throw new Error("the catalog offers no slot parameter");
+
+    const verdict = checkProposal(propose(at, { params: { [key]: "https://example.com/a.png" } }));
+
+    if (verdict.ok) throw new Error("expected a refusal");
+    expect(verdict.reason).toContain("slot on the panel");
+    expect(verdict.reason).not.toContain("wiring an empty node in");
+  });
+
+  it("names the pool when that is where the reader's material goes", () => {
+    const at = pooled();
+    const key = Object.keys(at.params).find((name) => at.params[name]?.fromReferencePool);
+    if (key === undefined) throw new Error("the catalog offers no pooled parameter");
+
+    const verdict = checkProposal(propose(at, { params: { [key]: ["https://example.com/a.png"] } }));
+
+    if (verdict.ok) throw new Error("expected a refusal");
+    expect(verdict.reason).toContain("wiring an empty node in");
+  });
+
+  it("gives each slot-fed generation the material wired into it", () => {
+    // Two photos, two clips. An edge says which photo is for which, and
+    // reading the group instead charges each generation for both.
+    const at = slotted();
+    const kind = at.needs[0] as GenerationNodeType;
+    const one = (name: string): ProposalNode => ({
+      role: "generate", type: at.nodeType, name, mode: at.mode, model: at.model,
+      params: {}, prompt: [{ text: "make it" },
+        { slot: { kind: "asset", label: "yours", note: "Put it in" } }],
+    });
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "source", type: kind, name: "The first" },
+        { role: "source", type: kind, name: "The second" },
+        one("From the first"),
+        one("From the second"),
+      ],
+      edges: [
+        { fromIndex: 0, toIndex: 2 },
+        { fromIndex: 1, toIndex: 3 },
+      ],
+      rationale: "One each.",
+      groupName: "Two of them",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("refuses an edge carrying a kind the slot-fed generation cannot take", () => {
+    // The edge says this node is for that generation, and that generation
+    // reads nothing of the sort. Said of the edge, because the group's other
+    // generation may well be the one that reads it.
+    const at = slotted();
+    const wrong: GenerationNodeType = at.needs.includes("image") ? "audio" : "image";
+    const reader = pick(
+      (m) => m.needs.includes(wrong) && !m.byReference,
+      "a mode that reads the other kind",
+    );
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "source", type: wrong, name: "Yours of the other sort" },
+        { role: "source", type: at.needs[0] as GenerationNodeType, name: "Yours" },
+        { role: "generate", type: at.nodeType, name: "Takes one kind", mode: at.mode,
+          model: at.model, params: {}, prompt: [{ text: "make it" },
+            { slot: { kind: "asset", label: "yours", note: "Put it in" } }] },
+        { role: "generate", type: reader.nodeType, name: "Takes the other", mode: reader.mode,
+          model: reader.model, params: {}, prompt: [{ text: "make it" },
+            { slot: { kind: "asset", label: "yours", note: "Put it in" } }] },
+      ],
+      edges: [
+        { fromIndex: 0, toIndex: 2 },
+        { fromIndex: 1, toIndex: 2 },
+        { fromIndex: 0, toIndex: 3 },
+      ],
+      rationale: "x",
+      groupName: "g",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("which it cannot take"),
+    });
   });
 
   it("judges each slot-fed generation on the material of its own kind", () => {
