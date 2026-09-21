@@ -330,6 +330,9 @@ export const coreConfigSchema = z.object({
   SMTP_PORT: numeric(z.coerce.number().default(587)),
   SMTP_USER: z.string().default(""),
   SMTP_PASSWORD: z.string().default(""),
+  // Verified sender address, optionally with a display name. Empty preserves
+  // the legacy SMTP_USER sender; authentication always uses SMTP_USER.
+  SMTP_FROM: z.string().trim().default(""),
   // Where a buyer writes back. It goes into the purchase confirmation, which
   // has to name a way to reach us, and it belongs beside the SMTP settings
   // because a self-hosted deployment answers its own mail.

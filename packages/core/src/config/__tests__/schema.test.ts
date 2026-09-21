@@ -41,6 +41,19 @@ describe("parseConfig — provider keys", () => {
   });
 });
 
+describe("parseConfig — SMTP sender", () => {
+  it("preserves a configured sender separately from SMTP credentials", () => {
+    const config = parseConfig(baseEnv({ SMTP_FROM: "  Breatic <mail@example.com>  ", SMTP_USER: "relay-account" }));
+    expect(config.SMTP_FROM).toBe("Breatic <mail@example.com>");
+    expect(config.SMTP_USER).toBe("relay-account");
+  });
+
+  it.each([undefined, "", "   "])("defaults an unset or blank sender to empty (%s)", (value) => {
+    const config = parseConfig(baseEnv(value === undefined ? {} : { SMTP_FROM: value }));
+    expect(config.SMTP_FROM).toBe("");
+  });
+});
+
 describe("parseConfig — yjs DB separation", () => {
   it("rejects YJS_DATABASE_URL == DATABASE_URL (same database) outside dev", () => {
     expect(() =>
