@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
-
-import { fetchCreditOverview } from '@web/data/api/credits';
 import type { CreditsSectionId } from '@web/features/credits/credits-sections';
+import { useCreditOverview } from '@web/features/credits/use-credit-overview';
 import {
   SectionError,
   SectionSkeleton,
@@ -49,11 +47,7 @@ export function CreditsSectionPanel({
   open,
 }: CreditsSectionPanelProps): React.JSX.Element {
   const userId = useCurrentUserStore((s) => s.user?.id ?? null);
-  const overview = useQuery({
-    queryKey: ['credits', 'overview', userId],
-    queryFn: () => fetchCreditOverview(),
-    enabled: open && userId !== null,
-  });
+  const overview = useCreditOverview(open);
 
   // `isPending` and not `isLoading`: an offline first read is paused rather
   // than fetching, which leaves `isLoading` false with no data in hand.

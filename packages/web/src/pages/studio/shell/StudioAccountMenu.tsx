@@ -3,7 +3,6 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { LogOut, Settings, Sparkles, Star } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
@@ -18,10 +17,10 @@ import {
 import { accountTotal } from '@breatic/shared';
 
 import { authApi } from '@web/data/api/auth';
-import { fetchCreditOverview } from '@web/data/api/credits';
 import { CheckoutWaitOverlay } from '@web/features/credits/CheckoutWaitOverlay';
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
+import { useCreditOverview } from '@web/features/credits/use-credit-overview';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
@@ -72,19 +71,10 @@ export function StudioAccountMenu(): React.JSX.Element {
   const [membershipOpen, setMembershipOpen] = React.useState(false);
   const [creditsOpen, setCreditsOpen] = React.useState(false);
 
-  // The balance beside the Credits entry. Asked for only while the menu is
-  // open: this menu is mounted by the studio layout, so every signed-in
-  // account reaches it on every page, and a read on mount would spend a
-  // request per navigation on a figure nobody has asked to see.
-  //
-  // The key is the overlay's own, so designating a pack or asking for a refund
-  // — both of which invalidate it — leaves the next open reading the new
-  // figure rather than the one from before.
-  const overview = useQuery({
-    queryKey: ['credits', 'overview', user?.id ?? null],
-    queryFn: () => fetchCreditOverview(),
-    enabled: menuOpen && user !== null,
-  });
+  // The balance beside the Credits entry, read from the overlay's own query:
+  // designating a pack or asking for a refund invalidates it, so the next
+  // open here reads the new figure rather than the one from before.
+  const overview = useCreditOverview(menuOpen);
 
   // How long the return page may wait comes from the server, on the list the
   // buy screen reads anyway. Until it arrives there is nothing to wait for.
