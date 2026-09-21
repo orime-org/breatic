@@ -52,18 +52,24 @@ function toEntity(row: typeof payments.$inferSelect): PaymentEntity {
  * @param data.creditsGranted - Number of credits granted once the payment completes
  * @param data.currency - ISO currency code (defaults to "usd")
  * @param data.metadata - Arbitrary JSONB metadata (defaults to an empty object)
+ * @param tx - The transaction its source row is written in. A payment shares
+ *   that row's primary key, so the two have to commit together.
  * @returns The inserted payment entity
  */
-export async function createPayment(data: {
-  id?: string;
-  userId: string;
-  stripeSessionId: string;
-  amountCents: number;
-  creditsGranted: number;
-  currency?: string;
-  metadata?: Record<string, unknown>;
-}): Promise<PaymentEntity> {
-  const rows = await db
+export async function createPayment(
+  data: {
+    id?: string;
+    userId: string;
+    stripeSessionId: string;
+    amountCents: number;
+    creditsGranted: number;
+    currency?: string;
+    metadata?: Record<string, unknown>;
+  },
+  tx?: DbTx,
+): Promise<PaymentEntity> {
+  const conn = tx ?? db;
+  const rows = await conn
     .insert(payments)
     .values({
       ...(data.id === undefined ? {} : { id: data.id }),
@@ -337,7 +343,7 @@ export async function listPurchaseHistory(
     .from(payments)
     .leftJoin(
       creditLots,
-      and(eq(creditLots.paymentId, payments.id), isNull(creditLots.deletedAt)),
+      and(eq(creditLots.sourceId, payments.id), isNull(creditLots.deletedAt)),
     )
     .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .leftJoin(purchaseMailOutbox, eq(purchaseMailOutbox.paymentId, payments.id))
@@ -410,7 +416,7 @@ export async function getConfirmationView(
     })
     .from(payments)
     .innerJoin(users, eq(users.id, payments.userId))
-    .leftJoin(creditLots, eq(creditLots.paymentId, payments.id))
+    .leftJoin(creditLots, eq(creditLots.sourceId, payments.id))
     .leftJoin(purchaseConsents, eq(purchaseConsents.paymentId, payments.id))
     .where(eq(payments.id, paymentId))
     .limit(1);

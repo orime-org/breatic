@@ -9,7 +9,7 @@
  */
 
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
-import { creditLotService } from "@breatic/domain";
+import { creditLotService, creditSourceRepo } from "@breatic/domain";
 import { getStripeClient } from "@server/infra/stripe.js";
 import {
   findTierByPriceCents,
@@ -588,23 +588,35 @@ export async function createCheckout(input: {
     metadata: { userId: input.userId, credits: String(tier.credits) },
   }, stripeCallBounds());
 
-  const payment = await paymentRepo.createPayment({
-    id: paymentId,
-    userId: input.userId,
-    stripeSessionId: session.id,
-    amountCents: tier.priceCents,
-    creditsGranted: tier.credits,
-    currency: tier.currency,
-    // These five cannot be worked out later. A webhook carries no
-    // `Accept-Language`, no hint of a time zone, and no idea what the buyer
-    // ticked; the versions say what wording this purchase was made under.
-    metadata: {
-      locale,
-      timeZone: knownTimeZone(input.timeZone),
-      consentTextVersion: CONSENT_CREDITS_VERSION,
-      refundTextVersion: REFUND_CREDITS_VERSION,
-      consentedAt: consentedAt.toISOString(),
-    },
+  // The receipt and the payment commit together: the payment shares the
+  // receipt's primary key, so neither can exist without the other. Opening the
+  // receipt later — at fulfillment, say — would give every redelivery a fresh
+  // id, and the unique index on `credit_lots.source_id` would stop refusing
+  // the second grant.
+  const payment = await db.transaction(async (tx) => {
+    await creditSourceRepo.createSource({ id: paymentId, kind: "payment" }, tx);
+    return paymentRepo.createPayment(
+      {
+        id: paymentId,
+        userId: input.userId,
+        stripeSessionId: session.id,
+        amountCents: tier.priceCents,
+        creditsGranted: tier.credits,
+        currency: tier.currency,
+        // These five cannot be worked out later. A webhook carries no
+        // `Accept-Language`, no hint of a time zone, and no idea what the
+        // buyer ticked; the versions say what wording this purchase was made
+        // under.
+        metadata: {
+          locale,
+          timeZone: knownTimeZone(input.timeZone),
+          consentTextVersion: CONSENT_CREDITS_VERSION,
+          refundTextVersion: REFUND_CREDITS_VERSION,
+          consentedAt: consentedAt.toISOString(),
+        },
+      },
+      tx,
+    );
   });
 
   // Caller logs `payment_checkout_session_created` audit line with

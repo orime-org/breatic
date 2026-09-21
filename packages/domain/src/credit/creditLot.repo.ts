@@ -102,7 +102,7 @@ function designatedToStudio(studioId: string): SQL | undefined {
 function toLotEntity(row: typeof creditLots.$inferSelect): CreditLotEntity {
   return {
     id: row.id,
-    paymentId: row.paymentId,
+    sourceId: row.sourceId,
     userId: row.userId,
     purchasedCredits: row.purchasedCredits,
     remainingCredits: row.remainingCredits,
@@ -157,25 +157,25 @@ function toLedgerEntity(
  * studio each one is for mid-purchase puts two decisions in one flow.
  * Designation is its own step.
  *
- * The unique constraint on `payment_id` is what makes a redelivered webhook a
+ * The unique constraint on `source_id` is what makes a redelivered webhook a
  * failed insert rather than a second grant, so this deliberately does not
  * swallow the conflict — the caller decides what a duplicate means.
  * @param data - The purchase this lot records.
- * @param data.paymentId - The completed payment. Unique across lots.
+ * @param data.sourceId - What the credits came from. Unique across lots.
  * @param data.userId - Who paid.
  * @param data.purchasedCredits - How many credits the payment bought, as a decimal string.
  * @param tx - Optional transaction to join.
  * @returns The new lot.
  */
 export async function createLot(
-  data: { paymentId: string; userId: string; purchasedCredits: string },
+  data: { sourceId: string; userId: string; purchasedCredits: string },
   tx?: DbTx,
 ): Promise<CreditLotEntity> {
   const conn = tx ?? db;
   const rows = await conn
     .insert(creditLots)
     .values({
-      paymentId: data.paymentId,
+      sourceId: data.sourceId,
       userId: data.userId,
       purchasedCredits: data.purchasedCredits,
       remainingCredits: data.purchasedCredits,
@@ -771,7 +771,7 @@ export async function listLotsByUser(
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
     })
     .from(creditLots)
-    .innerJoin(payments, eq(payments.id, creditLots.paymentId))
+    .innerJoin(payments, eq(payments.id, creditLots.sourceId))
     .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(
       and(

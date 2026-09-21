@@ -25,6 +25,8 @@ import {
   index,
   primaryKey,
   check,
+  unique,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 // A self-referencing FK needs its column type spelled out, since the table is
 // still being defined at the point the reference is written.
@@ -757,10 +759,55 @@ export const conversationAttachments = pgTable(
 
 // ── 7. Payments ──────────────────────────────────────────────────────
 
+/**
+ * What a lot of credits came from (0079, #259).
+ *
+ * Every lot points at one row here, and `kind` says what sort of receipt it
+ * is. The column this replaced was called `payment_id` and was NOT NULL, which
+ * spelled "a lot always comes from a payment" into the schema — and a
+ * back-office compensation has a compensation record and no payment at all.
+ *
+ * Each kind keeps its details in its own child table, sharing this row's
+ * primary key: `payments.id` IS its source id, so no child carries a second
+ * column pointing here and the two cannot drift apart. `UNIQUE (id, kind)`
+ * adds nothing in row terms — `id` is already the key — and exists to give
+ * those children something composite to reference, which is what stops a
+ * payment from being filed under `gift`.
+ *
+ * Append-only: `created_at` and no `deleted_at`. A receipt outlives the
+ * credits it opened, and one that could vanish would leave lots pointing at
+ * nothing — the written reason this table is waived from the soft-delete
+ * mandate.
+ *
+ * The CHECK on `kind` lives in the migration, as the lifecycle one does, for
+ * the reason 0061 gives: a `check()` beside the column would be a second copy
+ * no tool compares against the first.
+ */
+export const creditSources = pgTable(
+  "credit_sources",
+  {
+    id: uuid("id").primaryKey(),
+    /** One of `payment` / `compensation` / `gift` / `discount`. CHECK in 0079. */
+    kind: varchar("kind", { length: 16 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [unique("credit_sources_id_kind_key").on(table.id, table.kind)],
+);
+
 export const payments = pgTable(
   "payments",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    /**
+     * Constant, and half of the composite key below. On its own it says
+     * nothing; paired with `id` it is what makes the database refuse a payment
+     * whose source row claims some other kind.
+     */
+    sourceKind: varchar("source_kind", { length: 16 })
+      .default("payment")
+      .notNull(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -797,6 +844,16 @@ export const payments = pgTable(
       "payments_status_check",
       sql`${table.status} IN ('pending', 'completed', 'failed', 'expired')`,
     ),
+    // Composite, so the source a payment shares its id with has to be the
+    // kind a payment is. The single-column form would take a payment whose
+    // source says `gift`, and `kind` is the only column that says where a
+    // lot's money came from. The `source_kind = 'payment'` CHECK lives in
+    // 0079, beside the other hand-written ones.
+    foreignKey({
+      name: "payments_source_fk",
+      columns: [table.id, table.sourceKind],
+      foreignColumns: [creditSources.id, creditSources.kind],
+    }).onDelete("restrict"),
   ],
 );
 
@@ -1026,9 +1083,9 @@ export const creditLots = pgTable(
   "credit_lots",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    paymentId: uuid("payment_id")
+    sourceId: uuid("source_id")
       .notNull()
-      .references(() => payments.id, { onDelete: "restrict" }),
+      .references(() => creditSources.id, { onDelete: "restrict" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -1058,7 +1115,7 @@ export const creditLots = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("credit_lots_payment_id_idx").on(table.paymentId),
+    uniqueIndex("credit_lots_source_id_idx").on(table.sourceId),
     index("credit_lots_user_id_created_at_idx").on(
       table.userId,
       table.createdAt,
