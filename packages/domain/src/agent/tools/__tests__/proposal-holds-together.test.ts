@@ -350,6 +350,44 @@ describe("a mode whose material arrives through the reference pool", () => {
     expect(checkProposal(propose(at, { sources: full }))).toEqual({ ok: true });
   });
 
+  it("counts everything in the pool against the ceiling, not only what it reads", () => {
+    // The pool holds what reaches it, of every kind -- the panel's count is
+    // of rows, and a row carrying a video the step before made takes one of
+    // them. Counting only the kinds this mode runs on lets a group be placed
+    // that the panel then refuses.
+    const at = pick(
+      (m) => m.byReference && m.poolCap !== undefined && m.nodeType === "video",
+      "video pool with a declared cap",
+    );
+    const full = Array.from({ length: at.poolCap ?? 0 }, () => at.needs[0] as GenerationNodeType);
+    const filled = propose(at, { sources: full });
+    const generation = filled.nodes.length - 1;
+    const maker = sourcelessOn("video");
+
+    const verdict = checkProposal({
+      ...filled,
+      nodes: [
+        ...filled.nodes,
+        {
+          role: "generate",
+          type: "video",
+          name: "The first cut",
+          mode: maker.mode,
+          model: maker.model,
+          params: {},
+          prompt: [{ text: "an opening shot" }],
+        },
+      ],
+      edges: [...filled.edges, { fromIndex: filled.nodes.length, toIndex: generation }],
+      groupName: "One more than it holds",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("reference(s) at a time"),
+    });
+  });
+
   it("is refused when it adds a node of a kind this mode cannot read", () => {
     // The material this mode runs on is there; the extra one is not material
     // at all, and the canvas has no edge that would carry it in anyway.

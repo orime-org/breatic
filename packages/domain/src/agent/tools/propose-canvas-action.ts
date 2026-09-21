@@ -412,22 +412,31 @@ function checkGenerateNode(
   // answers for what is wired into it -- an empty node somewhere else in the
   // group belongs to whichever generation reads it, not to this one.
   const readsByEdge = byReference || needed.length === 0;
-  // On the slot path the group's other generations have empty nodes of their
-  // own, and those belong to them. What this one answers for is the material
-  // of the kinds it actually reads -- a sound node beside a picture-to-video
+  // Three readings, three names. They answer different questions and two of
+  // them want opposite things, so one list serving all three is how a rule
+  // ends up charging this generation for another's material.
+  //
+  // `mine`: the empty nodes this generation answers for. Through the pool an
+  // edge says which ones; through a slot there is no edge, so it is the ones
+  // holding a kind it reads -- a sound node beside a picture-to-video
   // generation is the voice-over's, and `checkProposal` has already made sure
   // every empty node in the group is read by something.
-  const sources = (readsByEdge ? feeders : placed).filter(
+  const mine = (readsByEdge ? feeders : placed).filter(
     ({ node: n }) => n.role === "source" && (readsByEdge || needed.includes(n.type)),
   );
-  // An upstream generation supplies material as surely as an empty node does:
-  // the picture it makes lands in the pool the same way. A written node
-  // upstream is not material at all -- it is words this generation reads --
-  // so it stays out of every count below.
-  const supplying = [
-    ...sources,
+  // `reaching`: everything arriving here that carries work, whoever made it.
+  // An upstream generation supplies material as surely as an empty node does.
+  // A written node upstream is not material at all -- it is words this
+  // generation reads -- so it stays out. The pool's ceiling counts this one
+  // whole, because the pool holds what reaches it, of every kind.
+  const reaching = [
+    ...mine,
     ...feeders.filter(({ node: n }) => n.role === "generate"),
   ];
+  // `usable`: of what reaches here, the kinds this mode actually reads. Every
+  // question about whether the material is there and whether there is enough
+  // of it is asked of this one.
+  const usable = reaching.filter(({ node: n }) => needed.includes(n.type));
   const marks = prompt.filter((s) => s.slot?.kind === "asset");
   // A mark pointing upstream lands as a mention, and a mention only picks from
   // what the reference pool holds. Judged before the early return below, so a
@@ -445,10 +454,10 @@ function checkGenerateNode(
   if (needed.length === 0) {
     // Nothing goes in an empty node here, and a marked place with no node
     // behind it reads as an instruction the reader cannot carry out.
-    if (sources.length > 0) {
+    if (mine.length > 0) {
       return {
         ok: false,
-        reason: `"${mode}" asks nothing of the reader, so the group has no use for an empty node.`,
+        reason: `"${mode}" asks nothing of the reader, and an empty node is wired into it. Wire that one to whatever reads it.`,
       };
     }
     return marks.length === 0
@@ -462,14 +471,14 @@ function checkGenerateNode(
   // The reader is the only one who has this material, so the group has to
   // carry somewhere to put it -- of the kind that holds it, and nothing else.
   // Without that the generate button refuses and nothing on screen says why.
-  const stray = sources.find(({ node: n }) => !needed.includes(n.type));
+  const stray = mine.find(({ node: n }) => !needed.includes(n.type));
   if (stray) {
     return {
       ok: false,
-      reason: `"${mode}" takes ${needed.join(", ")} from the reader, and the group offers an empty ${stray.node.type} node, which nothing here reads.`,
+      reason: `"${mode}" reads ${needed.join(", ")}, and an empty ${stray.node.type} node is wired into it, which it cannot take. Wire that one to whatever reads it.`,
     };
   }
-  const missing = needed.filter((kind) => !supplying.some(({ node: n }) => n.type === kind));
+  const missing = needed.filter((kind) => !usable.some(({ node: n }) => n.type === kind));
   if (missing.length > 0) {
     return {
       ok: false,
@@ -487,11 +496,10 @@ function checkGenerateNode(
   // then animate it" is a flow of two generations and nothing for the reader
   // to find.
   const asked = materialNeeded(nodeType, mode, model);
-  const supplied = supplying.filter(({ node: n }) => needed.includes(n.type)).length;
-  if (!byReference && supplied !== asked) {
+  if (!byReference && usable.length !== asked) {
     return {
       ok: false,
-      reason: `"${mode}" takes ${String(asked)} piece(s) of ${needed.join(", ")}, and ${String(supplied)} reach${supplied === 1 ? "es" : ""} node ${String(index)}.`,
+      reason: `"${mode}" takes ${String(asked)} piece(s) of ${needed.join(", ")}, and ${String(usable.length)} reach${usable.length === 1 ? "es" : ""} node ${String(index)}.`,
     };
   }
   // The pool has a ceiling as well, stated by the model and enforced by the
@@ -501,21 +509,21 @@ function checkGenerateNode(
   // wired in counts against it, an upstream generation as much as an empty
   // node -- the pool holds what reaches it, not what the reader put there.
   const cap = pool && effectiveItemCap(capShapeOf(pool), node.params ?? {});
-  const over = byReference ? referenceCapExceeded(supplying.length, cap) : null;
+  const over = byReference ? referenceCapExceeded(reaching.length, cap) : null;
   if (over) {
     return {
       ok: false,
-      reason: `"${model}" holds ${String(over.limit)} reference(s) at a time, and ${String(supplying.length)} node(s) reach node ${String(index)}.`,
+      reason: `"${model}" holds ${String(over.limit)} reference(s) at a time, and ${String(reaching.length)} node(s) reach node ${String(index)}.`,
     };
   }
 
   // One mark per empty node: the prompt says what goes in each one, in the
   // place it belongs, rather than naming one of them and leaving the rest
   // sitting there unexplained.
-  if (marks.length !== sources.length) {
+  if (marks.length !== mine.length) {
     return {
       ok: false,
-      reason: `The group carries ${String(sources.length)} empty node(s) and the prompt marks ${String(marks.length)} place(s). Mark each one where it belongs.`,
+      reason: `The group carries ${String(mine.length)} empty node(s) and the prompt marks ${String(marks.length)} place(s). Mark each one where it belongs.`,
     };
   }
   // And one mark per node upstream, for the same reason the other way round:
