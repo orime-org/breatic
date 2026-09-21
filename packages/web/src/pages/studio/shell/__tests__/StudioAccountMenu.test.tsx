@@ -308,6 +308,16 @@ describe('StudioAccountMenu', () => {
       await waitFor(() => {
         expect(creditsTrailing()).toBe('5,430');
       });
+
+      // Same place, same size as the tier on the row above: the two are the
+      // things a person opens this menu to check, and one riding higher or
+      // heavier than the other makes it look like the more important of them.
+      const trailing = (name: RegExp): string =>
+        screen
+          .getByRole('menuitem', { name })
+          .querySelector('.ml-auto')?.className ?? '';
+      expect(trailing(/Credits/)).toBe(trailing(/Membership/));
+      expect(trailing(/Credits/)).not.toBe('');
     });
 
     it('counts a pack that is under refund — it is still the buyer’s', async () => {
