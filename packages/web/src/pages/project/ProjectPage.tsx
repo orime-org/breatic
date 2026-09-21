@@ -837,6 +837,7 @@ function ProjectWorkspace({
             data-workspace-disabled={workspaceDisabled || undefined}
           >
             <TopBar
+              connectionStatus={connectionStatus}
               projectId={projectId}
               projectName={projectName}
               role={role}
