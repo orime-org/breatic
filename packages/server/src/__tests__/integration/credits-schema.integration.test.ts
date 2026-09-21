@@ -132,8 +132,6 @@ async function seedUserWithPayment(): Promise<{
     VALUES (${`lots-${seq++}@example.test`}, true) RETURNING id
   `;
   const userId = users[0]!.id;
-  // A payment shares its source row's primary key, so the receipt is opened
-  // first and the payment is written under its id (0079, #259).
   const sources = await sql<{ id: string }[]>`
     INSERT INTO credit_sources (id, kind)
     VALUES (gen_random_uuid(), 'payment') RETURNING id

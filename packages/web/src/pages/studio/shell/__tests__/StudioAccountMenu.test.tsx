@@ -348,6 +348,41 @@ describe('StudioAccountMenu', () => {
       expect(creditsTrailing()).toBe('');
     });
 
+    it('says nothing but the word when a later read fails, not the stale figure', async () => {
+      // The menu reads on open, so a reader who opens it twice can have a
+      // figure in hand from the first time and a failed read the second. A
+      // figure that has gone stale looks exactly like one that is current,
+      // and the overlay — reading the same query — is showing its error
+      // screen at that moment.
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      const qc = new QueryClient({
+        defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: 0 } },
+      });
+      overviewMock.mockResolvedValueOnce(overview());
+      render(
+        <MemoryRouter initialEntries={['/studio']}>
+          <QueryClientProvider client={qc}>
+            <StudioAccountMenu />
+          </QueryClientProvider>
+        </MemoryRouter>,
+      );
+
+      await openMenu(user);
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('5,430');
+      });
+
+      await user.keyboard('{Escape}');
+      overviewMock.mockRejectedValue(new Error('offline'));
+      await openMenu(user);
+      await waitFor(() => {
+        expect(overviewMock).toHaveBeenCalledTimes(2);
+      });
+
+      expect(creditsTrailing()).toBe('');
+    });
+
     it('says nothing but the word where this deployment does not charge', async () => {
       // Three zeros there mean "we do not bill", not "your money is gone", and
       // rendering the 0 says the second one.

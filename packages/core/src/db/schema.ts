@@ -844,11 +844,8 @@ export const payments = pgTable(
       "payments_status_check",
       sql`${table.status} IN ('pending', 'completed', 'failed', 'expired')`,
     ),
-    // Composite, so the source a payment shares its id with has to be the
-    // kind a payment is. The single-column form would take a payment whose
-    // source says `gift`, and `kind` is the only column that says where a
-    // lot's money came from. The `source_kind = 'payment'` CHECK lives in
-    // 0079, beside the other hand-written ones.
+    // The CHECK pinning `source_kind` to 'payment' lives in 0079, beside the
+    // other hand-written ones.
     foreignKey({
       name: "payments_source_fk",
       columns: [table.id, table.sourceKind],

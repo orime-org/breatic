@@ -152,11 +152,10 @@ export async function grantFromPayment(
   const run = async (tx: DbTx): Promise<CreditLotEntity> => {
     const lot = await creditLotRepo.createLot(
       {
-        // The payment's own id: it shares one with the source row opened
-        // beside it at checkout, so there is nothing to look up and nothing
-        // to create. Opening a source here instead would hand every
-        // redelivery a fresh id, and the unique index below would stop
-        // refusing the second grant.
+        // The payment's own id, which is also its source id — see
+        // `createSource`. Opening a source here would hand every redelivery
+        // a fresh one, and the unique index would stop refusing the second
+        // grant.
         sourceId: input.paymentId,
         userId: input.userId,
         purchasedCredits: amount,

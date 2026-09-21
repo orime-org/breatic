@@ -80,7 +80,7 @@ export function StudioAccountMenu(): React.JSX.Element {
   // The key is the overlay's own, so designating a pack or asking for a refund
   // — both of which invalidate it — leaves the next open reading the new
   // figure rather than the one from before.
-  const balance = useQuery({
+  const overview = useQuery({
     queryKey: ['credits', 'overview', user?.id ?? null],
     queryFn: () => fetchCreditOverview(),
     enabled: menuOpen && user !== null,
@@ -260,9 +260,9 @@ export function StudioAccountMenu(): React.JSX.Element {
               and a rendered 0 reads as "your money is gone" rather than "we do
               not bill". */}
             <span className='ml-auto text-xs font-medium text-muted-foreground'>
-              {balance.data === undefined || !balance.data.billing
+              {overview.isError || !overview.data?.billing
                 ? null
-                : formatCreditAmount(accountTotal(balance.data))}
+                : formatCreditAmount(accountTotal(overview.data))}
             </span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />

@@ -588,11 +588,8 @@ export async function createCheckout(input: {
     metadata: { userId: input.userId, credits: String(tier.credits) },
   }, stripeCallBounds());
 
-  // The receipt and the payment commit together: the payment shares the
-  // receipt's primary key, so neither can exist without the other. Opening the
-  // receipt later — at fulfillment, say — would give every redelivery a fresh
-  // id, and the unique index on `credit_lots.source_id` would stop refusing
-  // the second grant.
+  // One transaction, because a payment shares its receipt's primary key —
+  // see `createSource` for why the receipt is opened here and not later.
   const payment = await db.transaction(async (tx) => {
     await creditSourceRepo.createSource({ id: paymentId, kind: "payment" }, tx);
     return paymentRepo.createPayment(
