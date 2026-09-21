@@ -271,7 +271,16 @@ export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 
 export const understandSchema = z.object({
   source_type: z.enum(["image", "video", "audio"]),
-  source_url: z.string(),
+  /**
+   * Where the media is. The run reads the file's name off it and writes that
+   * name into the sentence on the reader's row, so this is bound the same way
+   * `source_mime_type` below is: uncapped, it is text a caller chooses and
+   * every reader of that node is shown. The ceiling is the one
+   * `/canvas/ingest-url` already holds an address to. That sibling also
+   * demands https, which this one cannot: the address here is our own
+   * storage, and a local deployment serves it over http.
+   */
+  source_url: z.string().url().max(2048),
   // The node the run writes to, which the browser built before asking. It
   // names one it just made, so anything that is not an id of ours came from
   // somewhere else and names nothing this space holds. One, because a reading
@@ -295,7 +304,7 @@ export const understandSchema = z.object({
    * so an uncapped value is text a caller chooses and every reader of that
    * node is shown.
    */
-  source_mime_type: z.string().max(100).optional(),
+  source_mime_type: z.string().min(1).max(100).optional(),
   prompt: z.string().optional(),
   /**
    * The language the answer is read in, as the browser's locale code.
