@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { newId, promptPlainText, type CanvasProposal } from '@breatic/shared';
+import { feedersOf, newId, promptPlainText, type CanvasProposal } from '@breatic/shared';
 
 import {
   addEdge,
@@ -107,43 +107,42 @@ export interface PlacedProposal {
 const FLOW_GROUND = GROUP_BACKGROUND_OPTIONS.find((o) => o.key === 'blue')?.value;
 
 /**
- * What is wired into one node of a proposal, in the order placed.
+ * What is wired into one node of a proposal, as nodes now on the canvas.
  *
  * These are what its prompt's marks mention, one each in order, so what the
  * generation reads reaches it without the reader making the mention by hand.
  * Two lists, because the two kinds of mark point at different things: an asset
  * mark at an empty node still to be filled, a ref mark at a node already
  * carrying work.
- *
- * Read off the node list rather than the edge list: the marks are numbered by
- * the nodes the reader sees left to right, and nothing makes a proposal list
- * its edges in that same order -- listed the other way round, each bracket
- * would carry the other node's name.
  * @param proposal - The whole proposal.
  * @param index - Which of its nodes is being fed.
  * @param ids - The placed node ids, in the proposal's own order.
  * @returns The two lists, each in placement order.
  * @throws {never} Never.
  */
-function feedersOf(
+function feedersOnCanvas(
   proposal: CanvasProposal,
   index: number,
   ids: readonly string[],
 ): ProposalFeeders {
-  const fedFrom = new Set(
-    proposal.edges.filter((edge) => edge.toIndex === index).map((edge) => edge.fromIndex),
-  );
-  const sources: ProposalSource[] = [];
-  const upstream: ProposalSource[] = [];
-  proposal.nodes.forEach((node, at) => {
-    const id = ids[at];
-    if (!fedFrom.has(at) || !id) return;
-    // What the reader still has to fill goes in one list, what already carries
-    // work in the other: an asset mark draws from the first and a ref mark
-    // from the second, and one list would have them taking each other's turn.
-    (node.role === 'source' ? sources : upstream).push({ id, kind: node.type });
-  });
-  return { sources, upstream };
+  // What the reader still has to fill goes in one list, what already carries
+  // work in the other: an asset mark draws from the first and a ref mark
+  // from the second, and one list would have them taking each other's turn.
+  // The split and its order come from the shared reading, which is also what
+  // the card files its to-dos by.
+  const held = feedersOf(proposal, index);
+  /**
+   * The placed nodes behind a run of feeder indices.
+   * @param at - The indices to resolve.
+   * @returns One entry per index that has a node on the canvas.
+   */
+  const placed = (at: readonly number[]): ProposalSource[] =>
+    at.flatMap((i) => {
+      const id = ids[i];
+      const kind = proposal.nodes[i]?.type;
+      return id && kind ? [{ id, kind }] : [];
+    });
+  return { sources: placed(held.sources), upstream: placed(held.upstream) };
 }
 
 /**
@@ -301,7 +300,7 @@ export function useNodeCreation(
           }
           const fragment = getPromptFragment(projectId, spaceId, id);
           if (!fragment) return;
-          writeProposalPrompt(fragment, node.prompt, feedersOf(proposal, i, nodeIds));
+          writeProposalPrompt(fragment, node.prompt, feedersOnCanvas(proposal, i, nodeIds));
         });
       });
       return groupId === undefined ? { nodeIds } : { nodeIds, groupId };

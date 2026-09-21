@@ -11,6 +11,7 @@
  * quote its own price.
  */
 
+import { feedersOf } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 /** What one node contributes to the little shape drawn on the card. */
@@ -193,13 +194,6 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
   // several generations may point at the same one. Named under that node, it
   // is said once; named under each generation, the reader reads three photos
   // to find where there is one.
-  /**
-   * Which nodes are wired into one node of the flow.
-   * @param at - The node being fed.
-   * @returns The indices of everything wired into it.
-   */
-  const feeders = (at: number): number[] =>
-    proposal.edges.filter((e) => e.toIndex === at).map((e) => e.fromIndex);
   const notes = new Map<number, string[]>();
   /**
    * Add one note under the node it belongs to, keeping the first of a repeat.
@@ -212,7 +206,9 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
   };
   proposal.nodes.forEach((node, at) => {
     let assetsSeen = 0;
-    const empties = feeders(at).filter((from) => proposal.nodes[from]?.role === 'source');
+    // The same reading the canvas writes its mentions from, so a to-do names
+    // the node the bracket beside it will point at.
+    const empties = feedersOf(proposal, at).sources;
     for (const segment of node.prompt ?? []) {
       const slot = segment.slot;
       if (!slot || slot.note === '') continue;

@@ -135,6 +135,44 @@ export interface CanvasProposal {
   groupName?: string;
 }
 
+/** Which nodes feed one node of a proposal, split by what they carry. */
+export interface ProposalFeederIndices {
+  /** Indices of the empty nodes wired in, for the reader to fill. */
+  sources: number[];
+  /** Indices of the nodes wired in that already carry work of their own. */
+  upstream: number[];
+}
+
+/**
+ * What feeds one node of a proposal, in the order the nodes are listed.
+ *
+ * Node order rather than edge order, because that is the order the marks in
+ * a prompt are numbered in: the k-th mark asking for material is about the
+ * k-th empty node. Nothing makes a model list its edges the way it listed
+ * its nodes, so reading the edge list gives the k-th mark whichever node
+ * happened to be wired first -- and then the card names one node while the
+ * canvas writes the mention against another.
+ *
+ * One function so the two cannot drift: the card draws its to-dos from it and
+ * the canvas writes its mentions from it.
+ * @param proposal - The proposal being read.
+ * @param index - The node being fed.
+ * @returns The feeder indices, split by role, each in node order.
+ * @throws {never} Never.
+ */
+export function feedersOf(proposal: CanvasProposal, index: number): ProposalFeederIndices {
+  const fedFrom = new Set(
+    proposal.edges.filter((edge) => edge.toIndex === index).map((edge) => edge.fromIndex),
+  );
+  const sources: number[] = [];
+  const upstream: number[] = [];
+  proposal.nodes.forEach((node, at) => {
+    if (!fedFrom.has(at)) return;
+    (node.role === "source" ? sources : upstream).push(at);
+  });
+  return { sources, upstream };
+}
+
 /** What a refused proposal answers with, so the model can send a better one. */
 export interface ProposalRefused {
   placed: false;

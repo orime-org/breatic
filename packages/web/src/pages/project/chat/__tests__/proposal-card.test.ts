@@ -160,6 +160,37 @@ describe('what is left for the reader', () => {
     ]);
   });
 
+  it('files each mark under the node the canvas will point it at', () => {
+    // The k-th mark belongs to the k-th empty node in NODE order, which is
+    // what the canvas writes the mention against. Reading the edge list
+    // instead files the notes under whichever node the model happened to
+    // wire first, and the reader puts their material in the wrong box.
+    const drop = (label: string): ProposalNode['prompt'] => [
+      { slot: { kind: 'asset', label, note: `Drop the ${label} in` } },
+    ];
+    const proposal = flow(
+      [
+        empty('Your photo'),
+        empty('Your logo'),
+        {
+          ...generates('The banner'),
+          prompt: [...(drop('photo') ?? []), ...(drop('logo') ?? [])],
+        },
+      ],
+      // Listed back to front: nothing makes a model list its edges in the
+      // order it listed its nodes.
+      [
+        [1, 2],
+        [0, 2],
+      ],
+    );
+
+    expect(todosOf(proposal)).toEqual([
+      { nodes: ['Your photo'], notes: ['Drop the photo in'] },
+      { nodes: ['Your logo'], notes: ['Drop the logo in'] },
+    ]);
+  });
+
   it('says once what three nodes ask for in the same words', () => {
     // Three angles all wanting a ratio picked is one line of instruction, not
     // three. Written out per node it reads as three separate jobs.

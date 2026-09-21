@@ -192,6 +192,7 @@ export {
   paramValues,
   REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
+  feedersOf,
   markText,
   promptPlainText,
   promptTextOf,
