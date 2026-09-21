@@ -164,15 +164,16 @@ function toLedgerEntity(
  * @param data.sourceId - What the credits came from. Unique across lots.
  * @param data.userId - Who paid.
  * @param data.purchasedCredits - How many credits the payment bought, as a decimal string.
- * @param tx - Optional transaction to join.
+ * @param tx - The transaction the lot's `topup` ledger row is written in.
+ *   Required: a lot's remaining balance is the ledger summed over it, so a lot
+ *   that committed without its row would read as owing its whole value.
  * @returns The new lot.
  */
 export async function createLot(
   data: { sourceId: string; userId: string; purchasedCredits: string },
-  tx?: DbTx,
+  tx: DbTx,
 ): Promise<CreditLotEntity> {
-  const conn = tx ?? db;
-  const rows = await conn
+  const rows = await tx
     .insert(creditLots)
     .values({
       sourceId: data.sourceId,
