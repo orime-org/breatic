@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { LogOut, Settings, Sparkles, Star } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
@@ -14,12 +15,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
+import { accountTotal } from '@breatic/shared';
+
 import { authApi } from '@web/data/api/auth';
+import { fetchCreditOverview } from '@web/data/api/credits';
 import { CheckoutWaitOverlay } from '@web/features/credits/CheckoutWaitOverlay';
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
 import { useTranslation } from '@web/i18n/use-translation';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { studioTabPath } from '@web/pages/studio/container/studio-tabs';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
@@ -63,8 +68,23 @@ export function StudioAccountMenu(): React.JSX.Element {
   const user = useCurrentUserStore((s) => s.user);
   const clear = useCurrentUserStore((s) => s.clear);
   const personalStudio = user?.personalStudio ?? null;
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const [membershipOpen, setMembershipOpen] = React.useState(false);
   const [creditsOpen, setCreditsOpen] = React.useState(false);
+
+  // The balance beside the Credits entry. Asked for only while the menu is
+  // open: this menu is mounted by the studio layout, so every signed-in
+  // account reaches it on every page, and a read on mount would spend a
+  // request per navigation on a figure nobody has asked to see.
+  //
+  // The key is the overlay's own, so designating a pack or asking for a refund
+  // — both of which invalidate it — leaves the next open reading the new
+  // figure rather than the one from before.
+  const balance = useQuery({
+    queryKey: ['credits', 'overview', user?.id ?? null],
+    queryFn: () => fetchCreditOverview(),
+    enabled: menuOpen && user !== null,
+  });
 
   // How long the return page may wait comes from the server, on the list the
   // buy screen reads anyway. Until it arrives there is nothing to wait for.
@@ -150,7 +170,7 @@ export function StudioAccountMenu(): React.JSX.Element {
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             type='button'
@@ -231,6 +251,19 @@ export function StudioAccountMenu(): React.JSX.Element {
           <DropdownMenuItem onSelect={handleCredits}>
             <Star className='h-4 w-4' />
             {t('studio.topBar.credits')}
+            {/* What the account holds, the way the tier above is shown: the
+              figure is what a person opens this menu to check, and reading it
+              here saves opening the overlay.
+
+              Nothing at all until it is in hand, and nothing where this
+              deployment does not charge — there the three figures are zeroes,
+              and a rendered 0 reads as "your money is gone" rather than "we do
+              not bill". */}
+            <span className='ml-auto text-xs font-medium text-muted-foreground'>
+              {balance.data === undefined || !balance.data.billing
+                ? null
+                : formatCreditAmount(accountTotal(balance.data))}
+            </span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
