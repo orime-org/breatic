@@ -624,6 +624,38 @@ describe("Tasks routes", () => {
     );
   });
 
+  // `tasks.source` is one column with one vocabulary, and every lane that
+  // opens a task names itself in it. A lane that names nothing falls to the
+  // column's own default, which is a word from before that vocabulary
+  // existed — so the rows this lane writes would be the only ones the
+  // vocabulary cannot account for.
+  it("names this lane in the column every lane names itself in", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO],
+      }),
+    });
+
+    expect(mocks.taskService.create).toHaveBeenCalledWith(
+      expect.anything(),
+      PID,
+      SID,
+      "understand",
+      "append",
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      "understand",
+    );
+  });
+
   describe("POST /canvas/understand — a refused run still has a row", () => {
     // The node is on the canvas before this request goes out, so a refusal
     // has somewhere to be said: the row this run opened is settled `failed`

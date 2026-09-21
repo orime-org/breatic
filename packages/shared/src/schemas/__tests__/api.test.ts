@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { projectCreateSchema } from "@shared/schemas/api.js";
+import { projectCreateSchema, taskCreateSchema } from "@shared/schemas/api.js";
 
 const base = {
   studioId: "11111111-1111-4111-8111-111111111111",
@@ -51,5 +51,33 @@ describe("projectCreateSchema — visibility", () => {
     expect(projectCreateSchema.parse({ ...base, visibility: "private" }).visibility).toBe(
       "private",
     );
+  });
+});
+
+describe("taskCreateSchema — source", () => {
+  const task = {
+    task_type: "image",
+    params: {},
+    project_id: "11111111-1111-4111-8111-111111111111",
+    space_id: "22222222-2222-4222-8222-222222222222",
+    mode: "append" as const,
+  };
+
+  // The column has one vocabulary, and a caller that names no lane falls to
+  // this default rather than to the column's own — which is a word from
+  // before that vocabulary existed, and would reach the feed as a row
+  // nothing can render.
+  it("files a caller that names no lane under the generic one", () => {
+    expect(taskCreateSchema.parse(task).source).toBe("task");
+  });
+
+  it("keeps the lane a caller does name", () => {
+    expect(taskCreateSchema.parse({ ...task, source: "understand" }).source).toBe(
+      "understand",
+    );
+  });
+
+  it("refuses a lane outside the vocabulary", () => {
+    expect(() => taskCreateSchema.parse({ ...task, source: "canvas" })).toThrow();
   });
 });

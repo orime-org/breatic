@@ -474,6 +474,11 @@ canvas.post(
       "append",
       params,
       model,
+      undefined,
+      // The column every lane names itself in. Left unsaid it falls to the
+      // column's own default, which predates this vocabulary — these rows
+      // would then be the only ones it cannot account for.
+      "understand",
     );
 
     // The node this run writes to is already on the canvas — the browser built

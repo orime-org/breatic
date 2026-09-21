@@ -11,7 +11,7 @@
 import * as taskRepo from "@domain/task/task.repo.js";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError } from "@breatic/core";
-import type { TaskEntity } from "@breatic/shared";
+import type { GenerationSource, TaskEntity } from "@breatic/shared";
 
 /**
  * Create a new task record.
@@ -26,7 +26,7 @@ import type { TaskEntity } from "@breatic/shared";
  * @param params - Task parameters
  * @param model - Optional model name
  * @param skillName - Optional skill to execute
- * @param source - Task source (default "canvas")
+ * @param source - Which lane opened this task; defaults to `"task"`
  * @returns The newly created task entity
  */
 export async function create(
@@ -38,7 +38,7 @@ export async function create(
   params: Record<string, unknown>,
   model?: string,
   skillName?: string,
-  source?: string,
+  source?: GenerationSource,
 ): Promise<TaskEntity> {
   return taskRepo.createTask({
     userId,

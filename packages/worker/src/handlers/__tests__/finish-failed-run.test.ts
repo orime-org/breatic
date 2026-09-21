@@ -76,7 +76,9 @@ const END = {
   userId: "user-1",
   model: "some-model",
   params: { a: 1 },
-  source: "task",
+  // One word from the lane vocabulary. Widened to `string` by inference, this
+  // fixture would stop saying which lane it stands for.
+  source: "task" as const,
   toolName: undefined,
   errorMessage: "it broke",
   settles: true,

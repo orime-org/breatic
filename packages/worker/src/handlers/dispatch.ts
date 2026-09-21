@@ -797,7 +797,7 @@ async function recordGenerationActivity(args: {
   succeeded: boolean;
   spaceId?: string;
   nodeId?: string | null;
-  source?: string;
+  source?: GenerationSource;
   toolName?: string;
   model?: string;
   outputCount?: number;
@@ -1007,7 +1007,7 @@ export interface FailedRunEnd {
   userId: string;
   model: string | undefined;
   params: Record<string, unknown>;
-  source: string | undefined;
+  source: GenerationSource | undefined;
   toolName: string | undefined;
   /** The one text the task row, the history, the node and the feed all carry. */
   errorMessage: string;
