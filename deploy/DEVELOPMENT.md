@@ -2,7 +2,7 @@
 
 **English** | [简体中文](DEVELOPMENT-CN.md)
 
-This guide is for changing source code, debugging and contributing. To install and use the product, follow [Personal and LAN deployment](LOCAL.md); for a private server with a domain, use [Server deployment](SERVER.md). Run commands from the repository root unless specified otherwise. Keep a second terminal available for checks while services run.
+This guide is for changing source code, debugging and contributing. To install and use the product, follow [Personal and LAN deployment](LOCAL.md). Run commands from the repository root unless specified otherwise. Keep a second terminal available for checks while services run.
 
 **This is the source-development workflow:** Node.js runs the application; Docker runs PostgreSQL, Redis and the upload service's media container; Wrangler can run Ingest locally. The web entry point is `http://localhost:8000`. The local-Ingest path needs neither a domain nor a deployed Cloudflare Worker.
 

@@ -43,7 +43,6 @@ Invite collaborators with the project's access controls to work on the same prod
 | Your goal | Guide |
 | --- | --- |
 | Use it yourself, or share it with a household/private team on your LAN | [Personal and LAN deployment](deploy/LOCAL.md) |
-| Run a private instance on a server with a domain | [Private server and domain deployment](deploy/SERVER.md) |
 | Modify source code, debug or contribute | [Development setup](deploy/DEVELOPMENT.md) |
 
 For installation, the application runs as published Docker images: web, API, background jobs and collaboration, backed by PostgreSQL and Redis. File uploads use an Ingest Worker and media container deployed to **your Cloudflare account**, with files stored in your R2 bucket. AI calls use your provider accounts. This is not an offline or wholly on-premises installation.
@@ -124,7 +123,7 @@ Enter used to confirm an active input-method composition does not send the messa
 - Docker with Compose for the application and databases.
 - A Cloudflare account with R2 and access to Containers for the deployed upload/media service.
 - Your own AI provider credentials and available quota for the models you want to use.
-- For LAN or domain access, a trusted HTTPS certificate and network access limited to your intended users.
+- For LAN access, a trusted HTTPS certificate and network access limited to your intended users.
 
 SMTP mail, Google sign-in, Stripe payments and search are optional integrations. The guides distinguish these from the services required for file storage and generation. Cloud services and model calls can incur charges even when Breatic payments are disabled.
 

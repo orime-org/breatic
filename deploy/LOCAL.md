@@ -2,7 +2,7 @@
 
 **English** | [简体中文](LOCAL-CN.md)
 
-Use this guide to run Breatic for yourself or share it with your household, private group or colleagues within one organization. Install the application on one computer; other users connect through a browser. **Use published images, not development servers.** For source changes, see [Development setup](DEVELOPMENT.md). For a private server with a domain, see [Server deployment](SERVER.md).
+Use this guide to run Breatic for yourself or share it with your household, private group or colleagues within one organization. Install the application on one computer; other users connect through a browser. **Use published images, not development servers.** For source changes, see [Development setup](DEVELOPMENT.md).
 
 The [LICENSE](../LICENSE) permits individual use, private groups that are not publicly advertised or open to general sign-up, and internal organizational use. Without separate authorization, offering Breatic to the public is prohibited, whether paid or free. Limit LAN access to your permitted group as well.
 
