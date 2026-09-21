@@ -152,20 +152,18 @@ export interface StoredTaskFailure extends TaskFailureDetail {
  * A cause with nothing to add stays the bare code it has always been, so
  * every row already written and every lane that writes one reads back the
  * same way.
- * @param reason - The code the row holds.
+ * @param reason - The cause the row holds, from the vocabulary above.
  * @param about - What is known about the file it happened to.
  * @returns What to store in `error_message`.
  */
 export function encodeTaskFailure(
-  reason: string,
+  reason: TaskFailureReason,
   about: TaskFailureDetail = {},
 ): string {
   const detail: TaskFailureDetail = {
     ...(about.file !== undefined && about.file !== "" && { file: about.file }),
     ...(about.type !== undefined && about.type !== "" && { type: about.type }),
-    ...(about.bytes !== undefined && Number.isFinite(about.bytes) && {
-      bytes: about.bytes,
-    }),
+    ...(Number.isFinite(about.bytes) && { bytes: about.bytes }),
   };
   return Object.keys(detail).length === 0
     ? reason
@@ -192,6 +190,11 @@ export function readTaskFailure(message: string | null): StoredTaskFailure {
     // what that provider said, and it travels as itself.
     return { reason: null };
   }
+  // No text that opens with a brace and parses reaches here as anything but
+  // an object, so this returns for nothing the product writes. It stays
+  // because the line below reads fields off the result, and the day a second
+  // caller reaches this function without the brace check above, `null.reason`
+  // is what it would throw.
   if (typeof parsed !== "object" || parsed === null) return { reason: null };
   const held = parsed as Record<string, unknown>;
   const reason = typeof held.reason === "string" ? held.reason : "";

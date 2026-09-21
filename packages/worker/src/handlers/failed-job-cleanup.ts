@@ -245,7 +245,7 @@ export async function cleanupFailedJobNodes(
       // the last thing that will touch these rows, so the reason is written
       // here or nowhere.
       logger.warn(
-        { err, taskId: job.data.taskId, nodeId },
+        { err, taskId: job.data.taskId, nodeId, reason },
         "node_task settle (crash net) failed",
       );
     }

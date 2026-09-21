@@ -126,6 +126,35 @@ describe("a cause and what it was about", () => {
     ).toEqual({ reason: "understand_unsupported_type", file: "a.aiff" });
   });
 
+  // The size travels the same way the other two do, and it is the one the
+  // sentence prints as a measurement rather than a name — so a value that
+  // cannot be measured (a size nobody recorded, a count that came back as
+  // Infinity) has to drop out rather than reach the reader as a word.
+  it("carries the size it measured, and only a real one", () => {
+    expect(
+      readTaskFailure(
+        encodeTaskFailure("understand_over_cap", {
+          file: "1758_a1b2.mp4",
+          bytes: 31_457_280,
+        }),
+      ),
+    ).toEqual({
+      reason: "understand_over_cap",
+      file: "1758_a1b2.mp4",
+      bytes: 31_457_280,
+    });
+
+    expect(encodeTaskFailure("understand_over_cap", { bytes: 0 })).toBe(
+      JSON.stringify({ reason: "understand_over_cap", bytes: 0 }),
+    );
+    expect(
+      encodeTaskFailure("understand_over_cap", { bytes: Number.POSITIVE_INFINITY }),
+    ).toBe("understand_over_cap");
+    expect(encodeTaskFailure("understand_over_cap", { bytes: Number.NaN })).toBe(
+      "understand_over_cap",
+    );
+  });
+
   // Every row written before a cause could carry anything holds a bare code,
   // and reads back the same way it always has.
   it("reads a bare code as the cause it has always been", () => {

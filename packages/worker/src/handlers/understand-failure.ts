@@ -73,13 +73,21 @@ export class AnsweredNothing extends Error {
  * samples another. So {@link AnsweredNothing} is not one of these, and the
  * run's remaining attempts are spent on it.
  */
-const SETTLED: ReadonlySet<string> = new Set([
-  "unsupported-type",
-  "too-large",
-  "empty",
-  "content-filter",
-  "media",
-]);
+const MEDIA_ANSWER_STANDS: Readonly<Record<UnavailableKind, boolean>> = {
+  unreachable: false,
+  "unsupported-type": true,
+  "too-large": true,
+  slow: false,
+  empty: true,
+};
+
+const REFUSAL_ANSWER_STANDS: Readonly<Record<RefusalKind, boolean>> = {
+  media: true,
+  unfetchable: false,
+  deployment: false,
+  transient: false,
+  "content-filter": true,
+};
 
 /**
  * Whether running this job again would reach the same refusal.
@@ -90,8 +98,8 @@ const SETTLED: ReadonlySet<string> = new Set([
  * @returns True when another attempt would land on the same answer.
  */
 export function verdictStands(err: unknown): boolean {
-  if (err instanceof MediaUnavailable) return SETTLED.has(err.kind);
-  if (err instanceof UnderstandRefused) return SETTLED.has(err.kind);
+  if (err instanceof MediaUnavailable) return MEDIA_ANSWER_STANDS[err.kind];
+  if (err instanceof UnderstandRefused) return REFUSAL_ANSWER_STANDS[err.kind];
   return false;
 }
 
