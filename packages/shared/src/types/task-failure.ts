@@ -203,13 +203,3 @@ export function readTaskFailure(message: string | null): StoredTaskFailure {
   };
 }
 
-/**
- * Read a stored `error_message` as one of our causes.
- * @param message - What the row holds, or null.
- * @returns The cause, or null when this is not one of ours.
- */
-export function asTaskFailureReason(
-  message: string | null,
-): TaskFailureReason | null {
-  return readTaskFailure(message).reason;
-}

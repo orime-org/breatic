@@ -17,7 +17,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  asTaskFailureReason,
   encodeTaskFailure,
   readTaskFailure,
   TASK_FAILURE_REASONS,
@@ -25,21 +24,21 @@ import {
 import { INGEST_SETTLEMENT_CODES } from "@shared/upload/ingest-failure.js";
 
 
-describe("asTaskFailureReason", () => {
+describe("the cause a stored code is read as", () => {
   it("has a cause for every code an upload can be settled on", () => {
     // Walked off the codes themselves. A lane that invents one has to name
     // what the person is told, and this is what says so for the four that the
     // Map lists by hand.
     for (const code of INGEST_SETTLEMENT_CODES) {
-      expect(TASK_FAILURE_REASONS).toContain(asTaskFailureReason(code));
+      expect(TASK_FAILURE_REASONS).toContain(readTaskFailure(code).reason);
     }
   });
 
   it("gives the source's own failures a cause of their own", () => {
-    expect(asTaskFailureReason("source_unreachable")).toBe("source_unreachable");
-    expect(asTaskFailureReason("source_too_slow")).toBe("source_too_slow");
-    expect(asTaskFailureReason("unsupported_type")).toBe("unsupported_type");
-    expect(asTaskFailureReason("empty")).toBe("empty");
+    expect(readTaskFailure("source_unreachable").reason).toBe("source_unreachable");
+    expect(readTaskFailure("source_too_slow").reason).toBe("source_too_slow");
+    expect(readTaskFailure("unsupported_type").reason).toBe("unsupported_type");
+    expect(readTaskFailure("empty").reason).toBe("empty");
   });
 
   it("puts every way our own side broke under one cause", () => {
@@ -52,21 +51,21 @@ describe("asTaskFailureReason", () => {
       "type_not_reported",
       "not_started",
     ]) {
-      expect(asTaskFailureReason(ours)).toBe("internal");
+      expect(readTaskFailure(ours).reason).toBe("internal");
     }
   });
 
   it("leaves the causes that were already named where they were", () => {
-    expect(asTaskFailureReason("aborted")).toBe("aborted");
-    expect(asTaskFailureReason("over_cap")).toBe("over_cap");
-    expect(asTaskFailureReason("expired")).toBe("expired");
-    expect(asTaskFailureReason("no_result")).toBe("no_result");
+    expect(readTaskFailure("aborted").reason).toBe("aborted");
+    expect(readTaskFailure("over_cap").reason).toBe("over_cap");
+    expect(readTaskFailure("expired").reason).toBe("expired");
+    expect(readTaskFailure("no_result").reason).toBe("no_result");
   });
 
   it("names the causes a run can be refused on before it starts", () => {
     // The task row is opened before credits are checked, so a refusal is a
     // failed row on the node rather than a toast with nothing behind it.
-    expect(asTaskFailureReason("no_credits")).toBe("no_credits");
+    expect(readTaskFailure("no_credits").reason).toBe("no_credits");
   });
 
   it("keeps the two refusals a model can answer with apart", () => {
@@ -74,14 +73,14 @@ describe("asTaskFailureReason", () => {
     // the person does next. That is false for both of these: the safety gate
     // refused this question, and the service refused these bytes — the same
     // request repeats the same answer.
-    expect(asTaskFailureReason("declined")).toBe("declined");
-    expect(asTaskFailureReason("media_refused")).toBe("media_refused");
+    expect(readTaskFailure("declined").reason).toBe("declined");
+    expect(readTaskFailure("media_refused").reason).toBe("media_refused");
   });
 
   it("answers nothing for a sentence a provider wrote about itself", () => {
-    expect(asTaskFailureReason("The model is overloaded, try again")).toBeNull();
-    expect(asTaskFailureReason(null)).toBeNull();
-    expect(asTaskFailureReason("")).toBeNull();
+    expect(readTaskFailure("The model is overloaded, try again").reason).toBeNull();
+    expect(readTaskFailure(null).reason).toBeNull();
+    expect(readTaskFailure("").reason).toBeNull();
   });
 
 });

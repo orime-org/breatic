@@ -463,11 +463,8 @@ export {
 // and the reader is whoever opens the list, in their own language.
 export {
   TASK_FAILURE_REASONS,
-  asTaskFailureReason,
   encodeTaskFailure,
   readTaskFailure,
-  type StoredTaskFailure,
-  type TaskFailureDetail,
   type TaskFailureReason,
 } from "@shared/types/task-failure.js";
 // Which media the understanding endpoint takes. Both ends ask it: the browser
