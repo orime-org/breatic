@@ -279,15 +279,28 @@ describe('when the press cannot reach its end', () => {
     expect(toast.error).toHaveBeenCalledWith('没有权限执行此操作');
   });
 
-  // A schema's complaint is written for whoever reads the log, and putting it
-  // on screen tells the reader about our insides instead of their press.
-  it('says its own line when the server was not talking to the reader', async () => {
+  // Every branch of the error handler writes its message through `t()`,
+  // including the one a rejected schema takes, so a refusal the server wrote
+  // reaches the reader in their own language whatever its status was.
+  it('passes on a refusal the server wrote, whatever the status', async () => {
     vi.mocked(canvasApi.understand).mockRejectedValueOnce(
       new ApiException({
         status: 422,
-        message: 'Invalid input: expected string, received number',
+        message: '请求格式不正确',
         fromServer: true,
       }),
+    );
+
+    await startUnderstandRun(RUN);
+
+    expect(toast.error).toHaveBeenCalledWith('请求格式不正确');
+  });
+
+  // Nothing answered, so there is no sentence to pass on and the press is
+  // where the reason has to be said.
+  it('says its own line when the answer carried no sentence', async () => {
+    vi.mocked(canvasApi.understand).mockRejectedValueOnce(
+      new ApiException({ status: 0, message: 'Network Error' }),
     );
 
     await startUnderstandRun(RUN);

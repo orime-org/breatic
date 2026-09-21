@@ -110,6 +110,33 @@ export function understandFailureCode(err: unknown): TaskFailureReason {
 }
 
 /**
+ * Which causes say something about the file itself.
+ *
+ * Every cause is named, so a cause added to the vocabulary does not compile
+ * until somebody decides whether its sentence names a file — the reader is
+ * asking which of theirs this happened to, and a list of today's two would
+ * answer that for two of them forever.
+ */
+const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
+  Record<TaskFailureReason, boolean>
+> = {
+  understand_unsupported_type: true,
+  understand_over_cap: true,
+  aborted: false,
+  over_cap: false,
+  expired: false,
+  no_result: false,
+  source_unreachable: false,
+  source_too_slow: false,
+  unsupported_type: false,
+  empty: false,
+  internal: false,
+  no_credits: false,
+  declined: false,
+  media_refused: false,
+};
+
+/**
  * What a failed read's row holds: the code, and the file it was about.
  *
  * A refusal over a file leaves the reader asking which of theirs this was,
@@ -131,10 +158,8 @@ export function understandFailureMessage(
 ): string {
   const reason = understandFailureCode(err);
   const about = err instanceof MediaUnavailable ? err : undefined;
-  const refusedTheFile =
-    reason === "understand_unsupported_type" || reason === "understand_over_cap";
   return encodeTaskFailure(reason, {
-    ...(refusedTheFile && {
+    ...(SAYS_SOMETHING_ABOUT_THE_FILE[reason] && {
       file: assetNameFromUrl(sourceUrl) ?? undefined,
       type: formatNameOf(about?.declaredType) ?? undefined,
       bytes: about?.bytes,

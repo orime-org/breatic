@@ -14,6 +14,7 @@
 import { z } from "zod";
 import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@shared/types/membership.js";
 
+import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
@@ -229,7 +230,10 @@ export const taskCreateSchema = z
      * so this is required. Plain UUID — no FK on the server side.
      */
     space_id: z.string().uuid(),
-    source: z.string().default("canvas"),
+    // The lane this row is filed under in the activity feed, which has one
+    // vocabulary (`GENERATION_SOURCES`). A free string here reached the feed
+    // as a word nothing could render.
+    source: z.enum(GENERATION_SOURCES).default("task"),
     /**
      * UUID v4 of the canvas node that will receive the task result.
      * Required when `node_ids` is present (single-node tasks).

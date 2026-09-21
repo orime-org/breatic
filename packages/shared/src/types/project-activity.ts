@@ -56,8 +56,21 @@ export const AssetActivityPayloadSchema = z.object({
  * mini-tools (capability rule: pure media transforms run client-side
  * and report through the upload handshake - they carry no taskId).
  */
+/**
+ * Which lane a generation row came from.
+ *
+ * Named on its own because the value is written three processes away — the
+ * route queues it, the worker carries it, the crash net reads it back — and
+ * every one of those wrote a free string until this type reached them. A word
+ * outside this list reaches the feed as a lane nobody can render.
+ */
+export const GENERATION_SOURCES = ["task", "mini_tool", "understand"] as const;
+
+/** One of the lanes above. */
+export type GenerationSource = (typeof GENERATION_SOURCES)[number];
+
 export const GenerationActivityPayloadSchema = z.object({
-  source: z.enum(["task", "mini_tool", "understand"]),
+  source: z.enum(GENERATION_SOURCES),
   toolName: z.string().optional(),
   model: z.string().optional(),
   outputCount: z.number().int().positive().optional(),

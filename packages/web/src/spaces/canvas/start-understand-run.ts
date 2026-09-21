@@ -27,17 +27,6 @@ import {
   type UnderstandableKind,
 } from '@web/spaces/canvas/node-understand';
 
-/**
- * The rejections whose sentence is meant for the reader.
- *
- * Each of these is raised by us through `t()` and arrives in the language the
- * reader set: 401 and 403 say this session may not do this here, 429 names
- * which throttle window was hit, 503 says a row could not be opened. The
- * short line stands in for the rest — a schema's complaint and a stack are
- * written for whoever reads the log.
- */
-const SPEAKS_TO_THE_READER: ReadonlySet<number> = new Set([401, 403, 429, 503]);
-
 /** The node being read, as the canvas holds it. */
 export interface UnderstandSource {
   id: string;
@@ -159,15 +148,13 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
     // nothing on it and nothing coming, and the press is the only place the
     // reason can be said. The node stays either way; nothing here deletes one.
     //
-    // Some of the statuses that reject carry a sentence written for the
-    // reader, and telling someone to try again is wrong for every one of
-    // them: a permission refusal repeats, and a throttle window has to be
-    // waited out. The set above is which.
+    // A sentence our server wrote is the reader's own: every branch of
+    // `error-handler.ts` writes its message through `t()`, and `fromServer`
+    // is true only when the answer carried one. The short line is for the
+    // rejections that carry no sentence at all — a request that never
+    // arrived, an answer that was not ours.
     const said =
-      err instanceof ApiException &&
-      err.fromServer &&
-      err.message &&
-      SPEAKS_TO_THE_READER.has(err.status)
+      err instanceof ApiException && err.fromServer && err.message
         ? err.message
         : t('canvas.understand.couldNotStart');
     toast.error(said);

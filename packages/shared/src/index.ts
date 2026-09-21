@@ -153,6 +153,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   AssetActivityPayloadSchema,
+  GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
   SpaceActivityPayloadSchema,
   MemberActivityPayloadSchema,
@@ -161,6 +162,7 @@ export {
   ActivityNewSignalSchema,
 } from "@shared/types/index.js";
 export type { ControlGate } from "@shared/types/index.js";
+export type { GenerationSource } from "@shared/types/project-activity.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
   PromptSegment,

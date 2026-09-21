@@ -42,7 +42,7 @@ import {
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
-import { canvasSpaceDocName } from "@breatic/shared";
+import { canvasSpaceDocName, type GenerationSource } from "@breatic/shared";
 import type { TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -95,7 +95,8 @@ export interface TaskJobData {
   params: Record<string, unknown>;
   model?: string;
   skillName?: string;
-  source?: string;
+  /** Which lane queued this run, as the activity feed files it. */
+  source?: GenerationSource;
   toolName?: string;
   /**
    * Target canvas node IDs whose task rows this run settles.

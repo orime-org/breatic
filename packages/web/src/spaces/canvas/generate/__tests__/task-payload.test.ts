@@ -24,7 +24,7 @@ describe('buildGenerateTaskPayload — assembles the POST /canvas/tasks overwrit
       node_ids: ['node-1'],
       project_id: 'proj-1',
       space_id: 'space-1',
-      source: 'canvas',
+      source: 'task',
       target_node_id: 'node-1',
       mode: 'overwrite',
     });
