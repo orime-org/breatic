@@ -799,7 +799,10 @@ export const creditSources = pgTable(
 export const payments = pgTable(
   "payments",
   {
-    id: uuid("id").defaultRandom().primaryKey(),
+    // No default: this is also the id of the row's `credit_sources` receipt,
+    // which the composite foreign key requires to already exist, so only the
+    // caller that opened that receipt can supply it.
+    id: uuid("id").primaryKey(),
     /**
      * Constant, and half of the composite key below. On its own it says
      * nothing; paired with `id` it is what makes the database refuse a payment

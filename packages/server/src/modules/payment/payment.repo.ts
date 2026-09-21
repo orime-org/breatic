@@ -57,6 +57,8 @@ function toEntity(row: typeof payments.$inferSelect): PaymentEntity {
  * @param tx - The transaction its source row is written in. Required: a
  *   payment shares that row's primary key, so the two commit together.
  * @returns The inserted payment entity
+ * @throws {Error} If the Stripe session id is already recorded, or no
+ *   `credit_sources` row carries this id.
  */
 export async function createPayment(
   data: {
