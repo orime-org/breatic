@@ -14,12 +14,13 @@ services:
   # ── Infrastructure ─────────────────────────────
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: breatic
       POSTGRES_PASSWORD: breatic
       POSTGRES_DB: breatic
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Create the second database (breatic_yjs) on first init. The
@@ -35,8 +36,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -49,14 +51,16 @@ services:
   web:
     image: ghcr.io/orime-org/breatic-web:${BREATIC_TAG:-latest}
     ports:
-      - "80:80"
-      - "443:443"
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:80:80"
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:443:443"
     volumes:
       - ./docker/certs:/etc/nginx/certs:ro
       - ./logs/nginx:/var/log/nginx
     depends_on:
-      - server
-      - collab
+      server:
+        condition: service_healthy
+      collab:
+        condition: service_healthy
     restart: unless-stopped
 
   # ── Database Migration (runs once, then exits) ──
@@ -65,7 +69,7 @@ services:
   migrate:
     image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     working_dir: /app/packages/server
-    command: ["node", "-e", "import('@breatic/core').then(m => m.runMigrations()).then(() => process.exit(0))"]
+    command: ["node", "-e", "import('@breatic/core').then(async m => { m.initCore(process.env); try { await m.runMigrations(); await m.runYjsMigrations(); } finally { await Promise.all([m.closeDb(), m.closeYjsDb()]); } }).catch(e => { console.error(e); process.exit(1); })"]
     env_file: .env
     depends_on:
       postgres:
@@ -88,7 +92,7 @@ services:
     image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
     command: ["node", "packages/server/dist/index.js"]
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file: .env
     volumes:
       - ./logs:/app/logs
@@ -98,11 +102,10 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      # `wget` is in the base node image; `-q -O -` keeps the
-      # output silent so docker only inspects exit code. The 200/503
-      # contract is enforced by the http server in
+      # Node is present in the runtime image; no shell utility is needed.
+      # The 200/503 contract is enforced by the http server in
       # packages/core/src/infra/health-server.ts.
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:3001/healthz >/dev/null || exit 1"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.SERVER_HEALTH_PORT || 3001) + '/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -126,7 +129,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:1235/healthz >/dev/null || exit 1"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.COLLAB_HEALTH_PORT || 1235) + '/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -145,7 +148,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:9101/healthz >/dev/null || exit 1"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.WORKER_HEALTH_PORT || 9101) + '/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 3
