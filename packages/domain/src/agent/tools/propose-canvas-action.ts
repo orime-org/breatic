@@ -778,10 +778,10 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnsw
   description:
     "Propose the canvas nodes for what the reader asked for, as a card they " +
     "place with one press. Something has to generate here: asked for words " +
-    "and nothing else, write them in your reply. You decide the shape: an " +
-    "empty node and a generation for a picture; words beside them when the " +
-    "next step reads those words; one empty node feeding several generations " +
-    "for several takes on one thing. " +
+    "and nothing else, write them in your reply instead. You decide the " +
+    "shape: an empty node and a generation for a picture; the copy for the " +
+    "same job as a written node beside them, rather than in your reply; one " +
+    "empty node feeding several generations for several takes on one thing. " +
     "Before proposing any shape with an empty node in it, ask_user once " +
     "whether they have that material -- you cannot see their canvas, and the " +
     "answer decides the shape. Wire an edge only where one node draws on what " +
