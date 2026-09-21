@@ -242,10 +242,9 @@ export async function chargeForGeneration(
   // still recorded, because a deployment that charges nobody still wants to
   // know what it produced; there is simply no purchase to draw it from.
   if (!env.PAYMENT_ENABLED) {
-    await creditLotRepo.appendLedgerEntry({
+    await creditLotRepo.recordStandaloneUsage({
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
-      lotId: null,
     });
     return { billed: false, charged: 0, shortfall: 0, studioId, lotIds: [] };
   }
@@ -256,10 +255,9 @@ export async function chargeForGeneration(
   // Recording the usage keeps the account honest; the shortfall tells the
   // caller to log it.
   if (studioId === null) {
-    await creditLotRepo.appendLedgerEntry({
+    await creditLotRepo.recordStandaloneUsage({
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
-      lotId: null,
     });
     return {
       billed: false,
