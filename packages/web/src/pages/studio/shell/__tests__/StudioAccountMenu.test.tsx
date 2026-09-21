@@ -8,6 +8,8 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import type { CreditOverview } from '@breatic/shared';
+
 import { authApi } from '@web/data/api/auth';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -20,6 +22,36 @@ const membershipMock = vi.fn();
 vi.mock('@web/data/api/account', () => ({
   accountApi: { membership: () => membershipMock() },
 }));
+
+const overviewMock = vi.fn();
+vi.mock('@web/data/api/credits', () => ({
+  fetchCreditOverview: () => overviewMock(),
+}));
+
+/**
+ * What the account holds, as the overview endpoint answers it.
+ * @param over - Fields to override.
+ * @returns The overview.
+ */
+function overview(over: Partial<CreditOverview> = {}): CreditOverview {
+  return {
+    assignedCredits: 3640,
+    unassignedCredits: 1790,
+    underRefundCredits: 0,
+    billing: true,
+    studios: [],
+    ...over,
+  };
+}
+
+/**
+ * The text to the right of the Credits entry, which is where the balance goes.
+ * @returns That text, empty when the entry carries nothing but its own word.
+ */
+function creditsTrailing(): string {
+  const entry = screen.getByRole('menuitem', { name: /Credits/ });
+  return (entry.textContent ?? '').replace('Credits', '').trim();
+}
 
 const ALEX = {
   id: 'u1',
@@ -71,6 +103,7 @@ describe('StudioAccountMenu', () => {
     useCurrentUserStore.getState().clear();
     vi.mocked(authApi.logout).mockReset().mockResolvedValue(undefined);
     membershipMock.mockReset();
+    overviewMock.mockReset().mockResolvedValue(overview());
   });
 
   it('shows the current user initial on the avatar button', () => {
@@ -260,5 +293,81 @@ describe('StudioAccountMenu', () => {
     await openMenu(user);
 
     expect(membershipMock).not.toHaveBeenCalled();
+  });
+
+  describe('the balance on the Credits entry', () => {
+    it('shows what the account holds, the way the membership tier is shown', async () => {
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockResolvedValue(overview());
+      setup();
+      await openMenu(user);
+
+      // 3640 assigned + 1790 unassigned, grouped the way every other balance
+      // on screen is.
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('5,430');
+      });
+    });
+
+    it('counts a pack that is under refund — it is still the buyer’s', async () => {
+      // A refund that has been asked for and not settled leaves the credits
+      // where they are. Dropping them would make the figure fall the moment a
+      // refund is asked about, with nothing on screen saying where they went.
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockResolvedValue(overview({ underRefundCredits: 500 }));
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('5,930');
+      });
+    });
+
+    it('says nothing but the word while the figure is still on its way', async () => {
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockReturnValue(new Promise(() => {}));
+      setup();
+      await openMenu(user);
+
+      expect(creditsTrailing()).toBe('');
+    });
+
+    it('says nothing but the word when the read fails', async () => {
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockRejectedValue(new Error('offline'));
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => {
+        expect(overviewMock).toHaveBeenCalled();
+      });
+      expect(creditsTrailing()).toBe('');
+    });
+
+    it('says nothing but the word where this deployment does not charge', async () => {
+      // Three zeros there mean "we do not bill", not "your money is gone", and
+      // rendering the 0 says the second one.
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockResolvedValue(
+        overview({
+          assignedCredits: 0,
+          unassignedCredits: 0,
+          underRefundCredits: 0,
+          billing: false,
+        }),
+      );
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => {
+        expect(overviewMock).toHaveBeenCalled();
+      });
+      expect(creditsTrailing()).toBe('');
+    });
   });
 });
