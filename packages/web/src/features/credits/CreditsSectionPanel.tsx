@@ -17,12 +17,10 @@ import { RefundsSection } from '@web/features/credits/sections/RefundsSection';
 import { StudiosSection } from '@web/features/credits/sections/StudiosSection';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
-/** Which section to show, and whether the overlay is open. */
+/** Which section to show. */
 interface CreditsSectionPanelProps {
   /** The section the reader picked. */
   section: CreditsSectionId;
-  /** Whether the overlay is open, which is when anything is read. */
-  open: boolean;
 }
 
 /**
@@ -32,22 +30,17 @@ interface CreditsSectionPanelProps {
  * display it and the other three need only the one flag it carries, and it is
  * a single row's worth of totals that would otherwise be re-read on every
  * click of the index.
- *
- * Its key carries the account, the way the membership panel's does: the query
- * client is a module singleton that a sign-out never clears, so a key without
- * the account would hand the next person to sign in on this tab the last
- * one's figures.
- * @param props - The section and whether the overlay is open.
+ * @param props - Which section to show.
  * @param props.section - The section the reader picked.
- * @param props.open - Whether the overlay is open.
  * @returns The section.
  */
 export function CreditsSectionPanel({
   section,
-  open,
 }: CreditsSectionPanelProps): React.JSX.Element {
   const userId = useCurrentUserStore((s) => s.user?.id ?? null);
-  const overview = useCreditOverview(open);
+  // Always on: this panel is mounted by a portal that unmounts on close, so
+  // its existence already means somebody is looking.
+  const overview = useCreditOverview(true);
 
   // `isPending` and not `isLoading`: an offline first read is paused rather
   // than fetching, which leaves `isLoading` false with no data in hand.
