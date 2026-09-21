@@ -651,3 +651,7 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 - **豁免**:shadcn vendor(`web` 的 `components/ui/`)—— 第三方 IP,不挂 Orime 版权。
 - **CI 强制**:`breatic/no-missing-license-header`(扫 `packages/*/src` 的 `.ts`/`.tsx` + `eslint-rules/src` 与 `repo-lint/src` 的 `.ts`,排除 vendor;新文件缺头即 fail)。**双行都校验** —— 版权行与许可行都得在、都得在最前两行且顺序正确;只认第一行的话,写错许可证的文件能过。
 - **一次性补全**:`pnpm lint:fix`(规则自带 fixer,幂等——已有头的文件不动)。头文本只在规则里定义这一处 —— 许可证字符串存两份必漂,而漂的那份不会有任何东西报错。
+
+## Deployment connection configuration
+
+See [Frontend and managed Redis connections](../deploy/DEPLOYMENT-CONNECTIONS.md) for build-time API/WS endpoints, allowed frontend origins, host-only cookies, and authenticated TLS Redis URLs.

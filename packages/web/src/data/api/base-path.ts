@@ -12,7 +12,9 @@
  * neither had a caller yet.
  *
  * The server mounts every API route under this prefix
- * (`packages/server/src/app.ts`); nginx does the same in production. Asset
+ * (`packages/server/src/app.ts`). A separate frontend supplies the full API
+ * base URL at build time; an empty setting keeps the same-origin default. Asset
  * URLs come from the storage layer already formed and do not go through here.
  */
-export const API_BASE_PATH = '/api/v1';
+export const API_BASE_PATH =
+  import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') || '/api/v1';

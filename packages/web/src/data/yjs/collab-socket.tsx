@@ -15,12 +15,12 @@ import { destroyDoc } from '@web/data/yjs/manager';
  * server's `onAuthenticate` hook — without ANY token the client-side library
  * short-circuits and the hook is never invoked (ueberdosis/hocuspocus#596). The
  * server ignores it and reads the real session token from the httpOnly
- * session cookie on the same-origin `/ws` upgrade request.
+ * session cookie on the configured backend WebSocket upgrade request.
  */
 const COOKIE_AUTH_PLACEHOLDER = '__cookie_auth__';
 
 /** Default same-origin path to the Hocuspocus server. */
-const COLLAB_WS_PATH = '/ws';
+const COLLAB_WS_PATH = import.meta.env.VITE_COLLAB_URL?.trim() || '/ws';
 
 /**
  * Build an absolute `ws(s)://` URL from a same-origin path, or pass an
@@ -163,7 +163,7 @@ if (typeof window !== 'undefined' && 'addEventListener' in window) {
   window.addEventListener('pageshow', (event) => {
     // `persisted` false is an ordinary load: nothing was torn down, and there
     // is nothing to put back.
-    if ((event as PageTransitionEvent).persisted) {
+    if ((event).persisted) {
       restoreAwarenessAfterPageRestore();
     }
   });
@@ -330,7 +330,7 @@ interface CollabSocketProviderProps {
    * here once at the gate instead of per-doc).
    */
   userId?: string;
-  /** WebSocket URL or same-origin path; defaults to `/ws`. */
+  /** WebSocket URL or same-origin path; defaults to `VITE_COLLAB_URL` or same-origin `/ws`. */
   url?: string;
   children: React.ReactNode;
 }
@@ -342,7 +342,7 @@ interface CollabSocketProviderProps {
  * `useSocket` knows when it may acquire a document.
  * @param root0 - Provider props.
  * @param root0.userId - Current user id; documents are not attached until this is set.
- * @param root0.url - WebSocket URL or same-origin path; defaults to `/ws`.
+ * @param root0.url - WebSocket URL or same-origin path; defaults to `VITE_COLLAB_URL` or same-origin `/ws`.
  * @param root0.children - Subtree whose document hooks share the socket.
  * @returns The context provider wrapping the project subtree.
  */

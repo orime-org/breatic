@@ -15,6 +15,7 @@
  */
 
 import { Hono } from "hono";
+import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { projectCreateSchema } from "@server/routes/schemas.js";
@@ -90,7 +91,7 @@ projects.post(
       id,
       user.id,
       toUserId,
-      c.req.header("Origin") ?? "http://localhost:8000",
+      frontendOrigin(c.req.header("Origin")),
     );
     return c.json({ data: { ok: true } }, 201);
   },
