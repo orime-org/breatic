@@ -210,6 +210,22 @@ describe("a payment as a kind of source", () => {
       `,
     ).rejects.toThrow(/payments_source_fk/);
   });
+
+  it("cannot claim another kind, even one whose source exists", async () => {
+    // The composite key is satisfied here — `(giftId, 'gift')` IS a row in
+    // `credit_sources` — so the constant column is the only thing refusing
+    // this, and it is the half the case above cannot reach.
+    const userId = await seedUser();
+    const giftId = await seedSource("gift");
+
+    await expect(
+      sql`
+        INSERT INTO payments
+          (id, source_kind, user_id, amount_cents, status, credits_granted)
+        VALUES (${giftId}, 'gift', ${userId}, 1000, 'completed', 880)
+      `,
+    ).rejects.toThrow(/payments_source_kind_check/);
+  });
 });
 
 describe("credit_lots.source_id", () => {
