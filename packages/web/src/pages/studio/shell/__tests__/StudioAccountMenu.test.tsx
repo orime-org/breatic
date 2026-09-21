@@ -360,6 +360,54 @@ describe('StudioAccountMenu', () => {
       expect(creditsTrailing()).toBe('');
     });
 
+    it('keeps one account’s figure away from the next one to sign in', async () => {
+      // The query client is a module singleton that a sign-out never clears,
+      // so a key without the account would hand the second reader the first
+      // one's figures out of cache.
+      const user = userEvent.setup();
+      // One client across both sign-ins, which is what the app has: it is
+      // created once at module scope and outlives every session on this tab.
+      const qc = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const show = (): ReturnType<typeof render> =>
+        render(
+          <MemoryRouter initialEntries={['/studio']}>
+            <QueryClientProvider client={qc}>
+              <StudioAccountMenu />
+            </QueryClientProvider>
+          </MemoryRouter>,
+        );
+
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockResolvedValueOnce(overview());
+      const first = show();
+      await openMenu(user);
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('5,430');
+      });
+
+      first.unmount();
+      useCurrentUserStore.getState().setUser({ ...ALEX, id: 'u2', name: 'Bo' });
+      // Held open, so what the second reader sees is whatever the cache had
+      // for them — nothing, unless the key forgot whose money it is.
+      let answer: (o: CreditOverview) => void = () => {};
+      overviewMock.mockImplementationOnce(
+        () =>
+          new Promise<CreditOverview>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      show();
+      await openMenu(user);
+      expect(creditsTrailing()).toBe('');
+
+      answer(overview({ assignedCredits: 12, unassignedCredits: 0 }));
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('12');
+      });
+    });
+
     it('asks for nothing until the menu is opened', () => {
       // This menu is mounted by the studio layout, so every signed-in account
       // reaches it on every page. Without the gate each navigation spends a
