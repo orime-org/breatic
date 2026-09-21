@@ -1,267 +1,150 @@
 # Breatic
 
-The AI-native operating system for content creators — a unified workspace where AI agents plan, generate, and edit multimodal content (image, video, audio, 3D, text) through natural language. All creative assets live on a shared infinite canvas where teams collaborate in real time.
+**English** | [简体中文](README-CN.md)
 
-> **Status**: Backend TypeScript migration complete. Frontend is under development.
+Breatic is an AI creative workspace built around **projects with multiple Spaces**. Keep a script in a Document Space, develop scenes in separate Canvas Spaces, and work with AI and collaborators in the same project. You choose how to divide the work: by scene, episode, deliverable or creative direction.
 
-## Documentation
+## Organize a project with Spaces
 
-- [docs/DD-PROCESS.md](./docs/DD-PROCESS.md) — Due Diligence process for major decisions
-- [docs/TDD-MANDATE.md](./docs/TDD-MANDATE.md) — Test-Driven Development discipline (AI-era mandate)
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — Contribution guide, commit conventions, commit author policy
+A **Studio** holds your projects and assets. A **Project** brings together the work for a particular production. Each project can contain multiple **Spaces**, including several of the same type, which you switch between using tabs.
 
-## Tech Stack
+| Space | What you do there | Examples |
+| --- | --- | --- |
+| **Document Space** | Write and structure the text that guides the work, using headings, lists and formatted text | A creative brief, script, shot descriptions or production checklist |
+| **Canvas Space** | Arrange references and media on an infinite canvas; use prompts, models and reference inputs to generate and refine assets | A scene workspace, character exploration, visual direction or a set of alternative shots |
 
-| Layer | Technology |
-|-------|-----------|
-| Runtime | Node.js 22+ / TypeScript 5.x |
-| Web Framework | Hono |
-| Database | PostgreSQL (Drizzle ORM + postgres.js) |
-| Cache & Pub/Sub | Redis (ioredis) |
-| Task Queue | BullMQ |
-| LLM Integration | Vercel AI SDK (OpenRouter, DeepSeek, Anthropic, Google, OpenAI) |
-| AIGC Providers | Wavespeed, Google, BytePlus, DashScope, Topaz, + more |
-| Auth | Email+Password (bcrypt) / Google OAuth |
-| Payment | Stripe (optional) |
-| Storage | Cloudflare R2, reached through an ingest Worker at the edge |
-| Realtime Collaboration | Hocuspocus 4.6.0 (Yjs) |
-| Monorepo | Turborepo + pnpm |
-| Testing | Vitest |
-| Documentation | TypeDoc (TSDoc) |
+A Canvas Space is a creative work area within the project. Its nodes hold the individual references, prompts and media you work with. Give different parts of a production their own Spaces so the script and each scene remain easy to find as the project grows.
 
-## Architecture
+### Example: a 30-second video
 
-```
-breatic/                           # Turborepo monorepo
-├── packages/
-│   ├── shared/                    # Zod schemas, types, constants (shared)
-│   ├── server/                    # API service (port 3000)
-│   │   ├── src/
-│   │   │   ├── routes/            #   Hono HTTP routes
-│   │   │   ├── middleware/        #   Auth, CORS, logging, error handler
-│   │   │   ├── agent/             #   Chat agent: streaming loop, prompt, SSE
-│   │   │   ├── modules/           #   Business modules (Repo + Service per domain)
-│   │   │   ├── infra/             #   Metrics and other server-local infrastructure
-│   │   │   └── config/            #   Server-local YAML config loaders
-│   │   └── vitest.config.ts
-│   ├── core/                      # Shared kernel: db, redis, queues, config, auth, logging
-│   ├── domain/                    # Business kernel shared by server + worker (agent, credit, tasks)
-│   ├── worker/                    # BullMQ service
-│   │   └── src/                   #   handlers/ (4 execution paths) + providers/ (image/video/audio/tts/3d/understand)
-│   ├── collab/                    # Hocuspocus service (COLLAB_PORT, default 1234)
-│   │   └── src/                   #   Yjs sync, auth, persistence, task result listener
-│   ├── ingest/                    # Cloudflare Worker: takes the bytes, writes R2, hashes what landed
-│   │   └── src/                   #   Runs on workerd, not Node. Deployed separately (pnpm deploy:worker)
-│   └── web/                       # Frontend (React + Vite)
-├── config/                        # YAML configs (agent, collab, worker, pricing, text-tools, models/)
-├── skills/                        # Built-in skill definitions (knowledge + declared tools)
-├── docker-compose.yml             # Deployment stack — pulls pre-built images from GHCR
-├── Dockerfile                     # Backend image (API/Worker/Collab/Migrate shared, 357MB). Built by CI, published to ghcr.io/orime-org/breatic
-└── Dockerfile.web                 # Frontend image (Vite build → nginx:alpine, 73MB). Built by CI, published to ghcr.io/orime-org/breatic-web
-```
+Create one project with four Spaces:
 
-Dockerfiles are the single source of truth for image builds. CI runs them on every push; contributors and deployers don't need to invoke them in the default workflows but are free to audit or build locally for debugging.
+| Space name | Type | Contents |
+| --- | --- | --- |
+| Script and brief | Document | The story, dialogue, visual direction and a description of each segment |
+| 01 · Opening · 0–10s | Canvas | Opening-shot references, prompts and candidate images or clips |
+| 02 · Main scene · 10–20s | Canvas | The main action, scene assets and variations to compare |
+| 03 · Ending · 20–30s | Canvas | The closing shot and its supporting assets |
 
-**4 containers in production**: Web (nginx, port 80) | API (Hono) | Collab (Hocuspocus) | Worker (BullMQ)
+Keep the script in its Document Space and switch to each Canvas Space to develop that segment. For a one-minute short drama, you could use six scene canvases alongside the script. For a different project, organize Spaces by character, topic or deliverable instead.
 
-### Core Flow
+The ten-second divisions are your planning convention; Space names do not set clip duration or assemble a finished video. Download the chosen assets and use a video editor for final sequencing. Canvas and Document Spaces are available now; Timeline is not yet available.
 
-```
-User Chat → MainAgent (AI SDK streamText) → TaskPlan → BullMQ → Worker
-                                                                  │
-                                                        Redis task-results
-                                                                  │
-                                                     Hocuspocus (Collab) → write Yjs doc
-                                                                  │
-                                                        Yjs sync → all connected clients
-```
+## Create with AI and collaborators
 
-### Two-Layer Memory
+Use the project chat to discuss ideas and work with the AI agent. On the canvas, choose a model, add a prompt and references, and compare or refine the results alongside the rest of your scene. Supported media includes images, video, audio and 3D assets; available generation capabilities depend on your provider credentials and model access.
 
-| Layer | Scope | Storage |
-|-------|-------|---------|
-| Project Memory | One row per member per project | `project_memories` table |
-| Conversation Memory | Per-conversation context | `conversation_memories` table |
+Invite collaborators with the project's access controls to work on the same production. Canvas and document changes synchronize in real time, so the written plan and visual work can be developed together. Breatic is under active development.
 
-Both layers are the member's own: a project row is keyed by `(user_id, project_id)`, so what one member's agent summarised is never handed to another's prompt.
+## Choose how to run it
 
-Memory is consolidated by the LLM in front of the reply, on a turn whose assembled request measures past `memory_budget_chars` (default 850,000). The oldest turns are taken until what remains is under `memory_keep_chars` (default 500,000) less what the fold itself may add back — twice the two ceilings, since the request is measured in code units and memory is cut in code points. Each consolidation **rewrites** the full memory content (not append), bounded by `memory_project_max_size` and `memory_conversation_max_size`.
+**Installing Breatic and developing Breatic are different workflows.** Running it on your own computer does not require a development server.
 
-**Turn-based context management**: Each message carries a `turnIndex` (increments on every user message). When building LLM context, tool results older than the last `tool_result_keep` (default 3) tool uses are replaced with a placeholder; the calls themselves, assistant text and user prose are kept. Model `thinking` content is stored for debugging but never sent back to the LLM.
+| Your goal | Guide |
+| --- | --- |
+| Use it yourself, or share it with a household/private team on your LAN | [Personal and LAN deployment](deploy/LOCAL.md) |
+| Run a private instance on a server with a domain | [Private server and domain deployment](deploy/SERVER.md) |
+| Modify source code, debug or contribute | [Development setup](deploy/DEVELOPMENT.md) |
 
-### Agent & Skill System
+For installation, the application runs as published Docker images: web, API, background jobs and collaboration, backed by PostgreSQL and Redis. File uploads use an Ingest Worker and media container deployed to **your Cloudflare account**, with files stored in your R2 bucket. AI calls use your provider accounts. This is not an offline or wholly on-premises installation.
 
-**Skills** are the unit of work. A skill fixes three things — its knowledge (`SKILL.md`), the tools it may use, and the model it runs on — and one factory resolves all three, so every entry point that runs a skill runs it the same way. The model is the only optional one: a skill that names none takes the configured default, which is what every shipped skill does today. Where a skill may be used and who may fire it are the host's decision, and live in `config/skill-routing.yaml` rather than in the skill.
+Start with the personal/LAN guide. It covers Cloudflare provisioning, secrets, application configuration and startup in order. Do not run `pnpm dev` or a local upload Worker just to use the product. The current Cloudflare provisioning step does use Node/pnpm/Wrangler once to publish the matching Worker; they are not long-running application requirements.
 
-```
-skills/{name}/
-├── SKILL.md          # Frontmatter (name, description) + LLM instructions
-├── metadata.json     # Runtime config: model, tools, category, output_type, requires
-└── references/       # Optional reference docs loaded on demand
-```
+## Your first project
 
-A skill declares which tools it may use; the host assembles the tool set and the model calls them within one turn.
+After completing installation:
 
-## Quick Start
+1. Open the instance in a desktop browser, register an account, save your recovery code and finish your personal Studio setup. There is no shared default password or login bypass.
+2. Create a project for the work you want to make and choose its initial Space type.
+3. Use the **+** button in the project's Space bar to add a **Document** Space. Name it “Script and brief” and write the story or requirements. If you started with a Document Space, use that one.
+4. Add one or more **Canvas** Spaces for your scenes or creative directions. Give each a meaningful name, then upload references or add nodes to begin working.
+5. Switch between Spaces using their tabs; use the Space list to find and manage the project's other Spaces. Use chat and the canvas tools to generate and refine assets with a configured provider.
+6. Share the project with permitted collaborators and choose their access permissions.
 
-Deployers and developers follow two independent paths. Pick whichever matches what you want to do — the paths don't depend on each other.
+If you are joining an existing instance, use the address provided by its operator and start with account registration; you do not need to deploy another copy. Operators should complete the deployment guide's login, persistence, collaboration, upload and generation checks before inviting users.
 
-### I want to run Breatic (deployment)
+## Working in Breatic
 
-Pulls pre-built images from GHCR. You don't need Node, pnpm, or any source code changes — just Docker.
+- **Write the plan:** in a Document Space, use headings for scenes, lists for shot descriptions and to-dos for production tasks. Select text to format it, or use the document shortcuts below.
+- **Add and arrange content:** upload references, or right-click an empty canvas area to choose a node type. Drag nodes to arrange them; drag across empty canvas to select an area.
+- **Navigate the canvas:** scroll with a mouse wheel or two fingers to pan; pinch or use Ctrl+wheel to zoom. The viewport toolbar also provides zoom, fit-to-window, grid snapping and a minimap. Double-clicking empty canvas does not zoom.
+- **Work with selected nodes:** right-click a node or selection for available actions such as copy, duplicate, group, rename, lock/unlock, download and delete. The menu depends on the selection and your permissions; not every action applies to every node.
+- **Generate and refine:** choose a model you have configured, provide a prompt and any references, and wait for the task result before continuing with the asset. Missing provider credentials or quota can prevent generation even when the application is healthy.
+- **Collaborate and keep your work:** canvas changes synchronize through the collaboration service. Check that synchronization and uploads have completed before leaving; a disconnected browser or unfinished task is not proof that work has been stored. Refresh and reopen the project when verifying persistence.
 
-```bash
-git clone https://github.com/orime-org/breatic.git
-cd breatic
-cp .env.docker .env
-# Edit .env: DATABASE_URL, Redis URLs, the five R2 settings, API keys
-docker compose up -d
-```
+<a id="keyboard-shortcuts"></a>
+## Keyboard shortcuts
 
-Images default to `:latest` (= `main` branch). To pin a specific version or follow a staging branch, set `BREATIC_TAG` in `.env`:
+Canvas shortcuts apply when the canvas Space owns keyboard focus, not while typing in chat, a text field or an editor. Editing actions require write permission. Locked items and nodes with running tasks may restrict deletion. Click the canvas before using a canvas shortcut.
 
-```bash
-# In .env:
-BREATIC_TAG=test_thinkai_cc   # track the test branch
-# or BREATIC_TAG=1.2.3         # pin a released version
-```
+### Canvas
 
-### I want to contribute code (development)
+| Action | macOS | Windows / Linux |
+| --- | --- | --- |
+| Copy selected nodes | `Cmd+C` | `Ctrl+C` |
+| Paste supported clipboard content | `Cmd+V` | `Ctrl+V` |
+| Duplicate selected nodes without replacing the clipboard | `Cmd+D` | `Ctrl+D` |
+| Undo a canvas edit | `Cmd+Z` | `Ctrl+Z` |
+| Redo a canvas edit | `Cmd+Shift+Z` | `Ctrl+Shift+Z` or `Ctrl+Y` |
+| Group an eligible selection | `Cmd+G` | `Ctrl+G` |
+| Ungroup a selected group | `Cmd+Shift+G` | `Ctrl+Shift+G` |
+| Delete eligible selected nodes / edges | `Backspace` or `Delete` | `Backspace` or `Delete` |
+| Cancel active reference picking or annotation placement | `Esc` | `Esc` |
 
-Runs API / Worker / Collab as native Node processes with hot-reload. Docker is only used for the PostgreSQL and Redis services — app code is read directly from the workspace.
+Copy/paste can depend on browser clipboard permissions and a secure context; use the trusted HTTPS setup in the LAN guide. `Cmd/Ctrl+A` is **not** a select-all-nodes shortcut: outside editable content, the project suppresses page-wide selection. Use canvas selection gestures instead.
 
-```bash
-git clone https://github.com/orime-org/breatic.git
-cd breatic
-pnpm install
+### Document editing
 
-docker compose up -d postgres redis    # only infrastructure
-cp .env.dev .env                       # localhost URLs, then fill in the five R2 values
-pnpm db:migrate                        # once, or after pulling new migrations
-pnpm dev                               # turbo starts API + Worker + Collab + Vite
-```
+These shortcuts act inside the document editor, not on canvas nodes. On macOS, `Option` is the key also labeled `Alt`.
 
-Vite dev server listens on `VITE_DEV_PORT` (default `http://localhost:8000`) and proxies `/api/*` and `/ws` to the backend, mirroring what nginx does in production. Proxy targets are derived from the backend's own `PORT` / `COLLAB_PORT`, so several worktrees can run `pnpm dev` side by side — see the header of `.env.dev`. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contribution flow.
+| Action | macOS | Windows / Linux |
+| --- | --- | --- |
+| Bold / italic / underline | `Cmd+B` / `Cmd+I` / `Cmd+U` | `Ctrl+B` / `Ctrl+I` / `Ctrl+U` |
+| Strikethrough | `Cmd+Shift+S` | `Ctrl+Shift+S` |
+| Inline code | `Cmd+E` | `Ctrl+E` |
+| Paragraph | `Cmd+Option+0` | `Ctrl+Alt+0` |
+| Heading 1 / 2 / 3 | `Cmd+Option+1` / `2` / `3` | `Ctrl+Alt+1` / `2` / `3` |
+| Bulleted list | `Cmd+Shift+8` | `Ctrl+Shift+8` |
+| Numbered list | `Cmd+Shift+7` | `Ctrl+Shift+7` |
+| To-do list | `Cmd+Shift+9` | `Ctrl+Shift+9` |
+| Code block | `Cmd+Option+C` | `Ctrl+Alt+C` |
+| Quote | `Cmd+Shift+B` | `Ctrl+Shift+B` |
 
-Useful commands:
+### Chat
 
-```bash
-pnpm test          # unit tests (mocked deps)
-pnpm typecheck     # tsc --noEmit across all packages
-pnpm lint          # ESLint
-```
+| Action | Shortcut |
+| --- | --- |
+| Send the current message | `Enter` |
+| Insert a line break | `Shift+Enter` |
 
-## Configuration
+Enter used to confirm an active input-method composition does not send the message. Submission still depends on the current input and task state.
 
-Settings are parsed at startup via Zod, which catches a malformed value. A
-missing one is caught where it is first used: an absent R2 setting lets every
-service boot and fails the first stored file, naming what it needed. See
-`.env.dev` or `.env.docker` for the full list.
+## What you need
 
-### Required
+- Docker with Compose for the application and databases.
+- A Cloudflare account with R2 and access to Containers for the deployed upload/media service.
+- Your own AI provider credentials and available quota for the models you want to use.
+- For LAN or domain access, a trusted HTTPS certificate and network access limited to your intended users.
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `R2_BUCKET` | The Cloudflare R2 bucket every stored file lives in |
-| `R2_ACCESS_KEY` | R2 access key id |
-| `R2_SECRET_KEY` | R2 secret access key |
-| `R2_S3_ENDPOINT` | Account-scoped S3 API endpoint, `https://<account>.r2.cloudflarestorage.com` |
-| `UPLOAD_BASE_URL` | Public read base for stored files (r2.dev or your own CDN domain) |
+SMTP mail, Google sign-in, Stripe payments and search are optional integrations. The guides distinguish these from the services required for file storage and generation. Cloud services and model calls can incur charges even when Breatic payments are disabled.
 
-### AI Providers (optional)
+## License and permitted use
 
-| Variable | Description |
-|----------|-------------|
-| `OPENROUTER_API_KEY` | Text generation for every model with no key of its own below |
-| `WAVESPEED_API_KEY` | Image/video/audio/3D generation |
-| `DEEPSEEK_API_KEY` | DeepSeek direct access |
-| `GOOGLE_API_KEY` | Google Gemini direct access |
-| `ANTHROPIC_API_KEY` | Anthropic Claude direct access |
-| `OPENAI_API_KEY` | OpenAI direct access |
+Breatic is **source-available** under the [Breatic Source-Available License v1.0](LICENSE), based on Apache 2.0 with additional conditions.
 
-A model whose vendor has a key here is called at that vendor; everything else
-goes through OpenRouter, so one `OPENROUTER_API_KEY` covers every text model
-call. Image, video, audio and 3D generation run on their own vendor keys.
+The license permits individual use, private groups that are not publicly advertised or open to general sign-up, and internal deployment within one organization. It prohibits offering Breatic to the public without separate authorization, **whether paid or free**. A domain or a server does not by itself determine the permitted audience. Preserve the product's branding and copyright notices. See the license for the complete terms; public-facing licensing inquiries go to [licensing@orime.ai](mailto:licensing@orime.ai).
 
-### Optional
+## For contributors
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PAYMENT_ENABLED` | `false` | Enable Stripe billing |
-| `ENV` | `dev` | `dev`, `staging`, `prod` |
+Breatic uses TypeScript, React/Vite, Hono, PostgreSQL, Redis/BullMQ and Hocuspocus/Yjs, with a separate Cloudflare Worker for uploads.
 
-## API Endpoints
-
-All endpoints are under `/api/v1`:
-
-| Prefix | Description |
-|--------|-------------|
-| `/auth` | Login, register, logout |
-| `/chat` | Agent conversation (SSE streaming) |
-| `/canvas` | Task creation, understand, SSE stream |
-| `/mini-tools` | Editor panel tools: image/video/audio (async Worker) + text (SSE streaming) |
-| `/projects` | Project CRUD |
-| `/tasks` | Task status and history |
-| `/skills` | Built-in + marketplace skills |
-| `/payment` | Stripe checkout and webhooks |
-| `/healthz` | Liveness probe — on a **dedicated port** (API `:3001`), not the main API port |
-
-## Testing
-
-```bash
-# Unit tests (mocked deps, no Docker needed)
-pnpm test
-
-# Integration tests (requires Docker running)
-pnpm test:integration
-
-# End to end, in a real browser against a running stack (`pnpm dev`)
-pnpm --filter @breatic/web test:smoke    # a user's errand, across parts
-pnpm --filter @breatic/web test:visual   # one part's own behaviour and geometry
-
-# Type checking
-pnpm typecheck
-
-# Linting
-pnpm lint
-
-# Generate API docs
-pnpm docs
-```
-
-The two browser suites prepare themselves: they register the accounts they
-sign in as, build the Projects they open, and remove the Projects afterwards. Nothing
-needs configuring, and they run against `localhost` only.
-
-Cases that reach a model provider, a public site, object storage or a payment
-service carry a `@needs-*` tag and sit out of the two commands above, because
-a machine without that service would report them as defects in the code. Each
-run prints how many it covered and which tags it left out; `test:smoke:all`
-and `test:visual:all` run everything. See
-[docs/TEST-MANDATE.md](./docs/TEST-MANDATE.md).
+- [Development setup](deploy/DEVELOPMENT.md): dependencies, local services and tests.
+- [Contributing](CONTRIBUTING.md): contribution workflow and conventions.
+- [Architecture](docs/ARCHITECTURE.md): packages, services, data flow and frontend structure.
+- [Testing](docs/TEST-MANDATE.md): unit, integration and browser verification.
 
 ## Security
 
-Breatic takes security seriously. Found a vulnerability? Please report
-it privately — see [SECURITY.md](./SECURITY.md) for our disclosure
-policy and reporting channel (`security@breatic.ai`).
-
-Do **not** open public GitHub issues for security vulnerabilities.
-
-## License
-
-Breatic is released under the **Breatic Source-Available License v1.0**,
-based on Apache 2.0 with additional conditions:
-
-- No public-facing deployment without authorization (paid or free)
-- Brand and copyright must be preserved across all components
-- License revisions apply only prospectively — past contributions
-  remain under the version in effect at commit time
-
-See [LICENSE](./LICENSE) for the full text.
-
-Commercial licensing: [licensing@orime.ai](mailto:licensing@orime.ai).
+Report vulnerabilities privately according to [SECURITY.md](SECURITY.md), rather than opening a public issue. Third-party components and notices are documented in [THIRD-PARTY.md](THIRD-PARTY.md).
 
 © 2026 Orime, Inc.
-

@@ -80,3 +80,6 @@ api-reference/
 .dev.vars
 packages/ingest/wrangler.toml
 .wrangler/
+
+# Operator database backups
+backups/

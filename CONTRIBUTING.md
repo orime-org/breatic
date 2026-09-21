@@ -16,6 +16,7 @@ Be kind. Be technical. Assume good intent. Disagree with ideas, not people.
 5. Run `pnpm typecheck` and `pnpm test` before committing.
 6. Open a pull request targeting `main`.
 
+For a complete first-run walkthrough, follow the [development setup guide](./deploy/DEVELOPMENT.md).
 See [README.md](./README.md) for the architecture overview.
 
 ---
