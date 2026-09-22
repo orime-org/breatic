@@ -346,15 +346,15 @@ if (entryBytes > ENTRY_BUDGET) {
 // get renamed on a release: a page chunk, when its own code changes, and the
 // loader chunk, when any page is renamed. Each is meant to have exactly one
 // reader — the loader for a page, the entry for the loader — and that pair is
-// the whole residue a page-only release costs a returning reader, 76,122 bytes
+// the whole residue a page-only release costs a returning reader, 76,292 bytes
 // measured. Nothing in the source forces it, so this reads the built output.
 //
 // Measured while it did not hold, one mutation each against its own baseline.
 // A preload helper beside the loaders made `ProjectPage` name them: a one-line
-// login-page edit then cost 1,894,219 bytes across 4 chunks, against 83,925
+// login-page edit then cost 1,894,219 bytes across 4 chunks, against 84,088
 // across 3. A hover prefetch in the shared `Button` made that chunk name
 // `ProjectPage`: a one-line `ProjectPage` edit then cost 2,821,634 bytes
-// across 36 chunks, against 1,885,595 across 3.
+// across 36 chunks, against 1,885,990 across 3.
 const loaderChunks = files.filter(
   (f) => f.startsWith('route-imports-') && f.endsWith('.js'),
 );
