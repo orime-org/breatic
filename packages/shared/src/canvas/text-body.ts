@@ -8,6 +8,13 @@
  * into a body, and collab turns a finished read's text into one — the same
  * structure either way, so it is stated once.
  *
+ * This is the package's own entry point, `@breatic/shared/canvas-body`, and
+ * the barrel does not re-export it. The barrel is bundled into one module, so
+ * an export the browser reaches from it on any page is downloaded on every
+ * page; reaching Yjs from there put 88 KB of library in front of every reader
+ * who opened the login screen. Anything else here that reaches a heavy
+ * dependency belongs at its own entry for the same reason.
+ *
  * The body is a `Y.XmlFragment` the editor binds to, but three write paths
  * arrive with a plain string — a dropped file's extracted text, a paste, and a
  * copied node — and three read paths need one back: the display state, the `@`

@@ -8,11 +8,15 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./src/index.ts"
+    },
+    "./canvas-body": {
+      "import": "./dist/canvas/text-body.js",
+      "types": "./src/canvas/text-body.ts"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --clean",
-    "dev": "tsup src/index.ts --format esm --watch",
+    "build": "tsup src/index.ts src/canvas/text-body.ts --format esm --clean",
+    "dev": "tsup src/index.ts src/canvas/text-body.ts --format esm --watch",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

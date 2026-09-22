@@ -87,7 +87,13 @@ web **用得到**吗?用得到 → `shared`;用不到 → `core`。
 - 本包内部用 `@shared/*` 前缀
 
 ## 暴露啥
-**单入口** `src/index.ts`(`tsup` 全 bundle),不开多 subpath 入口(多入口会把 `@shared/*` 泄漏进 dist)。
+**主入口** `src/index.ts`(`tsup` 全 bundle),它是默认答案。**另有一个 subpath 入口 `@breatic/shared/canvas-body`**(`src/canvas/text-body.ts`),给**碰重依赖、而 web 只在懒加载页用得到**的模块。
+
+**判定题:这个模块 import 了一个重依赖(yjs 这类)吗?web 会在某个页面用它吗?两个都是 → 它走自己的入口,不进 barrel。** 其余一律进 barrel。
+
+**理由是实测出来的**:主入口打成**一个文件**,vite 眼里就是一个模块;应用入口为了 i18n 就 import 了这个包,于是这个模块被分配进入口 chunk,**web 从 barrel 用到的任何导出都要在那个 chunk 里发出来** —— 哪怕它只被画布那个懒加载页用。`canvas/text-body.ts` 进 barrel 那次实测:入口闭包从 1,043,875 涨到 1,141,205 字节,多出来的 31 个模块全是 yjs 和 lib0,**每个打开登录页的读者都要下这 88 KB**;换成 subpath 之后回到 1,052,984。`packages/web/verify-chunks.mjs` 的 `ENTRY_BUDGET` 盯着这个数,再犯会当场红。
+
+**别名不会因此泄漏**:两个入口都是 bundle 模式,产出的 `dist/canvas/text-body.js` 只有一行 `import * as Y from "yjs"`。这一条由 repo-lint 的 `no-unresolved-alias-in-dist` 机械守着,不靠记。
 
 ## 怎么拿配置
 不拿。shared 是纯数据/类型层,不读配置、不读 `process.env`、不写日志。

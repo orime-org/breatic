@@ -36,7 +36,7 @@ import type { CanvasNodeFields } from '@breatic/shared';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
-import { writePlainTextIntoBody, bodyToPlainText } from '@breatic/shared';
+import { writePlainTextIntoBody, bodyToPlainText } from '@breatic/shared/canvas-body';
 import {
   CanvasContext,
   type CanvasContextValue,

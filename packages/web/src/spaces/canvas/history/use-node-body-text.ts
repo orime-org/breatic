@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { bodyToPlainText } from '@breatic/shared';
+import { bodyToPlainText } from '@breatic/shared/canvas-body';
 
 import { getTextBody } from '@web/data/yjs/canvas-space';
 

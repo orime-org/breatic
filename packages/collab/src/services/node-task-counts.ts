@@ -17,7 +17,8 @@
 
 import * as Y from "yjs";
 import type { NodeTaskCounts, NodeTaskResult } from "@breatic/shared";
-import { CANVAS_NODES_KEY, writePlainTextIntoBody } from "@breatic/shared";
+import { CANVAS_NODES_KEY } from "@breatic/shared";
+import { writePlainTextIntoBody } from "@breatic/shared/canvas-body";
 
 /**
  * Write the counts, and the content fields when the event carries them.

@@ -22,7 +22,7 @@ vi.mock('@web/i18n/use-translation', () => ({
 }));
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
-import { writePlainTextIntoBody } from '@breatic/shared';
+import { writePlainTextIntoBody } from '@breatic/shared/canvas-body';
 import type * as Y from 'yjs';
 
 import { canvasApi, type NodeHistoryEntry } from '@web/data/api/canvas';

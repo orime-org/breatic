@@ -101,8 +101,11 @@ async function seedNode(opts: {
         },
       });
       if (spec.body !== undefined) {
+        // The body helpers have their own entry point, so the module to ask
+        // for is that one — the package's main bundle does not carry them.
         const shared = (await import(
-          /* @vite-ignore */ live(/@breatic_shared|shared\/dist\/index\.js/)
+          /* @vite-ignore */
+          live(/@breatic_shared_canvas-body|shared\/dist\/canvas\/text-body\.js/)
         )) as { writePlainTextIntoBody: (b: unknown, t: string) => void };
         shared.writePlainTextIntoBody(
           canvas.getTextBody(pid, sid, spec.id),
