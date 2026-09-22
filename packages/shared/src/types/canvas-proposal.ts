@@ -208,9 +208,9 @@ export function feedersOf(proposal: CanvasProposal, index: number): ProposalFeed
  * What one node's prompt may name and what its marks mention.
  *
  * One function because three sides read it and they have to agree: the check
- * decides how many marks are legal, the canvas writes that many mentions, and
- * the card files its to-dos by the same list. Read differently, a mark is
- * counted against one node and lands on another.
+ * asks whether a mention can be carried here at all, the canvas writes the
+ * mentions, and the card files its to-dos by the same list. Read differently,
+ * a mark is filed under one node and lands on another.
  *
  * What may be named is asked of {@link insertRefusal}, the panel's own picker
  * rule, rather than restated here: a mention this proposal writes is one the

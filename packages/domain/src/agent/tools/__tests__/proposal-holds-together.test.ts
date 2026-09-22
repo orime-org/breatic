@@ -1596,7 +1596,7 @@ describe("a mark pointing at an upstream node", () => {
 
     expect(verdict).toEqual({
       ok: false,
-      reason: expect.stringContaining("takes no mention of"),
+      reason: expect.stringContaining("cannot carry a mention of"),
     });
   });
 });

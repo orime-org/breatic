@@ -11,12 +11,12 @@
  * models a mode can reach, and whether that mode needs material only the
  * reader has.
  *
- * A mode that needs material is proposed with an empty node to put each piece
- * of it in, and the prompt has to say, in the place it belongs, what goes in
- * each one -- without that the reader is handed a group whose generate button
- * refuses. Whether an edge joins them depends on how the material reaches the
- * generation: the reference pool is fed by an edge, a slot on the panel's
- * toolbar is not, and the canvas has no legal wiring for the second.
+ * A mode that needs material is proposed with an empty node to put it in, and
+ * how that material reaches the generation differs by model: the reference
+ * pool is fed by an edge and picked by a mention in the prompt, a slot on the
+ * panel's toolbar is picked by the reader clicking a node on the canvas.
+ * Which of the two this model uses is read off the catalog here and travels
+ * with the proposal.
  *
  * Every character of this tool's description and its field descriptions goes
  * out with every turn of every conversation, and is measured against the same
@@ -24,13 +24,13 @@
  * model at the moment it needs it, so the descriptions say the least that
  * gets a first attempt in the right shape.
  *
- * How MANY pieces a reader has to supply is the catalog's answer, from both
- * of its layers (#269): the model declares which of its parameters are filled
- * off the canvas and which may be left empty, and the mode declares whether
- * every one of them has to hold something or any one is enough. So a mode
- * wanting a first and a last frame asks for one type twice and the count says
- * two, which is what a proposal is held to. Which named slot a given node
- * belongs in stays the panel's to know, and its own gate says so.
+ * What this check answers is what the catalog and the product rules settle:
+ * this mode exists, this model backs it, this value is one the control
+ * offers, these characters fit, this line is one the canvas allows, this
+ * panel can carry an upstream mention. How many nodes a shape takes, what
+ * they are called, how many marks a prompt holds and how the nodes are wired
+ * is the agent's to decide: a scene has more than one good answer, and a
+ * check that picked one of them would be the rules written out in code.
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";
@@ -448,7 +448,6 @@ function checkGenerateNode(
   // Read before the prompt gate below, because what that gate measures
   // depends on which nodes this prompt can name.
   const pool = poolParam(chosen);
-  const byReference = pool !== undefined;
   // A model drawing no box mounts no editor and forces the box empty, so
   // words put there reach nobody. The marks stay -- they are what the card
   // draws its to-dos from -- and this is about the words around them.
@@ -484,7 +483,7 @@ function checkGenerateNode(
     const named = nodesAt(held.upstream).map((n) => `"${n.name}"`);
     return {
       ok: false,
-      reason: `"${model}" takes no mention of ${named.join(", ") || "anything upstream"} -- its panel has nowhere to put one. Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
+      reason: `"${model}" cannot carry a mention of ${named.join(", ") || "an upstream node"} here. Wire an edge to what it draws on, or say what you meant in the words themselves.`,
     };
   }
   // What the panel's own gate would say about the box this proposal fills in.
@@ -539,7 +538,7 @@ function checkGenerateNode(
     (n) => n.type === "image",
   );
   const cap = pool && effectiveItemCap(capShapeOf(pool), node.params ?? {});
-  const over = byReference ? referenceCapExceeded(pooled.length, cap) : null;
+  const over = pool ? referenceCapExceeded(pooled.length, cap) : null;
   if (over) {
     return {
       ok: false,
