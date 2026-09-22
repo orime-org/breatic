@@ -64,7 +64,8 @@ export function GoogleSignIn({ clientId, busy, onCredential }: GoogleSignInProps
         onScriptLoadSuccess={() => setScript('ready')}
         onScriptLoadError={() => setScript('failed')}
       >
-        <div inert={busy || script !== 'ready'} aria-busy={busy} className={script === 'failed' ? 'hidden' : 'min-h-10'}>
+        {/* Match Google's iframe canvas scheme so its extra margins stay transparent in dark mode. */}
+        <div inert={busy || script !== 'ready'} aria-busy={busy} className={script === 'failed' ? 'hidden' : 'scheme-light min-h-10'}>
           <GoogleLogin
             theme={googleTheme}
             size='large'
