@@ -171,7 +171,7 @@ export function BuyConfirmDialog({
           {refundLines.length === 0 ? null : (
             <div className='flex flex-col gap-2'>
               <h3 className='text-sm font-semibold'>
-                {t('credits.buy.refundTitle')}
+                {t('credits.refundTitle')}
               </h3>
               <RuleLines
                 data-testid='confirm-refund-rule'

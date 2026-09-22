@@ -107,7 +107,7 @@ export async function sendMail(options: SendMailOptions): Promise<SendMailResult
   }
 
   await t.sendMail({
-    from: env.SMTP_USER,
+    from: env.SMTP_FROM || env.SMTP_USER,
     to: options.to,
     subject: options.subject,
     html: options.html,

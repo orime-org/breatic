@@ -122,14 +122,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "verify:chunks": "node verify-chunks.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:smoke": "playwright test tests/smoke",
-    "test:visual": "playwright test tests/visual",
-    "test:visual:update": "playwright test tests/visual --update-snapshots",
+    "test:smoke": "pnpm -w db:check-watermark && node scripts/default-run.mjs smoke",
+    "test:smoke:all": "pnpm -w db:check-watermark && playwright test --project=smoke",
+    "test:visual": "pnpm -w db:check-watermark && node scripts/default-run.mjs chromium",
+    "test:visual:all": "pnpm -w db:check-watermark && playwright test --project=chromium",
+    "test:visual:update": "pnpm -w db:check-watermark && playwright test --project=chromium --update-snapshots",
     "prepare": "husky install"
   },
   "browserslist": {
@@ -166,6 +169,7 @@
     "eslint": "catalog:",
     "eslint-plugin-jsdoc": "catalog:",
     "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-playwright": "catalog:",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "fast-check": "catalog:",

@@ -67,6 +67,7 @@ const {
 //     the warn/error spies the log-trail assertions below check
 //   - sessionCookieName(): the per-deployment cookie name
 vi.mock("@breatic/core", () => ({
+  env: { ALLOWED_ORIGINS: "https://app.example.com" },
   getSession: getSessionMock,
   projectAuthService: { loadProjectRole: loadProjectRoleMock },
   sessionCookieName: () => "breatic_session",
@@ -234,6 +235,23 @@ describe("createAuthHook", () => {
         socketId: "socket-1",
       });
   };
+
+  it("rejects an untrusted browser origin before looking up a session", async () => {
+    const hook = buildHook();
+    await expect(hook({token: PLACEHOLDER_TOKEN, documentName: `project-${PID}/meta`,
+      requestHeaders: new Headers({origin: "https://untrusted.example",cookie: "breatic_session=tok"}),
+    })).rejects.toThrow("Origin not allowed");
+    expect(getSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("allows a trusted browser origin to reach session authentication", async () => {
+    const hook = buildHook();
+    getSessionMock.mockResolvedValue(null);
+    await expect(hook({token: PLACEHOLDER_TOKEN, documentName: `project-${PID}/meta`,
+      requestHeaders: new Headers({origin: "https://app.example.com",cookie: "breatic_session=tok"}),
+    })).rejects.toThrow("Invalid or expired session token");
+    expect(getSessionMock).toHaveBeenCalled();
+  });
 
   it("rejects when the session cookie is missing", async () => {
     const hook = buildHook();

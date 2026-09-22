@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { activeBorder } from "#rules/rules/active-border";
 import { hoverPattern } from "#rules/rules/hover-pattern";
+import { noBorrowedProject } from "#rules/rules/no-borrowed-project";
 import { noCollabAuthPrimitives } from "#rules/rules/no-collab-auth-primitives";
 import { noCorsWildcardCredentials } from "#rules/rules/no-cors-wildcard-credentials";
 import { noDeployedHost } from "#rules/rules/no-deployed-host";
@@ -24,7 +25,11 @@ import { noPostgresOutsideCore } from "#rules/rules/no-postgres-outside-core";
 import { noRawDesignValues } from "#rules/rules/no-raw-design-values";
 import { noRawHexColor } from "#rules/rules/no-raw-hex-color";
 import { noRelativeImport } from "#rules/rules/no-relative-import";
+import { noRuntimeTestSkip } from "#rules/rules/no-runtime-test-skip";
+import { noSerialTests } from "#rules/rules/no-serial-tests";
 import { noSyncInRequestPath } from "#rules/rules/no-sync-in-request-path";
+import { declaredScenarioTags } from "#rules/rules/declared-scenario-tags";
+import { noUntaggedPublicHost } from "#rules/rules/no-untagged-public-host";
 import { docLinkResolves } from "#rules/rules/doc-link-resolves";
 import { noRawSqlOutsideRepo } from "#rules/rules/no-raw-sql-outside-repo";
 import { noYjsDocumentsOutsideRepo } from "#rules/rules/no-yjs-documents-outside-repo";
@@ -52,6 +57,7 @@ export const breaticPlugin = {
   rules: {
     "active-border": activeBorder,
     "hover-pattern": hoverPattern,
+    "no-borrowed-project": noBorrowedProject,
     "no-collab-auth-primitives": noCollabAuthPrimitives,
     "no-cors-wildcard-credentials": noCorsWildcardCredentials,
     "no-deployed-host": noDeployedHost,
@@ -74,7 +80,11 @@ export const breaticPlugin = {
     "no-raw-design-values": noRawDesignValues,
     "no-raw-hex-color": noRawHexColor,
     "no-relative-import": noRelativeImport,
+    "no-runtime-test-skip": noRuntimeTestSkip,
+    "no-serial-tests": noSerialTests,
     "no-sync-in-request-path": noSyncInRequestPath,
+    "declared-scenario-tags": declaredScenarioTags,
+    "no-untagged-public-host": noUntaggedPublicHost,
     "doc-link-resolves": docLinkResolves,
     "no-raw-sql-outside-repo": noRawSqlOutsideRepo,
     "no-yjs-documents-outside-repo": noYjsDocumentsOutsideRepo,

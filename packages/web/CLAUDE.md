@@ -6,7 +6,7 @@
 **React 前端 app**(`@breatic/web`)。不是 node 进程,**浏览器里跑**。
 
 ## 分层(包内)
-7 层 layered 单向依赖:`app → pages → spaces → features → stores → data → ui`(详见 [docs/ARCHITECTURE.md#frontend](../../docs/ARCHITECTURE.md#frontend))。**层序到 `ui` 为止** —— `components/ui` / `theme` / `i18n` / `lib` 是底部同级一组,组内互相 import 不算方向违规。`lint:dependency-cruiser` 的 `web-layer-*` 七条规则 CI 强制。
+7 层 layered 单向依赖:`app → pages → spaces → features → stores → data → ui`(详见 [docs/ARCHITECTURE.md#frontend](../../docs/ARCHITECTURE.md#frontend))。**层序到 `ui` 为止** —— `components` / `theme` / `i18n` / `lib` 是底部同级一组,组内互相 import 不算方向违规。`components/ui` 是 shadcn vendor 子目录(第三方 IP,不挂 Orime 版权,repo-lint 的 `no-cjk` 按这个理由跳过它);我们自己写的共享组件放 `components/` 根,`loading-screen.tsx` 是一个。`lint:dependency-cruiser` 的 `web-layer-*` 七条规则 CI 强制。
 
 ## 可 import 谁
 - ✅ `@breatic/shared`(**唯一**能用的 workspace 包,因为它浏览器安全)+ 外部 npm
@@ -55,7 +55,7 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 
 **三步,一步都不许跳(user 2026-08-18 定死)**:① **任何 UI 表现,先看组件库里有没有** —— 不分类别,浮层 / 表单 / 交互控件算,骨架屏 / 徽章 / 分隔线 / 头像 / 空态 / 进度条这些纯展示的一样算;② **有就用它**,别照着它再写一个(手写 `className='skeleton-shimmer'` 拿到的是同样的像素,但等于把 `Skeleton` 的实现复制了一份 —— 它以后换动画、改圆角、加分支,都跟这一处无关了);③ **确实没有才自己做,而且做出来必须跟仓里已有的视觉表现一致** —— 尺寸、间距、圆角、颜色一律去数仓里同类现在用的是什么,别自己挑一套。**理由是视觉一致性**:user 原话「不然的话,就没办法保证整个视觉效果的一致性了」。判定题:**我正要给这个新组件填一个尺寸 / 颜色 / 圆角吗?仓里同类现在用的是什么?数过了吗?**
 
-**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。判定题:**我正要写一个 UI 组件吗?是 → 先 grep `components/ui/`,别手写**。**找到了就用它,别照着它再写一个** —— 复用的是那个组件,不是它的样式类名(手写 `className='skeleton-shimmer'` 等于把 `Skeleton` 的实现抄了一遍,它以后怎么改都跟这一处无关了)。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
+**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。**这句里全站成立的只有「别手写、用 `components/ui/` 里的那个」** —— 「走 Portal 逃 transform」解决的是 ReactFlow 那个 `transform` 祖先,画布之外没有它,所以 Portal 在别处只是那几个 primitive 的默认实现、不是一条不许动的约束(`components/ui/tooltip` 的 `portal` 默认就关着,全仓目前没有一处传它 —— trigger 落在 CSS transform 祖先里才需要)。判定题:**我正要写一个 UI 组件吗?是 → 先 grep `components/ui/`,别手写**。**找到了就用它,别照着它再写一个** —— 复用的是那个组件,不是它的样式类名(手写 `className='skeleton-shimmer'` 等于把 `Skeleton` 的实现抄了一遍,它以后怎么改都跟这一处无关了)。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
 
 ## demo 表达功能逻辑,数值一律对齐产品既有 token(MANDATORY)
 
@@ -143,7 +143,8 @@ demo 里那些动画参数是随手写的示意,不是定稿 —— 完全实现
 **收进层之后有一件事要一起搬:scope 自己和它元素上的 utility 都会设的那个属性。** 两者交集里的属性从层里必然输给 utility。`.chat-markdown` 的 `line-height: 1.65` 就是这一个 —— 它的元素带着 `text-sm`,而 Tailwind 的字号 utility 自带行高,收进层后正文行高从 21.45px 掉到 18px。做法是把这个值搬到元素上、跟字号写在一起(`MarkdownMessage` 的 `SIZE_CLASS` 是 `chat-markdown text-sm leading-[1.65]`),scope 里那一行删掉,一个数只留一处。
 
 判定题:**我正要在 `index.css` 里写一条 `.scope 元素 { ... }` 吗?它在 `@layer` 里吗?** 以及 **这个 scope 和它元素上的 utility,有没有都会设的属性?有 → 那个属性归元素。**
-`packages/web/src/pages/project/chat/__tests__/chat-markdown-css.test.ts` 用 postcss 遍历规则的父节点强制这两条,**但它只认 `.chat-markdown` 这一个 scope** —— 别的 scope(`index.css` 里还有 `.doc-body-editor .ProseMirror` 那一族没分层,自带 `line-height: var(--doc-leading-body)`)靠这条 mandate 人守,没有守卫替你判。判定题因此对每个新 scope 都要自己过一遍。
+`packages/web/src/pages/project/chat/__tests__/chat-markdown-css.test.ts` 用 postcss 遍历规则的父节点强制这两条,**但它只认 `.chat-markdown` 这一个 scope**,别的 scope 没有守卫替你判,判定题每个新 scope 都要自己过一遍。
+**document 正文那族(`.doc-body`,79 条)今天没分层,这是查过之后留着的**(user 2026-09-21 拍定):这条规则要咬人,得有一个带工具类的元素落在作用域里,而正文的 DOM 全部由 BlockNote 生成、我们的装饰只往上加 `data-*`。实测正文外壳底下 53 个元素,**带工具类的只有外壳自己一个**(`mx-auto max-w-3xl [&_.ProseMirror]:outline-none`),匹配它的那条未分层规则设的是 `display` / `flex-direction` / `flex` / `width`,跟那三个工具类**零重叠**(2026-09-21 真机实测)。**所以要收层的时点是「往正文里放一个带工具类的元素」那一刻,由放它的那次改动一起做** —— 那时候作用对象才存在,撞没撞上也才量得出来。
 
 ## 禁止浏览器 / OS 原生渲染的交互控件(MANDATORY,CI 强制)
 **凡「视觉皮肤由浏览器 / 操作系统绘制」的交互控件,一律禁用,必须自绘(Radix primitive 或自绘组件)。** 根因:各引擎(Chrome / Safari / Firefox)画同一个原生控件长得不一样,**对创作类产品这种跨引擎不一致是致命的**;「跨引擎像素一致」是硬功能需求,不是锦上添花。这是滚动条 / toast / tooltip 那些单点守卫背后的**总原则** —— 它们都是本条的实例,本条把教训泛化,让每个新原生控件(color → range → 未来 date)被**机械挡住**,而不是每次靠真机 review 一个个逮。

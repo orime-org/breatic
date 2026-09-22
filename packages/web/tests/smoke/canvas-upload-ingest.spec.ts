@@ -17,10 +17,7 @@
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
- *
- * Skips itself when the credentials are absent, so an unconfigured checkout
- * still passes the suite.
+ *   pnpm --filter @breatic/web test:smoke
  */
 import { randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -30,15 +27,8 @@ import { join } from 'node:path';
 
 import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 let context: BrowserContext;
 let page: Page;
@@ -149,9 +139,10 @@ function buildMultipartVideo(dir: string): string {
 /**
  * Wait until no toast is on screen.
  *
- * These cases run in one page, in order, and a toast lives a few seconds. A
- * case that asserts on toast text without this passes on the one the case
- * before it raised — the failure it is here to catch never has to happen.
+ * Opening the Project and seeding a Space each raise their own toasts, and a
+ * toast lives a few seconds. A case that asserts on toast text without this
+ * passes on one its own opening raised — the failure it is here to catch never
+ * has to happen.
  * @param target - The page to settle.
  */
 async function noToastLeft(target: Page): Promise<void> {
@@ -171,25 +162,17 @@ async function videoSources(target: Page): Promise<string[]> {
   );
 }
 
-test.beforeAll(async ({ browser }) => {
-  // A hook keeps the config's budget until it raises its own, and seeding a
-  // Space behind a sign-in outlasts 30s.
-  test.setTimeout(120_000);
-  context = await browser.newContext();
+test.beforeEach(async ({ browser }) => {
+  context = await browser.newContext({ storageState: STATE_FILE.A });
   page = await context.newPage();
-  await signIn(page, email as string, password as string);
 
   // Reuse an existing Project: this spec is about uploads, and minting one per
   // run burns the tier's projects-per-studio allowance.
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await page.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(page);
   spaceId = await createSpace(page, 'canvas', `upload-${Date.now()}`);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (spaceId !== '') await deleteSpace(page, spaceId);
   await context.close();
   if (workDir !== '') rmSync(workDir, { recursive: true, force: true });
@@ -197,7 +180,7 @@ test.afterAll(async () => {
 
 // A1: the bytes reach R2 through the Worker, and the URL the server wrote is
 // the one the node keeps — which is what a reload proves.
-test('a dropped image lands on a node with a URL that survives a reload', async () => {
+test('a dropped image lands on a node with a URL that survives a reload @needs-ingest @needs-storage', async () => {
   // Bytes no earlier run has stored. A fixed payload would hit dedup at the
   // ticket from the second run onwards, and the answer to that never reaches
   // the Worker — which is the half this case exists to prove.
@@ -249,7 +232,7 @@ test('a dropped image lands on a node with a URL that survives a reload', async 
 // worker pulls out of it. Nothing below a real run reaches this: the Durable
 // Object's part accounting needs more than one part, and the cover needs
 // ffmpeg against bytes that really landed in R2.
-test('a multi-part video lands with the cover our worker pulled out of it', async () => {
+test('a multi-part video lands with the cover our worker pulled out of it @needs-ffmpeg @needs-ingest @needs-storage', async () => {
   // Every byte here crosses the public internet twice — up to the bucket, and
   // back down for the hash and for ffmpeg — so this case is paced by a real
   // remote round trip, not by our code. Measured on a developer machine the
@@ -296,7 +279,7 @@ test('a multi-part video lands with the cover our worker pulled out of it', asyn
 // lands on the URL of the row that is already there. The answer that decides
 // this is given at the ticket, which is the one place a unit test cannot reach
 // with a real hash of real bytes.
-test('a file already stored is answered without sending it again', async () => {
+test('a file already stored is answered without sending it again @needs-ingest @needs-storage', async () => {
   // Counted from where the earlier cases left the canvas, so what is measured
   // is what this one adds.
   const before = (await imageSources(page)).length;
@@ -333,8 +316,7 @@ test('a file already stored is answered without sending it again', async () => {
 // frame the video is still stored, still registered and still on the node —
 // what it lacks is a poster. Nothing below a real run reaches this: it needs
 // our worker to actually try, and fail, on bytes that really landed in R2.
-test('a video whose frame cannot be cut still lands, without a cover', async () => {
-  test.setTimeout(180_000);
+test('a video whose frame cannot be cut still lands, without a cover @needs-ffmpeg @needs-ingest @needs-storage', async () => {
 
   // A real MP4 header with nothing playable behind it. The edge reads the
   // leading bytes and names it `video/mp4`, so it is stored and registered as
@@ -347,9 +329,10 @@ test('a video whose frame cannot be cut still lands, without a cover', async () 
     Buffer.concat([MP4_HEAD, randomBytes(4096)]),
   );
 
+  // The Space is this case's own, so the one video that appears is this drop's.
   await expect
     .poll(async () => (await videoSources(page)).length, { timeout: 120_000 })
-    .toBeGreaterThan(1);
+    .toBeGreaterThan(0);
   const sources = await videoSources(page);
   const landed = sources[sources.length - 1] as string;
   expect(landed).toMatch(/^https?:\/\//);
@@ -374,7 +357,10 @@ test('a video whose frame cannot be cut still lands, without a cover', async () 
 // This is also the one assertion that the three tested halves are wired to each
 // other: a reason the browser can tell apart, a request that carries it, and an
 // endpoint that settles the row.
-test('a transfer that dies after the ticket is reported and lands in the failed count', async () => {
+// Tagged: the abort is of the transfer, which only starts once a ticket is
+// signed, and signing one needs `INGEST_BASE_URL` and `INGEST_SHARED_SECRET`
+// (`routes/assets.ts` answers 500 without them).
+test('a transfer that dies after the ticket is reported and lands in the failed count @needs-ingest', async () => {
   // Counted, because a route that matches nothing aborts nothing and this case
   // would then pass on an upload that simply succeeded.
   let aborted = 0;
@@ -486,8 +472,7 @@ test('a drop that never gets a ticket takes its own empty node away', async () =
 // sees those bytes, so only a real transfer can reach this — the refusal is
 // named there, travels back through the finish, and lands on the task row as a
 // sentence in the reader's language.
-test('a file whose bytes are not what it claims is refused at the edge', async () => {
-  test.setTimeout(120_000);
+test('a file whose bytes are not what it claims is refused at the edge @needs-ingest @needs-storage', async () => {
 
   const before = await page.locator('.react-flow__node').count();
   const imagesBefore = (await imageSources(page)).length;

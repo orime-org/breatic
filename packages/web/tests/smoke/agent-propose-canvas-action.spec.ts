@@ -16,34 +16,11 @@
  */
 import { expect, test, type Page } from 'playwright/test';
 
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
+import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
 let spaceId = '';
-
-/**
- * Sign in and open the account's first project.
- * @param p - The page to drive.
- * @returns Nothing.
- * @throws {Error} When sign-in never reaches a project.
- */
-async function openProject(p: Page): Promise<void> {
-  await p.goto('/login');
-  await p.locator('#login-email').fill(email as string);
-  await p.locator('#login-password').fill(password as string);
-  await p.locator('form button[type="submit"]').click();
-  await p.waitForURL(/\/(studio|project)/, { timeout: 20_000 });
-  await p.goto('/studio');
-  const first = p.locator('a[href^="/project/"]').first();
-  await expect(first).toBeVisible({ timeout: 20_000 });
-  await first.click();
-  await p.waitForURL(/\/project\//, { timeout: 20_000 });
-}
 
 /**
  * Which tools the newest stored conversation used.
@@ -72,18 +49,21 @@ async function toolsUsed(p: Page): Promise<string[]> {
   });
 }
 
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
-  await openProject(page);
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({
+    storageState: STATE_FILE.A,
+    viewport: { width: 1500, height: 900 },
+  });
+  await openSmokeProject(page);
   spaceId = await createSpace(page, 'canvas', `propose-${String(Date.now())}`);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   if (spaceId !== '') await deleteSpace(page, spaceId);
   await page.close();
 });
 
-test('proposes a pair of nodes, and one press puts them on the canvas wired', async () => {
+test('proposes a pair of nodes, and one press puts them on the canvas wired @needs-model', async () => {
   // A real turn: the wait is on a model, and on the catalog calls before it.
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-textarea');
@@ -176,4 +156,17 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired', as
     written,
     `nothing in the prompt marks what is left for the reader. Read: "${written}"`,
   ).toContain('[');
+
+  // A6: one press put the whole group down, so one undo takes all of it back.
+  // The click moves focus off the prompt editor first -- it keeps a history of
+  // its own and would otherwise answer the keystroke itself, leaving the group
+  // on the canvas and this reading of it meaningless.
+  await pane.click({ position: { x: 24, y: 24 } });
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(page.locator('.react-flow__node')).toHaveCount(before, {
+    timeout: 20_000,
+  });
+  await expect(page.locator('.react-flow__edge')).toHaveCount(0, {
+    timeout: 20_000,
+  });
 });

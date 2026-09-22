@@ -17,3 +17,10 @@ declare module '*.worker.ts' {
   };
   export default WorkerConstructor;
 }
+
+interface ImportMetaEnv {
+  /** API base including its version prefix; empty means same-origin /api/v1. */
+  readonly VITE_API_BASE_URL?: string;
+  /** WebSocket URL; empty means same-origin /ws. */
+  readonly VITE_COLLAB_URL?: string;
+}

@@ -14,7 +14,8 @@
 
 import { assetService, creditLotRepo, creditLotService } from "@breatic/domain";
 import type { LotContext, PayerLedgerRow } from "@breatic/domain";
-import { encodeActivityCursor, decodeActivityCursor } from "@breatic/core";
+import { decodeActivityCursor } from "@breatic/core";
+import { toPage } from "@server/utils/keyset-page.js";
 import type { ActivityCursor } from "@breatic/core";
 import type {
   CreditLotEntity,
@@ -74,6 +75,7 @@ function toLotView(lot: CreditLotEntity & LotContext): CreditLotView {
     currency: lot.currency,
     lifecycle: lot.lifecycle,
     refundAttempts: lot.refundAttempts,
+    designated: lot.designated,
     everSpent: lot.everSpent,
     createdAt: lot.createdAt.toISOString(),
   };
@@ -119,35 +121,6 @@ function toLedgerView(row: PayerLedgerRow): CreditLedgerView {
   };
 }
 
-/**
- * Build a keyset page out of one row over the asked-for size.
- *
- * The extra row is what distinguishes "the page is full" from "there is more":
- * counting the total would cost a second scan and would still be stale by the
- * time the next page is asked for.
- * @param rows - Rows fetched, one more than the page size.
- * @param size - The page size asked for.
- * @param map - How to turn a row into its view.
- * @param keyOf - The row's `(created_at::text, id)` for the cursor.
- * @returns The page and its next cursor.
- */
-function toPage<TRow, TView>(
-  rows: TRow[],
-  size: number,
-  map: (row: TRow) => TView,
-  keyOf: (row: TRow) => { cursorAt: string; id: string },
-): CreditPage<TView> {
-  const hasMore = rows.length > size;
-  const page = hasMore ? rows.slice(0, size) : rows;
-  const last = page[page.length - 1];
-  return {
-    items: page.map(map),
-    nextCursor:
-      hasMore && last
-        ? encodeActivityCursor(keyOf(last).cursorAt, keyOf(last).id)
-        : null,
-  };
-}
 
 /**
  * What this account holds and where it went.

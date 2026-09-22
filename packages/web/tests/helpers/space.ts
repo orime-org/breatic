@@ -1,0 +1,151 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Creating and removing the Space a smoke run works in.
+ *
+ * Every spec below `tests/smoke/` that needs a document or a canvas makes its
+ * own Space, because a run must not depend on what an earlier run left behind.
+ * That leaves the account's project holding one more Space per test, and a
+ * project that opens them all holds a writable seat per document, which the
+ * collab server caps (`packages/collab/src/services/connection-registry.ts`,
+ * #1421) — past it a Space opens read-only and the read-only notice swallows
+ * the clicks a case is making. So a spec that creates one also removes it,
+ * and both halves live here rather than being written out four times.
+ *
+ * Removal goes through the Space drawer, the same path a person uses. The
+ * `space:delete` RPC underneath is authorized and audited server-side, and an
+ * ADR (2026-05-23 yjs-collab-only-write-authz) forbids clients from writing
+ * `meta.spaces` directly — so reaching into the Yjs document to drop the entry
+ * is not an option, however much shorter it would look here.
+ */
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+import { expect, type Page } from 'playwright/test';
+
+export type SpaceKind = 'canvas' | 'document';
+
+/**
+ * Create a Space in the open project and return its id.
+ *
+ * The id comes from the tab the new Space gets: the tab strip renders
+ * `space-tab-name-<id>` for each one, and the timestamped name the caller
+ * passes in identifies exactly one of them.
+ * @param page - A page already inside a project.
+ * @param kind - Which Space type to create.
+ * @param name - The name to give it; must be unique within the project.
+ * @returns The id of the created Space.
+ * @throws {Error} When the new Space's tab never appears.
+ */
+export async function createSpace(
+  page: Page,
+  kind: SpaceKind,
+  name: string,
+): Promise<string> {
+  await page.getByTestId('new-space-button').click();
+  await page.getByTestId(`new-space-type-${kind}`).click();
+  await page.getByTestId('new-space-name').fill(name);
+  await page.getByTestId('new-space-submit').click();
+
+  const tabName = page
+    .locator('[data-testid^="space-tab-name-"]')
+    .filter({ hasText: name })
+    .first();
+  await expect(tabName).toBeVisible({ timeout: 15_000 });
+  // The tab now appears the moment the create is answered — the strip is this
+  // browser tab's own state, so there is no second round trip behind it. That
+  // puts this return inside the dialog's exit animation, during which Radix
+  // still holds `pointer-events: none` on the body; a caller creating two
+  // Spaces in a row would have its next click swallowed.
+  await expect(page.getByTestId('new-space-dialog')).toHaveCount(0);
+  const testId = await tabName.getAttribute('data-testid');
+  if (testId === null) throw new Error(`no id on the tab for "${name}"`);
+  return testId.replace('space-tab-name-', '');
+}
+
+/**
+ * Where a removal that failed is written down.
+ *
+ * Removal stays non-throwing: a teardown that throws replaces the failure the
+ * case actually found. What a warning alone cannot do is change the exit code,
+ * and a Space that stays behind is not inert — it holds one of the writable
+ * connections the collab server allows per document, and once those are gone
+ * the Spaces after it open read-only and their cases go red for a reason
+ * nothing in the report names.
+ *
+ * A file rather than a module-level list: the teardown that reads it is a
+ * project of its own and runs in a worker of its own, and a worker is
+ * discarded after a failed case. Setup empties it as the run opens.
+ */
+export const REMOVALS_FILE = 'playwright/.auth/unremoved-spaces.txt';
+
+/**
+ * Write one failed removal down for the teardown to read.
+ * @param spaceId - The Space that stayed behind.
+ * @param err - What the removal threw.
+ */
+function noteRemovalFailure(spaceId: string, err: unknown): void {
+  try {
+    mkdirSync(dirname(REMOVALS_FILE), { recursive: true });
+    appendFileSync(REMOVALS_FILE, `${spaceId}: ${String(err)}\n`, 'utf8');
+  } catch {
+    // The warning below still goes out. A run that cannot write here is one
+    // whose checkout is read-only, which is not a shape this suite runs in.
+  }
+}
+
+/**
+ * Remove a Space through the drawer.
+ *
+ * Never throws. A spec calls this while tearing down, often after it has
+ * already failed for its own reasons, and a teardown that throws replaces the
+ * real failure with its own — leaving a stray Space is the smaller harm. What
+ * went wrong is written to the console so a run that quietly stops cleaning up
+ * still says so.
+ * @param page - A page inside the project that holds the Space.
+ * @param spaceId - The id returned by `createSpace`.
+ */
+export async function deleteSpace(page: Page, spaceId: string): Promise<void> {
+  try {
+    // Open the drawer only when it is shut. The trigger toggles, so calling
+    // this twice in a row on one page — which is what a case creating two
+    // Spaces does — would close the drawer the second time and then wait out
+    // the timeout looking for it. Measured: 84 removals in a row came out 42
+    // done, 42 timed out, strictly alternating.
+    const drawer = page.getByTestId('space-drawer');
+    if ((await drawer.count()) === 0) {
+      await page.getByTestId('space-drawer-trigger').click();
+      await expect(drawer).toBeVisible({ timeout: 10_000 });
+    }
+
+    // The row's action group is `opacity-0` until the row is hovered, which
+    // leaves it visible to Playwright and hoverable by the click itself.
+    await page.getByTestId(`space-drawer-delete-${spaceId}`).click();
+    await expect(
+      page.getByTestId(`space-drawer-delete-confirm-${spaceId}`),
+    ).toBeVisible({ timeout: 10_000 });
+    await page
+      .getByTestId(`space-drawer-delete-confirm-action-${spaceId}`)
+      .click();
+
+    // The row goes when the collab process broadcasts the deletion back, so
+    // its absence is the one signal that the Space is really gone rather than
+    // that a button was pressed.
+    await expect(page.getByTestId(`space-drawer-row-${spaceId}`)).toHaveCount(
+      0,
+      { timeout: 15_000 },
+    );
+    // Shut the drawer through its own Close control, and wait for it to go.
+    // Escape does not reliably reach it from here — the row that held focus
+    // has just been removed — and a drawer still standing when the next case
+    // starts is not inert: leaving it open cost `selection-bubble-bar`'s
+    // hover case its background-colour assertion, twice out of two runs,
+    // where the same case passes on main.
+    await drawer.getByRole('button', { name: 'Close' }).click();
+    await expect(drawer).toHaveCount(0, { timeout: 10_000 });
+  } catch (err) {
+    noteRemovalFailure(spaceId, err);
+    console.warn(`[smoke] could not delete Space ${spaceId}:`, err);
+  }
+}

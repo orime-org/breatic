@@ -1,13 +1,9 @@
-Place your SSL certificate files here:
+# HTTPS certificates
 
-- `cert.pem` — certificate (or fullchain)
-- `cert.key` — private key
+Place a PEM certificate/full chain at `cert.pem` and its private key at `cert.key`.
+The web container selects HTTPS when both files are present. Restart `web` after
+installing or renewing them. These files are ignored by Git.
 
-Example:
-```bash
-cp thinkai.cc.pem cert.pem
-cp thinkai.cc.key cert.key
-```
-
-These files are git-ignored and will not be committed.
-Without these files, nginx serves on HTTP only (port 80).
+The certificate must cover the exact hostname or IP users visit. nginx preserves
+that host; it does not add `www`. See [local and LAN deployment](../../deploy/LOCAL.md)
+for trusted local certificates and renewal instructions.

@@ -359,7 +359,7 @@ describe("createCheckout — what reaches Stripe", () => {
       expect(row!.metadata["locale"]).toBe("ja");
       expect(row!.metadata["timeZone"]).toBe("Asia/Tokyo");
       expect(row!.metadata["consentTextVersion"]).toBe(CONSENT_CREDITS_VERSION);
-      expect(row!.metadata["refundTextVersion"]).toBe("refund-credits-v1");
+      expect(row!.metadata["refundTextVersion"]).toBe("refund-credits-v2");
     } finally {
       await dropUser(userId);
     }
@@ -511,12 +511,17 @@ describe("listTiers — what the buy screen is offered", () => {
     // The version is named here as a literal. Comparing against the same
     // constant the implementation reads would agree with itself even if the
     // constant pointed at wording no locale file has.
-    expect(listed.refundLines).toEqual(refundLinesAt("refund-credits-v1", "en"));
-    expect(REFUND_CREDITS_VERSION).toBe("refund-credits-v1");
-    expect(listed.refundLines).toHaveLength(3);
+    expect(listed.refundLines).toEqual(refundLinesAt("refund-credits-v2", "en"));
+    expect(REFUND_CREDITS_VERSION).toBe("refund-credits-v2");
+    expect(listed.refundLines).toHaveLength(4);
     for (const line of listed.refundLines) {
       expect(line.length).toBeGreaterThan(0);
     }
+    // The four are compared above against the function that produces them,
+    // which agrees with itself whatever the copy says. This names the one
+    // clause the screens exist to state: a pack has to be released from its
+    // Studio before it can be asked about.
+    expect(listed.refundLines[3]).toContain("not assigned to a Studio");
   });
 
   it("carries the consent wording the dialog puts the tick against", () => {
@@ -525,7 +530,7 @@ describe("listTiers — what the buy screen is offered", () => {
     // would let the two drift, and the version we record would then name
     // wording the buyer never read.
     const listed = listTiers();
-    expect(CONSENT_CREDITS_VERSION).toBe("consent-credits-v1");
+    expect(CONSENT_CREDITS_VERSION).toBe("consent-credits-v2");
     expect(listed.consentText).toBe(consentText("en"));
     expect(runWithLocale("ja", () => listTiers()).consentText).toBe(
       consentText("ja"),
@@ -534,9 +539,9 @@ describe("listTiers — what the buy screen is offered", () => {
 
   it("gives that rule in whatever language the buyer is reading in", () => {
     const japanese = runWithLocale("ja", () => listTiers());
-    expect(japanese.refundLines).toEqual(refundLinesAt("refund-credits-v1", "ja"));
+    expect(japanese.refundLines).toEqual(refundLinesAt("refund-credits-v2", "ja"));
     expect(japanese.refundLines).not.toEqual(
-      refundLinesAt("refund-credits-v1", "en"),
+      refundLinesAt("refund-credits-v2", "en"),
     );
   });
 });

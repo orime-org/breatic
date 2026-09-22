@@ -9,7 +9,7 @@
  * half by unit tests through the injectable factories.
  */
 
-import type { CropRect } from '@web/spaces/canvas/focus/crop-math';
+import type { CropRect } from '@web/lib/crop-math';
 
 /**
  * A hair past 0, still inside frame 0 for any real frame rate (shorter than

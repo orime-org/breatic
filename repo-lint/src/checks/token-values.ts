@@ -25,9 +25,19 @@ const STATUS_ALIASES: ReadonlyMap<string, string> = new Map([
   ["error", "red"],
 ]);
 
-/** How transparent each derived tint is. */
+/**
+ * How transparent each derived tint is.
+ *
+ * Two depths, because the tint covers two areas that are read differently.
+ * `-bg` lies under a whole shape — a status chip, a canvas group — where the
+ * eye has the shape's own edges to go by. `-highlight` lies behind a run of
+ * words inside a paragraph, where the only thing saying "this part is marked"
+ * is the colour itself, and at 14 it was too faint to read (user 2026-09-19,
+ * picking 30 from four depths drawn side by side).
+ */
 const TINTS: ReadonlyArray<readonly [string, number]> = [
   ["-bg", 14],
+  ["-highlight", 30],
   ["-border", 40],
 ];
 
@@ -139,11 +149,14 @@ function checkNeutrals(sheet: TokenSheet): Finding[] {
  * @returns One finding per unexpected palette token.
  */
 function checkPaletteMembership(sheet: TokenSheet): Finding[] {
+  // The suffixes come from {@link TINTS}, which is also what
+  // `checkPaletteTints` measures each one against: a depth added there is
+  // admitted here by the same edit, rather than by remembering to make a
+  // second one.
   const expected = new Set(
     PALETTE.flatMap((colour) => [
       `--color-palette-${colour}`,
-      `--color-palette-${colour}-bg`,
-      `--color-palette-${colour}-border`,
+      ...TINTS.map(([suffix]) => `--color-palette-${colour}${suffix}`),
     ]),
   );
 

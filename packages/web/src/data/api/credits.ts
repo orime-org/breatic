@@ -9,7 +9,7 @@ import type {
   StudioCreditsView,
 } from '@breatic/shared';
 
-import { apiGet, apiPatch } from '@web/data/api/request';
+import { apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
 /**
  * Read what this account holds and where it went.
@@ -108,4 +108,16 @@ export async function fetchStudioCredits(
   return apiGet<StudioCreditsView>(`/studio/${encodeURIComponent(slug)}/credits`, {
     params: cursor ? { cursor } : undefined,
   });
+}
+
+/**
+ * Ask for a refund on one purchase.
+ *
+ * Nothing is read from the reply. The ask changes what several of these reads
+ * answer, so the caller refetches them; the one lot the reply carries would be
+ * a second, narrower answer to a question already asked.
+ * @param lotId - The purchase to ask about.
+ */
+export async function requestCreditLotRefund(lotId: string): Promise<void> {
+  await apiPost<unknown>(`/credits/lots/${encodeURIComponent(lotId)}/refund`);
 }

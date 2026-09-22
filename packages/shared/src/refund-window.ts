@@ -7,8 +7,9 @@
  * A purchase can be refunded within 30 UTC calendar days of being paid for,
  * the thirtieth day included in full. Two readers state that rule to the
  * buyer: the confirmation email prints the day it closes on, and the refunds
- * screen leaves out purchases whose window has shut. They compute it here so
- * an email cannot name a date the screen has already gone past.
+ * screen names the closed window in place of the ask button once it has shut.
+ * They compute it here so an email cannot name a date the screen has already
+ * gone past.
  *
  * Days, not hours. A purchase made at 23:59 gets the same closing date as one
  * made at 00:01 the same day, and that date runs to its own last millisecond.

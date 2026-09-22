@@ -9,7 +9,7 @@ import type { CanvasProposal } from '@breatic/shared';
 import type { ContentNodeView, NodeView } from '@web/data/yjs/node-view';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
-import { _resetForTests } from '@web/data/yjs/manager';
+import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { bodyToPlainText } from '@breatic/shared';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
@@ -285,6 +285,61 @@ describe('useNodeCreation', () => {
 
       const { nodes } = canvasSpace.readCanvasGraph('p-src', 's-src');
       expect(contentAt(nodes, ids[0]).model).toBeUndefined();
+    });
+
+    it('goes down as one undo entry, and one undo takes the whole group back', () => {
+      // The manager is built before the press so it captures it. It tracks
+      // only `CANVAS_UNDO` transactions and merges nothing by time
+      // (`captureTimeout: 0`), so every write outside one batch would arrive
+      // as an entry of its own -- which is what makes the count below mean
+      // "one press, one entry" rather than "something was written".
+      const undo = canvasSpace.createCanvasUndoManager(
+        getDoc(docName.canvasSpace('p-undo', 's-undo')),
+      );
+      const { result } = renderHook(() => useNodeCreation('p-undo', 's-undo'));
+
+      result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
+
+      expect(undo.undoStack).toHaveLength(1);
+      const placed = canvasSpace.readCanvasGraph('p-undo', 's-undo');
+      expect(placed.nodes).toHaveLength(2);
+      expect(placed.edges).toHaveLength(1);
+
+      undo.undo();
+
+      // Nodes AND wires, both gone. A group that undoes down to a lone wire
+      // or a stray empty node is the half-placed state the batch exists to
+      // rule out.
+      const after = canvasSpace.readCanvasGraph('p-undo', 's-undo');
+      expect(after.nodes).toHaveLength(0);
+      expect(after.edges).toHaveLength(0);
+    });
+
+    it('leaves ordinary nodes behind: the model swaps and the group wires on', () => {
+      // What lands is the canvas's own kind of node, not a special one the
+      // agent owns -- so the reader changes the model the agent picked and
+      // wires the result into something of their own, both the ordinary way.
+      const { result } = renderHook(() => useNodeCreation('p-after', 's-after'));
+      const ids = result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
+      const generated = ids[1]!;
+
+      canvasSpace.setNodeModel('p-after', 's-after', generated, 'i2i', 'their-model', {
+        'their-model': { ratio: '16:9' },
+      });
+      const mine = result.current.createNodeAt('image', { x: 900, y: 0 });
+      canvasSpace.addEdge('p-after', 's-after', {
+        id: `${generated}->${mine}`,
+        source: generated,
+        target: mine,
+      });
+
+      const { nodes, edges } = canvasSpace.readCanvasGraph('p-after', 's-after');
+      const after = contentAt(nodes, generated);
+      expect(after.model).toBe('their-model');
+      expect(after.paramsByModel).toMatchObject({ 'their-model': { ratio: '16:9' } });
+      expect(edges.map((e) => `${e.source}->${e.target}`)).toContain(
+        `${generated}->${mine}`,
+      );
     });
   });
 });

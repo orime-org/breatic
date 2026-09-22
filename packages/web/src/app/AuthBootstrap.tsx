@@ -4,8 +4,16 @@
 import React from 'react';
 
 import { authApi } from '@web/data/api/auth';
-import { useCurrentUserStore } from '@web/stores';
-import { toCurrentUser } from '@web/stores/current-user';
+// The store's own module, not the `@web/stores` barrel. `App` mounts this
+// file above the router and the route table imports `ProtectedRoute`
+// statically, so both land in the chunk every reader downloads — and the
+// barrel would put the canvas, mini-tool, inpaint, project and toast stores,
+// plus zundo, in there with them. Measured:
+// 9679 bytes of the entry chunk, 3034 of them over the wire.
+import {
+  toCurrentUser,
+  useCurrentUserStore,
+} from '@web/stores/current-user';
 
 interface AuthBootstrapProps {
   children: React.ReactNode;
@@ -37,19 +45,31 @@ export default function AuthBootstrap({
 }: AuthBootstrapProps): React.ReactElement {
   const setUser = useCurrentUserStore((s) => s.setUser);
   const setBootstrapped = useCurrentUserStore((s) => s.setBootstrapped);
+  const clear = useCurrentUserStore((s) => s.clear);
 
   React.useEffect(() => {
     let cancelled = false;
     authApi
       .me()
+      // Both branches answer about the session this ping was sent with, and a
+      // sign-in that completed while it was out makes that answer stale — on a
+      // slow link that ordering is reachable either way. A reader signed in as
+      // someone else would be signed out by a 401 about the session they no
+      // longer have, or renamed to the previous account by a 200 about it
+      // while every request carries the new cookie. So both speak only when
+      // nobody has spoken first, and `clear()` also clears the persisted
+      // mirror the next cold load reads (design §6.2, the preload gate).
       .then((u) => {
         if (cancelled) return;
-        setUser(toCurrentUser(u));
+        if (useCurrentUserStore.getState().user === null) {
+          setUser(toCurrentUser(u));
+        }
       })
       .catch(() => {
-        // 401 (no/expired session cookie) or network error — leave
-        // user=null. ProtectedRoute will bounce to /login once it
-        // observes bootstrapped=true + user=null.
+        if (cancelled) return;
+        if (useCurrentUserStore.getState().user === null) {
+          clear();
+        }
       })
       .finally(() => {
         if (cancelled) return;
@@ -58,7 +78,7 @@ export default function AuthBootstrap({
     return () => {
       cancelled = true;
     };
-  }, [setUser, setBootstrapped]);
+  }, [setUser, setBootstrapped, clear]);
 
   return <>{children}</>;
 }

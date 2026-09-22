@@ -15,6 +15,8 @@
  */
 
 import type { ColourHue } from '@web/spaces/document/document-colour-run';
+import type { Selection } from '@tiptap/pm/state';
+
 import {
   markTypeOf,
   styleTheRuns,
@@ -30,14 +32,26 @@ import type { ToolEditor } from '@web/spaces/document/document-tool-button';
  * @param value - `true` for one of the five marks, a {@link ColourHue} for a
  *   colour row, or nothing to take the styles off.
  * @param names - The styles' names, each also its mark's.
+ * @param range - The range to write over, where the press names one. Left out,
+ *   it is the reader's own selection.
  */
 export function writeStyle(
   editor: ToolEditor,
   value: true | ColourHue | undefined,
-  ...names: readonly string[]
+  names: readonly string[],
+  range?: Selection,
 ): void {
   const state = editor.prosemirrorState;
-  if (state.selection.empty) {
+  if ((range ?? state.selection).empty) {
+    // THE BLOCK HANDLE'S PATH NEVER REACHES THE TWO CALLS BELOW. They are
+    // BlockNote's `setMark` / `unsetMark`, which take no range at all and act
+    // on the editor's own selection and stored marks — so a block-scoped press
+    // landing here would change what the READER types next and leave the block
+    // untouched. An explicit range that is empty is an empty block, which has
+    // no run to style, so nothing is written.
+    if (range !== undefined) {
+      return;
+    }
     // A caret covers no range, and its whole effect is the mark the next
     // character will carry. That is what these two do.
     const pairs = Object.fromEntries(
@@ -53,6 +67,7 @@ export function writeStyle(
   // `transact` sends a transaction only where something was written into it,
   // which is what keeps a press with nothing to do off the undo stack.
   editor.transact((tr) => {
+    const carried = tr.storedMarks;
     for (const name of names) {
       // The names are compile-time constants from the tool list, and the
       // caret branch above hands them straight to BlockNote, which throws on
@@ -65,7 +80,23 @@ export function writeStyle(
         mark,
         value === undefined ? undefined : mark.create(attrs),
         tr,
+        range,
       );
+    }
+    // A press aimed at a range the reader is not standing in leaves the marks
+    // they are carrying where they were. Any step clears them —
+    // `prosemirror-state`'s `Transaction.addStep` sets `storedMarks` to null —
+    // so a reader who pressed `Mod-b` at their caret and then coloured another
+    // row would find the next character they typed no longer bold. Putting
+    // them back is the last thing the transaction does, since a step after it
+    // would clear them again.
+    //
+    // A press that wrote nothing cleared nothing, and asking to restore would
+    // be a write of its own: `setStoredMarks` turns `storedMarksSet` on
+    // whatever it is handed, and that flag is one of the five BlockNote's
+    // `transact` dispatches on — so an untouched transaction would go out.
+    if (range !== undefined && tr.steps.length > 0) {
+      tr.setStoredMarks(carried);
     }
   });
 }

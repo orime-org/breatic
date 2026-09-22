@@ -57,8 +57,23 @@ export function CreditsSectionPanel({
 
   // `isPending` and not `isLoading`: an offline first read is paused rather
   // than fetching, which leaves `isLoading` false with no data in hand.
-  if (overview.isPending) return <SectionSkeleton />;
-  if (overview.isError) return <SectionError />;
+  // Padded here rather than by `Section`, which neither of these reaches: the
+  // panel holds no inset of its own, so without this they are drawn against
+  // the dialog's edges.
+  if (overview.isPending) {
+    return (
+      <div className='p-7'>
+        <SectionSkeleton />
+      </div>
+    );
+  }
+  if (overview.isError) {
+    return (
+      <div className='p-7'>
+        <SectionError />
+      </div>
+    );
+  }
 
   const data = overview.data;
   switch (section) {

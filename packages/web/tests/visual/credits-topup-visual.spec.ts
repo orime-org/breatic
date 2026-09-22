@@ -1,0 +1,312 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Measurements the top-up screens can only give in a real browser.
+ *
+ * What lives here is what jsdom cannot answer: computed styles, box geometry,
+ * focus rings, contrast ratios, and both themes. Which packs count as
+ * refundable, what the dialog's tick says and what the mail prints are each
+ * pinned by the unit and integration suites, and are not repeated here.
+ *
+ * Needs a running dev server and the smoke account:
+ *   pnpm --filter @breatic/web test:visual
+ */
+import { test, expect, type Page } from 'playwright/test';
+
+
+/**
+ * Open the credits overlay on one of its sections.
+ * @param page - The page.
+ * @param section - Which section to land on.
+ */
+async function openCredits(page: Page, section: string): Promise<void> {
+  await page.goto('/studio');
+  // Located by role and name: neither the header's account button nor the
+  // avatar inside it carries a testid. `account-menu-avatar` is a different
+  // element — the one inside the menu, which exists only once it is open.
+  await page.getByRole('button', { name: 'Account' }).click();
+  const menu = page.locator('[data-testid="account-menu"]');
+  await expect(menu).toBeVisible({ timeout: 10_000 });
+  await menu.getByRole('menuitem', { name: /credit|积分|點數/i }).click();
+  await expect(page.locator('[data-testid="credits-index"]')).toBeVisible({
+    timeout: 15_000,
+  });
+  if (section !== 'overview') {
+    await page.locator(`#credits-tab-${section}`).click();
+  }
+  await expect(page.locator('[data-testid="credits-skeleton"]')).toHaveCount(0, {
+    timeout: 15_000,
+  });
+}
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`the confirm dialog holds its own in ${theme} @needs-payments`, async ({ page }) => {
+    // Through the store's own persisted value rather than by stamping the
+    // root: `openCredits` navigates, and a stamped attribute does not survive
+    // that. The inline script in `index.html` reads this key before React
+    // mounts, so every page in the run starts in the theme under test.
+    await page.addInitScript((t) => {
+      window.localStorage.setItem(
+        'breatic.preferences',
+        JSON.stringify({ state: { theme: t }, version: 1 }),
+      );
+    }, theme);
+    await openCredits(page, 'buy');
+    await page
+      .locator('[data-testid="credit-pack"]')
+      .first()
+      .getByRole('button')
+      .click();
+    await expect(page.locator('[data-testid="confirm-consent"]')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    const measured = await page.evaluate(() => {
+      // Contrast the way a person sees it: alpha composited against whatever
+      // is behind, because the tokens that draw hairlines are `rgba(...)` and
+      // a ratio taken off the raw value is not the one on the screen.
+      const parse = (s: string): number[] => {
+        const m = (s.match(/[\d.]+/g) ?? []).map(Number);
+        return [m[0] ?? 0, m[1] ?? 0, m[2] ?? 0, m[3] ?? 1];
+      };
+      const luminance = (c: number[]): number => {
+        const f = (v: number): number => {
+          const x = v / 255;
+          return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+        };
+        return 0.2126 * f(c[0]!) + 0.7152 * f(c[1]!) + 0.0722 * f(c[2]!);
+      };
+      const ratio = (fgText: string, bgText: string): number => {
+        const bg = parse(bgText);
+        const raw = parse(fgText);
+        const a = raw[3]!;
+        const fg = [0, 1, 2].map((i) => raw[i]! * a + bg[i]! * (1 - a));
+        const [hi, lo] = [luminance(fg), luminance(bg)].sort((x, y) => y - x);
+        return Math.round(((hi! + 0.05) / (lo! + 0.05)) * 100) / 100;
+      };
+      // A control drawn on a transparent parent is seen against whatever is
+      // further up, so that is what its border has to stand out from.
+      const behind = (el: Element): string => {
+        let node = el.parentElement;
+        while (node) {
+          const c = getComputedStyle(node).backgroundColor;
+          if (c && c !== 'transparent' && !c.startsWith('rgba(0, 0, 0, 0)')) {
+            return c;
+          }
+          node = node.parentElement;
+        }
+        return getComputedStyle(document.body).backgroundColor;
+      };
+
+      const tick = document.querySelector('[data-testid="confirm-consent"]');
+      const rule = document.querySelector('[data-testid="confirm-refund-rule"]');
+      if (!tick || !rule) {
+        throw new Error('the dialog is missing the tick or the rule');
+      }
+      const tickStyle = getComputedStyle(tick);
+      const lines = [...rule.querySelectorAll('li')];
+      const lineStyle = getComputedStyle(lines[0]!);
+      // The sentence the tick stands for, as it actually renders. The server
+      // sends it; nothing here holds a copy to fall back on, so an empty
+      // label would mean the buyer is ticking a blank.
+      const consentLabel = tick.closest('label')?.textContent ?? '';
+      // Preflight's `strong { font-weight: bolder }` is relative to whatever
+      // weight it inherits. Read once as it stands, and once under a heavier
+      // parent: an absolute weight answers the same both times.
+      const stressed = tick.closest('label')?.querySelector('strong') ?? null;
+      const label = tick.closest('label') as HTMLElement | null;
+      const weightAsIs = stressed ? getComputedStyle(stressed).fontWeight : '';
+      const parentWeight = label?.style.fontWeight ?? '';
+      if (label) label.style.fontWeight = '600';
+      const weightUnderHeavierParent = stressed
+        ? getComputedStyle(stressed).fontWeight
+        : '';
+      if (label) label.style.fontWeight = parentWeight;
+
+      return {
+        // Asserted below. Without it the run reads exactly the same whether
+        // the theme took or not, and one pass stands in for two.
+        theme: document.documentElement.dataset.theme ?? 'unset',
+        // The unchecked box: its border is the whole of what says it is
+        // there, so that is what has to clear 3:1 (WCAG 1.4.11).
+        tickBorder: tickStyle.borderTopColor,
+        tickFill: tickStyle.backgroundColor,
+        tickAgainstOwnFill: ratio(
+          tickStyle.borderTopColor,
+          tickStyle.backgroundColor,
+        ),
+        tickAgainstPanel: ratio(tickStyle.borderTopColor, behind(tick)),
+        // The rule the tick refers to, now in the dialog rather than behind
+        // its scrim. Body text, so 4.5:1 (WCAG 1.4.3).
+        ruleLineCount: lines.length,
+        ruleText: lines.map((li) => (li.textContent ?? '').slice(0, 60)),
+        ruleContrast: ratio(lineStyle.color, behind(lines[0]!)),
+        // Prose is not a two-sided list: no rule drawn between sentences.
+        ruleSeparators: lines.filter(
+          (li) => getComputedStyle(li).borderTopWidth !== '0px',
+        ).length,
+        consentLabel: consentLabel.trim(),
+        stressedWeight: weightAsIs,
+        stressedWeightUnderHeavierParent: weightUnderHeavierParent,
+      };
+    });
+
+    // eslint-disable-next-line no-console
+    console.log(`CONFIRM_DIALOG_${theme}`, JSON.stringify(measured, null, 2));
+
+    expect(measured.theme).toBe(theme);
+    expect(measured.tickAgainstOwnFill).toBeGreaterThanOrEqual(3);
+    expect(measured.tickAgainstPanel).toBeGreaterThanOrEqual(3);
+    // Four, the count `refund-credits-v2` publishes: the three a purchase has
+    // always been refused on, plus the one saying a pack still assigned to a
+    // Studio has to be released first.
+    expect(measured.ruleLineCount).toBe(4);
+    expect(measured.ruleContrast).toBeGreaterThanOrEqual(4.5);
+    expect(measured.ruleSeparators).toBe(0);
+    // What the tick stands for has to say both halves: the credits come now,
+    // and using any of them ends the refund. An empty or truncated label
+    // would leave the consent standing for nothing.
+    expect(measured.consentLabel).toContain('right away');
+    expect(measured.consentLabel).toContain('refunded');
+    // The stored wording marks its stressed clause with `**`. Rendered as
+    // characters, the buyer reads asterisks in the middle of it.
+    expect(measured.consentLabel).not.toContain('*');
+    expect(measured.stressedWeight).toBe('700');
+    expect(measured.stressedWeightUnderHeavierParent).toBe('700');
+  });
+}
+
+test('the checkout wait can be left with a keyboard', async ({ page }) => {
+  // Hold the settle request open so the cover stays up long enough to be
+  // measured. Without this it comes down the instant the answer lands.
+  await page.route('**/payment/confirm**', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 8_000));
+    await route.abort();
+  });
+  await page.goto('/studio?credits=1&session_id=cs_test_visual_probe');
+
+  const cover = page.locator('[data-testid="checkout-wait"]');
+  await expect(cover).toBeVisible({ timeout: 15_000 });
+
+  // The trap this fixes: a modal holds the focus ring inside itself, so with
+  // nothing focusable on the cover Tab had nowhere to go.
+  await page.keyboard.press('Tab');
+  const focused = await page.evaluate(
+    () => document.activeElement?.getAttribute('data-testid') ?? null,
+  );
+  expect(focused).toBe('checkout-wait-skip');
+
+  const ring = await page
+    .locator('[data-testid="checkout-wait-skip"]')
+    .evaluate((el) => {
+      const s = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return {
+        outline: `${s.outlineStyle} ${s.outlineWidth}`,
+        ringWidth: s.getPropertyValue('--tw-ring-offset-width'),
+        boxShadow: s.boxShadow,
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+      };
+    });
+  // eslint-disable-next-line no-console
+  console.log('CHECKOUT_WAIT_SKIP', JSON.stringify(ring, null, 2));
+
+  await page.keyboard.press('Enter');
+  // Pressing it lands where the timeout lands: the purchase history.
+  await expect(page.locator('[data-testid="credits-index"]')).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(cover).toHaveCount(0);
+});
+
+test('the buy screen and its confirm dialog measure up @needs-payments', async ({ page }) => {
+  await openCredits(page, 'buy');
+
+  const panel = page.getByRole('tabpanel');
+  const measured = await panel.evaluate((root) => {
+    const rule = root.querySelector('[data-testid="buy-refund-rule"]');
+    const pack = root.querySelector('[data-testid="credit-pack"]');
+    const read = (el: Element | null): Record<string, string> | null => {
+      if (!el) return null;
+      const s = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return {
+        color: s.color,
+        background: s.backgroundColor,
+        fontSize: s.fontSize,
+        borderRadius: s.borderRadius,
+        borderWidth: s.borderTopWidth,
+        width: String(Math.round(r.width)),
+        height: String(Math.round(r.height)),
+      };
+    };
+    return {
+      refundRule: read(rule),
+      pack: read(pack),
+      refundLineCount: rule ? rule.querySelectorAll('li, [data-slot]').length : 0,
+    };
+  });
+
+  // eslint-disable-next-line no-console
+  console.log('BUY_SCREEN', JSON.stringify(measured, null, 2));
+  expect(measured.pack).not.toBeNull();
+
+  // The dialog: the tick, its label, and the button it gates.
+  await page.locator('[data-testid="credit-pack"]').first().getByRole('button').click();
+  const tick = page.locator('[data-testid="confirm-consent"]');
+  await expect(tick).toBeVisible({ timeout: 10_000 });
+
+  // The overlay is a dialog too, so the confirm one is named.
+  const confirm = page.getByRole('dialog', { name: /confirm/i });
+  const dialog = await confirm.evaluate((root) => {
+    const box = (el: Element | null): Record<string, number> | null => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return {
+        top: Math.round(r.top),
+        left: Math.round(r.left),
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+      };
+    };
+    const tickEl = root.querySelector('[data-testid="confirm-consent"]');
+    const label = tickEl?.closest('label') ?? null;
+    const pay = root.querySelector('[data-testid="confirm-pay"]');
+    const payStyle = pay ? getComputedStyle(pay) : null;
+    return {
+      dialog: box(root),
+      tick: box(tickEl),
+      label: box(label),
+      labelText: label?.textContent ?? '',
+      pay: box(pay),
+      payDisabled: pay?.hasAttribute('disabled') ?? null,
+      payOpacity: payStyle?.opacity ?? null,
+      payCursor: payStyle?.cursor ?? null,
+    };
+  });
+
+  // eslint-disable-next-line no-console
+  console.log('CONFIRM_DIALOG', JSON.stringify(dialog, null, 2));
+
+  // The tick gates the button; that much is behaviour the unit tests hold. What
+  // is measured here is that the two are laid out as one row a pointer can hit.
+  expect(dialog.payDisabled).toBe(true);
+  expect(dialog.tick).not.toBeNull();
+});
+
+// An account that has bought nothing has nothing to list, and the screen says
+// so: the empty state (`RefundsSection.tsx:227`) carrying `credits.refundsEmpty`
+// — a sentence out of the locale, which is what makes it the reader's language
+// rather than a string in the code. Pinning what a screen with purchases on it
+// draws needs an account that has bought some (#277).
+test('the refunds screen draws its empty state', async ({ page }) => {
+  await openCredits(page, 'refunds');
+
+  const panel = page.getByRole('tabpanel');
+  await expect(panel).toContainText('No credit packs bought yet.');
+  // Nothing to refund means nothing to ask about either: the button that asks
+  // belongs to a purchase, and there are none.
+  await expect(panel.getByRole('button', { name: 'Ask for a refund' })).toHaveCount(0);
+});

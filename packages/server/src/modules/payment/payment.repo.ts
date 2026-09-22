@@ -16,6 +16,7 @@ import {
   purchaseMailOutbox,
   studios,
 } from "@breatic/core";
+import { HELD_LIFECYCLES } from "@breatic/shared";
 import type { PaymentEntity } from "@breatic/shared";
 
 /**
@@ -416,10 +417,13 @@ export async function getConfirmationView(
   const row = rows[0];
   if (!row) return null;
 
-  // What is left across this account's live lots, which is the same figure the
-  // credits overlay puts at the top of every screen. A lot that has been spent
-  // down still holds its purchased amount, and a refunded one holds it too, so
-  // either column would answer "ever bought" to a letter that says "now".
+  // What is left across the lots this account still holds, which is the same
+  // figure the credits overlay puts at the top of every screen: assigned plus
+  // unassigned plus under refund. Money waiting on a refund decision has not
+  // gone back to the card, so the buyer still holds it. A lot that has been
+  // spent down still carries its purchased amount, and a refunded one carries
+  // it too, so either column would answer "ever bought" to a letter that says
+  // "now".
   const [held] = await db
     .select({
       total: sql<number>`coalesce(sum(${creditLots.remainingCredits}), 0)`,
@@ -431,7 +435,7 @@ export async function getConfirmationView(
           creditLots.userId,
           sql`(SELECT user_id FROM payments WHERE id = ${paymentId})`,
         ),
-        eq(creditLots.lifecycle, "active"),
+        inArray(creditLots.lifecycle, HELD_LIFECYCLES),
         isNull(creditLots.deletedAt),
       ),
     );

@@ -19,7 +19,7 @@ import {
   applyRatioPreset,
   type CropRect,
   type CropSize,
-} from '@web/spaces/canvas/focus/crop-math';
+} from '@web/lib/crop-math';
 
 /** The image's offset box: its size, and where it sits inside its frame. */
 export interface OffsetBox {

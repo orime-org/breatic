@@ -38,10 +38,11 @@ import {
   ForbiddenError,
   type DbTx,
 } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { t, REFUND_LIFECYCLES, refundRefusal } from "@breatic/shared";
 import type {
   CreditLotEntity,
   CreditOverview,
+  RefundRefusal,
   StudioCreditSummary,
 } from "@breatic/shared";
 
@@ -55,12 +56,23 @@ export const REFKEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
 /** How long a billed key stays claimed. */
 const BILL_LOCK_TTL_SECONDS = 86_400;
 
-/** Lifecycles in which a lot is on its way out of the account. */
-const REFUND_LIFECYCLES: ReadonlySet<string> = new Set([
-  "refund_pending",
-  "refunding",
-  "refunded",
-]);
+/**
+ * The answer a refused ask is given, built when the ask is made.
+ *
+ * Built rather than held: `t()` reads the locale of the request in flight, so
+ * a table of finished sentences would be fixed to whichever language happened
+ * to be loading this module.
+ */
+const REFUSAL_ERRORS: Record<RefundRefusal, () => AppError> = {
+  already_asked: () =>
+    new AppError(409, t("server.credit.refund_already_asked")),
+  still_designated: () =>
+    new AppError(409, t("server.credit.refund_still_designated")),
+  already_spent: () =>
+    new AppError(422, t("server.credit.refund_already_spent")),
+  window_closed: () =>
+    new AppError(422, t("server.credit.refund_window_closed")),
+};
 
 /** What one generation wants charged. */
 export interface ChargeInput {
@@ -482,6 +494,80 @@ export async function designateLot(input: {
 }
 
 /**
+ * Ask for a refund on one purchase.
+ *
+ * This is the whole of the refund flow that lives here: the lot moves to
+ * `refund_pending` and stops being spendable or designatable. Deciding the
+ * ask — paying the money back, or returning the lot to `active` — belongs to
+ * the back office.
+ *
+ * Four conditions gate it. Two come from the published promise: a purchase
+ * is refundable in full within thirty days if no credit was ever drawn from
+ * it. The third is that the lot carries no designation, because a refund is
+ * asked for on a lot the buyer has already released — we never release it for
+ * them. The fourth keeps one lot to one ask at a time.
+ *
+ * "Nothing spent" asks the ledger, not the balance. The promise turns on
+ * whether a credit was ever drawn, and the ledger is the record of that; the
+ * balance is a projection of it and answers a narrower question.
+ *
+ * The window is measured from the first ask. `refund_attempts` above zero
+ * means the buyer already asked while it was open — the only path that raises
+ * it is an ask that was turned down, and asking checks the window — so how
+ * long the decision took afterwards does not cost them the right.
+ *
+ * Nothing is written to the ledger and the balance does not move: the credits
+ * leave the account when the money actually goes back, which is a step this
+ * repository does not take. So an ask that is turned down needs nothing
+ * undone.
+ * @param input - Which lot, on whose behalf.
+ * @param input.lotId - The lot to ask about.
+ * @param input.requestingUserId - Who is asking. Must be the buyer.
+ * @returns The lot as it now stands.
+ * @throws {NotFoundError} If the lot does not exist or belongs to someone else.
+ * @throws {AppError} 409 if it still carries a designation or is already in
+ * the refund flow; 422 if it has been spent from or its window has closed.
+ */
+export async function requestRefund(input: {
+  lotId: string;
+  requestingUserId: string;
+}): Promise<CreditLotEntity> {
+  return db.transaction(async (tx) => {
+    const lot = await creditLotRepo.lockLot(input.lotId, tx);
+    if (!lot || lot.userId !== input.requestingUserId) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    // The ledger is read before the rule rather than inside it, which costs a
+    // query on lots the rule would refuse on an earlier count. That buys the
+    // rule as one pure function the refunds screen runs too, so the screen
+    // cannot offer an ask this would turn down, or hide one it would allow.
+    const refusal = refundRefusal(
+      {
+        lifecycle: lot.lifecycle,
+        designated: lot.designatedStudioId !== null,
+        everSpent: await creditLotRepo.hasEverSpent(input.lotId, tx),
+        refundAttempts: lot.refundAttempts,
+        createdAt: lot.createdAt,
+      },
+      new Date(),
+    );
+    if (refusal !== null) {
+      throw REFUSAL_ERRORS[refusal]();
+    }
+
+    const asked = await creditLotRepo.markRefundPending(input.lotId, tx);
+    if (!asked) {
+      // The row was locked and read as `active` a few statements ago, so the
+      // predicate can only miss if that lock is not what it is taken to be.
+      // The same sentence the rule refuses with: whichever way a second ask
+      // arrives, the buyer reads one answer.
+      throw REFUSAL_ERRORS.already_asked();
+    }
+    return asked;
+  });
+}
+
+/**
  * What an account holds and where it went.
  *
  * A studio appears here on any of three counts: it holds credits of this
@@ -495,12 +581,14 @@ export async function designateLot(input: {
  * @returns The overview.
  */
 export async function getOverview(userId: string): Promise<CreditOverview> {
-  const [spendableRows, spentRows, owingRows, unassigned] = await Promise.all([
-    creditLotRepo.sumSpendableByStudio(userId),
-    creditLotRepo.sumSpentByStudio(userId),
-    creditLotRepo.studiosWithDebtFrom(userId),
-    getUnassignedCredits(userId),
-  ]);
+  const [spendableRows, spentRows, owingRows, unassigned, underRefund] =
+    await Promise.all([
+      creditLotRepo.sumSpendableByStudio(userId),
+      creditLotRepo.sumSpentByStudio(userId),
+      creditLotRepo.studiosWithDebtFrom(userId),
+      getUnassignedCredits(userId),
+      creditLotRepo.sumUnderRefundForUser(userId),
+    ]);
 
   const byStudio = new Map<string, StudioCreditSummary>();
   for (const row of spendableRows) {
@@ -583,6 +671,7 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   return {
     assignedCredits: studios.reduce((sum, s) => sum + s.spendable, 0),
     unassignedCredits: unassigned,
+    underRefundCredits: toMicroCredits(underRefund) / 1_000_000,
     billing: env.PAYMENT_ENABLED,
     studios,
   };
