@@ -77,6 +77,12 @@ const CATALOG = {
       cost_per_call: 4,
       generation_time: 12,
     },
+    {
+      name: 'slow-model',
+      display_name: 'Slow Model',
+      cost_per_call: 4,
+      generation_time: 30,
+    },
   ],
   video: [],
   audio: [],
@@ -304,9 +310,32 @@ describe('a flow that is more than one thing', () => {
     renderCard(true, three);
 
     // Three runs of a model the catalog prices at 4, so twelve -- and the
-    // wait is one run's, since a press starts all three at once.
+    // wait is one run's, drawn as an each because all three take it.
     await waitFor(() => expect(screen.getByText('12')).toBeTruthy());
     expect(screen.getByText(/12 s . 3/)).toBeTruthy();
+  });
+
+  it('quotes one number for the wait where the runs are not the same length', async () => {
+    // Twelve seconds beside thirty drawn as "30 s x 2" says the picture takes
+    // half a minute. With no per-run number to multiply, the longest stands
+    // on its own.
+    listModels.mockResolvedValue(CATALOG);
+    const mixed: CanvasProposal = {
+      ...PAIR,
+      nodes: [
+        PAIR.nodes[0]!,
+        PAIR.nodes[1]!,
+        { ...PAIR.nodes[1]!, name: 'The clip', model: 'slow-model' },
+      ],
+      edges: [
+        { fromIndex: 0, toIndex: 1 },
+        { fromIndex: 0, toIndex: 2 },
+      ],
+    };
+    renderCard(true, mixed);
+
+    await waitFor(() => expect(screen.getByText('30s')).toBeTruthy());
+    expect(screen.queryByText(/30 s . 2/)).toBeNull();
   });
 
   it('names the node each thing left to do belongs to', () => {

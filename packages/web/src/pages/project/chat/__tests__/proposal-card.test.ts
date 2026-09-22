@@ -61,6 +61,7 @@ const flow = (
 const CATALOG = {
   image: [
     { name: 'flat-model', display_name: 'Flat', cost_per_call: 4, generation_time: 12 },
+    { name: 'slow-model', display_name: 'Slow', cost_per_call: 4, generation_time: 30 },
     {
       name: 'metered-model',
       display_name: 'Metered',
@@ -227,10 +228,28 @@ describe('what is left for the reader', () => {
 });
 
 describe('what one press costs', () => {
-  it('adds up every generation, since one press runs all of them', () => {
+  it('adds up every generation the placed group will run', () => {
     const proposal = flow([generates('Front'), generates('At 45'), generates('Overhead')]);
 
-    expect(costOf(CATALOG, proposal)).toEqual({ credits: 12, seconds: 12, runs: 3 });
+    expect(costOf(CATALOG, proposal)).toEqual({
+      credits: 12,
+      seconds: 12,
+      runs: 3,
+      sameLength: true,
+    });
+  });
+
+  it('says the runs are not the same length when the models differ', () => {
+    // "12 s x 2" says both runs take twelve seconds, and one of them takes
+    // thirty. The card draws the multiplied form only where an "each" exists.
+    const proposal = flow([generates('Front'), generates('The clip', 'slow-model')]);
+
+    expect(costOf(CATALOG, proposal)).toEqual({
+      credits: 8,
+      seconds: 30,
+      runs: 2,
+      sameLength: false,
+    });
   });
 
   it('gives the wait alone when a model charges by what it is given', () => {
@@ -238,13 +257,18 @@ describe('what one press costs', () => {
     // would be a number nobody can arrive at.
     const proposal = flow([generates('Front'), generates('Long one', 'metered-model')]);
 
-    expect(costOf(CATALOG, proposal)).toEqual({ seconds: 30, runs: 2 });
+    expect(costOf(CATALOG, proposal)).toEqual({ seconds: 30, runs: 2, sameLength: false });
   });
 
   it('counts only what generates, not the words placed beside it', () => {
     const proposal = flow([written('Your copy'), generates('Front'), generates('At 45')]);
 
-    expect(costOf(CATALOG, proposal)).toEqual({ credits: 8, seconds: 12, runs: 2 });
+    expect(costOf(CATALOG, proposal)).toEqual({
+      credits: 8,
+      seconds: 12,
+      runs: 2,
+      sameLength: true,
+    });
   });
 
   it('says nothing at all about a model the catalog does not carry', () => {

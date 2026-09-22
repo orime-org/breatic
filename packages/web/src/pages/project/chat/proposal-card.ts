@@ -62,10 +62,18 @@ export interface ProposalPrice {
    * field that looks like one is the balance gate's floor.
    */
   credits?: number;
-  /** The longest of the runs, since one press starts them all at once. */
+  /** The longest of the runs. */
   seconds: number;
-  /** How many generations one press starts. */
+  /** How many generations the placed group will run. */
   runs: number;
+  /**
+   * Whether every run takes the same time, which is what "each" needs.
+   *
+   * A picture at 25 seconds beside a video at 180 drawn as "180 s x 2" says
+   * the picture takes three minutes. Where the runs differ there is no per-run
+   * number to multiply, and the card draws the longest on its own.
+   */
+  sameLength: boolean;
 }
 
 /**
@@ -237,12 +245,14 @@ export function costOf(
   // total carrying it would be a number nobody can arrive at. The wait stands
   // either way: one press starts every run at once, so it is the longest.
   const metered = known.some((row) => row.rate !== undefined);
+  const times = known.map((row) => row.generation_time);
   return {
     ...(metered
       ? {}
       : { credits: known.reduce((sum, row) => sum + row.cost_per_call, 0) }),
-    seconds: Math.max(...known.map((row) => row.generation_time)),
+    seconds: Math.max(...times),
     runs: known.length,
+    sameLength: new Set(times).size === 1,
   };
 }
 

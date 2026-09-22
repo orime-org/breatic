@@ -203,7 +203,7 @@ export const ProposalCard = React.memo(function ProposalCard({
               )}
               <span className='flex items-center gap-0.5 tabular-nums'>
                 <Clock className='h-3.5 w-3.5' aria-hidden='true' />
-                {price.runs > 1
+                {price.runs > 1 && price.sameLength
                   ? t('chat.proposal.eachRun', { s: price.seconds, n: price.runs })
                   : t('canvas.generatePanel.durationSeconds', { n: price.seconds })}
               </span>
