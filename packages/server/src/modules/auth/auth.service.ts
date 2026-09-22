@@ -122,41 +122,47 @@ export async function loginEmail(
  *
  * If a user with the given Google ID exists, logs them in. Otherwise,
  * links to an existing email account or creates a new account (no
- * personal studio — like email step 1). When OAuth gets a real UI, the
- * new user will hit the same "no personal studio → pick a slug" gate as
+ * personal studio — like email step 1). The
+ * new user hits the same "no personal studio → pick a slug" gate as
  * email sign-ups (email-registration rewrite, 2026-06-06).
  *
  * Google is pure authentication: we never import its display name or
  * avatar. Identity is user-owned — the display name is the slug chosen at
  * slug-setup, the avatar is a UI upload (#1809) — so Google's `name` /
  * `picture` are intentionally not accepted here. The frontend GIS button is
- * not wired up yet; on a real sign-in this path runs create/link + session +
- * email_verified only.
+ * rendered by Google; this path creates/links accounts and issues a session.
  * @param googleId - The Google account identifier
  * @param email - The email address from Google
+ * @param authoritativeEmail - Whether Google owns verification of this email (Gmail or Workspace).
+ * @throws {UnauthorizedError} If linking would claim an unproven or differently bound email.
  * @returns The user and a session token
  */
 export async function loginOrCreateGoogle(
   googleId: string,
   email: string,
+  authoritativeEmail = false,
 ): Promise<{ user: UserEntity; token: string }> {
   let user = await userRepo.getUserByGoogleId(googleId);
 
   if (!user) {
-    // Check if email already registered - link accounts
     user = await userRepo.getUserByEmail(email);
     if (user) {
-      user =
-        (await userRepo.updateUser(user.id, { googleId })) ?? user;
+      if (!authoritativeEmail || (user.googleId && user.googleId !== googleId)) {
+        throw new UnauthorizedError(t("server.auth.google_link_requires_email_login"));
+      }
+      const linked = await userRepo.linkGoogleIdentity(user.id, googleId);
+      if (!linked) throw new UnauthorizedError(t("server.auth.google_link_requires_email_login"));
+      user = linked;
     } else {
       user = await userRepo.createUser({ email, googleId });
     }
   }
 
-  // Mark the email verified on every Google sign-in (Google asserts it). No
-  // personal studio is created here — the slug-setup gate handles that; name
-  // + avatar are user-owned (slug / UI upload), never imported from Google.
-  user = (await userRepo.updateUser(user.id, { emailVerified: true })) ?? user;
+  // Google may attest a different address after the account's email changes.
+  // It cannot verify the old address still stored on our account.
+  if (authoritativeEmail && user.email === email) {
+    user = (await userRepo.updateUser(user.id, { emailVerified: true })) ?? user;
+  }
 
   const token = crypto.randomUUID();
   const redis = getRedis();

@@ -31,6 +31,7 @@
       "google_oauth_unconfigured": "Google sign-in is not available on this server",
       "invalid_google_credential": "Could not verify your Google account",
       "google_email_unverified": "Your Google account email is not verified",
+      "google_link_requires_email_login": "Sign in with email to access this account. Google could not safely link it.",
       "reset_link_sent": "If this email is registered, a reset link has been sent.",
       "reset_success": "Password reset successful. Please sign in.",
       "reset_recovery_success": "Password reset successful. Save your new recovery code.",
@@ -637,7 +638,8 @@
       "noAccount": "Don't have an account?",
       "forgotPassword": "Forgot password?",
       "continueWithGoogle": "Continue with Google",
-      "googleSoon": "Google sign-in is coming soon.",
+      "googleLoading": "Loading Google sign-in…",
+      "googleFailed": "Google sign-in is unavailable. Please try again or use email sign-in.",
       "failed": "Sign-in failed. Please try again."
     },
     "register": {

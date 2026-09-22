@@ -324,3 +324,9 @@ ZIP users should download the new source and preserve their `.env`, Ingest confi
 | No email arrives | Console mode only prints logs; delivery needs SMTP |
 
 Infrastructure logs: `docker compose logs --tail=100 postgres redis`. For application logs, start with the `pnpm dev` terminal and `logs/`. Remove secrets, cookies and signed upload tokens before sharing logs.
+
+## Google sign-in (optional)
+
+Create a Google OAuth **Web application** client and register the frontend origin (scheme, hostname and port, without a path) in Authorized JavaScript origins; development normally uses `http://localhost:8000`. Set `GOOGLE_CLIENT_ID` in `.env` and use the same ID for the frontend build and backend runtime. The official button returns an ID token through a popup callback; the backend verifies it and issues the session cookie. No client secret or backend redirect URI is required. An empty ID hides the button.
+
+Restart both development processes after changing the ID. For Docker, rebuild the frontend, for example `docker build -f Dockerfile.web --build-arg GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com -t breatic-web:google .`, and point the Compose web service at that image. Runtime container variables cannot change an existing frontend build. The browser must reach Google's SDK and account pages; email sign-in remains available when Google is unreachable. Plain HTTP LAN IPs do not meet Google's Web origin requirements; use an allowed localhost or HTTPS origin.

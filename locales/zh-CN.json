@@ -34,6 +34,7 @@
       "google_oauth_unconfigured": "本服务器未开启 Google 登录",
       "invalid_google_credential": "无法验证你的 Google 账号",
       "google_email_unverified": "你的 Google 账号邮箱未验证",
+      "google_link_requires_email_login": "请使用邮箱登录此账号，Google 无法安全关联此邮箱。",
       "reset_link_sent": "如果该邮箱已注册,重置链接已发送。",
       "reset_success": "密码重置成功,请登录。",
       "reset_recovery_success": "密码重置成功,请保存新的恢复码。",
@@ -637,7 +638,8 @@
       "noAccount": "还没有账号?",
       "forgotPassword": "忘记密码?",
       "continueWithGoogle": "使用 Google 继续",
-      "googleSoon": "Google 登录即将上线。",
+      "googleLoading": "正在加载 Google 登录…",
+      "googleFailed": "Google 登录暂不可用，请重试或使用邮箱登录。",
       "failed": "登录失败,请重试。"
     },
     "register": {

@@ -3,7 +3,8 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { toast } from '@web/lib/toast';
+import { getLocale } from '@breatic/shared';
+import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
 
 import { authApi } from '@web/data/api/auth';
 import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
@@ -32,7 +33,7 @@ import { FieldError } from '@web/pages/auth/_shared/FieldError';
  * because form errors belong with the form, not the global
  * cross-page notification surface.
  *
- * Google OAuth: conditionally rendered if the backend was started
+ * Google OAuth: conditionally rendered if the frontend was built
  * with `GOOGLE_CLIENT_ID`. The id is injected at build time via
  * `__GOOGLE_CLIENT_ID__` (see `vite.config.mts`). Empty string =
  * not configured = hide the button entirely.
@@ -52,6 +53,35 @@ export default function LoginPage(): React.JSX.Element {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const pending = React.useRef(false);
+  const mounted = React.useRef(true);
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  /**
+   * Exchange a Google-signed credential for the existing session cookie.
+   * @param credential - The ID token supplied by Google's official SDK.
+   * @throws {Error} Does not propagate errors; failures become form feedback.
+   */
+  async function handleGoogleCredential(credential: string): Promise<void> {
+    if (pending.current || !mounted.current) return;
+    pending.current = true;
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const { user } = await authApi.google({ credential });
+      if (!mounted.current) return;
+      setUser(toCurrentUser(user));
+      navigate(params.get('next') ?? '/studio', { replace: true });
+    } catch (err) {
+      if (mounted.current) setFormError(err instanceof ApiException ? err.message : t('auth.login.failed'));
+    } finally {
+      pending.current = false;
+      if (mounted.current) setSubmitting(false);
+    }
+  }
   // Field-level errors (inline below each input). `formError` is the
   // single async / server failure line that sits above the submit
   // button - kept out of toasts because form failures are tied to
@@ -69,7 +99,7 @@ export default function LoginPage(): React.JSX.Element {
    */
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    if (submitting) return;
+    if (pending.current) return;
     setFormError(null);
     const trimmedEmail = email.trim();
     const nextErrors: typeof errors = {};
@@ -81,17 +111,20 @@ export default function LoginPage(): React.JSX.Element {
     }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
+    pending.current = true;
     setSubmitting(true);
     try {
       const { user } = await authApi.login({ email: trimmedEmail, password });
+      if (!mounted.current) return;
       setUser(toCurrentUser(user));
       navigate(params.get('next') ?? '/studio', { replace: true });
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.login.failed');
-      setFormError(message);
+      if (mounted.current) setFormError(message);
     } finally {
-      setSubmitting(false);
+      pending.current = false;
+      if (mounted.current) setSubmitting(false);
     }
   }
 
@@ -172,60 +205,9 @@ export default function LoginPage(): React.JSX.Element {
             <span>{t('auth.or')}</span>
             <div className='h-px flex-1 bg-border' />
           </div>
-          <GoogleSignInButton />
+          <GoogleSignIn key={getLocale()} clientId={__GOOGLE_CLIENT_ID__} busy={submitting} onCredential={handleGoogleCredential} />
         </div>
       ) : null}
     </AuthCardShell>
-  );
-}
-
-/**
- * Google Sign-In trampoline - opens the GIS popup, exchanges the ID
- * token via `POST /auth/google`, then mirrors the user into the
- * current-user store. The Google script is loaded lazily on first
- * click to avoid the third-party request when most users come in
- * via email/password.
- *
- * Kept inline (rather than as a separate file under `features/auth/`)
- * because it's the LoginPage's only consumer and the wiring is tiny.
- * Promotes to its own file the moment a second page (e.g. settings)
- * needs to re-link Google to an existing account.
- * @returns the "Continue with Google" button.
- */
-function GoogleSignInButton(): React.JSX.Element {
-  const t = useTranslation();
-  const [busy, setBusy] = React.useState(false);
-
-  /**
-   * Lazily start the Google Sign-In flow on first click; currently shows
-   * a "coming soon" toast until the GIS popup exchange is wired up.
-   */
-  async function handleClick(): Promise<void> {
-    if (busy) return;
-    setBusy(true);
-    try {
-      // For now, hand off to a placeholder credential. The full GIS
-      // popup flow ships in a follow-up; this button is wired so the
-      // surface area + i18n key exists. (PR-b scope is the cookie
-      // migration plumbing - see plan §phase 4.) Toast `id` is shared
-      // with the email-password feedback so repeated clicks replace
-      // the prior toast instead of stacking.
-      toast.info(t('auth.login.googleSoon'), { id: 'auth-feedback' });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Button
-      type='button'
-      size='form'
-      variant='outline'
-      onClick={handleClick}
-      disabled={busy}
-      className='w-full'
-    >
-      {t('auth.login.continueWithGoogle')}
-    </Button>
   );
 }

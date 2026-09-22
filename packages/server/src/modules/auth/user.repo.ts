@@ -7,7 +7,7 @@
  * Handles CRUD operations and atomic credit modifications.
  */
 
-import { eq, and, isNull, inArray } from "drizzle-orm";
+import { eq, and, or, isNull, inArray } from "drizzle-orm";
 import { db, getDefaultMembershipTier, asKnownTier } from "@breatic/core";
 import { users } from "@breatic/core";
 import type { UserEntity } from "@breatic/shared";
@@ -297,4 +297,18 @@ export async function markRecoveryCodeUsed(userId: string): Promise<void> {
     .update(users)
     .set({ recoveryCodeUsedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(users.id, userId), isNull(users.deletedAt)));
+}
+
+/**
+ * Bind Google only while the active account is unbound or already matches.
+ * @param userId - The account whose email was verified by Google.
+ * @param googleId - The verified Google subject.
+ * @returns The linked user, or null if a concurrent binding/deletion won.
+ * @throws {Error} If PostgreSQL cannot complete the update.
+ */
+export async function linkGoogleIdentity(userId: string, googleId: string): Promise<UserEntity | null> {
+  const rows = await db.update(users).set({ googleId, updatedAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.deletedAt), or(isNull(users.googleId), eq(users.googleId, googleId))))
+    .returning();
+  return rows[0] ? toEntity(rows[0]) : null;
 }

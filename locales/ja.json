@@ -31,6 +31,7 @@
       "google_oauth_unconfigured": "このサーバーでは Google サインインは利用できません",
       "invalid_google_credential": "Google アカウントを確認できませんでした",
       "google_email_unverified": "Google アカウントのメールアドレスが確認されていません",
+      "google_link_requires_email_login": "このアカウントにはメールでログインしてください。Google アカウントを安全に連携できません。",
       "reset_link_sent": "そのメールアドレスに登録されたアカウントがあれば、リセットリンクをお送りしました。",
       "reset_success": "パスワードをリセットしました。サインインしてください。",
       "reset_recovery_success": "パスワードをリセットしました。新しいリカバリーコードを保存してください。",
@@ -637,7 +638,8 @@
       "noAccount": "アカウントをお持ちでないですか?",
       "forgotPassword": "パスワードをお忘れですか?",
       "continueWithGoogle": "Google で続ける",
-      "googleSoon": "Google サインインは近日公開予定です。",
+      "googleLoading": "Google ログインを読み込み中…",
+      "googleFailed": "Google ログインを利用できません。再試行するか、メールでログインしてください。",
       "failed": "サインインに失敗しました。もう一度お試しください。"
     },
     "register": {
