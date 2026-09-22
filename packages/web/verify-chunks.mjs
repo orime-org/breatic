@@ -341,10 +341,12 @@ if (entryBytes > ENTRY_BUDGET) {
 // the whole residue a page-only release costs a returning reader, 76,122 bytes
 // measured. Nothing in the source forces it, so this reads the built output.
 //
-// Measured while it did not hold: a preload helper beside the loaders made
-// `ProjectPage` name them, and a hover prefetch in the shared `Button` made
-// that chunk name `ProjectPage` — a one-line page edit then cost 2,821,634
-// bytes across 36 chunks instead of 83,925 across 3.
+// Measured while it did not hold, one mutation each against its own baseline.
+// A preload helper beside the loaders made `ProjectPage` name them: a one-line
+// login-page edit then cost 1,894,219 bytes across 4 chunks, against 83,925
+// across 3. A hover prefetch in the shared `Button` made that chunk name
+// `ProjectPage`: a one-line `ProjectPage` edit then cost 2,821,634 bytes
+// across 36 chunks, against 1,885,595 across 3.
 const loaderChunks = files.filter(
   (f) => f.startsWith('route-imports-') && f.endsWith('.js'),
 );
