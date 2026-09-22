@@ -522,7 +522,9 @@ function checkGenerateNode(
     }
     return {
       ok: false,
-      reason: `${String(nameable.length)} node(s) feed node ${String(index)} with work this prompt can name, and it points at ${String(points.length)}. Mark the place in the prompt that points at each.`,
+      reason: points.length > nameable.length
+        ? `The prompt points at ${String(points.length)} node(s) upstream and ${String(nameable.length)} feed${nameable.length === 1 ? "s" : ""} node ${String(index)} with work it can name. Take the extra mark(s) out.`
+        : `${String(nameable.length)} node(s) feed node ${String(index)} with work this prompt can name, and it points at ${String(points.length)}. Mark the place in the prompt that points at each.`,
     };
   }
   if (needed.length === 0) {
@@ -732,9 +734,9 @@ function hasRing(proposal: CanvasProposal): boolean {
  * kind anywhere on the canvas -- there is no edge to look for, so it is enough
  * that some generation here asks for that kind.
  *
- * A node whose mode or model the catalog does not know is skipped rather than
- * counted: the per-generation check says what is wrong with it, in its own
- * words, a few lines later.
+ * A node whose mode or model the catalog does not know answers yes and is
+ * skipped: the per-generation check refuses it by name a few lines later, and
+ * a no here would speak first, about a different node and a different fault.
  * @param proposal - The whole proposal.
  * @param node - The empty node being asked about.
  * @param at - Where it sits, for reading the edges into it.
@@ -749,11 +751,11 @@ function isReadBySomething(
   return proposal.nodes.some((other, into) => {
     if (other.role !== "generate" || other.type === "text") return false;
     const { mode, model } = other;
-    if (!mode || !model) return false;
+    if (!mode || !model) return true;
     const reachable = modelsForMode(other.type, mode);
-    if (!reachable.available) return false;
+    if (!reachable.available) return true;
     const chosen = reachable.models.find((m) => m.name === model);
-    if (!chosen) return false;
+    if (!chosen) return true;
     return poolParam(chosen)
       ? proposal.edges.some((e) => e.fromIndex === at && e.toIndex === into)
       : sourceKinds(other.type, mode).includes(node.type);
@@ -918,9 +920,10 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnsw
     "answer decides the shape. Wire an edge only where one node draws on what " +
     "another made; belonging together is said by the group, not by edges. " +
     "Ask get_canvas_capabilities and list_generation_models first, and " +
-    "propose only a mode and model they returned. Mark each empty node's " +
-    "place in the prompt, plus anything the panel leaves them to pick, and " +
-    "say in your reply what they still have to connect by hand.",
+    "propose only a mode and model they returned. Mark in the prompt each " +
+    "piece of material the reader supplies -- saying where it goes, which " +
+    "for most modes is a slot on the panel -- plus anything the panel leaves " +
+    "them to pick, and say in your reply what they still have to do by hand.",
   inputSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),

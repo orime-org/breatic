@@ -777,6 +777,28 @@ describe("what the catalog does not offer", () => {
     expect(checkProposal(wrong).ok).toBe(false);
   });
 
+  it("names the model when the model is what it does not carry", () => {
+    // The refusal is the whole of what the model has to act on. Told instead
+    // that nothing reads the empty node, the sensible next move is to drop
+    // the empty node -- and the reader who said they had the photo gets a
+    // flow that does not use it.
+    const at = pooled();
+    const verdict = checkProposal({
+      nodes: [
+        { role: "source", type: at.needs[0] as GenerationNodeType, name: "Your photo" },
+        { role: "generate", type: at.nodeType, name: "Result", mode: at.mode,
+          model: "a-model-the-catalog-never-had", params: {},
+          prompt: [{ text: "make it" },
+            { slot: { kind: "asset", label: "yours", note: "Put it in" } }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "x", groupName: "g",
+    });
+
+    if (verdict.ok) throw new Error("expected a refusal");
+    expect(verdict.reason).toContain("a-model-the-catalog-never-had");
+  });
+
   it("refuses a model that mode cannot reach", () => {
     const wrong = propose(sourceless(), { sources: [], marks: 0 });
     (wrong.nodes[0] as ProposalNode).model = "a-model-the-catalog-never-had";
@@ -1540,6 +1562,27 @@ describe("a mark pointing at an upstream node", () => {
     });
 
     expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("slot") });
+  });
+
+  it("says to take a mark out when there is one too many", () => {
+    // Reaching for `ref` where `asset` belonged is the confusion the schema's
+    // own field description exists to prevent, so it is the shape that
+    // arrives. Told to mark a place for each of zero nodes, the model adds
+    // another mark or wires another node -- the correction is to delete one.
+    const at = pooled();
+    const verdict = checkProposal({
+      nodes: [
+        { role: "source", type: at.needs[0] as GenerationNodeType, name: "Yours" },
+        { role: "generate", type: at.nodeType, name: "Result", mode: at.mode,
+          model: at.model, params: {},
+          prompt: [{ text: "make it " }, { slot: { kind: "ref", label: "yours", note: "" } }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "x", groupName: "g",
+    });
+
+    if (verdict.ok) throw new Error("expected a refusal");
+    expect(verdict.reason).toContain("Take");
   });
 
   it("refuses a written node whose words point at something upstream", () => {
