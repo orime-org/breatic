@@ -165,6 +165,18 @@ export default defineConfig(({ command, mode }) => {
           // preloads it, so a login form downloaded the chat runtime and the
           // rich-text editor (#142).
           manualChunks(id) {
+            // Vite's preload helper is imported by every chunk that holds a
+            // dynamic import, `ProjectPage` included. Left to land beside the
+            // loaders it would drag that 1.8 MB chunk along on every release:
+            // the loaders change each time, so the filename `ProjectPage`
+            // writes for the helper changes with them. It holds no page
+            // filenames of its own, so its own chunk stays byte-identical.
+            if (id.includes('vite/preload-helper')) {
+              return 'preload-helper';
+            }
+            if (/[\\/]src[\\/]app[\\/]route-imports\./.test(id)) {
+              return 'route-imports';
+            }
             if (!id.includes('node_modules')) return;
             if (
               /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(
@@ -181,6 +193,22 @@ export default defineConfig(({ command, mode }) => {
             // undefined`.
             if (/[\\/]node_modules[\\/]xlsx[\\/]/.test(id)) {
               return 'xlsx';
+            }
+            // Split only what a page chunk alone reaches. A group that shared
+            // code also touches is pulled into every reader's first load:
+            // splitting @tiptap/prosemirror/@blocknote measured the login
+            // page up from 1,066,370 to 2,191,307 bytes, and the AI SDK
+            // pushed 68,940 of its own onto it. These three are reached from
+            // ProjectPage and nowhere else, so they cache on their own while
+            // a release that touches our code leaves them byte-identical.
+            if (/[\\/]node_modules[\\/]katex[\\/]/.test(id)) {
+              return 'katex';
+            }
+            if (/[\\/]node_modules[\\/](highlight\.js|lowlight)[\\/]/.test(id)) {
+              return 'highlight';
+            }
+            if (/[\\/]node_modules[\\/](yjs|lib0|y-protocols)[\\/]/.test(id)) {
+              return 'yjs-vendor';
             }
           },
         },
