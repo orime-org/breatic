@@ -132,12 +132,21 @@ describe("the account's own activity, narrowed to what it administers", () => {
   it("drops what was spent in a studio somebody else administers", async () => {
     // The reader is a guest here: their credits paid for the run, and the
     // studio, its projects and what ran in them are not theirs to read.
+    // Somebody else really administers it — a studio with no admin at all
+    // would be dropped by the role half of the predicate alone, and the half
+    // that asks whose studio it is would go unread.
     const reader = await seedUser();
-    const theirs = await seedStudio();
+    const theirs = await seedStudio(await seedUser());
     await seedSpend(reader, theirs, 5);
 
     const rows = await creditLotRepo.listLedgerByPayer(reader, 20, null);
     expect(rows).toEqual([]);
+
+    // Dropped from the reader's own view, not from the books: the studio's
+    // side still carries it, which is what makes this a narrowing rather
+    // than a deletion.
+    const theirSide = await creditLotRepo.listLedgerByStudio(theirs, 20, null);
+    expect(theirSide.map((r) => r.actorUserId)).toEqual([reader]);
   });
 
   it("keeps a run that belongs to no studio", async () => {
@@ -146,6 +155,40 @@ describe("the account's own activity, narrowed to what it administers", () => {
 
     const rows = await creditLotRepo.listLedgerByPayer(reader, 20, null);
     expect(rows.map((r) => r.studioId)).toEqual([null]);
+  });
+
+  it("pages to the end without handing over an empty page", async () => {
+    // What the narrowing costs if it is done after the read instead of
+    // inside it: a page whose rows were all dropped comes back empty while
+    // the cursor still says there is more, and the reader sees the list end
+    // early. Every case above holds one row and asks for twenty, so none of
+    // them can tell the two apart.
+    const reader = await seedUser();
+    const mine = await seedStudio(reader);
+    const theirs = await seedStudio(await seedUser());
+    for (let i = 0; i < 3; i += 1) {
+      await seedSpend(reader, theirs, 1);
+      await seedSpend(reader, mine, 1);
+    }
+
+    const seen: string[] = [];
+    let cursor: { createdAt: string; id: string } | null = null;
+    // Bounded so a cursor that never advances fails as a test rather than
+    // hanging the suite.
+    for (let page = 0; page < 10; page += 1) {
+      const rows = await creditLotRepo.listLedgerByPayer(reader, 2, cursor);
+      expect(
+        rows.length,
+        "an empty page while the cursor said there was more",
+      ).toBeGreaterThan(0);
+      seen.push(...rows.map((r) => r.id));
+      if (rows.length < 2) break;
+      const last = rows.at(-1)!;
+      cursor = { createdAt: last.cursorAt, id: last.id };
+    }
+
+    expect(seen).toHaveLength(3);
+    expect(new Set(seen).size).toBe(3);
   });
 
   it("stops administering and the rows go with it", async () => {
@@ -177,7 +220,7 @@ describe("the per-studio totals, narrowed the same way", () => {
 
   it("leaves out a studio somebody else administers", async () => {
     const reader = await seedUser();
-    const theirs = await seedStudio();
+    const theirs = await seedStudio(await seedUser());
     await seedSpend(reader, theirs, 7);
 
     expect(await creditLotRepo.sumSpentByStudio(reader)).toEqual([]);
