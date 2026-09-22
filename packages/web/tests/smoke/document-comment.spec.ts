@@ -262,6 +262,21 @@ test.describe('the box a reply is written in', () => {
     await expect(p.getByTestId('doc-comment-reply-input')).toBeVisible();
   }
 
+  test('sends the reply on Enter and leaves the box empty', async ({
+    page,
+  }) => {
+    await openThread(page);
+
+    await page.getByTestId('doc-comment-reply-input').click();
+    await page.keyboard.type('answered from the keyboard');
+    await page.keyboard.press('Enter');
+
+    await expect(
+      page.getByTestId('doc-comment-card').getByText('answered from the keyboard'),
+    ).toBeVisible();
+    await expect(page.getByTestId('doc-comment-reply-input')).toHaveValue('');
+  });
+
   test('grows with the words and stops at four lines', async ({ page }) => {
     await openThread(page);
     const viewport = page.locator(
@@ -270,9 +285,16 @@ test.describe('the box a reply is written in', () => {
     const oneLine = (await viewport.boundingBox())!.height;
 
     await page.getByTestId('doc-comment-reply-input').click();
-    await page.keyboard.type('one\ntwo\nthree');
+    // Shift+Enter is the line inside a reply; Enter would send it.
+    for (const words of ['one', 'two', 'three']) {
+      await page.keyboard.type(words);
+      await page.keyboard.press('Shift+Enter');
+    }
     const threeLines = (await viewport.boundingBox())!.height;
-    await page.keyboard.type('\nfour\nfive\nsix');
+    for (const words of ['four', 'five', 'six']) {
+      await page.keyboard.type(words);
+      await page.keyboard.press('Shift+Enter');
+    }
 
     expect(threeLines).toBeGreaterThan(oneLine);
     // Four lines of `text-sm` plus the field's own padding, and what is
@@ -320,5 +342,65 @@ test.describe('the box a reply is written in', () => {
     expect(focused.colour).not.toBe(resting.colour);
     expect(focused.colour).toBe(focused.wanted);
     expect(focused.outline).toBe('none');
+  });
+});
+
+test.describe('a thread nobody is reading', () => {
+  test('cuts each comment short and says what it is holding back', async ({
+    page,
+  }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type(LONG_LINE);
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('nothing is said about this line');
+    await commentOnParagraph(page, 0, 'worth answering');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await page.getByTestId('doc-comment-card').click();
+    for (const words of [LONG_LINE, 'the third', 'the fourth']) {
+      await page.getByTestId('doc-comment-reply-input').click();
+      await page.keyboard.type(words);
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('doc-comment-reply-input')).toHaveValue('');
+    }
+    // A press on words nobody commented on closes the thread, which is what
+    // folds the card.
+    await page.getByText('nothing is said about this line').click();
+    await page.waitForTimeout(300);
+
+    const entries = page.getByTestId('doc-comment-entry');
+    await expect(entries).toHaveCount(2);
+    await expect(page.getByTestId('doc-comment-folded-count')).toBeVisible();
+
+    // The long reply is one of the two held back, so what is on screen is the
+    // first comment and the last — each cut to three lines at most.
+    const tallest = await entries.evaluateAll((nodes) =>
+      Math.max(
+        ...nodes.map((node) => {
+          const body = node.lastElementChild!;
+          const line = parseFloat(getComputedStyle(body).lineHeight);
+          return body.getBoundingClientRect().height / line;
+        }),
+      ),
+    );
+    expect(tallest).toBeLessThanOrEqual(3.1);
+  });
+
+  test('shows every comment in full once it is opened', async ({ page }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type(LONG_LINE);
+    await commentOnParagraph(page, 0, 'worth answering');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await page.getByTestId('doc-comment-card').click();
+    for (const words of ['the second', 'the third', 'the fourth']) {
+      await page.getByTestId('doc-comment-reply-input').click();
+      await page.keyboard.type(words);
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('doc-comment-reply-input')).toHaveValue('');
+    }
+
+    await expect(page.getByTestId('doc-comment-entry')).toHaveCount(4);
+    await expect(page.getByTestId('doc-comment-folded-count')).toHaveCount(0);
   });
 });

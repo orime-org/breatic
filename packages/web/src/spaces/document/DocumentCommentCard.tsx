@@ -28,6 +28,14 @@
  * every one of them makes it a column of controls, and only the thread the
  * reader is on is the one they are about. Opening a thread — a press here, a
  * press on its highlight in the body — is what brings them out.
+ *
+ * A THREAD NOBODY IS READING IS FOLDED, for the same reason: a column where
+ * every thread is written out in full cannot be read down at all. It shows
+ * its first comment and its most recent one, each cut to three lines, which
+ * is the shape CKEditor's sidebar folds an inactive thread into
+ * (`maxCommentsWhenCollapsed` 2, `maxCommentCharsWhenCollapsed` trimming each
+ * one). Opening it unfolds it; there is no separate control, because the
+ * press that would work one is already the press that opens the thread.
  */
 
 import { X } from 'lucide-react';
@@ -41,6 +49,8 @@ import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
+import { NOTE_MAX_CHARS } from '@web/spaces/canvas/annotation/caps';
+import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import {
   annotationRights,
   canPostAnnotations,
@@ -72,6 +82,24 @@ interface DocumentCommentCardProps {
 }
 
 /**
+ * How many comments a folded thread shows: its first and its most recent.
+ *
+ * CKEditor's `maxCommentsWhenCollapsed` default, and the two that carry the
+ * thread: what it is about, and where it has got to.
+ */
+const FOLDED_ENTRY_COUNT = 2;
+
+/**
+ * How much of a comment a folded thread shows.
+ *
+ * Cut by lines rather than by characters, which is what the browser can do
+ * exactly: the ellipsis lands where the text actually wraps, at whatever
+ * width the panel happens to be and in whatever script the comment is
+ * written. CKEditor cuts the same thing by character count.
+ */
+const FOLDED_LINE_CLAMP = 'line-clamp-3';
+
+/**
  * How tall the reply box may grow before it scrolls: four lines of it.
  *
  * `text-sm` is 14px over a 20px line, and the box keeps `py-1` the way every
@@ -86,6 +114,8 @@ interface EntryProps {
   entry: CommentEntryView;
   /** Whether this reader may withdraw it. */
   canDelete: boolean;
+  /** Whether to cut it short, which a folded thread does. */
+  folded: boolean;
   /** Withdraws it. */
   onDelete: () => void;
 }
@@ -95,10 +125,16 @@ interface EntryProps {
  * @param root0 - See {@link EntryProps}.
  * @param root0.entry - The comment to draw.
  * @param root0.canDelete - Whether this reader may withdraw it.
+ * @param root0.folded - Whether to cut it short.
  * @param root0.onDelete - Withdraws it.
  * @returns The entry.
  */
-function Entry({ entry, canDelete, onDelete }: EntryProps): React.JSX.Element {
+function Entry({
+  entry,
+  canDelete,
+  folded,
+  onDelete,
+}: EntryProps): React.JSX.Element {
   const t = useTranslation();
   const author = entry.author ?? t('spaces.document.comment.unknownAuthor');
   return (
@@ -124,7 +160,11 @@ function Entry({ entry, canDelete, onDelete }: EntryProps): React.JSX.Element {
           </Button>
         )}
       </div>
-      <div className='mt-0.5 whitespace-pre-wrap break-words text-sm'>
+      <div
+        className={`mt-0.5 whitespace-pre-wrap break-words text-sm ${
+          folded ? FOLDED_LINE_CLAMP : ''
+        }`}
+      >
         {entry.body}
       </div>
     </div>
@@ -170,11 +210,35 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
     authorId: card.entries[0]?.authorId ?? '',
   }).canDelete;
 
+  // What a folded thread draws: its first comment and its most recent one.
+  const folded = !selected && card.entries.length > FOLDED_ENTRY_COUNT;
+  const drawn = folded
+    ? [card.entries[0]!, card.entries[card.entries.length - 1]!]
+    : card.entries;
+
   const send = React.useCallback(() => {
     void onReply(card.id, reply).then((sent) => {
       if (sent) setReply('');
     });
   }, [card.id, onReply, reply]);
+
+  /** Throws away what was written, which is what Cancel and Escape do. */
+  const callOff = React.useCallback(() => {
+    setReply('');
+  }, []);
+
+  // Enter saves, Shift+Enter is a line inside the reply, and nothing commits
+  // while an input method is composing — the rules a canvas note's boxes take,
+  // from the one place all of them take them.
+  const keys = useNoteBox(
+    React.useCallback(
+      (action) => {
+        if (action.type === 'save') send();
+        else if (action.type === 'escape') callOff();
+      },
+      [send, callOff],
+    ),
+  );
 
   return (
     <article
@@ -200,43 +264,62 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
         </p>
       )}
 
-      {card.entries.map((entry, index) => (
-        <Entry
-          key={entry.id}
-          entry={entry}
-          // The opening comment is the thread: withdrawing it is withdrawing
-          // the thread, which is the control below rather than this one.
-          canDelete={
-            index > 0 &&
-            annotationRights({
-              role: myRole,
-              viewerId,
-              authorId: entry.authorId,
-            }).canDelete
-          }
-          onDelete={() => {
-            onDeleteReply(card.id, entry.id);
-          }}
-        />
+      {drawn.map((entry, index) => (
+        <React.Fragment key={entry.id}>
+          <Entry
+            entry={entry}
+            // The opening comment is the thread: withdrawing it is withdrawing
+            // the thread, which is the control below rather than this one.
+            canDelete={
+              entry.id !== card.entries[0]?.id &&
+              annotationRights({
+                role: myRole,
+                viewerId,
+                authorId: entry.authorId,
+              }).canDelete
+            }
+            folded={folded}
+            onDelete={() => {
+              onDeleteReply(card.id, entry.id);
+            }}
+          />
+          {/* Between the first comment and the most recent one, which is
+              where what is being held back sits. */}
+          {folded && index === 0 && (
+            <p
+              data-testid='doc-comment-folded-count'
+              className='mb-2 text-2xs text-muted-foreground'
+            >
+              {t('spaces.document.comment.folded', {
+                count: card.entries.length - drawn.length,
+              })}
+            </p>
+          )}
+        </React.Fragment>
       ))}
 
       {/* A settled thread takes no replies: the discussion is over until
           somebody reopens it. */}
       {mayWrite && selected && !settled && (
-        <div className='mt-2 flex items-start gap-1.5'>
+        // The box takes the whole width and the pair sits under it, the shape
+        // a canvas note's reply row settles on: side by side, the buttons
+        // take the width the words need, and they are worth drawing only once
+        // there are words to act on.
+        <div className='mt-2 flex flex-col gap-1.5'>
           {/* The border and the focus colour sit on the scroller, which is
               the element that stays still; the box inside it is always
               exactly as tall as what is written, so what scrolls is the
               words. */}
           <ScrollArea
             scrollbars='vertical'
-            className='min-w-0 flex-1 rounded-chrome border border-border bg-background transition-colors focus-within:border-active-border'
+            className='rounded-chrome border border-border bg-background transition-colors focus-within:border-active-border'
             viewportClassName={REPLY_BOX_MAX_HEIGHT}
             data-testid='doc-comment-reply-scroller'
           >
             <Textarea
               ref={box}
               rows={1}
+              maxLength={NOTE_MAX_CHARS}
               data-testid='doc-comment-reply-input'
               className='min-h-0 resize-none overflow-hidden rounded-none border-0 bg-transparent px-2 py-1 text-sm focus-visible:border-0 md:text-sm'
               placeholder={t('spaces.document.comment.reply')}
@@ -244,16 +327,34 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
               onChange={(event) => {
                 setReply(event.target.value);
               }}
+              {...keys.box}
             />
           </ScrollArea>
-          <Button
-            variant='outline'
-            size='sm'
-            data-testid='doc-comment-reply-send'
-            onClick={send}
-          >
-            {t('spaces.document.comment.send')}
-          </Button>
+          {reply.length > 0 && (
+            <div className='flex justify-end gap-1.5'>
+              <Button
+                variant='outline'
+                size='sm'
+                data-testid='doc-comment-reply-cancel'
+                onClick={() => {
+                  if (keys.composing()) return;
+                  callOff();
+                }}
+              >
+                {t('spaces.document.comment.cancel')}
+              </Button>
+              <Button
+                size='sm'
+                data-testid='doc-comment-reply-save'
+                onClick={() => {
+                  if (keys.composing()) return;
+                  send();
+                }}
+              >
+                {t('spaces.document.comment.save')}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

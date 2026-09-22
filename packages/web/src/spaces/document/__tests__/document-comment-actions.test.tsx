@@ -26,6 +26,7 @@ import {
   renderHook,
   act,
   cleanup,
+  fireEvent,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -40,7 +41,9 @@ import {
   _resetDocumentEditorCacheForTests,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
+import { NOTE_MAX_CHARS } from '@web/spaces/canvas/annotation/caps';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
+import { replyToThread } from '@web/spaces/document/document-comment-thread-actions';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -130,6 +133,18 @@ describe('what a card lets a reader do', () => {
     await userEvent.click(await screen.findByTestId('doc-comment-card'));
   }
 
+  /**
+   * Answers the only thread, the way a peer's reply arrives.
+   * @param body - What the reply says.
+   */
+  async function answer(body: string): Promise<void> {
+    const store = handle.editor.getExtension(CommentsExtension)!.threadStore;
+    const threadId = [...store.getThreads().keys()][0]!;
+    await act(async () => {
+      await replyToThread(handle.editor, threadId, body);
+    });
+  }
+
   /** The only thread in the document. */
   function onlyThread(): { resolved: boolean; comments: unknown[] } {
     const store = handle.editor.getExtension(CommentsExtension)!.threadStore;
@@ -145,7 +160,7 @@ describe('what a card lets a reader do', () => {
       await screen.findByTestId('doc-comment-reply-input'),
       'the second thing',
     );
-    await userEvent.click(screen.getByTestId('doc-comment-reply-send'));
+    await userEvent.click(screen.getByTestId('doc-comment-reply-save'));
 
     expect(await screen.findByText('the second thing')).toBeInTheDocument();
     await waitFor(() => {
@@ -162,7 +177,7 @@ describe('what a card lets a reader do', () => {
       await screen.findByTestId('doc-comment-reply-input'),
       '   ',
     );
-    await userEvent.click(screen.getByTestId('doc-comment-reply-send'));
+    await userEvent.click(screen.getByTestId('doc-comment-reply-save'));
 
     expect(onlyThread().comments).toHaveLength(1);
   });
@@ -236,6 +251,137 @@ describe('what a card lets a reader do', () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId('doc-comment-resolve')).toBeInTheDocument();
     expect(screen.getByTestId('doc-comment-delete')).toBeInTheDocument();
+  });
+
+  it('bounds a reply at the length one person may write on a comment', async () => {
+    await open();
+    await comment('the first thing');
+    await read();
+
+    expect(screen.getByTestId('doc-comment-reply-input')).toHaveAttribute(
+      'maxlength',
+      String(NOTE_MAX_CHARS),
+    );
+  });
+
+  it('offers nothing to press until the reply box holds words', async () => {
+    await open();
+    await comment('the first thing');
+    await read();
+
+    expect(screen.queryByTestId('doc-comment-reply-save')).toBeNull();
+    expect(screen.queryByTestId('doc-comment-reply-cancel')).toBeNull();
+
+    await userEvent.type(
+      screen.getByTestId('doc-comment-reply-input'),
+      'half a thought',
+    );
+
+    expect(screen.getByTestId('doc-comment-reply-save')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-comment-reply-cancel')).toBeInTheDocument();
+  });
+
+  it('throws the words away when the reply is called off', async () => {
+    await open();
+    await comment('the first thing');
+    await read();
+    await userEvent.type(
+      screen.getByTestId('doc-comment-reply-input'),
+      'never mind',
+    );
+
+    await userEvent.click(screen.getByTestId('doc-comment-reply-cancel'));
+
+    expect(screen.getByTestId('doc-comment-reply-input')).toHaveValue('');
+    expect(screen.queryByTestId('doc-comment-reply-save')).toBeNull();
+    expect(onlyThread().comments).toHaveLength(1);
+  });
+
+  it('sends the reply on Enter', async () => {
+    await open();
+    await comment('the first thing');
+    await read();
+
+    await userEvent.type(
+      screen.getByTestId('doc-comment-reply-input'),
+      'answered from the keyboard{Enter}',
+    );
+
+    expect(
+      await screen.findByText('answered from the keyboard'),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(onlyThread().comments).toHaveLength(2);
+    });
+  });
+
+  it('keeps the words while an input method is composing them', async () => {
+    // A reader choosing characters presses Enter to pick one, and that press
+    // belongs to the IME. `KeyboardEvent.isComposing` is what says so.
+    await open();
+    await comment('the first thing');
+    await read();
+    const box = screen.getByTestId('doc-comment-reply-input');
+    await userEvent.type(box, 'half a thought');
+
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+
+    expect(onlyThread().comments).toHaveLength(1);
+    expect(box).toHaveValue('half a thought');
+  });
+
+  it('takes Shift+Enter as a line inside the reply', async () => {
+    await open();
+    await comment('the first thing');
+    await read();
+    const box = screen.getByTestId('doc-comment-reply-input');
+    await userEvent.type(box, 'one');
+
+    await userEvent.type(box, '{Shift>}{Enter}{/Shift}two');
+
+    expect(onlyThread().comments).toHaveLength(1);
+    expect(box).toHaveValue('one\ntwo');
+  });
+
+  it('folds a thread nobody is reading down to two comments', async () => {
+    // The first comment and the most recent one, which is how CKEditor's
+    // sidebar folds an inactive thread (`maxCommentsWhenCollapsed`, 2).
+    await open();
+    await comment('the first');
+    await answer('the second');
+    await answer('the third');
+    await answer('the fourth');
+
+    expect(screen.getAllByTestId('doc-comment-entry')).toHaveLength(2);
+    expect(screen.getByText('the first')).toBeInTheDocument();
+    expect(screen.getByText('the fourth')).toBeInTheDocument();
+    expect(screen.queryByText('the second')).toBeNull();
+    expect(screen.getByTestId('doc-comment-folded-count')).toHaveTextContent(
+      '2',
+    );
+  });
+
+  it('shows every comment once the reader opens it', async () => {
+    await open();
+    await comment('the first');
+    await answer('the second');
+    await answer('the third');
+    await answer('the fourth');
+
+    await read();
+
+    expect(screen.getAllByTestId('doc-comment-entry')).toHaveLength(4);
+    expect(screen.getByText('the second')).toBeInTheDocument();
+    expect(screen.queryByTestId('doc-comment-folded-count')).toBeNull();
+  });
+
+  it('leaves a thread with nothing to hold back unfolded', async () => {
+    await open();
+    await comment('the first');
+    await answer('the second');
+
+    expect(screen.getAllByTestId('doc-comment-entry')).toHaveLength(2);
+    expect(screen.queryByTestId('doc-comment-folded-count')).toBeNull();
   });
 
   it('offers a viewer nothing to write with', async () => {
