@@ -46,6 +46,8 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore, ForbiddenError, loadLocales, db } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
+import { t } from "@breatic/shared";
+import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
 
 const PG_DRIVER_LOCAL = "trial-credits-constraints-test-driver";
@@ -119,6 +121,23 @@ async function seedTeamStudio(userId: string): Promise<string> {
     VALUES (${id}, ${userId}, 'admin')
   `;
   return id;
+}
+
+/**
+ * One project inside a studio.
+ * @param studioId - Which studio owns it.
+ * @param userId - Who created it.
+ * @returns Its id.
+ */
+async function seedProject(
+  studioId: string,
+  userId: string,
+): Promise<string> {
+  const rows = await sql<{ id: string }[]>`
+    INSERT INTO projects (studio_id, created_by_user_id, slug, name)
+    VALUES (${studioId}, ${userId}, ${`proj-${seq++}`}, 'Project') RETURNING id
+  `;
+  return rows[0]!.id;
 }
 
 /**
@@ -229,5 +248,45 @@ describe("bought credits are still the buyer's to move", () => {
     expect(await designationOf(bought)).toBe(team);
     // And the grant beside it did not move.
     expect(await designationOf(grantedLot)).not.toBe(team);
+  });
+});
+
+describe("the refusal a holder of granted credits reads", () => {
+  it("says the credits are pinned elsewhere, not that there are none", async () => {
+    const { userId } = await seedGranted();
+    const team = await seedTeamStudio(userId);
+    const project = await seedProject(team, userId);
+
+    const err = await precheckCredits(project, userId, 1).then(
+      () => null,
+      (e: unknown) => e as { statusCode: number; message: string },
+    );
+
+    expect(err?.statusCode).toBe(402);
+    // The account holds a hundred credits and this studio can reach none of
+    // them. Answering "top up first" here tells someone with credits that
+    // they have none, which is the same mistake the unassigned branch above
+    // exists to avoid.
+    expect(err?.message).toBe(t("server.credit.granted_elsewhere"));
+  });
+
+  it("still says there are none when there really are none", async () => {
+    // The pair the one above needs: a branch that fired for everybody would
+    // pass it and be wrong for every account that has nothing.
+    const rows = await sql<{ id: string }[]>`
+      INSERT INTO users (email, email_verified)
+      VALUES (${`broke-${seq++}@example.test`}, true) RETURNING id
+    `;
+    const userId = rows[0]!.id;
+    const team = await seedTeamStudio(userId);
+    const project = await seedProject(team, userId);
+
+    const err = await precheckCredits(project, userId, 1).then(
+      () => null,
+      (e: unknown) => e as { statusCode: number; message: string },
+    );
+
+    expect(err?.statusCode).toBe(402);
+    expect(err?.message).toBe(t("server.credit.none"));
   });
 });

@@ -18,6 +18,7 @@
       "in_debt": "この Studio は {owed} クレジットの未払いがあります。次に割り当てるクレジットが先に充当されます。",
       "unassigned": "未割り当てのクレジットが {available} あります。使用するには Studio に割り当ててください。",
       "none": "クレジットが不足しています。チャージしてください。",
+      "granted_elsewhere": "お持ちのクレジットは付与されたもので、ご自身の Studio でのみ使用できます。",
       "refund_already_asked": "この購入はすでに返金を申請済みです。",
       "refund_not_purchased": "このクレジットは付与されたもので、支払いがないため返金できません。",
       "refund_still_designated": "この購入は Studio に割り当てられています。先に割り当てを解除してください。",

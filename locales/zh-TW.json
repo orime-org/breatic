@@ -18,6 +18,7 @@
       "in_debt": "這個 Studio 欠著 {owed} 點數，指定新的點數會先抵掉它。",
       "unassigned": "你有 {available} 點數未指定，指定給 Studio 後才能使用。",
       "none": "點數不足，請先儲值。",
+      "granted_elsewhere": "這筆積分是贈送的，只能用在你自己的 Studio 裡。",
       "refund_already_asked": "這筆已經提交過退款。",
       "refund_not_purchased": "這筆積分是贈送的，沒有付過款，所以不能退款。",
       "refund_still_designated": "這筆已指定給某個 Studio，請先解除指定。",

@@ -77,6 +77,13 @@ async function seedFixture(): Promise<{
     VALUES (${userId}, ${`off-s-${n}-${Date.now()}`}, 'team', 'Off') RETURNING id
   `;
   const studioId = studio!.id;
+  // 建 studio 的两条生产路径都写这一行，而账号侧的读按它判「我管不管
+  // 这个 studio」——`created_by_user_id` 只记最初是谁建的、永不改，
+  // 答不了这个问题。
+  await sql`
+    INSERT INTO studio_members (studio_id, user_id, role)
+    VALUES (${studioId}, ${userId}, 'admin')
+  `;
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
     VALUES (${studioId}, ${userId}, ${`off-p-${n}-${Date.now()}`}, 'Off') RETURNING id

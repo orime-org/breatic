@@ -875,6 +875,18 @@ export async function getUnassignedCredits(userId: string): Promise<number> {
 }
 
 /**
+ * What this account holds that it was granted rather than bought.
+ *
+ * Read when a studio turns out to have nothing to draw on, so the refusal can
+ * say which of the two situations the holder is in.
+ * @param userId - The account to total.
+ * @returns The total in credits.
+ */
+export async function getGrantedCredits(userId: string): Promise<number> {
+  return toMicroCredits(await creditLotRepo.sumGrantedForUser(userId)) / 1_000_000;
+}
+
+/**
  * Cut an account's lots loose from a studio it no longer administers.
  *
  * Designating is how an admin decides which studio may spend a purchase, so

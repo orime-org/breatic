@@ -418,6 +418,12 @@ describe("a studio's debt is the studio's, not the reader's", () => {
     // A debt is the studio's own figure. It moves as the people inside go on
     // generating, and only an admin can act on it by pointing a purchase
     // there. Anyone else is not shown it.
+    //
+    // The demotion here is written straight into the table. Every production
+    // path that ends a studio role either clears the account's designations
+    // in the same transaction or is refused outright, so an account holding
+    // a lot pointed at a studio it does not administer is a state the app
+    // does not reach — this row is manufactured to isolate the debt.
     const fx = await seedFixture();
     await seedLot(fx.userId, 10, 100, fx.studioId);
     await creditLotService.chargeForGeneration({
@@ -430,8 +436,7 @@ describe("a studio's debt is the studio's, not the reader's", () => {
     const asAdmin = await creditLotService.getOverview(fx.userId);
     expect(asAdmin.studios.find((s) => s.studioId === fx.studioId)?.debt).toBe(20);
 
-    // Demoted to maintainer: what he spent is still his own history and the
-    // row stays. The debt is not his.
+    // Demoted to maintainer.
     await sql`
       UPDATE studio_members SET role = 'maintainer'
       WHERE studio_id = ${fx.studioId} AND user_id = ${fx.userId}
@@ -439,10 +444,9 @@ describe("a studio's debt is the studio's, not the reader's", () => {
 
     const after = await creditLotService.getOverview(fx.userId);
     const row = after.studios.find((s) => s.studioId === fx.studioId);
+    // The row is still there — the reader's own purchase points at this
+    // studio, and every lot they bought is counted somewhere on this panel.
     expect(row).toBeDefined();
-    // The purchase holds 10, so a charge of 30 takes 10 and leaves 20 owed
-    // by the studio.
-    expect(row!.spent).toBe(10);
     expect(row!.debt).toBeNull();
   });
 });

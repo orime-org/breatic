@@ -77,5 +77,15 @@ export async function precheckCredits(
     throw new AppError(402, t("server.credit.unassigned", { available: unassigned }));
   }
 
+  // Granted credits are pinned to the holder's own studio when they are
+  // written, so an account holding any while this studio reaches none is
+  // being stopped by that pin rather than by an empty account. Telling them
+  // to top up would be the same mistake the unassigned branch avoids, on a
+  // different cause.
+  const granted = await creditLotService.getGrantedCredits(userId);
+  if (granted > 0) {
+    throw new AppError(402, t("server.credit.granted_elsewhere"));
+  }
+
   throw new AppError(402, t("server.credit.none"));
 }

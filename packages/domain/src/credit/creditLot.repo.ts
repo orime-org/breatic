@@ -27,7 +27,7 @@
  *      lock come back empty at the one moment it was needed.
  */
 
-import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@breatic/core";
@@ -431,6 +431,32 @@ export async function studiosWithDebtFrom(
 }
 
 /**
+ * A row's studio is one this account administers — as a predicate, not a set.
+ *
+ * Both account-side reads narrow on this, and both have to put it inside the
+ * query. One is a keyset page, where filtering what the server already cut
+ * can empty a page while the cursor still says there is more; the other is an
+ * aggregate, which groups on the very column being tested. So the shared part
+ * is a fragment they each `and` into their own where, and the set-returning
+ * {@link studiosAdministeredBy} stays with the caller that already holds a
+ * list of ids.
+ *
+ * Read fresh, for the reason that function gives: administering is a role
+ * that changes hands, and the question is who administers the studio now.
+ * @param userId - The account reading.
+ * @returns A condition on `credit_ledger.studio_id`.
+ */
+export function administeredByReader(userId: string): SQL {
+  return sql`EXISTS (
+    SELECT 1 FROM ${studioMembers}
+    WHERE ${studioMembers.studioId} = ${creditLedger.studioId}
+      AND ${studioMembers.userId} = ${userId}
+      AND ${studioMembers.role} = 'admin'
+      AND ${studioMembers.deletedAt} IS NULL
+  )`;
+}
+
+/**
  * Which of these studios the account administers right now.
  *
  * Read fresh rather than carried on the lot: administering is a role that
@@ -571,6 +597,38 @@ export async function sumUnassignedForUser(userId: string): Promise<string> {
         eq(creditLots.lifecycle, "active"),
         isNull(creditLots.deletedAt),
         or(isNull(creditLots.designatedStudioId), isNotNull(studios.deletedAt)),
+      ),
+    );
+  return rows[0]?.total ?? "0";
+}
+
+/**
+ * What one account holds that it was granted rather than bought, in `numeric`.
+ *
+ * Asked at the moment a studio is found to have nothing to draw on, to tell
+ * "this account has none" apart from "this account has some and none of it
+ * reaches here". Granted credits are pinned to the holder's own studio when
+ * they are written, so any that still have a balance are by definition
+ * somewhere other than the studio that just came up empty.
+ *
+ * Deleted studios are not tested for: a lot pointing at one is unreachable
+ * from everywhere, which is the same answer this question returns.
+ * @param userId - The account to total.
+ * @returns The sum as a decimal string; "0" when there is none.
+ */
+export async function sumGrantedForUser(userId: string): Promise<string> {
+  const rows = await db
+    .select({
+      total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text`,
+    })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.userId, userId),
+        eq(creditLots.lifecycle, "active"),
+        isNull(creditLots.deletedAt),
+        ne(creditLots.sourceKind, "payment"),
+        sql`${creditLots.remainingCredits} > 0`,
       ),
     );
   return rows[0]?.total ?? "0";
@@ -996,6 +1054,16 @@ export async function listLedgerByPayer(
         // is a keyset page — filtering a page that the server already cut can
         // empty it while the cursor still says there is more.
         inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES),
+        // Two branches, and the first is the one easy to lose. A run that
+        // belongs to no studio is one the reader made themselves — the text
+        // tools carry no project, and a project deleted mid-task leaves the
+        // same shape — so it is theirs to see. The rest is narrowed to what
+        // they administer: paying for a run does not make somebody else's
+        // studio, its projects and its output theirs to read.
+        or(
+          isNull(creditLedger.studioId),
+          administeredByReader(payerUserId),
+        ),
         studioId ? eq(creditLedger.studioId, studioId) : undefined,
       ),
     )
@@ -1183,6 +1251,10 @@ export async function sumSpentByStudio(
         // The studio ledger totals the same two types for the same reason.
         inArray(creditLedger.entryType, ["spend", "debt_repayment"]),
         isNotNull(creditLedger.studioId),
+        // The administering half of the same test the ledger list applies.
+        // Its other half — a run belonging to no studio — has no line here:
+        // this answers one line per studio, and such a run was in none.
+        administeredByReader(payerUserId),
       ),
     )
     .groupBy(
