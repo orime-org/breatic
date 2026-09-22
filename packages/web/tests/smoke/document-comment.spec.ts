@@ -475,3 +475,45 @@ test.describe('a thread nobody is reading', () => {
     await expect(page.getByTestId('doc-comment-folded-count')).toHaveCount(0);
   });
 });
+
+test.describe('what the pointer says over the body', () => {
+  test('offers the caret on words whose comment is settled', async ({
+    page,
+  }) => {
+    // A settled thread keeps its mark and loses its paint, so those words
+    // read as prose — and a press on them does nothing, because the hit test
+    // asks the same `orphan` the paint does. The pointer has to agree.
+    await openFreshDocument(page);
+    await page.keyboard.type('plain words nobody said anything about');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('words that carry a settled comment');
+    await commentOnParagraph(page, 1, 'done with this');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await page.getByTestId('doc-comment-card').click();
+    await page.getByTestId('doc-comment-resolve').click();
+    await page.waitForTimeout(400);
+
+    const settled = page.locator(`${EDITOR} .bn-thread-mark[data-orphan='true']`);
+    await expect(settled).toHaveCount(1);
+    expect(await settled.evaluate((el) => getComputedStyle(el).cursor)).toBe(
+      'auto',
+    );
+  });
+
+  test('offers the pointer on words a reader can still open', async ({
+    page,
+  }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type(LONG_LINE);
+    await commentOnParagraph(page, 0, 'still open');
+
+    const live = page.locator(
+      `${EDITOR} .bn-thread-mark:not([data-orphan='true'])`,
+    );
+    await expect(live.first()).toBeVisible();
+    expect(
+      await live.first().evaluate((el) => getComputedStyle(el).cursor),
+    ).toBe('pointer');
+  });
+});

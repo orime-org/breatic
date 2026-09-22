@@ -1947,9 +1947,18 @@ body {
   background-color: var(--color-comment-mark);
   border-radius: 2px;
   padding: 0 1px;
-  cursor: pointer;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+}
+
+/* The pointer says a press does something other than put the caret down, and
+   it is owed the same answer the hit test gives: `document-comment-hit.ts`
+   reaches a thread only while its mark is not orphaned. A settled thread
+   keeps its mark with the paint taken off it, so those words read as prose
+   and a press on them does nothing — offered the pointer they read as
+   something to open (user 2026-09-22). */
+.doc-body .bn-thread-mark:not([data-orphan='true']) {
+  cursor: pointer;
 }
 
 /* A resolved thread keeps its mark and loses its paint (§9.2, S2). The mark is
