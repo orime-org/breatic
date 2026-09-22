@@ -612,7 +612,7 @@
         "understand_over_cap": "{file, select, none {{limit, select, unknown {这个文件超过了理解的大小上限。} other {这个文件超过了理解的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {这个文件超过了理解的大小上限（{file}）。} other {这个文件超过了理解的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {这个文件超过了理解的大小上限（{file}，{bytes}）。} other {这个文件超过了理解的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}",
         "understand_unsupported_type": "{file, select, none {{type, select, none {不能理解的文件类型。} other {不能理解的文件类型（{type}）。}}} other {{type, select, none {不能理解的文件类型（{file}）。} other {不能理解的文件类型（{file}，{type}）。}}}}",
         "expired": "它超时了。",
-        "no_result": "这次生成没有产出内容。",
+        "no_result": "这次运行没有产出内容。",
         "source_unreachable": "这个地址打不开。",
         "source_too_slow": "取这个地址的内容超时了。",
         "unsupported_type": "{kind, select, image {不是支持的格式，图片只收 {formats}。} video {不是支持的格式，视频只收 {formats}。} audio {不是支持的格式，音频只收 {formats}。} other {不是支持的格式。}}",
