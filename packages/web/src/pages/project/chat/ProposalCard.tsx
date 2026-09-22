@@ -172,7 +172,10 @@ export const ProposalCard = React.memo(function ProposalCard({
         <div className='flex flex-col gap-1 text-xs text-muted-foreground'>
           {todos.map((group, g) => (
             <div key={`todo-${String(g)}`} data-testid='proposal-todo-group'>
-              {todos.length > 1 ? (
+              {/* Named where the line has to be carried out on more than one
+                  node -- whether that is several groups or one group holding
+                  several names. A single node's own to-dos need no header. */}
+              {todos.length > 1 || group.nodes.length > 1 ? (
                 <div className='font-medium text-foreground'>
                   {group.nodes.join(' · ')}
                 </div>

@@ -16,7 +16,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { CanvasProposal, ModelCatalog } from '@breatic/shared';
+import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
 import { useCanvasStore } from '@web/stores/canvas';
@@ -336,6 +336,28 @@ describe('a flow that is more than one thing', () => {
 
     await waitFor(() => expect(screen.getByText('30s')).toBeTruthy());
     expect(screen.queryByText(/30 s . 2/)).toBeNull();
+  });
+
+  it('names the nodes when one line has to be carried out on several', () => {
+    // Three takes, each wanting the same thing picked in its own panel. The
+    // line merges into one -- said three times it reads as three jobs -- and
+    // the names beside it are what says it has to be done three times.
+    listModels.mockResolvedValue(CATALOG);
+    const same = (name: string): ProposalNode => ({
+      role: 'generate', type: 'image', name, mode: 'i2i', model: 'some-model',
+      prompt: [
+        { text: 'white ground' },
+        { slot: { kind: 'tweak', label: 'a ratio', note: 'Pick a ratio in the panel' } },
+      ],
+    });
+    const three: CanvasProposal = {
+      ...PAIR,
+      nodes: [same('Front'), same('At 45'), same('Overhead')],
+      edges: [],
+    };
+    renderCard(true, three);
+
+    expect(screen.getByText('Front · At 45 · Overhead')).toBeTruthy();
   });
 
   it('names the node each thing left to do belongs to', () => {

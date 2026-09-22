@@ -1377,9 +1377,12 @@ describe("a flow of any shape", () => {
     expect(verdict.reason).toContain("wiring an empty node in");
   });
 
-  it("gives each slot-fed generation the material wired into it", () => {
-    // Two photos, two clips. An edge says which photo is for which, and
-    // reading the group instead charges each generation for both.
+  it("places two slot-fed generations wired one empty node each", () => {
+    // Two photos, two clips, one edge apiece. What the edge settles here is
+    // which photo a mark is about; how many pieces reach either generation is
+    // the reader's, since a slot is filled by clicking. The case that tells
+    // the two readings apart is the one below, where the edge carries a kind
+    // the generation cannot take.
     const at = slotted();
     const kind = at.needs[0] as GenerationNodeType;
     const one = (name: string): ProposalNode => ({
