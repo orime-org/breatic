@@ -182,8 +182,10 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
     // itself for an `HTTPException` and for the catch-all, and hands an
     // `AppError`'s message on untouched because that message is the thrower's
     // — so the thrower is where `t()` is, held there by
-    // `breatic/no-untranslated-error-message`. Both routes this press can be
-    // refused on are covered: `validate` raises
+    // `breatic/no-untranslated-error-message`. Three gates can refuse this
+    // press, and each says its own sentence in the reader's language: the
+    // rate limiter answers 429 directly with `t("server.error.rate_limited")`
+    // without passing through the handler at all, `validate` raises
     // `ValidationError(t("server.error.validation"))`, and the access check
     // builds its own through `t()`. `fromServer` is true only when the answer
     // carried a sentence at all; the short line below is for the rejections

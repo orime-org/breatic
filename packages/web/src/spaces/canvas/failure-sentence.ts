@@ -16,7 +16,10 @@ type Medium = 'image' | 'video' | 'audio';
  * The sentences take a name and a format, and each half a refusal did not
  * carry drops its part of the clause rather than printing a gap where a name
  * belongs. `none` is the word the catalogs' `select` arms are written
- * against, and this is the only place it is spelled.
+ * against; this file spells it twice — here for the name and the format, and
+ * in {@link failureSentence} for the size, whose value is a number this does
+ * not hold. Changing the word means changing both, and the ten catalog arms
+ * that read it.
  * @param about - What the refusal carried, from either gate.
  * @param about.file - What the file is called, when the refusal named it.
  * @param about.type - What format it is in, when the refusal named that.
@@ -42,10 +45,10 @@ export function refusalClause(about: {
  * stored text raw shows `understand_over_cap` in every language.
  *
  * The two reading refusals take what the browser's own gates say when they
- * refuse first — the ceiling, the formats. A node restored from history
- * carries neither type nor size, so those gates stay silent about it and the
- * run is what refuses; this row is then the only place the reader is told,
- * and it says as much as the toast would have.
+ * refuse first — the ceiling, and the file's own name and format. A node
+ * restored from history carries neither type nor size, so those gates stay
+ * silent about it and the run is what refuses; this row is then the only
+ * place the reader is told, and it says as much as the toast would have.
  *
  * A refusal names the file it happened to and the format it was in rather
  * than the formats a gate takes (user 2026-09-20). Both travel with the
