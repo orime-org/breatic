@@ -166,6 +166,21 @@ export interface CanvasProposal {
   groupName?: string;
 }
 
+/**
+ * Which feeders a prompt may name, one entry per node wired in.
+ *
+ * `null` where the panel would not take a mention of that node. The place is
+ * kept rather than dropped because the k-th mark is about the k-th node wired
+ * in: compacted, every mark after the unmentionable one slides onto the node
+ * next along.
+ */
+export interface NameableFeederIndices {
+  /** Indices of the empty nodes wired in, null where none can be mentioned. */
+  sources: (number | null)[];
+  /** The same for the nodes wired in that carry work of their own. */
+  upstream: (number | null)[];
+}
+
 /** Which nodes feed one node of a proposal, split by what they carry. */
 export interface ProposalFeederIndices {
   /** Indices of the empty nodes wired in, for the reader to fill. */
@@ -230,7 +245,7 @@ export function feedersOf(proposal: CanvasProposal, index: number): ProposalFeed
 export function nameableFeeders(
   proposal: CanvasProposal,
   index: number,
-): ProposalFeederIndices {
+): NameableFeederIndices {
   const at = proposal.nodes[index];
   const path = at?.takesFrom;
   if (path === undefined || at?.takesPrompt === undefined) {
@@ -248,12 +263,21 @@ export function nameableFeeders(
     const node = proposal.nodes[i];
     return node !== undefined && insertRefusal(node.type, ctx) === null;
   };
+  /**
+   * One entry per node wired in, the index where it can be mentioned.
+   * @param list - The feeders, in the order the nodes are listed.
+   * @param can - Whether a mention is possible for this run at all.
+   * @returns The same length, null where no mention can be written.
+   * @throws {never} Never.
+   */
+  const keepingPlaces = (list: readonly number[], can: boolean): (number | null)[] =>
+    list.map((i) => (can && mentionable(i) ? i : null));
   return {
     // An asset mark mentions the empty node it names only where that mention
     // is what picks the material. Through a slot the reader picks by clicking
     // and the bracket alone names the slot to pick it in.
-    sources: path === "pool" ? held.sources.filter(mentionable) : [],
-    upstream: held.upstream.filter(mentionable),
+    sources: keepingPlaces(held.sources, path === "pool"),
+    upstream: keepingPlaces(held.upstream, true),
   };
 }
 

@@ -157,14 +157,16 @@ export const ProposalCard = React.memo(function ProposalCard({
         // truncated -- a note they cannot finish reading is one they cannot
         // judge, and the chat column scrolls.
         <div key={`words-${String(i)}`} className='flex flex-col gap-1'>
-          {proposal.nodes.length > 1 ? (
-            <div
-              data-testid='proposal-words-name'
-              className='text-xs font-medium text-foreground'
-            >
-              {node.name}
-            </div>
-          ) : null}
+          {/* Always named, unlike the to-do heading below: a proposal with
+              words in it carries a generation too -- the check turns away one
+              that generates nothing -- so there is always a second node to
+              tell this one apart from. */}
+          <div
+            data-testid='proposal-words-name'
+            className='text-xs font-medium text-foreground'
+          >
+            {node.name}
+          </div>
           <div
             data-testid='proposal-words'
             className='whitespace-pre-wrap rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground'

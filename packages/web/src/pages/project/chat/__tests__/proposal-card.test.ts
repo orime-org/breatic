@@ -381,4 +381,20 @@ describe('a proposal stored before the check answered these questions', () => {
 
     expect(nameableFeeders(proposal, 1)).toEqual({ sources: [], upstream: [] });
   });
+
+  it('holds the place of a feeder the panel cannot mention', () => {
+    // The k-th mark is about the k-th node wired in, and the marks are written
+    // against the whole run. Dropping the one that cannot be mentioned would
+    // slide every mark after it onto the wrong node.
+    const proposal = flow(
+      [
+        { role: 'source', type: 'video', name: 'Your clip' },
+        { role: 'source', type: 'image', name: 'Your still' },
+        generates('The cut'),
+      ],
+      [[0, 2], [1, 2]],
+    );
+
+    expect(nameableFeeders(proposal, 2)).toEqual({ sources: [null, 1], upstream: [] });
+  });
 });

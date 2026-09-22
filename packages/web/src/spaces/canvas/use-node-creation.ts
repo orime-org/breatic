@@ -138,11 +138,12 @@ function feedersOnCanvas(
    * @param at - The indices to resolve.
    * @returns One entry per index that has a node on the canvas.
    */
-  const placed = (at: readonly number[]): ProposalSource[] =>
-    at.flatMap((i) => {
+  const placed = (at: readonly (number | null)[]): (ProposalSource | null)[] =>
+    at.map((i) => {
+      if (i === null) return null;
       const id = ids[i];
       const kind = proposal.nodes[i]?.type;
-      return id && kind ? [{ id, kind }] : [];
+      return id && kind ? { id, kind } : null;
     });
   return { sources: placed(held.sources), upstream: placed(held.upstream) };
 }

@@ -12,7 +12,8 @@
  * reader has.
  *
  * A mode that needs material is proposed with an empty node to put it in, and
- * how that material reaches the generation differs by model: the reference
+ * the reply says what goes where. How that material reaches the generation
+ * differs by model: the reference
  * pool is fed by an edge and picked by a mention in the prompt, a slot on the
  * panel's toolbar is picked by the reader clicking a node on the canvas.
  * Which of the two this model uses is read off the catalog here and travels
@@ -123,8 +124,8 @@ const proposalNode = z
       .describe(
         "What to generate, or a written node's words. Mark what the reader " +
           "supplies or picks; the k-th asset mark pairs with the k-th empty " +
-          "node wired in, the k-th ref mark with the k-th other this panel " +
-          "can mention, in the order the nodes are listed",
+          "node wired in, the k-th ref mark with the k-th other, in the " +
+          "order the nodes are listed",
       ),
   })
   .strict();
@@ -470,8 +471,8 @@ function checkGenerateNode(
    * @returns One node per index.
    * @throws {never} Never.
    */
-  const nodesAt = (list: readonly number[]): ProposalNode[] =>
-    list.flatMap((i) => proposal.nodes[i] ?? []);
+  const nodesAt = (list: readonly (number | null)[]): ProposalNode[] =>
+    list.flatMap((i) => (i === null ? [] : (proposal.nodes[i] ?? [])));
   const nameable = nodesAt(canName.upstream);
   // A mark pointing upstream lands as a mention and nothing else, so one this
   // panel refuses lands as nothing at all: the words on either side of it
@@ -483,7 +484,12 @@ function checkGenerateNode(
     const named = nodesAt(held.upstream).map((n) => `"${n.name}"`);
     return {
       ok: false,
-      reason: `"${model}" cannot carry a mention of ${named.join(", ") || "an upstream node"} here. Wire an edge to what it draws on, or say what you meant in the words themselves.`,
+      // Two sentences because the way out differs: with nothing wired in the
+      // edge is what is missing, and with something wired in that this panel
+      // cannot mention the words are.
+      reason: named.length === 0
+        ? `"${node.name}" points at something upstream and nothing is wired into it. Wire an edge to what it draws on.`
+        : `"${model}" cannot carry a mention of ${named.join(", ")}. Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
     };
   }
   // What the panel's own gate would say about the box this proposal fills in.

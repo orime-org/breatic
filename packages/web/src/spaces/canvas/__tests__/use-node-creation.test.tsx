@@ -257,8 +257,9 @@ describe('useNodeCreation', () => {
     it('names the words upstream, not the picture, where a slot feeds it', () => {
       // Two things feed it: the step before, whose picture the reader picks
       // in the slot, and a node carrying words, whose body substitutes into
-      // the prompt. Only the second can be named there, so the mark is about
-      // it however the two are ordered.
+      // the prompt. The k-th mark is about the k-th node wired in, so two
+      // marks are written and only the second one lands a mention -- the
+      // picture keeps its place and takes none.
       const both: CanvasProposal = {
         nodes: [
           {
@@ -271,6 +272,7 @@ describe('useNodeCreation', () => {
             role: 'generate', type: 'video', name: 'It turns', mode: 'i2v',
             model: 'some-model', params: {}, takesFrom: 'slot', takesPrompt: true,
             prompt: [
+              { slot: { kind: 'ref', label: 'the shot', note: '' } },
               { text: 'in the tone of ' },
               { slot: { kind: 'ref', label: 'the caption', note: '' } },
             ],

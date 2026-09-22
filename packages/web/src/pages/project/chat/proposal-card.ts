@@ -167,9 +167,10 @@ function runsOf(proposal: CanvasProposal): number[] {
  *
  * One per marked spot, which is what makes them line up with the marks in the
  * prompt itself: the mark says what goes in that place, the line here says
- * what to do about it before pressing.
+ * what to do about it before pressing. Filed under the node they are about,
+ * and nodes asking for the same things in the same words share one group.
  * @param proposal - The proposal the card draws.
- * @returns The notes, in the order they appear in the prompt.
+ * @returns One group per node that asks for anything, in the proposal's order.
  * @throws {never} Never.
  */
 export function todosOf(proposal: CanvasProposal): NodeTodos[] {
@@ -204,7 +205,9 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
   // where the reader is standing when they do it.
   const readers = new Map<number, number>();
   for (const list of empties) {
-    for (const i of list) readers.set(i, (readers.get(i) ?? 0) + 1);
+    for (const i of list) {
+      if (i !== null) readers.set(i, (readers.get(i) ?? 0) + 1);
+    }
   }
   proposal.nodes.forEach((node, at) => {
     let assetsSeen = 0;
@@ -222,7 +225,11 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
       // Shared, the note belongs to the node itself: said under each of three
       // generations it reads as three photos to find. Read by this one alone,
       // it belongs here, beside the button the reader presses after doing it.
-      add(empty !== undefined && (readers.get(empty) ?? 0) > 1 ? empty : at, at, slot.note);
+      add(
+        empty !== undefined && empty !== null && (readers.get(empty) ?? 0) > 1 ? empty : at,
+        at,
+        slot.note,
+      );
     }
   });
   const groups: NodeTodos[] = [];
