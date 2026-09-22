@@ -28,7 +28,8 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**"],
+      "env": ["VITE_API_BASE_URL", "VITE_COLLAB_URL", "VITE_APP_VERSION"]
     },
     "dev": {
       "dependsOn": ["^build"],

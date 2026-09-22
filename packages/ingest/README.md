@@ -8,6 +8,10 @@ from a ticket our server signed: the storage key, the studio, the part layout
 and the size ceiling all travel inside one HMAC, so every check it performs is
 against values the browser cannot alter.
 
+For installation and a deployed Worker, start with [personal/LAN deployment](../../deploy/LOCAL.md).
+For source debugging, use [development setup](../../deploy/DEVELOPMENT.md).
+The local Wrangler instructions below are for development, not normal product use.
+
 ## Setting it up
 
 Two files carry this Worker's own configuration, and neither is committed. Each
@@ -71,7 +75,9 @@ environments differ only in what the values are.
 
 `ALLOWED_ORIGINS` is what the browser is checked against. The browser sends its
 parts to this Worker rather than to the bucket, so this Worker answers the
-preflight itself and the bucket needs no CORS rules of its own. A part carries
+preflight itself and uploading needs no bucket CORS rule. Reading assets back is a separate path:
+the bucket public endpoint needs GET CORS for the web origin so canvas image
+cropping works; see the deployment guide. A part carries
 `x-upload-token`, which makes it a non-simple request, so a browser whose origin
 is not listed here never sends the bytes at all.
 
@@ -88,8 +94,9 @@ Cloudflare rather than in any file.
 
 ### If a setting is missing
 
-Every request answers 500 with the names of what is missing. The check runs
-before anything reads a binding, so it holds for the preflight too.
+Non-preflight requests answer 500 with the names of missing settings before
+anything reads a binding. OPTIONS preflight is answered first, so successful
+preflight alone does not validate the secret or storage bindings.
 
 ## Running it
 

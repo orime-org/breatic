@@ -755,6 +755,14 @@
         "create": "正在建立 Space…"
       },
       "noActive": "沒有開啟的 Space — 點抽屜裡的 Space 開啟,或點 + 新增。"
+    },
+    "update": {
+      "available": "有新版本",
+      "title": "有新版本可用",
+      "description": "新版本已上線，重新整理後即可使用。",
+      "busy": "有上傳或其他操作正在進行，重新整理會中斷操作。建議完成後再重新整理。",
+      "later": "稍後",
+      "refresh": "更新"
     }
   },
   "common": {

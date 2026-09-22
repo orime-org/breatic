@@ -9,6 +9,7 @@
  */
 
 import { Hono } from "hono";
+import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { validate } from "@server/middleware/validate.js";
 import { OAuth2Client } from "google-auth-library";
 import type { TokenPayload } from "google-auth-library";
@@ -298,9 +299,7 @@ auth.post(
   validate("json", forgotPasswordSchema),
   async (c) => {
     const { email } = c.req.valid("json");
-    const resetBaseUrl = c.req.header("Origin")
-      ? `${c.req.header("Origin")}/reset-password`
-      : "http://localhost:8000/reset-password";
+    const resetBaseUrl = `${frontendOrigin(c.req.header("Origin"))}/reset-password`;
 
     const result = await authService.forgotPassword(email, resetBaseUrl);
     // Audit log moved from auth.service.ts (17B mandate). The
@@ -433,9 +432,7 @@ auth.post(
   rateLimitFor("resend-verify"),
   async (c) => {
     const user = c.get("user");
-    const verifyBaseUrl = c.req.header("Origin")
-      ? `${c.req.header("Origin")}/verify-email`
-      : "http://localhost:8000/verify-email";
+    const verifyBaseUrl = `${frontendOrigin(c.req.header("Origin"))}/verify-email`;
     const { mailResult } = await authService.resendVerificationEmail(
       user.id,
       user.email,
