@@ -799,9 +799,12 @@ export const creditSources = pgTable(
 export const payments = pgTable(
   "payments",
   {
-    // No default: this is also the id of the row's `credit_sources` receipt,
-    // which the composite foreign key requires to already exist, so only the
-    // caller that opened that receipt can supply it.
+    // Declared without a default, so an insert has to name this id: it is also
+    // the id of the row's `credit_sources` receipt, which the composite foreign
+    // key requires to already exist, and only the caller that opened that
+    // receipt knows it. The column in the database keeps the
+    // `gen_random_uuid()` it was created with; the foreign key is what refuses
+    // an id nobody opened a receipt for.
     id: uuid("id").primaryKey(),
     /**
      * Constant, and half of the composite key below. On its own it says
@@ -1040,8 +1043,8 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
 /**
  * One top-up (0061, task #11).
  *
- * A row is one payment that succeeded, and it tracks that purchase for the
- * rest of its life: how much of it is left, which studio may spend it, and
+ * A row is credits granted once, and it tracks that grant for the rest of its
+ * life: how much of it is left, which studio may spend it, and
  * whether it is on its way back to the buyer. Credits are spent lot by lot,
  * oldest first, which is why the remainder lives per purchase rather than as
  * one number per account — a refund returns a purchase, so a purchase has to

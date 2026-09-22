@@ -317,8 +317,10 @@ interface LedgerEntryInput {
  * @param entry.tokensUsed - Tokens consumed, for text usage.
  * @param entry.description - A human-readable line.
  * @param entry.referenceId - Task or idempotency key; shared by every row of one charge.
- * @param tx - The transaction the lot's own write goes in. Required, so an
- *   entry that draws a lot down can never commit without it.
+ * @param tx - The transaction this entry belongs in. Required, so an entry
+ *   that draws a lot down can never commit without the write that drew it.
+ *   Entries that draw no lot down reach here through
+ *   {@link recordStandaloneUsage}, which opens the transaction itself.
  * @returns The appended row.
  */
 export async function appendLedgerEntry(

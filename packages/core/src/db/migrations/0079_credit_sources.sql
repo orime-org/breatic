@@ -35,8 +35,9 @@ CREATE TABLE "credit_sources" (
 );
 --> statement-breakpoint
 
--- Every payment that already landed opens its own receipt, keeping its id and
--- the moment it was made. The date on a receipt is the date of the thing it
+-- Every payment opens its own receipt, keeping its id and the moment it was
+-- made. Rows in every status take one: the composite foreign key below holds
+-- for each of them. The date on a receipt is the date of the thing it
 -- records, not of this migration.
 INSERT INTO "credit_sources" ("id", "kind", "created_at")
 	SELECT "id", 'payment', "created_at" FROM "payments";

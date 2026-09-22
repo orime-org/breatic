@@ -157,7 +157,9 @@ describe("credit_sources", () => {
     // cannot drift apart: a fifth kind added to `CREDIT_SOURCE_KINDS` without
     // a migration widening the constraint fails right here. On its own this
     // pins nothing — it has meaning beside the rejection above, which says the
-    // constraint exists and lists exactly these four.
+    // constraint is there to widen. The pair says these four are taken and at
+    // least one other value is not; what else the constraint might list is
+    // read from the migration, not from here.
     expect(creditSourceRepo.CREDIT_SOURCE_KINDS).toHaveLength(4);
     for (const kind of creditSourceRepo.CREDIT_SOURCE_KINDS) {
       await expect(seedSource(kind)).resolves.toBeTruthy();

@@ -416,9 +416,9 @@ describe('StudioAccountMenu', () => {
     });
 
     it('asks for nothing until the menu is opened', () => {
-      // This menu is mounted by the studio layout, so every signed-in account
-      // reaches it on every page. Without the gate each navigation spends a
-      // request on a figure nobody has asked to see.
+      // The studio layout mounts this menu, so it is there from the moment a
+      // studio page loads. Without the gate that load spends a request on a
+      // figure nobody has asked to see.
       useCurrentUserStore.getState().setUser(ALEX);
       setup();
       expect(overviewMock).not.toHaveBeenCalled();
@@ -428,8 +428,8 @@ describe('StudioAccountMenu', () => {
       // The menu reads on open, so a reader who opens it twice can have a
       // figure in hand from the first time and a failed read the second. A
       // figure that has gone stale looks exactly like one that is current,
-      // and the overlay — reading the same query — is showing its error
-      // screen at that moment.
+      // and the overlay reads the same query, so it would say the same thing
+      // the moment the reader opened it.
       const user = userEvent.setup();
       useCurrentUserStore.getState().setUser(ALEX);
       overviewMock.mockResolvedValueOnce(overview());

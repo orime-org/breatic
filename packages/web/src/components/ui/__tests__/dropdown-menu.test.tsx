@@ -39,8 +39,8 @@ describe('the mark at the right end of a menu row', () => {
   });
 
   it('gives a shortcut everything the plain mark has', () => {
-    // The shortcut is built from the plain mark, so the eleven context-menu
-    // rows using it keep what they had when the two were separate spans.
+    // The shortcut is built from the plain mark, so the eleven places that
+    // render it keep what they had when the two were separate spans.
     render(<DropdownMenuShortcut>⌘C</DropdownMenuShortcut>);
     const cls = screen.getByText('⌘C').className;
     for (const token of ['ml-auto', 'text-xs', 'text-muted-foreground']) {
