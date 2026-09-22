@@ -41,7 +41,7 @@ describe('official Google login', () => {
   it('uses outline_dark in light mode and outline in dark mode', async () => {
     setup();
     expect(sdk.renderButton).toHaveBeenLastCalledWith(expect.any(HTMLElement), expect.objectContaining({
-      theme: 'outline_dark', size: 'large', shape: 'rectangular', text: 'continue_with', logo_alignment: 'left',
+      theme: 'outline_dark', size: 'large', shape: 'pill', text: 'continue_with', logo_alignment: 'left',
     }));
     act(() => { document.documentElement.dataset.theme = 'dark'; });
     await waitFor(() => expect(sdk.renderButton.mock.calls.at(-1)?.[1].theme).toBe('outline'));
