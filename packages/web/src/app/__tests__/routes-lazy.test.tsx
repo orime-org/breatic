@@ -164,11 +164,21 @@ describe('route table', () => {
       path.join(import.meta.dirname, '..', 'routes.tsx'),
       'utf8',
     );
+    const loaders = readFileSync(
+      path.join(import.meta.dirname, '..', 'route-imports.ts'),
+      'utf8',
+    );
+    const specifierOf = new Map(
+      [...loaders.matchAll(/(\w+):\s*\(\)\s*=>\s*import\('([^']+)'\)/gu)].map((m) => [
+        m[1],
+        m[2],
+      ]),
+    );
     const asking = [
       ...src.matchAll(
-        /lazyRoute\(\s*\(\)\s*=>\s*import\('([^']+)'\),\s*\{[^}]*editingSurface:\s*true/gu,
+        /lazyRoute\(\s*routeImports\.(\w+),\s*\{[^}]*editingSurface:\s*true/gu,
       ),
-    ].map((m) => m[1]);
+    ].map((m) => specifierOf.get(m[1]));
 
     expect(asking).toEqual(['@web/pages/project/ProjectPage']);
   });

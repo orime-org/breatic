@@ -6,6 +6,7 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
 import { lazyRoute, preloadMatched } from '@web/app/lazy-route';
+import { routeImports } from '@web/app/route-imports';
 import { behindLoadingScreen } from '@web/app/loading-boundary';
 import { hasSeenSession } from '@web/lib/session-seen';
 
@@ -14,25 +15,25 @@ import { hasSeenSession } from '@web/lib/session-seen';
 // a deploy, so every production entry goes through it. The dev gallery is the
 // exception — its import sits inside an `import.meta.env.DEV` branch, which
 // the production build folds away entirely.
-const StudioLayout = lazyRoute(() => import('@web/pages/studio/shell/StudioLayout'));
-const StudioRecentPage = lazyRoute(() => import('@web/pages/studio/StudioRecentPage'));
-const StudioContainerPage = lazyRoute(() => import('@web/pages/studio/container/StudioContainerPage'));
+const StudioLayout = lazyRoute(routeImports.studioLayout);
+const StudioRecentPage = lazyRoute(routeImports.studioRecentPage);
+const StudioContainerPage = lazyRoute(routeImports.studioContainerPage);
 // The one page the reader works in, so it is the one that speaks: a chunk it
 // cannot fetch says the page did not load and offers the refresh (user
 // 2026-09-18). Every other entry reads like an ordinary web page — it simply
 // does not arrive, and the reader refreshes if they want to.
-const ProjectPage = lazyRoute(() => import('@web/pages/project/ProjectPage'), {
+const ProjectPage = lazyRoute(routeImports.projectPage, {
   editingSurface: true,
 });
-const DecisionLandingPage = lazyRoute(() => import('@web/pages/decision/DecisionLandingPage'));
-const NoAccessPage = lazyRoute(() => import('@web/pages/project/access/NoAccessPage'));
-const LoginPage = lazyRoute(() => import('@web/pages/auth/LoginPage'));
-const RegisterPage = lazyRoute(() => import('@web/pages/auth/RegisterPage'));
-const RecoveryCodePage = lazyRoute(() => import('@web/pages/auth/RecoveryCodePage'));
-const SlugSetupPage = lazyRoute(() => import('@web/pages/auth/SlugSetupPage'));
-const ForgotPasswordPage = lazyRoute(() => import('@web/pages/auth/ForgotPasswordPage'));
-const ResetPasswordPage = lazyRoute(() => import('@web/pages/auth/ResetPasswordPage'));
-const VerifyEmailPage = lazyRoute(() => import('@web/pages/auth/VerifyEmailPage'));
+const DecisionLandingPage = lazyRoute(routeImports.decisionLandingPage);
+const NoAccessPage = lazyRoute(routeImports.noAccessPage);
+const LoginPage = lazyRoute(routeImports.loginPage);
+const RegisterPage = lazyRoute(routeImports.registerPage);
+const RecoveryCodePage = lazyRoute(routeImports.recoveryCodePage);
+const SlugSetupPage = lazyRoute(routeImports.slugSetupPage);
+const ForgotPasswordPage = lazyRoute(routeImports.forgotPasswordPage);
+const ResetPasswordPage = lazyRoute(routeImports.resetPasswordPage);
+const VerifyEmailPage = lazyRoute(routeImports.verifyEmailPage);
 
 /**
  * Top-level route table.

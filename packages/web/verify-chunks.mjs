@@ -23,28 +23,38 @@ import path from 'node:path';
 const DIST = process.argv[2] ?? path.join(import.meta.dirname, 'dist', 'breatic');
 const ASSETS = path.join(DIST, 'assets');
 const ROUTES = path.join(import.meta.dirname, 'src', 'app', 'routes.tsx');
+const ROUTE_IMPORTS = path.join(import.meta.dirname, 'src', 'app', 'route-imports.ts');
 
 /**
- * The production pages, read from the route table rather than listed here.
+ * The production pages, read from the loader module rather than listed here.
  *
  * A list written out in this file covers whatever it was written against: the
- * fourteenth entry gets added to `routes.tsx` and this guard goes on passing
- * without ever having looked at it. Rollup names a chunk after its module's
- * file, so the basename of each `lazyRoute` import is the name to expect.
- * @returns {string[]} Page module basenames, in table order.
+ * fourteenth entry gets added and this guard goes on passing without ever
+ * having looked at it. Rollup names a chunk after its module's file, so the
+ * basename of each `import()` specifier is the name to expect.
+ *
+ * Two counts are checked rather than trusted. A parse that reads twelve of
+ * thirteen entries covers twelve of them and says nothing about the one it
+ * missed; and a page whose loader exists but which no route renders would
+ * never be downloaded at all, so the wiring is counted from both ends.
+ * @returns {string[]} Page module basenames, in declaration order.
  */
 function routeTablePages() {
-  const src = readFileSync(ROUTES, 'utf8');
-  const named = [...src.matchAll(/lazyRoute\(\s*\(\)\s*=>\s*import\('([^']+)'\)/g)].map(
-    (m) => m[1].split('/').pop(),
+  const loaders = readFileSync(ROUTE_IMPORTS, 'utf8');
+  const named = [...loaders.matchAll(/=>\s*import\('([^']+)'\)/g)].map((m) =>
+    m[1].split('/').pop(),
   );
-  // A parse that reads twelve of thirteen entries covers twelve of them and
-  // says nothing about the one it missed, so the count is checked against the
-  // calls themselves rather than trusted.
-  const calls = (src.match(/lazyRoute\(/g) ?? []).length;
-  if (named.length !== calls) {
+  const declared = (loaders.match(/=>\s*import\(/g) ?? []).length;
+  if (named.length !== declared) {
     console.error(
-      `verify-chunks: ${ROUTES} makes ${calls} lazyRoute calls, ${named.length} of which this could read`,
+      `verify-chunks: ${ROUTE_IMPORTS} declares ${declared} loaders, ${named.length} of which this could read`,
+    );
+    process.exit(1);
+  }
+  const calls = (readFileSync(ROUTES, 'utf8').match(/lazyRoute\(/g) ?? []).length;
+  if (calls !== named.length) {
+    console.error(
+      `verify-chunks: ${ROUTE_IMPORTS} declares ${named.length} loaders but ${ROUTES} makes ${calls} lazyRoute calls`,
     );
     process.exit(1);
   }
