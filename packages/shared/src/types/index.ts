@@ -110,6 +110,15 @@ export {
   promptTextOf,
 } from "@shared/types/canvas-proposal.js";
 
+export type {
+  ReferenceRefusal,
+  ReferenceUsabilityContext,
+} from "@shared/types/canvas-reference.js";
+export {
+  insertRefusal,
+  isReferenceMaterial,
+} from "@shared/types/canvas-reference.js";
+
 export type { Voice, VoicePage } from "@shared/types/voice.js";
 export { sanitizeVoicePage } from "@shared/types/voice.js";
 

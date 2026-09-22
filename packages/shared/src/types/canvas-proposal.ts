@@ -11,6 +11,7 @@
  * model catalog.
  */
 
+import { insertRefusal } from "@shared/types/canvas-reference.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /**
@@ -136,6 +137,17 @@ export interface ProposalNode {
    * needs. Absent on a node that generates nothing.
    */
   takesFrom?: MaterialPath;
+  /**
+   * Whether the panel will draw a prompt box here, answered by the check.
+   *
+   * Beside {@link ProposalNode.takesFrom} and carried for the same reason: the
+   * catalog is the authority, the check has just read it, and a reader can
+   * press Use before the catalog has loaded on the canvas. It decides what a
+   * mark may name -- a model drawing no box mounts no editor and forces it
+   * empty, so nothing in the prompt reaches the vendor. Absent on a node that
+   * generates nothing.
+   */
+  takesPrompt?: boolean;
 }
 
 /** A whole proposal, as the model sends it and the card reads it. */
@@ -193,42 +205,53 @@ export function feedersOf(proposal: CanvasProposal, index: number): ProposalFeed
 }
 
 /**
- * What one node's prompt may name and what its marks mention, by material path.
+ * What one node's prompt may name and what its marks mention.
  *
  * One function because three sides read it and they have to agree: the check
  * decides how many marks are legal, the canvas writes that many mentions, and
  * the card files its to-dos by the same list. Read differently, a mark is
  * counted against one node and lands on another.
  *
- * What may be named is what a mention actually carries once the group is
- * placed. A node holding words always can: its body substitutes into the
- * prompt string, on either path. A picture can only where the model reads the
- * reference pool, which is an image pool. Everything else -- a clip, a track,
- * the material a slot is filled from -- is a row the panel's own picker turns
- * down (`insertRefusal`), so a mention of it is one the reader could not have
- * made and the run does not read.
+ * What may be named is asked of {@link insertRefusal}, the panel's own picker
+ * rule, rather than restated here: a mention this proposal writes is one the
+ * reader would have had to make by hand, and a rule spelled out twice is one
+ * the two spellings can part company behind. The row it is asked about is the
+ * feeder; the mode and model facts it is asked with are the two the check
+ * wrote onto this node when it read the catalog.
+ *
+ * Both are absent on a proposal stored before they were carried. `pool` is the
+ * path such a proposal must have taken -- the slot path refused a generation
+ * with any edge into it at all -- and a box was drawn for every model that
+ * could be proposed, so the defaults are what was true when it was stored.
  * @param proposal - The proposal being read.
  * @param index - The node being fed.
- * @param path - How that node takes the reader's material.
  * @returns The feeders its marks may point at, each in node order.
  * @throws {never} Never.
  */
 export function nameableFeeders(
   proposal: CanvasProposal,
   index: number,
-  path: MaterialPath,
 ): ProposalFeederIndices {
   const held = feedersOf(proposal, index);
+  const at = proposal.nodes[index];
+  const path: MaterialPath = at?.takesFrom ?? "pool";
+  const ctx = { takesReferences: path === "pool", takesPrompt: at?.takesPrompt ?? true };
+  /**
+   * Whether the panel would take an `@`-mention of one feeder.
+   * @param i - The feeder's index in the proposal.
+   * @returns True when a mention of it is one the reader could have made.
+   * @throws {never} Never.
+   */
+  const mentionable = (i: number): boolean => {
+    const node = proposal.nodes[i];
+    return node !== undefined && insertRefusal(node.type, ctx) === null;
+  };
   return {
     // An asset mark mentions the empty node it names only where that mention
     // is what picks the material. Through a slot the reader picks by clicking
     // and the bracket alone names the slot to pick it in.
-    sources: path === "pool" ? held.sources : [],
-    upstream: held.upstream.filter((i) => {
-      const node = proposal.nodes[i];
-      if (!node) return false;
-      return node.role === "written" || (path === "pool" && node.type === "image");
-    }),
+    sources: path === "pool" ? held.sources.filter(mentionable) : [],
+    upstream: held.upstream.filter(mentionable),
   };
 }
 

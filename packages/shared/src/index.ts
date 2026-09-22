@@ -165,6 +165,8 @@ export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
   MaterialPath,
+  ReferenceRefusal,
+  ReferenceUsabilityContext,
   PromptSegment,
   ProposalNode,
   ProposalNodeType,
@@ -194,6 +196,8 @@ export {
   REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
   feedersOf,
+  insertRefusal,
+  isReferenceMaterial,
   layersOf,
   nameableFeeders,
   markText,

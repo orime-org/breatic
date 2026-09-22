@@ -137,7 +137,7 @@ function feedersOnCanvas(
   // what it was: until this change a slot-fed generation with an edge into it
   // was refused outright, so a stored proposal whose generation is fed at all
   // took its material through the pool.
-  const held = nameableFeeders(proposal, index, proposal.nodes[index]?.takesFrom ?? 'pool');
+  const held = nameableFeeders(proposal, index);
   /**
    * The placed nodes behind a run of feeder indices.
    * @param at - The indices to resolve.

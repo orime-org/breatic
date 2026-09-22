@@ -358,31 +358,38 @@ describe("a mode whose material arrives through the reference pool", () => {
     expect(checkProposal(propose(at, { sources: full }))).toEqual({ ok: true });
   });
 
-  it("counts everything in the pool against the ceiling, not only what it reads", () => {
-    // The pool holds what reaches it, of every kind -- the panel's count is
-    // of rows, and a row carrying a video the step before made takes one of
-    // them. Counting only the kinds this mode runs on lets a group be placed
-    // that the panel then refuses.
+  it("counts what the step before made against the pool ceiling too", () => {
+    // What the step before made goes in the pool like anything else the
+    // reader would have mentioned, so it takes one of the rows -- counting
+    // only the empty nodes lets a group be placed that the panel then refuses.
     const at = pick(
       (m) => m.byReference && m.poolCap !== undefined && m.nodeType === "video",
       "video pool with a declared cap",
     );
-    const full = Array.from({ length: at.poolCap ?? 0 }, () => at.needs[0] as GenerationNodeType);
+    const kind = at.needs[0] as GenerationNodeType;
+    const full = Array.from({ length: at.poolCap ?? 0 }, () => kind);
     const filled = propose(at, { sources: full });
     const generation = filled.nodes.length - 1;
-    const maker = sourcelessOn("video");
+    const maker = sourcelessOn(kind);
+    const made = filled.nodes[generation] as ProposalNode;
 
     const verdict = checkProposal({
       ...filled,
       nodes: [
-        // The cut occupies a row in the pool, which is what this case is
-        // about; it is not a row the prompt can name (`nameableFeeders` --
-        // the pool is an image pool), so no mark points at it.
-        ...filled.nodes,
+        ...filled.nodes.slice(0, generation),
+        {
+          ...made,
+          // It is a row the prompt can name, so it is marked; what this case
+          // is about is that it also occupies one of the pool's rows.
+          prompt: [
+            ...(made.prompt ?? []),
+            { slot: { kind: "ref", label: "the step before", note: "" } },
+          ],
+        },
         {
           role: "generate",
-          type: "video",
-          name: "The first cut",
+          type: kind,
+          name: "The first take",
           mode: maker.mode,
           model: maker.model,
           params: {},
@@ -1776,5 +1783,254 @@ describe("a mark pointing at an upstream node", () => {
     });
 
     expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("nothing upstream") });
+  });
+});
+
+describe("what the panel would let the prompt name", () => {
+  /** A model the panel draws no prompt editor for. */
+  const promptless = (): Reachable =>
+    pick((at) => !at.takesPrompt, "model that takes no prompt");
+
+  /** A written node, for wiring into a generation as words it reads. */
+  const written = (name: string, text: string): ProposalNode => ({
+    role: "written",
+    type: "text",
+    name,
+    prompt: [{ text }],
+  });
+
+  it("asks nothing of a prompt no model draws a box for", () => {
+    // The panel mounts no editor for such a model and forces the box empty, so
+    // a mark pointing at the words upstream lands nowhere. Demanding one sends
+    // the model off to write into a box the reader will never see.
+    const at = promptless();
+    const generate: ProposalNode = {
+      role: "generate",
+      type: at.nodeType,
+      name: "The clip",
+      mode: at.mode,
+      model: at.model,
+      params: {},
+      prompt: Array.from({ length: at.pieces }, (_, i) => ({
+        slot: {
+          kind: "asset" as const,
+          label: `your material ${String(i + 1)}`,
+          note: "Put it in the empty node",
+        },
+      })),
+    };
+
+    const verdict = checkProposal({
+      nodes: [
+        ...at.needs.map((type, i) => ({
+          role: "source" as const,
+          type,
+          name: `Your material ${String(i + 1)}`,
+        })),
+        written("The script", "hello there"),
+        generate,
+      ],
+      edges: [{ fromIndex: at.needs.length, toIndex: at.needs.length + 1 }],
+      rationale: "x",
+      groupName: "g",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("refuses a mark pointing upstream when no model draws a prompt box", () => {
+    const at = promptless();
+    const generate: ProposalNode = {
+      role: "generate",
+      type: at.nodeType,
+      name: "The clip",
+      mode: at.mode,
+      model: at.model,
+      params: {},
+      prompt: [
+        { slot: { kind: "ref" as const, label: "the script", note: "" } },
+        ...Array.from({ length: at.pieces }, (_, i) => ({
+          slot: {
+            kind: "asset" as const,
+            label: `your material ${String(i + 1)}`,
+            note: "Put it in the empty node",
+          },
+        })),
+      ],
+    };
+
+    const verdict = checkProposal({
+      nodes: [
+        ...at.needs.map((type, i) => ({
+          role: "source" as const,
+          type,
+          name: `Your material ${String(i + 1)}`,
+        })),
+        written("The script", "hello there"),
+        generate,
+      ],
+      edges: [{ fromIndex: at.needs.length, toIndex: at.needs.length + 1 }],
+      rationale: "x",
+      groupName: "g",
+    });
+
+    expect(verdict.ok).toBe(false);
+  });
+
+  it("counts against the pool only what a mention of it puts there", () => {
+    // The panel's own ceiling counts the reference IMAGES the prompt mentions
+    // (`mentionedReferenceUrls`). A clip reaching the same generation is not
+    // one of those -- the pool has no way to carry it -- so it cannot be the
+    // node that puts the group over.
+    const wrong = (["video", "audio"] as const).find((kind) =>
+      reachableModes().some(
+        (m) => m.byReference && m.poolCap !== undefined && canConnect(kind, m.nodeType),
+      ),
+    );
+    if (wrong === undefined) throw new Error("no capped pooled mode accepts a kind the pool cannot hold");
+    const at = pick(
+      (m) => m.byReference && m.poolCap !== undefined && canConnect(wrong, m.nodeType),
+      `capped pooled mode accepting a ${wrong} upstream`,
+    );
+    const maker = pick(
+      (m) => m.nodeType === wrong && m.needs.length === 0 && m.choices.length === 0,
+      `mode making a ${wrong} out of nothing`,
+    );
+    const cap = at.poolCap ?? 0;
+    const kind = at.needs[0] as GenerationNodeType;
+
+    const verdict = checkProposal({
+      nodes: [
+        generation(maker),
+        ...Array.from({ length: cap }, (_, i) => ({
+          role: "source" as const,
+          type: kind,
+          name: `Your material ${String(i + 1)}`,
+        })),
+        {
+          role: "generate",
+          type: at.nodeType,
+          name: "The result",
+          mode: at.mode,
+          model: at.model,
+          params: {},
+          prompt: [
+            { text: "follow the mood" },
+            ...Array.from({ length: cap }, (_, i) => ({
+              slot: {
+                kind: "asset" as const,
+                label: `your material ${String(i + 1)}`,
+                note: "Put it in the empty node",
+              },
+            })),
+          ],
+        },
+      ],
+      edges: [
+        { fromIndex: 0, toIndex: cap + 1 },
+        ...Array.from({ length: cap }, (_, i) => ({ fromIndex: i + 1, toIndex: cap + 1 })),
+      ],
+      rationale: "x",
+      groupName: "g",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("counts the reader's pieces by kind, not by how many arrive in all", () => {
+    // Two kinds, one piece each. Two upstream generations carrying the second
+    // kind say nothing about the first, and a count that adds them together
+    // leaves the empty node holding the first kind unmarked -- the reader is
+    // handed a node to fill with nothing on the card saying so.
+    const at = pick(
+      (m) => !m.byReference && m.needs.length > 1,
+      "slot-fed mode needing two kinds of material",
+    );
+    const second = at.needs[1] as GenerationNodeType;
+    const maker = pick(
+      (m) => m.nodeType === second && m.needs.length === 0 && m.choices.length === 0,
+      `mode making a ${second} out of nothing`,
+    );
+
+    const verdict = checkProposal({
+      nodes: [
+        generation(maker),
+        generation(maker),
+        { role: "source", type: at.needs[0] as GenerationNodeType, name: "Yours" },
+        {
+          role: "generate",
+          type: at.nodeType,
+          name: "The result",
+          mode: at.mode,
+          model: at.model,
+          params: {},
+          prompt: [{ text: "speak up" }],
+        },
+      ],
+      edges: [
+        { fromIndex: 0, toIndex: 3 },
+        { fromIndex: 1, toIndex: 3 },
+        { fromIndex: 2, toIndex: 3 },
+      ],
+      rationale: "x",
+      groupName: "g",
+    });
+
+    expect(verdict.ok).toBe(false);
+  });
+
+  it("says to take a mark out when the prompt marks more places than there are", () => {
+    const verdict = checkProposal(propose(pooled(), { marks: 2 }));
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("Take the extra") });
+  });
+
+
+  it("counts the marks pointing upstream before it measures the prompt", () => {
+    // The measured string substitutes the words behind each mark pointing
+    // upstream, one mark to one node. Measured while the two are allowed to
+    // differ, the refusal quotes a length that left some of those words out
+    // and then names the nodes holding them.
+    const at = pick(
+      (m) => m.maxInputChars !== undefined && m.needs.length === 0,
+      "sourceless mode whose model caps the prompt",
+    );
+
+    const verdict = checkProposal({
+      nodes: [
+        written("The script", "a".repeat((at.maxInputChars ?? 0) + 1)),
+        written("The aside", "b".repeat(20)),
+        {
+          role: "generate",
+          type: at.nodeType,
+          name: "The result",
+          mode: at.mode,
+          model: at.model,
+          params: {},
+          prompt: [
+            { text: "read this: " },
+            { slot: { kind: "ref" as const, label: "the script", note: "" } },
+            ...Array.from({ length: at.choices.length > 0 ? 1 : 0 }, () => ({
+              slot: { kind: "tweak" as const, label: "the voice", note: "Pick one" },
+            })),
+          ],
+        },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
+      rationale: "x",
+      groupName: "g",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("Mark the place in the prompt that points at each"),
+    });
+  });
+
+  it("tells the model which node upstream each mark pointing there is about", () => {
+    const prompt = inputSchema.shape.nodes.element.shape.prompt;
+
+    expect(prompt.description).toMatch(/node wired in/);
+    expect(prompt.description).toMatch(/in the order the nodes are listed/);
   });
 });
