@@ -164,11 +164,18 @@ export const DocumentMenuEntry = React.memo(
               <MoreHorizontal className='h-4 w-4' />
               {/* The dot the panel's absence is announced with. Inside the
                   button so it travels with it, and `pointer-events-none` so
-                  it never takes the press. */}
+                  it never takes the press.
+
+                  `status-info` rather than the palette blue it aliases: the
+                  palette lives in `:root` rather than in `@theme`, so
+                  `bg-palette-blue` is not a class Tailwind generates and the
+                  dot came out transparent — measured in the browser, which is
+                  the only place a missing utility shows. The alias is the same
+                  colour and is what the status dots elsewhere already use. */}
               {unresolvedComments > 0 && !commentsOpen && (
                 <span
                   data-testid='doc-doc-menu-dot'
-                  className='pointer-events-none absolute right-1 top-1 size-1.5 rounded-full bg-palette-blue'
+                  className='pointer-events-none absolute right-1 top-1 size-1.5 rounded-full bg-status-info'
                 />
               )}
             </Button>

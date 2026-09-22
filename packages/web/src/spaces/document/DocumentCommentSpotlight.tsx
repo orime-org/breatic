@@ -85,11 +85,14 @@ export const DocumentCommentSpotlight = React.memo(
     const cards = useCommentCards(editor);
     const viewerId = useCurrentUserStore((state) => state.user?.id);
 
+    // Unresolved only. A press opens what the reader pressed, and a resolved
+    // thread's highlight is not painted (§9.2, S2) — so a card floating for
+    // one would be answering a press on words that look like any others. It
+    // is also what takes this card away when the reader settles the thread
+    // from it: the thread leaves the group this reads. Settled threads are
+    // read again through the panel's own filter (A9).
     const shown = React.useMemo(
-      () =>
-        [...cards.unresolved, ...cards.resolved].filter((card) =>
-          selected.includes(card.id),
-        ),
+      () => cards.unresolved.filter((card) => selected.includes(card.id)),
       [cards, selected],
     );
 

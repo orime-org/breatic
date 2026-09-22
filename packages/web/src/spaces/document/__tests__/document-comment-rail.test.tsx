@@ -318,6 +318,34 @@ describe('the comment panel', () => {
     expect(screen.queryByTestId('doc-comment-spotlight')).toBeNull();
   });
 
+  it('takes the floating card away once the thread is settled', async () => {
+    // Resolving from the floating card leaves the reader looking at a card for
+    // a thread whose highlight is no longer painted. The card's work there is
+    // done, and A9's filter is where a settled thread is read again.
+    show();
+    await comment(0, 5, 'about alpha');
+    const threadId = [
+      ...handle.editor
+        .getExtension(CommentsExtension)!
+        .threadStore.getThreads()
+        .keys(),
+    ][0]!;
+    act(() => {
+      selectThreads(handle.editor, [threadId]);
+    });
+    await screen.findByTestId('doc-comment-spotlight');
+
+    await act(async () => {
+      await handle.editor
+        .getExtension(CommentsExtension)!
+        .threadStore.resolveThread({ threadId });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-comment-spotlight')).toBeNull();
+    });
+  });
+
   it('says so on a card whose words were deleted', async () => {
     // A13: the thread stays and stays readable, with the highlight gone.
     show();
