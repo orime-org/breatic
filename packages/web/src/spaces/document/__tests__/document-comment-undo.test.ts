@@ -22,10 +22,16 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import {
+  documentBodyFragment,
+  documentCommentThreads,
+  encodeInitialSpaceContent,
+} from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
 import { DOCUMENT_COMMENT_WRITE } from '@web/spaces/document/document-comment-orphan-sync';
+import { postComment } from '@web/spaces/document/document-comment-post';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -124,6 +130,68 @@ function libraryMarksItOrphaned(editor: Editor): void {
   );
 }
 
+/**
+ * Opens an editor with undo tracking AND comments on.
+ * @returns The editor, its undo manager, and the document behind both.
+ */
+function openWithComments(): {
+  editor: Editor;
+  manager: Y.UndoManager;
+  doc: Y.Doc;
+  } {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
+  const { manager, extension } = createDocumentUndo(doc);
+  const editor = buildDocumentEditor({
+    fragment: documentBodyFragment(doc),
+    extensions: [extension],
+    comments: { doc, readWho: () => ({ role: 'editor', viewerId: 'u1' }) },
+  });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, [
+    { type: 'paragraph', content: 'words to discuss' },
+  ] as never);
+  manager.stopCapturing();
+  return { editor, manager, doc };
+}
+
+/**
+ * Posts a comment over the first run, down the path the composer takes.
+ * @param editor - The editor.
+ */
+async function postAComment(editor: Editor): Promise<void> {
+  const view = editor.prosemirrorView!;
+  const { from, to } = firstRun(editor);
+  view.dispatch(
+    view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, { from, to }),
+  );
+  await postComment(editor, 'have a look');
+}
+
+/** How many threads the document holds. */
+function threadCount(doc: Y.Doc): number {
+  return documentCommentThreads(doc).size;
+}
+
+/**
+ * Writes a thread the way another client's does — an origin ours never
+ * tracks.
+ * @param doc - The document.
+ */
+function peerPostsAThread(doc: Y.Doc): void {
+  const threads = documentCommentThreads(doc);
+  doc.transact(() => {
+    const thread = new Y.Map<unknown>();
+    thread.set('id', 'peer-thread');
+    thread.set('type', 'thread');
+    thread.set('comments', new Y.Array());
+    threads.set('peer-thread', thread);
+  }, 'a peer');
+}
+
 describe('undo after the library syncs an orphan flag', () => {
   it('takes back the comment the reader opened, not the flag rewrite', () => {
     const { editor, manager } = open();
@@ -177,5 +245,52 @@ describe('undo after the library syncs an orphan flag', () => {
     expect(editor.prosemirrorState.doc.textContent).not.toContain(
       'words to discuss',
     );
+  });
+});
+
+describe('undo right after posting a comment', () => {
+  it('takes the whole comment back, thread and highlight together', async () => {
+    // Posting is two writes — the thread into its map, the mark onto the
+    // words — and a reader who presses Cmd+Z is taking back the one thing
+    // they did. Leaving the thread behind makes the panel say the text was
+    // deleted, which is untrue, and keeps the unresolved dot lit forever.
+    //
+    // Every editor that models comments as marks puts them in undo's reach
+    // for this reason; it is why Remirror and Collaborne both moved
+    // highlights out of a side table and into the document.
+    const { editor, manager, doc } = openWithComments();
+
+    await postAComment(editor);
+    expect(commentMarks(editor)).toHaveLength(1);
+    expect(threadCount(doc)).toBe(1);
+
+    manager.undo();
+
+    expect(commentMarks(editor)).toHaveLength(0);
+    expect(threadCount(doc)).toBe(0);
+  });
+
+  it('brings it back on redo', async () => {
+    const { editor, manager, doc } = openWithComments();
+    await postAComment(editor);
+
+    manager.undo();
+    manager.redo();
+
+    expect(commentMarks(editor)).toHaveLength(1);
+    expect(threadCount(doc)).toBe(1);
+  });
+
+  it('leaves a thread a peer wrote where it is', async () => {
+    // Undo is per-reader: `trackedOrigins` decides what this manager owns,
+    // and a peer's write carries an origin it does not track.
+    const { editor, manager, doc } = openWithComments();
+    await postAComment(editor);
+    peerPostsAThread(doc);
+    expect(threadCount(doc)).toBe(2);
+
+    manager.undo();
+
+    expect(threadCount(doc)).toBe(1);
   });
 });

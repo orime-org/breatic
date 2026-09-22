@@ -219,6 +219,32 @@ describe('DocumentCommentComposer', () => {
     expect(screen.queryByTestId('doc-comment-input')).toBeNull();
   });
 
+  it('takes that notice away when the reader is done with it', async () => {
+    // Nothing else can: the range is already gone, so the two gestures the
+    // box otherwise closes on have nothing left to clear, and the notice sits
+    // over the body swallowing presses meant for the words underneath.
+    const { editor } = open();
+    const run = firstRun(editor);
+    const range = { from: run.from, to: run.from + 5 };
+    show(editor);
+    aimAt(editor, range);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-comment-composer')).toBeInTheDocument();
+    });
+    await userEvent.type(screen.getByTestId('doc-comment-input'), 'about this');
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.delete(range.from, range.to));
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-comment-dropped')).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByTestId('doc-comment-drop-dismiss'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-comment-composer')).toBeNull();
+    });
+  });
+
   it('says so when the reader loses the right to write mid-draft', async () => {
     const { editor } = open();
     const run = firstRun(editor);

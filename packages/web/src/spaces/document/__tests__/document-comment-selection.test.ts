@@ -17,6 +17,8 @@ import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
 
+import { CommentsExtension } from '@blocknote/core/comments';
+
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
 import { postComment } from '@web/spaces/document/document-comment-post';
@@ -96,13 +98,25 @@ async function comment(
  * Presses the body at one offset into the first line.
  * @param editor - The editor.
  * @param at - How far into the line to press.
+ * @returns Whether any handler in the chain answered it.
  */
-function press(editor: Editor, at: number): void {
+function press(editor: Editor, at: number): boolean {
   const view = editor.prosemirrorView!;
   const pos = firstRun(editor).from + at;
-  view.someProp('handleClick', (handler) =>
-    handler(view, pos, new MouseEvent('mousedown', { button: 0 })),
+  return (
+    view.someProp('handleClick', (handler) =>
+      handler(view, pos, new MouseEvent('mousedown', { button: 0 })),
+    ) === true
   );
+}
+
+/** Which thread the library itself believes is being read. */
+function librarySelection(editor: Editor): string | undefined {
+  return (
+    editor.getExtension(CommentsExtension) as unknown as {
+      store: { state: { selectedThreadId?: string } };
+    }
+  ).store.state.selectedThreadId;
 }
 
 describe('pressing a highlight', () => {
@@ -160,6 +174,62 @@ describe('pressing a highlight', () => {
     view.dispatch(view.state.tr.insertText('xx', firstRun(editor).from));
 
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([threadId]);
+  });
+});
+
+describe('pressing a comment that is already open', () => {
+  it('leaves the press for whoever else wants it', async () => {
+    // Commented words can be a link as well, and the link handler sits behind
+    // both comment handlers in the chain. The library answers this by standing
+    // aside on a second press — its own comment says "let other handlers
+    // process the event (e.g. navigating a link)" — and so does this.
+    const editor = open();
+    await comment(editor, 0, 5);
+
+    expect(press(editor, 2)).toBe(true);
+    expect(press(editor, 2)).toBe(false);
+  });
+
+  it('holds the comment open across that second press', async () => {
+    const editor = open();
+    const threadId = await comment(editor, 0, 5);
+
+    press(editor, 2);
+    press(editor, 2);
+
+    expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([threadId]);
+  });
+
+  it('answers again once the reader presses a different comment', async () => {
+    const editor = open();
+    await comment(editor, 0, 5);
+    const second = await comment(editor, 6, 11);
+    press(editor, 2);
+
+    expect(press(editor, 8)).toBe(true);
+    expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([second]);
+  });
+
+  it('tells the library which thread is being read, so it stands aside too', async () => {
+    // The library keeps its own `selectedThreadId` and answers a press on any
+    // thread that is not it. Left unwritten, its handler would take every
+    // press this one lets through and the link would still never open.
+    const editor = open();
+    const threadId = await comment(editor, 0, 5);
+
+    press(editor, 2);
+
+    expect(librarySelection(editor)).toBe(threadId);
+  });
+
+  it('tells the library the reader has looked away', async () => {
+    const editor = open();
+    await comment(editor, 0, 5);
+    press(editor, 2);
+
+    press(editor, 14);
+
+    expect(librarySelection(editor)).toBeUndefined();
   });
 });
 

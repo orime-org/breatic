@@ -16,11 +16,11 @@
  * list, Lexical activates every id, CKEditor's `activeAnnotations` is a set);
  * no vendor's help pages answer the question at all.
  *
- * `orphan` is deliberately NOT consulted here, unlike in the library's
- * handler. That attribute is true for a resolved thread whose text is intact
- * (`extension.ts:138-142`), so filtering on it would make a resolved
- * highlight unreachable — and what a press should do with a resolved thread
- * is the panel's question, not this one's.
+ * `orphan` is read, as the library's own handler reads it: what a reader can
+ * press is what is drawn for them. That attribute is true for a thread that
+ * is resolved, withdrawn or gone (`extension.ts:138-142`), and the stylesheet
+ * paints no colour for such a mark — so those words look like any others and
+ * the press belongs to whoever else wants it.
  *
  * TDD: red because `threadsAtPosition` does not exist yet.
  */
@@ -110,17 +110,30 @@ describe('threadsAtPosition', () => {
     expect(threadsAtPosition(doc, startOf(doc, 'second'))).toEqual(['t2']);
   });
 
-  it('names a resolved thread, whose mark the library would call an orphan', () => {
-    // The library sets `orphan` from `!thread || resolved || deletedAt`, so a
-    // resolved thread with its text intact carries `orphan: true`. Reading it
-    // here would make that highlight unreachable.
+  it('names nothing under a mark the stylesheet paints no colour for', () => {
+    // `orphan` is the library's word for a mark whose thread is resolved,
+    // withdrawn or gone (`extension.ts:138-142`), and `.bn-thread-mark[
+    // data-orphan='true']` paints it transparent. Words with nothing drawn on
+    // them read as any other words, so a press there belongs to whoever else
+    // wants it — the link handler among them.
     const doc = docOf({
       text: 'resolved but here',
       marks: [schema.marks.comment.create({ threadId: 't1', orphan: true })],
     });
-    expect(threadsAtPosition(doc, startOf(doc, 'resolved but here'))).toEqual([
-      't1',
-    ]);
+    expect(threadsAtPosition(doc, startOf(doc, 'resolved but here'))).toEqual(
+      [],
+    );
+  });
+
+  it('names only the painted one where a painted mark overlaps a settled one', () => {
+    const doc = docOf({
+      text: 'shared',
+      marks: [
+        schema.marks.comment.create({ threadId: 'settled', orphan: true }),
+        comment('open'),
+      ],
+    });
+    expect(threadsAtPosition(doc, startOf(doc, 'shared'))).toEqual(['open']);
   });
 
   it('ignores the other marks on the run pressed', () => {
