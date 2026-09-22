@@ -32,7 +32,7 @@ function freshCredentials(): { email: string; password: string } {
 }
 
 test.describe('a new account and its trial credits', () => {
-  test('sees them in the menu, in its history, and on the assign screen', async ({
+  test('sees them in the menu, in its history, and on the assign screen @needs-payments', async ({
     page,
     baseURL,
   }) => {
