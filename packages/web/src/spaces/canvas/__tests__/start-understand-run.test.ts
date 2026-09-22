@@ -49,6 +49,7 @@ const RUN = {
   onBuilt: (): void => {},
   source: {
     id: 'n-1',
+    name: 'dog',
     kind: 'image' as const,
     url: 'https://assets.invalid/image/a.png',
     mimeType: 'image/png',
@@ -61,6 +62,22 @@ const RUN = {
 describe('one press of Understand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  // A canvas of several media nodes gets one paragraph per reading, and a
+  // paragraph named after its kind says nothing about which of them it is
+  // about. The repo already answers this shape for a derived node: a clone is
+  // `COPY-` plus the name of what it was cloned from.
+  it('names the node it builds after the one it was read from', async () => {
+    await startUnderstandRun(RUN);
+
+    expect(addNode).toHaveBeenCalledWith(
+      'p-1',
+      's-1',
+      expect.objectContaining({
+        data: expect.objectContaining({ name: 'UNDERSTAND-dog' }),
+      }),
+    );
   });
 
   it('writes the node and its edge in one undo step, then asks for the run', async () => {
@@ -184,9 +201,14 @@ describe('one press of Understand', () => {
   it('builds nothing when the file is over the ceiling', async () => {
     await startUnderstandRun({
       ...RUN,
-      source: { ...RUN.source, sizeBytes: 20 * 1024 * 1024 + 1 },
+      source: { ...RUN.source, sizeBytes: 25 * 1024 * 1024 },
     });
 
+    // One refusal, one sentence, whichever end raises it: the same key the
+    // row holds when the run is what refuses a file for size.
+    expect(toast.warning).toHaveBeenCalledWith(
+      'Larger than a reading takes (a.png, 25 MiB). The limit is 20 MiB.',
+    );
     expect(toast.warning).toHaveBeenCalledTimes(1);
     expect(addNode).not.toHaveBeenCalled();
     expect(vi.mocked(canvasApi.understand)).not.toHaveBeenCalled();

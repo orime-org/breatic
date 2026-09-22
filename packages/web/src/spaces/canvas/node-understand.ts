@@ -56,7 +56,13 @@ export type UnderstandRefusal =
        */
       file: string | null;
     }
-  | { kind: 'size'; limitBytes: number; sizeBytes: number };
+  | {
+      kind: 'size';
+      limitBytes: number;
+      sizeBytes: number;
+      /** Read off the same address, for the same reason as the arm above. */
+      file: string | null;
+    };
 
 /**
  * Whether the endpoint reads this type at all.
@@ -106,7 +112,7 @@ export function understandRefusal(
   }
   const sizeBytes = media.sizeBytes;
   if (limitBytes !== null && sizeBytes !== undefined && sizeBytes > limitBytes) {
-    return { kind: 'size', limitBytes, sizeBytes };
+    return { kind: 'size', limitBytes, sizeBytes, file: assetNameFromUrl(media.url) };
   }
   return null;
 }

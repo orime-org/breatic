@@ -324,7 +324,6 @@
       "unknownAuthor": "未知"
     },
     "understand": {
-      "tooLarge": "文件太大，无法理解。上限 {limit}，这个文件 {size}。",
       "couldNotStart": "没能开始，可以重试。",
       "sourceGone": "被读取的节点已不存在。这次理解没有连线。"
     },

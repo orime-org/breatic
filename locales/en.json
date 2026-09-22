@@ -336,7 +336,6 @@
       "understand": "Understand"
     },
     "understand": {
-      "tooLarge": "Too large to understand. The limit is {limit}; this file is {size}.",
       "couldNotStart": "Could not start. Try again.",
       "sourceGone": "The node being read is gone. This reading has no wire to it."
     },

@@ -72,10 +72,18 @@ describe('what the browser refuses before it builds anything', () => {
     ).toBeNull();
   });
 
-  it('refuses a file over the cap, and says how big it is', () => {
+  // Both arms of one gate answer the same sentence, and that sentence names
+  // the file. The format arm reads the name off the address; this one holds
+  // the same address.
+  it('refuses a file over the cap, and says which file and how big', () => {
     expect(
       understandRefusal({ kind: 'image', mimeType: 'image/png', sizeBytes: LIMIT + 1, url: ASSET }, LIMIT),
-    ).toEqual({ kind: 'size', limitBytes: LIMIT, sizeBytes: LIMIT + 1 });
+    ).toEqual({
+      kind: 'size',
+      limitBytes: LIMIT,
+      sizeBytes: LIMIT + 1,
+      file: '1758_a1b2.aiff',
+    });
   });
 
   it('lets a file exactly at the cap through', () => {
@@ -110,7 +118,6 @@ describe('what the browser refuses before it builds anything', () => {
 // falls back rather than failing. So the catalogs are read directly.
 describe.each([
   'canvas.nodeMenu.understand',
-  'canvas.understand.tooLarge',
   'canvas.understand.couldNotStart',
   'canvas.understand.sourceGone',
 ])('%s', (key) => {

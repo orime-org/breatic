@@ -324,7 +324,6 @@
       "unknownAuthor": "不明"
     },
     "understand": {
-      "tooLarge": "ファイルが大きすぎて読み取れません。上限 {limit}、このファイルは {size}。",
       "couldNotStart": "開始できませんでした。もう一度お試しください。",
       "sourceGone": "読み取り元のノードがありません。この読み取りに線はつながっていません。"
     },

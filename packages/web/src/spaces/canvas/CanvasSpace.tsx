@@ -3714,6 +3714,7 @@ function CanvasSpaceInner({
       userId: viewerId ?? '',
       source: {
         id: host.id,
+        name: view.name,
         kind: view.kind,
         url: menuDownloadUrl,
         mimeType: view.mimeType,

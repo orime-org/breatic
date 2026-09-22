@@ -30,6 +30,13 @@ import {
 /** The node being read, as the canvas holds it. */
 export interface UnderstandSource {
   id: string;
+  /**
+   * What the reader calls it, which is what the node it builds is named
+   * after. Absent only in the view's type, which makes the field optional so
+   * component tests need not spell it out; a node with no name to borrow
+   * leaves the new one the name its own kind gives it.
+   */
+  name: string | undefined;
   kind: UnderstandableKind;
   /** The address of what it is showing. */
   url: string;
@@ -57,6 +64,17 @@ export interface UnderstandRun {
    */
   onBuilt: (built: { id: string; position: { x: number; y: number } }) => void;
 }
+
+/**
+ * Prefix on the name of the node a reading builds, so a paragraph says which
+ * node it is about.
+ *
+ * Same shape `node-clipboard.ts` gives a clone (`COPY-` plus the name of what
+ * it was cloned from): a node derived from another is named after it, marked
+ * by the act that derived it. A fixed-English data value, like the other
+ * default names in `node-factory.ts` — the reader renames it from there.
+ */
+const UNDERSTAND_PREFIX = 'UNDERSTAND-';
 
 /**
  * Build the text node this run writes to, wire it, and ask for the run.
@@ -87,24 +105,35 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
     getCachedUnderstandMaxBytes(),
   );
   if (refusal !== null) {
+    // Each refusal is the sentence its own row holds, filled from the same
+    // facts about the same address. One refusal reads one way whichever end
+    // raises it: this gate before anything is built, or the run once it is.
     toast.warning(
       refusal.kind === 'format'
-        ? t('canvas.task.failure.understand_unsupported_type', {
-          // The one sentence both gates write, filled from the same two facts
-          // about the same address: the key names the file, the recorded type
-          // names the format.
+        ? t(
+          'canvas.task.failure.understand_unsupported_type',
+          refusalClause(refusal),
+        )
+        : t('canvas.task.failure.understand_over_cap', {
           ...refusalClause(refusal),
-        })
-        : t('canvas.understand.tooLarge', {
+          bytes: formatBytes(refusal.sizeBytes),
           limit: formatBytes(refusal.limitBytes),
-          size: formatBytes(refusal.sizeBytes),
         }),
     );
     return;
   }
 
   const position = understandNodePosition(source.position, source.groupOrigin);
-  const node = createEmptyNode('text', position, userId);
+  const built = createEmptyNode('text', position, userId);
+  const node = {
+    ...built,
+    data: {
+      ...built.data,
+      ...(source.name !== undefined && {
+        name: UNDERSTAND_PREFIX + source.name,
+      }),
+    },
+  };
   // One press is ONE undo entry. `addNode` and `addEdge` open a transaction
   // each, so called plainly they leave two — and undoing once would take the
   // edge away and leave a node running a task with nothing tying it to what
