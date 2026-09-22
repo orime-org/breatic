@@ -938,7 +938,15 @@
         "placeholder": "写一条批注…",
         "post": "提交",
         "targetGone": "原文已删除。",
-        "cannotWrite": "你已不能在这里写了。"
+        "cannotWrite": "你已不能在这里写了。",
+        "railTitle": "批注",
+        "filterOpen": "未解决",
+        "filterAll": "全部",
+        "closeRail": "关闭批注栏",
+        "empty": "这篇文档还没有批注。选中正文里的文字，或者点行左边的抓手。",
+        "orphaned": "批注的原文已删除。",
+        "resolvedGroup": "已解决 · {count}",
+        "unknownAuthor": "未知"
       },
       "schemaOutdated": {
         "headline": "文档编辑器已更新",
@@ -952,7 +960,11 @@
         "label": "整篇文档的命令",
         "saveSnapshot": "保存快照",
         "restoreSnapshot": "恢复快照",
-        "notOpenYet": "未开放"
+        "notOpenYet": "未开放",
+        "comments": "批注",
+        "commentsOpen": "开着",
+        "commentsUnresolved": "{count} 条未解决",
+        "commentsNone": "无"
       },
       "link": {
         "placeholder": "粘贴或输入网址",

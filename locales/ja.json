@@ -938,7 +938,15 @@
         "placeholder": "コメントを書く",
         "post": "投稿",
         "targetGone": "対象の文章は削除されました。",
-        "cannotWrite": "ここには書き込めなくなりました。"
+        "cannotWrite": "ここには書き込めなくなりました。",
+        "railTitle": "コメント",
+        "filterOpen": "未解決",
+        "filterAll": "すべて",
+        "closeRail": "コメント欄を閉じる",
+        "empty": "このドキュメントにはまだコメントがありません。本文を選択するか、行の左のハンドルを使ってください。",
+        "orphaned": "コメントの対象となった文章は削除されました。",
+        "resolvedGroup": "解決済み · {count}",
+        "unknownAuthor": "不明"
       },
       "schemaOutdated": {
         "headline": "ドキュメントエディターが更新されました",
@@ -952,7 +960,11 @@
         "label": "ドキュメント全体の操作",
         "saveSnapshot": "スナップショットを保存",
         "restoreSnapshot": "スナップショットを復元",
-        "notOpenYet": "未提供"
+        "notOpenYet": "未提供",
+        "comments": "コメント",
+        "commentsOpen": "表示中",
+        "commentsUnresolved": "未解決 {count} 件",
+        "commentsNone": "なし"
       },
       "link": {
         "placeholder": "URL を貼り付けるか入力",

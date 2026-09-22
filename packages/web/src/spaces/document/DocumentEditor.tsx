@@ -14,6 +14,8 @@ import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 import type { ProjectRole } from '@breatic/shared';
 
 import { DocumentCommentComposer } from '@web/spaces/document/DocumentCommentComposer';
+import { DocumentCommentRail } from '@web/spaces/document/DocumentCommentRail';
+import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
@@ -48,7 +50,8 @@ interface DocumentEditorProps {
  * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
  * @param root0.myRole - The reader's role on the project.
- * @returns The editor body, the entry, the bubble bar and the comment box.
+ * @returns The editor body, the comment panel beside it, the entry, the
+ *   bubble bar and the comment box.
  */
 export const DocumentEditor = React.memo(function DocumentEditor({
   handle,
@@ -56,6 +59,18 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   myRole = 'viewer',
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
+  // The one bit that says whether the panel is on screen, and the reader is
+  // the only one who writes it: a comment arriving from a peer marks the `⋯`
+  // button and moves nothing (design §5). Held here because the menu opens
+  // the panel and the panel closes itself, so neither owns it.
+  const [railOpen, setRailOpen] = React.useState(false);
+  const toggleRail = React.useCallback(() => {
+    setRailOpen((open) => !open);
+  }, []);
+  const closeRail = React.useCallback(() => {
+    setRailOpen(false);
+  }, []);
+  const rail = useCommentRail(handle.editor);
   // Held here because this is where the editor's DOM enters the scroller, and
   // the bar needs the element that now holds it. A child looking it up for
   // itself would look before this effect has run.
@@ -100,24 +115,35 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           answers no clicks (see `index.css`, `.doc-body-editor .ProseMirror`).
           The right gutter is also where the whole-document entry stands, which
           is what sizes both of them (`--doc-body-gutter`). */}
-      <ScrollArea
-        className={`${BODY_SCROLLER_CLASS} flex-1`}
-        // `relative` makes the viewport the containing block for the link
-        // panel's anchor, which is what lets that anchor scroll with the text
-        // it points at. Nothing else inside is measured against it: the
-        // whole-document entry is `sticky` (it answers to the scroller), the
-        // caret that opens a document is `absolute` with no offsets and so
-        // stays at its static position, and a remote caret's label is measured
-        // against the caret itself.
-        viewportClassName='relative px-[var(--doc-body-gutter)]'
-      >
-        <DocumentMenuEntry />
-        <div
-          ref={body}
-          data-testid='document-editor-content'
-          className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
-        />
-      </ScrollArea>
+      <div className='flex min-h-0 flex-1'>
+        <ScrollArea
+          className={`${BODY_SCROLLER_CLASS} flex-1`}
+          // `relative` makes the viewport the containing block for the link
+          // panel's anchor, which is what lets that anchor scroll with the text
+          // it points at. Nothing else inside is measured against it: the
+          // whole-document entry is `sticky` (it answers to the scroller), the
+          // caret that opens a document is `absolute` with no offsets and so
+          // stays at its static position, and a remote caret's label is measured
+          // against the caret itself.
+          viewportClassName='relative px-[var(--doc-body-gutter)]'
+        >
+          <DocumentMenuEntry
+            commentsOpen={railOpen}
+            onToggleComments={toggleRail}
+            unresolvedComments={rail.unresolved.length}
+          />
+          <div
+            ref={body}
+            data-testid='document-editor-content'
+            className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
+          />
+        </ScrollArea>
+        {/* Beside the body rather than over it, so opening it narrows the text
+          column and closing it widens the column again (A18). */}
+        {railOpen && (
+          <DocumentCommentRail editor={handle.editor} onClose={closeRail} />
+        )}
+      </div>
       {/* A sibling here, inside the scroller's viewport at runtime: the bar
           portals itself there, so the viewport's own overflow is what takes it
           away once it has been carried out of sight. Over a select-all it is

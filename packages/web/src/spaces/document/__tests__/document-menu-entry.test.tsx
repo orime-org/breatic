@@ -8,10 +8,10 @@
  * One "…" button is all that stays on screen (user 2026-08-22); the commands
  * appear when it opens. The menu-system ruling's §2.1 survey is the reason:
  * whole-document commands sit behind a single "…" in five of the six products
- * it looked at. What opens today is two snapshot commands, neither of them
- * working yet (task #19).
+ * it looked at. What opens today is the comment panel's row (#18) and two
+ * snapshot commands, neither of those working yet (task #19).
  *
- * Their not-open-yet state is dimmed, `aria-disabled`, does nothing when
+ * The not-open-yet state is dimmed, `aria-disabled`, does nothing when
  * clicked, a cursor that says so, and a note badge that stays put. HTML `disabled` is what this
  * avoids — it drops the item out of the focus order, and a control meant to be
  * discovered has to stay in it.
@@ -30,7 +30,11 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
-const ITEM_IDS = ['doc-doc-menu-restore-snapshot', 'doc-doc-menu-save-snapshot'];
+/** The rows that stand for commands which are not open yet. */
+const COMING_IDS = ['doc-doc-menu-restore-snapshot', 'doc-doc-menu-save-snapshot'];
+
+/** Every row, the working one among them. */
+const ITEM_IDS = [...COMING_IDS, 'doc-doc-menu-comments'].sort();
 
 describe('the whole-document command entry', () => {
   const NAME = 'project-p/document-menu-entry';
@@ -71,7 +75,7 @@ describe('the whole-document command entry', () => {
     }
   });
 
-  it('opens onto exactly those two commands', async () => {
+  it('opens onto exactly those three commands', async () => {
     // The whole set at once: an item added or dropped has to turn this red,
     // and two separate existence checks leave a gap for it to slip through.
 
@@ -80,21 +84,22 @@ describe('the whole-document command entry', () => {
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
     await screen.findByTestId('doc-doc-menu-save-snapshot');
 
-    const ids = Array.from(
-      document.querySelectorAll('[data-testid^="doc-doc-menu-"]'),
-    )
-      .map((el) => el.getAttribute('data-testid'))
-      .filter((id) => id !== 'doc-doc-menu-trigger');
+    // The menu's own items, rather than everything sharing their test-id
+    // prefix: a row is free to carry marks and labels inside it, and counting
+    // by prefix would read each of those as another command.
+    const ids = Array.from(document.querySelectorAll('[role="menuitem"]')).map(
+      (el) => el.getAttribute('data-testid'),
+    );
 
     expect(ids.sort()).toEqual(ITEM_IDS);
   });
 
-  it('把两条都标成尚未开放：可聚焦、变暗、带一枚说明徽章', async () => {
+  it('marks both snapshot rows as not open yet: focusable, dimmed, badged', async () => {
     const user = userEvent.setup();
     render(<DocumentEditor handle={handle} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
 
-    for (const id of ITEM_IDS) {
+    for (const id of COMING_IDS) {
       const item = await screen.findByTestId(id);
       expect(item).toHaveAttribute('aria-disabled', 'true');
       expect(item.className).toContain('cursor-not-allowed');
@@ -112,7 +117,7 @@ describe('the whole-document command entry', () => {
     render(<DocumentEditor handle={handle} />);
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
 
-    for (const id of ITEM_IDS) {
+    for (const id of COMING_IDS) {
       const item = await screen.findByTestId(id);
       expect(item.hasAttribute('disabled')).toBe(false);
       expect(item.getAttribute('data-disabled')).toBeNull();
