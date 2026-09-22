@@ -126,7 +126,10 @@ export const ProposalCard = React.memo(function ProposalCard({
                     aria-hidden='true'
                   />
                 ) : null}
-                <span className='flex flex-wrap items-center gap-1'>
+                {/* Stacked, the way the confirmed demo draws a layer: three
+                    takes of one thing read as three of a kind rather than as
+                    a chain running left to right. */}
+                <span className='flex flex-col gap-1'>
                   {layer.map((chip, c) => (
                     <span
                       key={`${chip.label}-${String(c)}`}

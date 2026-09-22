@@ -14,6 +14,8 @@
 import { describe, it, expect } from 'vitest';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
+import { nameableFeeders } from '@breatic/shared';
+
 import { costOf, shapeOf, todosOf } from '@web/pages/project/chat/proposal-card';
 
 /** An empty node waiting for the reader's material. */
@@ -26,6 +28,12 @@ const generates = (name: string, model = 'flat-model', notes: string[] = []): Pr
   name,
   mode: 'i2i',
   model,
+  // What the check writes onto every generation it lets through, read off the
+  // catalog: an i2i model takes its material through the reference pool and
+  // draws a prompt box. A fixture without them is a proposal the check never
+  // produced.
+  takesFrom: 'pool',
+  takesPrompt: true,
   prompt: [
     { text: 'white ground' },
     ...notes.map((note) => ({
@@ -187,6 +195,23 @@ describe('what is left for the reader', () => {
     ]);
   });
 
+  it('keeps two marks in one prompt as two things to do', () => {
+    // Two slots on one panel, and the model wrote the same words about each.
+    // Merged into one line the reader sees one job and two brackets.
+    const same = { kind: 'asset' as const, label: 'a frame', note: 'Pick a frame' };
+    const proposal = flow([
+      {
+        ...generates('The tween'),
+        takesFrom: 'slot',
+        prompt: [{ text: 'morph' }, { slot: same }, { slot: same }],
+      },
+    ]);
+
+    expect(todosOf(proposal)).toEqual([
+      { nodes: ['The tween'], notes: ['Pick a frame', 'Pick a frame'] },
+    ]);
+  });
+
   it('says once what goes in an empty node three generations share', () => {
     // Every one of the three marks the same empty node, so the note about it
     // is one note -- written three times it reads as three photos to find.
@@ -338,5 +363,22 @@ describe('what one press costs', () => {
     // because the card does not re-check what it is handed, and a total of
     // zero credits would read as free.
     expect(costOf(CATALOG, flow([written('Your copy')]))).toBeUndefined();
+  });
+});
+
+describe('a proposal stored before the check answered these questions', () => {
+  it('names no feeder at all, rather than guessing which way it took', () => {
+    // A row stored before the two catalog facts travelled on the node. What
+    // the panel would accept turns on them, so a guess either writes a
+    // mention it refuses or drops one the pool needs.
+    const proposal = flow(
+      [
+        generates('The first take'),
+        { ...generates('On white'), takesFrom: undefined, takesPrompt: undefined },
+      ],
+      [[0, 1]],
+    );
+
+    expect(nameableFeeders(proposal, 1)).toEqual({ sources: [], upstream: [] });
   });
 });

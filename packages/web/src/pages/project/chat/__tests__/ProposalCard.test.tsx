@@ -349,6 +349,26 @@ describe('a flow that is more than one thing', () => {
     expect(group?.textContent).toContain('On white');
   });
 
+  it('stacks the chips of one layer, the way the demo draws them', () => {
+    // Three takes of one thing stand under each other, so the eye reads them
+    // as three of a kind rather than as a chain running left to right.
+    listModels.mockResolvedValue(CATALOG);
+    const same = (name: string): ProposalNode => ({
+      role: 'generate', type: 'image', name, mode: 'i2i', model: 'some-model',
+      takesFrom: 'pool', takesPrompt: true,
+      prompt: [{ text: 'white ground' }],
+    });
+    renderCard(true, {
+      ...PAIR,
+      nodes: [PAIR.nodes[0]!, same('Front'), same('At 45'), same('Overhead')],
+      edges: [{ fromIndex: 0, toIndex: 1 }, { fromIndex: 0, toIndex: 2 }, { fromIndex: 0, toIndex: 3 }],
+    });
+
+    const chip = screen.getByText('Overhead');
+    const layer = chip.parentElement;
+    expect(layer?.className).toContain('flex-col');
+  });
+
   it('names the nodes when one line has to be carried out on several', () => {
     // Three takes, each wanting the same thing picked in its own panel. The
     // line merges into one -- said three times it reads as three jobs -- and

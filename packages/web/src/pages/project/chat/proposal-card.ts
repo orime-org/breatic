@@ -179,13 +179,20 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
   // to find where there is one.
   const notes = new Map<number, string[]>();
   /**
-   * Add one note under the node it belongs to, keeping the first of a repeat.
+   * Add one note under the node it belongs to.
+   *
+   * The same words arriving about one empty node from several generations is
+   * one job, and said three times it reads as three photos to find. Two marks
+   * in one prompt are two places even when they read the same, so a note
+   * filed under the node whose prompt it came from is kept as written.
    * @param at - The node the note is about.
+   * @param from - The node whose prompt marked it.
    * @param note - The line the card draws.
    */
-  const add = (at: number, note: string): void => {
+  const add = (at: number, from: number, note: string): void => {
     const held = notes.get(at) ?? [];
-    if (!held.includes(note)) notes.set(at, [...held, note]);
+    if (at !== from && held.includes(note)) return;
+    notes.set(at, [...held, note]);
   };
   // The same reading the canvas writes its mentions from, so a to-do names
   // the node the bracket beside it will point at -- and where no mention is
@@ -207,7 +214,7 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
       if (!slot) continue;
       if (slot.kind === 'ref') continue;
       if (slot.kind === 'tweak') {
-        add(at, slot.note);
+        add(at, at, slot.note);
         continue;
       }
       const empty = mine[assetsSeen];
@@ -215,7 +222,7 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
       // Shared, the note belongs to the node itself: said under each of three
       // generations it reads as three photos to find. Read by this one alone,
       // it belongs here, beside the button the reader presses after doing it.
-      add(empty !== undefined && (readers.get(empty) ?? 0) > 1 ? empty : at, slot.note);
+      add(empty !== undefined && (readers.get(empty) ?? 0) > 1 ? empty : at, at, slot.note);
     }
   });
   const groups: NodeTodos[] = [];
