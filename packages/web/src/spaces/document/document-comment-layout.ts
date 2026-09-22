@@ -21,6 +21,10 @@
  * up, and near the top of the body there is nowhere for it to go. The panel
  * scrolls, so a negative top is a card the reader scrolls up to, which is the
  * same answer the body gives for text above the viewport.
+ *
+ * Cards move between one answer and the next rather than appearing at the new
+ * one — the panel animates the change, which is what makes giving way read as
+ * giving way instead of as the column jumping (user 2026-09-22).
  */
 
 /** One card, and where its words are. */

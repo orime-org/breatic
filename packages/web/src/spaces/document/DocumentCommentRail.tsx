@@ -33,6 +33,7 @@ import { layOutCards } from '@web/spaces/document/document-comment-layout';
 import {
   hoverThread,
   onSelectedThreadsChange,
+  selectThreads,
   selectedThreadsIn,
 } from '@web/spaces/document/document-comment-selection';
 import {
@@ -43,10 +44,7 @@ import {
   resolveThread,
 } from '@web/spaces/document/document-comment-thread-actions';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
-import {
-  useBodyScrollTop,
-  useCommentAnchors,
-} from '@web/spaces/document/use-comment-anchors';
+import { useCommentAnchors } from '@web/spaces/document/use-comment-anchors';
 import { useCommentCards } from '@web/spaces/document/use-comment-cards';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
@@ -65,7 +63,7 @@ type Filter = 'open' | 'all';
 /** The space kept between two cards that would otherwise run together. */
 const GAP_BETWEEN_CARDS_PX = 10;
 
-/** What a card is assumed to be until it has been on screen once. */
+/** What a card is taken to be until it has been on screen once. */
 const CARD_HEIGHT_GUESS_PX = 120;
 
 /**
@@ -148,11 +146,9 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // first changes only when the text does; the second is one number applied
   // to the whole column, which is what keeps the two sides in step.
   const anchors = useCommentAnchors(editor, ids);
-  const scrolled = useBodyScrollTop(editor);
 
-  // A card's own height, once it has been on screen. Two comments a line
-  // apart cannot both sit at their anchor, and how far the second has to give
-  // way depends on how tall the first turned out to be.
+  // A card's own height, once it has been on screen. How far the card below
+  // has to give way depends on how tall the one above turned out to be.
   const [heights, setHeights] = React.useState<ReadonlyMap<string, number>>(
     () => new Map(),
   );
@@ -193,6 +189,17 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     },
     [editor],
   );
+
+  // Reading a card is saying which run of the body is being talked about, so
+  // a press here marks that run — the same thing a press on the highlight
+  // does from the other side.
+  const onRead = React.useCallback(
+    (threadId: string) => {
+      selectThreads(editor, [threadId]);
+    },
+    [editor],
+  );
+
 
   const showOpen = React.useCallback(() => {
     setFilter('open');
@@ -241,7 +248,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
           scroll, which is what keeps a card level with its words. */}
       <div
         data-testid='doc-comment-rail-column'
-        className='relative flex-1 overflow-hidden px-2.5'
+        className='relative flex-1 px-2.5'
       >
         {empty ? (
           <p
@@ -251,21 +258,37 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
             {t('spaces.document.comment.empty')}
           </p>
         ) : (
-          <div
-            className='absolute inset-x-2.5 top-0'
-            style={{ transform: `translateY(${-scrolled}px)` }}
-          >
+          <div className='absolute inset-x-2.5 top-0'>
             {shown.map((card) => (
               <div
                 key={card.id}
                 ref={measure(card.id)}
-                className='absolute inset-x-0'
-                style={{ top: `${placed.get(card.id) ?? 0}px` }}
+                // The move is animated: a card giving way to the one being
+                // read should read as giving way rather than as the column
+                // jumping under the reader (user 2026-09-22).
+                className='absolute inset-x-0 transition-[top] duration-200 ease-out motion-reduce:transition-none'
+                // The card being read comes to the front. Cards give way to
+                // each other by moving, and while one is settling — a reply
+                // box opening, a height not measured yet — they can still
+                // overlap; the one the reader is on is the one to see whole.
+                style={{
+                  top: `${placed.get(card.id) ?? 0}px`,
+                  zIndex: selected.includes(card.id) ? 1 : undefined,
+                }}
                 onMouseEnter={() => {
                   onHover(card.id);
                 }}
                 onMouseLeave={() => {
                   onHover(null);
+                }}
+                // Both ways a reader arrives at a card: the pointer pressing
+                // it, and the focus landing on any control inside it — which
+                // is how the keyboard gets here.
+                onPointerDown={() => {
+                  onRead(card.id);
+                }}
+                onFocusCapture={() => {
+                  onRead(card.id);
                 }}
               >
                 <DocumentCommentCard

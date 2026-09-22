@@ -128,6 +128,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           answers no clicks (see `index.css`, `.doc-body-editor .ProseMirror`).
           The right gutter is also where the whole-document entry stands, which
           is what sizes both of them (`--doc-body-gutter`). */}
+      {/* One scroller over both columns, so the scrollbar sits at the far
+          right of the Space rather than between the text and the panel, and a
+          wheel anywhere in here moves both sides together. */}
       <div className='flex min-h-0 flex-1'>
         <ScrollArea
           className={`${BODY_SCROLLER_CLASS} flex-1`}
@@ -138,28 +141,32 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           // caret that opens a document is `absolute` with no offsets and so
           // stays at its static position, and a remote caret's label is measured
           // against the caret itself.
-          viewportClassName='relative px-[var(--doc-body-gutter)]'
+          viewportClassName='relative'
         >
-          <DocumentMenuEntry
-            commentsOpen={railOpen}
-            onToggleComments={toggleRail}
-            unresolvedComments={rail.unresolved.length}
-          />
-          <div
-            ref={body}
-            data-testid='document-editor-content'
-            className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
-          />
+          <div className='flex min-h-full'>
+            <div className='min-w-0 flex-1 px-[var(--doc-body-gutter)]'>
+              <DocumentMenuEntry
+                commentsOpen={railOpen}
+                onToggleComments={toggleRail}
+                unresolvedComments={rail.unresolved.length}
+              />
+              <div
+                ref={body}
+                data-testid='document-editor-content'
+                className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
+              />
+            </div>
+            {/* Beside the body rather than over it, so opening it narrows the
+              text column and closing it widens the column again (A18). */}
+            {railOpen && (
+              <DocumentCommentRail
+                editor={handle.editor}
+                myRole={myRole}
+                onClose={closeRail}
+              />
+            )}
+          </div>
         </ScrollArea>
-        {/* Beside the body rather than over it, so opening it narrows the text
-          column and closing it widens the column again (A18). */}
-        {railOpen && (
-          <DocumentCommentRail
-            editor={handle.editor}
-            myRole={myRole}
-            onClose={closeRail}
-          />
-        )}
       </div>
       {/* A sibling here, inside the scroller's viewport at runtime: the bar
           portals itself there, so the viewport's own overflow is what takes it

@@ -31,7 +31,10 @@ import {
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
-import { selectThreads } from '@web/spaces/document/document-comment-selection';
+import {
+  selectThreads,
+  selectedThreadsIn,
+} from '@web/spaces/document/document-comment-selection';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
@@ -126,16 +129,12 @@ describe('the comment panel', () => {
     expect(screen.queryByTestId('doc-comment-rail')).toBeNull();
   });
 
-  it('opens from the menu row and closes from the same row', async () => {
+  it('opens from the menu row', async () => {
     show();
 
     await pressCommentsRow();
-    expect(await screen.findByTestId('doc-comment-rail')).toBeInTheDocument();
 
-    await pressCommentsRow();
-    await waitFor(() => {
-      expect(screen.queryByTestId('doc-comment-rail')).toBeNull();
-    });
+    expect(await screen.findByTestId('doc-comment-rail')).toBeInTheDocument();
   });
 
   it('closes from its own close button', async () => {
@@ -339,5 +338,49 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-card-orphaned'),
     ).toBeInTheDocument();
     expect(screen.queryByTestId('doc-comment-card-quote')).toBeNull();
+  });
+
+  it('opens the comment in the body when a card is pressed', async () => {
+    // The press goes the other way too: reading a card is saying which run of
+    // the body is being talked about, so that run is marked.
+    show();
+    await comment(0, 5, 'about alpha');
+    await comment(6, 11, 'about bravo');
+    await pressCommentsRow();
+    const cards = await screen.findAllByTestId('doc-comment-card');
+    const second = cards[1]!.getAttribute('data-thread')!;
+
+    await userEvent.click(cards[1]!);
+
+    await waitFor(() => {
+      expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual([
+        second,
+      ]);
+    });
+  });
+
+  it('takes the whole-document entry away while it is open', async () => {
+    // The entry is the way in, and a way in to something already open says
+    // nothing. Closing the panel is the panel's own button (user 2026-09-22).
+    show();
+    expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
+
+    await pressCommentsRow();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-doc-menu-trigger')).toBeNull();
+    });
+  });
+
+  it('brings the entry back once the panel is closed', async () => {
+    show();
+    await pressCommentsRow();
+    await screen.findByTestId('doc-comment-rail');
+
+    await userEvent.click(screen.getByTestId('doc-comment-rail-close'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
+    });
   });
 });

@@ -123,14 +123,21 @@ export const DocumentMenuEntry = React.memo(
     commentsOpen,
     onToggleComments,
     unresolvedComments,
-  }: DocumentMenuEntryProps): React.JSX.Element {
+  }: DocumentMenuEntryProps): React.JSX.Element | null {
     const t = useTranslation();
+    // The way in stands aside once what it opens is on screen. The room on a
+    // document page is finite: with the panel taking a column, a button
+    // offering to open it again is spending space on nothing. Reaching
+    // anything else in here means closing the panel first, which its own
+    // button does (user 2026-09-22) — and that holds however many commands
+    // this menu grows, the snapshot panel included.
+    if (commentsOpen) return null;
+
     const note = t('spaces.document.docMenu.notOpenYet');
     // What the row says the panel holds: that it is already open, else how
     // much is waiting in it, else that there is nothing.
-    const tail = commentsOpen
-      ? t('spaces.document.docMenu.commentsOpen')
-      : unresolvedComments > 0
+    const tail =
+      unresolvedComments > 0
         ? t('spaces.document.docMenu.commentsUnresolved', {
           count: unresolvedComments,
         })
@@ -172,7 +179,7 @@ export const DocumentMenuEntry = React.memo(
                   dot came out transparent — measured in the browser, which is
                   the only place a missing utility shows. The alias is the same
                   colour and is what the status dots elsewhere already use. */}
-              {unresolvedComments > 0 && !commentsOpen && (
+              {unresolvedComments > 0 && (
                 <span
                   data-testid='doc-doc-menu-dot'
                   className='pointer-events-none absolute right-1 top-1 size-1.5 rounded-full bg-status-info'
