@@ -202,6 +202,41 @@ test.describe('the panel, read across from the body', () => {
     expect(clearance).toBeLessThan(6);
   });
 
+  test('holds its header still while the cards scroll past', async ({
+    page,
+  }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type(LONG_LINE);
+    for (let i = 0; i < 30; i += 1) {
+      await page.keyboard.press('Enter');
+      await page.keyboard.type(`filler line ${i}`);
+    }
+    await commentOnParagraph(page, 0, 'up at the top');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+    await page.waitForTimeout(400);
+    const header = page.getByTestId('doc-comment-rail-header');
+    const before = (await header.boundingBox())!;
+    const card = (await page.getByTestId('doc-comment-card').boundingBox())!;
+
+    await page.mouse.move(400, 500);
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(400);
+
+    const after = (await header.boundingBox())!;
+    expect(after.y).toBe(before.y);
+    // The card moved, so the header stayed put while the column went past.
+    expect(
+      card.y - (await page.getByTestId('doc-comment-card').boundingBox())!.y,
+    ).toBeGreaterThan(100);
+    // Opaque, so what passes beneath it does not show through.
+    const painted = await header.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+    expect(painted).not.toContain('rgba(0, 0, 0, 0)');
+  });
+
   test('carries the cards along when the body scrolls', async ({ page }) => {
     await openFreshDocument(page);
     await page.keyboard.type(LONG_LINE);
@@ -342,6 +377,42 @@ test.describe('the box a reply is written in', () => {
     expect(focused.colour).not.toBe(resting.colour);
     expect(focused.colour).toBe(focused.wanted);
     expect(focused.outline).toBe('none');
+  });
+});
+
+test.describe('what a settled thread offers', () => {
+  test('stands Reopen and Delete at the two edges, as Resolve and Delete do', async ({
+    page,
+  }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type(LONG_LINE);
+    await commentOnParagraph(page, 0, 'settled');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await page.getByTestId('doc-comment-card').click();
+
+    const card = page.getByTestId('doc-comment-card');
+    const unsettled = {
+      card: (await card.boundingBox())!,
+      left: (await page.getByTestId('doc-comment-resolve').boundingBox())!,
+      right: (await page.getByTestId('doc-comment-delete').boundingBox())!,
+    };
+
+    await page.getByTestId('doc-comment-resolve').click();
+    await page.getByTestId('doc-comment-rail-filter-all').click();
+    await page.getByTestId('doc-comment-card').click();
+    const settled = {
+      card: (await card.boundingBox())!,
+      left: (await page.getByTestId('doc-comment-reopen').boundingBox())!,
+      right: (await page.getByTestId('doc-comment-delete').boundingBox())!,
+    };
+
+    for (const row of [unsettled, settled]) {
+      expect(row.left.x - row.card.x).toBeLessThan(16);
+      expect(row.card.x + row.card.width - (row.right.x + row.right.width))
+        .toBeLessThan(16);
+    }
+    expect(Math.abs(settled.left.x - unsettled.left.x)).toBeLessThan(1);
   });
 });
 

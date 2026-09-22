@@ -364,7 +364,6 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
             <Button
               variant='outline'
               size='sm'
-              className='ml-auto'
               data-testid='doc-comment-reopen'
               onClick={() => {
                 onReopen(card.id);

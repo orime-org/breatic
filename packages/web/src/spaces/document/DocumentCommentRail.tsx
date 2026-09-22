@@ -222,9 +222,13 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       data-testid='doc-comment-rail'
       className='flex w-72 flex-none flex-col border-l border-border'
     >
+      {/* Held at the top while the column scrolls past under it: the panel
+          shares the body's scroller, so without this the title and the way
+          out of the panel scroll away with the text (user 2026-09-22). The
+          background is its own, because what passes beneath it is cards. */}
       <div
         data-testid='doc-comment-rail-header'
-        className='flex items-center gap-2 border-b border-border px-3 py-2'
+        className='sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-background px-3 py-2'
       >
         <span className='text-sm font-medium'>
           {t('spaces.document.comment.railTitle')}
