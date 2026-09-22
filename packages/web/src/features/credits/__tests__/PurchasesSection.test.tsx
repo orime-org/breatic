@@ -20,7 +20,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { CREDIT_SOURCE_KINDS, isPurchased } from '@breatic/shared';
 import type { PurchaseRow } from '@breatic/shared';
+import en from '@locales/en.json';
 
 import { PurchasesSection } from '@web/features/credits/sections/PurchasesSection';
 
@@ -134,32 +136,33 @@ describe('the purchase history', () => {
     expect(within(first).queryByTestId('purchase-status')).toBeNull();
   });
 
-  it.each([
-    ['compensation', 'Compensation'],
-    ['discount', 'Discount'],
-  ] as const)('names a %s row the same way', async (kind, label) => {
-    // Iterated over the kinds rather than written once, so a fifth kind
-    // added without a name to print fails here instead of rendering a key.
-    history.mockResolvedValue({
-      items: [
-        row({
-          rowId: `lot-${kind}`,
-          sourceKind: kind,
-          paymentId: null,
-          amountCents: null,
-          totalCents: null,
-          taxCents: null,
-          status: null,
-          canResend: false,
-        }),
-      ],
-      nextCursor: null,
-    });
-    renderHistory();
-    const first = await screen.findByTestId('purchase-row');
+  it.each(CREDIT_SOURCE_KINDS.filter((kind) => !isPurchased(kind)))(
+    'names a %s row by the word the catalogue holds for it',
+    async (kind) => {
+      // The kinds come from the list itself and the words from the catalogue,
+      // so a fifth kind added without a name to print fails on the lookup
+      // instead of rendering the key.
+      history.mockResolvedValue({
+        items: [
+          row({
+            rowId: `lot-${kind}`,
+            sourceKind: kind,
+            paymentId: null,
+            amountCents: null,
+            totalCents: null,
+            taxCents: null,
+            status: null,
+            canResend: false,
+          }),
+        ],
+        nextCursor: null,
+      });
+      renderHistory();
+      const first = await screen.findByTestId('purchase-row');
 
-    expect(first.textContent).toContain(label);
-  });
+      expect(first.textContent).toContain(en.credits.source[kind]);
+    },
+  );
 
   it('shows a purchase still processing, with no figures it does not have yet', async () => {
     history.mockResolvedValue({
