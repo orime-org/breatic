@@ -477,8 +477,12 @@ function checkGenerateNode(
   // spaces around it collapse to one and the box holds a character less than
   // it looks. A prompt proposed at exactly the cap can therefore be refused
   // by a character once the reader mentions something in it (#268).
+  // Measured once and reported from the same string: a sentence quoting the
+  // unsubstituted length names a number below the cap it just refused on, and
+  // tells the model to shorten a prompt that holds none of those characters.
+  const measured = measuredPrompt(prompt, nameable);
   const verdict = evaluateExecute({
-    promptText: measuredPrompt(prompt, nameable),
+    promptText: measured,
     model,
     nodeStatus: "idle",
     isSubmitting: false,
@@ -492,10 +496,13 @@ function checkGenerateNode(
     };
   }
   if (verdict?.refusal === "prompt-too-long") {
-    const written = [...extractPromptText(promptTextOf(prompt))].length;
+    const written = [...extractPromptText(measured)].length;
+    // The words are often in another node, and "shorten it" is not something
+    // the model can act on until it knows which one.
+    const holding = nameable.filter((n) => n.role === "written").map((n) => `"${n.name}"`);
     return {
       ok: false,
-      reason: `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}. Shorten it, or propose a model that takes it.`,
+      reason: `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}. Shorten it, or propose a model that takes it.`,
     };
   }
 
@@ -528,29 +535,33 @@ function checkGenerateNode(
   // holding words is wired in to be read, and taking that edge for a hand on
   // the material turns away a group whose empty node the reader was going to
   // fill in the panel.
-  const carrying = [...fed, ...upstream.filter((n) => n.role !== "written")];
+  // What reaches here already carrying work of its own. A node holding words
+  // is not that -- it is words this generation reads.
+  const madeUpstream = upstream.filter((n) => n.role === "generate");
   // Three readings, three names. They answer different questions and two of
   // them want opposite things, so one list serving all three is how a rule
   // ends up charging this generation for another's material.
   //
-  // `mine`: the empty nodes this generation answers for. An edge into it says
-  // which ones, whichever way the material gets in -- through the pool the
-  // edge also carries it, through a slot the edge is the proposal saying this
-  // node is the one to pick here. With nothing wired in, which is the shape
-  // the panel's toolbar is built for, it falls back to the group's nodes of a
-  // kind this mode reads: a sound node beside a picture-to-video generation is
-  // the voice-over's, and `checkProposal` has already made sure every empty
-  // node in the group is read by something.
-  const wired = byReference || needed.length === 0 || carrying.length > 0;
-  const mine = wired
+  // `mine`: the empty nodes this generation answers for. Through the pool an
+  // edge is how material gets in at all, so it answers for its feeders and
+  // nothing else. Through a slot the reader fills by clicking any node of
+  // that kind on the canvas, so an edge says "this one is for you" without
+  // taking the group's others away: a mode wanting a picture and a clip is
+  // given the picture by the step before it and finds the clip sitting in the
+  // group, unwired because it has made nothing to draw on.
+  const mine = byReference
     ? fed
-    : proposal.nodes.filter((n) => n.role === "source" && needed.includes(n.type));
+    : [
+        ...fed,
+        ...proposal.nodes.filter(
+          (n) => n.role === "source" && needed.includes(n.type) && !fed.includes(n),
+        ),
+      ];
   // `reaching`: everything arriving here that carries work, whoever made it.
   // An upstream generation supplies material as surely as an empty node does.
-  // A written node upstream is not material at all -- it is words this
-  // generation reads -- so it stays out. The pool's ceiling counts this one
-  // whole, because the pool holds what reaches it, of every kind.
-  const reaching = [...mine, ...upstream.filter((n) => n.role === "generate")];
+  // The pool's ceiling counts this one whole, because the pool holds what
+  // reaches it, of every kind.
+  const reaching = [...mine, ...madeUpstream];
   // `usable`: of what reaches here, the kinds this mode actually reads. Every
   // question about whether the material is there and whether there is enough
   // of it is asked of this one.
@@ -661,9 +672,7 @@ function checkGenerateNode(
   // kind of thing in, so the count is what the model asks for less what the
   // step before it already made -- the group's other empty nodes belong to
   // whatever else reads them.
-  const supplied = upstream.filter(
-    (n) => n.role === "generate" && needed.includes(n.type),
-  ).length;
+  const supplied = madeUpstream.filter((n) => needed.includes(n.type)).length;
   const wanted = byReference ? mine.length : Math.max(0, asked - supplied);
   if (marks.length !== wanted) {
     return {

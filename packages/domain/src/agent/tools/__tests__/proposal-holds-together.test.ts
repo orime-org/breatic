@@ -742,7 +742,13 @@ describe("what the model is allowed to fill in", () => {
     });
 
     if (verdict.ok) throw new Error("expected a refusal");
-    expect(verdict.reason).toContain("characters");
+    // The number in the sentence is the one it refused on, and it names the
+    // node holding the words: told the prompt is nineteen characters and to
+    // shorten it, the model has nothing it can shorten and no idea where the
+    // rest of them are.
+    const said = /and this prompt is (\d+)/.exec(verdict.reason)?.[1];
+    expect(Number(said)).toBeGreaterThan(at.maxInputChars ?? 0);
+    expect(verdict.reason).toContain("The script");
   });
 
   it("refuses a number outside the range the model declares", () => {
@@ -1222,6 +1228,64 @@ describe("a flow of any shape", () => {
       edges: [],
       rationale: "One each, picked in the panel.",
       groupName: "Both of them",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("keeps the group's other empty nodes when one feeder is wired in", () => {
+    // Make the character, and I will give you the dance clip. One kind comes
+    // from the step before and is wired; the other sits in the group as an
+    // empty node, unwired because it has made nothing to draw on. Reading the
+    // edge as the whole answer turns away a group whose missing kind is right
+    // there -- and `checkProposal` has already counted that node as read by
+    // this very generation.
+    const at = pick(
+      (m) => !m.byReference && m.needs.length > 1,
+      "mode fed by panel slots needing two kinds",
+    );
+    const made = at.needs[0] as GenerationNodeType;
+    const theirs = at.needs[1] as GenerationNodeType;
+    const maker = pick(
+      (m) => m.nodeType === made && m.needs.length === 0,
+      `mode making a ${made} out of nothing`,
+    );
+
+    const verdict = checkProposal({
+      nodes: [
+        generation(maker),
+        { role: "source", type: theirs, name: "Yours" },
+        { role: "generate", type: at.nodeType, name: "The result", mode: at.mode,
+          model: at.model, params: {}, prompt: [{ text: "put them together" },
+            { slot: { kind: "asset", label: "yours", note: "Pick it in the panel" } }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 2 }],
+      rationale: "Make one, you bring the other.",
+      groupName: "Both halves",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("counts the group's places even when one of them is wired in", () => {
+    // Two frames for a tween, and the model wired one of the two empty nodes
+    // to the generation it feeds. The group offers both; a count that reads
+    // only the wire says it offers one, and no third empty node would fix it.
+    const at = manySlotted();
+    const kind = at.needs[0] as GenerationNodeType;
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "source", type: kind, name: "First frame" },
+        { role: "source", type: kind, name: "Last frame" },
+        { role: "generate", type: at.nodeType, name: "The tween", mode: at.mode,
+          model: at.model, params: {}, prompt: [{ text: "morph" },
+            ...Array.from({ length: at.pieces }, (_, i) => ({
+              slot: { kind: "asset" as const, label: `frame ${String(i + 1)}`, note: "Pick it" },
+            }))] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 2 }],
+      rationale: "x", groupName: "g",
     });
 
     expect(verdict).toEqual({ ok: true });
