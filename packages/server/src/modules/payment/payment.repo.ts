@@ -5,7 +5,7 @@
  * Payment repository — data access for the payments table.
  */
 
-import { eq, and, desc, inArray, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
+import { eq, and, inArray, isNull, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import {
@@ -271,15 +271,17 @@ export async function touchReconciled(ids: readonly string[]): Promise<void> {
     .where(inArray(payments.id, [...ids]));
 }
 
-/** One row of the purchase history, straight off the join. */
-export interface PurchaseHistoryRow {
-  paymentId: string;
-  amountCents: number;
+/** One row of the acquisition history, straight off the join. */
+export interface AcquisitionHistoryRow {
+  rowId: string;
+  sourceKind: string;
+  paymentId: string | null;
+  amountCents: number | null;
   taxCents: number | null;
   totalCents: number | null;
   currency: string;
   creditsGranted: number;
-  status: string;
+  status: string | null;
   createdAt: Date;
   cursorAt: string;
   remainingCredits: string | null;
@@ -291,47 +293,62 @@ export interface PurchaseHistoryRow {
 }
 
 /**
- * One keyset page of this account's purchases, newest first.
+ * One keyset page of how this account came by its credits, newest first.
  *
- * Built from `payments` and joined outward, because a purchase that has not
- * landed has no lot: one still processing, one the buyer abandoned. Those are
- * the rows this screen exists to show, and starting from the lots would leave
- * them out entirely.
+ * A full join, because either side can be the whole row. A lot with no
+ * payment is credits somebody was granted; a payment with no lot is a
+ * checkout that opened none — still clearing, or abandoned — and showing
+ * those is what this screen has always been for. Starting from either table
+ * alone drops one of the two.
  *
- * The cursor is keyed on `payments` for the same reason. The lot's timestamp
- * and id are null on exactly those rows, so keying there would collapse the
- * ordering and the cursor together — paging to the end would hand back an
- * empty cursor and the older payments would become unreachable.
+ * Both halves of the cursor fall back to whichever side exists. The comment
+ * this replaces warned that keying on the lot would collapse the ordering on
+ * exactly the rows that have no lot; keying on the payment now does the same
+ * to the rows that have no payment, and `COALESCE` is what holds for both.
+ * Row ids from the two tables cannot collide, so the pair stays unique.
  *
- * The studio a purchase points at is read through a "not deleted" test, the
- * same one the overview applies. Without it one purchase counts as unassigned
- * in the overview and reads "assigned to X" here with X gone.
- * @param userId - Whose purchases.
+ * A purchase is dated by its checkout. For a delayed payment method the
+ * credits open days after the session completes, and what the buyer looks
+ * for is the day they bought.
+ *
+ * The studio a row points at is read through a "not deleted" test, the same
+ * one the overview applies. Without it one row counts as unassigned in the
+ * overview and reads "assigned to X" here with X gone.
+ * @param userId - Whose history.
  * @param limit - How many to take; one more is fetched to detect a next page.
  * @param cursor - The `(created_at, id)` of the previous page's last row.
  * @returns Those rows, one over the page size when more exist.
  */
-export async function listPurchaseHistory(
+export async function listAcquisitionHistory(
   userId: string,
   limit: number,
   cursor: { createdAt: string; id: string } | null,
-): Promise<PurchaseHistoryRow[]> {
+): Promise<AcquisitionHistoryRow[]> {
   const at = cursor ? sql`${cursor.createdAt}::timestamptz` : null;
   const liveStudio = sql`CASE WHEN ${studios.deletedAt} IS NULL THEN`;
+  const rowAt = sql`COALESCE(${payments.createdAt}, ${creditLots.createdAt})`;
+  const rowId = sql`COALESCE(${payments.id}, ${creditLots.id})`;
   return db
     .select({
+      rowId: sql<string>`${rowId}`,
+      sourceKind: sql<string>`COALESCE(${creditLots.sourceKind}, ${payments.sourceKind})`,
       paymentId: payments.id,
       amountCents: payments.amountCents,
       taxCents: payments.taxCents,
       totalCents: payments.totalCents,
-      currency: payments.currency,
-      creditsGranted: payments.creditsGranted,
+      currency: sql<string>`COALESCE(${payments.currency}, 'usd')`,
+      // What the row brought in: the lot's own figure where one opened, and
+      // on a checkout that opened none, the zero `payments` carries.
+      creditsGranted: sql<number>`COALESCE(${creditLots.purchasedCredits}, ${payments.creditsGranted})::double precision`,
       status: payments.status,
-      createdAt: payments.createdAt,
+      // `mapWith` so the expression goes through the column's own driver
+      // mapping: a bare `sql` fragment hands back whatever text the driver
+      // read, and the type argument alone would not have said so.
+      createdAt: sql`${rowAt}`.mapWith(payments.createdAt),
       // Full precision, carried as text: a cursor that went through `Date`
-      // would lose the microseconds Postgres stores, and two purchases inside
-      // one millisecond would straddle a page boundary and one would vanish.
-      cursorAt: sql<string>`${payments.createdAt}::text`,
+      // would lose the microseconds Postgres stores, and two rows inside one
+      // millisecond would straddle a page boundary and one would vanish.
+      cursorAt: sql<string>`${rowAt}::text`,
       remainingCredits: creditLots.remainingCredits,
       lifecycle: creditLots.lifecycle,
       designatedStudioId: sql<
@@ -343,25 +360,25 @@ export async function listPurchaseHistory(
       mailStatus: purchaseMailOutbox.status,
       mailUpdatedAt: purchaseMailOutbox.updatedAt,
     })
-    .from(payments)
-    .leftJoin(
-      creditLots,
-      and(eq(creditLots.sourceId, payments.id), isNull(creditLots.deletedAt)),
-    )
+    .from(creditLots)
+    .fullJoin(payments, eq(payments.id, creditLots.sourceId))
     .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .leftJoin(purchaseMailOutbox, eq(purchaseMailOutbox.paymentId, payments.id))
     .where(
       and(
-        eq(payments.userId, userId),
+        // Whose row it is, read off whichever side is there. A lot copies the
+        // payer from the payment it opened, so the two agree wherever both
+        // exist.
+        sql`COALESCE(${creditLots.userId}, ${payments.userId}) = ${userId}`,
+        // A soft-deleted lot leaves its payment behind rather than the row,
+        // which is what the payment-only side is for.
+        or(isNull(creditLots.id), isNull(creditLots.deletedAt)),
         at === null
           ? undefined
-          : or(
-              lt(payments.createdAt, at),
-              and(eq(payments.createdAt, at), lt(payments.id, cursor!.id)),
-            ),
+          : sql`(${rowAt}, ${rowId}) < (${at}, ${cursor!.id}::uuid)`,
       ),
     )
-    .orderBy(desc(payments.createdAt), desc(payments.id))
+    .orderBy(sql`${rowAt} DESC`, sql`${rowId} DESC`)
     .limit(limit + 1);
 }
 

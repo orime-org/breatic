@@ -405,7 +405,10 @@ describe("GET /payment/history — paging", () => {
           buyer,
           `limit=2${cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`}`,
         );
-        seen.push(...page.items.map((r) => r.paymentId));
+        // Every row in this suite is a purchase, so the row's identity and
+        // the payment behind it are the same value; `rowId` is the one of
+        // the two that a granted row would also carry.
+        seen.push(...page.items.map((r) => r.rowId));
         cursor = page.nextCursor;
         if (cursor === null) break;
       }

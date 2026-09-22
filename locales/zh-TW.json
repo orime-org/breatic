@@ -1512,12 +1512,18 @@
     },
     "section": {
       "overview": "總覽",
-      "lots": "購買記錄",
+      "lots": "取得紀錄",
       "ledger": "消耗明細",
       "studios": "各 Studio",
       "buy": "購買點數",
       "assign": "指定",
       "refunds": "退款"
+    },
+    "source": {
+      "payment": "儲值",
+      "gift": "體驗積分",
+      "compensation": "補償",
+      "discount": "優惠"
     },
     "lifecycle": {
       "depleted": "已消耗完畢",
@@ -1542,8 +1548,8 @@
     },
     "lotsEmpty": "還沒有購買記錄。",
     "lotsEmptyNotice": {
-      "title": "每一筆購買都會列在這裡",
-      "body": "每一筆會顯示花了多少、處理到哪一步，以及點數去了哪個 Studio。"
+      "title": "積分是怎麼來的，都列在這裡",
+      "body": "買來的、贈送的都會列出來，顯示來源、花了多少、處理到哪一步，以及積分去了哪個 Studio。"
     },
     "assignedTo": "指定給 {studio}",
     "ofPurchased": "共 {amount}",

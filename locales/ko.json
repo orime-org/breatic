@@ -1512,12 +1512,18 @@
     },
     "section": {
       "overview": "개요",
-      "lots": "구매 내역",
+      "lots": "획득 내역",
       "ledger": "사용 내역",
       "studios": "Studio 별",
       "buy": "크레딧 구매",
       "assign": "지정",
       "refunds": "환불"
+    },
+    "source": {
+      "payment": "충전",
+      "gift": "체험 크레딧",
+      "compensation": "보상",
+      "discount": "할인"
     },
     "lifecycle": {
       "depleted": "모두 사용함",
@@ -1542,8 +1548,8 @@
     },
     "lotsEmpty": "구매 내역이 아직 없습니다.",
     "lotsEmptyNotice": {
-      "title": "모든 구매가 여기에 표시됩니다",
-      "body": "각 구매의 금액, 처리 상태, 크레딧이 지정된 Studio를 확인할 수 있습니다."
+      "title": "크레딧을 어떻게 얻었는지 여기에 표시됩니다",
+      "body": "구매한 것과 지급받은 것 모두, 출처와 금액, 처리 상태, 어느 Studio에 배정했는지를 보여줍니다."
     },
     "assignedTo": "{studio}에 지정",
     "ofPurchased": "총 {amount}",

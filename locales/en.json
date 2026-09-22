@@ -1512,12 +1512,18 @@
     },
     "section": {
       "overview": "Overview",
-      "lots": "Purchases",
+      "lots": "Credit history",
       "ledger": "Spending",
       "studios": "By Studio",
       "buy": "Buy credits",
       "assign": "Assign",
       "refunds": "Refunds"
+    },
+    "source": {
+      "payment": "Purchase",
+      "gift": "Trial credits",
+      "compensation": "Compensation",
+      "discount": "Discount"
     },
     "lifecycle": {
       "depleted": "Used up",
@@ -1542,8 +1548,8 @@
     },
     "lotsEmpty": "No purchases yet.",
     "lotsEmptyNotice": {
-      "title": "Every purchase will be listed here",
-      "body": "Each one shows what it cost, where it stands, and which Studio its credits went to."
+      "title": "Every credit you hold is listed here",
+      "body": "Bought and granted alike, with where each came from, what it cost, how far it got, and which studio it went to."
     },
     "assignedTo": "Assigned to {studio}",
     "ofPurchased": "of {amount}",

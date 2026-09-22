@@ -188,8 +188,10 @@ function lot(over: Partial<CreditLotView> = {}): CreditLotView {
  */
 function purchase(over: Partial<PurchaseRow> = {}): PurchaseRow {
   return {
-    paymentId: 'p1',
-    amountCents: 5000,
+    rowId: 'p1',
+    sourceKind: 'payment' as PurchaseRow['sourceKind'],
+    paymentId: 'p1' as string | null,
+    amountCents: 5000 as number | null,
     totalCents: 5000,
     taxCents: 0,
     currency: 'usd',

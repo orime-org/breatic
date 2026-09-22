@@ -1512,12 +1512,18 @@
     },
     "section": {
       "overview": "概要",
-      "lots": "購入履歴",
+      "lots": "取得履歴",
       "ledger": "消費履歴",
       "studios": "Studio 別",
       "buy": "クレジットを購入",
       "assign": "割り当て",
       "refunds": "返金"
+    },
+    "source": {
+      "payment": "購入",
+      "gift": "体験クレジット",
+      "compensation": "補償",
+      "discount": "割引"
     },
     "lifecycle": {
       "depleted": "使い切りました",
@@ -1542,8 +1548,8 @@
     },
     "lotsEmpty": "購入履歴はまだありません。",
     "lotsEmptyNotice": {
-      "title": "購入はすべてここに表示されます",
-      "body": "各購入について、金額、処理状況、クレジットの割り当て先 Studio が表示されます。"
+      "title": "クレジットの入手履歴はここに表示されます",
+      "body": "購入分も付与分も、入手元・金額・処理状況・どの Studio に割り当てたかを表示します。"
     },
     "assignedTo": "{studio} に割り当て",
     "ofPurchased": "全 {amount}",

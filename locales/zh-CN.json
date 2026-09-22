@@ -1512,12 +1512,18 @@
     },
     "section": {
       "overview": "总览",
-      "lots": "购买记录",
+      "lots": "获取记录",
       "ledger": "消耗流水",
       "studios": "各 Studio",
       "buy": "购买积分",
       "assign": "指定",
       "refunds": "退款"
+    },
+    "source": {
+      "payment": "充值",
+      "gift": "体验积分",
+      "compensation": "补偿",
+      "discount": "优惠"
     },
     "lifecycle": {
       "depleted": "已消耗完毕",
@@ -1542,8 +1548,8 @@
     },
     "lotsEmpty": "还没有购买记录。",
     "lotsEmptyNotice": {
-      "title": "每一笔购买都会列在这里",
-      "body": "每一笔会显示花了多少、处理到哪一步，以及积分去了哪个 Studio。"
+      "title": "积分是怎么来的，都列在这里",
+      "body": "买来的、赠送的都会列出来，显示来源、花了多少、处理到哪一步，以及积分去了哪个 Studio。"
     },
     "assignedTo": "指定给 {studio}",
     "ofPurchased": "共 {amount}",

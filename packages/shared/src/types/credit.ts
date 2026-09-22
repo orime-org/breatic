@@ -61,18 +61,34 @@ export interface CreditPage<T> {
 }
 
 /**
- * One row of the purchase history.
+ * One row of the acquisition history — how some credits got to this account.
  *
- * Built from `payments` rather than from the lots, because a purchase that has
- * not landed yet — one still processing, one the buyer abandoned — has no lot
- * and is exactly what this screen exists to show. Everything the lot carries
- * is therefore nullable here, and a row with nulls is a row that has not
- * landed rather than a row with something missing.
+ * Two kinds of row, and every nullable field below is how they tell apart.
+ * A row that opened credits comes from the lot: bought, granted, and whatever
+ * a back office grants later. A row that opened none comes from a payment on
+ * its own — a checkout still clearing, one the buyer abandoned — which is
+ * what this screen has always existed to show and what stops it being built
+ * from the lots alone.
+ *
+ * So a null here is never a missing value. No `paymentId` means nobody paid;
+ * no `remainingCredits` means no credits opened.
  */
 export interface PurchaseRow {
-  paymentId: string;
-  /** The listed price, before tax. Always known: it is what we charged for. */
-  amountCents: number;
+  /**
+   * What identifies this row: the lot's id where credits opened, the
+   * payment's where none did.
+   *
+   * The two cannot collide — they are ids of rows in different tables — and
+   * one of them always exists, which is what lets the keyset cursor name
+   * every row of either kind.
+   */
+  rowId: string;
+  /** Where these credits came from. */
+  sourceKind: CreditSourceKind;
+  /** The payment behind this row; null when nobody paid. */
+  paymentId: string | null;
+  /** The listed price, before tax. Null on a row nobody paid for. */
+  amountCents: number | null;
   /**
    * What Stripe worked out this purchase comes to, tax included.
    *
@@ -90,7 +106,7 @@ export interface PurchaseRow {
   /** The tax within that figure, on the same terms. */
   taxCents: number | null;
   currency: string;
-  /** How many credits this purchase buys. */
+  /** How many credits this row brought in. */
   creditsGranted: number;
   /** How many are left. Null until it lands. */
   remainingCredits: number | null;
@@ -103,9 +119,15 @@ export interface PurchaseRow {
    */
   designatedStudioId: string | null;
   designatedStudioName: string | null;
-  status: string;
+  /** Where the payment stands. Null on a row nobody paid for. */
+  status: string | null;
   createdAt: string;
-  /** Whether the resend control is offered, decided on the server. */
+  /**
+   * Whether the resend control is offered, decided on the server.
+   *
+   * Always false where there is no payment: the letter it would send again
+   * is a purchase confirmation.
+   */
   canResend: boolean;
 }
 
