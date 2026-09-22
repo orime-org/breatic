@@ -341,7 +341,7 @@
       "styleTip": "Pick an image as a style reference",
       "focusTip": "Crop a region of a node as a reference",
       "referenceTip": "Pick images from the canvas as references",
-      "referenceTipAudio": "Pick text from the canvas as reference",
+      "referenceTipAudio": "Pick a node from the canvas as reference",
       "emptyImageReference": "Not generated or uploaded yet",
       "emptyTextReference": "No content yet",
       "refuseInsertModeOff": "This mode doesn't use reference material",

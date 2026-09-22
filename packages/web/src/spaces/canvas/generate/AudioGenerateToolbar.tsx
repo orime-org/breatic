@@ -44,9 +44,9 @@ interface AudioGenerateToolbarProps {
  * The audio Generate panel's top tool row: Reference, then one control per
  * source slot the active mode collects.
  *
- * Reference is present in every mode, and that is what an audio node's edges
- * allow: `audio` takes only `text` (`lib/connection-rules.ts:30`), and a text
- * row IS prompt material (`ReferenceRail.tsx:66`). So the entry is here for the
+ * Reference is present in every mode: an audio node's input takes text and
+ * audio (`canvas-node.ts`'s `INPUT_WHITELIST`), and a text row IS prompt
+ * material (`ReferenceRail.tsx:66`). So the entry is here for the
  * same reason the edge is — a line already written on the canvas reaches the
  * prompt box without being typed again — and that holds under every mode, even
  * though what that box asks for differs: lines to speak under the speech modes,
@@ -90,8 +90,7 @@ export const AudioGenerateToolbar = React.memo(function AudioGenerateToolbar({
         testId='generate-audio-tool-reference'
         label={t('canvas.generatePanel.reference')}
         // Its own tip, not the one the image and video rows share: those name
-        // images, and an audio node accepts a text node alone
-        // (`lib/connection-rules.ts:30`), which is the pick this button starts.
+        // images, and an image is the one kind an audio node's input refuses.
         tip={t('canvas.generatePanel.referenceTipAudio')}
         Icon={Plus}
         onClick={onReference}

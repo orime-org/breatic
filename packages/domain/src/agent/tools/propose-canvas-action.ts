@@ -449,13 +449,18 @@ function checkGenerateNode(
   // Read before the prompt gate below, because what that gate measures
   // depends on which nodes this prompt can name.
   const pool = poolParam(chosen);
-  // A model drawing no box mounts no editor and forces the box empty, so
-  // words put there reach nobody. The marks stay -- they are what the card
-  // draws its to-dos from -- and this is about the words around them.
-  if (!chosen.takesPrompt && prompt.some((segment) => segment.slot === undefined)) {
+  // A model drawing no box mounts no editor and forces the box empty, so both
+  // the words and a mark that lands as a mention of upstream work reach
+  // nobody. Asked further down instead, the mention would be turned away for
+  // the panel it cannot fit in, and the way out named there is words -- which
+  // this same clause refuses. Material marks stay: they are what the card
+  // draws its to-dos from, and the reader picks that material in a slot.
+  const voidedHere = (segment: PromptSegment): boolean =>
+    segment.slot === undefined || segment.slot.kind === "ref";
+  if (!chosen.takesPrompt && prompt.some(voidedHere)) {
     return {
       ok: false,
-      reason: `"${model}" draws no prompt box, so words written there reach nobody. Keep the marks and take the words out.`,
+      reason: `"${model}" draws no prompt box, so words written there and marks pointing upstream reach nobody. Keep the material marks and take the rest out.`,
     };
   }
   // The one reading of what feeds a node, shared with the card that files its

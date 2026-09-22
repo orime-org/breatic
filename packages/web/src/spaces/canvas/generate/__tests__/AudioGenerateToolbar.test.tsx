@@ -38,9 +38,9 @@ describe('AudioGenerateToolbar — Reference, then the mode\'s slots', () => {
     expect(screen.getByTestId('generate-audio-tool-reference')).toBeInTheDocument();
   });
 
-  it('carries neither Focus nor Style — an audio node takes only text (connection-rules.ts:30)', () => {
+  it('carries neither Focus nor Style — an audio node refuses image input', () => {
     // Focus crops a region OF AN IMAGE into a standalone reference and Style
-    // holds a picked image; an audio node's only accepted input is a text one,
+    // holds a picked image; an image is the one kind an audio node refuses,
     // so both entries would collect something this panel can never use.
     setup();
     expect(screen.queryByTestId('generate-audio-tool-focus')).toBeNull();
@@ -135,16 +135,20 @@ describe('AudioGenerateToolbar — Reference, then the mode\'s slots', () => {
     expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
   });
 
-  it('sends the user after text, the only thing an audio node accepts', async () => {
-    // The image and video toolbars share a tip naming images. An audio node's
-    // whitelist is text alone (`lib/connection-rules.ts:30`), so that tip
-    // would point at the one kind of node this pick greys out and refuses.
+  it('names no node kind, and never the one this pick refuses', async () => {
+    // The image and video toolbars share a tip naming images, and an image is
+    // the one kind an audio node's input refuses. Naming any other kind is
+    // a claim about what the pick takes, and what it takes follows the
+    // whitelist in `canvas-node.ts` -- which is where that claim would go
+    // stale the next time the whitelist changes.
     setup();
     fireEvent.pointerMove(screen.getByTestId('generate-audio-tool-reference'), {
       pointerType: 'mouse',
     });
     const tip = await screen.findByRole('tooltip');
-    expect(tip.textContent?.toLowerCase()).toContain('text');
-    expect(tip.textContent?.toLowerCase()).not.toContain('image');
+    const said = tip.textContent?.toLowerCase() ?? '';
+    for (const kind of ['image', 'text', 'audio', 'video']) {
+      expect(said).not.toContain(kind);
+    }
   });
 });

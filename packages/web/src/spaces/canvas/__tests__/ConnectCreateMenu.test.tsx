@@ -25,7 +25,7 @@ describe('ConnectCreateMenu', () => {
         onPick={onPick}
       />,
     );
-    // image feeds text / image / video — audio's input accepts text only.
+    // image feeds text / image / video — an image is what audio refuses.
     expect(await screen.findByTestId('create-node-text')).toBeInTheDocument();
     expect(screen.getByTestId('create-node-image')).toBeInTheDocument();
     expect(screen.getByTestId('create-node-video')).toBeInTheDocument();

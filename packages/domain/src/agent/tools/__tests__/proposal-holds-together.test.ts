@@ -1851,7 +1851,39 @@ describe("a model the panel draws no prompt box for", () => {
 
     expect(verdict).toEqual({
       ok: false,
-      reason: expect.stringContaining("words written there reach nobody"),
+      reason: expect.stringContaining("reach nobody"),
     });
+  });
+
+  it("refuses a mark pointing upstream for the same reason, in one sentence", () => {
+    // With no editor mounted there is no box for a mention either, so both
+    // are turned away together. Answered as "this panel cannot carry a
+    // mention of that node" instead, the way out it names is words -- and
+    // words are what the clause above refuses for this same model, which
+    // leaves the two refusals pointing at each other.
+    const at = promptless();
+    const upstream = makerOf(at.needs[0] as GenerationNodeType);
+
+    const verdict = checkProposal({
+      nodes: [
+        generation(upstream),
+        ...at.needs.slice(1).map((kind) => generation(makerOf(kind))),
+        { role: "generate", type: at.nodeType, name: "The result", mode: at.mode, model: at.model,
+          params: {}, prompt: [
+            ...Array.from({ length: at.pieces }, (_, i) => ({
+              slot: { kind: "asset" as const, label: `piece ${String(i + 1)}`, note: "Pick it in the slot" },
+            })),
+            { slot: { kind: "ref" as const, label: "the step before", note: "Nothing to do" } },
+          ] },
+      ],
+      edges: at.needs.map((_, i) => ({ fromIndex: i, toIndex: at.needs.length })),
+      rationale: "x", groupName: "g",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("reach nobody"),
+    });
+    expect(verdict.ok ? "" : verdict.reason).not.toContain("in the words themselves");
   });
 });
