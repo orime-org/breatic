@@ -27,7 +27,7 @@
  *      lock come back empty at the one moment it was needed.
  */
 
-import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@breatic/core";
@@ -41,7 +41,7 @@ import {
   projects,
   payments,
 } from "@breatic/core";
-import { IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
+import { GRANTED_SOURCE_KINDS, IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
 import type {
   CreditLotEntity,
   CreditSourceKind,
@@ -647,7 +647,7 @@ export async function sumGrantedForUser(userId: string): Promise<string> {
         eq(creditLots.userId, userId),
         eq(creditLots.lifecycle, "active"),
         isNull(creditLots.deletedAt),
-        ne(creditLots.sourceKind, "payment"),
+        inArray(creditLots.sourceKind, GRANTED_SOURCE_KINDS),
         sql`${creditLots.remainingCredits} > 0`,
       ),
     );

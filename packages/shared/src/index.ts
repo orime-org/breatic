@@ -213,6 +213,7 @@ export {
   accountTotal,
   CREDIT_SOURCE_KINDS,
   isPurchased,
+  GRANTED_SOURCE_KINDS,
   HELD_LIFECYCLES,
   IN_FLIGHT_REFUND_LIFECYCLES,
 } from "@shared/types/index.js";

@@ -53,6 +53,16 @@ export function isPurchased(kind: CreditSourceKind): boolean {
   return kind === "payment";
 }
 
+/**
+ * The kinds nobody paid for, for readers that ask in SQL.
+ *
+ * Derived rather than listed, so a fifth kind joins it by being added to
+ * {@link CREDIT_SOURCE_KINDS} and answering {@link isPurchased} — a query
+ * naming the bought kind itself would be the same rule written twice.
+ */
+export const GRANTED_SOURCE_KINDS: readonly CreditSourceKind[] =
+  CREDIT_SOURCE_KINDS.filter((kind) => !isPurchased(kind));
+
 /** One keyset page. */
 export interface CreditPage<T> {
   items: T[];
