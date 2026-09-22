@@ -41,6 +41,7 @@ import {
   useInteractions,
 } from '@floating-ui/react';
 import { ShowSelectionExtension } from '@blocknote/core/extensions';
+import { TextSelection } from '@tiptap/pm/state';
 import { X } from 'lucide-react';
 import * as React from 'react';
 
@@ -133,12 +134,23 @@ export function DocumentCommentComposer({
 
   /**
    * Closes the draft's range, which is what takes the box off screen.
+   *
+   * The selection is dropped with it. Every way out of this box goes through
+   * here, and leaving a selection behind stands the bubble bar back up the
+   * moment the box goes — which is not what the reader asked for by posting
+   * or by pressing Escape (user 2026-09-22). Reaching that run again is the
+   * next round, the way the link panel ends one.
    * @param editorToClose - The editor holding the draft.
    */
   const clearRange = React.useCallback((editorToClose: ToolEditor): void => {
     const view = editorToClose.prosemirrorView;
     if (view === null) return;
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null));
+    const { selection } = view.state;
+    view.dispatch(
+      view.state.tr
+        .setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null)
+        .setSelection(TextSelection.create(view.state.doc, selection.to)),
+    );
   }, []);
 
   // The range opening is what opens the draft: the entries dispatch it, and
