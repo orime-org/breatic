@@ -478,6 +478,21 @@ function checkGenerateNode(
   // means the Generate button will not move. Which of them can be named is
   // `nameableFeeders`, above.
   const nameable = nodesAt(canName.upstream);
+  // A mark pointing upstream lands as a mention and nothing else, so one this
+  // panel refuses lands as nothing at all: the words on either side of it
+  // close up and the sentence is handed to the reader without what it was
+  // about. Which feeders a mention may name is the catalog's answer -- this
+  // model's own -- so it is settled here rather than left to the reply.
+  const refs = prompt.filter((segment) => segment.slot?.kind === "ref").length;
+  if (refs > nameable.length) {
+    const refused = nodesAt(held.upstream)
+      .filter((n) => !nameable.includes(n))
+      .map((n) => `"${n.name}"`);
+    return {
+      ok: false,
+      reason: `"${model}" takes no mention of ${refused.join(", ") || "anything upstream"}. Write what you meant in the prompt itself, and say in your reply where the reader picks it up.`,
+    };
+  }
   // What the panel's own gate would say about the box this proposal fills in.
   // It is asked with the text the box will hold (`promptTextOf`), so the two
   // judge the same string; the sentences differ because this one is read by
@@ -777,12 +792,13 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnsw
     "place with one press. Something has to generate here: asked for words " +
     "and nothing else, write them in your reply instead. You decide the " +
     "shape: an empty node and a generation for a picture; the copy for the " +
-    "same job as a written node beside them, rather than in your reply; one " +
+    "same job as a written node beside them; one " +
     "empty node feeding several generations for several takes on one thing. " +
     "Before proposing any shape with an empty node in it, ask_user once " +
     "whether they have that material -- you cannot see their canvas, and the " +
-    "answer decides the shape. Wire an edge only where one node draws on what " +
-    "another made; belonging together is said by the group, not by edges. " +
+    "answer decides the shape. Wire an edge where a node draws on another's " +
+    "work or on what the reader puts in an empty node; belonging is said by " +
+    "the group, not edges. " +
     "Ask get_canvas_capabilities and list_generation_models first, and " +
     "propose only a mode and model they returned. Fill in every setting you " +
     "can judge; the rest is theirs to run. Say in your reply, in numbered " +

@@ -1521,6 +1521,31 @@ describe("a mark pointing at an upstream node", () => {
     expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("writes nothing") });
   });
 
+  it("refuses a mark pointing at a node this panel would not take a mention of", () => {
+    // A mark pointing upstream lands as a mention and nothing else, and a
+    // mention this panel refuses lands as nothing at all: the words on either
+    // side close up and the sentence loses what it was about. Which feeders
+    // can be mentioned is the catalog's answer, so the check has it.
+    const at = pick(
+      (m) => !m.byReference && m.takesPrompt && m.needs.length > 0,
+      "mode fed by a panel slot that still takes a prompt",
+    );
+    const first = sourcelessOn(at.needs[0] as GenerationNodeType);
+    const second = generation(at, 0, 1);
+
+    const verdict = checkProposal({
+      nodes: [generation(first), second],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: "",
+      rationale: "The second works on what the first made.",
+      groupName: "Two steps",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("takes no mention of"),
+    });
+  });
 });
 
 describe("what the model itself settles", () => {
