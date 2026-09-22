@@ -721,27 +721,6 @@ describe("wiring that could not be placed", () => {
 
 });
 
-describe("telling one node from another", () => {
-  it("refuses two nodes carrying the same name", () => {
-    // The card has nothing else to tell nodes apart with: the chips, the
-    // heading over a run of to-dos and the heading over a body of words are
-    // all the node's name. Two of them the same and the reader cannot tell
-    // which line is about which node.
-    const at = pooled();
-    const twin = { ...generation(at, 0, 0), name: "Your material 1" };
-
-    const verdict = checkProposal({
-      nodes: [...propose(at, { marks: 0 }).nodes, twin],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      modelNote: "",
-      rationale: "",
-      groupName: "Two of a name",
-    });
-
-    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("same name") });
-  });
-});
-
 describe("what the catalog does not offer", () => {
   it("refuses a mode the proposed node does not have", () => {
     const wrong = propose(sourceless(), { sources: [], marks: 0 });
@@ -986,12 +965,7 @@ describe("a flow of any shape", () => {
     const sources = one.nodes.slice(0, -1);
 
     const verdict = checkProposal({
-      nodes: [
-        ...sources,
-        { ...generate, name: "Straight on" },
-        { ...generate, name: "At 45" },
-        { ...generate, name: "From above" },
-      ],
+      nodes: [...sources, generate, { ...generate }, { ...generate }],
       edges: sources.flatMap((_, i) => [
         { fromIndex: i, toIndex: sources.length },
         { fromIndex: i, toIndex: sources.length + 1 },
@@ -1425,8 +1399,8 @@ describe("edges the canvas itself would refuse", () => {
       nodes: [
         { role: "source", type: kind, name: "Your first" },
         { role: "source", type: kind, name: "Your second" },
-        { ...generation(at, 1), name: "The first result" },
-        { ...generation(at, 1), name: "The second result" },
+        generation(at, 1),
+        generation(at, 1),
       ],
       edges: [
         { fromIndex: 0, toIndex: 2 },
@@ -1553,6 +1527,51 @@ describe("a mark pointing at an upstream node", () => {
     });
 
     expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("writes nothing") });
+  });
+
+  it("places a prompt pointing upstream more times than there are nodes to point at", () => {
+    // How many marks go in a prompt is the agent's to decide: a reader who
+    // ends up with one too many takes it out, or says so and gets another
+    // proposal. What the check answers is whether this panel can carry a
+    // mention at all.
+    const at = pooled();
+    const first = sourcelessOn(at.nodeType);
+    const second = generation(at, 0, 3);
+
+    const verdict = checkProposal({
+      nodes: [generation(first), second],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: "",
+      rationale: "The second works on what the first made.",
+      groupName: "Two steps",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("tells a written node carrying one upstream mark to take the mark out", () => {
+    // Such a mark writes no characters, so a body made of one measures empty.
+    // Answered for what it is rather than for how long it is, the model takes
+    // the mark out instead of padding the node with words.
+    const verdict = checkProposal({
+      nodes: [
+        {
+          role: "written",
+          type: "text",
+          name: "Your copy",
+          prompt: [{ slot: { kind: "ref", label: "the picture", note: "Nothing to do" } }],
+        },
+        generation(sourceless(), 0, 0),
+      ],
+      edges: [],
+      rationale: "",
+      groupName: "Copy and a picture",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("Take the mark out"),
+    });
   });
 
   it("refuses a mark pointing at a node this panel would not take a mention of", () => {

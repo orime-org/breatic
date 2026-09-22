@@ -121,10 +121,10 @@ const proposalNode = z
       .array(promptSegment)
       .optional()
       .describe(
-        "What to generate, or the words a written node holds. Mark what the " +
-          "reader supplies or picks; the k-th asset mark is about the k-th " +
-          "empty node wired in, the k-th ref mark about the k-th other, in " +
-          "the order the nodes are listed",
+        "What to generate, or a written node's words. Mark what the reader " +
+          "supplies or picks; the k-th asset mark pairs with the k-th empty " +
+          "node wired in, the k-th ref mark with the k-th other this panel " +
+          "can mention, in the order the nodes are listed",
       ),
   })
   .strict();
@@ -141,7 +141,7 @@ export const inputSchema = z
     nodes: z
       .array(proposalNode)
       .min(1)
-      .describe("The nodes to place, left to right"),
+      .describe("The nodes to place"),
     edges: z
       .array(
         z.object({ fromIndex: z.number().int(), toIndex: z.number().int() }).strict(),
@@ -479,14 +479,12 @@ function checkGenerateNode(
   // close up and the sentence is handed to the reader without what it was
   // about. Which feeders a mention may name is the catalog's answer -- this
   // model's own -- so it is settled here rather than left to the reply.
-  const refs = prompt.filter((segment) => segment.slot?.kind === "ref").length;
-  if (refs > nameable.length) {
-    const refused = nodesAt(held.upstream)
-      .filter((n) => !nameable.includes(n))
-      .map((n) => `"${n.name}"`);
+  const points = prompt.some((segment) => segment.slot?.kind === "ref");
+  if (points && nameable.length === 0) {
+    const named = nodesAt(held.upstream).map((n) => `"${n.name}"`);
     return {
       ok: false,
-      reason: `"${model}" takes no mention of ${refused.join(", ") || "anything upstream"}. Write what you meant in the prompt itself, and say in your reply where the reader picks it up.`,
+      reason: `"${model}" takes no mention of ${named.join(", ") || "anything upstream"} -- its panel has nowhere to put one. Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
     };
   }
   // What the panel's own gate would say about the box this proposal fills in.
@@ -598,15 +596,14 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
       reason: `"${node.name}" already holds its words, so it takes no mode and no model -- nothing is generated there.`,
     };
   }
-  // Without them it lands as an empty text node, which is the thing a reader
-  // makes in a click and has no use for in a proposal.
-  if (promptPlainText(node.prompt ?? []).trim() === "") {
-    return { ok: false, reason: `"${node.name}" says it holds words and carries no words.` };
-  }
   // Both marks that reach outside the words land as a mention, and a text
   // node's body holds none: one would ask for material nothing here reads,
   // the other would name a node nothing here looks at. Whatever they say
   // belongs in the message this proposal travels with.
+  //
+  // Asked before the words are measured: a mark pointing upstream writes no
+  // characters, so a body made of one measures empty, and "carries no words"
+  // sends the model off to add some while keeping the mark.
   const reaching = (node.prompt ?? []).find(
     (segment) => segment.slot?.kind === "asset" || segment.slot?.kind === "ref",
   );
@@ -615,6 +612,11 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
       ok: false,
       reason: `"${node.name}" holds words the reader keeps as they are, and nothing there reaches another node. Take the mark out and mention what you meant in your own message.`,
     };
+  }
+  // Without them it lands as an empty text node, which is the thing a reader
+  // makes in a click and has no use for in a proposal.
+  if (promptPlainText(node.prompt ?? []).trim() === "") {
+    return { ok: false, reason: `"${node.name}" says it holds words and carries no words.` };
   }
   return { ok: true };
 }
@@ -737,18 +739,6 @@ function checkResolved(proposal: CanvasProposal): ProposalVerdict {
     return {
       ok: false,
       reason: "Those edges make a ring, and a ring says nothing about what the reader presses first.",
-    };
-  }
-
-  // The card has nothing else to tell nodes apart with: the chip, the heading
-  // over a run of to-dos and the heading over a body of words are all the
-  // node's name. Two the same and a line on the card is about either of them.
-  const names = proposal.nodes.map((node) => node.name.trim());
-  const twin = names.find((name, at) => names.indexOf(name) !== at);
-  if (twin !== undefined) {
-    return {
-      ok: false,
-      reason: `Two nodes carry the same name, "${twin}", and the card tells them apart by name alone. Give each one a name of its own.`,
     };
   }
 
