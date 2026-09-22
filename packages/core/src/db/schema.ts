@@ -1047,7 +1047,7 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
  * one number per account — a refund returns a purchase, so a purchase has to
  * be a thing that can still be pointed at.
  *
- * `payment_id` is NOT NULL and unique, and that is the whole of "a payment
+ * `source_id` is NOT NULL and unique, and that is the whole of "a payment
  * grants credits exactly once". The `payments` table cannot carry that rule:
  * `stripe_payment_intent_id` has no unique index, and the one on
  * `stripe_session_id` sits on a nullable column, where Postgres admits any
