@@ -227,7 +227,7 @@ function AssignRow({
       ? t('credits.unassigned')
       : t('credits.assignedTo', { studio: lot.designatedStudioName });
 
-  // Granted credits were pointed at their holder's own studio when they were
+  // Granted credits were pointed at their holder's personal studio when they were
   // written and nothing moves them, so this row says where they may go rather
   // than offering a choice. A control every option of which would be refused
   // is worse than none: the screen already states, of the studios it leaves

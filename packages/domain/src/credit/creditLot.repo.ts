@@ -627,7 +627,7 @@ export async function sumUnassignedForUser(userId: string): Promise<string> {
  *
  * Asked at the moment a studio is found to have nothing to draw on, to tell
  * "this account has none" apart from "this account has some and none of it
- * reaches here". Granted credits are pinned to the holder's own studio when
+ * reaches here". Granted credits are pinned to the holder's personal studio when
  * they are written, so any that still have a balance are by definition
  * somewhere other than the studio that just came up empty.
  *

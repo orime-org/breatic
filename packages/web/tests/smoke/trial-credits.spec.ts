@@ -100,7 +100,7 @@ test.describe('a new account and its trial credits', () => {
     await page.getByRole('tab', { name: /Assign|指定/ }).click();
     const pinned = page.getByTestId('assign-pinned').first();
     await expect(pinned).toBeVisible({ timeout: 15_000 });
-    await expect(pinned).toContainText(/own studio|自己的 Studio/);
+    await expect(pinned).toContainText(/personal Studio|个人 Studio/);
     await expect(page.getByRole('combobox')).toHaveCount(0);
 
     await api.dispose();

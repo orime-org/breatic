@@ -4,7 +4,7 @@
 /**
  * Where granted credits may go, and where they may not (task #267).
  *
- * Credits nobody paid for are pinned to the account holder's own studio when
+ * Credits nobody paid for are pinned to the account holder's personal studio when
  * they are written, and nothing afterwards moves them. Three ways out are
  * closed, and each is closed by something different:
  *
@@ -202,7 +202,7 @@ describe("granted credits stay where they were granted", () => {
     const team = await seedTeamStudio(userId);
 
     // Release runs on the designations pointing at the studio handed over.
-    // A granted lot points at the holder's own studio, so it is not among
+    // A granted lot points at the holder's personal studio, so it is not among
     // them — and this says so through the call rather than by reasoning
     // about its predicate.
     await db.transaction((tx) =>
