@@ -15,7 +15,7 @@ import {
   type ParamDescriptor,
 } from "@breatic/shared";
 
-import { materialByKind, materialCount } from "@domain/model-catalog/material-count.js";
+import { materialCount } from "@domain/model-catalog/material-count.js";
 import { getModeConfig } from "@domain/model-catalog/mode-config.js";
 import { getModelCatalog } from "@domain/model-catalog/model-catalog.js";
 
@@ -223,32 +223,6 @@ export function materialNeeded(
     if (entry) return materialCount(entry, mode, config[bucket]?.modes[mode]);
   }
   return 0;
-}
-
-/**
- * The same pieces, split by the kind of material each one takes.
- *
- * Beside {@link materialNeeded} and reading the same declarations, so the two
- * cannot part company about one model; see `materialByKind` for the two shapes
- * that have no per-kind answer.
- * @param nodeType - The node the run is on, for the buckets it draws from.
- * @param mode - The mode it is set to.
- * @param model - The model it names.
- * @returns Pieces per kind, or undefined where the split does not exist.
- * @throws {never} Never.
- */
-export function materialNeededByKind(
-  nodeType: GenerationNodeType,
-  mode: string,
-  model: string,
-): Map<string, number> | undefined {
-  const catalog = getModelCatalog();
-  const config = getModeConfig();
-  for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
-    const entry = (catalog[bucket] ?? []).find((e) => e.name === model);
-    if (entry) return materialByKind(entry, mode, config[bucket]?.modes[mode]);
-  }
-  return undefined;
 }
 
 /**

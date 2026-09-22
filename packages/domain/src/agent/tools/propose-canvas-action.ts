@@ -60,7 +60,6 @@ import {
 import {
   entriesForNode,
   materialNeeded,
-  materialNeededByKind,
   modelsForMode,
   type ModelInfo,
   type ParamInfo,
@@ -433,47 +432,6 @@ function measuredPrompt(
 }
 
 /**
- * How many pieces of material one generation still asks the reader for.
- *
- * Kind by kind, because a track arriving from the step before says nothing
- * about the portrait beside it: added into one total, two of the one cover the
- * other, and the empty node holding it lands with nothing on the card telling
- * the reader it is theirs to fill.
- *
- * A mode taking any one of its slots has no per-kind number -- which kind
- * fills it is the reader's to pick -- so there what arrives counts against the
- * whole of it, which is what "any one of them" means.
- * @param nodeType - The node the run is on.
- * @param mode - The mode it is set to.
- * @param model - The model it names.
- * @param made - What reaches it already carrying work of its own.
- * @returns How many places the prompt has to mark.
- * @throws {never} Never.
- */
-function piecesFromReader(
-  nodeType: GenerationNodeType,
-  mode: string,
-  model: string,
-  made: readonly ProposalNode[],
-): number {
-  /**
-   * How many of one kind arrive from upstream.
-   * @param kind - The kind in question.
-   * @returns How many upstream generations carry it.
-   * @throws {never} Never.
-   */
-  const supplied = (kind: string): number => made.filter((n) => n.type === kind).length;
-  const perKind = materialNeededByKind(nodeType, mode, model);
-  if (perKind === undefined) {
-    const needed = sourceKinds(nodeType, mode);
-    return Math.max(0, materialNeeded(nodeType, mode, model) - made.filter((n) => needed.includes(n.type)).length);
-  }
-  let total = 0;
-  for (const [kind, pieces] of perKind) total += Math.max(0, pieces - supplied(kind));
-  return total;
-}
-
-/**
  * Judge one generation node against the catalog and its own group.
  * @param proposal - The whole proposal, for reading the group around it.
  * @param node - The node being judged.
@@ -530,6 +488,18 @@ function checkGenerateNode(
   // depends on which nodes this prompt can name.
   const pool = poolParam(chosen);
   const byReference = pool !== undefined;
+  // The kinds this mode runs on, read once: three rules turn on it and the
+  // catalog gives one answer.
+  const needed = sourceKinds(nodeType, mode);
+  // A model drawing no box mounts no editor and forces the box empty, so
+  // words put there reach nobody. The marks stay -- they are what the card
+  // draws its to-dos from -- and this is about the words around them.
+  if (!chosen.takesPrompt && prompt.some((segment) => segment.slot === undefined)) {
+    return {
+      ok: false,
+      reason: `"${model}" draws no prompt box, so words written there reach nobody. Keep the marks and take the words out.`,
+    };
+  }
   // The one reading of what feeds a node, shared with the card that files its
   // to-dos by it and the canvas that writes its mentions from it. A second
   // walk over the edges here is how the three come to disagree about which
@@ -545,13 +515,40 @@ function checkGenerateNode(
    */
   const nodesAt = (list: readonly number[]): ProposalNode[] =>
     list.flatMap((i) => proposal.nodes[i] ?? []);
-  const fed = nodesAt(held.sources);
   // One mark per node upstream this prompt can name, and no more: an edge
   // makes that node's work available, and nothing in the prompt naming it
   // means the Generate button will not move. Which of them can be named is
   // `nameableFeeders`, above.
-  const upstream = nodesAt(held.upstream);
   const nameable = nodesAt(canName.upstream);
+  // An edge is how one node draws on another's work, so what it carries has
+  // to reach this generation one way or the other: named in the prompt, or
+  // picked as material of a kind this mode reads. Carrying neither, it is
+  // drawn on the canvas saying a relation nothing acts on, and the panel
+  // hands the reader a reference row it then turns down.
+  //
+  // The canvas holds a reader's own drag to the kinds a node type admits
+  // (`canConnect`); this is the narrower question the mode asks, and only
+  // the catalog can answer it.
+  const idle = [...held.sources, ...held.upstream].find(
+    (i) =>
+      !canName.sources.includes(i) &&
+      !canName.upstream.includes(i) &&
+      !needed.includes(proposal.nodes[i]?.type ?? ""),
+  );
+  if (idle !== undefined) {
+    const from = proposal.nodes[idle];
+    const reads = needed.length === 0 ? "reads nothing upstream" : `reads ${needed.join(", ")}`;
+    return {
+      ok: false,
+      // What to do about it differs by what is wired in. An empty node is the
+      // reader's material waiting for a consumer, so it wants one; anything
+      // else is already whole, and what it has to do with this generation is
+      // what the group says.
+      reason: from?.role === "source"
+        ? `"${mode}" ${reads}, and an empty ${from.type} node is wired into it, which it cannot take. Wire that one to whatever reads it.`
+        : `"${mode}" ${reads}, so the edge from "${from?.name ?? ""}" into node ${String(index)} draws a relation nothing acts on. Say they belong together with the group instead.`,
+    };
+  }
   const points = prompt.filter((s) => s.slot?.kind === "ref");
   // Judged before the prompt is measured, and before the early return further
   // down: what that measurement substitutes is the words behind each mark
@@ -564,9 +561,18 @@ function checkGenerateNode(
     // the count alone sends the model off to wire something the panel would
     // not read either.
     if (nameable.length === 0 && !byReference) {
+      // Asked first, because the two sentences below both send the model to
+      // the prompt box, and this model has none: nothing written there and
+      // nothing pointed at from there reaches it.
+      if (!chosen.takesPrompt) {
+        return {
+          ok: false,
+          reason: `"${model}" draws no prompt box, so a mark in the prompt reaches nothing. Say in your message which slot to pick each piece in.`,
+        };
+      }
       return {
         ok: false,
-        reason: sourceKinds(nodeType, mode).length === 0
+        reason: needed.length === 0
           ? `"${mode}" generates from what the prompt says and reads nothing upstream, so a mark pointing there reaches nothing. Write what you mean into the prompt.`
           : `"${mode}" takes its material from a slot on the toolbar, and only a node carrying words can be named in its prompt. Write what you mean into the prompt, or say in your message which slot to pick the material in.`,
       };
@@ -632,48 +638,43 @@ function checkGenerateNode(
     };
   }
 
-  // That difference decides what this generation is judged against. Through
-  // the pool an edge says which nodes reach it, so it answers for its own
-  // feeders and for nothing else -- a group carrying three generations has
-  // three separate answers. Through a slot there is no edge to read, so every
-  // empty node in the group is one the reader could pick here.
-  const needed = sourceKinds(nodeType, mode);
-  // A mode that asks for nothing has no intake path of either sort, so it too
-  // answers for what is wired into it -- an empty node somewhere else in the
-  // group belongs to whichever generation reads it, not to this one.
-  //
-  // Counted over the edges that carry material, not over every edge: a node
-  // holding words is wired in to be read, and taking that edge for a hand on
-  // the material turns away a group whose empty node the reader was going to
-  // fill in the panel.
-  // What reaches here already carrying work of its own. A node holding words
-  // is not that -- it is words this generation reads.
-  const madeUpstream = upstream.filter((n) => n.role === "generate");
-  // Three readings, three names. They answer different questions and two of
-  // them want opposite things, so one list serving all three is how a rule
-  // ends up charging this generation for another's material.
-  //
-  // `mine`: the empty nodes this generation answers for. Through the pool an
-  // edge is how material gets in at all, so it answers for its feeders and
-  // nothing else. Through a slot the reader fills by clicking any node of
-  // that kind on the canvas, so an edge says "this one is for you" without
-  // taking the group's others away: a mode wanting a picture and a clip is
-  // given the picture by the step before it and finds the clip sitting in the
-  // group, unwired because it has made nothing to draw on.
-  const mine = byReference
-    ? fed
-    : proposal.nodes.filter(
-        (n, at) => n.role === "source" && (held.sources.includes(at) || readsKind(node, n.type)),
-      );
-  // `reaching`: everything arriving here that carries work, whoever made it.
-  // An upstream generation supplies material as surely as an empty node does.
-  // The pool's ceiling counts this one whole, because the pool holds what
-  // reaches it, of every kind.
-  const reaching = [...mine, ...madeUpstream];
+  /**
+   * Whether one node of the group is within this generation's reach.
+   *
+   * The two paths differ and the difference is the whole of it. Through the
+   * pool an edge is how material gets in at all, so a generation answers for
+   * its feeders and for nothing else -- a group carrying three of them has
+   * three separate answers. Through a slot the reader picks by clicking any
+   * node of that kind on the canvas, so the group's offering is what reaches
+   * here and an edge says "this one is for you" without taking the group's
+   * others away.
+   *
+   * Reading the slot path off edges alone leaves the flows the canvas has no
+   * wiring for with no shape at all: `audio` takes an edge from text and from
+   * nothing else, so a track made by the step before it can never arrive by
+   * edge, and counted that way the mode that reads it is told nothing reaches
+   * it.
+   * @param n - The node being asked about.
+   * @param at - Where it sits in the proposal.
+   * @returns True when this generation can draw on it.
+   * @throws {never} Never.
+   */
+  const withinReach = (n: ProposalNode, at: number): boolean =>
+    held.sources.includes(at) ||
+    held.upstream.includes(at) ||
+    (!byReference && at !== index && readsKind(node, n.type));
+  // Two readings of that one rule, named apart because they answer different
+  // questions: what the reader still has to put somewhere, and what arrives
+  // already made. A node holding words is neither -- it is words this
+  // generation reads.
+  const mine = proposal.nodes.filter((n, at) => n.role === "source" && withinReach(n, at));
+  const madeUpstream = proposal.nodes.filter(
+    (n, at) => n.role === "generate" && withinReach(n, at),
+  );
   // `usable`: of what reaches here, the kinds this mode actually reads. Every
   // question about whether the material is there and whether there is enough
   // of it is asked of this one.
-  const usable = reaching.filter((n) => needed.includes(n.type));
+  const usable = [...mine, ...madeUpstream].filter((n) => needed.includes(n.type));
   const marks = prompt.filter((s) => s.slot?.kind === "asset");
   if (needed.length === 0) {
     // Nothing goes in an empty node here, and a marked place with no node
@@ -692,16 +693,6 @@ function checkGenerateNode(
         };
   }
 
-  // The reader is the only one who has this material, so the group has to
-  // carry somewhere to put it -- of the kind that holds it, and nothing else.
-  // Without that the generate button refuses and nothing on screen says why.
-  const stray = mine.find((n) => !needed.includes(n.type));
-  if (stray) {
-    return {
-      ok: false,
-      reason: `"${mode}" reads ${needed.join(", ")}, and an empty ${stray.type} node is wired into it, which it cannot take. Wire that one to whatever reads it.`,
-    };
-  }
   const missing = needed.filter((kind) => !usable.some((n) => n.type === kind));
   if (missing.length > 0) {
     return {
@@ -760,12 +751,10 @@ function checkGenerateNode(
   // Which number that is differs by path, because the mark says a different
   // thing on each. Through the pool it names an empty node wired in, so the
   // count is those. Through a slot it says which slot the reader picks this
-  // kind of thing in, so the count is what the model asks for less what the
-  // step before it already made -- the group's other empty nodes belong to
-  // whatever else reads them.
-  const wanted = byReference
-    ? mine.length
-    : piecesFromReader(nodeType, mode, model, madeUpstream);
+  // kind of thing in, and every slot costs them that click whoever made what
+  // goes in it -- a slot holds a copy taken at pick time and no edge puts one
+  // there, so the picture the step before it made still has to be clicked in.
+  const wanted = byReference ? mine.length : asked;
   if (marks.length !== wanted) {
     const extra = marks.length > wanted;
     return {
@@ -905,7 +894,7 @@ function isReadBySomething(
   return proposal.nodes.some((other, into) => {
     if (other.role !== "generate" || other.type === "text") return false;
     const facts = catalogFactsOf(other);
-    if (facts === undefined || other.mode === undefined) return true;
+    if (facts === undefined) return true;
     return facts.takesFrom === "pool"
       ? proposal.edges.some((e) => e.fromIndex === at && e.toIndex === into)
       : readsKind(other, node.type);
