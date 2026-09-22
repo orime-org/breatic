@@ -38,6 +38,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { isCommentOrphanSync } from '@web/spaces/document/document-comment-orphan-sync';
 import { documentUndoSelectionPlugin } from '@web/spaces/document/document-undo-selection';
 
 /** Computed once; the schema is fixed for the lifetime of the bundle. */
@@ -171,6 +172,18 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
  * puts content back through exactly that path. Letting it answer leaves the
  * marker false for whatever comes next, and the redo that follows an undo is
  * refused. Upstream asks the same two questions together at `:214`.
+ *
+ * A third kind answers WRONGLY BY DEFAULT rather than by being let through,
+ * so it is named false instead of passed over: the comments library keeps
+ * every highlight's `orphan` attribute in step with its thread, from the
+ * thread store's subscription, through a transaction carrying no meta at all
+ * (`comments/extension.ts:130-173`). No meta means it passes all three tests
+ * above and reads as the reader's own edit — so a PEER resolving a thread
+ * would become the top of this reader's undo stack, and their next Cmd+Z
+ * would take back a highlight change they never made. Passing over would not
+ * help: the marker would keep the `true` their last real edit left, and the
+ * sync would be captured anyway. §5.1.1 puts machine-derived decorative syncs
+ * off the stack; design §9.3 carries the transition table.
  * @param marker - The marker the manager reads.
  * @returns The ProseMirror plugin.
  */
@@ -185,7 +198,8 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
       init: (): null => null,
 
       /**
-       * Records the dispatch's own answer, passing over the two kinds above.
+       * Records the dispatch's own answer, passing over the two kinds above
+       * and naming the comments sync false.
        * @param tr - The transaction being applied.
        * @returns Null.
        */
@@ -198,7 +212,8 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
           tr.getMeta('appendedTransaction') === undefined &&
           sync?.isChangeOrigin !== true
         ) {
-          marker.userDriven = tr.getMeta('addToHistory') !== false;
+          marker.userDriven =
+            !isCommentOrphanSync(tr) && tr.getMeta('addToHistory') !== false;
         }
         return null;
       },
