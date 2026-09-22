@@ -102,7 +102,7 @@ export const authApi = {
   login(body: { email: string; password: string }) {
     return apiPost<LoginResponse>('/auth/login', body);
   },
-  google(body: { idToken: string }) {
+  google(body: { credential: string }) {
     return apiPost<LoginResponse>('/auth/google', body);
   },
   me() {

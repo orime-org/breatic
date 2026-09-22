@@ -76,6 +76,9 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
  * decisions and its role hints and per-kind request lines lost their reader.
  */
 const REMOVED_DEAD_KEYS: readonly string[] = [
+  // Google now renders and localizes its official button; the placeholder is gone.
+  'auth.login.continueWithGoogle',
+  'auth.login.googleSoon',
   // A node carries several tasks at once (#186), so nothing refuses a second
   // one and nothing aborts a task over a stream that would not take an event:
   // the lock that answered "busy", the error naming its holder, and the 503
