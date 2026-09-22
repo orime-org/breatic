@@ -246,3 +246,79 @@ test.describe('the panel, read across from the body', () => {
     await expect(deepened.first()).toBeVisible();
   });
 });
+
+test.describe('the box a reply is written in', () => {
+  /**
+   * Opens a Space with one commented line and the thread being read.
+   * @param p - The page.
+   */
+  async function openThread(p: Page): Promise<void> {
+    await openFreshDocument(p);
+    await p.keyboard.type(LONG_LINE);
+    await commentOnParagraph(p, 0, 'worth answering');
+    await p.getByTestId('doc-doc-menu-trigger').click();
+    await p.getByTestId('doc-doc-menu-comments').click();
+    await p.getByTestId('doc-comment-card').click();
+    await expect(p.getByTestId('doc-comment-reply-input')).toBeVisible();
+  }
+
+  test('grows with the words and stops at four lines', async ({ page }) => {
+    await openThread(page);
+    const viewport = page.locator(
+      '[data-testid="doc-comment-reply-scroller"] [data-radix-scroll-area-viewport]',
+    );
+    const oneLine = (await viewport.boundingBox())!.height;
+
+    await page.getByTestId('doc-comment-reply-input').click();
+    await page.keyboard.type('one\ntwo\nthree');
+    const threeLines = (await viewport.boundingBox())!.height;
+    await page.keyboard.type('\nfour\nfive\nsix');
+
+    expect(threeLines).toBeGreaterThan(oneLine);
+    // Four lines of `text-sm` plus the field's own padding, and what is
+    // written past that scrolls.
+    const capped = await viewport.evaluate((el) => ({
+      client: el.clientHeight,
+      content: el.scrollHeight,
+    }));
+    expect(capped.client).toBeLessThanOrEqual(88);
+    expect(capped.content).toBeGreaterThan(capped.client);
+  });
+
+  test('takes the focus with one pixel of border, the way every field does', async ({
+    page,
+  }) => {
+    await openThread(page);
+    const scroller = page.getByTestId('doc-comment-reply-scroller');
+    const resting = await scroller.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { width: style.borderTopWidth, colour: style.borderTopColor };
+    });
+
+    await page.getByTestId('doc-comment-reply-input').click();
+    // The border colour is transitioned, so the first frame after the click
+    // still reads as resting.
+    await page.waitForTimeout(300);
+
+    const focused = await scroller.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const probe = document.createElement('div');
+      probe.style.borderColor = 'var(--color-active-border)';
+      el.appendChild(probe);
+      const wanted = getComputedStyle(probe).borderTopColor;
+      probe.remove();
+      return {
+        width: style.borderTopWidth,
+        colour: style.borderTopColor,
+        outline: getComputedStyle(el.querySelector('textarea')!).outlineStyle,
+        wanted,
+      };
+    });
+
+    expect(resting.width).toBe('1px');
+    expect(focused.width).toBe('1px');
+    expect(focused.colour).not.toBe(resting.colour);
+    expect(focused.colour).toBe(focused.wanted);
+    expect(focused.outline).toBe('none');
+  });
+});

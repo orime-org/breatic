@@ -123,6 +123,13 @@ describe('what a card lets a reader do', () => {
     });
   }
 
+  /**
+   * Opens the only thread, which is what puts its controls on screen.
+   */
+  async function read(): Promise<void> {
+    await userEvent.click(await screen.findByTestId('doc-comment-card'));
+  }
+
   /** The only thread in the document. */
   function onlyThread(): { resolved: boolean; comments: unknown[] } {
     const store = handle.editor.getExtension(CommentsExtension)!.threadStore;
@@ -132,6 +139,7 @@ describe('what a card lets a reader do', () => {
   it('takes a reply and shows it under the first comment', async () => {
     await open();
     await comment('the first thing');
+    await read();
 
     await userEvent.type(
       await screen.findByTestId('doc-comment-reply-input'),
@@ -148,6 +156,7 @@ describe('what a card lets a reader do', () => {
   it('refuses to send an empty reply', async () => {
     await open();
     await comment('the first thing');
+    await read();
 
     await userEvent.type(
       await screen.findByTestId('doc-comment-reply-input'),
@@ -161,6 +170,7 @@ describe('what a card lets a reader do', () => {
   it('resolves a thread, which takes it out of the unresolved group', async () => {
     await open();
     await comment('done with this');
+    await read();
 
     await userEvent.click(await screen.findByTestId('doc-comment-resolve'));
 
@@ -173,10 +183,12 @@ describe('what a card lets a reader do', () => {
   it('reopens a resolved thread from the all filter', async () => {
     await open();
     await comment('done with this');
+    await read();
     await userEvent.click(await screen.findByTestId('doc-comment-resolve'));
     await waitFor(() => expect(onlyThread().resolved).toBe(true));
 
     await userEvent.click(screen.getByTestId('doc-comment-rail-filter-all'));
+    await read();
     await userEvent.click(await screen.findByTestId('doc-comment-reopen'));
 
     await waitFor(() => {
@@ -187,6 +199,7 @@ describe('what a card lets a reader do', () => {
   it('lets the author withdraw the thread they opened', async () => {
     await open();
     await comment('never mind');
+    await read();
 
     await userEvent.click(await screen.findByTestId('doc-comment-delete'));
 
@@ -197,6 +210,32 @@ describe('what a card lets a reader do', () => {
       handle.editor.getExtension(CommentsExtension)!.threadStore.getThreads()
         .size,
     ).toBe(0);
+  });
+
+  it('keeps its controls until the reader opens the thread', async () => {
+    // The panel is a column of threads to read. Every card carrying a reply
+    // box and two buttons is a column of controls, and only one of them is
+    // about the thread the reader is on (user 2026-09-22).
+    await open();
+    await comment('something to answer');
+    await screen.findByTestId('doc-comment-card');
+
+    expect(screen.queryByTestId('doc-comment-reply-input')).toBeNull();
+    expect(screen.queryByTestId('doc-comment-resolve')).toBeNull();
+    expect(screen.queryByTestId('doc-comment-delete')).toBeNull();
+  });
+
+  it('offers them once the reader opens it', async () => {
+    await open();
+    await comment('something to answer');
+
+    await read();
+
+    expect(
+      await screen.findByTestId('doc-comment-reply-input'),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('doc-comment-resolve')).toBeInTheDocument();
+    expect(screen.getByTestId('doc-comment-delete')).toBeInTheDocument();
   });
 
   it('offers a viewer nothing to write with', async () => {
@@ -210,6 +249,7 @@ describe('what a card lets a reader do', () => {
     await open('viewer');
 
     expect(await screen.findByTestId('doc-comment-card')).toBeInTheDocument();
+    await read();
     expect(screen.queryByTestId('doc-comment-reply-input')).toBeNull();
     expect(screen.queryByTestId('doc-comment-resolve')).toBeNull();
     expect(screen.queryByTestId('doc-comment-delete')).toBeNull();

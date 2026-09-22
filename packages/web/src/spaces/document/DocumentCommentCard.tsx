@@ -22,6 +22,12 @@
  * The quote does not say whether the comment was made on a selection or on a
  * whole block. Design §6.1 settles that the two entries are the same
  * operation past the range, so there is no kind to draw.
+ *
+ * WHAT IT OFFERS IS ONLY OFFERED ON THE THREAD BEING READ (user 2026-09-22).
+ * The panel is a column of threads to read; a reply box and two buttons on
+ * every one of them makes it a column of controls, and only the thread the
+ * reader is on is the one they are about. Opening a thread — a press here, a
+ * press on its highlight in the body — is what brings them out.
  */
 
 import { X } from 'lucide-react';
@@ -30,8 +36,11 @@ import * as React from 'react';
 import type { ProjectRole } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
+import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import {
   annotationRights,
   canPostAnnotations,
@@ -61,6 +70,16 @@ interface DocumentCommentCardProps {
   /** Withdraws one reply. */
   onDeleteReply: (threadId: string, commentId: string) => void;
 }
+
+/**
+ * How tall the reply box may grow before it scrolls: four lines of it.
+ *
+ * `text-sm` is 14px over a 20px line, and the box keeps `py-1` the way every
+ * other field in this Space does, so four lines is 4 × 20 plus the 8 of the
+ * padding. Past that the words scroll rather than push the thread they are
+ * answering off the panel (user 2026-09-22).
+ */
+const REPLY_BOX_MAX_HEIGHT = 'max-h-[88px]';
 
 interface EntryProps {
   /** The comment to draw. */
@@ -139,6 +158,8 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
 }: DocumentCommentCardProps): React.JSX.Element {
   const t = useTranslation();
   const [reply, setReply] = React.useState('');
+  const box = React.useRef<HTMLTextAreaElement>(null);
+  useAutosizeTextarea(box, reply);
   const mayWrite = canPostAnnotations(myRole);
   const settled = card.state === 'resolved' || card.state === 'resolvedOrphaned';
   // A thread carries no author of its own, so whoever opened it is the author
@@ -201,17 +222,30 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
 
       {/* A settled thread takes no replies: the discussion is over until
           somebody reopens it. */}
-      {mayWrite && !settled && (
-        <div className='mt-2 flex gap-1.5'>
-          <input
-            data-testid='doc-comment-reply-input'
-            className='min-w-0 flex-1 rounded-chrome border border-border bg-background px-2 py-1 text-sm focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-ring'
-            placeholder={t('spaces.document.comment.reply')}
-            value={reply}
-            onChange={(event) => {
-              setReply(event.target.value);
-            }}
-          />
+      {mayWrite && selected && !settled && (
+        <div className='mt-2 flex items-start gap-1.5'>
+          {/* The border and the focus colour sit on the scroller, which is
+              the element that stays still; the box inside it is always
+              exactly as tall as what is written, so what scrolls is the
+              words. */}
+          <ScrollArea
+            scrollbars='vertical'
+            className='min-w-0 flex-1 rounded-chrome border border-border bg-background transition-colors focus-within:border-active-border'
+            viewportClassName={REPLY_BOX_MAX_HEIGHT}
+            data-testid='doc-comment-reply-scroller'
+          >
+            <Textarea
+              ref={box}
+              rows={1}
+              data-testid='doc-comment-reply-input'
+              className='min-h-0 resize-none overflow-hidden rounded-none border-0 bg-transparent px-2 py-1 text-sm focus-visible:border-0 md:text-sm'
+              placeholder={t('spaces.document.comment.reply')}
+              value={reply}
+              onChange={(event) => {
+                setReply(event.target.value);
+              }}
+            />
+          </ScrollArea>
           <Button
             variant='outline'
             size='sm'
@@ -223,7 +257,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
         </div>
       )}
 
-      {mayWrite && (
+      {mayWrite && selected && (
         <div className='mt-2.5 flex gap-1.5 border-t border-border pt-2'>
           {settled ? (
             <Button
