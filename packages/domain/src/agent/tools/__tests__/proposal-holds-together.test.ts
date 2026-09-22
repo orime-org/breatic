@@ -1098,6 +1098,34 @@ describe("a flow of any shape", () => {
     expect(verdict).toEqual({ ok: true });
   });
 
+  it("places two slot-fed generations that each take their own material", () => {
+    // Clone both of these voices: two empty nodes, two generations, each
+    // taking one piece. The reader opens the first panel and picks one node
+    // into its slot, opens the second and picks the other. How many empty
+    // nodes the group carries says nothing about how many pieces reach any
+    // one generation -- on this path the reader decides that by clicking.
+    const at = slotted();
+    const kind = at.needs[0] as GenerationNodeType;
+    const one = (name: string): ProposalNode => ({
+      role: "generate", type: at.nodeType, name, mode: at.mode, model: at.model,
+      params: {}, prompt: [{ text: "make it" },
+        { slot: { kind: "asset", label: "yours", note: "Pick it in the panel" } }],
+    });
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "source", type: kind, name: "Yours A" },
+        { role: "source", type: kind, name: "Yours B" },
+        one("From A"), one("From B"),
+      ],
+      edges: [],
+      rationale: "One each, picked in the panel.",
+      groupName: "Both of them",
+    });
+
+    expect(verdict).toEqual({ ok: true });
+  });
+
   it("refuses a mark pointing at what a panel slot will be filled from", () => {
     // Draw it, then animate it: the step before is material, and on this path
     // material is picked by clicking, not by mentioning. The panel turns such

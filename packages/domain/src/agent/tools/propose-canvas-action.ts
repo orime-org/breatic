@@ -533,10 +533,17 @@ function checkGenerateNode(
   // then animate it" is a flow of two generations and nothing for the reader
   // to find.
   const asked = materialNeeded(nodeType, mode, model);
-  if (!byReference && usable.length !== asked) {
+  // Through a slot, the group has to offer somewhere to put each piece, and
+  // it may offer more: the reader fills a slot by clicking, so two empty
+  // nodes beside two generations that take one piece each is one of them
+  // apiece, not two reaching either. Counting the group's empty nodes as
+  // what reaches one generation turns that group away with a number no
+  // legal edge can change -- an empty audio node cannot even be wired to an
+  // audio generation (`canConnect`).
+  if (!byReference && usable.length < asked) {
     return {
       ok: false,
-      reason: `"${mode}" takes ${String(asked)} piece(s) of ${needed.join(", ")}, and ${String(usable.length)} reach${usable.length === 1 ? "es" : ""} node ${String(index)}.`,
+      reason: `"${mode}" takes ${String(asked)} piece(s) of ${needed.join(", ")}, and the group offers ${String(usable.length)} place(s) to put ${asked === 1 ? "it" : "them"}.`,
     };
   }
   // The pool has a ceiling as well, stated by the model and enforced by the
@@ -554,13 +561,25 @@ function checkGenerateNode(
     };
   }
 
-  // One mark per empty node: the prompt says what goes in each one, in the
-  // place it belongs, rather than naming one of them and leaving the rest
-  // sitting there unexplained.
-  if (marks.length !== mine.length) {
+  // One mark per piece the reader supplies, in the place it belongs, rather
+  // than naming one of them and leaving the rest sitting there unexplained.
+  //
+  // Which number that is differs by path, because the mark says a different
+  // thing on each. Through the pool it names an empty node wired in, so the
+  // count is those. Through a slot it says which slot the reader picks this
+  // kind of thing in, so the count is what the model asks for less what the
+  // step before it already made -- the group's other empty nodes belong to
+  // whatever else reads them.
+  const supplied = feeders.filter(
+    ({ node: n }) => n.role === "generate" && needed.includes(n.type),
+  ).length;
+  const wanted = byReference ? mine.length : Math.max(0, asked - supplied);
+  if (marks.length !== wanted) {
     return {
       ok: false,
-      reason: `The group carries ${String(mine.length)} empty node(s) and the prompt marks ${String(marks.length)} place(s). Mark each one where it belongs.`,
+      reason: byReference
+        ? `The group carries ${String(mine.length)} empty node(s) and the prompt marks ${String(marks.length)} place(s). Mark each one where it belongs.`
+        : `"${mode}" takes ${String(wanted)} piece(s) from the reader and the prompt marks ${String(marks.length)} place(s). Mark each one, saying which slot to pick it in.`,
     };
   }
   return { ok: true };
