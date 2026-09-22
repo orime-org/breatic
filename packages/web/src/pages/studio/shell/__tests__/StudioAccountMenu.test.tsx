@@ -337,17 +337,25 @@ describe('StudioAccountMenu', () => {
       });
     });
 
-    it('says nothing but the word while the figure is still on its way', async () => {
+    it('holds the place while the figure is still on its way', async () => {
+      // A placeholder, because the wait ends by itself and an empty row reads
+      // as a balance of nothing. Asserted on the element, since a skeleton
+      // carries no text and a missing one would pass a text assertion.
       const user = userEvent.setup();
       useCurrentUserStore.getState().setUser(ALEX);
       overviewMock.mockReturnValue(new Promise(() => {}));
       setup();
       await openMenu(user);
 
+      const row = screen.getByRole('menuitem', { name: /Credits/ });
+      expect(row.querySelector('.skeleton-shimmer')).not.toBeNull();
       expect(creditsTrailing()).toBe('');
     });
 
-    it('says nothing but the word when the read fails', async () => {
+    it('says so when the read fails, rather than leaving the row blank', async () => {
+      // Whether the request lands is not ours to promise; whether the reader
+      // knows it did not is. A blank row here reads the same as the one a
+      // deployment that does not bill shows.
       const user = userEvent.setup();
       useCurrentUserStore.getState().setUser(ALEX);
       overviewMock.mockRejectedValue(new Error('offline'));
@@ -355,9 +363,8 @@ describe('StudioAccountMenu', () => {
       await openMenu(user);
 
       await waitFor(() => {
-        expect(overviewMock).toHaveBeenCalled();
+        expect(creditsTrailing()).toBe('Unavailable');
       });
-      expect(creditsTrailing()).toBe('');
     });
 
     it('keeps one account’s figure away from the next one to sign in', async () => {
@@ -440,7 +447,7 @@ describe('StudioAccountMenu', () => {
         expect(overviewMock).toHaveBeenCalledTimes(2);
       });
 
-      expect(creditsTrailing()).toBe('');
+      expect(creditsTrailing()).toBe('Unavailable');
     });
 
     it('says nothing but the word where this deployment does not charge', async () => {

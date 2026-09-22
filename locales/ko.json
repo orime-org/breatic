@@ -1100,6 +1100,7 @@
       "account": "계정",
       "signOut": "로그아웃",
       "credits": "크레딧",
+      "creditsUnavailable": "불러올 수 없음",
       "membership": "멤버십",
       "accountSettings": "계정 설정"
     },

@@ -1100,6 +1100,7 @@
       "account": "帳號",
       "signOut": "登出",
       "credits": "點數",
+      "creditsUnavailable": "目前無法取得",
       "membership": "會員",
       "accountSettings": "帳號設定"
     },

@@ -6,15 +6,19 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LogOut, Settings, Sparkles, Star } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { Skeleton } from '@web/components/ui/skeleton';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuTrailing,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { accountTotal } from '@breatic/shared';
+import type { CreditOverview } from '@breatic/shared';
+import type { UseQueryResult } from '@tanstack/react-query';
 
 import { authApi } from '@web/data/api/auth';
 import { CheckoutWaitOverlay } from '@web/features/credits/CheckoutWaitOverlay';
@@ -39,6 +43,29 @@ import { usePaymentTiers } from '@web/features/credits/use-payment-tiers';
  * configured number here would drift the day somebody changed the file.
  */
 const CONFIRM_WAIT_BACKSTOP_MS = 60_000;
+
+/**
+ * What sits to the right of the Credits entry, in each of its four states.
+ *
+ * The figure once it is in hand. While it is on its way, a placeholder: the
+ * wait ends by itself, and an empty row would read as a balance of nothing.
+ * When the read failed, the word for it — whether the request lands is not
+ * ours to promise, whether the reader knows it did not is. Where the
+ * deployment does not bill, nothing at all: the three figures are zeroes
+ * there, and a rendered 0 reads as "your money is gone".
+ * @param overview - The account's three figures, as the query holds them.
+ * @param t - The translator, so this reads in the language the switch is set to.
+ * @returns What to render, or null to leave the row carrying only its word.
+ */
+function creditsFigure(
+  overview: UseQueryResult<CreditOverview>,
+  t: ReturnType<typeof useTranslation>,
+): React.ReactNode {
+  if (overview.isError) return t('studio.topBar.creditsUnavailable');
+  if (overview.isPending) return <Skeleton className='h-3 w-10' />;
+  if (!overview.data.billing) return null;
+  return formatCreditAmount(accountTotal(overview.data));
+}
 
 /**
  * Studio account menu — the current-user avatar in the studio top bar, opening
@@ -240,9 +267,9 @@ export function StudioAccountMenu(): React.JSX.Element {
             {/* The tier itself, not just the word: this entry is where a person
               checks which one they are on, and reading it off the menu saves
               the trip. */}
-            <span className='ml-auto text-xs font-medium text-muted-foreground'>
+            <DropdownMenuTrailing className='font-medium'>
               {user === null ? null : t(`membership.tier.${user.membershipTier}`)}
-            </span>
+            </DropdownMenuTrailing>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleCredits}>
             <Star className='h-4 w-4' />
@@ -251,15 +278,16 @@ export function StudioAccountMenu(): React.JSX.Element {
               figure is what a person opens this menu to check, and reading it
               here saves opening the overlay.
 
-              Nothing at all until it is in hand, and nothing where this
-              deployment does not charge — there the three figures are zeroes,
-              and a rendered 0 reads as "your money is gone" rather than "we do
-              not bill". */}
-            <span className='ml-auto text-xs font-medium text-muted-foreground'>
-              {overview.isError || !overview.data?.billing
-                ? null
-                : formatCreditAmount(accountTotal(overview.data))}
-            </span>
+              Three ways there is no figure, and they do not look alike. On its
+              way: a placeholder, because the wait is short and ends by itself.
+              Read failed: said out loud — whether the request lands is not
+              ours to promise, but whether the reader knows it did not is.
+              Deployment does not bill: nothing, because there the three
+              figures are zeroes and a rendered 0 reads as "your money is gone"
+              rather than "we do not charge". */}
+            <DropdownMenuTrailing className='font-medium'>
+              {creditsFigure(overview, t)}
+            </DropdownMenuTrailing>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

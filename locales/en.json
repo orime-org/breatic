@@ -1100,6 +1100,7 @@
       "account": "Account",
       "signOut": "Sign out",
       "credits": "Credits",
+      "creditsUnavailable": "Unavailable",
       "membership": "Membership",
       "accountSettings": "Account settings"
     },
