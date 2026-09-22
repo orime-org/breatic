@@ -1525,6 +1525,7 @@
       "compensation": "补偿",
       "discount": "优惠"
     },
+    "pinnedToOwnStudio": "只能用在你自己的 Studio",
     "lifecycle": {
       "depleted": "已消耗完毕",
       "refund_pending": "审核中",

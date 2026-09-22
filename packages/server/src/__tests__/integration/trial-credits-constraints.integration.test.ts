@@ -45,7 +45,7 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import { initCore, ForbiddenError, loadLocales, db } from "@breatic/core";
-import { creditLotService } from "@breatic/domain";
+import { creditLotService, creditLotRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
@@ -288,5 +288,52 @@ describe("the refusal a holder of granted credits reads", () => {
 
     expect(err?.statusCode).toBe(402);
     expect(err?.message).toBe(t("server.credit.none"));
+  });
+});
+
+describe("granted credits on the screens that list what an account holds", () => {
+  it("reaches the list at all, carrying no price", async () => {
+    // The list joined payments to get the price, which left out every lot
+    // that came from none: the credits counted towards the account's total
+    // and appeared on no screen that could act on them.
+    const { userId, studioId, lotId } = await seedGranted();
+
+    const rows = await creditLotRepo.listLotsByUser(userId, 20, null, "active");
+    const row = rows.find((r) => r.id === lotId);
+
+    expect(row, "the granted lot is missing from the list").toBeDefined();
+    expect(row!.sourceKind).toBe("gift");
+    expect(row!.paidCents).toBeNull();
+    expect(row!.currency).toBeNull();
+    expect(row!.designatedStudioId).toBe(studioId);
+  });
+
+  it("still carries the price on a lot somebody paid for", async () => {
+    const { userId } = await seedGranted();
+    const sourceId = (
+      await sql<{ id: string }[]>`
+        INSERT INTO credit_sources (id, kind)
+        VALUES (gen_random_uuid(), 'payment') RETURNING id
+      `
+    )[0]!.id;
+    await sql`
+      INSERT INTO payments
+        (id, user_id, amount_cents, total_cents, status, credits_granted)
+      VALUES (${sourceId}, ${userId}, 1000, 1080, 'completed', 880)
+    `;
+    const bought = (
+      await sql<{ id: string }[]>`
+        INSERT INTO credit_lots
+          (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+        VALUES (${sourceId}, 'payment', ${userId}, 880, 880, 'active')
+        RETURNING id
+      `
+    )[0]!.id;
+
+    const rows = await creditLotRepo.listLotsByUser(userId, 20, null, "active");
+    const row = rows.find((r) => r.id === bought);
+
+    expect(row!.paidCents).toBe(1080);
+    expect(row!.currency).toBe("usd");
   });
 });

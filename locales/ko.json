@@ -1525,6 +1525,7 @@
       "compensation": "보상",
       "discount": "할인"
     },
+    "pinnedToOwnStudio": "본인 Studio에서만 사용",
     "lifecycle": {
       "depleted": "모두 사용함",
       "refund_pending": "심사 중",

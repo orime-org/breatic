@@ -162,10 +162,17 @@ function toLedgerEntity(
  * The unique constraint on `source_id` is what makes a redelivered webhook a
  * failed insert rather than a second grant, so this deliberately does not
  * swallow the conflict — the caller decides what a duplicate means.
- * @param data - The purchase this lot records.
+ * @param data - Where this lot's credits came from and who holds them.
  * @param data.sourceId - What the credits came from. Unique across lots.
- * @param data.userId - Who paid.
- * @param data.purchasedCredits - How many credits the payment bought, as a decimal string.
+ * @param data.sourceKind - Which kind of receipt that is. Held to the
+ *   receipt's own value by the composite foreign key, so it cannot be stated
+ *   wrongly, only stated.
+ * @param data.userId - Whose credits these are.
+ * @param data.purchasedCredits - How many credits it opened, as a decimal string.
+ * @param data.designatedStudioId - The studio allowed to spend them, or null
+ *   for the owner to point later. Required rather than defaulted: credits
+ *   nobody paid for are pinned as they are written, and a default would let
+ *   that be forgotten silently.
  * @param tx - The transaction the lot's `topup` ledger row is written in.
  *   Required: a lot's remaining balance is the ledger summed over it, so a lot
  *   that committed without its row would read as owing its whole value.
@@ -779,9 +786,12 @@ export interface LotContext {
   /**
    * What the buyer paid for it, tax included, in the smallest unit of
    * `currency`. The same figure the purchase history prints.
+   *
+   * Null on credits nobody paid for, along with the currency beside it: a
+   * granted lot has no price, and a zero would read as one.
    */
-  paidCents: number;
-  currency: string;
+  paidCents: number | null;
+  currency: string | null;
   /** The studio it points at, named. Null when it points at none. */
   designatedStudioName: string | null;
   /** Whether the column points at a studio at all, deleted or not. */
@@ -830,7 +840,7 @@ export async function listLotsByUser(
       // stands in for the rare session Stripe gave no total for — and reading
       // the face value everywhere is what made the same purchase show one
       // figure here and another in the history.
-      paidCents: sql<number>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
+      paidCents: sql<number | null>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
       currency: payments.currency,
       // A studio that is gone holds nothing: the moment it is deleted its
       // projects stop working, so a purchase pointed at it is pointed
@@ -863,7 +873,11 @@ export async function listLotsByUser(
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
     })
     .from(creditLots)
-    .innerJoin(payments, eq(payments.id, creditLots.sourceId))
+    // Outward, because a lot need not have come from a payment. Joining
+    // inward left every granted lot off this list: the credits counted
+    // towards what the account holds and appeared on no screen that could
+    // act on them.
+    .leftJoin(payments, eq(payments.id, creditLots.sourceId))
     .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(
       and(

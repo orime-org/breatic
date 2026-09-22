@@ -312,7 +312,11 @@ const LotRow = React.memo(function LotRow({
 
   return (
     <Row
-      main={`${formatMoney(lot.paidCents, lot.currency)} · ${formatLocalDay(lot.createdAt)}`}
+      main={`${
+        lot.paidCents === null
+          ? t(`credits.source.${lot.sourceKind}`)
+          : formatMoney(lot.paidCents, lot.currency ?? 'usd')
+      } · ${formatLocalDay(lot.createdAt)}`}
       sub={face.hint}
       right={
         refusal === null ? (

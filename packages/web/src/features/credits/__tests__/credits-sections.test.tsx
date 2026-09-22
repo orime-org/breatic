@@ -1028,6 +1028,42 @@ describe('the credits overlay, section by section', () => {
       );
     });
 
+    it('gives granted credits no picker, and says where they may go', async () => {
+      // Every option this picker could offer would be refused, and the
+      // screen already states, of the studios it leaves out, that offering
+      // the rest would be offering a rejection.
+      fetchCreditLots.mockResolvedValue({
+        items: [
+          lot({
+            id: 'lot-gift',
+            sourceKind: 'gift',
+            paidCents: null,
+            currency: null,
+          }),
+        ],
+        nextCursor: null,
+      });
+      await openOn('assign');
+      const body = await panel();
+
+      expect(within(body).getByTestId('assign-pinned')).toHaveTextContent(
+        'Your own studio only',
+      );
+      expect(within(body).queryByRole('combobox')).toBeNull();
+      // No price to print, so the row leads with where the credits came from.
+      expect(body).toHaveTextContent('Trial credits');
+    });
+
+    it('still gives a purchase its picker', async () => {
+      // The pair the one above needs: a section that dropped every picker
+      // would pass it and leave nobody able to assign anything.
+      await openOn('assign');
+      const body = await panel();
+
+      expect(within(body).getByRole('combobox')).toBeInTheDocument();
+      expect(within(body).queryByTestId('assign-pinned')).toBeNull();
+    });
+
     it('fails visibly when the studios cannot be read', async () => {
       // Either read failing leaves this section unable to do its one job.
       // Reporting only one of them leaves the picker silently down to a

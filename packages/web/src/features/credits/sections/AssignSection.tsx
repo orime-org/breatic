@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isPurchased } from '@breatic/shared';
 import type { CreditLotView } from '@breatic/shared';
 
 import {
@@ -210,9 +211,41 @@ function AssignRow({
     designate.mutate(value === NONE ? null : value);
   };
 
+  // What the row leads with: a price where somebody paid one, and otherwise
+  // where the credits came from — the one thing about the row a reader
+  // cannot work out from the rest of it.
+  const lead =
+    lot.paidCents === null
+      ? t(`credits.source.${lot.sourceKind}`)
+      : formatMoney(lot.paidCents, lot.currency ?? 'usd');
+
+  // Granted credits were pointed at their holder's own studio when they were
+  // written and nothing moves them, so this row says where they may go rather
+  // than offering a choice. A control every option of which would be refused
+  // is worse than none: the screen already states, of the studios it leaves
+  // out, that offering the rest would be offering a rejection.
+  if (!isPurchased(lot.sourceKind)) {
+    return (
+      <Row
+        main={`${lead} · ${formatLocalDay(lot.createdAt)}`}
+        sub={t('credits.remaining', {
+          amount: formatCreditAmount(lot.remainingCredits),
+        })}
+        right={
+          <span
+            data-testid='assign-pinned'
+            className='text-muted-foreground text-sm'
+          >
+            {t('credits.pinnedToOwnStudio')}
+          </span>
+        }
+      />
+    );
+  }
+
   return (
     <Row
-      main={`${formatMoney(lot.paidCents, lot.currency)} · ${formatLocalDay(lot.createdAt)}`}
+      main={`${lead} · ${formatLocalDay(lot.createdAt)}`}
       sub={t('credits.remaining', {
         amount: formatCreditAmount(lot.remainingCredits),
       })}
@@ -224,9 +257,7 @@ function AssignRow({
         >
           <SelectTrigger
             className='h-7 w-auto gap-2 text-sm'
-            aria-label={t('credits.designationFor', {
-              amount: formatMoney(lot.paidCents, lot.currency),
-            })}
+            aria-label={t('credits.designationFor', { amount: lead })}
           >
             <SelectValue />
           </SelectTrigger>

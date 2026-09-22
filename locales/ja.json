@@ -1525,6 +1525,7 @@
       "compensation": "補償",
       "discount": "割引"
     },
+    "pinnedToOwnStudio": "ご自身の Studio でのみ使用",
     "lifecycle": {
       "depleted": "使い切りました",
       "refund_pending": "審査中",

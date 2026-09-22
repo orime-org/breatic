@@ -214,10 +214,12 @@ export interface CreditLotView {
   designated: boolean;
   /**
    * What the buyer paid for it, tax included, in the smallest unit of
-   * `currency`. The same figure the purchase history prints for this purchase.
+   * `currency`. The same figure the acquisition history prints for it.
+   *
+   * Null on credits nobody paid for, along with the currency beside it.
    */
-  paidCents: number;
-  currency: string;
+  paidCents: number | null;
+  currency: string | null;
   lifecycle: CreditLotLifecycle;
   /** How many refund requests were refused; the lifecycle keeps no trace. */
   refundAttempts: number;

@@ -1525,6 +1525,7 @@
       "compensation": "Compensation",
       "discount": "Discount"
     },
+    "pinnedToOwnStudio": "Your own studio only",
     "lifecycle": {
       "depleted": "Used up",
       "refund_pending": "Under review",
