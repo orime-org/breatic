@@ -139,6 +139,54 @@ describe('what is left for the reader', () => {
     ]);
   });
 
+  it('hangs the material note under the generation when only it reads that node', () => {
+    // §6.2 of the design and the demo both draw it there: one generation, one
+    // empty node, and the reader does both to-dos at that panel. Filed under
+    // the empty node instead, a two-node group draws three to-do groups where
+    // the demo draws two.
+    const proposal = flow(
+      [
+        empty('Your photo'),
+        {
+          ...generates('On white'),
+          prompt: [
+            { text: 'white ground' },
+            { slot: { kind: 'asset', label: 'your photo', note: 'Drop your photo in' } },
+          ],
+        },
+      ],
+      [[0, 1]],
+    );
+
+    expect(todosOf(proposal)).toEqual([
+      { nodes: ['On white'], notes: ['Drop your photo in'] },
+    ]);
+  });
+
+  it('files a slot-fed generation\'s material note under the generation', () => {
+    // Through a slot the reader picks by clicking, so no mention is written
+    // and there is no empty node for the note to hang under -- the bracket
+    // names the slot, and the panel it is picked in is this generation's.
+    const proposal = flow(
+      [
+        empty('Your photo'),
+        {
+          ...generates('The clip'),
+          takesFrom: 'slot',
+          prompt: [
+            { text: 'pan across' },
+            { slot: { kind: 'asset', label: 'your photo', note: 'Pick it in the first slot' } },
+          ],
+        },
+      ],
+      [],
+    );
+
+    expect(todosOf(proposal)).toEqual([
+      { nodes: ['The clip'], notes: ['Pick it in the first slot'] },
+    ]);
+  });
+
   it('says once what goes in an empty node three generations share', () => {
     // Every one of the three marks the same empty node, so the note about it
     // is one note -- written three times it reads as three photos to find.
@@ -169,6 +217,8 @@ describe('what is left for the reader', () => {
     const drop = (label: string): ProposalNode['prompt'] => [
       { slot: { kind: 'asset', label, note: `Drop the ${label} in` } },
     ];
+    // Both generations read both empty nodes, so the notes hang under the
+    // nodes themselves and the pairing is on screen to be got wrong.
     const proposal = flow(
       [
         empty('Your photo'),
@@ -177,12 +227,18 @@ describe('what is left for the reader', () => {
           ...generates('The banner'),
           prompt: [...(drop('photo') ?? []), ...(drop('logo') ?? [])],
         },
+        {
+          ...generates('The square'),
+          prompt: [...(drop('photo') ?? []), ...(drop('logo') ?? [])],
+        },
       ],
       // Listed back to front: nothing makes a model list its edges in the
       // order it listed its nodes.
       [
         [1, 2],
         [0, 2],
+        [1, 3],
+        [0, 3],
       ],
     );
 

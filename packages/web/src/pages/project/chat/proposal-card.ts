@@ -187,12 +187,21 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
     const held = notes.get(at) ?? [];
     if (!held.includes(note)) notes.set(at, [...held, note]);
   };
+  // The same reading the canvas writes its mentions from, so a to-do names
+  // the node the bracket beside it will point at -- and where no mention is
+  // written, the to-do falls under the generation whose panel it is done in.
+  const empties = proposal.nodes.map((_, at) => nameableFeeders(proposal, at).sources);
+  // How many generations would point at each empty node. Read once here
+  // because it decides where the note goes: under the generation while it is
+  // the only one reading that node, which is where the demo draws it and
+  // where the reader is standing when they do it.
+  const readers = new Map<number, number>();
+  for (const list of empties) {
+    for (const i of list) readers.set(i, (readers.get(i) ?? 0) + 1);
+  }
   proposal.nodes.forEach((node, at) => {
     let assetsSeen = 0;
-    // The same reading the canvas writes its mentions from, so a to-do names
-    // the node the bracket beside it will point at -- and where no mention is
-    // written, the to-do falls under the generation whose panel it is done in.
-    const empties = nameableFeeders(proposal, at, node.takesFrom ?? 'pool').sources;
+    const mine = empties[at] ?? [];
     for (const segment of node.prompt ?? []) {
       const slot = segment.slot;
       if (!slot) continue;
@@ -201,9 +210,12 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
         add(at, slot.note);
         continue;
       }
-      const empty = empties[assetsSeen];
+      const empty = mine[assetsSeen];
       assetsSeen += 1;
-      add(empty ?? at, slot.note);
+      // Shared, the note belongs to the node itself: said under each of three
+      // generations it reads as three photos to find. Read by this one alone,
+      // it belongs here, beside the button the reader presses after doing it.
+      add(empty !== undefined && (readers.get(empty) ?? 0) > 1 ? empty : at, slot.note);
     }
   });
   const groups: NodeTodos[] = [];

@@ -384,11 +384,13 @@ describe('a flow that is more than one thing', () => {
     expect(screen.getAllByTestId('proposal-divider')).toHaveLength(1);
     const groups = screen.getAllByTestId('proposal-todo-group');
     expect(groups).toHaveLength(2);
-    // One says rewrite something once it is placed, the other says pick
-    // something before pressing Generate -- different moments, different
-    // places, and the node name is what tells them apart.
+    // One says rewrite something once it is placed, the other says put
+    // material in before pressing Generate -- different moments, different
+    // places, and the node name is what tells them apart. The second is
+    // headed by the generation, which is the only one reading that empty
+    // node and the panel the reader is standing at.
     expect(groups[0]?.textContent).toContain('Your copy');
-    expect(groups[1]?.textContent).toContain('Your product photo');
+    expect(groups[1]?.textContent).toContain('On white');
   });
 });
 
