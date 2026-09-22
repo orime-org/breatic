@@ -87,6 +87,13 @@
         "expired": "超过 30 天，不再受理退款。",
         "unassigned": "只有未指定给 Studio 的积分包才能退款。"
       },
+      "refund-credits-v3": {
+        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
+        "used": "只要花过其中任何一个，这一笔就不能再退了。",
+        "expired": "超过 30 天，不再受理退款。",
+        "unassigned": "只有未指定给 Studio 的积分包才能退款。",
+        "purchased": "只有购买的积分包可以退款。"
+      },
       "not_found": "找不到这笔购买。",
       "unavailable": "这个部署不出售积分。"
     },
