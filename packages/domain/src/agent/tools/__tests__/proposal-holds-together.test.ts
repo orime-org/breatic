@@ -301,18 +301,6 @@ describe("a mode whose material arrives through the reference pool", () => {
     expect(checkProposal(propose(pooled()))).toEqual({ ok: true });
   });
 
-  it("is refused when the proposal carries no node to put it in", () => {
-    // The mark saying what goes there is left in place, so the only thing
-    // left to refuse this is the missing node and the missing edge.
-    const at = pooled();
-
-    expect(checkProposal(propose(at, { sources: [], marks: 1 })).ok).toBe(false);
-  });
-
-  it("is refused when nothing in the prompt says what goes there", () => {
-    expect(checkProposal(propose(pooled(), { marks: 0 })).ok).toBe(false);
-  });
-
   it("is refused when the empty node holds the wrong kind of material", () => {
     const at = pooled();
     const other: GenerationNodeType = at.needs[0] === "image" ? "audio" : "image";
@@ -328,17 +316,6 @@ describe("a mode whose material arrives through the reference pool", () => {
     const twice = [at.needs[0] as GenerationNodeType, at.needs[0] as GenerationNodeType];
 
     expect(checkProposal(propose(at, { sources: twice }))).toEqual({ ok: true });
-  });
-
-  it("is refused when two empty nodes share one mark", () => {
-    const at = pooled();
-    const twice = [at.needs[0] as GenerationNodeType, at.needs[0] as GenerationNodeType];
-
-    expect(checkProposal(propose(at, { sources: twice, marks: 1 })).ok).toBe(false);
-  });
-
-  it("is refused when a mark has no empty node to go with it", () => {
-    expect(checkProposal(propose(pooled(), { marks: 2 })).ok).toBe(false);
   });
 
   it("is refused when it wires in more than the pool holds", () => {
@@ -417,11 +394,6 @@ describe("a mode whose material arrives through the reference pool", () => {
     ).toBe(false);
   });
 
-  it("is refused when an empty node is left unwired", () => {
-    // The pool is fed by an edge and by nothing else, so an empty node with
-    // no edge is one the reader's file never reaches the generation from.
-    expect(checkProposal(propose(pooled(), { wired: false })).ok).toBe(false);
-  });
 });
 
 describe("a mode whose material arrives through a panel slot", () => {
@@ -429,32 +401,6 @@ describe("a mode whose material arrives through a panel slot", () => {
     // The reader picks the node in the toolbar slot, clicking any node of that
     // kind anywhere on the canvas, so no edge carries the material here.
     expect(checkProposal(propose(slotted()))).toEqual({ ok: true });
-  });
-
-  it("is refused when it offers two of one kind and none of the other", () => {
-    // Counting the empty nodes says two for two marks; it does not say one of
-    // them holds the driving footage this mode cannot run without.
-    const at = pick((m) => m.needs.length > 1 && !m.byReference, "mode needing two kinds");
-    const twice = [at.needs[0] as GenerationNodeType, at.needs[0] as GenerationNodeType];
-
-    expect(checkProposal(propose(at, { sources: twice })).ok).toBe(false);
-  });
-
-  it("is refused when it offers fewer empty nodes than the panel asks for", () => {
-    // The panel refuses on every empty slot it has, and how many it has is
-    // its own table's to say. The catalog's speaks in kinds -- two pictures
-    // is one kind twice -- so a group one node short reads as complete here
-    // and dies at the Generate button.
-    const at = pick(
-      (m) => !m.byReference && m.pieces > 1,
-      "mode asking for more than one piece",
-    );
-    const short = Array.from(
-      { length: at.pieces - 1 },
-      (_, i) => at.needs[i] ?? (at.needs[0] as GenerationNodeType),
-    );
-
-    expect(checkProposal(propose(at, { sources: short })).ok).toBe(false);
   });
 
   it("stands when it fills every slot the panel offers", () => {
@@ -475,21 +421,6 @@ describe("a mode that needs nothing of the reader", () => {
     });
   });
 
-  it("is refused when it carries an empty node anyway", () => {
-    // Nothing goes in it and nothing on screen says so, which is the same
-    // dead end as a missing one.
-    const at = sourceless();
-
-    expect(checkProposal(propose(at, { sources: ["image"], marks: 1 })).ok).toBe(false);
-  });
-
-  it("is refused when the prompt marks a place with no empty node behind it", () => {
-    // A bracket saying "put your photo here" with nothing to put it in reads
-    // as an instruction the reader cannot carry out.
-    const at = sourceless();
-
-    expect(checkProposal(propose(at, { sources: [], marks: 1 })).ok).toBe(false);
-  });
 });
 
 describe("what the generation is driven by", () => {
@@ -507,12 +438,6 @@ describe("what the generation is driven by", () => {
 });
 
 describe("what only the reader can fill in", () => {
-  it("is refused when nothing in the prompt says to fill it", () => {
-    const at = pick((m) => m.choices.length > 0, "model with something only the reader fills");
-
-    expect(checkProposal(propose(at, { tweaks: 0 })).ok).toBe(false);
-  });
-
   it("is refused when the proposal fills the value in itself", () => {
     // The list is fetched from the vendor and shown in the panel; a value
     // written here is one nobody checked against it.
@@ -532,12 +457,6 @@ describe("what only the reader can fill in", () => {
     expect(checkProposal(propose(at, { params: { [PANEL_EDITOR_PARAM]: "la la la" } })).ok).toBe(
       false,
     );
-  });
-
-  it("is refused when nothing in the prompt says to write those words", () => {
-    const at = pick((m) => PANEL_EDITOR_PARAM in m.params, "model with its own text box");
-
-    expect(checkProposal(propose(at, { tweaks: 0 })).ok).toBe(false);
   });
 
   it("stands with nothing marked when the switch takes that box away", () => {
@@ -1293,76 +1212,6 @@ describe("a flow of any shape", () => {
     expect(verdict).toEqual({ ok: true });
   });
 
-  it("refuses a mark naming an upstream node the pool cannot hold", () => {
-    // The pool is the image pool: `insertRefusal` turns a video or audio row
-    // down in every mode, and a mention of one contributes nothing to the
-    // run. A mark for it puts a chip in the box the reader could not have
-    // made, and the sentence around it loses its object.
-    // A kind the pool cannot hold, on a node type whose own whitelist admits
-    // it -- so what turns the mark down is the pool's reach rather than the
-    // connection rule.
-    const wrong = (["video", "audio"] as const).find((kind) =>
-      reachableModes().some(
-        (m) => m.byReference && m.needs.length > 0 && canConnect(kind, m.nodeType),
-      ),
-    );
-    if (wrong === undefined) throw new Error("no pooled mode accepts a kind the pool cannot hold");
-    const at = pick(
-      (m) => m.byReference && m.needs.length > 0 && canConnect(wrong, m.nodeType),
-      `pooled mode accepting a ${wrong} upstream`,
-    );
-    const maker = pick(
-      (m) => m.nodeType === wrong && m.needs.length === 0 && m.choices.length === 0,
-      `mode making a ${wrong} out of nothing`,
-    );
-
-    const verdict = checkProposal({
-      nodes: [
-        generation(maker),
-        { role: "source", type: at.needs[0] as GenerationNodeType, name: "Yours" },
-        { role: "generate", type: at.nodeType, name: "The result", mode: at.mode,
-          model: at.model, params: {}, prompt: [
-            { text: "follow the mood of " },
-            { slot: { kind: "ref", label: "the step before", note: "" } },
-            { slot: { kind: "asset", label: "yours", note: "Put it in" } },
-          ] },
-      ],
-      edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
-      rationale: "x", groupName: "g",
-    });
-
-    expect(verdict.ok).toBe(false);
-  });
-
-  it("refuses a mark pointing at what a panel slot will be filled from", () => {
-    // Draw it, then animate it: the step before is material, and on this path
-    // material is picked by clicking, not by mentioning. The panel turns such
-    // a mention away, so a proposal making it hands the reader a prompt they
-    // cannot reproduce.
-    const at = slotted();
-    const first = pick(
-      (m) => m.nodeType === (at.needs[0] as GenerationNodeType) && m.needs.length === 0,
-      `mode making a ${String(at.needs[0])} out of nothing`,
-    );
-
-    const verdict = checkProposal({
-      nodes: [
-        generation(first),
-        { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
-          model: at.model, params: {}, prompt: [
-            { text: "animate " },
-            { slot: { kind: "ref", label: "the step before", note: "" } },
-          ] },
-      ],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      rationale: "Draw it, then animate it.",
-      groupName: "Two steps",
-    });
-
-    if (verdict.ok) throw new Error("expected a refusal");
-    expect(verdict.reason).toContain("only a node carrying words can be named");
-  });
-
   it("names the panel slot when that is where the material goes", () => {
     // Two ways the reader's material reaches a generation, and the sentence
     // about a parameter carrying it has to name the one this model uses.
@@ -1418,43 +1267,6 @@ describe("a flow of any shape", () => {
     });
 
     expect(verdict).toEqual({ ok: true });
-  });
-
-  it("refuses an edge carrying a kind the slot-fed generation cannot take", () => {
-    // The edge says this node is for that generation, and that generation
-    // reads nothing of the sort. Said of the edge, because the group's other
-    // generation may well be the one that reads it.
-    const at = slotted();
-    const wrong: GenerationNodeType = at.needs.includes("image") ? "audio" : "image";
-    const reader = pick(
-      (m) => m.needs.includes(wrong) && !m.byReference,
-      "a mode that reads the other kind",
-    );
-
-    const verdict = checkProposal({
-      nodes: [
-        { role: "source", type: wrong, name: "Yours of the other sort" },
-        { role: "source", type: at.needs[0] as GenerationNodeType, name: "Yours" },
-        { role: "generate", type: at.nodeType, name: "Takes one kind", mode: at.mode,
-          model: at.model, params: {}, prompt: [{ text: "make it" },
-            { slot: { kind: "asset", label: "yours", note: "Put it in" } }] },
-        { role: "generate", type: reader.nodeType, name: "Takes the other", mode: reader.mode,
-          model: reader.model, params: {}, prompt: [{ text: "make it" },
-            { slot: { kind: "asset", label: "yours", note: "Put it in" } }] },
-      ],
-      edges: [
-        { fromIndex: 0, toIndex: 2 },
-        { fromIndex: 1, toIndex: 2 },
-        { fromIndex: 0, toIndex: 3 },
-      ],
-      rationale: "x",
-      groupName: "g",
-    });
-
-    expect(verdict).toEqual({
-      ok: false,
-      reason: expect.stringContaining("which it cannot take"),
-    });
   });
 
   it("judges each slot-fed generation on the material of its own kind", () => {
@@ -1574,15 +1386,6 @@ describe("edges the canvas itself would refuse", () => {
     expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("no words") });
   });
 
-  it("refuses an empty node nothing in the group reads", () => {
-    const at = pooled();
-    const one = propose(at);
-
-    const verdict = checkProposal({ ...one, edges: [] });
-
-    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("reads") });
-  });
-
   it("places one generation feeding another, with no empty node at all", () => {
     const at = pooled();
     const first = sourcelessOn(at.nodeType);
@@ -1661,21 +1464,6 @@ describe("edges the canvas itself would refuse", () => {
  * and it writes no bracket of its own -- the mention it lands as is the text.
  */
 describe("a mark pointing at an upstream node", () => {
-  it("refuses a generation fed by another that names it nowhere", () => {
-    const at = pooled();
-    const first = sourcelessOn(at.nodeType);
-
-    const verdict = checkProposal({
-      nodes: [generation(first), generation(at)],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      modelNote: "",
-      rationale: "",
-      groupName: "Two steps",
-    });
-
-    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("points at") });
-  });
-
   it("places the same pair once the prompt points at the step before", () => {
     const at = pooled();
     const first = sourcelessOn(at.nodeType);
@@ -1689,50 +1477,6 @@ describe("a mark pointing at an upstream node", () => {
     });
 
     expect(verdict).toEqual({ ok: true });
-  });
-
-  it("refuses a mark pointing upstream on a mode filled from a toolbar slot", () => {
-    const at = slotted();
-    const one = propose(at);
-    const generate = one.nodes[one.nodes.length - 1];
-    if (!generate) throw new Error("the fixture built no generation");
-
-    const verdict = checkProposal({
-      ...one,
-      nodes: [
-        ...one.nodes.slice(0, -1),
-        {
-          ...generate,
-          prompt: [
-            ...(generate.prompt ?? []),
-            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
-          ],
-        },
-      ],
-    });
-
-    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("slot") });
-  });
-
-  it("says to take a mark out when there is one too many", () => {
-    // Reaching for `ref` where `asset` belonged is the confusion the schema's
-    // own field description exists to prevent, so it is the shape that
-    // arrives. Told to mark a place for each of zero nodes, the model adds
-    // another mark or wires another node -- the correction is to delete one.
-    const at = pooled();
-    const verdict = checkProposal({
-      nodes: [
-        { role: "source", type: at.needs[0] as GenerationNodeType, name: "Yours" },
-        { role: "generate", type: at.nodeType, name: "Result", mode: at.mode,
-          model: at.model, params: {},
-          prompt: [{ text: "make it " }, { slot: { kind: "ref", label: "yours", note: "" } }] },
-      ],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      rationale: "x", groupName: "g",
-    });
-
-    if (verdict.ok) throw new Error("expected a refusal");
-    expect(verdict.reason).toContain("Take");
   });
 
   it("refuses a written node whose words point at something upstream", () => {
@@ -1777,111 +1521,9 @@ describe("a mark pointing at an upstream node", () => {
     expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("writes nothing") });
   });
 
-  it("refuses a mark pointing upstream on a mode that only reads its prompt", () => {
-    const at = sourceless();
-
-    const verdict = checkProposal({
-      nodes: [generation(at, 0, 1)],
-      edges: [],
-      rationale: "",
-    });
-
-    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("nothing upstream") });
-  });
 });
 
-describe("what the panel would let the prompt name", () => {
-  /** A model the panel draws no prompt editor for. */
-  const promptless = (): Reachable =>
-    pick((at) => !at.takesPrompt, "model that takes no prompt");
-
-  /** A written node, for wiring into a generation as words it reads. */
-  const written = (name: string, text: string): ProposalNode => ({
-    role: "written",
-    type: "text",
-    name,
-    prompt: [{ text }],
-  });
-
-  it("refuses an edge from words into a model that draws no prompt box", () => {
-    // The panel mounts no editor for such a model and forces the box empty, so
-    // the words upstream reach nothing: neither the prompt nor a slot. The
-    // edge says a relation nothing acts on, and the group is what says they
-    // belong together.
-    const at = promptless();
-    const generate: ProposalNode = {
-      role: "generate",
-      type: at.nodeType,
-      name: "The clip",
-      mode: at.mode,
-      model: at.model,
-      params: {},
-      prompt: Array.from({ length: at.pieces }, (_, i) => ({
-        slot: {
-          kind: "asset" as const,
-          label: `your material ${String(i + 1)}`,
-          note: "Put it in the empty node",
-        },
-      })),
-    };
-
-    const verdict = checkProposal({
-      nodes: [
-        ...at.needs.map((type, i) => ({
-          role: "source" as const,
-          type,
-          name: `Your material ${String(i + 1)}`,
-        })),
-        written("The script", "hello there"),
-        generate,
-      ],
-      edges: [{ fromIndex: at.needs.length, toIndex: at.needs.length + 1 }],
-      rationale: "x",
-      groupName: "g",
-    });
-
-    expect(verdict.ok).toBe(false);
-  });
-
-  it("refuses a mark pointing upstream when no model draws a prompt box", () => {
-    const at = promptless();
-    const generate: ProposalNode = {
-      role: "generate",
-      type: at.nodeType,
-      name: "The clip",
-      mode: at.mode,
-      model: at.model,
-      params: {},
-      prompt: [
-        { slot: { kind: "ref" as const, label: "the script", note: "" } },
-        ...Array.from({ length: at.pieces }, (_, i) => ({
-          slot: {
-            kind: "asset" as const,
-            label: `your material ${String(i + 1)}`,
-            note: "Put it in the empty node",
-          },
-        })),
-      ],
-    };
-
-    const verdict = checkProposal({
-      nodes: [
-        ...at.needs.map((type, i) => ({
-          role: "source" as const,
-          type,
-          name: `Your material ${String(i + 1)}`,
-        })),
-        written("The script", "hello there"),
-        generate,
-      ],
-      edges: [{ fromIndex: at.needs.length, toIndex: at.needs.length + 1 }],
-      rationale: "x",
-      groupName: "g",
-    });
-
-    expect(verdict.ok).toBe(false);
-  });
-
+describe("what the model itself settles", () => {
   it("counts against the pool only what a mention of it puts there", () => {
     // The panel's own ceiling counts the reference IMAGES the prompt mentions
     // (`mentionedReferenceUrls`). A node of words is mentioned too, and its
@@ -1932,96 +1574,6 @@ describe("what the panel would let the prompt name", () => {
     expect(verdict).toEqual({ ok: true });
   });
 
-  it("counts the reader's pieces by kind, not by how many arrive in all", () => {
-    // Two kinds, one piece each. Two upstream generations carrying the second
-    // kind say nothing about the first, and a count that adds them together
-    // leaves the empty node holding the first kind unmarked -- the reader is
-    // handed a node to fill with nothing on the card saying so.
-    const at = pick(
-      (m) => !m.byReference && m.needs.length > 1,
-      "slot-fed mode needing two kinds of material",
-    );
-    const second = at.needs[1] as GenerationNodeType;
-    const maker = pick(
-      (m) => m.nodeType === second && m.needs.length === 0 && m.choices.length === 0,
-      `mode making a ${second} out of nothing`,
-    );
-
-    const verdict = checkProposal({
-      nodes: [
-        generation(maker),
-        generation(maker),
-        { role: "source", type: at.needs[0] as GenerationNodeType, name: "Yours" },
-        {
-          role: "generate",
-          type: at.nodeType,
-          name: "The result",
-          mode: at.mode,
-          model: at.model,
-          params: {},
-          prompt: [{ text: "speak up" }],
-        },
-      ],
-      edges: [
-        { fromIndex: 0, toIndex: 3 },
-        { fromIndex: 1, toIndex: 3 },
-        { fromIndex: 2, toIndex: 3 },
-      ],
-      rationale: "x",
-      groupName: "g",
-    });
-
-    expect(verdict.ok).toBe(false);
-  });
-
-  it("says to take a mark out when the prompt marks more places than there are", () => {
-    const verdict = checkProposal(propose(pooled(), { marks: 2 }));
-
-    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("Take the extra") });
-  });
-
-
-  it("counts the marks pointing upstream before it measures the prompt", () => {
-    // The measured string substitutes the words behind each mark pointing
-    // upstream, one mark to one node. Measured while the two are allowed to
-    // differ, the refusal quotes a length that left some of those words out
-    // and then names the nodes holding them.
-    const at = pick(
-      (m) => m.maxInputChars !== undefined && m.needs.length === 0,
-      "sourceless mode whose model caps the prompt",
-    );
-
-    const verdict = checkProposal({
-      nodes: [
-        written("The script", "a".repeat((at.maxInputChars ?? 0) + 1)),
-        written("The aside", "b".repeat(20)),
-        {
-          role: "generate",
-          type: at.nodeType,
-          name: "The result",
-          mode: at.mode,
-          model: at.model,
-          params: {},
-          prompt: [
-            { text: "read this: " },
-            { slot: { kind: "ref" as const, label: "the script", note: "" } },
-            ...Array.from({ length: at.choices.length > 0 ? 1 : 0 }, () => ({
-              slot: { kind: "tweak" as const, label: "the voice", note: "Pick one" },
-            })),
-          ],
-        },
-      ],
-      edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
-      rationale: "x",
-      groupName: "g",
-    });
-
-    expect(verdict).toEqual({
-      ok: false,
-      reason: expect.stringContaining("Mark the place in the prompt that points at each"),
-    });
-  });
-
   it("tells the model which node upstream each mark pointing there is about", () => {
     const prompt = inputSchema.shape.nodes.element.shape.prompt;
 
@@ -2043,26 +1595,6 @@ describe("what an edge into a generation is worth", () => {
     );
     return { at, maker };
   };
-
-  it("still asks for a mark when the step before supplies the slot", () => {
-    // The picture arrives already made, and the reader still has to click it
-    // into the slot -- a slot holds a copy taken at pick time, and no edge
-    // puts one there. Counted as supplied, the group lands with nothing on
-    // the card saying the one thing left to do.
-    const { at, maker } = chain();
-
-    const verdict = checkProposal({
-      nodes: [
-        generation(maker),
-        { role: "generate", type: at.nodeType, name: "The result", mode: at.mode, model: at.model,
-          params: {}, prompt: [{ text: "make it move" }] },
-      ],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      rationale: "x", groupName: "g",
-    });
-
-    expect(verdict.ok).toBe(false);
-  });
 
   it("stands when that mark is there", () => {
     const { at, maker } = chain();
@@ -2086,58 +1618,6 @@ describe("what an edge into a generation is worth", () => {
     });
 
     expect(verdict).toEqual({ ok: true });
-  });
-
-  it("refuses an edge into a mode that reads nothing upstream", () => {
-    // Drawn on the canvas it says the one is made from the other, and the
-    // panel gives the reader a row it then refuses. The group is what says
-    // they belong together.
-    const at = sourcelessOn("video");
-    const maker = pick(
-      (m) => m.nodeType === "image" && m.needs.length === 0 && m.choices.length === 0,
-      "mode making an image out of nothing",
-    );
-
-    const verdict = checkProposal({
-      nodes: [generation(maker), generation(at)],
-      edges: [{ fromIndex: 0, toIndex: 1 }],
-      rationale: "x", groupName: "g",
-    });
-
-    expect(verdict.ok).toBe(false);
-  });
-
-  it("refuses an edge carrying a kind this mode does not read", () => {
-    const at = pick(
-      (m) => !m.byReference && m.needs.length === 1 && m.needs[0] === "image",
-      "slot-fed mode reading images alone",
-    );
-    const wrong = (["audio", "video"] as const).find(
-      (kind) => canConnect(kind, at.nodeType) && !at.needs.includes(kind as GenerationNodeType),
-    );
-    if (wrong === undefined) throw new Error("no kind the canvas admits that this mode does not read");
-    const maker = pick(
-      (m) => m.nodeType === wrong && m.needs.length === 0 && m.choices.length === 0,
-      `mode making a ${wrong} out of nothing`,
-    );
-
-    const verdict = checkProposal({
-      nodes: [
-        generation(maker),
-        { role: "source", type: "image", name: "Your photo" },
-        { role: "generate", type: at.nodeType, name: "The result", mode: at.mode, model: at.model,
-          params: {}, prompt: [
-            { text: "make it move" },
-            ...Array.from({ length: at.pieces }, (_, i) => ({
-              slot: { kind: "asset" as const, label: `piece ${String(i + 1)}`, note: "Put it in" },
-            })),
-          ] },
-      ],
-      edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
-      rationale: "x", groupName: "g",
-    });
-
-    expect(verdict.ok).toBe(false);
   });
 
   it("places a flow whose material kind the canvas refuses to wire", () => {
@@ -2187,27 +1667,6 @@ describe("a model the panel draws no prompt box for", () => {
       (m) => m.nodeType === kind && m.needs.length === 0 && m.choices.length === 0,
       `mode making a ${kind} out of nothing`,
     );
-
-  it("says so when the prompt points upstream", () => {
-    const at = promptless();
-
-    const verdict = checkProposal({
-      nodes: [
-        ...at.needs.map((kind) => generation(makerOf(kind))),
-        { role: "generate", type: at.nodeType, name: "The result", mode: at.mode, model: at.model,
-          params: {}, prompt: at.needs.map(() => ({
-            slot: { kind: "ref" as const, label: "the step before", note: "" },
-          })) },
-      ],
-      edges: at.needs.map((_, i) => ({ fromIndex: i, toIndex: at.needs.length })),
-      rationale: "x", groupName: "g",
-    });
-
-    expect(verdict).toEqual({
-      ok: false,
-      reason: expect.stringContaining("draws no prompt box"),
-    });
-  });
 
   it("refuses words written where no box will hold them", () => {
     // Every mark this proposal owes is there, so the words are the one thing
