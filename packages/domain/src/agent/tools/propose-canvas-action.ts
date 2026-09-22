@@ -471,31 +471,59 @@ function checkGenerateNode(
    * @returns One node per index.
    * @throws {never} Never.
    */
-  const nodesAt = (list: readonly (number | null)[]): ProposalNode[] =>
-    list.flatMap((i) => (i === null ? [] : (proposal.nodes[i] ?? [])));
-  // One entry per node wired in, the same list the canvas writes its mentions
-  // from: a mark landing on a place with nothing in it writes no mention there
-  // and so contributes no characters here either. Compacted, this gate would
-  // measure a string the reader never receives.
-  const nameable = canName.upstream.map((i) =>
-    i === null ? null : (proposal.nodes[i] ?? null),
-  );
-  // A mark pointing upstream lands as a mention and nothing else, so one this
-  // panel refuses lands as nothing at all: the words on either side of it
-  // close up and the sentence is handed to the reader without what it was
-  // about. Which feeders a mention may name is the catalog's answer -- this
-  // model's own -- so it is settled here rather than left to the reply.
-  const points = prompt.some((segment) => segment.slot?.kind === "ref");
-  if (points && nameable.every((n) => n === null)) {
-    const named = nodesAt(held.upstream).map((n) => `"${n.name}"`);
+  const nodesAt = (list: readonly number[]): ProposalNode[] =>
+    list.flatMap((i) => proposal.nodes[i] ?? []);
+  // What each mark pointing upstream lands on, in the order the marks appear.
+  // The k-th mark is about the k-th node wired in, so the pairing is settled
+  // once here and read the same way by the gate below, the length it is
+  // measured at, and the nodes a refusal names. Asked of the whole list of
+  // feeders instead, each of those three answers a different question from
+  // the one the canvas will act on.
+  //
+  // `null` where that mark lands on nothing: a place this panel would not
+  // take a mention of, or no k-th feeder at all. A ref mark's mention IS its
+  // text (`markText` answers with the empty string for it), so a mark landing
+  // on nothing writes nothing -- the words on either side close up and the
+  // sentence reaches the reader without what it was about.
+  //
+  // Asset marks are paired the same way and are left to the agent: that mark
+  // carries its own bracketed text, so one with no source behind it still
+  // names the slot to fill, which under the slot path is the whole
+  // instruction there.
+  const pointed = prompt
+    .filter((segment) => segment.slot?.kind === "ref")
+    .map((_, k) => canName.upstream[k])
+    .map((i) => (i === undefined || i === null ? null : (proposal.nodes[i] ?? null)));
+  // Four sentences because the way out differs, and a mark landing on nothing
+  // leaves nothing on screen to work it out from: the reader is handed a
+  // sentence missing what it was about, with no bracket and no gap to see.
+  const lost = pointed.findIndex((n) => n === null);
+  if (lost !== -1) {
+    const wired = held.upstream.length;
+    if (wired === 0 && held.sources.length === 0) {
+      return {
+        ok: false,
+        reason: `"${node.name}" points at something upstream and nothing is wired into it. Wire an edge to what it draws on.`,
+      };
+    }
+    if (wired === 0) {
+      // An empty node is the place the reader fills, so it reaches the
+      // generation through the panel's material slots rather than as upstream
+      // work. The other mark is the one that names it.
+      return {
+        ok: false,
+        reason: `"${node.name}" points at something upstream, and what is wired into it is material the reader fills in. Mark it as material, or wire in the work this draws on.`,
+      };
+    }
+    if (lost >= wired) {
+      return {
+        ok: false,
+        reason: `"${node.name}" points upstream ${String(pointed.length)} time(s) and ${String(wired)} node(s) are wired into it. Each mark is about one of them, in the order they are listed.`,
+      };
+    }
     return {
       ok: false,
-      // Two sentences because the way out differs: with nothing wired in the
-      // edge is what is missing, and with something wired in that this panel
-      // cannot mention the words are.
-      reason: held.sources.length === 0 && held.upstream.length === 0
-        ? `"${node.name}" points at something upstream and nothing is wired into it. Wire an edge to what it draws on.`
-        : `"${model}" cannot carry a mention of ${named.join(", ") || "what is wired into it"}. Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
+      reason: `"${model}" cannot carry a mention of "${nodesAt(held.upstream)[lost]?.name ?? ""}". Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
     };
   }
   // What the panel's own gate would say about the box this proposal fills in.
@@ -511,7 +539,7 @@ function checkGenerateNode(
   // Measured once and reported from the same string: a sentence quoting the
   // unsubstituted length names a number below the cap it just refused on, and
   // tells the model to shorten a prompt that holds none of those characters.
-  const measured = measuredPrompt(prompt, nameable);
+  const measured = measuredPrompt(prompt, pointed);
   const verdict = evaluateExecute({
     promptText: measured,
     model,
@@ -530,7 +558,7 @@ function checkGenerateNode(
     const written = [...extractPromptText(measured)].length;
     // The words are often in another node, and "shorten it" is not something
     // the model can act on until it knows which one.
-    const holding = nameable
+    const holding = pointed
       .filter((n) => n?.role === "written")
       .map((n) => `"${n?.name ?? ""}"`);
     return {

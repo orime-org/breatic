@@ -1529,11 +1529,13 @@ describe("a mark pointing at an upstream node", () => {
     expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("writes nothing") });
   });
 
-  it("places a prompt pointing upstream more times than there are nodes to point at", () => {
-    // How many marks go in a prompt is the agent's to decide: a reader who
-    // ends up with one too many takes it out, or says so and gets another
-    // proposal. What the check answers is whether this panel can carry a
-    // mention at all.
+  it("refuses a prompt pointing upstream more times than there are nodes to point at", () => {
+    // How many marks go in a prompt is the agent's to decide, and a mark
+    // pointing at a node that is not there is not that decision: the k-th
+    // mark is about the k-th node wired in, so the later ones land on
+    // nothing. A ref mark's mention IS its text, so one landing on nothing
+    // writes nothing -- there is no bracket left on screen for the reader to
+    // take out, only a sentence closed up over what it was about.
     const at = pooled();
     const first = sourcelessOn(at.nodeType);
     const second = generation(at, 0, 3);
@@ -1546,7 +1548,10 @@ describe("a mark pointing at an upstream node", () => {
       groupName: "Two steps",
     });
 
-    expect(verdict).toEqual({ ok: true });
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("node(s) are wired into it"),
+    });
   });
 
   it("tells a written node carrying one upstream mark to take the mark out", () => {
@@ -1576,9 +1581,9 @@ describe("a mark pointing at an upstream node", () => {
 
   it("measures a mark landing on an unmentionable feeder as the nothing it writes", () => {
     // The canvas writes no mention where the feeder cannot carry one, so the
-    // characters it would have carried never reach the box. Measured off a
-    // list with that place dropped, this gate would judge a string the reader
-    // never receives -- and let a prompt land empty.
+    // characters it would have carried never reach the box. Read off a list
+    // with that place dropped, the mark would be paired with the node next
+    // along and the check would judge a string the reader never receives.
     const at = pick(
       (m) => !m.byReference && m.takesPrompt && m.needs.length > 0,
       "mode fed by a panel slot that still takes a prompt",
@@ -1598,12 +1603,93 @@ describe("a mark pointing at an upstream node", () => {
       groupName: "Two steps",
     });
 
-    // The one mark lands on the unmentionable feeder, so the box holds
-    // nothing at all and the model that draws from it is told so.
+    // The one mark lands on the unmentionable feeder, and it is named.
     expect(verdict).toEqual({
       ok: false,
-      reason: expect.stringContaining("writes nothing"),
+      reason: expect.stringContaining("cannot carry a mention of"),
     });
+  });
+
+  it("refuses a second mark when only one node is wired in to carry it", () => {
+    // The k-th mark is about the k-th node wired in, so a run with more marks
+    // than feeders leaves the last ones pointing at nothing. A ref mark lands
+    // as a mention and nothing else, so one that resolves to nothing closes
+    // the words up over the gap and hands the reader a sentence missing what
+    // it was about.
+    const at = pick(
+      (m) => m.takesPrompt && m.needs.length === 0,
+      "prompt-driven mode needing no material",
+    );
+    const pointing = generation(at, 0, 2);
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "written", type: "text", name: "The script", prompt: [{ text: "hello there" }] },
+        pointing,
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: "",
+      rationale: "",
+      groupName: "Two steps",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("node(s) are wired into it"),
+    });
+  });
+
+  it("tells a mark pointing upstream that what is wired in is material, not upstream work", () => {
+    // An empty node is the place the reader drops their own material into, so
+    // it reaches the generation through the panel's material slots rather than
+    // as upstream work. A mark pointing upstream finds nothing there, and the
+    // way out is the other mark -- saying the model cannot mention it would
+    // send the model to rewrite words that are not the problem.
+    const at = slotted();
+    const pointing = generation(at, 0, 1);
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "source", type: at.needs[0] as GenerationNodeType, name: "Yours to fill" },
+        pointing,
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: "",
+      rationale: "",
+      groupName: "Two steps",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("material"),
+    });
+  });
+
+  it("names in a too-long refusal only the nodes whose words were counted", () => {
+    // A written node reaches the count through a mark that points at it. One
+    // wired in with no mark pointing at it contributes nothing, so naming it
+    // sends the model to shorten a node that is not in the number -- and the
+    // number does not move, which leaves the refusal with no way out.
+    const at = pick(
+      (m) => m.takesPrompt && m.needs.length === 0 && m.maxInputChars !== undefined,
+      "prompt-driven mode declaring an input cap",
+    );
+    const cap = at.maxInputChars ?? 0;
+    const overlong = generation(at, 0, 0);
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "written", type: "text", name: "Pronunciation notes", prompt: [{ text: "soft" }] },
+        { ...overlong, prompt: [{ text: "x".repeat(cap + 1) }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: "",
+      rationale: "",
+      groupName: "Two steps",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.any(String) });
+    expect(verdict.ok ? "" : verdict.reason).not.toContain("Pronunciation notes");
   });
 
   it("refuses a mark pointing at a node this panel would not take a mention of", () => {
