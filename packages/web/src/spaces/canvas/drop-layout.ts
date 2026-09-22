@@ -44,7 +44,7 @@ const COLUMNS = 4;
  * not knowable here. The default footprint is far enough apart to tell the
  * nodes apart, which is all the placement is for (user 2026-09-11).
  */
-const STEP = {
+export const NODE_STEP = {
   x: EMPTY_NODE_SIZE.width + GAP_PX,
   y: EMPTY_NODE_SIZE.height + GAP_PX,
 } as const;
@@ -57,7 +57,7 @@ const STEP = {
  */
 export function dropPositionAt(origin: DropPoint, index: number): DropPoint {
   return {
-    x: origin.x + (index % COLUMNS) * STEP.x,
-    y: origin.y + Math.floor(index / COLUMNS) * STEP.y,
+    x: origin.x + (index % COLUMNS) * NODE_STEP.x,
+    y: origin.y + Math.floor(index / COLUMNS) * NODE_STEP.y,
   };
 }

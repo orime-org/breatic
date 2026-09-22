@@ -162,10 +162,13 @@ export interface AnnotationReply {
 // A text node's words live in `data.body`, an opaque `Y.XmlFragment` seeded
 // when the node is created, so two people typing in one node merge character
 // by character instead of overwriting each other. It is absent from the
-// interface below for the same reason `prompt` carries no structured type:
-// this package has no yjs dependency (it must stay browser-safe and bundles
-// through a single entry), and a live collaborative object is not wire data.
-// Read it through the web helpers `getTextBody` / `bodyToPlainText`.
+// interface below for the same reason `prompt` carries no structured type: a
+// live collaborative object is not wire data, and this interface describes
+// what the wire carries. Read it through the web helpers `getTextBody` /
+// `bodyToPlainText`; the shape written into it is `writePlainTextIntoBody`,
+// which lives in this package beside `canvas/text-body.ts` because both
+// writers need it — the browser's own landing and the server's, which
+// reaches the document through collab.
 //
 // `content` below is dead for a text node: nothing writes it (a landing task
 // puts its words in the body instead) and nothing reads it (the view
@@ -217,6 +220,21 @@ export interface CanvasNodeFields {
      * undeletable and its `content` is immutable.
      */
     locked: boolean;
+
+    /**
+     * The history row a reader last put back onto this node, when one was.
+     *
+     * "Current" in the history panel names WHICH ROW the node is on, and
+     * content cannot answer that: two snapshots of the same words are two
+     * rows a reader is allowed to keep, and asset dedup yields several rows
+     * holding one URL. The reader who restores a row gets that row, so the
+     * node remembers it (user 2026-09-20).
+     *
+     * Absent on a node whose content arrived on its own — a run, an upload.
+     * Stale once the node holds something else, which the panel settles by
+     * checking the remembered row still holds what the node shows.
+     */
+    restoredFromEntryId?: string;
 
     // ─── Tasks (all node types) ─────────────────────────────
     /** Last failure message from whatever wrote this node's content. */
@@ -275,6 +293,17 @@ export interface CanvasNodeFields {
     mediaHeight?: number;
     /** Video / audio duration in seconds. */
     duration?: number;
+    /**
+     * Media type of `content`, as the ledger judged it off the bytes that
+     * landed (#240) — the only authority on what this file is.
+     *
+     * Absent for a row stored before the ledger reported it. A reader that
+     * has to know the type, rather than merely prefer it, has to say what it
+     * does when this is missing.
+     */
+    mimeType?: string;
+    /** Byte count of `content`, as the ledger counted it. See `data.mimeType`. */
+    size?: number;
     /** Source node id when this data node was produced by a mini-tool from a parent node. */
     sourceNodeId?: string;
     /** Tool name when produced by mini-tool (e.g., 'image.crop'). */
@@ -518,13 +547,14 @@ export interface NodeTaskCounts {
 }
 
 /**
- * The five content fields a finished task writes onto its node.
+ * The content fields a finished task writes onto its node.
  *
- * The last three are measured where the bytes are — at the edge, on the way
+ * All but `content` are settled where the bytes are — at the edge, on the way
  * into R2, by the media container every lane's finish waits on — so a node
- * carries its pixel size and its duration before a byte of media is fetched.
- * A medium with no such number, and equally one the container could not read,
- * sends `null`; the node falls back to what it reads off the element.
+ * carries its pixel size, its duration, its type and its byte count before a
+ * byte of media is fetched. A medium with no such number, and equally one the
+ * container could not read, sends `null`; the node falls back to what it
+ * reads off the element.
  */
 export interface NodeTaskResult {
   content: string;
@@ -535,6 +565,10 @@ export interface NodeTaskResult {
   height: number | null;
   /** Playing time of a video or audio, in seconds. */
   duration: number | null;
+  /** Media type, as the ledger judged it off the bytes that landed. */
+  mimeType: string | null;
+  /** Byte count, as the ledger counted it off the bytes that landed. */
+  size: number | null;
 }
 
 /**

@@ -25,6 +25,14 @@ export const CANVAS_SPACE = 'data/yjs/canvas-space.ts';
 export const YJS_MANAGER = 'data/yjs/manager.ts';
 
 /**
+ * A text node's body helpers, for a caller that seeds one with words.
+ *
+ * `@breatic/shared` ships them at their own entry, so the path names that
+ * file rather than the package's main bundle, which does not carry them.
+ */
+export const TEXT_BODY = 'shared/dist/canvas/text-body.js';
+
+/**
  * Finds the url one of the page's loaded modules is served under.
  * @param page - A page with the app running on it.
  * @param path - Part of the module's source path, as `CANVAS_SPACE` gives it.

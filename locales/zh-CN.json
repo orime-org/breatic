@@ -335,6 +335,10 @@
       "cannotWrite": "你已不能在这里写了。",
       "unknownAuthor": "未知"
     },
+    "understand": {
+      "couldNotStart": "没能开始，可以重试。",
+      "sourceGone": "被读取的节点已不存在。这次理解没有连线。"
+    },
     "generatePanel": {
       "style": "风格",
       "focus": "聚焦",
@@ -504,7 +508,9 @@
       "unlock": "解锁节点",
       "resetEmpty": "重置为空图片",
       "history": "历史记录",
-      "download": "下载"
+      "snapshot": "保存快照",
+      "download": "下载",
+      "understand": "理解"
     },
     "edge": {
       "delete": "删除连线"
@@ -569,6 +575,10 @@
       "failed": "不可恢复",
       "typeGeneration": "生成",
       "typeUpload": "上传",
+      "typeSnapshot": "快照",
+      "snapshotKept": "快照已保存",
+      "snapshotEmpty": "没有内容可保存，这个节点是空的",
+      "snapshotFailed": "快照保存失败",
       "end": "没有更多了",
       "close": "关闭",
       "loadError": "历史记录加载失败",
@@ -611,13 +621,18 @@
       "failure": {
         "aborted": "上传没传完就中断了。",
         "over_cap": "这个文件超过了上传大小上限。",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {这个文件超过了理解的大小上限。} other {这个文件超过了理解的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {这个文件超过了理解的大小上限（{file}）。} other {这个文件超过了理解的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {这个文件超过了理解的大小上限（{file}，{bytes}）。} other {这个文件超过了理解的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}",
+        "understand_unsupported_type": "{file, select, none {{type, select, none {不能理解的文件类型。} other {不能理解的文件类型（{type}）。}}} other {{type, select, none {不能理解的文件类型（{file}）。} other {不能理解的文件类型（{file}，{type}）。}}}}",
         "expired": "它超时了。",
-        "no_result": "这次生成没有产出内容。",
+        "no_result": "这次运行没有产出内容。",
         "source_unreachable": "这个地址打不开。",
         "source_too_slow": "取这个地址的内容超时了。",
         "unsupported_type": "{kind, select, image {不是支持的格式，图片只收 {formats}。} video {不是支持的格式，视频只收 {formats}。} audio {不是支持的格式，音频只收 {formats}。} other {不是支持的格式。}}",
         "empty": "没有拿到任何内容。",
-        "internal": "我们这边出错了，可以重试。"
+        "internal": "我们这边出错了，可以重试。",
+        "no_credits": "没有可用积分。",
+        "declined": "模型拒绝了这次请求。",
+        "media_refused": "模型不接受这个文件。"
       }
     }
   },

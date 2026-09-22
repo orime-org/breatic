@@ -10,7 +10,7 @@ import type * as Y from 'yjs';
 
 import { _resetForTests } from '@web/data/yjs/manager';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
-import { writePlainTextIntoBody } from '@web/data/yjs/text-body';
+import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';

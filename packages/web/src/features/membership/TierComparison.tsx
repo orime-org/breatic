@@ -11,7 +11,8 @@ import type {
 } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { formatBytes, formatPrice } from '@web/features/membership/format';
+import { formatPrice } from '@web/features/membership/format';
+import { formatBytes } from '@web/lib/format-bytes';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /** The comparison table's inputs. */

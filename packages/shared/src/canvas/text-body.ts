@@ -4,6 +4,18 @@
 /**
  * Plain text in and out of a text node's shared body (#1774, design 9.2).
  *
+ * Both ends write one. The browser turns a drop, a paste or a copied node
+ * into a body, and collab turns a finished read's text into one — the same
+ * structure either way, so it is stated once.
+ *
+ * It ships as its own entry point, `@breatic/shared/canvas/text-body`, rather
+ * than through the package's barrel. The barrel is bundled into one module, so
+ * an export the browser calls from it on any page is emitted in the chunk every
+ * page downloads — and all three reach Yjs values, two by building them and
+ * `bodyToPlainText` through `blockText`, so reaching them from there dragged
+ * Yjs and lib0 along. `packages/shared/CLAUDE.md` holds the measurements and
+ * the rule for where a module like this belongs.
+ *
  * The body is a `Y.XmlFragment` the editor binds to, but three write paths
  * arrive with a plain string — a dropped file's extracted text, a paste, and a
  * copied node — and three read paths need one back: the display state, the `@`

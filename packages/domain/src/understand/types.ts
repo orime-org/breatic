@@ -11,6 +11,8 @@
  * base64 and fails to decode.
  */
 
+import type { AudioFormat, VideoFormat } from "@breatic/shared";
+
 /** Which of the three kinds an address turned out to hold. */
 export type MediaKind = "image" | "video" | "audio";
 
@@ -46,117 +48,20 @@ export type Media =
     };
 
 /**
- * What the endpoint calls each audio type it takes.
+ * The tables saying which media this endpoint takes, re-exported.
  *
- * The two names on the right are the whole of what it accepts, and neither is
- * derivable from the type on the left: the same wav file is announced as
- * `audio/wav`, `audio/x-wav`, `audio/wave` or `audio/vnd.wave` depending on
- * the server. A subtype passed through reaches the service as `x-wav` and the
- * clip is refused after it has been uploaded.
- *
- * This is the only statement of which audio can be sent. Everything upstream
- * asks it rather than keeping a list of its own, so an address is refused
- * before a byte of it travels.
+ * They live in `@breatic/shared` because the canvas asks the same question in
+ * the browser, which cannot reach this package. One statement, two readers.
  */
-export const AUDIO_FORMATS = {
-  "audio/mpeg": "mp3",
-  "audio/mp3": "mp3",
-  "audio/wav": "wav",
-  "audio/x-wav": "wav",
-  "audio/wave": "wav",
-  "audio/vnd.wave": "wav",
-} as const satisfies Readonly<Record<string, string>>;
-
-/** What the endpoint calls a format it takes. */
-export type AudioFormat = (typeof AUDIO_FORMATS)[keyof typeof AUDIO_FORMATS];
-
-/**
- * The image types this endpoint reads from an address.
- *
- * Its own words, measured: an address holding anything else comes back 400
- * with "Supported formats: PNG, JPEG, WebP, GIF. For other formats, use a data
- * URL with the MIME type specified." An image travels as its address, so this
- * is a set rather than a table — there is no second name to send it under.
- */
-export const IMAGE_TYPES: ReadonlySet<string> = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-]);
-
-/**
- * The formats in one of these tables, as a phrase to put in a sentence.
- *
- * Derived so that anything telling a reader what to convert to is saying what
- * the table says: written out by hand a list goes on naming two formats the
- * day a third is added, and nothing reports it. The subtype alone, because the
- * name a format travels under here is not always one a reader could act on —
- * this endpoint calls a .mov `video/mov`, and no converter knows that type.
- *
- * These sentences are the model's, so the list reads in English whatever the
- * reader's own language is; the line the reader sees is chosen separately and
- * translated.
- * @param names - What the endpoint calls each format it takes.
- * @returns The phrase, e.g. `mp3 and wav`.
- */
-function phrase(names: Iterable<string>): string {
-  return new Intl.ListFormat("en", { type: "conjunction" }).format(
-    [...new Set(names)].map((name) => name.split("/").pop() ?? name),
-  );
-}
-
-/** The audio formats this endpoint takes, as a phrase to put in a sentence. */
-export const AUDIO_FORMAT_NAMES = phrase(Object.values(AUDIO_FORMATS));
-
-/** The image types this endpoint reads, as a phrase to put in a sentence. */
-export const IMAGE_FORMAT_NAMES = phrase(IMAGE_TYPES);
-
-/**
- * What the endpoint calls each video type it takes.
- *
- * Its own list names four, and `video/quicktime` is not among them — which is
- * exactly what a `.mov` is served as (measured against two hosts), and .mov is
- * what an iPhone records. Everything outside this table is a video the
- * endpoint refuses, and refusing it here costs nothing while a refusal after
- * the upload costs the whole clip: an .avi is served as `video/x-msvideo`
- * (measured against filesamples.com), and nginx and Apache declare
- * `video/x-ms-wmv`, `video/3gpp` and `video/ogg` out of the box.
- *
- * This is the only statement of which video can be sent, for the same reason
- * the audio table above is the only statement of its half.
- */
-export const VIDEO_FORMATS = {
-  "video/mp4": "video/mp4",
-  "video/mpeg": "video/mpeg",
-  "video/webm": "video/webm",
-  "video/mov": "video/mov",
-  "video/quicktime": "video/mov",
-} as const satisfies Readonly<Record<string, string>>;
-
-/** What the endpoint calls a video format it takes. */
-export type VideoFormat = (typeof VIDEO_FORMATS)[keyof typeof VIDEO_FORMATS];
-
-/** The video formats this endpoint takes, as a phrase to put in a sentence. */
-export const VIDEO_FORMAT_NAMES = phrase(Object.values(VIDEO_FORMATS));
-
-/**
- * What this endpoint calls a video type, when it takes it at all.
- * @param mediaType - The type the address was settled as.
- * @returns The format name, or undefined when this video cannot be sent.
- */
-export function videoFormatOf(mediaType: string): VideoFormat | undefined {
-  return (VIDEO_FORMATS as Readonly<Record<string, VideoFormat>>)[mediaType];
-}
-
-/**
- * What this endpoint calls an audio type, when it takes it at all.
- * @param mediaType - The type the address was settled as.
- * @returns The format name, or undefined when this audio cannot be sent.
- */
-export function audioFormatOf(mediaType: string): AudioFormat | undefined {
-  return (AUDIO_FORMATS as Readonly<Record<string, AudioFormat>>)[mediaType];
-}
+export {
+  AUDIO_FORMAT_NAMES,
+  IMAGE_TYPES,
+  IMAGE_FORMAT_NAMES,
+  VIDEO_FORMAT_NAMES,
+  audioFormatOf,
+  videoFormatOf,
+} from "@breatic/shared";
+export type { AudioFormat, VideoFormat } from "@breatic/shared";
 
 /** Why an address could not be turned into media. */
 export type UnavailableKind =
@@ -334,6 +239,14 @@ export interface UnderstandAnswer {
   text: string;
   /** Why it stopped writing, in the service's own vocabulary. */
   finishReason: string;
+  /**
+   * What the service charged for the call, in US dollars.
+   *
+   * Undefined when the answer carried no usage figure. That is not zero: a
+   * run charged nothing and a run whose price is unknown want different
+   * things from the caller, and only the caller knows which.
+   */
+  costUsd?: number;
 }
 
 /** What getting one address's media needs to know. */
@@ -348,6 +261,15 @@ export interface FetchMediaRequest {
   minBytesPerSec: number;
   /** The smallest read budget, for a file too small for the rate to matter. */
   readFloorMs: number;
+  /**
+   * What this file already turned out to be, judged off its landed bytes.
+   *
+   * Our own storage answers with the type a ticket signed, which was guessed
+   * from a file name; a caller holding the ledger's judgement is holding the
+   * better answer, and the gate that let the run start used that one. Absent
+   * for a caller that has no such record — an address off the open web.
+   */
+  ledgerType?: string;
   /** Whether anyone still wants it. */
   signal?: AbortSignal;
 }
@@ -364,3 +286,22 @@ export interface FetchMediaRequest {
  * fetch's.
  */
 export type UnderstandAt = FetchMediaRequest & Omit<UnderstandRequest, "media">;
+
+/**
+ * Who answers a reading, pinned.
+ *
+ * The reader is not choosing a model — they pressed Understand, or an agent
+ * called the tool — and one model covers all three media (user 2026-09-19).
+ * The agent tool, the canvas route and the worker all read these, so a change
+ * reaches every lane at once.
+ *
+ * Fixed here rather than configured: they are what every measurement behind
+ * this capability was taken against. The backend matters on its own — the two
+ * that serve this model take different body sizes, and leaving the choice to
+ * the deployment means a clip that worked yesterday is refused today.
+ */
+export const UNDERSTAND_PINS = {
+  model: "google/gemini-3.8-flash",
+  backend: "google-vertex",
+  baseUrl: "https://openrouter.ai/api/v1",
+} as const;

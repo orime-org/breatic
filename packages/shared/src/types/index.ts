@@ -169,6 +169,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   AssetActivityPayloadSchema,
+  GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
   SpaceActivityPayloadSchema,
   MemberActivityPayloadSchema,

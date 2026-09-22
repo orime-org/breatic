@@ -26,6 +26,10 @@ import {
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
+// The reading's pinned model, passed through rather than typed out: the
+// route names it on the row, on the job and against the charge, and a copy
+// here would let all three drift from it while the suite stayed green.
+import { UNDERSTAND_PINS as REAL_UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
 
 const mockPipeline = {
   zremrangebyscore: () => mockPipeline,
@@ -152,6 +156,7 @@ export const mocks = {
     recordGenerationSuccess: vi.fn(),
     recordGenerationFailure: vi.fn(),
     recordUpload: vi.fn(),
+    recordSnapshot: vi.fn(),
   },
   // #186 — the task table behind a node's four counts.
   emitNodeTaskCounts: vi.fn(),
@@ -163,7 +168,15 @@ export const mocks = {
       id: "node-task-1",
       counts: { running: 1, done: 0, failed: 0, expired: 0 },
     }),
-    settle: vi.fn(),
+    // Shaped like the real one for the same reason `open` is: a route that
+    // reads the counts off a bare `vi.fn()` throws a TypeError, and the
+    // failure then reads as a 500 about the route rather than about the
+    // double.
+    settle: vi.fn().mockResolvedValue({
+      applied: true,
+      landed: true,
+      counts: { running: 0, done: 0, failed: 1, expired: 0 },
+    }),
     dismiss: vi.fn(),
     findById: vi.fn().mockResolvedValue(null),
     countsFor: vi.fn().mockResolvedValue({
@@ -259,6 +272,10 @@ export const mocks = {
   // publish failures (#1580 adversarial: the handling-OPEN is a hard
   // prerequisite of the gen echo chain, not best-effort).
   publishNodeEvent: vi.fn().mockResolvedValue(undefined),
+  // The sliding window behind every throttled route. Shared ref so a route
+  // test can read which action was counted — a route that carries no
+  // throttle counts nothing, and nothing else in a test says so.
+  checkRateLimit: vi.fn().mockResolvedValue(true),
   // The R2 storage adapter. Exposed on `mocks` so route tests can configure
   // publicUrl() per-test (e.g. the #1824 cover wire); default unconfigured
   // (resolves undefined) — only happy-path upload tests set it.
@@ -429,7 +446,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     },
     closeQueues: vi.fn(),
     defaultJobOpts: () => ({}),
-    checkRateLimit: vi.fn().mockResolvedValue(true),
+    checkRateLimit: mocks.checkRateLimit,
     publishNodeEvent: mocks.publishNodeEvent,
     getStorageAdapter: mocks.getStorageAdapter,
     // The mailer lives in core again (#40): collab needs to alert ops on a
@@ -504,6 +521,7 @@ export const domainMock = () => ({
   nodeTaskService: mocks.nodeTaskService,
   taskService: mocks.taskService,
   taskRepo: mocks.taskRepo,
+  UNDERSTAND_PINS: REAL_UNDERSTAND_PINS,
   creditLotService: mocks.creditLotService,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,

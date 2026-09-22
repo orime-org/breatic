@@ -82,7 +82,6 @@ const CATALOG = {
   audio: [],
   tts: [],
   three_d: [],
-  understand: [],
   total: 1,
 } as unknown as ModelCatalog;
 

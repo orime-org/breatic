@@ -153,6 +153,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   AssetActivityPayloadSchema,
+  GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
   SpaceActivityPayloadSchema,
   MemberActivityPayloadSchema,
@@ -161,6 +162,7 @@ export {
   ActivityNewSignalSchema,
 } from "@shared/types/index.js";
 export type { ControlGate } from "@shared/types/index.js";
+export type { GenerationSource } from "@shared/types/project-activity.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
   PromptSegment,
@@ -235,6 +237,7 @@ export {
   skillCommandSchema,
   taskCreateSchema,
   understandSchema,
+  nodeHistorySnapshotSchema,
   projectCreateSchema,
   checkoutSchema,
   paymentConfirmSchema,
@@ -475,12 +478,34 @@ export {
 // and the reader is whoever opens the list, in their own language.
 export {
   TASK_FAILURE_REASONS,
-  asTaskFailureReason,
+  encodeTaskFailure,
+  readTaskFailure,
   type TaskFailureReason,
 } from "@shared/types/task-failure.js";
-// The encoding those credentials use, exported for the session token the
-// Worker signs with the same secret. `btoa` refuses anything outside latin1,
-// and a storage key's extension comes from a filename we let be any Unicode.
+// Which media the understanding endpoint takes. Both ends ask it: the browser
+// before it builds anything, the backend before it sends bytes.
+export {
+  AUDIO_FORMAT_NAMES,
+  IMAGE_TYPES,
+  IMAGE_FORMAT_NAMES,
+  VIDEO_FORMAT_NAMES,
+  audioFormatOf,
+  videoFormatOf,
+  type AudioFormat,
+  type VideoFormat,
+} from "@shared/understand/media-formats.js";
+// The one word each format goes by on screen, asked by both gates that name a
+// format while refusing a file.
+export {
+  formatNameOf,
+  formatPhrase,
+} from "@shared/media/format-names.js";
+// What a stored asset is called, which is the last segment of the address it
+// is stored at — read by both ends that name a file while refusing it.
+export { assetNameFromUrl } from "@shared/media/asset-name.js";
+// Plain text in and out of a text node's body ships at
+// `@breatic/shared/canvas/text-body` — that file says why it is not here.
+
 // The arithmetic both sides of an upload read: the browser sizes each part's
 // deadline with it, and the config refuses windows narrower than what they
 // have to hold.
@@ -511,6 +536,9 @@ export {
   type IngestMeasurements,
   type MediaLimits,
 } from "@shared/upload/ingest-client.js";
+// The encoding those credentials use, exported for the session token the
+// Worker signs with the same secret. `btoa` refuses anything outside latin1,
+// and a storage key's extension comes from a filename we let be any Unicode.
 export {
   encodeBase64Utf8,
   decodeBase64Utf8,

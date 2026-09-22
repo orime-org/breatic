@@ -64,6 +64,13 @@ export type StoredAsset = IngestOutcome & {
   width: number | null;
   height: number | null;
   durationSeconds: number | null;
+  /**
+   * What the ledger judged this file to be, and counted its bytes at. The
+   * canvas gates Understand on both, so a node a backend lane puts content on
+   * needs them for the same reason it needs the numbers above.
+   */
+  mimeType: string | null;
+  sizeBytes: number | null;
 } & IngestSideEffects;
 
 /**
@@ -92,6 +99,8 @@ function landed(outcome: IngestReportOutcome, what: string): StoredAsset {
     width: outcome.width,
     height: outcome.height,
     durationSeconds: outcome.durationSeconds,
+    mimeType: outcome.mimeType,
+    sizeBytes: outcome.sizeBytes,
     ...(outcome.countsPublishFailed === true && { countsPublishFailed: true }),
     ...(outcome.reclaimQueueFailed === true && { reclaimQueueFailed: true }),
     ...(outcome.activityAppendFailed === true && {

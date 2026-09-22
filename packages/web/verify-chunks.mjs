@@ -13,8 +13,8 @@
 //   - no page sits in a closure that is not its own — not index.html's, and
 //     not another page's, which is the same "downloaded without being asked
 //     for" in a different place
-//   - no entry reaches the canvas, the document editor, the model runtime or
-//     the rich-text editor, except the one page that renders a space
+//   - no entry reaches any of the heavy things `HEAVY` below names, except
+//     the one page that renders a space
 //   - the entry closure stays inside its byte budget, which covers the heavy
 //     things nobody has thought to name yet
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
@@ -177,6 +177,22 @@ const HEAVY = [
   {
     label: 'canvas engine',
     holds: (src) => /node_modules\/@xyflow\//.test(src),
+  },
+  // The collaboration runtime, which only a space body uses. It is named here
+  // because `@breatic/shared` depends on it and that package's main entry is
+  // one bundled module: an export the browser calls that reaches Yjs is
+  // emitted in the entry chunk, and lib0 comes along behind it. Measured once,
+  // at 88,224 bytes for every reader; the byte budget below caught that, and
+  // this says which library arrived.
+  //
+  // Only `yjs` is matched. `lib0` arrives with it, so naming Yjs is enough to
+  // catch the same regression, and this build already holds a second copy of
+  // lib0 that has nothing to do with collaboration: `@blocknote/core` depends
+  // on `lib0@1.0.0-rc.22` for its id generator while listing Yjs itself as
+  // optional.
+  {
+    label: 'collaboration runtime',
+    holds: (src) => /node_modules\/yjs\//.test(src),
   },
 ];
 

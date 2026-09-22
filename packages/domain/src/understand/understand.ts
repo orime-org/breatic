@@ -123,6 +123,11 @@ interface Completion {
     error?: ServiceError;
   }>;
   error?: ServiceError;
+  /**
+   * What the call took. The backend puts it on every answer, and `cost` is
+   * the amount charged to the account, denominated in US dollars.
+   */
+  usage?: { cost?: unknown };
 }
 
 /**
@@ -226,9 +231,11 @@ async function readAnswer(
   // than a refusal, and the reason it stopped travels on in `finishReason`.
   if (choice.error && written === "") throw fromEnvelope(choice.error, text.slice(0, 300));
 
+  const charged = body.usage?.cost;
   return {
     text: written,
     finishReason: typeof choice.finish_reason === "string" ? choice.finish_reason : "unknown",
+    ...(typeof charged === "number" && Number.isFinite(charged) ? { costUsd: charged } : {}),
   };
 }
 

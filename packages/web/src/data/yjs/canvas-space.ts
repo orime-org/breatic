@@ -15,11 +15,7 @@ import { canGenerate, CANVAS_NODES_KEY } from '@breatic/shared';
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
-import {
-  bodyFromText,
-  bodyToPlainText,
-  writePlainTextIntoBody,
-} from '@web/data/yjs/text-body';
+import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
 
@@ -1484,10 +1480,12 @@ export function setNodeExtractionError(
  *   cover (image renders `content` directly, audio has none), and writing one
  *   would create a phantom asset reference the asset-GC treats as live,
  *   leaking the URL (Gate-1 R4 HIGH).
- * - Clears the media numbers (`mediaWidth` / `mediaHeight` / `duration`): a history row
- *   carries no measurement, and the node's reader prefers what is on the node
- *   over what the browser reads off the element, so a stale pair would outlive
- *   the clip it described.
+ * - Clears what described the previous file (`mediaWidth` / `mediaHeight` /
+ *   `duration` / `mimeType` / `size`): a history row carries none of it, and
+ *   both readers of these fields — the node, which prefers them over what the
+ *   browser reads off the element, and the Understand gate, which refuses by
+ *   the byte count it finds — would otherwise describe a file the node no
+ *   longer shows.
  * - Clears `errorMessage` (restoring a good result over a prior error state).
  * - Writes content and nothing else. A node's tasks are the server's to move
  *   (#186 §3.3), and a restore is the reader choosing which result the node
@@ -1499,12 +1497,18 @@ export function setNodeExtractionError(
  * @param media.content - The history row's asset URL.
  * @param media.coverUrl - Video: the row's cover (`null` clears a stale poster).
  *   image / audio: `undefined` — leave the field untouched.
+ * @param media.entryId - The history row this came from, which the panel names
+ *   "current". Absent for a caller with no row behind it.
  */
 export function restoreNodeMedia(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  media: { content: string; coverUrl: string | null | undefined },
+  media: {
+    content: string;
+    coverUrl: string | null | undefined;
+    entryId?: string;
+  },
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
@@ -1513,7 +1517,10 @@ export function restoreNodeMedia(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => {
-    data.set('content', media.content);
+    // Which field holds a node's content is decided by its type, once, in
+    // `landHandlingContent` — a text node's words live in the body the editor
+    // binds to and would be invisible in the plain field (#1774).
+    landHandlingContent(data, node.get('type'), media.content);
     if (media.coverUrl !== undefined) {
       if (media.coverUrl === null) data.delete('coverUrl');
       else data.set('coverUrl', media.coverUrl);
@@ -1526,7 +1533,19 @@ export function restoreNodeMedia(
     data.delete('mediaWidth');
     data.delete('mediaHeight');
     data.delete('duration');
+    // Same reason, one step further out: `mimeType` and `size` describe the
+    // file the previous result was, and the Understand gate reads both off the
+    // node — printing the byte count it read when it refuses. Leaving them
+    // makes that gate judge the restored file by a file it no longer shows.
+    data.delete('mimeType');
+    data.delete('size');
     data.delete('errorMessage');
+    // Which row the node is on. The reader picked this one, and two rows can
+    // hold the same thing — content alone cannot name it afterwards. A caller
+    // with no row behind it (the task list's Replace) clears the memory, so
+    // the panel falls back to what the node holds.
+    if (media.entryId !== undefined) data.set('restoredFromEntryId', media.entryId);
+    else data.delete('restoredFromEntryId');
   }, CONTENT_WRITE);
 }
 

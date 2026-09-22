@@ -40,9 +40,10 @@ vi.mock("@breatic/domain", () => ({
 vi.mock("@breatic/shared", () => ({
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
 }));
+const mockRecordGeneration = vi.hoisted(() => vi.fn());
 vi.mock("@worker/handlers/dispatch.js", () => ({
   mediaKindForActivity: vi.fn(() => "image"),
-  recordGenerationForNodes: vi.fn(),
+  recordGenerationForNodes: mockRecordGeneration,
 }));
 
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
@@ -112,3 +113,51 @@ describe("cleanupFailedJobNodes, when settling a row fails", () => {
     );
   });
 });
+
+describe("cleanupFailedJobNodes, delivering a run that was billed before the crash", () => {
+  // The row this writes is the only history the reader gets for that run, and
+  // its second line names the model. A reading's stored result says nothing
+  // about the model — the run's answer is text and a finish reason — so the
+  // name has to come from the job, which is where the two live deliveries
+  // read it from.
+  it("names the model the job ran on when the result did not say", async () => {
+    mockGetTask.mockResolvedValue({
+      userId: "user-1",
+      billedAt: new Date(),
+      billedCredits: 12,
+      durationMs: 4200,
+      params: { source_type: "image" },
+      result: { outputs: [{ content: "A red bicycle." }] },
+    });
+
+    await cleanupFailedJobNodes({} as never, understandJob(), "worker died");
+
+    expect(mockRecordGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      expect.objectContaining({
+        metadata: expect.objectContaining({ model: "google/gemini-3.8-flash" }),
+      }),
+      expect.anything(),
+    );
+  });
+});
+
+/**
+ * A terminally failed reading, billed before the worker went.
+ * @returns The job shape this handler reads.
+ */
+function understandJob(): FailedJobLike {
+  return {
+    data: {
+      taskId: "task-1",
+      userId: "user-1",
+      projectId: "proj-1",
+      spaceId: "space-1",
+      targetNodeIds: ["node-1"],
+      taskType: "understand",
+      model: "google/gemini-3.8-flash",
+    },
+    finishedOn: Date.now(),
+  } as unknown as FailedJobLike;
+}
