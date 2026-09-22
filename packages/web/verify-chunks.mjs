@@ -97,7 +97,7 @@ function entryFiles() {
   const entry = found.find(([, attribute]) => attribute === 'src')?.[2];
   // Without the one file index.html runs, no page is reachable, and the
   // sole-reader check below loses the chunk it compares against — it would
-  // report all fourteen as named by the wrong thing.
+  // report every page chunk as named by the wrong thing.
   if (entry === undefined) {
     console.error(`verify-chunks: index.html in ${DIST} runs no script`);
     process.exit(1);
