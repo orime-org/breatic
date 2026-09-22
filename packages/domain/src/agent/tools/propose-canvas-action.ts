@@ -42,12 +42,14 @@ import {
   extractPromptText,
   GENERATION_NODE_MODES,
   PANEL_EDITOR_PARAM,
+  promptPlainText,
   promptTextOf,
   referenceCapExceeded,
   type CanvasProposal,
   type CappedParam,
   type GenerationNodeType,
   type MaterialPath,
+  type PromptSegment,
   type ProposalAnswer,
   type ProposalNode,
 } from "@breatic/shared";
@@ -339,6 +341,37 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
 }
 
 /**
+ * The prompt as the panel will measure it once the group is placed.
+ *
+ * A mark pointing upstream writes no text of its own, and at Generate time
+ * the body of the text node it names takes its place in the string the panel
+ * measures (`serializePromptText`). Measured as nothing, a script past the
+ * model's cap is placed and the reader meets the refusal at a button they
+ * cannot fix from -- the words are in another node.
+ *
+ * A mark naming anything else substitutes nothing there either, so it counts
+ * for nothing here.
+ * @param prompt - The proposed prompt.
+ * @param named - The nodes its marks point at, in the order they are marked.
+ * @returns The text to measure against the model's cap.
+ * @throws {never} Never.
+ */
+function measuredPrompt(
+  prompt: readonly PromptSegment[],
+  named: readonly ProposalNode[],
+): string {
+  let seen = 0;
+  return prompt
+    .map((segment) => {
+      if (segment.slot?.kind !== "ref") return promptTextOf([segment]);
+      const node = named[seen];
+      seen += 1;
+      return node?.role === "written" ? promptPlainText(node.prompt ?? []) : "";
+    })
+    .join("");
+}
+
+/**
  * Judge one generation node against the catalog and its own group.
  * @param proposal - The whole proposal, for reading the group around it.
  * @param node - The node being judged.
@@ -385,6 +418,34 @@ function checkGenerateNode(
   if (!values.ok) return values;
 
   const prompt = node.prompt ?? [];
+  // Two ways the reader's material reaches a generation: the reference pool,
+  // which an edge feeds, and a slot on the panel's toolbar, which the reader
+  // fills by clicking any node of that kind anywhere on the canvas. Which one
+  // this model uses is what it declares, carried here by the same projection
+  // the agent is answered out of.
+  //
+  // Read before the prompt gate below, because what that gate measures
+  // depends on which nodes this prompt can name.
+  const pool = poolParam(chosen);
+  const byReference = pool !== undefined;
+  const fedFrom = new Set(
+    proposal.edges.filter((e) => e.toIndex === index).map((e) => e.fromIndex),
+  );
+  const placed = proposal.nodes.map((n, at) => ({ node: n, at }));
+  const feeders = placed.filter(({ at }) => fedFrom.has(at));
+  // One mark per node upstream this prompt can name, and no more: an edge
+  // makes that node's work available, and nothing in the prompt naming it
+  // means the Generate button will not move.
+  //
+  // Which of them can be named is not the same on the two paths. Through the
+  // pool a mention picks anything wired in. Through a slot the reader picks
+  // their material by clicking and the panel turns a mention of it away
+  // (`insertRefusal`) -- what stays nameable there is a node holding words,
+  // whose body substitutes into the prompt and asks the pool for nothing.
+  const upstream = feeders.filter(({ node: n }) => n.role !== "source");
+  const nameable = byReference
+    ? upstream
+    : upstream.filter(({ node: n }) => n.role === "written");
   // What the panel's own gate would say about the box this proposal fills in.
   // It is asked with the text the box will hold (`promptTextOf`), so the two
   // judge the same string; the sentences differ because this one is read by
@@ -396,7 +457,7 @@ function checkGenerateNode(
   // it looks. A prompt proposed at exactly the cap can therefore be refused
   // by a character once the reader mentions something in it (#268).
   const verdict = evaluateExecute({
-    promptText: promptTextOf(prompt),
+    promptText: measuredPrompt(prompt, nameable.map(({ node: n }) => n)),
     model,
     nodeStatus: "idle",
     isSubmitting: false,
@@ -432,24 +493,11 @@ function checkGenerateNode(
     };
   }
 
-  // Two ways the reader's material reaches a generation: the reference pool,
-  // which an edge feeds, and a slot on the panel's toolbar, which the reader
-  // fills by clicking any node of that kind anywhere on the canvas. Which one
-  // this model uses is what it declares, carried here by the same projection
-  // the agent is answered out of.
-  //
   // That difference decides what this generation is judged against. Through
   // the pool an edge says which nodes reach it, so it answers for its own
   // feeders and for nothing else -- a group carrying three generations has
   // three separate answers. Through a slot there is no edge to read, so every
   // empty node in the group is one the reader could pick here.
-  const pool = poolParam(chosen);
-  const byReference = pool !== undefined;
-  const fedFrom = new Set(
-    proposal.edges.filter((e) => e.toIndex === index).map((e) => e.fromIndex),
-  );
-  const placed = proposal.nodes.map((n, at) => ({ node: n, at }));
-  const feeders = placed.filter(({ at }) => fedFrom.has(at));
   const needed = sourceKinds(nodeType, mode);
   // A mode that asks for nothing has no intake path of either sort, so it too
   // answers for what is wired into it -- an empty node somewhere else in the
@@ -491,23 +539,9 @@ function checkGenerateNode(
   const usable = reaching.filter(({ node: n }) => needed.includes(n.type));
   const marks = prompt.filter((s) => s.slot?.kind === "asset");
   const points = prompt.filter((s) => s.slot?.kind === "ref");
-  // One mark per node upstream this prompt can name, and no more: an edge
-  // makes that node's work available, and nothing in the prompt naming it
-  // means the Generate button will not move.
-  //
-  // Which of them can be named is not the same on the two paths. Through the
-  // pool a mention picks anything wired in. Through a slot the reader picks
-  // their material by clicking and the panel turns a mention of it away
-  // (`insertRefusal`) -- what stays nameable there is a node holding words,
-  // whose body substitutes into the prompt and asks the pool for nothing.
-  //
   // Judged before the early return below, so a mode generating from its
   // prompt alone cannot carry a mark whose words are quietly swallowed on the
   // way to the canvas.
-  const upstream = feeders.filter(({ node: n }) => n.role !== "source");
-  const nameable = byReference
-    ? upstream
-    : upstream.filter(({ node: n }) => n.role === "written");
   if (points.length !== nameable.length) {
     // Where there is nothing to name at all, say why rather than counting:
     // the count alone sends the model off to wire something the panel would

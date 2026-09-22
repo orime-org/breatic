@@ -705,6 +705,38 @@ describe("what the model is allowed to fill in", () => {
     expect(checkProposal(propose(at, { text: "a".repeat(room) }))).toEqual({ ok: true });
   });
 
+  it("counts the words a mark pointing upstream will substitute in", () => {
+    // A ref mark writes no text of its own, and at Generate time the body of
+    // the text node it names takes its place in the string the panel measures
+    // (`serializePromptText`). Measured as nothing, a script past the cap is
+    // placed, and the reader meets the refusal at a button they cannot fix
+    // from -- the words are in another node.
+    const at = pick(
+      (m) => m.maxInputChars !== undefined && m.needs.length === 0 && m.takesPrompt,
+      "model stating an input cap and needing no material",
+    );
+    const script = "x".repeat((at.maxInputChars ?? 0) + 1);
+
+    const verdict = checkProposal({
+      nodes: [
+        { role: "written", type: "text", name: "The script", prompt: [{ text: script }] },
+        { role: "generate", type: at.nodeType, name: "The read", mode: at.mode,
+          model: at.model, params: {}, prompt: [
+            { text: "read " },
+            { slot: { kind: "ref", label: "the script", note: "" } },
+            ...(at.choices.length > 0
+              ? [{ slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" } }]
+              : []),
+          ] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "x", groupName: "g",
+    });
+
+    if (verdict.ok) throw new Error("expected a refusal");
+    expect(verdict.reason).toContain("characters");
+  });
+
   it("refuses a number outside the range the model declares", () => {
     const found = reachableModes()
       .flatMap((at) =>
