@@ -946,7 +946,13 @@
         "empty": "このドキュメントにはまだコメントがありません。本文を選択するか、行の左のハンドルを使ってください。",
         "orphaned": "コメントの対象となった文章は削除されました。",
         "resolvedGroup": "解決済み · {count}",
-        "unknownAuthor": "不明"
+        "unknownAuthor": "不明",
+        "reply": "返信…",
+        "send": "送信",
+        "resolve": "解決",
+        "reopen": "再開",
+        "deleteThread": "削除",
+        "deleteReply": "この返信を削除"
       },
       "schemaOutdated": {
         "headline": "ドキュメントエディターが更新されました",

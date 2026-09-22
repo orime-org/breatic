@@ -946,7 +946,13 @@
         "empty": "No comments yet. Select some text, or use the handle beside a line.",
         "orphaned": "The text this is about was deleted.",
         "resolvedGroup": "Resolved · {count}",
-        "unknownAuthor": "Unknown"
+        "unknownAuthor": "Unknown",
+        "reply": "Reply…",
+        "send": "Send",
+        "resolve": "Resolve",
+        "reopen": "Reopen",
+        "deleteThread": "Delete",
+        "deleteReply": "Delete this reply"
       },
       "schemaOutdated": {
         "headline": "Document editor updated",

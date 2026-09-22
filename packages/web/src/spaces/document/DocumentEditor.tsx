@@ -141,7 +141,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
         {/* Beside the body rather than over it, so opening it narrows the text
           column and closing it widens the column again (A18). */}
         {railOpen && (
-          <DocumentCommentRail editor={handle.editor} onClose={closeRail} />
+          <DocumentCommentRail
+            editor={handle.editor}
+            myRole={myRole}
+            onClose={closeRail}
+          />
         )}
       </div>
       {/* A sibling here, inside the scroller's viewport at runtime: the bar

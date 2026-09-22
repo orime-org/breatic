@@ -23,17 +23,29 @@
 import { X } from 'lucide-react';
 import * as React from 'react';
 
+import type { ProjectRole } from '@breatic/shared';
+
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { DocumentCommentCard } from '@web/spaces/document/DocumentCommentCard';
+import {
+  removeReply,
+  removeThread,
+  reopenThread,
+  replyToThread,
+  resolveThread,
+} from '@web/spaces/document/document-comment-thread-actions';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import { useCommentCards } from '@web/spaces/document/use-comment-cards';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 interface DocumentCommentRailProps {
   /** The editor whose threads this draws. */
   editor: ToolEditor;
+  /** This reader's role, which decides what the cards offer. */
+  myRole: ProjectRole;
   /** Closes the panel, which only the reader ever does. */
   onClose: () => void;
 }
@@ -45,16 +57,65 @@ type Filter = 'open' | 'all';
  * The comment panel.
  * @param root0 - Panel props.
  * @param root0.editor - The editor whose threads this draws.
+ * @param root0.myRole - This reader's role.
  * @param root0.onClose - Closes the panel.
  * @returns The panel.
  */
 export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   editor,
+  myRole,
   onClose,
 }: DocumentCommentRailProps): React.JSX.Element {
   const t = useTranslation();
   const cards = useCommentCards(editor);
   const [filter, setFilter] = React.useState<Filter>('open');
+  // Who is reading, for the rights each card draws itself with. The store is
+  // where every other surface asks the same question.
+  const viewerId = useCurrentUserStore((state) => state.user?.id);
+
+  const onReply = React.useCallback(
+    (threadId: string, body: string) => replyToThread(editor, threadId, body),
+    [editor],
+  );
+  const onResolve = React.useCallback(
+    (threadId: string) => {
+      void resolveThread(editor, threadId);
+    },
+    [editor],
+  );
+  const onReopen = React.useCallback(
+    (threadId: string) => {
+      void reopenThread(editor, threadId);
+    },
+    [editor],
+  );
+  const onDelete = React.useCallback(
+    (threadId: string) => {
+      void removeThread(editor, threadId);
+    },
+    [editor],
+  );
+  const onDeleteReply = React.useCallback(
+    (threadId: string, commentId: string) => {
+      void removeReply(editor, threadId, commentId);
+    },
+    [editor],
+  );
+
+  // One object, memoised: every card takes the same seven, and a fresh object
+  // per render would stop `DocumentCommentCard`'s memo ever bailing out.
+  const handling = React.useMemo(
+    () => ({
+      myRole,
+      viewerId,
+      onReply,
+      onResolve,
+      onReopen,
+      onDelete,
+      onDeleteReply,
+    }),
+    [myRole, viewerId, onReply, onResolve, onReopen, onDelete, onDeleteReply],
+  );
 
   const showOpen = React.useCallback(() => {
     setFilter('open');
@@ -111,7 +172,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
         ) : (
           <div className='flex flex-col gap-2.5'>
             {cards.unresolved.map((card) => (
-              <DocumentCommentCard key={card.id} card={card} />
+              <DocumentCommentCard key={card.id} card={card} {...handling} />
             ))}
             {resolved.length > 0 && (
               <div
@@ -124,7 +185,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
                   })}
                 </p>
                 {resolved.map((card) => (
-                  <DocumentCommentCard key={card.id} card={card} />
+                  <DocumentCommentCard key={card.id} card={card} {...handling} />
                 ))}
               </div>
             )}
