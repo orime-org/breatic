@@ -27,6 +27,10 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import * as React from 'react';
 
 import type { RailCard } from '@web/spaces/document/document-comment-rail';
+import {
+  threadQuoteIn,
+  threadRangesIn,
+} from '@web/spaces/document/document-comment-ranges';
 import type {
   CommentCardState,
   ThreadRange,
@@ -159,11 +163,10 @@ function drawCard(
 ): CommentCardView | null {
   const thread = source.threadStore.getThreads().get(card.id);
   if (thread === undefined) return null;
-  const at = source.store.state.threadPositions.get(card.id);
   return {
     id: card.id,
     state: card.state,
-    quote: at === undefined ? null : doc.textBetween(at.from, at.to),
+    quote: threadQuoteIn(doc, card.id),
     entries: thread.comments.map((comment) => entryOf(comment, source)),
   };
 }
@@ -243,7 +246,11 @@ export function useThreadRange(
 
   const read = React.useCallback((): ThreadRange | null => {
     if (comments === undefined || threadId === undefined) return null;
-    const next = comments.store.state.threadPositions.get(threadId) ?? null;
+    // The first stretch rather than the merged span: a comment split by an
+    // Enter would otherwise anchor its card against a box spanning the line
+    // typed into the gap.
+    const next =
+      threadRangesIn(editor.prosemirrorState.doc, threadId)[0] ?? null;
     const held = cached.current;
     if (
       held !== null &&
@@ -255,7 +262,10 @@ export function useThreadRange(
     }
     cached.current = next;
     return next;
-  }, [comments, threadId]);
+    // The body itself: the range is walked out of it, so a new document is a
+    // new answer. `cached` is what keeps the answer's identity stable across
+    // the edits that do not move this thread.
+  }, [comments, editor.prosemirrorState.doc, threadId]);
 
   return React.useSyncExternalStore(subscribe, read, read);
 }

@@ -938,6 +938,7 @@
         "placeholder": "コメントを書く",
         "post": "投稿",
         "targetGone": "対象の文章は削除されました。",
+        "dismissNotice": "閉じる",
         "cannotWrite": "ここには書き込めなくなりました。",
         "railTitle": "コメント",
         "filterOpen": "未解決",

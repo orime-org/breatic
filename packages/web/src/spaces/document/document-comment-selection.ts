@@ -17,6 +17,17 @@
  * ProseMirror calls for it. Getting there before the library's handler is a
  * matter of priority rather than of list order — see {@link selectionPlugin}.
  *
+ * A SECOND PRESS ON THE SAME COMMENT IS LEFT ALONE, because commented words
+ * can be a link as well and the link handler sits behind both comment
+ * handlers in the chain (measured: this at plugin index 3, the library's at
+ * 12, `handleClickLink` at 95). The library answers this the same way, and
+ * its own comment says why: "If the clicked thread is already selected, do
+ * nothing and let other handlers process the event (e.g. navigating a link)"
+ * (`comments/extension.ts`). Standing aside here is only half of it — the
+ * library's handler would take the press next — so what is being read is
+ * written into the library's store too, which is what makes it stand aside
+ * as well.
+ *
  * The selection holds thread ids and no position. Where a thread is, is the
  * position table's answer and it is recomputed on every change — so a
  * selection made before a peer edited the line above still points at the right
@@ -24,13 +35,35 @@
  */
 
 import { createExtension } from '@blocknote/core';
-import { Extension } from '@tiptap/core';
+import { CommentsExtension } from '@blocknote/core/comments';
+import { Extension, type Extension as TiptapExtension } from '@tiptap/core';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 import { threadsAtPosition } from '@web/spaces/document/document-comment-hit';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
+
+/** The editor surface this plugin needs, past the view. */
+interface CommentSelectionHost {
+  /**
+   * The registered extension matching a factory.
+   * @param factory - The factory to match on.
+   */
+  getExtension(factory: unknown): unknown;
+}
+
+/** The half of the library's comments store this writes. */
+interface LibrarySelectionStore {
+  readonly store: {
+    readonly state: { readonly selectedThreadId?: string };
+    setState(
+      next: (previous: { selectedThreadId?: string }) => {
+        selectedThreadId?: string;
+      },
+    ): void;
+  };
+}
 
 /**
  * The plugin's key, which is also the meta a caller selects threads with:
@@ -152,34 +185,67 @@ export function selectThreads(
  * handler answered every press first and the second of two overlapping
  * threads stayed unreachable. Priority is the knob that decides this, and
  * tiptap's extension manager is what reads it.
+ * @param editor - The editor, for telling the library what is being read.
+ * @returns The tiptap extension carrying it.
  */
-const selectionPlugin = Extension.create({
-  name: 'documentCommentSelection',
-  priority: 1000,
+function selectionPlugin(editor: CommentSelectionHost): TiptapExtension {
+  return Extension.create({
+    name: 'documentCommentSelection',
+    priority: 1000,
 
-  /**
-   * The plugin that answers a press on a highlight.
-   * @returns That plugin.
-   */
-  addProseMirrorPlugins() {
-    return [buildSelectionPlugin()];
-  },
-});
+    /**
+     * The plugin that answers a press on a highlight.
+     * @returns That plugin.
+     */
+    addProseMirrorPlugins() {
+      return [buildSelectionPlugin(editor)];
+    },
+  });
+}
 
 /**
  * The extension that answers a press on a highlight.
- * @returns The extension, for the assembly to register.
+ *
+ * Built from the editor the factory is handed, because standing aside on a
+ * second press takes writing the library's store as well as this one's.
  */
-export const documentCommentSelection = createExtension(() => ({
-  key: 'document-comment-selection',
-  tiptapExtensions: [selectionPlugin],
-}) as never);
+export const documentCommentSelection = createExtension(
+  ({ editor }: { editor: CommentSelectionHost }) =>
+    ({
+      key: 'document-comment-selection',
+      tiptapExtensions: [selectionPlugin(editor)],
+    }) as never,
+);
+
+/**
+ * Tells the library which thread is being read.
+ *
+ * Its handler answers a press on any thread that is not the one it holds, so
+ * leaving this unwritten would have it take every press this plugin lets
+ * through — and the link behind them would still never open.
+ * @param editor - The editor whose comments extension to write.
+ * @param threadId - The thread, or undefined for none.
+ */
+function tellLibrary(
+  editor: CommentSelectionHost,
+  threadId: string | undefined,
+): void {
+  const comments = editor.getExtension(CommentsExtension) as
+    | LibrarySelectionStore
+    | undefined;
+  if (comments === undefined) return;
+  if (comments.store.state.selectedThreadId === threadId) return;
+  comments.store.setState((previous) => ({ ...previous, selectedThreadId: threadId }));
+}
 
 /**
  * Builds the plugin that holds the selection and answers presses.
+ * @param editor - The editor, for telling the library what is being read.
  * @returns The plugin.
  */
-function buildSelectionPlugin(): Plugin<SelectionState> {
+function buildSelectionPlugin(
+  editor: CommentSelectionHost,
+): Plugin<SelectionState> {
   return new Plugin<SelectionState>({
     key: DOCUMENT_COMMENT_SELECTION,
     state: {
@@ -238,14 +304,25 @@ function buildSelectionPlugin(): Plugin<SelectionState> {
         if (event.button !== 0) return false;
         const hits = threadsAtPosition(view.state.doc, pos);
         const before = selectedThreadsIn(view.state);
-        // A press on plain text clears the selection and is NOT answered:
-        // it is also the press that moves the caret there.
+        // A press on plain text clears the selection and is left unanswered,
+        // so that whoever else cares about it still sees it — the link
+        // handler among them. Where the caret lands is decided in the
+        // mousedown handling and is untouched by the answer either way,
+        // measured in a browser.
         if (hits.length === 0) {
           if (before.length > 0) {
             view.dispatch(
               view.state.tr.setMeta(DOCUMENT_COMMENT_SELECTION, []),
             );
           }
+          return false;
+        }
+        // Already open: the reader is pressing the same comment again, and
+        // what they are after is whatever else those words are.
+        if (
+          hits.length === before.length &&
+          hits.every((id) => before.includes(id))
+        ) {
           return false;
         }
         view.dispatch(
@@ -264,13 +341,15 @@ function buildSelectionPlugin(): Plugin<SelectionState> {
       let last = selectedThreadsIn(view.state);
       return {
         /**
-         * Fires the listeners when the selection is not what it was.
+         * Fires the listeners when the selection is not what it was, and
+         * keeps the library's own store in step with it.
          * @param updated - The view after the change.
          */
         update: (updated): void => {
           const now = selectedThreadsIn(updated.state);
           if (now === last) return;
           last = now;
+          tellLibrary(editor, now[0]);
           listeners.forEach((listener) => {
             listener();
           });

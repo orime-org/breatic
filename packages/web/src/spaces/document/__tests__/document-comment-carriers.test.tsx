@@ -83,7 +83,10 @@ describe('the bubble bar entry', () => {
     await waitFor(() => {
       expect(screen.getByTestId('doc-comment-composer')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('doc-comment-quote')).toHaveTextContent('alpha');
+    const at = draftRangeIn(editor.prosemirrorState)!;
+    expect(editor.prosemirrorState.doc.textBetween(at.from, at.to)).toBe(
+      'alpha',
+    );
   });
 
   it('stays out of the tab order, the way the whole bar does', async () => {

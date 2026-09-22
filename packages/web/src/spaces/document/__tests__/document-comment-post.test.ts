@@ -34,7 +34,6 @@ import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
   documentCommentDraftRange,
 } from '@web/spaces/document/document-comment-draft-range';
-import { DOCUMENT_COMMENT_WRITE } from '@web/spaces/document/document-comment-orphan-sync';
 import { postComment } from '@web/spaces/document/document-comment-post';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -241,24 +240,4 @@ describe('postComment', () => {
     );
   });
 
-  it('marks the write as the reader’s, so undo takes it back', async () => {
-    // Without the meta, `isCommentOrphanSync` would read a reader's own
-    // comment as the library keeping orphan flags in step, and Cmd+Z would
-    // skip over it.
-    const { editor } = open();
-    const run = firstRun(editor);
-    aimAt(editor, { from: run.from, to: run.from + 5 });
-
-    const view = editor.prosemirrorView!;
-    const seen: boolean[] = [];
-    const original = view.dispatch.bind(view);
-    view.dispatch = (tr): void => {
-      seen.push(tr.getMeta(DOCUMENT_COMMENT_WRITE) === true);
-      original(tr);
-    };
-
-    await postComment(editor, 'a first thought');
-
-    expect(seen).toContain(true);
-  });
 });

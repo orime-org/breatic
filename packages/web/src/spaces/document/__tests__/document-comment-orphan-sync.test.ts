@@ -20,15 +20,10 @@
  * The predicate reads the transaction's steps rather than guessing from
  * content: every step adds or removes a mark, and the mark is a comment.
  *
- * That alone is not enough, and the case that shows why is a reader opening a
- * comment: putting the mark on the selected words is ALSO nothing but a
- * comment mark step, and it is the reader's own edit — Cmd+Z has to take it
- * back. So the predicate needs a second half, and it has to be one neither
- * side can get wrong: our own writes carry `DOCUMENT_COMMENT_WRITE`, the
- * library's sync carries no meta at all. Absence of that meta is what says
- * "the library did this".
- *
- * TDD: red because neither export exists yet.
+ * One answer covers both kinds of write. A reader opening a comment has the
+ * same shape as the library's rewrite, and neither belongs on the undo stack:
+ * a comment is withdrawn from the card that holds it, and the library's
+ * rewrites were never the reader's doing.
  */
 
 import { Mark, Slice } from '@tiptap/pm/model';
@@ -39,10 +34,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import {
-  DOCUMENT_COMMENT_WRITE,
-  isCommentOrphanSync,
-} from '@web/spaces/document/document-comment-orphan-sync';
+import { isCommentMarkWrite } from '@web/spaces/document/document-comment-orphan-sync';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -96,7 +88,7 @@ function commentMark(editor: Editor, orphan: boolean): Mark {
   });
 }
 
-describe('isCommentOrphanSync', () => {
+describe('isCommentMarkWrite', () => {
   it('recognises the rewrite the library makes when a thread is resolved', () => {
     // The shape of `updateMarksFromThreads`: remove the mark, add it back with
     // the other `orphan`, both over the same run.
@@ -106,14 +98,14 @@ describe('isCommentOrphanSync', () => {
       .removeMark(from, to, commentMark(editor, false))
       .addMark(from, to, commentMark(editor, true));
 
-    expect(isCommentOrphanSync(tr)).toBe(true);
+    expect(isCommentMarkWrite(tr)).toBe(true);
   });
 
   it('does not recognise a reader typing', () => {
     const editor = open();
     const { from } = firstRun(editor);
     expect(
-      isCommentOrphanSync(editor.prosemirrorState.tr.insertText('more', from)),
+      isCommentMarkWrite(editor.prosemirrorState.tr.insertText('more', from)),
     ).toBe(false);
   });
 
@@ -122,39 +114,23 @@ describe('isCommentOrphanSync', () => {
     const { from, to } = firstRun(editor);
     const bold = editor.prosemirrorState.schema.marks.bold.create(null);
     expect(
-      isCommentOrphanSync(editor.prosemirrorState.tr.addMark(from, to, bold)),
+      isCommentMarkWrite(editor.prosemirrorState.tr.addMark(from, to, bold)),
     ).toBe(false);
   });
 
-  it('does not recognise a reader opening a comment of their own', () => {
-    // Identical in shape to the sync — nothing but a comment mark step — and
-    // it is the reader's edit, so Cmd+Z has to take it back. Our own meta is
-    // the only thing that separates them.
+  it('recognises a reader opening a comment of their own', () => {
+    // Withdrawing a comment is what the card offers, so undo is not a way
+    // back from one either — and this write has the same shape as the
+    // library's, so one answer covers both.
     const editor = open();
     const { from, to } = firstRun(editor);
-    const tr = editor.prosemirrorState.tr
-      .addMark(from, to, commentMark(editor, false))
-      .setMeta(DOCUMENT_COMMENT_WRITE, true);
-
-    expect(isCommentOrphanSync(tr)).toBe(false);
-  });
-
-  it('recognises the sync even though it has the same step shape', () => {
-    // The same two steps without our meta: this is the library's, and the
-    // pair above is the reader's. Nothing but the meta tells them apart.
-    const editor = open();
-    const { from, to } = firstRun(editor);
-    const asOurs = editor.prosemirrorState.tr
-      .addMark(from, to, commentMark(editor, true))
-      .setMeta(DOCUMENT_COMMENT_WRITE, true);
-    const asTheirs = editor.prosemirrorState.tr.addMark(
+    const tr = editor.prosemirrorState.tr.addMark(
       from,
       to,
-      commentMark(editor, true),
+      commentMark(editor, false),
     );
 
-    expect(isCommentOrphanSync(asOurs)).toBe(false);
-    expect(isCommentOrphanSync(asTheirs)).toBe(true);
+    expect(isCommentMarkWrite(tr)).toBe(true);
   });
 
   it('does not recognise a transaction that also changes text', () => {
@@ -167,7 +143,7 @@ describe('isCommentOrphanSync', () => {
       .addMark(from, to, commentMark(editor, true));
     tr.step(new ReplaceStep(from, from, Slice.empty));
 
-    expect(isCommentOrphanSync(tr)).toBe(false);
+    expect(isCommentMarkWrite(tr)).toBe(false);
   });
 
   it('does not recognise an empty transaction', () => {
@@ -175,7 +151,7 @@ describe('isCommentOrphanSync', () => {
     // step" is vacuously true of an empty list — which would read a plain
     // selection change as the sync.
     const editor = open();
-    expect(isCommentOrphanSync(editor.prosemirrorState.tr)).toBe(false);
+    expect(isCommentMarkWrite(editor.prosemirrorState.tr)).toBe(false);
   });
 
   it('reads the steps, not the marks left on the document', () => {
@@ -188,6 +164,6 @@ describe('isCommentOrphanSync', () => {
     expect(tr.steps.every((step) => step instanceof AddMarkStep || step instanceof RemoveMarkStep)).toBe(
       true,
     );
-    expect(isCommentOrphanSync(tr)).toBe(true);
+    expect(isCommentMarkWrite(tr)).toBe(true);
   });
 });

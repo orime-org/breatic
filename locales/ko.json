@@ -938,6 +938,7 @@
         "placeholder": "댓글 작성",
         "post": "게시",
         "targetGone": "원문이 삭제되었습니다.",
+        "dismissNotice": "닫기",
         "cannotWrite": "여기에는 더 이상 쓸 수 없습니다.",
         "railTitle": "댓글",
         "filterOpen": "미해결",

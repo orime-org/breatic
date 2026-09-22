@@ -29,7 +29,6 @@
 import { CommentsExtension, type ThreadData } from '@blocknote/core/comments';
 
 import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
-import { DOCUMENT_COMMENT_WRITE } from '@web/spaces/document/document-comment-orphan-sync';
 
 /** The mark's name on the schema, as the library registers it. */
 const COMMENT_MARK = 'comment';
@@ -108,14 +107,7 @@ export async function postComment(
     threadId: thread.id,
     orphan: false,
   });
-  // `isCommentOrphanSync` reads a transaction of nothing but comment mark
-  // steps as the library keeping orphan flags in step, which this one looks
-  // exactly like. The meta says a reader asked for it, so Cmd+Z takes it back.
-  view.dispatch(
-    view.state.tr
-      .addMark(landing.from, landing.to, mark)
-      .setMeta(DOCUMENT_COMMENT_WRITE, true),
-  );
+  view.dispatch(view.state.tr.addMark(landing.from, landing.to, mark));
 
   return thread;
 }

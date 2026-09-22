@@ -20,9 +20,12 @@
  * the focus leaving. The demo puts the box beside the line rather than at the
  * far right of the screen.
  *
- * THE QUOTE shows the words being commented on and draws them one way for
- * both entries. Design §6.1 settles that a whole-block comment and a text one
- * are identical past the range, so nothing distinguishes them to draw.
+ * WHICH WORDS ARE BEING COMMENTED ON is said by the body itself, through
+ * `ShowSelectionExtension` — the same call the link panel makes for the same
+ * reason (`DocumentLinkPopover.tsx`): the field takes the focus, and a
+ * contenteditable that is not focused has its selection painted by nobody.
+ * The extension draws a decoration over that span, which is the document's
+ * own render and so outlives the focus leaving.
  */
 
 import {
@@ -37,6 +40,8 @@ import {
   useFloating,
   useInteractions,
 } from '@floating-ui/react';
+import { ShowSelectionExtension } from '@blocknote/core/extensions';
+import { X } from 'lucide-react';
 import * as React from 'react';
 
 import type { ProjectRole } from '@breatic/shared';
@@ -62,6 +67,19 @@ import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /** How far off the words the box sits, the gap the link panel uses. */
 const GAP_FROM_WORDS_PX = 8;
+
+/** This box's name on the selection extension, which keys its callers. */
+const SELECTION_MARK_KEY = 'documentCommentComposer';
+
+/** The half of `ShowSelectionExtension` this needs. */
+interface ShowSelectionLike {
+  /**
+   * Draws the body's selection whether or not the body has the focus.
+   * @param shouldShow - Whether to draw it.
+   * @param key - Which caller is asking.
+   */
+  showSelection(shouldShow: boolean, key: string): void;
+}
 
 interface ComposerProps {
   /** The editor the comment lands in. */
@@ -98,12 +116,20 @@ export function DocumentCommentComposer({
     () => draftRangeIn(editor.prosemirrorState),
   );
 
-  const quote =
-    aimedAt === null
-      ? ''
-      : editor.prosemirrorState.doc.textBetween(aimedAt.from, aimedAt.to);
-
   const mayWrite = canPostAnnotations(myRole);
+
+  // The words stay visible in the body while this box holds the focus.
+  React.useEffect(() => {
+    const selection = (
+      editor as unknown as {
+        getExtension(factory: unknown): ShowSelectionLike | undefined;
+      }
+    ).getExtension(ShowSelectionExtension);
+    selection?.showSelection(aimedAt !== null, SELECTION_MARK_KEY);
+    return () => {
+      selection?.showSelection(false, SELECTION_MARK_KEY);
+    };
+  }, [editor, aimedAt]);
 
   /**
    * Closes the draft's range, which is what takes the box off screen.
@@ -209,11 +235,11 @@ export function DocumentCommentComposer({
           ref={refs.setFloating}
           style={floatingStyles}
           data-testid='doc-comment-composer'
-          className={`${LINK_PANEL_SURFACE} z-50 w-64`}
+          className={`${LINK_PANEL_SURFACE} z-50 flex w-64 items-start gap-1`}
         >
           <p
             data-testid='doc-comment-dropped'
-            className='px-1 py-0.5 text-xs text-muted-foreground'
+            className='flex-1 px-1 py-0.5 text-xs text-muted-foreground'
           >
             {t(
               draft.dropped === 'targetGone'
@@ -221,6 +247,20 @@ export function DocumentCommentComposer({
                 : 'spaces.document.comment.cannotWrite',
             )}
           </p>
+          {/* Nothing else can take this away: the range is already gone, so
+              Escape and a press outside have nothing left to clear. */}
+          <Button
+            variant='ghost'
+            size='icon'
+            className='size-4.5 shrink-0'
+            aria-label={t('spaces.document.comment.dismissNotice')}
+            data-testid='doc-comment-drop-dismiss'
+            onClick={() => {
+              setDraft((current) => reduceDraft(current, { type: 'dismiss' }));
+            }}
+          >
+            <X className='h-3 w-3' />
+          </Button>
         </div>
       </FloatingPortal>
     );
@@ -239,12 +279,6 @@ export function DocumentCommentComposer({
           className={`${LINK_PANEL_SURFACE} z-50 w-64`}
           {...getFloatingProps()}
         >
-          <p
-            data-testid='doc-comment-quote'
-            className='mb-2 truncate border-l border-border pl-1.5 text-xs text-muted-foreground'
-          >
-            {quote}
-          </p>
           <div className='flex gap-1.5'>
             <Input
               data-testid='doc-comment-input'

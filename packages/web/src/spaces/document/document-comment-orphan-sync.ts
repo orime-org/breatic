@@ -2,32 +2,31 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Telling the library's orphan sync from a reader's own comment (#18, A16).
+ * Keeping comment highlights off the undo stack (#18, A16).
  *
- * When a thread is resolved, deleted or gone, the library walks the body and
- * rewrites every mark carrying that thread id so its `orphan` attribute
- * agrees — `updateMarksFromThreads`, called from the thread store's
- * subscription. It goes through `editor.transact` and sets NO meta
- * (`comments/extension.ts:130-173` has no `setMeta`), so it satisfies all
- * three conditions this Space uses for "the reader's own edit": the doc
- * changed, nothing appended it, and it is not the sync binding.
+ * A comment is withdrawn through the card that holds it — Delete for the
+ * whole thread, Resolve to settle it — and both take its highlight away. That
+ * is the way back, so Cmd+Z is not one: a reader pressing it is reaching for
+ * the last thing they wrote, and a highlight is not it (user 2026-09-22).
  *
- * Left alone it therefore lands on the undo stack, and a reader pressing
- * Cmd+Z right after a PEER resolved a thread takes back that peer's highlight
- * change instead of their own last edit. §5.1.1 puts machine-derived
- * decorative syncs off the stack, and design §9.3 has the transition table.
+ * Which makes this one rule rather than two. Both kinds of write to a comment
+ * mark are a transaction of nothing but comment mark steps:
  *
- * ## Why the step shape is not enough on its own
+ * - the reader opening a comment, marking the words they selected;
+ * - the library rewriting `orphan` for every mark of a thread that was
+ *   resolved, deleted or lost its text (`updateMarksFromThreads`, called from
+ *   the thread store's subscription, `comments/extension.ts:130-173`).
  *
- * A reader opening a comment writes a comment mark over the selected words,
- * and that is a transaction of nothing but comment mark steps — exactly what
- * the sync looks like. It is the reader's edit and Cmd+Z has to take it back,
- * so a predicate reading only the steps would push their own comment off the
- * stack too.
+ * Neither belongs on the stack, so neither needs telling apart. What made the
+ * second one urgent stays true: it runs on a PEER's resolve as a local
+ * transaction here, and captured, it would hand the reader's Cmd+Z somebody
+ * else's highlight change instead of their own last edit.
  *
- * So the second half is a meta neither side can get wrong: every write this
- * Space makes to a comment mark carries {@link DOCUMENT_COMMENT_WRITE}, and
- * the library's sync carries no meta at all. Absence is the signal.
+ * Posting also writes the thread itself into its map, and that write is out
+ * of this stack's scope to begin with — `createDocumentUndo` scopes the
+ * manager to the body fragment. So neither half of posting is undoable, and
+ * there is no half-taken-back state where the highlight goes and the thread
+ * stays.
  */
 
 import type { Transaction } from '@tiptap/pm/state';
@@ -35,15 +34,6 @@ import { AddMarkStep, RemoveMarkStep } from '@tiptap/pm/transform';
 
 /** The mark's name on the schema, as the library registers it. */
 const COMMENT_MARK = 'comment';
-
-/**
- * The meta every comment-mark write of ours carries.
- *
- * Its only job is to be absent from the library's own sync, which sets no
- * meta — so this says "a reader asked for this", and its absence on a
- * transaction of pure comment mark steps says the library did it.
- */
-export const DOCUMENT_COMMENT_WRITE = 'documentCommentWrite';
 
 /**
  * Whether one step only puts a comment mark on or takes one off.
@@ -58,16 +48,14 @@ function isCommentMarkStep(step: Transaction['steps'][number]): boolean {
 }
 
 /**
- * Whether this transaction is the library rewriting orphan flags.
+ * Whether this transaction does nothing but move comment highlights.
  * @param tr - The transaction being applied.
- * @returns True only for the library's sync — a non-empty transaction of
- *   comment mark steps that nothing in this Space asked for.
+ * @returns True for a non-empty transaction of comment mark steps alone.
  */
-export function isCommentOrphanSync(tr: Transaction): boolean {
+export function isCommentMarkWrite(tr: Transaction): boolean {
   // An empty transaction has no steps, and "every step is a comment mark
   // step" is vacuously true of an empty list — which would read a bare
-  // selection change as the sync.
+  // selection change as one of these.
   if (tr.steps.length === 0) return false;
-  if (tr.getMeta(DOCUMENT_COMMENT_WRITE) === true) return false;
   return tr.steps.every(isCommentMarkStep);
 }

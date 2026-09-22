@@ -2,21 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Cmd+Z takes back the reader's own edit, not a peer's resolve (#18, A16).
+ * Cmd+Z takes back the reader's own text edit, never a comment (#18, A16).
  *
- * The library keeps every comment mark's `orphan` attribute in step with its
- * thread, and it does that from the thread store's subscription — so a PEER
- * resolving a thread produces a local transaction here, through
- * `editor.transact` with no meta at all. That satisfies every condition this
- * Space uses for "the reader's own edit", so without the fourth condition
- * (design §9.3) it becomes the top of the undo stack, and the reader's next
- * Cmd+Z takes back a highlight change they did not make while their own last
- * edit stays put.
+ * A comment is withdrawn from the card that holds it, so undo is not the way
+ * back from one — and the library's `orphan` rewrites are not the reader's
+ * doing at all: they run from the thread store's subscription, so a PEER
+ * resolving a thread produces a local transaction here. Both are transactions
+ * of nothing but comment mark steps, and neither goes on the stack.
  *
  * What these pin is the outcome rather than the marker: press undo and see
  * which change came back.
- *
- * TDD: red because the undo plugin does not know about the sync yet.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -30,7 +25,6 @@ import {
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
-import { DOCUMENT_COMMENT_WRITE } from '@web/spaces/document/document-comment-orphan-sync';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 
@@ -109,9 +103,7 @@ function readerOpensAComment(editor: Editor): void {
     threadId: 't1',
     orphan: false,
   });
-  view.dispatch(
-    view.state.tr.addMark(from, to, mark).setMeta(DOCUMENT_COMMENT_WRITE, true),
-  );
+  view.dispatch(view.state.tr.addMark(from, to, mark));
 }
 
 /**
@@ -192,28 +184,29 @@ function peerPostsAThread(doc: Y.Doc): void {
   }, 'a peer');
 }
 
-describe('undo after the library syncs an orphan flag', () => {
-  it('takes back the comment the reader opened, not the flag rewrite', () => {
+describe('undo around comment highlights', () => {
+  it('leaves both the reader-made highlight and the flag rewrite alone', () => {
     const { editor, manager } = open();
 
     readerOpensAComment(editor);
     manager.stopCapturing();
-    expect(commentMarks(editor)).toEqual([{ threadId: 't1', orphan: false }]);
-
     libraryMarksItOrphaned(editor);
-    expect(commentMarks(editor)).toEqual([{ threadId: 't1', orphan: true }]);
+    manager.stopCapturing();
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('!', firstRun(editor).to - 1));
+    manager.stopCapturing();
 
     editor.undo();
 
-    // The reader's own last edit was opening the comment, so that is what
-    // comes back. Had the sync been captured, the mark would still be here
-    // with `orphan: false` — the flag rewrite undone instead.
-    expect(commentMarks(editor)).toEqual([]);
+    // Neither highlight write went on the stack, so the one press reaches
+    // past both to the text edit and leaves the mark where it is.
+    expect(editor.prosemirrorState.doc.textContent).not.toContain('!');
+    expect(commentMarks(editor)).toEqual([{ threadId: 't1', orphan: true }]);
   });
 
-  it('still takes back a comment the reader opens after a sync', () => {
-    // The fourth condition sets the marker false, and this is what says the
-    // reader's next edit puts it back to true rather than being swallowed.
+  it('still takes back a text edit the reader makes after a sync', () => {
+    // A highlight write leaves the marker false, and this says the reader's
+    // next real edit puts it back to true rather than being swallowed.
     const { editor, manager } = open();
 
     readerOpensAComment(editor);
@@ -231,7 +224,7 @@ describe('undo after the library syncs an orphan flag', () => {
     expect(editor.prosemirrorState.doc.textContent).not.toContain('!');
   });
 
-  it('leaves the reader their own text edit to undo as well', () => {
+  it('reaches past a sync on its own to the last text edit', () => {
     const { editor, manager } = open();
 
     libraryMarksItOrphaned(editor);
@@ -239,9 +232,6 @@ describe('undo after the library syncs an orphan flag', () => {
 
     editor.undo();
 
-    // Nothing of the reader's was on the stack above the initial content, so
-    // undo reaches back to before the paragraph was written rather than
-    // taking back the sync.
     expect(editor.prosemirrorState.doc.textContent).not.toContain(
       'words to discuss',
     );
@@ -249,48 +239,53 @@ describe('undo after the library syncs an orphan flag', () => {
 });
 
 describe('undo right after posting a comment', () => {
-  it('takes the whole comment back, thread and highlight together', async () => {
-    // Posting is two writes — the thread into its map, the mark onto the
-    // words — and a reader who presses Cmd+Z is taking back the one thing
-    // they did. Leaving the thread behind makes the panel say the text was
-    // deleted, which is untrue, and keeps the unresolved dot lit forever.
-    //
-    // Every editor that models comments as marks puts them in undo's reach
-    // for this reason; it is why Remirror and Collaborne both moved
-    // highlights out of a side table and into the document.
+  it('leaves the comment alone, highlight and thread both', async () => {
+    // A comment is withdrawn from the card that holds it — Delete, or Resolve
+    // to settle it — so Cmd+Z is not the way back from one (user 2026-09-22).
+    // Posting is two writes and only one of them was ever reachable by undo,
+    // so taking that one back left the highlight gone with the thread still
+    // there: the panel then said the text was deleted, which was untrue, and
+    // the unresolved dot stayed lit.
     const { editor, manager, doc } = openWithComments();
 
     await postAComment(editor);
     expect(commentMarks(editor)).toHaveLength(1);
     expect(threadCount(doc)).toBe(1);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('!', firstRun(editor).to - 1));
+    manager.stopCapturing();
 
     manager.undo();
 
-    expect(commentMarks(editor)).toHaveLength(0);
-    expect(threadCount(doc)).toBe(0);
+    expect(editor.prosemirrorState.doc.textContent).not.toContain('!');
+    expect(commentMarks(editor)).toHaveLength(1);
+    expect(threadCount(doc)).toBe(1);
   });
 
-  it('brings it back on redo', async () => {
-    const { editor, manager, doc } = openWithComments();
+  it('reaches past it to the text edit the reader made before', async () => {
+    // Undo is not swallowed by a comment sitting on top of the stack: it
+    // never went on the stack, so the reader's last real edit is still what
+    // comes back.
+    const { editor, manager } = openWithComments();
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('!', firstRun(editor).to - 1));
+    manager.stopCapturing();
+    expect(editor.prosemirrorState.doc.textContent).toContain('!');
+
     await postAComment(editor);
-
     manager.undo();
-    manager.redo();
 
+    expect(editor.prosemirrorState.doc.textContent).not.toContain('!');
     expect(commentMarks(editor)).toHaveLength(1);
-    expect(threadCount(doc)).toBe(1);
   });
 
   it('leaves a thread a peer wrote where it is', async () => {
-    // Undo is per-reader: `trackedOrigins` decides what this manager owns,
-    // and a peer's write carries an origin it does not track.
     const { editor, manager, doc } = openWithComments();
     await postAComment(editor);
     peerPostsAThread(doc);
-    expect(threadCount(doc)).toBe(2);
 
     manager.undo();
 
-    expect(threadCount(doc)).toBe(1);
+    expect(threadCount(doc)).toBe(2);
   });
 });

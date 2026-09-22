@@ -17,12 +17,12 @@
  * vendor's help pages answer it, so there is no product convention to follow
  * — only these.)
  *
- * `orphan` is deliberately not consulted, unlike in the library's handler.
- * The library sets that attribute from `!thread || resolved || deletedAt`
- * (`extension.ts:138-142`), so a resolved thread whose text is intact carries
- * `orphan: true`; filtering on it would make that highlight unreachable. What
- * a press should do about a resolved thread is the panel's question — this one
- * only answers which threads are under the pointer.
+ * `orphan` is read, as the library's own handler reads it: what a reader can
+ * press is what is drawn for them. The library sets that attribute from
+ * `!thread || resolved || deletedAt` (`extension.ts:138-142`) and
+ * `.bn-thread-mark[data-orphan='true']` paints it transparent, so those words
+ * look like any others on the page — and a press there belongs to whoever
+ * else wants it, the link handler among them.
  *
  * The position-to-node step is the library's own, `nodeAt`, so a press lands
  * on the same run in both. Its edge behaviour comes with it: a position
@@ -35,11 +35,11 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 const COMMENT_MARK = 'comment';
 
 /**
- * Every thread whose highlight covers one position.
+ * Every thread whose painted highlight covers one position.
  * @param doc - The document the press landed in.
  * @param pos - Where in the document it landed.
  * @returns The thread ids there, in the order the marks carry them; empty
- *   where the press reached no node or no highlight.
+ *   where the press reached no node, no highlight, or only unpainted ones.
  */
 export function threadsAtPosition(
   doc: PMNode,
@@ -54,6 +54,8 @@ export function threadsAtPosition(
   if (node === null) return [];
 
   return node.marks
-    .filter((mark) => mark.type.name === COMMENT_MARK)
+    .filter(
+      (mark) => mark.type.name === COMMENT_MARK && mark.attrs.orphan !== true,
+    )
     .map((mark) => mark.attrs.threadId as string);
 }

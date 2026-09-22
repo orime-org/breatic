@@ -38,7 +38,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { isCommentOrphanSync } from '@web/spaces/document/document-comment-orphan-sync';
+import { isCommentMarkWrite } from '@web/spaces/document/document-comment-orphan-sync';
 import { documentUndoSelectionPlugin } from '@web/spaces/document/document-undo-selection';
 
 /** Computed once; the schema is fixed for the lifetime of the bundle. */
@@ -174,16 +174,13 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
  * refused. Upstream asks the same two questions together at `:214`.
  *
  * A third kind answers WRONGLY BY DEFAULT rather than by being let through,
- * so it is named false instead of passed over: the comments library keeps
- * every highlight's `orphan` attribute in step with its thread, from the
- * thread store's subscription, through a transaction carrying no meta at all
- * (`comments/extension.ts:130-173`). No meta means it passes all three tests
- * above and reads as the reader's own edit — so a PEER resolving a thread
- * would become the top of this reader's undo stack, and their next Cmd+Z
- * would take back a highlight change they never made. Passing over would not
- * help: the marker would keep the `true` their last real edit left, and the
- * sync would be captured anyway. §5.1.1 puts machine-derived decorative syncs
- * off the stack; design §9.3 carries the transition table.
+ * so it is named false instead of passed over: a transaction that only moves
+ * comment highlights. A comment is withdrawn from the card that holds it, so
+ * Cmd+Z is not the way back from one, and the library's own `orphan` rewrites
+ * are not the reader's doing at all — {@link isCommentMarkWrite} carries both
+ * halves of that reasoning. Passing over would not help: the marker would
+ * keep the `true` their last real edit left, and the highlight write would be
+ * captured anyway.
  * @param marker - The marker the manager reads.
  * @returns The ProseMirror plugin.
  */
@@ -213,7 +210,7 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
           sync?.isChangeOrigin !== true
         ) {
           marker.userDriven =
-            !isCommentOrphanSync(tr) && tr.getMeta('addToHistory') !== false;
+            !isCommentMarkWrite(tr) && tr.getMeta('addToHistory') !== false;
         }
         return null;
       },

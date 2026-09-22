@@ -15,11 +15,10 @@
  * canvas annotations, and both leave the notice standing until the reader
  * dismisses it or opens another box.
  *
- * The quote shows the words the comment is about, and it does not distinguish
- * a whole-block comment from a text one: design §6.1 settles that the two
- * entries are identical past the range, so there is no kind to draw.
- *
- * TDD: red because the component does not exist yet.
+ * Which words are being commented on is said by the body itself, through
+ * `ShowSelectionExtension` — the box holds only the field. Design §6.1
+ * settles that a whole-block comment and a text one are identical past the
+ * range, so there is no kind to draw either way.
  */
 
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
@@ -94,6 +93,13 @@ function aimAt(editor: Editor, range: { from: number; to: number }): void {
   view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, range));
 }
 
+/** The words the open draft is aimed at, as the body stands. */
+function aimedWords(editor: Editor): string {
+  const at = draftRangeIn(editor.prosemirrorState);
+  if (at === null) return '';
+  return editor.prosemirrorState.doc.textBetween(at.from, at.to);
+}
+
 /** The composer, rendered over one editor. */
 function show(editor: Editor, myRole: 'editor' | 'viewer' = 'editor'): void {
   render(<DocumentCommentComposer editor={editor} myRole={myRole} />);
@@ -107,7 +113,7 @@ describe('DocumentCommentComposer', () => {
     expect(screen.queryByTestId('doc-comment-composer')).toBeNull();
   });
 
-  it('appears when a draft opens, showing the words it is about', async () => {
+  it('appears on the words the draft is aimed at', async () => {
     const { editor } = open();
     const run = firstRun(editor);
     show(editor);
@@ -117,7 +123,7 @@ describe('DocumentCommentComposer', () => {
     await waitFor(() => {
       expect(screen.getByTestId('doc-comment-composer')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('doc-comment-quote')).toHaveTextContent('alpha');
+    expect(aimedWords(editor)).toBe('alpha');
   });
 
   it('posts what the reader typed, marking the words', async () => {
@@ -267,16 +273,17 @@ describe('DocumentCommentComposer', () => {
   });
 
   it('follows the words when a peer inserts text above', async () => {
-    // The quote is read from the range as it stands, so it keeps naming the
-    // same words rather than whatever now sits at those offsets.
+    // The range is mapped through every edit, so it keeps naming the same
+    // words rather than whatever now sits at those offsets.
     const { editor } = open();
     const run = firstRun(editor);
     show(editor);
     aimAt(editor, { from: run.from + 6, to: run.from + 11 });
 
     await waitFor(() => {
-      expect(screen.getByTestId('doc-comment-quote')).toHaveTextContent('bravo');
+      expect(screen.getByTestId('doc-comment-composer')).toBeInTheDocument();
     });
+    expect(aimedWords(editor)).toBe('bravo');
 
     const view = editor.prosemirrorView!;
     view.dispatch(
@@ -287,7 +294,7 @@ describe('DocumentCommentComposer', () => {
     view.dispatch(view.state.tr.insertText('xx ', run.from));
 
     await waitFor(() => {
-      expect(screen.getByTestId('doc-comment-quote')).toHaveTextContent('bravo');
+      expect(aimedWords(editor)).toBe('bravo');
     });
   });
 
@@ -328,19 +335,6 @@ describe('DocumentCommentComposer', () => {
 
     await waitFor(() => {
       expect(screen.queryByTestId('doc-comment-composer')).toBeNull();
-    });
-  });
-
-  it('quotes the whole range, whatever its length', async () => {
-    const { editor } = open();
-    const run = firstRun(editor);
-    show(editor);
-    aimAt(editor, { from: run.from, to: run.from + 11 });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('doc-comment-quote')).toHaveTextContent(
-        'alpha bravo',
-      );
     });
   });
 });
