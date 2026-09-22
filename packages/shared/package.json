@@ -9,7 +9,7 @@
       "import": "./dist/index.js",
       "types": "./src/index.ts"
     },
-    "./canvas-body": {
+    "./canvas/text-body": {
       "import": "./dist/canvas/text-body.js",
       "types": "./src/canvas/text-body.ts"
     }

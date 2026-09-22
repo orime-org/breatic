@@ -19,7 +19,7 @@
 import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
-import { bodyToPlainText } from "@breatic/shared/canvas-body";
+import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 
 /**
  * A doc holding one node, shaped the way the canvas stores them: the nodes

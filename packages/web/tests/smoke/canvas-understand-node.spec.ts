@@ -103,9 +103,12 @@ async function seedNode(opts: {
       if (spec.body !== undefined) {
         // The body helpers have their own entry point, so the module to ask
         // for is that one — the package's main bundle does not carry them.
+        // Matched on the last two path segments: the dev server hands a linked
+        // workspace package over by file path (`…/shared/dist/canvas/…`) and a
+        // pre-bundled one under a flattened id (`…shared_canvas_…`), and only
+        // this module ends either of them.
         const shared = (await import(
-          /* @vite-ignore */
-          live(/@breatic_shared_canvas-body|shared\/dist\/canvas\/text-body\.js/)
+          /* @vite-ignore */ live(/canvas[_/]text-body/)
         )) as { writePlainTextIntoBody: (b: unknown, t: string) => void };
         shared.writePlainTextIntoBody(
           canvas.getTextBody(pid, sid, spec.id),

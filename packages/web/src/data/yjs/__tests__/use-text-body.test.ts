@@ -29,7 +29,7 @@ import type { CanvasNodeFields } from '@breatic/shared';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { addNode, getTextBody, ensureTextBody } from '@web/data/yjs/canvas-space';
 import { useTextBody, useTextBodies } from '@web/data/yjs/use-text-body';
-import { writePlainTextIntoBody } from '@breatic/shared/canvas-body';
+import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 
 const PID = 'p1';
 const SID = 's1';

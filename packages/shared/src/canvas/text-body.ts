@@ -8,12 +8,21 @@
  * into a body, and collab turns a finished read's text into one — the same
  * structure either way, so it is stated once.
  *
- * This is the package's own entry point, `@breatic/shared/canvas-body`, and
- * the barrel does not re-export it. The barrel is bundled into one module, so
- * an export the browser reaches from it on any page is downloaded on every
- * page; reaching Yjs from there put 88 KB of library in front of every reader
- * who opened the login screen. Anything else here that reaches a heavy
- * dependency belongs at its own entry for the same reason.
+ * It ships as its own entry point, `@breatic/shared/canvas/text-body`, rather
+ * than through the package's barrel. The barrel is bundled into one module, so
+ * an export the browser calls from it on any page is emitted in the chunk every
+ * page downloads — and these three call `new Y.XmlElement`, so reaching them
+ * from there dragged Yjs and lib0 along: 1,141,205 bytes for every reader who
+ * opened the login screen against 1,052,981 once they moved here.
+ *
+ * What decides this is whether an export the browser calls touches the heavy
+ * dependency, which is narrower than whether its file imports one.
+ * `document-body.ts` imports Yjs and stays in the barrel: the only export web
+ * calls from it, `documentBodyFragment`, is `doc.getXmlFragment(key)` and names
+ * no Yjs value, so the rest of that module and the import with it are dropped.
+ * `packages/web/verify-chunks.mjs` names Yjs among the things no entry may
+ * download, so a regression says which library arrived rather than only that a
+ * number grew.
  *
  * The body is a `Y.XmlFragment` the editor binds to, but three write paths
  * arrive with a plain string — a dropped file's extracted text, a paste, and a

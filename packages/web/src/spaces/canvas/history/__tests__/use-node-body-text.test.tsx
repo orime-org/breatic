@@ -16,7 +16,7 @@
 import type * as Y from 'yjs';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { writePlainTextIntoBody } from '@breatic/shared/canvas-body';
+import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import type { CanvasNodeFields } from '@breatic/shared';
 
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';

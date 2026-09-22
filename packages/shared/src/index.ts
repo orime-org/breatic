@@ -503,14 +503,8 @@ export {
 // What a stored asset is called, which is the last segment of the address it
 // is stored at — read by both ends that name a file while refusing it.
 export { assetNameFromUrl } from "@shared/media/asset-name.js";
-// Plain text in and out of a text node's body lives at `@breatic/shared/canvas-body`,
-// its own entry point, because it is the one module here that reaches Yjs. This
-// file is bundled into a single module, so whatever the browser imports from it
-// on any page is downloaded on every page — an export reaching Yjs from here
-// costs every reader 88 KB of a library only the canvas opens.
-// The encoding those credentials use, exported for the session token the
-// Worker signs with the same secret. `btoa` refuses anything outside latin1,
-// and a storage key's extension comes from a filename we let be any Unicode.
+// Plain text in and out of a text node's body ships at
+// `@breatic/shared/canvas/text-body` — that file says why it is not here.
 // The arithmetic both sides of an upload read: the browser sizes each part's
 // deadline with it, and the config refuses windows narrower than what they
 // have to hold.
@@ -541,6 +535,9 @@ export {
   type IngestMeasurements,
   type MediaLimits,
 } from "@shared/upload/ingest-client.js";
+// The encoding those credentials use, exported for the session token the
+// Worker signs with the same secret. `btoa` refuses anything outside latin1,
+// and a storage key's extension comes from a filename we let be any Unicode.
 export {
   encodeBase64Utf8,
   decodeBase64Utf8,

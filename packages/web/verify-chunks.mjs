@@ -178,6 +178,16 @@ const HEAVY = [
     label: 'canvas engine',
     holds: (src) => /node_modules\/@xyflow\//.test(src),
   },
+  // The collaboration runtime, which only a space body uses. It is named here
+  // because `@breatic/shared` depends on it and that package's main entry is
+  // one bundled module: an export the browser calls from it that touches Yjs
+  // is emitted in the entry chunk, and Yjs plus lib0 follow. Measured once, at
+  // 88,224 bytes for every reader; the byte budget below caught that, and this
+  // says which library arrived.
+  {
+    label: 'collaboration runtime',
+    holds: (src) => /node_modules\/(yjs|lib0)\//.test(src),
+  },
 ];
 
 /**

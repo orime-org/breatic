@@ -76,7 +76,7 @@ import { assetsApi } from '@web/data/api';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
-import { bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas-body';
+import { bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import * as downloadLib from '@web/lib/download';

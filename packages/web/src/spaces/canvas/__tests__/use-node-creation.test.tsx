@@ -10,7 +10,7 @@ import type { ContentNodeView, NodeView } from '@web/data/yjs/node-view';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
-import { bodyToPlainText } from '@breatic/shared/canvas-body';
+import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 
