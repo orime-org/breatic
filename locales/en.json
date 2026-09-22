@@ -934,6 +934,12 @@
         "ai_illustrate": "Illustrate this passage",
         "ai_custom": "Custom instruction…"
       },
+      "comment": {
+        "placeholder": "Write a comment…",
+        "post": "Post",
+        "targetGone": "The text is gone.",
+        "cannotWrite": "You can no longer write here."
+      },
       "schemaOutdated": {
         "headline": "Document editor updated",
         "body": "This page is running an older version, and editing here would damage what others have written.",

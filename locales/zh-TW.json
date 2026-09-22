@@ -903,7 +903,7 @@
         "strike": "刪除線",
         "underline": "底線",
         "code": "行內程式碼",
-        "comment": "評論",
+        "comment": "批註",
         "ai": "AI",
         "comingLabel": "{name}（未開放）",
         "link": "連結",
@@ -933,6 +933,12 @@
         "ai_storyboard": "產生分鏡表",
         "ai_illustrate": "依這段產生示意圖",
         "ai_custom": "自訂要求…"
+      },
+      "comment": {
+        "placeholder": "寫一條批註…",
+        "post": "提交",
+        "targetGone": "原文已刪除。",
+        "cannotWrite": "你已無法在這裡書寫。"
       },
       "schemaOutdated": {
         "headline": "文件編輯器已更新",

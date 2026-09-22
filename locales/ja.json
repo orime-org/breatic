@@ -934,6 +934,12 @@
         "ai_illustrate": "この段落から図を作る",
         "ai_custom": "カスタム指示…"
       },
+      "comment": {
+        "placeholder": "コメントを書く",
+        "post": "投稿",
+        "targetGone": "対象の文章は削除されました。",
+        "cannotWrite": "ここには書き込めなくなりました。"
+      },
       "schemaOutdated": {
         "headline": "ドキュメントエディターが更新されました",
         "body": "このページは古いバージョンで動作しており、ここで編集すると他の人が書いた内容を壊してしまいます。",

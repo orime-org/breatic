@@ -934,6 +934,12 @@
         "ai_illustrate": "이 문단으로 그림 만들기",
         "ai_custom": "직접 지시…"
       },
+      "comment": {
+        "placeholder": "댓글 작성",
+        "post": "게시",
+        "targetGone": "원문이 삭제되었습니다.",
+        "cannotWrite": "여기에는 더 이상 쓸 수 없습니다."
+      },
       "schemaOutdated": {
         "headline": "문서 편집기가 업데이트되었습니다",
         "body": "이 페이지는 이전 버전으로 실행 중이며, 여기서 편집하면 다른 사람이 작성한 내용이 손상됩니다.",

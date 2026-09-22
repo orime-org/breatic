@@ -903,7 +903,7 @@
         "strike": "删除线",
         "underline": "下划线",
         "code": "行内代码",
-        "comment": "评论",
+        "comment": "批注",
         "ai": "AI",
         "comingLabel": "{name}（未开放）",
         "link": "链接",
@@ -933,6 +933,12 @@
         "ai_storyboard": "生成分镜表",
         "ai_illustrate": "据这段生成示意图",
         "ai_custom": "自定义要求…"
+      },
+      "comment": {
+        "placeholder": "写一条批注…",
+        "post": "提交",
+        "targetGone": "原文已删除。",
+        "cannotWrite": "你已不能在这里写了。"
       },
       "schemaOutdated": {
         "headline": "文档编辑器已更新",
