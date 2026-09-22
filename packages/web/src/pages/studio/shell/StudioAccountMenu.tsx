@@ -261,6 +261,10 @@ export function StudioAccountMenu(): React.JSX.Element {
             <Settings className='h-4 w-4' />
             {t('studio.topBar.accountSettings')}
           </DropdownMenuItem>
+          {/* The two rows that carry a reading are their own block: with the
+            settings row among them the right-hand column reads as a list with
+            a hole in it. */}
+          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={handleMembership}>
             <Sparkles className='h-4 w-4' />
             {t('studio.topBar.membership')}
