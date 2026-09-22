@@ -75,19 +75,26 @@ if (!existsSync(ASSETS)) {
 
 const files = readdirSync(ASSETS);
 
-/** @returns {string[]} the files index.html loads before anything else. */
+/**
+ * What index.html asks for before anything else.
+ *
+ * `roots` is every file it names; `entry` is the one it runs. The rest are
+ * `<link rel=modulepreload>`, which say "fetch this, something will import it"
+ * — so a check that means the entry has to name the entry, not any of the
+ * eighteen.
+ * @returns {{roots: string[], entry: string}} The files, and the one that runs.
+ */
 function entryFiles() {
   const html = readFileSync(path.join(DIST, 'index.html'), 'utf8');
-  const found = [...html.matchAll(/(?:src|href)="\/assets\/([^"]+\.js)"/g)].map(
-    (m) => m[1],
-  );
-  // No roots means an empty closure, and an empty closure holds no page — the
-  // invariant below would pass by having nothing to look at.
-  if (found.length === 0) {
-    console.error(`verify-chunks: index.html in ${DIST} loads no script`);
+  const found = [...html.matchAll(/(src|href)="\/assets\/([^"]+\.js)"/g)];
+  const entry = found.find(([, attribute]) => attribute === 'src')?.[2];
+  // No entry means an empty closure, and an empty closure holds no page — the
+  // invariants below would pass by having nothing to look at.
+  if (entry === undefined) {
+    console.error(`verify-chunks: index.html in ${DIST} runs no script`);
     process.exit(1);
   }
-  return found;
+  return { roots: found.map(([, , file]) => file), entry };
 }
 
 const problems = [];
@@ -249,7 +256,7 @@ if (missing.length > 0) {
 const pageChunks = new Set(
   PAGES.map((page) => chunkOf(page)).filter((chunk) => chunk !== undefined),
 );
-const entryRoots = entryFiles();
+const { roots: entryRoots, entry: entryChunk } = entryFiles();
 const entryDownloads = closure(entryRoots, (file) => !pageChunks.has(file));
 
 // Every page chunk has to be reachable from the entry, or that route cannot
@@ -326,36 +333,46 @@ if (entryBytes > ENTRY_BUDGET) {
   );
 }
 
-// A page's hashed filename is written into whichever chunk holds an
-// `import()` that reaches it, so the loader chunk changes its own hash on
-// every release that touches any page — and so does everything that names it.
-// Exactly one chunk is meant to: the entry, which `routes.tsx` lives in. Those
-// two are the whole residue a page-only release costs a returning reader,
-// 76,122 bytes measured. Nothing about `route-imports.ts` forces that, so this
-// reads the built output. Measured while it was not held: a preload helper
-// that landed beside the loaders made `ProjectPage` name them too, so a
-// one-line login-page edit cost 1,894,219 bytes instead of 83,925.
-const loaderChunk = files.find(
+// A chunk's hashed filename is written into whoever holds an `import()` that
+// reaches it, so a renamed chunk renames every chunk that names it. Two kinds
+// get renamed on a release: a page chunk, when its own code changes, and the
+// loader chunk, when any page is renamed. Each is meant to have exactly one
+// reader — the loader for a page, the entry for the loader — and that pair is
+// the whole residue a page-only release costs a returning reader, 76,122 bytes
+// measured. Nothing in the source forces it, so this reads the built output.
+//
+// Measured while it did not hold: a preload helper beside the loaders made
+// `ProjectPage` name them, and a hover prefetch in the shared `Button` made
+// that chunk name `ProjectPage` — a one-line page edit then cost 2,821,634
+// bytes across 36 chunks instead of 83,925 across 3.
+const loaderChunks = files.filter(
   (f) => f.startsWith('route-imports-') && f.endsWith('.js'),
 );
-if (loaderChunk === undefined) {
-  problems.push('no route-imports chunk — the page specifiers are back inside another chunk');
-} else {
-  const naming = files.filter(
-    (f) =>
-      f !== loaderChunk &&
-      f.endsWith('.js') &&
-      readFileSync(path.join(ASSETS, f), 'utf8').includes(loaderChunk),
+if (loaderChunks.length !== 1) {
+  problems.push(
+    loaderChunks.length === 0
+      ? 'no route-imports chunk — the page specifiers are back inside another chunk'
+      : `${loaderChunks.length} chunks carry the loader's name (${loaderChunks.join(', ')})`,
   );
-  const stray = naming.filter((f) => !entryRoots.includes(f));
-  if (stray.length > 0) {
-    problems.push(
-      `${stray.join(', ')} name ${loaderChunk}, which changes on every release — so they do too`,
-    );
-  } else if (naming.length !== 1) {
-    problems.push(
-      `${naming.length} of the files index.html loads name ${loaderChunk}; one of them is the residue, the rest are re-downloaded for nothing`,
-    );
+} else {
+  const sources = new Map(
+    files
+      .filter((f) => f.endsWith('.js'))
+      .map((f) => [f, readFileSync(path.join(ASSETS, f), 'utf8')]),
+  );
+  const soleReader = [
+    [loaderChunks[0], entryChunk],
+    ...[...pageChunks].map((chunk) => [chunk, loaderChunks[0]]),
+  ];
+  for (const [renamed, allowed] of soleReader) {
+    const naming = [...sources]
+      .filter(([file, code]) => file !== renamed && code.includes(renamed))
+      .map(([file]) => file);
+    if (naming.length !== 1 || naming[0] !== allowed) {
+      problems.push(
+        `${renamed} is named by ${naming.join(', ') || 'nothing'}; only ${allowed} may, since it is renamed on every release anyway`,
+      );
+    }
   }
 }
 
