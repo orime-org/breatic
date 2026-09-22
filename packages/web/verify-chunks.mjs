@@ -327,29 +327,34 @@ if (entryBytes > ENTRY_BUDGET) {
 }
 
 // A page's hashed filename is written into whichever chunk holds an
-// `import()` that reaches it, and that chunk has to change its own hash on
-// every release that touches any page. Confining those specifiers to the one
-// small loader chunk is what keeps the rest byte-identical — and nothing
-// about `route-imports.ts` forces it, so this reads the built output instead.
-// Measured while this was not held: a chunk naming pages cost a returning
-// reader 1,079,379 unchanged bytes, and a preload helper that landed beside
-// the loaders dragged the 1.8 MB canvas chunk along on every login-page edit.
-const jsFiles = readdirSync(ASSETS).filter((f) => f.endsWith('.js'));
-const loaderChunk = jsFiles.find((f) => f.startsWith('route-imports-'));
+// `import()` that reaches it, so the loader chunk changes its own hash on
+// every release that touches any page — and so does everything that names it.
+// Exactly one chunk is meant to: the entry, which `routes.tsx` lives in. Those
+// two are the whole residue a page-only release costs a returning reader,
+// 76,122 bytes measured. Nothing about `route-imports.ts` forces that, so this
+// reads the built output. Measured while it was not held: a preload helper
+// that landed beside the loaders made `ProjectPage` name them too, so a
+// one-line login-page edit cost 1,894,219 bytes instead of 83,925.
+const loaderChunk = files.find(
+  (f) => f.startsWith('route-imports-') && f.endsWith('.js'),
+);
 if (loaderChunk === undefined) {
   problems.push('no route-imports chunk — the page specifiers are back inside another chunk');
 } else {
-  const pageChunkNames = new Set(
-    PAGES.map((page) => chunkOf(page)).filter((c) => c !== undefined),
-  );
-  const heavyReaders = jsFiles.filter(
+  const naming = files.filter(
     (f) =>
-      pageChunkNames.has(f) &&
+      f !== loaderChunk &&
+      f.endsWith('.js') &&
       readFileSync(path.join(ASSETS, f), 'utf8').includes(loaderChunk),
   );
-  if (heavyReaders.length > 0) {
+  const stray = naming.filter((f) => !entryRoots.includes(f));
+  if (stray.length > 0) {
     problems.push(
-      `${heavyReaders.join(', ')} name ${loaderChunk}, which changes on every release — so they do too`,
+      `${stray.join(', ')} name ${loaderChunk}, which changes on every release — so they do too`,
+    );
+  } else if (naming.length !== 1) {
+    problems.push(
+      `${naming.length} of the files index.html loads name ${loaderChunk}; one of them is the residue, the rest are re-downloaded for nothing`,
     );
   }
 }
