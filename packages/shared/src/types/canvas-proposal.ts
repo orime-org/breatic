@@ -219,10 +219,9 @@ export function feedersOf(proposal: CanvasProposal, index: number): ProposalFeed
  * feeder; the mode and model facts it is asked with are the two the check
  * wrote onto this node when it read the catalog.
  *
- * Both are absent on a proposal stored before they were carried. `pool` is the
- * path such a proposal must have taken -- the slot path refused a generation
- * with any edge into it at all -- and a box was drawn for every model that
- * could be proposed, so the defaults are what was true when it was stored.
+ * A row stored before the check wrote them names nothing: what the panel
+ * accepts turns on both, and a guess either writes a mention it refuses or
+ * drops one the pool needs.
  * @param proposal - The proposal being read.
  * @param index - The node being fed.
  * @returns The feeders its marks may point at, each in node order.
@@ -232,10 +231,13 @@ export function nameableFeeders(
   proposal: CanvasProposal,
   index: number,
 ): ProposalFeederIndices {
-  const held = feedersOf(proposal, index);
   const at = proposal.nodes[index];
-  const path: MaterialPath = at?.takesFrom ?? "pool";
-  const ctx = { takesReferences: path === "pool", takesPrompt: at?.takesPrompt ?? true };
+  const path = at?.takesFrom;
+  if (path === undefined || at?.takesPrompt === undefined) {
+    return { sources: [], upstream: [] };
+  }
+  const held = feedersOf(proposal, index);
+  const ctx = { takesReferences: path === "pool", takesPrompt: at.takesPrompt };
   /**
    * Whether the panel would take an `@`-mention of one feeder.
    * @param i - The feeder's index in the proposal.
@@ -259,9 +261,10 @@ export function nameableFeeders(
  * How far downstream each node of a proposal sits, counting from what starts it.
  *
  * One further than the last thing that feeds it. Both the card's little
- * diagram and the arrangement on the canvas are drawn from this, and they are
- * the same picture -- read twice, the two drift the first time either is
- * changed.
+ * diagram and the arrangement on the canvas are drawn from this, so the depth
+ * a node is at is one answer -- read twice, the two drift the first time
+ * either is changed. What each does on top of it differs: the card splits its
+ * chips into runs, and the canvas puts every node of one depth in one column.
  *
  * The walk is bounded by the node count rather than run to a fixed point: the
  * check refuses a ring before any of this is reached, so it settles long

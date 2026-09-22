@@ -96,8 +96,10 @@ export function estimateHeight(node: ProposalNode): number {
  * @throws {never} Never.
  */
 export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[] {
-  // The same depths the card's little diagram is drawn from, so what the
-  // reader saw before pressing is the arrangement they get.
+  // The same depths the card's little diagram is drawn from. The card splits
+  // its chips into runs on top of this, so a node wired to nothing gets a row
+  // of its own there; here it stands in the first column beside whatever else
+  // starts the flow, which is what the design asks for (§6.2).
   const layer = layersOf(proposal);
 
   const height = proposal.nodes.map((node) => estimateHeight(node));

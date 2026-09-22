@@ -130,13 +130,8 @@ function feedersOnCanvas(
   // from the second, and one list would have them taking each other's turn.
   // The split and its order come from the shared reading, which is also what
   // the card files its to-dos by.
-  // Narrowed by the path this generation takes its material, which the answer
-  // carries (`takesFrom`), through the one rule the check counted the marks
-  // against and the card files its to-dos by.
-  // An answer stored before this field existed reads as the pool, which is
-  // what it was: until this change a slot-fed generation with an edge into it
-  // was refused outright, so a stored proposal whose generation is fed at all
-  // took its material through the pool.
+  // Narrowed by the one rule the check counted the marks against and the card
+  // files its to-dos by, which reads the two catalog facts off the node.
   const held = nameableFeeders(proposal, index);
   /**
    * The placed nodes behind a run of feeder indices.
