@@ -27,6 +27,7 @@ import * as Y from 'yjs';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   threadQuoteIn,
+  threadRangesByThread,
   threadRangesIn,
 } from '@web/spaces/document/document-comment-ranges';
 
@@ -128,5 +129,41 @@ describe('threadQuoteIn', () => {
   it('answers nothing once the words are gone', () => {
     const doc = schema.nodes.doc.create(null, [block({ text: 'plain' })]);
     expect(threadQuoteIn(doc, 't1')).toBeNull();
+  });
+});
+
+describe('reading every thread at once', () => {
+  it('finds the same stretches the per-thread walk finds', () => {
+    const doc = schema.nodes.doc.create(null, [
+      block({ text: 'alpha ', marks: [comment('t1')] }),
+      block({ text: 'bravo' }),
+      block({ text: 'charlie', marks: [comment('t2')] }),
+    ]);
+
+    const all = threadRangesByThread(doc);
+
+    expect([...all.keys()].sort()).toEqual(['t1', 't2']);
+    expect(all.get('t1')).toEqual(threadRangesIn(doc, 't1'));
+    expect(all.get('t2')).toEqual(threadRangesIn(doc, 't2'));
+  });
+
+  it('joins neighbouring runs the way the per-thread walk does', () => {
+    const doc = schema.nodes.doc.create(null, [
+      block(
+        { text: 'alpha ', marks: [comment('t1')] },
+        { text: 'bold', marks: [comment('t1')] },
+        { text: ' omega', marks: [comment('t1')] },
+      ),
+    ]);
+
+    expect(threadRangesByThread(doc).get('t1')).toEqual(
+      threadRangesIn(doc, 't1'),
+    );
+    expect(threadRangesByThread(doc).get('t1')).toHaveLength(1);
+  });
+
+  it('answers with nothing for a body carrying no comments', () => {
+    const doc = schema.nodes.doc.create(null, [block({ text: 'plain' })]);
+    expect(threadRangesByThread(doc).size).toBe(0);
   });
 });

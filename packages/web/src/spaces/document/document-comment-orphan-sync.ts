@@ -32,8 +32,8 @@
 import type { Transaction } from '@tiptap/pm/state';
 import { AddMarkStep, RemoveMarkStep } from '@tiptap/pm/transform';
 
-/** The mark's name on the schema, as the library registers it. */
-const COMMENT_MARK = 'comment';
+import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
+
 
 /**
  * Whether one step only puts a comment mark on or takes one off.

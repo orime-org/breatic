@@ -40,13 +40,13 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
 
+import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
+
 import {
   markTypeIn,
   reachesAnyRunOver,
 } from '@web/spaces/document/document-style-range';
 
-/** The mark's name on the schema, as the library registers it. */
-const COMMENT_MARK = 'comment';
 
 /**
  * Whether a comment could land anywhere in this range.

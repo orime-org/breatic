@@ -35,13 +35,16 @@
  */
 
 import { createExtension } from '@blocknote/core';
-import { CommentsExtension } from '@blocknote/core/comments';
 import { Extension, type Extension as TiptapExtension } from '@tiptap/core';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 import { threadsAtPosition } from '@web/spaces/document/document-comment-hit';
+import {
+  COMMENT_MARK,
+  commentsOn,
+} from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /** The editor surface this plugin needs, past the view. */
@@ -51,18 +54,6 @@ interface CommentSelectionHost {
    * @param factory - The factory to match on.
    */
   getExtension(factory: unknown): unknown;
-}
-
-/** The half of the library's comments store this writes. */
-interface LibrarySelectionStore {
-  readonly store: {
-    readonly state: { readonly selectedThreadId?: string };
-    setState(
-      next: (previous: { selectedThreadId?: string }) => {
-        selectedThreadId?: string;
-      },
-    ): void;
-  };
 }
 
 /**
@@ -102,8 +93,6 @@ const UNSELECTED: SelectionState = {
  */
 const DOCUMENT_COMMENT_HOVER = 'documentCommentHover';
 
-/** The mark's name on the schema, as the library registers it. */
-const COMMENT_MARK = 'comment';
 
 /**
  * The class the deeper colour is painted through.
@@ -270,12 +259,13 @@ function tellLibrary(
   editor: CommentSelectionHost,
   threadId: string | undefined,
 ): void {
-  const comments = editor.getExtension(CommentsExtension) as
-    | LibrarySelectionStore
-    | undefined;
+  const comments = commentsOn(editor);
   if (comments === undefined) return;
   if (comments.store.state.selectedThreadId === threadId) return;
-  comments.store.setState((previous) => ({ ...previous, selectedThreadId: threadId }));
+  comments.store.setState((previous) => ({
+    ...previous,
+    selectedThreadId: threadId,
+  }));
 }
 
 /**

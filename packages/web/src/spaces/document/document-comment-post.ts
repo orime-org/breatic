@@ -29,9 +29,12 @@
 import { CommentsExtension, type ThreadData } from '@blocknote/core/comments';
 
 import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
+import {
+  COMMENT_MARK,
+  asCommentBody,
+  commentsOn,
+} from '@web/spaces/document/document-comment-extension';
 
-/** The mark's name on the schema, as the library registers it. */
-const COMMENT_MARK = 'comment';
 
 /** The editor surface this needs. */
 interface CommentableEditor {
@@ -45,27 +48,6 @@ interface CommentableEditor {
    * @param extension - The factory to match on.
    */
   getExtension(extension: typeof CommentsExtension): unknown;
-}
-
-/** The half of the comments extension this needs. */
-interface ThreadStoreHolder {
-  readonly threadStore: {
-    createThread(options: {
-      initialComment: { body: unknown };
-    }): Promise<ThreadData>;
-  };
-}
-
-/**
- * The reader's words in the shape a comment body takes.
- *
- * A comment body is a BlockNote document, so one paragraph holding one text
- * run is the whole of a plain-text comment.
- * @param text - What the reader wrote.
- * @returns That text as a comment body.
- */
-function asCommentBody(text: string): unknown {
-  return [{ type: 'paragraph', content: [{ type: 'text', text, styles: {} }] }];
 }
 
 /**
@@ -87,14 +69,12 @@ export async function postComment(
   const range = draftRangeIn(view.state);
   if (range === null) return null;
 
-  const comments = editor.getExtension(CommentsExtension) as
-    | ThreadStoreHolder
-    | undefined;
+  const comments = commentsOn(editor);
   if (comments === undefined) return null;
 
-  const thread = await comments.threadStore.createThread({
+  const thread = (await comments.threadStore.createThread({
     initialComment: { body: asCommentBody(body) },
-  });
+  })) as ThreadData;
 
   // Read again: creating the thread was a round trip, and the body may have
   // moved or lost those words while it was in flight. The thread stays —

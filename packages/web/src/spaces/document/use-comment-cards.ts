@@ -21,15 +21,18 @@
  * comment outlives it.
  */
 
-import { CommentsExtension } from '@blocknote/core/comments';
-import type { CommentData, ThreadData } from '@blocknote/core/comments';
+import type { CommentData } from '@blocknote/core/comments';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import * as React from 'react';
 
+import {
+  commentsOn,
+  type CommentsApi,
+} from '@web/spaces/document/document-comment-extension';
 import type { RailCard } from '@web/spaces/document/document-comment-rail';
 import {
   threadQuoteIn,
-  threadRangesIn,
+  threadRangesByThread,
 } from '@web/spaces/document/document-comment-ranges';
 import type {
   CommentCardState,
@@ -76,35 +79,6 @@ export interface CommentCards {
 /** What an editor with no comments draws, one object for every such read. */
 const NO_CARDS: CommentCards = { unresolved: [], resolved: [] };
 
-/** The extension's half of the reading, as this module needs it. */
-interface CommentsSource {
-  readonly threadStore: {
-    getThreads(): Map<string, ThreadData>;
-    subscribe(listener: () => void): () => void;
-  };
-  readonly store: {
-    readonly state: { threadPositions: ReadonlyMap<string, ThreadRange> };
-    subscribe(listener: () => void): () => void;
-  };
-  readonly userStore: {
-    getUser(id: string): { username: string } | undefined;
-    loadUsers(ids: string[]): Promise<void>;
-    store: { subscribe(listener: () => void): () => void };
-  };
-}
-
-/**
- * The comments extension on this editor, if it has one.
- * @param editor - The editor to ask.
- * @returns Its comments extension, or undefined.
- */
-function commentsOn(editor: ToolEditor): CommentsSource | undefined {
-  return (
-    editor as unknown as {
-      getExtension(factory: unknown): CommentsSource | undefined;
-    }
-  ).getExtension(CommentsExtension);
-}
 
 /**
  * Reads a comment body down to the text in it.
@@ -138,7 +112,7 @@ function bodyText(body: unknown): string {
  */
 function entryOf(
   comment: CommentData,
-  source: CommentsSource,
+  source: CommentsApi,
 ): CommentEntryView {
   return {
     id: comment.id,
@@ -154,19 +128,21 @@ function entryOf(
  * @param card - Which thread, and which state the panel put it in.
  * @param source - The threads and their positions.
  * @param doc - The body, which the quote is read out of.
+ * @param walked - Every thread's stretches, walked once for the whole panel.
  * @returns The card, or null once the thread itself is gone.
  */
 function drawCard(
   card: RailCard,
-  source: CommentsSource,
+  source: CommentsApi,
   doc: ProseMirrorNode,
+  walked: ReadonlyMap<string, readonly ThreadRange[]>,
 ): CommentCardView | null {
   const thread = source.threadStore.getThreads().get(card.id);
   if (thread === undefined) return null;
   return {
     id: card.id,
     state: card.state,
-    quote: threadQuoteIn(doc, card.id),
+    quote: threadQuoteIn(doc, card.id, walked),
     entries: thread.comments.map((comment) => entryOf(comment, source)),
   };
 }
@@ -211,66 +187,6 @@ function sameCards(a: CommentCards, b: CommentCards): boolean {
 }
 
 /**
- * Where one thread's highlight reaches, as the body stands.
- *
- * Read apart from the cards on purpose: a range moves on every keystroke,
- * and folding it into what a card is drawn from would re-render the whole
- * panel for each of them. Only the floating card needs it, and only while it
- * is on screen.
- * @param editor - The document editor.
- * @param threadId - Which thread, or undefined for none.
- * @returns Its range, or null when the thread has no words left.
- */
-export function useThreadRange(
-  editor: ToolEditor,
-  threadId: string | undefined,
-): ThreadRange | null {
-  const comments = commentsOn(editor);
-  const cached = React.useRef<ThreadRange | null>(null);
-
-  const subscribe = React.useCallback(
-    (onChange: () => void): (() => void) => {
-      if (comments === undefined) return () => undefined;
-      const stops = [
-        comments.store.subscribe(onChange),
-        onEditorSettled(editor as never, onChange),
-      ];
-      return () => {
-        stops.forEach((stop) => {
-          stop();
-        });
-      };
-    },
-    [comments, editor],
-  );
-
-  const read = React.useCallback((): ThreadRange | null => {
-    if (comments === undefined || threadId === undefined) return null;
-    // The first stretch rather than the merged span: a comment split by an
-    // Enter would otherwise anchor its card against a box spanning the line
-    // typed into the gap.
-    const next =
-      threadRangesIn(editor.prosemirrorState.doc, threadId)[0] ?? null;
-    const held = cached.current;
-    if (
-      held !== null &&
-      next !== null &&
-      held.from === next.from &&
-      held.to === next.to
-    ) {
-      return held;
-    }
-    cached.current = next;
-    return next;
-    // The body itself: the range is walked out of it, so a new document is a
-    // new answer. `cached` is what keeps the answer's identity stable across
-    // the edits that do not move this thread.
-  }, [comments, editor.prosemirrorState.doc, threadId]);
-
-  return React.useSyncExternalStore(subscribe, read, read);
-}
-
-/**
  * Reads everything the panel draws, and keeps it current.
  * @param editor - The document editor.
  * @returns The two groups, each card carrying its quote and its comments.
@@ -304,12 +220,15 @@ export function useCommentCards(editor: ToolEditor): CommentCards {
   const read = React.useCallback((): CommentCards => {
     if (comments === undefined) return NO_CARDS;
     const doc = editor.prosemirrorState.doc;
+    // One walk for the whole panel: this runs on every settle and on every
+    // render of it, and per card it was one full walk of the document each.
+    const walked = threadRangesByThread(doc);
     const next: CommentCards = {
       unresolved: rail.unresolved
-        .map((card) => drawCard(card, comments, doc))
+        .map((card) => drawCard(card, comments, doc, walked))
         .filter((card) => card !== null),
       resolved: rail.resolved
-        .map((card) => drawCard(card, comments, doc))
+        .map((card) => drawCard(card, comments, doc, walked))
         .filter((card) => card !== null),
     };
     if (sameCards(cached.current, next)) return cached.current;

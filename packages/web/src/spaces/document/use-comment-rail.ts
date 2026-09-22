@@ -22,8 +22,6 @@
  * chrome is mounted over editors that do not.
  */
 
-import { CommentsExtension } from '@blocknote/core/comments';
-import type { ThreadData } from '@blocknote/core/comments';
 import * as React from 'react';
 
 import {
@@ -31,7 +29,7 @@ import {
   type CommentRail,
   type RailCard,
 } from '@web/spaces/document/document-comment-rail';
-import type { ThreadRange } from '@web/spaces/document/document-comment-state';
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /** What an editor with no comments reads as, one object for every such read. */
@@ -41,32 +39,6 @@ const EMPTY_RAIL: CommentRail = {
   hasUnresolved: false,
 };
 
-/** The extension's half of the reading, as this module needs it. */
-interface CommentsSource {
-  /** Every thread in this document. */
-  readonly threadStore: {
-    getThreads(): Map<string, ThreadData>;
-    subscribe(listener: () => void): () => void;
-  };
-  /** Where each thread's marks reach, recomputed per document change. */
-  readonly store: {
-    readonly state: { threadPositions: ReadonlyMap<string, ThreadRange> };
-    subscribe(listener: () => void): () => void;
-  };
-}
-
-/**
- * The comments extension on this editor, if it has one.
- * @param editor - The editor to ask.
- * @returns Its comments extension, or undefined.
- */
-function commentsOn(editor: ToolEditor): CommentsSource | undefined {
-  return (
-    editor as unknown as {
-      getExtension(factory: unknown): CommentsSource | undefined;
-    }
-  ).getExtension(CommentsExtension);
-}
 
 /**
  * Whether two readings draw the same panel.

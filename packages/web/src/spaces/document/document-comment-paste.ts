@@ -36,8 +36,8 @@ import {
 } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 
-/** The mark's name on the schema, as the library registers it. */
-const COMMENT_MARK = 'comment';
+import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
+
 
 /**
  * Rebuilds a pasted slice without any comment mark.

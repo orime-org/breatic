@@ -31,8 +31,8 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
-/** The mark's name on the schema, as the library registers it. */
-const COMMENT_MARK = 'comment';
+import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
+
 
 /**
  * Every thread whose painted highlight covers one position.

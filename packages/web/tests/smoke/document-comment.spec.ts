@@ -600,6 +600,13 @@ test.describe('what the pointer says over the body', () => {
     expect(await settled.evaluate((el) => getComputedStyle(el).cursor)).toBe(
       'auto',
     );
+    // Resolving is only reachable on the thread being read, so the deeper
+    // paint is on those words at the moment of the press. It goes with the
+    // paint underneath it — measured, because reading the code the other way
+    // round is what three adversaries did.
+    await expect(
+      page.locator(`${EDITOR} .doc-comment-mark-reading`),
+    ).toHaveCount(0);
   });
 
   test('offers the pointer on words a reader can still open', async ({

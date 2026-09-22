@@ -946,7 +946,6 @@
         "closeRail": "關閉批註欄",
         "empty": "這份文件還沒有批註。選取正文裡的文字，或者點行左邊的握把。",
         "orphaned": "批註的原文已刪除。",
-        "resolvedGroup": "已解決 · {count}",
         "unknownAuthor": "未知",
         "folded": "還有 {count} 則",
         "reply": "回覆…",
@@ -971,7 +970,6 @@
         "restoreSnapshot": "還原快照",
         "notOpenYet": "未開放",
         "comments": "批註",
-        "commentsOpen": "開著",
         "commentsUnresolved": "{count} 條未解決",
         "commentsNone": "無"
       },

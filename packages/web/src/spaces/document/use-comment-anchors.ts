@@ -25,7 +25,7 @@
 
 import * as React from 'react';
 
-import { threadRangesIn } from '@web/spaces/document/document-comment-ranges';
+import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
 
@@ -67,11 +67,14 @@ export function useCommentAnchors(
       if (view === null || origin === null) return;
       const top = origin.getBoundingClientRect().top;
       const next = new Map<string, number>();
+      // One walk for every thread: this runs on each settle, and per-thread
+      // it was one full walk of the document each.
+      const ranges = threadRangesByThread(view.state.doc);
       key
         .split(',')
         .filter((id) => id.length > 0)
         .forEach((id) => {
-          const at = threadRangesIn(view.state.doc, id)[0];
+          const at = ranges.get(id)?.[0];
           if (at === undefined) return;
           // `coordsAtPos` throws for a position the view has not laid out,
           // which happens for a moment after a peer's delete arrives.

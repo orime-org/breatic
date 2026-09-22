@@ -23,9 +23,46 @@
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 import type { ThreadRange } from '@web/spaces/document/document-comment-state';
+import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 
-/** The mark's name on the schema, as the library registers it. */
-const COMMENT_MARK = 'comment';
+
+/**
+ * Every thread's stretches, from one walk of the body.
+ *
+ * One walk rather than one per thread: both readers of this module need the
+ * answer for every card they are drawing, on every settle — the panel to
+ * place them and the cards to quote them — and asking per thread made that N
+ * full walks of the document each time.
+ * @param doc - The body to walk.
+ * @returns Each thread's stretches in document order, by thread id. Threads
+ *   whose words are gone are absent rather than empty.
+ */
+export function threadRangesByThread(
+  doc: ProseMirrorNode,
+): ReadonlyMap<string, readonly ThreadRange[]> {
+  const byThread = new Map<string, ThreadRange[]>();
+  doc.descendants((node, pos) => {
+    node.marks.forEach((mark) => {
+      if (mark.type.name !== COMMENT_MARK) return;
+      const threadId = mark.attrs.threadId as string;
+      const found = byThread.get(threadId) ?? [];
+      if (found.length === 0) byThread.set(threadId, found);
+      const from = pos;
+      const to = pos + node.nodeSize;
+      // Runs next to each other are one stretch as far as a reader is
+      // concerned: a bold word inside a commented sentence splits the text
+      // into three nodes carrying the same thread.
+      const last = found[found.length - 1];
+      if (last !== undefined && last.to === from) {
+        found[found.length - 1] = { from: last.from, to };
+        return;
+      }
+      found.push({ from, to });
+    });
+    return true;
+  });
+  return byThread;
+}
 
 /**
  * Every stretch of body one thread's highlight covers, in document order.
@@ -37,40 +74,23 @@ export function threadRangesIn(
   doc: ProseMirrorNode,
   threadId: string,
 ): readonly ThreadRange[] {
-  const found: ThreadRange[] = [];
-  doc.descendants((node, pos) => {
-    const carries = node.marks.some(
-      (mark) =>
-        mark.type.name === COMMENT_MARK && mark.attrs.threadId === threadId,
-    );
-    if (!carries) return true;
-    const from = pos;
-    const to = pos + node.nodeSize;
-    // Runs next to each other are one stretch as far as a reader is
-    // concerned: a bold word inside a commented sentence splits the text into
-    // three nodes carrying the same thread.
-    const last = found[found.length - 1];
-    if (last !== undefined && last.to === from) {
-      found[found.length - 1] = { from: last.from, to };
-      return true;
-    }
-    found.push({ from, to });
-    return true;
-  });
-  return found;
+  return threadRangesByThread(doc).get(threadId) ?? [];
 }
 
 /**
  * The words one comment is about.
  * @param doc - The body to read.
  * @param threadId - Which thread.
+ * @param walked - Every thread's stretches, when the caller has already
+ *   walked the body for them; the walk happens here otherwise.
  * @returns Its words, stretches joined by a space; null once they are gone.
  */
 export function threadQuoteIn(
   doc: ProseMirrorNode,
   threadId: string,
+  walked?: ReadonlyMap<string, readonly ThreadRange[]>,
 ): string | null {
-  const ranges = threadRangesIn(doc, threadId);
+  const ranges = walked?.get(threadId) ?? threadRangesIn(doc, threadId);
   if (ranges.length === 0) return null;
   return ranges.map((at) => doc.textBetween(at.from, at.to)).join(' ');
 }

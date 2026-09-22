@@ -946,7 +946,6 @@
         "closeRail": "コメント欄を閉じる",
         "empty": "このドキュメントにはまだコメントがありません。本文を選択するか、行の左のハンドルを使ってください。",
         "orphaned": "コメントの対象となった文章は削除されました。",
-        "resolvedGroup": "解決済み · {count}",
         "unknownAuthor": "不明",
         "folded": "他 {count} 件",
         "reply": "返信…",
@@ -971,7 +970,6 @@
         "restoreSnapshot": "スナップショットを復元",
         "notOpenYet": "未提供",
         "comments": "コメント",
-        "commentsOpen": "表示中",
         "commentsUnresolved": "未解決 {count} 件",
         "commentsNone": "なし"
       },

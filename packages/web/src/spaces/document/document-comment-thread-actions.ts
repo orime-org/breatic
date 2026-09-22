@@ -13,51 +13,12 @@
  * thread into the store, and that pairing is what `postComment` owns.
  */
 
-import { CommentsExtension } from '@blocknote/core/comments';
-
+import {
+  asCommentBody,
+  commentsOn,
+} from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
-/** The thread store, as the writes here use it. */
-interface ThreadWrites {
-  addComment(options: {
-    threadId: string;
-    comment: { body: unknown };
-  }): Promise<unknown>;
-  resolveThread(options: { threadId: string }): Promise<unknown>;
-  unresolveThread(options: { threadId: string }): Promise<unknown>;
-  deleteThread(options: { threadId: string }): Promise<unknown>;
-  deleteComment(options: {
-    threadId: string;
-    commentId: string;
-  }): Promise<unknown>;
-}
-
-/**
- * The thread store behind one editor.
- * @param editor - The document editor.
- * @returns Its thread store, or null when comments are not wired to it.
- */
-function threadsOf(editor: ToolEditor): ThreadWrites | null {
-  const extension = (
-    editor as unknown as {
-      getExtension(factory: unknown): { threadStore: ThreadWrites } | undefined;
-    }
-  ).getExtension(CommentsExtension);
-  return extension?.threadStore ?? null;
-}
-
-/**
- * The reader's words in the shape a comment body takes.
- *
- * A body is a BlockNote document, so one paragraph holding one run is the
- * whole of a plain-text reply. The same shape `postComment` writes, because a
- * reply and an opening comment are the same kind of thing.
- * @param text - What the reader wrote.
- * @returns That text as a comment body.
- */
-function asCommentBody(text: string): unknown {
-  return [{ type: 'paragraph', content: [{ type: 'text', text, styles: {} }] }];
-}
 
 /**
  * Adds a reply to a thread (A7).
@@ -74,8 +35,8 @@ export async function replyToThread(
   threadId: string,
   body: string,
 ): Promise<boolean> {
-  const threads = threadsOf(editor);
-  if (threads === null || body.trim().length === 0) return false;
+  const threads = commentsOn(editor)?.threadStore;
+  if (threads === undefined || body.trim().length === 0) return false;
   await threads.addComment({
     threadId,
     comment: { body: asCommentBody(body) },
@@ -93,7 +54,7 @@ export async function resolveThread(
   editor: ToolEditor,
   threadId: string,
 ): Promise<void> {
-  await threadsOf(editor)?.resolveThread({ threadId });
+  await commentsOn(editor)?.threadStore?.resolveThread({ threadId });
 }
 
 /**
@@ -106,7 +67,7 @@ export async function reopenThread(
   editor: ToolEditor,
   threadId: string,
 ): Promise<void> {
-  await threadsOf(editor)?.unresolveThread({ threadId });
+  await commentsOn(editor)?.threadStore?.unresolveThread({ threadId });
 }
 
 /**
@@ -122,7 +83,7 @@ export async function removeThread(
   editor: ToolEditor,
   threadId: string,
 ): Promise<void> {
-  await threadsOf(editor)?.deleteThread({ threadId });
+  await commentsOn(editor)?.threadStore?.deleteThread({ threadId });
 }
 
 /**
@@ -137,5 +98,5 @@ export async function removeReply(
   threadId: string,
   commentId: string,
 ): Promise<void> {
-  await threadsOf(editor)?.deleteComment({ threadId, commentId });
+  await commentsOn(editor)?.threadStore?.deleteComment({ threadId, commentId });
 }

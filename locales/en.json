@@ -946,7 +946,6 @@
         "closeRail": "Close comments",
         "empty": "No comments yet. Select some text, or use the handle beside a line.",
         "orphaned": "The text this is about was deleted.",
-        "resolvedGroup": "Resolved · {count}",
         "unknownAuthor": "Unknown",
         "folded": "{count, plural, one {# more comment} other {# more comments}}",
         "reply": "Reply…",
@@ -971,7 +970,6 @@
         "restoreSnapshot": "Restore snapshot",
         "notOpenYet": "Not open yet",
         "comments": "Comments",
-        "commentsOpen": "Open",
         "commentsUnresolved": "{count} unresolved",
         "commentsNone": "None"
       },

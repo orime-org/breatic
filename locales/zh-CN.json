@@ -946,7 +946,6 @@
         "closeRail": "关闭批注栏",
         "empty": "这篇文档还没有批注。选中正文里的文字，或者点行左边的抓手。",
         "orphaned": "批注的原文已删除。",
-        "resolvedGroup": "已解决 · {count}",
         "unknownAuthor": "未知",
         "folded": "还有 {count} 条",
         "reply": "回复…",
@@ -971,7 +970,6 @@
         "restoreSnapshot": "恢复快照",
         "notOpenYet": "未开放",
         "comments": "批注",
-        "commentsOpen": "开着",
         "commentsUnresolved": "{count} 条未解决",
         "commentsNone": "无"
       },

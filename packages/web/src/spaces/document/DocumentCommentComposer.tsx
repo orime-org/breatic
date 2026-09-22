@@ -50,6 +50,8 @@ import type { ProjectRole } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { useTranslation } from '@web/i18n/use-translation';
+import { NOTE_MAX_CHARS } from '@web/spaces/canvas/annotation/caps';
+import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import { canPostAnnotations } from '@web/spaces/canvas/annotation/rights';
 import {
   CLOSED_DRAFT,
@@ -240,6 +242,19 @@ export function DocumentCommentComposer({
     });
   }, [draft, editor, clearRange]);
 
+  // Enter posts and an input method's Enter belongs to the input method —
+  // the rules a canvas note's boxes take, from the one place all of them
+  // take them. Escape reaches the box through `useDismiss` below.
+  const keys = useNoteBox(
+    React.useCallback(
+      (action) => {
+        if (action.type === 'save') post();
+      },
+      [post],
+    ),
+    () => false,
+  );
+
   if (draft.dropped !== undefined) {
     return (
       <FloatingPortal>
@@ -294,6 +309,7 @@ export function DocumentCommentComposer({
           <div className='flex gap-1.5'>
             <Input
               data-testid='doc-comment-input'
+              maxLength={NOTE_MAX_CHARS}
               value={draft.text}
               placeholder={t('spaces.document.comment.placeholder')}
               onChange={(event) => {
@@ -304,12 +320,7 @@ export function DocumentCommentComposer({
                   }),
                 );
               }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                  event.preventDefault();
-                  post();
-                }
-              }}
+              {...keys.box}
             />
             <Button
               data-testid='doc-comment-post'
