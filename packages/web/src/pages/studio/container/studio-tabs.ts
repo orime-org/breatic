@@ -133,9 +133,9 @@ export function isAddressableTabSegment(
  *
  * This answers "which tab do I render". It deliberately cannot tell an absent
  * segment from a wrong one — both render Projects — so a caller that needs to
- * distinguish them (to redirect away from an address this scheme would not
- * have produced, while leaving a bare one alone) asks
- * {@link isAddressableTabSegment} instead.
+ * distinguish them asks {@link isAddressableTabSegment}. The container keeps
+ * unknown suffixes in the address and renders the default tab: resource
+ * existence is determined by the studio lookup, not by later URL segments.
  * @param value - The `:tab` route parameter, absent when the address has none.
  * @returns The tab to render.
  */
