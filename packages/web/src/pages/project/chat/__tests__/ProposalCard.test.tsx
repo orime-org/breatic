@@ -338,6 +338,17 @@ describe('a flow that is more than one thing', () => {
     expect(screen.queryByText(/30 s . 2/)).toBeNull();
   });
 
+  it('names the node a lone to-do belongs to when the group holds more', () => {
+    // Two nodes on screen and one line under them. Unheaded, the reader
+    // cannot tell which of the two it is about; a proposal of one node needs
+    // no header, because there is nothing to tell it apart from.
+    listModels.mockResolvedValue(CATALOG);
+    renderCard(true, PAIR);
+
+    const group = screen.getAllByTestId('proposal-todo-group')[0];
+    expect(group?.textContent).toContain('On white');
+  });
+
   it('names the nodes when one line has to be carried out on several', () => {
     // Three takes, each wanting the same thing picked in its own panel. The
     // line merges into one -- said three times it reads as three jobs -- and
