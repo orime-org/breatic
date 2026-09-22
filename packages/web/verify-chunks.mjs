@@ -17,6 +17,9 @@
 //     the one page that renders a space
 //   - the entry closure stays inside its byte budget, which covers the heavy
 //     things nobody has thought to name yet
+//   - every chunk a release renames is named by exactly one chunk — the
+//     loader for a page, the entry for the loader — so a release re-downloads
+//     only what changed
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
@@ -35,8 +38,12 @@ const ROUTE_IMPORTS = path.join(import.meta.dirname, 'src', 'app', 'route-import
  *
  * Two counts are checked rather than trusted. A parse that reads twelve of
  * thirteen entries covers twelve of them and says nothing about the one it
- * missed; and a page whose loader exists but which no route renders would
- * never be downloaded at all, so the wiring is counted from both ends.
+ * missed; and the loader count is compared against the number of `lazyRoute`
+ * calls in `routes.tsx`, so a loader added without a route — or a route added
+ * without a loader — shows up as a mismatched total. Which loader each call
+ * names is not checked here: a page whose loader no route renders is caught
+ * downstream instead, where its chunk is missing and the entry cannot reach
+ * it.
  * @returns {string[]} Page module basenames, in declaration order.
  */
 function routeTablePages() {
@@ -88,8 +95,9 @@ function entryFiles() {
   const html = readFileSync(path.join(DIST, 'index.html'), 'utf8');
   const found = [...html.matchAll(/(src|href)="\/assets\/([^"]+\.js)"/g)];
   const entry = found.find(([, attribute]) => attribute === 'src')?.[2];
-  // No entry means an empty closure, and an empty closure holds no page — the
-  // invariants below would pass by having nothing to look at.
+  // Without the one file index.html runs, no page is reachable, and the
+  // sole-reader check below loses the chunk it compares against — it would
+  // report all fourteen as named by the wrong thing.
   if (entry === undefined) {
     console.error(`verify-chunks: index.html in ${DIST} runs no script`);
     process.exit(1);
@@ -372,14 +380,16 @@ if (loaderChunks.length !== 1) {
       .map(([file]) => file);
     if (naming.length !== 1 || naming[0] !== allowed) {
       problems.push(
-        `${renamed} is named by ${naming.join(', ') || 'nothing'}; only ${allowed} may, since it is renamed on every release anyway`,
+        `${renamed} should be named by exactly ${allowed}, which is renamed on every release anyway; the build has ${naming.join(', ') || 'nothing'}`,
       );
     }
   }
 }
 
 if (problems.length > 0) {
-  console.error('verify-chunks: the build stopped splitting per entry');
+  console.error(
+    'verify-chunks: the build stopped splitting per entry, or a chunk gained a second reader',
+  );
   for (const p of problems) console.error(`  - ${p}`);
   process.exit(1);
 }
