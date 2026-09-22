@@ -380,7 +380,7 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
  */
 function measuredPrompt(
   prompt: readonly PromptSegment[],
-  named: readonly ProposalNode[],
+  named: readonly (ProposalNode | null)[],
 ): string {
   let seen = 0;
   return prompt
@@ -473,23 +473,29 @@ function checkGenerateNode(
    */
   const nodesAt = (list: readonly (number | null)[]): ProposalNode[] =>
     list.flatMap((i) => (i === null ? [] : (proposal.nodes[i] ?? [])));
-  const nameable = nodesAt(canName.upstream);
+  // One entry per node wired in, the same list the canvas writes its mentions
+  // from: a mark landing on a place with nothing in it writes no mention there
+  // and so contributes no characters here either. Compacted, this gate would
+  // measure a string the reader never receives.
+  const nameable = canName.upstream.map((i) =>
+    i === null ? null : (proposal.nodes[i] ?? null),
+  );
   // A mark pointing upstream lands as a mention and nothing else, so one this
   // panel refuses lands as nothing at all: the words on either side of it
   // close up and the sentence is handed to the reader without what it was
   // about. Which feeders a mention may name is the catalog's answer -- this
   // model's own -- so it is settled here rather than left to the reply.
   const points = prompt.some((segment) => segment.slot?.kind === "ref");
-  if (points && nameable.length === 0) {
+  if (points && nameable.every((n) => n === null)) {
     const named = nodesAt(held.upstream).map((n) => `"${n.name}"`);
     return {
       ok: false,
       // Two sentences because the way out differs: with nothing wired in the
       // edge is what is missing, and with something wired in that this panel
       // cannot mention the words are.
-      reason: named.length === 0
+      reason: held.sources.length === 0 && held.upstream.length === 0
         ? `"${node.name}" points at something upstream and nothing is wired into it. Wire an edge to what it draws on.`
-        : `"${model}" cannot carry a mention of ${named.join(", ")}. Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
+        : `"${model}" cannot carry a mention of ${named.join(", ") || "what is wired into it"}. Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
     };
   }
   // What the panel's own gate would say about the box this proposal fills in.
@@ -524,7 +530,9 @@ function checkGenerateNode(
     const written = [...extractPromptText(measured)].length;
     // The words are often in another node, and "shorten it" is not something
     // the model can act on until it knows which one.
-    const holding = nameable.filter((n) => n.role === "written").map((n) => `"${n.name}"`);
+    const holding = nameable
+      .filter((n) => n?.role === "written")
+      .map((n) => `"${n?.name ?? ""}"`);
     return {
       ok: false,
       reason: `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}. Shorten it, or propose a model that takes it.`,

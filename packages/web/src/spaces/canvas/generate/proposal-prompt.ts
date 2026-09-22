@@ -52,9 +52,9 @@ export interface ProposalSource {
  * written note listed before an empty node would take the empty node's mark.
  */
 export interface ProposalFeeders {
-  /** The empty nodes, one per asset mark in order; null writes no mention. */
+  /** The empty nodes wired in, in order; null writes no mention there. */
   sources: readonly (ProposalSource | null)[];
-  /** The nodes carrying work, one per ref mark in order; null writes none. */
+  /** The nodes carrying work, wired in in order; null writes none there. */
   upstream: readonly (ProposalSource | null)[];
 }
 

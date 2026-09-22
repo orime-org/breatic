@@ -1574,6 +1574,38 @@ describe("a mark pointing at an upstream node", () => {
     });
   });
 
+  it("measures a mark landing on an unmentionable feeder as the nothing it writes", () => {
+    // The canvas writes no mention where the feeder cannot carry one, so the
+    // characters it would have carried never reach the box. Measured off a
+    // list with that place dropped, this gate would judge a string the reader
+    // never receives -- and let a prompt land empty.
+    const at = pick(
+      (m) => !m.byReference && m.takesPrompt && m.needs.length > 0,
+      "mode fed by a panel slot that still takes a prompt",
+    );
+    const feeder = sourcelessOn(at.needs[0] as GenerationNodeType);
+    const pointing = generation(at, 0, 1);
+
+    const verdict = checkProposal({
+      nodes: [
+        generation(feeder),
+        { role: "written", type: "text", name: "The caption", prompt: [{ text: "slow and warm" }] },
+        { ...pointing, prompt: (pointing.prompt ?? []).filter((seg) => seg.slot) },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
+      modelNote: "",
+      rationale: "",
+      groupName: "Two steps",
+    });
+
+    // The one mark lands on the unmentionable feeder, so the box holds
+    // nothing at all and the model that draws from it is told so.
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("writes nothing"),
+    });
+  });
+
   it("refuses a mark pointing at a node this panel would not take a mention of", () => {
     // A mark pointing upstream lands as a mention and nothing else, and a
     // mention this panel refuses lands as nothing at all: the words on either
