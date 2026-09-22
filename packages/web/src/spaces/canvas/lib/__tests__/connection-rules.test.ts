@@ -15,7 +15,7 @@ import {
 //   image input ← { image, text }
 //   video input ← { text, video, audio, image }
 //   text  input ← { text, video, audio, image }
-//   audio input ← { text }
+//   audio input ← { text, audio }
 // Anything not on a target's whitelist is rejected at the wire level, not
 // silently dropped later at execute time.
 describe('the rule the canvas reads and the rule the agent is held to', () => {
@@ -81,15 +81,18 @@ describe('canConnect', () => {
     });
   });
 
-  describe('audio input — { text } only', () => {
+  describe('audio input — { text, audio }', () => {
     it('allows text → audio', () => {
       expect(canConnect('text', 'audio')).toBe(true);
     });
 
-    it('rejects everything else, including audio → audio', () => {
+    it('allows audio → audio', () => {
+      expect(canConnect('audio', 'audio')).toBe(true);
+    });
+
+    it('rejects the modalities audio generation does not read', () => {
       expect(canConnect('image', 'audio')).toBe(false);
       expect(canConnect('video', 'audio')).toBe(false);
-      expect(canConnect('audio', 'audio')).toBe(false);
       expect(canConnect('3d', 'audio')).toBe(false);
     });
   });

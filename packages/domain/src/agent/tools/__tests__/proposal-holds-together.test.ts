@@ -1815,41 +1815,6 @@ describe("what an edge into a generation is worth", () => {
 
     expect(verdict).toEqual({ ok: true });
   });
-
-  it("places a flow whose material kind the canvas refuses to wire", () => {
-    // The canvas lets no edge carry this kind into this node type, and the
-    // step before it makes exactly that kind. Read off edges alone there is
-    // no shape at all: wired is refused by the whitelist, unwired says
-    // nothing reaches it.
-    const at = pick(
-      (m) => !m.byReference && m.needs.length > 0 && !canConnect(m.needs[0] as string, m.nodeType),
-      "slot-fed mode whose material kind cannot be wired into it",
-    );
-    const maker = pick(
-      (m) => m.nodeType === (at.needs[0] as GenerationNodeType) && m.needs.length === 0,
-      `mode making a ${String(at.needs[0])} out of nothing`,
-    );
-
-    const verdict = checkProposal({
-      nodes: [
-        generation(maker),
-        { role: "generate", type: at.nodeType, name: "The result", mode: at.mode, model: at.model,
-          params: {}, prompt: [
-            { text: "a full take" },
-            ...Array.from({ length: at.pieces }, (_, i) => ({
-              slot: { kind: "asset" as const, label: `piece ${String(i + 1)}`, note: "Pick it in the slot" },
-            })),
-            ...Array.from({ length: at.choices.length > 0 ? 1 : 0 }, () => ({
-              slot: { kind: "tweak" as const, label: "the words", note: "Write them in the panel" },
-            })),
-          ] },
-      ],
-      edges: [],
-      rationale: "x", groupName: "g",
-    });
-
-    expect(verdict).toEqual({ ok: true });
-  });
 });
 
 describe("a model the panel draws no prompt box for", () => {

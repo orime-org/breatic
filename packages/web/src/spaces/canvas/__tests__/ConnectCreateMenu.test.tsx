@@ -34,7 +34,7 @@ describe('ConnectCreateMenu', () => {
     expect(onPick).toHaveBeenCalledWith('video');
   });
 
-  it('lists text / video only for an audio source', async () => {
+  it('lists text / audio / video for an audio source', async () => {
     render(
       <ConnectCreateMenu
         open
@@ -46,9 +46,9 @@ describe('ConnectCreateMenu', () => {
       />,
     );
     expect(await screen.findByTestId('create-node-text')).toBeInTheDocument();
+    expect(screen.getByTestId('create-node-audio')).toBeInTheDocument();
     expect(screen.getByTestId('create-node-video')).toBeInTheDocument();
     expect(screen.queryByTestId('create-node-image')).toBeNull();
-    expect(screen.queryByTestId('create-node-audio')).toBeNull();
   });
 
   it('renders no items when closed', () => {

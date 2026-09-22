@@ -90,7 +90,9 @@ export function canGenerate(type: NodeType): boolean {
  *   image input ← image (i2i source) + text (prompt content)
  *   video input ← text + video + audio + image (all content modalities)
  *   text  input ← text + video + audio + image
- *   audio input ← text only
+ *   audio input ← text + audio (user 2026-09-22: an edge says one piece of
+ *                 audio is what the next one is made from, and that reading
+ *                 stands whether or not the pool can carry a mention of it)
  *
  * 3d / web have no ratified input rule yet and keep the current
  * anything-connects behavior (extend INPUT_WHITELIST when theirs land).
@@ -104,7 +106,7 @@ const INPUT_WHITELIST: Partial<Record<NodeType, ReadonlySet<string>>> = {
   image: new Set<string>(['image', 'text']),
   video: new Set<string>(['text', 'video', 'audio', 'image']),
   text: new Set<string>(['text', 'video', 'audio', 'image']),
-  audio: new Set<string>(['text']),
+  audio: new Set<string>(['text', 'audio']),
 };
 
 /**
