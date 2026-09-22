@@ -2,23 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { creditSources, type DbTx } from "@breatic/core";
+import type { CreditSourceKind } from "@breatic/shared";
 
-/**
- * What a lot of credits can come from.
- *
- * The same four words are the `credit_sources_kind_check` list in 0079. An
- * integration test inserts every one of these, so a fifth added here without a
- * migration widening that constraint fails there rather than at runtime.
- */
-export const CREDIT_SOURCE_KINDS = [
-  "payment",
-  "compensation",
-  "gift",
-  "discount",
-] as const;
-
-/** One of {@link CREDIT_SOURCE_KINDS}. */
-export type CreditSourceKind = (typeof CREDIT_SOURCE_KINDS)[number];
+// Re-exported rather than declared here: the browser decides what a row
+// prints and whether its controls are offered from this same value, so the
+// list and its type live in `@breatic/shared`.
+export { CREDIT_SOURCE_KINDS, type CreditSourceKind } from "@breatic/shared";
 
 /**
  * Open a receipt for credits about to be granted.

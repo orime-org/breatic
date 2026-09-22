@@ -157,8 +157,12 @@ export async function grantFromPayment(
         // a fresh one, and the unique index would stop refusing the second
         // grant.
         sourceId: input.paymentId,
+        sourceKind: "payment",
         userId: input.userId,
         purchasedCredits: amount,
+        // Unassigned, which means unspendable until the buyer points it at a
+        // studio. That is the default state of the switch, not a gap.
+        designatedStudioId: null,
       },
       tx,
     );

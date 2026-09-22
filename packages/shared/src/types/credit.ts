@@ -17,6 +17,42 @@ import type { CreditLotLifecycle } from "@shared/types/entities.js";
  * value stops being arithmetic and becomes something to show.
  */
 
+/**
+ * What a lot of credits can come from.
+ *
+ * The same four words are the `credit_sources_kind_check` list in 0079. An
+ * integration test inserts every one of these, so a fifth added here without a
+ * migration widening that constraint fails there rather than at runtime.
+ *
+ * Here rather than beside the table, because the browser decides what a row
+ * prints and whether its controls are offered from this same value. The array
+ * and the type stay together: derived from one another they cannot disagree,
+ * and split across two packages they would be two hand-kept lists.
+ */
+export const CREDIT_SOURCE_KINDS = [
+  "payment",
+  "compensation",
+  "gift",
+  "discount",
+] as const;
+
+/** One of {@link CREDIT_SOURCE_KINDS}. */
+export type CreditSourceKind = (typeof CREDIT_SOURCE_KINDS)[number];
+
+/**
+ * Whether a lot's credits were bought, which is what decides where they may go.
+ *
+ * Three rules read this one question — a lot that was not bought cannot be
+ * re-designated, cannot be refunded, and prints its origin instead of a price.
+ * Written once so the three cannot drift: bought credits are the buyer's to
+ * move and to reclaim, granted ones stay where they were granted.
+ * @param kind - What the lot's receipt says it is.
+ * @returns True when someone paid for these credits.
+ */
+export function isPurchased(kind: CreditSourceKind): boolean {
+  return kind === "payment";
+}
+
 /** One keyset page. */
 export interface CreditPage<T> {
   items: T[];

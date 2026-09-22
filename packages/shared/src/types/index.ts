@@ -32,6 +32,7 @@ export type {
 
 export type {
   CreditPage,
+  CreditSourceKind,
   PurchaseRow,
   CreditLotView,
   StudioLotView,
@@ -45,6 +46,8 @@ export type {
 
 export {
   accountTotal,
+  CREDIT_SOURCE_KINDS,
+  isPurchased,
   HELD_LIFECYCLES,
   IN_FLIGHT_REFUND_LIFECYCLES,
 } from "@shared/types/credit.js";

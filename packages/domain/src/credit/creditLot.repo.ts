@@ -44,6 +44,7 @@ import {
 import { IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
 import type {
   CreditLotEntity,
+  CreditSourceKind,
   CreditLotLifecycle,
   CreditLedgerEntryEntity,
   CreditLedgerEntryType,
@@ -103,6 +104,7 @@ function toLotEntity(row: typeof creditLots.$inferSelect): CreditLotEntity {
   return {
     id: row.id,
     sourceId: row.sourceId,
+    sourceKind: row.sourceKind as CreditSourceKind,
     userId: row.userId,
     purchasedCredits: row.purchasedCredits,
     remainingCredits: row.remainingCredits,
@@ -172,17 +174,24 @@ function toLedgerEntity(
  *   `source_id` refuses the insert.
  */
 export async function createLot(
-  data: { sourceId: string; userId: string; purchasedCredits: string },
+  data: {
+    sourceId: string;
+    sourceKind: CreditSourceKind;
+    userId: string;
+    purchasedCredits: string;
+    designatedStudioId: string | null;
+  },
   tx: DbTx,
 ): Promise<CreditLotEntity> {
   const rows = await tx
     .insert(creditLots)
     .values({
       sourceId: data.sourceId,
+      sourceKind: data.sourceKind,
       userId: data.userId,
       purchasedCredits: data.purchasedCredits,
       remainingCredits: data.purchasedCredits,
-      designatedStudioId: null,
+      designatedStudioId: data.designatedStudioId,
       lifecycle: "active",
     })
     .returning();
