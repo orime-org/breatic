@@ -152,8 +152,19 @@ describe('what the highlight looks like', () => {
     );
   });
 
-  it('says it can be pressed, because pressing it opens the thread', () => {
-    expect(ruleBody(MARK)).toContain('cursor: pointer');
+  it('says it can be pressed while a press on it opens the thread', () => {
+    // The same condition `document-comment-hit.ts` asks: a press reaches a
+    // thread only while the mark it lands on is not orphaned.
+    expect(ruleBody(`${MARK}:not([data-orphan='true'])`)).toContain(
+      'cursor: pointer',
+    );
+  });
+
+  it('leaves the caret alone on a mark nothing answers', () => {
+    // A settled thread keeps its mark with the paint taken off it, so those
+    // words read as prose and a press does nothing. Offered unconditionally,
+    // the pointer made them read as a link mid-sentence (user 2026-09-22).
+    expect(ruleBody(MARK)).not.toContain('cursor');
   });
 
   it('goes unpainted once its thread is resolved or gone', () => {
