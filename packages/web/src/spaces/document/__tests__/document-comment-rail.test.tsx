@@ -23,12 +23,15 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 
+import { CommentsExtension } from '@blocknote/core/comments';
+
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import {
   _resetDocumentEditorCacheForTests,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
+import { selectThreads } from '@web/spaces/document/document-comment-selection';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
@@ -198,6 +201,54 @@ describe('the comment panel', () => {
     await pressCommentsRow();
 
     expect(await screen.findByText('the whole point')).toBeInTheDocument();
+  });
+
+  it('marks the card whose highlight the reader pressed', async () => {
+    // A6: pressing a highlight opens that comment. With the panel open, "open"
+    // is the card being marked and brought into view.
+    show();
+    await comment(0, 5, 'about alpha');
+    await comment(6, 11, 'about bravo');
+    await pressCommentsRow();
+    const cards = await screen.findAllByTestId('doc-comment-card');
+    expect(cards.map((card) => card.getAttribute('data-selected'))).toEqual([
+      'false',
+      'false',
+    ]);
+
+    const second = cards[1]!.getAttribute('data-thread')!;
+    act(() => {
+      selectThreads(handle.editor, [second]);
+    });
+
+    await waitFor(() => {
+      const marked = screen
+        .getAllByTestId('doc-comment-card')
+        .filter((card) => card.getAttribute('data-selected') === 'true');
+      expect(marked.map((card) => card.getAttribute('data-thread'))).toEqual([
+        second,
+      ]);
+    });
+  });
+
+  it('deepens the highlight of the thread being read', async () => {
+    show();
+    await comment(0, 5, 'about alpha');
+    const threadId = [
+      ...handle.editor
+        .getExtension(CommentsExtension)!
+        .threadStore.getThreads()
+        .keys(),
+    ][0]!;
+
+    act(() => {
+      selectThreads(handle.editor, [threadId]);
+    });
+
+    const deepened = handle.editor.domElement?.querySelector(
+      '.bn-thread-mark-selected',
+    );
+    expect(deepened?.textContent).toBe('alpha');
   });
 
   it('says so on a card whose words were deleted', async () => {

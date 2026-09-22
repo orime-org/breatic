@@ -52,6 +52,7 @@ import {
 } from '@web/spaces/document/document-comment-thread-store';
 import { documentCommentDraftRange } from '@web/spaces/document/document-comment-draft-range';
 import { documentCommentPasteExtension } from '@web/spaces/document/document-comment-paste';
+import { documentCommentSelection } from '@web/spaces/document/document-comment-selection';
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 
@@ -128,6 +129,9 @@ export function buildDocumentEditor(
       documentLinkEditMarkExtension(),
       documentDragDropExtension(),
       documentNoNodeClickExtension(),
+      // Ahead of the wiring: a press on two overlapping highlights has to be
+      // answered before the library's own handler takes the first of them.
+      documentCommentSelection(),
       commentWiring(options.comments),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),

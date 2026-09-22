@@ -51,16 +51,22 @@ type ClickHandler = (view: EditorView, pos: number, event: MouseEvent) => boolea
 
 /**
  * The plugin's own click handler, as ProseMirror would call it.
+ *
+ * Found by this plugin's key rather than by taking the first handler
+ * registered: several plugins offer one, and which comes first is decided by
+ * priorities that have nothing to do with this case.
  * @param view - The view the plugin is registered in.
  * @returns The handler.
- * @throws {Error} When no registered plugin offers one.
+ * @throws {Error} When this plugin is not registered, or offers none.
  */
 function clickHandlerOf(view: EditorView): ClickHandler {
   for (const plugin of view.state.plugins) {
+    const key = (plugin as unknown as { key: string }).key;
+    if (!key.startsWith('documentNoNodeClick')) continue;
     const handler = plugin.props.handleClick;
     if (handler !== undefined) return handler as unknown as ClickHandler;
   }
-  throw new Error('no plugin offers handleClick');
+  throw new Error('the no-node-click plugin offers no handleClick');
 }
 
 /**

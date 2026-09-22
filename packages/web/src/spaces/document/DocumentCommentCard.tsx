@@ -44,6 +44,8 @@ import type {
 interface DocumentCommentCardProps {
   /** The thread this card is for. */
   card: CommentCardView;
+  /** Whether this is a thread the reader pressed in the body. */
+  selected: boolean;
   /** This reader's role on the project. */
   myRole: ProjectRole;
   /** This reader's account id, absent until the session resolves. */
@@ -114,6 +116,7 @@ function Entry({ entry, canDelete, onDelete }: EntryProps): React.JSX.Element {
  * One thread's card.
  * @param root0 - See {@link DocumentCommentCardProps}.
  * @param root0.card - The thread to draw.
+ * @param root0.selected - Whether the reader pressed this thread's highlight.
  * @param root0.myRole - This reader's role.
  * @param root0.viewerId - This reader's account id.
  * @param root0.onReply - Adds a reply.
@@ -125,6 +128,7 @@ function Entry({ entry, canDelete, onDelete }: EntryProps): React.JSX.Element {
  */
 export const DocumentCommentCard = React.memo(function DocumentCommentCard({
   card,
+  selected,
   myRole,
   viewerId,
   onReply,
@@ -156,7 +160,8 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       data-testid='doc-comment-card'
       data-thread={card.id}
       data-state={card.state}
-      className='rounded-content-sm border border-border bg-card p-2.5 data-[state=resolved]:opacity-70 data-[state=resolvedOrphaned]:opacity-70'
+      data-selected={selected}
+      className='rounded-content-sm border border-border bg-card p-2.5 data-[selected=true]:border-active-border data-[state=resolved]:opacity-70 data-[state=resolvedOrphaned]:opacity-70'
     >
       {card.quote === null ? (
         <p

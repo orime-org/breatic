@@ -31,6 +31,10 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { DocumentCommentCard } from '@web/spaces/document/DocumentCommentCard';
 import {
+  onSelectedThreadsChange,
+  selectedThreadsIn,
+} from '@web/spaces/document/document-comment-selection';
+import {
   removeReply,
   removeThread,
   reopenThread,
@@ -72,6 +76,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // Who is reading, for the rights each card draws itself with. The store is
   // where every other surface asks the same question.
   const viewerId = useCurrentUserStore((state) => state.user?.id);
+  // Which threads the reader pressed in the body. The panel marks them and
+  // brings the first into view, which is A6's half of "the comment opens".
+  const selected = React.useSyncExternalStore(
+    onSelectedThreadsChange,
+    () => selectedThreadsIn(editor.prosemirrorState),
+  );
 
   const onReply = React.useCallback(
     (threadId: string, body: string) => replyToThread(editor, threadId, body),
@@ -116,6 +126,17 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     }),
     [myRole, viewerId, onReply, onResolve, onReopen, onDelete, onDeleteReply],
   );
+
+  // The first of them, because a press on two overlapping highlights marks
+  // both and only one place can be scrolled to.
+  const bring = selected[0];
+  const list = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (bring === undefined) return;
+    list.current
+      ?.querySelector(`[data-thread="${bring}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [bring]);
 
   const showOpen = React.useCallback(() => {
     setFilter('open');
@@ -170,9 +191,14 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
             {t('spaces.document.comment.empty')}
           </p>
         ) : (
-          <div className='flex flex-col gap-2.5'>
+          <div ref={list} className='flex flex-col gap-2.5'>
             {cards.unresolved.map((card) => (
-              <DocumentCommentCard key={card.id} card={card} {...handling} />
+              <DocumentCommentCard
+                key={card.id}
+                card={card}
+                selected={selected.includes(card.id)}
+                {...handling}
+              />
             ))}
             {resolved.length > 0 && (
               <div
@@ -185,7 +211,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
                   })}
                 </p>
                 {resolved.map((card) => (
-                  <DocumentCommentCard key={card.id} card={card} {...handling} />
+                  <DocumentCommentCard
+                    key={card.id}
+                    card={card}
+                    selected={selected.includes(card.id)}
+                    {...handling}
+                  />
                 ))}
               </div>
             )}
