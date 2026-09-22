@@ -117,13 +117,10 @@ function faceOf(
     };
   }
   if (refusal === 'not_purchased') {
-    // Nobody paid for these, so the badge names where they came from and the
-    // line beside it stops at the balance. Every route off this screen goes
-    // through unassigning, and the server refuses that on exactly these.
-    return {
-      badge: t(`credits.source.${lot.sourceKind}`),
-      hint: remaining,
-    };
+    // No badge: the row already names the source where a price would go, and
+    // every route off this screen goes through unassigning, which the server
+    // refuses on exactly these. So the row states the balance and stops.
+    return { badge: null, hint: remaining };
   }
   return {
     // A purchase pointed at a deleted studio keeps the refusal and loses the

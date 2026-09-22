@@ -1738,11 +1738,14 @@ describe('the credits overlay, section by section', () => {
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/Trial credits/i);
+        // Counted rather than matched: the row already names the source
+        // where a price would go, so a badge saying it again is the same
+        // word twice on one line.
+        expect(within(body).getAllByText(/Trial credits/i)).toHaveLength(1);
         expect(body).not.toHaveTextContent(/unassign it/i);
-        // The badge names the source, so it is not the studio the credits
-        // are pinned to. Named rather than matched on "assigned to", which
-        // the refund rule printed at the foot of this screen also says.
+        // Nor the studio the credits are pinned to. Named rather than
+        // matched on "assigned to", which the refund rule printed at the
+        // foot of this screen also says.
         expect(body).not.toHaveTextContent(/Orime Studio/i);
         expect(
           within(body).queryByRole('button', { name: /refund/i }),
