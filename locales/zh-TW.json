@@ -1643,5 +1643,14 @@
       "depleted": "共 {credits} 點數",
       "refunded": "已退回原付款方式"
     }
+  },
+  "notFound": {
+    "heading": "頁面未找到",
+    "body": "你造訪的頁面不存在或已經移動。我們帶你回首頁。",
+    "cta": "返回首頁"
+  },
+  "pageLoadError": {
+    "message": "頁面載入失敗，請重試。",
+    "retry": "重試"
   }
 }

@@ -36,6 +36,12 @@ const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "applicati
 const PROJ_UUID = "11111111-1111-4111-8111-111111111111";
 
 describe("Projects routes", () => {
+  it("returns 404 for an invalid project lookup id without querying the database", async () => {
+    const res = await createApp().request("/api/v1/projects/not-a-uuid", { headers: AUTH });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ error: { code: 404 } });
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.projectService.assertAccess.mockResolvedValue(undefined);

@@ -36,6 +36,7 @@ const RecoveryCodePage = lazyRoute(routeImports.recoveryCodePage);
 const SlugSetupPage = lazyRoute(routeImports.slugSetupPage);
 const ForgotPasswordPage = lazyRoute(routeImports.forgotPasswordPage);
 const ResetPasswordPage = lazyRoute(routeImports.resetPasswordPage);
+const NotFoundPage = lazyRoute(routeImports.notFoundPage);
 const VerifyEmailPage = lazyRoute(routeImports.verifyEmailPage);
 
 /**
@@ -106,15 +107,13 @@ export const baseRoutes: RouteObject[] = [
       // holds a different set of things and each set is worth linking to, so it
       // is a path segment and not component state: the address is what a user
       // can send, what a refresh restores, and what Back walks through. The
-      // segment is checked against the addresses this scheme emits, which is
-      // the tab list minus the default section — that one's address carries no
-      // segment at all. Anything else, and any section on a studio the viewer
-      // is not in, resolves to `/studio/{slug}`.
-      { path: ':slug/:tab', element: <StudioContainerPage /> },
+      // tab list resolves known sections. Unknown suffixes open the default without
+      // rewriting the address; existing role-gated sections retain their guards.
+      { path: ':slug/:tab/*', element: <StudioContainerPage /> },
     ],
   },
   {
-    path: '/project/:projectId',
+    path: '/project/:projectId/*',
     element: (
       <ProtectedRoute>
         <ProjectPage />
@@ -171,6 +170,7 @@ export const baseRoutes: RouteObject[] = [
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/verify-email', element: <VerifyEmailPage /> },
+  { path: '*', element: <NotFoundPage /> },
 ];
 
 // The gallery is the one page that stays out of `lazyRoute`: its route is
@@ -191,7 +191,6 @@ export const router = createBrowserRouter(
   behindLoadingScreen([
     ...baseRoutes,
     ...devRoutes,
-    { path: '*', element: <Navigate to='/studio' replace /> },
   ]),
 );
 
@@ -201,8 +200,8 @@ export const router = createBrowserRouter(
 // bundle, `/auth/me` and the page chunks on one leg instead of three.
 preloadMatched(router.state.matches, hasSeenSession());
 
-// And again once each navigation settles. `/` and every unknown address match
-// a `<Navigate>`, which carries no page, so the call above finds nothing to
+// And again once each navigation settles. The root address matches
+// a redirect, which carries no page, so the call above finds nothing to
 // start for the reader who types the bare domain — the commonest cold entry
 // there is. The subscriber runs when the destination is known, so it can never
 // ask for a chunk the reader is not going to.

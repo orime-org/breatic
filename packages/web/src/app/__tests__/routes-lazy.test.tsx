@@ -135,11 +135,12 @@ describe('route table', () => {
     // of eager pages also describes a table with no pages at all.
     expect(collectPages(router.routes).map((entry) => entry.path).sort()).toEqual(
       [
+        '/*',
         '/choose-slug',
         '/decision',
         '/forgot-password',
         '/login',
-        '/project/:projectId',
+        '/project/:projectId/*',
         '/project/:projectId/access',
         '/recovery-code',
         '/register',
@@ -147,7 +148,7 @@ describe('route table', () => {
         '/studio',
         '/studio',
         '/studio/:slug',
-        '/studio/:slug/:tab',
+        '/studio/:slug/:tab/*',
         '/verify-email',
       ].sort(),
     );

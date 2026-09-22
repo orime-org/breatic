@@ -69,7 +69,7 @@ export function GoogleSignIn({ clientId, busy, onCredential }: GoogleSignInProps
           <GoogleLogin
             theme={googleTheme}
             size='large'
-            shape='rectangular'
+            shape='pill'
             text='continue_with'
             logo_alignment='left'
             width={width}
