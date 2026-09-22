@@ -637,7 +637,6 @@
       "signUp": "註冊",
       "noAccount": "還沒有帳號?",
       "forgotPassword": "忘記密碼?",
-      "continueWithGoogle": "使用 Google 繼續",
       "googleLoading": "正在載入 Google 登入…",
       "googleFailed": "Google 登入暫不可用，請重試或使用電子郵件登入。",
       "failed": "登入失敗,請重試。"

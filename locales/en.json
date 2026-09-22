@@ -637,7 +637,6 @@
       "signUp": "Sign up",
       "noAccount": "Don't have an account?",
       "forgotPassword": "Forgot password?",
-      "continueWithGoogle": "Continue with Google",
       "googleLoading": "Loading Google sign-in…",
       "googleFailed": "Google sign-in is unavailable. Please try again or use email sign-in.",
       "failed": "Sign-in failed. Please try again."
