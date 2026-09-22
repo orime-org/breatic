@@ -31,6 +31,7 @@
       "google_oauth_unconfigured": "이 서버에서는 Google 로그인을 사용할 수 없습니다",
       "invalid_google_credential": "Google 계정을 확인할 수 없습니다",
       "google_email_unverified": "Google 계정의 이메일이 확인되지 않았습니다",
+      "google_link_requires_email_login": "이 계정은 이메일로 로그인하세요. Google 계정을 안전하게 연결할 수 없습니다.",
       "reset_link_sent": "이 이메일로 등록된 계정이 있으면 재설정 링크를 보내 드렸습니다.",
       "reset_success": "비밀번호를 재설정했습니다. 로그인해 주세요.",
       "reset_recovery_success": "비밀번호를 재설정했습니다. 새 복구 코드를 저장하세요.",
@@ -651,8 +652,8 @@
       "signUp": "회원가입",
       "noAccount": "계정이 없으신가요?",
       "forgotPassword": "비밀번호를 잊으셨나요?",
-      "continueWithGoogle": "Google로 계속하기",
-      "googleSoon": "Google 로그인은 곧 제공될 예정입니다.",
+      "googleLoading": "Google 로그인 불러오는 중…",
+      "googleFailed": "Google 로그인을 사용할 수 없습니다. 다시 시도하거나 이메일로 로그인하세요.",
       "failed": "로그인에 실패했습니다. 다시 시도해 주세요."
     },
     "register": {
@@ -1123,6 +1124,7 @@
       "account": "계정",
       "signOut": "로그아웃",
       "credits": "크레딧",
+      "creditsUnavailable": "불러올 수 없음",
       "membership": "멤버십",
       "accountSettings": "계정 설정"
     },

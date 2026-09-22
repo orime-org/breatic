@@ -35,7 +35,7 @@ export default defineConfig(({ command, mode }) => {
   return {
     // Load .env from monorepo root so frontend + backend share one file
     envDir: path.resolve(__dirname, '../..'),
-    // Inject backend-only env vars into frontend (avoids duplicating VITE_ prefixed vars)
+    // Inject the public Google client identifier; never inject backend secrets.
     define: {
       '__GOOGLE_CLIENT_ID__': JSON.stringify(env.GOOGLE_CLIENT_ID || ''),
     },

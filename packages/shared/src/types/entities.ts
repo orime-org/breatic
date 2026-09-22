@@ -457,8 +457,8 @@ export type CreditLedgerEntryType =
  */
 export interface CreditLotEntity {
   id: string;
-  /** The payment this came from. Unique, so a payment grants credits once. */
-  paymentId: string;
+  /** What the credits came from. Unique, so one source grants credits once. */
+  sourceId: string;
   /** Who bought it. Never changes — it is where the money came from. */
   userId: string;
   purchasedCredits: string;

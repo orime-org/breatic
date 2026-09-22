@@ -28,6 +28,8 @@ RUN pnpm turbo build --filter=@breatic/shared
 
 # Optional public addresses for a separately hosted frontend. Empty values
 # preserve the same-origin API/WebSocket behavior of local deployments.
+ARG GOOGLE_CLIENT_ID=
+ENV GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
 ARG VITE_APP_VERSION=0.1.0
 ARG VITE_API_BASE_URL=
 ARG VITE_COLLAB_URL=

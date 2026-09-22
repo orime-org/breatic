@@ -143,7 +143,24 @@ export function DropdownMenuSeparator({
 }
 
 /**
- * Right-aligned keyboard shortcut hint.
+ * The mark at the right end of a menu row: a shortcut, a tier, a balance.
+ *
+ * One place says how quiet that mark is, so a row that carries a figure and a
+ * row that carries a key combination read as the same kind of aside.
+ * @param props - Native span props.
+ * @returns The trailing span.
+ */
+export function DropdownMenuTrailing({
+  className,
+  ...props
+}: ComponentProps<'span'>): ReactNode {
+  return (
+    <span className={cn('ml-auto text-xs text-muted-foreground', className)} {...props} />
+  );
+}
+
+/**
+ * A keyboard shortcut hint, spaced out the way key combinations are.
  * @param props - Native span props.
  * @returns A shortcut hint span.
  */
@@ -151,12 +168,7 @@ export function DropdownMenuShortcut({
   className,
   ...props
 }: ComponentProps<'span'>): ReactNode {
-  return (
-    <span
-      className={cn('ml-auto text-xs tracking-widest text-muted-foreground', className)}
-      {...props}
-    />
-  );
+  return <DropdownMenuTrailing className={cn('tracking-widest', className)} {...props} />;
 }
 
 /**

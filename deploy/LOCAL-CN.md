@@ -320,3 +320,9 @@ docker compose ps -a
 | 收不到邮件 | console 只写 `docker compose logs server`；真实发送需 SMTP |
 
 Cloudflare 日志可在发布机器运行 `pnpm --filter @breatic/ingest exec wrangler tail --env production` 查看。分享日志前删除密钥、cookie 和签名令牌。
+
+## Google 登录（可选）
+
+创建 Google OAuth「Web 应用」Client ID，将前端的完整来源（协议、域名、端口，不含路径）添加到授权 JavaScript 来源；开发通常为 `http://localhost:8000`。在 `.env` 设置 `GOOGLE_CLIENT_ID`，前端和后端必须相同。官方按钮使用弹窗返回 ID Token，后端验签后发会话 Cookie；不需要 Client Secret，也不需要后端 redirect URI。未配置时隐藏按钮。
+
+开发修改变量后重启前后端。Docker 前端必须重新构建，例如 `docker build -f Dockerfile.web --build-arg GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com -t breatic-web:google .`，然后将 Compose 的 web 服务镜像改为该镜像再启动；只修改容器环境不会改变已构建页面。Google 在线 SDK/账号页面需要客户端网络可访问；无法访问时仍可使用邮箱登录。普通 HTTP 局域网 IP 不符合 Google Web 来源要求，请用允许的 localhost 或 HTTPS 来源。

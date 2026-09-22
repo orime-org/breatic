@@ -102,7 +102,7 @@ function designatedToStudio(studioId: string): SQL | undefined {
 function toLotEntity(row: typeof creditLots.$inferSelect): CreditLotEntity {
   return {
     id: row.id,
-    paymentId: row.paymentId,
+    sourceId: row.sourceId,
     userId: row.userId,
     purchasedCredits: row.purchasedCredits,
     remainingCredits: row.remainingCredits,
@@ -157,25 +157,28 @@ function toLedgerEntity(
  * studio each one is for mid-purchase puts two decisions in one flow.
  * Designation is its own step.
  *
- * The unique constraint on `payment_id` is what makes a redelivered webhook a
+ * The unique constraint on `source_id` is what makes a redelivered webhook a
  * failed insert rather than a second grant, so this deliberately does not
  * swallow the conflict — the caller decides what a duplicate means.
  * @param data - The purchase this lot records.
- * @param data.paymentId - The completed payment. Unique across lots.
+ * @param data.sourceId - What the credits came from. Unique across lots.
  * @param data.userId - Who paid.
  * @param data.purchasedCredits - How many credits the payment bought, as a decimal string.
- * @param tx - Optional transaction to join.
+ * @param tx - The transaction the lot's `topup` ledger row is written in.
+ *   Required: a lot's remaining balance is the ledger summed over it, so a lot
+ *   that committed without its row would read as owing its whole value.
  * @returns The new lot.
+ * @throws {Error} If a lot already records this source — the unique index on
+ *   `source_id` refuses the insert.
  */
 export async function createLot(
-  data: { paymentId: string; userId: string; purchasedCredits: string },
-  tx?: DbTx,
+  data: { sourceId: string; userId: string; purchasedCredits: string },
+  tx: DbTx,
 ): Promise<CreditLotEntity> {
-  const conn = tx ?? db;
-  const rows = await conn
+  const rows = await tx
     .insert(creditLots)
     .values({
-      paymentId: data.paymentId,
+      sourceId: data.sourceId,
       userId: data.userId,
       purchasedCredits: data.purchasedCredits,
       remainingCredits: data.purchasedCredits,
@@ -277,6 +280,23 @@ export async function applyCharge(
   return { remainingCredits: row.remaining_credits, lifecycle: row.lifecycle };
 }
 
+/** One movement of credits, as the ledger records it. */
+interface LedgerEntryInput {
+  /** Whose money moved. Null on a debt, which nobody has paid yet. */
+  payerUserId: string | null;
+  entryType: CreditLedgerEntryType;
+  amount: string;
+  actorUserId?: string | null;
+  lotId?: string | null;
+  studioId?: string | null;
+  projectId?: string | null;
+  model?: string | null;
+  provider?: string | null;
+  tokensUsed?: number | null;
+  description?: string | null;
+  referenceId?: string | null;
+}
+
 /**
  * Append one row to the ledger.
  *
@@ -297,29 +317,17 @@ export async function applyCharge(
  * @param entry.tokensUsed - Tokens consumed, for text usage.
  * @param entry.description - A human-readable line.
  * @param entry.referenceId - Task or idempotency key; shared by every row of one charge.
- * @param tx - Optional transaction to join.
+ * @param tx - The transaction this entry belongs in. Required, so an entry
+ *   that draws a lot down can never commit without the write that drew it.
+ *   Entries that draw no lot down reach here through
+ *   {@link recordStandaloneUsage}, which opens the transaction itself.
  * @returns The appended row.
  */
 export async function appendLedgerEntry(
-  entry: {
-    /** Whose money moved. Null on a debt, which nobody has paid yet. */
-    payerUserId: string | null;
-    entryType: CreditLedgerEntryType;
-    amount: string;
-    actorUserId?: string | null;
-    lotId?: string | null;
-    studioId?: string | null;
-    projectId?: string | null;
-    model?: string | null;
-    provider?: string | null;
-    tokensUsed?: number | null;
-    description?: string | null;
-    referenceId?: string | null;
-  },
-  tx?: DbTx,
+  entry: LedgerEntryInput,
+  tx: DbTx,
 ): Promise<CreditLedgerEntryEntity> {
-  const conn = tx ?? db;
-  const rows = await conn
+  const rows = await tx
     .insert(creditLedger)
     .values({
       payerUserId: entry.payerUserId,
@@ -337,6 +345,23 @@ export async function appendLedgerEntry(
     })
     .returning();
   return toLedgerEntity(rows[0]!);
+}
+
+/**
+ * Record usage that drew no lot down.
+ *
+ * Two deployments reach here: one that charges nobody, and an account whose
+ * work had no studio to bill. Both still want the ledger to say what was
+ * produced, and neither has a lot to keep in step with — so this write is
+ * whole on its own, which is the difference {@link appendLedgerEntry} cannot
+ * express while it demands a transaction.
+ * @param entry - What happened, with `lotId` necessarily absent.
+ * @returns The appended row.
+ */
+export async function recordStandaloneUsage(
+  entry: Omit<LedgerEntryInput, "lotId">,
+): Promise<CreditLedgerEntryEntity> {
+  return db.transaction((tx) => appendLedgerEntry({ ...entry, lotId: null }, tx));
 }
 
 /**
@@ -771,7 +796,7 @@ export async function listLotsByUser(
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
     })
     .from(creditLots)
-    .innerJoin(payments, eq(payments.id, creditLots.paymentId))
+    .innerJoin(payments, eq(payments.id, creditLots.sourceId))
     .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(
       and(

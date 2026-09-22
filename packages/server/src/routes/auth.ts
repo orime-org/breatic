@@ -248,6 +248,7 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
   const { user, token } = await authService.loginOrCreateGoogle(
     payload.sub,
     payload.email,
+    payload.email.endsWith("@gmail.com") || Boolean(payload.hd),
   );
 
   setSessionCookie(c, token);

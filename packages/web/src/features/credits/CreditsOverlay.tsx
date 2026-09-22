@@ -88,7 +88,7 @@ export function CreditsOverlay({
           aria-labelledby={`credits-tab-${active}`}
           className='min-h-0 min-w-0 flex-1'
         >
-          <CreditsSectionPanel section={active} open={open} />
+          <CreditsSectionPanel section={active} />
         </div>
       </DialogContent>
     </Dialog>

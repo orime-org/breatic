@@ -31,6 +31,7 @@
       "google_oauth_unconfigured": "本伺服器未開啟 Google 登入",
       "invalid_google_credential": "無法驗證你的 Google 帳號",
       "google_email_unverified": "你的 Google 帳號電子郵件未驗證",
+      "google_link_requires_email_login": "請使用電子郵件登入此帳號，Google 無法安全關聯此信箱。",
       "reset_link_sent": "若該電子郵件已註冊,重設連結已寄送。",
       "reset_success": "密碼重設成功,請登入。",
       "reset_recovery_success": "密碼重設成功,請保存新的復原碼。",
@@ -651,8 +652,8 @@
       "signUp": "註冊",
       "noAccount": "還沒有帳號?",
       "forgotPassword": "忘記密碼?",
-      "continueWithGoogle": "使用 Google 繼續",
-      "googleSoon": "Google 登入即將推出。",
+      "googleLoading": "正在載入 Google 登入…",
+      "googleFailed": "Google 登入暫不可用，請重試或使用電子郵件登入。",
       "failed": "登入失敗,請重試。"
     },
     "register": {
@@ -1123,6 +1124,7 @@
       "account": "帳號",
       "signOut": "登出",
       "credits": "點數",
+      "creditsUnavailable": "目前無法取得",
       "membership": "會員",
       "accountSettings": "帳號設定"
     },

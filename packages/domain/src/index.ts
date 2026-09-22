@@ -20,6 +20,7 @@
 // ── Credit (the "spend" side: deduction + balance + ledger) ──────
 // The lot-based engine (#11): the only writer of a lot's lifecycle, its
 // designation, and what is left on it.
+export * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
