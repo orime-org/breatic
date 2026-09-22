@@ -126,10 +126,16 @@ interface NodeContextMenuProps {
  * anchor to). A node offers generate / upload / tools (top block) then copy /
  * duplicate / rename / lock / delete; a group offers copy / duplicate (with its
  * members) / ungroup / rename / lock / delete. Tools is a disabled placeholder
- * (coming soon). Most action items render only when their handler is supplied,
- * so the parent controls availability; Download is the exception — the work is
- * built and only the material can be missing, so it always renders and
- * disables, which is also why its cursor refuses rather than saying nothing.
+ * (coming soon). Two different questions decide what a reader sees. Whether
+ * this KIND of node is ever offered an item is answered by leaving it out:
+ * `snapshotOffered` and `assetActionsOffered` drop Snapshot and the three
+ * asset items whole, because an item greyed on every text node forever says
+ * "not right now" about something never on offer. Whether THIS node can act
+ * on an item it is offered is answered by greying it: Generate, Snapshot,
+ * Download, Understand and Tools render without their handler and disable,
+ * the work being built and only the material missing, which is also why their
+ * cursor refuses rather than saying nothing. The rest — reset, history, copy,
+ * duplicate, rename, delete — render only when their handler is supplied.
  * Lock / unlock is always present. Shortcut hints are platform-aware via
  * {@link formatShortcut}.
  * @param root0 - Component props.

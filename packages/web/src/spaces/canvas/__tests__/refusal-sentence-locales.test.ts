@@ -4,11 +4,14 @@
 /**
  * The refusal sentences, rendered in all five languages (#2175).
  *
- * Both gates that refuse a file name the file and the format it is in, and
- * each half a refusal did not carry drops its part of the clause. That is
- * four combinations per sentence, written as nested ICU selects — and a
- * translator editing one arm cannot be told by the type system that the other
- * three still have to render, or that the two values still have to appear.
+ * Each refusal names what it knows about the file, and each thing it did not
+ * carry drops its part of the clause. The two select on different things and
+ * so have different shapes, written as nested ICU selects: the
+ * unsupported-type sentence selects on the file and the format, four arms;
+ * the over-cap sentence selects on the file, the size and the ceiling, six —
+ * the fileless arm ignores the size, having no file to say it about. A
+ * translator editing one arm cannot be told by the type system that the
+ * others still have to render, or that the values still have to appear.
  *
  * So every arm is rendered in every language here. English alone passing says
  * nothing about the four catalogs the other readers open.
@@ -103,6 +106,44 @@ describe.each(LOCALE_CATALOGS)(
       expect(said).toContain(LIMIT);
       expect(said).not.toContain('none');
       expect(said).not.toContain('{');
+    });
+
+    // A refusal that named the file without measuring it: the size field is
+    // left out rather than stored blank, so the clause naming it goes too.
+    it('names the file without a size when none was measured', () => {
+      const withCeiling = say(OVER_CAP, {
+        file: FILE,
+        bytes: 'none',
+        limit: LIMIT,
+      });
+      expect(withCeiling).toContain(FILE);
+      expect(withCeiling).toContain(LIMIT);
+      expect(withCeiling).not.toContain(SIZE);
+      expect(withCeiling).not.toContain('none');
+      expect(withCeiling).not.toContain('{');
+
+      const withoutCeiling = say(OVER_CAP, {
+        file: FILE,
+        bytes: 'none',
+        limit: 'unknown',
+      });
+      expect(withoutCeiling).toContain(FILE);
+      expect(withoutCeiling).not.toContain('none');
+      expect(withoutCeiling).not.toContain('unknown');
+      expect(withoutCeiling).not.toContain('{');
+    });
+
+    it('still says what happened with neither a file nor a ceiling', () => {
+      const said = say(OVER_CAP, {
+        file: 'none',
+        bytes: 'none',
+        limit: 'unknown',
+      });
+
+      expect(said).not.toContain('none');
+      expect(said).not.toContain('unknown');
+      expect(said).not.toContain('{');
+      expect(said.length).toBeGreaterThan(0);
     });
   },
 );

@@ -292,7 +292,13 @@ export type UnderstandAt = FetchMediaRequest & Omit<UnderstandRequest, "media">;
  *
  * The reader is not choosing a model — they pressed Understand, or an agent
  * called the tool — and one model covers all three media (user 2026-09-19).
- * Both callers read these, so a change reaches both at once.
+ * The agent tool, the canvas route and the worker all read these, so a change
+ * reaches every lane at once.
+ *
+ * Fixed here rather than configured: they are what every measurement behind
+ * this capability was taken against. The backend matters on its own — the two
+ * that serve this model take different body sizes, and leaving the choice to
+ * the deployment means a clip that worked yesterday is refused today.
  */
 export const UNDERSTAND_PINS = {
   model: "google/gemini-3.8-flash",

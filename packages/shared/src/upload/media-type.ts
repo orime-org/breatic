@@ -29,10 +29,12 @@ import {
  * question: `image/svg+xml` is an image by family and markup by content, so no
  * model reads it and every browser runs the scripts in it.
  *
- * The video entries are three of the four containers the canvas offers in its
- * file picker; `video/ogg` is left out. The image and audio entries are the
- * formats the providers publish in common; they are an inference rather than a per-model matrix, and the matrix
- * is what a later round replaces them with.
+ * The video entries are the three containers the canvas offers, because the
+ * picker's `accept` is built from this list rather than kept beside it;
+ * `video/ogg` is deliberately not among them. The image and audio entries are
+ * the formats the providers publish in common; they are an inference rather
+ * than a per-model matrix, and the matrix is what a later round replaces them
+ * with.
  */
 const UPLOADABLE_MEDIA_TYPES = [
   "image/png",

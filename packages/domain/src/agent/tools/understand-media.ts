@@ -31,16 +31,6 @@ import {
   VIDEO_FORMAT_NAMES,
 } from "@domain/understand/index.js";
 
-/**
- * The model this tool asks, and the backend it pins.
- *
- * Both are fixed here rather than configured: they are what every measurement
- * behind this tool was taken against. The backend matters on its own — the two
- * that serve this model take different body sizes, and leaving the choice to
- * the service means a clip that worked yesterday is refused today.
- */
-
-
 /** What the model may ask this tool to look at. */
 const inputSchema = z.object({
   url: z.string().url().describe("Address of the image, video or audio"),
