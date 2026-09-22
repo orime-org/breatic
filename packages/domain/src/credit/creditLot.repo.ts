@@ -173,9 +173,11 @@ function toLedgerEntity(
  *   for the owner to point later. Required rather than defaulted: credits
  *   nobody paid for are pinned as they are written, and a default would let
  *   that be forgotten silently.
- * @param tx - The transaction the lot's `topup` ledger row is written in.
- *   Required: a lot's remaining balance is the ledger summed over it, so a lot
- *   that committed without its row would read as owing its whole value.
+ * @param tx - The transaction the lot and its `topup` ledger row are written
+ *   in. Required: a lot's remaining balance is the ledger summed over it, so a
+ *   lot that committed without its row would read as owing its whole value.
+ *   The row is written here rather than by the caller, which is what makes a
+ *   lot without one impossible to write.
  * @returns The new lot.
  * @throws {Error} If a lot already records this source — the unique index on
  *   `source_id` refuses the insert.
@@ -202,7 +204,18 @@ export async function createLot(
       lifecycle: "active",
     })
     .returning();
-  return toLotEntity(rows[0]!);
+  const lot = toLotEntity(rows[0]!);
+  await appendLedgerEntry(
+    {
+      payerUserId: data.userId,
+      entryType: "topup",
+      amount: data.purchasedCredits,
+      lotId: lot.id,
+      referenceId: data.sourceId,
+    },
+    tx,
+  );
+  return lot;
 }
 
 /**

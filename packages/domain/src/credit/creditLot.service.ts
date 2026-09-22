@@ -153,12 +153,12 @@ export async function grantFromPayment(
 ): Promise<CreditLotEntity> {
   const amount = fromMicroCredits(toMicroCredits(input.purchasedCredits));
   /**
-   * The two writes, against whichever transaction is in hand.
+   * The write, against whichever transaction is in hand.
    * @param tx - The caller's transaction, or one opened here.
    * @returns The new lot.
    */
-  const run = async (tx: DbTx): Promise<CreditLotEntity> => {
-    const lot = await creditLotRepo.createLot(
+  const run = async (tx: DbTx): Promise<CreditLotEntity> =>
+    creditLotRepo.createLot(
       {
         // The payment's own id, which is also its source id — see
         // `createSource`. Opening a source here would hand every redelivery
@@ -174,18 +174,6 @@ export async function grantFromPayment(
       },
       tx,
     );
-    await creditLotRepo.appendLedgerEntry(
-      {
-        payerUserId: input.userId,
-        entryType: "topup",
-        amount,
-        lotId: lot.id,
-        referenceId: input.paymentId,
-      },
-      tx,
-    );
-    return lot;
-  };
   // The caller may already hold the transaction that decided this payment is
   // ours to grant. Opening a second one here would let the grant commit
   // while the decision rolls back.
@@ -232,28 +220,16 @@ export async function grantTrialCredits(
   );
   if (!opened) return null;
 
-  const amount = fromMicroCredits(toMicroCredits(input.credits));
-  const lot = await creditLotRepo.createLot(
+  return creditLotRepo.createLot(
     {
       sourceId: input.userId,
       sourceKind: "gift",
       userId: input.userId,
-      purchasedCredits: amount,
+      purchasedCredits: fromMicroCredits(toMicroCredits(input.credits)),
       designatedStudioId: input.studioId,
     },
     tx,
   );
-  await creditLotRepo.appendLedgerEntry(
-    {
-      payerUserId: input.userId,
-      entryType: "topup",
-      amount,
-      lotId: lot.id,
-      referenceId: input.userId,
-    },
-    tx,
-  );
-  return lot;
 }
 
 /**
