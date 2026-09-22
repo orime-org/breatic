@@ -48,7 +48,7 @@ import {
 } from "@domain/model-catalog/mode-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import { checkProposal, inputSchema } from "../propose-canvas-action.js";
+import { answerFor, checkProposal, inputSchema } from "../propose-canvas-action.js";
 
 /** A node type and one of its modes, with a model that mode can reach. */
 interface Reachable {
@@ -782,6 +782,45 @@ describe("what the catalog does not offer", () => {
     (wrong.nodes[0] as ProposalNode).model = "a-model-the-catalog-never-had";
 
     expect(checkProposal(wrong).ok).toBe(false);
+  });
+});
+
+describe("what the answer tells the canvas", () => {
+  /**
+   * The answer the tool hands back for a sound proposal.
+   * @param proposal - What the model sent.
+   * @returns The nodes of the answer.
+   * @throws {Error} When the proposal was refused.
+   */
+  function answered(proposal: CanvasProposal): ProposalNode[] {
+    const answer = answerFor(proposal);
+    if (!answer.placed) throw new Error(`refused: ${answer.reason}`);
+    return answer.nodes;
+  }
+
+  it("says how each generation takes the reader's material", () => {
+    // The canvas writes an @-mention for a mark only where a mention is what
+    // picks the material, and the reader may press Use before the model
+    // catalog has loaded. So the answer carries what the check just read off
+    // the catalog rather than leaving the canvas to ask again.
+    const pool = pooled();
+    const slot = slotted();
+
+    expect(answered(propose(pool)).map((n) => n.takesFrom)).toEqual([undefined, "pool"]);
+    expect(answered(propose(slot)).map((n) => n.takesFrom)).toEqual([undefined, "slot"]);
+  });
+
+  it("refuses a proposal that says it itself", () => {
+    // The path a model's material takes is the catalog's answer. A proposal
+    // carrying one would be a second copy of it, free to disagree.
+    const at = pooled();
+    const said = propose(at);
+    const generate = said.nodes[said.nodes.length - 1] as ProposalNode;
+
+    expect(
+      inputSchema.safeParse({ ...said, nodes: [...said.nodes.slice(0, -1), { ...generate, takesFrom: "pool" }] })
+        .success,
+    ).toBe(false);
   });
 });
 

@@ -108,6 +108,15 @@ export type ProposalRole = "source" | "generate" | "written";
 /** Every node kind a proposal can place: the three that generate, plus text. */
 export type ProposalNodeType = GenerationNodeType | "text";
 
+/**
+ * Which way the reader's material reaches a generation.
+ *
+ * `pool` is fed by an edge and picked by a mention; `slot` is picked by the
+ * reader clicking any node of that kind on the canvas. What a mark in the
+ * prompt lands as differs by this, so the card and the canvas both ask it.
+ */
+export type MaterialPath = "pool" | "slot";
+
 /** One node of a proposal, before anything is placed. */
 export interface ProposalNode {
   role: ProposalRole;
@@ -117,6 +126,16 @@ export interface ProposalNode {
   model?: string;
   params?: Record<string, unknown>;
   prompt?: PromptSegment[];
+  /**
+   * How this generation takes material, answered by the check, not the model.
+   *
+   * The catalog is the authority and the check has just read it, so the
+   * answer travels with the proposal rather than being asked again on the
+   * canvas -- a reader can press Use before the catalog has loaded there, and
+   * a guess either writes a mention the panel refuses or drops one the pool
+   * needs. Absent on a node that generates nothing.
+   */
+  takesFrom?: MaterialPath;
 }
 
 /** A whole proposal, as the model sends it and the card reads it. */

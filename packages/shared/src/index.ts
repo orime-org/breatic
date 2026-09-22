@@ -164,6 +164,7 @@ export {
 export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
+  MaterialPath,
   PromptSegment,
   ProposalNode,
   ProposalNodeType,

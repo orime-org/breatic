@@ -47,6 +47,7 @@ import {
   type CanvasProposal,
   type CappedParam,
   type GenerationNodeType,
+  type MaterialPath,
   type ProposalAnswer,
   type ProposalNode,
 } from "@breatic/shared";
@@ -175,6 +176,42 @@ function sourceKinds(nodeType: GenerationNodeType, mode: string): string[] {
     for (const source of entry.sourcesByMode[mode] ?? []) needed.add(source);
   }
   return [...needed];
+}
+
+/**
+ * The parameter a model fills from nodes wired into it, when it has one.
+ *
+ * Two gates turn on this answer -- whether an empty node has to be wired in
+ * at all, and what a mark in the prompt lands as once the group is placed --
+ * so it is given once.
+ * @param chosen - The model the proposal picked, as the catalog projects it.
+ * @returns The pool parameter, or undefined when material arrives by slot.
+ * @throws {never} Never.
+ */
+function poolParam(chosen: ModelInfo): ParamInfo | undefined {
+  return Object.values(chosen.params).find((info) => info.fromReferencePool === true);
+}
+
+/**
+ * Which way one proposed node takes the reader's material.
+ *
+ * Answered here because the catalog is the authority and this file is the
+ * only place that reads it. A node the catalog cannot place -- no mode, no
+ * model, a model it does not carry -- is left unanswered, and the
+ * per-generation check says what is wrong with it in its own words.
+ * @param node - The proposed node.
+ * @returns Its path, or undefined when the node generates nothing.
+ * @throws {never} Never.
+ */
+function materialPathOf(node: ProposalNode): MaterialPath | undefined {
+  if (node.role !== "generate" || node.type === "text") return undefined;
+  const { mode, model } = node;
+  if (!mode || !model) return undefined;
+  const reachable = modelsForMode(node.type, mode);
+  if (!reachable.available) return undefined;
+  const chosen = reachable.models.find((m) => m.name === model);
+  if (!chosen) return undefined;
+  return poolParam(chosen) ? "pool" : "slot";
 }
 
 /**
@@ -406,7 +443,7 @@ function checkGenerateNode(
   // feeders and for nothing else -- a group carrying three generations has
   // three separate answers. Through a slot there is no edge to read, so every
   // empty node in the group is one the reader could pick here.
-  const pool = Object.values(chosen.params).find((info) => info.fromReferencePool === true);
+  const pool = poolParam(chosen);
   const byReference = pool !== undefined;
   const fedFrom = new Set(
     proposal.edges.filter((e) => e.toIndex === index).map((e) => e.fromIndex),
@@ -717,7 +754,7 @@ function isReadBySomething(
     if (!reachable.available) return false;
     const chosen = reachable.models.find((m) => m.name === model);
     if (!chosen) return false;
-    return Object.values(chosen.params).some((info) => info.fromReferencePool === true)
+    return poolParam(chosen)
       ? proposal.edges.some((e) => e.fromIndex === at && e.toIndex === into)
       : sourceKinds(other.type, mode).includes(node.type);
   });
@@ -828,6 +865,33 @@ export function checkProposal(proposal: CanvasProposal): ProposalVerdict {
 }
 
 /**
+ * What the tool answers with: the proposal as it will be placed, or a refusal.
+ *
+ * Exported so a test can read the answer without standing up a tool call:
+ * everything below `execute` is this function, and a test that reached it
+ * through the SDK would be pinning the SDK's calling convention.
+ * @param proposal - What the model sent.
+ * @returns The answer the card and the canvas read.
+ * @throws {never} Never.
+ */
+export function answerFor(proposal: CanvasProposal): ProposalAnswer {
+  const verdict = checkProposal(proposal);
+  if (!verdict.ok) return { placed: false, reason: verdict.reason };
+  // The catalog answer the canvas needs, given once by the side that has
+  // just read it. Asked again over there it could be absent -- the reader
+  // may press Use before the catalog loads -- and a guess either writes a
+  // mention the panel refuses or drops one the pool needs.
+  return {
+    ...proposal,
+    nodes: proposal.nodes.map((node) => {
+      const takesFrom = materialPathOf(node);
+      return takesFrom === undefined ? node : { ...node, takesFrom };
+    }),
+    placed: true,
+  };
+}
+
+/**
  * The one line the model reads back.
  *
  * The proposal itself is for the reader, not for the model -- it sent the
@@ -866,9 +930,6 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnsw
     // abandon. Declared so every tool has the same shape.
     _options: { abortSignal?: AbortSignal },
   ): Promise<ProposalAnswer> => {
-    const verdict = checkProposal(proposal);
-    return verdict.ok
-      ? { ...proposal, placed: true }
-      : { placed: false, reason: verdict.reason };
+    return answerFor(proposal);
   },
 });

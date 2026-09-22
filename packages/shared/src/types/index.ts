@@ -93,6 +93,7 @@ export type { ControlGate } from "@shared/types/generate-panel.js";
 export type { ParamOptionValue } from "@shared/types/param-values.js";
 
 export type {
+  MaterialPath,
   PromptSegment,
   ProposalNode,
   ProposalNodeType,

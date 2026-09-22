@@ -224,6 +224,69 @@ describe('useNodeCreation', () => {
       expect(written).toContain(`sourceNodeId="${ids[0]}"`);
     });
 
+    it('leaves the bracket alone where the reader picks material in the panel', () => {
+      // On that path a mention picks nothing: the panel's own picker refuses
+      // it (`insertRefusal`), the run reads the slot instead, and the reader
+      // is left with a chip they could not have made and a slot still empty.
+      // The bracket alone names the slot to pick it in.
+      const bySlot: CanvasProposal = {
+        ...PAIR,
+        nodes: [
+          PAIR.nodes[0]!,
+          {
+            ...PAIR.nodes[1]!,
+            takesFrom: 'slot',
+            prompt: [
+              { text: 'animate ' },
+              { slot: { kind: 'asset', label: 'your photo', note: 'pick it in the panel' } },
+            ],
+          },
+        ],
+      };
+      const { result } = renderHook(() => useNodeCreation('p-slot', 's-slot'));
+
+      const { nodeIds: ids } = result.current.placeProposalAt(bySlot, { x: 0, y: 0 });
+
+      const written = canvasSpace.getPromptFragment('p-slot', 's-slot', ids[1]!)!.toJSON();
+      expect(written).toContain('animate [📎 your photo]');
+      expect(written).not.toContain('sourceNodeId');
+    });
+
+    it('names the words upstream, not the picture, where a slot feeds it', () => {
+      // Two things feed it: the step before, whose picture the reader picks
+      // in the slot, and a node carrying words, whose body substitutes into
+      // the prompt. Only the second can be named there, so the mark is about
+      // it however the two are ordered.
+      const both: CanvasProposal = {
+        nodes: [
+          {
+            role: 'generate', type: 'image', name: 'The shot', mode: 't2i',
+            model: 'some-model', params: {}, takesFrom: 'slot',
+            prompt: [{ text: 'a running shoe' }],
+          },
+          { role: 'written', type: 'text', name: 'The caption', prompt: [{ text: 'slow and warm' }] },
+          {
+            role: 'generate', type: 'video', name: 'It turns', mode: 'i2v',
+            model: 'some-model', params: {}, takesFrom: 'slot',
+            prompt: [
+              { text: 'in the tone of ' },
+              { slot: { kind: 'ref', label: 'the caption', note: '' } },
+            ],
+          },
+        ],
+        edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
+        rationale: '',
+        groupName: 'One spot',
+      };
+      const { result } = renderHook(() => useNodeCreation('p-ref', 's-ref'));
+
+      const { nodeIds: ids } = result.current.placeProposalAt(both, { x: 0, y: 0 });
+
+      const written = canvasSpace.getPromptFragment('p-ref', 's-ref', ids[2]!)!.toJSON();
+      expect(written).toContain(`sourceNodeId="${ids[1]}"`);
+      expect(written).not.toContain(`sourceNodeId="${ids[0]}"`);
+    });
+
     it('records the model as a choice, so switching mode and back keeps it', () => {
       // The agent picked this model on the reader's behalf, which is a pick
       // like any other. Written as a mode switch it would be forgotten the

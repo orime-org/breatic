@@ -61,6 +61,24 @@ describe('a turn that proposed a group', () => {
     expect(message.proposals?.[0]?.rationale).toBe('Two nodes');
   });
 
+  it('carries how each generation takes its material, which the canvas reads', () => {
+    // The canvas writes an @-mention for a mark only where a mention picks
+    // the material, and it reads that off the answer rather than the model
+    // catalog, which may not have loaded when the reader presses Use. Lost on
+    // the way here, the canvas would write a mention the panel refuses.
+    const message = toChatMessage(
+      turnWith({
+        ...ACCEPTED,
+        nodes: [
+          ACCEPTED.nodes[0]!,
+          { ...ACCEPTED.nodes[1]!, takesFrom: 'slot' },
+        ],
+      }),
+    );
+
+    expect(message.proposals?.[0]?.nodes[1]?.takesFrom).toBe('slot');
+  });
+
   it('carries the name the group will land under', () => {
     // Rebuilt field by field here, so a field left off this list passes the
     // tool's own check and then goes missing on the way to the canvas -- the
