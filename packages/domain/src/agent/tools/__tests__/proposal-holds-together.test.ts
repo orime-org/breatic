@@ -301,11 +301,11 @@ describe("a mode whose material arrives through the reference pool", () => {
     expect(checkProposal(propose(pooled()))).toEqual({ ok: true });
   });
 
-  it("is refused when the empty node holds the wrong kind of material", () => {
+  it("is refused when the empty node cannot feed this generation at all", () => {
     const at = pooled();
     const other: GenerationNodeType = at.needs[0] === "image" ? "audio" : "image";
 
-    expect(checkProposal(propose(at, { sources: [other] })).ok).toBe(false);
+    expect(checkProposal(propose(at, { sources: [other] }))).toEqual({ ok: false, reason: expect.stringContaining("does not let a") });
   });
 
   it("stands when it asks for two pieces of material, each wired and marked", () => {
@@ -325,7 +325,7 @@ describe("a mode whose material arrives through the reference pool", () => {
     const cap = at.poolCap ?? 0;
     const tooMany = Array.from({ length: cap + 1 }, () => at.needs[0] as GenerationNodeType);
 
-    expect(checkProposal(propose(at, { sources: tooMany })).ok).toBe(false);
+    expect(checkProposal(propose(at, { sources: tooMany }))).toEqual({ ok: false, reason: expect.stringContaining("reference(s) at a time") });
   });
 
   it("stands at exactly what the pool holds", () => {
@@ -427,7 +427,7 @@ describe("what the generation is driven by", () => {
   it("refuses a prompt-driven model with nothing written in the prompt", () => {
     const at = pick((m) => m.takesPrompt, "prompt-driven model");
 
-    expect(checkProposal(propose(at, { text: "" })).ok).toBe(false);
+    expect(checkProposal(propose(at, { text: "" }))).toEqual({ ok: false, reason: expect.stringContaining("generates from what the prompt says") });
   });
 
   it("stands without a prompt when the model is not driven by one", () => {
@@ -497,7 +497,7 @@ describe("what the model is allowed to fill in", () => {
 
     const wrong = propose(found.at, { params: { [found.name]: "a-value-no-control-offers" } });
 
-    expect(checkProposal(wrong).ok).toBe(false);
+    expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining("a-value-no-control-offers") });
   });
 
   it("refuses a value for a parameter the canvas itself fills", () => {
@@ -591,7 +591,7 @@ describe("what the model is allowed to fill in", () => {
     // the box holds it.
     const lines = "a".repeat(cap - marks - 1) + "\n";
 
-    expect(checkProposal(propose(at, { text: lines })).ok).toBe(false);
+    expect(checkProposal(propose(at, { text: lines }))).toEqual({ ok: false, reason: expect.stringContaining(`and this prompt is ${String(cap + 1)}`) });
   });
 
   it("stands when a blank line keeps the prompt inside the cap", () => {
@@ -617,7 +617,7 @@ describe("what the model is allowed to fill in", () => {
     const marks = markTextOf(propose(at, { text: "" }));
     if (marks === "") throw new Error("that model's proposal carries no marks to count");
 
-    expect(checkProposal(propose(at, { text: "a".repeat(at.maxInputChars ?? 0) })).ok).toBe(false);
+    expect(checkProposal(propose(at, { text: "a".repeat(at.maxInputChars ?? 0) }))).toEqual({ ok: false, reason: expect.stringContaining(`takes ${String(at.maxInputChars)} characters`) });
   });
 
   it("stands at exactly the cap, counting what the box will hold", () => {
@@ -680,7 +680,7 @@ describe("what the model is allowed to fill in", () => {
 
     const wrong = propose(found.at, { params: { [found.name]: found.max + 1 } });
 
-    expect(checkProposal(wrong).ok).toBe(false);
+    expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining(`"${found.name}" runs from`) });
   });
 });
 
@@ -689,14 +689,14 @@ describe("wiring that could not be placed", () => {
     const wrong = propose(sourceless(), { sources: [], marks: 0 });
     wrong.edges = [{ fromIndex: 0, toIndex: 7 }];
 
-    expect(checkProposal(wrong).ok).toBe(false);
+    expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining("points outside the group") });
   });
 
   it("refuses an edge looping a node onto itself", () => {
     const wrong = propose(sourceless(), { sources: [], marks: 0 });
     wrong.edges = [{ fromIndex: 0, toIndex: 0 }];
 
-    expect(checkProposal(wrong).ok).toBe(false);
+    expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining("loops node 0 onto itself") });
   });
 
   it("refuses an edge that does not end at the node that generates", () => {
@@ -707,7 +707,7 @@ describe("wiring that could not be placed", () => {
     const wrong = propose(at, { sources: twice });
     wrong.edges = [...wrong.edges, { fromIndex: 0, toIndex: 1 }];
 
-    expect(checkProposal(wrong).ok).toBe(false);
+    expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining("generates nothing, so nothing there reads") });
   });
 
   it("refuses an empty node that arrives configured", () => {
@@ -719,7 +719,7 @@ describe("wiring that could not be placed", () => {
     source.mode = at.mode;
     source.model = at.model;
 
-    expect(checkProposal(wrong).ok).toBe(false);
+    expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining("takes no mode, model, parameters or prompt") });
   });
 
   it("refuses a group with nothing in it that generates", () => {
@@ -727,7 +727,7 @@ describe("wiring that could not be placed", () => {
     wrong.nodes = wrong.nodes.slice(0, 1);
     wrong.edges = [];
 
-    expect(checkProposal(wrong).ok).toBe(false);
+    expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining("Nothing here generates") });
   });
 
 });
@@ -737,7 +737,7 @@ describe("what the catalog does not offer", () => {
     const wrong = propose(sourceless(), { sources: [], marks: 0 });
     (wrong.nodes[0] as ProposalNode).mode = "a_mode_no_node_offers";
 
-    expect(checkProposal(wrong).ok).toBe(false);
+    expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining("No model here backs") });
   });
 
   it("names the model when the model is what it does not carry", () => {
