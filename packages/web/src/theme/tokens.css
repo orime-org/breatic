@@ -396,6 +396,17 @@ html[data-theme='light'] {
      overridden in the dark block below. ---- */
   --color-note: #fff8c5;
   --color-note-border: #f1e05a;
+
+  /* ---- The highlight a comment leaves on the words it is about (#18).
+     The sticky note's hue, because a comment already looks like that on the
+     canvas, and because no palette colour is yellow — so it cannot be read as
+     a background colour somebody chose. The hue does NOT track
+     `--color-note-border`: that one darkens in the dark theme, and a
+     highlight has to stay bright behind light text. What changes per theme is
+     how much of it shows through. ---- */
+  --color-comment-hue: #f1e05a;
+  --color-comment-mark: color-mix(in srgb, var(--color-comment-hue) 42%, transparent);
+  --color-comment-mark-active: color-mix(in srgb, var(--color-comment-hue) 80%, transparent);
   --color-note-foreground: var(--neutral-900);
   /* Recessive text ON the note: the time, the "edited" mark, the drop notice,
      every box's placeholder. `--color-muted-foreground` is tuned against
@@ -592,6 +603,11 @@ html[data-theme='dark'] {
   /* Annotation note · dark variant (muted warm tone, readable foreground). */
   --color-note: #3a3214;
   --color-note-border: #5c5020;
+
+  /* Comment highlight · dark. The hue is unchanged; less of it shows through,
+     because the text behind it is light and the ground is near-black. */
+  --color-comment-mark: color-mix(in srgb, var(--color-comment-hue) 22%, transparent);
+  --color-comment-mark-active: color-mix(in srgb, var(--color-comment-hue) 46%, transparent);
   --color-note-foreground: var(--neutral-900);
   --color-note-foreground-muted: var(--neutral-600);
 

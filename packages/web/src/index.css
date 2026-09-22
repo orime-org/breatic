@@ -1926,6 +1926,49 @@ body {
   text-underline-offset: 2px;
 }
 
+/* ---- The mark a comment leaves in the body (#18) ----
+   Half of what a comment is for: the words it is about have to look
+   commented. The mark itself is the library's — it carries the thread id and
+   survives an Enter through `keepOnSplit` — and what it looks like is here,
+   because nothing else paints `bn-thread-mark`.
+
+   The hue is the sticky note's, which is what a comment already looks like on
+   the canvas. Nothing in the seven-colour palette is yellow, so a reader
+   cannot mistake it for a background colour they chose themselves.
+
+   Overlapping comments need no rule of their own. ProseMirror renders two
+   marks over the same run as nested spans (measured), so the shared words are
+   painted twice and come out deeper on their own: two 42% layers leave 66%,
+   which is the depth the demo drew for them.
+
+   `box-decoration-break` so a highlight broken across two lines is rounded
+   and padded at the real ends rather than at each fragment. */
+.doc-body .bn-thread-mark {
+  background-color: var(--color-comment-mark);
+  border-radius: 2px;
+  padding: 0 1px;
+  cursor: pointer;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* A resolved thread keeps its mark and loses its paint (§9.2, S2). The mark is
+   where the highlight comes back from when somebody reopens the thread, so it
+   must not be removed — the library sets this attribute for a thread that is
+   resolved, deleted, or not yet known here. */
+.doc-body .bn-thread-mark[data-orphan='true'] {
+  background-color: transparent;
+  padding: 0;
+}
+
+/* The thread being read. The library decorates its whole range with this
+   class, which lands outside the marks rather than on them, so the deeper
+   colour is set here and on whatever marks sit inside it. */
+.doc-body .bn-thread-mark-selected,
+.doc-body .bn-thread-mark-selected .bn-thread-mark {
+  background-color: var(--color-comment-mark-active);
+}
+
 /* ---- Room to click under the last block ----
    The editable surface has to reach the bottom of the scroll viewport: the
    affordance that opens a block at the end of the document grows into
