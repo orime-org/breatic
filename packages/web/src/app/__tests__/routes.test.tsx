@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { configure, getConfig, render, screen } from '@testing-library/react';
-import { createMemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, matchRoutes } from 'react-router-dom';
 
 // This is a ROUTE-RESOLUTION test: it asserts each path maps to the right page
 // component (e.g. /project/:id → ProjectPage, top-bar mounts). ProjectPage gates
@@ -23,6 +23,21 @@ vi.mock('@web/data/yjs/use-socket', () => ({
     authFailedReason: null,
   }),
 }));
+
+vi.mock('@web/data/api', async original => {
+  const actual = await original<typeof import('@web/data/api')>();
+  return {
+    ...actual,
+    projectsApi: {
+      ...actual.projectsApi,
+      get: vi.fn().mockResolvedValue({
+        id: 'demo-1', name: 'Route test', myRole: 'owner', studioId: 'studio',
+        createdAt: '', updatedAt: '', deletedAt: null, description: null,
+        thumbnailUrl: null, createdByUserId: 'test-user',
+      }),
+    },
+  };
+});
 
 import { AppRouter } from '@web/app/AppRouter';
 import { behindLoadingScreen } from '@web/app/loading-boundary';
@@ -74,7 +89,7 @@ describe('routes', () => {
     configure({ asyncUtilTimeout: defaultTimeout });
   });
 
-  // `<Navigate>` redirects (/ → /studio and * → /studio) exercise the data
+  // `<Navigate>` redirects (/ → /studio) exercise the data
   // router's internal fetcher which trips a jsdom/undici AbortSignal mismatch.
   // The redirects themselves are one-liner `<Navigate replace />` elements;
   // exercising them via smoke / build is enough. Here we just assert that the
@@ -152,4 +167,14 @@ describe('routes', () => {
       await screen.findByRole('heading', { name: 'Check your inbox' }),
     ).toBeInTheDocument();
   });
+});
+
+it.each([
+  ['/project/test/extra/more', '/project/:projectId/*'],
+  ['/project/test/access', '/project/:projectId/access'],
+  ['/studio/example/extra/more', ':slug/:tab/*'],
+  ['/unknown/route', '*'],
+  ['/project', '*'],
+])('resolves %s without rejecting resource suffixes', (path, expected) => {
+  expect(matchRoutes(baseRoutes, path)?.at(-1)?.route.path).toBe(expected);
 });

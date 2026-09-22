@@ -1643,5 +1643,14 @@
       "depleted": "{credits} credits in all",
       "refunded": "Back to the original payment method"
     }
+  },
+  "notFound": {
+    "heading": "Page not found",
+    "body": "The page you're looking for doesn't exist or has moved. Let's get you back on track.",
+    "cta": "Back to home"
+  },
+  "pageLoadError": {
+    "message": "This page could not be loaded. Please try again.",
+    "retry": "Try again"
   }
 }

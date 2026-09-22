@@ -5,11 +5,15 @@ import { useQuery } from '@tanstack/react-query';
 
 import { fetchProjectCredits } from '@web/data/api/credits';
 import * as React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
 import { newId, type SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@web/data/api';
+import { ApiException } from '@web/data/api/types';
+import type { ProjectDetail } from '@web/data/api/projects';
+import { NotFoundScreen } from '@web/components/not-found-screen';
+import { ResourceLoadError } from '@web/components/resource-load-error';
 import {
   useProjectMembers,
   useRosterRefreshOnJoin,
@@ -131,43 +135,9 @@ export default function ProjectPage(): React.JSX.Element {
   // dial until AuthBootstrap has resolved a session, or the first connect
   // races the cookie and sticks on authFailed forever (regressed in v14 reset).
   const userId = useCurrentUserStore((s) => s.user?.id);
-  return (
-    <CollabSocketProvider userId={userId}>
-      {/*
-        Keyed on the project, because everything below belongs to one: the tab
-        strip, the Spaces, the camera each one is on. The route can move from
-        one project to another under this element — the Back button does it,
-        measured — and React reconciles on the same route pattern, so without
-        the key the workspace would carry one project's state into another's
-        address. The socket above is the account's, so it stays.
-      */}
-      <ProjectWorkspace key={projectId} projectId={projectId} />
-    </CollabSocketProvider>
-  );
-}
-
-/**
- * Project workspace rendering the TopBar, the per-user Agent chat column, and
- * the Space tab bar with the active Space body. Every Yjs document hook here
- * attaches onto the shared collab socket from the parent
- * {@link CollabSocketProvider}.
- * @param root0 - Workspace props.
- * @param root0.projectId - Resolved project uuid (slug already stripped).
- * @returns The project workspace, or a loading screen while the socket connects.
- */
-function ProjectWorkspace({
-  projectId,
-}: {
-  projectId: string;
-}): React.JSX.Element {
-  const t = useTranslation();
-  const navigate = useNavigate();
-
-  // ---- Project meta (name / credits / role) ----
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => projectsApi.get(projectId),
-    enabled: projectId !== 'demo',
     // 403 = caller is NOT_MEMBER of this project - bail to the
     // access request page instead of looping a useless retry. The
     // 404 path also short-circuits (project may have been deleted).
@@ -180,20 +150,52 @@ function ProjectWorkspace({
     },
   });
 
-  // NOT_MEMBER redirect - caller bounced off a project they can't
-  // see → route them to the access request page so they can ask the
-  // owner for permission (PR-d NOT_MEMBER path 1).
-  React.useEffect(() => {
-    if (!projectQuery.error) return;
-    const err = projectQuery.error as Error & { status?: number };
-    if (err.status === 403) {
-      navigate(`/project/${projectId}/access`, { replace: true });
-    }
-  }, [projectQuery.error, projectId, navigate]);
+  const { refetch } = projectQuery;
+  const retry = React.useCallback(() => { void refetch(); }, [refetch]);
+  if (projectQuery.error instanceof ApiException && projectQuery.error.status === 404) return <main><NotFoundScreen /></main>;
+  if (projectQuery.error instanceof ApiException && projectQuery.error.status === 403) {
+    return <Navigate to={`/project/${routeParam}/access`} replace />;
+  }
+  if (projectQuery.isError && !projectQuery.data) return <main><ResourceLoadError onRetry={retry} /></main>;
+  if (!projectQuery.data) return <LoadingScreen />;
+  return (
+    <CollabSocketProvider userId={userId}>
+      {/*
+        Keyed on the project, because everything below belongs to one: the tab
+        strip, the Spaces, the camera each one is on. The route can move from
+        one project to another under this element — the Back button does it,
+        measured — and React reconciles on the same route pattern, so without
+        the key the workspace would carry one project's state into another's
+        address. The socket is shared while the authorized workspace is mounted.
+      */}
+      <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} />
+    </CollabSocketProvider>
+  );
+}
+
+/**
+ * Project workspace rendering the TopBar, the per-user Agent chat column, and
+ * the Space tab bar with the active Space body. Every Yjs document hook here
+ * attaches onto the shared collab socket from the parent
+ * {@link CollabSocketProvider}.
+ * @param root0 - Workspace props.
+ * @param root0.projectId - Resolved project uuid (slug already stripped).
+ * @param root0.project - The resource already authorized by the backend.
+ * @returns The project workspace, or a loading screen while the socket connects.
+ */
+function ProjectWorkspace({
+  projectId,
+  project,
+}: {
+  projectId: string;
+  project: ProjectDetail;
+}): React.JSX.Element {
+  const t = useTranslation();
+  const navigate = useNavigate();
 
   // Record the open once the project has loaded — floats it to the top of the
   // cross-studio Recent landing. StrictMode-safe + best-effort (see the hook).
-  useRecordProjectOpen(projectId, projectQuery.isSuccess);
+  useRecordProjectOpen(projectId, true);
 
   // Follow the user between the two regions, so the canvas keyboard and
   // clipboard gates and the active-state colours read the same value.
@@ -213,11 +215,11 @@ function ProjectWorkspace({
   // singleton does not reset with component-local state.
   React.useEffect(() => () => resetProjectUiStores(projectId), [projectId]);
 
-  const projectName = projectQuery.data?.name ?? 'Untitled project';
+  const projectName = project.name;
   // Fail-safe default: if `myRole` is missing (glitch / pre-load race),
   // treat the caller as the most-restrictive 'viewer' so chrome affordances
   // stay hidden rather than leaking owner/editor actions (user 2026-06-18).
-  const role = projectQuery.data?.myRole ?? 'viewer';
+  const role = project.myRole ?? 'viewer';
   // Viewer affordance model (access-permission § 6.2, option B): the canvas
   // left creation menu stays visible + disabled (LeftFloatingMenu) and the
   // canvas body is read-only (SpaceOutlet); everything else a viewer cannot
