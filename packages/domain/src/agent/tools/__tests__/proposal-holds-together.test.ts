@@ -11,11 +11,6 @@
  * models the mode can reach, what each model declares its parameters to be,
  * and whether it is driven by a prompt at all.
  *
- * A proposal also has to agree with itself: every empty node it places is
- * marked once in the prompt, and every mark has an empty node. Which named
- * slot a given node belongs in is left to the panel, the only thing that
- * knows.
- *
  * Every fixture below is derived from the live catalog. A model name written
  * here would make the test pass on the catalog of the day it was written.
  *
@@ -263,13 +258,7 @@ function generation(at: Reachable, marks = 0, refs = 0): ProposalNode {
           note: "Put it in the empty node",
         },
       })),
-      ...Array.from({ length: refs }, (_, i) => ({
-        slot: {
-          kind: "ref" as const,
-          label: `the step before ${String(i + 1)}`,
-          note: "Nothing to do -- it points upstream",
-        },
-      })),
+      ...Array.from({ length: refs }, () => ({ slot: { kind: "ref" as const, label: "the step before", note: "Nothing to do" } })),
       ...Array.from({ length: at.choices.length > 0 ? 1 : 0 }, () => ({
         slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" },
       })),
@@ -360,7 +349,7 @@ describe("a mode whose material arrives through the reference pool", () => {
           // is about is that it also occupies one of the pool's rows.
           prompt: [
             ...(made.prompt ?? []),
-            { slot: { kind: "ref", label: "the step before", note: "" } },
+            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
           ],
         },
         {
@@ -648,7 +637,7 @@ describe("what the model is allowed to fill in", () => {
         { role: "generate", type: at.nodeType, name: "The read", mode: at.mode,
           model: at.model, params: {}, prompt: [
             { text: "read " },
-            { slot: { kind: "ref", label: "the script", note: "" } },
+            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
             ...(at.choices.length > 0
               ? [{ slot: { kind: "tweak" as const, label: "the voice", note: "Pick one in the panel" } }]
               : []),
@@ -730,6 +719,27 @@ describe("wiring that could not be placed", () => {
     expect(checkProposal(wrong)).toEqual({ ok: false, reason: expect.stringContaining("Nothing here generates") });
   });
 
+});
+
+describe("telling one node from another", () => {
+  it("refuses two nodes carrying the same name", () => {
+    // The card has nothing else to tell nodes apart with: the chips, the
+    // heading over a run of to-dos and the heading over a body of words are
+    // all the node's name. Two of them the same and the reader cannot tell
+    // which line is about which node.
+    const at = pooled();
+    const twin = { ...generation(at, 0, 0), name: "Your material 1" };
+
+    const verdict = checkProposal({
+      nodes: [...propose(at, { marks: 0 }).nodes, twin],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      modelNote: "",
+      rationale: "",
+      groupName: "Two of a name",
+    });
+
+    expect(verdict).toEqual({ ok: false, reason: expect.stringContaining("same name") });
+  });
 });
 
 describe("what the catalog does not offer", () => {
@@ -976,7 +986,12 @@ describe("a flow of any shape", () => {
     const sources = one.nodes.slice(0, -1);
 
     const verdict = checkProposal({
-      nodes: [...sources, generate, { ...generate }, { ...generate }],
+      nodes: [
+        ...sources,
+        { ...generate, name: "Straight on" },
+        { ...generate, name: "At 45" },
+        { ...generate, name: "From above" },
+      ],
       edges: sources.flatMap((_, i) => [
         { fromIndex: i, toIndex: sources.length },
         { fromIndex: i, toIndex: sources.length + 1 },
@@ -1083,7 +1098,7 @@ describe("a flow of any shape", () => {
         { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
           model: at.model, params: {}, prompt: [
             { text: "in the words of " },
-            { slot: { kind: "ref", label: "the slogan", note: "" } },
+            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
             { text: ", using " },
             { slot: { kind: "asset", label: "yours", note: "Put it in" } },
           ] },
@@ -1112,7 +1127,7 @@ describe("a flow of any shape", () => {
         { role: "generate", type: at.nodeType, name: "The clip", mode: at.mode,
           model: at.model, params: {}, prompt: [
             { text: "in the words of " },
-            { slot: { kind: "ref", label: "the slogan", note: "" } },
+            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
             { text: ", using " },
             { slot: { kind: "asset", label: "yours", note: "Put it in" } },
           ] },
@@ -1410,8 +1425,8 @@ describe("edges the canvas itself would refuse", () => {
       nodes: [
         { role: "source", type: kind, name: "Your first" },
         { role: "source", type: kind, name: "Your second" },
-        generation(at, 1),
-        generation(at, 1),
+        { ...generation(at, 1), name: "The first result" },
+        { ...generation(at, 1), name: "The second result" },
       ],
       edges: [
         { fromIndex: 0, toIndex: 2 },
@@ -1479,6 +1494,25 @@ describe("a mark pointing at an upstream node", () => {
     expect(verdict).toEqual({ ok: true });
   });
 
+  it("refuses a written node whose words are all whitespace", () => {
+    // It lands as a text node with nothing readable in it, which is the thing
+    // a reader makes in one click.
+    const verdict = checkProposal({
+      nodes: [
+        { role: "written", type: "text", name: "Your copy", prompt: [{ text: "   \n  " }] },
+        generation(sourceless(), 0, 0),
+      ],
+      edges: [],
+      rationale: "",
+      groupName: "Copy and a picture",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining("carries no words"),
+    });
+  });
+
   it("refuses a written node whose words point at something upstream", () => {
     const verdict = checkProposal({
       nodes: [
@@ -1488,7 +1522,7 @@ describe("a mark pointing at an upstream node", () => {
           name: "Your copy",
           prompt: [
             { text: "After " },
-            { slot: { kind: "ref", label: "the picture", note: "Nothing to do" } },
+            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
           ],
         },
       ],
@@ -1577,7 +1611,7 @@ describe("what the model itself settles", () => {
           params: {},
           prompt: [
             { text: "follow " },
-            { slot: { kind: "ref" as const, label: "the brief", note: "" } },
+            { slot: { kind: "ref" as const, label: "the step before", note: "Nothing to do" } },
             ...Array.from({ length: cap }, (_, i) => ({
               slot: {
                 kind: "asset" as const,

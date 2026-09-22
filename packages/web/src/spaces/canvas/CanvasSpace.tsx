@@ -2649,7 +2649,6 @@ function CanvasSpaceInner({
     placeProposalAt,
     reportProposalOutcome,
     openGeneratePanel,
-    fitView,
   ]);
 
   // Whoever posts a proposal is outside the canvas and cannot see whether one

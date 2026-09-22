@@ -266,6 +266,22 @@ describe('a flow that is more than one thing', () => {
     );
   });
 
+  it('names the node each body of words belongs to', () => {
+    // The to-dos under the card carry node names, and with two bodies drawn
+    // one above the other an unnamed body leaves the reader matching an
+    // instruction against whichever text they guess it is about.
+    listModels.mockResolvedValue(CATALOG);
+    const second = COPY.nodes[0] as ProposalNode;
+    renderCard(true, {
+      ...COPY,
+      nodes: [...COPY.nodes, { ...second, name: 'Your subtitle' }],
+      groupName: 'Kettle listing',
+    });
+
+    const heads = screen.getAllByTestId('proposal-words-name').map((el) => el.textContent);
+    expect(heads).toEqual(['Your copy', 'Your subtitle']);
+  });
+
   it('draws nothing about a model the catalog does not carry', () => {
     listModels.mockResolvedValue(CATALOG);
     renderCard(true, {
@@ -317,7 +333,7 @@ describe('a flow that is more than one thing', () => {
     // Three runs of a model the catalog prices at 4, so twelve -- and the
     // wait is one run's, drawn as an each because all three take it.
     await waitFor(() => expect(screen.getByText('12')).toBeTruthy());
-    expect(screen.getByText(/12 s . 3/)).toBeTruthy();
+    expect(screen.getByText(/12s . 3/)).toBeTruthy();
   });
 
   it('quotes one number for the wait where the runs are not the same length', async () => {

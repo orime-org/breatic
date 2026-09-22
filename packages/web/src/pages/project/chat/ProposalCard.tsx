@@ -156,12 +156,21 @@ export const ProposalCard = React.memo(function ProposalCard({
         // the chat, with nothing of theirs on the canvas to undo. Not
         // truncated -- a note they cannot finish reading is one they cannot
         // judge, and the chat column scrolls.
-        <div
-          key={`words-${String(i)}`}
-          data-testid='proposal-words'
-          className='whitespace-pre-wrap rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground'
-        >
-          {promptPlainText(node.prompt ?? [])}
+        <div key={`words-${String(i)}`} className='flex flex-col gap-1'>
+          {proposal.nodes.length > 1 ? (
+            <div
+              data-testid='proposal-words-name'
+              className='text-xs font-medium text-foreground'
+            >
+              {node.name}
+            </div>
+          ) : null}
+          <div
+            data-testid='proposal-words'
+            className='whitespace-pre-wrap rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground'
+          >
+            {promptPlainText(node.prompt ?? [])}
+          </div>
         </div>
       ))}
       {model && proposal.modelNote ? (

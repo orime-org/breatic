@@ -262,8 +262,9 @@ export function costOf(
   if (rows.length === 0 || rows.some((row) => row === undefined)) return undefined;
   const known = rows.filter((row) => row !== undefined);
   // A model charging by what it is given has no per-call price at all, so a
-  // total carrying it would be a number nobody can arrive at. The wait stands
-  // either way: one press starts every run at once, so it is the longest.
+  // total carrying it would be a number nobody can arrive at. The wait is the
+  // longest of them: the runs that can start together do, and a run waiting on
+  // the one before it is waiting on a press the reader has not made yet.
   const metered = known.some((row) => row.rate !== undefined);
   const times = known.map((row) => row.generation_time);
   return {

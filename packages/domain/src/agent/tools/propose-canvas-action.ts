@@ -159,7 +159,7 @@ export const inputSchema = z
       .trim()
       .min(1)
       .optional()
-      .describe("What the group is for"),
+      .describe("What the group is for; needed once there are two nodes"),
   })
   .strict();
 
@@ -473,10 +473,6 @@ function checkGenerateNode(
    */
   const nodesAt = (list: readonly number[]): ProposalNode[] =>
     list.flatMap((i) => proposal.nodes[i] ?? []);
-  // One mark per node upstream this prompt can name, and no more: an edge
-  // makes that node's work available, and nothing in the prompt naming it
-  // means the Generate button will not move. Which of them can be named is
-  // `nameableFeeders`, above.
   const nameable = nodesAt(canName.upstream);
   // A mark pointing upstream lands as a mention and nothing else, so one this
   // panel refuses lands as nothing at all: the words on either side of it
@@ -604,7 +600,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
   }
   // Without them it lands as an empty text node, which is the thing a reader
   // makes in a click and has no use for in a proposal.
-  if ((node.prompt ?? []).length === 0) {
+  if (promptPlainText(node.prompt ?? []).trim() === "") {
     return { ok: false, reason: `"${node.name}" says it holds words and carries no words.` };
   }
   // Both marks that reach outside the words land as a mention, and a text
@@ -672,10 +668,20 @@ function hasRing(proposal: CanvasProposal): boolean {
  * @throws {never} Never.
  */
 export function checkProposal(sent: CanvasProposal): ProposalVerdict {
-  // What the catalog says is written on before anything is judged, so the
-  // rules below and the canvas downstream read one answer rather than each
-  // asking the catalog in its own words.
-  const proposal = withCatalogFacts(sent);
+  return checkResolved(withCatalogFacts(sent));
+}
+
+/**
+ * The same rules, over a proposal the catalog has already been read onto.
+ *
+ * Apart from {@link checkProposal} by that one step, so the answer the tool
+ * hands back is the thing that was judged rather than a second reading of the
+ * catalog taken after the verdict.
+ * @param proposal - The proposal, carrying its catalog facts.
+ * @returns Whether it stands, and what is missing when it does not.
+ * @throws {never} Never.
+ */
+function checkResolved(proposal: CanvasProposal): ProposalVerdict {
   for (const node of proposal.nodes) {
     const verdict = checkNodeRole(node);
     if (!verdict.ok) return verdict;
@@ -734,6 +740,18 @@ export function checkProposal(sent: CanvasProposal): ProposalVerdict {
     };
   }
 
+  // The card has nothing else to tell nodes apart with: the chip, the heading
+  // over a run of to-dos and the heading over a body of words are all the
+  // node's name. Two the same and a line on the card is about either of them.
+  const names = proposal.nodes.map((node) => node.name.trim());
+  const twin = names.find((name, at) => names.indexOf(name) !== at);
+  if (twin !== undefined) {
+    return {
+      ok: false,
+      reason: `Two nodes carry the same name, "${twin}", and the card tells them apart by name alone. Give each one a name of its own.`,
+    };
+  }
+
   // Two or more nodes land inside a group, which the reader sees as one thing
   // on a ground of its own. Only the model knows what that thing is for -- it
   // just decided -- so the name comes with the proposal.
@@ -763,13 +781,14 @@ export function checkProposal(sent: CanvasProposal): ProposalVerdict {
  * @throws {never} Never.
  */
 export function answerFor(proposal: CanvasProposal): ProposalAnswer {
-  const verdict = checkProposal(proposal);
+  const resolved = withCatalogFacts(proposal);
+  const verdict = checkResolved(resolved);
   if (!verdict.ok) return { placed: false, reason: verdict.reason };
   // The same resolution the check just judged against, so what the canvas
   // places is the thing that was judged. Asked again over there the catalog
   // could be absent -- the reader may press Use before it loads -- and a guess
   // either writes a mention the panel refuses or drops one the pool needs.
-  return { ...withCatalogFacts(proposal), placed: true };
+  return { ...resolved, placed: true };
 }
 
 /**
