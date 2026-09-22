@@ -165,6 +165,15 @@ export default defineConfig(({ command, mode }) => {
           // preloads it, so a login form downloaded the chat runtime and the
           // rich-text editor (#142).
           manualChunks(id) {
+            // Vite's preload helper is imported by every chunk that holds a
+            // dynamic import, `ProjectPage` included. Left to land beside the
+            // loaders it would drag that 1.8 MB chunk along on every release:
+            // the loaders change each time, so the filename `ProjectPage`
+            // writes for the helper changes with them. It holds no page
+            // filenames of its own, so its own chunk stays byte-identical.
+            if (id.includes('vite/preload-helper')) {
+              return 'preload-helper';
+            }
             if (/[\\/]src[\\/]app[\\/]route-imports\./.test(id)) {
               return 'route-imports';
             }
@@ -195,7 +204,7 @@ export default defineConfig(({ command, mode }) => {
             if (/[\\/]node_modules[\\/]katex[\\/]/.test(id)) {
               return 'katex';
             }
-            if (/[\\/]node_modules[\\/](highlight\\.js|lowlight)[\\/]/.test(id)) {
+            if (/[\\/]node_modules[\\/](highlight\.js|lowlight)[\\/]/.test(id)) {
               return 'highlight';
             }
             if (/[\\/]node_modules[\\/](yjs|lib0|y-protocols)[\\/]/.test(id)) {

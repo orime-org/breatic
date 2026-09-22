@@ -326,6 +326,34 @@ if (entryBytes > ENTRY_BUDGET) {
   );
 }
 
+// A page's hashed filename is written into whichever chunk holds an
+// `import()` that reaches it, and that chunk has to change its own hash on
+// every release that touches any page. Confining those specifiers to the one
+// small loader chunk is what keeps the rest byte-identical — and nothing
+// about `route-imports.ts` forces it, so this reads the built output instead.
+// Measured while this was not held: a chunk naming pages cost a returning
+// reader 1,079,379 unchanged bytes, and a preload helper that landed beside
+// the loaders dragged the 1.8 MB canvas chunk along on every login-page edit.
+const jsFiles = readdirSync(ASSETS).filter((f) => f.endsWith('.js'));
+const loaderChunk = jsFiles.find((f) => f.startsWith('route-imports-'));
+if (loaderChunk === undefined) {
+  problems.push('no route-imports chunk — the page specifiers are back inside another chunk');
+} else {
+  const pageChunkNames = new Set(
+    PAGES.map((page) => chunkOf(page)).filter((c) => c !== undefined),
+  );
+  const heavyReaders = jsFiles.filter(
+    (f) =>
+      pageChunkNames.has(f) &&
+      readFileSync(path.join(ASSETS, f), 'utf8').includes(loaderChunk),
+  );
+  if (heavyReaders.length > 0) {
+    problems.push(
+      `${heavyReaders.join(', ')} name ${loaderChunk}, which changes on every release — so they do too`,
+    );
+  }
+}
+
 if (problems.length > 0) {
   console.error('verify-chunks: the build stopped splitting per entry');
   for (const p of problems) console.error(`  - ${p}`);
