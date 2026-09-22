@@ -38,13 +38,13 @@ beforeEach(() => {
 });
 
 describe('official Google login', () => {
-  it('renders the approved official button and follows the theme', async () => {
+  it('keeps the approved outline button in light and dark themes', async () => {
     setup();
     expect(sdk.renderButton).toHaveBeenLastCalledWith(expect.any(HTMLElement), expect.objectContaining({
       theme: 'outline', size: 'large', shape: 'rectangular', text: 'continue_with', logo_alignment: 'left',
     }));
     act(() => { document.documentElement.dataset.theme = 'dark'; });
-    await waitFor(() => expect(sdk.renderButton.mock.calls.at(-1)?.[1].theme).toBe('filled_black'));
+    await waitFor(() => expect(sdk.renderButton.mock.calls.at(-1)?.[1].theme).toBe('outline'));
   });
 
   it('sends credential once and stores the returned user', async () => {
