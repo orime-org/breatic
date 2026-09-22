@@ -40,13 +40,16 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
 // Explicit (no importOriginal) so loading @breatic/domain never pulls the
 // real agent llm and the `ai` SDK behind it.
 // `vi.hoisted` keeps the spy reference valid inside the hoisted factory.
-const { mockInsertAdmin, mockLoadStudioRole } = vi.hoisted(() => ({
-  mockInsertAdmin: vi.fn().mockResolvedValue(undefined),
-  mockLoadStudioRole: vi.fn(),
-}));
+const { mockInsertAdmin, mockLoadStudioRole, mockGrantTrialCredits } =
+  vi.hoisted(() => ({
+    mockInsertAdmin: vi.fn().mockResolvedValue(undefined),
+    mockLoadStudioRole: vi.fn(),
+    mockGrantTrialCredits: vi.fn().mockResolvedValue(null),
+  }));
 vi.mock("@breatic/domain", () => ({
   studioMembersRepo: { insertAdmin: mockInsertAdmin, getRole: vi.fn() },
   studioAuthService: { loadStudioRole: mockLoadStudioRole },
+  creditLotService: { grantTrialCredits: mockGrantTrialCredits },
 }));
 
 vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, unknown>>) => ({
@@ -55,6 +58,7 @@ vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, u
 }));
 
 import * as studioRepo from "../studio.repo.js";
+import { getTrialGrantCredits } from "@server/config/pricing.js";
 import {
   createPersonalStudio,
   getPersonalStudio,
@@ -111,6 +115,14 @@ describe("createPersonalStudio", () => {
     );
     // Admin member row written in the SAME tx (atomic with the studio insert).
     expect(mockInsertAdmin).toHaveBeenCalledWith("studio-1", "user-1", { TX: true });
+    // And the trial grant in that same tx, aimed at the studio just made: a
+    // grant that committed beside a studio that did not would point nowhere.
+    // How much comes from the price file, so it is read from there rather
+    // than written here.
+    expect(mockGrantTrialCredits).toHaveBeenCalledWith(
+      { userId: "user-1", studioId: "studio-1", credits: getTrialGrantCredits() },
+      { TX: true },
+    );
   });
 
   it("maps a unique-violation (SQLSTATE 23505) slug collision to ConflictError, not a raw 500", async () => {

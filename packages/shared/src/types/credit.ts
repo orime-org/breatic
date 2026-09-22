@@ -161,6 +161,14 @@ export function accountTotal(overview: CreditOverview): number {
 /** One purchase of this account's, as the overlay shows it. */
 export interface CreditLotView {
   id: string;
+  /**
+   * Where these credits came from.
+   *
+   * The browser reads it for the same two questions the server does — may
+   * this be pointed somewhere else, may it be asked back — plus a third only
+   * it asks: what the row says instead of a price.
+   */
+  sourceKind: CreditSourceKind;
   purchasedCredits: number;
   remainingCredits: number;
   /**

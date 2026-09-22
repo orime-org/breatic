@@ -162,6 +162,7 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
 function lot(over: Partial<CreditLotView> = {}): CreditLotView {
   const base = {
     id: 'l1',
+    sourceKind: 'payment' as CreditLotView['sourceKind'],
     purchasedCredits: 4550,
     remainingCredits: 2400,
     designatedStudioId: 's1' as string | null,

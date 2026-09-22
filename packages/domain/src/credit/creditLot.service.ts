@@ -39,7 +39,12 @@ import {
   ForbiddenError,
   type DbTx,
 } from "@breatic/core";
-import { t, REFUND_LIFECYCLES, refundRefusal } from "@breatic/shared";
+import {
+  t,
+  REFUND_LIFECYCLES,
+  refundRefusal,
+  isPurchased,
+} from "@breatic/shared";
 import type {
   CreditLotEntity,
   CreditOverview,
@@ -65,6 +70,8 @@ const BILL_LOCK_TTL_SECONDS = 86_400;
  * to be loading this module.
  */
 const REFUSAL_ERRORS: Record<RefundRefusal, () => AppError> = {
+  not_purchased: () =>
+    new AppError(422, t("server.credit.refund_not_purchased")),
   already_asked: () =>
     new AppError(409, t("server.credit.refund_already_asked")),
   still_designated: () =>
@@ -529,6 +536,13 @@ export async function designateLot(input: {
     if (REFUND_LIFECYCLES.has(lot.lifecycle)) {
       throw new AppError(409, t("server.credit.designation_locked"));
     }
+    // Where granted credits point was decided when they were written, and
+    // nothing moves them afterwards. Clearing the designation is refused with
+    // the same answer as changing it: unassign first, point anywhere second
+    // is the same move in two steps.
+    if (!isPurchased(lot.sourceKind)) {
+      throw new ForbiddenError(t("server.credit.designation_not_purchased"));
+    }
     if (lot.designatedStudioId === input.studioId) return lot;
     const designated = await creditLotRepo.setDesignation(
       input.lotId,
@@ -616,6 +630,7 @@ export async function requestRefund(input: {
     // cannot offer an ask this would turn down, or hide one it would allow.
     const refusal = refundRefusal(
       {
+        purchased: isPurchased(lot.sourceKind),
         lifecycle: lot.lifecycle,
         designated: lot.designatedStudioId !== null,
         everSpent: await creditLotRepo.hasEverSpent(input.lotId, tx),

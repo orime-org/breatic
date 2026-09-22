@@ -14,10 +14,12 @@
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
       "designation_locked": "这笔积分在退款流程中，不能改指定。",
+      "designation_not_purchased": "这笔积分是赠送的，只能用在你自己的 Studio 里，不能改指定。",
       "in_debt": "这个 Studio 欠着 {owed} 积分，指定新的积分会先抵掉它。",
       "unassigned": "你有 {available} 积分未指定，指定给 Studio 后才能使用。",
       "none": "积分不足，请先充值。",
       "refund_already_asked": "这笔已经提交过退款。",
+      "refund_not_purchased": "这笔积分是赠送的，没有付过款，所以不能退款。",
       "refund_still_designated": "这笔已指定给某个 Studio，请先解除指定。",
       "refund_already_spent": "这笔的积分已经用过，不能退款。",
       "refund_window_closed": "这笔的退款期限已过。"

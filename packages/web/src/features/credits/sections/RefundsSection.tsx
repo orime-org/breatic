@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { refundRefusal } from '@breatic/shared';
+import { refundRefusal, isPurchased } from '@breatic/shared';
 import type { CreditLotView, RefundRefusal } from '@breatic/shared';
 
 import {
@@ -273,7 +273,12 @@ const LotRow = React.memo(function LotRow({
   const t = useTranslation();
   const client = useQueryClient();
   const [asking, setAsking] = React.useState(false);
-  const refusal = refundRefusal(lot, now);
+  // The view is the candidate in every field but one: the rule asks whether
+  // anyone paid, and the row carries where the credits came from.
+  const refusal = refundRefusal(
+    { ...lot, purchased: isPurchased(lot.sourceKind) },
+    now,
+  );
   const face = faceOf(lot, refusal, t);
 
   const askRefund = useMutation({

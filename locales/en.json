@@ -14,10 +14,12 @@
     "credit": {
       "not_studio_admin": "You can only assign credits to a studio you administer.",
       "designation_locked": "This purchase is being refunded and cannot be reassigned.",
+      "designation_not_purchased": "These credits were granted, and can only be used in your own studio.",
       "in_debt": "This Studio owes {owed} credits. Credits assigned next pay that off first.",
       "unassigned": "You have {available} credits that are not assigned to a studio yet. Assign them to use them.",
       "none": "Not enough credits. Add credits to continue.",
       "refund_already_asked": "This purchase has already been sent for a refund.",
+      "refund_not_purchased": "These credits were granted, not paid for, so there is nothing to refund.",
       "refund_still_designated": "This purchase is assigned to a Studio. Unassign it first.",
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
       "refund_window_closed": "The refund window for this purchase has closed."
