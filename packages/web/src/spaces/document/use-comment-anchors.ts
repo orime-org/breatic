@@ -6,14 +6,17 @@
  *
  * The panel reads across from the body — a run commented halfway down has its
  * card halfway down — and this is the measurement that makes that possible:
- * for every thread, how far its first mark sits from the top of the body's
- * content.
+ * for every thread, where down the panel its card belongs.
  *
- * CONTENT COORDINATES, NOT THE VIEWPORT'S. A position measured against the
- * screen changes on every scroll, and the panel would then have to be
- * recomputed at the scroll rate. Measured against the content it changes only
- * when the text does, and the scroll is one number applied to the whole
- * column.
+ * MEASURED AGAINST THE COLUMN THE CARDS ARE PLACED IN, so the number handed
+ * back is the card's `top` and nothing has to be added to it. Both rectangles
+ * are viewport ones taken in the same frame and both move with the scroll, so
+ * the difference between them holds at any scroll position — and the column
+ * and the body share one scroller, which is what makes that true.
+ *
+ * Deriving the origin any other way means assuming what sits above the
+ * column: the panel's own header is 40px of it, and a card measured against
+ * the scroller's content top came out that much high.
  *
  * What is measured is the START of a thread's first stretch, which is where
  * the eye goes: a comment covering three paragraphs is read from its first
@@ -43,11 +46,13 @@ export function bodyScrollerOf(editor: ToolEditor): HTMLElement | null {
  * How far each thread's words sit from the top of the body's content.
  * @param editor - The document editor.
  * @param threadIds - The threads to measure, in any order.
- * @returns Each thread's offset, by id; absent for one with no words left.
+ * @param column - The element the cards are positioned inside.
+ * @returns Each thread's top, by id; absent for one with no words left.
  */
 export function useCommentAnchors(
   editor: ToolEditor,
   threadIds: readonly string[],
+  column: React.RefObject<HTMLElement | null>,
 ): ReadonlyMap<string, number> {
   const [anchors, setAnchors] = React.useState(NOTHING);
   // The ids as one string, so an effect can depend on WHICH threads rather
@@ -58,9 +63,9 @@ export function useCommentAnchors(
     /** Measures every thread and keeps the answer if it moved. */
     const measure = (): void => {
       const view = editor.prosemirrorView;
-      const scroller = bodyScrollerOf(editor);
-      if (view === null || scroller === null) return;
-      const top = scroller.getBoundingClientRect().top - scroller.scrollTop;
+      const origin = column.current;
+      if (view === null || origin === null) return;
+      const top = origin.getBoundingClientRect().top;
       const next = new Map<string, number>();
       key
         .split(',')
@@ -91,7 +96,7 @@ export function useCommentAnchors(
       sizes.disconnect();
       stop();
     };
-  }, [editor, key]);
+  }, [editor, key, column]);
 
   return anchors;
 }
@@ -111,29 +116,4 @@ function sameAnchors(
     if (b.get(id) !== top) return false;
   }
   return true;
-}
-
-/**
- * How far the body has been scrolled, kept current.
- * @param editor - The document editor.
- * @returns The scroll offset, zero before the editor is mounted.
- */
-export function useBodyScrollTop(editor: ToolEditor): number {
-  const [scrolled, setScrolled] = React.useState(0);
-
-  React.useEffect(() => {
-    const scroller = bodyScrollerOf(editor);
-    if (scroller === null) return;
-    /** Reads the offset off the element. */
-    const read = (): void => {
-      setScrolled(scroller.scrollTop);
-    };
-    read();
-    scroller.addEventListener('scroll', read, { passive: true });
-    return () => {
-      scroller.removeEventListener('scroll', read);
-    };
-  }, [editor]);
-
-  return scrolled;
 }

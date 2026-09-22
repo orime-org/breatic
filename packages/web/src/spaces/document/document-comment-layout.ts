@@ -17,10 +17,11 @@
  * deterministic offset. With nothing being read, the first card keeps its
  * anchor and the rest give way downwards.
  *
- * Positions can come out negative: a card above the one being read is pushed
- * up, and near the top of the body there is nowhere for it to go. The panel
- * scrolls, so a negative top is a card the reader scrolls up to, which is the
- * same answer the body gives for text above the viewport.
+ * The panel's header is the top of the column and no card may reach it: a
+ * card giving way upwards near the top of the body has nowhere to go, and
+ * what it would cover is the filter and the close button. The run stacks down
+ * from the header instead, which takes the one being read off its anchor —
+ * up there that is the only place left (user 2026-09-22).
  *
  * Cards move between one answer and the next rather than appearing at the new
  * one — the panel animates the change, which is what makes giving way read as
@@ -42,12 +43,14 @@ export interface CardAnchor {
  * @param cards - The cards and their anchors, in any order.
  * @param readingId - The thread being read, which keeps its anchor.
  * @param gap - The space to leave between two cards.
+ * @param minTop - How close to the panel's header a card may come.
  * @returns Each card's top, by thread id.
  */
 export function layOutCards(
   cards: readonly CardAnchor[],
   readingId: string | null,
   gap: number,
+  minTop: number,
 ): ReadonlyMap<string, number> {
   const inOrder = [...cards].sort((a, b) => a.anchor - b.anchor);
   const placed = new Map<string, number>();
@@ -77,6 +80,17 @@ export function layOutCards(
     const top = Math.min(card.anchor, above - gap - card.height);
     placed.set(card.id, top);
     above = top;
+  }
+
+  // Held off the header, and off each other once held. The pass above places
+  // the cards in anchor order, so working down that order is enough: each
+  // card starts where it was put and comes down only as far as the one before
+  // it makes it.
+  let floor = minTop;
+  for (const card of inOrder) {
+    const top = Math.max(placed.get(card.id)!, floor);
+    placed.set(card.id, top);
+    floor = top + card.height + gap;
   }
 
   return placed;

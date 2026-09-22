@@ -66,6 +66,9 @@ const GAP_BETWEEN_CARDS_PX = 10;
 /** What a card is taken to be until it has been on screen once. */
 const CARD_HEIGHT_GUESS_PX = 120;
 
+/** How close to the panel's header a card may come (user 2026-09-22). */
+const CLEARANCE_BELOW_HEADER_PX = 4;
+
 /**
  * The comment panel.
  * @param root0 - Panel props.
@@ -145,7 +148,10 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // Where each card's words are, and how far the body has been scrolled. The
   // first changes only when the text does; the second is one number applied
   // to the whole column, which is what keeps the two sides in step.
-  const anchors = useCommentAnchors(editor, ids);
+  // The element the cards are placed inside is what they are measured
+  // against, so a card's top needs nothing added to it.
+  const column = React.useRef<HTMLDivElement>(null);
+  const anchors = useCommentAnchors(editor, ids, column);
 
   // A card's own height, once it has been on screen. How far the card below
   // has to give way depends on how tall the one above turned out to be.
@@ -179,6 +185,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
           })),
         reading,
         GAP_BETWEEN_CARDS_PX,
+        CLEARANCE_BELOW_HEADER_PX,
       ),
     [shown, anchors, heights, reading],
   );
@@ -215,7 +222,10 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       data-testid='doc-comment-rail'
       className='flex w-72 flex-none flex-col border-l border-border'
     >
-      <div className='flex items-center gap-2 border-b border-border px-3 py-2'>
+      <div
+        data-testid='doc-comment-rail-header'
+        className='flex items-center gap-2 border-b border-border px-3 py-2'
+      >
         <span className='text-sm font-medium'>
           {t('spaces.document.comment.railTitle')}
         </span>
@@ -247,6 +257,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       {/* The column does not scroll on its own: it is carried by the body's
           scroll, which is what keeps a card level with its words. */}
       <div
+        ref={column}
         data-testid='doc-comment-rail-column'
         className='relative flex-1 px-2.5'
       >

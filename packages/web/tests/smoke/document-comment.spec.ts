@@ -154,7 +154,9 @@ test.describe('the panel, read across from the body', () => {
     }
     await page.keyboard.type(LONG_LINE);
 
-    await commentOnParagraph(page, 0, 'the first one');
+    // Neither is at the very top of the body: a card up there is held off
+    // the panel's header, which the case below is about.
+    await commentOnParagraph(page, 1, 'the first one');
     await commentOnParagraph(page, 13, 'the last one');
     await page.getByTestId('doc-doc-menu-trigger').click();
     await page.getByTestId('doc-doc-menu-comments').click();
@@ -168,12 +170,36 @@ test.describe('the panel, read across from the body', () => {
     const firstCard = await cards.first().boundingBox();
     const lastCard = await cards.last().boundingBox();
 
-    // Level, within the height of one card: crowding is what moves a card off
-    // its anchor, and these two are pages apart.
-    expect(Math.abs(firstCard!.y - firstMark!.y)).toBeLessThan(140);
-    expect(Math.abs(lastCard!.y - lastMark!.y)).toBeLessThan(140);
+    // Top edges level. Nothing crowds these two — they are pages apart — so
+    // each keeps its anchor, and the only slack is the card's own border.
+    expect(Math.abs(firstCard!.y - firstMark!.y)).toBeLessThan(4);
+    expect(Math.abs(lastCard!.y - lastMark!.y)).toBeLessThan(4);
     // And far enough apart that the gap between them is the uncommented text.
     expect(lastCard!.y - firstCard!.y).toBeGreaterThan(200);
+  });
+
+  test('holds a card off the panel header rather than over it', async ({
+    page,
+  }) => {
+    // The first line of the body sits above the header's lower edge, so the
+    // card for a comment on it would cover the filter and the close button
+    // (user 2026-09-22).
+    await openFreshDocument(page);
+    await page.keyboard.type(LONG_LINE);
+    await commentOnParagraph(page, 0, 'right at the top');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+    await page.waitForTimeout(400);
+
+    const header = await page
+      .getByTestId('doc-comment-rail-header')
+      .boundingBox();
+    const card = await page.getByTestId('doc-comment-card').boundingBox();
+
+    const clearance = card!.y - (header!.y + header!.height);
+    expect(clearance).toBeGreaterThanOrEqual(3.5);
+    expect(clearance).toBeLessThan(6);
   });
 
   test('carries the cards along when the body scrolls', async ({ page }) => {
