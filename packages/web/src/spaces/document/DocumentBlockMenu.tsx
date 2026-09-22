@@ -23,7 +23,7 @@ import {
   DropdownMenuSubTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
-import { UNAVAILABLE_KEYBOARD_FOCUS_ONLY } from '@web/spaces/document/document-coming-tool';
+import { UNAVAILABLE_KEYBOARD_FOCUS_ONLY } from '@web/spaces/document/document-unavailable-control';
 import {
   BLOCK_MENU_ROWS,
   type BlockMenuRow,
@@ -65,6 +65,8 @@ import {
   type HandleEditor,
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
+import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
+import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
 import { insertRowForMenu } from '@web/spaces/document/document-insert-row';
@@ -181,6 +183,8 @@ interface StyleFaces {
   readonly align: AlignFace;
   /** Which colour cells are marked, and whether a press reaches anything. */
   readonly colour: ColourFace;
+  /** Whether this row holds words a comment could mark (A3). */
+  readonly canComment: boolean;
 }
 
 /**
@@ -190,7 +194,11 @@ interface StyleFaces {
  * @returns True when they match.
  */
 function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
-  return a.align === b.align && sameColours(a.colour, b.colour);
+  return (
+    a.align === b.align &&
+    a.canComment === b.canComment &&
+    sameColours(a.colour, b.colour)
+  );
 }
 
 /**
@@ -211,6 +219,7 @@ function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
     return {
       align: alignFaceOver(tr.doc, over),
       colour: colourFaceOver(tr.doc, over),
+      canComment: canCommentOver(tr.doc, over),
     };
   });
 }
@@ -502,35 +511,57 @@ export function DocumentBlockMenu({
         }
 
         if (row.id === 'comment') {
-          // Stands in the menu so the shape is whole, and says it cannot be
-          // used: the treatment is the bubble bar's, which the reader has
-          // already met on the comment entry there (A10).
+          // Acts on the whole row, which `selectionOverBlockContent` turns
+          // into a range without dispatching a selection — the reader's caret
+          // is elsewhere and stays there (A2).
+          //
+          // A row with no words in it covers no run, so there is nothing for
+          // a press to mark and the entry says so rather than looking usable
+          // (A3, R7). The treatment is `whenOutOfReach`'s, which the colour
+          // row beside it already uses for the same reason.
           //
           // THE KEYBOARD STILL HAS TO SEE WHERE IT IS. `aria-disabled` rather
           // than Radix's `disabled` is what the ARIA authoring practices ask
           // of a menu — "Disabled menu items are focusable but cannot be
           // activated" — so an arrow key lands here, and the row's own
-          // background is the only thing that says so. `onPointerMove` below
-          // keeps the POINTER from focusing it, which is the case the bubble
-          // bar's own treatment cancels `:focus` for.
-          const comingLabel = t('spaces.document.commands.comingLabel', {
-            name: label,
-          });
+          // background is the only thing that says so.
+          const reachable = faces.canComment;
           return (
             <DropdownMenuItem
               key={row.id}
-              aria-disabled='true'
               data-testid={`doc-block-row-${row.id}`}
-              className={UNAVAILABLE_KEYBOARD_FOCUS_ONLY}
+              {...(reachable
+                ? {}
+                : {
+                  'aria-disabled': 'true' as const,
+                  className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
+                })}
               onSelect={(event) => {
-                event.preventDefault();
+                if (!reachable) {
+                  event.preventDefault();
+                  return;
+                }
+                const over = rangeNow();
+                if (over === undefined) {
+                  close();
+                  return;
+                }
+                openCommentDraft(editor as never, {
+                  from: over.from,
+                  to: over.to,
+                });
+                close();
               }}
-              onPointerMove={(event) => {
-                event.preventDefault();
-              }}
+              onPointerMove={
+                reachable
+                  ? undefined
+                  : (event) => {
+                    event.preventDefault();
+                  }
+              }
             >
               <Icon />
-              {comingLabel}
+              {label}
             </DropdownMenuItem>
           );
         }

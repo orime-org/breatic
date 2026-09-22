@@ -77,8 +77,8 @@ import {
   type VirtualElement,
 } from '@floating-ui/react';
 
-import { MessageSquareText } from 'lucide-react';
 
+import { commentTool } from '@web/spaces/document/document-comment-entries';
 import {
   ToolButton,
   type ToolDef,
@@ -90,9 +90,7 @@ import {
   AiSlot,
 } from '@web/spaces/document/document-bubble-slots';
 import {
-  ComingTool,
-  type ComingToolDef,
-} from '@web/spaces/document/document-coming-tool';
+} from '@web/spaces/document/document-unavailable-control';
 import {
   MARK_TOOLS,
   INLINE_TOOLS,
@@ -111,7 +109,14 @@ interface BubbleGroup {
   /** Names the separator drawn before this group. */
   key: string;
   tools: ToolDef[];
-  coming: ComingToolDef[];
+  /**
+   * Tools drawn after the group's slot.
+   *
+   * The demo's order for the inline group is `link code A∨ comment`, and the
+   * slot sits third — so a tool that belongs last cannot go in `tools`, which
+   * is drawn before it.
+   */
+  after?: ToolDef[];
   /**
    * Controls that open a panel instead of running a command.
    *
@@ -158,23 +163,17 @@ interface BubbleGroup {
  * available and answers a click with nothing tells the reader it is broken).
  */
 const BUBBLE_GROUPS: BubbleGroup[] = [
-  { key: 'blocks', tools: [], coming: [], panels: [], slot: BlockTypeSlot },
-  { key: 'align', tools: [], coming: [], panels: [], slot: AlignSlot },
-  { key: 'marks', tools: MARK_TOOLS, coming: [], panels: [] },
+  { key: 'blocks', tools: [], panels: [], slot: BlockTypeSlot },
+  { key: 'align', tools: [], panels: [], slot: AlignSlot },
+  { key: 'marks', tools: MARK_TOOLS, panels: [] },
   {
     key: 'inline',
     tools: INLINE_TOOLS,
     panels: [DocumentLinkPopover],
     slot: ColorSlot,
-    coming: [
-      {
-        id: 'comment',
-        labelKey: 'spaces.document.commands.comment',
-        Icon: MessageSquareText,
-      },
-    ],
+    after: [commentTool],
   },
-  { key: 'ai', tools: [], coming: [], panels: [], slot: AiSlot },
+  { key: 'ai', tools: [], panels: [], slot: AiSlot },
 ];
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
@@ -1129,8 +1128,8 @@ function BubbleBar({
                 onOpenChange={setMenuOpen}
               />
             ) : null}
-            {group.coming.map((tool) => (
-              <ComingTool key={tool.id} tool={tool} />
+            {(group.after ?? []).map((tool) => (
+              <ToolButton key={tool.id} tool={tool} editor={editor} />
             ))}
           </React.Fragment>
         ))}

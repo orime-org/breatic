@@ -11,6 +11,9 @@ import {
 import { DocumentBlockControls } from '@web/spaces/document/DocumentBlockControls';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
+import type { ProjectRole } from '@breatic/shared';
+
+import { DocumentCommentComposer } from '@web/spaces/document/DocumentCommentComposer';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
@@ -19,6 +22,16 @@ interface DocumentEditorProps {
   handle: ShowableEditor;
   /** True for a viewer. */
   readOnly?: boolean;
+  /**
+   * The reader's role on the project.
+   *
+   * `readOnly` answers "may this person write at all", which the carriers
+   * gate on. The comment box asks a second question — whether the right to
+   * write was taken away while it was open (A22) — and that needs the role
+   * itself. Defaults to the most restrictive reading, as `SpaceBodyProps`
+   * does.
+   */
+  myRole?: ProjectRole;
 }
 
 /**
@@ -34,11 +47,13 @@ interface DocumentEditorProps {
  * @param root0 - Editor chrome props.
  * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
- * @returns The editor body, the entry and the bubble bar.
+ * @param root0.myRole - The reader's role on the project.
+ * @returns The editor body, the entry, the bubble bar and the comment box.
  */
 export const DocumentEditor = React.memo(function DocumentEditor({
   handle,
   readOnly = false,
+  myRole = 'viewer',
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
   // Held here because this is where the editor's DOM enters the scroller, and
@@ -117,6 +132,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* The strip beside the row under the pointer. A viewer gets none of it
           (A3): every command in the handle's menu writes to the document. */}
       {!readOnly && <DocumentBlockControls editor={handle.editor} />}
+      {/* The box a comment is written in. It draws itself only while a draft
+          is open, and a viewer reaches neither entry that opens one. */}
+      {!readOnly && (
+        <DocumentCommentComposer editor={handle.editor} myRole={myRole} />
+      )}
       {/* The toolbar over a link the pointer hovers or the caret sits in. It
           owns its own timing, position and state; what it takes from here is
           where to draw and when to stand aside.

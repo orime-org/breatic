@@ -33,7 +33,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { cn } from '@web/lib/utils';
 import { DocumentBubbleMenu } from '@web/spaces/document/document-bubble-menu';
-import { UNAVAILABLE } from '@web/spaces/document/document-coming-tool';
+import { UNAVAILABLE } from '@web/spaces/document/document-unavailable-control';
 import {
   BLOCK_TYPE_ITEMS,
   blockTypeItem,
