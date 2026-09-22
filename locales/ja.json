@@ -1108,6 +1108,7 @@
       "account": "アカウント",
       "signOut": "ログアウト",
       "credits": "クレジット",
+      "creditsUnavailable": "取得できません",
       "membership": "メンバーシップ",
       "accountSettings": "アカウント設定"
     },

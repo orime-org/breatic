@@ -8,6 +8,8 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import type { CreditOverview } from '@breatic/shared';
+
 import { authApi } from '@web/data/api/auth';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -20,6 +22,36 @@ const membershipMock = vi.fn();
 vi.mock('@web/data/api/account', () => ({
   accountApi: { membership: () => membershipMock() },
 }));
+
+const overviewMock = vi.fn();
+vi.mock('@web/data/api/credits', () => ({
+  fetchCreditOverview: () => overviewMock(),
+}));
+
+/**
+ * What the account holds, as the overview endpoint answers it.
+ * @param over - Fields to override.
+ * @returns The overview.
+ */
+function overview(over: Partial<CreditOverview> = {}): CreditOverview {
+  return {
+    assignedCredits: 3640,
+    unassignedCredits: 1790,
+    underRefundCredits: 0,
+    billing: true,
+    studios: [],
+    ...over,
+  };
+}
+
+/**
+ * The text to the right of the Credits entry, which is where the balance goes.
+ * @returns That text, empty when the entry carries nothing but its own word.
+ */
+function creditsTrailing(): string {
+  const entry = screen.getByRole('menuitem', { name: /Credits/ });
+  return (entry.textContent ?? '').replace('Credits', '').trim();
+}
 
 const ALEX = {
   id: 'u1',
@@ -71,6 +103,7 @@ describe('StudioAccountMenu', () => {
     useCurrentUserStore.getState().clear();
     vi.mocked(authApi.logout).mockReset().mockResolvedValue(undefined);
     membershipMock.mockReset();
+    overviewMock.mockReset().mockResolvedValue(overview());
   });
 
   it('shows the current user initial on the avatar button', () => {
@@ -260,5 +293,183 @@ describe('StudioAccountMenu', () => {
     await openMenu(user);
 
     expect(membershipMock).not.toHaveBeenCalled();
+  });
+
+  describe('the balance on the Credits entry', () => {
+    it('shows what the account holds, the way the membership tier is shown', async () => {
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockResolvedValue(overview());
+      setup();
+      await openMenu(user);
+
+      // 3640 assigned + 1790 unassigned, grouped the way every other balance
+      // on screen is.
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('5,430');
+      });
+
+      // Same place, same size as the tier on the row above: the two are the
+      // things a person opens this menu to check, and one riding higher or
+      // heavier than the other makes it look like the more important of them.
+      // The last node in the row, so moving the figure to the other side of
+      // the word is a failure — `.ml-auto` would still be found there.
+      const trailing = (name: RegExp): string => {
+        const last = screen.getByRole('menuitem', { name }).lastChild;
+        return last instanceof HTMLElement ? last.className : '';
+      };
+      expect(trailing(/Credits/)).toBe(trailing(/Membership/));
+      expect(trailing(/Credits/)).not.toBe('');
+    });
+
+    it('counts a pack that is under refund — it is still the buyer’s', async () => {
+      // A refund that has been asked for and not settled leaves the credits
+      // where they are. Dropping them would make the figure fall the moment a
+      // refund is asked about, with nothing on screen saying where they went.
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockResolvedValue(overview({ underRefundCredits: 500 }));
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('5,930');
+      });
+    });
+
+    it('holds the place while the figure is still on its way', async () => {
+      // A placeholder, because the wait ends by itself and an empty row reads
+      // as a balance of nothing. Asserted on the element, since a skeleton
+      // carries no text and a missing one would pass a text assertion.
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockReturnValue(new Promise(() => {}));
+      setup();
+      await openMenu(user);
+
+      const row = screen.getByRole('menuitem', { name: /Credits/ });
+      expect(row.querySelector('.skeleton-shimmer')).not.toBeNull();
+      expect(creditsTrailing()).toBe('');
+    });
+
+    it('says so when the read fails, rather than leaving the row blank', async () => {
+      // Whether the request lands is not ours to promise; whether the reader
+      // knows it did not is. A blank row here reads the same as the one a
+      // deployment that does not bill shows.
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockRejectedValue(new Error('offline'));
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('Unavailable');
+      });
+    });
+
+    it('keeps one account’s figure away from the next one to sign in', async () => {
+      // The query client is a module singleton that a sign-out never clears,
+      // so a key without the account would hand the second reader the first
+      // one's figures out of cache.
+      const user = userEvent.setup();
+      // One client across both sign-ins, which is what the app has: it is
+      // created once at module scope and outlives every session on this tab.
+      const qc = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const show = (): ReturnType<typeof render> =>
+        render(
+          <MemoryRouter initialEntries={['/studio']}>
+            <QueryClientProvider client={qc}>
+              <StudioAccountMenu />
+            </QueryClientProvider>
+          </MemoryRouter>,
+        );
+
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockResolvedValueOnce(overview());
+      const first = show();
+      await openMenu(user);
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('5,430');
+      });
+
+      first.unmount();
+      useCurrentUserStore.getState().setUser({ ...ALEX, id: 'u2', name: 'Bo' });
+      // Held open, so what the second reader sees is whatever the cache had
+      // for them — nothing, unless the key forgot whose money it is.
+      let answer: (o: CreditOverview) => void = () => {};
+      overviewMock.mockImplementationOnce(
+        () =>
+          new Promise<CreditOverview>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      show();
+      await openMenu(user);
+      expect(creditsTrailing()).toBe('');
+
+      answer(overview({ assignedCredits: 12, unassignedCredits: 0 }));
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('12');
+      });
+    });
+
+    it('asks for nothing until the menu is opened', () => {
+      // The studio layout mounts this menu, so it is there from the moment a
+      // studio page loads. Without the gate that load spends a request on a
+      // figure nobody has asked to see.
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      expect(overviewMock).not.toHaveBeenCalled();
+    });
+
+    it('says nothing but the word when a later read fails, not the stale figure', async () => {
+      // The menu reads on open, so a reader who opens it twice can have a
+      // figure in hand from the first time and a failed read the second. A
+      // figure that has gone stale looks exactly like one that is current,
+      // and the overlay reads the same query, so it would say the same thing
+      // the moment the reader opened it.
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockResolvedValueOnce(overview());
+      setup();
+
+      await openMenu(user);
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('5,430');
+      });
+
+      await user.keyboard('{Escape}');
+      overviewMock.mockRejectedValue(new Error('offline'));
+      await openMenu(user);
+      await waitFor(() => {
+        expect(overviewMock).toHaveBeenCalledTimes(2);
+      });
+
+      expect(creditsTrailing()).toBe('Unavailable');
+    });
+
+    it('says nothing but the word where this deployment does not charge', async () => {
+      // Three zeros there mean "we do not bill", not "your money is gone", and
+      // rendering the 0 says the second one.
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockResolvedValue(
+        overview({
+          assignedCredits: 0,
+          unassignedCredits: 0,
+          underRefundCredits: 0,
+          billing: false,
+        }),
+      );
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => {
+        expect(overviewMock).toHaveBeenCalled();
+      });
+      expect(creditsTrailing()).toBe('');
+    });
   });
 });

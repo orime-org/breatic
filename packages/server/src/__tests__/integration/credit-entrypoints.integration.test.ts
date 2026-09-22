@@ -147,9 +147,15 @@ async function seedPendingPayment(
   credits: number,
 ): Promise<{ paymentId: string; sessionId: string }> {
   const sessionId = `cs_test_${seq++}_${Date.now()}`;
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (user_id, stripe_session_id, amount_cents, status, credits_granted)
-    VALUES (${userId}, ${sessionId}, 1000, 'pending', ${credits}) RETURNING id
+    INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, status, credits_granted)
+    VALUES (${source!.id}, ${userId}, ${sessionId}, 1000, 'pending', ${credits}) RETURNING id
   `;
   return { paymentId: payment!.id, sessionId };
 }
@@ -163,7 +169,7 @@ describe("充值到账", () => {
     expect(outcome.status).toBe("granted");
 
     const lots = await sql<{ id: string; remaining_credits: string }[]>`
-      SELECT id, remaining_credits FROM credit_lots WHERE payment_id = ${paymentId}
+      SELECT id, remaining_credits FROM credit_lots WHERE source_id = ${paymentId}
     `;
     expect(lots).toHaveLength(1);
     expect(lots[0]?.remaining_credits).toBe("880.000000");
@@ -185,7 +191,7 @@ describe("充值到账", () => {
 
     expect(replay.status).toBe("replay");
     const counted = await sql<{ count: string }[]>`
-      SELECT COUNT(*)::text AS count FROM credit_lots WHERE payment_id = ${paymentId}
+      SELECT COUNT(*)::text AS count FROM credit_lots WHERE source_id = ${paymentId}
     `;
     expect(counted[0]?.count).toBe("1");
   });

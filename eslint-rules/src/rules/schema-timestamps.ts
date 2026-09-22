@@ -19,6 +19,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "append-only ledger of tier moves, the same carve-out as payments above: the column on users holds the current tier and every change to it is appended here, so deleting a row leaves a history that no longer adds up to the value on the account",
   ],
   [
+    "creditSources",
+    "the receipt a lot of credits came from (0079, #259): every lot points at one, and each kind of source shares this row's primary key, so soft-deleting it would leave a lot pointing at a receipt that no longer says what it was for. A receipt outlives the credits it opened — there is no state in which one stops having been issued",
+  ],
+  [
     "creditLedger",
     "append-only credit ledger (0061): a lot's remaining balance IS this table summed over that lot, so deleting a row would silently change a balance that has already been spent against, and deleting a topup row would make that payment grantable again",
   ],

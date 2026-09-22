@@ -185,13 +185,19 @@ async function seedPayment(
   } = {},
 ): Promise<string> {
   seq += 1;
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO payments (
-      user_id, stripe_session_id, amount_cents, tax_cents, total_cents,
+      id, user_id, stripe_session_id, amount_cents, tax_cents, total_cents,
       credits_granted, currency, status, metadata, created_at, updated_at
     )
     VALUES (
-      ${userId}, ${`cs_hist_${Date.now()}-${seq}`}, 2000,
+      ${source!.id}, ${userId}, ${`cs_hist_${Date.now()}-${seq}`}, 2000,
       ${over.taxCents ?? null}, ${over.totalCents ?? null},
       1700, 'usd', ${over.status ?? "pending"},
       ${sql.json(over.metadata ?? {})},
@@ -613,7 +619,7 @@ describe("what the confirmation calls the balance", () => {
       // 1700 bought, 1200 of it spent.
       await sql`
         UPDATE credit_lots SET remaining_credits = 500
-        WHERE payment_id = ${paymentId}
+        WHERE source_id = ${paymentId}
       `;
       const view = await getConfirmationView(paymentId);
       expect(view?.balanceCredits).toBe(500);
@@ -632,7 +638,7 @@ describe("what the confirmation calls the balance", () => {
       const waiting = await seedLanded(buyer.userId);
       await sql`
         UPDATE credit_lots SET lifecycle = 'refund_pending'
-        WHERE payment_id = ${waiting}
+        WHERE source_id = ${waiting}
       `;
       const view = await getConfirmationView(live);
       expect(view?.balanceCredits).toBe(3400);
@@ -648,7 +654,7 @@ describe("what the confirmation calls the balance", () => {
       const refunded = await seedLanded(buyer.userId);
       await sql`
         UPDATE credit_lots SET lifecycle = 'refunded'
-        WHERE payment_id = ${refunded}
+        WHERE source_id = ${refunded}
       `;
       const view = await getConfirmationView(live);
       // Only the live lot's 1700 counts; the refunded one's does not.

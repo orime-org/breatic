@@ -124,7 +124,9 @@ export interface ChargeOutcome {
  * spent" and the interface has to say so: a buyer told only that assigning is
  * available will assume the credits already work.
  * @param input - The completed payment.
- * @param input.paymentId - The payment row. Unique across lots, so a redelivered webhook fails here.
+ * @param input.paymentId - The payment row, which is also its source id: a
+ *   payment shares its source's primary key. Unique across lots, so a
+ *   redelivered webhook fails here.
  * @param input.userId - Who paid.
  * @param input.purchasedCredits - How many credits it bought.
  * @param outer - The caller's transaction, when it has one. Fulfillment grants
@@ -150,7 +152,11 @@ export async function grantFromPayment(
   const run = async (tx: DbTx): Promise<CreditLotEntity> => {
     const lot = await creditLotRepo.createLot(
       {
-        paymentId: input.paymentId,
+        // The payment's own id, which is also its source id — see
+        // `createSource`. Opening a source here would hand every redelivery
+        // a fresh one, and the unique index would stop refusing the second
+        // grant.
+        sourceId: input.paymentId,
         userId: input.userId,
         purchasedCredits: amount,
       },
@@ -236,10 +242,9 @@ export async function chargeForGeneration(
   // still recorded, because a deployment that charges nobody still wants to
   // know what it produced; there is simply no purchase to draw it from.
   if (!env.PAYMENT_ENABLED) {
-    await creditLotRepo.appendLedgerEntry({
+    await creditLotRepo.recordStandaloneUsage({
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
-      lotId: null,
     });
     return { billed: false, charged: 0, shortfall: 0, studioId, lotIds: [] };
   }
@@ -250,10 +255,9 @@ export async function chargeForGeneration(
   // Recording the usage keeps the account honest; the shortfall tells the
   // caller to log it.
   if (studioId === null) {
-    await creditLotRepo.appendLedgerEntry({
+    await creditLotRepo.recordStandaloneUsage({
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
-      lotId: null,
     });
     return {
       billed: false,

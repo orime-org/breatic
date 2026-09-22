@@ -137,9 +137,15 @@ async function seedLot(
   amountCents = 1000,
   designateTo: string | null = null,
 ): Promise<string> {
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (user_id, amount_cents, status, credits_granted)
-    VALUES (${userId}, ${amountCents}, 'completed', ${credits}) RETURNING id
+    INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
+    VALUES (${source!.id}, ${userId}, ${amountCents}, 'completed', ${credits}) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,
@@ -516,11 +522,17 @@ describe("purchases show what was paid and where they point (plan §4.5 §4.6)",
     // A purchase in a taxed region: face value 1000, Stripe took 1120.
     // `automatic_tax` is on for every checkout, so this is the ordinary case
     // wherever there is tax, not an edge one.
+    // A payment shares its source row's primary key, so the receipt is
+    // opened first and the payment is written under its id (0079, #259).
+    const [source] = await sql<{ id: string }[]>`
+      INSERT INTO credit_sources (id, kind)
+      VALUES (gen_random_uuid(), 'payment') RETURNING id
+    `;
     const [payment] = await sql<{ id: string }[]>`
       INSERT INTO payments (
-        user_id, amount_cents, tax_cents, total_cents, status, credits_granted
+        id, user_id, amount_cents, tax_cents, total_cents, status, credits_granted
       )
-      VALUES (${fx.userId}, 1000, 120, 1120, 'completed', 880) RETURNING id
+      VALUES (${source!.id}, ${fx.userId}, 1000, 120, 1120, 'completed', 880) RETURNING id
     `;
     await creditLotService.grantFromPayment({
       paymentId: payment!.id,

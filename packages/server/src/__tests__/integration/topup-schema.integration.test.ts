@@ -137,9 +137,15 @@ async function seedUserWithPayment(): Promise<{
     VALUES (${`topup-schema-${Date.now()}-${seq}@example.test`}, true)
     RETURNING id
   `;
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (user_id, amount_cents, credits_granted, currency, status)
-    VALUES (${user!.id}, 2000, 1700, 'usd', 'completed')
+    INSERT INTO payments (id, user_id, amount_cents, credits_granted, currency, status)
+    VALUES (${source!.id}, ${user!.id}, 2000, 1700, 'usd', 'completed')
     RETURNING id
   `;
   return { userId: user!.id, paymentId: payment!.id };
@@ -281,10 +287,16 @@ describe("payments gains what the tax-inclusive total needs", () => {
   it("refuses a state outside those four", async () => {
     const { userId } = await seedUserWithPayment();
     try {
+      // A payment shares its source row's primary key, so the receipt is
+      // opened first and the payment is written under its id (0079, #259).
+      const [source] = await sql<{ id: string }[]>`
+        INSERT INTO credit_sources (id, kind)
+        VALUES (gen_random_uuid(), 'payment') RETURNING id
+      `;
       await expect(
         sql`
-          INSERT INTO payments (user_id, amount_cents, credits_granted, currency, status)
-          VALUES (${userId}, 1000, 830, 'usd', 'refunded')
+          INSERT INTO payments (id, user_id, amount_cents, credits_granted, currency, status)
+          VALUES (${source!.id}, ${userId}, 1000, 830, 'usd', 'refunded')
         `,
       ).rejects.toThrow(/violates check constraint/i);
     } finally {

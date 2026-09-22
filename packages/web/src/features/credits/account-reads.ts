@@ -3,6 +3,8 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 
+import { creditOverviewKey } from '@web/features/credits/use-credit-overview';
+
 /**
  * Re-reads everything on this panel that speaks about one purchase.
  *
@@ -24,7 +26,7 @@ export async function invalidateAccountReads(
 ): Promise<void> {
   await Promise.all([
     client.invalidateQueries({ queryKey: ['credits', 'lots', userId] }),
-    client.invalidateQueries({ queryKey: ['credits', 'overview', userId] }),
+    client.invalidateQueries({ queryKey: creditOverviewKey(userId) }),
     client.invalidateQueries({ queryKey: ['payment', 'history', userId] }),
   ]);
 }

@@ -79,9 +79,15 @@ async function seedRow(status: string): Promise<{
     INSERT INTO users (email, email_verified)
     VALUES (${`outbox-${stamp}@example.test`}, true) RETURNING id
   `;
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (user_id, stripe_session_id, amount_cents, credits_granted, currency, status)
-    VALUES (${user!.id}, ${`cs_outbox_${stamp}`}, 2000, 1700, 'usd', 'completed')
+    INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, credits_granted, currency, status)
+    VALUES (${source!.id}, ${user!.id}, ${`cs_outbox_${stamp}`}, 2000, 1700, 'usd', 'completed')
     RETURNING id
   `;
   await sql`
