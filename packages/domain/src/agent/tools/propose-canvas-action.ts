@@ -40,6 +40,7 @@ import {
   effectiveItemCap,
   evaluateExecute,
   extractPromptText,
+  feedersOf,
   GENERATION_NODE_MODES,
   PANEL_EDITOR_PARAM,
   promptPlainText,
@@ -428,11 +429,20 @@ function checkGenerateNode(
   // depends on which nodes this prompt can name.
   const pool = poolParam(chosen);
   const byReference = pool !== undefined;
-  const fedFrom = new Set(
-    proposal.edges.filter((e) => e.toIndex === index).map((e) => e.fromIndex),
-  );
-  const placed = proposal.nodes.map((n, at) => ({ node: n, at }));
-  const feeders = placed.filter(({ at }) => fedFrom.has(at));
+  // The one reading of what feeds a node, shared with the card that files its
+  // to-dos by it and the canvas that writes its mentions from it. A second
+  // walk over the edges here is how the three come to disagree about which
+  // node the k-th mark is about.
+  const held = feedersOf(proposal, index);
+  /**
+   * The nodes behind a run of feeder indices, in the proposal's own order.
+   * @param list - The indices to resolve.
+   * @returns One node per index.
+   * @throws {never} Never.
+   */
+  const nodesAt = (list: readonly number[]): ProposalNode[] =>
+    list.flatMap((i) => proposal.nodes[i] ?? []);
+  const fed = nodesAt(held.sources);
   // One mark per node upstream this prompt can name, and no more: an edge
   // makes that node's work available, and nothing in the prompt naming it
   // means the Generate button will not move.
@@ -442,10 +452,8 @@ function checkGenerateNode(
   // their material by clicking and the panel turns a mention of it away
   // (`insertRefusal`) -- what stays nameable there is a node holding words,
   // whose body substitutes into the prompt and asks the pool for nothing.
-  const upstream = feeders.filter(({ node: n }) => n.role !== "source");
-  const nameable = byReference
-    ? upstream
-    : upstream.filter(({ node: n }) => n.role === "written");
+  const upstream = nodesAt(held.upstream);
+  const nameable = byReference ? upstream : upstream.filter((n) => n.role === "written");
   // What the panel's own gate would say about the box this proposal fills in.
   // It is asked with the text the box will hold (`promptTextOf`), so the two
   // judge the same string; the sentences differ because this one is read by
@@ -457,7 +465,7 @@ function checkGenerateNode(
   // it looks. A prompt proposed at exactly the cap can therefore be refused
   // by a character once the reader mentions something in it (#268).
   const verdict = evaluateExecute({
-    promptText: measuredPrompt(prompt, nameable.map(({ node: n }) => n)),
+    promptText: measuredPrompt(prompt, nameable),
     model,
     nodeStatus: "idle",
     isSubmitting: false,
@@ -507,7 +515,7 @@ function checkGenerateNode(
   // holding words is wired in to be read, and taking that edge for a hand on
   // the material turns away a group whose empty node the reader was going to
   // fill in the panel.
-  const carrying = feeders.filter(({ node: n }) => n.role !== "written");
+  const carrying = [...fed, ...upstream.filter((n) => n.role !== "written")];
   // Three readings, three names. They answer different questions and two of
   // them want opposite things, so one list serving all three is how a rule
   // ends up charging this generation for another's material.
@@ -522,21 +530,18 @@ function checkGenerateNode(
   // node in the group is read by something.
   const wired = byReference || needed.length === 0 || carrying.length > 0;
   const mine = wired
-    ? feeders.filter(({ node: n }) => n.role === "source")
-    : placed.filter(({ node: n }) => n.role === "source" && needed.includes(n.type));
+    ? fed
+    : proposal.nodes.filter((n) => n.role === "source" && needed.includes(n.type));
   // `reaching`: everything arriving here that carries work, whoever made it.
   // An upstream generation supplies material as surely as an empty node does.
   // A written node upstream is not material at all -- it is words this
   // generation reads -- so it stays out. The pool's ceiling counts this one
   // whole, because the pool holds what reaches it, of every kind.
-  const reaching = [
-    ...mine,
-    ...feeders.filter(({ node: n }) => n.role === "generate"),
-  ];
+  const reaching = [...mine, ...upstream.filter((n) => n.role === "generate")];
   // `usable`: of what reaches here, the kinds this mode actually reads. Every
   // question about whether the material is there and whether there is enough
   // of it is asked of this one.
-  const usable = reaching.filter(({ node: n }) => needed.includes(n.type));
+  const usable = reaching.filter((n) => needed.includes(n.type));
   const marks = prompt.filter((s) => s.slot?.kind === "asset");
   const points = prompt.filter((s) => s.slot?.kind === "ref");
   // Judged before the early return below, so a mode generating from its
@@ -581,14 +586,14 @@ function checkGenerateNode(
   // The reader is the only one who has this material, so the group has to
   // carry somewhere to put it -- of the kind that holds it, and nothing else.
   // Without that the generate button refuses and nothing on screen says why.
-  const stray = mine.find(({ node: n }) => !needed.includes(n.type));
+  const stray = mine.find((n) => !needed.includes(n.type));
   if (stray) {
     return {
       ok: false,
-      reason: `"${mode}" reads ${needed.join(", ")}, and an empty ${stray.node.type} node is wired into it, which it cannot take. Wire that one to whatever reads it.`,
+      reason: `"${mode}" reads ${needed.join(", ")}, and an empty ${stray.type} node is wired into it, which it cannot take. Wire that one to whatever reads it.`,
     };
   }
-  const missing = needed.filter((kind) => !usable.some(({ node: n }) => n.type === kind));
+  const missing = needed.filter((kind) => !usable.some((n) => n.type === kind));
   if (missing.length > 0) {
     return {
       ok: false,
@@ -643,8 +648,8 @@ function checkGenerateNode(
   // kind of thing in, so the count is what the model asks for less what the
   // step before it already made -- the group's other empty nodes belong to
   // whatever else reads them.
-  const supplied = feeders.filter(
-    ({ node: n }) => n.role === "generate" && needed.includes(n.type),
+  const supplied = upstream.filter(
+    (n) => n.role === "generate" && needed.includes(n.type),
   ).length;
   const wanted = byReference ? mine.length : Math.max(0, asked - supplied);
   if (marks.length !== wanted) {
@@ -955,9 +960,9 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnsw
     "another made; belonging together is said by the group, not by edges. " +
     "Ask get_canvas_capabilities and list_generation_models first, and " +
     "propose only a mode and model they returned. Mark in the prompt each " +
-    "piece of material the reader supplies -- saying where it goes, which " +
-    "for most modes is a slot on the panel -- plus anything the panel leaves " +
-    "them to pick, and say in your reply what they still have to do by hand.",
+    "piece of material they supply and where it goes -- for most modes a " +
+    "slot on the panel -- plus anything the panel leaves them to pick, and " +
+    "say in your reply what is left to do by hand.",
   inputSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),

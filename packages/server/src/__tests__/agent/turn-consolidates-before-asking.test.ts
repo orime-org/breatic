@@ -222,7 +222,7 @@ beforeEach(() => {
   // this one's, and read as a pass.
   thisCase.sent = null;
   limits.budget = 20_000;
-  limits.keep = 13_600;
+  limits.keep = 13_700;
   consolidateWindow.mockResolvedValue("written");
 });
 

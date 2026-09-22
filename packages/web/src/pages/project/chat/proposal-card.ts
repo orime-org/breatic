@@ -194,7 +194,7 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
     const empties = feedersOf(proposal, at).sources;
     for (const segment of node.prompt ?? []) {
       const slot = segment.slot;
-      if (!slot || slot.note === '') continue;
+      if (!slot) continue;
       if (slot.kind === 'ref') continue;
       if (slot.kind === 'tweak') {
         add(at, slot.note);
