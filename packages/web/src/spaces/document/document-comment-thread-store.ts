@@ -27,12 +27,14 @@ import { CommentsExtension } from '@blocknote/core/comments';
 import { YjsThreadStore } from '@blocknote/core/yjs';
 import type * as Y from 'yjs';
 
-import type { ProjectRole } from '@breatic/shared';
 import { documentCommentThreads } from '@breatic/shared';
 
 import type { UserSummary } from '@web/data/api/users';
 import { usersApi } from '@web/data/api/users';
-import { documentCommentAuth } from '@web/spaces/document/document-comment-auth';
+import {
+  documentCommentAuth,
+  type DocumentCommentAuthInput,
+} from '@web/spaces/document/document-comment-auth';
 
 /** A comment author as the library holds one. */
 interface CommentUser {
@@ -48,10 +50,13 @@ interface CommentUser {
 export interface DocumentCommentsOptions {
   /** The document Space's Y.Doc, holding the body and the threads. */
   readonly doc: Y.Doc;
-  /** The reader's account id, absent until the project query answers. */
-  readonly viewerId: string | undefined;
-  /** The reader's role on the project, for every auth answer. */
-  readonly role: ProjectRole;
+  /**
+   * Who is reading, asked afresh for every auth answer.
+   *
+   * A reading rather than a value because the editor is built once per
+   * document and outlives a Space-tab switch, while a role does not (A17).
+   */
+  readonly readWho: () => DocumentCommentAuthInput;
 }
 
 /**
@@ -108,10 +113,15 @@ async function resolveCommentUsers(
 export function documentCommentsExtension(
   options: DocumentCommentsOptions,
 ): ExtensionFactoryInstance {
+  // The author id is the one place the library takes a value rather than
+  // asking: it is stamped onto every comment this client writes, and the
+  // store keeps the one it was built with. That is the right reading anyway —
+  // who is at the keyboard does not change while a Space is open, whereas
+  // what they are allowed to do does.
   const store = new YjsThreadStore(
-    options.viewerId ?? '',
+    options.readWho().viewerId ?? '',
     documentCommentThreads(options.doc),
-    documentCommentAuth({ role: options.role, viewerId: options.viewerId }),
+    documentCommentAuth(options.readWho),
   );
 
   return CommentsExtension({

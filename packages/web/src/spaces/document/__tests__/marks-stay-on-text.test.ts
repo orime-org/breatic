@@ -449,7 +449,9 @@ describe('the editor a reader actually gets', () => {
     const doc = new Y.Doc();
     const handle = getDocumentEditor(doc, 'project-p/document-marks-on-text', {
       caretProvider: { awareness: new Awareness(doc) },
-    } as never);
+      readWho: () => ({ role: 'editor', viewerId: 'u1' }),
+      editable: true,
+    });
     const root = document.createElement('div');
     document.body.appendChild(root);
     adoptDocumentEditor(handle, root);

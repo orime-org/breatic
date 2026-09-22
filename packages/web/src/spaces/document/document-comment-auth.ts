@@ -67,10 +67,15 @@ function threadAuthor(thread: ThreadData): string {
 /** Answers the library's auth questions from this project's own rule. */
 class DocumentCommentAuth extends ThreadStoreAuth {
   /**
-   * Fixes who the answers are about, for the life of this auth.
-   * @param who - The role and identity every answer is measured against.
+   * Holds where to read the asker from, rather than who they are.
+   *
+   * An editor is built once per document and outlives a Space-tab switch,
+   * while a role does not: somebody demoted mid-session has to stop being
+   * able to write (A17), and somebody promoted has to start. So every answer
+   * asks again.
+   * @param readWho - The role and identity, read per answer.
    */
-  constructor(private readonly who: DocumentCommentAuthInput) {
+  constructor(private readonly readWho: () => DocumentCommentAuthInput) {
     super();
   }
 
@@ -80,9 +85,10 @@ class DocumentCommentAuth extends ThreadStoreAuth {
    * @returns Their rights over it.
    */
   private rightsOver(authorId: string): AnnotationRights {
+    const who = this.readWho();
     return annotationRights({
-      role: this.who.role,
-      viewerId: this.who.viewerId,
+      role: who.role,
+      viewerId: who.viewerId,
       authorId,
     });
   }
@@ -92,7 +98,7 @@ class DocumentCommentAuth extends ThreadStoreAuth {
    * @returns True for anyone who may write.
    */
   canCreateThread(): boolean {
-    return canPostAnnotations(this.who.role);
+    return canPostAnnotations(this.readWho().role);
   }
 
   /**
@@ -102,7 +108,7 @@ class DocumentCommentAuth extends ThreadStoreAuth {
    * @returns True for anyone who may write.
    */
   canAddComment(_thread: ThreadData): boolean {
-    return canPostAnnotations(this.who.role);
+    return canPostAnnotations(this.readWho().role);
   }
 
   /**
@@ -141,7 +147,7 @@ class DocumentCommentAuth extends ThreadStoreAuth {
    * @returns True for anyone who may write.
    */
   canResolveThread(_thread: ThreadData): boolean {
-    return canPostAnnotations(this.who.role);
+    return canPostAnnotations(this.readWho().role);
   }
 
   /**
@@ -150,7 +156,7 @@ class DocumentCommentAuth extends ThreadStoreAuth {
    * @returns True for anyone who may write.
    */
   canUnresolveThread(_thread: ThreadData): boolean {
-    return canPostAnnotations(this.who.role);
+    return canPostAnnotations(this.readWho().role);
   }
 
   /**
@@ -177,11 +183,11 @@ class DocumentCommentAuth extends ThreadStoreAuth {
 
 /**
  * Builds the auth the thread store consults.
- * @param who - The role and identity every answer is measured against.
+ * @param readWho - The role and identity, read afresh for every answer.
  * @returns An auth answering the library's nine questions.
  */
 export function documentCommentAuth(
-  who: DocumentCommentAuthInput,
+  readWho: () => DocumentCommentAuthInput,
 ): ThreadStoreAuth {
-  return new DocumentCommentAuth(who);
+  return new DocumentCommentAuth(readWho);
 }

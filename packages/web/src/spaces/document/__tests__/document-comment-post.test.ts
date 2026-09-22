@@ -36,7 +36,6 @@ import {
 } from '@web/spaces/document/document-comment-draft-range';
 import { DOCUMENT_COMMENT_WRITE } from '@web/spaces/document/document-comment-orphan-sync';
 import { postComment } from '@web/spaces/document/document-comment-post';
-import { documentCommentsExtension } from '@web/spaces/document/document-comment-thread-store';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -57,10 +56,8 @@ function open(): { editor: Editor; doc: Y.Doc } {
   const doc = new Y.Doc();
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
-    extensions: [
-      documentCommentsExtension({ doc, viewerId: 'u1', role: 'editor' }),
-      documentCommentDraftRange(),
-    ],
+    comments: { doc, readWho: () => ({ role: 'editor', viewerId: 'u1' }) },
+    extensions: [documentCommentDraftRange()],
   });
   const root = document.createElement('div');
   document.body.appendChild(root);

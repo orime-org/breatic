@@ -71,7 +71,12 @@ describe('a document opened straight from the backend seed', () => {
    */
   async function open(): Promise<DocumentEditorHandle> {
     const rendered = renderHook(() =>
-      useDocumentEditor({ doc, name: NAME, caretProvider: { awareness } }),
+      useDocumentEditor({
+        doc,
+        name: NAME,
+        caretProvider: { awareness },
+        readWho: () => ({ role: 'editor', viewerId: 'u1' }),
+      }),
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
     const handle = rendered.result.current as DocumentEditorHandle;
@@ -271,7 +276,12 @@ describe('a seed written with node names this schema does not use', () => {
 
   it('loses the seeded text on the first edit, and says so in the bytes', async () => {
     const rendered = renderHook(() =>
-      useDocumentEditor({ doc, name: NAME, caretProvider: { awareness } }),
+      useDocumentEditor({
+        doc,
+        name: NAME,
+        caretProvider: { awareness },
+        readWho: () => ({ role: 'editor', viewerId: 'u1' }),
+      }),
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
     const handle = rendered.result.current as DocumentEditorHandle;

@@ -33,10 +33,7 @@ import { CommentsExtension } from '@blocknote/core/comments';
 import { documentBodyFragment, documentCommentThreads } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import {
-  documentCommentsExtension,
-  toCommentUsers,
-} from '@web/spaces/document/document-comment-thread-store';
+import { toCommentUsers } from '@web/spaces/document/document-comment-thread-store';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -56,13 +53,7 @@ afterEach(() => {
 function open(doc: Y.Doc): Editor {
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
-    extensions: [
-      documentCommentsExtension({
-        doc,
-        viewerId: 'u1',
-        role: 'editor',
-      }),
-    ],
+    comments: { doc, readWho: () => ({ role: 'editor', viewerId: 'u1' }) },
   });
   const root = document.createElement('div');
   document.body.appendChild(root);

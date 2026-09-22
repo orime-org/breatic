@@ -40,6 +40,7 @@ describe('this client caret', () => {
         doc,
         name: 'project-p/document-leave',
         caretProvider: { awareness },
+        readWho: () => ({ role: 'editor', viewerId: 'u1' }),
       }),
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());

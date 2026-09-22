@@ -46,6 +46,10 @@ import { documentTrailingPressExtension } from '@web/spaces/document/document-tr
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
 import { documentDragDropExtension } from '@web/spaces/document/document-drag-drop';
 import { documentCommentMarkExtension } from '@web/spaces/document/document-comment-mark';
+import {
+  documentCommentsExtension,
+  type DocumentCommentsOptions,
+} from '@web/spaces/document/document-comment-thread-store';
 import { documentCommentDraftRange } from '@web/spaces/document/document-comment-draft-range';
 import { documentCommentPasteExtension } from '@web/spaces/document/document-comment-paste';
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
@@ -57,6 +61,13 @@ export interface DocumentEditorOptions {
   readonly fragment: Y.XmlFragment;
   /** Extensions to register, the cross-version fallbacks among them. */
   readonly extensions?: readonly ExtensionFactoryInstance[];
+  /**
+   * Wires comments to this document, or leaves the body without them.
+   *
+   * Named rather than passed among `extensions` because it decides which of
+   * two registrars brings the comment mark — see {@link commentWiring}.
+   */
+  readonly comments?: DocumentCommentsOptions;
 }
 
 /**
@@ -117,7 +128,7 @@ export function buildDocumentEditor(
       documentLinkEditMarkExtension(),
       documentDragDropExtension(),
       documentNoNodeClickExtension(),
-      documentCommentMarkExtension(),
+      commentWiring(options.comments),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
       ...(options.extensions ?? []),
@@ -157,6 +168,27 @@ export function buildDocumentEditor(
     dropCursor: { color: false, width: 2 },
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
+}
+
+/**
+ * Registers the comment mark, with a thread store behind it or without one.
+ *
+ * The mark is in the schema either way: `DOCUMENT_SCHEMA_VERSION` is this
+ * build's vocabulary, and a mark that came and went with a runtime option
+ * would make the vocabulary depend on how the editor happened to be
+ * constructed. What the wiring decides is which extension registers it — the
+ * library's own brings the same `CommentMark`, and tiptap keeps every copy it
+ * is handed, warning about the duplicate name for the life of the editor.
+ * @param comments - The thread-store wiring, or undefined for a body with no
+ *   comments behind it.
+ * @returns The extension that puts `comment` in the schema.
+ */
+function commentWiring(
+  comments: DocumentCommentsOptions | undefined,
+): ExtensionFactoryInstance {
+  return comments === undefined
+    ? documentCommentMarkExtension()
+    : documentCommentsExtension(comments);
 }
 
 /**

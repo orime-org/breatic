@@ -52,7 +52,12 @@ describe('who the strip is mounted for', () => {
     doc = new Y.Doc();
     awareness = new Awareness(doc);
     const { result } = renderHook(() =>
-      useDocumentEditor({ doc, name: NAME, caretProvider: { awareness } }),
+      useDocumentEditor({
+        doc,
+        name: NAME,
+        caretProvider: { awareness },
+        readWho: () => ({ role: 'editor', viewerId: 'u1' }),
+      }),
     );
     await waitFor(() => expect(result.current).not.toBeNull());
     handle = result.current!;

@@ -65,24 +65,24 @@ const threadBy = (...authors: readonly string[]): ThreadData => ({
 describe('documentCommentAuth', () => {
   describe('deleting a thread', () => {
     it('lets the person who opened it withdraw it', () => {
-      const auth = documentCommentAuth({ role: 'editor', viewerId: 'u1' });
+      const auth = documentCommentAuth(() => ({ role: 'editor', viewerId: 'u1' }));
       expect(auth.canDeleteThread(threadBy('u1'))).toBe(true);
     });
 
     it('lets an owner remove a thread somebody else opened', () => {
-      const auth = documentCommentAuth({ role: 'owner', viewerId: 'u2' });
+      const auth = documentCommentAuth(() => ({ role: 'owner', viewerId: 'u2' }));
       expect(auth.canDeleteThread(threadBy('u1'))).toBe(true);
     });
 
     it('does not let another editor remove it', () => {
-      const auth = documentCommentAuth({ role: 'editor', viewerId: 'u2' });
+      const auth = documentCommentAuth(() => ({ role: 'editor', viewerId: 'u2' }));
       expect(auth.canDeleteThread(threadBy('u1'))).toBe(false);
     });
 
     it('reads a thread with no comments as having no author', () => {
       // The author is the first comment's, so an empty thread has none — and
       // an unknown author matches nobody.
-      const auth = documentCommentAuth({ role: 'editor', viewerId: 'u1' });
+      const auth = documentCommentAuth(() => ({ role: 'editor', viewerId: 'u1' }));
       expect(auth.canDeleteThread(threadBy())).toBe(false);
     });
 
@@ -90,48 +90,48 @@ describe('documentCommentAuth', () => {
       // Their right does not run through authorship, so it survives an
       // unknown author. Without this the empty case above would also pass
       // for an implementation that simply refuses every empty thread.
-      const auth = documentCommentAuth({ role: 'owner', viewerId: 'u1' });
+      const auth = documentCommentAuth(() => ({ role: 'owner', viewerId: 'u1' }));
       expect(auth.canDeleteThread(threadBy())).toBe(true);
     });
 
     it('takes the author from the first comment, not a later one', () => {
-      const auth = documentCommentAuth({ role: 'editor', viewerId: 'u2' });
+      const auth = documentCommentAuth(() => ({ role: 'editor', viewerId: 'u2' }));
       expect(auth.canDeleteThread(threadBy('u1', 'u2'))).toBe(false);
     });
   });
 
   describe('deleting one comment', () => {
     it('lets its author withdraw it', () => {
-      const auth = documentCommentAuth({ role: 'editor', viewerId: 'u1' });
+      const auth = documentCommentAuth(() => ({ role: 'editor', viewerId: 'u1' }));
       expect(auth.canDeleteComment(commentBy('u1'))).toBe(true);
     });
 
     it('lets an owner remove somebody else\'s', () => {
-      const auth = documentCommentAuth({ role: 'owner', viewerId: 'u2' });
+      const auth = documentCommentAuth(() => ({ role: 'owner', viewerId: 'u2' }));
       expect(auth.canDeleteComment(commentBy('u1'))).toBe(true);
     });
 
     it('does not let another editor remove it', () => {
-      const auth = documentCommentAuth({ role: 'editor', viewerId: 'u2' });
+      const auth = documentCommentAuth(() => ({ role: 'editor', viewerId: 'u2' }));
       expect(auth.canDeleteComment(commentBy('u1'))).toBe(false);
     });
   });
 
   describe('editing one comment', () => {
     it('is allowed for its own author', () => {
-      const auth = documentCommentAuth({ role: 'editor', viewerId: 'u1' });
+      const auth = documentCommentAuth(() => ({ role: 'editor', viewerId: 'u1' }));
       expect(auth.canUpdateComment(commentBy('u1'))).toBe(true);
     });
 
     it('is refused to an owner, who may delete but not rewrite', () => {
       // A reply further down was written against these words.
-      const auth = documentCommentAuth({ role: 'owner', viewerId: 'u2' });
+      const auth = documentCommentAuth(() => ({ role: 'owner', viewerId: 'u2' }));
       expect(auth.canUpdateComment(commentBy('u1'))).toBe(false);
     });
   });
 
   describe('a reader the project query has not identified yet', () => {
-    const auth = documentCommentAuth({ role: 'editor', viewerId: undefined });
+    const auth = documentCommentAuth(() => ({ role: 'editor', viewerId: undefined }));
 
     it('is not the author of a thread', () => {
       expect(auth.canDeleteThread(threadBy('u1'))).toBe(false);
@@ -147,7 +147,7 @@ describe('documentCommentAuth', () => {
   });
 
   describe('a viewer', () => {
-    const auth = documentCommentAuth({ role: 'viewer', viewerId: 'u1' });
+    const auth = documentCommentAuth(() => ({ role: 'viewer', viewerId: 'u1' }));
 
     it('cannot open a thread', () => {
       expect(auth.canCreateThread()).toBe(false);
@@ -181,7 +181,7 @@ describe('documentCommentAuth', () => {
   describe.each(['editor', 'owner'] as const)('%s', (role) => {
     // Judged against a thread somebody else opened: none of these four turn
     // on authorship.
-    const auth = documentCommentAuth({ role, viewerId: 'u2' });
+    const auth = documentCommentAuth(() => ({ role, viewerId: 'u2' }));
     const theirs = threadBy('u1');
 
     it('may open a thread', () => {
@@ -205,7 +205,7 @@ describe('documentCommentAuth', () => {
     // Nothing in §2 offers a reaction control, so no surface calls these.
     // Answering "no" keeps one from appearing if a library default ever
     // draws one.
-    const auth = documentCommentAuth({ role: 'owner', viewerId: 'u1' });
+    const auth = documentCommentAuth(() => ({ role: 'owner', viewerId: 'u1' }));
 
     it('cannot be added, by anyone', () => {
       expect(auth.canAddReaction(commentBy('u1'), '+1')).toBe(false);
