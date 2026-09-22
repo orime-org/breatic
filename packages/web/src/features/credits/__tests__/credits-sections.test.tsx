@@ -1717,6 +1717,37 @@ describe('the credits overlay, section by section', () => {
         expect(body).toHaveTextContent(/Over 30 days/i);
         expect(body).not.toHaveTextContent(/unassign it/i);
       });
+
+      // Credits nobody paid for reach this list like any other, and the one
+      // way out it knows how to offer is unassigning — which the server
+      // refuses on exactly these. So the row names where they came from and
+      // stops there.
+      it('names where granted credits came from and offers no way out', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'granted',
+              sourceKind: 'gift',
+              paidCents: null,
+              currency: null,
+              designatedStudioId: 's1',
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Trial credits/i);
+        expect(body).not.toHaveTextContent(/unassign it/i);
+        // The badge names the source, so it is not the studio the credits
+        // are pinned to. Named rather than matched on "assigned to", which
+        // the refund rule printed at the foot of this screen also says.
+        expect(body).not.toHaveTextContent(/Orime Studio/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
+      });
     });
   });
 });
