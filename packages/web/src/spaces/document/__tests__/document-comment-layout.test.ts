@@ -159,6 +159,50 @@ describe('layOutCards', () => {
   });
 });
 
+describe('a card with no words left', () => {
+  // A thread whose run was deleted has no mark to measure, so it arrives
+  // without an anchor. It still has to sit somewhere, and the one place that
+  // is not on top of another card is below the last one that does have words.
+  it('sits below every card that still has an anchor', () => {
+    const placed = layOutCards(
+      [
+        { id: 'a', anchor: 40, height: 100 },
+        { id: 'b', anchor: 300, height: 100 },
+        { id: 'gone', anchor: null, height: 80 },
+      ],
+      null,
+      GAP,
+      MIN_TOP,
+    );
+    expect(placed.get('gone')).toBe(300 + 100 + GAP);
+  });
+
+  it('stacks two of them below one another', () => {
+    const placed = layOutCards(
+      [
+        { id: 'a', anchor: 40, height: 100 },
+        { id: 'gone1', anchor: null, height: 80 },
+        { id: 'gone2', anchor: null, height: 60 },
+      ],
+      null,
+      GAP,
+      MIN_TOP,
+    );
+    expect(placed.get('gone1')).toBe(40 + 100 + GAP);
+    expect(placed.get('gone2')).toBe(40 + 100 + GAP + 80 + GAP);
+  });
+
+  it('starts them at the top when no card has an anchor at all', () => {
+    const placed = layOutCards(
+      [{ id: 'gone', anchor: null, height: 80 }],
+      null,
+      GAP,
+      MIN_TOP,
+    );
+    expect(placed.get('gone')).toBe(MIN_TOP);
+  });
+});
+
 describe('the panel header', () => {
   it('holds a card back from it when its words are that high up', () => {
     // The first line of the body sits level with the top of the column, and

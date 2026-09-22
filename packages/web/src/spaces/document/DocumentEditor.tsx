@@ -17,6 +17,7 @@ import { DocumentCommentComposer } from '@web/spaces/document/DocumentCommentCom
 import { DocumentCommentRail } from '@web/spaces/document/DocumentCommentRail';
 import {
   onSelectedThreadsChange,
+  selectThreads,
   selectedThreadsIn,
 } from '@web/spaces/document/document-comment-selection';
 import { useCommentRail } from '@web/spaces/document/use-comment-rail';
@@ -80,9 +81,15 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   React.useEffect(() => {
     if (pressed.length > 0) setRailOpen(true);
   }, [pressed]);
+  // Closing it ends the reading as well: the selection is what a press on a
+  // highlight changes, and left standing it makes the next press on the same
+  // highlight read as "already open" — which answers nothing and leaves the
+  // panel shut. It also takes the deeper paint off the body, which had been
+  // marking a card that is no longer on screen.
   const closeRail = React.useCallback(() => {
     setRailOpen(false);
-  }, []);
+    selectThreads(handle.editor, []);
+  }, [handle.editor]);
   const rail = useCommentRail(handle.editor);
   // Held here because this is where the editor's DOM enters the scroller, and
   // the bar needs the element that now holds it. A child looking it up for

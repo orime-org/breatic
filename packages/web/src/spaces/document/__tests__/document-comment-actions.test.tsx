@@ -43,6 +43,7 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import { NOTE_MAX_CHARS } from '@web/spaces/canvas/annotation/caps';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
+import { selectThreads } from '@web/spaces/document/document-comment-selection';
 import { replyToThread } from '@web/spaces/document/document-comment-thread-actions';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
@@ -142,6 +143,13 @@ describe('what a card lets a reader do', () => {
     const threadId = [...store.getThreads().keys()][0]!;
     await act(async () => {
       await replyToThread(handle.editor, threadId, body);
+    });
+  }
+
+  /** Ends the reading, which a press on plain text does in a browser. */
+  function lookAway(): void {
+    act(() => {
+      selectThreads(handle.editor, []);
     });
   }
 
@@ -382,6 +390,20 @@ describe('what a card lets a reader do', () => {
 
     expect(screen.getAllByTestId('doc-comment-entry')).toHaveLength(2);
     expect(screen.queryByTestId('doc-comment-folded-count')).toBeNull();
+  });
+
+  it('keeps a reply out of reach on a card nobody is reading', async () => {
+    // Every other control obeys "only on the thread being read"; this one
+    // withdraws a reply, so it obeys it too.
+    await open();
+    await comment('the first');
+    await answer('the second');
+    await read();
+    expect(screen.getAllByTestId('doc-comment-delete-reply')).toHaveLength(1);
+
+    lookAway();
+
+    expect(screen.queryByTestId('doc-comment-delete-reply')).toBeNull();
   });
 
   it('offers a viewer nothing to write with', async () => {

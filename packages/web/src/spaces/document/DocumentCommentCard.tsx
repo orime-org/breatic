@@ -271,6 +271,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
             // The opening comment is the thread: withdrawing it is withdrawing
             // the thread, which is the control below rather than this one.
             canDelete={
+              selected &&
               entry.id !== card.entries[0]?.id &&
               annotationRights({
                 role: myRole,

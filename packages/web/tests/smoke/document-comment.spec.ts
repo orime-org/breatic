@@ -144,6 +144,33 @@ test.describe('the panel, read across from the body', () => {
     ).toHaveCount(1);
   });
 
+  test('opens again on a second press after the panel was closed', async ({
+    page,
+  }) => {
+    // Closing the panel ends the reading, so the next press on that
+    // highlight is a fresh one and A6 holds for it too.
+    await openFreshDocument(page);
+    // One line that does not wrap, so a press at the middle of the highlight
+    // lands on its words rather than between two of its rows.
+    await page.keyboard.type('a short line carrying one comment');
+    await commentOnParagraph(page, 0, 'about this line');
+    await page.locator(`${EDITOR} .bn-thread-mark`).first().click();
+    await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+    // The reader's hand crosses the body to the panel's close button and comes
+    // back; three clicks in a row carry none of that, and the first of them is
+    // still settling when the second lands.
+    await page.waitForTimeout(150);
+    await page.getByTestId('doc-comment-rail-close').click();
+    await expect(page.getByTestId('doc-comment-rail')).toHaveCount(0);
+    // The body column takes the panel's width back and the text reflows; the
+    // press below is aimed at where the highlight ends up, not where it was.
+    await page.waitForTimeout(400);
+
+    await page.locator(`${EDITOR} .bn-thread-mark`).first().click();
+
+    await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+  });
+
   test('sits each card level with the words it is about', async ({ page }) => {
     await openFreshDocument(page);
     await page.keyboard.type(LONG_LINE);
@@ -377,6 +404,80 @@ test.describe('the box a reply is written in', () => {
     expect(focused.colour).not.toBe(resting.colour);
     expect(focused.colour).toBe(focused.wanted);
     expect(focused.outline).toBe('none');
+  });
+});
+
+test.describe('a card whose words were deleted', () => {
+  test('sits below the cards that still have words', async ({ page }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type('the line that will lose its comment');
+    await page.keyboard.press('Enter');
+    for (let i = 0; i < 8; i += 1) {
+      await page.keyboard.type(`filler line ${i}`);
+      await page.keyboard.press('Enter');
+    }
+    await page.keyboard.type('a later line that keeps its comment');
+    await commentOnParagraph(page, 0, 'this one loses its words');
+    await commentOnParagraph(page, 9, 'this one keeps them');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await page.waitForTimeout(400);
+
+    await selectParagraph(page, 0);
+    await page.keyboard.press('Backspace');
+    await page.waitForTimeout(700);
+
+    const cards = await page
+      .getByTestId('doc-comment-card')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => ({
+          top: node.getBoundingClientRect().top,
+          orphaned:
+            node.querySelector('[data-testid="doc-comment-card-orphaned"]') !==
+            null,
+        })),
+      );
+    const withWords = cards.filter((c) => !c.orphaned);
+    const adrift = cards.filter((c) => c.orphaned);
+    expect(withWords).toHaveLength(1);
+    expect(adrift).toHaveLength(1);
+    expect(adrift[0]!.top).toBeGreaterThan(withWords[0]!.top);
+  });
+});
+
+test.describe('a reply box that grows', () => {
+  test('pushes the card below it down instead of covering it', async ({
+    page,
+  }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type('the first commented line');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('a second line right below it');
+    await commentOnParagraph(page, 0, 'the one being answered');
+    await commentOnParagraph(page, 1, 'the one below');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await page.waitForTimeout(400);
+    await page.getByTestId('doc-comment-card').first().click();
+    await page.waitForTimeout(400);
+
+    await page.getByTestId('doc-comment-reply-input').click();
+    for (const words of ['one', 'two', 'three', 'four']) {
+      await page.keyboard.type(words);
+      await page.keyboard.press('Shift+Enter');
+    }
+    await page.waitForTimeout(600);
+
+    const boxes = await page
+      .getByTestId('doc-comment-card')
+      .evaluateAll((nodes) =>
+        nodes.map((n) => {
+          const r = n.getBoundingClientRect();
+          return { top: r.top, bottom: r.bottom };
+        }),
+      );
+    expect(boxes).toHaveLength(2);
+    expect(boxes[0]!.bottom).toBeLessThanOrEqual(boxes[1]!.top);
   });
 });
 

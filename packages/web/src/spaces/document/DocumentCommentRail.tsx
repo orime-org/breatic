@@ -158,14 +158,39 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const [heights, setHeights] = React.useState<ReadonlyMap<string, number>>(
     () => new Map(),
   );
+  // Watched rather than read once: a card changes height without the panel
+  // rendering — the reply box grows as somebody types, and that re-renders
+  // the card alone. Sampled in a ref callback, the card below stays where it
+  // was and the growing one paints over it.
+  const sizes = React.useRef<ResizeObserver | null>(null);
+  if (sizes.current === null && typeof ResizeObserver === 'function') {
+    sizes.current = new ResizeObserver((entries) => {
+      setHeights((held) => {
+        let next: Map<string, number> | null = null;
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.thread;
+          if (id === undefined) continue;
+          const height = (entry.target as HTMLElement).offsetHeight;
+          if (held.get(id) === height) continue;
+          next ??= new Map(held);
+          next.set(id, height);
+        }
+        return next ?? held;
+      });
+    });
+  }
+  React.useEffect(() => () => sizes.current?.disconnect(), []);
   const measure = React.useCallback(
     (id: string) =>
       (node: HTMLDivElement | null): void => {
         if (node === null) return;
-        const height = node.offsetHeight;
+        node.dataset.thread = id;
         setHeights((held) =>
-          held.get(id) === height ? held : new Map(held).set(id, height),
+          held.get(id) === node.offsetHeight
+            ? held
+            : new Map(held).set(id, node.offsetHeight),
         );
+        sizes.current?.observe(node);
       },
     [],
   );
@@ -176,13 +201,13 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const placed = React.useMemo(
     () =>
       layOutCards(
-        shown
-          .filter((card) => anchors.has(card.id))
-          .map((card) => ({
-            id: card.id,
-            anchor: anchors.get(card.id)!,
-            height: heights.get(card.id) ?? CARD_HEIGHT_GUESS_PX,
-          })),
+        shown.map((card) => ({
+          id: card.id,
+          // Null for a thread whose run was deleted: nothing to measure, and
+          // the layout puts it below the cards that do have words (A13).
+          anchor: anchors.get(card.id) ?? null,
+          height: heights.get(card.id) ?? CARD_HEIGHT_GUESS_PX,
+        })),
         reading,
         GAP_BETWEEN_CARDS_PX,
         CLEARANCE_BELOW_HEADER_PX,

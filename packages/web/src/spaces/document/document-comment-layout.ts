@@ -26,14 +26,22 @@
  * Cards move between one answer and the next rather than appearing at the new
  * one — the panel animates the change, which is what makes giving way read as
  * giving way instead of as the column jumping (user 2026-09-22).
+ *
+ * A thread whose words were deleted has no anchor to read across from. It
+ * goes below every card that has one, in the order the panel handed them
+ * over — anywhere else means on top of a card that does have words.
  */
 
 /** One card, and where its words are. */
 export interface CardAnchor {
   /** The thread this card is for. */
   readonly id: string;
-  /** Where its words are, in the panel's own coordinates. */
-  readonly anchor: number;
+  /**
+   * Where its words are, in the panel's own coordinates. Null for a thread
+   * whose run was deleted: it has no mark left to measure, and it still has
+   * to be read and answered (A13).
+   */
+  readonly anchor: number | null;
   /** How tall the card is. */
   readonly height: number;
 }
@@ -52,9 +60,20 @@ export function layOutCards(
   gap: number,
   minTop: number,
 ): ReadonlyMap<string, number> {
-  const inOrder = [...cards].sort((a, b) => a.anchor - b.anchor);
+  const anchored = cards.filter(
+    (card): card is CardAnchor & { anchor: number } => card.anchor !== null,
+  );
+  const adrift = cards.filter((card) => card.anchor === null);
+  const inOrder = [...anchored].sort((a, b) => a.anchor - b.anchor);
   const placed = new Map<string, number>();
-  if (inOrder.length === 0) return placed;
+  if (inOrder.length === 0) {
+    let next = minTop;
+    for (const card of adrift) {
+      placed.set(card.id, next);
+      next += card.height + gap;
+    }
+    return placed;
+  }
 
   // Where the run of cards starts from. The one being read is the anchor of
   // the whole column; without one, that is simply the first card.
@@ -87,8 +106,8 @@ export function layOutCards(
   // card starts where it was put and comes down only as far as the one before
   // it makes it.
   let floor = minTop;
-  for (const card of inOrder) {
-    const top = Math.max(placed.get(card.id)!, floor);
+  for (const card of [...inOrder, ...adrift]) {
+    const top = Math.max(placed.get(card.id) ?? floor, floor);
     placed.set(card.id, top);
     floor = top + card.height + gap;
   }
