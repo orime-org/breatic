@@ -217,6 +217,39 @@ describe('the draft range plugin', () => {
     expect(draftRangeIn(view.state)).toBeNull();
   });
 
+  it('refuses to open on a range covering no words', () => {
+    // The entries are unavailable over text-less ranges already
+    // (`canCommentOver`), so one arriving here means a caller is wrong —
+    // and holding it would let a comment be written with nothing under it.
+    const editor = open();
+    const view = editor.prosemirrorView!;
+    const run = firstRun(editor);
+
+    view.dispatch(
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+        from: run.from,
+        to: run.from,
+      }),
+    );
+
+    expect(draftRangeIn(view.state)).toBeNull();
+  });
+
+  it('refuses to open on a reversed range', () => {
+    const editor = open();
+    const view = editor.prosemirrorView!;
+    const run = firstRun(editor);
+
+    view.dispatch(
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+        from: run.from + 5,
+        to: run.from,
+      }),
+    );
+
+    expect(draftRangeIn(view.state)).toBeNull();
+  });
+
   it('keeps the range across a selection change', () => {
     // Moving the caret is not an edit, and a reader clicking elsewhere before
     // typing their comment must not lose where it goes.

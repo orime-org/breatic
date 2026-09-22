@@ -101,7 +101,15 @@ export const documentCommentDraftRange = createExtension(() => ({
             | DraftRange
             | null
             | undefined;
-          if (asked !== undefined) return asked;
+          if (asked !== undefined) {
+            // A range covering nothing is refused here rather than left for
+            // the post to notice: the entries are unavailable over text-less
+            // ranges already (`canCommentOver`), so one arriving means a
+            // caller is wrong, and holding it would let a comment be written
+            // with no words under it.
+            if (asked === null || asked.to <= asked.from) return null;
+            return asked;
+          }
           if (current === null) return null;
           // A selection change carries no steps, so the mapping is empty and
           // the range comes back unchanged — which is what a reader clicking
