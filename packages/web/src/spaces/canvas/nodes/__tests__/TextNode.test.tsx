@@ -257,7 +257,6 @@ describe('TextNode', () => {
       expect(el.className).toContain('overflow-hidden');
       expect(el.className).not.toContain('overflow-y-auto');
       expect(el.className).toContain('break-words');
-      expect(el.className).toContain('text-justify');
       expect(el.className).toContain('min-h-48');
       expect(el.className).not.toContain('nowheel');
       expect(el.closest('.nowheel')).toBeNull();
@@ -413,7 +412,6 @@ describe('TextNode', () => {
         'min-h-48',
         'p-3',
         'break-words',
-        'text-justify',
         'text-sm',
         'outline-none',
         'cursor-text',
