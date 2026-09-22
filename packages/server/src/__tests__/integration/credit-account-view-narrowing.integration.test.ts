@@ -80,22 +80,23 @@ async function seedUser(): Promise<string> {
 
 /**
  * One team studio, with whoever administers it.
- * @param adminUserId - Who administers it; omitted leaves it with no admin.
+ *
+ * Required, so a studio with no admin cannot be seeded here: the role half of
+ * the predicate refuses one on its own, which would leave the half asking
+ * whose studio it is unread.
+ * @param adminUserId - Who administers it.
  * @returns Its id.
  */
-async function seedStudio(adminUserId?: string): Promise<string> {
-  const creator = adminUserId ?? (await seedUser());
+async function seedStudio(adminUserId: string): Promise<string> {
   const rows = await sql<{ id: string }[]>`
     INSERT INTO studios (created_by_user_id, slug, type, name)
-    VALUES (${creator}, ${`narrow-s-${seq++}`}, 'team', 'Narrow') RETURNING id
+    VALUES (${adminUserId}, ${`narrow-s-${seq++}`}, 'team', 'Narrow') RETURNING id
   `;
   const id = rows[0]!.id;
-  if (adminUserId) {
-    await sql`
-      INSERT INTO studio_members (studio_id, user_id, role)
-      VALUES (${id}, ${adminUserId}, 'admin')
-    `;
-  }
+  await sql`
+    INSERT INTO studio_members (studio_id, user_id, role)
+    VALUES (${id}, ${adminUserId}, 'admin')
+  `;
   return id;
 }
 
