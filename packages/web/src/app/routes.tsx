@@ -15,6 +15,9 @@ import { hasSeenSession } from '@web/lib/session-seen';
 // a deploy, so every production entry goes through it. The dev gallery is the
 // exception — its import sits inside an `import.meta.env.DEV` branch, which
 // the production build folds away entirely.
+//
+// The `import()` calls themselves live in `route-imports.ts` so that their
+// hashed filenames stay out of this file's chunk; that module says why.
 const StudioLayout = lazyRoute(routeImports.studioLayout);
 const StudioRecentPage = lazyRoute(routeImports.studioRecentPage);
 const StudioContainerPage = lazyRoute(routeImports.studioContainerPage);
