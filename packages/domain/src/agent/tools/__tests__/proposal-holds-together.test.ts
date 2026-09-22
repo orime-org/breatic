@@ -48,7 +48,12 @@ import {
 } from "@domain/model-catalog/mode-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import { answerFor, checkProposal, inputSchema } from "../propose-canvas-action.js";
+import {
+  answerFor,
+  checkProposal,
+  inputSchema,
+  theirsToFill,
+} from "../propose-canvas-action.js";
 
 /** A node type and one of its modes, with a model that mode can reach. */
 interface Reachable {
@@ -103,8 +108,11 @@ function reachableModes(): Reachable[] {
           slots: places.filter(([, p]) => p.fromReferencePool !== true).length,
           pieces: materialNeeded(nodeType, mode, model.name),
           takesPrompt: model.takesPrompt,
+          // Asked of the check rather than restated here: a fixture that
+          // spells the rule out a second time is one the two halves of it
+          // can part company behind.
           choices: Object.entries(model.params)
-            .filter(([name, p]) => p.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM)
+            .filter(([name, p]) => theirsToFill(name, p))
             .map(([name]) => name),
           ...(model.maxInputChars === undefined ? {} : { maxInputChars: model.maxInputChars }),
           ...(model.params[REFERENCE_POOL_PARAM]?.maxItems === undefined

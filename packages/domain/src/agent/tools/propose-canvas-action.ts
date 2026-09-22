@@ -235,6 +235,23 @@ function capShapeOf(info: ParamInfo): CappedParam {
 }
 
 /**
+ * Whether a parameter is one only the reader can fill, in the panel.
+ *
+ * Exported because three readings turn on it and they have to agree: a value
+ * set here is refused, a control left to them has to be marked in the prompt,
+ * and the fixtures build their proposals to match. Answered differently, the
+ * model is told to leave a value out and never told to mark its place, and
+ * the group lands with a control the reader must set and nothing saying so.
+ * @param name - The parameter's name.
+ * @param info - What the catalog says about it.
+ * @returns True when the reader fills it once the group is placed.
+ * @throws {never} Never.
+ */
+export function theirsToFill(name: string, info: ParamInfo): boolean {
+  return info.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM;
+}
+
+/**
  * Whether the panel will draw this control for the proposal as it stands.
  *
  * A control can hang on a switch of the same model: the camera wheels appear
@@ -283,16 +300,12 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
         reason: `"${chosen.name}" declares no ${key}. It takes: ${declared.join(", ") || "no parameters"}.`,
       };
     }
-    if (info.valuesFrom !== undefined) {
+    if (theirsToFill(key, info)) {
       return {
         ok: false,
-        reason: `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and mark the choice in the prompt.`,
-      };
-    }
-    if (key === PANEL_EDITOR_PARAM) {
-      return {
-        ok: false,
-        reason: `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out and mark the place in the prompt.`,
+        reason: info.valuesFrom !== undefined
+          ? `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and mark the choice in the prompt.`
+          : `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out and mark the place in the prompt.`,
       };
     }
     if (info.filledBySource === true) {
@@ -491,7 +504,7 @@ function checkGenerateNode(
   // the panel keeps in a box of its own. Both are the reader's to fill once
   // the group is on the canvas, and the prompt is where they are told so.
   const theirs = Object.entries(chosen.params)
-    .filter(([name, info]) => info.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM)
+    .filter(([name, info]) => theirsToFill(name, info))
     .filter(([, info]) => isDrawn(chosen, node.params ?? {}, info))
     .map(([name]) => name);
   if (theirs.length > 0 && !prompt.some((s) => s.slot?.kind === "tweak")) {
