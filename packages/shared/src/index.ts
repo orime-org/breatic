@@ -195,6 +195,7 @@ export {
   PANEL_EDITOR_PARAM,
   feedersOf,
   layersOf,
+  nameableFeeders,
   markText,
   promptPlainText,
   promptTextOf,

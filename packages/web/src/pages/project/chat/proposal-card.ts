@@ -11,7 +11,7 @@
  * quote its own price.
  */
 
-import { feedersOf, layersOf } from '@breatic/shared';
+import { layersOf, nameableFeeders } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 /** What one node contributes to the little shape drawn on the card. */
@@ -190,8 +190,9 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
   proposal.nodes.forEach((node, at) => {
     let assetsSeen = 0;
     // The same reading the canvas writes its mentions from, so a to-do names
-    // the node the bracket beside it will point at.
-    const empties = feedersOf(proposal, at).sources;
+    // the node the bracket beside it will point at -- and where no mention is
+    // written, the to-do falls under the generation whose panel it is done in.
+    const empties = nameableFeeders(proposal, at, node.takesFrom ?? 'pool').sources;
     for (const segment of node.prompt ?? []) {
       const slot = segment.slot;
       if (!slot) continue;

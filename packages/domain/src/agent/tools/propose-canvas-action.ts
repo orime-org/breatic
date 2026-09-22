@@ -41,6 +41,7 @@ import {
   evaluateExecute,
   extractPromptText,
   feedersOf,
+  nameableFeeders,
   GENERATION_NODE_MODES,
   PANEL_EDITOR_PARAM,
   promptPlainText,
@@ -447,6 +448,8 @@ function checkGenerateNode(
   // walk over the edges here is how the three come to disagree about which
   // node the k-th mark is about.
   const held = feedersOf(proposal, index);
+  // What this prompt may name, by the one rule the canvas and the card read.
+  const canName = nameableFeeders(proposal, index, byReference ? "pool" : "slot");
   /**
    * The nodes behind a run of feeder indices, in the proposal's own order.
    * @param list - The indices to resolve.
@@ -458,15 +461,10 @@ function checkGenerateNode(
   const fed = nodesAt(held.sources);
   // One mark per node upstream this prompt can name, and no more: an edge
   // makes that node's work available, and nothing in the prompt naming it
-  // means the Generate button will not move.
-  //
-  // Which of them can be named is not the same on the two paths. Through the
-  // pool a mention picks anything wired in. Through a slot the reader picks
-  // their material by clicking and the panel turns a mention of it away
-  // (`insertRefusal`) -- what stays nameable there is a node holding words,
-  // whose body substitutes into the prompt and asks the pool for nothing.
+  // means the Generate button will not move. Which of them can be named is
+  // `nameableFeeders`, above.
   const upstream = nodesAt(held.upstream);
-  const nameable = byReference ? upstream : upstream.filter((n) => n.role === "written");
+  const nameable = nodesAt(canName.upstream);
   // What the panel's own gate would say about the box this proposal fills in.
   // It is asked with the text the box will hold (`promptTextOf`), so the two
   // judge the same string; the sentences differ because this one is read by
@@ -811,15 +809,11 @@ function isReadBySomething(
 ): boolean {
   return proposal.nodes.some((other, into) => {
     if (other.role !== "generate" || other.type === "text") return false;
-    const { mode, model } = other;
-    if (!mode || !model) return true;
-    const reachable = modelsForMode(other.type, mode);
-    if (!reachable.available) return true;
-    const chosen = reachable.models.find((m) => m.name === model);
-    if (!chosen) return true;
-    return poolParam(chosen)
+    const path = materialPathOf(other);
+    if (path === undefined || other.mode === undefined) return true;
+    return path === "pool"
       ? proposal.edges.some((e) => e.fromIndex === at && e.toIndex === into)
-      : sourceKinds(other.type, mode).includes(node.type);
+      : sourceKinds(other.type, other.mode).includes(node.type);
   });
 }
 

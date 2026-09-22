@@ -193,6 +193,46 @@ export function feedersOf(proposal: CanvasProposal, index: number): ProposalFeed
 }
 
 /**
+ * What one node's prompt may name and what its marks mention, by material path.
+ *
+ * One function because three sides read it and they have to agree: the check
+ * decides how many marks are legal, the canvas writes that many mentions, and
+ * the card files its to-dos by the same list. Read differently, a mark is
+ * counted against one node and lands on another.
+ *
+ * What may be named is what a mention actually carries once the group is
+ * placed. A node holding words always can: its body substitutes into the
+ * prompt string, on either path. A picture can only where the model reads the
+ * reference pool, which is an image pool. Everything else -- a clip, a track,
+ * the material a slot is filled from -- is a row the panel's own picker turns
+ * down (`insertRefusal`), so a mention of it is one the reader could not have
+ * made and the run does not read.
+ * @param proposal - The proposal being read.
+ * @param index - The node being fed.
+ * @param path - How that node takes the reader's material.
+ * @returns The feeders its marks may point at, each in node order.
+ * @throws {never} Never.
+ */
+export function nameableFeeders(
+  proposal: CanvasProposal,
+  index: number,
+  path: MaterialPath,
+): ProposalFeederIndices {
+  const held = feedersOf(proposal, index);
+  return {
+    // An asset mark mentions the empty node it names only where that mention
+    // is what picks the material. Through a slot the reader picks by clicking
+    // and the bracket alone names the slot to pick it in.
+    sources: path === "pool" ? held.sources : [],
+    upstream: held.upstream.filter((i) => {
+      const node = proposal.nodes[i];
+      if (!node) return false;
+      return node.role === "written" || (path === "pool" && node.type === "image");
+    }),
+  };
+}
+
+/**
  * How far downstream each node of a proposal sits, counting from what starts it.
  *
  * One further than the last thing that feeds it. Both the card's little

@@ -101,7 +101,14 @@ export type {
   ProposalRefused,
   ProposalAnswer,
 } from "@shared/types/canvas-proposal.js";
-export { feedersOf, layersOf, markText, promptPlainText, promptTextOf } from "@shared/types/canvas-proposal.js";
+export {
+  feedersOf,
+  layersOf,
+  markText,
+  nameableFeeders,
+  promptPlainText,
+  promptTextOf,
+} from "@shared/types/canvas-proposal.js";
 
 export type { Voice, VoicePage } from "@shared/types/voice.js";
 export { sanitizeVoicePage } from "@shared/types/voice.js";

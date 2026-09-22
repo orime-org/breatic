@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { feedersOf, newId, promptPlainText, type CanvasProposal } from '@breatic/shared';
+import { nameableFeeders, newId, promptPlainText, type CanvasProposal } from '@breatic/shared';
 
 import {
   addEdge,
@@ -130,17 +130,14 @@ function feedersOnCanvas(
   // from the second, and one list would have them taking each other's turn.
   // The split and its order come from the shared reading, which is also what
   // the card files its to-dos by.
-  const held = feedersOf(proposal, index);
-  // Then narrowed by the path this generation takes its material, which the
-  // answer carries (`takesFrom`). Through a slot the reader picks material by
-  // clicking, so a mention of it is one the panel's own picker refuses; what
-  // stays nameable there is a node holding words, whose body substitutes into
-  // the prompt.
-  const bySlot = proposal.nodes[index]?.takesFrom === 'slot';
-  const sources = bySlot ? [] : held.sources;
-  const upstream = bySlot
-    ? held.upstream.filter((i) => proposal.nodes[i]?.role === 'written')
-    : held.upstream;
+  // Narrowed by the path this generation takes its material, which the answer
+  // carries (`takesFrom`), through the one rule the check counted the marks
+  // against and the card files its to-dos by.
+  // An answer stored before this field existed reads as the pool, which is
+  // what it was: until this change a slot-fed generation with an edge into it
+  // was refused outright, so a stored proposal whose generation is fed at all
+  // took its material through the pool.
+  const held = nameableFeeders(proposal, index, proposal.nodes[index]?.takesFrom ?? 'pool');
   /**
    * The placed nodes behind a run of feeder indices.
    * @param at - The indices to resolve.
@@ -152,7 +149,7 @@ function feedersOnCanvas(
       const kind = proposal.nodes[i]?.type;
       return id && kind ? [{ id, kind }] : [];
     });
-  return { sources: placed(sources), upstream: placed(upstream) };
+  return { sources: placed(held.sources), upstream: placed(held.upstream) };
 }
 
 /**

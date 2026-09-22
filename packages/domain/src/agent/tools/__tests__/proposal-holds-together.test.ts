@@ -375,19 +375,10 @@ describe("a mode whose material arrives through the reference pool", () => {
     const verdict = checkProposal({
       ...filled,
       nodes: [
-        // The pooled generation names the cut wired into it, so the only
-        // rule this proposal breaks is the one about how much the pool holds.
-        ...filled.nodes.map((node, at) =>
-          at === generation
-            ? {
-                ...node,
-                prompt: [
-                  ...(node.prompt ?? []),
-                  { slot: { kind: "ref" as const, label: "the first cut", note: "" } },
-                ],
-              }
-            : node,
-        ),
+        // The cut occupies a row in the pool, which is what this case is
+        // about; it is not a row the prompt can name (`nameableFeeders` --
+        // the pool is an image pool), so no mark points at it.
+        ...filled.nodes,
         {
           role: "generate",
           type: "video",
@@ -1289,6 +1280,47 @@ describe("a flow of any shape", () => {
     });
 
     expect(verdict).toEqual({ ok: true });
+  });
+
+  it("refuses a mark naming an upstream node the pool cannot hold", () => {
+    // The pool is the image pool: `insertRefusal` turns a video or audio row
+    // down in every mode, and a mention of one contributes nothing to the
+    // run. A mark for it puts a chip in the box the reader could not have
+    // made, and the sentence around it loses its object.
+    // A kind the pool cannot hold, on a node type whose own whitelist admits
+    // it -- so what turns the mark down is the pool's reach rather than the
+    // connection rule.
+    const wrong = (["video", "audio"] as const).find((kind) =>
+      reachableModes().some(
+        (m) => m.byReference && m.needs.length > 0 && canConnect(kind, m.nodeType),
+      ),
+    );
+    if (wrong === undefined) throw new Error("no pooled mode accepts a kind the pool cannot hold");
+    const at = pick(
+      (m) => m.byReference && m.needs.length > 0 && canConnect(wrong, m.nodeType),
+      `pooled mode accepting a ${wrong} upstream`,
+    );
+    const maker = pick(
+      (m) => m.nodeType === wrong && m.needs.length === 0 && m.choices.length === 0,
+      `mode making a ${wrong} out of nothing`,
+    );
+
+    const verdict = checkProposal({
+      nodes: [
+        generation(maker),
+        { role: "source", type: at.needs[0] as GenerationNodeType, name: "Yours" },
+        { role: "generate", type: at.nodeType, name: "The result", mode: at.mode,
+          model: at.model, params: {}, prompt: [
+            { text: "follow the mood of " },
+            { slot: { kind: "ref", label: "the step before", note: "" } },
+            { slot: { kind: "asset", label: "yours", note: "Put it in" } },
+          ] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2 }],
+      rationale: "x", groupName: "g",
+    });
+
+    expect(verdict.ok).toBe(false);
   });
 
   it("refuses a mark pointing at what a panel slot will be filled from", () => {
