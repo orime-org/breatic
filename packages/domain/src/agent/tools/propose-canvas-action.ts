@@ -121,10 +121,10 @@ const proposalNode = z
       .array(promptSegment)
       .optional()
       .describe(
-        "What to generate, or the words a written node holds. Mark one place " +
-          "per empty node and one per node wired in whose work it can name; " +
-          "the k-th mark of each is about the k-th such node, in the order " +
-          "the nodes are listed",
+        "What to generate, or the words a written node holds. Mark what the " +
+          "reader supplies or picks; the k-th asset mark is about the k-th " +
+          "empty node wired in, the k-th ref mark about the k-th other, in " +
+          "the order the nodes are listed",
       ),
   })
   .strict();
@@ -784,10 +784,10 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnsw
     "answer decides the shape. Wire an edge only where one node draws on what " +
     "another made; belonging together is said by the group, not by edges. " +
     "Ask get_canvas_capabilities and list_generation_models first, and " +
-    "propose only a mode and model they returned. Mark in the prompt each " +
-    "piece of material they supply and where it goes -- for most modes a " +
-    "slot on the panel -- plus anything the panel leaves them to pick, and " +
-    "say in your reply what is left to do by hand.",
+    "propose only a mode and model they returned. Fill in every setting you " +
+    "can judge; the rest is theirs to run. Say in your reply, in numbered " +
+    "steps, what they do once it is placed -- what to put in, what to pick, " +
+    "what to press.",
   inputSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),
