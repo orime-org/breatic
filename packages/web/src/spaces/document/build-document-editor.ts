@@ -46,6 +46,7 @@ import { documentTrailingPressExtension } from '@web/spaces/document/document-tr
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
 import { documentDragDropExtension } from '@web/spaces/document/document-drag-drop';
 import { documentCommentMarkExtension } from '@web/spaces/document/document-comment-mark';
+import { documentCommentPasteExtension } from '@web/spaces/document/document-comment-paste';
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 
@@ -116,6 +117,7 @@ export function buildDocumentEditor(
       documentDragDropExtension(),
       documentNoNodeClickExtension(),
       documentCommentMarkExtension(),
+      documentCommentPasteExtension(),
       ...(options.extensions ?? []),
     ],
     disableExtensions: [
