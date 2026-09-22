@@ -22,6 +22,7 @@
  */
 
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
+import * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import {
@@ -182,6 +183,70 @@ export async function grantFromPayment(
   // ours to grant. Opening a second one here would let the grant commit
   // while the decision rolls back.
   return outer ? run(outer) : db.transaction(run);
+}
+
+/**
+ * Grant a new account its trial credits, pinned to the studio just created.
+ *
+ * Writes the same three rows a purchase does — the receipt, the lot, the
+ * ledger row that opens its balance — with two differences that are the whole
+ * point. The receipt is filed under the account itself, so the primary key is
+ * what says an account is granted at most once. And the lot is pointed at the
+ * personal studio as it is written, rather than left unassigned for the owner
+ * to place: credits nobody paid for are not the owner's to move.
+ *
+ * Silent where it does not grant, because neither case is a fault. A
+ * deployment that charges nobody has no notion of a credit to give; a figure
+ * of zero is a real zero and means none; and an account arriving a second
+ * time — having deleted its personal studio and made another — has already
+ * been granted. Raising any of these would fail the studio creation this runs
+ * inside, and for the third the caller reads a unique violation as a slug
+ * someone else took.
+ * @param input - Who is being granted, where, and how much.
+ * @param input.userId - The account. Also the receipt's id.
+ * @param input.studioId - Their personal studio, created in this same
+ *   transaction; the credits may only be spent there.
+ * @param input.credits - How many to grant, read from configuration by the
+ *   caller. Zero grants none.
+ * @param tx - The transaction creating the studio. Required: a grant that
+ *   committed alongside a studio that did not would point at nothing.
+ * @returns The new lot, or null when nothing was granted.
+ */
+export async function grantTrialCredits(
+  input: { userId: string; studioId: string; credits: number },
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  if (!env.PAYMENT_ENABLED) return null;
+  if (input.credits <= 0) return null;
+
+  const opened = await creditSourceRepo.claimSource(
+    { id: input.userId, kind: "gift" },
+    tx,
+  );
+  if (!opened) return null;
+
+  const amount = fromMicroCredits(toMicroCredits(input.credits));
+  const lot = await creditLotRepo.createLot(
+    {
+      sourceId: input.userId,
+      sourceKind: "gift",
+      userId: input.userId,
+      purchasedCredits: amount,
+      designatedStudioId: input.studioId,
+    },
+    tx,
+  );
+  await creditLotRepo.appendLedgerEntry(
+    {
+      payerUserId: input.userId,
+      entryType: "topup",
+      amount,
+      lotId: lot.id,
+      referenceId: input.userId,
+    },
+    tx,
+  );
+  return lot;
 }
 
 /**
