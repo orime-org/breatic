@@ -18,6 +18,7 @@ import { test, expect, type Page } from 'playwright/test';
 import {
   openFreshDocument,
   selectFirstParagraph,
+  selectParagraph,
 } from '../helpers/bubble-bar';
 
 // `bubble-bar` registers the afterEach that removes what `openFreshDocument`
@@ -40,6 +41,24 @@ async function openWithALongSelection(p: Page): Promise<void> {
   await openFreshDocument(p);
   await p.keyboard.type(LONG_LINE);
   await selectFirstParagraph(p);
+}
+
+/**
+ * Comments on one paragraph, through the bubble bar.
+ * @param p - The page.
+ * @param index - Which paragraph, counting from zero.
+ * @param body - What the comment says.
+ */
+async function commentOnParagraph(
+  p: Page,
+  index: number,
+  body: string,
+): Promise<void> {
+  await selectParagraph(p, index);
+  await p.getByTestId('doc-bubble-tool-comment').click();
+  await p.getByTestId('doc-comment-input').fill(body);
+  await p.getByTestId('doc-comment-post').click();
+  await expect(p.getByTestId('doc-comment-composer')).toHaveCount(0);
 }
 
 /** How many bubble bars are on screen. */
@@ -104,5 +123,100 @@ test.describe('what the bubble bar does once an overlay closes', () => {
     await page.waitForTimeout(500);
 
     expect(await barCount(page)).toBe(0);
+  });
+});
+
+test.describe('the panel, read across from the body', () => {
+  test('opens itself and marks the card a press in the body names', async ({
+    page,
+  }) => {
+    await openWithALongSelection(page);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-input').fill('about this line');
+    await page.getByTestId('doc-comment-post').click();
+    await expect(page.getByTestId('doc-comment-rail')).toHaveCount(0);
+
+    await page.locator(`${EDITOR} .bn-thread-mark`).first().click();
+
+    await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="doc-comment-card"][data-selected="true"]'),
+    ).toHaveCount(1);
+  });
+
+  test('sits each card level with the words it is about', async ({ page }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type(LONG_LINE);
+    await page.keyboard.press('Enter');
+    for (let i = 0; i < 12; i += 1) {
+      await page.keyboard.type(`filler line ${i}`);
+      await page.keyboard.press('Enter');
+    }
+    await page.keyboard.type(LONG_LINE);
+
+    await commentOnParagraph(page, 0, 'the first one');
+    await commentOnParagraph(page, 13, 'the last one');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+    await page.waitForTimeout(400);
+
+    const marks = page.locator(`${EDITOR} .bn-thread-mark`);
+    const cards = page.getByTestId('doc-comment-card');
+    const firstMark = await marks.first().boundingBox();
+    const lastMark = await marks.last().boundingBox();
+    const firstCard = await cards.first().boundingBox();
+    const lastCard = await cards.last().boundingBox();
+
+    // Level, within the height of one card: crowding is what moves a card off
+    // its anchor, and these two are pages apart.
+    expect(Math.abs(firstCard!.y - firstMark!.y)).toBeLessThan(140);
+    expect(Math.abs(lastCard!.y - lastMark!.y)).toBeLessThan(140);
+    // And far enough apart that the gap between them is the uncommented text.
+    expect(lastCard!.y - firstCard!.y).toBeGreaterThan(200);
+  });
+
+  test('carries the cards along when the body scrolls', async ({ page }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type(LONG_LINE);
+    for (let i = 0; i < 30; i += 1) {
+      await page.keyboard.press('Enter');
+      await page.keyboard.type(`filler line ${i}`);
+    }
+    await commentOnParagraph(page, 0, 'up at the top');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+    await page.waitForTimeout(400);
+    const before = await page.getByTestId('doc-comment-card').boundingBox();
+
+    await page.mouse.move(400, 500);
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(400);
+
+    const after = await page.getByTestId('doc-comment-card').boundingBox();
+    expect(before!.y - after!.y).toBeGreaterThan(100);
+  });
+
+  test('deepens the words while the pointer rests on their card', async ({
+    page,
+  }) => {
+    await openWithALongSelection(page);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-input').fill('about this line');
+    await page.getByTestId('doc-comment-post').click();
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+    // Off every card first: the menu row the panel was opened from leaves the
+    // pointer where a card then appears, and a card under the pointer is
+    // exactly what this draws.
+    await page.mouse.move(60, 60);
+    const deepened = page.locator(`${EDITOR} .bn-thread-mark-selected`);
+    await expect(deepened).toHaveCount(0);
+
+    await page.getByTestId('doc-comment-card').hover();
+
+    await expect(deepened.first()).toBeVisible();
   });
 });

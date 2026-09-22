@@ -23,6 +23,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import {
+  hoverThread,
   onSelectedThreadsChange,
   selectThreads,
   selectedThreadsIn,
@@ -272,5 +273,61 @@ describe('selecting from elsewhere', () => {
     stop();
 
     expect(heard).toBe(0);
+  });
+});
+
+describe('resting on a card in the panel', () => {
+  it('deepens that comment in the body', async () => {
+    const editor = open();
+    const threadId = await comment(editor, 0, 5);
+
+    hoverThread(editor, threadId);
+
+    const deepened = editor.domElement?.querySelector(
+      '.bn-thread-mark-selected',
+    );
+    expect(deepened?.textContent).toBe('alpha');
+  });
+
+  it('lets it go again when the pointer leaves', async () => {
+    const editor = open();
+    const threadId = await comment(editor, 0, 5);
+    hoverThread(editor, threadId);
+
+    hoverThread(editor, null);
+
+    expect(
+      editor.domElement?.querySelector('.bn-thread-mark-selected'),
+    ).toBeNull();
+  });
+
+  it('is not the same thing as having the comment open', async () => {
+    // Resting on a card says where a reader is looking; it does not open
+    // anything, and letting it go leaves an open comment open.
+    const editor = open();
+    const first = await comment(editor, 0, 5);
+    const second = await comment(editor, 6, 11);
+    press(editor, 2);
+
+    hoverThread(editor, second);
+    hoverThread(editor, null);
+
+    expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([first]);
+  });
+
+  it('deepens both while one is open and the pointer rests on another', async () => {
+    const editor = open();
+    const first = await comment(editor, 0, 5);
+    const second = await comment(editor, 6, 11);
+    press(editor, 2);
+
+    hoverThread(editor, second);
+
+    const deepened = [
+      ...(editor.domElement?.querySelectorAll('.bn-thread-mark-selected') ??
+        []),
+    ].map((mark) => mark.textContent);
+    expect(new Set(deepened)).toEqual(new Set(['alpha', 'bravo']));
+    expect(first).not.toBe(second);
   });
 });

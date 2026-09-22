@@ -251,11 +251,12 @@ describe('the comment panel', () => {
     expect(deepened?.textContent).toBe('alpha');
   });
 
-  it('floats the comment beside the line while the panel is shut', async () => {
-    // A6's other half: a press has to open the comment whether or not the
-    // panel is there to hold it.
+  it('opens itself when a press in the body names a comment', async () => {
+    // A6: a press opens the comment, and the panel is where a comment is
+    // read (user 2026-09-22). Nothing floats over the body.
     show();
     await comment(0, 5, 'about alpha');
+    expect(screen.queryByTestId('doc-comment-rail')).toBeNull();
     const threadId = [
       ...handle.editor
         .getExtension(CommentsExtension)!
@@ -267,12 +268,12 @@ describe('the comment panel', () => {
       selectThreads(handle.editor, [threadId]);
     });
 
-    const floated = await screen.findByTestId('doc-comment-spotlight');
-    expect(floated).toHaveTextContent('about alpha');
+    const rail = await screen.findByTestId('doc-comment-rail');
+    expect(rail).toHaveTextContent('about alpha');
   });
 
-  it('floats both where two comments cover the same words', async () => {
-    // A20: the reader picks, so both are put in front of them.
+  it('marks both where two comments cover the same words', async () => {
+    // A20: the reader picks, so both are marked rather than one guessed at.
     show();
     await comment(0, 11, 'the wider one');
     await comment(6, 19, 'the other one');
@@ -287,53 +288,28 @@ describe('the comment panel', () => {
       selectThreads(handle.editor, ids);
     });
 
-    const floated = await screen.findByTestId('doc-comment-spotlight');
-    expect(floated.querySelectorAll('[data-testid="doc-comment-card"]'))
-      .toHaveLength(2);
+    await screen.findByTestId('doc-comment-rail');
+    await waitFor(() => {
+      const marked = screen
+        .getAllByTestId('doc-comment-card')
+        .filter((card) => card.getAttribute('data-selected') === 'true');
+      expect(marked).toHaveLength(2);
+    });
   });
 
-  it('floats nothing while the panel is open, which already holds it', async () => {
+  it('takes a settled thread out of the open filter', async () => {
+    // A9: the card is read again behind "all", and the open filter is what a
+    // reader has left to work through.
     show();
     await comment(0, 5, 'about alpha');
     await pressCommentsRow();
-    await screen.findByTestId('doc-comment-rail');
+    await screen.findAllByTestId('doc-comment-card');
     const threadId = [
       ...handle.editor
         .getExtension(CommentsExtension)!
         .threadStore.getThreads()
         .keys(),
     ][0]!;
-
-    act(() => {
-      selectThreads(handle.editor, [threadId]);
-    });
-
-    await waitFor(() => {
-      expect(
-        screen
-          .getAllByTestId('doc-comment-card')
-          .some((card) => card.getAttribute('data-selected') === 'true'),
-      ).toBe(true);
-    });
-    expect(screen.queryByTestId('doc-comment-spotlight')).toBeNull();
-  });
-
-  it('takes the floating card away once the thread is settled', async () => {
-    // Resolving from the floating card leaves the reader looking at a card for
-    // a thread whose highlight is no longer painted. The card's work there is
-    // done, and A9's filter is where a settled thread is read again.
-    show();
-    await comment(0, 5, 'about alpha');
-    const threadId = [
-      ...handle.editor
-        .getExtension(CommentsExtension)!
-        .threadStore.getThreads()
-        .keys(),
-    ][0]!;
-    act(() => {
-      selectThreads(handle.editor, [threadId]);
-    });
-    await screen.findByTestId('doc-comment-spotlight');
 
     await act(async () => {
       await handle.editor
@@ -342,7 +318,7 @@ describe('the comment panel', () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByTestId('doc-comment-spotlight')).toBeNull();
+      expect(screen.queryAllByTestId('doc-comment-card')).toHaveLength(0);
     });
   });
 

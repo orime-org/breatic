@@ -26,11 +26,12 @@ import * as React from 'react';
 import type { ProjectRole } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { DocumentCommentCard } from '@web/spaces/document/DocumentCommentCard';
+import { layOutCards } from '@web/spaces/document/document-comment-layout';
 import {
+  hoverThread,
   onSelectedThreadsChange,
   selectedThreadsIn,
 } from '@web/spaces/document/document-comment-selection';
@@ -42,6 +43,10 @@ import {
   resolveThread,
 } from '@web/spaces/document/document-comment-thread-actions';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
+import {
+  useBodyScrollTop,
+  useCommentAnchors,
+} from '@web/spaces/document/use-comment-anchors';
 import { useCommentCards } from '@web/spaces/document/use-comment-cards';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
@@ -56,6 +61,12 @@ interface DocumentCommentRailProps {
 
 /** Which threads the panel is showing. */
 type Filter = 'open' | 'all';
+
+/** The space kept between two cards that would otherwise run together. */
+const GAP_BETWEEN_CARDS_PX = 10;
+
+/** What a card is assumed to be until it has been on screen once. */
+const CARD_HEIGHT_GUESS_PX = 120;
 
 /**
  * The comment panel.
@@ -127,16 +138,61 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     [myRole, viewerId, onReply, onResolve, onReopen, onDelete, onDeleteReply],
   );
 
+  const shown = React.useMemo(
+    () => [...cards.unresolved, ...(filter === 'all' ? cards.resolved : [])],
+    [cards, filter],
+  );
+  const ids = React.useMemo(() => shown.map((card) => card.id), [shown]);
+
+  // Where each card's words are, and how far the body has been scrolled. The
+  // first changes only when the text does; the second is one number applied
+  // to the whole column, which is what keeps the two sides in step.
+  const anchors = useCommentAnchors(editor, ids);
+  const scrolled = useBodyScrollTop(editor);
+
+  // A card's own height, once it has been on screen. Two comments a line
+  // apart cannot both sit at their anchor, and how far the second has to give
+  // way depends on how tall the first turned out to be.
+  const [heights, setHeights] = React.useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+  const measure = React.useCallback(
+    (id: string) =>
+      (node: HTMLDivElement | null): void => {
+        if (node === null) return;
+        const height = node.offsetHeight;
+        setHeights((held) =>
+          held.get(id) === height ? held : new Map(held).set(id, height),
+        );
+      },
+    [],
+  );
+
   // The first of them, because a press on two overlapping highlights marks
-  // both and only one place can be scrolled to.
-  const bring = selected[0];
-  const list = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    if (bring === undefined) return;
-    list.current
-      ?.querySelector(`[data-thread="${bring}"]`)
-      ?.scrollIntoView({ block: 'nearest' });
-  }, [bring]);
+  // both and only one can have the column to itself.
+  const reading = selected[0] ?? null;
+  const placed = React.useMemo(
+    () =>
+      layOutCards(
+        shown
+          .filter((card) => anchors.has(card.id))
+          .map((card) => ({
+            id: card.id,
+            anchor: anchors.get(card.id)!,
+            height: heights.get(card.id) ?? CARD_HEIGHT_GUESS_PX,
+          })),
+        reading,
+        GAP_BETWEEN_CARDS_PX,
+      ),
+    [shown, anchors, heights, reading],
+  );
+
+  const onHover = React.useCallback(
+    (threadId: string | null) => {
+      hoverThread(editor, threadId);
+    },
+    [editor],
+  );
 
   const showOpen = React.useCallback(() => {
     setFilter('open');
@@ -145,8 +201,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     setFilter('all');
   }, []);
 
-  const resolved = filter === 'all' ? cards.resolved : [];
-  const empty = cards.unresolved.length === 0 && resolved.length === 0;
+  const empty = shown.length === 0;
 
   return (
     <aside
@@ -182,7 +237,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
           <X className='h-3.5 w-3.5' />
         </Button>
       </div>
-      <ScrollArea className='flex-1' viewportClassName='p-2.5'>
+      {/* The column does not scroll on its own: it is carried by the body's
+          scroll, which is what keeps a card level with its words. */}
+      <div
+        data-testid='doc-comment-rail-column'
+        className='relative flex-1 overflow-hidden px-2.5'
+      >
         {empty ? (
           <p
             data-testid='doc-comment-rail-empty'
@@ -191,38 +251,33 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
             {t('spaces.document.comment.empty')}
           </p>
         ) : (
-          <div ref={list} className='flex flex-col gap-2.5'>
-            {cards.unresolved.map((card) => (
-              <DocumentCommentCard
-                key={card.id}
-                card={card}
-                selected={selected.includes(card.id)}
-                {...handling}
-              />
-            ))}
-            {resolved.length > 0 && (
+          <div
+            className='absolute inset-x-2.5 top-0'
+            style={{ transform: `translateY(${-scrolled}px)` }}
+          >
+            {shown.map((card) => (
               <div
-                data-testid='doc-comment-rail-resolved'
-                className='mt-0.5 flex flex-col gap-2.5 border-t border-border pt-2.5'
+                key={card.id}
+                ref={measure(card.id)}
+                className='absolute inset-x-0'
+                style={{ top: `${placed.get(card.id) ?? 0}px` }}
+                onMouseEnter={() => {
+                  onHover(card.id);
+                }}
+                onMouseLeave={() => {
+                  onHover(null);
+                }}
               >
-                <p className='px-0.5 text-2xs text-muted-foreground'>
-                  {t('spaces.document.comment.resolvedGroup', {
-                    count: resolved.length,
-                  })}
-                </p>
-                {resolved.map((card) => (
-                  <DocumentCommentCard
-                    key={card.id}
-                    card={card}
-                    selected={selected.includes(card.id)}
-                    {...handling}
-                  />
-                ))}
+                <DocumentCommentCard
+                  card={card}
+                  selected={selected.includes(card.id)}
+                  {...handling}
+                />
               </div>
-            )}
+            ))}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </aside>
   );
 });

@@ -15,7 +15,10 @@ import type { ProjectRole } from '@breatic/shared';
 
 import { DocumentCommentComposer } from '@web/spaces/document/DocumentCommentComposer';
 import { DocumentCommentRail } from '@web/spaces/document/DocumentCommentRail';
-import { DocumentCommentSpotlight } from '@web/spaces/document/DocumentCommentSpotlight';
+import {
+  onSelectedThreadsChange,
+  selectedThreadsIn,
+} from '@web/spaces/document/document-comment-selection';
 import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
@@ -68,6 +71,15 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   const toggleRail = React.useCallback(() => {
     setRailOpen((open) => !open);
   }, []);
+  // A press on a highlight opens the panel, which is where a comment is read
+  // (user 2026-09-22). The panel then brings that card into view and marks
+  // it; nothing floats over the body.
+  const pressed = React.useSyncExternalStore(onSelectedThreadsChange, () =>
+    selectedThreadsIn(handle.editor.prosemirrorState),
+  );
+  React.useEffect(() => {
+    if (pressed.length > 0) setRailOpen(true);
+  }, [pressed]);
   const closeRail = React.useCallback(() => {
     setRailOpen(false);
   }, []);
@@ -163,13 +175,6 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* The strip beside the row under the pointer. A viewer gets none of it
           (A3): every command in the handle's menu writes to the document. */}
       {!readOnly && <DocumentBlockControls editor={handle.editor} />}
-      {/* The comment a press in the body opens, floated beside the line. Only
-          while the panel is shut: with it open the press marks the card
-          there, and a second copy of the same card would say the same thing
-          twice (Google Docs does the same). */}
-      {!railOpen && (
-        <DocumentCommentSpotlight editor={handle.editor} myRole={myRole} />
-      )}
       {/* The box a comment is written in. It draws itself only while a draft
           is open, and a viewer reaches neither entry that opens one. */}
       {!readOnly && (

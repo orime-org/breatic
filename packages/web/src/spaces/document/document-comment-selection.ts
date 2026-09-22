@@ -77,7 +77,9 @@ export const DOCUMENT_COMMENT_SELECTION = new PluginKey<SelectionState>(
 interface SelectionState {
   /** The threads the reader is looking at. */
   readonly ids: readonly string[];
-  /** The deeper colour over their highlights. */
+  /** The thread their pointer is resting on in the panel, if any. */
+  readonly hovered: string | null;
+  /** The deeper colour over every highlight either of those names. */
   readonly decorations: DecorationSet;
 }
 
@@ -87,8 +89,18 @@ const NOTHING: readonly string[] = [];
 /** The state a document with nothing selected is in. */
 const UNSELECTED: SelectionState = {
   ids: NOTHING,
+  hovered: null,
   decorations: DecorationSet.empty,
 };
+
+/**
+ * The meta a caller says which card the pointer is resting on with.
+ *
+ * Kept apart from the selection because they answer different questions and
+ * outlive each other: resting on a card says where the reader is looking
+ * right now, and leaving it leaves an open comment open.
+ */
+const DOCUMENT_COMMENT_HOVER = 'documentCommentHover';
 
 /** The mark's name on the schema, as the library registers it. */
 const COMMENT_MARK = 'comment';
@@ -141,6 +153,20 @@ function paintSelected(
   return DecorationSet.create(doc, painted);
 }
 
+/**
+ * Every thread whose highlight is drawn deeper right now.
+ * @param ids - The threads the reader has open.
+ * @param hovered - The card their pointer is resting on, if any.
+ * @returns Both, without repeats.
+ */
+function deepened(
+  ids: readonly string[],
+  hovered: string | null,
+): readonly string[] {
+  if (hovered === null || ids.includes(hovered)) return ids;
+  return [...ids, hovered];
+}
+
 /** Everyone waiting to hear that the selection changed. */
 const listeners = new Set<() => void>();
 
@@ -158,6 +184,20 @@ export function onSelectedThreadsChange(listener: () => void): () => void {
   return () => {
     listeners.delete(listener);
   };
+}
+
+/**
+ * Says which card the pointer is resting on, or that it rests on none.
+ * @param editor - The document editor.
+ * @param threadId - The thread under the pointer, or null.
+ */
+export function hoverThread(
+  editor: ToolEditor,
+  threadId: string | null,
+): void {
+  const view = editor.prosemirrorView;
+  if (view === null) return;
+  view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_HOVER, threadId));
 }
 
 /**
@@ -262,23 +302,45 @@ function buildSelectionPlugin(
        * @returns What is selected after it.
        */
       apply: (tr, current): SelectionState => {
+        const hovered = tr.getMeta(DOCUMENT_COMMENT_HOVER) as
+          | string
+          | null
+          | undefined;
+        if (hovered !== undefined) {
+          if (hovered === current.hovered) return current;
+          const ids = current.ids;
+          if (ids.length === 0 && hovered === null) return UNSELECTED;
+          return {
+            ids,
+            hovered,
+            decorations: paintSelected(tr.doc, deepened(ids, hovered)),
+          };
+        }
+
         const asked = tr.getMeta(DOCUMENT_COMMENT_SELECTION) as
           | readonly string[]
           | undefined;
         if (asked === undefined) {
           // The paint follows the words: an edit moves the highlights it
           // sits on, and mapping is how ProseMirror carries a decoration
-          // across one. Nothing selected means nothing to carry.
-          if (current.ids.length === 0) return current;
+          // across one. Nothing painted means nothing to carry.
+          if (current.ids.length === 0 && current.hovered === null) {
+            return current;
+          }
           return {
             ids: current.ids,
+            hovered: current.hovered,
             decorations: current.decorations.map(tr.mapping, tr.doc),
           };
         }
         // The same object back for an empty list, so a second clear reads
         // as no change rather than as a new state.
-        if (asked.length === 0) return UNSELECTED;
-        return { ids: asked, decorations: paintSelected(tr.doc, asked) };
+        if (asked.length === 0 && current.hovered === null) return UNSELECTED;
+        return {
+          ids: asked,
+          hovered: current.hovered,
+          decorations: paintSelected(tr.doc, deepened(asked, current.hovered)),
+        };
       },
     },
 
