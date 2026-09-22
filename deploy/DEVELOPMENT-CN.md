@@ -324,3 +324,9 @@ ZIP 用户需下载新版本并保留自己的 `.env`、Ingest 配置与密钥�
 | 收不到邮件 | `console` 模式只打印日志；真实投递需配置 `EMAIL_BACKEND=smtp` 和 SMTP 参数 |
 
 排查基础设施日志：`docker compose logs --tail=100 postgres redis`。应用日志首先看 `pnpm dev` 终端及 `logs/`。分享日志前去掉密钥、cookie 和签名上传令牌。
+
+## Google 登录（可选）
+
+创建 Google OAuth「Web 应用」Client ID，将前端的完整来源（协议、域名、端口，不含路径）添加到授权 JavaScript 来源；开发通常为 `http://localhost:8000`。在 `.env` 设置 `GOOGLE_CLIENT_ID`，前端和后端必须相同。官方按钮使用弹窗返回 ID Token，后端验签后发会话 Cookie；不需要 Client Secret，也不需要后端 redirect URI。未配置时隐藏按钮。
+
+开发修改变量后重启前后端。Docker 前端必须重新构建，例如 `docker build -f Dockerfile.web --build-arg GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com -t breatic-web:google .`，然后将 Compose 的 web 服务镜像改为该镜像再启动；只修改容器环境不会改变已构建页面。Google 在线 SDK/账号页面需要客户端网络可访问；无法访问时仍可使用邮箱登录。普通 HTTP 局域网 IP 不符合 Google Web 来源要求，请用允许的 localhost 或 HTTPS 来源。

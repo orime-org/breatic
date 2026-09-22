@@ -24,7 +24,7 @@ import * as Y from 'yjs';
 
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { nodeDataMap } from '@web/data/yjs/canvas-space';
-import { bodyToPlainText } from '@web/data/yjs/text-body';
+import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 
 /**
  * Follow which fragment a node's `body` key holds, right now.

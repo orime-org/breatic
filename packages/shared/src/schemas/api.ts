@@ -14,6 +14,7 @@
 import { z } from "zod";
 import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@shared/types/membership.js";
 
+import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
@@ -229,7 +230,10 @@ export const taskCreateSchema = z
      * so this is required. Plain UUID — no FK on the server side.
      */
     space_id: z.string().uuid(),
-    source: z.string().default("canvas"),
+    // The lane this row is filed under in the activity feed, which has one
+    // vocabulary (`GENERATION_SOURCES`). A free string here reached the feed
+    // as a word nothing could render.
+    source: z.enum(GENERATION_SOURCES).default("task"),
     /**
      * UUID v4 of the canvas node that will receive the task result.
      * Required when `node_ids` is present (single-node tasks).
@@ -267,15 +271,73 @@ export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 
 export const understandSchema = z.object({
   source_type: z.enum(["image", "video", "audio"]),
-  source_url: z.string(),
-  node_ids: z.array(z.string()).min(1).optional(),
-  model: z.string().optional(),
+  /**
+   * Where the media is. The run reads the file's name off it and writes that
+   * name into the sentence on the reader's row, so this is bound the same way
+   * `source_mime_type` below is: uncapped, it is text a caller chooses and
+   * every reader of that node is shown. The ceiling is the one
+   * `/canvas/ingest-url` already holds an address to. That sibling also
+   * demands https, which this one cannot: the address here is our own
+   * storage, and a local deployment serves it over http.
+   */
+  source_url: z.string().url().max(2048),
+  // The node the run writes to, which the browser built before asking. It
+  // names one it just made, so anything that is not an id of ours came from
+  // somewhere else and names nothing this space holds. One, because a reading
+  // answers with one piece of text: a second name opens a second row — an
+  // insert, a count and a publish — for a node no answer is coming to.
+  //
+  // Required, because a row on that node is the only thing that carries a
+  // cause back to the canvas: a run naming none bills and answers into
+  // nowhere, and the reader watches a node that never changes.
+  node_ids: z.array(z.string().uuid()).min(1).max(1),
+  /**
+   * What the ledger judged this file to be, off the bytes that landed.
+   *
+   * The node carries it and the browser's own format gate judged by it, so
+   * the run judges by the same one — storage answers with the type a ticket
+   * signed, which was guessed from a file name. Absent on a node stored
+   * before the ledger reported it.
+   *
+   * Capped at what the ledger's own column holds (`mime_type varchar(100)`):
+   * the run names this type in the sentence it writes onto the reader's row,
+   * so an uncapped value is text a caller chooses and every reader of that
+   * node is shown.
+   */
+  source_mime_type: z.string().min(1).max(100).optional(),
   prompt: z.string().optional(),
+  /**
+   * The language the answer is read in, as the browser's locale code.
+   *
+   * Carried, not judged: the run names the language to the model, and a code
+   * this build does not ship names none — the same as a request carrying no
+   * locale at all.
+   */
+  reader_locale: z.string().optional(),
   project_id: z.string().uuid(),
   /** Same as taskCreateSchema.space_id (v10 multi-doc). Required. */
   space_id: z.string().uuid(),
 });
 export type UnderstandInput = z.infer<typeof understandSchema>;
+
+/**
+ * A copy of what a text node holds, kept because somebody asked for it
+ * (#2175). The browser is the only writer: the words live in the canvas
+ * document, which the server does not read.
+ */
+export const nodeHistorySnapshotSchema = z.object({
+  project_id: z.string().uuid(),
+  node_id: z.string().uuid(),
+  // A snapshot of an empty node is not one, and the menu greys the item out
+  // for the same reason — this is the half of that rule the server keeps.
+  // What a node holds is whatever the reader typed, blank lines included, so
+  // the floor is emptiness rather than blankness. No ceiling either: a text
+  // node's words have none, and this row holds exactly them.
+  text: z.string().min(1),
+});
+export type NodeHistorySnapshotInput = z.infer<
+  typeof nodeHistorySnapshotSchema
+>;
 
 // ── Projects ─────────────────────────────────────────────────────────
 

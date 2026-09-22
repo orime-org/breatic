@@ -34,6 +34,7 @@
       "google_oauth_unconfigured": "このサーバーでは Google サインインは利用できません",
       "invalid_google_credential": "Google アカウントを確認できませんでした",
       "google_email_unverified": "Google アカウントのメールアドレスが確認されていません",
+      "google_link_requires_email_login": "このアカウントにはメールでログインしてください。Google アカウントを安全に連携できません。",
       "reset_link_sent": "そのメールアドレスに登録されたアカウントがあれば、リセットリンクをお送りしました。",
       "reset_success": "パスワードをリセットしました。サインインしてください。",
       "reset_recovery_success": "パスワードをリセットしました。新しいリカバリーコードを保存してください。",
@@ -344,6 +345,10 @@
       "cannotWrite": "ここには書き込めなくなりました。",
       "unknownAuthor": "不明"
     },
+    "understand": {
+      "couldNotStart": "開始できませんでした。もう一度お試しください。",
+      "sourceGone": "読み取り元のノードがありません。この読み取りに線はつながっていません。"
+    },
     "generatePanel": {
       "style": "スタイル",
       "focus": "フォーカス",
@@ -513,7 +518,9 @@
       "unlock": "ノードのロック解除",
       "resetEmpty": "空の画像にリセット",
       "history": "履歴",
-      "download": "ダウンロード"
+      "snapshot": "スナップショットを保存",
+      "download": "ダウンロード",
+      "understand": "内容を読み取る"
     },
     "edge": {
       "delete": "接続を削除"
@@ -578,6 +585,10 @@
       "failed": "復元不可",
       "typeGeneration": "生成",
       "typeUpload": "アップロード",
+      "typeSnapshot": "スナップショット",
+      "snapshotKept": "スナップショットを保存しました",
+      "snapshotEmpty": "保存する内容がありません。このノードは空です",
+      "snapshotFailed": "スナップショットを保存できませんでした",
       "end": "これ以上はありません",
       "close": "閉じる",
       "loadError": "履歴を読み込めませんでした",
@@ -620,13 +631,18 @@
       "failure": {
         "aborted": "アップロードは完了する前に中断しました。",
         "over_cap": "このファイルはアップロードの上限を超えています。",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています。} other {このファイルは読み取りの上限を超えています。上限は {limit} です。}}} other {{bytes, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}）。} other {このファイルは読み取りの上限を超えています（{file}）。上限は {limit} です。}}} other {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}、{bytes}）。} other {このファイルは読み取りの上限を超えています（{file}、{bytes}）。上限は {limit} です。}}}}}}",
+        "understand_unsupported_type": "{file, select, none {{type, select, none {読み取れないファイル形式です。} other {読み取れないファイル形式です（{type}）。}}} other {{type, select, none {読み取れないファイル形式です（{file}）。} other {読み取れないファイル形式です（{file}、{type}）。}}}}",
         "expired": "時間切れになりました。",
         "no_result": "この実行は何も生成しませんでした。",
         "source_unreachable": "このアドレスを開けませんでした。",
         "source_too_slow": "このアドレスの取得が時間切れになりました。",
         "unsupported_type": "{kind, select, image {対応していない形式です。画像は {formats} に対応しています。} video {対応していない形式です。動画は {formats} に対応しています。} audio {対応していない形式です。音声は {formats} に対応しています。} other {対応していない形式です。}}",
         "empty": "何も取得できませんでした。",
-        "internal": "こちら側で問題が起きました。もう一度お試しください。"
+        "internal": "こちら側で問題が起きました。もう一度お試しください。",
+        "no_credits": "利用できるクレジットがありません。",
+        "declined": "モデルがこのリクエストを拒否しました。",
+        "media_refused": "モデルがこのファイルを受け付けませんでした。"
       }
     }
   },
@@ -646,8 +662,8 @@
       "signUp": "登録",
       "noAccount": "アカウントをお持ちでないですか?",
       "forgotPassword": "パスワードをお忘れですか?",
-      "continueWithGoogle": "Google で続ける",
-      "googleSoon": "Google サインインは近日公開予定です。",
+      "googleLoading": "Google ログインを読み込み中…",
+      "googleFailed": "Google ログインを利用できません。再試行するか、メールでログインしてください。",
       "failed": "サインインに失敗しました。もう一度お試しください。"
     },
     "register": {
@@ -1639,5 +1655,14 @@
     "refundHint": {
       "assigned": "割り当てを解除すると返金を申請できます"
     }
+  },
+  "notFound": {
+    "heading": "ページが見つかりません",
+    "body": "お探しのページは存在しないか、移動した可能性があります。ホームに戻りましょう。",
+    "cta": "ホームに戻る"
+  },
+  "pageLoadError": {
+    "message": "ページを読み込めませんでした。もう一度お試しください。",
+    "retry": "再試行"
   }
 }

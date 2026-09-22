@@ -34,6 +34,7 @@
       "google_oauth_unconfigured": "Google sign-in is not available on this server",
       "invalid_google_credential": "Could not verify your Google account",
       "google_email_unverified": "Your Google account email is not verified",
+      "google_link_requires_email_login": "Sign in with email to access this account. Google could not safely link it.",
       "reset_link_sent": "If this email is registered, a reset link has been sent.",
       "reset_success": "Password reset successful. Please sign in.",
       "reset_recovery_success": "Password reset successful. Save your new recovery code.",
@@ -352,7 +353,13 @@
       "unlock": "Unlock node",
       "resetEmpty": "Reset to empty image",
       "history": "History",
-      "download": "Download"
+      "snapshot": "Save snapshot",
+      "download": "Download",
+      "understand": "Understand"
+    },
+    "understand": {
+      "couldNotStart": "Could not start. Try again.",
+      "sourceGone": "The node being read is gone. This reading has no wire to it."
     },
     "generatePanel": {
       "style": "Style",
@@ -578,6 +585,10 @@
       "failed": "Can’t restore",
       "typeGeneration": "Generated",
       "typeUpload": "Upload",
+      "typeSnapshot": "Snapshot",
+      "snapshotKept": "Snapshot kept",
+      "snapshotEmpty": "Nothing to keep — this node is empty",
+      "snapshotFailed": "Could not keep the snapshot",
       "end": "No more",
       "close": "Close",
       "loadError": "Couldn’t load history",
@@ -620,13 +631,18 @@
       "failure": {
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {Larger than a reading takes.} other {Larger than a reading takes. The limit is {limit}.}}} other {{bytes, select, none {{limit, select, unknown {Larger than a reading takes ({file}).} other {Larger than a reading takes ({file}). The limit is {limit}.}}} other {{limit, select, unknown {Larger than a reading takes ({file}, {bytes}).} other {Larger than a reading takes ({file}, {bytes}). The limit is {limit}.}}}}}}",
+        "understand_unsupported_type": "{file, select, none {{type, select, none {Cannot understand this file type.} other {Cannot understand this file type ({type}).}}} other {{type, select, none {Cannot understand this file type ({file}).} other {Cannot understand this file type ({file}, {type}).}}}}",
         "expired": "This ran out of time.",
         "no_result": "This run produced nothing.",
         "source_unreachable": "This address would not open.",
         "source_too_slow": "This address was still sending when the time ran out.",
         "unsupported_type": "{kind, select, image {Not a supported format. Images take {formats}.} video {Not a supported format. Video takes {formats}.} audio {Not a supported format. Audio takes {formats}.} other {Not a supported format.}}",
         "empty": "Nothing came back.",
-        "internal": "Something on our side went wrong. Try again."
+        "internal": "Something on our side went wrong. Try again.",
+        "no_credits": "No credits available.",
+        "declined": "The model declined this request.",
+        "media_refused": "The model would not take this file."
       }
     }
   },
@@ -646,8 +662,8 @@
       "signUp": "Sign up",
       "noAccount": "Don't have an account?",
       "forgotPassword": "Forgot password?",
-      "continueWithGoogle": "Continue with Google",
-      "googleSoon": "Google sign-in is coming soon.",
+      "googleLoading": "Loading Google sign-in…",
+      "googleFailed": "Google sign-in is unavailable. Please try again or use email sign-in.",
       "failed": "Sign-in failed. Please try again."
     },
     "register": {
@@ -1639,5 +1655,14 @@
     "refundHint": {
       "assigned": "Unassign it to ask for a refund"
     }
+  },
+  "notFound": {
+    "heading": "Page not found",
+    "body": "The page you're looking for doesn't exist or has moved. Let's get you back on track.",
+    "cta": "Back to home"
+  },
+  "pageLoadError": {
+    "message": "This page could not be loaded. Please try again.",
+    "retry": "Try again"
   }
 }

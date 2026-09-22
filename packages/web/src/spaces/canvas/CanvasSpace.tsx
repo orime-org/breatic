@@ -52,6 +52,8 @@ import {
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
+import { useQueryClient } from '@tanstack/react-query';
+import { historyKey } from '@web/spaces/canvas/history/use-node-history';
 import { usePrefetchModelCatalog } from '@web/spaces/canvas/generate/use-prefetch-model-catalog';
 import {
   FocusCropOverlay,
@@ -60,6 +62,7 @@ import {
 } from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { dropPositionAt } from '@web/spaces/canvas/drop-layout';
+import { frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
@@ -130,6 +133,7 @@ import {
   resolvePanelSelectionAction,
   type PanelSelectionSnapshot,
 } from '@web/spaces/canvas/lib/generate-panel-selection';
+import { asContentView } from '@web/data/yjs/node-view';
 import type {
   DisplayStatus,
   Modality,
@@ -161,6 +165,8 @@ import {
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
+import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
+import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
 import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
@@ -2242,6 +2248,43 @@ function CanvasSpaceInner({
     });
   }, [getInternalNode, setCenter, rfZoom]);
 
+  // Put a node a press just wrote in front of the reader, together with the
+  // node it was read from. Pans only, keeping the reader's zoom, the way
+  // locate does above; whether it pans at all is `frameBuiltNode`'s to say.
+  // The built node's size is the fresh-node size rather than a measured one:
+  // a node written this instant is not in ReactFlow's store yet, and a node
+  // holding nothing is that size until something lands in it.
+  const frameNewNode = React.useCallback(
+    (position: { x: number; y: number }, sourceNodeId: string): void => {
+      const { transform, width, height } = rfStoreApi.getState();
+      const [tx, ty, zoom] = transform;
+      if (zoom === 0) return;
+      // A collaborator can delete the node being read while the menu stands
+      // open. The press still produced a node, so it is still what has to be
+      // in front of the reader — there is just no second box to frame it with.
+      const source = getInternalNode(sourceNodeId);
+      const at = frameBuiltNode(
+        { ...position, ...EMPTY_NODE_SIZE },
+        source === undefined
+          ? null
+          : {
+            ...source.internals.positionAbsolute,
+            width: source.measured?.width ?? source.width ?? 0,
+            height: source.measured?.height ?? source.height ?? 0,
+          },
+        {
+          x: -tx / zoom,
+          y: -ty / zoom,
+          width: width / zoom,
+          height: height / zoom,
+        },
+      );
+      if (at === null) return;
+      setCenter(at.x, at.y, { zoom, duration: 300 });
+    },
+    [getInternalNode, rfStoreApi, setCenter],
+  );
+
   // ---- Node creation (library mailbox + right-click) ----
   // Viewers can't create. The chrome node-library button is already disabled,
   // but the canvas-internal right-click path has no chrome gate, so the canvas
@@ -2271,6 +2314,10 @@ function CanvasSpaceInner({
     locked: false,
     isGroup: false,
     isAnnotation: false,
+    // A text node holds words; every other content kind holds an asset. The
+    // menu's Download / Understand / Tools act on that asset, so they are
+    // left off a text node's menu entirely.
+    isText: false,
   });
   const [selectionMenu, setSelectionMenu] = React.useState({
     open: false,
@@ -2721,6 +2768,7 @@ function CanvasSpaceInner({
         locked,
         isGroup: node.type === 'group',
         isAnnotation: node.type === 'annotation',
+        isText: node.type === 'text',
       });
     },
     [readOnly],
@@ -3581,6 +3629,8 @@ function CanvasSpaceInner({
         restoreNodeMedia(projectId, spaceId, nodeId, {
           content: decision.content,
           coverUrl: decision.coverUrl,
+          // The row the reader picked, so the panel can name it afterwards.
+          entryId: entry.id,
         });
         // Keep the panel open after a restore (user 2026-07-23, reversing the
         // 2026-07-22 close-on-restore): users often restore / compare several
@@ -3622,6 +3672,93 @@ function CanvasSpaceInner({
   const downloadFromMenu = React.useCallback((): void => {
     if (menuDownloadUrl !== null) triggerDownload(downloadHref(menuDownloadUrl));
   }, [menuDownloadUrl]);
+  // Whether the menu's node has anything to keep — asked when the menu opens,
+  // which is when the item is drawn. The words themselves are read at the
+  // press (`keepSnapshot`): the menu can stand open while a collaborator
+  // types or a reading lands, and what the reader asks to keep is what the
+  // node says then. The whole `nodeMenu` is the dependency because its
+  // identity changes exactly when the menu opens or closes.
+  const queryClient = useQueryClient();
+  const menuHasWords = React.useMemo(() => {
+    if (readOnly || !nodeMenu.isText) return false;
+    const words = readTextBodies(projectId, spaceId, [nodeMenu.nodeId]).get(
+      nodeMenu.nodeId,
+    );
+    return words !== undefined && words.length > 0;
+  }, [readOnly, nodeMenu, projectId, spaceId]);
+  // Node menu "snapshot": keep a copy of what the node says. A read, not a
+  // write to the canvas — the node is untouched, so no gate; a locked node
+  // can still be remembered.
+  const snapshotFromMenu = React.useCallback((): void => {
+    const nodeId = nodeMenu.nodeId;
+    void keepSnapshot({
+      projectId,
+      spaceId,
+      nodeId,
+      // The row exists now; a panel open on this node is showing a list that
+      // predates it. The list's own refetch watches how many runs on the node
+      // have settled, and a snapshot is not a run — so it is told here.
+      onKept: () => {
+        void queryClient.invalidateQueries({
+          queryKey: historyKey(projectId, nodeId),
+        });
+      },
+    });
+  }, [nodeMenu.nodeId, projectId, spaceId, queryClient]);
+  // Understand is offered on exactly what Download is offered on — the asset
+  // the node's body is showing — so it reads the same answer. What happens
+  // after the press is `startUnderstandRun`'s: it settles what the browser
+  // can settle, builds the text node and its edge, and asks for the run.
+  const understandFromMenu = React.useCallback((): void => {
+    const host = nodes.find((n) => n.id === nodeMenu.nodeId);
+    const view = asContentView(host?.data);
+    if (
+      menuDownloadUrl === null ||
+      host === undefined ||
+      view === undefined ||
+      (view.kind !== 'image' && view.kind !== 'video' && view.kind !== 'audio')
+    ) {
+      return;
+    }
+    // A node inside a group stores its position relative to that group's
+    // origin, and the node this builds is top-level.
+    const group =
+      host.parentId === undefined
+        ? undefined
+        : nodes.find((n) => n.id === host.parentId);
+    void startUnderstandRun({
+      projectId,
+      spaceId,
+      userId: viewerId ?? '',
+      source: {
+        id: host.id,
+        name: view.name,
+        kind: view.kind,
+        url: menuDownloadUrl,
+        mimeType: view.mimeType,
+        sizeBytes: view.sizeBytes,
+        position: host.position,
+        groupOrigin: group?.position ?? null,
+      },
+      // The node lands a whole step to the right of the one being read, which
+      // on a canvas scrolled near its right edge is outside the viewport. Two
+      // acts, the way the proposal path does them: selecting says which node
+      // this press is about, and framing is what puts it in front of the
+      // reader — a selection flag moves nothing.
+      onBuilt: ({ id, position }) => {
+        setSelectAfterCreate([id]);
+        frameNewNode(position, host.id);
+      },
+    });
+  }, [
+    frameNewNode,
+    menuDownloadUrl,
+    nodes,
+    nodeMenu.nodeId,
+    projectId,
+    spaceId,
+    viewerId,
+  ]);
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
@@ -4343,6 +4480,7 @@ function CanvasSpaceInner({
           <NodeHistoryPanelContainer
             nodes={nodes}
             projectId={projectId}
+            spaceId={spaceId}
             onRestore={restoreNodeContent}
           />
           {/* Node task list: the fourth panel in that same host + lifecycle,
@@ -4515,24 +4653,40 @@ function CanvasSpaceInner({
               ? resetImageFromMenu
               : undefined;
           })()}
-          // History opens the browse + restore panel for editable content nodes
-          // (image / video / audio, #1619); groups / text / read-only get no
-          // item. Browsing itself is gate-free (only restore is gated).
+          // History opens the browse + restore panel for editable content
+          // nodes (#1619); groups / read-only get no item. Which types have a
+          // history is `HISTORY_MODALITIES` — the same set the panel and the
+          // task list's Replace read, so a modality cannot be offered a panel
+          // one of them refuses to act on. Browsing itself is gate-free (only
+          // restore is gated).
           onOpenHistory={(() => {
             const contentNode = nodes.find((n) => n.id === nodeMenu.nodeId);
             return !nodeMenu.isGroup &&
               !readOnly &&
-              (contentNode?.type === 'image' ||
-                contentNode?.type === 'video' ||
-                contentNode?.type === 'audio')
+              HISTORY_MODALITIES.has(contentNode?.type ?? '')
               ? openHistoryFromMenu
               : undefined;
           })()}
+          // Snapshot is on a text node's menu and nowhere else: every other
+          // modality's content is an asset that already has a row of its own.
+          // It is there even with nothing to keep, disabled — a reader looking
+          // for it finds it where it always is, greyed out.
+          snapshotOffered={!readOnly && nodeMenu.isText}
+          onSnapshot={menuHasWords ? snapshotFromMenu : undefined}
+          // Whether this node holds an asset at all, which Download,
+          // Understand and Tools each act on. A text node holds words, so it
+          // gets none of the three (user 2026-09-20).
+          assetActionsOffered={!nodeMenu.isText}
           // Download is offered exactly when the node's body is showing an
           // asset (user 2026-09-18). `downloadableAsset` is that judgement:
           // it says which three modalities carry one, and it asks what
           // `NodeContent` asks before rendering the body.
           onDownload={menuDownloadUrl === null ? undefined : downloadFromMenu}
+          // The same answer Download reads: both act on the asset the node's
+          // body is showing, and a node showing none disables both.
+          onUnderstand={
+            menuDownloadUrl === null ? undefined : understandFromMenu
+          }
           // Rename is frozen on a locked node / group (the name is on-canvas
           // content); hide it rather than offer a silent no-op. A sticky has
           // no name header to rename into (`node-name-header.test.tsx` pins

@@ -8,6 +8,9 @@ import { useQuery } from '@tanstack/react-query';
 import type { ProjectSummary } from '@breatic/shared';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { studiosApi } from '@web/data/api/studios';
+import { ApiException } from '@web/data/api/types';
+import { NotFoundScreen } from '@web/components/not-found-screen';
+import { ResourceLoadError } from '@web/components/resource-load-error';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CENTER_COLUMN } from '@web/pages/studio/container/container-layout';
 import { getEmptyContainerView } from '@web/pages/studio/container/container-stub';
@@ -86,12 +89,12 @@ export default function StudioContainerPage(): React.JSX.Element {
   const projectsQuery = useQuery({
     queryKey: ['studio', slug, 'projects'],
     queryFn: () => studiosApi.listProjects(slug),
-    enabled: slug !== '',
+    enabled: studioQuery.isSuccess,
   });
   const membersQuery = useQuery({
     queryKey: ['studio', slug, 'members'],
     queryFn: () => studiosApi.listMembers(slug),
-    enabled: slug !== '',
+    enabled: studioQuery.isSuccess,
   });
   // The viewer's studios feed the create-project selector (spec §7.1). This is
   // the same query the layout route runs (same key) — React Query dedupes it,
@@ -109,6 +112,8 @@ export default function StudioContainerPage(): React.JSX.Element {
   // value, no chance of the page and the address bar disagreeing.
   const tab = studioTabFromParam(tabParam);
 
+  const { refetch } = studioQuery;
+  const retry = React.useCallback(() => { void refetch(); }, [refetch]);
   const studio = studioQuery.data;
   // Projects (slice 2) + members (slice 3) come from the real API; the other
   // tab CONTENTS stay EMPTY (not faked) until their own slices wire real APIs.
@@ -133,19 +138,6 @@ export default function StudioContainerPage(): React.JSX.Element {
   const creatable = creatableStudios(studios);
   const defaultStudioId = defaultCreateStudioId(studios, studio);
 
-  // Two addresses resolve to the studio itself rather than being rendered or
-  // left in the bar. Both are reached the ordinary way — a typo, an old link,
-  // or somebody's own settings link pasted to someone else — so each gets the
-  // one address that is certainly right instead of a page that contradicts it.
-  //
-  // A segment this scheme would never have produced. Answerable without
-  // waiting for anything. It is the address being judged rather than the name,
-  // which is why this is not called "names no tab": `projects` IS a tab name,
-  // but the default section's address carries no segment, so spelling it out
-  // is a second address for a page that has one — and the strip's first link,
-  // marked as the current page, would point somewhere other than the bar.
-  const segmentIsNotOneWeEmit =
-    tabParam !== undefined && !isAddressableTabSegment(tabParam);
   // A real tab name for a section this viewer's strip does not carry — a
   // non-member (whose public façade renders no strip at all) or a member who
   // is not the admin standing on Credits. Both would leave the address
@@ -158,7 +150,9 @@ export default function StudioContainerPage(): React.JSX.Element {
     studio !== undefined &&
     isAddressableTabSegment(tabParam) &&
     !isTabOnThisPage(tabParam, studio.type, studio.myStudioRole);
-  if (segmentIsNotOneWeEmit || tabIsNotOnThisPage) {
+  if (studioQuery.error instanceof ApiException && studioQuery.error.status === 404) return <NotFoundScreen />;
+  if (studioQuery.isError && !studioQuery.data) return <ResourceLoadError onRetry={retry} />;
+  if (tabIsNotOnThisPage) {
     return <Navigate to={`/studio/${slug}`} replace />;
   }
 

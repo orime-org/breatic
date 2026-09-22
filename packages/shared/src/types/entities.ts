@@ -348,7 +348,7 @@ export interface NodeHistoryEntity {
    * only `listByNode` populates it for the browse UI (#1619).
    */
   operatorName: string | null;
-  entryType: "generation" | "upload";
+  entryType: "generation" | "upload" | "snapshot";
   status: "success" | "failed";
   content: string | null;
   thumbnailUrl: string | null;

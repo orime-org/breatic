@@ -10,7 +10,7 @@
 import { and, eq, desc, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { tasks } from "@breatic/core";
-import type { TaskEntity } from "@breatic/shared";
+import type { GenerationSource, TaskEntity } from "@breatic/shared";
 
 /**
  * Convert a Drizzle row to a TaskEntity.
@@ -111,7 +111,7 @@ export async function softDeleteTask(id: string): Promise<void> {
  * @param data.params - Provider/tool parameters for the task.
  * @param data.model - Model identifier to run the task with, if applicable.
  * @param data.skillName - Skill name driving the task, if applicable.
- * @param data.source - Origin of the task; defaults to `"canvas"`.
+ * @param data.source - Which lane opened this task; defaults to `"task"`.
  * @returns The created `TaskEntity`.
  */
 export async function createTask(data: {
@@ -123,7 +123,13 @@ export async function createTask(data: {
   params: Record<string, unknown>;
   model?: string;
   skillName?: string;
-  source?: string;
+  /**
+   * One word from the vocabulary, so a lane outside it cannot be written.
+   * The column carries an older default (`"canvas"`), and this is the sole
+   * insert into that table — every row therefore comes through here and the
+   * column default is never what lands.
+   */
+  source?: GenerationSource;
 }): Promise<TaskEntity> {
   const rows = await db
     .insert(tasks)
@@ -136,7 +142,7 @@ export async function createTask(data: {
       params: data.params,
       model: data.model,
       skillName: data.skillName,
-      source: data.source ?? "canvas",
+      source: data.source ?? "task",
     })
     .returning();
   return toEntity(rows[0]!);

@@ -560,9 +560,10 @@ export const tasks = pgTable(
  * Per-node content timeline.
  *
  * Records every content change on a canvas node: successful/failed
- * AIGC generations + user uploads. Queried by frontend to show
- * version history and support restore. Node soft-deletes don't
- * cascade - history is preserved until the project is deleted.
+ * AIGC generations, user uploads, and the copies a reader asks to keep.
+ * Queried by frontend to show version history and support restore. Node
+ * soft-deletes don't cascade - history is preserved until the project is
+ * deleted.
  */
 export const nodeHistory = pgTable(
   "node_history",
@@ -576,7 +577,7 @@ export const nodeHistory = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
 
-    entryType: varchar("entry_type", { length: 20 }).notNull(), // 'generation' | 'upload'
+    entryType: varchar("entry_type", { length: 20 }).notNull(), // 'generation' | 'upload' | 'snapshot'
     status: varchar("status", { length: 20 }).notNull(),         // 'success' | 'failed'
     content: text("content"),                                    // URL or text (null if failed)
     thumbnailUrl: text("thumbnail_url"),                         // cover for video, self for image

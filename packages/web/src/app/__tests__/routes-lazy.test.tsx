@@ -135,11 +135,12 @@ describe('route table', () => {
     // of eager pages also describes a table with no pages at all.
     expect(collectPages(router.routes).map((entry) => entry.path).sort()).toEqual(
       [
+        '/*',
         '/choose-slug',
         '/decision',
         '/forgot-password',
         '/login',
-        '/project/:projectId',
+        '/project/:projectId/*',
         '/project/:projectId/access',
         '/recovery-code',
         '/register',
@@ -147,7 +148,7 @@ describe('route table', () => {
         '/studio',
         '/studio',
         '/studio/:slug',
-        '/studio/:slug/:tab',
+        '/studio/:slug/:tab/*',
         '/verify-email',
       ].sort(),
     );
@@ -164,11 +165,21 @@ describe('route table', () => {
       path.join(import.meta.dirname, '..', 'routes.tsx'),
       'utf8',
     );
+    const loaders = readFileSync(
+      path.join(import.meta.dirname, '..', 'route-imports.ts'),
+      'utf8',
+    );
+    const specifierOf = new Map(
+      [...loaders.matchAll(/(\w+):\s*\(\)\s*=>\s*import\('([^']+)'\)/gu)].map((m) => [
+        m[1],
+        m[2],
+      ]),
+    );
     const asking = [
       ...src.matchAll(
-        /lazyRoute\(\s*\(\)\s*=>\s*import\('([^']+)'\),\s*\{[^}]*editingSurface:\s*true/gu,
+        /lazyRoute\(\s*routeImports\.(\w+),\s*\{[^}]*editingSurface:\s*true/gu,
       ),
-    ].map((m) => m[1]);
+    ].map((m) => specifierOf.get(m[1]));
 
     expect(asking).toEqual(['@web/pages/project/ProjectPage']);
   });

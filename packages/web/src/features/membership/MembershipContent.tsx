@@ -11,7 +11,7 @@ import {
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { formatBytes } from '@web/features/membership/format';
+import { formatBytes } from '@web/lib/format-bytes';
 import { QuotaRow } from '@web/features/membership/QuotaRow';
 import { SALES_EMAIL } from '@web/features/membership/pricing';
 import { SubscriptionLines } from '@web/features/membership/SubscriptionLines';

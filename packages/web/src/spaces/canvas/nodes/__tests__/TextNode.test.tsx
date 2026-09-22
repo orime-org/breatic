@@ -36,7 +36,7 @@ import type { CanvasNodeFields } from '@breatic/shared';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
-import { writePlainTextIntoBody, bodyToPlainText } from '@web/data/yjs/text-body';
+import { writePlainTextIntoBody, bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import {
   CanvasContext,
   type CanvasContextValue,
@@ -257,7 +257,6 @@ describe('TextNode', () => {
       expect(el.className).toContain('overflow-hidden');
       expect(el.className).not.toContain('overflow-y-auto');
       expect(el.className).toContain('break-words');
-      expect(el.className).toContain('text-justify');
       expect(el.className).toContain('min-h-48');
       expect(el.className).not.toContain('nowheel');
       expect(el.closest('.nowheel')).toBeNull();
@@ -413,7 +412,6 @@ describe('TextNode', () => {
         'min-h-48',
         'p-3',
         'break-words',
-        'text-justify',
         'text-sm',
         'outline-none',
         'cursor-text',

@@ -264,6 +264,43 @@ describe("understandMedia — what comes back", () => {
     expect(result.finishReason).toBe("content_filter");
   });
 
+  // The run is a task like any other: it is gated on credits before it goes
+  // out and charged after, and what it charges can only be what the service
+  // says it took. The figure is in US dollars, the unit every other
+  // transport in this repo reports and the one the credit conversion reads.
+  it("reports what the service charged for the call", async () => {
+    httpRequestMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "A dog." }, finish_reason: "stop" }],
+          usage: { total_tokens: 42, cost: 0.0037 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const result = await understandMedia({
+      ...base,
+      media: { kind: "image", url: "https://example.com/dog.jpg" },
+    });
+
+    expect(result.costUsd).toBe(0.0037);
+  });
+
+  // A service that answered without saying what it cost is not the same as
+  // one that said zero: charging zero for an unknown is a guess, and the
+  // caller is the one that decides what to do with a figure it does not have.
+  it("says nothing about cost when the answer carried no usage", async () => {
+    httpRequestMock.mockResolvedValue(answered("A dog."));
+
+    const result = await understandMedia({
+      ...base,
+      media: { kind: "image", url: "https://example.com/dog.jpg" },
+    });
+
+    expect(result.costUsd).toBeUndefined();
+  });
+
   it("throws with the status and the service's own words when the call is refused", async () => {
     httpRequestMock.mockResolvedValue(
       new Response(

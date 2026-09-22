@@ -257,7 +257,6 @@ export const coreConfigSchema = z.object({
 
   // ── Google OAuth ────────────────────────────────
   GOOGLE_CLIENT_ID: z.string().default(""),
-  GOOGLE_CLIENT_SECRET: z.string().default(""),
 
   // ── Payment ──────────────────────────────────────
   PAYMENT_ENABLED: z

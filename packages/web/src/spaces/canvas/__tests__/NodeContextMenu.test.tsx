@@ -210,6 +210,88 @@ describe('NodeContextMenu', () => {
     expect(screen.getAllByTestId('node-menu-download')).toHaveLength(1);
   });
 
+  // Download, Understand and Tools all act on the asset a node is showing,
+  // and a text node shows none — it holds words. An item greyed out on every
+  // text node forever says "not right now" about something that is never
+  // going to be offered, so the three are absent rather than disabled
+  // (user 2026-09-20). Snapshot is the same distinction read the other way:
+  // it is offered on text nodes and absent elsewhere.
+  it.each([
+    ['node-menu-download'],
+    ['node-menu-understand'],
+    ['node-menu-tools'],
+  ])('leaves out %s on a node holding no asset', (testId) => {
+    setup({ target: 'node', onUpload: () => {}, assetActionsOffered: false });
+    expect(screen.queryByTestId(testId)).toBeNull();
+  });
+
+  // The other half: a node that DOES show an asset keeps all three, greyed
+  // when this particular node cannot act right now.
+  it.each([
+    ['node-menu-download'],
+    ['node-menu-understand'],
+    ['node-menu-tools'],
+  ])('keeps %s on a node holding an asset', (testId) => {
+    setup({ target: 'node', onUpload: () => {} });
+    expect(screen.getByTestId(testId)).not.toBeNull();
+  });
+
+  // Understand sits with Download because both act on the asset the node is
+  // showing, and both are answered the same way when it is showing none.
+  it('disables the understand item when no handler is supplied', () => {
+    setup({ target: 'node', onUpload: () => {} });
+    expect(screen.getByTestId('node-menu-understand')).toHaveAttribute(
+      'data-disabled',
+    );
+  });
+
+  it('refuses the pointer over an understand this node cannot offer', () => {
+    setup({ target: 'node', onUpload: () => {} });
+
+    const item = screen.getByTestId('node-menu-understand');
+    expect(item.className).toContain('data-[disabled]:pointer-events-auto');
+    expect(item.className).toContain('data-[disabled]:cursor-not-allowed');
+  });
+
+  it('fires onUnderstand when the understand item is chosen', () => {
+    const onUnderstand = vi.fn();
+    setup({ target: 'node', onUpload: () => {}, onUnderstand });
+
+    fireEvent.click(screen.getByTestId('node-menu-understand'));
+    expect(onUnderstand).toHaveBeenCalledTimes(1);
+  });
+
+  // #2175: only a text node offers Snapshot. Every other modality's content
+  // is an asset that already has a row of its own; words are replaced by the
+  // next keystroke and nothing keeps them unless the reader says so.
+  it('leaves Snapshot off a node that is not made of words', () => {
+    setup({ target: 'node', onUpload: () => {} });
+    expect(screen.queryByTestId('node-menu-snapshot')).toBeNull();
+  });
+
+  // Same answer Download gives a node showing nothing: the item stays where
+  // the reader expects it, greyed out, rather than disappearing.
+  it('disables Snapshot on a node saying nothing', () => {
+    setup({ target: 'node', onUpload: () => {}, snapshotOffered: true });
+    expect(screen.getByTestId('node-menu-snapshot')).toHaveAttribute(
+      'data-disabled',
+    );
+  });
+
+  it('fires onSnapshot when a node with words offers it', () => {
+    const onSnapshot = vi.fn();
+    setup({
+      target: 'node',
+      onUpload: () => {},
+      snapshotOffered: true,
+      onSnapshot,
+    });
+    const item = screen.getByTestId('node-menu-snapshot');
+    expect(item).not.toHaveAttribute('data-disabled');
+    fireEvent.click(item);
+    expect(onSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it('fires onDownload when the download item is chosen', () => {
     const onDownload = vi.fn();
     setup({ target: 'node', onUpload: () => {}, onDownload });

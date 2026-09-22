@@ -15,7 +15,7 @@ import * as React from 'react';
 import { getLocale } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { asTaskFailureReason, uploadableFormatList } from '@breatic/shared';
+import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import type { NodeTaskEntry } from '@web/data/api/canvas';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -80,20 +80,7 @@ function settledNote(
   medium: 'image' | 'video' | 'audio' | undefined,
 ): string | null {
   if (entry.status === 'failed') {
-    // A cause this product knows travels as a code and becomes a sentence
-    // here, where the reader's language is. Anything else is what some
-    // provider said about its own failure, and it travels as itself.
-    const reason = asTaskFailureReason(entry.errorMessage);
-    // The formats are named for the one sentence that carries them; the rest
-    // hold no such placeholder and ICU leaves an unused parameter alone. A
-    // node holding no listed medium falls to the `other` arm, which names
-    // nothing and needs nothing.
-    return reason !== null
-      ? t(`canvas.task.failure.${reason}`, {
-        kind: medium ?? 'other',
-        formats: medium === undefined ? '' : uploadableFormatList(medium),
-      })
-      : entry.errorMessage;
+    return failureSentence(entry.errorMessage, t, medium);
   }
   if (entry.status !== 'expired') return null;
   // §4.5: a report can land after the verdict, and the row has to say so —

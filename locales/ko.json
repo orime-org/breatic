@@ -34,6 +34,7 @@
       "google_oauth_unconfigured": "이 서버에서는 Google 로그인을 사용할 수 없습니다",
       "invalid_google_credential": "Google 계정을 확인할 수 없습니다",
       "google_email_unverified": "Google 계정의 이메일이 확인되지 않았습니다",
+      "google_link_requires_email_login": "이 계정은 이메일로 로그인하세요. Google 계정을 안전하게 연결할 수 없습니다.",
       "reset_link_sent": "이 이메일로 등록된 계정이 있으면 재설정 링크를 보내 드렸습니다.",
       "reset_success": "비밀번호를 재설정했습니다. 로그인해 주세요.",
       "reset_recovery_success": "비밀번호를 재설정했습니다. 새 복구 코드를 저장하세요.",
@@ -344,6 +345,10 @@
       "cannotWrite": "여기에는 더 이상 쓸 수 없습니다.",
       "unknownAuthor": "알 수 없음"
     },
+    "understand": {
+      "couldNotStart": "시작하지 못했습니다. 다시 시도해 주세요.",
+      "sourceGone": "읽어 들이던 노드가 없습니다. 이 읽기에는 연결선이 없습니다."
+    },
     "generatePanel": {
       "style": "스타일",
       "focus": "포커스",
@@ -513,7 +518,9 @@
       "unlock": "노드 잠금 해제",
       "resetEmpty": "빈 이미지로 초기화",
       "history": "기록",
-      "download": "다운로드"
+      "snapshot": "스냅샷 저장",
+      "download": "다운로드",
+      "understand": "내용 읽기"
     },
     "edge": {
       "delete": "연결 삭제"
@@ -578,6 +585,10 @@
       "failed": "복원 불가",
       "typeGeneration": "생성",
       "typeUpload": "업로드",
+      "typeSnapshot": "스냅샷",
+      "snapshotKept": "스냅샷을 저장했습니다",
+      "snapshotEmpty": "저장할 내용이 없습니다. 이 노드는 비어 있습니다",
+      "snapshotFailed": "스냅샷을 저장하지 못했습니다",
       "end": "더 이상 없음",
       "close": "닫기",
       "loadError": "기록을 불러오지 못했습니다",
@@ -620,13 +631,18 @@
       "failure": {
         "aborted": "업로드가 끝나기 전에 중단되었습니다.",
         "over_cap": "이 파일은 업로드 크기 상한을 넘습니다.",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다.} other {이 파일은 읽기 크기 상한을 넘습니다. 상한은 {limit}입니다.}}} other {{bytes, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}). 상한은 {limit}입니다.}}} other {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}). 상한은 {limit}입니다.}}}}}}",
+        "understand_unsupported_type": "{file, select, none {{type, select, none {읽을 수 없는 파일 형식입니다.} other {읽을 수 없는 파일 형식입니다({type}).}}} other {{type, select, none {읽을 수 없는 파일 형식입니다({file}).} other {읽을 수 없는 파일 형식입니다({file}, {type}).}}}}",
         "expired": "시간이 초과되었습니다.",
         "no_result": "이 실행은 아무것도 생성하지 않았습니다.",
         "source_unreachable": "이 주소를 열 수 없습니다.",
         "source_too_slow": "이 주소를 가져오는 데 시간이 초과되었습니다.",
         "unsupported_type": "{kind, select, image {지원하지 않는 형식입니다. 이미지는 {formats}을(를) 지원합니다.} video {지원하지 않는 형식입니다. 동영상은 {formats}을(를) 지원합니다.} audio {지원하지 않는 형식입니다. 오디오는 {formats}을(를) 지원합니다.} other {지원하지 않는 형식입니다.}}",
         "empty": "아무것도 받지 못했습니다.",
-        "internal": "저희 쪽에서 문제가 생겼습니다. 다시 시도해 주세요."
+        "internal": "저희 쪽에서 문제가 생겼습니다. 다시 시도해 주세요.",
+        "no_credits": "사용할 수 있는 크레딧이 없습니다.",
+        "declined": "모델이 이 요청을 거부했습니다.",
+        "media_refused": "모델이 이 파일을 받지 않았습니다."
       }
     }
   },
@@ -646,8 +662,8 @@
       "signUp": "회원가입",
       "noAccount": "계정이 없으신가요?",
       "forgotPassword": "비밀번호를 잊으셨나요?",
-      "continueWithGoogle": "Google로 계속하기",
-      "googleSoon": "Google 로그인은 곧 제공될 예정입니다.",
+      "googleLoading": "Google 로그인 불러오는 중…",
+      "googleFailed": "Google 로그인을 사용할 수 없습니다. 다시 시도하거나 이메일로 로그인하세요.",
       "failed": "로그인에 실패했습니다. 다시 시도해 주세요."
     },
     "register": {
@@ -1639,5 +1655,14 @@
     "refundHint": {
       "assigned": "지정을 해제하면 환불을 신청할 수 있습니다"
     }
+  },
+  "notFound": {
+    "heading": "페이지를 찾을 수 없습니다",
+    "body": "찾으시는 페이지가 존재하지 않거나 이동되었습니다. 홈으로 돌아가 다시 시작해 보세요.",
+    "cta": "홈으로 돌아가기"
+  },
+  "pageLoadError": {
+    "message": "페이지를 불러오지 못했습니다. 다시 시도해 주세요.",
+    "retry": "다시 시도"
   }
 }

@@ -82,6 +82,8 @@ describe("settling one node's row of a generation", () => {
       width: null,
       height: null,
       duration: null,
+      mimeType: null,
+      size: null,
     };
 
     await settleTaskForNode(REDIS, DOC, {
@@ -109,6 +111,8 @@ describe("settling one node's row of a generation", () => {
         width: null,
         height: null,
         duration: null,
+        mimeType: null,
+        size: null,
       },
     });
 
@@ -127,6 +131,8 @@ describe("settling one node's row of a generation", () => {
       width: null,
       height: null,
       duration: null,
+      mimeType: null,
+      size: null,
     };
 
     await settleTaskForNode(REDIS, DOC, {

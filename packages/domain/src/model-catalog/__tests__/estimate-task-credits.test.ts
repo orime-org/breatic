@@ -49,7 +49,6 @@ describe("estimateTaskCredits (#1580 #7)", () => {
       ...catalog.audio,
       ...catalog.tts,
       ...catalog.three_d,
-      ...catalog.understand,
     ].find((m) => m.cost_per_call > 0);
     if (!priced) {
       // Catalog config without priced models — the fallback contract above

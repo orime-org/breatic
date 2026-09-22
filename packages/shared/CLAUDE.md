@@ -87,7 +87,24 @@ web **用得到**吗?用得到 → `shared`;用不到 → `core`。
 - 本包内部用 `@shared/*` 前缀
 
 ## 暴露啥
-**单入口** `src/index.ts`(`tsup` 全 bundle),不开多 subpath 入口(多入口会把 `@shared/*` 泄漏进 dist)。
+**主入口** `src/index.ts`(`tsup` 全 bundle),它是默认答案。**另有一个 subpath 入口 `@breatic/shared/canvas/text-body`**(`src/canvas/text-body.ts`),它为什么在那儿由下面那条判定题回答 —— 这里不给第二套判据。
+
+**判定题:web 会调到这个模块的导出吗?会 → 放进 barrel 之后跑一次 `pnpm build && pnpm --filter @breatic/web verify:chunks`,守卫说了算;它红了就给这个模块开自己的入口。** web 调不到的一律进 barrel。
+
+**那条命令的前半截必须走 turbo,不能写成 `pnpm --filter @breatic/web build`**:web 的 build 就是一句 `vite build`,`--filter` 绕过依赖图、不重建 `shared/dist`,而 vite 按 `exports.import` 解析到的正是 `./dist/index.js`(没有指向 `src` 的 alias)。于是刚放进 barrel 的那个导出一个字节都没进去,守卫照样绿 —— 读者据此判定「它不拖字节」,而 CI 那边 `turbo build` 之后才跑 `verify:chunks`,到那里才红。本机开着 `pnpm dev` 时 tsup 的 watch 会顺手把 dist 重建掉,所以这个坑在本机不一定犯得出来。
+
+**这一条靠守卫判,不靠读代码判,因为读代码判错过两次,而且是反方向的两次。** rollup 保留的是那个导出**连同它调到的一切**所引用的东西:
+
+| 实测 | 结果 |
+|---|---|
+| `document-body.ts` `import * as Y from "yjs"`(`:45`),留在 barrel | 不花字节。web 只调 `documentBodyFragment`(`:63`),它是 `doc.getXmlFragment(key)`,它调的东西里也没有 Y 的值,整块连同 `Y` 被摇掉;碰 `new Y.Doc()` 的 `encodeInitialSpaceContent` 只有 collab 调(`lazy-seed.ts:85` / `space-rpc.ts:665`) |
+| `bodyToPlainText`(`canvas/text-body.ts:77`)函数体是 `body.toArray().map((block) => blockText(block)).join('\n')`,一个 `Y.` 都没有 | 单把它放回 barrel 并在入口可达处调一次,实测 31 个 yjs 和 lib0 模块进入口、1,141,216 字节 —— `blockText`(`:60`)里有 `instanceof Y.XmlText` |
+
+**为什么会这样**:主入口打成**一个文件**,vite 眼里就是一个模块;应用入口为了 i18n 就 import 了这个包,于是这个模块被分配进入口 chunk,**web 从 barrel 调到的导出都要在那个 chunk 里发出来** —— 哪怕它只被画布那个懒加载页调。`canvas/text-body.ts` 进 barrel 那次实测:入口闭包 1,141,205 字节,换成 subpath 之后 1,052,981,**差出来的 88,224 字节是 yjs 和 lib0 的 31 个模块,每个打开登录页的读者本来都要下**。
+
+**守卫看得见什么**:`packages/web/verify-chunks.mjs` 的 `HEAVY` 点了 yjs 的名(lib0 跟着它走),再犯时它报「哪个入口下载了 collaboration runtime」;`ENTRY_BUDGET` 另外盯着总字节,兜没被点名的那些 —— 当下还剩多少跑一次守卫就打出来,别在这儿钉一个副本。
+
+**别名不会因此泄漏**:两个入口都是 bundle 模式,产出的 `dist/canvas/text-body.js` 只有一行 `import * as Y from "yjs"`。这一条由 repo-lint 的 `no-unresolved-alias-in-dist` 机械守着,不靠记。
 
 ## 怎么拿配置
 不拿。shared 是纯数据/类型层,不读配置、不读 `process.env`、不写日志。

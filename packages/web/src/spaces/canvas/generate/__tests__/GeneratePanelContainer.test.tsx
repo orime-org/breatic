@@ -201,7 +201,6 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       audio: [],
       tts: [],
       three_d: [],
-      understand: [],
       total: 0,
     });
     mountContainer();
@@ -403,7 +402,6 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       audio: [],
       tts: [],
       three_d: [],
-      understand: [],
       total: 2,
     });
     const client = new QueryClient({
@@ -495,7 +493,6 @@ describe('GeneratePanelContainer — body subscription set', () => {
       audio: [],
       tts: [],
       three_d: [],
-      understand: [],
       total: 0,
     });
     mountContainer({
@@ -581,7 +578,6 @@ function imageCatalog(models: ModelEntry[] = [T2I_MODEL]): ModelCatalog {
     audio: [],
     tts: [],
     three_d: [],
-    understand: [],
     total: models.length,
   };
 }
