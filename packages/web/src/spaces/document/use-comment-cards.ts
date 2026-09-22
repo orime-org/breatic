@@ -208,6 +208,59 @@ function sameCards(a: CommentCards, b: CommentCards): boolean {
 }
 
 /**
+ * Where one thread's highlight reaches, as the body stands.
+ *
+ * Read apart from the cards on purpose: a range moves on every keystroke,
+ * and folding it into what a card is drawn from would re-render the whole
+ * panel for each of them. Only the floating card needs it, and only while it
+ * is on screen.
+ * @param editor - The document editor.
+ * @param threadId - Which thread, or undefined for none.
+ * @returns Its range, or null when the thread has no words left.
+ */
+export function useThreadRange(
+  editor: ToolEditor,
+  threadId: string | undefined,
+): ThreadRange | null {
+  const comments = commentsOn(editor);
+  const cached = React.useRef<ThreadRange | null>(null);
+
+  const subscribe = React.useCallback(
+    (onChange: () => void): (() => void) => {
+      if (comments === undefined) return () => undefined;
+      const stops = [
+        comments.store.subscribe(onChange),
+        onEditorSettled(editor as never, onChange),
+      ];
+      return () => {
+        stops.forEach((stop) => {
+          stop();
+        });
+      };
+    },
+    [comments, editor],
+  );
+
+  const read = React.useCallback((): ThreadRange | null => {
+    if (comments === undefined || threadId === undefined) return null;
+    const next = comments.store.state.threadPositions.get(threadId) ?? null;
+    const held = cached.current;
+    if (
+      held !== null &&
+      next !== null &&
+      held.from === next.from &&
+      held.to === next.to
+    ) {
+      return held;
+    }
+    cached.current = next;
+    return next;
+  }, [comments, threadId]);
+
+  return React.useSyncExternalStore(subscribe, read, read);
+}
+
+/**
  * Reads everything the panel draws, and keeps it current.
  * @param editor - The document editor.
  * @returns The two groups, each card carrying its quote and its comments.

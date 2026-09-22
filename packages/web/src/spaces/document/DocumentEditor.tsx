@@ -15,6 +15,7 @@ import type { ProjectRole } from '@breatic/shared';
 
 import { DocumentCommentComposer } from '@web/spaces/document/DocumentCommentComposer';
 import { DocumentCommentRail } from '@web/spaces/document/DocumentCommentRail';
+import { DocumentCommentSpotlight } from '@web/spaces/document/DocumentCommentSpotlight';
 import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
@@ -162,6 +163,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* The strip beside the row under the pointer. A viewer gets none of it
           (A3): every command in the handle's menu writes to the document. */}
       {!readOnly && <DocumentBlockControls editor={handle.editor} />}
+      {/* The comment a press in the body opens, floated beside the line. Only
+          while the panel is shut: with it open the press marks the card
+          there, and a second copy of the same card would say the same thing
+          twice (Google Docs does the same). */}
+      {!railOpen && (
+        <DocumentCommentSpotlight editor={handle.editor} myRole={myRole} />
+      )}
       {/* The box a comment is written in. It draws itself only while a draft
           is open, and a viewer reaches neither entry that opens one. */}
       {!readOnly && (

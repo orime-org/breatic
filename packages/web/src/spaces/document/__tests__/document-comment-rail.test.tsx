@@ -251,6 +251,73 @@ describe('the comment panel', () => {
     expect(deepened?.textContent).toBe('alpha');
   });
 
+  it('floats the comment beside the line while the panel is shut', async () => {
+    // A6's other half: a press has to open the comment whether or not the
+    // panel is there to hold it.
+    show();
+    await comment(0, 5, 'about alpha');
+    const threadId = [
+      ...handle.editor
+        .getExtension(CommentsExtension)!
+        .threadStore.getThreads()
+        .keys(),
+    ][0]!;
+
+    act(() => {
+      selectThreads(handle.editor, [threadId]);
+    });
+
+    const floated = await screen.findByTestId('doc-comment-spotlight');
+    expect(floated).toHaveTextContent('about alpha');
+  });
+
+  it('floats both where two comments cover the same words', async () => {
+    // A20: the reader picks, so both are put in front of them.
+    show();
+    await comment(0, 11, 'the wider one');
+    await comment(6, 19, 'the other one');
+    const ids = [
+      ...handle.editor
+        .getExtension(CommentsExtension)!
+        .threadStore.getThreads()
+        .keys(),
+    ];
+
+    act(() => {
+      selectThreads(handle.editor, ids);
+    });
+
+    const floated = await screen.findByTestId('doc-comment-spotlight');
+    expect(floated.querySelectorAll('[data-testid="doc-comment-card"]'))
+      .toHaveLength(2);
+  });
+
+  it('floats nothing while the panel is open, which already holds it', async () => {
+    show();
+    await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
+    await screen.findByTestId('doc-comment-rail');
+    const threadId = [
+      ...handle.editor
+        .getExtension(CommentsExtension)!
+        .threadStore.getThreads()
+        .keys(),
+    ][0]!;
+
+    act(() => {
+      selectThreads(handle.editor, [threadId]);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen
+          .getAllByTestId('doc-comment-card')
+          .some((card) => card.getAttribute('data-selected') === 'true'),
+      ).toBe(true);
+    });
+    expect(screen.queryByTestId('doc-comment-spotlight')).toBeNull();
+  });
+
   it('says so on a card whose words were deleted', async () => {
     // A13: the thread stays and stays readable, with the highlight gone.
     show();
