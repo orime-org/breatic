@@ -89,13 +89,18 @@ web **用得到**吗?用得到 → `shared`;用不到 → `core`。
 ## 暴露啥
 **主入口** `src/index.ts`(`tsup` 全 bundle),它是默认答案。**另有一个 subpath 入口 `@breatic/shared/canvas/text-body`**(`src/canvas/text-body.ts`),给**碰重依赖、而 web 只在懒加载页用得到**的模块。
 
-**判定题:web 会调用的那个导出,它的函数体里出现重依赖的符号了吗(`new Y.XmlElement`、`Y.encodeStateAsUpdate` 这类)?出现了 → 它走自己的入口,不进 barrel。** 其余一律进 barrel。
+**判定题:web 会调到这个模块的导出吗?会 → 放进 barrel 之后跑一次 `pnpm --filter @breatic/web build && pnpm --filter @breatic/web verify:chunks`,守卫说了算;它红了就给这个模块开自己的入口。** web 调不到的一律进 barrel。
 
-**判的是函数体,不是这个文件 import 了什么** —— `document-body.ts` 也 `import * as Y from "yjs"`(`:45`),它留在 barrel 里:web 只调它的 `documentBodyFragment`(`:63`),那个函数体是 `doc.getXmlFragment(key)`、一个 Y 的值都不碰,于是 rollup 把这个模块的其余部分连同 `Y` 一起摇掉了;碰 `new Y.Doc()` 的 `encodeInitialSpaceContent` 只有 collab 和 server 调。
+**这一条靠守卫判,不靠读代码判,因为读代码判错过两次,而且是反方向的两次。** rollup 保留的是那个导出**连同它调到的一切**所引用的东西:
 
-**理由是实测出来的**:主入口打成**一个文件**,vite 眼里就是一个模块;应用入口为了 i18n 就 import 了这个包,于是这个模块被分配进入口 chunk,**web 从 barrel 调到的导出都要在那个 chunk 里发出来** —— 哪怕它只被画布那个懒加载页调。`canvas/text-body.ts` 进 barrel 那次实测:入口闭包 1,141,205 字节,换成 subpath 之后 1,052,981,**差出来的 88,224 字节是 yjs 和 lib0 的 31 个模块,每个打开登录页的读者本来都要下**。
+| 实测 | 结果 |
+|---|---|
+| `document-body.ts` `import * as Y from "yjs"`(`:45`),留在 barrel | 不花字节。web 只调 `documentBodyFragment`(`:63`),它是 `doc.getXmlFragment(key)`,它调的东西里也没有 Y 的值,整块连同 `Y` 被摇掉;碰 `new Y.Doc()` 的 `encodeInitialSpaceContent` 只有 collab 和 server 调 |
+| `bodyToPlainText`(`canvas/text-body.ts:85`)函数体是 `body.toArray().map(blockText).join('\n')`,一个 `Y.` 都没有 | 单把它放回 barrel 并在入口可达处调一次,实测 31 个 yjs 和 lib0 模块进入口、1,141,216 字节 —— `blockText`(`:59`)里有 `instanceof Y.XmlText` |
 
-**不靠人记**:`packages/web/verify-chunks.mjs` 的 `HEAVY` 里点了 yjs 和 lib0 的名,再犯时它报的是「哪个入口下载了 yjs」;`ENTRY_BUDGET` 另外盯着总字节,兜没被点名的那些。
+**为什么会这样**:主入口打成**一个文件**,vite 眼里就是一个模块;应用入口为了 i18n 就 import 了这个包,于是这个模块被分配进入口 chunk,**web 从 barrel 调到的导出都要在那个 chunk 里发出来** —— 哪怕它只被画布那个懒加载页调。`canvas/text-body.ts` 进 barrel 那次实测:入口闭包 1,141,205 字节,换成 subpath 之后 1,052,981,**差出来的 88,224 字节是 yjs 和 lib0 的 31 个模块,每个打开登录页的读者本来都要下**。
+
+**守卫看得见什么**:`packages/web/verify-chunks.mjs` 的 `HEAVY` 点了 yjs 的名(lib0 跟着它走),再犯时它报「哪个入口下载了 collaboration runtime」;`ENTRY_BUDGET` 另外盯着总字节,兜没被点名的那些,今天余量 47,019 字节。
 
 **别名不会因此泄漏**:两个入口都是 bundle 模式,产出的 `dist/canvas/text-body.js` 只有一行 `import * as Y from "yjs"`。这一条由 repo-lint 的 `no-unresolved-alias-in-dist` 机械守着,不靠记。
 

@@ -27,6 +27,7 @@ import { randomUUID } from 'node:crypto';
 
 import { test, expect, type Page } from 'playwright/test';
 
+import { CANVAS_SPACE, TEXT_BODY, liveModuleUrl } from '../helpers/live-module';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace } from '../helpers/space';
 
@@ -63,8 +64,16 @@ async function seedNode(opts: {
   data?: Record<string, unknown>;
   body?: string;
 }): Promise<void> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  const bodyAt = await liveModuleUrl(page, TEXT_BODY);
   const seen = await page.evaluate(
-    async ([pid, sid, raw]: [string, string, string]) => {
+    async ([pid, sid, raw, canvasUrl, bodyUrl]: [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ]) => {
       const spec = JSON.parse(raw) as {
         id: string;
         type: string;
@@ -72,17 +81,7 @@ async function seedNode(opts: {
         data?: Record<string, unknown>;
         body?: string;
       };
-      const live = (re: RegExp): string => {
-        const found = performance
-          .getEntriesByType('resource')
-          .map((e) => e.name)
-          .find((n) => re.test(n));
-        if (found === undefined) throw new Error(`no module matches ${re.source}`);
-        return found;
-      };
-      const canvas = (await import(
-        /* @vite-ignore */ live(/data\/yjs\/canvas-space\.ts/)
-      )) as {
+      const canvas = (await import(/* @vite-ignore */ canvasUrl)) as {
         addNode: (p: string, s: string, n: unknown) => void;
         getTextBody: (p: string, s: string, id: string) => unknown;
         readCanvasGraph: (p: string, s: string) => { nodes: { id: string }[] };
@@ -101,15 +100,9 @@ async function seedNode(opts: {
         },
       });
       if (spec.body !== undefined) {
-        // The body helpers have their own entry point, so the module to ask
-        // for is that one — the package's main bundle does not carry them.
-        // Matched on the last two path segments: the dev server hands a linked
-        // workspace package over by file path (`…/shared/dist/canvas/…`) and a
-        // pre-bundled one under a flattened id (`…shared_canvas_…`), and only
-        // this module ends either of them.
-        const shared = (await import(
-          /* @vite-ignore */ live(/canvas[_/]text-body/)
-        )) as { writePlainTextIntoBody: (b: unknown, t: string) => void };
+        const shared = (await import(/* @vite-ignore */ bodyUrl)) as {
+          writePlainTextIntoBody: (b: unknown, t: string) => void;
+        };
         shared.writePlainTextIntoBody(
           canvas.getTextBody(pid, sid, spec.id),
           spec.body,
@@ -117,7 +110,13 @@ async function seedNode(opts: {
       }
       return canvas.readCanvasGraph(pid, sid).nodes.map((n) => n.id);
     },
-    [projectId, spaceId, JSON.stringify(opts)] as [string, string, string],
+    [projectId, spaceId, JSON.stringify(opts), canvasAt, bodyAt] as [
+      string,
+      string,
+      string,
+      string,
+      string,
+    ],
   );
   if (!seen.includes(opts.id)) {
     throw new Error(`${opts.id} never reached the document; saw [${seen.join(', ')}]`);
