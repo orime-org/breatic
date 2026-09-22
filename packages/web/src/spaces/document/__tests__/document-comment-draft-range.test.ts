@@ -29,6 +29,7 @@ import {
   documentCommentDraftRange,
   draftRangeIn,
   mapDraftRange,
+  onDraftRangeChange,
 } from '@web/spaces/document/document-comment-draft-range';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -215,6 +216,83 @@ describe('the draft range plugin', () => {
     view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null));
 
     expect(draftRangeIn(view.state)).toBeNull();
+  });
+
+  it('hands back the same object while the range has not moved', () => {
+    // `useSyncExternalStore` requires an identical snapshot while the store
+    // has not changed, so an equal-but-new object per transaction would read
+    // as a change on every keystroke anywhere in the body.
+    const editor = open();
+    const view = editor.prosemirrorView!;
+    const run = firstRun(editor);
+
+    view.dispatch(
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+        from: run.from,
+        to: run.from + 5,
+      }),
+    );
+    const first = draftRangeIn(view.state);
+    view.dispatch(view.state.tr.insertText('x', run.to - 1));
+
+    expect(draftRangeIn(view.state)).toBe(first);
+  });
+
+  it('tells a listener when a draft opens, moves and closes', () => {
+    // The editor's own events do not cover opening: that transaction carries
+    // nothing but the meta, so neither the document nor the selection moves.
+    const editor = open();
+    const view = editor.prosemirrorView!;
+    const run = firstRun(editor);
+    let heard = 0;
+    const stop = onDraftRangeChange(() => {
+      heard += 1;
+    });
+
+    view.dispatch(
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+        from: run.from + 6,
+        to: run.from + 11,
+      }),
+    );
+    expect(heard).toBe(1);
+
+    view.dispatch(view.state.tr.insertText('xx', run.from));
+    expect(heard).toBe(2);
+
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null));
+    expect(heard).toBe(3);
+
+    stop();
+    view.dispatch(
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+        from: run.from,
+        to: run.from + 5,
+      }),
+    );
+    expect(heard).toBe(3);
+  });
+
+  it('stays quiet when nothing about the range changed', () => {
+    const editor = open();
+    const view = editor.prosemirrorView!;
+    const run = firstRun(editor);
+    view.dispatch(
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+        from: run.from,
+        to: run.from + 5,
+      }),
+    );
+
+    let heard = 0;
+    const stop = onDraftRangeChange(() => {
+      heard += 1;
+    });
+    // An edit after the range, which moves neither end.
+    view.dispatch(view.state.tr.insertText('!', run.to - 1));
+    stop();
+
+    expect(heard).toBe(0);
   });
 
   it('refuses to open on a range covering no words', () => {
