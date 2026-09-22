@@ -219,9 +219,9 @@ function AssignRow({
       ? t(`credits.source.${lot.sourceKind}`)
       : formatMoney(lot.paidCents, lot.currency ?? 'usd');
 
-  // Where it points now. The balance moved to the right column, where the
-  // other two screens keep it, so this line answers the question this screen
-  // is about instead of repeating a figure that is already on the row.
+  // Where it points now, for the row that has no picker to say it. The
+  // balance moved to the right column, where the other two screens keep it,
+  // so this line is free to answer the question this screen is about.
   const designationLine =
     lot.designatedStudioName === null
       ? t('credits.unassigned')
@@ -258,7 +258,6 @@ function AssignRow({
   return (
     <Row
       main={`${lead} · ${formatLocalDay(lot.createdAt)}`}
-      sub={designationLine}
       right={
         <>
           <RowBalance

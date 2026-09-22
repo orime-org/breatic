@@ -1054,23 +1054,6 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('Trial credits');
     });
 
-    it('leads the right column with the balance and the left with where it points', async () => {
-      // One figure, one place, on all three screens: a reader switching
-      // between them reads the balance off the same corner every time. What
-      // each screen is about goes under it, and the line under the name says
-      // where the purchase points.
-      await openOn('assign');
-      const body = await panel();
-
-      const balance = within(body).getByTestId('lot-remaining');
-      const row = balance.closest('li');
-      expect(row).not.toBeNull();
-      expect(row?.lastElementChild?.firstElementChild).toBe(balance);
-      expect(row?.firstElementChild?.lastElementChild).toHaveTextContent(
-        'Assigned to Orime Studio',
-      );
-    });
-
     it('still gives a purchase its picker', async () => {
       // The pair the one above needs: a section that dropped every picker
       // would pass it and leave nobody able to assign anything.
@@ -1545,6 +1528,23 @@ describe('the credits overlay, section by section', () => {
         expect(
           within(body).queryByRole('button', { name: /refund/i }),
         ).toBeNull();
+      });
+
+      it('leads the right column with the balance and the left with where it points', async () => {
+        // One figure, one place, on all three screens: a reader switching
+        // between them reads the balance off the same corner every time.
+        // What this screen is about goes under it, and the line under the
+        // name says where the purchase points.
+        await openOn('refunds');
+        const body = await panel();
+
+        const balance = within(body).getByTestId('lot-remaining');
+        const row = balance.closest('li');
+        expect(row).not.toBeNull();
+        expect(row?.lastElementChild?.firstElementChild).toBe(balance);
+        expect(row?.firstElementChild?.lastElementChild).toHaveTextContent(
+          'Assigned to Orime Studio',
+        );
       });
 
       it('marks one bought more than thirty days ago', async () => {
