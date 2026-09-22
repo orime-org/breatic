@@ -1532,7 +1532,7 @@
       "compensation": "보상",
       "discount": "할인"
     },
-    "pinnedToOwnStudio": "본인 Studio에서만 사용",
+    "pinnedToPersonalStudio": "개인 Studio에서만 사용",
     "lifecycle": {
       "depleted": "모두 사용함",
       "refund_pending": "심사 중",
@@ -1589,13 +1589,10 @@
       "body": "충전 한 건은 Studio 하나에 통째로 지정하며, 언제든 바꿀 수 있습니다."
     },
     "assignNote": "목록에는 본인이 Admin인 Studio만 나옵니다. 바꾸면 원래 Studio는 그 즉시 이 크레딧을 잃습니다.",
-    "remaining": "{amount} 크레딧 남음",
     "designationFor": "{amount} 충전의 지정 대상",
     "designateFailed": "저장하지 못했습니다. 다시 시도해 주세요.",
     "refundsEmpty": "아직 크레딧 패키지를 구매하지 않았습니다",
     "askRefund": "환불 신청",
-    "refundPendingHint": "{credits} 크레딧 · 심사 중에는 Studio에 지정할 수 없습니다",
-    "refundingHint": "{credits} 크레딧 · 환불 처리 중에는 Studio에 지정할 수 없습니다",
     "refundTitle": "환불 규정",
     "buy": {
       "taxNotice": "표시 가격은 세금이 포함되지 않습니다. 결제 금액은 표시 가격에 거주 지역의 세액을 더한 금액이며, 결제 페이지에 최종 금액이 표시됩니다.",
@@ -1640,9 +1637,7 @@
       "expired": "30일 경과"
     },
     "refundHint": {
-      "assigned": "{credits} 크레딧 남음 · 지정을 해제하면 환불을 신청할 수 있습니다",
-      "depleted": "총 {credits} 크레딧",
-      "refunded": "원래 결제 수단으로 환불됨"
+      "assigned": "지정을 해제하면 환불을 신청할 수 있습니다"
     }
   }
 }

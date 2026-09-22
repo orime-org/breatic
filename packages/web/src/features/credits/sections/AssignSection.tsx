@@ -20,6 +20,7 @@ import {
   ListEnd,
   Notice,
   Row,
+  RowBalance,
   Rows,
   Section,
   Footnote,
@@ -34,7 +35,6 @@ import {
 } from '@web/features/credits/account-reads';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
-import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
 import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
@@ -219,6 +219,14 @@ function AssignRow({
       ? t(`credits.source.${lot.sourceKind}`)
       : formatMoney(lot.paidCents, lot.currency ?? 'usd');
 
+  // Where it points now. The balance moved to the right column, where the
+  // other two screens keep it, so this line answers the question this screen
+  // is about instead of repeating a figure that is already on the row.
+  const designationLine =
+    lot.designatedStudioName === null
+      ? t('credits.unassigned')
+      : t('credits.assignedTo', { studio: lot.designatedStudioName });
+
   // Granted credits were pointed at their holder's own studio when they were
   // written and nothing moves them, so this row says where they may go rather
   // than offering a choice. A control every option of which would be refused
@@ -228,16 +236,20 @@ function AssignRow({
     return (
       <Row
         main={`${lead} · ${formatLocalDay(lot.createdAt)}`}
-        sub={t('credits.remaining', {
-          amount: formatCreditAmount(lot.remainingCredits),
-        })}
+        sub={designationLine}
         right={
-          <span
-            data-testid='assign-pinned'
-            className='text-muted-foreground text-sm'
-          >
-            {t('credits.pinnedToOwnStudio')}
-          </span>
+          <>
+            <RowBalance
+              data-testid='lot-remaining'
+              credits={lot.remainingCredits}
+            />
+            <span
+              data-testid='assign-pinned'
+              className='block text-xs text-muted-foreground'
+            >
+              {t('credits.pinnedToPersonalStudio')}
+            </span>
+          </>
         }
       />
     );
@@ -246,41 +258,45 @@ function AssignRow({
   return (
     <Row
       main={`${lead} · ${formatLocalDay(lot.createdAt)}`}
-      sub={t('credits.remaining', {
-        amount: formatCreditAmount(lot.remainingCredits),
-      })}
+      sub={designationLine}
       right={
-        <Select
-          value={lot.designatedStudioId ?? NONE}
-          onValueChange={handleChange}
-          disabled={designate.isPending}
-        >
-          <SelectTrigger
-            className='h-7 w-auto gap-2 text-sm'
-            aria-label={t('credits.designationFor', { amount: lead })}
+        <>
+          <RowBalance
+            data-testid='lot-remaining'
+            credits={lot.remainingCredits}
+          />
+          <Select
+            value={lot.designatedStudioId ?? NONE}
+            onValueChange={handleChange}
+            disabled={designate.isPending}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>{t('credits.unassigned')}</SelectItem>
-            {/* Where it points now, when that is somewhere this account can no
+            <SelectTrigger
+              className='h-7 w-auto gap-2 text-sm'
+              aria-label={t('credits.designationFor', { amount: lead })}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>{t('credits.unassigned')}</SelectItem>
+              {/* Where it points now, when that is somewhere this account can no
                 longer choose — after being demoted in that studio, say. The
                 options answer "where may this go"; the trigger reports where
                 it is, and with no item to match, Radix shows nothing at all.
                 It is offered unselectable: leaving is allowed, returning is
                 not. */}
-            {current === null ? null : (
-              <SelectItem value={current.id} disabled>
-                {current.name}
-              </SelectItem>
-            )}
-            {studios.map((studio) => (
-              <SelectItem key={studio.id} value={studio.id}>
-                {studio.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              {current === null ? null : (
+                <SelectItem value={current.id} disabled>
+                  {current.name}
+                </SelectItem>
+              )}
+              {studios.map((studio) => (
+                <SelectItem key={studio.id} value={studio.id}>
+                  {studio.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </>
       }
     />
   );

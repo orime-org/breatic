@@ -14,6 +14,7 @@ import {
   ListEnd,
   Notice,
   Row,
+  RowBalance,
   Rows,
   Section,
   SectionEmpty,
@@ -264,12 +265,10 @@ const PurchaseLine = React.memo(function PurchaseLine({
             )
           ) : (
             <>
-              <span
+              <RowBalance
                 data-testid='purchase-remaining'
-                className='block text-sm font-semibold'
-              >
-                {formatCreditAmount(purchase.remainingCredits)}
-              </span>
+                credits={purchase.remainingCredits}
+              />
               <span className='block text-xs text-muted-foreground'>
                 {t('credits.ofPurchased', {
                   amount: formatCreditAmount(purchase.creditsGranted),

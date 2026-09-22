@@ -1532,7 +1532,7 @@
       "compensation": "補償",
       "discount": "割引"
     },
-    "pinnedToOwnStudio": "ご自身の Studio でのみ使用",
+    "pinnedToPersonalStudio": "個人 Studio でのみ使用",
     "lifecycle": {
       "depleted": "使い切りました",
       "refund_pending": "審査中",
@@ -1589,13 +1589,10 @@
       "body": "購入ごとに一つの Studio へ割り当て、いつでも変更できます。"
     },
     "assignNote": "一覧に出るのは自分が Admin の Studio だけです。変更すると、元の Studio はその場で使えなくなります。",
-    "remaining": "残り {amount} クレジット",
     "designationFor": "{amount} の購入の割り当て先",
     "designateFailed": "保存できませんでした。もう一度お試しください。",
     "refundsEmpty": "まだクレジットパックを購入していません",
     "askRefund": "返金を申請",
-    "refundPendingHint": "{credits} クレジット · 審査中は Studio に割り当てられません",
-    "refundingHint": "{credits} クレジット · 返金処理中は Studio に割り当てられません",
     "refundTitle": "返金ルール",
     "buy": {
       "taxNotice": "表示価格は税抜きです。お支払い額は表示価格にお住まいの地域の税額を加えたもので、決済ページに最終金額が表示されます。",
@@ -1640,9 +1637,7 @@
       "expired": "30 日超過"
     },
     "refundHint": {
-      "assigned": "残り {credits} クレジット · 割り当てを解除すると返金を申請できます",
-      "depleted": "合計 {credits} クレジット",
-      "refunded": "元のお支払い方法へ返金済み"
+      "assigned": "割り当てを解除すると返金を申請できます"
     }
   }
 }

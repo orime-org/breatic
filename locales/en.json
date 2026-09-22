@@ -1532,7 +1532,7 @@
       "compensation": "Compensation",
       "discount": "Discount"
     },
-    "pinnedToOwnStudio": "Your own studio only",
+    "pinnedToPersonalStudio": "Your personal Studio only",
     "lifecycle": {
       "depleted": "Used up",
       "refund_pending": "Under review",
@@ -1589,13 +1589,10 @@
       "body": "Each purchase goes to one Studio, and can be moved at any time."
     },
     "assignNote": "The list holds only Studios you administer. Moving a purchase takes it from the Studio that had it, immediately.",
-    "remaining": "{amount} credits left",
     "designationFor": "Studio for the {amount} purchase",
     "designateFailed": "That did not save. Try again.",
     "refundsEmpty": "No credit packs bought yet.",
     "askRefund": "Ask for a refund",
-    "refundPendingHint": "{credits} credits · it cannot be assigned to a Studio while it is under review",
-    "refundingHint": "{credits} credits · it cannot be assigned to a Studio while the money goes back",
     "refundTitle": "Refund rule",
     "buy": {
       "taxNotice": "Prices exclude tax. What you pay is the price plus the tax where you are, and the checkout page shows the final amount.",
@@ -1640,9 +1637,7 @@
       "expired": "Over 30 days"
     },
     "refundHint": {
-      "assigned": "{credits} credits left · unassign it to ask for a refund",
-      "depleted": "{credits} credits in all",
-      "refunded": "Back to the original payment method"
+      "assigned": "Unassign it to ask for a refund"
     }
   }
 }

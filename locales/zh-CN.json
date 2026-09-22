@@ -1532,7 +1532,7 @@
       "compensation": "补偿",
       "discount": "优惠"
     },
-    "pinnedToOwnStudio": "只能用在你自己的 Studio",
+    "pinnedToPersonalStudio": "只能用在你的个人 Studio",
     "lifecycle": {
       "depleted": "已消耗完毕",
       "refund_pending": "审核中",
@@ -1589,13 +1589,10 @@
       "body": "每个积分包整个指定给一个 Studio，随时可以改。"
     },
     "assignNote": "下拉里只有你是 Admin 的 Studio。改了之后原来那个 Studio 立刻失去这个积分包。",
-    "remaining": "还剩 {amount} 积分",
     "designationFor": "{amount} 这个积分包的指定去向",
     "designateFailed": "指定没能保存，请重试。",
     "refundsEmpty": "还没有买过积分包",
     "askRefund": "申请退款",
-    "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
-    "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
     "refundTitle": "退款规则",
     "buy": {
       "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
@@ -1640,9 +1637,7 @@
       "expired": "超过 30 天"
     },
     "refundHint": {
-      "assigned": "还剩 {credits} 积分 · 解除指定后可以申请退款",
-      "depleted": "共 {credits} 积分",
-      "refunded": "已退回原付款方式"
+      "assigned": "解除指定后可以申请退款"
     }
   }
 }

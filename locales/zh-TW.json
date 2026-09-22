@@ -1532,7 +1532,7 @@
       "compensation": "補償",
       "discount": "優惠"
     },
-    "pinnedToOwnStudio": "只能用在你自己的 Studio",
+    "pinnedToPersonalStudio": "只能用在你的個人 Studio",
     "lifecycle": {
       "depleted": "已消耗完畢",
       "refund_pending": "審核中",
@@ -1589,13 +1589,10 @@
       "body": "每個點數包整個指定給一個 Studio，隨時可以改。"
     },
     "assignNote": "下拉裡只有你是 Admin 的 Studio。改了之後原本那個 Studio 立刻失去這個點數包。",
-    "remaining": "還剩 {amount} 點數",
     "designationFor": "{amount} 這個點數包的指定去向",
     "designateFailed": "指定沒能儲存，請重試。",
     "refundsEmpty": "還沒有買過點數包",
     "askRefund": "申請退款",
-    "refundPendingHint": "{credits} 點數 · 審核期間不能指定給 Studio",
-    "refundingHint": "{credits} 點數 · 退款進行中，不能指定給 Studio",
     "refundTitle": "退款規則",
     "buy": {
       "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
@@ -1640,9 +1637,7 @@
       "expired": "超過 30 天"
     },
     "refundHint": {
-      "assigned": "還剩 {credits} 點數 · 解除指定後可以申請退款",
-      "depleted": "共 {credits} 點數",
-      "refunded": "已退回原付款方式"
+      "assigned": "解除指定後可以申請退款"
     }
   }
 }
