@@ -284,7 +284,7 @@ describe('resting on a card in the panel', () => {
     hoverThread(editor, threadId);
 
     const deepened = editor.domElement?.querySelector(
-      '.bn-thread-mark-selected',
+      '.doc-comment-mark-reading',
     );
     expect(deepened?.textContent).toBe('alpha');
   });
@@ -297,7 +297,7 @@ describe('resting on a card in the panel', () => {
     hoverThread(editor, null);
 
     expect(
-      editor.domElement?.querySelector('.bn-thread-mark-selected'),
+      editor.domElement?.querySelector('.doc-comment-mark-reading'),
     ).toBeNull();
   });
 
@@ -324,7 +324,7 @@ describe('resting on a card in the panel', () => {
     hoverThread(editor, second);
 
     const deepened = [
-      ...(editor.domElement?.querySelectorAll('.bn-thread-mark-selected') ??
+      ...(editor.domElement?.querySelectorAll('.doc-comment-mark-reading') ??
         []),
     ].map((mark) => mark.textContent);
     expect(new Set(deepened)).toEqual(new Set(['alpha', 'bravo']));

@@ -111,7 +111,7 @@ const COMMENT_MARK = 'comment';
  * The library's, kept because the stylesheet already paints it and because a
  * press answered by either of us should look the same.
  */
-const SELECTED_CLASS = 'bn-thread-mark-selected';
+const SELECTED_CLASS = 'doc-comment-mark-reading';
 
 /**
  * The threads the reader is looking at.

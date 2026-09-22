@@ -300,7 +300,7 @@ test.describe('the panel, read across from the body', () => {
     // pointer where a card then appears, and a card under the pointer is
     // exactly what this draws.
     await page.mouse.move(60, 60);
-    const deepened = page.locator(`${EDITOR} .bn-thread-mark-selected`);
+    const deepened = page.locator(`${EDITOR} .doc-comment-mark-reading`);
     await expect(deepened).toHaveCount(0);
 
     await page.getByTestId('doc-comment-card').hover();

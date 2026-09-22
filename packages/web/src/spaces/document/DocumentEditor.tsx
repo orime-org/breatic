@@ -190,10 +190,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           (A3): every command in the handle's menu writes to the document. */}
       {!readOnly && <DocumentBlockControls editor={handle.editor} />}
       {/* The box a comment is written in. It draws itself only while a draft
-          is open, and a viewer reaches neither entry that opens one. */}
-      {!readOnly && (
-        <DocumentCommentComposer editor={handle.editor} myRole={myRole} />
-      )}
+          is open, and a viewer reaches neither entry that opens one — so it
+          is mounted for everybody. Gated on `readOnly` it went away in the
+          same render that took the right to write, carrying off the notice
+          that was supposed to explain that (A22). */}
+      <DocumentCommentComposer editor={handle.editor} myRole={myRole} />
       {/* The toolbar over a link the pointer hovers or the caret sits in. It
           owns its own timing, position and state; what it takes from here is
           where to draw and when to stand aside.

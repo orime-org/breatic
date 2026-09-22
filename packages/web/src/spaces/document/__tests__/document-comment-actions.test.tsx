@@ -406,6 +406,53 @@ describe('what a card lets a reader do', () => {
     expect(screen.queryByTestId('doc-comment-delete-reply')).toBeNull();
   });
 
+  it('says so when the right to write is taken away mid-draft', async () => {
+    // A22. The notice has to reach the screen through the chrome the reader
+    // actually has: `DocumentEditor` decides whether the box is mounted at
+    // all, and it decides on the same `readOnly` that turns `myRole` into
+    // `viewer` — so the box that carries the notice is the one being taken
+    // away at that moment.
+    role = 'editor';
+    const shown = render(
+      <DocumentEditor handle={handle} myRole='editor' readOnly={false} />,
+    );
+    act(() => {
+      handle.editor.replaceBlocks(handle.editor.document, [
+        { type: 'paragraph', content: 'alpha bravo charlie' },
+      ] as never);
+    });
+    let run: { from: number; to: number } | undefined;
+    handle.editor.prosemirrorState.doc.descendants((node, pos) => {
+      if (node.isText && run === undefined) {
+        run = { from: pos, to: pos + node.nodeSize };
+      }
+      return true;
+    });
+    const view = handle.editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(
+        view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+          from: run!.from,
+          to: run!.from + 5,
+        }),
+      );
+    });
+    await screen.findByTestId('doc-comment-input');
+    await userEvent.type(
+      screen.getByTestId('doc-comment-input'),
+      'half a thought',
+    );
+
+    role = 'viewer';
+    shown.rerender(
+      <DocumentEditor handle={handle} myRole='viewer' readOnly={true} />,
+    );
+
+    expect(await screen.findByTestId('doc-comment-dropped')).toHaveTextContent(
+      /.+/,
+    );
+  });
+
   it('offers a viewer nothing to write with', async () => {
     // A17: they read the whole panel and may not write in it. The store would
     // refuse anyway; what this holds is that the card does not offer.

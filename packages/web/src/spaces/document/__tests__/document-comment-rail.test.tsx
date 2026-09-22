@@ -245,7 +245,7 @@ describe('the comment panel', () => {
     });
 
     const deepened = handle.editor.domElement?.querySelector(
-      '.bn-thread-mark-selected',
+      '.doc-comment-mark-reading',
     );
     expect(deepened?.textContent).toBe('alpha');
   });

@@ -146,6 +146,9 @@ describe('the highlight in the body', () => {
 describe('what the highlight looks like', () => {
   const MARK = '.doc-body .bn-thread-mark';
 
+  /** The class our decoration carries, outside the library's namespace. */
+  const READING_CLASS = 'doc-comment-mark-reading';
+
   it('is painted, which is the whole of "there is a mark here"', () => {
     expect(ruleBody(MARK)).toContain(
       'background-color: var(--color-comment-mark)',
@@ -176,16 +179,25 @@ describe('what the highlight looks like', () => {
   });
 
   it('deepens while its thread is the one being read', () => {
-    // The library decorates the selected thread's range with this class
-    // (`comments/extension.ts:215-231`), and the decoration lands outside the
-    // marks rather than on them — so the deeper colour has to reach both the
-    // decoration and whatever marks sit inside it. Read as a family, because
-    // how many selectors that takes is not the point.
-    const painted = declarationsOf('bn-thread-mark-selected', 'background-color');
+    // The decoration lands outside the marks rather than on them — so the
+    // deeper colour has to reach both the decoration and whatever marks sit
+    // inside it. Read as a family, because how many selectors that takes is
+    // not the point.
+    const painted = declarationsOf(READING_CLASS, 'background-color');
 
     expect(painted.length).toBeGreaterThan(0);
     painted.forEach((declaration) => {
       expect(declaration.value).toBe('var(--color-comment-mark-active)');
     });
+  });
+
+  it('leaves the library own decoration unpainted', () => {
+    // Writing `selectedThreadId` into the library's store is what makes its
+    // click handler stand aside (A20), and it also makes the library draw a
+    // decoration of its own over the MERGED range — first start to last end,
+    // which covers any gap in between. Ours is drawn per mark run. Only ours
+    // carries a colour, so the library's is inert.
+    expect(declarationsOf('bn-thread-mark-selected', 'background-color'))
+      .toHaveLength(0);
   });
 });
