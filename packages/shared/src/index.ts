@@ -505,6 +505,7 @@ export {
 export { assetNameFromUrl } from "@shared/media/asset-name.js";
 // Plain text in and out of a text node's body ships at
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
+
 // The arithmetic both sides of an upload read: the browser sizes each part's
 // deadline with it, and the config refuses windows narrower than what they
 // have to hold.
