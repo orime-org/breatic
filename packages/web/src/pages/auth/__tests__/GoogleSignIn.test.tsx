@@ -49,6 +49,15 @@ describe('official Google login', () => {
     await waitFor(() => expect(sdk.renderButton.mock.calls.at(-1)?.[1].theme).toBe('outline_dark'));
   });
 
+  it('isolates the Google iframe color scheme from the page theme', async () => {
+    setup();
+    const host = sdk.renderButton.mock.calls.at(-1)?.[0] as HTMLElement;
+    expect(host.parentElement).toHaveClass('scheme-light');
+    act(() => { document.documentElement.dataset.theme = 'dark'; });
+    await waitFor(() => expect(sdk.renderButton.mock.calls.at(-1)?.[1].theme).toBe('outline'));
+    expect(host.parentElement).toHaveClass('scheme-light');
+  });
+
   it('sends credential once and stores the returned user', async () => {
     let finish!: (value: Awaited<ReturnType<typeof authApi.google>>) => void;
     vi.mocked(authApi.google).mockReturnValue(new Promise(resolve => { finish = resolve; }));
