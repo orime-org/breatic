@@ -19,23 +19,16 @@
  * showing, so the image node here points at a public one — the same way the
  * agent's own tool is measured (`agent-understand-media.spec.ts`).
  *
- * Needs a running dev stack (`pnpm dev`) and a smoke account:
+ * Needs a running dev stack (`pnpm dev`):
  *
- *   SMOKE_EMAIL=... SMOKE_PASSWORD=... pnpm --filter @breatic/web test:smoke
+ *   pnpm --filter @breatic/web test:smoke:all
  */
 import { randomUUID } from 'node:crypto';
 
 import { test, expect, type Page } from 'playwright/test';
 
-import { signIn } from './helpers/session';
-import { createSpace, deleteSpace } from './helpers/space';
-
-const email = process.env.SMOKE_EMAIL;
-const password = process.env.SMOKE_PASSWORD;
-
-test.skip(!email || !password, 'SMOKE_EMAIL / SMOKE_PASSWORD not set');
-
-test.describe.configure({ mode: 'serial' });
+import { openSmokeProject, smokeProjectId } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 /** A public JPEG, the same host the agent's own understand run is measured against. */
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
@@ -46,8 +39,8 @@ let spaceId = '';
 
 // Real node ids are uuids, and both history endpoints validate that — a
 // readable stand-in like `e2e-words` is refused before either is reached.
-const IMAGE_NODE = randomUUID();
-const WORDS_NODE = randomUUID();
+let imageNode = '';
+let wordsNode = '';
 
 /**
  * Seed a node straight into the live canvas document.
@@ -136,45 +129,45 @@ async function openNodeMenu(nodeId: string): Promise<void> {
   await node.click({ button: 'right' });
 }
 
-test.beforeAll(async ({ browser }) => {
+// Each case opens its own Space and seeds its own pair. The alternative is
+// one opening shared across the file, and a failure in the first case then
+// reports the rest as never having run — which reads as a suite that did not
+// cover them rather than one that could not.
+test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await signIn(page, email as string, password as string);
-
-  await page.goto('/studio');
-  const firstProject = page.locator('a[href^="/project/"]').first();
-  await expect(firstProject).toBeVisible({ timeout: 15_000 });
-  await firstProject.click();
-  await page.waitForURL(/\/project\//, { timeout: 15_000 });
+  await openSmokeProject(page);
   // The URL segment is the project's SLUG, which ENDS in its id. Taking the
   // whole segment names a second, empty Yjs document — writes into it land
   // nowhere the canvas reads (the same trap `audio-generate-panel` documents).
-  projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
-  expect(projectId).not.toBe('');
+  projectId = smokeProjectId();
 
   spaceId = await createSpace(page, 'canvas', `understand-e2e-${Date.now()}`);
   await expect(page.locator('.react-flow')).toBeVisible({ timeout: 20_000 });
-});
 
-test.afterAll(async () => {
-  if (spaceId) await deleteSpace(page, spaceId);
-  await page.close();
-});
-
-test('a node showing an asset offers Understand, and a text node does not', async () => {
+  imageNode = randomUUID();
+  wordsNode = randomUUID();
   await seedNode({
-    id: IMAGE_NODE,
+    id: imageNode,
     type: 'image',
     x: 0,
     data: { content: IMAGE, mimeType: 'image/jpeg', size: 40_000 },
   });
-  await seedNode({ id: WORDS_NODE, type: 'text', x: 420, body: 'Seeded words.' });
-  // Snapshot reads the body, so a node that never got one would make the
-  // next test fail for a reason that has nothing to do with Snapshot.
+  await seedNode({ id: wordsNode, type: 'text', x: 420, body: 'Seeded words.' });
+  // Snapshot reads the body, so a node that never got one would fail for a
+  // reason that has nothing to do with Snapshot.
   await expect(
-    page.locator(`.react-flow__node[data-id="${WORDS_NODE}"]`),
+    page.locator(`.react-flow__node[data-id="${wordsNode}"]`),
   ).toContainText('Seeded words.', { timeout: 10_000 });
+});
 
-  await openNodeMenu(IMAGE_NODE);
+test.afterEach(async () => {
+  if (spaceId !== '') await deleteSpace(page, spaceId);
+  await page?.close();
+  spaceId = '';
+});
+
+test('a node showing an asset offers Understand, and a text node does not @needs-internet', async () => {
+  await openNodeMenu(imageNode);
   // The item is on every node's menu; on one showing an asset it is live.
   await expect(page.getByTestId('node-menu-understand')).not.toHaveAttribute(
     'data-disabled',
@@ -184,7 +177,7 @@ test('a node showing an asset offers Understand, and a text node does not', asyn
   await expect(page.getByTestId('node-menu-snapshot')).toHaveCount(0);
   await page.keyboard.press('Escape');
 
-  await openNodeMenu(WORDS_NODE);
+  await openNodeMenu(wordsNode);
   await expect(page.getByTestId('node-menu-snapshot')).toBeVisible();
   // A text node holds words, not an asset, and the three items that act on an
   // asset are left out rather than greyed: an item greyed on every text node
@@ -193,11 +186,11 @@ test('a node showing an asset offers Understand, and a text node does not', asyn
   await page.keyboard.press('Escape');
 });
 
-test('Snapshot writes a row the history panel hands back', async () => {
-  await openNodeMenu(WORDS_NODE);
+test('Snapshot writes a row the history panel hands back @needs-internet', async () => {
+  await openNodeMenu(wordsNode);
   await page.getByTestId('node-menu-snapshot').click();
 
-  await openNodeMenu(WORDS_NODE);
+  await openNodeMenu(wordsNode);
   await page.getByTestId('node-menu-history').click();
 
   const rows = page.getByTestId('node-history-row');
@@ -207,8 +200,8 @@ test('Snapshot writes a row the history panel hands back', async () => {
   await expect(rows.first()).toContainText('Snapshot');
 });
 
-test('Understand puts a text node downstream with a row counting the run', async () => {
-  await openNodeMenu(IMAGE_NODE);
+test('Understand puts a text node downstream with a row counting the run @needs-model @needs-internet', async () => {
+  await openNodeMenu(imageNode);
   await page.getByTestId('node-menu-understand').click();
 
   // The browser builds the node and its edge before the request goes out, so
@@ -220,7 +213,7 @@ test('Understand puts a text node downstream with a row counting the run', async
   // xyflow puts the node's id on the element, not its type — the new node is
   // the one that is neither of the two seeded here.
   const readNode = page.locator(
-    `.react-flow__node:not([data-id="${IMAGE_NODE}"]):not([data-id="${WORDS_NODE}"])`,
+    `.react-flow__node:not([data-id="${imageNode}"]):not([data-id="${wordsNode}"])`,
   );
   await expect(readNode).toBeVisible();
 
