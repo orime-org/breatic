@@ -564,11 +564,13 @@ export async function designateLot(input: {
  * ask — paying the money back, or returning the lot to `active` — belongs to
  * the back office.
  *
- * Four conditions gate it. Two come from the published promise: a purchase
- * is refundable in full within thirty days if no credit was ever drawn from
- * it. The third is that the lot carries no designation, because a refund is
- * asked for on a lot the buyer has already released — we never release it for
- * them. The fourth keeps one lot to one ask at a time.
+ * Five conditions gate it. The first asks whether anybody paid: a refund
+ * returns money, and credits that were granted had none. Two come from the
+ * published promise: a purchase is refundable in full within thirty days if
+ * no credit was ever drawn from it. The fourth is that the lot carries no
+ * designation, because a refund is asked for on a lot the buyer has already
+ * released — we never release it for them. The fifth keeps one lot to one
+ * ask at a time.
  *
  * "Nothing spent" asks the ledger, not the balance. The promise turns on
  * whether a credit was ever drawn, and the ledger is the record of that; the
@@ -589,7 +591,8 @@ export async function designateLot(input: {
  * @returns The lot as it now stands.
  * @throws {NotFoundError} If the lot does not exist or belongs to someone else.
  * @throws {AppError} 409 if it still carries a designation or is already in
- * the refund flow; 422 if it has been spent from or its window has closed.
+ * the refund flow; 422 if nobody paid for it, it has been spent from, or its
+ * window has closed.
  */
 export async function requestRefund(input: {
   lotId: string;

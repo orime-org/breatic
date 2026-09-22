@@ -1557,7 +1557,7 @@
     "lotsEmpty": "No purchases yet.",
     "lotsEmptyNotice": {
       "title": "Every credit you hold is listed here",
-      "body": "Bought and granted alike, with where each came from, what it cost, how far it got, and which studio it went to."
+      "body": "Bought and granted alike, with where each came from, what it cost, how far it got, and which Studio it went to."
     },
     "assignedTo": "Assigned to {studio}",
     "ofPurchased": "of {amount}",

@@ -323,8 +323,11 @@ describe("both versions name wording that exists", () => {
   });
 
   it.each(LOCALES)("every refund line resolves in %s", (locale) => {
+    // How many lines the version in force has is pinned once, by the test
+    // that names it. A line missing from one locale comes back as its own
+    // key, which the loop catches whatever the count is.
     const lines = refundLines(locale);
-    expect(lines).toHaveLength(4);
+    expect(lines.length).toBeGreaterThan(0);
     for (const line of lines) {
       expect(line).not.toContain("server.payment.");
       expect(line.length).toBeGreaterThan(10);
@@ -362,9 +365,10 @@ describe("both versions name wording that exists", () => {
     expect(v1.join(" ")).not.toContain("assigned to a Studio");
 
     const today = refundLinesAt(REFUND_CREDITS_VERSION, "en");
-    expect(REFUND_CREDITS_VERSION).toBe("refund-credits-v2");
-    expect(today).toHaveLength(4);
+    expect(REFUND_CREDITS_VERSION).toBe("refund-credits-v3");
+    expect(today).toHaveLength(5);
     expect(today[3]).toContain("not assigned to a Studio");
+    expect(today[4]).toContain("was bought");
   });
 
   it("says so when a version names wording that is not there", () => {

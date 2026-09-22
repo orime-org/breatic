@@ -61,7 +61,7 @@ function tiers(): {
       { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
       { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
     ],
-    // The four sentences `refundLinesAt` reads out of `refund-credits-v2`,
+    // The five sentences `refundLinesAt` reads out of `refund-credits-v3`,
     // copied from locales/en.json. A sentence of this file's own invention
     // would let a test pin wording the server never sends.
     refundLines: [
@@ -69,6 +69,7 @@ function tiers(): {
       'Spent any of them, even one? That pack can no longer be refunded.',
       'Past 30 days, packs are no longer refundable.',
       'Only a pack that is not assigned to a Studio can be refunded.',
+      'Only a pack that was bought can be refunded.',
     ],
     confirmTimeoutMs: 15000,
   };
@@ -1373,8 +1374,9 @@ describe('the credits overlay, section by section', () => {
       await panel();
 
       const terms = await screen.findByTestId('refunds-terms');
-      expect(within(terms).getAllByRole('listitem')).toHaveLength(4);
+      expect(within(terms).getAllByRole('listitem')).toHaveLength(5);
       expect(terms).toHaveTextContent('not assigned to a Studio');
+      expect(terms).toHaveTextContent('was bought');
     });
 
     // The terms are the only place this screen states the rule, so a screen

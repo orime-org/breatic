@@ -18,7 +18,7 @@
       "in_debt": "這個 Studio 欠著 {owed} 點數，指定新的點數會先抵掉它。",
       "unassigned": "你有 {available} 點數未指定，指定給 Studio 後才能使用。",
       "none": "點數不足，請先儲值。",
-      "granted_elsewhere": "這筆點數是贈送的，只能用在你的個人 Studio 裡。",
+      "granted_elsewhere": "你的點數是贈送的，只能用在你的個人 Studio 裡。",
       "refund_already_asked": "這筆已經提交過退款。",
       "refund_not_purchased": "這筆點數是贈送的，沒有付過款，所以不能退款。",
       "refund_still_designated": "這筆已指定給某個 Studio，請先解除指定。",
@@ -1528,7 +1528,7 @@
     },
     "source": {
       "payment": "儲值",
-      "gift": "體驗積分",
+      "gift": "體驗點數",
       "compensation": "補償",
       "discount": "優惠"
     },
@@ -1556,8 +1556,8 @@
     },
     "lotsEmpty": "還沒有購買記錄。",
     "lotsEmptyNotice": {
-      "title": "積分是怎麼來的，都列在這裡",
-      "body": "買來的、贈送的都會列出來，顯示來源、花了多少、處理到哪一步，以及積分去了哪個 Studio。"
+      "title": "點數是怎麼來的，都列在這裡",
+      "body": "買來的、贈送的都會列出來，顯示來源、花了多少、處理到哪一步，以及點數去了哪個 Studio。"
     },
     "assignedTo": "指定給 {studio}",
     "ofPurchased": "共 {amount}",

@@ -143,10 +143,10 @@ export function RefundsSection({
       // The terms hold whatever the list is doing, so they stay on screen for
       // a reader whose list is empty or still arriving.
       //
-      // The four lines the rule is published as, read back from the version
-      // in force today. A summary written separately said two of them, and
-      // one of the two it left out is the one a buyer acts on: a pack has to
-      // be released from its Studio before it can be asked about.
+      // The lines the rule is published as, read back from the version in
+      // force today. A summary written separately said two of them, and one
+      // of the two it left out is the one a buyer acts on: a pack has to be
+      // released from its Studio before it can be asked about.
       //
       // Its own read, so the list is not held up by it — and its own three
       // states for the same reason: silence here is the one outcome that
@@ -330,8 +330,7 @@ const LotRow = React.memo(function LotRow({
           // Quiet text, no border and no fill. This column is where the ask
           // button sits, so anything drawn as a block here reads as a button
           // that has been turned off — and a state the purchase is in is not
-          // a control at all. Which step of the refund flow it is at, and
-          // whether a decision is still coming, is what the hint line says.
+          // a control at all.
             <span className='block text-xs text-muted-foreground'>{note}</span>
           )}
         </>

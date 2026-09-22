@@ -25,8 +25,8 @@ import { t } from "@breatic/shared";
  * Reject a task-enqueue request whose studio cannot cover `required` credits.
  * Skipped entirely when payments are disabled (dev / self-host).
  *
- * The pool belongs to the studio owning the project, so the refusal has four
- * distinct causes and they read as four different sentences. The one that
+ * The pool belongs to the studio owning the project, so the refusal has five
+ * distinct causes and they read as five different sentences. The one that
  * matters most is "assign them first": a lot is unassigned the moment it is
  * bought, so "bought credits, went straight back to generating" is the most
  * frequent path there is, and answering it with "available 0" tells someone

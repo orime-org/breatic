@@ -360,7 +360,8 @@ export async function listAcquisitionHistory(
       totalCents: myPayments.totalCents,
       currency: sql<string>`COALESCE(${myPayments.currency}, 'usd')`,
       // What the row brought in: the lot's own figure where one opened, and
-      // on a checkout that opened none, the zero `payments` carries.
+      // otherwise the pack size the checkout was opened for. A row with no
+      // lot carries no balance either, so the screen prints neither.
       creditsGranted: sql<number>`COALESCE(${myLots.purchasedCredits}, ${myPayments.creditsGranted})::double precision`,
       status: myPayments.status,
       // `mapWith` so the expression goes through the column's own driver
