@@ -167,12 +167,18 @@ export function StudioAccountMenu(): React.JSX.Element {
             aria-label={t('studio.topBar.account')}
             variant={null}
             size={null}
+            // As tall as the language and theme buttons beside it, with the
+            // avatar centred inside. `sideOffset` is measured from the
+            // trigger, so a 26px anchor in a 32px row hangs the menu 3px
+            // higher than those two and leaves 1px of visible gap under the
+            // bar instead of their 4.
+            //
             // Hover dims rather than tinting the background: with an avatar set
             // the background is covered by the image, so a background hover is
             // invisible. Opacity also leaves the element's box untouched — this
             // button is the menu's anchor, and anything that resizes it
             // (a scale, a border) makes the menu jump on hover.
-            className='ml-1 flex shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            className='ml-1 flex h-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
           >
             <StudioAvatar
               name={user?.name ?? '?'}
@@ -187,8 +193,8 @@ export function StudioAccountMenu(): React.JSX.Element {
         <DropdownMenuContent
           align='end'
           // 8, not the primitive's 6: the language and theme popovers sitting
-          // beside this one hang 8 below the bar, and three controls on one
-          // row at two different distances reads as a mistake.
+          // beside this one hang 8 below their triggers, and all three
+          // triggers are the same height, so the three panels open level.
           sideOffset={8}
           // The rows carry their own highlight, so with nothing between them
           // two adjacent highlights touch and read as one block. The language
