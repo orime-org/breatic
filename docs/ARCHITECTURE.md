@@ -364,6 +364,33 @@ pnpm test / typecheck / lint
 | 测试 | Vitest + Playwright + @testing-library + fast-check |
 | 监控 | Sentry |
 
+### Media transport and source changes (#499)
+
+`useMediaPlayer` mirrors the native element; React does not own a second
+playback decision. History restoration changes `src` on the existing element.
+The [HTML load algorithm](https://html.spec.whatwg.org/multipage/media.html#media-element-load-algorithm)
+resets `paused` without requiring a `pause` event, so `emptied` and `loadstart`
+must also synchronize the controls. Switching sources leaves the new resource
+paused; the user can play it normally. No autoplay or component remount is added.
+
+The hook has one state writer (`sync`) reading the current element. Its displayed
+transport state is playing or paused; time and decoded duration are snapshots,
+while a duration supplied by the node remains authoritative for the scrubber.
+
+| Event | Previously paused | Previously playing |
+|---|---|---|
+| Toggle | Read native `paused`: play if true, otherwise pause | Same native-state decision |
+| Source reset (`emptied`, `loadstart`) | Read current native transport, time and duration | Same; normally paused, time zero, decoded duration unknown |
+| `play`, `pause`, `ended` | Read current native transport, not the queued event name | Same |
+| Metadata, duration, time or volume event | Synchronize current element values | Same |
+| Play promise rejects | No optimistic state to undo; native events remain authoritative | Same |
+| Unmount | Remove all listeners; no further writes | Same |
+
+Invariants: a queued event cannot reinstate an obsolete source's state; a click
+uses native state even before React receives the event; switching one node does
+not reset another node, volume, or mute. Browser tests must decode actual audio
+and video, not mock `play()` or synthesize their load events.
+
 ### Run (web only)
 
 全量起服务(api / worker / collab / web,web 跑在 `VITE_DEV_PORT`,默认 :8000)见 [Backend 的 Run](#run);dev server 的 `/api` `/ws` 代理目标由 `PORT` / `COLLAB_PORT` 推导,前后端端口永远同源。只跑 web 用:
