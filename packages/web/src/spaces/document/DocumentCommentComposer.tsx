@@ -337,6 +337,10 @@ export function DocumentCommentComposer({
             <Button
               data-testid='doc-comment-post'
               variant='outline'
+              // The field stands at 36px and a button's default is 32, which
+              // left this row's two edges apart. `form` is the rung the
+              // ladder keeps at the field's height for exactly this pairing.
+              size='form'
               onClick={() => {
                 // A box has more ways out than its keyboard, and every one
                 // of them owes the input method the same answer

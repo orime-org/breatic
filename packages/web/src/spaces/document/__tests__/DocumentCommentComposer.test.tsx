@@ -420,4 +420,23 @@ describe('DocumentCommentComposer', () => {
       expect(screen.queryByTestId('doc-comment-composer')).toBeNull();
     });
   });
+
+  it('stands the post button at the field height, so the row lines up', async () => {
+    // Measured in the browser before this was pinned: the field is 36px and a
+    // button's default size is 32, which left the button's bottom edge four
+    // pixels above the field's and its centre two above. jsdom lays nothing
+    // out, so the height each one asks for is what can be read here.
+    const { editor } = open();
+    const run = firstRun(editor);
+    show(editor);
+    aimAt(editor, { from: run.from, to: run.from + 5 });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-comment-composer')).toBeInTheDocument();
+    });
+
+    const height = 'h-[var(--control-height)]';
+    expect(screen.getByTestId('doc-comment-input').className).toContain(height);
+    expect(screen.getByTestId('doc-comment-post').className).toContain(height);
+  });
 });
