@@ -945,6 +945,8 @@
         "filterAll": "すべて",
         "closeRail": "コメント欄を閉じる",
         "empty": "このドキュメントにはまだコメントがありません。本文を選択するか、行の左のハンドルを使ってください。",
+        "nothingUnresolved": "未解決のコメントはありません。",
+        "writeFailed": "このコメントを更新できませんでした。",
         "orphaned": "コメントの対象となった文章は削除されました。",
         "unknownAuthor": "不明",
         "folded": "他 {count} 件",

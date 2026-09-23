@@ -29,7 +29,7 @@ import {
   fireEvent,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 
@@ -47,7 +47,12 @@ import { selectThreads } from '@web/spaces/document/document-comment-selection';
 import { replyToThread } from '@web/spaces/document/document-comment-thread-actions';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
+import { toast } from '@web/lib/toast';
 import { useCurrentUserStore } from '@web/stores/current-user';
+
+vi.mock('@web/lib/toast', () => ({
+  toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
+}));
 
 /** Who the reader is while these cases run. */
 const ME = 'u1';
@@ -468,5 +473,41 @@ describe('what a card lets a reader do', () => {
     expect(screen.queryByTestId('doc-comment-reply-input')).toBeNull();
     expect(screen.queryByTestId('doc-comment-resolve')).toBeNull();
     expect(screen.queryByTestId('doc-comment-delete')).toBeNull();
+  });
+
+  it('says so when a write does not go through', async () => {
+    // The store asks its own auth before every write and throws when the
+    // answer is no, and a thread a peer settled or deleted throws as well.
+    // Whether that happens is not ours to promise; whether the reader is
+    // told is.
+    await open();
+    await comment('about alpha');
+    await read();
+    const store = handle.editor.getExtension(CommentsExtension)!.threadStore;
+    vi.spyOn(store, 'resolveThread').mockRejectedValue(new Error('refused'));
+
+    await userEvent.click(screen.getByTestId('doc-comment-resolve'));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalled();
+    });
+  });
+
+  it('says so when a reply does not go through', async () => {
+    await open();
+    await comment('about alpha');
+    await read();
+    const store = handle.editor.getExtension(CommentsExtension)!.threadStore;
+    vi.spyOn(store, 'addComment').mockRejectedValue(new Error('refused'));
+
+    await userEvent.type(
+      screen.getByTestId('doc-comment-reply-input'),
+      'a reply',
+    );
+    await userEvent.click(screen.getByTestId('doc-comment-reply-save'));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalled();
+    });
   });
 });

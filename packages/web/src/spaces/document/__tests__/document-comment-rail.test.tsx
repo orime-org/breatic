@@ -444,6 +444,49 @@ describe('the comment panel', () => {
     });
   });
 
+  it('says the filter is empty rather than the document', async () => {
+    // A9: with the one comment settled, the open filter has nothing in it
+    // while the document still holds a thread to read behind "all". Saying
+    // "no comments yet" there sends the reader looking for something to
+    // press, and the thing they want is one filter away.
+    show();
+    await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
+    await userEvent.click(await screen.findByTestId('doc-comment-card'));
+    await userEvent.click(screen.getByTestId('doc-comment-resolve'));
+
+    const empty = await screen.findByTestId('doc-comment-rail-empty');
+    expect(empty.textContent).not.toBe(
+      'No comments yet. Select some text, or use the handle beside a line.',
+    );
+    expect(empty.textContent).toBe('Nothing unresolved.');
+  });
+
+  it('offers its controls on one of two overlapping threads, not both', async () => {
+    // A20: pressing where two comments overlap lists both so the reader can
+    // pick. Opening both puts two reply boxes on screen at once and neither
+    // of them is the one they meant.
+    show();
+    await comment(0, 11, 'the wider one');
+    await comment(6, 19, 'the other one');
+    await pressCommentsRow();
+    const ids = [
+      ...handle.editor
+        .getExtension(CommentsExtension)!
+        .threadStore.getThreads()
+        .keys(),
+    ];
+
+    act(() => {
+      selectThreads(handle.editor, ids);
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('doc-comment-card')).toHaveLength(2);
+    });
+    expect(screen.getAllByTestId('doc-comment-reply-input')).toHaveLength(1);
+  });
+
   it('stops watching a card once it has left the panel', async () => {
     // By the node, not by the call count: the primitives the panel is built
     // from watch elements of their own, so a bare `toHaveBeenCalled` passes

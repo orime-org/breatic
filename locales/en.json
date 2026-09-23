@@ -945,6 +945,8 @@
         "filterAll": "All",
         "closeRail": "Close comments",
         "empty": "No comments yet. Select some text, or use the handle beside a line.",
+        "nothingUnresolved": "Nothing unresolved.",
+        "writeFailed": "The comment could not be updated.",
         "orphaned": "The text this is about was deleted.",
         "unknownAuthor": "Unknown",
         "folded": "{count, plural, one {# more comment} other {# more comments}}",

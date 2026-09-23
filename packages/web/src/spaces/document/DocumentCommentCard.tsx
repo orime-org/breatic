@@ -63,8 +63,21 @@ import type {
 interface DocumentCommentCardProps {
   /** The thread this card is for. */
   card: CommentCardView;
-  /** Whether this is a thread the reader pressed in the body. */
-  selected: boolean;
+  /**
+   * Whether that press in the body landed on this thread.
+   *
+   * A press where two comments overlap lands on both (A20), so this says
+   * "you hit this one" and nothing more — the card draws its border with it.
+   */
+  marked: boolean;
+  /**
+   * Whether this is the thread the reader is reading.
+   *
+   * One at a time, even where a press marked two: two reply boxes open at
+   * once and neither is the one they meant. Everything a reader can do to a
+   * thread is offered here and nowhere else.
+   */
+  reading: boolean;
   /** This reader's role on the project. */
   myRole: ProjectRole;
   /** This reader's account id, absent until the session resolves. */
@@ -186,7 +199,8 @@ function Entry({
  * One thread's card.
  * @param root0 - See {@link DocumentCommentCardProps}.
  * @param root0.card - The thread to draw.
- * @param root0.selected - Whether the reader pressed this thread's highlight.
+ * @param root0.marked - Whether the press in the body landed on this thread.
+ * @param root0.reading - Whether this is the thread being read.
  * @param root0.myRole - This reader's role.
  * @param root0.viewerId - This reader's account id.
  * @param root0.draft - What has been written into the reply box and not sent.
@@ -200,7 +214,8 @@ function Entry({
  */
 export const DocumentCommentCard = React.memo(function DocumentCommentCard({
   card,
-  selected,
+  marked,
+  reading,
   myRole,
   viewerId,
   draft,
@@ -232,7 +247,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
   }).canDelete;
 
   // What a folded thread draws: its first comment and its most recent one.
-  const folded = !selected && card.entries.length > FOLDED_ENTRY_COUNT;
+  const folded = !reading && card.entries.length > FOLDED_ENTRY_COUNT;
   const drawn = folded
     ? [card.entries[0]!, card.entries[card.entries.length - 1]!]
     : card.entries;
@@ -266,7 +281,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       data-testid='doc-comment-card'
       data-thread={card.id}
       data-state={card.state}
-      data-selected={selected}
+      data-selected={marked}
       className='rounded-content-sm border border-border bg-card p-2.5 data-[selected=true]:border-active-border data-[state=resolved]:opacity-70 data-[state=resolvedOrphaned]:opacity-70'
     >
       {card.quote === null ? (
@@ -292,7 +307,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
             // The opening comment is the thread: withdrawing it is withdrawing
             // the thread, which is the control below rather than this one.
             canDelete={
-              selected &&
+              reading &&
               entry.id !== card.entries[0]?.id &&
               annotationRights({
                 role: myRole,
@@ -322,7 +337,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
 
       {/* A settled thread takes no replies: the discussion is over until
           somebody reopens it. */}
-      {mayWrite && selected && !settled && (
+      {mayWrite && reading && !settled && (
         // The box takes the whole width and the pair sits under it, the shape
         // a canvas note's reply row settles on: side by side, the buttons
         // take the width the words need, and they are worth drawing only once
@@ -380,7 +395,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
         </div>
       )}
 
-      {mayWrite && selected && (
+      {mayWrite && reading && (
         <div className='mt-2.5 flex gap-1.5 border-t border-border pt-2'>
           {settled ? (
             <Button

@@ -945,6 +945,8 @@
         "filterAll": "全部",
         "closeRail": "关闭批注栏",
         "empty": "这篇文档还没有批注。选中正文里的文字，或者点行左边的抓手。",
+        "nothingUnresolved": "没有未解决的批注。",
+        "writeFailed": "这条批注没能更新。",
         "orphaned": "批注的原文已删除。",
         "unknownAuthor": "未知",
         "folded": "还有 {count} 条",

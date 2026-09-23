@@ -24,13 +24,14 @@
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TextSelection } from '@tiptap/pm/state';
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
 
 import { CommentsExtension } from '@blocknote/core/comments';
 
 import { documentBodyFragment, documentCommentThreads } from '@breatic/shared';
 
+import { toast } from '@web/lib/toast';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentCommentComposer } from '@web/spaces/document/DocumentCommentComposer';
 import {
@@ -105,6 +106,10 @@ function show(editor: Editor, myRole: 'editor' | 'viewer' = 'editor'): void {
   render(<DocumentCommentComposer editor={editor} myRole={myRole} />);
 }
 
+vi.mock('@web/lib/toast', () => ({
+  toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
+}));
+
 describe('DocumentCommentComposer', () => {
   it('stays away while no draft is open', () => {
     const { editor } = open();
@@ -124,6 +129,31 @@ describe('DocumentCommentComposer', () => {
       expect(screen.getByTestId('doc-comment-composer')).toBeInTheDocument();
     });
     expect(aimedWords(editor)).toBe('alpha');
+  });
+
+  it('says so when the thread cannot be opened', async () => {
+    // The store asks its auth before writing, and the words may be gone by
+    // the time the press lands. Whether that happens is not ours to promise;
+    // whether the reader is told is — the box closes either way, so silence
+    // reads as "posted".
+    const { editor } = open();
+    const run = firstRun(editor);
+    show(editor);
+    aimAt(editor, { from: run.from, to: run.from + 5 });
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-comment-composer')).toBeInTheDocument();
+    });
+    const comments = editor.getExtension(CommentsExtension)!;
+    vi.spyOn(comments.threadStore, 'createThread').mockRejectedValue(
+      new Error('refused'),
+    );
+
+    await userEvent.type(screen.getByTestId('doc-comment-input'), 'a thought');
+    await userEvent.click(screen.getByTestId('doc-comment-post'));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalled();
+    });
   });
 
   it('posts what the reader typed, marking the words', async () => {

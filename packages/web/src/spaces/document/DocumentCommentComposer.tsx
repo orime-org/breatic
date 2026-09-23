@@ -65,6 +65,7 @@ import {
   onDraftRangeChange,
 } from '@web/spaces/document/document-comment-draft-range';
 import { postComment } from '@web/spaces/document/document-comment-post';
+import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
@@ -223,6 +224,8 @@ export function DocumentCommentComposer({
     refs.setReference(reference);
   }, [refs, reference]);
 
+  const said = useCommentWrite();
+
   /**
    * Posts what the reader wrote, then closes the box.
    */
@@ -235,12 +238,12 @@ export function DocumentCommentComposer({
       return;
     }
     setDraft(saved);
-    void postComment(editor, saved.commit).finally(() => {
+    void said(postComment(editor, saved.commit)).finally(() => {
       // The range is what says a draft is open, so clearing it is what closes
       // the box — and it has to happen whether the post landed or threw.
       clearRange(editor);
     });
-  }, [draft, editor, clearRange]);
+  }, [draft, editor, clearRange, said]);
 
   // Enter posts and an input method's Enter belongs to the input method —
   // the rules a canvas note's boxes take, from the one place all of them

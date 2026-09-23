@@ -50,6 +50,7 @@ import {
   useCommentCards,
   type CommentCardView,
 } from '@web/spaces/document/use-comment-cards';
+import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 interface DocumentCommentRailProps {
@@ -76,7 +77,7 @@ const CLEARANCE_BELOW_HEADER_PX = 4;
 /** What every card takes from the panel, the same for all of them. */
 type CardHandling = Omit<
   React.ComponentProps<typeof DocumentCommentCard>,
-  'card' | 'selected' | 'draft'
+  'card' | 'marked' | 'reading' | 'draft'
 >;
 
 /**
@@ -105,33 +106,36 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     () => selectedThreadsIn(editor.prosemirrorState),
   );
 
+  const said = useCommentWrite();
+
   const onReply = React.useCallback(
-    (threadId: string, body: string) => replyToThread(editor, threadId, body),
-    [editor],
+    async (threadId: string, body: string) =>
+      (await said(replyToThread(editor, threadId, body))) ?? false,
+    [editor, said],
   );
   const onResolve = React.useCallback(
     (threadId: string) => {
-      void resolveThread(editor, threadId);
+      void said(resolveThread(editor, threadId));
     },
-    [editor],
+    [editor, said],
   );
   const onReopen = React.useCallback(
     (threadId: string) => {
-      void reopenThread(editor, threadId);
+      void said(reopenThread(editor, threadId));
     },
-    [editor],
+    [editor, said],
   );
   const onDelete = React.useCallback(
     (threadId: string) => {
-      void removeThread(editor, threadId);
+      void said(removeThread(editor, threadId));
     },
-    [editor],
+    [editor, said],
   );
   const onDeleteReply = React.useCallback(
     (threadId: string, commentId: string) => {
-      void removeReply(editor, threadId, commentId);
+      void said(removeReply(editor, threadId, commentId));
     },
-    [editor],
+    [editor, said],
   );
 
   // What has been written into each thread's reply box and not sent yet. Held
@@ -294,7 +298,13 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     setFilter('all');
   }, []);
 
-  const empty = shown.length === 0;
+  // Two different nothings, and they send the reader different places: a
+  // document nobody has commented on wants to know how to start one, while a
+  // filter that happens to be empty wants to say so — what they are looking
+  // for is one press away, behind "all".
+  const nothingHere = shown.length === 0;
+  const nothingAnywhere =
+    cards.unresolved.length === 0 && cards.resolved.length === 0;
 
   return (
     <aside
@@ -344,12 +354,16 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
         data-testid='doc-comment-rail-column'
         className='relative flex-1 px-2.5'
       >
-        {empty ? (
+        {nothingHere ? (
           <p
             data-testid='doc-comment-rail-empty'
             className='px-4 py-7 text-center text-sm leading-relaxed text-muted-foreground'
           >
-            {t('spaces.document.comment.empty')}
+            {t(
+              nothingAnywhere
+                ? 'spaces.document.comment.empty'
+                : 'spaces.document.comment.nothingUnresolved',
+            )}
           </p>
         ) : (
           <div className='absolute inset-x-2.5 top-0'>
@@ -358,7 +372,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
                 key={card.id}
                 card={card}
                 top={placed.get(card.id) ?? 0}
-                selected={selected.includes(card.id)}
+                marked={selected.includes(card.id)}
+                reading={reading === card.id}
                 draft={drafts.get(card.id) ?? ''}
                 take={take}
                 giveBack={giveBack}
@@ -379,8 +394,10 @@ interface PlacedCardProps {
   card: CommentCardView;
   /** How far down the column it sits. */
   top: number;
-  /** Whether the reader has this thread open. */
-  selected: boolean;
+  /** Whether the press in the body landed on this thread. */
+  marked: boolean;
+  /** Whether this is the thread being read. */
+  reading: boolean;
   /** What has been written into its reply box and not sent. */
   draft: string;
   /** Takes this card's element into the panel's measurements. */
@@ -408,7 +425,8 @@ interface PlacedCardProps {
  * @param root0 - See {@link PlacedCardProps}.
  * @param root0.card - The thread this draws.
  * @param root0.top - How far down the column it sits.
- * @param root0.selected - Whether the reader has this thread open.
+ * @param root0.marked - Whether the press landed on this thread.
+ * @param root0.reading - Whether this is the thread being read.
  * @param root0.draft - What has been written into its reply box.
  * @param root0.take - Takes this card's element into the measurements.
  * @param root0.giveBack - Gives back what was held under this card's id.
@@ -420,7 +438,8 @@ interface PlacedCardProps {
 function PlacedCard({
   card,
   top,
-  selected,
+  marked,
+  reading,
   draft,
   take,
   giveBack,
@@ -451,7 +470,7 @@ function PlacedCard({
       // by moving, and while one is settling — a reply box opening, a height
       // not measured yet — they can still overlap; the one the reader is on
       // is the one to see whole.
-      style={{ top: `${String(top)}px`, zIndex: selected ? 1 : undefined }}
+      style={{ top: `${String(top)}px`, zIndex: reading ? 1 : undefined }}
       onMouseEnter={() => {
         onHover(card.id);
       }}
@@ -468,7 +487,13 @@ function PlacedCard({
         onRead(card.id);
       }}
     >
-      <DocumentCommentCard card={card} selected={selected} draft={draft} {...handling} />
+      <DocumentCommentCard
+        card={card}
+        marked={marked}
+        reading={reading}
+        draft={draft}
+        {...handling}
+      />
     </div>
   );
 }
