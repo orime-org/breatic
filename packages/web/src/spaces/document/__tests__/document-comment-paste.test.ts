@@ -24,7 +24,10 @@ import { describe, it, expect } from 'vitest';
 import * as Y from 'yjs';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { stripCommentMarks } from '@web/spaces/document/document-comment-paste';
+import {
+  commentsArrivingWith,
+  stripCommentMarks,
+} from '@web/spaces/document/document-comment-paste';
 
 /**
  * The ProseMirror schema this build assembles.
@@ -170,5 +173,62 @@ describe('stripCommentMarks', () => {
     expect(stripped.content.childCount).toBe(2);
     expect(stripped.content.child(0).textContent).toBe('first');
     expect(stripped.content.child(1).textContent).toBe('second');
+  });
+});
+
+describe('commentsArrivingWith', () => {
+  /** A slice of one commented run, the shape every case below starts from. */
+  const commented = (text: string): Slice =>
+    new Slice(
+      Fragment.from(
+        schema.nodes.paragraph.create(null, [schema.text(text, [comment('t1')])]),
+      ),
+      0,
+      0,
+    );
+
+  /** A view that is dragging what the argument says, or nothing. */
+  const viewThatIs = (
+    dragging: { move: boolean } | null,
+  ): Parameters<typeof commentsArrivingWith>[1] =>
+    ({ state: { schema }, dragging }) as never;
+
+  it('takes the comment off content that was pasted', () => {
+    const landed = commentsArrivingWith(commented('commented'), viewThatIs(null));
+
+    expect(threadIdsIn(landed.content)).toEqual([]);
+  });
+
+  it('takes it off content that was dragged as a copy', () => {
+    // Holding the modifier turns a drag into a copy, and a copy is a copy
+    // however it was made.
+    const landed = commentsArrivingWith(
+      commented('commented'),
+      viewThatIs({ move: false }),
+    );
+
+    expect(threadIdsIn(landed.content)).toEqual([]);
+  });
+
+  it('keeps it on content that was dragged to a new place', () => {
+    // The words are the same words, in a new position: what was said about
+    // them still applies (user 2026-09-23).
+    const landed = commentsArrivingWith(
+      commented('commented'),
+      viewThatIs({ move: true }),
+    );
+
+    expect(threadIdsIn(landed.content)).toEqual(['t1']);
+  });
+
+  it('keeps it on the part that was dragged, however small that part is', () => {
+    // Half of a commented run, dragged away: it carries the comment, and the
+    // half left behind keeps its own marks because nothing touched them. One
+    // thread, highlighted in two places — the same shape an Enter through a
+    // comment already leaves (measured 2026-09-23).
+    const landed = commentsArrivingWith(commented('half'), viewThatIs({ move: true }));
+
+    expect(threadIdsIn(landed.content)).toEqual(['t1']);
+    expect(landed.content.child(0).textContent).toBe('half');
   });
 });
