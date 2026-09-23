@@ -4,9 +4,8 @@
 /**
  * What the browser does with an upload that ended badly (#186 §3.7.3).
  *
- * Pure, so the rule is readable without a canvas: the caller performs the two
- * side effects (a toast, and either keeping the File or dropping the node it
- * created).
+ * Pure, so the rule is readable without a canvas: the caller performs the side
+ * effects (a toast, and keeping the File where a Retry can re-send it).
  */
 
 import type { UploadFailure } from '@web/spaces/canvas/canvas-upload';
@@ -19,7 +18,9 @@ import type { UploadFailure } from '@web/spaces/canvas/canvas-upload';
  * File under its id is what lets the row's own Retry re-send it.
  *
  * `nobodyKnows` — the ticket never was. No row and no grant: nothing on the
- * server can end this, so the empty node this drop created has no future.
+ * server can end this, so the toast is the whole of what this side can say.
+ * The node stays either way — a node that exists is the reader's to remove,
+ * and only theirs (#2177).
  */
 export type UploadFailurePlan =
   | {
