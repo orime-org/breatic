@@ -64,7 +64,7 @@ vi.mock("@server/utils/send-best-effort-mail.js", () => ({
 
 import type Stripe from "stripe";
 import postgres from "postgres";
-import { initCore, loadLocales, getUserMembershipTier } from "@breatic/core";
+import { initCore, loadLocales, getUserMembershipTier, getSubscriptionPlan } from "@breatic/core";
 import { upsertSubscription } from "@breatic/core";
 import { handleSubscriptionEvent } from "@server/modules/subscription/subscription-events.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
@@ -96,8 +96,12 @@ afterAll(async () => {
   await sql?.end({ timeout: 1 });
 });
 
-const PRO_PRICE = "price_1U5OqmGeRYMxofhepn2ij8zp";
-const TEAM_PRICE = "price_1U5OrkGeRYMxofhepeUDWhqB";
+// Asked of the same loader the code under test asks, so the suite cannot
+// disagree with the price list it is running against. What that list holds
+// depends on the machine: a developer's own `config/subscription.yaml`, or
+// the fixture `global-setup.ts` lays down when there is none.
+const PRO_PRICE = getSubscriptionPlan("pro", "month").stripePriceId;
+const TEAM_PRICE = getSubscriptionPlan("team", "month").stripePriceId;
 const PERIOD_END = Math.floor(Date.now() / 1000) + 30 * 24 * 3600;
 
 /**

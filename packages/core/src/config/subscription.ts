@@ -216,12 +216,17 @@ export function getSubscriptionPlan(
  * this, asking about an empty id would get back whichever empty slot came
  * first.
  * @param priceId - A Stripe price id.
+ * @param plans - The plans to search. Defaults to this deployment's, which is
+ *   what every caller wants; a test passes its own so that asserting this
+ *   mapping does not require the deployment's own price file to exist.
  * @returns The offer it sells, or null when no plan uses it.
  * @throws {Error} When the file is missing, malformed, or lacks a tier's plan.
  */
-export function findOfferByPriceId(priceId: string): MembershipOffer | null {
+export function findOfferByPriceId(
+  priceId: string,
+  plans: SubscriptionPlans = getSubscriptionPlans(),
+): MembershipOffer | null {
   if (priceId === "") return null;
-  const plans = getSubscriptionPlans();
   for (const tier of SUBSCRIBABLE_MEMBERSHIP_TIERS) {
     for (const period of BILLING_PERIODS) {
       if (plans[tier][period].stripePriceId === priceId) {

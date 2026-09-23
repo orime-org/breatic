@@ -10,17 +10,9 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { parse } from "yaml";
-import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@breatic/shared";
-import { env, MONOREPO_ROOT } from "@core/config/env.js";
 import {
   subscriptionConfigSchema,
   resolvePlans,
-  getSubscriptionPlans,
-  getSubscriptionPlan,
-  getSubscriptionStaleAfterDays,
   findOfferByPriceId,
 } from "@core/config/subscription.js";
 
@@ -115,56 +107,48 @@ describe("subscription config — resolving plans", () => {
   });
 });
 
-describe("subscription config — reads config/subscription.yaml", () => {
-  it("ships a priced plan for every tier and period", () => {
-    const plans = getSubscriptionPlans();
-    for (const tier of SUBSCRIBABLE_MEMBERSHIP_TIERS) {
-      expect(plans[tier].month.priceCents).toBeGreaterThan(0);
-      expect(plans[tier].year.priceCents).toBeGreaterThan(0);
-    }
-  });
+describe("findOfferByPriceId", () => {
+  // Every subscription Stripe reports about carries a price id and nothing
+  // else of ours, so this lookup is what turns a webhook into a tier and a
+  // billing period. Asserted against plans passed in: the deployment's own
+  // price file is not in the repository, and a lookup that only works
+  // against it is a lookup nothing can check.
+  const plans = resolvePlans(validFile, false);
 
-  it("still has no price id for the annual plans nobody has created yet", () => {
-    // The eight Stripe prices are created by hand before launch (design 1.1).
-    // Asserting the gap keeps it visible: when the annual ones arrive this
-    // goes red, which is the reminder to fill the file in.
-    const plans = getSubscriptionPlans();
-    for (const tier of SUBSCRIBABLE_MEMBERSHIP_TIERS) {
-      expect(plans[tier].month.stripePriceId).not.toBe("");
-      expect(plans[tier].year.stripePriceId).toBe("");
-    }
-  });
-
-  it("carries the ratified monthly prices", () => {
-    // $19.99 and $79.99 (marketing decision, repriced 2026-09-01). Asserted
-    // against the file rather than against each other, so a swap of the two
-    // rows fails here.
-    expect(getSubscriptionPlan("pro", "month").priceCents).toBe(1999);
-    expect(getSubscriptionPlan("team", "month").priceCents).toBe(7999);
-  });
-
-  it("reads the price ids the file really carries, for this environment", () => {
-    const raw = parse(
-      readFileSync(resolve(MONOREPO_ROOT, "config/subscription.yaml"), "utf-8"),
-    ) as typeof validFile;
-    const ids = raw.plans.pro.periods.month.stripe_price_id;
-    expect(getSubscriptionPlan("pro", "month").stripePriceId).toBe(
-      env.ENV === "prod" ? ids.live : ids.test,
-    );
-  });
-
-  it("carries the window a lapsed subscription is honoured for", () => {
-    // Stripe's own Smart Retries default is two weeks; shorter would take the
-    // tier away from somebody whose card is still being retried.
-    expect(getSubscriptionStaleAfterDays()).toBe(14);
-  });
-
-  it("maps a price id back to the offer it sells", () => {
-    const proPriceId = getSubscriptionPlan("pro", "month").stripePriceId;
-    expect(findOfferByPriceId(proPriceId)).toEqual({
-      tier: "pro",
-      period: "month",
+  it("answers both the tier and the period a price sells", () => {
+    expect(findOfferByPriceId("price_test_team_y", plans)).toEqual({
+      tier: "team",
+      period: "year",
     });
-    expect(findOfferByPriceId("price_nothing")).toBeNull();
+  });
+
+  it("answers null for a price this deployment does not sell", () => {
+    expect(findOfferByPriceId("price_somebody_elses", plans)).toBeNull();
+  });
+
+  it("answers null for an empty id rather than matching an unsold period", () => {
+    // Price ids are pasted in by hand, and a period nobody has created a
+    // price for yet sits in the file as an empty string. Without this an
+    // empty id would match whichever empty slot came first.
+    const withUnsoldAnnual = resolvePlans(
+      {
+        ...validFile,
+        plans: {
+          ...validFile.plans,
+          pro: {
+            ...validFile.plans.pro,
+            periods: {
+              ...validFile.plans.pro.periods,
+              year: {
+                ...validFile.plans.pro.periods.year,
+                stripe_price_id: { test: "", live: "" },
+              },
+            },
+          },
+        },
+      },
+      false,
+    );
+    expect(findOfferByPriceId("", withUnsoldAnnual)).toBeNull();
   });
 });

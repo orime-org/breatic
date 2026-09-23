@@ -1,0 +1,44 @@
+# Membership plans for the integration suites.
+#
+# `config/subscription.yaml` names what a deployment really charges and which
+# Stripe objects it really sells, so git does not track it and a clean
+# checkout has none. The suites that exercise the membership panel, the
+# checkout and the subscription webhooks still need plans to exercise, and
+# what they need is a fixture: figures that assertions can name, and price ids
+# that belong to nobody.
+#
+# `global-setup.ts` copies this to `config/subscription.yaml` when that file
+# is absent, and removes it again afterwards. A developer's own file is left
+# alone.
+
+plans:
+  pro:
+    currency: usd
+    periods:
+      month:
+        price_cents: 1999
+        stripe_price_id:
+          test: "price_fixture_pro_month"
+          live: ""
+      year:
+        price_cents: 19999
+        stripe_price_id:
+          test: "price_fixture_pro_year"
+          live: ""
+  team:
+    currency: usd
+    periods:
+      month:
+        price_cents: 7999
+        stripe_price_id:
+          test: "price_fixture_team_month"
+          live: ""
+      year:
+        price_cents: 79999
+        stripe_price_id:
+          test: "price_fixture_team_year"
+          live: ""
+
+stale_after_days: 14
+
+stripe_call_timeout_ms: 5000

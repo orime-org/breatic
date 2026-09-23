@@ -1,4 +1,17 @@
-# Membership subscription plans (task #106, periods added in #253).
+# Template for config/subscription.yaml — membership plans.
+#
+# Copy this file to `config/subscription.yaml` and fill in your own figures
+# and Stripe price ids. The copy is not tracked by git: it names the prices a
+# deployment really charges and the Stripe objects it really sells, and
+# neither belongs to anybody but the deployment that holds them.
+#
+# Read only when PAYMENT_ENABLED=true. A deployment that sells nothing never
+# opens this file, and `initCore` only asks for it when payments are on — so
+# a self-hosted install with payments off needs no copy at all.
+#
+# Every `price_cents` below is 0, which the loader's schema rejects
+# (`z.number().int().positive()`). Copying this file without editing it is
+# therefore refused rather than silently charging a price nobody set.
 #
 # One entry per subscribable tier, and inside it one per billing period.
 # `base` has no entry: it is what an account falls back to when it subscribes
@@ -16,20 +29,22 @@
 # its two periods in different currencies, so putting it inside `periods`
 # would be the same value written twice.
 #
-# The figures here are what the page prints. What Stripe actually charges is
-# compared against them where money moves (design section 1.2), and checked by
-# hand before launch.
+# An annual price must be created in Stripe with interval `year`, not with
+# interval `month` and a count of 12. The two charge the same amount, and the
+# reconciliation compares `recurring.interval` against the period slot a price
+# sits in here, so the second spelling is read as a disagreement and the tier
+# is refused.
 plans:
   pro:
     currency: usd
     periods:
       month:
-        price_cents: 1999
+        price_cents: 0
         stripe_price_id:
-          test: "price_1U5OqmGeRYMxofhepn2ij8zp"
+          test: ""
           live: ""
       year:
-        price_cents: 19999
+        price_cents: 0
         stripe_price_id:
           test: ""
           live: ""
@@ -37,12 +52,12 @@ plans:
     currency: usd
     periods:
       month:
-        price_cents: 7999
+        price_cents: 0
         stripe_price_id:
-          test: "price_1U5OrkGeRYMxofhepeUDWhqB"
+          test: ""
           live: ""
       year:
-        price_cents: 79999
+        price_cents: 0
         stripe_price_id:
           test: ""
           live: ""

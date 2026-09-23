@@ -9,6 +9,13 @@ dist/
 # Environment
 .env
 
+# Payment configuration — what this deployment charges and which Stripe
+# objects it sells. Copy the .template beside each and fill in your own.
+# Read only when PAYMENT_ENABLED=true; initCore refuses to start without
+# them when it is.
+/config/subscription.yaml
+/config/pricing.yaml
+
 # SSL certificates (never commit)
 docker/certs/*
 !docker/certs/README.md

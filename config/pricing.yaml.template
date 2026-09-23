@@ -1,62 +1,74 @@
-# Credit purchase tiers.
+# Template for config/pricing.yaml — credit purchase packs.
 #
-# The five figures come from the credits decision of 2026-07-31, recalculated
-# 2026-08-25. Credits per tier are fixed by one formula and never rounded up:
+# Copy this file to `config/pricing.yaml` and fill in your own figures and
+# Stripe price ids. The copy is not tracked by git: it names what a deployment
+# really charges and the Stripe objects it really sells, and neither belongs to
+# anybody but the deployment that holds them.
 #
-#   credits = floor( dollars × (1 − worst-case cost − 0.5%) × 100 / 10 ) × 10
+# Read only when PAYMENT_ENABLED=true. A deployment that sells nothing never
+# opens this file, and `initCore` only asks for it when payments are on — so a
+# self-hosted install with payments off needs no copy at all.
 #
-# `price_cents` is what the tier is listed at, before tax. Stripe Tax adds the
-# buyer's local tax on top at checkout, so the number shown on the page is not
-# the number the buyer pays. Every Price created for these tiers carries
+# Every `credits` and `price_cents` below is 0, which the loader's schema
+# rejects (`z.number().int().positive()`). Copying this file without editing it
+# is therefore refused rather than silently selling a pack nobody priced.
+#
+# How many credits a pack grants is a decision about margin, not a figure to
+# invent: pick it from what your own generation costs, and leave room for the
+# worst case rather than the average.
+#
+# `price_cents` is what the pack is listed at, before tax. With Stripe Tax on,
+# the buyer's local tax is added at checkout, so the number shown on the page
+# is not the number the buyer pays. Create each Price with
 # `tax_behavior: exclusive`, which Stripe cannot change once set.
 #
-# Each tier carries a test and a live Stripe Price ID; the backend picks by ENV
-# (dev/staging → test, prod → live). Both stay empty until the Prices exist.
+# Each pack carries a test and a live Stripe price id; the backend picks by ENV
+# (dev/staging → test, prod → live).
 #
-# `name` identifies a tier to whoever edits this file, and appears in the
-# message for a tier with no Price ID configured. No screen reads it: a buyer
+# `name` identifies a pack to whoever edits this file, and appears in the
+# message for a pack with no price id configured. No screen reads it: a buyer
 # picks a pack by its price and what it grants, and a checkout request names
 # one by `price_cents`.
 
 tiers:
-  - name: "830 Credits"
-    credits: 830
-    price_cents: 1000
+  - name: "Starter pack"
+    credits: 0
+    price_cents: 0
     currency: usd
     stripe_price_id:
-      test: "price_1U8aBUGeRYMxofheEfpNDked"
+      test: ""
       live: ""
 
-  - name: "1,700 Credits"
-    credits: 1700
-    price_cents: 2000
+  - name: "Small pack"
+    credits: 0
+    price_cents: 0
     currency: usd
     stripe_price_id:
-      test: "price_1U8aC0GeRYMxofhevMFDox6Z"
+      test: ""
       live: ""
 
-  - name: "4,320 Credits"
-    credits: 4320
-    price_cents: 5000
+  - name: "Medium pack"
+    credits: 0
+    price_cents: 0
     currency: usd
     stripe_price_id:
-      test: "price_1U8aCuGeRYMxofhe2WVbQEso"
+      test: ""
       live: ""
 
-  - name: "8,690 Credits"
-    credits: 8690
-    price_cents: 10000
+  - name: "Large pack"
+    credits: 0
+    price_cents: 0
     currency: usd
     stripe_price_id:
-      test: "price_1U8aDGGeRYMxofheU2u9PGh8"
+      test: ""
       live: ""
 
-  - name: "43,660 Credits"
-    credits: 43660
-    price_cents: 50000
+  - name: "Bulk pack"
+    credits: 0
+    price_cents: 0
     currency: usd
     stripe_price_id:
-      test: "price_1U8aDcGeRYMxofheekj677zO"
+      test: ""
       live: ""
 
 # Repairing payments that neither the return-side confirmation nor the webhook
@@ -95,4 +107,4 @@ confirm_timeout_ms: 15000
 #
 # Zero means none are granted; the figure is a real zero, not a sentinel.
 trial_grant:
-  credits: 100
+  credits: 0

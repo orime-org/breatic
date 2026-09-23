@@ -1,0 +1,67 @@
+# Credit packs for the integration suites.
+#
+# `config/pricing.yaml` names what a deployment really charges and which
+# Stripe objects it really sells, so git does not track it and a clean
+# checkout has none. The suites that exercise checkout, fulfilment and the
+# credit ledger still need a price list to exercise, and what they need is a
+# fixture: figures that assertions can name, and price ids that belong to
+# nobody.
+#
+# `global-setup.ts` copies this to `config/pricing.yaml` when that file is
+# absent, and removes it again afterwards. A developer's own file is left
+# alone.
+#
+# `live` is blank on every pack on purpose: one suite switches ENV to prod to
+# reach the guard that refuses a pack Stripe has nothing to charge for.
+
+tiers:
+  - name: "830 Credits"
+    credits: 830
+    price_cents: 1000
+    currency: usd
+    stripe_price_id:
+      test: "price_fixture_pack_1000"
+      live: ""
+
+  - name: "1,700 Credits"
+    credits: 1700
+    price_cents: 2000
+    currency: usd
+    stripe_price_id:
+      test: "price_fixture_pack_2000"
+      live: ""
+
+  - name: "4,320 Credits"
+    credits: 4320
+    price_cents: 5000
+    currency: usd
+    stripe_price_id:
+      test: "price_fixture_pack_5000"
+      live: ""
+
+  - name: "8,690 Credits"
+    credits: 8690
+    price_cents: 10000
+    currency: usd
+    stripe_price_id:
+      test: "price_fixture_pack_10000"
+      live: ""
+
+  - name: "43,660 Credits"
+    credits: 43660
+    price_cents: 50000
+    currency: usd
+    stripe_price_id:
+      test: "price_fixture_pack_50000"
+      live: ""
+
+reconcile:
+  batch_size: 3
+  min_age_seconds: 120
+
+stale_sending_minutes: 10
+
+confirm_timeout_ms: 15000
+
+trial_grant:
+  credits: 100
