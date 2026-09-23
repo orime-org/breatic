@@ -42,17 +42,6 @@ export function canJoinGroup(type: string | undefined): boolean {
 }
 
 /**
- * Whether a lock freezes this node. The flag rides in the node's `data`, which
- * Yjs hands over untyped, so every reader asks here rather than casting again.
- * @param node - Any canvas node.
- * @param node.data - The node's payload, where the lock flag rides.
- * @returns True when the node carries a lock.
- */
-export function isNodeLocked(node: { data?: unknown }): boolean {
-  return (node.data as { locked?: boolean } | undefined)?.locked === true;
-}
-
-/**
  * Ids of every node that is a member of a *locked* Group — their position is
  * frozen, so the canvas renders them `draggable=false`. Membership is read from
  * each member's own `parentId` (group redesign 2026-06-23), so a locked
@@ -66,7 +55,9 @@ export function lockedGroupMemberIds(
   const lockedGroups = new Set<string>();
   for (const node of nodes) {
     if (node.type !== 'group' || node.id === undefined) continue;
-    if (isNodeLocked(node)) lockedGroups.add(node.id);
+    if ((node.data as { locked?: boolean } | undefined)?.locked) {
+      lockedGroups.add(node.id);
+    }
   }
   const ids = new Set<string>();
   if (lockedGroups.size === 0) return ids;
@@ -97,7 +88,7 @@ export function lockedNodeIds(
 ): Set<string> {
   const ids = lockedGroupMemberIds(nodes);
   for (const node of nodes) {
-    if (isNodeLocked(node)) ids.add(node.id);
+    if ((node.data as { locked?: boolean } | undefined)?.locked) ids.add(node.id);
   }
   return ids;
 }

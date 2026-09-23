@@ -41,8 +41,7 @@ describe('resolveUploadFailure', () => {
     const plan = resolveUploadFailure({ reason: 'upload', taskId: 't-1' });
 
     expect(plan).toEqual({
-      kind: 'serverKnows',
-      taskId: 't-1',
+      kind: 'toastOnly',
       keepFileFor: 't-1',
       toastKey: 'canvas.upload.failed',
       severity: 'error',
@@ -64,7 +63,7 @@ describe('resolveUploadFailure', () => {
     const plan = resolveUploadFailure({ reason: 'upload' });
 
     expect(plan).toEqual({
-      kind: 'nobodyKnows',
+      kind: 'toastOnly',
       toastKey: 'canvas.upload.failed',
       severity: 'error',
     });
@@ -77,8 +76,7 @@ describe('resolveUploadFailure', () => {
     expect(
       resolveUploadFailure({ reason: 'unsupportedType', taskId: 't-1' }),
     ).toEqual({
-      kind: 'serverKnows',
-      taskId: 't-1',
+      kind: 'toastOnly',
       toastKey: 'canvas.upload.unsupportedType',
       severity: 'warning',
     });
@@ -88,7 +86,7 @@ describe('resolveUploadFailure', () => {
     // Nobody frees room in the seconds a retry takes, so the sentence has to
     // be the one about the account rather than the one about trying again.
     expect(resolveUploadFailure({ reason: 'storage' })).toEqual({
-      kind: 'nobodyKnows',
+      kind: 'toastOnly',
       toastKey: 'canvas.upload.storageFull',
       severity: 'error',
     });
@@ -98,7 +96,7 @@ describe('resolveUploadFailure', () => {
     // The hashing worker is what broke, so no retry on this page can succeed
     // and the remedy is a reload.
     expect(resolveUploadFailure({ reason: 'hash' })).toEqual({
-      kind: 'nobodyKnows',
+      kind: 'toastOnly',
       toastKey: 'canvas.upload.hashUnavailable',
       severity: 'error',
     });

@@ -287,36 +287,6 @@ test('the members keep the grid, and the Group takes them along', async ({
   ]);
 });
 
-test('the Group grows to hold members that turned out taller', async ({
-  page,
-}) => {
-  // Text files take the extraction path, which reads the words in this browser
-  // — so the nodes fill and grow without an upload having to finish.
-  const paragraph = `${'A sentence that has to wrap several times. '.repeat(40)}`;
-  await page
-    .locator('input[data-testid="canvas-upload-input"][multiple]')
-    .setInputFiles(
-      [0, 1].map((i) => ({
-        name: `note-${String(i)}.txt`,
-        mimeType: 'text/plain',
-        buffer: Buffer.from(paragraph, 'utf8'),
-      })),
-    );
-  const groupId = await theGroupOver(page, 2);
-
-  // Two empty nodes one row tall: 192 + 24 of padding top and bottom.
-  const framedEmpty = 240;
-  // The box the batch arrived in is the one it keeps being drawn as, so it has
-  // to follow what the members turned out to be.
-  await expect
-    .poll(
-      async () =>
-        (await documentNodes(page)).find((n) => n.id === groupId)?.height ?? 0,
-      { timeout: 30_000 },
-    )
-    .toBeGreaterThan(framedEmpty);
-});
-
 test('a second batch over a Group makes its own and joins nothing', async ({
   page,
 }) => {
@@ -334,6 +304,30 @@ test('a second batch over a Group makes its own and joins nothing', async ({
   expect(groups.map((n) => n.id)).toContain(first);
   expect(nodes.filter((n) => n.parentId === first)).toHaveLength(2);
   expect(groups.every((n) => n.parentId === null)).toBe(true);
+
+  // The two frames are drawn on top of each other, so both hold both sets of
+  // members. A nudge inside its own frame must leave the second batch where it
+  // is: taking whichever frame answered first empties the Group just made.
+  const second = groups.map((n) => n.id).find((id) => id !== first) as string;
+  const member = nodes.find((n) => n.parentId === second) as DocNode;
+  const box = await page
+    .locator(`.react-flow__node[data-id="${member.id}"]`)
+    .boundingBox();
+  if (box === null) throw new Error('the member is not on screen');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let step = 1; step <= 4; step += 1) {
+    await page.mouse.move(box.x + box.width / 2 + step * 2, box.y + box.height / 2 + step);
+  }
+  await page.mouse.up();
+
+  await expect
+    .poll(
+      async () =>
+        (await documentNodes(page)).filter((n) => n.parentId === second).length,
+      { timeout: 15_000 },
+    )
+    .toBe(2);
 });
 
 test('one undo takes the whole batch back', async ({ page }) => {

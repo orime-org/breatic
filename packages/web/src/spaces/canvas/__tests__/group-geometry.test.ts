@@ -11,7 +11,6 @@ import {
   toAbsolutePosition,
   groupRectForMembers,
   expandGroupToWrap,
-  planGroupFitToMembers,
   planGroupGrowth,
   groupResizeBounds,
   GROUP_PADDING,
@@ -425,58 +424,5 @@ describe('planGroupResize', () => {
     expect(plan?.members).toEqual([
       { id: 'm1', position: { x: 74, y: 54 }, parentId: 'g1' },
     ]);
-  });
-});
-
-describe('planGroupFitToMembers — a Group holds what its members turned out to be (#2209)', () => {
-  /** A Group sized around five empty 288x192 nodes on a 4-column grid. */
-  const batchGroup = {
-    groupId: 'g',
-    rect: { x: -168, y: -120, width: 1272, height: 456 },
-  };
-
-  it('leaves a Group alone while its members still fit', () => {
-    expect(
-      planGroupFitToMembers([
-        {
-          ...batchGroup,
-          memberRects: [{ x: -144, y: -96, width: 288, height: 192 }],
-        },
-      ]),
-    ).toEqual([]);
-  });
-
-  it('grows the box down when a member turns out taller than the placeholder', () => {
-    // A 9:16 photo in a 288-wide node renders 512 tall, so the bottom edge
-    // lands at -96 + 512 = 416 and the Group must reach 416 + 24 = 440.
-    const out = planGroupFitToMembers([
-      {
-        ...batchGroup,
-        memberRects: [{ x: -144, y: -96, width: 288, height: 512 }],
-      },
-    ]);
-
-    expect(out).toEqual([
-      {
-        groupId: 'g',
-        position: { x: -168, y: -120 },
-        width: 1272,
-        height: 560,
-      },
-    ]);
-  });
-
-  it('leaves a member that sits outside to the drag-stop', () => {
-    // Growing here would move the Group's origin, and every member's stored
-    // position is measured against it. A member above the box got there by
-    // being dragged, which is the gesture's own to settle.
-    expect(
-      planGroupFitToMembers([
-        {
-          ...batchGroup,
-          memberRects: [{ x: -144, y: -400, width: 288, height: 192 }],
-        },
-      ]),
-    ).toEqual([]);
   });
 });

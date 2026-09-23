@@ -75,7 +75,6 @@ import {
   removeEdge,
   removeElements,
   removeNode,
-  fitGroupToContent,
   resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
@@ -143,7 +142,6 @@ import {
   planGroupCreation,
   type GroupCreationPlan,
 } from '@web/spaces/canvas/group-creation';
-import { planMeasuredGroupFit } from '@web/spaces/canvas/group-fit';
 import {
   EMPTY_NODE_SIZE,
   GROUP_MIN_SIZE,
@@ -809,29 +807,6 @@ function CanvasSpaceInner({
   // itself lives inside the hook, so no path can reach the raw array on its way
   // to a document write (#2010, design §5.7 and invariant 7).
   const buffer = useBufferAccess(flowNodes, docPlaces, remoteGesture);
-  // A Group holds what its members turned out to be. A batch is grouped while
-  // every member is still an empty placeholder, and a filled node is as tall as
-  // its media — left alone the members would hang outside the box they arrived
-  // in, and a nudge would take one out of the Group for good (a member whose
-  // centre is outside the frame stops being a member at drag-stop).
-  React.useEffect(() => {
-    if (readOnly) return;
-    const fits = planMeasuredGroupFit(
-      buffer.documentPlaces(),
-      flowNodes,
-      buffer.heldByRemote(),
-    );
-    for (const fit of fits) {
-      fitGroupToContent(
-        projectId,
-        spaceId,
-        fit.groupId,
-        fit.position,
-        fit.width,
-        fit.height,
-      );
-    }
-  }, [flowNodes, readOnly, projectId, spaceId, buffer]);
   // Which Group this end took a resize on, and where the document had it when
   // the pointer went down — the point ReactFlow measures its rect from. Null
   // while no resize this end may write is open. The id rides along because
@@ -2520,20 +2495,14 @@ function CanvasSpaceInner({
       toast[plan.severity](
         t(plan.toastKey, { filename: file.name, ...refusedFormatParams(file) }),
       );
-      if (plan.kind === 'serverKnows') {
-        // The row takes this to an end on its own, judged against the budget
-        // it carries. All that is left here is the File its Retry re-sends —
-        // and only where re-sending it can end differently, which a refusal
-        // read off the bytes cannot.
-        if (plan.keepFileFor !== undefined) {
-          stashRetryFile(projectId, spaceId, plan.keepFileFor, file);
-        }
-        return;
+      // Where a row exists it takes this to an end on its own, judged against
+      // the budget it carries; all that is left here is the File its Retry
+      // re-sends, and only where re-sending can end differently. The node stays
+      // either way — a node that exists is the reader's to remove, and only
+      // theirs (#2177).
+      if (plan.keepFileFor !== undefined) {
+        stashRetryFile(projectId, spaceId, plan.keepFileFor, file);
       }
-      // No ticket, so no row and no grant: nothing on the server can end this,
-      // and the toast above is the whole of what this side can say. The node
-      // stays where it is — a node that exists is the reader's to remove, and
-      // only theirs (#2177).
     },
     [projectId, spaceId, t],
   );
@@ -2575,14 +2544,11 @@ function CanvasSpaceInner({
             admitted.push({ file, spec: fileToNodeSpec(file) });
           }
         }
-        // Shaped as flow nodes so the Group below is planned by the same
-        // planner the chord uses. No size is carried: none is measured yet, and
-        // `planGroupCreation` falls back to the empty footprint the placement
-        // stepped by.
-        const created: Node[] = [];
-        // Each admitted file and the node it got, so the send below names its
-        // own node rather than counting to the same index twice.
-        const jobs: { file: File; spec: UploadNodeSpec; nodeId: string }[] = [];
+        // Each admitted file, what it becomes, and the node it got. The node
+        // carries the flow shape the Group planner reads — no size, because
+        // none is measured yet and `planGroupCreation` falls back to the empty
+        // footprint the placement stepped by.
+        const jobs: { file: File; spec: UploadNodeSpec; node: Node }[] = [];
         // One drop is one thing to take back, so every node it makes and the
         // Group around them go down as a single undo step.
         let selectAfter: string[] = [];
@@ -2593,10 +2559,13 @@ function CanvasSpaceInner({
               spec.nodeType,
               centres[i],
             );
-            created.push({ id, type: spec.nodeType, position, data: {} });
-            jobs.push({ file, spec, nodeId: id });
+            jobs.push({
+              file,
+              spec,
+              node: { id, type: spec.nodeType, position, data: {} },
+            });
           });
-          if (created.length === 0) return;
+          const created = jobs.map((job) => job.node);
           // Files handed over together arrive as one thing, so a Group says so:
           // the reader can see which ones came in together and take the batch
           // anywhere as one. Whatever Groups already sit under the point they
@@ -2620,7 +2589,8 @@ function CanvasSpaceInner({
         });
         if (selectAfter.length > 0) setSelectAfterCreate(selectAfter);
         // The bytes travel once the canvas holds the nodes they belong to.
-        for (const { file, spec, nodeId } of jobs) {
+        for (const { file, spec, node } of jobs) {
+          const nodeId = node.id;
           if (spec.needsUpload) {
             trackOperation(
               nodeId,

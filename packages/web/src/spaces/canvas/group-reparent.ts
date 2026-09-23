@@ -69,9 +69,10 @@ function accepts(group: GroupRef): boolean {
 
 /**
  * Decide, per dragged node, which Group (if any) it now belongs to — the Group
- * whose rect contains the node's center. A node never reparents into itself (a
- * Group dragged over another is excluded by id), so dragging a Group yields no
- * membership change here.
+ * whose rect contains the node's center, and the one it is already in whenever
+ * that rect still contains it, because Groups overlap and more than one can
+ * answer. A node never reparents into itself (a Group dragged over another is
+ * excluded by id), so dragging a Group yields no membership change here.
  * @param dragged - Every dropped node with its current parent + absolute rect.
  * @param groups - Every Group on the canvas with its absolute rect, whether or
  *   not it takes part in the decision.
@@ -92,17 +93,26 @@ export function planGroupDragStop(
     if (parent?.locked === true) {
       return { nodeId: node.id, targetGroupId: currentParent, changed: false };
     }
-    // A Group a remote is dragging answers only the first half of that. Its
-    // members stay draggable on this end, so one dragged clear of it has left —
-    // writing "still a member" for a node the user put outside leaves the Group
-    // to grow over that gap on the next drag-stop. It stays a candidate for the
-    // member it already has, which is what keeps a nudge inside it a no-op.
-    const target = groups.find(
-      (group) =>
-        group.id !== node.id &&
-        (group.id === currentParent || accepts(group)) &&
-        groupContainsMemberCenter(group.rect, node.rect),
-    );
+    // The Group it is already in gets the first answer. Groups overlap — two
+    // batches handed over at the same point are drawn on top of each other, and
+    // both frames hold both sets of members — so asking which frame contains
+    // the centre has more than one answer, and taking whichever came first in
+    // the array empties the Group the reader just made on their next nudge.
+    // A nudge inside your own box says nothing about where you belong.
+    //
+    // A Group a remote is dragging is not one this end writes into, but it
+    // stays the answer for the member it already has: its members stay
+    // draggable here, so one dragged clear of it has left, while one still
+    // inside it has not moved anywhere.
+    const target =
+      parent !== undefined && groupContainsMemberCenter(parent.rect, node.rect)
+        ? parent
+        : groups.find(
+          (group) =>
+            group.id !== node.id &&
+              accepts(group) &&
+              groupContainsMemberCenter(group.rect, node.rect),
+        );
     const targetGroupId = target?.id ?? null;
     return { nodeId: node.id, targetGroupId, changed: targetGroupId !== currentParent };
   });
