@@ -447,30 +447,32 @@ function checkGenerateNode(
   const values = checkParams(chosen, node);
   if (!values.ok) return values;
 
-  // Every kind this mode runs on has to be somewhere in the group for the
-  // reader to put it in. Only one of the two deliveries leaves a trace the
-  // rest of this file can read: pool material arrives by an edge, which the
-  // connection rule above already holds to a kind, while slot material is
-  // picked in the panel by clicking any node of that kind and is wired to
-  // nothing. So a talking head proposed with two portraits and no voice passes
-  // every per-edge rule there is, and the reader fills both nodes before the
-  // panel tells them a voice is missing.
+  // An empty node is the proposal saying "this part is yours to supply". Once
+  // it says that, it has to say it about every kind the mode runs on: a
+  // talking head placed with two empty portraits and no voice has the reader
+  // fill both of them and then find the panel asking for a voice. Nothing else
+  // catches that shape -- slot material is picked by clicking any node of the
+  // kind rather than wired, so no edge exists for the connection rule to read,
+  // and the marks say the same thing whichever kinds they stand for.
   //
-  // Asked of the group rather than of this node's feeders, because that is the
-  // question a slot can be answered from: the reader clicks any node of the
-  // kind, so what has to exist is one somewhere in what this places. Every
-  // role counts -- an empty node the reader fills and the step before that
-  // made one are the same thing to the slot they are picked into -- and this
-  // node is left out, or a mode running on its own kind would answer itself.
-  const kinds = materialKinds(nodeType, mode, model);
-  const supplied = new Set(
+  // Placing no empty node at all is the other answer to the question the tool
+  // tells the model to ask first: the reader already has the material, and
+  // picks it in the panel from what is on their canvas. The proposal cannot
+  // see that canvas, so a group of one generation node stands on its own.
+  //
+  // What counts as holding a kind is any node in the group but this one: an
+  // empty node the reader fills and the step before that made one reach the
+  // slot the same way.
+  const kinds = materialKinds(nodeType, mode);
+  const placesEmptyNode = proposal.nodes.some((n) => n.role === "source");
+  const kindsInGroup = new Set(
     proposal.nodes.filter((_, at) => at !== index).map((n) => n.type),
   );
-  const missing = kinds.filter((kind) => !supplied.has(kind));
+  const missing = placesEmptyNode ? kinds.filter((kind) => !kindsInGroup.has(kind)) : [];
   if (missing.length > 0) {
     return {
       ok: false,
-      reason: `"${mode}" runs on ${kinds.join(" and ")} material, and this group holds no ${missing.join(" or ")} node for "${node.name}" to draw on.`,
+      reason: `"${mode}" runs on ${kinds.join(" and ")} material, and this group asks the reader to supply some of it but places no ${missing.join(" or ")} node for them to put it in.`,
     };
   }
 

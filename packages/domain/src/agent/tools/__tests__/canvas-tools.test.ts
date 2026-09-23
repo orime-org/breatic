@@ -92,44 +92,51 @@ describe("get_canvas_capabilities", () => {
 // about text nodes today is that they are absent from it — which leaves the
 // model to guess what mentioning one does.
 describe("what get_canvas_capabilities says about text nodes", () => {
-  it("says a mention of a text node is read as the words themselves", async () => {
-    const rendered = renderCapabilitiesForModel(
+  /**
+   * The rendered answer for the live catalog.
+   * @returns What the model reads.
+   */
+  async function rendered(): Promise<string> {
+    return renderCapabilitiesForModel(
       await run<CanvasCapabilityAnswer>(canvasCapabilities, {}),
     );
-    expect(rendered).toContain("replaced by that node's words");
+  }
+
+  it("states both halves of what a mention does", async () => {
+    // `serializePromptText` swaps a text mention for that node's words;
+    // `mentionedReferenceUrls` takes an image node's url as reference
+    // material. Those are the two outcomes, and the answer names both.
+    const text = await rendered();
+    expect(text).toContain("puts that node's words into the prompt");
+    expect(text).toContain("as reference material");
   });
 
-  it("says a mention of any other node arrives as reference material", async () => {
-    const rendered = renderCapabilitiesForModel(
-      await run<CanvasCapabilityAnswer>(canvasCapabilities, {}),
-    );
-    expect(rendered).toContain("as reference material");
+  it("says a mention names the node rather than copying it", async () => {
+    // Both paths read the node at submit time, so editing the node changes
+    // what every mention of it sends. A model that reads a mention as a
+    // snapshot writes the words into the prompt a second time instead.
+    expect(await rendered()).toContain("at the moment the reader presses Generate");
   });
 
   it("says one text node can be mentioned by several nodes downstream", async () => {
-    const rendered = renderCapabilitiesForModel(
-      await run<CanvasCapabilityAnswer>(canvasCapabilities, {}),
-    );
-    expect(rendered).toContain("mentioned by several nodes downstream");
+    expect(await rendered()).toContain("mentioned by several nodes downstream");
   });
 
   it("names the three things a text node carries", async () => {
-    const rendered = renderCapabilitiesForModel(
-      await run<CanvasCapabilityAnswer>(canvasCapabilities, {}),
-    );
     // The reader keeps one, the flow is described by another, and the third is
     // the prompt fragment the nodes downstream mention.
-    expect(rendered).toContain("a finished piece of writing");
-    expect(rendered).toContain("what a group of nodes is for");
-    expect(rendered).toContain("a shared prompt fragment");
+    const text = await rendered();
+    expect(text).toContain("a finished piece of writing");
+    expect(text).toContain("what a group of nodes is for");
+    expect(text).toContain("a shared prompt fragment");
   });
 
   it("says it even when nothing on this canvas can generate", () => {
     // A deployment that reaches no model still lays down text nodes, so the
     // sentence naming that has to carry this alongside it.
-    const rendered = renderCapabilitiesForModel({ nodes: [] });
-    expect(rendered).toContain("cannot generate anything right now");
-    expect(rendered).toContain("replaced by that node's words");
+    const text = renderCapabilitiesForModel({ nodes: [] });
+    expect(text).toContain("cannot generate anything right now");
+    expect(text).toContain("puts that node's words into the prompt");
   });
 });
 

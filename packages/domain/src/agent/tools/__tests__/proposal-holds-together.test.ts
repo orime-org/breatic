@@ -403,6 +403,25 @@ describe("a mode whose material arrives through a panel slot", () => {
     expect(checkProposal(propose(at, { sources: each }))).toEqual({ ok: true });
   });
 
+  it("stands as one generation with no empty node, for a reader who has the material", () => {
+    // The other answer to the question the tool tells the model to ask first.
+    // The reader picks what is already on their canvas in the panel's slot,
+    // and the proposal cannot see that canvas to prove it is there.
+    const at = pick(
+      (m) => !m.byReference && m.needs.length > 0,
+      "mode fed by a panel slot",
+    );
+
+    expect(
+      checkProposal({
+        nodes: [generation(at, 1, 0)],
+        edges: [],
+        modelNote: "",
+        rationale: "why this shape",
+      }),
+    ).toEqual({ ok: true });
+  });
+
   it("is refused when the empty nodes leave one of the kinds this mode needs unfilled", () => {
     // Slot material is picked in the panel rather than wired, so no edge is
     // drawn and the rule holding the pool path to its kinds never runs here.
@@ -864,13 +883,21 @@ describe("what the schema turns away before any of this runs", () => {
     expect(accepted(withSlot({ kind: "tweak", label: "the voice", note: " " }))).toBe(false);
   });
 
+  /** The shape a call to the tool takes, as far as these cases build one. */
+  interface Call {
+    nodes: unknown[];
+    edges: unknown[];
+    rationale: string;
+    groupName?: string;
+  }
+
   /**
    * A one-node proposal carrying the given node name.
    * @param name - What to call the node.
    * @returns The call.
    * @throws {never} Never.
    */
-  function named(name: string): unknown {
+  function named(name: string): Call {
     const at = pick((m) => m.takesPrompt, "model driven by its prompt");
     return {
       nodes: [
@@ -916,14 +943,14 @@ describe("what the schema turns away before any of this runs", () => {
      * @returns The call.
      * @throws {never} Never.
      */
-    const grouped = (groupName: string): unknown => ({
-      ...(named("Result") as { nodes: unknown[]; edges: unknown[]; rationale: string }),
-      nodes: [
-        { role: "source", type: "image", name: "Your picture" },
-        ...(named("Result") as { nodes: unknown[] }).nodes,
-      ],
-      groupName,
-    });
+    const grouped = (groupName: string): Call => {
+      const one = named("Result");
+      return {
+        ...one,
+        nodes: [{ role: "source", type: "image", name: "Your picture" }, ...one.nodes],
+        groupName,
+      };
+    };
 
     expect(accepted(grouped("a".repeat(MAX_NODE_NAME_LEN)))).toBe(true);
     expect(accepted(grouped("a".repeat(MAX_NODE_NAME_LEN + 1)))).toBe(false);

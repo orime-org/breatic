@@ -31,7 +31,8 @@ export interface CanvasCapabilityAnswer {
  */
 const TEXT_NODE_NOTE = [
   "text node: holds words and generates nothing, so no mode applies to it.",
-  "- Mentioning one in a prompt is replaced by that node's words when the prompt is read, so the node generating reads them as if they had been typed into it. Mentioning a node of any other kind hands its picture, video or sound over as reference material instead.",
+  "- A mention names the node rather than copying it: what goes out is whatever that node holds at the moment the reader presses Generate, so editing the node changes what every mention of it sends.",
+  "- Mentioning a text node puts that node's words into the prompt, read as if they had been typed there. Mentioning a node of any other kind puts it in as reference material instead, which is what a model with a reference pool draws on.",
   "- One text node can be mentioned by several nodes downstream, so wording they share is written once and mentioned from each of them.",
   "- Three things one carries: a finished piece of writing the reader keeps, a description of what a group of nodes is for or how a script is set up, and a shared prompt fragment the nodes downstream mention.",
 ].join("\n");
@@ -68,8 +69,7 @@ export const canvasCapabilities: Tool<
     "node, and the modes each one can be set to. Ask this first when the " +
     "user wants something made, then ask list_generation_models about the " +
     "one mode you settled on. What comes back is every mode the user can " +
-    "select today, so propose no mode this does not list. A text node holds " +
-    "words rather than generating, so it is not here and needs no mode.",
+    "select today, so propose no mode this does not list.",
   inputSchema,
   metadata: { runningLine: "chat.tool.checkingCanvas" },
   // The SDK's own conversion, which is what a running turn reaches -- the
