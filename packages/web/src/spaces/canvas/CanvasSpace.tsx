@@ -2588,9 +2588,9 @@ function CanvasSpaceInner({
             selectAfter = created.map((node) => node.id);
             return;
           }
-          // A colour and a name of its own, so two batches handed over at the
-          // same point are two boxes the reader can tell apart rather than one
-          // drawn twice. The name carries it when the roll repeats a tint.
+          // A colour and a name, so a Group made at a point another Group is
+          // already on is not a box drawn twice. The name says how many files
+          // this batch holds.
           writeGroup(
             projectId,
             spaceId,

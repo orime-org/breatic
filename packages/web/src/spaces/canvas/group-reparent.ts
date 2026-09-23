@@ -7,8 +7,9 @@
  * belongs to: the Group whose rect contains the node's CENTER point, and where
  * Groups overlap, the first of them the canvas listed. A node entering a
  * Group's bounds joins it; a member whose centre leaves its Group becomes
- * top-level; a member whose body overflows stays where it is while the canvas
- * auto-expands the Group (see `expandGroupToWrap`). Kept ReactFlow-agnostic (absolute rects in, decisions
+ * top-level; a member whose centre stays in keeps its Group even when its body
+ * overflows, and the canvas then auto-expands the Group (see
+ * `expandGroupToWrap`). Kept ReactFlow-agnostic (absolute rects in, decisions
  * out) so the membership rule is unit-tested in isolation; the canvas converts
  * coordinates and writes Yjs.
  */

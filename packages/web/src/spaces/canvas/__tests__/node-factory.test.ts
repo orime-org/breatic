@@ -24,8 +24,7 @@ describe('createGroupNode — Group node factory', () => {
   });
 
   it('takes the name the caller gives it', () => {
-    // An upload batch names its Group after what it holds, so two batches say
-    // which is which even when the roll hands them the same tint.
+    // An upload batch names its Group after how many files it holds.
     const f = createGroupNode('f2', { x: 0, y: 0 }, 300, 200, 'user-1', undefined, '3 files');
     expect(f.data.name).toBe('3 files');
   });

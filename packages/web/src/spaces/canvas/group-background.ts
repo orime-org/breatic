@@ -9,10 +9,11 @@
  * pre-#1549 i18n labels already said "Blue/Green/…").
  *
  * The reader picks one through {@link GROUP_BACKGROUND_OPTIONS}; a Group made
- * around an upload batch opens with one of {@link GROUP_BACKGROUND_TINTS}, so
- * two batches handed over at the same point are two boxes rather than one drawn
- * twice. Either way the colour is the Group's from then on, and only the reader
- * changes it.
+ * around an upload batch opens with one of {@link GROUP_BACKGROUND_TINTS}, so a
+ * Group made at a point another Group is already on carries a mark of its own.
+ * The roll has no memory, so two batches in a row land on the same tint one
+ * time in seven. Either way the colour is the Group's from then on, and only
+ * the reader changes it.
  */
 
 /** One choice in the group background picker. */
@@ -47,9 +48,10 @@ export const GROUP_BACKGROUND_TINTS: ReadonlyArray<string> =
  * The tint a Group gets when it is made around a batch that just arrived.
  *
  * Two batches handed over at the same point are drawn on top of each other and
- * are the same size, so without a colour of its own the second one is a box the
- * reader cannot tell from the first. The roll comes from the caller so the
- * choice is a value a test can pin.
+ * are the same size, so without a colour the second one is a box the reader
+ * cannot tell from the first. Seven tints drawn without memory repeat one time
+ * in seven. The roll comes from the caller so the choice is a value a test can
+ * pin.
  * @param roll - A number in [0, 1], normally `Math.random()`.
  * @returns One of {@link GROUP_BACKGROUND_TINTS}.
  */

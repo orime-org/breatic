@@ -154,8 +154,7 @@ const GROUP_DEFAULT_NAME = 'Group';
  * @param createdBy - User id of the creator (caller injects from the store).
  * @param backgroundColor - Tint token to open with; absent leaves it untinted.
  * @param name - The name to open with; absent takes the default. An upload
- *   batch names its Group after what it holds, so a reader tells two batches
- *   apart by reading as well as by colour.
+ *   batch names its Group after how many files it holds.
  * @returns A complete `CanvasNodeFields` for a Group node.
  */
 export function createGroupNode(

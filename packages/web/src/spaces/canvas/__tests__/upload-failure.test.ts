@@ -4,8 +4,9 @@
 /**
  * What the browser does with an upload that ended badly (#186 §3.7.3).
  *
- * One plan reports and the rest only speak. A transfer that died before the
- * edge saw the bytes leaves a row nobody else will end, so it is reported;
+ * One plan reports and the rest only speak. A transfer that ended without our
+ * server hearing anything — the bytes never got out, or the edge turned them
+ * down — leaves a row nobody else will end, so it is reported;
  * every other failure is said in a toast, and keeps the File only where a
  * Retry can end differently. The node stays in all of them — a node that
  * exists is the reader's to remove, and only theirs (#2177).
@@ -46,8 +47,10 @@ describe('resolveUploadFailure', () => {
     });
   });
 
-  // Bytes that never reached the edge leave a row nobody else will end (#237):
-  // the finish was never asked for, so the server was never told. This is the
+  // A transfer half that ended without our server hearing anything leaves a
+  // row nobody else will end (#237): the finish was never asked for, so the
+  // server was never told. Both ways that half can end are in here — the bytes
+  // never got out, and the edge turned them down (`canvas-upload.ts:190`). This is the
   // one plan that reports, and it carries no sentence — what the reader sees is
   // the row itself, in the failed count, where it survives them looking away.
   it('reports a transfer that never landed, and keeps its File', () => {

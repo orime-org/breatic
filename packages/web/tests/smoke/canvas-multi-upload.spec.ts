@@ -344,8 +344,9 @@ test('a second batch over a Group makes its own and joins nothing', async ({
   for (const group of groups) {
     expect(group.backgroundColor).toMatch(/^--color-palette-[a-z]+-bg$/);
   }
-  // And each one says what it holds, so the two are told apart by reading as
-  // well as by colour — the roll can hand both batches the same tint.
+  // And each one says how many files it holds. Both batches here carry two,
+  // so both read the same — what is pinned is that the count is what the name
+  // states, not that it separates these two.
   for (const group of groups) {
     expect(group.name).toBe('2 files');
   }
