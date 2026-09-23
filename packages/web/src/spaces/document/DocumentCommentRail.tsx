@@ -51,6 +51,11 @@ import {
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import { useCommentAnchors } from '@web/spaces/document/use-comment-anchors';
 import {
+  draftRangeIn,
+  onDraftRangeChange,
+} from '@web/spaces/document/document-comment-draft-range';
+import { DocumentCommentDraftCard } from '@web/spaces/document/DocumentCommentDraftCard';
+import {
   useCommentCards,
   type CommentCardView,
 } from '@web/spaces/document/use-comment-cards';
@@ -67,6 +72,14 @@ interface DocumentCommentRailProps {
   /** Closes the panel, which only the reader ever does. */
   onClose: () => void;
 }
+
+/**
+ * The draft card's name in the column.
+ *
+ * A comment being written has no thread yet, and the layout, the anchors and
+ * the heights are all keyed by id — so it is given one.
+ */
+const DRAFT_CARD_ID = 'doc-comment-draft';
 
 /** Which threads the panel is showing. */
 type Filter = 'open' | 'all';
@@ -112,6 +125,14 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const selected = React.useSyncExternalStore(
     onSelectedThreadsChange,
     () => selectedThreadsIn(editor.prosemirrorState),
+  );
+
+  // Where a comment is being written, if one is. The rail answers it with a
+  // card of its own (§9.4.1); everything else about that card's place is the
+  // same rule every other card follows.
+  const draftAt = React.useSyncExternalStore(
+    onDraftRangeChange,
+    () => draftRangeIn(editor.prosemirrorState),
   );
 
   const said = useCommentWrite();
@@ -214,7 +235,13 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // The element the cards are placed inside is what they are measured
   // against, so a card's top needs nothing added to it.
   const column = React.useRef<HTMLDivElement>(null);
-  const anchors = useCommentAnchors(editor, ids, column);
+  // Held steady so the hook re-measures when the range moves rather than on
+  // every render: the plugin hands back a fresh object each read.
+  const draftAnchor = React.useMemo(
+    () => (draftAt === null ? null : { id: DRAFT_CARD_ID, from: draftAt.from }),
+    [draftAt],
+  );
+  const anchors = useCommentAnchors(editor, ids, column, draftAnchor);
 
   // A card's own height, once it has been on screen. How far the card below
   // has to give way depends on how tall the one above turned out to be.
@@ -285,24 +312,38 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     if (still.length !== reading.length) selectThreads(editor, still);
   }, [ids, editor]);
 
-  // The first of them, because a press on two overlapping highlights marks
-  // both and only one can have the column to itself.
-  const reading = selected[0] ?? null;
+  // The draft first while one is open: the reader is writing in it, and
+  // `layOutCards` gives the column to exactly one card (A28). A thread they
+  // pressed before starting to write gives way, the way any other card does.
+  // Otherwise the first of the selected, because a press on two overlapping
+  // highlights marks both and only one can have the column to itself.
+  const reading = draftAt !== null ? DRAFT_CARD_ID : (selected[0] ?? null);
   const placement = React.useMemo(
     () =>
       layOutCards(
-        shown.map((card) => ({
-          id: card.id,
-          // Null for a thread whose run was deleted: nothing to measure, and
-          // the layout puts it below the cards that do have words (A13).
-          anchor: anchors.get(card.id) ?? null,
-          height: heights.get(card.id) ?? CARD_HEIGHT_GUESS_PX,
-        })),
+        [
+          ...shown.map((card) => ({
+            id: card.id,
+            // Null for a thread whose run was deleted: nothing to measure, and
+            // the layout puts it below the cards that do have words (A13).
+            anchor: anchors.get(card.id) ?? null,
+            height: heights.get(card.id) ?? CARD_HEIGHT_GUESS_PX,
+          })),
+          ...(draftAt === null
+            ? []
+            : [
+              {
+                id: DRAFT_CARD_ID,
+                anchor: anchors.get(DRAFT_CARD_ID) ?? null,
+                height: heights.get(DRAFT_CARD_ID) ?? CARD_HEIGHT_GUESS_PX,
+              },
+            ]),
+        ],
         reading,
         GAP_BETWEEN_CARDS_PX,
         CLEARANCE_BELOW_HEADER_PX,
       ),
-    [shown, anchors, heights, reading],
+    [shown, anchors, heights, reading, draftAt],
   );
   const placed = placement.tops;
 
@@ -349,7 +390,10 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // document nobody has commented on wants to know how to start one, while a
   // filter that happens to be empty wants to say so — what they are looking
   // for is one press away, behind "all".
-  const nothingHere = shown.length === 0;
+  // A draft is something to draw, so the line about an empty rail would be
+  // arguing with the card on screen (A1's commonest path is the first comment
+  // on a document that has none).
+  const nothingHere = shown.length === 0 && draftAt === null;
   const nothingAnywhere =
     cards.unresolved.length === 0 && cards.resolved.length === 0;
 
@@ -430,12 +474,78 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
                 handling={handling}
               />
             ))}
+            {/* Placed by the same numbers as the rest, and measured like
+                them: it grows as the reader writes, and the cards below have
+                to give way (§9.6). */}
+            <PlacedDraft
+              top={placed.get(DRAFT_CARD_ID) ?? 0}
+              take={take}
+              giveBack={giveBack}
+            >
+              <DocumentCommentDraftCard
+                editor={editor}
+                aimedAt={draftAt}
+                myRole={myRole}
+              />
+            </PlacedDraft>
           </div>
         )}
       </div>
     </aside>
   );
 });
+
+interface PlacedDraftProps {
+  /** How far down the column it sits. */
+  top: number;
+  /** Takes this card's element into the panel's measurements. */
+  take: (node: HTMLDivElement, id: string) => void;
+  /** Gives back everything the panel held under this card's id. */
+  giveBack: (node: HTMLDivElement, id: string) => void;
+  /** The draft card, or nothing while no comment is being written. */
+  children: React.ReactNode;
+}
+
+/**
+ * Puts the draft card where the layout said, and lets the panel measure it.
+ *
+ * The same box a thread's card sits in, without the hover and the press:
+ * resting on a draft marks nothing in the body, and it is already open.
+ * @param root0 - Where it goes and how the panel measures it.
+ * @param root0.top - How far down the column it sits.
+ * @param root0.take - Takes its element into the measurements.
+ * @param root0.giveBack - Gives back what was held under its id.
+ * @param root0.children - The draft card.
+ * @returns The positioned box.
+ */
+function PlacedDraft({
+  top,
+  take,
+  giveBack,
+  children,
+}: PlacedDraftProps): React.JSX.Element {
+  const box = React.useRef<HTMLDivElement>(null);
+  React.useLayoutEffect(() => {
+    const node = box.current;
+    if (node === null) return undefined;
+    take(node, DRAFT_CARD_ID);
+    return () => {
+      giveBack(node, DRAFT_CARD_ID);
+    };
+  }, [take, giveBack]);
+
+  return (
+    <div
+      ref={box}
+      className='absolute inset-x-0 rounded-sm transition-[top] duration-200 ease-out motion-reduce:transition-none'
+      // The draft is what the reader is working in, so it comes to the front
+      // whenever a settling card would otherwise overlap it.
+      style={{ top: `${String(top)}px`, zIndex: 1 }}
+    >
+      {children}
+    </div>
+  );
+}
 
 interface PlacedCardProps {
   /** The thread this draws. */

@@ -202,7 +202,6 @@ describe('the comment panel', () => {
     show();
     await comment(6, 11, 'about bravo');
     await comment(0, 5, 'about alpha');
-    await pressCommentsRow();
     await screen.findByTestId('doc-comment-rail');
 
     const quotes = Array.from(
@@ -215,7 +214,6 @@ describe('the comment panel', () => {
   it('shows what each comment says', async () => {
     show();
     await comment(0, 5, 'the whole point');
-    await pressCommentsRow();
 
     expect(await screen.findByText('the whole point')).toBeInTheDocument();
   });
@@ -226,7 +224,6 @@ describe('the comment panel', () => {
     show();
     await comment(0, 5, 'about alpha');
     await comment(6, 11, 'about bravo');
-    await pressCommentsRow();
     const cards = await screen.findAllByTestId('doc-comment-card');
     expect(cards.map((card) => card.getAttribute('data-selected'))).toEqual([
       'false',
@@ -319,7 +316,6 @@ describe('the comment panel', () => {
     // reader has left to work through.
     show();
     await comment(0, 5, 'about alpha');
-    await pressCommentsRow();
     await screen.findAllByTestId('doc-comment-card');
     const threadId = [
       ...handle.editor
@@ -343,7 +339,6 @@ describe('the comment panel', () => {
     // A13: the thread stays and stays readable, with the highlight gone.
     show();
     await comment(0, 5, 'about alpha');
-    await pressCommentsRow();
     await screen.findByTestId('doc-comment-rail');
 
     const run = firstRun();
@@ -364,7 +359,6 @@ describe('the comment panel', () => {
     show();
     await comment(0, 5, 'about alpha');
     await comment(6, 11, 'about bravo');
-    await pressCommentsRow();
     const cards = await screen.findAllByTestId('doc-comment-card');
     const second = cards[1]!.getAttribute('data-thread')!;
 
@@ -416,7 +410,6 @@ describe('the comment panel', () => {
     // so those words stayed deep long after the thread was settled (A8).
     show();
     await comment(0, 5, 'about alpha');
-    await pressCommentsRow();
     // Resolve is offered on the card being read, so the press that settles a
     // thread always lands with the pointer on its card.
     const card = await screen.findByTestId('doc-comment-card');
@@ -445,7 +438,6 @@ describe('the comment panel', () => {
     // put the active colour back on words A8 promises read as prose.
     show();
     await comment(0, 5, 'about alpha');
-    await pressCommentsRow();
     await userEvent.click(await screen.findByTestId('doc-comment-card'));
     await userEvent.click(screen.getByTestId('doc-comment-resolve'));
     await userEvent.click(
@@ -469,7 +461,6 @@ describe('the comment panel', () => {
     // of the body stayed painted with nothing on screen to explain it.
     show();
     await comment(0, 5, 'about alpha');
-    await pressCommentsRow();
     await userEvent.hover(await screen.findByTestId('doc-comment-card'));
     await waitFor(() => {
       expect(deepened()).toBe(1);
@@ -524,7 +515,6 @@ describe('the comment panel', () => {
     // took the reader's unsent words with it when the card unmounted.
     show();
     await comment(0, 5, 'about alpha');
-    await pressCommentsRow();
     await userEvent.click(await screen.findByTestId('doc-comment-card'));
     await userEvent.type(
       await screen.findByTestId('doc-comment-reply-input'),
@@ -550,7 +540,6 @@ describe('the comment panel', () => {
     // press, and the thing they want is one filter away.
     show();
     await comment(0, 5, 'about alpha');
-    await pressCommentsRow();
     await userEvent.click(await screen.findByTestId('doc-comment-card'));
     await userEvent.click(screen.getByTestId('doc-comment-resolve'));
 
@@ -568,7 +557,6 @@ describe('the comment panel', () => {
     show();
     await comment(0, 11, 'the wider one');
     await comment(6, 19, 'the other one');
-    await pressCommentsRow();
     const ids = [
       ...handle.editor
         .getExtension(CommentsExtension)!
@@ -602,7 +590,6 @@ describe('the comment panel', () => {
 
     show();
     await comment(0, 5, 'about alpha');
-    await pressCommentsRow();
     await userEvent.click(await screen.findByTestId('doc-comment-card'));
     released.mockClear();
     expect(releasedACard()).toBe(false);

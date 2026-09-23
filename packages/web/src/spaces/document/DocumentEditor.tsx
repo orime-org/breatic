@@ -11,6 +11,11 @@ import {
 import { DocumentBlockControls } from '@web/spaces/document/DocumentBlockControls';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
+import {
+  DOCUMENT_COMMENT_DRAFT_RANGE,
+  draftRangeIn,
+  onDraftRangeChange,
+} from '@web/spaces/document/document-comment-draft-range';
 import type { ProjectRole } from '@breatic/shared';
 
 import { DocumentCommentComposer } from '@web/spaces/document/DocumentCommentComposer';
@@ -84,6 +89,16 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   React.useEffect(() => {
     if (pressed.length > 0) setRailOpen(true);
   }, [pressed]);
+  // A comment being written is written in the panel, so aiming a draft opens
+  // it (A1 · A2). The entries dispatch the range and nothing else; this is
+  // the one place that turns it into the panel being up, the same shape the
+  // press on a highlight above takes.
+  const draftAt = React.useSyncExternalStore(onDraftRangeChange, () =>
+    draftRangeIn(handle.editor.prosemirrorState),
+  );
+  React.useEffect(() => {
+    if (draftAt !== null) setRailOpen(true);
+  }, [draftAt]);
   // Closing it ends both the reading and the pointer, because the panel is
   // the only thing that releases either and it is about to be gone. The
   // reading, left standing, makes the next press on the same highlight read
@@ -96,6 +111,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     setRailOpen(false);
     selectThreads(handle.editor, []);
     hoverThread(handle.editor, null);
+    // And the draft with them: the card it is written in lives in the panel,
+    // so closing the panel is throwing it away. Left standing, the range
+    // would put an empty card back on screen the next time the reader opens
+    // the panel, with nothing to explain where it came from (§9.4).
+    const view = handle.editor.prosemirrorView;
+    if (view !== null) {
+      view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null));
+    }
   }, [handle.editor]);
   const rail = useCommentRail(handle.editor);
   // Held here because this is where the editor's DOM enters the scroller, and
