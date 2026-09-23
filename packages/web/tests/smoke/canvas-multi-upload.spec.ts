@@ -309,7 +309,8 @@ test('a second batch over a Group makes its own and joins nothing', async ({
   expect(groups.map((n) => n.id)).toContain(first);
   expect(nodes.filter((n) => n.parentId === first)).toHaveLength(2);
   expect(groups.every((n) => n.parentId === null)).toBe(true);
-
+  const second = groups.map((n) => n.id).find((id) => id !== first) as string;
+  expect(nodes.filter((n) => n.parentId === second)).toHaveLength(2);
 });
 
 test('one undo takes the whole batch back', async ({ page }) => {
