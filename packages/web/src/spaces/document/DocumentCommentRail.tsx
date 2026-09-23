@@ -46,7 +46,10 @@ import {
 } from '@web/spaces/document/document-comment-thread-actions';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import { useCommentAnchors } from '@web/spaces/document/use-comment-anchors';
-import { useCommentCards } from '@web/spaces/document/use-comment-cards';
+import {
+  useCommentCards,
+  type CommentCardView,
+} from '@web/spaces/document/use-comment-cards';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 interface DocumentCommentRailProps {
@@ -70,8 +73,11 @@ const CARD_HEIGHT_GUESS_PX = 120;
 /** How close to the panel's header a card may come (user 2026-09-22). */
 const CLEARANCE_BELOW_HEADER_PX = 4;
 
-/** Takes the element one card is drawn in, and null once it leaves. */
-type CardRef = (node: HTMLDivElement | null) => void;
+/** What every card takes from the panel, the same for all of them. */
+type CardHandling = Omit<
+  React.ComponentProps<typeof DocumentCommentCard>,
+  'card' | 'selected' | 'draft'
+>;
 
 /**
  * The comment panel.
@@ -147,7 +153,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
 
   // One object, memoised: every card takes the same eight, and a fresh object
   // per render would stop `DocumentCommentCard`'s memo ever bailing out.
-  const handling = React.useMemo(
+  const handling: CardHandling = React.useMemo(
     () => ({
       myRole,
       viewerId,
@@ -212,55 +218,33 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   }
   React.useEffect(() => () => sizes.current?.disconnect(), []);
 
-  // The element each card is drawn in, so that what a card took can be given
-  // back by id once the element itself is gone.
-  const watched = React.useRef(new Map<string, HTMLDivElement>());
-  // One callback per card, kept: React hands a ref callback `null` whenever
-  // its identity changes, so a fresh closure per render would read as the
-  // card leaving on every render. The editor outlives this panel, so nothing
-  // invalidates what is in here.
-  const refs = React.useRef(new Map<string, CardRef>());
-  const measure = React.useCallback(
-    (id: string): CardRef => {
-      const had = refs.current.get(id);
-      if (had !== undefined) return had;
-      /**
-       * Takes one card's element, and gives back what it held once it goes.
-       * @param node - The element, or null as the card leaves.
-       */
-      const made = (node: HTMLDivElement | null): void => {
-        if (node === null) {
-          // A card can leave while the pointer is on it — Resolve is offered
-          // on the card being read, and settling takes that card out of the
-          // open filter, so `mouseleave` never arrives (measured 2026-09-23:
-          // the words stayed deep one press after being settled). What a card
-          // took it gives back as it goes, whatever took it away.
-          const held = watched.current.get(id);
-          if (held !== undefined) sizes.current?.unobserve(held);
-          watched.current.delete(id);
-          refs.current.delete(id);
-          if (hoveredThreadIn(editor.prosemirrorState) === id) {
-            hoverThread(editor, null);
-          }
-          setHeights((have) => {
-            if (!have.has(id)) return have;
-            const next = new Map(have);
-            next.delete(id);
-            return next;
-          });
-          return;
-        }
-        node.dataset.thread = id;
-        watched.current.set(id, node);
-        setHeights((held) =>
-          held.get(id) === node.offsetHeight
-            ? held
-            : new Map(held).set(id, node.offsetHeight),
-        );
-        sizes.current?.observe(node);
-      };
-      refs.current.set(id, made);
-      return made;
+  // What a card takes as it arrives and gives back as it goes. Two things
+  // each: a place in the observer, and a height in the table above.
+  const take = React.useCallback((node: HTMLDivElement, id: string): void => {
+    node.dataset.thread = id;
+    setHeights((held) =>
+      held.get(id) === node.offsetHeight
+        ? held
+        : new Map(held).set(id, node.offsetHeight),
+    );
+    sizes.current?.observe(node);
+  }, []);
+  const giveBack = React.useCallback(
+    (node: HTMLDivElement, id: string): void => {
+      sizes.current?.unobserve(node);
+      // A card can leave while the pointer is on it — Resolve is offered on
+      // the card being read, and settling takes that card out of the open
+      // filter, so `mouseleave` never arrives (measured 2026-09-23: the words
+      // stayed deep one press after being settled, A8).
+      if (hoveredThreadIn(editor.prosemirrorState) === id) {
+        hoverThread(editor, null);
+      }
+      setHeights((have) => {
+        if (!have.has(id)) return have;
+        const next = new Map(have);
+        next.delete(id);
+        return next;
+      });
     },
     [editor],
   );
@@ -370,44 +354,18 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
         ) : (
           <div className='absolute inset-x-2.5 top-0'>
             {shown.map((card) => (
-              <div
+              <PlacedCard
                 key={card.id}
-                ref={measure(card.id)}
-                // The move is animated: a card giving way to the one being
-                // read should read as giving way rather than as the column
-                // jumping under the reader (user 2026-09-22).
-                className='absolute inset-x-0 transition-[top] duration-200 ease-out motion-reduce:transition-none'
-                // The card being read comes to the front. Cards give way to
-                // each other by moving, and while one is settling — a reply
-                // box opening, a height not measured yet — they can still
-                // overlap; the one the reader is on is the one to see whole.
-                style={{
-                  top: `${placed.get(card.id) ?? 0}px`,
-                  zIndex: selected.includes(card.id) ? 1 : undefined,
-                }}
-                onMouseEnter={() => {
-                  onHover(card.id);
-                }}
-                onMouseLeave={() => {
-                  onHover(null);
-                }}
-                // Both ways a reader arrives at a card: the pointer pressing
-                // it, and the focus landing on any control inside it — which
-                // is how the keyboard gets here.
-                onPointerDown={() => {
-                  onRead(card.id);
-                }}
-                onFocusCapture={() => {
-                  onRead(card.id);
-                }}
-              >
-                <DocumentCommentCard
-                  card={card}
-                  selected={selected.includes(card.id)}
-                  draft={drafts.get(card.id) ?? ''}
-                  {...handling}
-                />
-              </div>
+                card={card}
+                top={placed.get(card.id) ?? 0}
+                selected={selected.includes(card.id)}
+                draft={drafts.get(card.id) ?? ''}
+                take={take}
+                giveBack={giveBack}
+                onHover={onHover}
+                onRead={onRead}
+                handling={handling}
+              />
             ))}
           </div>
         )}
@@ -415,6 +373,105 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     </aside>
   );
 });
+
+interface PlacedCardProps {
+  /** The thread this draws. */
+  card: CommentCardView;
+  /** How far down the column it sits. */
+  top: number;
+  /** Whether the reader has this thread open. */
+  selected: boolean;
+  /** What has been written into its reply box and not sent. */
+  draft: string;
+  /** Takes this card's element into the panel's measurements. */
+  take: (node: HTMLDivElement, id: string) => void;
+  /** Gives back everything the panel held under this card's id. */
+  giveBack: (node: HTMLDivElement, id: string) => void;
+  /** Says the pointer is resting on this card, or on none. */
+  onHover: (threadId: string | null) => void;
+  /** Opens this thread. */
+  onRead: (threadId: string) => void;
+  /** What every card takes, memoised once by the panel. */
+  handling: CardHandling;
+}
+
+/**
+ * One card in its place, holding what the panel keeps under its id.
+ *
+ * A component rather than a `ref` callback on the element: a card leaves for
+ * reasons the pointer knows nothing about, so something has to run as it
+ * goes, and only a mount effect's cleanup runs then and only then. A callback
+ * ref fresh per render is torn down and set up on every render instead, and
+ * one kept per id in a map is a cache of our own with its own failure — both
+ * were measured, and the second stopped a press on a highlight from opening
+ * its thread at all.
+ * @param root0 - See {@link PlacedCardProps}.
+ * @param root0.card - The thread this draws.
+ * @param root0.top - How far down the column it sits.
+ * @param root0.selected - Whether the reader has this thread open.
+ * @param root0.draft - What has been written into its reply box.
+ * @param root0.take - Takes this card's element into the measurements.
+ * @param root0.giveBack - Gives back what was held under this card's id.
+ * @param root0.onHover - Says the pointer is resting on it, or on none.
+ * @param root0.onRead - Opens this thread.
+ * @param root0.handling - What every card takes.
+ * @returns The card in its place.
+ */
+function PlacedCard({
+  card,
+  top,
+  selected,
+  draft,
+  take,
+  giveBack,
+  onHover,
+  onRead,
+  handling,
+}: PlacedCardProps): React.JSX.Element {
+  const box = React.useRef<HTMLDivElement>(null);
+  // Layout rather than passive: the height read here is what places every
+  // card below this one, and a frame with it missing draws them overlapping.
+  React.useLayoutEffect(() => {
+    const node = box.current;
+    if (node === null) return undefined;
+    take(node, card.id);
+    return () => {
+      giveBack(node, card.id);
+    };
+  }, [card.id, take, giveBack]);
+
+  return (
+    <div
+      ref={box}
+      // The move is animated: a card giving way to the one being read should
+      // read as giving way rather than as the column jumping under the
+      // reader (user 2026-09-22).
+      className='absolute inset-x-0 transition-[top] duration-200 ease-out motion-reduce:transition-none'
+      // The card being read comes to the front. Cards give way to each other
+      // by moving, and while one is settling — a reply box opening, a height
+      // not measured yet — they can still overlap; the one the reader is on
+      // is the one to see whole.
+      style={{ top: `${String(top)}px`, zIndex: selected ? 1 : undefined }}
+      onMouseEnter={() => {
+        onHover(card.id);
+      }}
+      onMouseLeave={() => {
+        onHover(null);
+      }}
+      // Both ways a reader arrives at a card: the pointer pressing it, and
+      // the focus landing on any control inside it — which is how the
+      // keyboard gets here.
+      onPointerDown={() => {
+        onRead(card.id);
+      }}
+      onFocusCapture={() => {
+        onRead(card.id);
+      }}
+    >
+      <DocumentCommentCard card={card} selected={selected} draft={draft} {...handling} />
+    </div>
+  );
+}
 
 /**
  * One of the two filter buttons.

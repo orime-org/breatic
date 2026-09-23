@@ -150,8 +150,11 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           // against the caret itself.
           viewportClassName='relative'
         >
-          <div className='flex min-h-full'>
-            <div className='min-w-0 flex-1 px-[var(--doc-body-gutter)]'>
+          {/* Both a flex item of the wrapper `index.css` grows, so the row
+              takes that height, and a flex container, so the text column and
+              the panel beside it each take it in turn. */}
+          <div className='flex flex-1'>
+            <div className='flex min-w-0 flex-1 flex-col px-[var(--doc-body-gutter)]'>
               <DocumentMenuEntry
                 commentsOpen={railOpen}
                 onToggleComments={toggleRail}

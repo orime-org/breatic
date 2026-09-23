@@ -22,6 +22,26 @@ const css = readFileSync(
 ).replace(/\/\*[\s\S]*?\*\//g, '');
 
 /**
+ * The selector of the one rule whose selector ends in the given text.
+ *
+ * For the cases that ask a real DOM whether a rule reaches it: read from here
+ * rather than retyped, so a selector edited in the stylesheet is the one being
+ * matched rather than a copy of what it used to say.
+ * @param endsWith - The tail of the selector.
+ * @returns That rule's selector, as written.
+ * @throws {Error} When no rule, or more than one, matches.
+ */
+export function selectorEndingIn(endsWith: string): string {
+  const found = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((match) =>
+    match[1].trim().endsWith(endsWith),
+  );
+  if (found.length !== 1) {
+    throw new Error(`${String(found.length)} rules end in ${endsWith}`);
+  }
+  return found[0][1].trim();
+}
+
+/**
  * The body of the one rule whose selector ends in the given text.
  * @param endsWith - The tail of the selector.
  * @returns That rule's declarations.
