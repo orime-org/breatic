@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 
 import { dropPositionAt } from '@web/spaces/canvas/drop-layout';
-import { planGroupCreation } from '@web/spaces/canvas/group-creation';
+import { planBatchGrouping, planGroupCreation } from '@web/spaces/canvas/group-creation';
 import {
   EMPTY_NODE_SIZE,
   GROUP_PADDING,
@@ -203,5 +203,74 @@ describe('planGroupCreation', () => {
         ),
       ).toBeNull();
     });
+  });
+});
+
+describe('planBatchGrouping — where one upload batch belongs (#2209)', () => {
+  /**
+   * The nodes a drop just created, placed on the grid from its origin.
+   * @param count - How many files the batch admitted.
+   * @param origin - Where the drop landed.
+   * @returns The flow nodes, in placement order.
+   */
+  function batchAt(count: number, origin: { x: number; y: number }): Node[] {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `f${String(i)}`,
+      type: 'image',
+      position: centerToTopLeft(dropPositionAt(origin, i), EMPTY_NODE_SIZE),
+      data: {},
+    }));
+  }
+
+  const host = {
+    id: 'existing',
+    rect: { x: 0, y: 0, width: 1000, height: 800 },
+  };
+
+  it('joins the Group the drop landed in', () => {
+    const origin = { x: 400, y: 400 };
+
+    // The host sits at the canvas origin, so each member keeps the top-left
+    // the grid placed it at.
+    expect(planBatchGrouping(batchAt(3, origin), [host], origin, 'new')).toEqual(
+      {
+        kind: 'join',
+        groupId: 'existing',
+        members: [
+          { id: 'f0', position: { x: 256, y: 304 } },
+          { id: 'f1', position: { x: 568, y: 304 } },
+          { id: 'f2', position: { x: 880, y: 304 } },
+        ],
+      },
+    );
+  });
+
+  it('joins it for a single file too, because that is where it was put', () => {
+    const origin = { x: 400, y: 400 };
+
+    expect(planBatchGrouping(batchAt(1, origin), [host], origin, 'new')).toEqual(
+      {
+        kind: 'join',
+        groupId: 'existing',
+        members: [{ id: 'f0', position: { x: 256, y: 304 } }],
+      },
+    );
+  });
+
+  it('wraps a batch dropped on open canvas in a Group of its own', () => {
+    const origin = { x: 5000, y: 5000 };
+
+    const out = planBatchGrouping(batchAt(2, origin), [host], origin, 'new');
+
+    expect(out.kind).toBe('wrap');
+    expect(out.kind === 'wrap' && out.plan.groupId).toBe('new');
+  });
+
+  it('leaves one file on open canvas alone', () => {
+    const origin = { x: 5000, y: 5000 };
+
+    expect(planBatchGrouping(batchAt(1, origin), [host], origin, 'new')).toEqual(
+      { kind: 'loose' },
+    );
   });
 });

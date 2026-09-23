@@ -324,6 +324,20 @@ test('the Group grows to hold members that turned out taller', async ({
     .toBeGreaterThan(framedEmpty);
 });
 
+test('a batch dropped on a Group joins it', async ({ page }) => {
+  await handOverFiles(page, 'drop', 2);
+  const groupId = await theGroupOver(page, 2);
+
+  // The same drop point, which is inside the Group the first batch made.
+  await handOverFiles(page, 'drop', 2);
+
+  const nodes = await settledNodes(page, 5);
+  expect(nodes.filter((n) => n.type === 'group').map((n) => n.id)).toEqual([
+    groupId,
+  ]);
+  expect(nodes.filter((n) => n.parentId === groupId)).toHaveLength(4);
+});
+
 test('one file stays one node, with no Group around it', async ({ page }) => {
   await page
     .locator('input[data-testid="canvas-upload-input"][multiple]')

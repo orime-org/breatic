@@ -138,7 +138,11 @@ import type {
   DisplayStatus,
   Modality,
 } from '@web/data/yjs/node-view';
-import { planGroupCreation } from '@web/spaces/canvas/group-creation';
+import {
+  planBatchGrouping,
+  planGroupCreation,
+  type OpenGroup,
+} from '@web/spaces/canvas/group-creation';
 import {
   EMPTY_NODE_SIZE,
   GROUP_MIN_SIZE,
@@ -628,6 +632,38 @@ function planMeasuredGroupFit(
     });
   }
   return planGroupFitToMembers(inputs);
+}
+
+/**
+ * The Groups a batch may land in.
+ *
+ * A locked Group takes nobody in, and one a remote gesture is holding has a
+ * rect that is about to change — this end writes nothing about either.
+ * @param places - The nodes as the document has them.
+ * @param heldByRemote - Ids remote gestures are holding right now.
+ * @returns Each open Group with the rect it is drawn as.
+ */
+function openGroupsFor(
+  places: ReadonlyArray<Node>,
+  heldByRemote: ReadonlySet<string>,
+): OpenGroup[] {
+  const out: OpenGroup[] = [];
+  for (const node of places) {
+    if (node.type !== 'group' || heldByRemote.has(node.id)) continue;
+    if ((node.data as { locked?: boolean } | undefined)?.locked === true) {
+      continue;
+    }
+    out.push({
+      id: node.id,
+      rect: {
+        x: node.position.x,
+        y: node.position.y,
+        width: node.width ?? GROUP_DRAG_FALLBACK_W,
+        height: node.height ?? GROUP_DRAG_FALLBACK_H,
+      },
+    });
+  }
+  return out;
 }
 
 /**
@@ -2665,24 +2701,41 @@ function CanvasSpaceInner({
           }
         }
         if (created.length === 0) return;
-        // One upload is one node the reader can drag on its own. Two or more
-        // arrived as one batch, so they leave as one: the Group is what the
-        // reader grabs, and the members keep the grid they were placed on.
-        const groupId = newId();
-        const plan = planGroupCreation(
+        // Files handed over together arrive as one thing, so they land as one:
+        // wrapped in a Group of their own on open canvas, or taken into the
+        // Group they were dropped on.
+        const placement = planBatchGrouping(
           created,
-          created.map((node) => node.id),
-          groupId,
+          openGroupsFor(buffer.documentPlaces(), buffer.heldByRemote()),
+          origin,
+          newId(),
         );
-        if (!plan) {
+        if (placement.kind === 'loose') {
           setSelectAfterCreate(created.map((node) => node.id));
           return;
         }
+        if (placement.kind === 'join') {
+          for (const member of placement.members) {
+            setNodeParent(
+              projectId,
+              spaceId,
+              member.id,
+              placement.groupId,
+              member.position,
+            );
+          }
+          // What just appeared is what the reader acts on; the Group they put
+          // it in was already theirs and holds other things they did not ask
+          // about.
+          setSelectAfterCreate(placement.members.map((member) => member.id));
+          return;
+        }
+        const { plan } = placement;
         createGroup(
           projectId,
           spaceId,
           createGroupNode(
-            groupId,
+            plan.groupId,
             plan.position,
             plan.width,
             plan.height,
@@ -2694,7 +2747,7 @@ function CanvasSpaceInner({
         // selected. Its members were never selected, so there is nothing to
         // clear first: `selectAfterCreate` deselects everything else when the
         // Group mirrors back.
-        setSelectAfterCreate([groupId]);
+        setSelectAfterCreate([plan.groupId]);
       })();
       trackOperation(UPLOAD_BATCH_OP, batchWork);
     },
@@ -2703,6 +2756,7 @@ function CanvasSpaceInner({
       projectId,
       spaceId,
       userId,
+      buffer,
       failUploadNode,
       createUploadNodeAt,
       t,

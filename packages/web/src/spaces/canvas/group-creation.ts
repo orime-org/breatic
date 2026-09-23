@@ -16,6 +16,7 @@ import { canJoinGroup } from '@web/spaces/canvas/group-membership';
 import {
   EMPTY_NODE_SIZE,
   groupRectForMembers,
+  rectContainsPoint,
   toRelativePosition,
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
@@ -38,6 +39,61 @@ export interface GroupCreationPlan {
   height: number;
   /** Members bound to the Group, each with its new parent-relative position. */
   members: GroupMemberPlan[];
+}
+
+/** A Group a batch could land in, with the rect it is drawn as. */
+export interface OpenGroup {
+  id: string;
+  rect: Rect;
+}
+
+/** Where a batch of freshly created nodes belongs. */
+export type BatchGrouping =
+  | { kind: 'join'; groupId: string; members: GroupMemberPlan[] }
+  | { kind: 'wrap'; plan: GroupCreationPlan }
+  | { kind: 'loose' };
+
+/**
+ * Where one upload batch belongs: inside the Group it was dropped on, in a
+ * Group of its own, or nowhere.
+ *
+ * Files handed over together arrive as one thing, so they land as one. Dropped
+ * on open canvas that means a Group around them; dropped on a Group it means
+ * joining it, because a Group cannot hold a Group — wrapping the batch there
+ * would put it in a box that can never become part of what it was dropped into.
+ * @param created - The nodes the batch just made, top-level and unmeasured.
+ * @param openGroups - The Groups that may take members, with their drawn rects.
+ * @param origin - Where the drop landed.
+ * @param origin.x - The drop point's x coordinate.
+ * @param origin.y - The drop point's y coordinate.
+ * @param newGroupId - Pre-generated id, used only when a new Group is made.
+ * @returns What the caller should write.
+ */
+export function planBatchGrouping(
+  created: ReadonlyArray<Node>,
+  openGroups: ReadonlyArray<OpenGroup>,
+  origin: { x: number; y: number },
+  newGroupId: string,
+): BatchGrouping {
+  const host = openGroups.find((group) =>
+    rectContainsPoint(group.rect, origin),
+  );
+  if (host !== undefined) {
+    return {
+      kind: 'join',
+      groupId: host.id,
+      members: created.map((node) => ({
+        id: node.id,
+        position: toRelativePosition(node.position, host.rect),
+      })),
+    };
+  }
+  const plan = planGroupCreation(
+    created,
+    created.map((node) => node.id),
+    newGroupId,
+  );
+  return plan === null ? { kind: 'loose' } : { kind: 'wrap', plan };
 }
 
 /**
