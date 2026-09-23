@@ -155,6 +155,20 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     });
   }, []);
 
+  // A draft outlives the card, so it is let go of when the thread itself is
+  // gone rather than when the card leaves — a settled thread is still one
+  // filter press away with those words in it (design §9.6). Asked of both
+  // groups, not of what the panel is showing.
+  React.useEffect(() => {
+    const live = new Set(
+      [...cards.unresolved, ...cards.resolved].map((card) => card.id),
+    );
+    setDrafts((held) => {
+      if ([...held.keys()].every((id) => live.has(id))) return held;
+      return new Map([...held].filter(([id]) => live.has(id)));
+    });
+  }, [cards]);
+
   // One object, memoised: every card takes the same eight, and a fresh object
   // per render would stop `DocumentCommentCard`'s memo ever bailing out.
   const handling: CardHandling = React.useMemo(

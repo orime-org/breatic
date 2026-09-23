@@ -420,6 +420,30 @@ describe('the comment panel', () => {
     });
   });
 
+  it('leaves a settled thread as prose while its card is read and hovered', async () => {
+    // Design §9.5, invariant one. Under "all" the settled card stays on the
+    // panel, so nothing releases the reading — and the paint has to refuse on
+    // its own. Measured in a browser 2026-09-23: hovering the settled card
+    // put the active colour back on words A8 promises read as prose.
+    show();
+    await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
+    await userEvent.click(await screen.findByTestId('doc-comment-card'));
+    await userEvent.click(screen.getByTestId('doc-comment-resolve'));
+    await userEvent.click(
+      screen.getByTestId('doc-comment-rail-filter-all'),
+    );
+
+    const settled = await screen.findByTestId('doc-comment-card');
+    await userEvent.click(settled);
+    await userEvent.hover(settled);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('doc-comment-card')).toHaveLength(1);
+    });
+    expect(deepened()).toBe(0);
+  });
+
   it('keeps a half-written reply while its thread is settled and reopened', async () => {
     // The reply lived in the card's own state, so a thread settled by a peer
     // took the reader's unsent words with it when the card unmounted.

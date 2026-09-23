@@ -132,6 +132,13 @@ function paintSelected(
   doc.descendants((node, pos) => {
     node.marks.forEach((mark) => {
       if (mark.type.name !== COMMENT_MARK) return;
+      // The same question the hit test asks (`document-comment-hit.ts`), and
+      // for the same reason: a settled thread keeps its mark with the paint
+      // taken off it, and A8 promises those words read as prose however the
+      // reader arrives at the card. Under the "all" filter the card stays on
+      // the panel, so nothing takes the thread out of `ids` — the paint has
+      // to refuse on its own (design §9.5, invariant one).
+      if (mark.attrs.orphan === true) return;
       if (!ids.includes(mark.attrs.threadId as string)) return;
       painted.push(
         Decoration.inline(pos, pos + node.nodeSize, { class: SELECTED_CLASS }),
