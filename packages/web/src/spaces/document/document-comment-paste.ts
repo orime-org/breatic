@@ -20,7 +20,8 @@
  * Landing in the SAME document is the half worth spelling out, because the
  * mark there names a thread that really does exist. The library derives a
  * thread's range by merging every mark carrying its id into one span,
- * `min(from) → max(to)` (`comments/extension.ts:28-57`), so the second copy
+ * `min(from) → max(to)` (its position table, `dist/comments.js`), so the
+ * second copy
  * does not become a second highlight — it stretches the one thread across
  * both copies and every word between them.
  *

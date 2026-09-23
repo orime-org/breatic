@@ -10,11 +10,15 @@
  * threads were pressed.
  *
  * A LIST, NOT ONE. Two comments may cover the same run, and the library's own
- * handler reaches only the first of them (`comments/extension.ts:261-263`).
- * Naming all of them is what lets the reader pick, which is what the three
- * implementations that answer this question do (see `document-comment-hit.ts`).
- * So this answers the press itself and returns true, which is the last thing
- * ProseMirror calls for it. Getting there before the library's handler is a
+ * handler reaches only the first of them (grep `marks.find` in
+ * `@blocknote/core/dist/comments.js`). Naming all of them is what lets the
+ * reader pick, which is what the two implementations that answer this
+ * question do (see `document-comment-hit.ts`).
+ * So this answers the press itself and returns true, which short-circuits the
+ * rest of the chain — `prosemirror-view`'s `handleSingleClick` runs
+ * `handleClickOn || handleClick || selectClicked*` (`src/input.ts:232-234`),
+ * so the library's handler, the link's, and the default node selection all
+ * stand down. Getting there before the library's handler is a
  * matter of priority rather than of list order — see {@link selectionPlugin}.
  *
  * A SECOND PRESS ON THE SAME COMMENT IS LEFT ALONE, because commented words
@@ -99,8 +103,8 @@ const DOCUMENT_COMMENT_HOVER = 'documentCommentHover';
 /**
  * The class the deeper colour is painted through.
  *
- * The library's, kept because the stylesheet already paints it and because a
- * press answered by either of us should look the same.
+ * Ours, and the only thing that paints it is `index.css`. The library's own
+ * decoration carries `bn-thread-mark-selected` and lands on the same span.
  */
 const SELECTED_CLASS = 'doc-comment-mark-reading';
 

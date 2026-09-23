@@ -7,19 +7,21 @@
  * Two comments may overlap the same run — `excludes: ""` on the mark is what
  * allows it — and the library's own handler cannot reach the second: it takes
  * `node.marks.find(...)`, the first match, and selects that one thread
- * (`comments/extension.ts:261-263`). A reader pressing a doubly commented run
+ * (grep `marks.find` in `@blocknote/core/dist/comments.js`). A reader
+ * pressing a doubly commented run
  * would get one of the two with no way to tell which, or to reach the other.
  *
  * So this names them all and the reader picks, which is what the three
- * implementations that answer the question do: ProseMirror's own `commentsAt`
- * returns a list and renders every entry, Lexical holds an array of ids and
- * activates all of them, CKEditor's `activeAnnotations` is a set. (No
- * vendor's help pages answer it, so there is no product convention to follow
- * — only these.)
+ * implementations that answer the question do: the comment plugin in
+ * ProseMirror's own collab example returns every comment at a position and
+ * renders them all, and Lexical holds an array of ids and activates all of
+ * them. (No vendor's help pages answer it, so there is no product convention
+ * to follow — only these.)
  *
  * `orphan` is read, as the library's own handler reads it: what a reader can
  * press is what is drawn for them. The library sets that attribute from
- * `!thread || resolved || deletedAt` (`extension.ts:138-142`) and
+ * `!thread || resolved || deletedAt` (grep `isOrphan` in
+ * `@blocknote/core/dist/comments.js`) and
  * `.bn-thread-mark[data-orphan='true']` paints it transparent, so those words
  * look like any others on the page — and a press there belongs to whoever
  * else wants it, the link handler among them.

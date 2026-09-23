@@ -10,7 +10,8 @@
  * Neither store is React's, so both are subscribed to.
  *
  * IDENTITY IS PART OF THE CONTRACT. The position table is recomputed on every
- * document change (`comments/extension.ts:197-211`), so a reading that built a
+ * document change (its position table, `dist/comments.js`), so a reading
+ * that built a
  * fresh object each time would re-render the panel on every keystroke —
  * `useSyncExternalStore` compares snapshots by identity. The cache hands back
  * the previous reading whenever the cards and their states are unchanged,

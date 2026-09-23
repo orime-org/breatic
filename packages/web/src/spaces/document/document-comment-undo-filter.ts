@@ -13,9 +13,11 @@
  * mark are a transaction of nothing but comment mark steps:
  *
  * - the reader opening a comment, marking the words they selected;
- * - the library rewriting `orphan` for every mark of a thread that was
- *   resolved, deleted or lost its text (`updateMarksFromThreads`, called from
- *   the thread store's subscription, `comments/extension.ts:130-173`).
+ * - the library rewriting `orphan` on the marks whose flag has flipped, for
+ *   a thread that is resolved, soft-deleted, or no longer in the store (the
+ *   mark sync the thread store's subscription drives; the three conditions
+ *   are `!thread || thread.resolved || thread.deletedAt` — grep `isOrphan`
+ *   in `@blocknote/core/dist/comments.js`).
  *
  * Neither belongs on the stack, so neither needs telling apart. What made the
  * second one urgent stays true: it runs on a PEER's resolve as a local

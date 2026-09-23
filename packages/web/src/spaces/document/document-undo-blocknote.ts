@@ -13,7 +13,7 @@
  * yjs guards that with a delete filter, and two things about it are ours:
  *
  * - **The set of protected names.** y-prosemirror defaults to one, `paragraph`
- *   (`undo-plugin.js:45`), because that default was written for documents made
+ *   (`undo-plugin.js:43`), because that default was written for documents made
  *   of paragraphs. Ours holds nine block types inside two container types.
  * - **The filter is wrapped**, because saving the container is not enough:
  *   upstream's never sees the container's ATTRIBUTES, so a heading came back
@@ -131,8 +131,8 @@ export interface DocumentUndo {
  * (`sync-plugin.js:147` records it, `:228` writes it onto the Yjs transaction),
  * but `:147` OVERWRITES it on every ProseMirror transaction, and one dispatch
  * here is more than one transaction: a new block needs an id, and BlockNote's
- * `uniqueID` plugin stamps one from an `appendTransaction` that carries no meta
- * of its own. Measured: one dispatch marked `addToHistory: false` reaches Yjs
+ * `uniqueID` plugin stamps one from an `appendTransaction` that carries no
+ * `addToHistory` of its own (it sets a `uniqueID` meta and nothing else). Measured: one dispatch marked `addToHistory: false` reaches Yjs
  * as `addToHistory: true`, and the machine's edit lands on the user's stack.
  *
  * {@link documentUndoSelectionPlugin} answers the same upstream behaviour with
@@ -172,7 +172,7 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
  * the user's — the same behaviour `documentUndoSelectionPlugin` steps around.
  *
  * A transaction the sync binding built to bring Yjs's content into this view
- * is marked `addToHistory: false` by upstream (`sync-plugin.js:355`), and undo
+ * is marked `addToHistory: false` by upstream (`sync-plugin.js:385`, the `_tr` every write-back starts from), and undo
  * puts content back through exactly that path. Letting it answer leaves the
  * marker false for whatever comes next, and the redo that follows an undo is
  * refused. Upstream asks the same two questions together at `:214`.
