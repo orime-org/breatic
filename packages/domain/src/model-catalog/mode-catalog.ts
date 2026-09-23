@@ -226,6 +226,37 @@ export function materialNeeded(
 }
 
 /**
+ * Which kinds of material one model in one mode asks the reader for.
+ *
+ * Beside {@link materialNeeded} rather than folded into it: that one says how
+ * many pieces, this one says of what. A talking head takes two pieces and the
+ * count alone is met by two portraits, which is a run the panel refuses for a
+ * missing voice after the reader has filled both nodes.
+ *
+ * Read off the mode rather than off the model's parameters, because that is
+ * where the requirement is declared: `config/models/modes.yaml` states it once
+ * per mode and every model offering that mode is held to it.
+ * @param nodeType - The node the run is on, for the buckets it draws from.
+ * @param mode - The mode it is set to.
+ * @param model - The model it names.
+ * @returns The kinds, in the order the mode declares them; empty for a mode
+ * needing nothing and for a model this node cannot reach.
+ */
+export function materialKinds(
+  nodeType: GenerationNodeType,
+  mode: string,
+  model: string,
+): GenerationNodeType[] {
+  const catalog = getModelCatalog();
+  const config = getModeConfig();
+  for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
+    const entry = (catalog[bucket] ?? []).find((e) => e.name === model);
+    if (entry) return [...(config[bucket]?.modes[mode]?.sources ?? [])] as GenerationNodeType[];
+  }
+  return [];
+}
+
+/**
  * The modes a picker offers that the catalog can currently back.
  *
  * Both halves are load-bearing and neither can stand in for the other. The

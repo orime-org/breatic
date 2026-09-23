@@ -58,6 +58,7 @@ import {
 } from "@breatic/shared";
 
 import {
+  materialKinds,
   modelsForMode,
   type ModelInfo,
   type ParamInfo,
@@ -438,6 +439,33 @@ function checkGenerateNode(
   }
   const values = checkParams(chosen, node);
   if (!values.ok) return values;
+
+  // Every kind this mode runs on has to be somewhere in the group for the
+  // reader to put it in. Only one of the two deliveries leaves a trace the
+  // rest of this file can read: pool material arrives by an edge, which the
+  // connection rule above already holds to a kind, while slot material is
+  // picked in the panel by clicking any node of that kind and is wired to
+  // nothing. So a talking head proposed with two portraits and no voice passes
+  // every per-edge rule there is, and the reader fills both nodes before the
+  // panel tells them a voice is missing.
+  //
+  // Asked of the group rather than of this node's feeders, because that is the
+  // question a slot can be answered from: the reader clicks any node of the
+  // kind, so what has to exist is one somewhere in what this places. Every
+  // role counts -- an empty node the reader fills and the step before that
+  // made one are the same thing to the slot they are picked into -- and this
+  // node is left out, or a mode running on its own kind would answer itself.
+  const kinds = materialKinds(nodeType, mode, model);
+  const supplied = new Set(
+    proposal.nodes.filter((_, at) => at !== index).map((n) => n.type),
+  );
+  const missing = kinds.filter((kind) => !supplied.has(kind));
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      reason: `"${mode}" runs on ${kinds.join(" and ")} material, and this group holds no ${missing.join(" or ")} node for "${node.name}" to draw on.`,
+    };
+  }
 
   const prompt = node.prompt ?? [];
   // Two ways the reader's material reaches a generation: the reference pool,

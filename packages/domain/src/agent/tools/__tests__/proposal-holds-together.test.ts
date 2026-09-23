@@ -401,6 +401,26 @@ describe("a mode whose material arrives through a panel slot", () => {
 
     expect(checkProposal(propose(at, { sources: each }))).toEqual({ ok: true });
   });
+
+  it("is refused when the empty nodes leave one of the kinds this mode needs unfilled", () => {
+    // Slot material is picked in the panel rather than wired, so no edge is
+    // drawn and the rule holding the pool path to its kinds never runs here.
+    // A talking head takes a portrait and a voice; two portraits is a group
+    // the reader fills and then cannot generate from.
+    const at = pick(
+      (m) => !m.byReference && m.needs.length > 1,
+      "mode needing two kinds through panel slots",
+    );
+    const twiceTheFirst = [
+      at.needs[0] as GenerationNodeType,
+      at.needs[0] as GenerationNodeType,
+    ];
+
+    expect(checkProposal(propose(at, { sources: twiceTheFirst }))).toEqual({
+      ok: false,
+      reason: expect.stringContaining(String(at.needs[1])),
+    });
+  });
 });
 
 describe("a mode that needs nothing of the reader", () => {
