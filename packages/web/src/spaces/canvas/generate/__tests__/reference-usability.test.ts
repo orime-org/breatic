@@ -27,7 +27,7 @@ import {
   insertRefusal,
   isReferenceMaterial,
   type ReferenceUsabilityContext,
-} from '@web/spaces/canvas/generate/reference-usability';
+} from '@breatic/shared';
 import type { NodeKind } from '@web/data/yjs/node-view';
 
 /** The four upstream modalities the connection rules let reach a video node. */

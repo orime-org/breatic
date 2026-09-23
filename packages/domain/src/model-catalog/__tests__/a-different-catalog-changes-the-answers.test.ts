@@ -164,6 +164,7 @@ describe("a catalog that differs from this repository's", () => {
         edges: [],
         modelNote: "",
         rationale: "",
+        groupName: "A slow pan",
       }),
     ).toEqual({ ok: true });
   });

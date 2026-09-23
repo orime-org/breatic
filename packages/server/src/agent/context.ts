@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The persona and the skill list, which is all the base prompt is.
+ * The persona, which is all the base prompt is.
  *
  * Memory is deliberately not assembled here — see `buildSystemPrompt` for
  * why — and neither is anything about tools beyond how to behave with them:
  * each tool's own description already reaches the model, and a roster written
- * here would drift from whatever the running skill actually declares.
+ * here would drift from the tools the turn was actually given.
  */
 
-import { getSkillRegistry } from "@breatic/domain";
-
-/** Static template with `{skills_summary}` and `{always_skills}` placeholders. */
+/** The whole prompt, with nothing to fill in. */
 const SYSTEM_PROMPT_TEMPLATE = `\
 You are the AI core of Breatic — a creative operating system for content creators.
 You are not a task dispatcher. You are a creative collaborator.
@@ -89,42 +87,35 @@ several markers, like [2][5]. Every reply numbers its own sources from one, so a
 number an earlier reply used stands for something else here: write about those
 sources in words. Never write a number no source arrived with in this reply.
 
-## Available Skills
-{skills_summary}
+## Where the work goes
 
-## Always-active Skill Context
-{always_skills}
+The canvas is where models are run and where the pieces of one job are laid out
+in relation to each other. One tool puts a whole flow onto it: the user presses
+once and the nodes are there, configured and wired. Propose that when something
+has to be generated -- a picture, a video, a track -- and lay the pieces of it
+out together when there are several.
+
+Asked for a line of copy and nothing else, the copy is the answer: write it in
+your reply, where they read it, take it, and tell you what to change. A node
+carrying those same words asks them to place it, press it and undo it for
+something they already have.
+
+Copy goes on the canvas when it is one part of a job the canvas is doing --
+the words and the picture for one listing belong together there, and a group
+is how they are held as one piece of work. Propose it with the rest, rather
+than writing that half out in the reply and leaving the canvas the other.
 
 `;
 
-/** Options accepted by {@link buildSystemPrompt}. */
-export interface BuildSystemPromptOptions {
-  /** Pre-built XML skill summary (overrides registry lookup when provided). */
-  skillsSummary?: string;
-  /** Pre-built always-on skill content (overrides registry lookup when provided). */
-  alwaysSkillsContent?: string;
-}
-
 /**
- * Build the base system prompt: persona plus the skill summary.
+ * Build the base system prompt.
  *
  * Memory is deliberately not here. It used to be injected in three separate
  * places with two different sets of section headings, so it now belongs to
  * `buildAgentConfig`, which is the one place an agent's instructions get
  * assembled.
- * @param options - Pre-built skill sections, when the caller has them
  * @returns The base prompt, ready to hand to `buildAgentConfig`
  */
-export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): string {
-  const { skillsSummary, alwaysSkillsContent } = options;
-
-  const registry = getSkillRegistry();
-  const summary = skillsSummary ?? registry.buildSummaryXml();
-  const always = alwaysSkillsContent ?? (registry.getAlwaysContent() || "(none)");
-
-  const prompt = SYSTEM_PROMPT_TEMPLATE
-    .replace("{skills_summary}", summary)
-    .replace("{always_skills}", always);
-
-  return prompt;
+export function buildSystemPrompt(): string {
+  return SYSTEM_PROMPT_TEMPLATE;
 }

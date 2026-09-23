@@ -68,12 +68,18 @@ function proposalOf(output: unknown): CanvasProposal[] {
     Array.isArray(answer['nodes']) &&
     Array.isArray(answer['edges']);
   if (!accepted) return [];
+  // Field by field rather than spread, because what arrives is whatever was
+  // stored on a message -- but every field the proposal carries has to be on
+  // this list. One left off passes the tool's own check on the way out and is
+  // gone by the time the canvas reads it, with nothing failing in between.
+  const groupName = answer['groupName'];
   return [
     {
       nodes: answer['nodes'] as CanvasProposal['nodes'],
       edges: answer['edges'] as CanvasProposal['edges'],
       modelNote: typeof answer['modelNote'] === 'string' ? answer['modelNote'] : '',
       rationale: typeof answer['rationale'] === 'string' ? answer['rationale'] : '',
+      ...(typeof groupName === 'string' && groupName !== '' ? { groupName } : {}),
     },
   ];
 }

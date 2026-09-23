@@ -59,10 +59,9 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
  * chat used to pass an empty array and end up with no tools at all — the
  * model could not search, so it made things up instead.
  *
- * It happens to equal the whole of `TOOL_MAP` right now. That is arithmetic,
- * not intent. The moment a tool arrives that is not for everyone, this list
- * stops matching the map, and it is this list — not the map — that answers
- * "what does a caller get by default".
+ * It is narrower than `TOOL_MAP`: the canvas tools below are for a caller
+ * looking at a canvas, so they are not in it. This list — not the map —
+ * answers "what does a caller get by default".
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",

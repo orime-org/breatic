@@ -115,14 +115,14 @@ const agentConfigSchema = z.object({
    * agrees on — Anthropic's `clear_tool_uses_20250919` keeps three.
    */
   tool_result_keep: z.number().int().positive().default(3),
-  memory_project_max_size: z.number().int().positive().default(3072),
+  memory_project_max_size: z.number().int().positive().default(8192),
   /**
    * How much of a conversation's own memory reaches the system prompt.
    *
    * Consolidation rewrites this layer whole every time it runs, so it is the
    * one segment that grows from its own output.
    */
-  memory_conversation_max_size: z.number().int().positive().default(3072),
+  memory_conversation_max_size: z.number().int().positive().default(8192),
   /**
    * The ceiling on one model call's answer, in tokens.
    *

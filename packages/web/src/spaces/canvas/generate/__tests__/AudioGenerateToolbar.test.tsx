@@ -38,9 +38,9 @@ describe('AudioGenerateToolbar — Reference, then the mode\'s slots', () => {
     expect(screen.getByTestId('generate-audio-tool-reference')).toBeInTheDocument();
   });
 
-  it('carries neither Focus nor Style — an audio node takes only text (connection-rules.ts:30)', () => {
+  it('carries neither Focus nor Style — an audio node refuses image input', () => {
     // Focus crops a region OF AN IMAGE into a standalone reference and Style
-    // holds a picked image; an audio node's only accepted input is a text one,
+    // holds a picked image; an image is the one kind an audio node refuses,
     // so both entries would collect something this panel can never use.
     setup();
     expect(screen.queryByTestId('generate-audio-tool-focus')).toBeNull();
@@ -135,10 +135,11 @@ describe('AudioGenerateToolbar — Reference, then the mode\'s slots', () => {
     expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
   });
 
-  it('sends the user after text, the only thing an audio node accepts', async () => {
-    // The image and video toolbars share a tip naming images. An audio node's
-    // whitelist is text alone (`lib/connection-rules.ts:30`), so that tip
-    // would point at the one kind of node this pick greys out and refuses.
+  it('sends the user after text, the one kind this pick can mention here', async () => {
+    // The image and video toolbars share a tip naming images. No audio model
+    // declares a reference pool, so `insertRefusal` turns away every media row
+    // on this panel and a text row is the only one that becomes a mention --
+    // which an audio node's input takes, alongside audio.
     setup();
     fireEvent.pointerMove(screen.getByTestId('generate-audio-tool-reference'), {
       pointerType: 'mouse',

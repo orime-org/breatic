@@ -86,6 +86,60 @@ describe("get_canvas_capabilities", () => {
   });
 });
 
+// A proposal decides how many nodes to lay down and which of them hold words
+// rather than generate, and that decision needs the text node's part in a
+// flow. The modes list answers what can be generated, so the one thing it says
+// about text nodes today is that they are absent from it — which leaves the
+// model to guess what mentioning one does.
+describe("what get_canvas_capabilities says about text nodes", () => {
+  /**
+   * The rendered answer for the live catalog.
+   * @returns What the model reads.
+   */
+  async function rendered(): Promise<string> {
+    return renderCapabilitiesForModel(
+      await run<CanvasCapabilityAnswer>(canvasCapabilities, {}),
+    );
+  }
+
+  it("states both halves of what a mention does", async () => {
+    // `serializePromptText` swaps a text mention for that node's words;
+    // `mentionedReferenceUrls` takes an image node's url as reference
+    // material. Those are the two outcomes, and the answer names both.
+    const text = await rendered();
+    expect(text).toContain("puts that node's words into the prompt");
+    expect(text).toContain("as reference material");
+  });
+
+  it("says a mention names the node rather than copying it", async () => {
+    // Both paths read the node at submit time, so editing the node changes
+    // what every mention of it sends. A model that reads a mention as a
+    // snapshot writes the words into the prompt a second time instead.
+    expect(await rendered()).toContain("at the moment the reader presses Generate");
+  });
+
+  it("says one text node can be mentioned by several nodes downstream", async () => {
+    expect(await rendered()).toContain("mentioned by several nodes downstream");
+  });
+
+  it("names the three things a text node carries", async () => {
+    // The reader keeps one, the flow is described by another, and the third is
+    // the prompt fragment the nodes downstream mention.
+    const text = await rendered();
+    expect(text).toContain("a finished piece of writing");
+    expect(text).toContain("what a group of nodes is for");
+    expect(text).toContain("a shared prompt fragment");
+  });
+
+  it("says it even when nothing on this canvas can generate", () => {
+    // A deployment that reaches no model still lays down text nodes, so the
+    // sentence naming that has to carry this alongside it.
+    const text = renderCapabilitiesForModel({ nodes: [] });
+    expect(text).toContain("cannot generate anything right now");
+    expect(text).toContain("puts that node's words into the prompt");
+  });
+});
+
 describe("list_generation_models", () => {
   it("answers with the models behind one mode", async () => {
     const answer = await run<ModelsForMode>(generationModels, {

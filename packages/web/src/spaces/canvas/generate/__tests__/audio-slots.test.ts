@@ -9,8 +9,8 @@
  * read that as "this pick fills no slot" and carry on: the click handler falls
  * through to the reference branch, which wires an EDGE instead of filling the
  * slot, and the candidate dimming falls back to `canConnect`, which for an
- * audio node whitelists TEXT — the panel would light up exactly the nodes the
- * pick cannot take and dim the ones it wants. Both failures compile. (The
+ * audio node whitelists text and audio — the panel would light up exactly the
+ * nodes the pick cannot take and dim the ones it wants. Both failures compile. (The
  * video panel's two call sites test the result against `VIDEO_SLOTS` before
  * using it, so they were never the exposed ones.)
  *

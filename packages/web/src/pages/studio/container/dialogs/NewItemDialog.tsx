@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { Loader2 } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -53,8 +54,13 @@ interface NewItemDialogProps {
   kind: 'project' | 'collection';
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Called with the entered values on a valid submit (stub in slice 3). */
-  onCreate?: (values: NewItemValues) => void;
+  /**
+   * Called with the entered values on a valid submit. Returning a promise
+   * holds the dialog open until the create settles: the reader keeps what he
+   * typed and the button says it is working, which is the only thing on
+   * screen between the press and the new project's page (#255).
+   */
+  onCreate?: (values: NewItemValues) => void | Promise<unknown>;
   /**
    * The studios the viewer may create in (project kind only; spec §7.1). When
    * given and non-empty, the dialog renders the studio selector. Omitted for
@@ -96,6 +102,12 @@ export function NewItemDialog({
   const [studioId, setStudioId] = React.useState(defaultStudioId ?? '');
   const [slugError, setSlugError] = React.useState<SlugError>(null);
   const [submitted, setSubmitted] = React.useState(false);
+  // Where the cursor goes when a press is refused. The message a refusal
+  // reveals sits further up the form than the button that was pressed, so
+  // without this the press reads as nothing having happened.
+  const nameRef = React.useRef<HTMLInputElement>(null);
+  const slugRef = React.useRef<HTMLInputElement>(null);
+  const [submitting, setSubmitting] = React.useState(false);
   const showStudioSelect =
     kind === 'project' && studios !== undefined && studios.length > 0;
 
@@ -119,6 +131,7 @@ export function NewItemDialog({
     setStudioId(defaultStudioId ?? '');
     setSlugError(null);
     setSubmitted(false);
+    setSubmitting(false);
   };
 
   /**
@@ -152,20 +165,38 @@ export function NewItemDialog({
     setSubmitted(true);
     const error = validateItemSlug(slug);
     setSlugError(error);
-    if (name.trim() === '' || error !== null) {
+    const nameMissing = name.trim() === '';
+    if (nameMissing || error !== null) {
+      // Calling `preventDefault` above took over the job the browser does for
+      // a form it validates itself: put the cursor on the first field that
+      // was rejected, which also brings it into view.
+      (nameMissing ? nameRef : slugRef).current?.focus();
       return;
     }
-    onCreate?.({
-      name: name.trim(),
-      slug,
-      description: description.trim(),
-      // A space type + target studio only apply to a project; collections have
-      // neither spaces nor a studio selector, so both are omitted for them.
-      ...(kind === 'project'
-        ? { spaceType, ...(studioId !== '' ? { studioId } : {}) }
-        : {}),
-    });
-    handleOpenChange(false);
+    setSubmitting(true);
+    // Awaited whether or not the caller returns a promise, so there is one
+    // path out of a press. A caller that reports failure by rejecting leaves
+    // the dialog up with what was typed still in it; saying what went wrong
+    // is that caller's job, since only it knows what the server answered.
+    void Promise.resolve(
+      onCreate?.({
+        name: name.trim(),
+        slug,
+        description: description.trim(),
+        // A space type + target studio only apply to a project; collections
+        // have neither spaces nor a studio selector, so both are omitted.
+        ...(kind === 'project'
+          ? { spaceType, ...(studioId !== '' ? { studioId } : {}) }
+          : {}),
+      }),
+    ).then(
+      () => {
+        handleOpenChange(false);
+      },
+      () => {
+        setSubmitting(false);
+      },
+    );
   };
 
   const title =
@@ -206,10 +237,12 @@ export function NewItemDialog({
               </Label>
               <Input
                 id={nameId}
+                ref={nameRef}
                 autoComplete='off'
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder={t('studio.container.dialog.namePlaceholder')}
+                disabled={submitting}
                 required
               />
             </div>
@@ -222,6 +255,7 @@ export function NewItemDialog({
             ) : null}
             <SlugField
               id={slugId}
+              inputRef={slugRef}
               label={t('studio.container.dialog.slugLabel')}
               placeholder={t('studio.container.dialog.slugPlaceholder')}
               value={slug}
@@ -229,6 +263,7 @@ export function NewItemDialog({
               error={slugError}
               bounds={ITEM_SLUG_BOUNDS}
               helper={slugHelper}
+              disabled={submitting}
             />
             <div className='flex flex-col gap-1.5'>
               <Label htmlFor={descId}>
@@ -238,6 +273,7 @@ export function NewItemDialog({
                 id={descId}
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
+                disabled={submitting}
               />
             </div>
           </DialogBody>
@@ -251,8 +287,15 @@ export function NewItemDialog({
             </Button>
             <Button
               type='submit'
-              disabled={name.trim() === '' || slugError !== null}
+              disabled={submitting || name.trim() === '' || slugError !== null}
             >
+              {submitting ? (
+                <Loader2
+                  data-testid={`new-${kind}-pending`}
+                  aria-hidden='true'
+                  className='mr-2 h-3.5 w-3.5 animate-spin'
+                />
+              ) : null}
               {t('studio.container.dialog.create')}
             </Button>
           </DialogFooter>

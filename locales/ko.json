@@ -272,6 +272,7 @@
       "use": "사용",
       "building": "만드는 중…",
       "failed": "만들지 못했습니다.",
+      "eachRun": "{s, number}초 × {n, number}",
       "needCanvas": "먼저 캔버스를 여세요."
     },
     "thinking": "잠시 생각했습니다",

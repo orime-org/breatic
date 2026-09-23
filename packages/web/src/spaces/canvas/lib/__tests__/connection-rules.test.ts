@@ -3,6 +3,8 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { canConnect as shared } from '@breatic/shared';
+
 import {
   canConnect,
   resolveClickConnectRejection,
@@ -13,9 +15,20 @@ import {
 //   image input ← { image, text }
 //   video input ← { text, video, audio, image }
 //   text  input ← { text, video, audio, image }
-//   audio input ← { text }
+//   audio input ← { text, audio }
 // Anything not on a target's whitelist is rejected at the wire level, not
 // silently dropped later at execute time.
+describe('the rule the canvas reads and the rule the agent is held to', () => {
+  it('is one function, not two that agree today', () => {
+    // The agent proposes edges (#263) and its check runs in a library package
+    // that cannot reach into this one, so the whitelist moved to the package
+    // both sides can read. A copy would agree until the first change to it,
+    // and then the reader's own drag and the agent's proposal would part
+    // company with nothing failing.
+    expect(canConnect).toBe(shared);
+  });
+});
+
 describe('canConnect', () => {
   describe('image input — { image, text }', () => {
     it('allows image → image (i2i source reference)', () => {
@@ -68,15 +81,18 @@ describe('canConnect', () => {
     });
   });
 
-  describe('audio input — { text } only', () => {
+  describe('audio input — { text, audio }', () => {
     it('allows text → audio', () => {
       expect(canConnect('text', 'audio')).toBe(true);
     });
 
-    it('rejects everything else, including audio → audio', () => {
+    it('allows audio → audio', () => {
+      expect(canConnect('audio', 'audio')).toBe(true);
+    });
+
+    it('rejects the modalities audio generation does not read', () => {
       expect(canConnect('image', 'audio')).toBe(false);
       expect(canConnect('video', 'audio')).toBe(false);
-      expect(canConnect('audio', 'audio')).toBe(false);
       expect(canConnect('3d', 'audio')).toBe(false);
     });
   });

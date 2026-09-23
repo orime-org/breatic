@@ -3,15 +3,14 @@
 
 import * as React from 'react';
 
+import { MAX_NODE_NAME_LEN } from '@breatic/shared';
+
 import { cn } from '@web/lib/utils';
 import {
   MODALITY_ICONS,
   MODALITY_LABEL,
 } from '@web/spaces/canvas/nodes/_shared/modality';
-import {
-  MAX_NODE_NAME_LEN,
-  useInlineRename,
-} from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
+import { useInlineRename } from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
 import type { Modality } from '@web/data/yjs/node-view';
 
 interface NodeHeaderProps {
