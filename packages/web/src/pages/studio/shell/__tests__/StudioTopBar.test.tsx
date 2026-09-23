@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { setLocale, type Locale } from '@breatic/shared';
@@ -71,7 +72,7 @@ describe('StudioTopBar', () => {
     // The studio switcher moved to the persistent rail and search is dropped
     // this version, so the top bar is just brand + tools.
     const home = screen.getByRole('link', { name: 'Home' });
-    expect(home).toHaveAttribute('href', '/');
+    expect(home).toHaveAttribute('href', OFFICIAL_HOME_URL);
     expect(screen.getByText('Breatic')).toBeInTheDocument();
     // The brand uses the shared REAL logo mark (the same `BrandMark` atom the
     // project top bar renders), not the old "b" placeholder square.
@@ -80,12 +81,12 @@ describe('StudioTopBar', () => {
     expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();
   });
 
-  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as Locale[])('links the brand to the %s home page', async (locale) => {
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as Locale[])('links the brand to the official home page in %s', async (locale) => {
     setLocale(locale);
     setup();
     await flushInbox();
     const link = screen.getByTestId('top-bar-logo').closest('a');
-    expect(link).toHaveAttribute('href', locale === 'en' ? '/' : `/${locale}/`);
+    expect(link).toHaveAttribute('href', OFFICIAL_HOME_URL);
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });

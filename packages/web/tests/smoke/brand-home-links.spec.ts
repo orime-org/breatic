@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { OFFICIAL_HOME_URL } from '../../src/lib/official-home';
 import { test, expect } from 'playwright/test';
 import { openSmokeProject } from '../helpers/project';
 
@@ -9,11 +10,11 @@ for (const entry of ['studio', 'project'] as const) {
     if (entry === 'project') await openSmokeProject(page);
     else await page.goto('/studio');
     const brand = page.getByTestId('top-bar-logo').locator('..');
-    await expect(brand).toHaveAttribute('href', '/');
+    await expect(brand).toHaveAttribute('href', OFFICIAL_HOME_URL);
     const originalUrl = page.url();
-    const home = new URL('/', originalUrl).href;
-    // Dev serves the application only. Stand in for the separately built Home
-    // Page at the hosting boundary; a client-router Link never requests it.
+    const home = OFFICIAL_HOME_URL;
+    // Stub only the external homepage response; verify the real application
+    // opens the official absolute URL even when running on localhost.
     await page.context().route(home, (route) => route.fulfill({
       contentType: 'text/html', body: '<!doctype html><title>Breatic home</title><h1>Breatic home</h1>',
     }));

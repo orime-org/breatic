@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   render as rtlRender,
@@ -58,7 +59,7 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
       <TopBar
         projectId='p1'
         projectName='Demo'
-        // eslint-disable-next-line jsx-a11y/aria-role -- `role` here is a TopBar component prop (owner | editor | viewer), not a DOM ARIA role
+        // eslint-disable-next-line jsx-a11y/aria-role -- component prop, not a DOM ARIA role
         role='owner'
         credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
@@ -183,11 +184,11 @@ describe('TopBar', () => {
     expect(screen.getByTestId('title-display')).toBeInTheDocument();
   });
 
-  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as Locale[])('links the brand to the %s home page', (locale) => {
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as Locale[])('links the brand to the official home page in %s', (locale) => {
     setLocale(locale);
     setup();
     const link = screen.getByTestId('top-bar-logo').closest('a');
-    expect(link).toHaveAttribute('href', locale === 'en' ? '/' : `/${locale}/`);
+    expect(link).toHaveAttribute('href', OFFICIAL_HOME_URL);
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
