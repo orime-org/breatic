@@ -1941,14 +1941,15 @@ body {
    painted twice and come out deeper on their own: two 42% layers leave 66%,
    which is the depth the demo drew for them.
 
-   `box-decoration-break` so a highlight broken across two lines is rounded
-   and padded at the real ends rather than at each fragment. */
+   THE COLOUR IS THE WHOLE OF IT — no corner radius, no horizontal padding.
+   The demo draws one comment as one `<mark>`; in the body it reaches the DOM
+   as several adjacent spans whenever another mark nests inside it or a
+   peer's edit splits the text, and every span paints itself. An edge drawn
+   per span comes apart at each join: three spans of one live comment
+   measured rectangles meeting at the same x, with the painted corners the
+   only thing between them. */
 .doc-body .bn-thread-mark {
   background-color: var(--color-comment-mark);
-  border-radius: 2px;
-  padding: 0 1px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
 }
 
 /* The pointer says a press does something other than put the caret down, and
@@ -1971,7 +1972,6 @@ body {
      it. `auto` over editable text is the text caret. */
   cursor: auto;
   background-color: transparent;
-  padding: 0;
 }
 
 /* The thread being read. This class is ours, drawn per mark run

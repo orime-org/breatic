@@ -155,6 +155,19 @@ describe('what the highlight looks like', () => {
     );
   });
 
+  it('draws no edge of its own, so adjacent runs read as one stretch', () => {
+    // One comment reaches the DOM as several adjacent spans whenever a mark
+    // nests inside it or a peer's edit splits the text, and each span paints
+    // itself. A corner radius or a horizontal padding is drawn per span, so
+    // the run comes apart at every join — measured on a body where one live
+    // comment held three adjacent spans. Their rectangles meet at exactly
+    // the same x (gap 0), so nothing but the painted edge can separate them.
+    const body = ruleBody(MARK);
+
+    expect(body).not.toContain('border-radius');
+    expect(body).not.toContain('padding');
+  });
+
   it('says it can be pressed while a press on it opens the thread', () => {
     // The same condition `document-comment-hit.ts` asks: a press reaches a
     // thread only while the mark it lands on is not orphaned.
