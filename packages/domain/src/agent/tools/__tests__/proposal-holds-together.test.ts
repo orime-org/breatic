@@ -28,6 +28,7 @@ import {
   canConnect,
   GENERATION_NODE_MODES,
   markText,
+  MAX_NODE_NAME_LEN,
   PANEL_EDITOR_PARAM,
   REFERENCE_POOL_PARAM,
   type CanvasProposal,
@@ -863,18 +864,15 @@ describe("what the schema turns away before any of this runs", () => {
     expect(accepted(withSlot({ kind: "tweak", label: "the voice", note: " " }))).toBe(false);
   });
 
-  it("refuses a node name that is nothing but space", () => {
-    // The name is what the reader sees on the node once it is placed, and on
-    // the card before that. A blank one leaves both unlabelled, the same way
-    // a blank label or note does.
+  /**
+   * A one-node proposal carrying the given node name.
+   * @param name - What to call the node.
+   * @returns The call.
+   * @throws {never} Never.
+   */
+  function named(name: string): unknown {
     const at = pick((m) => m.takesPrompt, "model driven by its prompt");
-    /**
-     * A one-node proposal carrying the given node name.
-     * @param name - What to call the node.
-     * @returns The call.
-     * @throws {never} Never.
-     */
-    const named = (name: string): unknown => ({
+    return {
       nodes: [
         {
           role: "generate",
@@ -888,10 +886,47 @@ describe("what the schema turns away before any of this runs", () => {
       ],
       edges: [],
       rationale: "why this shape",
-    });
+    };
+  }
 
+  it("refuses a node name that is nothing but space", () => {
+    // The name is what the reader sees on the node once it is placed, and on
+    // the card before that. A blank one leaves both unlabelled, the same way
+    // a blank label or note does.
     expect(accepted(named("Result"))).toBe(true);
     expect(accepted(named(" "))).toBe(false);
+  });
+
+  it("refuses a node name longer than a reader could type", () => {
+    // The rename input stops at this and the commit clips to it, so a longer
+    // name is one nobody at the canvas could have given -- and the first time
+    // the reader opens the name to edit it, committing shortens it without
+    // saying so.
+    expect(accepted(named("a".repeat(MAX_NODE_NAME_LEN)))).toBe(true);
+    expect(accepted(named("a".repeat(MAX_NODE_NAME_LEN + 1)))).toBe(false);
+  });
+
+  it("refuses a group name longer than a reader could type", () => {
+    // The group's name lands on a group node and is renamed through the same
+    // editor, under the same cap, so it is the same name rule as the nodes it
+    // holds rather than a second one.
+    /**
+     * A two-node proposal under the given group name.
+     * @param groupName - What to call the group.
+     * @returns The call.
+     * @throws {never} Never.
+     */
+    const grouped = (groupName: string): unknown => ({
+      ...(named("Result") as { nodes: unknown[]; edges: unknown[]; rationale: string }),
+      nodes: [
+        { role: "source", type: "image", name: "Your picture" },
+        ...(named("Result") as { nodes: unknown[] }).nodes,
+      ],
+      groupName,
+    });
+
+    expect(accepted(grouped("a".repeat(MAX_NODE_NAME_LEN)))).toBe(true);
+    expect(accepted(grouped("a".repeat(MAX_NODE_NAME_LEN + 1)))).toBe(false);
   });
 
   it("refuses a label that is nothing but space", () => {

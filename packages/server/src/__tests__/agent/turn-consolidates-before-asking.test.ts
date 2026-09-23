@@ -222,7 +222,7 @@ beforeEach(() => {
   // this one's, and read as a pass.
   thisCase.sent = null;
   limits.budget = 20_000;
-  limits.keep = 13_750;
+  limits.keep = 15_000;
   consolidateWindow.mockResolvedValue("written");
 });
 
@@ -345,7 +345,7 @@ describe("a turn that measured over the budget", () => {
     // what decides how much the tool set can grow before this case moves;
     // when it does, the line moves with it, and no figure is written here to
     // go quietly false.
-    limits.keep = 17_500;
+    limits.keep = 19_000;
     contexts.queue = [
       context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
       context([...turn(3, 6000)], "what turns 1 and 2 came to"),
@@ -498,7 +498,8 @@ describe("a turn that measured over the budget", () => {
     // memory actually adds.
     const { getAgentConfig } = await import("@breatic/core");
     const config = getAgentConfig();
-    // Six small turns on a 14,000 budget, so the loop stops with what remains
+    // Six small turns on a budget just over the keep line, so the loop stops
+    // with what remains
     // just under the line rather than overshooting it. What goes out then
     // carries the emoji memory in place of the plain one -- 4,000 code units
     // where 2,000 were reserved -- which is the whole point of this case.
@@ -507,7 +508,7 @@ describe("a turn that measured over the budget", () => {
     // tool is added or its description is rewritten, and a number in a comment
     // goes quietly false the first time either happens. `limits.keep` above is
     // the line, and it moves with them.
-    limits.budget = 14_000;
+    limits.budget = 16_000;
     const history = [1, 2, 3, 4, 5, 6].flatMap((n) => turn(n, 2000));
     contexts.queue = [context(history)];
     contexts.later = () => {

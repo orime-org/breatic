@@ -131,6 +131,18 @@ export function canConnect(
 }
 
 /**
+ * How long a node's name may be, in characters.
+ *
+ * The rename input stops at this and the commit clips to it, so it is also
+ * the longest name a reader can give a node by hand. It lives here beside the
+ * connection rule for the same reason that one does: the agent proposes names
+ * too (#263), and the tool judging a proposal sits in a library package that
+ * cannot reach into the frontend. A name past this is one nobody could have
+ * typed, and the first rename shortens it without saying so.
+ */
+export const MAX_NODE_NAME_LEN = 30;
+
+/**
  * Attachment reference stored in a node's `attachments` array — a plain
  * array value on the data Y.Map (node data holds plain values only, see
  * the web `buildDataMap`).

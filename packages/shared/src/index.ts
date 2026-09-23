@@ -122,6 +122,7 @@ export {
   subscriptionActions,
   isComparableMembershipTier,
   canConnect,
+  MAX_NODE_NAME_LEN,
   canGenerate,
   CANVAS_NODES_KEY,
   membersChangedChannel,

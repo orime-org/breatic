@@ -44,6 +44,7 @@ import {
   feedersOf,
   nameableFeeders,
   GENERATION_NODE_MODES,
+  MAX_NODE_NAME_LEN,
   PANEL_EDITOR_PARAM,
   promptPlainText,
   promptTextOf,
@@ -108,7 +109,12 @@ const proposalNode = z
       .enum(["source", "generate", "written"])
       .describe("written holds finished words; source is empty for the reader to fill"),
     type: z.enum([...NODE_TYPES, "text"]),
-    name: z.string().trim().min(1).describe("What the reader sees on the node"),
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(MAX_NODE_NAME_LEN)
+      .describe("What the reader sees on the node"),
     mode: z.string().min(1).optional().describe("role generate only"),
     model: z.string().min(1).optional().describe("role generate only"),
     params: z
@@ -160,6 +166,7 @@ export const inputSchema = z
       .string()
       .trim()
       .min(1)
+      .max(MAX_NODE_NAME_LEN)
       .optional()
       .describe("What the group is for; needed once there are two nodes"),
   })

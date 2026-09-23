@@ -45,6 +45,7 @@ export type {
 
 export {
   canConnect,
+  MAX_NODE_NAME_LEN,
   canGenerate,
   CANVAS_NODES_KEY,
 } from "@shared/types/canvas-node.js";
