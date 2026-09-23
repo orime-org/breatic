@@ -14,10 +14,13 @@
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
       "designation_locked": "这笔积分在退款流程中，不能改指定。",
+      "designation_not_purchased": "这笔积分是赠送的，只能用在你的个人 Studio 里，不能改指定。",
       "in_debt": "这个 Studio 欠着 {owed} 积分，指定新的积分会先抵掉它。",
       "unassigned": "你有 {available} 积分未指定，指定给 Studio 后才能使用。",
       "none": "积分不足，请先充值。",
+      "granted_elsewhere": "你的积分是赠送的，只能用在你的个人 Studio 里。",
       "refund_already_asked": "这笔已经提交过退款。",
+      "refund_not_purchased": "这笔积分是赠送的，没有付过款，所以不能退款。",
       "refund_still_designated": "这笔已指定给某个 Studio，请先解除指定。",
       "refund_already_spent": "这笔的积分已经用过，不能退款。",
       "refund_window_closed": "这笔的退款期限已过。"
@@ -84,6 +87,13 @@
         "used": "只要花过其中任何一个，这一笔就不能再退了。",
         "expired": "超过 30 天，不再受理退款。",
         "unassigned": "只有未指定给 Studio 的积分包才能退款。"
+      },
+      "refund-credits-v3": {
+        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
+        "used": "只要花过其中任何一个，这一笔就不能再退了。",
+        "expired": "超过 30 天，不再受理退款。",
+        "unassigned": "只有未指定给 Studio 的积分包才能退款。",
+        "purchased": "只有购买的积分包可以退款。"
       },
       "not_found": "找不到这笔购买。",
       "unavailable": "这个部署不出售积分。"
@@ -1525,13 +1535,20 @@
     },
     "section": {
       "overview": "总览",
-      "lots": "购买记录",
+      "lots": "获取记录",
       "ledger": "消耗流水",
       "studios": "各 Studio",
       "buy": "购买积分",
       "assign": "指定",
       "refunds": "退款"
     },
+    "source": {
+      "payment": "充值",
+      "gift": "体验积分",
+      "compensation": "补偿",
+      "discount": "优惠"
+    },
+    "pinnedToPersonalStudio": "只能用在你的个人 Studio",
     "lifecycle": {
       "depleted": "已消耗完毕",
       "refund_pending": "审核中",
@@ -1555,8 +1572,8 @@
     },
     "lotsEmpty": "还没有购买记录。",
     "lotsEmptyNotice": {
-      "title": "每一笔购买都会列在这里",
-      "body": "每一笔会显示花了多少、处理到哪一步，以及积分去了哪个 Studio。"
+      "title": "积分是怎么来的，都列在这里",
+      "body": "买来的、赠送的都会列出来，显示来源、花了多少、处理到哪一步，以及积分去了哪个 Studio。"
     },
     "assignedTo": "指定给 {studio}",
     "ofPurchased": "共 {amount}",
@@ -1588,13 +1605,10 @@
       "body": "每个积分包整个指定给一个 Studio，随时可以改。"
     },
     "assignNote": "下拉里只有你是 Admin 的 Studio。改了之后原来那个 Studio 立刻失去这个积分包。",
-    "remaining": "还剩 {amount} 积分",
     "designationFor": "{amount} 这个积分包的指定去向",
     "designateFailed": "指定没能保存，请重试。",
     "refundsEmpty": "还没有买过积分包",
     "askRefund": "申请退款",
-    "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
-    "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
     "refundTitle": "退款规则",
     "buy": {
       "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
@@ -1639,9 +1653,7 @@
       "expired": "超过 30 天"
     },
     "refundHint": {
-      "assigned": "还剩 {credits} 积分 · 解除指定后可以申请退款",
-      "depleted": "共 {credits} 积分",
-      "refunded": "已退回原付款方式"
+      "assigned": "解除指定后可以申请退款"
     }
   },
   "notFound": {

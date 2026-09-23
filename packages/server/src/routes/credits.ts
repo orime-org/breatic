@@ -22,7 +22,7 @@ import { validate } from "@server/middleware/validate.js";
 import { creditLotService } from "@breatic/domain";
 import { creditViewService, paymentService } from "@server/modules";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { env, logger } from "@breatic/core";
+import { env, logger, ForbiddenError } from "@breatic/core";
 import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import {
   creditLotQuerySchema,
@@ -128,12 +128,29 @@ credits.patch(
   validate("json", designationSchema),
   async (c) => {
     const user = c.get("user");
-    const data = await creditLotService.designateLot({
-      lotId: c.req.valid("param").id,
-      requestingUserId: user.id,
-      studioId: c.req.valid("json").studioId,
-    });
-    return c.json({ data });
+    const lotId = c.req.valid("param").id;
+    const studioId = c.req.valid("json").studioId;
+    try {
+      const data = await creditLotService.designateLot({
+        lotId,
+        requestingUserId: user.id,
+        studioId,
+      });
+      return c.json({ data });
+    } catch (err) {
+      // Moving granted credits somewhere else is the one refusal here that
+      // answers an attempt rather than a mistake, so it leaves a trace that
+      // says who asked and where they aimed. Logged at the boundary that
+      // knows who is asking, and rethrown unread: the answer the caller gets
+      // is the service's.
+      if (err instanceof ForbiddenError) {
+        logger.warn(
+          { userId: user.id, lotId, studioId, err },
+          "credit_designation_refused",
+        );
+      }
+      throw err;
+    }
   },
 );
 

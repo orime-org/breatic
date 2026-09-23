@@ -20,6 +20,7 @@ const LATE = new Date("2026-03-01T12:00:00.000Z");
 function lot(over: Partial<RefundCandidate> = {}): RefundCandidate {
   return {
     lifecycle: "active",
+    purchased: true,
     designated: false,
     everSpent: false,
     refundAttempts: 0,
@@ -31,6 +32,29 @@ function lot(over: Partial<RefundCandidate> = {}): RefundCandidate {
 describe("refundRefusal", () => {
   it("allows an untouched, unassigned purchase inside its window", () => {
     expect(refundRefusal(lot(), NOW)).toBeNull();
+  });
+
+  it("refuses credits nobody paid for", () => {
+    expect(refundRefusal(lot({ purchased: false }), NOW)).toBe("not_purchased");
+  });
+
+  it("answers that before anything about where the credits stand", () => {
+    // The other four say what has happened to these credits; this one says
+    // what they are. A granted lot that was spent to nothing and has sat past
+    // the window is refused for what it is, not for either of those — there
+    // is no state it could reach that would make a refund of it possible.
+    expect(
+      refundRefusal(
+        lot({
+          purchased: false,
+          lifecycle: "depleted",
+          everSpent: true,
+          designated: true,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        }),
+        LATE,
+      ),
+    ).toBe("not_purchased");
   });
 
   it.each(["refund_pending", "refunding", "refunded"] as const)(

@@ -10,6 +10,7 @@
  */
 
 import type { ToolFailure } from "@shared/agent/tool-failure.js";
+import type { CreditSourceKind } from "@shared/types/credit.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
 
@@ -459,6 +460,15 @@ export interface CreditLotEntity {
   id: string;
   /** What the credits came from. Unique, so one source grants credits once. */
   sourceId: string;
+  /**
+   * Which kind of receipt that was.
+   *
+   * On the row rather than joined for, and held to the receipt's own value by
+   * a composite foreign key: every reader that turns on it — whether this lot
+   * may be re-designated, whether it may be refunded, what its row prints —
+   * holds a lot and nothing else.
+   */
+  sourceKind: CreditSourceKind;
   /** Who bought it. Never changes — it is where the money came from. */
   userId: string;
   purchasedCredits: string;

@@ -1087,9 +1087,20 @@ export const creditLots = pgTable(
   "credit_lots",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    sourceId: uuid("source_id")
-      .notNull()
-      .references(() => creditSources.id, { onDelete: "restrict" }),
+    sourceId: uuid("source_id").notNull(),
+    /**
+     * Half of the composite key below, and the only column that says where
+     * these credits came from.
+     *
+     * Read off the row rather than joined for, because every reader that
+     * turns on it holds a lot and nothing else: re-designation and refunds
+     * see only what `lockLot` returns, and that read takes a row lock the
+     * charge loop runs per candidate lot on every generation. Paired with
+     * `source_id` it is what makes the database refuse a lot filed under a
+     * kind its receipt does not claim. No default: which kind opened a lot is
+     * the caller's to state.
+     */
+    sourceKind: varchar("source_kind", { length: 16 }).notNull(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -1129,6 +1140,16 @@ export const creditLots = pgTable(
       table.lifecycle,
       table.createdAt,
     ),
+    // Composite, so the database refuses a lot filed under a kind its receipt
+    // does not claim. It replaces the single-column key the `source_id` column
+    // carried before 0080: that one implied nothing about `source_kind`, and
+    // the kind is what decides whether these credits may be re-designated or
+    // refunded.
+    foreignKey({
+      name: "credit_lots_source_fk",
+      columns: [table.sourceId, table.sourceKind],
+      foreignColumns: [creditSources.id, creditSources.kind],
+    }).onDelete("restrict"),
   ],
 );
 

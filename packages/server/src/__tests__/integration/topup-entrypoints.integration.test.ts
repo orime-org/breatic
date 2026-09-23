@@ -943,7 +943,13 @@ describe("GET /payment/tiers — what the buy screen reads", () => {
         currency: "usd",
       });
       expect(body.data.confirmTimeoutMs).toBeGreaterThan(0);
-      expect(body.data.refundLines).toHaveLength(4);
+      // That the rule reaches the wire, and that every line of it resolved to
+      // wording. Which version it is and how many lines it has belong to the
+      // checkout suite, which names the version as a literal.
+      expect(body.data.refundLines.length).toBeGreaterThan(0);
+      for (const line of body.data.refundLines) {
+        expect(line).not.toContain("server.payment.");
+      }
     } finally {
       await dropBuyer(buyer.userId);
     }

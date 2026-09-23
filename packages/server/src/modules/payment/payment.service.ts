@@ -23,6 +23,7 @@ import type {
   PaymentEntity,
   CreditPage,
   CreditLotLifecycle,
+  CreditSourceKind,
   PurchaseRow,
 } from "@breatic/shared";
 import { t, getActiveLocale } from "@breatic/shared";
@@ -954,7 +955,7 @@ export async function getPurchaseHistory(
       : Math.min(asked, bounds.max);
   const cursor = rawCursor ? decodeActivityCursor(rawCursor) : null;
 
-  const rows = await paymentRepo.listPurchaseHistory(
+  const rows = await paymentRepo.listAcquisitionHistory(
     userId,
     size,
     cursor === null ? null : { createdAt: cursor.createdAt, id: cursor.id },
@@ -963,6 +964,8 @@ export async function getPurchaseHistory(
     rows,
     size,
     (row) => ({
+      rowId: row.rowId,
+      sourceKind: row.sourceKind as CreditSourceKind,
       paymentId: row.paymentId,
       amountCents: row.amountCents,
       totalCents: row.totalCents,
@@ -976,9 +979,11 @@ export async function getPurchaseHistory(
       designatedStudioName: row.designatedStudioName,
       status: row.status,
       createdAt: row.createdAt.toISOString(),
-      canResend: canResend(row.mailStatus, row.mailUpdatedAt),
+      // A row nobody paid for has no confirmation letter to send again.
+      canResend:
+        row.paymentId !== null && canResend(row.mailStatus, row.mailUpdatedAt),
     }),
-    (row) => ({ cursorAt: row.cursorAt, id: row.paymentId }),
+    (row) => ({ cursorAt: row.cursorAt, id: row.rowId }),
   );
 }
 

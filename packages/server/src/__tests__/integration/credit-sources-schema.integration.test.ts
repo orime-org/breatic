@@ -175,8 +175,8 @@ describe("credit_sources", () => {
 
     await sql`
       INSERT INTO credit_lots
-        (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
-      VALUES (${sourceId}, ${userId}, 500, 500, 'active')
+        (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+      VALUES (${sourceId}, 'compensation', ${userId}, 500, 500, 'active')
     `;
 
     const rows = await sql<{ kind: string }[]>`
@@ -249,8 +249,8 @@ describe("credit_lots.source_id", () => {
     const paymentId = await seedPayment(userId);
     const lot = sql`
       INSERT INTO credit_lots
-        (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
-      VALUES (${paymentId}, ${userId}, 880, 880, 'active')
+        (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+      VALUES (${paymentId}, 'payment', ${userId}, 880, 880, 'active')
     `;
     await lot;
 
@@ -258,8 +258,8 @@ describe("credit_lots.source_id", () => {
     await expect(
       sql`
         INSERT INTO credit_lots
-          (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
-        VALUES (${paymentId}, ${userId}, 880, 880, 'active')
+          (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+        VALUES (${paymentId}, 'payment', ${userId}, 880, 880, 'active')
       `,
     ).rejects.toThrow(/credit_lots_source_id_idx/);
   });
@@ -270,9 +270,9 @@ describe("credit_lots.source_id", () => {
     await expect(
       sql`
         INSERT INTO credit_lots
-          (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
-        VALUES (gen_random_uuid(), ${userId}, 880, 880, 'active')
+          (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+        VALUES (gen_random_uuid(), 'payment', ${userId}, 880, 880, 'active')
       `,
-    ).rejects.toThrow(/credit_lots_source_id_fk/);
+    ).rejects.toThrow(/credit_lots_source_fk/);
   });
 });

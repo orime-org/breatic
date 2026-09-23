@@ -67,6 +67,7 @@ function toNumber(value: string): number {
 function toLotView(lot: CreditLotEntity & LotContext): CreditLotView {
   return {
     id: lot.id,
+    sourceKind: lot.sourceKind,
     purchasedCredits: toNumber(lot.purchasedCredits),
     remainingCredits: toNumber(lot.remainingCredits),
     designatedStudioId: lot.designatedStudioId,
