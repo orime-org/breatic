@@ -127,7 +127,7 @@ describe('CreditsOverlay', () => {
     // Only the selected entry is in the tab order; otherwise leaving the
     // index takes seven presses.
     expect(first).toHaveAttribute('tabindex', '0');
-    expect(screen.getByRole('tab', { name: /Purchases/ })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: /Credit history/ })).toHaveAttribute(
       'tabindex',
       '-1',
     );
@@ -148,12 +148,12 @@ describe('CreditsOverlay', () => {
     // The overview reads no paged endpoint.
     expect(paymentHistory).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('tab', { name: /Purchases/ }));
+    await user.click(screen.getByRole('tab', { name: /Credit history/ }));
 
     await waitFor(() => {
       expect(paymentHistory).toHaveBeenCalled();
     });
-    expect(screen.getByRole('tab', { name: /Purchases/ })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: /Credit history/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -172,7 +172,7 @@ describe('CreditsOverlay', () => {
     first.focus();
 
     await user.keyboard('{ArrowDown}');
-    expect(screen.getByRole('tab', { name: /Purchases/ })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: /Credit history/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );

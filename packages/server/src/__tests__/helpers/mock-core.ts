@@ -244,6 +244,7 @@ export const mocks = {
       studios: [],
     }),
     getUnassignedCredits: vi.fn().mockResolvedValue(0),
+    getGrantedCredits: vi.fn().mockResolvedValue(0),
     chargeForGeneration: vi.fn().mockResolvedValue({
       billed: true,
       charged: 5,

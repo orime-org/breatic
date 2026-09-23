@@ -20,7 +20,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { CREDIT_SOURCE_KINDS, isPurchased } from '@breatic/shared';
 import type { PurchaseRow } from '@breatic/shared';
+import en from '@locales/en.json';
 
 import { PurchasesSection } from '@web/features/credits/sections/PurchasesSection';
 
@@ -55,8 +57,10 @@ vi.mock('@web/lib/use-scrolled-to-end', () => ({
  */
 function row(over: Partial<PurchaseRow> = {}): PurchaseRow {
   return {
-    paymentId: 'p1',
-    amountCents: 2000,
+    rowId: 'p1',
+    sourceKind: 'payment' as PurchaseRow['sourceKind'],
+    paymentId: 'p1' as string | null,
+    amountCents: 2000 as number | null,
     totalCents: 2240,
     taxCents: 240,
     currency: 'usd',
@@ -104,6 +108,61 @@ describe('the purchase history', () => {
     expect(first.textContent).toContain('1,700');
     expect(first.textContent).toContain('Orime Studio');
   });
+
+  it('names where granted credits came from, in the cell a price would fill', async () => {
+    // Nobody paid, so there is no figure for that cell and no state a payment
+    // could be in. What the reader cannot work out from the rest of the row is
+    // where the credits came from, so that is what it says.
+    history.mockResolvedValue({
+      items: [
+        row({
+          rowId: 'lot-gift',
+          sourceKind: 'gift',
+          paymentId: null,
+          amountCents: null,
+          totalCents: null,
+          taxCents: null,
+          status: null,
+          canResend: false,
+        }),
+      ],
+      nextCursor: null,
+    });
+    renderHistory();
+    const first = await screen.findByTestId('purchase-row');
+
+    expect(first.textContent).toContain('Trial credits');
+    expect(first.textContent).not.toContain('$');
+    expect(within(first).queryByTestId('purchase-status')).toBeNull();
+  });
+
+  it.each(CREDIT_SOURCE_KINDS.filter((kind) => !isPurchased(kind)))(
+    'names a %s row by the word the catalogue holds for it',
+    async (kind) => {
+      // The kinds come from the list itself and the words from the catalogue,
+      // so a fifth kind added without a name to print fails on the lookup
+      // instead of rendering the key.
+      history.mockResolvedValue({
+        items: [
+          row({
+            rowId: `lot-${kind}`,
+            sourceKind: kind,
+            paymentId: null,
+            amountCents: null,
+            totalCents: null,
+            taxCents: null,
+            status: null,
+            canResend: false,
+          }),
+        ],
+        nextCursor: null,
+      });
+      renderHistory();
+      const first = await screen.findByTestId('purchase-row');
+
+      expect(first.textContent).toContain(en.credits.source[kind]);
+    },
+  );
 
   it('shows a purchase still processing, with no figures it does not have yet', async () => {
     history.mockResolvedValue({

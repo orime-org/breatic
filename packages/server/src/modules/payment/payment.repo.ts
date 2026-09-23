@@ -5,7 +5,7 @@
  * Payment repository — data access for the payments table.
  */
 
-import { eq, and, desc, inArray, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
+import { eq, and, inArray, isNull, isNotNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import {
@@ -271,15 +271,17 @@ export async function touchReconciled(ids: readonly string[]): Promise<void> {
     .where(inArray(payments.id, [...ids]));
 }
 
-/** One row of the purchase history, straight off the join. */
-export interface PurchaseHistoryRow {
-  paymentId: string;
-  amountCents: number;
+/** One row of the acquisition history, straight off the join. */
+export interface AcquisitionHistoryRow {
+  rowId: string;
+  sourceKind: string;
+  paymentId: string | null;
+  amountCents: number | null;
   taxCents: number | null;
   totalCents: number | null;
   currency: string;
   creditsGranted: number;
-  status: string;
+  status: string | null;
   createdAt: Date;
   cursorAt: string;
   remainingCredits: string | null;
@@ -291,49 +293,87 @@ export interface PurchaseHistoryRow {
 }
 
 /**
- * One keyset page of this account's purchases, newest first.
+ * One keyset page of how this account came by its credits, newest first.
  *
- * Built from `payments` and joined outward, because a purchase that has not
- * landed has no lot: one still processing, one the buyer abandoned. Those are
- * the rows this screen exists to show, and starting from the lots would leave
- * them out entirely.
+ * A full join, because either side can be the whole row. A lot with no
+ * payment is credits somebody was granted; a payment with no lot is a
+ * checkout that opened none — still clearing, or abandoned — and showing
+ * those is what this screen has always been for. Starting from either table
+ * alone drops one of the two.
  *
- * The cursor is keyed on `payments` for the same reason. The lot's timestamp
- * and id are null on exactly those rows, so keying there would collapse the
- * ordering and the cursor together — paging to the end would hand back an
- * empty cursor and the older payments would become unreachable.
+ * Both sides are narrowed to this account before they meet, which is what
+ * keeps a page off the whole of both tables.
  *
- * The studio a purchase points at is read through a "not deleted" test, the
- * same one the overview applies. Without it one purchase counts as unassigned
- * in the overview and reads "assigned to X" here with X gone.
- * @param userId - Whose purchases.
+ * Both halves of the cursor fall back to whichever side exists. The comment
+ * this replaces warned that keying on the lot would collapse the ordering on
+ * exactly the rows that have no lot; keying on the payment now does the same
+ * to the rows that have no payment, and `COALESCE` is what holds for both.
+ * Row ids from the two tables cannot collide, so the pair stays unique.
+ *
+ * A purchase is dated by its checkout. For a delayed payment method the
+ * credits open days after the session completes, and what the buyer looks
+ * for is the day they bought.
+ *
+ * The studio a row points at is read through a "not deleted" test, the same
+ * one the overview applies. Without it one row counts as unassigned in the
+ * overview and reads "assigned to X" here with X gone.
+ * @param userId - Whose history.
  * @param limit - How many to take; one more is fetched to detect a next page.
  * @param cursor - The `(created_at, id)` of the previous page's last row.
  * @returns Those rows, one over the page size when more exist.
  */
-export async function listPurchaseHistory(
+export async function listAcquisitionHistory(
   userId: string,
   limit: number,
   cursor: { createdAt: string; id: string } | null,
-): Promise<PurchaseHistoryRow[]> {
+): Promise<AcquisitionHistoryRow[]> {
   const at = cursor ? sql`${cursor.createdAt}::timestamptz` : null;
+  // Each side narrowed to this account before the join. A predicate written
+  // above a full join reads both tables whole: `COALESCE(l.user_id,
+  // p.user_id)` names neither side on its own, so Postgres has nothing to
+  // push down and no index to take — measured as two sequential scans with
+  // the account test applied on the join node. Inside the subqueries it is a
+  // plain single-table test, and the join runs on one account's rows.
+  //
+  // A soft-deleted lot leaves the lot side here, so its payment comes back
+  // through the payment-only half — which is what that half is for.
+  const myLots = db
+    .select()
+    .from(creditLots)
+    .where(and(eq(creditLots.userId, userId), isNull(creditLots.deletedAt)))
+    .as("my_lots");
+  const myPayments = db
+    .select()
+    .from(payments)
+    .where(eq(payments.userId, userId))
+    .as("my_payments");
   const liveStudio = sql`CASE WHEN ${studios.deletedAt} IS NULL THEN`;
+  const rowAt = sql`COALESCE(${myPayments.createdAt}, ${myLots.createdAt})`;
+  const rowId = sql`COALESCE(${myPayments.id}, ${myLots.id})`;
   return db
     .select({
-      paymentId: payments.id,
-      amountCents: payments.amountCents,
-      taxCents: payments.taxCents,
-      totalCents: payments.totalCents,
-      currency: payments.currency,
-      creditsGranted: payments.creditsGranted,
-      status: payments.status,
-      createdAt: payments.createdAt,
+      rowId: sql<string>`${rowId}`,
+      sourceKind: sql<string>`COALESCE(${myLots.sourceKind}, ${myPayments.sourceKind})`,
+      paymentId: myPayments.id,
+      amountCents: myPayments.amountCents,
+      taxCents: myPayments.taxCents,
+      totalCents: myPayments.totalCents,
+      currency: sql<string>`COALESCE(${myPayments.currency}, 'usd')`,
+      // What the row brought in: the lot's own figure where one opened, and
+      // otherwise the pack size the checkout was opened for. A row with no
+      // lot carries no balance either, so the screen prints neither.
+      creditsGranted: sql<number>`COALESCE(${myLots.purchasedCredits}, ${myPayments.creditsGranted})::double precision`,
+      status: myPayments.status,
+      // `mapWith` so the expression goes through the column's own driver
+      // mapping: a bare `sql` fragment hands back whatever text the driver
+      // read, and the type argument alone would not have said so.
+      createdAt: sql`${rowAt}`.mapWith(payments.createdAt),
       // Full precision, carried as text: a cursor that went through `Date`
-      // would lose the microseconds Postgres stores, and two purchases inside
-      // one millisecond would straddle a page boundary and one would vanish.
-      cursorAt: sql<string>`${payments.createdAt}::text`,
-      remainingCredits: creditLots.remainingCredits,
-      lifecycle: creditLots.lifecycle,
+      // would lose the microseconds Postgres stores, and two rows inside one
+      // millisecond would straddle a page boundary and one would vanish.
+      cursorAt: sql<string>`${rowAt}::text`,
+      remainingCredits: myLots.remainingCredits,
+      lifecycle: myLots.lifecycle,
       designatedStudioId: sql<
         string | null
       >`${liveStudio} ${studios.id} ELSE NULL END`,
@@ -343,25 +383,19 @@ export async function listPurchaseHistory(
       mailStatus: purchaseMailOutbox.status,
       mailUpdatedAt: purchaseMailOutbox.updatedAt,
     })
-    .from(payments)
+    .from(myLots)
+    .fullJoin(myPayments, eq(myPayments.id, myLots.sourceId))
+    .leftJoin(studios, eq(studios.id, myLots.designatedStudioId))
     .leftJoin(
-      creditLots,
-      and(eq(creditLots.sourceId, payments.id), isNull(creditLots.deletedAt)),
+      purchaseMailOutbox,
+      eq(purchaseMailOutbox.paymentId, myPayments.id),
     )
-    .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
-    .leftJoin(purchaseMailOutbox, eq(purchaseMailOutbox.paymentId, payments.id))
     .where(
-      and(
-        eq(payments.userId, userId),
-        at === null
-          ? undefined
-          : or(
-              lt(payments.createdAt, at),
-              and(eq(payments.createdAt, at), lt(payments.id, cursor!.id)),
-            ),
-      ),
+      at === null
+        ? undefined
+        : sql`(${rowAt}, ${rowId}) < (${at}, ${cursor!.id}::uuid)`,
     )
-    .orderBy(desc(payments.createdAt), desc(payments.id))
+    .orderBy(sql`${rowAt} DESC`, sql`${rowId} DESC`)
     .limit(limit + 1);
 }
 

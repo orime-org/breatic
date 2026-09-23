@@ -26,6 +26,7 @@ export const REFUND_LIFECYCLES: ReadonlySet<CreditLotLifecycle> = new Set([
 
 /** Why a purchase cannot be asked about right now. */
 export type RefundRefusal =
+  | "not_purchased"
   | "already_asked"
   | "still_designated"
   | "already_spent"
@@ -33,6 +34,14 @@ export type RefundRefusal =
 
 /** What the rule reads off one purchase. */
 export interface RefundCandidate {
+  /**
+   * Whether anyone paid for these credits.
+   *
+   * A refund returns money, and there is none to return on credits that were
+   * granted. Unlike the four conditions below this is not a state the lot
+   * passes through — it is what the lot is, and no later event changes it.
+   */
+  purchased: boolean;
   /** Where it stands. */
   lifecycle: CreditLotLifecycle;
   /**
@@ -65,8 +74,10 @@ export interface RefundCandidate {
 /**
  * Why this purchase cannot be asked about, or null when it can.
  *
- * The answers come in the order a buyer can act on them. Where the purchase
- * stands comes first. Then the two nothing can be done about — what was drawn
+ * The answers come in the order a buyer can act on them. What the credits
+ * are comes first, because it is the one answer no state could change: a
+ * refund returns money, and none was taken for a grant. Then where the
+ * purchase stands. Then the two nothing can be done about — what was drawn
  * from it, and whether the window has shut. The designation comes last
  * because it is the only one the buyer can undo: reaching it means every
  * other condition is already met, so undoing it is worth their trouble.
@@ -78,6 +89,9 @@ export function refundRefusal(
   lot: RefundCandidate,
   now: Date,
 ): RefundRefusal | null {
+  if (!lot.purchased) {
+    return "not_purchased";
+  }
   if (REFUND_LIFECYCLES.has(lot.lifecycle)) {
     return "already_asked";
   }

@@ -8,6 +8,7 @@ import { getLocale } from '@breatic/shared';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { cn } from '@web/lib/utils';
 
 /** The heading, the body and the fixed line under it. */
@@ -364,6 +365,39 @@ interface RowProps {
   right?: React.ReactNode;
   /** A hook for tests to name this particular row. */
   'data-testid'?: string;
+}
+
+/** The figure to print, and an optional hook for tests. */
+interface RowBalanceProps {
+  /** How many are left. */
+  credits: number;
+  /** A hook for tests to name this figure. */
+  'data-testid'?: string;
+}
+
+/**
+ * What one purchase has left, in the one place every screen puts it.
+ *
+ * The three screens this panel shows a purchase on each answer a different
+ * question, and each used to put the balance wherever its own answer left
+ * room — right and bold on one, left and grey on the others. A reader
+ * switching between them then hunts for the same figure in two places. It
+ * goes here, first line of the right column, at one size, and each screen's
+ * own answer goes under it.
+ * @param props - The component props.
+ * @param props.credits - How many are left.
+ * @param props.'data-testid' - A hook for tests to name this figure.
+ * @returns The figure.
+ */
+export function RowBalance({
+  credits,
+  'data-testid': testId,
+}: RowBalanceProps): React.JSX.Element {
+  return (
+    <span data-testid={testId} className='block text-sm font-semibold'>
+      {formatCreditAmount(credits)}
+    </span>
+  );
 }
 
 /**

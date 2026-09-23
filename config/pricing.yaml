@@ -83,3 +83,16 @@ stale_sending_minutes: 10
 # that may never stop. The value lives here and the timer runs in the browser,
 # so it is carried on the pack list the buy screen already reads.
 confirm_timeout_ms: 15000
+
+# Credits a new account is given when its personal studio is created — the
+# first credits anybody gets without paying, and the only ones granted
+# automatically. Pinned to that studio when the lot is written, so they can
+# only be spent on the account holder's own work; they are not refundable,
+# because nobody paid for them.
+#
+# Only granted where the deployment charges for anything: a self-hosted
+# install that never takes payment has no notion of a credit to give.
+#
+# Zero means none are granted; the figure is a real zero, not a sentinel.
+trial_grant:
+  credits: 100

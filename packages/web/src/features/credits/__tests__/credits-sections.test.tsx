@@ -61,7 +61,7 @@ function tiers(): {
       { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
       { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
     ],
-    // The four sentences `refundLinesAt` reads out of `refund-credits-v2`,
+    // The five sentences `refundLinesAt` reads out of `refund-credits-v3`,
     // copied from locales/en.json. A sentence of this file's own invention
     // would let a test pin wording the server never sends.
     refundLines: [
@@ -69,6 +69,7 @@ function tiers(): {
       'Spent any of them, even one? That pack can no longer be refunded.',
       'Past 30 days, packs are no longer refundable.',
       'Only a pack that is not assigned to a Studio can be refunded.',
+      'Only a pack that was bought can be refunded.',
     ],
     confirmTimeoutMs: 15000,
   };
@@ -162,6 +163,7 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
 function lot(over: Partial<CreditLotView> = {}): CreditLotView {
   const base = {
     id: 'l1',
+    sourceKind: 'payment' as CreditLotView['sourceKind'],
     purchasedCredits: 4550,
     remainingCredits: 2400,
     designatedStudioId: 's1' as string | null,
@@ -187,8 +189,10 @@ function lot(over: Partial<CreditLotView> = {}): CreditLotView {
  */
 function purchase(over: Partial<PurchaseRow> = {}): PurchaseRow {
   return {
-    paymentId: 'p1',
-    amountCents: 5000,
+    rowId: 'p1',
+    sourceKind: 'payment' as PurchaseRow['sourceKind'],
+    paymentId: 'p1' as string | null,
+    amountCents: 5000 as number | null,
     totalCents: 5000,
     taxCents: 0,
     currency: 'usd',
@@ -1025,6 +1029,42 @@ describe('the credits overlay, section by section', () => {
       );
     });
 
+    it('gives granted credits no picker, and says where they may go', async () => {
+      // Every option this picker could offer would be refused, and the
+      // screen already states, of the studios it leaves out, that offering
+      // the rest would be offering a rejection.
+      fetchCreditLots.mockResolvedValue({
+        items: [
+          lot({
+            id: 'lot-gift',
+            sourceKind: 'gift',
+            paidCents: null,
+            currency: null,
+          }),
+        ],
+        nextCursor: null,
+      });
+      await openOn('assign');
+      const body = await panel();
+
+      expect(within(body).getByTestId('assign-pinned')).toHaveTextContent(
+        'Your personal Studio only',
+      );
+      expect(within(body).queryByRole('combobox')).toBeNull();
+      // No price to print, so the row leads with where the credits came from.
+      expect(body).toHaveTextContent('Trial credits');
+    });
+
+    it('still gives a purchase its picker', async () => {
+      // The pair the one above needs: a section that dropped every picker
+      // would pass it and leave nobody able to assign anything.
+      await openOn('assign');
+      const body = await panel();
+
+      expect(within(body).getByRole('combobox')).toBeInTheDocument();
+      expect(within(body).queryByTestId('assign-pinned')).toBeNull();
+    });
+
     it('fails visibly when the studios cannot be read', async () => {
       // Either read failing leaves this section unable to do its one job.
       // Reporting only one of them leaves the picker silently down to a
@@ -1334,8 +1374,9 @@ describe('the credits overlay, section by section', () => {
       await panel();
 
       const terms = await screen.findByTestId('refunds-terms');
-      expect(within(terms).getAllByRole('listitem')).toHaveLength(4);
+      expect(within(terms).getAllByRole('listitem')).toHaveLength(5);
       expect(terms).toHaveTextContent('not assigned to a Studio');
+      expect(terms).toHaveTextContent('was bought');
     });
 
     // The terms are the only place this screen states the rule, so a screen
@@ -1462,9 +1503,10 @@ describe('the credits overlay, section by section', () => {
         ).toBeNull();
       });
 
-      it('marks one spent to nothing, counting what it held', async () => {
-        // The balance is gone, so a count of what is left would read as a
-        // mistake; what it was bought with is what identifies the purchase.
+      it('marks one spent to nothing, and its balance reads zero', async () => {
+        // The balance sits in the same place on every row, so the one that
+        // has none says zero there rather than going blank — a row missing
+        // the figure its neighbours carry reads as a row still loading.
         fetchCreditLots.mockResolvedValue({
           items: [
             lot({
@@ -1481,10 +1523,30 @@ describe('the credits overlay, section by section', () => {
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/4,?550 credits in all/i);
+        expect(within(body).getByTestId('lot-remaining')).toHaveTextContent(
+          '0',
+        );
+        expect(body).toHaveTextContent(/Used up/i);
         expect(
           within(body).queryByRole('button', { name: /refund/i }),
         ).toBeNull();
+      });
+
+      it('leads the right column with the balance and the left with where it points', async () => {
+        // One figure, one place, on all three screens: a reader switching
+        // between them reads the balance off the same corner every time.
+        // What this screen is about goes under it, and the line under the
+        // name says where the purchase points.
+        await openOn('refunds');
+        const body = await panel();
+
+        const balance = within(body).getByTestId('lot-remaining');
+        const row = balance.closest('li');
+        expect(row).not.toBeNull();
+        expect(row?.lastElementChild?.firstElementChild).toBe(balance);
+        expect(row?.firstElementChild?.lastElementChild).toHaveTextContent(
+          'Assigned to Orime Studio',
+        );
       });
 
       it('marks one bought more than thirty days ago', async () => {
@@ -1569,7 +1631,6 @@ describe('the credits overlay, section by section', () => {
         const body = await panel();
 
         expect(body).toHaveTextContent(/Under review/i);
-        expect(body).toHaveTextContent(/while it is under review/i);
       });
 
       it('names the step a pack being refunded is at', async () => {
@@ -1590,7 +1651,7 @@ describe('the credits overlay, section by section', () => {
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/while the money goes back/i);
+        expect(body).toHaveTextContent(/Refunding/i);
       });
 
       // The right column holds the ask button, so anything drawn as a filled
@@ -1618,7 +1679,7 @@ describe('the credits overlay, section by section', () => {
         expect(state.className).toMatch(/text-muted-foreground/);
       });
 
-      it('keeps a refunded pack on the list, saying where the money went', async () => {
+      it('keeps a refunded pack on the list, saying it is refunded', async () => {
         fetchCreditLots.mockResolvedValue({
           items: [
             lot({
@@ -1636,7 +1697,7 @@ describe('the credits overlay, section by section', () => {
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/Back to the original payment method/i);
+        expect(body).toHaveTextContent(/Refunded/i);
         expect(
           within(body).queryByRole('button', { name: /refund/i }),
         ).toBeNull();
@@ -1677,6 +1738,40 @@ describe('the credits overlay, section by section', () => {
 
         expect(body).toHaveTextContent(/Over 30 days/i);
         expect(body).not.toHaveTextContent(/unassign it/i);
+      });
+
+      // Credits nobody paid for reach this list like any other, and the one
+      // way out it knows how to offer is unassigning — which the server
+      // refuses on exactly these. So the row names where they came from and
+      // stops there.
+      it('names where granted credits came from and offers no way out', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'granted',
+              sourceKind: 'gift',
+              paidCents: null,
+              currency: null,
+              designatedStudioId: 's1',
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        // Counted rather than matched: the row already names the source
+        // where a price would go, so a badge saying it again is the same
+        // word twice on one line.
+        expect(within(body).getAllByText(/Trial credits/i)).toHaveLength(1);
+        expect(body).not.toHaveTextContent(/unassign it/i);
+        // Where it points is what every row's second line says, granted or
+        // bought, so this one says it too — it is the rest of the row that
+        // offers nothing to do about it.
+        expect(body).toHaveTextContent(/Assigned to Orime Studio/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
       });
     });
   });

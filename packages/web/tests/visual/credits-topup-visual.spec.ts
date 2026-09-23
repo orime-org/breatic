@@ -158,10 +158,11 @@ for (const theme of ['light', 'dark'] as const) {
     expect(measured.theme).toBe(theme);
     expect(measured.tickAgainstOwnFill).toBeGreaterThanOrEqual(3);
     expect(measured.tickAgainstPanel).toBeGreaterThanOrEqual(3);
-    // Four, the count `refund-credits-v2` publishes: the three a purchase has
-    // always been refused on, plus the one saying a pack still assigned to a
-    // Studio has to be released first.
-    expect(measured.ruleLineCount).toBe(4);
+    // Five, the count `refund-credits-v3` publishes: the three a purchase has
+    // always been refused on, the one saying a pack still assigned to a
+    // Studio has to be released first, and the one saying only a pack
+    // somebody paid for can be refunded at all.
+    expect(measured.ruleLineCount).toBe(5);
     expect(measured.ruleContrast).toBeGreaterThanOrEqual(4.5);
     expect(measured.ruleSeparators).toBe(0);
     // What the tick stands for has to say both halves: the credits come now,

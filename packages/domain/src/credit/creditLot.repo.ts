@@ -41,9 +41,10 @@ import {
   projects,
   payments,
 } from "@breatic/core";
-import { IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
+import { GRANTED_SOURCE_KINDS, IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
 import type {
   CreditLotEntity,
+  CreditSourceKind,
   CreditLotLifecycle,
   CreditLedgerEntryEntity,
   CreditLedgerEntryType,
@@ -103,6 +104,7 @@ function toLotEntity(row: typeof creditLots.$inferSelect): CreditLotEntity {
   return {
     id: row.id,
     sourceId: row.sourceId,
+    sourceKind: row.sourceKind as CreditSourceKind,
     userId: row.userId,
     purchasedCredits: row.purchasedCredits,
     remainingCredits: row.remainingCredits,
@@ -160,33 +162,60 @@ function toLedgerEntity(
  * The unique constraint on `source_id` is what makes a redelivered webhook a
  * failed insert rather than a second grant, so this deliberately does not
  * swallow the conflict — the caller decides what a duplicate means.
- * @param data - The purchase this lot records.
+ * @param data - Where this lot's credits came from and who holds them.
  * @param data.sourceId - What the credits came from. Unique across lots.
- * @param data.userId - Who paid.
- * @param data.purchasedCredits - How many credits the payment bought, as a decimal string.
- * @param tx - The transaction the lot's `topup` ledger row is written in.
- *   Required: a lot's remaining balance is the ledger summed over it, so a lot
- *   that committed without its row would read as owing its whole value.
+ * @param data.sourceKind - Which kind of receipt that is. Held to the
+ *   receipt's own value by the composite foreign key, so it cannot be stated
+ *   wrongly, only stated.
+ * @param data.userId - Whose credits these are.
+ * @param data.purchasedCredits - How many credits it opened, as a decimal string.
+ * @param data.designatedStudioId - The studio allowed to spend them, or null
+ *   for the owner to point later. Required rather than defaulted: credits
+ *   nobody paid for are pinned as they are written, and a default would let
+ *   that be forgotten silently.
+ * @param tx - The transaction the lot and its `topup` ledger row are written
+ *   in. Required: a lot's remaining balance is the ledger summed over it, so a
+ *   lot that committed without its row would read as owing its whole value.
+ *   The row is written here rather than by the caller, which is what makes a
+ *   lot without one impossible to write.
  * @returns The new lot.
  * @throws {Error} If a lot already records this source — the unique index on
  *   `source_id` refuses the insert.
  */
 export async function createLot(
-  data: { sourceId: string; userId: string; purchasedCredits: string },
+  data: {
+    sourceId: string;
+    sourceKind: CreditSourceKind;
+    userId: string;
+    purchasedCredits: string;
+    designatedStudioId: string | null;
+  },
   tx: DbTx,
 ): Promise<CreditLotEntity> {
   const rows = await tx
     .insert(creditLots)
     .values({
       sourceId: data.sourceId,
+      sourceKind: data.sourceKind,
       userId: data.userId,
       purchasedCredits: data.purchasedCredits,
       remainingCredits: data.purchasedCredits,
-      designatedStudioId: null,
+      designatedStudioId: data.designatedStudioId,
       lifecycle: "active",
     })
     .returning();
-  return toLotEntity(rows[0]!);
+  const lot = toLotEntity(rows[0]!);
+  await appendLedgerEntry(
+    {
+      payerUserId: data.userId,
+      entryType: "topup",
+      amount: data.purchasedCredits,
+      lotId: lot.id,
+      referenceId: data.sourceId,
+    },
+    tx,
+  );
+  return lot;
 }
 
 /**
@@ -422,6 +451,32 @@ export async function studiosWithDebtFrom(
 }
 
 /**
+ * A row's studio is one this account administers — as a predicate, not a set.
+ *
+ * Both account-side reads narrow on this, and both have to put it inside the
+ * query. One is a keyset page, where filtering what the server already cut
+ * can empty a page while the cursor still says there is more; the other is an
+ * aggregate, which groups on the very column being tested. So the shared part
+ * is a fragment they each `and` into their own where, and the set-returning
+ * {@link studiosAdministeredBy} stays with the caller that already holds a
+ * list of ids.
+ *
+ * Read fresh, for the reason that function gives: administering is a role
+ * that changes hands, and the question is who administers the studio now.
+ * @param userId - The account reading.
+ * @returns A condition on `credit_ledger.studio_id`.
+ */
+export function administeredByReader(userId: string): SQL {
+  return sql`EXISTS (
+    SELECT 1 FROM ${studioMembers}
+    WHERE ${studioMembers.studioId} = ${creditLedger.studioId}
+      AND ${studioMembers.userId} = ${userId}
+      AND ${studioMembers.role} = 'admin'
+      AND ${studioMembers.deletedAt} IS NULL
+  )`;
+}
+
+/**
  * Which of these studios the account administers right now.
  *
  * Read fresh rather than carried on the lot: administering is a role that
@@ -562,6 +617,38 @@ export async function sumUnassignedForUser(userId: string): Promise<string> {
         eq(creditLots.lifecycle, "active"),
         isNull(creditLots.deletedAt),
         or(isNull(creditLots.designatedStudioId), isNotNull(studios.deletedAt)),
+      ),
+    );
+  return rows[0]?.total ?? "0";
+}
+
+/**
+ * What one account holds that it was granted rather than bought, in `numeric`.
+ *
+ * Asked at the moment a studio is found to have nothing to draw on, to tell
+ * "this account has none" apart from "this account has some and none of it
+ * reaches here". Granted credits are pinned to the holder's personal studio when
+ * they are written, so any that still have a balance are by definition
+ * somewhere other than the studio that just came up empty.
+ *
+ * Deleted studios are not tested for: a lot pointing at one is unreachable
+ * from everywhere, which is the same answer this question returns.
+ * @param userId - The account to total.
+ * @returns The sum as a decimal string; "0" when there is none.
+ */
+export async function sumGrantedForUser(userId: string): Promise<string> {
+  const rows = await db
+    .select({
+      total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text`,
+    })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.userId, userId),
+        eq(creditLots.lifecycle, "active"),
+        isNull(creditLots.deletedAt),
+        inArray(creditLots.sourceKind, GRANTED_SOURCE_KINDS),
+        sql`${creditLots.remainingCredits} > 0`,
       ),
     );
   return rows[0]?.total ?? "0";
@@ -712,9 +799,12 @@ export interface LotContext {
   /**
    * What the buyer paid for it, tax included, in the smallest unit of
    * `currency`. The same figure the purchase history prints.
+   *
+   * Null on credits nobody paid for, along with the currency beside it: a
+   * granted lot has no price, and a zero would read as one.
    */
-  paidCents: number;
-  currency: string;
+  paidCents: number | null;
+  currency: string | null;
   /** The studio it points at, named. Null when it points at none. */
   designatedStudioName: string | null;
   /** Whether the column points at a studio at all, deleted or not. */
@@ -763,7 +853,7 @@ export async function listLotsByUser(
       // stands in for the rare session Stripe gave no total for — and reading
       // the face value everywhere is what made the same purchase show one
       // figure here and another in the history.
-      paidCents: sql<number>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
+      paidCents: sql<number | null>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
       currency: payments.currency,
       // A studio that is gone holds nothing: the moment it is deleted its
       // projects stop working, so a purchase pointed at it is pointed
@@ -796,7 +886,11 @@ export async function listLotsByUser(
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
     })
     .from(creditLots)
-    .innerJoin(payments, eq(payments.id, creditLots.sourceId))
+    // Outward, because a lot need not have come from a payment. Joining
+    // inward left every granted lot off this list: the credits counted
+    // towards what the account holds and appeared on no screen that could
+    // act on them.
+    .leftJoin(payments, eq(payments.id, creditLots.sourceId))
     .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(
       and(
@@ -987,6 +1081,16 @@ export async function listLedgerByPayer(
         // is a keyset page — filtering a page that the server already cut can
         // empty it while the cursor still says there is more.
         inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES),
+        // Two branches, and the first is the one easy to lose. A run that
+        // belongs to no studio is one the reader made themselves — the text
+        // tools carry no project, and a project deleted mid-task leaves the
+        // same shape — so it is theirs to see. The rest is narrowed to what
+        // they administer: paying for a run does not make somebody else's
+        // studio, its projects and its output theirs to read.
+        or(
+          isNull(creditLedger.studioId),
+          administeredByReader(payerUserId),
+        ),
         studioId ? eq(creditLedger.studioId, studioId) : undefined,
       ),
     )
@@ -1174,6 +1278,10 @@ export async function sumSpentByStudio(
         // The studio ledger totals the same two types for the same reason.
         inArray(creditLedger.entryType, ["spend", "debt_repayment"]),
         isNotNull(creditLedger.studioId),
+        // The administering half of the same test the ledger list applies.
+        // Its other half — a run belonging to no studio — has no line here:
+        // this answers one line per studio, and such a run was in none.
+        administeredByReader(payerUserId),
       ),
     )
     .groupBy(

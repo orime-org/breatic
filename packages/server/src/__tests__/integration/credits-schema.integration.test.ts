@@ -182,15 +182,15 @@ describe("credit_lots", () => {
     const { userId, paymentId } = await seedUserWithPayment();
     await sql`
       INSERT INTO credit_lots
-        (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
-      VALUES (${paymentId}, ${userId}, 880, 880, 'active')
+        (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+      VALUES (${paymentId}, 'payment', ${userId}, 880, 880, 'active')
     `;
 
     await expect(
       sql`
         INSERT INTO credit_lots
-          (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
-        VALUES (${paymentId}, ${userId}, 880, 880, 'active')
+          (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+        VALUES (${paymentId}, 'payment', ${userId}, 880, 880, 'active')
       `,
     ).rejects.toThrow(/duplicate key|unique/i);
   });
@@ -203,8 +203,8 @@ describe("credit_lots", () => {
     await expect(
       sql`
         INSERT INTO credit_lots
-          (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
-        VALUES (${paymentId}, ${userId}, 880, 880, 'pending')
+          (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+        VALUES (${paymentId}, 'payment', ${userId}, 880, 880, 'pending')
       `,
     ).rejects.toThrow(/check constraint/i);
   });
@@ -216,8 +216,8 @@ describe("credit_lots", () => {
     await expect(
       sql`
         INSERT INTO credit_lots
-          (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
-        VALUES (${paymentId}, ${userId}, 880, -1, 'active')
+          (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+        VALUES (${paymentId}, 'payment', ${userId}, 880, -1, 'active')
       `,
     ).rejects.toThrow(/check constraint/i);
   });
@@ -400,9 +400,9 @@ describe("退款期间这笔积分不属于任何 studio（0063）", () => {
     const studioId = studios[0]!.id;
     const lots = await sql<{ id: string }[]>`
       INSERT INTO credit_lots
-        (source_id, user_id, purchased_credits, remaining_credits,
+        (source_id, source_kind, user_id, purchased_credits, remaining_credits,
          designated_studio_id, lifecycle)
-      VALUES (${paymentId}, ${userId}, 880, 880, ${studioId}, 'active')
+      VALUES (${paymentId}, 'payment', ${userId}, 880, 880, ${studioId}, 'active')
       RETURNING id
     `;
 
@@ -417,8 +417,8 @@ describe("退款期间这笔积分不属于任何 studio（0063）", () => {
     const { userId, paymentId } = await seedUserWithPayment();
     const lots = await sql<{ id: string }[]>`
       INSERT INTO credit_lots
-        (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
-      VALUES (${paymentId}, ${userId}, 880, 880, 'active')
+        (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+      VALUES (${paymentId}, 'payment', ${userId}, 880, 880, 'active')
       RETURNING id
     `;
     await expect(

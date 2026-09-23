@@ -561,6 +561,13 @@
       "when": 1789952146141,
       "tag": "0079_credit_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1790060261169,
+      "tag": "0080_credit_lots_source_kind",
+      "breakpoints": true
     }
   ]
 }

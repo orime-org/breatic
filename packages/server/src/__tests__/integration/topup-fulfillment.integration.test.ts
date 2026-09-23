@@ -363,8 +363,8 @@ describe("the two guards cover different things", () => {
       // A lot already exists for this payment, so creating the second one
       // violates the unique constraint partway through the transaction.
       await sql`
-        INSERT INTO credit_lots (source_id, user_id, purchased_credits, remaining_credits, lifecycle)
-        VALUES (${paymentId}, ${userId}, 1700, 1700, 'active')
+        INSERT INTO credit_lots (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+        VALUES (${paymentId}, 'payment', ${userId}, 1700, 1700, 'active')
       `;
       stripe.checkout.sessions.retrieve.mockResolvedValue(
         paidSession(sessionId),

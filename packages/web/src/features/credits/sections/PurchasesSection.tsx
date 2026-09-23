@@ -14,6 +14,7 @@ import {
   ListEnd,
   Notice,
   Row,
+  RowBalance,
   Rows,
   Section,
   SectionEmpty,
@@ -93,7 +94,7 @@ export function PurchasesSection({
           <Rows>
             {paging.rows.map((purchase) => (
               <PurchaseLine
-                key={purchase.paymentId}
+                key={purchase.rowId}
                 purchase={purchase}
                 userId={userId}
               />
@@ -157,10 +158,16 @@ const PurchaseLine = React.memo(function PurchaseLine({
   // figure from the moment the buyer typed their address. Carrying one says
   // nothing about whether the money moved, which is why `over` is asked first.
   const charged = purchase.totalCents;
-  const over = OVER.has(purchase.status);
-  const statusKey = STATUS_LABEL[purchase.status];
+  // A row nobody paid for has no state a payment can be in, so neither the
+  // "ended without a charge" question nor the badge applies to it.
+  const over = purchase.status !== null && OVER.has(purchase.status);
+  const statusKey =
+    purchase.status === null ? undefined : STATUS_LABEL[purchase.status];
 
   const resend = React.useCallback(async (): Promise<void> => {
+    // Only offered where a payment exists, which is what `canResend` already
+    // answers; this keeps the call honest for the type as well.
+    if (purchase.paymentId === null) return;
     setSending(true);
     try {
       const { sent } = await paymentApi.resendConfirmation(purchase.paymentId);
@@ -190,13 +197,18 @@ const PurchaseLine = React.memo(function PurchaseLine({
                 the figure a buyer matches against a statement; or, before
                 Stripe has one, the pre-tax price said plainly, which tells
                 them more than nothing does. */}
-          {over
-            ? t('credits.purchase.notCharged')
-            : charged !== null
-              ? formatMoney(charged, purchase.currency)
-              : t('credits.purchase.beforeTax', {
-                amount: formatMoney(purchase.amountCents, purchase.currency),
-              })}{' '}
+          {/* Credits nobody paid for have no price to print, so the cell
+                says where they came from instead — the one thing about the
+                row a reader cannot work out from the rest of it. */}
+          {purchase.amountCents === null
+            ? t(`credits.source.${purchase.sourceKind}`)
+            : over
+              ? t('credits.purchase.notCharged')
+              : charged !== null
+                ? formatMoney(charged, purchase.currency)
+                : t('credits.purchase.beforeTax', {
+                  amount: formatMoney(purchase.amountCents, purchase.currency),
+                })}{' '}
             · {formatLocalDay(purchase.createdAt)}
           {statusKey === undefined ? null : (
             <Badge
@@ -253,12 +265,10 @@ const PurchaseLine = React.memo(function PurchaseLine({
             )
           ) : (
             <>
-              <span
+              <RowBalance
                 data-testid='purchase-remaining'
-                className='block text-sm font-semibold'
-              >
-                {formatCreditAmount(purchase.remainingCredits)}
-              </span>
+                credits={purchase.remainingCredits}
+              />
               <span className='block text-xs text-muted-foreground'>
                 {t('credits.ofPurchased', {
                   amount: formatCreditAmount(purchase.creditsGranted),

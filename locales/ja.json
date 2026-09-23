@@ -14,10 +14,13 @@
     "credit": {
       "not_studio_admin": "クレジットを割り当てられるのは、自分が管理する Studio だけです。",
       "designation_locked": "この購入は返金手続き中のため、割り当てを変更できません。",
+      "designation_not_purchased": "このクレジットは付与されたもので、個人 Studio でのみ使用できます。",
       "in_debt": "この Studio は {owed} クレジットの未払いがあります。次に割り当てるクレジットが先に充当されます。",
       "unassigned": "未割り当てのクレジットが {available} あります。使用するには Studio に割り当ててください。",
       "none": "クレジットが不足しています。チャージしてください。",
+      "granted_elsewhere": "お持ちのクレジットは付与されたもので、個人 Studio でのみ使用できます。",
       "refund_already_asked": "この購入はすでに返金を申請済みです。",
+      "refund_not_purchased": "このクレジットは付与されたもので、お支払いがないため返金できません。",
       "refund_still_designated": "この購入は Studio に割り当てられています。先に割り当てを解除してください。",
       "refund_already_spent": "この購入のクレジットは使用済みのため、返金できません。",
       "refund_window_closed": "この購入の返金期限は終了しました。"
@@ -81,6 +84,13 @@
         "used": "1 つでも使用した場合、そのパックは返金できません。",
         "expired": "30 日を過ぎたパックは返金対象外です。",
         "unassigned": "Studio に割り当てられていないパックのみ返金できます。"
+      },
+      "refund-credits-v3": {
+        "unused": "30 日以内のご購入で、クレジットを 1 つも使っていない場合は、元のカードへ全額返金します。",
+        "used": "1 つでも使用した場合、そのパックは返金できません。",
+        "expired": "30 日を過ぎたパックは返金対象外です。",
+        "unassigned": "Studio に割り当てられていないパックのみ返金できます。",
+        "purchased": "ご購入いただいたパックのみ返金できます。"
       },
       "not_found": "その購入が見つかりません。",
       "unavailable": "この環境ではクレジットを販売していません。"
@@ -1525,13 +1535,20 @@
     },
     "section": {
       "overview": "概要",
-      "lots": "購入履歴",
+      "lots": "取得履歴",
       "ledger": "消費履歴",
       "studios": "Studio 別",
       "buy": "クレジットを購入",
       "assign": "割り当て",
       "refunds": "返金"
     },
+    "source": {
+      "payment": "購入",
+      "gift": "体験クレジット",
+      "compensation": "補償",
+      "discount": "割引"
+    },
+    "pinnedToPersonalStudio": "個人 Studio でのみ使用",
     "lifecycle": {
       "depleted": "使い切りました",
       "refund_pending": "審査中",
@@ -1555,8 +1572,8 @@
     },
     "lotsEmpty": "購入履歴はまだありません。",
     "lotsEmptyNotice": {
-      "title": "購入はすべてここに表示されます",
-      "body": "各購入について、金額、処理状況、クレジットの割り当て先 Studio が表示されます。"
+      "title": "クレジットの入手履歴はここに表示されます",
+      "body": "購入分も付与分も、入手元・金額・処理状況・どの Studio に割り当てたかを表示します。"
     },
     "assignedTo": "{studio} に割り当て",
     "ofPurchased": "全 {amount}",
@@ -1588,13 +1605,10 @@
       "body": "購入ごとに一つの Studio へ割り当て、いつでも変更できます。"
     },
     "assignNote": "一覧に出るのは自分が Admin の Studio だけです。変更すると、元の Studio はその場で使えなくなります。",
-    "remaining": "残り {amount} クレジット",
     "designationFor": "{amount} の購入の割り当て先",
     "designateFailed": "保存できませんでした。もう一度お試しください。",
     "refundsEmpty": "まだクレジットパックを購入していません",
     "askRefund": "返金を申請",
-    "refundPendingHint": "{credits} クレジット · 審査中は Studio に割り当てられません",
-    "refundingHint": "{credits} クレジット · 返金処理中は Studio に割り当てられません",
     "refundTitle": "返金ルール",
     "buy": {
       "taxNotice": "表示価格は税抜きです。お支払い額は表示価格にお住まいの地域の税額を加えたもので、決済ページに最終金額が表示されます。",
@@ -1639,9 +1653,7 @@
       "expired": "30 日超過"
     },
     "refundHint": {
-      "assigned": "残り {credits} クレジット · 割り当てを解除すると返金を申請できます",
-      "depleted": "合計 {credits} クレジット",
-      "refunded": "元のお支払い方法へ返金済み"
+      "assigned": "割り当てを解除すると返金を申請できます"
     }
   },
   "notFound": {
