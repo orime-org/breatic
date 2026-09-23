@@ -42,6 +42,8 @@ interface DocNode {
   id: string;
   parentId: string | null;
   type: string;
+  /** Top-left; relative to the parent Group for a member, absolute otherwise. */
+  position: { x: number; y: number };
 }
 
 /**
@@ -58,12 +60,20 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
         readCanvasGraph: (
           p: string,
           s: string,
-        ) => { nodes: { id: string; parentId?: string; type: string }[] };
+        ) => {
+          nodes: {
+            id: string;
+            parentId?: string;
+            type: string;
+            position: { x: number; y: number };
+          }[];
+        };
       };
       return canvas.readCanvasGraph(pid, sid).nodes.map((n) => ({
         id: n.id,
         parentId: n.parentId ?? null,
         type: n.type,
+        position: n.position,
       }));
     },
     [projectId, spaceId, canvasUrl] as [string, string, string],
@@ -215,6 +225,69 @@ test('a paste of several files turns into one Group', async ({ page }) => {
   await expect
     .poll(async () => selectedOnScreen(page), { timeout: 15_000 })
     .toEqual([groupId]);
+});
+
+test('the members keep the grid, and the Group takes them along', async ({
+  page,
+}) => {
+  const files = 5;
+  await page
+    .locator('input[data-testid="canvas-upload-input"][multiple]')
+    .setInputFiles(Array.from({ length: files }, (_, i) => pngFile(i)));
+  const groupId = await theGroupOver(page, files);
+
+  /**
+   * Where the members sit inside the Group, read in reading order.
+   * @returns One position per member, top row first.
+   */
+  const memberGrid = async (): Promise<{ x: number; y: number }[]> =>
+    (await documentNodes(page))
+      .filter((n) => n.parentId === groupId)
+      .map((n) => n.position)
+      .sort((a, b) => a.y - b.y || a.x - b.x);
+
+  // 288x192 nodes stepped by 312 and 216, four across, inside 24 of padding.
+  // Creating the Group rewrites every member's position, so this is where a
+  // second answer to "where is node i" would show up as a jump.
+  expect(await memberGrid()).toEqual([
+    { x: 24, y: 24 },
+    { x: 336, y: 24 },
+    { x: 648, y: 24 },
+    { x: 960, y: 24 },
+    { x: 24, y: 240 },
+  ]);
+
+  const frame = await page
+    .locator(`.react-flow__node[data-id="${groupId}"]`)
+    .boundingBox();
+  if (frame === null) throw new Error('the Group is not on screen');
+  const before = (await documentNodes(page)).find((n) => n.id === groupId)
+    ?.position;
+  // Grabbed on the Group's own top strip, above every member — the way a
+  // reader grabs the whole batch.
+  await page.mouse.move(frame.x + 200, frame.y + 8);
+  await page.mouse.down();
+  for (let step = 1; step <= 6; step += 1) {
+    await page.mouse.move(frame.x + 200 + step * 30, frame.y + 8 + step * 20);
+  }
+  await page.mouse.up();
+
+  await expect
+    .poll(
+      async () =>
+        (await documentNodes(page)).find((n) => n.id === groupId)?.position,
+      { timeout: 15_000 },
+    )
+    .not.toEqual(before);
+  // The whole batch went with it: nobody was left behind and nobody shifted
+  // inside the frame.
+  expect(await memberGrid()).toEqual([
+    { x: 24, y: 24 },
+    { x: 336, y: 24 },
+    { x: 648, y: 24 },
+    { x: 960, y: 24 },
+    { x: 24, y: 240 },
+  ]);
 });
 
 test('one file stays one node, with no Group around it', async ({ page }) => {
