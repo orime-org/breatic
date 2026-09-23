@@ -2433,12 +2433,7 @@ function CanvasSpaceInner({
   // nobody frees any in the seconds a retry takes. Both remedies can only be
   // said in a localized toast.
   const failUploadNode = React.useCallback(
-    (
-      outcome: UploadFailure,
-      nodeId: string,
-      file: File,
-      opts: { droppedHere: boolean },
-    ): void => {
+    (outcome: UploadFailure, file: File): void => {
       const plan = resolveUploadFailure(outcome);
       if (plan.kind === 'reportToServer') {
         // Nobody else can end this row: the bytes never reached the edge, so
@@ -2476,10 +2471,10 @@ function CanvasSpaceInner({
         }
         return;
       }
-      // No ticket, so no row and no grant: nothing on the server can end this.
-      // A node this drop created has never held anything and never will, so it
-      // goes; one that was already there stays as it was.
-      if (opts.droppedHere) removeNode(projectId, spaceId, nodeId);
+      // No ticket, so no row and no grant: nothing on the server can end this,
+      // and the toast above is the whole of what this side can say. The node
+      // stays where it is — a node that exists is the reader's to remove, and
+      // only theirs (#2177).
     },
     [projectId, spaceId, t],
   );
@@ -2547,9 +2542,8 @@ function CanvasSpaceInner({
                   // holding the file for a Retry that is no longer offered.
                   onSuccess: () => undefined,
                   // Outcome and all — `failUploadNode` above owns what each
-                  // one means for the Retry stash, the toast and this node.
-                  onFailure: (outcome) =>
-                    failUploadNode(outcome, nodeId, file, { droppedHere: true }),
+                  // one means for the Retry stash and the toast.
+                  onFailure: (outcome) => failUploadNode(outcome, file),
                 },
               ),
             );
@@ -3550,8 +3544,7 @@ function CanvasSpaceInner({
             setNodeExtractionError(projectId, spaceId, id, message),
           // The same outcome as the drop path, reason for reason: one place
           // decides the stash and says the remedy in the reader's language.
-          onUploadFailure: (outcome, id, f) =>
-            failUploadNode(outcome, id, f, { droppedHere: false }),
+          onUploadFailure: (outcome, _id, f) => failUploadNode(outcome, f),
         });
       })();
       trackOperation(nodeId, work);

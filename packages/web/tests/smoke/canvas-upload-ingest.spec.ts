@@ -12,7 +12,9 @@
  * everything (#186 §3.7.3): after the ticket a row and a grant exist, and the
  * row reaches an end without the browser — the server judges it against its
  * budget the next time somebody reads that node's task list. Before the ticket
- * nothing exists, so the empty node the drop made has to go. `failUploadNode` holds both
+ * nothing exists, so there is no row to carry the failure and the toast is all
+ * this side can say — the node stays, because a node that exists is the
+ * reader's to remove and only theirs (#2177). `failUploadNode` holds both
  * halves and lives inside a `useCallback` no unit test can call.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
@@ -431,10 +433,10 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
 });
 
 // A6: a transfer that dies BEFORE the ticket is answered. Nothing exists on the
-// server — no row, no grant, no timer — so nobody is coming to end this. The
-// node this drop created has never held anything and never will, so it goes
-// (#186 §3.7.3, first three lines).
-test('a drop that never gets a ticket takes its own empty node away', async () => {
+// server — no row, no grant, no timer — so there is no task row to carry the
+// failure and the toast is the whole of what this side can say. The node stays:
+// a node that exists is the reader's to remove, and only theirs (#2177).
+test('a drop that never gets a ticket keeps its node and says so', async () => {
   let aborted = 0;
   await page.route('**/assets/upload-ticket*', (route) => {
     aborted += 1;
@@ -457,12 +459,9 @@ test('a drop that never gets a ticket takes its own empty node away', async () =
     { timeout: 30_000 },
   );
 
-  // Back to where we started: the empty node did not survive the drop.
-  await expect
-    .poll(async () => page.locator('.react-flow__node').count(), {
-      timeout: 15_000,
-    })
-    .toBe(nodesBefore);
+  // The node the drop made is still there. It holds nothing and never will,
+  // and taking it away is the reader's call to make, not ours.
+  expect(await page.locator('.react-flow__node').count()).toBe(nodesBefore + 1);
 
   await page.unroute('**/assets/upload-ticket*');
 });
