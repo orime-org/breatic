@@ -24,10 +24,7 @@
  * list would be free to reshuffle on any re-read.
  */
 
-import {
-  isSettled,
-  type ThreadRange,
-} from '@web/spaces/document/document-comment-state';
+import type { ThreadRange } from '@web/spaces/document/document-comment-extension';
 
 /** The half of a thread this reading needs. */
 export interface RailThread {
@@ -93,7 +90,9 @@ export function commentRail(
 ): CommentRail {
   const sortable: Sortable[] = threads.map((thread) => ({
     id: thread.id,
-    settled: isSettled(thread),
+    // `=== true` and not truthiness: the store leaves the field off until
+    // somebody resolves the thread, so absent has to read as unresolved.
+    settled: thread.resolved === true,
     from: positions.get(thread.id)?.from,
     opened: thread.createdAt.getTime(),
   }));

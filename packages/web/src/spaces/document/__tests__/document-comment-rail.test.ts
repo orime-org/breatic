@@ -4,11 +4,9 @@
 /**
  * How the panel orders and groups its cards (#18, A4 · A5 · A9).
  *
- * Three acceptance items read one answer. The cards go in body order (A4),
- * resolved ones sit in their own collapsed group that a reader can switch to
- * (A9), and whether anything is unresolved is the dot on the `⋯` button (A5).
- * Computing them together is what keeps the dot from disagreeing with the
- * group it stands for.
+ * Two answers come out of one reading: the cards in body order (A4), and the
+ * resolved ones in their own group (A9). The dot on the `⋯` button is the
+ * first group's length, counted in `DocumentEditor` rather than here.
  *
  * Body order leaves one case open, and the design's own transition table is
  * what opens it: a thread whose text was deleted stays in the unresolved
@@ -16,9 +14,6 @@
  * first — sorting them among the others would need a position they do not
  * have, and any stand-in would make the list jump at the moment a peer
  * deletes the text.
- *
- * An orphan counts as unresolved for the dot, for the same reason it stays in
- * that group: the reader has not dealt with it yet.
  *
  * TDD: red because `commentRail` does not exist yet.
  */
@@ -101,18 +96,6 @@ describe('commentRail', () => {
   it('orders the ones with no text left by age', () => {
     const rail = commentRail([thread('newer', 2), thread('older', 1)], at());
     expect(ids(rail.unresolved)).toEqual(['older', 'newer']);
-  });
-
-  it('leaves something in the first group while anything is unresolved', () => {
-    // The dot on the `⋯` button is this group's length, counted where it is
-    // drawn (`DocumentEditor`), so this group is what the dot stands for.
-    const rail = commentRail([thread('live', 1)], at(['live', 10]));
-    expect(rail.unresolved).toHaveLength(1);
-  });
-
-  it('keeps an orphan in it too, which nobody has dealt with', () => {
-    const rail = commentRail([thread('orphan', 1)], at());
-    expect(rail.unresolved).toHaveLength(1);
   });
 
   it('empties it when everything is resolved', () => {

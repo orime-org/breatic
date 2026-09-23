@@ -268,7 +268,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // of whether an element was removed: a card's element goes on any render,
   // and only some of those mean the thread went with it.
   React.useEffect(() => {
-    if (!ids.includes(hoveredThreadIn(editor.prosemirrorState) ?? '')) {
+    const hovered = hoveredThreadIn(editor.prosemirrorState);
+    if (hovered !== null && !ids.includes(hovered)) {
       hoverThread(editor, null);
     }
     const reading = selectedThreadsIn(editor.prosemirrorState);
@@ -294,6 +295,22 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
         CLEARANCE_BELOW_HEADER_PX,
       ),
     [shown, anchors, heights, reading],
+  );
+
+  // How far down the lowest card reaches. The cards are out of flow, so the
+  // panel's own box — its border, its background, and the block the sticky
+  // header is held inside — stops at whatever the header and the empty
+  // column come to, and a stack taller than that hangs below it (measured
+  // 2026-09-23: a comment on the last line of a 40-line document put its
+  // card 127.5px past the panel's bottom edge).
+  const stackHeight = React.useMemo(
+    () =>
+      [...placed].reduce(
+        (lowest, [id, top]) =>
+          Math.max(lowest, top + (heights.get(id) ?? CARD_HEIGHT_GUESS_PX)),
+        0,
+      ) + GAP_BETWEEN_CARDS_PX,
+    [placed, heights],
   );
 
   const onHover = React.useCallback(
@@ -376,6 +393,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
         ref={column}
         data-testid='doc-comment-rail-column'
         className='relative flex-1 px-2.5'
+        style={{ minHeight: `${String(stackHeight)}px` }}
       >
         {nothingHere ? (
           <p

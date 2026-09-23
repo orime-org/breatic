@@ -22,7 +22,7 @@
 
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
-import type { ThreadRange } from '@web/spaces/document/document-comment-state';
+import type { ThreadRange } from '@web/spaces/document/document-comment-extension';
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 
 

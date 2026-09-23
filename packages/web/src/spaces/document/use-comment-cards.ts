@@ -34,7 +34,7 @@ import {
   threadQuoteIn,
   threadRangesByThread,
 } from '@web/spaces/document/document-comment-ranges';
-import type { ThreadRange } from '@web/spaces/document/document-comment-state';
+import type { ThreadRange } from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
 import { useCommentRail } from '@web/spaces/document/use-comment-rail';
@@ -126,6 +126,7 @@ function entryOf(
  * @param source - The threads and their positions.
  * @param doc - The body, which the quote is read out of.
  * @param walked - Every thread's stretches, walked once for the whole panel.
+ * @param threads - Every thread, built once for the whole panel.
  * @returns The card, or null once the thread itself is gone.
  */
 function drawCard(
@@ -133,8 +134,9 @@ function drawCard(
   source: CommentsApi,
   doc: ProseMirrorNode,
   walked: ReadonlyMap<string, readonly ThreadRange[]>,
+  threads: ReadonlyMap<string, { comments: readonly CommentData[] }>,
 ): CommentCardView | null {
-  const thread = source.threadStore.getThreads().get(card.id);
+  const thread = threads.get(card.id);
   if (thread === undefined) return null;
   return {
     id: card.id,
@@ -220,12 +222,16 @@ export function useCommentCards(editor: ToolEditor): CommentCards {
     // One walk for the whole panel: this runs on every settle and on every
     // render of it, and per card it was one full walk of the document each.
     const walked = threadRangesByThread(doc);
+    // The same reason, for the other table the panel reads: `getThreads` is
+    // not a lookup, it rebuilds the whole map and deserialises every comment
+    // in it (`@blocknote/core/dist/y.js:676-681`).
+    const threads = comments.threadStore.getThreads();
     const next: CommentCards = {
       unresolved: rail.unresolved
-        .map((card) => drawCard(card, comments, doc, walked))
+        .map((card) => drawCard(card, comments, doc, walked, threads))
         .filter((card) => card !== null),
       resolved: rail.resolved
-        .map((card) => drawCard(card, comments, doc, walked))
+        .map((card) => drawCard(card, comments, doc, walked, threads))
         .filter((card) => card !== null),
     };
     if (sameCards(cached.current, next)) return cached.current;
@@ -245,7 +251,14 @@ export function useCommentCards(editor: ToolEditor): CommentCards {
         if (entry.author === null) ids.add(entry.authorId);
       });
     });
-    if (ids.size > 0) void comments.userStore.loadUsers([...ids]);
+    // The lookup can be refused — an expired session, a 5xx, no network —
+    // and the library does not swallow it (`user/UserStore.ts:145-172` has no
+    // catch). The card already reads a name it has no entry for as unknown,
+    // so there is nothing more to say; this keeps the rejection from escaping
+    // once per card change for as long as the endpoint is down.
+    if (ids.size > 0) {
+      void comments.userStore.loadUsers([...ids]).catch(() => undefined);
+    }
   }, [cards, comments]);
 
   return cards;

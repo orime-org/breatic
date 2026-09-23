@@ -106,7 +106,6 @@ describe('useCommentRail', () => {
 
     expect(result.current.unresolved).toEqual([]);
     expect(result.current.resolved).toEqual([]);
-    expect(result.current.unresolved).toHaveLength(0);
   });
 
   it('picks up a comment as it is posted, and marks the button', async () => {
@@ -200,7 +199,6 @@ describe('useCommentRail', () => {
     await waitFor(() => {
       expect(result.current.unresolved).toEqual([]);
     });
-    expect(result.current.unresolved).toHaveLength(0);
   });
 
   it('hands back the same reading while nothing about it changed', async () => {

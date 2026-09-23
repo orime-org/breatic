@@ -96,7 +96,10 @@ describe('what carries the body to the bottom of the scroller', () => {
 
     for (let at = surface.parentElement; at !== grown; at = at!.parentElement) {
       expect(at).not.toBeNull();
-      expect(at!.className).toMatch(/\bflex-1\b|\bflex\b/);
+      // `flex-1` and nothing else: `-` is a word boundary, so a pattern that
+      // also accepts a bare `flex` accepts `flex-none`, which is the shape
+      // that broke this chain in the first place.
+      expect(at!.className).toMatch(/\bflex-1\b/);
     }
   });
 });
