@@ -44,6 +44,8 @@ interface DocNode {
   type: string;
   /** Top-left; relative to the parent Group for a member, absolute otherwise. */
   position: { x: number; y: number };
+  /** A Group's authoritative height; null for a node, which sizes itself. */
+  height: number | null;
 }
 
 /**
@@ -66,6 +68,7 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
             parentId?: string;
             type: string;
             position: { x: number; y: number };
+            data?: { height?: number };
           }[];
         };
       };
@@ -74,6 +77,7 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
         parentId: n.parentId ?? null,
         type: n.type,
         position: n.position,
+        height: n.data?.height ?? null,
       }));
     },
     [projectId, spaceId, canvasUrl] as [string, string, string],
@@ -288,6 +292,36 @@ test('the members keep the grid, and the Group takes them along', async ({
     { x: 960, y: 24 },
     { x: 24, y: 240 },
   ]);
+});
+
+test('the Group grows to hold members that turned out taller', async ({
+  page,
+}) => {
+  // Text files take the extraction path, which reads the words in this browser
+  // — so the nodes fill and grow without an upload having to finish.
+  const paragraph = `${'A sentence that has to wrap several times. '.repeat(40)}`;
+  await page
+    .locator('input[data-testid="canvas-upload-input"][multiple]')
+    .setInputFiles(
+      [0, 1].map((i) => ({
+        name: `note-${String(i)}.txt`,
+        mimeType: 'text/plain',
+        buffer: Buffer.from(paragraph, 'utf8'),
+      })),
+    );
+  const groupId = await theGroupOver(page, 2);
+
+  // Two empty nodes one row tall: 192 + 24 of padding top and bottom.
+  const framedEmpty = 240;
+  // The box the batch arrived in is the one it keeps being drawn as, so it has
+  // to follow what the members turned out to be.
+  await expect
+    .poll(
+      async () =>
+        (await documentNodes(page)).find((n) => n.id === groupId)?.height ?? 0,
+      { timeout: 30_000 },
+    )
+    .toBeGreaterThan(framedEmpty);
 });
 
 test('one file stays one node, with no Group around it', async ({ page }) => {

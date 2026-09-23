@@ -221,6 +221,33 @@ export function planGroupGrowth(
   return out;
 }
 
+/**
+ * The Groups whose members turned out bigger than the box drawn around them.
+ *
+ * A Group is sized when it is made, and a member that is still empty then is a
+ * fixed placeholder box; once its media arrives the node is as tall as the
+ * media. Only the bottom-right can move that way, because a member keeps the
+ * top-left it was placed at — so a growth that would move the Group's origin is
+ * a member sitting OUTSIDE the box, which the drag-stop settles by reparenting
+ * rather than by growing (every member's stored position is measured against
+ * that origin).
+ * @param groups - Each Group's stored rect and its members' absolute rects.
+ * @returns One growth per Group that must get bigger, origin unchanged.
+ */
+export function planGroupFitToMembers(
+  groups: ReadonlyArray<GroupGrowthInput>,
+): GroupGrowth[] {
+  const rectById = new Map(groups.map((group) => [group.groupId, group.rect]));
+  return planGroupGrowth(groups).filter((growth) => {
+    const rect = rectById.get(growth.groupId);
+    return (
+      rect !== undefined &&
+      growth.position.x === rect.x &&
+      growth.position.y === rect.y
+    );
+  });
+}
+
 /** The 8 NodeResizer control positions: 4 edge lines + 4 corner handles. */
 export type GroupControlPosition =
   | 'top'

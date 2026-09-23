@@ -144,6 +144,7 @@ import {
   GROUP_MIN_SIZE,
   GROUP_PADDING,
   groupResizeBounds,
+  planGroupFitToMembers,
   planGroupGrowth,
   planGroupResize,
   type GroupGrowth,
@@ -568,6 +569,68 @@ function planDuplicateGroupGrowth(
 }
 
 /**
+ * The growth every Group needs to hold members that turned out bigger than the
+ * box drawn around them (#2209).
+ *
+ * A Group is sized around its members, and a member that is still uploading is
+ * a fixed placeholder box; once its media arrives the node is as tall as the
+ * media. Positions come from the document and sizes from the render, so the
+ * only thing that moves the answer is a member changing size — an in-flight
+ * drag says nothing here, and the gesture's own release still owns where
+ * things land.
+ * @param places - The nodes as the document has them (geometry + parentId).
+ * @param rendered - The render buffer, for each node's measured size.
+ * @param skip - Groups a remote gesture is holding, which this end writes nothing about.
+ * @returns One growth per Group that must get bigger.
+ */
+function planMeasuredGroupFit(
+  places: ReadonlyArray<Node>,
+  rendered: ReadonlyArray<Node>,
+  skip: ReadonlySet<string>,
+): GroupGrowth[] {
+  const measuredById = new Map(rendered.map((node) => [node.id, node]));
+  /**
+   * A node's rendered footprint, falling back to the empty node's box.
+   * @param node - The node as the document has it.
+   * @returns Its width / height.
+   */
+  const sizeOf = (node: Node): { width: number; height: number } => {
+    const drawn = measuredById.get(node.id);
+    return {
+      width: drawn?.measured?.width ?? node.width ?? GROUP_DRAG_FALLBACK_W,
+      height: drawn?.measured?.height ?? node.height ?? GROUP_DRAG_FALLBACK_H,
+    };
+  };
+  const inputs: GroupGrowthInput[] = [];
+  for (const group of places) {
+    if (group.type !== 'group' || skip.has(group.id)) continue;
+    const memberRects: Rect[] = [];
+    for (const node of places) {
+      if (node.parentId !== group.id) continue;
+      const size = sizeOf(node);
+      memberRects.push({
+        x: group.position.x + node.position.x,
+        y: group.position.y + node.position.y,
+        width: size.width,
+        height: size.height,
+      });
+    }
+    if (memberRects.length === 0) continue;
+    inputs.push({
+      groupId: group.id,
+      rect: {
+        x: group.position.x,
+        y: group.position.y,
+        width: group.width ?? GROUP_DRAG_FALLBACK_W,
+        height: group.height ?? GROUP_DRAG_FALLBACK_H,
+      },
+      memberRects,
+    });
+  }
+  return planGroupFitToMembers(inputs);
+}
+
+/**
  * Node kind → localized display-name key, for the connection-rules rejection
  * toast ("Audio can't connect into Image"). An unknown (corrupt Yjs) kind
  * falls back to the raw string at the call site.
@@ -777,6 +840,29 @@ function CanvasSpaceInner({
   // itself lives inside the hook, so no path can reach the raw array on its way
   // to a document write (#2010, design §5.7 and invariant 7).
   const buffer = useBufferAccess(flowNodes, docPlaces, remoteGesture);
+  // A Group holds what its members turned out to be. A batch is grouped while
+  // every member is still an empty placeholder, and a filled node is as tall as
+  // its media — left alone the members would hang outside the box they arrived
+  // in, and a nudge would take one out of the Group for good (a member whose
+  // centre is outside the frame stops being a member at drag-stop).
+  React.useEffect(() => {
+    if (readOnly) return;
+    const fits = planMeasuredGroupFit(
+      buffer.documentPlaces(),
+      flowNodes,
+      buffer.heldByRemote(),
+    );
+    for (const fit of fits) {
+      resizeGroup(
+        projectId,
+        spaceId,
+        fit.groupId,
+        fit.position,
+        fit.width,
+        fit.height,
+      );
+    }
+  }, [flowNodes, readOnly, projectId, spaceId, buffer]);
   // Which Group this end took a resize on, and where the document had it when
   // the pointer went down — the point ReactFlow measures its rect from. Null
   // while no resize this end may write is open. The id rides along because
