@@ -175,6 +175,57 @@ export function isComparableMembershipTier(
   return COMPARABLE_TIER_SET.has(tier);
 }
 
+/**
+ * How often a membership is billed, shortest first.
+ *
+ * The order is what {@link canMoveTo} reads: an account may lengthen the
+ * period it pays over and never shorten it.
+ */
+export const BILLING_PERIODS = ["month", "year"] as const;
+
+/** How often a membership is billed. */
+export type BillingPeriod = (typeof BILLING_PERIODS)[number];
+
+/** A tier sold over a billing period — one thing an account can hold or buy. */
+export interface MembershipOffer {
+  /** Which tier. */
+  readonly tier: SubscribableMembershipTier;
+  /** How often it is billed. */
+  readonly period: BillingPeriod;
+}
+
+/**
+ * Whether an account holding one offer may move to another.
+ *
+ * The ratified decision lists three rows of permitted moves and gives the
+ * reason behind them: dropping a tier, or shortening the period, both leave
+ * us holding more money than the new offer is worth, and membership is never
+ * refunded. That reason IS the rule, so it is written as the rule — a list
+ * has to be remembered at the size somebody last typed it, while this grows a
+ * fourth tier by itself.
+ *
+ * Read by both ends. The panel draws an entrance only where this says yes and
+ * the server accepts a change only where this says yes, so an entrance the
+ * reader can press is one the server will take.
+ * @param from - What the account holds now.
+ * @param to - What it wants instead.
+ * @returns Whether that move is on offer.
+ */
+export function canMoveTo(from: MembershipOffer, to: MembershipOffer): boolean {
+  // Moving to what is already held is not a move. The server answers that
+  // case with "you are already on this one", which is a different sentence
+  // from "that direction is not on offer".
+  if (from.tier === to.tier && from.period === to.period) return false;
+
+  // Both lists are ordered cheapest first, so an index comparison is the
+  // whole rule: never a lower tier, never a shorter period.
+  return (
+    COMPARABLE_MEMBERSHIP_TIERS.indexOf(to.tier) >=
+      COMPARABLE_MEMBERSHIP_TIERS.indexOf(from.tier) &&
+    BILLING_PERIODS.indexOf(to.period) >= BILLING_PERIODS.indexOf(from.period)
+  );
+}
+
 /** One row of the tier comparison table. */
 export interface TierOffer {
   /** Which tier this row describes. */
