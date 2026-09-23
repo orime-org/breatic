@@ -55,7 +55,7 @@ const FULL_WIDTH_PX = 14;
 const HALF_WIDTH_PX = 7;
 
 /** Codepoint ranges drawn at full width: CJK, kana, hangul and their marks. */
-const FULL_WIDTH = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/u;
+const FULL_WIDTH = /[\u{1100}-\u{115F}\u{2E80}-\u{303E}\u{3041}-\u{33FF}\u{3400}-\u{4DBF}\u{4E00}-\u{9FFF}\u{A000}-\u{A4CF}\u{AC00}-\u{D7A3}\u{F900}-\u{FAFF}\u{FE30}-\u{FE4F}\u{FF00}-\u{FF60}\u{FFE0}-\u{FFE6}]/u;
 
 /**
  * How tall a node will be once it is on the canvas.
