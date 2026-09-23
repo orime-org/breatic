@@ -83,13 +83,6 @@ vi.mock("@server/agent/main-agent.js", () => {
       async chat(_msg: string, signal?: AbortSignal): Promise<ReadableStream<unknown>> {
         return endless(signal);
       }
-      async handleSkillCommand(
-        _skill: string,
-        _input: string,
-        signal?: AbortSignal,
-      ): Promise<ReadableStream<unknown>> {
-        return endless(signal);
-      }
     },
   };
 });
@@ -106,16 +99,6 @@ const ENTRANCES = [
     path: "/api/v1/chat/message",
     body: {
       message: "hi",
-      project_id: PROJECT_ID,
-      conversation_id: CONVERSATION_ID,
-    },
-  },
-  {
-    name: "POST /chat/skill",
-    path: "/api/v1/chat/skill",
-    body: {
-      skill_name: "creative_research",
-      input: "hi",
       project_id: PROJECT_ID,
       conversation_id: CONVERSATION_ID,
     },
