@@ -673,6 +673,72 @@ describe("the period reaches Stripe on both paths (#253 A7, A8)", () => {
     }
   }
 
+  it("refuses to report a change Stripe priced differently from our list", async () => {
+    // Stripe took the change and billed something our price list does not
+    // sell. "Applied" is the one answer that cannot be taken back: the reader
+    // is told their plan changed while the row still holds the old one, and
+    // nothing afterwards contradicts it.
+    situationIs("active", holding("pro", "month"));
+    stripe.subscriptions.update.mockResolvedValueOnce({
+      id: "sub_1",
+      status: "active",
+      pending_update: null,
+      cancel_at_period_end: false,
+      latest_invoice: null,
+      items: {
+        data: [
+          {
+            id: "si_1",
+            current_period_end: 1_789_000_000,
+            price: {
+              id: "price_team_month",
+              // Our list says 7999 for this one.
+              unit_amount: 4999,
+              currency: "usd",
+              recurring: { interval: "month" },
+            },
+          },
+        ],
+      },
+    });
+
+    await expect(
+      service.changePlan({ userId: USER, tier: "team", period: "month" }),
+    ).rejects.toThrow("server.membership.change_unconfirmed");
+  });
+
+  it("refuses the same way for a price we do not sell at all", async () => {
+    // The two failures are different facts — one price is unknown, the other
+    // is known and charged wrong — but from here the answer is the same: we
+    // cannot say what the account now holds.
+    situationIs("active", holding("pro", "month"));
+    stripe.subscriptions.update.mockResolvedValueOnce({
+      id: "sub_1",
+      status: "active",
+      pending_update: null,
+      cancel_at_period_end: false,
+      latest_invoice: null,
+      items: {
+        data: [
+          {
+            id: "si_1",
+            current_period_end: 1_789_000_000,
+            price: {
+              id: "priceweknownothingabout",
+              unit_amount: 7999,
+              currency: "usd",
+              recurring: { interval: "month" },
+            },
+          },
+        ],
+      },
+    });
+
+    await expect(
+      service.changePlan({ userId: USER, tier: "team", period: "month" }),
+    ).rejects.toThrow("server.membership.change_unconfirmed");
+  });
+
   it("refuses with the key that no longer says which direction", async () => {
     // `downgrade_not_offered` named one of the two refusals this covers. The
     // other is a period that got shorter, which is not a downgrade.
