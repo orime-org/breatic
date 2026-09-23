@@ -45,13 +45,10 @@ import * as React from 'react';
 import type { ProjectRole } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { ScrollArea } from '@web/components/ui/scroll-area';
-import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
-import { NOTE_MAX_CHARS } from '@web/spaces/canvas/annotation/caps';
-import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
+import { DocumentCommentWriteBox } from '@web/spaces/document/DocumentCommentWriteBox';
 import {
   annotationRights,
   canPostAnnotations,
@@ -124,16 +121,6 @@ const FOLDED_ENTRY_COUNT = 2;
  * written. CKEditor cuts the same thing by character count.
  */
 const FOLDED_LINE_CLAMP = 'line-clamp-3';
-
-/**
- * How tall the reply box may grow before it scrolls: four lines of it.
- *
- * `text-sm` is 14px over a 20px line, and the box keeps `py-1` the way every
- * other field in this Space does, so four lines is 4 × 20 plus the 8 of the
- * padding. Past that the words scroll rather than push the thread they are
- * answering off the panel (user 2026-09-22).
- */
-const REPLY_BOX_MAX_HEIGHT = 'max-h-[88px]';
 
 interface EntryProps {
   /** The comment to draw. */
@@ -267,19 +254,6 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
     setReply('');
   }, [setReply]);
 
-  // Enter saves, Shift+Enter is a line inside the reply, and nothing commits
-  // while an input method is composing — the rules a canvas note's boxes take,
-  // from the one place all of them take them.
-  const keys = useNoteBox(
-    React.useCallback(
-      (action) => {
-        if (action.type === 'save') send();
-        else if (action.type === 'escape') callOff();
-      },
-      [send, callOff],
-    ),
-  );
-
   return (
     <article
       data-testid='doc-comment-card'
@@ -342,65 +316,14 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       {/* A settled thread takes no replies: the discussion is over until
           somebody reopens it. */}
       {mayWrite && reading && !settled && (
-        // The box takes the whole width and the pair sits under it, the shape
-        // a canvas note's reply row settles on: side by side, the buttons
-        // take the width the words need, and they are worth drawing only once
-        // there are words to act on.
-        <div className='mt-2 flex flex-col gap-1.5'>
-          {/* The border and the focus colour sit on the scroller, which is
-              the element that stays still; the box inside it is always
-              exactly as tall as what is written, so what scrolls is the
-              words. */}
-          <ScrollArea
-            scrollbars='vertical'
-            className='rounded-chrome border border-border bg-background transition-colors focus-within:border-active-border'
-            viewportClassName={REPLY_BOX_MAX_HEIGHT}
-            data-testid='doc-comment-reply-scroller'
-          >
-            <Textarea
-              ref={box}
-              rows={1}
-              maxLength={NOTE_MAX_CHARS}
-              data-testid='doc-comment-reply-input'
-              className='min-h-0 resize-none overflow-hidden rounded-none border-0 bg-transparent px-2 py-1 text-sm focus-visible:border-0 md:text-sm'
-              placeholder={t('spaces.document.comment.reply')}
-              value={reply}
-              onChange={(event) => {
-                setReply(event.target.value);
-              }}
-              {...keys.box}
-            />
-          </ScrollArea>
-          {/* The same question `replyToThread` asks before it writes: words
-              that are only spaces are not worth sending, and a control that
-              looks live and answers nothing is the one thing a card must not
-              draw. */}
-          {reply.trim().length > 0 && (
-            <div className='flex justify-end gap-1.5'>
-              <Button
-                variant='outline'
-                size='sm'
-                data-testid='doc-comment-reply-cancel'
-                onClick={() => {
-                  if (keys.composing()) return;
-                  callOff();
-                }}
-              >
-                {t('spaces.document.comment.cancel')}
-              </Button>
-              <Button
-                size='sm'
-                data-testid='doc-comment-reply-save'
-                onClick={() => {
-                  if (keys.composing()) return;
-                  send();
-                }}
-              >
-                {t('spaces.document.comment.save')}
-              </Button>
-            </div>
-          )}
-        </div>
+        <DocumentCommentWriteBox
+          name='reply'
+          value={reply}
+          placeholder={t('spaces.document.comment.reply')}
+          onChange={setReply}
+          onSave={send}
+          onCancel={callOff}
+        />
       )}
 
       {mayWrite && reading && (
