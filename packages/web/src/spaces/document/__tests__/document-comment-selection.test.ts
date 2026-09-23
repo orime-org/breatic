@@ -21,6 +21,7 @@ import { CommentsExtension } from '@blocknote/core/comments';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import {
   hoverThread,
@@ -256,6 +257,26 @@ describe('selecting from elsewhere', () => {
     selectThreads(editor, [threadId]);
 
     expect(librarySelection(editor)).toBeUndefined();
+  });
+
+  it('keeps the library in step when a thread is settled and reopened', async () => {
+    // Whether the library should stand aside turns on three things: which
+    // threads are being read, whether their marks are still in the body, and
+    // the library's own selection — which it clears itself the moment a
+    // thread settles. Asking only when the first one changes leaves the two
+    // sides apart for good, and the library's handler takes every press on
+    // that thread from then on (its own link would never open).
+    const editor = open();
+    const threadId = await comment(editor, 0, 5);
+    press(editor, 2);
+    expect(librarySelection(editor)).toBe(threadId);
+
+    const comments = commentsOn(editor)!;
+    await comments.threadStore.resolveThread({ threadId });
+    await comments.threadStore.unresolveThread({ threadId });
+    editor.prosemirrorView!.dispatch(editor.prosemirrorView!.state.tr);
+
+    expect(librarySelection(editor)).toBe(threadId);
   });
 
   it('opens a thread the panel names', async () => {

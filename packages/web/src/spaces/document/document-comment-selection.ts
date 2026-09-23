@@ -152,6 +152,16 @@ function paintSelected(
 }
 
 /**
+ * Whether two lists name the same threads in the same order.
+ * @param a - One list.
+ * @param b - The other.
+ * @returns Whether they are the same answer.
+ */
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, at) => id === b[at]);
+}
+
+/**
  * Every thread whose highlight is drawn deeper right now.
  * @param ids - The threads the reader has open.
  * @param hovered - The card their pointer is resting on, if any.
@@ -325,7 +335,14 @@ function buildSelectionPlugin(
           | string
           | null
           | undefined;
-        const ids = asked ?? current.ids;
+        // The same array back when the answer has not changed: everything
+        // watching this state compares by identity (`document-plugin-watch`),
+        // and a caller naming the threads that are already open hands in a
+        // fresh array every time.
+        const ids =
+          asked === undefined || sameIds(asked, current.ids)
+            ? current.ids
+            : asked;
         const hovered = hoverMeta === undefined ? current.hovered : hoverMeta;
 
         // Nothing read and nothing pointed at is one state, and handing the
@@ -409,10 +426,34 @@ function buildSelectionPlugin(
       },
     },
 
-    // The library is told before the listeners, so whatever they draw is
-    // drawn over a body whose own handler has already stood aside.
-    view: watch.viewWith((now, state) => {
-      tellLibrary(state.doc, editor, now[0]);
-    }),
+    // Told on every update, not only when the selection changes: whether the
+    // library should stand aside turns on the body as well (a thread whose
+    // marks are gone) and on the library's own answer, which it clears by
+    // itself the moment a thread settles and never restores. Asked only when
+    // our own list changes, the two sides come apart for good on a thread
+    // that is settled and reopened. `tellLibrary` writes nothing when the
+    // answer already matches.
+    view: (view) => {
+      const broadcast = watch.view(view);
+      return {
+        /**
+         * Keeps the library in step, then tells whoever is watching.
+         * @param updated - The view after the change.
+         * @param previous - The state before it.
+         */
+        update: (updated, previous): void => {
+          tellLibrary(
+            updated.state.doc,
+            editor,
+            selectedThreadsIn(updated.state)[0],
+          );
+          broadcast.update?.(updated, previous);
+        },
+        /** Hands the broadcast's own teardown back. */
+        destroy: (): void => {
+          broadcast.destroy?.();
+        },
+      };
+    },
   });
 }

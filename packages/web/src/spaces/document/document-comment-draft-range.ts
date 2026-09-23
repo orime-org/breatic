@@ -142,7 +142,7 @@ export const documentCommentDraftRange = createExtension(() => ({
         },
       },
 
-      view: watch.viewWith(),
+      view: watch.view,
     }),
   ],
 }));

@@ -26,15 +26,8 @@ export interface PluginWatch<T> {
    * @returns The function that stops it.
    */
   readonly onChange: (listener: () => void) => () => void;
-  /**
-   * The plugin `view` that fires those listeners.
-   * @param after - Run with the new answer before the listeners, for a side
-   *   that has to be in step with them.
-   * @returns The view.
-   */
-  readonly viewWith: (
-    after?: (now: T, state: EditorState) => void,
-  ) => NonNullable<Plugin<T>['spec']['view']>;
+  /** The plugin `view` that fires those listeners. */
+  readonly view: NonNullable<Plugin<T>['spec']['view']>;
 }
 
 /**
@@ -53,7 +46,7 @@ export function watchPluginState<T>(
         listeners.delete(listener);
       };
     },
-    viewWith: (after) => (view) => {
+    view: (view) => {
       let last = read(view.state);
       return {
         /**
@@ -64,7 +57,6 @@ export function watchPluginState<T>(
           const now = read(updated.state);
           if (now === last) return;
           last = now;
-          after?.(now, updated.state);
           listeners.forEach((listener) => {
             listener();
           });
