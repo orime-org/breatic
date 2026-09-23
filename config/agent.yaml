@@ -52,13 +52,16 @@ sse_heartbeat_interval_ms: 5000
 # context. Three is the figure Anthropic's clear_tool_uses_20250919 keeps.
 tool_result_keep: 3
 
-# Maximum character length for project memory injected into AI calls.
-memory_project_max_size: 3072
+# Maximum character length for project memory injected into AI calls. A
+# character is never more than a token in the tokenizers this build meets, so
+# this layer costs at most 8K tokens; the conversation layer carries the same
+# ceiling.
+memory_project_max_size: 8192
 
 # Maximum character length for conversation memory injected into AI calls.
 # Consolidation rewrites this layer whole every time it runs, so it is the one
 # segment that grows from its own output.
-memory_conversation_max_size: 3072
+memory_conversation_max_size: 8192
 
 # The ceiling on one model call's answer, in tokens. Per call, not per turn:
 # a turn can make many calls and each of them is bounded by this.
