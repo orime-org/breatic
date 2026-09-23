@@ -4,13 +4,11 @@
 /**
  * What the browser does with an upload that ended badly (#186 §3.7.3).
  *
- * The dividing line is whether the ticket was granted. Past it the server
- * holds a task row and a timer that will judge it, so the row is going to get
- * an ending without the browser saying anything — all the browser owes is the
- * person who tried: tell them, and keep their File so the row's own Retry can
- * use it. Before it, nothing on the server ever heard of this upload, so
- * nobody is coming to end it and the empty node this drop created has no
- * future at all.
+ * One plan reports and the rest only speak. A transfer that died before the
+ * edge saw the bytes leaves a row nobody else will end, so it is reported;
+ * every other failure is said in a toast, and keeps the File only where a
+ * Retry can end differently. The node stays in all of them — a node that
+ * exists is the reader's to remove, and only theirs (#2177).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -59,7 +57,7 @@ describe('resolveUploadFailure', () => {
     });
   });
 
-  it('says nobody knows when the ticket was never granted', () => {
+  it('keeps no File when the ticket was never granted', () => {
     const plan = resolveUploadFailure({ reason: 'upload' });
 
     expect(plan).toEqual({
