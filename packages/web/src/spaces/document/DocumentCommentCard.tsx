@@ -59,6 +59,16 @@ import type {
   CommentEntryView,
 } from '@web/spaces/document/use-comment-cards';
 
+/**
+ * The box every card in the rail is drawn on.
+ *
+ * Shared with the draft card: one comment being written and one already
+ * written are the same object to a reader, and a surface described twice
+ * drifts.
+ */
+export const CARD_SURFACE =
+  'rounded-content-sm border border-border bg-card p-2.5';
+
 interface DocumentCommentCardProps {
   /** The thread this card is for. */
   card: CommentCardView;
@@ -260,7 +270,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       data-thread={card.id}
       data-settled={settled}
       data-selected={marked}
-      className='rounded-content-sm border border-border bg-card p-2.5 data-[selected=true]:border-active-border data-[settled=true]:opacity-70'
+      className={`${CARD_SURFACE} data-[selected=true]:border-active-border data-[settled=true]:opacity-70`}
     >
       {card.quote === null ? (
         <p

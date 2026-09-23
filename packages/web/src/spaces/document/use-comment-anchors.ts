@@ -34,15 +34,24 @@ const NOTHING: ReadonlyMap<string, number> = new Map();
 
 /**
  * How far each thread's words sit from the top of the body's content.
+ *
+ * A draft is measured the same way, from the range it is aimed at: it has no
+ * mark to walk to yet, and a card with no anchor is A13's orphan, which the
+ * layout puts at the bottom of the column — the one place a draft must not
+ * be (A28).
  * @param editor - The document editor.
  * @param threadIds - The threads to measure, in any order.
  * @param column - The element the cards are positioned inside.
+ * @param draft - The draft card's id and where it is aimed, while one is
+ *   open. Held steady by the caller: this re-measures whenever it changes,
+ *   and a fresh object per render would do that on every keystroke.
  * @returns Each thread's top, by id; absent for one with no words left.
  */
 export function useCommentAnchors(
   editor: ToolEditor,
   threadIds: readonly string[],
   column: React.RefObject<HTMLElement | null>,
+  draft: { readonly id: string; readonly from: number } | null = null,
 ): ReadonlyMap<string, number> {
   const [anchors, setAnchors] = React.useState(NOTHING);
   // The ids as one string, so an effect can depend on WHICH threads rather
@@ -64,6 +73,14 @@ export function useCommentAnchors(
       const top = origin.getBoundingClientRect().top;
       const next = new Map<string, number>();
       const stale: string[] = [];
+      if (draft !== null) {
+        try {
+          next.set(draft.id, view.coordsAtPos(draft.from).top - top);
+        } catch {
+          // Same reason as below: a position the view has not laid out yet.
+          stale.push(draft.id);
+        }
+      }
       // One walk for every thread: this runs on each settle, and per-thread
       // it was one full walk of the document each.
       const ranges = threadRangesByThread(view.state.doc);
@@ -111,7 +128,7 @@ export function useCommentAnchors(
       sizes.disconnect();
       stop();
     };
-  }, [editor, key, column]);
+  }, [editor, key, column, draft]);
 
   return anchors;
 }
