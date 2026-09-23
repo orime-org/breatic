@@ -56,6 +56,7 @@ import {
   annotationRights,
   canPostAnnotations,
 } from '@web/spaces/canvas/annotation/rights';
+import { openedBy } from '@web/spaces/document/document-comment-auth';
 import type {
   CommentCardView,
   CommentEntryView,
@@ -239,12 +240,10 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
   useAutosizeTextarea(box, reply);
   const mayWrite = canPostAnnotations(myRole);
   const settled = card.settled;
-  // A thread carries no author of its own, so whoever opened it is the author
-  // of its first comment — the same reading the store's auth makes.
   const mayDeleteThread = annotationRights({
     role: myRole,
     viewerId,
-    authorId: card.entries[0]?.authorId ?? '',
+    authorId: openedBy(card.entries.map((entry) => ({ userId: entry.authorId }))),
   }).canDelete;
 
   // Two questions, and only one of them counts comments. Every comment on a

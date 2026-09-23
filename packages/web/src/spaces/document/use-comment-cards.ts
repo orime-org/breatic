@@ -36,6 +36,7 @@ import {
 } from '@web/spaces/document/document-comment-ranges';
 import type { ThreadRange } from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
+import { useCachedSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import type { CommentRail } from '@web/spaces/document/document-comment-rail';
 
 /** One comment inside a card: the opening one, or a reply below it. */
@@ -195,7 +196,6 @@ export function useCommentCards(
   rail: CommentRail,
 ): CommentCards {
   const comments = commentsOn(editor);
-  const cached = React.useRef<CommentCards>(NO_CARDS);
 
   const subscribe = React.useCallback(
     (onChange: () => void): (() => void) => {
@@ -238,12 +238,10 @@ export function useCommentCards(
         .map((card) => drawCard(card, comments, doc, walked, threads))
         .filter((card) => card !== null),
     };
-    if (sameCards(cached.current, next)) return cached.current;
-    cached.current = next;
     return next;
   }, [comments, editor, rail]);
 
-  const cards = React.useSyncExternalStore(subscribe, read, read);
+  const cards = useCachedSnapshot(subscribe, read, sameCards);
 
   // Asking for every author on screen. The store skips ids it already holds
   // or is already fetching, so this is safe to run on every change.

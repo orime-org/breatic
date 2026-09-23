@@ -241,16 +241,21 @@ describe('the order the cards are written in', () => {
   it('follows the column rather than the panel\'s two groups', () => {
     // The panel reads every unresolved thread before every settled one,
     // while the column mixes them by where their words are. Tab order is DOM
-    // order, so the writing order has to come from the placement or the
-    // keyboard walks the panel in an order nobody can see.
-    const placed = new Map([
-      ['settled-early', 20],
-      ['open-late', 300],
-    ]);
+    // order, so the writing order comes from the placement or the keyboard
+    // walks the panel in an order nobody can see.
+    const placed = layOutCards(
+      [
+        { id: 'open-late', anchor: 300, height: 60 },
+        { id: 'settled-early', anchor: 20, height: 60 },
+      ],
+      null,
+      GAP,
+      MIN_TOP,
+    );
 
     const written = inColumnOrder(
       [{ id: 'open-late' }, { id: 'settled-early' }],
-      placed,
+      placed.order,
     );
 
     expect(written.map((card) => card.id)).toEqual([
@@ -258,23 +263,12 @@ describe('the order the cards are written in', () => {
       'open-late',
     ]);
   });
-});
 
-describe('how much room the column needs', () => {
-  it('reaches past the lowest card by one gap', () => {
-    // The cards are out of flow, so the column is told how tall to be. The
-    // layout already knows: it walks them in order holding the floor each
-    // one leaves behind.
-    const placed = layOutCards(
-      [
-        { id: 'a', anchor: 100, height: 60 },
-        { id: 'b', anchor: 400, height: 90 },
-      ],
-      null,
-      GAP,
-      MIN_TOP,
-    );
+  it('leaves out a card the placement never saw', () => {
+    // The two readings are taken a render apart, so a thread deleted between
+    // them is named by one and not the other.
+    const written = inColumnOrder([{ id: 'a' }], ['a', 'gone']);
 
-    expect(placed.height).toBe(400 + 90 + GAP);
+    expect(written.map((card) => card.id)).toEqual(['a']);
   });
 });

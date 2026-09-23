@@ -56,12 +56,27 @@ export interface DocumentCommentAuthInput {
 const NO_AUTHOR = '';
 
 /**
+ * Whoever opened a thread, from the comments it holds.
+ *
+ * A thread carries no author of its own. Everything that asks who opened one
+ * — the store deciding a write, the card deciding what to draw — asks here,
+ * so the two cannot answer differently.
+ * @param comments - The thread's comments, oldest first.
+ * @returns The first one's author, or {@link NO_AUTHOR} if there is none.
+ */
+export function openedBy(
+  comments: readonly { readonly userId?: string }[],
+): string {
+  return comments[0]?.userId ?? NO_AUTHOR;
+}
+
+/**
  * Whoever opened this thread.
  * @param thread - The thread being judged.
  * @returns The first comment's author, or {@link NO_AUTHOR} if it has none.
  */
 function threadAuthor(thread: ThreadData): string {
-  return thread.comments[0]?.userId ?? NO_AUTHOR;
+  return openedBy(thread.comments);
 }
 
 /** Answers the library's auth questions from this project's own rule. */

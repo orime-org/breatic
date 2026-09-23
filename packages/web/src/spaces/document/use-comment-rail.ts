@@ -30,6 +30,7 @@ import {
   type CommentRail,
   type RailCard,
 } from '@web/spaces/document/document-comment-rail';
+import { useCachedSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
@@ -79,7 +80,6 @@ function sameCards(a: readonly RailCard[], b: readonly RailCard[]): boolean {
  */
 export function useCommentRail(editor: ToolEditor): CommentRail {
   const comments = commentsOn(editor);
-  const cached = React.useRef<CommentRail>(EMPTY_RAIL);
 
   const subscribe = React.useCallback(
     (onChange: () => void): (() => void) => {
@@ -100,11 +100,8 @@ export function useCommentRail(editor: ToolEditor): CommentRail {
   const read = React.useCallback((): CommentRail => {
     if (comments === undefined) return EMPTY_RAIL;
     const threads = [...comments.threadStore.getThreads().values()];
-    const next = commentRail(threads, comments.store.state.threadPositions);
-    if (sameRail(cached.current, next)) return cached.current;
-    cached.current = next;
-    return next;
+    return commentRail(threads, comments.store.state.threadPositions);
   }, [comments]);
 
-  return React.useSyncExternalStore(subscribe, read, read);
+  return useCachedSnapshot(subscribe, read, sameRail);
 }

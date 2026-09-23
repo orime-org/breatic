@@ -56,6 +56,11 @@ export interface Placement {
    * scrolled to the bottom ends above the last card.
    */
   readonly height: number;
+  /**
+   * The thread ids top-first — the order the last pass below walks them in,
+   * which is the order they end up sitting in.
+   */
+  readonly order: readonly string[];
 }
 
 /**
@@ -85,7 +90,7 @@ export function layOutCards(
       placed.set(card.id, next);
       next += card.height + gap;
     }
-    return { tops: placed, height: next };
+    return { tops: placed, height: next, order: adrift.map((card) => card.id) };
   }
 
   // Where the run of cards starts from. The one being read is the anchor of
@@ -119,13 +124,14 @@ export function layOutCards(
   // card starts where it was put and comes down only as far as the one before
   // it makes it.
   let floor = minTop;
-  for (const card of [...inOrder, ...adrift]) {
+  const down = [...inOrder, ...adrift];
+  for (const card of down) {
     const top = Math.max(placed.get(card.id) ?? floor, floor);
     placed.set(card.id, top);
     floor = top + card.height + gap;
   }
 
-  return { tops: placed, height: floor };
+  return { tops: placed, height: floor, order: down.map((card) => card.id) };
 }
 
 /**
@@ -134,17 +140,20 @@ export function layOutCards(
  * Tab order is DOM order, and these cards are positioned out of flow — so
  * whatever order they are written in is the order the keyboard walks them.
  * The panel's own reading runs every unresolved thread before every settled
- * one, while the column mixes the two by where their words are (A9), so the
- * two disagree until the writing order is taken from the placement.
+ * one, while the column mixes the two by where their words are (A9).
+ * {@link layOutCards} already walked them in the order they sit; this puts
+ * the cards back in that order.
  * @param cards - The cards to order.
- * @param placed - Where each one sits, from {@link layOutCards}.
- * @returns The same cards, ordered by how far down they sit.
+ * @param order - The thread ids, top-first, from {@link layOutCards}.
+ * @returns The same cards, in the order they sit.
  */
 export function inColumnOrder<T extends { readonly id: string }>(
   cards: readonly T[],
-  placed: ReadonlyMap<string, number>,
+  order: readonly string[],
 ): readonly T[] {
-  return [...cards].sort(
-    (a, b) => (placed.get(a.id) ?? 0) - (placed.get(b.id) ?? 0),
-  );
+  const byId = new Map(cards.map((card) => [card.id, card]));
+  return order.flatMap((id) => {
+    const card = byId.get(id);
+    return card === undefined ? [] : [card];
+  });
 }

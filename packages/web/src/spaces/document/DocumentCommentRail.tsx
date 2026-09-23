@@ -307,8 +307,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const placed = placement.tops;
 
   const written = React.useMemo(
-    () => inColumnOrder(shown, placed),
-    [shown, placed],
+    () => inColumnOrder(shown, placement.order),
+    [shown, placement],
   );
 
   // How far down the lowest card reaches, which the layout knows as it puts
