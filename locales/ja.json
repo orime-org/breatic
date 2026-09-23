@@ -1470,6 +1470,7 @@
     "panelTitle": "メンバーシップ",
     "close": "閉じる",
     "currentTier": "現在のプラン",
+    "chooseTier": "メンバーシップを選ぶ",
     "tier": {
       "base": "Starter",
       "pro": "PRO",

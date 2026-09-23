@@ -1470,6 +1470,7 @@
     "panelTitle": "멤버십",
     "close": "닫기",
     "currentTier": "현재 멤버십",
+    "chooseTier": "멤버십 선택",
     "tier": {
       "base": "Starter",
       "pro": "PRO",

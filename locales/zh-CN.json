@@ -1470,6 +1470,7 @@
     "panelTitle": "会员",
     "close": "关闭",
     "currentTier": "当前会员",
+    "chooseTier": "选择会员",
     "tier": {
       "base": "Starter",
       "pro": "PRO",

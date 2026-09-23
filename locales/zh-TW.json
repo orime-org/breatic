@@ -1470,6 +1470,7 @@
     "panelTitle": "會員",
     "close": "關閉",
     "currentTier": "目前會員",
+    "chooseTier": "選擇會員",
     "tier": {
       "base": "Starter",
       "pro": "PRO",

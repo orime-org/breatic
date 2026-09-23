@@ -3,9 +3,11 @@
 
 import * as React from 'react';
 import {
+  BILLING_PERIODS,
   isComparableMembershipTier,
   subscriptionActions,
   type AccountMembership,
+  type BillingPeriod,
   type ComparableMembershipTier,
 } from '@breatic/shared';
 
@@ -16,6 +18,7 @@ import { QuotaRow } from '@web/features/membership/QuotaRow';
 import { SALES_EMAIL } from '@web/features/membership/pricing';
 import { SubscriptionLines } from '@web/features/membership/SubscriptionLines';
 import { useSubscriptionActions } from '@web/features/membership/use-subscription-actions';
+import { TierCards } from '@web/features/membership/TierCards';
 import { TierComparison } from '@web/features/membership/TierComparison';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -119,11 +122,23 @@ export function MembershipContent({
     [subscription?.state, subscription?.cancelAtPeriodEnd],
   );
 
+  // Which period the reader is looking at. It starts on the one this account
+  // is already billed over, because opening on the other one would answer
+  // "what do I have" with a price they do not pay. An account with no
+  // subscription starts on annual, which is what the page is recommending.
+  const [selectedPeriod, setSelectedPeriod] = React.useState<BillingPeriod>(
+    subscription?.period ?? 'year',
+  );
+
   // The table offers every comparable tier, `base` included; only the ones
   // that can be subscribed to reach the action.
   const handleChoose = React.useCallback(
-    (chosen: ComparableMembershipTier) => {
-      if (chosen !== 'base') choose(chosen);
+    (chosen: { tier: ComparableMembershipTier; period: BillingPeriod }) => {
+      // `base` has a column in the table and never a button; the narrowing
+      // here is what lets the offer that travels be a subscribable one.
+      if (chosen.tier !== 'base') {
+        choose({ tier: chosen.tier, period: chosen.period });
+      }
     },
     [choose],
   );
@@ -134,7 +149,16 @@ export function MembershipContent({
         <SectionHeading>{t('membership.currentTier')}</SectionHeading>
         <div className='flex flex-col gap-1'>
           <div className='text-2xl font-bold' data-testid='current-tier-name'>
-            {t(`membership.tier.${tier}`)}
+            {/* The period joins the tier name only when there is one. An
+                account on Starter, self-hosted or enterprise is billed over
+                no period, and a separator with nothing after it reads as a
+                missing word. */}
+            {subscription?.period
+              ? t('membership.tierWithPeriod', {
+                tier: t(`membership.tier.${tier}`),
+                period: t(`membership.period.${subscription.period}`),
+              })
+              : t(`membership.tier.${tier}`)}
           </div>
           {/* Under the tier name: when the next charge is, or that the
               membership is ending, or that a payment is outstanding. Which of
@@ -250,19 +274,67 @@ export function MembershipContent({
 
       {onPriceList ? (
         <section className='flex flex-col gap-4'>
+          <SectionHeading>{t('membership.chooseTier')}</SectionHeading>
+          {/* No switcher where nothing is sold: the periods it offers are
+              two prices, and this deployment quotes neither. */}
+          {subscription ? (
+            <div
+              className='flex items-center gap-1 self-start rounded-chrome border border-border p-0.5'
+              data-testid='membership-period-switch'
+            >
+              {BILLING_PERIODS.map((period) => (
+                <Button
+                  key={period}
+                  type='button'
+                  size='sm'
+                  variant={period === selectedPeriod ? 'default' : 'ghost'}
+                  data-testid={`membership-period-${period}`}
+                  onClick={() => setSelectedPeriod(period)}
+                >
+                  {t(`membership.period.${period}`)}
+                </Button>
+              ))}
+              <span className='px-2 text-xs text-foreground-secondary'>
+                {t('membership.saveTwoMonths')}
+              </span>
+            </div>
+          ) : null}
+          <TierCards
+            offers={catalog}
+            currentTier={tier}
+            selectedPeriod={selectedPeriod}
+            situation={subscription?.state ?? 'none'}
+            heldPeriod={subscription?.period ?? null}
+            // Null means this deployment sells no subscriptions at all, which
+            // empties every priced card rather than drawing buttons that
+            // cannot work.
+            sellsSubscriptions={subscription !== null}
+            move={actions.move}
+            busy={busy}
+            onChoose={handleChoose}
+          />
+          {/* Two sentences the page has to carry, together because both are
+              about what a price does and does not cover. Membership and
+              credits are separate legs, and a reader who assumes a tier comes
+              with generation credits finds out mid-generation; the tax line
+              stops at "excluded" because nothing anywhere calculates tax
+              (#170), and #106 deleted the half-sentence that said otherwise. */}
+          <ul className='flex flex-col gap-1 text-sm text-foreground-secondary'>
+            <li data-testid='membership-no-credits'>
+              {t('membership.noCreditsIncluded')}
+            </li>
+            <li data-testid='membership-tax-note'>{t('membership.taxNote')}</li>
+          </ul>
+        </section>
+      ) : null}
+
+      {onPriceList ? (
+        <section className='flex flex-col gap-4'>
           {/* No heading element here: the table's own corner cell carries it,
               so the label lines up with the tier names instead of floating
               above a column that would otherwise have none. */}
           <ScrollArea scrollbars='horizontal'>
-            <TierComparison
-              offers={catalog}
-              currentTier={tier}
-              // No handler where this deployment sells nothing, which removes
-              // the action row rather than showing buttons that cannot work.
-              onChoose={subscription ? handleChoose : undefined}
-              busy={busy}
-              move={actions.move}
-            />
+            <TierComparison offers={catalog} />
           </ScrollArea>
           {/* One line, contact on the left and the subscription control on
               the right — the ratified layout (design §13, and the demo it

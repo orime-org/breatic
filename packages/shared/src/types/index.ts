@@ -143,6 +143,9 @@ export type {
   SubscriptionSituation,
   SubscriptionActionAvailability,
   MoveOffer,
+  CardAction,
+  CardActionInput,
+  MembershipCard,
   SubscriptionSummary,
   TierOffer,
   TierPrice,
@@ -163,6 +166,7 @@ export {
   isComparableMembershipTier,
   BILLING_PERIODS,
   canMoveTo,
+  cardAction,
 } from "@shared/types/membership.js";
 
 export type {

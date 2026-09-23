@@ -1470,6 +1470,7 @@
     "panelTitle": "Membership",
     "close": "Close",
     "currentTier": "Current membership",
+    "chooseTier": "Choose a membership",
     "tier": {
       "base": "Starter",
       "pro": "PRO",

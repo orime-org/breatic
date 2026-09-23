@@ -226,7 +226,6 @@ export function canMoveTo(from: MembershipOffer, to: MembershipOffer): boolean {
   );
 }
 
-/** One row of the tier comparison table. */
 /** What one tier costs over one billing period. */
 export interface TierPrice {
   /** The amount, in the smallest currency unit. */
@@ -235,6 +234,7 @@ export interface TierPrice {
   readonly currency: string;
 }
 
+/** One tier as the purchase page offers it: its ceilings and its two prices. */
 export interface TierOffer {
   /** Which tier this row describes. */
   readonly tier: ComparableMembershipTier;

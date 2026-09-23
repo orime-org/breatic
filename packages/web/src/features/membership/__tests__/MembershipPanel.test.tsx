@@ -75,6 +75,7 @@ function subscription(
 ): SubscriptionSummary {
   return {
     state: 'active',
+    period: 'month',
     tier: 'pro',
     currentPeriodEnd: '2026-09-18T00:00:00.000Z',
     cancelAtPeriodEnd: false,
@@ -106,10 +107,9 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           project_members: 4,
           storage_bytes: 5 * GIB,
         },
-        priceCents: null,
-        currency: null,
+        prices: { month: null, year: null },
       },
-      { tier: 'pro', limits: limits(), priceCents: 1200, currency: 'usd' },
+      { tier: 'pro', limits: limits(), prices: { month: { priceCents: 1999, currency: 'usd' }, year: { priceCents: 19999, currency: 'usd' } } },
       {
         tier: 'team',
         limits: {
@@ -120,8 +120,7 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           project_members: 40,
           storage_bytes: 500 * GIB,
         },
-        priceCents: 3900,
-        currency: 'usd',
+        prices: { month: { priceCents: 7999, currency: 'usd' }, year: { priceCents: 79999, currency: 'usd' } },
       },
     ],
     subscription: null,
@@ -216,18 +215,19 @@ describe('MembershipPanel', () => {
     expect(screen.queryByTestId('quota-concurrent-editors')).toBeNull();
   });
 
-  it('对比表列出三档，当前那一档标出来', async () => {
+  it('对比表列出三档，一档都不标「当前」', async () => {
+    // #253 起这张表只回答「各档的数字分别是多少」。档位名在第一段、
+    // 「当前」在卡片上，各说了一遍；第三遍只会给那一列压一层没人读的底色。
     membershipMock.mockResolvedValue(answer());
     setup();
 
     const table = await screen.findByRole('table');
-    expect(table).toHaveTextContent('Base');
+    expect(table).toHaveTextContent('Starter');
     expect(table).toHaveTextContent('Team');
     // 自托管是部署形态、企业版一家一谈，两者都不在价目表上。
     expect(table).not.toHaveTextContent('Self-hosted');
-    expect(screen.getByTestId('compare-column-pro')).toHaveAttribute(
+    expect(screen.getByTestId('compare-column-pro')).not.toHaveAttribute(
       'aria-current',
-      'true',
     );
   });
 
@@ -241,10 +241,9 @@ describe('MembershipPanel', () => {
     await screen.findByTestId('current-tier-name');
     expect(screen.getByTestId('membership-choose-team')).toBeInTheDocument();
     expect(screen.queryByTestId('membership-choose-base')).toBeNull();
-    expect(screen.getByTestId('compare-action-base')).toBeEmptyDOMElement();
-    expect(screen.getByTestId('compare-action-pro')).toHaveTextContent(
-      'Current',
-    );
+    // 免费档那张卡上什么都没有：既不是压暗的按钮，也不是一句「不能降」。
+    expect(screen.getByTestId('tier-card-base')).not.toHaveTextContent('Choose');
+    expect(screen.getByTestId('tier-current-pro')).toHaveTextContent('Current');
   });
 
   it('按后端给的货币格式化金额，不写死符号也不吞末位零', async () => {
@@ -252,22 +251,22 @@ describe('MembershipPanel', () => {
     // `1250 / 100` 直接字符串化会显示 12.5，钱不能这么写。
     membershipMock.mockResolvedValue(
       answer({
+        subscription: subscription({ period: 'month' }),
         catalog: [
-          { tier: 'base', limits: limits(), priceCents: null, currency: null },
-          { tier: 'pro', limits: limits(), priceCents: 1250, currency: 'eur' },
-          { tier: 'team', limits: limits(), priceCents: 3900, currency: 'eur' },
+          { tier: 'base', limits: limits(), prices: { month: null, year: null } },
+          { tier: 'pro', limits: limits(), prices: { month: { priceCents: 1250, currency: 'eur' }, year: { priceCents: 12500, currency: 'eur' } } },
+          { tier: 'team', limits: limits(), prices: { month: { priceCents: 3900, currency: 'eur' }, year: { priceCents: 39000, currency: 'eur' } } },
         ],
       }),
     );
     setup();
 
     await screen.findByTestId('current-tier-name');
-    const pro = screen.getByTestId('compare-cell-pro-monthlyFee').textContent ?? '';
+    const pro = screen.getByTestId('tier-price-pro').textContent ?? '';
     expect(pro).toMatch(/12[.,]50/);
     expect(pro).not.toContain('$');
-    expect(screen.getByTestId('compare-cell-base-monthlyFee')).toHaveTextContent(
-      'Free',
-    );
+    // 免费档两个周期都没有价格，价格位上摆的是「免费」而不是一个 0。
+    expect(screen.getByTestId('tier-price-base')).toHaveTextContent('Free');
   });
 
   it('动作失败时给出反馈，不是点了什么都不发生', async () => {
@@ -546,7 +545,7 @@ describe('MembershipPanel', () => {
     await screen.findByTestId('current-tier-name');
     expect(screen.getByTestId('current-tier-name')).toHaveTextContent('PRO');
     expect(screen.getByTestId('subscription-notice')).toHaveTextContent(
-      'Upgrade payment not completed',
+      'Payment for the change is not complete',
     );
   });
 
@@ -671,26 +670,37 @@ describe('MembershipPanel', () => {
     }
   });
 
-  it('对比表当前那一列整列有底色，别的列没有', async () => {
-    // 当前档位那一列靠底色标出来（user 2026-08-16 拍的：整列换底色，不画
-    // 竖线）。用的是 accent —— 亮色下比页面暗、暗色下比页面亮，两个主题
-    // 下都看得出来；card 两个主题都往亮走，亮色下等于把该突出的那一列往
-    // 背景里推。
+  it('账号所在的那张卡有底色和激活边框，别的卡没有', async () => {
+    // 标记从对照表那一列搬到了卡片上（#253）。底色仍是 accent —— 亮色下比
+    // 页面暗、暗色下比页面亮，两个主题下都看得出来；card 两个主题都往亮走，
+    // 亮色下等于把该突出的那张卡往背景里推。边框走 active-border，那是全站
+    // 用中性色说「这一个」的唯一一个 token。
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ tier: 'pro', period: 'year' }) }),
+    );
+    setup();
+
+    const current = await screen.findByTestId('tier-card-pro');
+    expect(current.className).toContain('bg-accent');
+    expect(current.className).toContain('border-active-border');
+    expect(current).toHaveAttribute('aria-current', 'true');
+    for (const other of ['base', 'team', 'enterprise']) {
+      const card = screen.getByTestId(`tier-card-${other}`);
+      expect(card.className).not.toContain('bg-accent');
+      expect(card).not.toHaveAttribute('aria-current');
+    }
+  });
+
+  it('对照表的六行是六项上限，价格不在表里', async () => {
     membershipMock.mockResolvedValue(answer());
     setup();
 
-    const header = await screen.findByTestId('compare-column-pro');
-    expect(header.className).toContain('bg-accent');
+    await screen.findByTestId('compare-column-pro');
     const cells = document.querySelectorAll('[data-testid^="compare-cell-pro-"]');
-    // 月费 + 六项上限。
-    expect(cells).toHaveLength(7);
-    for (const cell of cells) {
-      expect(cell.className).toContain('bg-accent');
-    }
-    // 别的列没有。
-    for (const cell of document.querySelectorAll('[data-testid^="compare-cell-base-"]')) {
-      expect(cell.className).not.toContain('bg-accent');
-    }
+    expect(cells).toHaveLength(6);
+    expect(
+      document.querySelector('[data-testid$="-monthlyFee"]'),
+    ).toBeNull();
   });
 
   it('换账号之后不把上一个账号的答案端给下一个人', async () => {
@@ -717,7 +727,7 @@ describe('MembershipPanel', () => {
     setup(shared);
 
     expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
-      'Base',
+      'Starter',
     );
     // 两个账号各问了一次；共用一个 key 的话第二次会被 staleTime 挡掉。
     expect(membershipMock).toHaveBeenCalledTimes(2);
@@ -732,8 +742,8 @@ describe('MembershipPanel', () => {
     await screen.findByTestId('compare-column-pro');
 
     const expected: Record<string, [string, string, string]> = {
-      // 行 key: [base, pro, team]
-      monthlyFee: ['Free', '$12', '$39'],
+      // 行 key: [base, pro, team]。月费那一行 #253 删了：一档一个周期一个
+      // 价，一行只装得下其中一个，价格因此搬去了卡片。
       teamStudios: ['0', '1', '3'],
       projectsPerStudio: ['10', '100', '300'],
       studioMembers: ['1', '10', '100'],
@@ -795,7 +805,7 @@ describe('MembershipPanel', () => {
     const headerRow = table.querySelectorAll('thead tr th');
     expect(headerRow).toHaveLength(4);
     expect(headerRow[0]).toHaveTextContent('Compare tiers');
-    expect(headerRow[1]).toHaveTextContent('Base');
+    expect(headerRow[1]).toHaveTextContent('Starter');
     expect(headerRow[3]).toHaveTextContent('Team');
     // 表格外面不再有第二个「各档对比」。
     expect(screen.getAllByText('Compare tiers')).toHaveLength(1);
