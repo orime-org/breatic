@@ -183,11 +183,12 @@ describe('TopBar', () => {
     expect(screen.getByTestId('title-display')).toBeInTheDocument();
   });
 
-  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as Locale[])('links the brand to the %s home page', (locale) => {
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as Locale[])('links the brand to the official home page in %s', (locale) => {
     setLocale(locale);
     setup();
     const link = screen.getByTestId('top-bar-logo').closest('a');
-    expect(link).toHaveAttribute('href', locale === 'en' ? '/' : `/${locale}/`);
+    // eslint-disable-next-line breatic/no-deployed-host -- The brand intentionally opens the official website in every deployment.
+    expect(link).toHaveAttribute('href', 'https://breatic.ai/');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });

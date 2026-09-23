@@ -366,10 +366,10 @@ pnpm test / typecheck / lint
 
 ### Brand home links
 
-The Studio and Project top-left brand links navigate to the localized Home Page
-(`/` for English, `/{locale}/` otherwise), matching the missing-page home link.
+The Studio and Project top-left brand links always navigate to `https://breatic.ai/`,
+including localhost and LAN deployments. The official website handles language selection.
 They open a new tab with `target="_blank"` and `rel="noopener noreferrer"`.
-The hosting layer serves Home Page; the original Studio or Project stays open,
+The original Studio or Project stays open,
 so following the brand link does not interrupt editing or uploads.
 The separate return-to-Studio control still navigates to `/studio`.
 

@@ -9,11 +9,13 @@ for (const entry of ['studio', 'project'] as const) {
     if (entry === 'project') await openSmokeProject(page);
     else await page.goto('/studio');
     const brand = page.getByTestId('top-bar-logo').locator('..');
-    await expect(brand).toHaveAttribute('href', '/');
+    // eslint-disable-next-line breatic/no-deployed-host, breatic/no-untagged-public-host -- The official destination is asserted; context.route serves its response locally.
+    await expect(brand).toHaveAttribute('href', 'https://breatic.ai/');
     const originalUrl = page.url();
-    const home = new URL('/', originalUrl).href;
-    // Dev serves the application only. Stand in for the separately built Home
-    // Page at the hosting boundary; a client-router Link never requests it.
+    // eslint-disable-next-line breatic/no-deployed-host, breatic/no-untagged-public-host -- The official destination is asserted; context.route serves its response locally.
+    const home = 'https://breatic.ai/';
+    // Stub only the external homepage response; verify the real application
+    // opens the official absolute URL even when running on localhost.
     await page.context().route(home, (route) => route.fulfill({
       contentType: 'text/html', body: '<!doctype html><title>Breatic home</title><h1>Breatic home</h1>',
     }));

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type * as React from 'react';
-import { getLocale } from '@breatic/shared';
 
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
@@ -33,7 +32,6 @@ interface StudioTopBarProps {
  */
 export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element {
   const t = useTranslation();
-  const locale = getLocale();
   return (
     <header
       role='banner'
@@ -42,7 +40,8 @@ export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element 
       <div className='flex items-center gap-1'>
         {leading}
         <a
-          href={locale === 'en' ? '/' : `/${locale}/`}
+          // eslint-disable-next-line breatic/no-deployed-host -- The brand intentionally opens the official website in every deployment.
+          href='https://breatic.ai/'
           target='_blank'
           rel='noopener noreferrer'
           aria-label={t('chrome.aria.home')}
