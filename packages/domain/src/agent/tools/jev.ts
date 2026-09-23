@@ -5,8 +5,8 @@
  * The decisions endpoint, as one request and one reading of its answer.
  *
  * Built the way `understand.ts:271-291` builds its own vendor call -- the
- * deadline as a parameter, the body read here, the caller's stop passed
- * through -- because that one sits on the same vendor and the same key.
+ * body read here, the caller's stop passed through -- because that one sits
+ * on the same vendor and the same key.
  *
  * Every answer key carries its own `type`, so every key is checked alone.
  * One key the endpoint phrased in a shape we cannot read says nothing about
@@ -15,31 +15,36 @@
  */
 
 import { FAILURE_LINES, httpRequest, readWithin, reasonOf } from "@breatic/shared";
-import type { FailureVoice, NextMove } from "@domain/agent/tools/failure.js";
+import { z } from "zod";
+
+import type { FailureVoice } from "@domain/agent/tools/failure.js";
 import {
   isStop,
   nextMovesFor,
   reason,
+  refusalReason,
   stoppedByUser,
   toolFailed,
 } from "@domain/agent/tools/failure.js";
+
+/** Where the decisions endpoint lives, and which model answers there. */
+export const JEV_PINS = {
+  url: "https://openrouter.ai/api/alpha/decisions",
+  model: "typesafe/jev-1.13",
+} as const;
 
 /** One question, in whichever of the three shapes the model chose. */
 export type JevQuestion = Readonly<Record<string, unknown>>;
 
 /** What one call needs. */
 export interface JevRequest {
-  /** Where the decisions endpoint lives. */
-  readonly url: string;
   /** The key, which only ever travels in a header. */
   readonly apiKey: string;
-  /** Which model answers. */
-  readonly model: string;
   /** Whatever the model is holding, in whatever shape it holds it. */
   readonly state: unknown;
   /** The questions, by the keys the model chose for them. */
   readonly questions: Readonly<Record<string, JevQuestion>>;
-  /** How long one delivery may take, and how long its body may take. */
+  /** How long the whole call may take, deliveries and backoffs together. */
   readonly budgetMs: number;
   /** How the calling tool names what it does, for the failure sentences. */
   readonly voice: FailureVoice;
@@ -55,63 +60,47 @@ export interface JevAnswers {
   readonly unreadable: readonly string[];
 }
 
-/**
- * Whether a value is a probability.
- * @param value - The value to judge.
- * @returns True when it is a number within zero and one.
- */
-function isProbability(value: unknown): boolean {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
-}
+/** A number the endpoint means as a probability. */
+const probability = z.number().min(0).max(1);
 
 /**
- * Whether every value of an object is a probability.
- * @param value - The object to judge.
- * @returns True when it is an object and all of its values are probabilities.
- */
-function holdsProbabilities(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) return false;
-  const entries = Object.values(value as Record<string, unknown>);
-  return entries.length > 0 && entries.every(isProbability);
-}
-
-/**
- * Whether one answer holds what the type it declares is supposed to hold.
+ * One answer of each type, in the shape the endpoint sends it.
  *
  * `noul` carries no confidence, which is the endpoint's shape rather than an
  * omission: it answers one probability and that probability is the whole of
- * what it knows.
- * @param answer - One value of the `answers` object.
- * @returns True when the answer can be read.
+ * what it knows. `score` is the one number with a range of its own -- it may
+ * land between rungs, so it is held to the legend it arrived with.
  */
-function readsAsItsType(answer: unknown): boolean {
-  if (typeof answer !== "object" || answer === null) return false;
-  const held = answer as Record<string, unknown>;
-  switch (held["type"]) {
-    case "noul":
-      return isProbability(held["noul"]);
-    case "choice":
-      return (
-        typeof held["choice"] === "string" &&
-        holdsProbabilities(held["probabilities"]) &&
-        isProbability(held["confidence"])
-      );
-    case "score":
-      return (
-        typeof held["score"] === "number" &&
-        Number.isFinite(held["score"]) &&
-        typeof held["legend"] === "object" &&
-        held["legend"] !== null &&
-        holdsProbabilities(held["probabilities"]) &&
-        isProbability(held["confidence"])
-      );
-    default:
-      return false;
-  }
-}
+const answerSchema = z
+  .discriminatedUnion("type", [
+    z.object({ type: z.literal("noul"), noul: probability }),
+    z.object({
+      type: z.literal("choice"),
+      choice: z.string(),
+      probabilities: z.record(z.string(), probability),
+      confidence: probability,
+    }),
+    z.object({
+      type: z.literal("score"),
+      score: z.number(),
+      legend: z.record(z.string(), z.string()),
+      probabilities: z.record(z.string(), probability),
+      confidence: probability,
+    }),
+  ])
+  .refine(
+    (answer) =>
+      answer.type !== "score" ||
+      (answer.score >= 0 && answer.score <= Object.keys(answer.legend).length - 1),
+    "a score outside its own legend is not a rung",
+  );
 
 /**
  * Split an answered object into the keys that read and the keys that did not.
+ *
+ * What goes into `answers` is the value as it arrived, not what the schema
+ * parsed out of it: the schema settles whether the model can read the key,
+ * and a field this side has not heard of is still the vendor's answer.
  * @param answered - The `answers` object as it arrived.
  * @returns Both halves.
  */
@@ -119,10 +108,44 @@ function splitByReadable(answered: Record<string, unknown>): JevAnswers {
   const answers: Record<string, Record<string, unknown>> = {};
   const unreadable: string[] = [];
   for (const [key, value] of Object.entries(answered)) {
-    if (readsAsItsType(value)) answers[key] = value as Record<string, unknown>;
+    if (answerSchema.safeParse(value).success) answers[key] = value as Record<string, unknown>;
     else unreadable.push(key);
   }
   return { answers, unreadable };
+}
+
+/**
+ * Read the answered keys off a response body.
+ * @param text - The body as it arrived.
+ * @returns Both halves, or null when the body is not an answer at all.
+ */
+function readAnswers(text: string): JevAnswers | null {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  // `JSON.parse` answers `null` for the literal, and reading a field off that
+  // throws a bare TypeError -- which reaches the model as the SDK's "Correct
+  // the call and try once more", sending it to rewrite a call that was fine.
+  if (typeof body !== "object" || body === null) return null;
+  const answered = (body as { answers?: unknown }).answers;
+  if (typeof answered !== "object" || answered === null) return null;
+  return splitByReadable(answered as Record<string, unknown>);
+}
+
+/**
+ * What to call this request in a sentence the model reads.
+ *
+ * The shared failure vocabulary quotes what was asked, the way a search quotes
+ * its query. The keys are the model's own names for its questions, so they are
+ * what it recognises this call by.
+ * @param questions - The questions as sent.
+ * @returns The keys, joined.
+ */
+function whatWasAsked(questions: Readonly<Record<string, JevQuestion>>): string {
+  return Object.keys(questions).join(", ");
 }
 
 /**
@@ -132,38 +155,39 @@ function splitByReadable(answered: Record<string, unknown>): JevAnswers {
  * @throws {Error} Carrying tool failure detail, or the reader's stop.
  */
 export async function askJev(request: JevRequest): Promise<JevAnswers> {
-  const { url, apiKey, model, state, questions, budgetMs, voice, abortSignal } = request;
+  const { apiKey, state, questions, budgetMs, voice, abortSignal } = request;
   const moves = nextMovesFor(voice);
+
+  // The budget bounds the call rather than one delivery of it. `replaySafe`
+  // settles only the deliveries the caller owns: `decide-retry.ts:287` replays
+  // a 429 or a 408 whatever the caller declared, on the protocol's word that
+  // the server did not process the request -- so a rate-limited endpoint would
+  // hold the turn for three deliveries and two backoffs. This signal is read
+  // at the top of every pass (`request.ts:358`) and ends the backoff wait
+  // (`request.ts:434`), so the figure in the config is what the reader waits.
+  const deadline = AbortSignal.timeout(budgetMs);
+  const spanning = abortSignal ? AbortSignal.any([abortSignal, deadline]) : deadline;
 
   let res: Response;
   try {
-    // The deadline goes in as `timeoutMs` rather than as a signal on the init:
-    // the transport replaces the caller's signal, so one left there would be a
-    // no-op and the call would silently take the transport's five-minute
-    // default instead. `replaySafe: false` because a judgement that took three
-    // deliveries to arrive is one the turn no longer has a use for -- the
-    // reader is waiting, and the model is better off failing and deciding on
-    // what it already holds.
     res = await httpRequest(
-      url,
+      JEV_PINS.url,
       {
         method: "POST",
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-        body: JSON.stringify({ model, state, questions }),
+        body: JSON.stringify({ model: JEV_PINS.model, state, questions }),
       },
-      {
-        replaySafe: false,
-        timeoutMs: budgetMs,
-        ...(abortSignal ? { signal: abortSignal } : {}),
-      },
+      { replaySafe: false, timeoutMs: budgetMs, signal: spanning },
     );
   } catch (err: unknown) {
     if (isStop(err, abortSignal)) throw stoppedByUser();
-    // Nothing answered. The transport's own sentence names a redacted address
-    // and an attempt count, neither of which tells the model anything it can
-    // act on, so what it reads is this instead.
+    // The transport's own sentence names the address it was given, which
+    // `redactUrl` leaves as origin and path (`redact-url.ts:42`). That is our
+    // vendor's identity, it tells the model nothing it can act on, and it is
+    // read again by every later turn off the stored row -- so what the model
+    // gets is the fact instead.
     throw toolFailed(
-      reason(`Nothing answered the ${voice.act} request: ${reasonOf(err)}.`, moves.retryOnce),
+      reason(`Nothing answered the ${voice.act} request in time.`, moves.retryOnce),
       FAILURE_LINES.unreachable,
     );
   }
@@ -173,15 +197,18 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // promise is safe only while nothing awaits between the transport handing
     // this response back and this line.
     void res.body?.cancel();
+    // The shared table, which already separates a fault of ours from a request
+    // the service would take in another form. The model wrote this request, so
+    // that difference decides whether it may write another one.
     throw toolFailed(
-      reason(refusalKind(res.status, voice), refusalMove(res.status, moves)),
+      refusalReason(voice, whatWasAsked(questions), res.status),
       FAILURE_LINES.upstream,
     );
   }
 
   let text: string;
   try {
-    text = await readWithin(res, budgetMs, abortSignal);
+    text = await readWithin(res, budgetMs, spanning);
   } catch (err: unknown) {
     // Asked here rather than left to the caller's guard, which never sees
     // this: that guard passes anything carrying failure detail straight
@@ -193,62 +220,12 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     );
   }
 
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    throw toolFailed(
-      reason(`The ${voice.act} service answered something that is not ours.`, moves.stop),
-      FAILURE_LINES.upstream,
-    );
-  }
-
-  const answered = (body as { answers?: unknown }).answers;
-  const split =
-    typeof answered === "object" && answered !== null
-      ? splitByReadable(answered as Record<string, unknown>)
-      : { answers: {}, unreadable: [] };
-
-  if (Object.keys(split.answers).length === 0) {
+  const split = readAnswers(text);
+  if (split === null || Object.keys(split.answers).length === 0) {
     throw toolFailed(
       reason(`The ${voice.act} service answered, and none of it could be read.`, moves.stop),
       FAILURE_LINES.upstream,
     );
   }
   return split;
-}
-
-/**
- * What kind of refusal this was, in words the model can act on.
- *
- * A status code alone tells the model that something said no. Which kind of
- * no it was decides what happens next -- a rate limit clears, a rejected key
- * does not -- so the sentence names the kind rather than the number.
- * @param status - The status the service answered with.
- * @param voice - How the calling tool names what it does.
- * @returns One sentence, ending in a full stop.
- */
-function refusalKind(status: number, voice: FailureVoice): string {
-  if (status === 429) return `The ${voice.act} service is rate limiting us.`;
-  if (status === 401 || status === 403) {
-    return `The ${voice.act} service rejected our credentials.`;
-  }
-  if (status >= 500) return `The ${voice.act} service is having trouble of its own.`;
-  return `The ${voice.act} service turned the request down (${String(status)}).`;
-}
-
-/**
- * What the model may do about a refusal, by what kind of refusal it was.
- *
- * A rate limit clears on its own and a rejected key does not, so the two do
- * not share a move: telling the model to try again on a revoked key spends a
- * second call to learn the same thing.
- * @param status - The status the service answered with.
- * @param moves - The moves phrased for this tool.
- * @returns The one move that fits.
- */
-function refusalMove(status: number, moves: ReturnType<typeof nextMovesFor>): NextMove {
-  if (status === 429) return moves.retryOnce;
-  if (status >= 500) return moves.retryOnce;
-  return moves.stop;
 }

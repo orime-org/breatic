@@ -26,12 +26,6 @@ import { toolFailed } from "@domain/agent/tools/failure.js";
 import { askJev } from "@domain/agent/tools/jev.js";
 import type { JevAnswers } from "@domain/agent/tools/jev.js";
 
-/** Where the decisions endpoint lives, and which model answers there. */
-const JEV_PINS = {
-  url: "https://openrouter.ai/api/alpha/decisions",
-  model: "typesafe/jev-1.13",
-} as const;
-
 /** How this tool names what it does, in the sentences a failure carries. */
 const VOICE: FailureVoice = {
   act: "judgement",
@@ -76,19 +70,21 @@ const inputSchema = z.object({
     ),
   questions: z
     .record(z.string(), questionSchema)
-    .describe("One or more questions, under names of your choosing. Answers come back under the same names."),
+    .refine((asked) => Object.keys(asked).length > 0, "ask at least one question")
+    .describe(
+      "One or more questions, under names of your choosing. Answers come back under the " +
+        "same names.",
+    ),
 });
 
 /**
- * Build the description the model reads.
+ * The description the model reads.
  *
  * Written plainly and with examples, and drawing no boundaries: a description
  * that rules something out is a use the model will not make of it, and the
  * cases it is worth asking about are wider than any list written here.
- * @returns The description text.
  */
-function describe(): string {
-  return [
+const DESCRIPTION = [
     "Hand it what you are holding, ask it one or several questions, and it answers a " +
       "judgement with the odds attached. It judges what stands up given what you gave it.",
     "",
@@ -115,15 +111,14 @@ function describe(): string {
     "",
     "Asking the reader is for what only they know. This is for what stands up in what you " +
       "already hold.",
-  ].join("\n");
-}
+].join("\n");
 
 /**
  * The tool, ready to be registered.
  * @throws {Error} Carrying tool failure detail, or the reader's stop.
  */
 export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers> = tool({
-  description: describe(),
+  description: DESCRIPTION,
   inputSchema,
   // What the panel reads about a running call, resolved by the web package.
   metadata: { runningLine: "chat.tool.judging" },
@@ -143,9 +138,7 @@ export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers> = to
     }
 
     return askJev({
-      url: JEV_PINS.url,
       apiKey,
-      model: JEV_PINS.model,
       state,
       questions,
       budgetMs: getAgentConfig().judge_likelihood_timeout_ms,

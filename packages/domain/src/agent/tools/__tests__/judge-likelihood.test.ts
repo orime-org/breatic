@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { z } from "zod";
 import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
 import type * as sharedModule from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
@@ -207,13 +208,18 @@ describe("the model composes the request", () => {
     expect(signal?.aborted, "and it expires on the configured figure").toBe(true);
   });
 
-  it("refuses a call that asks nothing", async () => {
-    const answer = judgeLikelihood.execute?.(
-      { state: {}, questions: {} },
-      { toolCallId: "t1", messages: [] } as never,
-    );
-    await expect(answer).rejects.toThrow();
-    expect(httpRequestMock, "and does not spend a round trip on it").not.toHaveBeenCalled();
+  it("refuses a call that asks nothing", () => {
+    // Held at the schema, which the SDK runs before `execute`: an empty map
+    // would otherwise buy a round trip and come back reading as a broken
+    // service.
+    const schema = judgeLikelihood.inputSchema as z.ZodType;
+    expect(schema.safeParse({ state: {}, questions: {} }).success).toBe(false);
+    expect(
+      schema.safeParse({
+        state: {},
+        questions: { q: { type: "noul", instructions: "Does this hold?" } },
+      }).success,
+    ).toBe(true);
   });
 });
 
@@ -275,7 +281,10 @@ describe("failing says what broke", () => {
     httpRequestMock.mockResolvedValueOnce(responseOf({ error: "rate limited" }, 429));
     const { forModel, readerKey } = await failureOf(askAll);
     expect(readerKey).toBe(FAILURE_LINES.upstream);
-    expect(forModel.toLowerCase()).toContain("rate");
+    expect(forModel).toContain("429");
+    expect(forModel, "a fault on their side, so no rewording reaches it").toContain(
+      "Do not repeat",
+    );
     expect(forModel).not.toContain("openrouter.ai");
   });
 
