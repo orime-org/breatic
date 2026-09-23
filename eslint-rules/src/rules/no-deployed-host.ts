@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
+import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 import type { TSESTree } from "@typescript-eslint/utils";
 import { stringLiteralVisitors } from "#rules/source-visitors";
 import { createRule } from "#rules/create-rule";
@@ -61,6 +62,19 @@ export const noDeployedHost = createRule<[], "deployedHost">({
      * @param text The string to test.
      */
     function check(node: TSESTree.Node, text: string): void {
+      // Brand navigation intentionally leaves every deployment for the official
+      // website. Only its single named constant is exempt; API/WS targets and
+      // other literals in that file remain guarded.
+      const declaration = node.parent;
+      if (
+        context.filename.replace(/\\/g, "/").endsWith("/packages/web/src/lib/official-home.ts") &&
+        text === "https://breatic.ai/" &&
+        node.type === AST_NODE_TYPES.Literal &&
+        declaration?.type === AST_NODE_TYPES.VariableDeclarator &&
+        declaration.init === node &&
+        declaration.id.type === AST_NODE_TYPES.Identifier &&
+        declaration.id.name === "OFFICIAL_HOME_URL"
+      ) return;
       const hit = DEPLOYED_HOST.exec(text);
       if (hit) {
         context.report({

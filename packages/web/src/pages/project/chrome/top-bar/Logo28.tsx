@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
 import type * as React from 'react';
 
 import { BrandMark } from '@web/ui/BrandMark';
@@ -16,8 +17,7 @@ export function Logo28(): React.JSX.Element {
   const t = useTranslation();
   return (
     <a
-      // eslint-disable-next-line breatic/no-deployed-host -- The brand intentionally opens the official website in every deployment.
-      href='https://breatic.ai/'
+      href={OFFICIAL_HOME_URL}
       target='_blank'
       rel='noopener noreferrer'
       aria-label={t('chrome.aria.home')}

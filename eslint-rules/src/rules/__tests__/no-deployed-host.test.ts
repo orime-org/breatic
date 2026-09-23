@@ -7,6 +7,10 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("no-deployed-host", noDeployedHost, {
   valid: [
+    {
+      filename: "/repo/packages/web/src/lib/official-home.ts",
+      code: `export const OFFICIAL_HOME_URL = "https://breatic.ai/";`,
+    },
     { code: `const apiTarget = "http://localhost:5173";` },
     { code: "const apiTarget = `http://localhost:${port}`;" },
     { code: `const apiTarget = env.PUBLIC_URL;` },
@@ -23,6 +27,11 @@ ruleTester.run("no-deployed-host", noDeployedHost, {
     { code: `const t = "https://thinkai.example";` },
   ],
   invalid: [
+    ...[
+      { filename: "/repo/packages/web/src/lib/official-home.ts", code: `const apiTarget = "https://breatic.ai/";` },
+      { filename: "/repo/packages/web/src/lib/official-home.ts", code: `export const OFFICIAL_HOME_URL = "https://breatic.ai/api";` },
+      { filename: "/repo/packages/web/vite.config.ts", code: `export const OFFICIAL_HOME_URL = "https://breatic.ai/";` },
+    ].map((entry) => ({ ...entry, errors: [{ messageId: "deployedHost" as const }] })),
     {
       code: `const apiTarget = "https://www.thinkai.cc";`,
       errors: [{ messageId: "deployedHost", data: { host: "thinkai.cc" } }],

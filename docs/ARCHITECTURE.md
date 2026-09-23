@@ -368,6 +368,8 @@ pnpm test / typecheck / lint
 
 The Studio and Project top-left brand links always navigate to `https://breatic.ai/`,
 including localhost and LAN deployments. The official website handles language selection.
+The URL is defined once in `lib/official-home.ts`; the deployed-host lint rule
+permits only this named homepage constant, while API/WS targets remain guarded.
 They open a new tab with `target="_blank"` and `rel="noopener noreferrer"`.
 The original Studio or Project stays open,
 so following the brand link does not interrupt editing or uploads.

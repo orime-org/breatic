@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
 import type * as React from 'react';
 
 import { BellMenu } from '@web/features/notifications/BellMenu';
@@ -40,8 +41,7 @@ export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element 
       <div className='flex items-center gap-1'>
         {leading}
         <a
-          // eslint-disable-next-line breatic/no-deployed-host -- The brand intentionally opens the official website in every deployment.
-          href='https://breatic.ai/'
+          href={OFFICIAL_HOME_URL}
           target='_blank'
           rel='noopener noreferrer'
           aria-label={t('chrome.aria.home')}

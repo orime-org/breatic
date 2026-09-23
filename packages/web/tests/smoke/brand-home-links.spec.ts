@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { OFFICIAL_HOME_URL } from '../../src/lib/official-home';
 import { test, expect } from 'playwright/test';
 import { openSmokeProject } from '../helpers/project';
 
@@ -9,11 +10,9 @@ for (const entry of ['studio', 'project'] as const) {
     if (entry === 'project') await openSmokeProject(page);
     else await page.goto('/studio');
     const brand = page.getByTestId('top-bar-logo').locator('..');
-    // eslint-disable-next-line breatic/no-deployed-host, breatic/no-untagged-public-host -- The official destination is asserted; context.route serves its response locally.
-    await expect(brand).toHaveAttribute('href', 'https://breatic.ai/');
+    await expect(brand).toHaveAttribute('href', OFFICIAL_HOME_URL);
     const originalUrl = page.url();
-    // eslint-disable-next-line breatic/no-deployed-host, breatic/no-untagged-public-host -- The official destination is asserted; context.route serves its response locally.
-    const home = 'https://breatic.ai/';
+    const home = OFFICIAL_HOME_URL;
     // Stub only the external homepage response; verify the real application
     // opens the official absolute URL even when running on localhost.
     await page.context().route(home, (route) => route.fulfill({
