@@ -12,7 +12,11 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { storedAsOutput } from "@worker/handlers/persisted-output.js";
+import {
+  generationMetadata,
+  nodeResultsFrom,
+  storedAsOutput,
+} from "@worker/handlers/persisted-output.js";
 import type { StoredAsset } from "@breatic/domain";
 
 const STORED: StoredAsset = {
@@ -23,16 +27,20 @@ const STORED: StoredAsset = {
   width: 1920,
   height: 1080,
   durationSeconds: 12.25,
+  mimeType: "video/mp4",
+  sizeBytes: 4_194_304,
 };
 
 describe("an output built from the row its bytes registered as", () => {
-  it("carries the cover and the three numbers, not just the URL", () => {
+  it("carries the cover and what the ledger settled, not just the URL", () => {
     expect(storedAsOutput(STORED)).toEqual({
       url: STORED.fileUrl,
       cover_url: STORED.coverUrl,
       width: 1920,
       height: 1080,
       duration_seconds: 12.25,
+      mime_type: "video/mp4",
+      size_bytes: 4_194_304,
     });
   });
 
@@ -56,5 +64,111 @@ describe("an output built from the row its bytes registered as", () => {
       height: null,
       duration_seconds: null,
     });
+  });
+});
+
+describe("what each node this run wrote to receives", () => {
+  // Three deliveries read this: a run finishing, a redelivery after the
+  // provider already answered, and the net that picks up a crashed run. Each
+  // is the only delivery its node gets, so a field this drops is a field that
+  // node never learns.
+  it("carries every field the stored output holds", () => {
+    const [result] = nodeResultsFrom(
+      ["node-1"],
+      [
+        {
+          url: "https://our-bucket/video/a.mp4",
+          cover_url: "https://our-bucket/video/a_cover.png",
+          width: 1920,
+          height: 1080,
+          duration_seconds: 12.25,
+          mime_type: "video/mp4",
+          size_bytes: 4_194_304,
+        },
+      ],
+    );
+
+    expect(result).toEqual({
+      nodeId: "node-1",
+      content: "https://our-bucket/video/a.mp4",
+      coverUrl: "https://our-bucket/video/a_cover.png",
+      width: 1920,
+      height: 1080,
+      duration: 12.25,
+      mimeType: "video/mp4",
+      size: 4_194_304,
+    });
+  });
+
+  // A reading produces words, not a file: it answers with `content` and no
+  // URL at all. This is the one line carrying a reading to its node.
+  it("carries words when the run produced words", () => {
+    const [result] = nodeResultsFrom(
+      ["node-1"],
+      [{ content: "A cat asleep on a windowsill." }],
+    );
+
+    expect(result?.content).toBe("A cat asleep on a windowsill.");
+  });
+
+  // Both are present on a run that filed a result and described it in the
+  // same breath; the words are what the node shows.
+  it("prefers what the run said over where it was filed", () => {
+    const [result] = nodeResultsFrom(
+      ["node-1"],
+      [{ content: "what it says", url: "https://our-bucket/x.txt" }],
+    );
+
+    expect(result?.content).toBe("what it says");
+  });
+
+  // One row per node named, always: a node with no output still gets its
+  // delivery, which is what settles its row rather than leaving it running.
+  it("answers for a node the run produced nothing for", () => {
+    const results = nodeResultsFrom(["node-1", "node-2"], [{ url: "https://our-bucket/x.png" }]);
+
+    expect(results).toHaveLength(2);
+    expect(results[1]).toEqual({
+      nodeId: "node-2",
+      content: undefined,
+      coverUrl: undefined,
+      width: null,
+      height: null,
+      duration: null,
+      mimeType: null,
+      size: null,
+    });
+  });
+});
+
+describe("what a history row says about the run behind it", () => {
+  // Both names are in hand on every generation: what the provider echoed into
+  // the stored result, and what the job asked for. They differ when a service
+  // resolves an alias to the model it actually ran, and the row names the one
+  // that ran.
+  it("names the model the run reported", () => {
+    expect(
+      generationMetadata({
+        reportedModel: "google/gemini-3.8-flash-002",
+        jobModel: "google/gemini-3.8-flash",
+        credits: 12,
+        durationMs: 4200,
+        params: { source_type: "image" },
+      }).model,
+    ).toBe("google/gemini-3.8-flash-002");
+  });
+
+  // A reading's answer is text and a finish reason and says nothing about a
+  // model, so the job's own is what the row would otherwise be missing.
+  it("names the model the job asked for when the run reported none", () => {
+    expect(
+      generationMetadata({
+        reportedModel: undefined,
+        jobModel: "google/gemini-3.8-flash",
+        credits: undefined,
+        durationMs: undefined,
+        params: undefined,
+      }).model,
+    ).toBe("google/gemini-3.8-flash");
   });
 });

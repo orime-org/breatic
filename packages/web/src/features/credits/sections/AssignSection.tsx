@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isPurchased } from '@breatic/shared';
 import type { CreditLotView } from '@breatic/shared';
 
 import {
@@ -15,10 +16,11 @@ import {
 import { designateCreditLot, fetchCreditLots } from '@web/data/api/credits';
 import { studiosApi } from '@web/data/api/studios';
 import {
-  Card,
+  ScrollCard,
   ListEnd,
   Notice,
   Row,
+  RowBalance,
   Rows,
   Section,
   Footnote,
@@ -27,10 +29,14 @@ import {
   SectionSkeleton,
   formatMoney,
 } from '@web/features/credits/section-chrome';
+import {
+  invalidateAccountReads,
+  invalidateAfterLedgerWrite,
+} from '@web/features/credits/account-reads';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
-import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
+import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
 
 /** Whose purchases, and whether billing is on at all. */
@@ -47,10 +53,10 @@ const NONE = 'none';
 /**
  * Point purchases at the studios that will spend them.
  *
- * Only `active` purchases are listed. One in a refund is detached from every
- * studio the moment it is asked for and may not be pointed anywhere, and a
- * spent one has nothing left to move — in neither case is there a decision to
- * make here.
+ * Only `active` purchases are listed. One in a refund carries no designation
+ * — the buyer releases it before asking, and the database keeps it released
+ * for as long as it is in the flow — and a spent one has nothing left to
+ * move; in neither case is there a decision to make here.
  * @param props - The account and whether billing is on.
  * @param props.userId - The signed-in account, for the query key.
  * @param props.billing - Whether this deployment charges at all.
@@ -90,7 +96,15 @@ export function AssignSection({
   );
 
   return (
-    <Section title={t('credits.section.assign')}>
+    <Section
+      scrolls={false}
+      title={t('credits.section.assign')}
+      // The rule holds whatever the list is doing, so it stays on screen
+      // for a reader whose list is empty or still arriving.
+      footer={
+        billing ? <Footnote>{t('credits.assignNote')}</Footnote> : undefined
+      }
+    >
       {!billing ? (
         <Notice
           title={t('credits.billingOff.title')}
@@ -117,27 +131,19 @@ export function AssignSection({
           />
         </>
       ) : (
-        <>
-          <Card>
-            <Rows>
-              {paging.rows.map((lot) => (
-                <AssignRow
-                  key={lot.id}
-                  lot={lot}
-                  studios={admins}
-                  userId={userId}
-                />
-              ))}
-            </Rows>
-          </Card>
-          <ListEnd
-            sentinelRef={paging.sentinelRef}
-            loading={paging.isFetchingNextPage}
-            more={paging.hasNextPage}
-            failed={paging.pageFailed}
-          />
-          <Footnote>{t('credits.assignNote')}</Footnote>
-        </>
+        <ScrollCard scrollerRef={paging.scrollerRef}>
+          <Rows>
+            {paging.rows.map((lot) => (
+              <AssignRow
+                key={lot.id}
+                lot={lot}
+                studios={admins}
+                userId={userId}
+              />
+            ))}
+          </Rows>
+          <ListEnd paging={paging} />
+        </ScrollCard>
       )}
     </Section>
   );
@@ -179,26 +185,21 @@ function AssignRow({
     mutationFn: (studioId: string | null) =>
       designateCreditLot(lot.id, studioId),
     onSuccess: () => {
-      // Every read of this account's money moves at once: the purchase changed
-      // hands, so the studio it left and the one it joined both have a
-      // different balance than a moment ago, and pointing it at a studio that
-      // owed writes a repayment into the ledger.
-      void client.invalidateQueries({ queryKey: ['credits', 'lots', userId] });
-      void client.invalidateQueries({
-        queryKey: ['credits', 'overview', userId],
-      });
-      void client.invalidateQueries({
-        queryKey: ['credits', 'ledger', userId],
-      });
-      // The purchase history reads payments under a key of its own, and every
-      // row of it names where its purchase points. Left out, that screen goes
-      // on saying "unassigned" about the one just assigned.
-      void client.invalidateQueries({
-        queryKey: ['payment', 'history', userId],
-      });
+      // The purchase changed hands, so the studio it left and the one it
+      // joined both hold a different balance than a moment ago — and pointing
+      // it at a studio that owed writes a repayment into the ledger.
+      void invalidateAfterLedgerWrite(client, userId);
     },
-    onError: () => {
-      toast.error(t('credits.designateFailed'));
+    onError: (err: unknown) => {
+      // The server writes a sentence for each refusal this screen can earn —
+      // the purchase moved into the refund flow, or this account stopped
+      // administering the studio it was pointed at — and both happen while
+      // the list sits open, which is why its own copy cannot say which.
+      toast.error(serverMessage(err, t('credits.designateFailed')));
+      // The row offered a repoint the server turned down, so what this screen
+      // holds is out of date and so is every other screen that names this
+      // purchase. The ledger is not among them: nothing was written.
+      void invalidateAccountReads(client, userId);
     },
   });
 
@@ -210,46 +211,91 @@ function AssignRow({
     designate.mutate(value === NONE ? null : value);
   };
 
+  // What the row leads with: a price where somebody paid one, and otherwise
+  // where the credits came from — the one thing about the row a reader
+  // cannot work out from the rest of it.
+  const lead =
+    lot.paidCents === null
+      ? t(`credits.source.${lot.sourceKind}`)
+      : formatMoney(lot.paidCents, lot.currency ?? 'usd');
+
+  // Where it points now, for the row that has no picker to say it. The
+  // balance moved to the right column, where the other two screens keep it,
+  // so this line is free to answer the question this screen is about.
+  const designationLine =
+    lot.designatedStudioName === null
+      ? t('credits.unassigned')
+      : t('credits.assignedTo', { studio: lot.designatedStudioName });
+
+  // Granted credits were pointed at their holder's personal studio when they were
+  // written and nothing moves them, so this row says where they may go rather
+  // than offering a choice. A control every option of which would be refused
+  // is worse than none: the screen already states, of the studios it leaves
+  // out, that offering the rest would be offering a rejection.
+  if (!isPurchased(lot.sourceKind)) {
+    return (
+      <Row
+        main={`${lead} · ${formatLocalDay(lot.createdAt)}`}
+        sub={designationLine}
+        right={
+          <>
+            <RowBalance
+              data-testid='lot-remaining'
+              credits={lot.remainingCredits}
+            />
+            <span
+              data-testid='assign-pinned'
+              className='block text-xs text-muted-foreground'
+            >
+              {t('credits.pinnedToPersonalStudio')}
+            </span>
+          </>
+        }
+      />
+    );
+  }
+
   return (
     <Row
-      main={`${formatMoney(lot.paidCents, lot.currency)} · ${formatLocalDay(lot.createdAt)}`}
-      sub={t('credits.remaining', {
-        amount: formatCreditAmount(lot.remainingCredits),
-      })}
+      main={`${lead} · ${formatLocalDay(lot.createdAt)}`}
       right={
-        <Select
-          value={lot.designatedStudioId ?? NONE}
-          onValueChange={handleChange}
-          disabled={designate.isPending}
-        >
-          <SelectTrigger
-            className='h-7 w-auto gap-2 text-sm'
-            aria-label={t('credits.designationFor', {
-              amount: formatMoney(lot.paidCents, lot.currency),
-            })}
+        <>
+          <RowBalance
+            data-testid='lot-remaining'
+            credits={lot.remainingCredits}
+          />
+          <Select
+            value={lot.designatedStudioId ?? NONE}
+            onValueChange={handleChange}
+            disabled={designate.isPending}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>{t('credits.unassigned')}</SelectItem>
-            {/* Where it points now, when that is somewhere this account can no
+            <SelectTrigger
+              className='h-7 w-auto gap-2 text-sm'
+              aria-label={t('credits.designationFor', { amount: lead })}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>{t('credits.unassigned')}</SelectItem>
+              {/* Where it points now, when that is somewhere this account can no
                 longer choose — after being demoted in that studio, say. The
                 options answer "where may this go"; the trigger reports where
                 it is, and with no item to match, Radix shows nothing at all.
                 It is offered unselectable: leaving is allowed, returning is
                 not. */}
-            {current === null ? null : (
-              <SelectItem value={current.id} disabled>
-                {current.name}
-              </SelectItem>
-            )}
-            {studios.map((studio) => (
-              <SelectItem key={studio.id} value={studio.id}>
-                {studio.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              {current === null ? null : (
+                <SelectItem value={current.id} disabled>
+                  {current.name}
+                </SelectItem>
+              )}
+              {studios.map((studio) => (
+                <SelectItem key={studio.id} value={studio.id}>
+                  {studio.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </>
       }
     />
   );

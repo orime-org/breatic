@@ -15,6 +15,7 @@
  */
 
 import { Hono } from "hono";
+import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { projectCreateSchema } from "@server/routes/schemas.js";
@@ -90,7 +91,7 @@ projects.post(
       id,
       user.id,
       toUserId,
-      c.req.header("Origin") ?? "http://localhost:8000",
+      frontendOrigin(c.req.header("Origin")),
     );
     return c.json({ data: { ok: true } }, 201);
   },
@@ -165,6 +166,8 @@ projects.delete(
 projects.get("/:id", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
+  // A malformed resource key cannot identify a project; never send it to a UUID column.
+  if (!z.string().uuid().safeParse(id).success) throw new NotFoundError(t("server.error.not_found"));
   const { project, myRole } = await projectService.loadForViewer(id, user.id);
   const detail: ProjectDetail = {
     id: project.id,

@@ -2,30 +2,36 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LogOut, Settings, Sparkles, Star } from 'lucide-react';
-import { getLocale } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { Skeleton } from '@web/components/ui/skeleton';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuTrailing,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
+import { accountTotal } from '@breatic/shared';
+import type { CreditOverview } from '@breatic/shared';
+import type { UseQueryResult } from '@tanstack/react-query';
+
 import { authApi } from '@web/data/api/auth';
 import { CheckoutWaitOverlay } from '@web/features/credits/CheckoutWaitOverlay';
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
-import { paymentApi } from '@web/data/api/payment';
+import { useCreditOverview } from '@web/features/credits/use-credit-overview';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
 import { useTranslation } from '@web/i18n/use-translation';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { studioTabPath } from '@web/pages/studio/container/studio-tabs';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
+import { usePaymentTiers } from '@web/features/credits/use-payment-tiers';
 
 /**
  * The backstop for a wait the server never named.
@@ -37,6 +43,29 @@ import { StudioAvatar } from '@web/ui/StudioAvatar';
  * configured number here would drift the day somebody changed the file.
  */
 const CONFIRM_WAIT_BACKSTOP_MS = 60_000;
+
+/**
+ * What sits to the right of the Credits entry, in each of its four states.
+ *
+ * The figure once it is in hand. While it is on its way, a placeholder: the
+ * wait ends by itself, and an empty row would read as a balance of nothing.
+ * When the read failed, the word for it — whether the request lands is not
+ * ours to promise, whether the reader knows it did not is. Where the
+ * deployment does not bill, nothing at all: the three figures are zeroes
+ * there, and a rendered 0 reads as "your money is gone".
+ * @param overview - The account's three figures, as the query holds them.
+ * @param t - The translator, so this reads in the language the switch is set to.
+ * @returns What to render, or null to leave the row carrying only its word.
+ */
+function creditsFigure(
+  overview: UseQueryResult<CreditOverview>,
+  t: ReturnType<typeof useTranslation>,
+): React.ReactNode {
+  if (overview.isError) return t('studio.topBar.creditsUnavailable');
+  if (overview.isPending) return <Skeleton className='h-3 w-10' />;
+  if (!overview.data.billing) return null;
+  return formatCreditAmount(accountTotal(overview.data));
+}
 
 /**
  * Studio account menu — the current-user avatar in the studio top bar, opening
@@ -65,8 +94,14 @@ export function StudioAccountMenu(): React.JSX.Element {
   const user = useCurrentUserStore((s) => s.user);
   const clear = useCurrentUserStore((s) => s.clear);
   const personalStudio = user?.personalStudio ?? null;
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const [membershipOpen, setMembershipOpen] = React.useState(false);
   const [creditsOpen, setCreditsOpen] = React.useState(false);
+
+  // The balance beside the Credits entry, read from the overlay's own query:
+  // designating a pack or asking for a refund invalidates it, so the next
+  // open here reads the new figure rather than the one from before.
+  const overview = useCreditOverview(menuOpen);
 
   // How long the return page may wait comes from the server, on the list the
   // buy screen reads anyway. Until it arrives there is nothing to wait for.
@@ -78,15 +113,7 @@ export function StudioAccountMenu(): React.JSX.Element {
   // that was filled whether it asked or not.
   const [params] = useSearchParams();
   const returningFromPayment = params.get('session_id') !== null;
-  const packs = useQuery({
-    // The refund rule comes back in the reader's language, so the language is
-    // part of what was asked for. Left out of the key, switching language
-    // leaves that block in the previous one until the answer goes stale.
-    queryKey: ['payment', 'tiers', getLocale()],
-    queryFn: () => paymentApi.tiers(),
-    staleTime: 5 * 60 * 1000,
-    enabled: returningFromPayment,
-  });
+  const packs = usePaymentTiers(returningFromPayment);
   const back = useCheckoutReturn({
     confirmTimeoutMs: packs.data?.confirmTimeoutMs ?? CONFIRM_WAIT_BACKSTOP_MS,
   });
@@ -160,19 +187,25 @@ export function StudioAccountMenu(): React.JSX.Element {
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             type='button'
             aria-label={t('studio.topBar.account')}
             variant={null}
             size={null}
+            // As tall as the language and theme buttons beside it, with the
+            // avatar centred inside. `sideOffset` is measured from the
+            // trigger, so a 26px anchor in a 32px row hangs the menu 3px
+            // higher than those two and leaves 1px of visible gap under the
+            // bar instead of their 4.
+            //
             // Hover dims rather than tinting the background: with an avatar set
             // the background is covered by the image, so a background hover is
             // invisible. Opacity also leaves the element's box untouched — this
             // button is the menu's anchor, and anything that resizes it
             // (a scale, a border) makes the menu jump on hover.
-            className='ml-1 flex shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            className='ml-1 flex h-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
           >
             <StudioAvatar
               name={user?.name ?? '?'}
@@ -187,8 +220,8 @@ export function StudioAccountMenu(): React.JSX.Element {
         <DropdownMenuContent
           align='end'
           // 8, not the primitive's 6: the language and theme popovers sitting
-          // beside this one hang 8 below the bar, and three controls on one
-          // row at two different distances reads as a mistake.
+          // beside this one hang 8 below their triggers, and all three
+          // triggers are the same height, so the three panels open level.
           sideOffset={8}
           // The rows carry their own highlight, so with nothing between them
           // two adjacent highlights touch and read as one block. The language
@@ -228,19 +261,37 @@ export function StudioAccountMenu(): React.JSX.Element {
             <Settings className='h-4 w-4' />
             {t('studio.topBar.accountSettings')}
           </DropdownMenuItem>
+          {/* The two rows that carry a reading are their own block: with the
+            settings row among them the right-hand column reads as a list with
+            a hole in it. */}
+          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={handleMembership}>
             <Sparkles className='h-4 w-4' />
             {t('studio.topBar.membership')}
             {/* The tier itself, not just the word: this entry is where a person
               checks which one they are on, and reading it off the menu saves
               the trip. */}
-            <span className='ml-auto text-xs font-medium text-muted-foreground'>
+            <DropdownMenuTrailing className='font-medium'>
               {user === null ? null : t(`membership.tier.${user.membershipTier}`)}
-            </span>
+            </DropdownMenuTrailing>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleCredits}>
             <Star className='h-4 w-4' />
             {t('studio.topBar.credits')}
+            {/* What the account holds, the way the tier above is shown: the
+              figure is what a person opens this menu to check, and reading it
+              here saves opening the overlay.
+
+              Three ways there is no figure, and they do not look alike. On its
+              way: a placeholder, because the wait is short and ends by itself.
+              Read failed: said out loud — whether the request lands is not
+              ours to promise, but whether the reader knows it did not is.
+              Deployment does not bill: nothing, because there the three
+              figures are zeroes and a rendered 0 reads as "your money is gone"
+              rather than "we do not charge". */}
+            <DropdownMenuTrailing className='font-medium'>
+              {creditsFigure(overview, t)}
+            </DropdownMenuTrailing>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

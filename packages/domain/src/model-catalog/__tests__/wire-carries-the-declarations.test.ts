@@ -48,23 +48,6 @@ describe("what the catalog ships about a mode", () => {
     expect(disagreeing).toEqual([]);
   });
 
-  it("says what the understand modes take, which no table covered", () => {
-    // Understanding a node takes no panel and no parameters: the reader picks
-    // the node and the source is the thing they picked. What these modes
-    // declare here is read by whoever asks the catalog what the product does,
-    // and a mode declaring nothing tells them it takes nothing.
-    const understanding = getModelCatalog().understand;
-    expect(understanding.length).toBeGreaterThan(0);
-
-    const silent = understanding.flatMap((entry) =>
-      Object.entries(entry.sourcesByMode)
-        .filter(([, sources]) => sources.length === 0)
-        .map(([mode]) => `${entry.name}.${mode}`),
-    );
-
-    expect(silent).toEqual([]);
-  });
-
   it("says of a2m that any one of its slots is enough", () => {
     // The one mode whose panel refuses on an empty set rather than an empty
     // slot, so a rule that were uniformly all_of would read the same as none.

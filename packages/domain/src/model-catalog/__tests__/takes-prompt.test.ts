@@ -48,12 +48,12 @@ describe("takes_prompt is declared by every model (#1966)", () => {
     expect(missing).toEqual([]);
   });
 
-  it("covers all 43 catalogued models across the six modalities", () => {
+  it("covers all 36 catalogued models across the five modalities", () => {
     const total = MODALITIES.reduce(
       (sum, m) => sum + getFullModelConfig(m).models.length,
       0,
     );
-    expect(total).toBe(43);
+    expect(total).toBe(36);
   });
 });
 
@@ -111,10 +111,6 @@ describe("the values the panels will read (#1966)", () => {
     expect(takesPromptOf("veo-3.1-extend")).toBe(true);
   });
 
-  // 我们自己给它写了转发分支，而 runUnderstand 保证 prompt 恒非空。
-  it("whisper-turbo takes one (we forward a guidance prompt to it)", () => {
-    expect(takesPromptOf("whisper-turbo")).toBe(true);
-  });
 });
 
 describe("assertTakesPromptDeclared (#1966)", () => {

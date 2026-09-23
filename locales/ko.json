@@ -14,9 +14,16 @@
     "credit": {
       "not_studio_admin": "크레딧은 본인이 관리하는 Studio에만 지정할 수 있습니다.",
       "designation_locked": "이 결제는 환불 처리 중이라 지정을 변경할 수 없습니다.",
+      "designation_not_purchased": "이 크레딧은 지급된 것이라 개인 Studio에서만 사용할 수 있습니다.",
       "in_debt": "이 Studio는 크레딧 {owed}을 미납했습니다. 다음에 지정하는 크레딧이 먼저 충당됩니다.",
       "unassigned": "지정되지 않은 크레딧이 {available} 있습니다. 사용하려면 Studio에 지정하세요.",
-      "none": "크레딧이 부족합니다. 충전해 주세요."
+      "none": "크레딧이 부족합니다. 충전해 주세요.",
+      "granted_elsewhere": "보유한 크레딧은 지급된 것이라 개인 Studio에서만 사용할 수 있습니다.",
+      "refund_already_asked": "이 구매는 이미 환불을 신청했습니다.",
+      "refund_not_purchased": "이 크레딧은 지급된 것이라 결제 내역이 없어 환불할 수 없습니다.",
+      "refund_still_designated": "이 구매는 Studio에 배정되어 있습니다. 먼저 배정을 해제하세요.",
+      "refund_already_spent": "이 구매의 크레딧을 사용했으므로 환불할 수 없습니다.",
+      "refund_window_closed": "이 구매의 환불 기간이 종료되었습니다."
     },
     "auth": {
       "invalid_credentials": "이메일 또는 비밀번호가 올바르지 않습니다",
@@ -27,6 +34,7 @@
       "google_oauth_unconfigured": "이 서버에서는 Google 로그인을 사용할 수 없습니다",
       "invalid_google_credential": "Google 계정을 확인할 수 없습니다",
       "google_email_unverified": "Google 계정의 이메일이 확인되지 않았습니다",
+      "google_link_requires_email_login": "이 계정은 이메일로 로그인하세요. Google 계정을 안전하게 연결할 수 없습니다.",
       "reset_link_sent": "이 이메일로 등록된 계정이 있으면 재설정 링크를 보내 드렸습니다.",
       "reset_success": "비밀번호를 재설정했습니다. 로그인해 주세요.",
       "reset_recovery_success": "비밀번호를 재설정했습니다. 새 복구 코드를 저장하세요.",
@@ -68,10 +76,24 @@
       "tier_not_found": "알 수 없는 요금제: {tier}. 사용 가능: {available}",
       "price_not_configured": "{tier} 요금제의 가격이 설정되지 않았습니다",
       "consent-credits-v1": "크레딧을 즉시 제공받기를 요청하며, **하나라도 사용하면 이 구매는 환불받을 수 없다**는 점을 알고 있습니다. 사용하지 않은 크레딧은 30일 이내에 전액 환불됩니다.",
+      "consent-credits-v2": "크레딧을 즉시 제공받기를 요청하며, **하나라도 사용하면 이 구매는 환불받을 수 없다**는 점을 알고 있습니다. 사용하지 않았고 어느 Studio에도 지정하지 않은 크레딧은 30일 이내에 전액 환불됩니다.",
       "refund-credits-v1": {
         "unused": "30일 이내에 구매했고 크레딧을 하나도 쓰지 않았다면, 원래 결제 카드로 전액 환불됩니다.",
         "used": "하나라도 사용했다면 해당 패키지는 환불되지 않습니다.",
         "expired": "30일이 지나면 환불되지 않습니다."
+      },
+      "refund-credits-v2": {
+        "unused": "30일 이내에 구매했고 크레딧을 하나도 쓰지 않았다면, 원래 결제 카드로 전액 환불됩니다.",
+        "used": "하나라도 사용했다면 해당 패키지는 환불되지 않습니다.",
+        "expired": "30일이 지나면 환불되지 않습니다.",
+        "unassigned": "Studio에 지정되지 않은 패키지만 환불할 수 있습니다."
+      },
+      "refund-credits-v3": {
+        "unused": "30일 이내에 구매했고 크레딧을 하나도 쓰지 않았다면, 원래 결제 카드로 전액 환불됩니다.",
+        "used": "하나라도 사용했다면 해당 패키지는 환불되지 않습니다.",
+        "expired": "30일이 지나면 환불되지 않습니다.",
+        "unassigned": "Studio에 지정되지 않은 패키지만 환불할 수 있습니다.",
+        "purchased": "구매한 패키지만 환불할 수 있습니다."
       },
       "not_found": "해당 구매를 찾을 수 없습니다.",
       "unavailable": "이 배포에서는 크레딧을 판매하지 않습니다."
@@ -324,6 +346,10 @@
       "cannotWrite": "여기에는 더 이상 쓸 수 없습니다.",
       "unknownAuthor": "알 수 없음"
     },
+    "understand": {
+      "couldNotStart": "시작하지 못했습니다. 다시 시도해 주세요.",
+      "sourceGone": "읽어 들이던 노드가 없습니다. 이 읽기에는 연결선이 없습니다."
+    },
     "generatePanel": {
       "style": "스타일",
       "focus": "포커스",
@@ -493,7 +519,9 @@
       "unlock": "노드 잠금 해제",
       "resetEmpty": "빈 이미지로 초기화",
       "history": "기록",
-      "download": "다운로드"
+      "snapshot": "스냅샷 저장",
+      "download": "다운로드",
+      "understand": "내용 읽기"
     },
     "edge": {
       "delete": "연결 삭제"
@@ -558,6 +586,10 @@
       "failed": "복원 불가",
       "typeGeneration": "생성",
       "typeUpload": "업로드",
+      "typeSnapshot": "스냅샷",
+      "snapshotKept": "스냅샷을 저장했습니다",
+      "snapshotEmpty": "저장할 내용이 없습니다. 이 노드는 비어 있습니다",
+      "snapshotFailed": "스냅샷을 저장하지 못했습니다",
       "end": "더 이상 없음",
       "close": "닫기",
       "loadError": "기록을 불러오지 못했습니다",
@@ -600,13 +632,18 @@
       "failure": {
         "aborted": "업로드가 끝나기 전에 중단되었습니다.",
         "over_cap": "이 파일은 업로드 크기 상한을 넘습니다.",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다.} other {이 파일은 읽기 크기 상한을 넘습니다. 상한은 {limit}입니다.}}} other {{bytes, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}). 상한은 {limit}입니다.}}} other {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}). 상한은 {limit}입니다.}}}}}}",
+        "understand_unsupported_type": "{file, select, none {{type, select, none {읽을 수 없는 파일 형식입니다.} other {읽을 수 없는 파일 형식입니다({type}).}}} other {{type, select, none {읽을 수 없는 파일 형식입니다({file}).} other {읽을 수 없는 파일 형식입니다({file}, {type}).}}}}",
         "expired": "시간이 초과되었습니다.",
         "no_result": "이 실행은 아무것도 생성하지 않았습니다.",
         "source_unreachable": "이 주소를 열 수 없습니다.",
         "source_too_slow": "이 주소를 가져오는 데 시간이 초과되었습니다.",
         "unsupported_type": "{kind, select, image {지원하지 않는 형식입니다. 이미지는 {formats}을(를) 지원합니다.} video {지원하지 않는 형식입니다. 동영상은 {formats}을(를) 지원합니다.} audio {지원하지 않는 형식입니다. 오디오는 {formats}을(를) 지원합니다.} other {지원하지 않는 형식입니다.}}",
         "empty": "아무것도 받지 못했습니다.",
-        "internal": "저희 쪽에서 문제가 생겼습니다. 다시 시도해 주세요."
+        "internal": "저희 쪽에서 문제가 생겼습니다. 다시 시도해 주세요.",
+        "no_credits": "사용할 수 있는 크레딧이 없습니다.",
+        "declined": "모델이 이 요청을 거부했습니다.",
+        "media_refused": "모델이 이 파일을 받지 않았습니다."
       }
     }
   },
@@ -626,8 +663,8 @@
       "signUp": "회원가입",
       "noAccount": "계정이 없으신가요?",
       "forgotPassword": "비밀번호를 잊으셨나요?",
-      "continueWithGoogle": "Google로 계속하기",
-      "googleSoon": "Google 로그인은 곧 제공될 예정입니다.",
+      "googleLoading": "Google 로그인 불러오는 중…",
+      "googleFailed": "Google 로그인을 사용할 수 없습니다. 다시 시도하거나 이메일로 로그인하세요.",
       "failed": "로그인에 실패했습니다. 다시 시도해 주세요."
     },
     "register": {
@@ -745,6 +782,14 @@
         "create": "Space를 생성하는 중…"
       },
       "noActive": "열려 있는 Spaces가 없습니다 — 드로어에서 열거나 + 를 클릭하여 새로 만드세요."
+    },
+    "update": {
+      "available": "새 버전",
+      "title": "새 버전을 사용할 수 있습니다",
+      "description": "새로고침하면 새 버전을 사용할 수 있습니다.",
+      "busy": "업로드 또는 다른 작업이 진행 중입니다. 새로고침하면 중단되므로 완료될 때까지 기다리는 것이 좋습니다.",
+      "later": "나중에",
+      "refresh": "업데이트"
     }
   },
   "common": {
@@ -1090,6 +1135,7 @@
       "account": "계정",
       "signOut": "로그아웃",
       "credits": "크레딧",
+      "creditsUnavailable": "불러올 수 없음",
       "membership": "멤버십",
       "accountSettings": "계정 설정"
     },
@@ -1490,15 +1536,22 @@
     },
     "section": {
       "overview": "개요",
-      "lots": "구매 내역",
+      "lots": "획득 내역",
       "ledger": "사용 내역",
       "studios": "Studio 별",
       "buy": "크레딧 구매",
       "assign": "지정",
       "refunds": "환불"
     },
+    "source": {
+      "payment": "충전",
+      "gift": "체험 크레딧",
+      "compensation": "보상",
+      "discount": "할인"
+    },
+    "pinnedToPersonalStudio": "개인 Studio에서만 사용",
     "lifecycle": {
-      "depleted": "모두 사용",
+      "depleted": "모두 사용함",
       "refund_pending": "심사 중",
       "refunding": "환불 처리 중",
       "refunded": "환불 완료"
@@ -1509,6 +1562,7 @@
     },
     "total": "계정 총액",
     "unassigned": "미지정",
+    "unassignedWithNextStep": "미지정 — 왼쪽 「지정」에서 쓸 Studio에 나눠 주세요",
     "assigned": "지정됨",
     "pricingHint": "1 크레딧 = 1 미국 센트이며 만료되지 않습니다.",
     "unassignedHint": "쓰려면 Studio에 지정해야 합니다.",
@@ -1519,15 +1573,11 @@
     },
     "lotsEmpty": "구매 내역이 아직 없습니다.",
     "lotsEmptyNotice": {
-      "title": "모든 구매가 여기에 표시됩니다",
-      "body": "각 구매의 금액, 처리 상태, 크레딧이 지정된 Studio를 확인할 수 있습니다."
+      "title": "크레딧을 어떻게 얻었는지 여기에 표시됩니다",
+      "body": "구매한 것과 지급받은 것 모두, 출처와 금액, 처리 상태, 어느 Studio에 배정했는지를 보여줍니다."
     },
     "assignedTo": "{studio}에 지정",
     "ofPurchased": "총 {amount}",
-    "unassignedNotice": {
-      "title": "지정하지 않은 충전이 {count}건 있어 아직 쓸 수 없습니다",
-      "body": "왼쪽 「지정」에서 쓸 Studio에 나눠 주세요."
-    },
     "allSpending": "전체 사용",
     "allStudios": "전체 Studio",
     "filterByStudio": "Studio로 좁히기",
@@ -1556,25 +1606,14 @@
       "body": "충전 한 건은 Studio 하나에 통째로 지정하며, 언제든 바꿀 수 있습니다."
     },
     "assignNote": "목록에는 본인이 Admin인 Studio만 나옵니다. 바꾸면 원래 Studio는 그 즉시 이 크레딧을 잃습니다.",
-    "remaining": "{amount} 크레딧 남음",
     "designationFor": "{amount} 충전의 지정 대상",
     "designateFailed": "저장하지 못했습니다. 다시 시도해 주세요.",
-    "refundsEmpty": "환불할 크레딧이 없습니다.",
-    "refundable": "환불 가능한 충전",
-    "refundableHint": "{credits} 크레딧 남음",
+    "refundsEmpty": "아직 크레딧 패키지를 구매하지 않았습니다",
     "askRefund": "환불 신청",
-    "refundNotOpen": "환불은 아직 열리지 않았습니다",
-    "refundsAsked": "신청한 건",
-    "refundRefused": "반려됨",
-    "refundRefusedHint": "이 충전은 다시 쓸 수 있는 상태이며, 지정하면 미지급액부터 갚습니다",
-    "refundPendingHint": "{credits} 크레딧 · 심사 중에는 Studio에 지정할 수 없습니다",
-    "refundingHint": "{credits} 크레딧 · 환불 처리 중에는 Studio에 지정할 수 없습니다",
-    "refundedHint": "{credits} 크레딧 · 환불되어 Studio에 지정할 수 없습니다",
-    "refundsNote": "1 크레딧도 사용하지 않은 충전은 30일 이내에 전액을 원래 결제 수단으로 환불하며, 심사를 거칩니다.",
+    "refundTitle": "환불 규정",
     "buy": {
       "taxNotice": "표시 가격은 세금이 포함되지 않습니다. 결제 금액은 표시 가격에 거주 지역의 세액을 더한 금액이며, 결제 페이지에 최종 금액이 표시됩니다.",
       "assignNotice": "크레딧은 Studio에 지정해야 사용할 수 있습니다.",
-      "refundTitle": "환불 규정",
       "action": "구매",
       "confirmTitle": "구매 확인",
       "confirmPack": "크레딧 패키지",
@@ -1600,6 +1639,31 @@
       "title": "이 구매를 처리하고 있습니다",
       "body": "이 페이지를 닫지 마세요.",
       "skip": "구매 내역 보기"
+    },
+    "refundFailed": "환불을 신청하지 못했습니다. 다시 시도하세요.",
+    "underRefund": "환불 진행 중",
+    "underRefundHint": "결과가 나올 때까지 어디에서도 사용할 수 없습니다",
+    "confirmRefund": {
+      "title": "환불을 신청할까요?",
+      "body": "이 패키지는 환불 심사에 들어갑니다. 심사 중에는 Studio에 지정할 수 없으며, 신청을 취소할 수도 없습니다.",
+      "cancel": "취소",
+      "confirm": "환불 신청"
+    },
+    "refundReason": {
+      "spent": "이미 사용함",
+      "expired": "30일 경과"
+    },
+    "refundHint": {
+      "assigned": "지정을 해제하면 환불을 신청할 수 있습니다"
     }
+  },
+  "notFound": {
+    "heading": "페이지를 찾을 수 없습니다",
+    "body": "찾으시는 페이지가 존재하지 않거나 이동되었습니다. 홈으로 돌아가 다시 시작해 보세요.",
+    "cta": "홈으로 돌아가기"
+  },
+  "pageLoadError": {
+    "message": "페이지를 불러오지 못했습니다. 다시 시도해 주세요.",
+    "retry": "다시 시도"
   }
 }

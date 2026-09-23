@@ -61,7 +61,7 @@ const CTX = {
   metadata: { model: "m", cost: 10 },
 };
 
-const OUTPUTS = [{ nodeId: "node-1", url: "https://cdn/image/result.png" }];
+const OUTPUTS = [{ nodeId: "node-1", content: "https://cdn/image/result.png" }];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -90,12 +90,12 @@ describe("recordGenerationForNodes, the settle that carries the result", () => {
         nodeId: "node-1",
         outcome: "done",
         nodeHistoryId: "history-1",
-        result: expect.objectContaining({ content: OUTPUTS[0]!.url }),
+        result: expect.objectContaining({ content: OUTPUTS[0]!.content }),
       }),
     );
   });
 
-  it("settles an output that produced no url as failed, saying so (#196)", async () => {
+  it("settles an output that produced no content as failed, saying so (#196)", async () => {
     // Stage 3 has already charged for this run by the time this is reached
     // (`dispatch.ts` bills before it settles), so leaving the row alone costs
     // the user credits for a node that stays empty. The row does not sit in
@@ -108,7 +108,7 @@ describe("recordGenerationForNodes, the settle that carries the result", () => {
       {} as never,
       "project-proj-1/canvas-space-1",
       CTX,
-      [{ nodeId: "node-1", url: undefined }],
+      [{ nodeId: "node-1", content: undefined }],
       {},
     );
 

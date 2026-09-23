@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import {
+  Bookmark,
   Copy,
   CopyPlus,
   Download,
@@ -9,6 +10,7 @@ import {
   ImagePlus,
   Lock,
   Pencil,
+  ScanText,
   Sparkles,
   Trash2,
   Ungroup,
@@ -70,18 +72,45 @@ interface NodeContextMenuProps {
   onResetImage?: () => void;
   /**
    * Open the node-history panel for this node (#1619, browse + restore past
-   * results). Passed for editable content nodes (image / video / audio); when
-   * absent the item does not render, so it never appears on text / group /
-   * read-only nodes.
+   * results). Passed for editable content nodes; when absent the item does
+   * not render, so it never appears on a group or to a read-only reader.
    */
   onOpenHistory?: () => void;
+  /**
+   * Whether this node has the item at all. Only a text node does: every other
+   * modality's content is an asset that already has a row of its own, while
+   * words are replaced by the next keystroke and nothing keeps them unless
+   * the reader says so.
+   */
+  snapshotOffered?: boolean;
+  /**
+   * Keep a copy of what this node says right now (#2175). Absent on an
+   * offered item disables it rather than dropping it: a node saying nothing
+   * has nothing to keep, and the reader sees that where the item always is.
+   */
+  onSnapshot?: () => void;
 
+  /**
+   * Whether this node holds an asset at all, which is what Download,
+   * Understand and Tools each act on. A text node holds words and never an
+   * asset, so the three are left out of its menu entirely: an item greyed on
+   * every text node forever says "not right now" about something that is
+   * never going to be offered (user 2026-09-20). Defaults to true, because
+   * every other content kind shows one.
+   *
+   * Separate from the three handlers below, which answer the other question:
+   * whether THIS node can act right now. A node offering an asset it has not
+   * finished loading keeps all three items, greyed.
+   */
+  assetActionsOffered?: boolean;
   /**
    * Download this node's content. Passed when the node is showing content on
    * screen; when absent the item is disabled, so a node whose content the
    * reader cannot see says so rather than dropping the item off the menu.
    */
   onDownload?: () => void;
+  /** Read what this node is showing into a text node downstream; absent disables the item rather than hiding it. */
+  onUnderstand?: () => void;
   /** Copy the node / group (with its members) to the clipboard. */
   onCopy?: () => void;
   /** Duplicate the node / group (with its members) in place. */
@@ -97,10 +126,16 @@ interface NodeContextMenuProps {
  * anchor to). A node offers generate / upload / tools (top block) then copy /
  * duplicate / rename / lock / delete; a group offers copy / duplicate (with its
  * members) / ungroup / rename / lock / delete. Tools is a disabled placeholder
- * (coming soon). Most action items render only when their handler is supplied,
- * so the parent controls availability; Download is the exception — the work is
- * built and only the material can be missing, so it always renders and
- * disables, which is also why its cursor refuses rather than saying nothing.
+ * (coming soon). Two different questions decide what a reader sees. Whether
+ * this KIND of node is ever offered an item is answered by leaving it out:
+ * `snapshotOffered` and `assetActionsOffered` drop Snapshot and the three
+ * asset items whole, because an item greyed on every text node forever says
+ * "not right now" about something never on offer. Whether THIS node can act
+ * on an item it is offered is answered by greying it: Generate, Snapshot,
+ * Download, Understand and Tools render without their handler and disable,
+ * the work being built and only the material missing, which is also why their
+ * cursor refuses rather than saying nothing. The rest — reset, history, copy,
+ * duplicate, rename, delete — render only when their handler is supplied.
  * Lock / unlock is always present. Shortcut hints are platform-aware via
  * {@link formatShortcut}.
  * @param root0 - Component props.
@@ -117,7 +152,11 @@ interface NodeContextMenuProps {
  * @param root0.onGenerate - Open the Generate panel (content nodes that support it, e.g. image).
  * @param root0.onResetImage - Reset an image node to a fresh blank image (image nodes only).
  * @param root0.onOpenHistory - Open the node-history panel (content nodes only).
+ * @param root0.snapshotOffered - Whether this node has a Snapshot item (text nodes only).
+ * @param root0.onSnapshot - Keep a copy of what this node says right now; absent disables the item.
+ * @param root0.assetActionsOffered - Whether this node holds an asset, which Download / Understand / Tools act on (text nodes hold words).
  * @param root0.onDownload - Download what this node is showing; absent disables the item rather than hiding it.
+ * @param root0.onUnderstand - Read what this node is showing into a text node downstream; absent disables the item rather than hiding it.
  * @param root0.onCopy - Copy the node / group (with its members).
  * @param root0.onDuplicate - Duplicate the node / group (with its members).
  * @param root0.onUngroup - Ungroup the group (group target only).
@@ -137,7 +176,11 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onGenerate,
   onResetImage,
   onOpenHistory,
+  snapshotOffered,
+  assetActionsOffered = true,
+  onSnapshot,
   onDownload,
+  onUnderstand,
   onCopy,
   onDuplicate,
   onUngroup,
@@ -206,29 +249,62 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                 {t('canvas.nodeMenu.history')}
               </DropdownMenuItem>
             ) : null}
-            {/* Always on the menu, disabled when this node is showing nothing
-                to take. A reader looking for Download finds it where it
-                always is, greyed out.
-                Downloading is built — what is missing is something to
-                download — so the pointer says "not here, not now" rather
-                than reading as an inert label. The primitive turns pointer
-                events off on a disabled item (`dropdown-menu.tsx:43`), which
-                hands the cursor back to the menu underneath; turning them on
-                again is what lets the cursor show. Radix still refuses the
-                press: `onSelect` never fires on a disabled item. */}
-            <DropdownMenuItem
-              disabled={!onDownload}
-              data-testid='node-menu-download'
-              className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
-              onSelect={onDownload}
-            >
-              <Download className='mr-2 h-4 w-4' aria-hidden='true' />
-              {t('canvas.nodeMenu.download')}
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled data-testid='node-menu-tools'>
-              <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />
-              {t('canvas.nodeMenu.tools')}
-            </DropdownMenuItem>
+            {snapshotOffered ? (
+              <DropdownMenuItem
+                disabled={!onSnapshot}
+                data-testid='node-menu-snapshot'
+                className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+                onSelect={onSnapshot}
+              >
+                <Bookmark className='mr-2 h-4 w-4' aria-hidden='true' />
+                {t('canvas.nodeMenu.snapshot')}
+              </DropdownMenuItem>
+            ) : null}
+            {/* The three that act on the asset a node is showing. A node
+                that holds words instead leaves all three out: greying an
+                item on every text node forever says "not right now" about
+                something never going to be offered.
+                On a node that does hold one, each is greyed while this
+                particular node cannot act — the feature is built, what is
+                missing is something to act on, so the pointer says "not
+                here, not now" rather than reading as an inert label. The
+                primitive turns pointer events off on a disabled item
+                (`dropdown-menu.tsx:43`), which hands the cursor back to the
+                menu underneath; turning them on again is what lets the
+                cursor show. Radix still refuses the press: `onSelect` never
+                fires on a disabled item. */}
+            {assetActionsOffered ? (
+              <>
+                <DropdownMenuItem
+                  disabled={!onDownload}
+                  data-testid='node-menu-download'
+                  className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+                  onSelect={onDownload}
+                >
+                  <Download className='mr-2 h-4 w-4' aria-hidden='true' />
+                  {t('canvas.nodeMenu.download')}
+                </DropdownMenuItem>
+                {/* What it produces lands on a new text node of its own,
+                    which is why this is not an edit of the node it reads. */}
+                <DropdownMenuItem
+                  disabled={!onUnderstand}
+                  data-testid='node-menu-understand'
+                  className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+                  onSelect={onUnderstand}
+                >
+                  <ScanText className='mr-2 h-4 w-4' aria-hidden='true' />
+                  {t('canvas.nodeMenu.understand')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled
+                  data-testid='node-menu-tools'
+                  className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+                >
+                  <Wrench className='mr-2 h-4 w-4' aria-hidden='true' />
+                  {t('canvas.nodeMenu.tools')}
+                </DropdownMenuItem>
+              </>
+            ) : null}
             <DropdownMenuSeparator />
           </>
         ) : null}

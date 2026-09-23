@@ -23,8 +23,11 @@
  * switch the letter to a different language.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, it, expect, beforeAll } from "vitest";
-import { initCore, loadLocales } from "@breatic/core";
+import { initCore, loadLocales, MONOREPO_ROOT } from "@breatic/core";
 import { renderPurchaseConfirmation } from "@server/modules/payment/purchase-mail-template.js";
 import {
   consentTextAt,
@@ -34,6 +37,27 @@ import {
 } from "@server/modules/payment/legal-text.js";
 
 import type { ConfirmationView } from "@server/modules/payment/payment.repo.js";
+
+/** Every language the product ships, as the locale files are named. */
+const LOCALE_FILES = ["en", "zh-CN", "zh-TW", "ja", "ko"] as const;
+
+/**
+ * What one locale file carries under `server.payment`, read off disk.
+ *
+ * Read directly rather than through `t()`, so the assertion stays red when
+ * the i18n layer itself is what broke.
+ * @param locale - The language to read.
+ * @returns That file's payment wording, versions and all.
+ */
+function paymentWording(locale: string): Record<string, unknown> {
+  const raw = readFileSync(
+    resolve(MONOREPO_ROOT, `locales/${locale}.json`),
+    "utf-8",
+  );
+  return (
+    JSON.parse(raw) as { server: { payment: Record<string, unknown> } }
+  ).server.payment;
+}
 
 /**
  * The consent wording in a given language.
@@ -104,8 +128,8 @@ function view(over: Partial<ConfirmationView> = {}): ConfirmationView {
     currency: "usd",
     creditsGranted: 1700,
     grantedAt: new Date("2026-08-26T01:30:00.000Z"),
-    consentTextVersion: "consent-credits-v1",
-    refundTextVersion: "refund-credits-v1",
+    consentTextVersion: CONSENT_CREDITS_VERSION,
+    refundTextVersion: REFUND_CREDITS_VERSION,
     timeZone: "UTC",
     balanceCredits: 4200,
     ...over,
@@ -174,7 +198,7 @@ describe("the confirmation carries all eight things", () => {
     expect(mail.text).toContain(plainConsent("en"));
   });
 
-  it("repeats all three refund lines", () => {
+  it("repeats every refund line", () => {
     const mail = renderPurchaseConfirmation(view(), "UTC", SUPPORT);
     for (const line of refundLines("en")) {
       expect(mail.text).toContain(line);
@@ -298,9 +322,12 @@ describe("both versions name wording that exists", () => {
     expect(text.length).toBeGreaterThan(20);
   });
 
-  it.each(LOCALES)("all three refund lines resolve in %s", (locale) => {
+  it.each(LOCALES)("every refund line resolves in %s", (locale) => {
+    // How many lines the version in force has is pinned once, by the test
+    // that names it. A line missing from one locale comes back as its own
+    // key, which the loop catches whatever the count is.
     const lines = refundLines(locale);
-    expect(lines).toHaveLength(3);
+    expect(lines.length).toBeGreaterThan(0);
     for (const line of lines) {
       expect(line).not.toContain("server.payment.");
       expect(line.length).toBeGreaterThan(10);
@@ -328,11 +355,77 @@ describe("both versions name wording that exists", () => {
     expect(mail.text).not.toContain(plainConsent("en"));
   });
 
+  it("reads back the three lines a v1 purchase agreed to", () => {
+    // The version a purchase records names the wording it was made under, and
+    // that wording never changes afterwards. A fourth condition is a new
+    // version beside it, so a confirmation resent for a v1 purchase states
+    // what that buyer agreed to and not what is asked of buyers today.
+    const v1 = refundLinesAt("refund-credits-v1", "en");
+    expect(v1).toHaveLength(3);
+    expect(v1.join(" ")).not.toContain("assigned to a Studio");
+
+    const today = refundLinesAt(REFUND_CREDITS_VERSION, "en");
+    expect(REFUND_CREDITS_VERSION).toBe("refund-credits-v3");
+    expect(today).toHaveLength(5);
+    expect(today[3]).toContain("not assigned to a Studio");
+    expect(today[4]).toContain("was bought");
+  });
+
   it("says so when a version names wording that is not there", () => {
     // What the guard above is guarding against, shown directly: nothing
     // throws, and the key comes back as though it were the wording.
     expect(refundLinesAt("refund-credits-v99", "en")[0]).toBe(
       "server.payment.refund-credits-v99.unused",
     );
+  });
+
+  it("carries every published version of both texts in all five languages", () => {
+    // A purchase records the version it was made under, so reading back a
+    // two-year-old one has to keep working: a reworded text becomes `…-v2`
+    // beside its predecessor and `…-v1` stays in every locale file forever.
+    // Nothing enforced that until this walked the files — the versions come
+    // from the wording itself rather than from a list someone maintains, so a
+    // `…-v3` added to English and missed in Korean is red here without anyone
+    // remembering to add it.
+    const english = paymentWording("en");
+    const consentVersions = Object.keys(english).filter((key) =>
+      key.startsWith("consent-credits-"),
+    );
+    const refundVersions = Object.keys(english).filter((key) =>
+      key.startsWith("refund-credits-"),
+    );
+    expect(consentVersions.length).toBeGreaterThan(1);
+    expect(refundVersions.length).toBeGreaterThan(1);
+
+    for (const locale of LOCALE_FILES) {
+      const wording = paymentWording(locale);
+
+      for (const version of consentVersions) {
+        expect(typeof wording[version], `${locale} lacks ${version}`).toBe(
+          "string",
+        );
+        expect(consentTextAt(version, locale)).not.toBe(
+          `server.payment.${version}`,
+        );
+      }
+
+      for (const version of refundVersions) {
+        const keys = Object.keys(english[version] as object);
+        expect(
+          Object.keys(wording[version] as object).sort(),
+          `${locale} ${version}`,
+        ).toEqual([...keys].sort());
+
+        // A version absent from `REFUND_LINE_KEYS` falls back to today's key
+        // list, which reads the wrong number of lines out of an older one.
+        // Comparing the count is what catches wording added to the locale
+        // files and not to that table.
+        const lines = refundLinesAt(version, locale);
+        expect(lines, `${locale} ${version}`).toHaveLength(keys.length);
+        for (const line of lines) {
+          expect(line.startsWith(`server.payment.${version}`)).toBe(false);
+        }
+      }
+    }
   });
 });

@@ -137,9 +137,15 @@ async function seedLot(
   amountCents = 1000,
   designateTo: string | null = null,
 ): Promise<string> {
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (user_id, amount_cents, status, credits_granted)
-    VALUES (${userId}, ${amountCents}, 'completed', ${credits}) RETURNING id
+    INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
+    VALUES (${source!.id}, ${userId}, ${amountCents}, 'completed', ${credits}) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,
@@ -412,6 +418,12 @@ describe("a studio's debt is the studio's, not the reader's", () => {
     // A debt is the studio's own figure. It moves as the people inside go on
     // generating, and only an admin can act on it by pointing a purchase
     // there. Anyone else is not shown it.
+    //
+    // The demotion here is written straight into the table. Every production
+    // path that ends a studio role either clears the account's designations
+    // in the same transaction or is refused outright, so an account holding
+    // a lot pointed at a studio it does not administer is a state the app
+    // does not reach — this row is manufactured to isolate the debt.
     const fx = await seedFixture();
     await seedLot(fx.userId, 10, 100, fx.studioId);
     await creditLotService.chargeForGeneration({
@@ -424,8 +436,7 @@ describe("a studio's debt is the studio's, not the reader's", () => {
     const asAdmin = await creditLotService.getOverview(fx.userId);
     expect(asAdmin.studios.find((s) => s.studioId === fx.studioId)?.debt).toBe(20);
 
-    // Demoted to maintainer: what he spent is still his own history and the
-    // row stays. The debt is not his.
+    // Demoted to maintainer.
     await sql`
       UPDATE studio_members SET role = 'maintainer'
       WHERE studio_id = ${fx.studioId} AND user_id = ${fx.userId}
@@ -433,10 +444,9 @@ describe("a studio's debt is the studio's, not the reader's", () => {
 
     const after = await creditLotService.getOverview(fx.userId);
     const row = after.studios.find((s) => s.studioId === fx.studioId);
+    // The row is still there — the reader's own purchase points at this
+    // studio, and every lot they bought is counted somewhere on this panel.
     expect(row).toBeDefined();
-    // The purchase holds 10, so a charge of 30 takes 10 and leaves 20 owed
-    // by the studio.
-    expect(row!.spent).toBe(10);
     expect(row!.debt).toBeNull();
   });
 });
@@ -516,11 +526,17 @@ describe("purchases show what was paid and where they point (plan §4.5 §4.6)",
     // A purchase in a taxed region: face value 1000, Stripe took 1120.
     // `automatic_tax` is on for every checkout, so this is the ordinary case
     // wherever there is tax, not an edge one.
+    // A payment shares its source row's primary key, so the receipt is
+    // opened first and the payment is written under its id (0079, #259).
+    const [source] = await sql<{ id: string }[]>`
+      INSERT INTO credit_sources (id, kind)
+      VALUES (gen_random_uuid(), 'payment') RETURNING id
+    `;
     const [payment] = await sql<{ id: string }[]>`
       INSERT INTO payments (
-        user_id, amount_cents, tax_cents, total_cents, status, credits_granted
+        id, user_id, amount_cents, tax_cents, total_cents, status, credits_granted
       )
-      VALUES (${fx.userId}, 1000, 120, 1120, 'completed', 880) RETURNING id
+      VALUES (${source!.id}, ${fx.userId}, 1000, 120, 1120, 'completed', 880) RETURNING id
     `;
     await creditLotService.grantFromPayment({
       paymentId: payment!.id,

@@ -21,6 +21,7 @@
  */
 
 import { Hono } from "hono";
+import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { z } from "zod";
 import { validate } from "@server/middleware/validate.js";
 import { t } from "@breatic/shared";
@@ -310,7 +311,7 @@ studio.post(
       user.id,
       body.email,
       body.role,
-      c.req.header("Origin") ?? "http://localhost:8000",
+      frontendOrigin(c.req.header("Origin")),
     );
     return c.json({ data: { ok: true } }, 201);
   },
@@ -403,7 +404,7 @@ studio.post(
       slug,
       user.id,
       body.toUserId,
-      c.req.header("Origin") ?? "http://localhost:8000",
+      frontendOrigin(c.req.header("Origin")),
     );
     return c.json({ data: { ok: true } }, 201);
   },

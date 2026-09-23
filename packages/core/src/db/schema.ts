@@ -25,6 +25,8 @@ import {
   index,
   primaryKey,
   check,
+  unique,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 // A self-referencing FK needs its column type spelled out, since the table is
 // still being defined at the point the reference is written.
@@ -558,9 +560,10 @@ export const tasks = pgTable(
  * Per-node content timeline.
  *
  * Records every content change on a canvas node: successful/failed
- * AIGC generations + user uploads. Queried by frontend to show
- * version history and support restore. Node soft-deletes don't
- * cascade - history is preserved until the project is deleted.
+ * AIGC generations, user uploads, and the copies a reader asks to keep.
+ * Queried by frontend to show version history and support restore. Node
+ * soft-deletes don't cascade - history is preserved until the project is
+ * deleted.
  */
 export const nodeHistory = pgTable(
   "node_history",
@@ -574,7 +577,7 @@ export const nodeHistory = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
 
-    entryType: varchar("entry_type", { length: 20 }).notNull(), // 'generation' | 'upload'
+    entryType: varchar("entry_type", { length: 20 }).notNull(), // 'generation' | 'upload' | 'snapshot'
     status: varchar("status", { length: 20 }).notNull(),         // 'success' | 'failed'
     content: text("content"),                                    // URL or text (null if failed)
     thumbnailUrl: text("thumbnail_url"),                         // cover for video, self for image
@@ -757,10 +760,61 @@ export const conversationAttachments = pgTable(
 
 // ── 7. Payments ──────────────────────────────────────────────────────
 
+/**
+ * What a lot of credits came from (0079, #259).
+ *
+ * Every lot points at one row here, and `kind` says what sort of receipt it
+ * is. The column this replaced was called `payment_id` and was NOT NULL, which
+ * spelled "a lot always comes from a payment" into the schema — and a
+ * back-office compensation has a compensation record and no payment at all.
+ *
+ * Each kind keeps its details in its own child table, sharing this row's
+ * primary key: `payments.id` IS its source id, so no child carries a second
+ * column pointing here and the two cannot drift apart. `UNIQUE (id, kind)`
+ * adds nothing in row terms — `id` is already the key — and exists to give
+ * those children something composite to reference, which is what stops a
+ * payment from being filed under `gift`.
+ *
+ * Append-only: `created_at` and no `deleted_at`. A receipt outlives the
+ * credits it opened, and one that could vanish would leave lots pointing at
+ * nothing — the written reason this table is waived from the soft-delete
+ * mandate.
+ *
+ * The CHECK on `kind` lives in the migration, as the lifecycle one does, for
+ * the reason 0061 gives: a `check()` beside the column would be a second copy
+ * no tool compares against the first.
+ */
+export const creditSources = pgTable(
+  "credit_sources",
+  {
+    id: uuid("id").primaryKey(),
+    /** One of `payment` / `compensation` / `gift` / `discount`. CHECK in 0079. */
+    kind: varchar("kind", { length: 16 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [unique("credit_sources_id_kind_key").on(table.id, table.kind)],
+);
+
 export const payments = pgTable(
   "payments",
   {
-    id: uuid("id").defaultRandom().primaryKey(),
+    // Declared without a default, so an insert has to name this id: it is also
+    // the id of the row's `credit_sources` receipt, which the composite foreign
+    // key requires to already exist, and only the caller that opened that
+    // receipt knows it. The column in the database keeps the
+    // `gen_random_uuid()` it was created with; the foreign key is what refuses
+    // an id nobody opened a receipt for.
+    id: uuid("id").primaryKey(),
+    /**
+     * Constant, and half of the composite key below. On its own it says
+     * nothing; paired with `id` it is what makes the database refuse a payment
+     * whose source row claims some other kind.
+     */
+    sourceKind: varchar("source_kind", { length: 16 })
+      .default("payment")
+      .notNull(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -797,6 +851,13 @@ export const payments = pgTable(
       "payments_status_check",
       sql`${table.status} IN ('pending', 'completed', 'failed', 'expired')`,
     ),
+    // The CHECK pinning `source_kind` to 'payment' lives in 0079, beside the
+    // other hand-written ones.
+    foreignKey({
+      name: "payments_source_fk",
+      columns: [table.id, table.sourceKind],
+      foreignColumns: [creditSources.id, creditSources.kind],
+    }).onDelete("restrict"),
   ],
 );
 
@@ -983,14 +1044,14 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
 /**
  * One top-up (0061, task #11).
  *
- * A row is one payment that succeeded, and it tracks that purchase for the
- * rest of its life: how much of it is left, which studio may spend it, and
+ * A row is credits granted once, and it tracks that grant for the rest of its
+ * life: how much of it is left, which studio may spend it, and
  * whether it is on its way back to the buyer. Credits are spent lot by lot,
  * oldest first, which is why the remainder lives per purchase rather than as
  * one number per account — a refund returns a purchase, so a purchase has to
  * be a thing that can still be pointed at.
  *
- * `payment_id` is NOT NULL and unique, and that is the whole of "a payment
+ * `source_id` is NOT NULL and unique, and that is the whole of "a payment
  * grants credits exactly once". The `payments` table cannot carry that rule:
  * `stripe_payment_intent_id` has no unique index, and the one on
  * `stripe_session_id` sits on a nullable column, where Postgres admits any
@@ -1026,9 +1087,20 @@ export const creditLots = pgTable(
   "credit_lots",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    paymentId: uuid("payment_id")
-      .notNull()
-      .references(() => payments.id, { onDelete: "restrict" }),
+    sourceId: uuid("source_id").notNull(),
+    /**
+     * Half of the composite key below, and the only column that says where
+     * these credits came from.
+     *
+     * Read off the row rather than joined for, because every reader that
+     * turns on it holds a lot and nothing else: re-designation and refunds
+     * see only what `lockLot` returns, and that read takes a row lock the
+     * charge loop runs per candidate lot on every generation. Paired with
+     * `source_id` it is what makes the database refuse a lot filed under a
+     * kind its receipt does not claim. No default: which kind opened a lot is
+     * the caller's to state.
+     */
+    sourceKind: varchar("source_kind", { length: 16 }).notNull(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -1058,7 +1130,7 @@ export const creditLots = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("credit_lots_payment_id_idx").on(table.paymentId),
+    uniqueIndex("credit_lots_source_id_idx").on(table.sourceId),
     index("credit_lots_user_id_created_at_idx").on(
       table.userId,
       table.createdAt,
@@ -1068,6 +1140,16 @@ export const creditLots = pgTable(
       table.lifecycle,
       table.createdAt,
     ),
+    // Composite, so the database refuses a lot filed under a kind its receipt
+    // does not claim. It replaces the single-column key the `source_id` column
+    // carried before 0080: that one implied nothing about `source_kind`, and
+    // the kind is what decides whether these credits may be re-designated or
+    // refunded.
+    foreignKey({
+      name: "credit_lots_source_fk",
+      columns: [table.sourceId, table.sourceKind],
+      foreignColumns: [creditSources.id, creditSources.kind],
+    }).onDelete("restrict"),
   ],
 );
 

@@ -155,6 +155,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   AssetActivityPayloadSchema,
+  GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
   SpaceActivityPayloadSchema,
   MemberActivityPayloadSchema,
@@ -163,6 +164,7 @@ export {
   ActivityNewSignalSchema,
 } from "@shared/types/index.js";
 export type { ControlGate } from "@shared/types/index.js";
+export type { GenerationSource } from "@shared/types/project-activity.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
   MaterialPath,
@@ -209,6 +211,7 @@ export {
 
 export type {
   CreditPage,
+  CreditSourceKind,
   PurchaseRow,
   CreditLotView,
   StudioLotView,
@@ -218,6 +221,15 @@ export type {
   StudioCreditsView,
   StudioCreditSummary,
   CreditOverview,
+} from "@shared/types/index.js";
+
+export {
+  accountTotal,
+  CREDIT_SOURCE_KINDS,
+  isPurchased,
+  GRANTED_SOURCE_KINDS,
+  HELD_LIFECYCLES,
+  IN_FLIGHT_REFUND_LIFECYCLES,
 } from "@shared/types/index.js";
 
 export type {
@@ -241,6 +253,7 @@ export {
   skillCommandSchema,
   taskCreateSchema,
   understandSchema,
+  nodeHistorySnapshotSchema,
   projectCreateSchema,
   checkoutSchema,
   paymentConfirmSchema,
@@ -329,13 +342,22 @@ export {
 } from "@shared/adjust-value.js";
 export type { AdjustValue } from "@shared/adjust-value.js";
 
-// Both readers of the refund rule are outside this package: the confirmation
-// email names the instant the window closes, in the buyer's zone and in UTC,
-// and the refunds screen leaves out the purchases whose window has shut.
+// The confirmation email names the instant the window closes, in the buyer's
+// zone and in UTC; the eligibility rule beside it asks whether that instant
+// has passed. Both the server and the refunds screen read that rule, and they
+// read this one copy of it.
 export {
   refundWindowCloses,
   withinRefundWindow,
 } from "@shared/refund-window.js";
+export {
+  REFUND_LIFECYCLES,
+  refundRefusal,
+} from "@shared/refund-eligibility.js";
+export type {
+  RefundCandidate,
+  RefundRefusal,
+} from "@shared/refund-eligibility.js";
 
 export { newId, deriveId } from "@shared/ids.js";
 
@@ -472,12 +494,34 @@ export {
 // and the reader is whoever opens the list, in their own language.
 export {
   TASK_FAILURE_REASONS,
-  asTaskFailureReason,
+  encodeTaskFailure,
+  readTaskFailure,
   type TaskFailureReason,
 } from "@shared/types/task-failure.js";
-// The encoding those credentials use, exported for the session token the
-// Worker signs with the same secret. `btoa` refuses anything outside latin1,
-// and a storage key's extension comes from a filename we let be any Unicode.
+// Which media the understanding endpoint takes. Both ends ask it: the browser
+// before it builds anything, the backend before it sends bytes.
+export {
+  AUDIO_FORMAT_NAMES,
+  IMAGE_TYPES,
+  IMAGE_FORMAT_NAMES,
+  VIDEO_FORMAT_NAMES,
+  audioFormatOf,
+  videoFormatOf,
+  type AudioFormat,
+  type VideoFormat,
+} from "@shared/understand/media-formats.js";
+// The one word each format goes by on screen, asked by both gates that name a
+// format while refusing a file.
+export {
+  formatNameOf,
+  formatPhrase,
+} from "@shared/media/format-names.js";
+// What a stored asset is called, which is the last segment of the address it
+// is stored at — read by both ends that name a file while refusing it.
+export { assetNameFromUrl } from "@shared/media/asset-name.js";
+// Plain text in and out of a text node's body ships at
+// `@breatic/shared/canvas/text-body` — that file says why it is not here.
+
 // The arithmetic both sides of an upload read: the browser sizes each part's
 // deadline with it, and the config refuses windows narrower than what they
 // have to hold.
@@ -508,6 +552,9 @@ export {
   type IngestMeasurements,
   type MediaLimits,
 } from "@shared/upload/ingest-client.js";
+// The encoding those credentials use, exported for the session token the
+// Worker signs with the same secret. `btoa` refuses anything outside latin1,
+// and a storage key's extension comes from a filename we let be any Unicode.
 export {
   encodeBase64Utf8,
   decodeBase64Utf8,

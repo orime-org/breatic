@@ -22,6 +22,7 @@
  */
 
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
+import * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import {
@@ -38,10 +39,16 @@ import {
   ForbiddenError,
   type DbTx,
 } from "@breatic/core";
-import { t } from "@breatic/shared";
+import {
+  t,
+  REFUND_LIFECYCLES,
+  refundRefusal,
+  isPurchased,
+} from "@breatic/shared";
 import type {
   CreditLotEntity,
   CreditOverview,
+  RefundRefusal,
   StudioCreditSummary,
 } from "@breatic/shared";
 
@@ -55,12 +62,25 @@ export const REFKEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
 /** How long a billed key stays claimed. */
 const BILL_LOCK_TTL_SECONDS = 86_400;
 
-/** Lifecycles in which a lot is on its way out of the account. */
-const REFUND_LIFECYCLES: ReadonlySet<string> = new Set([
-  "refund_pending",
-  "refunding",
-  "refunded",
-]);
+/**
+ * The answer a refused ask is given, built when the ask is made.
+ *
+ * Built rather than held: `t()` reads the locale of the request in flight, so
+ * a table of finished sentences would be fixed to whichever language happened
+ * to be loading this module.
+ */
+const REFUSAL_ERRORS: Record<RefundRefusal, () => AppError> = {
+  not_purchased: () =>
+    new AppError(422, t("server.credit.refund_not_purchased")),
+  already_asked: () =>
+    new AppError(409, t("server.credit.refund_already_asked")),
+  still_designated: () =>
+    new AppError(409, t("server.credit.refund_still_designated")),
+  already_spent: () =>
+    new AppError(422, t("server.credit.refund_already_spent")),
+  window_closed: () =>
+    new AppError(422, t("server.credit.refund_window_closed")),
+};
 
 /** What one generation wants charged. */
 export interface ChargeInput {
@@ -112,7 +132,9 @@ export interface ChargeOutcome {
  * spent" and the interface has to say so: a buyer told only that assigning is
  * available will assume the credits already work.
  * @param input - The completed payment.
- * @param input.paymentId - The payment row. Unique across lots, so a redelivered webhook fails here.
+ * @param input.paymentId - The payment row, which is also its source id: a
+ *   payment shares its source's primary key. Unique across lots, so a
+ *   redelivered webhook fails here.
  * @param input.userId - Who paid.
  * @param input.purchasedCredits - How many credits it bought.
  * @param outer - The caller's transaction, when it has one. Fulfillment grants
@@ -131,35 +153,83 @@ export async function grantFromPayment(
 ): Promise<CreditLotEntity> {
   const amount = fromMicroCredits(toMicroCredits(input.purchasedCredits));
   /**
-   * The two writes, against whichever transaction is in hand.
+   * The write, against whichever transaction is in hand.
    * @param tx - The caller's transaction, or one opened here.
    * @returns The new lot.
    */
-  const run = async (tx: DbTx): Promise<CreditLotEntity> => {
-    const lot = await creditLotRepo.createLot(
+  const run = async (tx: DbTx): Promise<CreditLotEntity> =>
+    creditLotRepo.createLot(
       {
-        paymentId: input.paymentId,
+        // The payment's own id, which is also its source id — see
+        // `createSource`. Opening a source here would hand every redelivery
+        // a fresh one, and the unique index would stop refusing the second
+        // grant.
+        sourceId: input.paymentId,
+        sourceKind: "payment",
         userId: input.userId,
         purchasedCredits: amount,
+        // Unassigned, which means unspendable until the buyer points it at a
+        // studio. That is the default state of the switch, not a gap.
+        designatedStudioId: null,
       },
       tx,
     );
-    await creditLotRepo.appendLedgerEntry(
-      {
-        payerUserId: input.userId,
-        entryType: "topup",
-        amount,
-        lotId: lot.id,
-        referenceId: input.paymentId,
-      },
-      tx,
-    );
-    return lot;
-  };
   // The caller may already hold the transaction that decided this payment is
   // ours to grant. Opening a second one here would let the grant commit
   // while the decision rolls back.
   return outer ? run(outer) : db.transaction(run);
+}
+
+/**
+ * Grant a new account its trial credits, pinned to the studio just created.
+ *
+ * Writes the same three rows a purchase does — the receipt, the lot, the
+ * ledger row that opens its balance — with two differences that are the whole
+ * point. The receipt is filed under the account itself, so the primary key is
+ * what says an account is granted at most once. And the lot is pointed at the
+ * personal studio as it is written, rather than left unassigned for the owner
+ * to place: credits nobody paid for are not the owner's to move.
+ *
+ * Silent where it does not grant, because neither case is a fault. A
+ * deployment that charges nobody has no notion of a credit to give; a figure
+ * of zero is a real zero and means none; and an account arriving a second
+ * time — having deleted its personal studio and made another — has already
+ * been granted. Raising any of these would fail the studio creation this runs
+ * inside, and for the third the caller reads a unique violation as a slug
+ * someone else took.
+ * @param input - Who is being granted, where, and how much.
+ * @param input.userId - The account. Also the receipt's id.
+ * @param input.studioId - Their personal studio, created in this same
+ *   transaction; the credits may only be spent there.
+ * @param input.credits - How many to grant, read from configuration by the
+ *   caller. Zero grants none.
+ * @param tx - The transaction creating the studio. Required: a grant that
+ *   committed alongside a studio that did not would point at nothing.
+ * @returns The new lot, or null when nothing was granted.
+ */
+export async function grantTrialCredits(
+  input: { userId: string; studioId: string; credits: number },
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  if (!env.PAYMENT_ENABLED) return null;
+  if (input.credits <= 0) return null;
+
+  const opened = await creditSourceRepo.claimSource(
+    { id: input.userId, kind: "gift" },
+    tx,
+  );
+  if (!opened) return null;
+
+  return creditLotRepo.createLot(
+    {
+      sourceId: input.userId,
+      sourceKind: "gift",
+      userId: input.userId,
+      purchasedCredits: fromMicroCredits(toMicroCredits(input.credits)),
+      designatedStudioId: input.studioId,
+    },
+    tx,
+  );
 }
 
 /**
@@ -224,10 +294,9 @@ export async function chargeForGeneration(
   // still recorded, because a deployment that charges nobody still wants to
   // know what it produced; there is simply no purchase to draw it from.
   if (!env.PAYMENT_ENABLED) {
-    await creditLotRepo.appendLedgerEntry({
+    await creditLotRepo.recordStandaloneUsage({
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
-      lotId: null,
     });
     return { billed: false, charged: 0, shortfall: 0, studioId, lotIds: [] };
   }
@@ -238,10 +307,9 @@ export async function chargeForGeneration(
   // Recording the usage keeps the account honest; the shortfall tells the
   // caller to log it.
   if (studioId === null) {
-    await creditLotRepo.appendLedgerEntry({
+    await creditLotRepo.recordStandaloneUsage({
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
-      lotId: null,
     });
     return {
       billed: false,
@@ -444,6 +512,13 @@ export async function designateLot(input: {
     if (REFUND_LIFECYCLES.has(lot.lifecycle)) {
       throw new AppError(409, t("server.credit.designation_locked"));
     }
+    // Where granted credits point was decided when they were written, and
+    // nothing moves them afterwards. Clearing the designation is refused with
+    // the same answer as changing it: unassign first, point anywhere second
+    // is the same move in two steps.
+    if (!isPurchased(lot.sourceKind)) {
+      throw new ForbiddenError(t("server.credit.designation_not_purchased"));
+    }
     if (lot.designatedStudioId === input.studioId) return lot;
     const designated = await creditLotRepo.setDesignation(
       input.lotId,
@@ -482,6 +557,84 @@ export async function designateLot(input: {
 }
 
 /**
+ * Ask for a refund on one purchase.
+ *
+ * This is the whole of the refund flow that lives here: the lot moves to
+ * `refund_pending` and stops being spendable or designatable. Deciding the
+ * ask — paying the money back, or returning the lot to `active` — belongs to
+ * the back office.
+ *
+ * Five conditions gate it. The first asks whether anybody paid: a refund
+ * returns money, and credits that were granted had none. Two come from the
+ * published promise: a purchase is refundable in full within thirty days if
+ * no credit was ever drawn from it. The fourth is that the lot carries no
+ * designation, because a refund is asked for on a lot the buyer has already
+ * released — we never release it for them. The fifth keeps one lot to one
+ * ask at a time.
+ *
+ * "Nothing spent" asks the ledger, not the balance. The promise turns on
+ * whether a credit was ever drawn, and the ledger is the record of that; the
+ * balance is a projection of it and answers a narrower question.
+ *
+ * The window is measured from the first ask. `refund_attempts` above zero
+ * means the buyer already asked while it was open — the only path that raises
+ * it is an ask that was turned down, and asking checks the window — so how
+ * long the decision took afterwards does not cost them the right.
+ *
+ * Nothing is written to the ledger and the balance does not move: the credits
+ * leave the account when the money actually goes back, which is a step this
+ * repository does not take. So an ask that is turned down needs nothing
+ * undone.
+ * @param input - Which lot, on whose behalf.
+ * @param input.lotId - The lot to ask about.
+ * @param input.requestingUserId - Who is asking. Must be the buyer.
+ * @returns The lot as it now stands.
+ * @throws {NotFoundError} If the lot does not exist or belongs to someone else.
+ * @throws {AppError} 409 if it still carries a designation or is already in
+ * the refund flow; 422 if nobody paid for it, it has been spent from, or its
+ * window has closed.
+ */
+export async function requestRefund(input: {
+  lotId: string;
+  requestingUserId: string;
+}): Promise<CreditLotEntity> {
+  return db.transaction(async (tx) => {
+    const lot = await creditLotRepo.lockLot(input.lotId, tx);
+    if (!lot || lot.userId !== input.requestingUserId) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    // The ledger is read before the rule rather than inside it, which costs a
+    // query on lots the rule would refuse on an earlier count. That buys the
+    // rule as one pure function the refunds screen runs too, so the screen
+    // cannot offer an ask this would turn down, or hide one it would allow.
+    const refusal = refundRefusal(
+      {
+        purchased: isPurchased(lot.sourceKind),
+        lifecycle: lot.lifecycle,
+        designated: lot.designatedStudioId !== null,
+        everSpent: await creditLotRepo.hasEverSpent(input.lotId, tx),
+        refundAttempts: lot.refundAttempts,
+        createdAt: lot.createdAt,
+      },
+      new Date(),
+    );
+    if (refusal !== null) {
+      throw REFUSAL_ERRORS[refusal]();
+    }
+
+    const asked = await creditLotRepo.markRefundPending(input.lotId, tx);
+    if (!asked) {
+      // The row was locked and read as `active` a few statements ago, so the
+      // predicate can only miss if that lock is not what it is taken to be.
+      // The same sentence the rule refuses with: whichever way a second ask
+      // arrives, the buyer reads one answer.
+      throw REFUSAL_ERRORS.already_asked();
+    }
+    return asked;
+  });
+}
+
+/**
  * What an account holds and where it went.
  *
  * A studio appears here on any of three counts: it holds credits of this
@@ -495,12 +648,14 @@ export async function designateLot(input: {
  * @returns The overview.
  */
 export async function getOverview(userId: string): Promise<CreditOverview> {
-  const [spendableRows, spentRows, owingRows, unassigned] = await Promise.all([
-    creditLotRepo.sumSpendableByStudio(userId),
-    creditLotRepo.sumSpentByStudio(userId),
-    creditLotRepo.studiosWithDebtFrom(userId),
-    getUnassignedCredits(userId),
-  ]);
+  const [spendableRows, spentRows, owingRows, unassigned, underRefund] =
+    await Promise.all([
+      creditLotRepo.sumSpendableByStudio(userId),
+      creditLotRepo.sumSpentByStudio(userId),
+      creditLotRepo.studiosWithDebtFrom(userId),
+      getUnassignedCredits(userId),
+      creditLotRepo.sumUnderRefundForUser(userId),
+    ]);
 
   const byStudio = new Map<string, StudioCreditSummary>();
   for (const row of spendableRows) {
@@ -583,6 +738,7 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
   return {
     assignedCredits: studios.reduce((sum, s) => sum + s.spendable, 0),
     unassignedCredits: unassigned,
+    underRefundCredits: toMicroCredits(underRefund) / 1_000_000,
     billing: env.PAYMENT_ENABLED,
     studios,
   };
@@ -695,6 +851,18 @@ export async function getStudioDebt(studioId: string): Promise<number> {
  */
 export async function getUnassignedCredits(userId: string): Promise<number> {
   return toMicroCredits(await creditLotRepo.sumUnassignedForUser(userId)) / 1_000_000;
+}
+
+/**
+ * What this account holds that it was granted rather than bought.
+ *
+ * Read when a studio turns out to have nothing to draw on, so the refusal can
+ * say which of the two situations the holder is in.
+ * @param userId - The account to total.
+ * @returns The total in credits.
+ */
+export async function getGrantedCredits(userId: string): Promise<number> {
+  return toMicroCredits(await creditLotRepo.sumGrantedForUser(userId)) / 1_000_000;
 }
 
 /**

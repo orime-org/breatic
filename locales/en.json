@@ -14,9 +14,16 @@
     "credit": {
       "not_studio_admin": "You can only assign credits to a studio you administer.",
       "designation_locked": "This purchase is being refunded and cannot be reassigned.",
+      "designation_not_purchased": "These credits were granted, and can only be used in your personal Studio.",
       "in_debt": "This Studio owes {owed} credits. Credits assigned next pay that off first.",
       "unassigned": "You have {available} credits that are not assigned to a studio yet. Assign them to use them.",
-      "none": "Not enough credits. Add credits to continue."
+      "none": "Not enough credits. Add credits to continue.",
+      "granted_elsewhere": "Your credits were granted, and can only be used in your personal Studio.",
+      "refund_already_asked": "This purchase has already been sent for a refund.",
+      "refund_not_purchased": "These credits were granted, not paid for, so there is nothing to refund.",
+      "refund_still_designated": "This purchase is assigned to a Studio. Unassign it first.",
+      "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
+      "refund_window_closed": "The refund window for this purchase has closed."
     },
     "auth": {
       "invalid_credentials": "Invalid email or password",
@@ -27,6 +34,7 @@
       "google_oauth_unconfigured": "Google sign-in is not available on this server",
       "invalid_google_credential": "Could not verify your Google account",
       "google_email_unverified": "Your Google account email is not verified",
+      "google_link_requires_email_login": "Sign in with email to access this account. Google could not safely link it.",
       "reset_link_sent": "If this email is registered, a reset link has been sent.",
       "reset_success": "Password reset successful. Please sign in.",
       "reset_recovery_success": "Password reset successful. Save your new recovery code.",
@@ -68,10 +76,24 @@
       "tier_not_found": "Unknown pricing tier: {tier}. Available: {available}",
       "price_not_configured": "Price not configured for tier: {tier}",
       "consent-credits-v1": "I ask for the credits to be delivered right away, and I understand that **once I use any of them I can no longer get this purchase refunded**. Unused credits can be refunded in full within 30 days.",
+      "consent-credits-v2": "I ask for the credits to be delivered right away, and I understand that **once I use any of them I can no longer get this purchase refunded**. Unused credits that are not assigned to a Studio can be refunded in full within 30 days.",
       "refund-credits-v1": {
         "unused": "Bought within the last 30 days and haven't spent a single credit? Refunded in full, back to the original card.",
         "used": "Spent any of them, even one? That pack can no longer be refunded.",
         "expired": "Past 30 days, packs are no longer refundable."
+      },
+      "refund-credits-v2": {
+        "unused": "Bought within the last 30 days and haven't spent a single credit? Refunded in full, back to the original card.",
+        "used": "Spent any of them, even one? That pack can no longer be refunded.",
+        "expired": "Past 30 days, packs are no longer refundable.",
+        "unassigned": "Only a pack that is not assigned to a Studio can be refunded."
+      },
+      "refund-credits-v3": {
+        "unused": "Bought within the last 30 days and haven't spent a single credit? Refunded in full, back to the original card.",
+        "used": "Spent any of them, even one? That pack can no longer be refunded.",
+        "expired": "Past 30 days, packs are no longer refundable.",
+        "unassigned": "Only a pack that is not assigned to a Studio can be refunded.",
+        "purchased": "Only a pack that was bought can be refunded."
       },
       "not_found": "That purchase could not be found.",
       "unavailable": "This deployment does not sell credits."
@@ -332,7 +354,13 @@
       "unlock": "Unlock node",
       "resetEmpty": "Reset to empty image",
       "history": "History",
-      "download": "Download"
+      "snapshot": "Save snapshot",
+      "download": "Download",
+      "understand": "Understand"
+    },
+    "understand": {
+      "couldNotStart": "Could not start. Try again.",
+      "sourceGone": "The node being read is gone. This reading has no wire to it."
     },
     "generatePanel": {
       "style": "Style",
@@ -558,6 +586,10 @@
       "failed": "Can’t restore",
       "typeGeneration": "Generated",
       "typeUpload": "Upload",
+      "typeSnapshot": "Snapshot",
+      "snapshotKept": "Snapshot kept",
+      "snapshotEmpty": "Nothing to keep — this node is empty",
+      "snapshotFailed": "Could not keep the snapshot",
       "end": "No more",
       "close": "Close",
       "loadError": "Couldn’t load history",
@@ -600,13 +632,18 @@
       "failure": {
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {Larger than a reading takes.} other {Larger than a reading takes. The limit is {limit}.}}} other {{bytes, select, none {{limit, select, unknown {Larger than a reading takes ({file}).} other {Larger than a reading takes ({file}). The limit is {limit}.}}} other {{limit, select, unknown {Larger than a reading takes ({file}, {bytes}).} other {Larger than a reading takes ({file}, {bytes}). The limit is {limit}.}}}}}}",
+        "understand_unsupported_type": "{file, select, none {{type, select, none {Cannot understand this file type.} other {Cannot understand this file type ({type}).}}} other {{type, select, none {Cannot understand this file type ({file}).} other {Cannot understand this file type ({file}, {type}).}}}}",
         "expired": "This ran out of time.",
         "no_result": "This run produced nothing.",
         "source_unreachable": "This address would not open.",
         "source_too_slow": "This address was still sending when the time ran out.",
         "unsupported_type": "{kind, select, image {Not a supported format. Images take {formats}.} video {Not a supported format. Video takes {formats}.} audio {Not a supported format. Audio takes {formats}.} other {Not a supported format.}}",
         "empty": "Nothing came back.",
-        "internal": "Something on our side went wrong. Try again."
+        "internal": "Something on our side went wrong. Try again.",
+        "no_credits": "No credits available.",
+        "declined": "The model declined this request.",
+        "media_refused": "The model would not take this file."
       }
     }
   },
@@ -626,8 +663,8 @@
       "signUp": "Sign up",
       "noAccount": "Don't have an account?",
       "forgotPassword": "Forgot password?",
-      "continueWithGoogle": "Continue with Google",
-      "googleSoon": "Google sign-in is coming soon.",
+      "googleLoading": "Loading Google sign-in…",
+      "googleFailed": "Google sign-in is unavailable. Please try again or use email sign-in.",
       "failed": "Sign-in failed. Please try again."
     },
     "register": {
@@ -745,6 +782,14 @@
         "create": "Creating Space…"
       },
       "noActive": "No open spaces — open one from the drawer or click + to create."
+    },
+    "update": {
+      "available": "New version",
+      "title": "A new version is available",
+      "description": "Refresh to use the new version.",
+      "busy": "An upload or another operation is in progress. Refreshing will interrupt it. We recommend waiting until it finishes.",
+      "later": "Later",
+      "refresh": "Update"
     }
   },
   "common": {
@@ -1090,6 +1135,7 @@
       "account": "Account",
       "signOut": "Sign out",
       "credits": "Credits",
+      "creditsUnavailable": "Unavailable",
       "membership": "Membership",
       "accountSettings": "Account settings"
     },
@@ -1490,15 +1536,22 @@
     },
     "section": {
       "overview": "Overview",
-      "lots": "Purchases",
+      "lots": "Credit history",
       "ledger": "Spending",
       "studios": "By Studio",
       "buy": "Buy credits",
       "assign": "Assign",
       "refunds": "Refunds"
     },
+    "source": {
+      "payment": "Purchase",
+      "gift": "Trial credits",
+      "compensation": "Compensation",
+      "discount": "Discount"
+    },
+    "pinnedToPersonalStudio": "Your personal Studio only",
     "lifecycle": {
-      "depleted": "Spent",
+      "depleted": "Used up",
       "refund_pending": "Under review",
       "refunding": "Refunding",
       "refunded": "Refunded"
@@ -1509,6 +1562,7 @@
     },
     "total": "Account total",
     "unassigned": "Unassigned",
+    "unassignedWithNextStep": "Unassigned — use Assign on the left to give it to a Studio",
     "assigned": "Assigned",
     "pricingHint": "1 credit = 1 US cent, and credits never expire.",
     "unassignedHint": "Assign these to a Studio before they can be spent.",
@@ -1519,15 +1573,11 @@
     },
     "lotsEmpty": "No purchases yet.",
     "lotsEmptyNotice": {
-      "title": "Every purchase will be listed here",
-      "body": "Each one shows what it cost, where it stands, and which Studio its credits went to."
+      "title": "Every credit you hold is listed here",
+      "body": "Bought and granted alike, with where each came from, what it cost, how far it got, and which Studio it went to."
     },
     "assignedTo": "Assigned to {studio}",
     "ofPurchased": "of {amount}",
-    "unassignedNotice": {
-      "title": "{count, plural, one {# purchase is unassigned and cannot be spent} other {# purchases are unassigned and cannot be spent}}",
-      "body": "Use Assign on the left to give them to the Studios that need them."
-    },
     "allSpending": "All spending",
     "allStudios": "All Studios",
     "filterByStudio": "Filter by Studio",
@@ -1556,25 +1606,14 @@
       "body": "Each purchase goes to one Studio, and can be moved at any time."
     },
     "assignNote": "The list holds only Studios you administer. Moving a purchase takes it from the Studio that had it, immediately.",
-    "remaining": "{amount} credits left",
     "designationFor": "Studio for the {amount} purchase",
     "designateFailed": "That did not save. Try again.",
-    "refundsEmpty": "Nothing can be refunded.",
-    "refundable": "Refundable purchases",
-    "refundableHint": "{credits} credits left",
+    "refundsEmpty": "No credit packs bought yet.",
     "askRefund": "Ask for a refund",
-    "refundNotOpen": "Refunds are not open yet",
-    "refundsAsked": "Requests made",
-    "refundRefused": "Refused",
-    "refundRefusedHint": "This purchase is spendable again, and will pay off any debt first",
-    "refundPendingHint": "{credits} credits · it cannot be assigned to a Studio while it is under review",
-    "refundingHint": "{credits} credits · it cannot be assigned to a Studio while the money goes back",
-    "refundedHint": "{credits} credits · the money went back, so it can no longer be assigned to a Studio",
-    "refundsNote": "A purchase with no credit spent can be refunded in full within 30 days, to the original payment method, after review.",
+    "refundTitle": "Refund rule",
     "buy": {
       "taxNotice": "Prices exclude tax. What you pay is the price plus the tax where you are, and the checkout page shows the final amount.",
       "assignNotice": "Credits have to be assigned to a Studio before they can be spent.",
-      "refundTitle": "Refund rule",
       "action": "Buy",
       "confirmTitle": "Confirm your purchase",
       "confirmPack": "Pack",
@@ -1600,6 +1639,31 @@
       "title": "Processing this purchase",
       "body": "Please keep this page open.",
       "skip": "View purchase history"
+    },
+    "refundFailed": "Could not ask for a refund. Try again.",
+    "underRefund": "Under refund",
+    "underRefundHint": "Spendable nowhere until it resolves",
+    "confirmRefund": {
+      "title": "Ask for a refund?",
+      "body": "This purchase goes under review. It cannot be assigned to a Studio while it waits, and the request cannot be taken back.",
+      "cancel": "Cancel",
+      "confirm": "Ask for a refund"
+    },
+    "refundReason": {
+      "spent": "Already used",
+      "expired": "Over 30 days"
+    },
+    "refundHint": {
+      "assigned": "Unassign it to ask for a refund"
     }
+  },
+  "notFound": {
+    "heading": "Page not found",
+    "body": "The page you're looking for doesn't exist or has moved. Let's get you back on track.",
+    "cta": "Back to home"
+  },
+  "pageLoadError": {
+    "message": "This page could not be loaded. Please try again.",
+    "retry": "Try again"
   }
 }

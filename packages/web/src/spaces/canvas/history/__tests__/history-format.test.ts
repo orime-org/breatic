@@ -62,7 +62,40 @@ describe('history-format (#1619 pure derivations)', () => {
       const list = [entry({ id: 'f', status: 'failed', content: null })];
       expect(currentEntryId(list, null)).toBeNull();
     });
-    it('dedup-safe: marks only the newest of two same-URL rows', () => {
+    // "Current" names WHICH ROW the node is on, not which rows happen to hold
+    // the same thing (user 2026-09-20). A reader who restores a row gets that
+    // row, and two rows holding identical words are two rows a reader is
+    // allowed to keep — content alone cannot tell them apart.
+    it('names the row the reader restored, not the newest one matching it', () => {
+      const list = [
+        entry({ id: 'newer', content: 'same words' }),
+        entry({ id: 'older', content: 'same words' }),
+      ];
+      expect(currentEntryId(list, 'same words', 'older')).toBe('older');
+    });
+
+    // The node moved on: its content is no longer what that row holds, so the
+    // row it came from stops being current and the content match takes over.
+    it('drops a restored row once the node no longer holds what it held', () => {
+      const list = [
+        entry({ id: 'newer', content: 'b' }),
+        entry({ id: 'older', content: 'a' }),
+      ];
+      expect(currentEntryId(list, 'b', 'older')).toBe('newer');
+    });
+
+    // A node nobody has restored on — every row arrived by a run or an
+    // upload — still says which row it is on.
+    it('falls back to the content match when no row was restored', () => {
+      const list = [entry({ id: 'gen', content: 'x.png' })];
+      expect(currentEntryId(list, 'x.png', null)).toBe('gen');
+    });
+
+    // Nobody restored on this node — the same picture was uploaded twice and
+    // dedup gave both rows one URL. The newest is the one that landed, which
+    // is as close as content gets. A reader who then picks either row is
+    // answered by the row itself, above.
+    it('takes the newest of two same-URL rows when no row was restored', () => {
       const list = [
         entry({ id: 'newer', content: 'dup.png' }),
         entry({ id: 'older', content: 'dup.png' }),
@@ -84,14 +117,20 @@ describe('history-format (#1619 pure derivations)', () => {
   });
 
   describe('entryCredits', () => {
-    it('returns a finite cost, including 0', () => {
-      expect(entryCredits(entry({ metadata: { cost: 58 } }))).toBe(58);
-      expect(entryCredits(entry({ metadata: { cost: 0 } }))).toBe(0);
+    it('returns a finite credit figure, including 0', () => {
+      expect(entryCredits(entry({ metadata: { credits: 58 } }))).toBe(58);
+      expect(entryCredits(entry({ metadata: { credits: 0 } }))).toBe(0);
+    });
+    // The chip is labelled in credits, and `cost` is what the service
+    // charged us in dollars. Reading it here printed a figure a hundred
+    // times too small beside a word that said credits.
+    it('ignores the dollar figure the row also carries', () => {
+      expect(entryCredits(entry({ metadata: { cost: 0.58 } }))).toBeUndefined();
     });
     it('undefined when absent or non-finite (no NaN chip)', () => {
       expect(entryCredits(entry({ metadata: {} }))).toBeUndefined();
       expect(
-        entryCredits(entry({ metadata: { cost: Number.NaN } })),
+        entryCredits(entry({ metadata: { credits: Number.NaN } })),
       ).toBeUndefined();
     });
   });

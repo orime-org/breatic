@@ -60,55 +60,35 @@ export function useMediaPlayer(
     const el = ref.current;
     if (!el) return;
 
-    // Sync any values already present before the first event fires.
-    setElementDuration(Number.isFinite(el.duration) ? el.duration : 0);
-    setCurrentTime(el.currentTime);
-    setVolume(el.volume);
-    setMuted(el.muted);
-    setPlaying(!el.paused);
-
-    /** Mirror time / duration / volume / muted from the element into state. */
+    /** Mirror the current native state, including a resource load/reset. */
     const sync = (): void => {
+      setPlaying(!el.paused);
       setCurrentTime(el.currentTime);
       setElementDuration(Number.isFinite(el.duration) ? el.duration : 0);
       setVolume(el.volume);
       setMuted(el.muted);
     };
-    /**
-     * Flip the playing flag from whichever transport event fired.
-     * @param e - The `play` / `pause` / `ended` event.
-     */
-    const onTransport = (e: Event): void => {
-      setPlaying(e.type === 'play');
-    };
-
-    el.addEventListener('play', onTransport);
-    el.addEventListener('pause', onTransport);
-    el.addEventListener('ended', onTransport);
-    el.addEventListener('timeupdate', sync);
-    el.addEventListener('loadedmetadata', sync);
-    el.addEventListener('durationchange', sync);
-    el.addEventListener('volumechange', sync);
-
+    // Loading a new src resets paused without requiring a pause event. Read
+    // the element rather than event names: queued events can describe an old
+    // resource or a transport action that has already been superseded.
+    const events = [
+      'play', 'pause', 'ended', 'emptied', 'loadstart',
+      'timeupdate', 'loadedmetadata', 'durationchange', 'volumechange',
+    ];
+    sync();
+    for (const event of events) el.addEventListener(event, sync);
     return () => {
-      el.removeEventListener('play', onTransport);
-      el.removeEventListener('pause', onTransport);
-      el.removeEventListener('ended', onTransport);
-      el.removeEventListener('timeupdate', sync);
-      el.removeEventListener('loadedmetadata', sync);
-      el.removeEventListener('durationchange', sync);
-      el.removeEventListener('volumechange', sync);
+      for (const event of events) el.removeEventListener(event, sync);
     };
   }, [ref]);
 
-  // Decide play vs pause from React's `playing` state (driven by the play/pause
-  // events) — robust across browsers and matches the rendered control state.
+  // A click can arrive before the queued native event updates React.
   const togglePlay = React.useCallback((): void => {
     const el = ref.current;
     if (!el) return;
-    if (playing) el.pause();
-    else void el.play().catch(() => {});
-  }, [ref, playing]);
+    if (el.paused) void el.play().catch(() => {});
+    else el.pause();
+  }, [ref]);
 
   const seek = React.useCallback(
     (time: number): void => {

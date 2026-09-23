@@ -450,10 +450,35 @@ async function barGone(p: Page): Promise<void> {
  * By key rather than by click: the bar sits over the selection it belongs to,
  * and a click aimed at the block under it is refused as intercepted — measured,
  * three minutes of retries.
+ *
+ * Pressed again while the range is still there, because one press is not
+ * enough after an undo — and a cell of the loops below that moved the
+ * document ends with one. An undo puts back the selection it was pressed on
+ * as well as the text (`src/spaces/document/document-undo-selection.ts`), and
+ * the cell waits on the text alone, so the key that follows arrives while the
+ * editor is still taking the rest.
+ *
+ * What that looks like, measured at a failure: the browser's own selection
+ * still held the whole range, the keydown was not `defaultPrevented`, and a
+ * second press collapsed it. Waiting a second and a half before the first
+ * press turned all nine cases green.
+ *
+ * There is nothing to wait on instead. The restored selection is the same
+ * range the press was made over, so no reading of the editor separates "the
+ * undo has finished" from "it is still going". Pressing again converges.
  * @param p - The page.
  */
 async function collapseSelection(p: Page): Promise<void> {
-  await p.keyboard.press('ArrowLeft');
+  const bar = p.getByTestId(SLOT);
+  for (let pressed = 0; pressed < 5; pressed += 1) {
+    await p.keyboard.press('ArrowLeft');
+    const gone = await bar
+      .waitFor({ state: 'hidden', timeout: 2_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (gone) return;
+  }
+  // Out of presses: report it the way every other wait here does.
   await barGone(p);
 }
 

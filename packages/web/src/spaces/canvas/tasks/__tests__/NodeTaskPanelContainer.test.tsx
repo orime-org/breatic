@@ -17,6 +17,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@web/data/api/canvas', () => ({
   canvasApi: { listNodeTasks: vi.fn(), dismissNodeTask: vi.fn() },
+  // A failed row's sentence names the ceiling a reading refuses against,
+  // which it reads from this module's cache.
+  getCachedUnderstandMaxBytes: vi.fn(() => null),
 }));
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },

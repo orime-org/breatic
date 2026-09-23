@@ -3,16 +3,18 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { REFUND_LIFECYCLES } from '@breatic/shared';
 import type { PurchaseRow } from '@breatic/shared';
 
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
 import { paymentApi } from '@web/data/api/payment';
 import {
-  Card,
+  ScrollCard,
   ListEnd,
   Notice,
   Row,
+  RowBalance,
   Rows,
   Section,
   SectionEmpty,
@@ -64,13 +66,11 @@ export function PurchasesSection({
     enabled: billing && userId !== null,
   });
 
-  const unassigned = paging.rows.filter(
-    (purchase) =>
-      purchase.lifecycle === 'active' && purchase.designatedStudioId === null,
-  ).length;
-
   return (
-    <Section title={t('credits.section.lots')}>
+    <Section
+      scrolls={false}
+      title={t('credits.section.lots')}
+    >
       {!billing ? (
         <Notice
           title={t('credits.billingOff.title')}
@@ -90,35 +90,18 @@ export function PurchasesSection({
           />
         </>
       ) : (
-        <>
-          <Card>
-            <Rows>
-              {paging.rows.map((purchase) => (
-                <PurchaseLine
-                  key={purchase.paymentId}
-                  purchase={purchase}
-                  userId={userId}
-                />
-              ))}
-            </Rows>
-          </Card>
-          <ListEnd
-            sentinelRef={paging.sentinelRef}
-            loading={paging.isFetchingNextPage}
-            more={paging.hasNextPage}
-            failed={paging.pageFailed}
-          />
-          {/* Counted only once the list is read through. While there is
-              another page this figure is of the pages fetched so far, and a
-              number that climbs as you scroll says less than none. */}
-          {unassigned === 0 || paging.hasNextPage ? null : (
-            <Notice
-              data-testid='unassigned-notice'
-              title={t('credits.unassignedNotice.title', { count: unassigned })}
-              body={t('credits.unassignedNotice.body')}
-            />
-          )}
-        </>
+        <ScrollCard scrollerRef={paging.scrollerRef}>
+          <Rows>
+            {paging.rows.map((purchase) => (
+              <PurchaseLine
+                key={purchase.rowId}
+                purchase={purchase}
+                userId={userId}
+              />
+            ))}
+          </Rows>
+          <ListEnd paging={paging} />
+        </ScrollCard>
       )}
     </Section>
   );
@@ -175,10 +158,16 @@ const PurchaseLine = React.memo(function PurchaseLine({
   // figure from the moment the buyer typed their address. Carrying one says
   // nothing about whether the money moved, which is why `over` is asked first.
   const charged = purchase.totalCents;
-  const over = OVER.has(purchase.status);
-  const statusKey = STATUS_LABEL[purchase.status];
+  // A row nobody paid for has no state a payment can be in, so neither the
+  // "ended without a charge" question nor the badge applies to it.
+  const over = purchase.status !== null && OVER.has(purchase.status);
+  const statusKey =
+    purchase.status === null ? undefined : STATUS_LABEL[purchase.status];
 
   const resend = React.useCallback(async (): Promise<void> => {
+    // Only offered where a payment exists, which is what `canResend` already
+    // answers; this keeps the call honest for the type as well.
+    if (purchase.paymentId === null) return;
     setSending(true);
     try {
       const { sent } = await paymentApi.resendConfirmation(purchase.paymentId);
@@ -208,13 +197,18 @@ const PurchaseLine = React.memo(function PurchaseLine({
                 the figure a buyer matches against a statement; or, before
                 Stripe has one, the pre-tax price said plainly, which tells
                 them more than nothing does. */}
-          {over
-            ? t('credits.purchase.notCharged')
-            : charged !== null
-              ? formatMoney(charged, purchase.currency)
-              : t('credits.purchase.beforeTax', {
-                amount: formatMoney(purchase.amountCents, purchase.currency),
-              })}{' '}
+          {/* Credits nobody paid for have no price to print, so the cell
+                says where they came from instead — the one thing about the
+                row a reader cannot work out from the rest of it. */}
+          {purchase.amountCents === null
+            ? t(`credits.source.${purchase.sourceKind}`)
+            : over
+              ? t('credits.purchase.notCharged')
+              : charged !== null
+                ? formatMoney(charged, purchase.currency)
+                : t('credits.purchase.beforeTax', {
+                  amount: formatMoney(purchase.amountCents, purchase.currency),
+                })}{' '}
             · {formatLocalDay(purchase.createdAt)}
           {statusKey === undefined ? null : (
             <Badge
@@ -233,13 +227,31 @@ const PurchaseLine = React.memo(function PurchaseLine({
         // which states it is in: "Unassigned" on a purchase that cannot be
         // assigned — abandoned, failed, or still being paid for — reads as
         // something left to do.
+        //
+        // A purchase on its way out of the account says where it stands
+        // instead. Those three carry no designation — the database refuses
+        // one — so "Unassigned" there sends the reader to the assign screen,
+        // which does not list them.
+        //
+        // Then where it points, while it still has something to point: a pack
+        // spent to nothing has no credits to give a Studio, so whether it was
+        // ever pointed is no longer a thing to act on. Where the money went
+        // is, and this row is the only place that says it — so a spent pack
+        // that kept its designation names the Studio, and one that lost it
+        // (a transfer releases every pack pointed at that Studio, spent or
+        // not) says it is spent, in the same words the refunds screen uses
+        // for that state: one key names it, and both screens read that key.
         purchase.lifecycle === null
           ? undefined
-          : purchase.designatedStudioName === null
-            ? t('credits.unassigned')
-            : t('credits.assignedTo', {
-              studio: purchase.designatedStudioName,
-            })
+          : REFUND_LIFECYCLES.has(purchase.lifecycle)
+            ? t(`credits.lifecycle.${purchase.lifecycle}`)
+            : purchase.designatedStudioName !== null
+              ? t('credits.assignedTo', {
+                studio: purchase.designatedStudioName,
+              })
+              : purchase.lifecycle === 'depleted'
+                ? t('credits.lifecycle.depleted')
+                : t('credits.unassignedWithNextStep')
       }
       right={
         <>
@@ -253,12 +265,10 @@ const PurchaseLine = React.memo(function PurchaseLine({
             )
           ) : (
             <>
-              <span
+              <RowBalance
                 data-testid='purchase-remaining'
-                className='block text-sm font-semibold'
-              >
-                {formatCreditAmount(purchase.remainingCredits)}
-              </span>
+                credits={purchase.remainingCredits}
+              />
               <span className='block text-xs text-muted-foreground'>
                 {t('credits.ofPurchased', {
                   amount: formatCreditAmount(purchase.creditsGranted),

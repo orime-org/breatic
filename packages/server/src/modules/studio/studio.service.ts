@@ -25,7 +25,12 @@ import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { db } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { lockLimitsForUser } from "@breatic/core";
-import { studioMembersRepo, studioAuthService } from "@breatic/domain";
+import {
+  studioMembersRepo,
+  studioAuthService,
+  creditLotService,
+} from "@breatic/domain";
+import { getTrialGrantCredits } from "@server/config/pricing.js";
 import {
   t,
   SLUG_REGEX,
@@ -64,6 +69,14 @@ export async function createPersonalStudio(
     return await db.transaction(async (tx) => {
       const studio = await studioRepo.createPersonalStudio(userId, slug, slug, tx);
       await studioMembersRepo.insertAdmin(studio.id, userId, tx);
+      // In the same transaction, so a grant cannot commit alongside a studio
+      // that did not. How many to give is read here because the file it comes
+      // from is this package's to read; whether to give any at all is the
+      // grant's own question, and it answers silently.
+      await creditLotService.grantTrialCredits(
+        { userId, studioId: studio.id, credits: getTrialGrantCredits() },
+        tx,
+      );
       return studio;
     });
   } catch (err) {

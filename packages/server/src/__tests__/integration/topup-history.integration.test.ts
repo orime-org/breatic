@@ -95,6 +95,7 @@ import {
 import { creditLotService } from "@breatic/domain";
 import type { CreditPage, PurchaseRow } from "@breatic/shared";
 import { getConfirmationView } from "@server/modules/payment/payment.repo.js";
+import { CONSENT_CREDITS_VERSION } from "@server/modules/payment/legal-text.js";
 import {
   refundLinesAt,
   REFUND_CREDITS_VERSION,
@@ -184,13 +185,19 @@ async function seedPayment(
   } = {},
 ): Promise<string> {
   seq += 1;
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO payments (
-      user_id, stripe_session_id, amount_cents, tax_cents, total_cents,
+      id, user_id, stripe_session_id, amount_cents, tax_cents, total_cents,
       credits_granted, currency, status, metadata, created_at, updated_at
     )
     VALUES (
-      ${userId}, ${`cs_hist_${Date.now()}-${seq}`}, 2000,
+      ${source!.id}, ${userId}, ${`cs_hist_${Date.now()}-${seq}`}, 2000,
       ${over.taxCents ?? null}, ${over.totalCents ?? null},
       1700, 'usd', ${over.status ?? "pending"},
       ${sql.json(over.metadata ?? {})},
@@ -233,6 +240,19 @@ async function seedLanded(
       WHERE id = ${lot.id}
     `;
   }
+  // What a purchase made today records: the wording in force when it was
+  // made. Left out, the mail falls back to the earliest version, and every
+  // assertion written against today's wording answers about a different one.
+  await sql`
+    INSERT INTO purchase_consents
+      (payment_id, user_id, locale, consent_text_version,
+       refund_text_version, consented_at)
+    VALUES (
+      ${paymentId}, ${userId}, ${metadata["locale"] ?? "en"},
+      ${CONSENT_CREDITS_VERSION}, ${REFUND_CREDITS_VERSION}, now()
+    )
+    ON CONFLICT (payment_id) DO NOTHING
+  `;
   await sql`
     INSERT INTO purchase_mail_outbox (payment_id, status)
     VALUES (${paymentId}, 'sent')
@@ -385,7 +405,10 @@ describe("GET /payment/history — paging", () => {
           buyer,
           `limit=2${cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`}`,
         );
-        seen.push(...page.items.map((r) => r.paymentId));
+        // Every row in this suite is a purchase, so the row's identity and
+        // the payment behind it are the same value; `rowId` is the one of
+        // the two that a granted row would also carry.
+        seen.push(...page.items.map((r) => r.rowId));
         cursor = page.nextCursor;
         if (cursor === null) break;
       }
@@ -599,7 +622,7 @@ describe("what the confirmation calls the balance", () => {
       // 1700 bought, 1200 of it spent.
       await sql`
         UPDATE credit_lots SET remaining_credits = 500
-        WHERE payment_id = ${paymentId}
+        WHERE source_id = ${paymentId}
       `;
       const view = await getConfirmationView(paymentId);
       expect(view?.balanceCredits).toBe(500);
@@ -608,14 +631,33 @@ describe("what the confirmation calls the balance", () => {
     }
   });
 
-  it("leaves out a lot that is no longer active", async () => {
+  it("counts a lot waiting on a refund decision, as the overlay does", async () => {
+    // "Balance now" answers the same question as the figure at the top of the
+    // credits overlay, and that figure is assigned + unassigned + under
+    // refund. Money waiting on a decision has not gone back to the card yet.
+    const buyer = await seedBuyer();
+    try {
+      const live = await seedLanded(buyer.userId);
+      const waiting = await seedLanded(buyer.userId);
+      await sql`
+        UPDATE credit_lots SET lifecycle = 'refund_pending'
+        WHERE source_id = ${waiting}
+      `;
+      const view = await getConfirmationView(live);
+      expect(view?.balanceCredits).toBe(3400);
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
+  it("leaves out a lot the buyer no longer holds", async () => {
     const buyer = await seedBuyer();
     try {
       const live = await seedLanded(buyer.userId);
       const refunded = await seedLanded(buyer.userId);
       await sql`
         UPDATE credit_lots SET lifecycle = 'refunded'
-        WHERE payment_id = ${refunded}
+        WHERE source_id = ${refunded}
       `;
       const view = await getConfirmationView(live);
       // Only the live lot's 1700 counts; the refunded one's does not.

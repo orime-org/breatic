@@ -24,23 +24,43 @@ import { runLocalHandler } from "@worker/handlers/local/index.js";
 import { getModel } from "@breatic/domain";
 import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
-import { getStorageAdapter } from "@breatic/core";
+import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { settleTaskForNode } from "@breatic/domain";
+import { settleTaskForNode, understandMediaAt, UNDERSTAND_PINS } from "@breatic/domain";
+import {
+  AnsweredNothing,
+  verdictStands,
+} from "@worker/handlers/understand-failure.js";
+import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { storeBytes, storeFromUrl } from "@worker/handlers/backend-upload.js";
 import {
+  generationMetadata,
+  nodeResultsFrom,
   storedAsOutput,
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
-import { canvasSpaceDocName } from "@breatic/shared";
+import { canvasSpaceDocName, type GenerationSource } from "@breatic/shared";
 import type { TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { extractPromptText } from "@breatic/shared";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
+import { understandQuestion } from "@worker/handlers/understand-question.js";
+
+/**
+ * What a provider's figure is worth in credits.
+ *
+ * A credit is a cent, and the deployment's multiplier is where the margin
+ * lives. Every path that prices a run reads this, so the four of them cannot
+ * drift into charging four different amounts for the same dollar.
+ * @param costUsd - What the service charged, in US dollars.
+ * @returns The credits to deduct.
+ */
+function creditsFor(costUsd: number): number {
+  return costUsd * 100 * env.CREDIT_MULTIPLIER;
+}
 
 const AIGC_TASK_TYPES: Record<string, string> = {
   image: "image",
@@ -50,12 +70,6 @@ const AIGC_TASK_TYPES: Record<string, string> = {
   three_d: "three-d",
 };
 
-/** Understand default models by source type. */
-const UNDERSTAND_DEFAULTS: Record<string, string> = {
-  image: "gemini-flash-vi",
-  video: "gemini-flash-vv",
-  audio: "gemini-flash-va",
-};
 
 /** Job data shape from BullMQ. */
 export interface TaskJobData {
@@ -81,7 +95,8 @@ export interface TaskJobData {
   params: Record<string, unknown>;
   model?: string;
   skillName?: string;
-  source?: string;
+  /** Which lane queued this run, as the activity feed files it. */
+  source?: GenerationSource;
   toolName?: string;
   /**
    * Target canvas node IDs whose task rows this run settles.
@@ -300,6 +315,21 @@ async function runTaskBody(
   // targetNodeIds from job payload (replaces old params.node_ids / historyItemId pattern).
   // Falls back to empty array for tasks not bound to any canvas node.
   const nodeIds: string[] = targetNodeIds ?? [];
+  // What every way out of this run says about itself. Each exit adds the two
+  // things only it knows: what to say, and whether this is the last word.
+  const runEnd = {
+    streamRedis,
+    taskId,
+    projectId,
+    spaceId,
+    canvasDocName,
+    nodeIds,
+    userId,
+    model,
+    params,
+    source,
+    toolName,
+  };
   // ─── Re-entry guard ───────────────────────────────────────────────
   // Two cases where BullMQ might redeliver a job we've already touched:
   //
@@ -327,7 +357,7 @@ async function runTaskBody(
     // result that never reached the node.
     const storedResult = existing.result as {
       model?: string;
-      cost?: number;
+      credits?: number;
       outputs?: PersistedOutput[];
     } | null;
     const storedOutputs = storedResult?.outputs;
@@ -344,26 +374,15 @@ async function runTaskBody(
           userId,
           taskId,
           taskType,
-          metadata: {
-            // Parity with Stage 4 — read the resolved model/cost the provider
-            // echoed into the persisted result, not the raw job payload /
-            // charged credits (#1618 adversarial ②).
-            model: storedResult?.model ?? model,
-            cost: storedResult?.cost,
+          metadata: generationMetadata({
+            reportedModel: storedResult?.model,
+            jobModel: model,
+            credits: existing.billedCredits ?? undefined,
             durationMs: existing.durationMs ?? undefined,
             params,
-          },
+          }),
         },
-        nodeIds.map((nodeId, i) => ({
-          nodeId,
-          url: storedOutputs[i]?.url,
-          coverUrl: storedOutputs[i]?.cover_url,
-          // The paid result already holds what the container measured, and
-          // this redelivery is the only one the node will get for it.
-          width: storedOutputs[i]?.width ?? null,
-          height: storedOutputs[i]?.height ?? null,
-          duration: storedOutputs[i]?.duration_seconds ?? null,
-        })),
+        nodeResultsFrom(nodeIds, storedOutputs),
         { rethrowOnRecordFailure: true },
       );
     }
@@ -401,10 +420,15 @@ async function runTaskBody(
       { taskId, providerResultUrl: existing.providerResultUrl },
       "BullMQ redelivered task after provider call but before billing; failing per no-retry policy",
     );
-    await taskService.markFailed(taskId, "Task retry not allowed after provider call");
-    if (canvasDocName) {
-      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, "Retry not allowed after provider returned a result", taskId);
-    }
+    await finishFailedRun({
+      ...runEnd,
+      // The row this lands on is read on a node, in whatever language the
+      // reader set. Which redelivery took which turn is the log's to say
+      // — it says it right above — and what the reader does next is send
+      // it again, which is what this code says in their language.
+      errorMessage: "internal" satisfies TaskFailureReason,
+      settles: true,
+    });
     return { failed: true, reason: "no_retry_after_provider" };
   }
 
@@ -458,7 +482,15 @@ async function runTaskBody(
         resume,
       });
     } else if (taskType === "understand") {
-      [providerResult, creditsUsed] = await runUnderstand(model, params, resume);
+      // A reading answers with one piece of text, and the row on the node it
+      // was written for is the only thing that carries either the answer or a
+      // cause back to the canvas. A run that named none would read the media,
+      // bill for it, and answer into nowhere — so it is refused here, where
+      // every door into this lane passes, rather than at one of them.
+      if (nodeIds.length === 0) {
+        throw new Error("understand: a reading must name the node it writes to");
+      }
+      [providerResult, creditsUsed] = await runUnderstand(params);
     } else if (taskType in AIGC_TASK_TYPES && !skillName) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, resume);
     } else if (skillName) {
@@ -482,35 +514,31 @@ async function runTaskBody(
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
     // no provider_result_url recorded. The next retry enters this
     // function fresh.
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    logger.error({ taskId, error: errorMsg }, "provider_call_failed");
-    await taskService.markFailed(taskId, errorMsg);
-    await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    // A terminal outcome may only ship on a TERMINAL failure. Settling here
-    // on a retryable one marks the row failed while the retry is still to
-    // come, and the retry then finds nothing running to settle: billed
-    // result, node stuck on the stale count. Same contract the QueueEvents
-    // net enforces via job.finishedOn.
-    if (canvasDocName && isTerminalAttempt(job)) {
-      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, errorMsg, taskId);
-    }
-    // Terminal attempts only - a retryable failure may still succeed,
-    // and the feed records outcomes, not attempts.
-    if (projectId && isTerminalAttempt(job)) {
-      await recordGenerationActivity({
-        projectId,
-        userId,
-        taskId,
-        succeeded: false,
-        spaceId,
-        nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
-        source,
-        toolName,
-        model,
-        errorMessage: errorMsg,
-      });
-    }
-    throw err; // Rethrow to let BullMQ schedule a retry (attempts > 1)
+    const errorMsg = storedFailure(
+      taskType,
+      err,
+      typeof params.source_url === "string" ? params.source_url : undefined,
+    );
+    // The error itself, beside what the row will hold. A reading stores a
+    // code of ours, and `internal` says only that a part of this broke —
+    // which part is what `err` carries, and the log is where it lands.
+    logger.error({ err, taskId, error: errorMsg }, "provider_call_failed");
+    // Two ways this is the last word on the run: the queue has no attempts
+    // left, or the failure itself says a further attempt reaches the same
+    // answer. The second matters where an attempt is not free — a reading
+    // re-fetches the media up to its ceiling, and a refusal from the service
+    // means that call was paid for.
+    const settlesNow = isTerminalAttempt(job) || verdictStands(err);
+    await finishFailedRun({
+      ...runEnd,
+      errorMessage: errorMsg,
+      settles: settlesNow,
+    });
+    // Rethrow to let BullMQ schedule a retry, unless the verdict already
+    // stands: the row is settled and the reader has been told, so another
+    // attempt would re-read the media and repeat the same refusal.
+    if (!settlesNow) throw err;
+    return { failed: true, reason: errorMsg };
   }
 
   // ─── Normalize to unified outputs shape ──────────────────────────
@@ -522,24 +550,11 @@ async function runTaskBody(
   if (source === "mini_tool" && nodeIds.length > 0 && unified.outputs.length !== nodeIds.length) {
     const msg = `outputs.length (${unified.outputs.length}) !== node_ids.length (${nodeIds.length})`;
     logger.error({ taskId, toolName }, msg);
-    await taskService.markFailed(taskId, msg);
-    await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, msg);
-    if (canvasDocName) {
-      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, msg, taskId);
-    }
-    if (projectId) {
-      await recordGenerationActivity({
-        projectId,
-        userId,
-        taskId,
-        succeeded: false,
-        spaceId,
-        source,
-        toolName,
-        model,
-        errorMessage: msg,
-      });
-    }
+    await finishFailedRun({
+      ...runEnd,
+      errorMessage: msg,
+      settles: true,
+    });
     return { failed: true, reason: "output_count_mismatch" };
   }
 
@@ -567,24 +582,15 @@ async function runTaskBody(
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error({ taskId, error: errorMsg }, "persist_failed_no_charge");
-    await taskService.markFailed(taskId, `Persist failed: ${errorMsg}`);
-    await recordFailureHistory(taskId, projectId, nodeIds, userId, model, params, errorMsg);
-    if (canvasDocName) {
-      await settleFailedBestEffort(streamRedis, canvasDocName, nodeIds, errorMsg, taskId);
-    }
-    if (projectId) {
-      await recordGenerationActivity({
-        projectId,
-        userId,
-        taskId,
-        succeeded: false,
-        spaceId,
-        source,
-        toolName,
-        model,
-        errorMessage: errorMsg,
-      });
-    }
+    await finishFailedRun({
+      ...runEnd,
+      // Storing what broke would put one English sentence on a row read in
+      // whatever language its reader set. Which part of storing it failed is
+      // the log's to say — it says it right above — and the reader's next
+      // move is to run it again, which is what this code says to them.
+      errorMessage: "internal" satisfies TaskFailureReason,
+      settles: true,
+    });
     // Return normally (don't throw) — we don't want BullMQ to retry
     // something we've explicitly decided not to charge for.
     return { failed: true, reason: "persist_failed" };
@@ -703,21 +709,18 @@ async function runTaskBody(
         userId,
         taskId,
         taskType,
-        metadata: {
-          model: (unified.extras.model as string | undefined) ?? model,
-          cost: unified.extras.cost as number | undefined,
+        // The credits are what the reader is charged, which is what the row's
+        // chip says. The provider reports dollars; the conversion happened
+        // where the run was priced, and this is that result.
+        metadata: generationMetadata({
+          reportedModel: unified.extras.model as string | undefined,
+          jobModel: model,
+          credits: creditsUsed,
           durationMs,
           params,
-        },
+        }),
       },
-      nodeIds.map((nodeId, i) => ({
-        nodeId,
-        url: persistedOutputs[i]?.url,
-        coverUrl: persistedOutputs[i]?.cover_url,
-        width: persistedOutputs[i]?.width ?? null,
-        height: persistedOutputs[i]?.height ?? null,
-        duration: persistedOutputs[i]?.duration_seconds ?? null,
-      })),
+      nodeResultsFrom(nodeIds, persistedOutputs),
       { rethrowOnRecordFailure: true },
     );
   }
@@ -738,7 +741,7 @@ async function runTaskBody(
       // provider reported. A studio near the bottom of its balance finishes
       // owing credits, so this parts company with what the pool covered;
       // this feed answers what the run cost. kind omitted for non-media
-      // (understand / 3d) so the payload stays valid; thumbnailUrl only
+      // (3d) so the payload stays valid; thumbnailUrl only
       // present for video covers.
       kind: mediaKindForActivity(taskType),
       fileUrl: persistedOutputs[0]?.url,
@@ -794,7 +797,7 @@ async function recordGenerationActivity(args: {
   succeeded: boolean;
   spaceId?: string;
   nodeId?: string | null;
-  source?: string;
+  source?: GenerationSource;
   toolName?: string;
   model?: string;
   outputCount?: number;
@@ -875,7 +878,8 @@ const NO_RESULT: TaskFailureReason = "no_result";
  * @param ctx.taskType - Task type (drives the image thumbnail fallback).
  * @param ctx.metadata - Generation metadata stored on each history row.
  * @param ctx.metadata.model - Model identifier that produced the result.
- * @param ctx.metadata.cost - Credits/cost attributed to the generation.
+ * @param ctx.metadata.credits - Credits charged for the generation. Not the
+ *   dollars the service charged us: the row's chip is labelled in credits.
  * @param ctx.metadata.durationMs - Provider call duration in milliseconds.
  * @param ctx.metadata.params - Provider/tool parameters used for the generation.
  * @param outputs - Per-node results; one with no url settles its row as
@@ -899,33 +903,40 @@ export async function recordGenerationForNodes(
     taskType: string;
     metadata: {
       model?: string;
-      cost?: number;
+      credits?: number;
       durationMs?: number;
       params?: Record<string, unknown>;
     };
   },
   outputs: Array<{
     nodeId: string;
-    url?: string;
+    /**
+     * What this node gets: a generated file's address, or the text a read
+     * produced. One field because the node holds one — its `content`, the
+     * history row's `content`, and the settle's `content` are all this.
+     */
+    content?: string;
     coverUrl?: string;
     width?: number | null;
     height?: number | null;
     duration?: number | null;
+    mimeType?: string | null;
+    size?: number | null;
   }>,
   opts: { rethrowOnRecordFailure?: boolean } = {},
 ): Promise<void> {
   for (const o of outputs) {
-    const url = typeof o.url === "string" ? o.url : null;
+    const content = typeof o.content === "string" ? o.content : null;
     /** The history row this pass wrote, which the task row points at. */
     let historyId: string | undefined;
-    if (url !== null) {
+    if (content !== null) {
       try {
         const entry = await nodeHistoryService.recordGenerationSuccess({
           projectId: ctx.projectId,
           nodeId: o.nodeId,
           userId: ctx.userId,
-          content: url,
-          thumbnailUrl: o.coverUrl ?? (ctx.taskType === "image" ? url : undefined),
+          content,
+          thumbnailUrl: o.coverUrl ?? (ctx.taskType === "image" ? content : undefined),
           taskId: ctx.taskId,
           metadata: ctx.metadata,
         });
@@ -946,7 +957,7 @@ export async function recordGenerationForNodes(
     // passed. The cause is one we author, so it travels as a code and becomes
     // a sentence in the reader's language (§7.1).
     const ending: Parameters<typeof settleTaskForNode>[2] =
-      url === null
+      content === null
         ? {
             taskId: ctx.taskId,
             nodeId: o.nodeId,
@@ -959,11 +970,13 @@ export async function recordGenerationForNodes(
             outcome: "done",
             ...(historyId !== undefined && { nodeHistoryId: historyId }),
             result: {
-              content: url,
+              content,
               coverUrl: o.coverUrl ?? null,
               width: o.width ?? null,
               height: o.height ?? null,
               duration: o.duration ?? null,
+              mimeType: o.mimeType ?? null,
+              size: o.size ?? null,
             },
           };
     try {
@@ -981,6 +994,87 @@ export async function recordGenerationForNodes(
 
 
 // ─── Failure-path helpers ────────────────────────────────────────────
+
+/** Everything a failed run needs to finish itself. */
+export interface FailedRunEnd {
+  streamRedis: ReturnType<typeof getStreamRedis>;
+  taskId: string;
+  projectId: string | undefined;
+  spaceId: string | undefined;
+  /** The canvas document the target nodes live in, when they live on one. */
+  canvasDocName: string | null | undefined;
+  nodeIds: string[];
+  userId: string;
+  model: string | undefined;
+  params: Record<string, unknown>;
+  source: GenerationSource | undefined;
+  toolName: string | undefined;
+  /** The one text the task row, the history, the node and the feed all carry. */
+  errorMessage: string;
+  /**
+   * Whether this attempt is the last word on the run.
+   *
+   * False while a retry is still to come: the attempt happened and is
+   * recorded, but the outcome has not been reached.
+   */
+  settles: boolean;
+}
+
+/**
+ * End a run that produced nothing, on every surface that was told it started.
+ *
+ * Four things, and every exit that ends a run does all four through here.
+ * Two of them record the ATTEMPT — the task row is marked failed and each
+ * target node gets a history entry — and happen however many attempts are
+ * left. Two record the OUTCOME — the node's row is settled so its count stops
+ * saying a run is happening, and the project feed gets the result — and wait
+ * for `settles`, because a row settled while a retry is on its way reads as
+ * failed to anyone looking and leaves the retry nothing running to finish.
+ *
+ * The feed row names the node when the run had exactly one, which is what
+ * lets a reader open it from the feed.
+ *
+ * Best-effort throughout: each surface logs its own failure and the next one
+ * is still written. The exception is the zombie fence in {@link runTask},
+ * which calls none of this on purpose — a handler that has lost its job lock
+ * must write nothing at all, or it clobbers the live attempt that replaced it.
+ * @param end - The run, and what to say about it.
+ */
+export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
+  await taskService.markFailed(end.taskId, end.errorMessage);
+  await recordFailureHistory(
+    end.taskId,
+    end.projectId,
+    end.nodeIds,
+    end.userId,
+    end.model,
+    end.params,
+    end.errorMessage,
+  );
+  if (end.canvasDocName && end.settles) {
+    await settleFailedBestEffort(
+      end.streamRedis,
+      end.canvasDocName,
+      end.nodeIds,
+      end.errorMessage,
+      end.taskId,
+    );
+  }
+  if (end.projectId && end.settles) {
+    await recordGenerationActivity({
+      projectId: end.projectId,
+      userId: end.userId,
+      taskId: end.taskId,
+      succeeded: false,
+      spaceId: end.spaceId,
+      nodeId: end.nodeIds.length === 1 ? end.nodeIds[0] : null,
+      source: end.source,
+      toolName: end.toolName,
+      model: end.model,
+      errorMessage: end.errorMessage,
+    });
+  }
+}
 
 /**
  * Record failed-generation entries in node_history (non-fatal).
@@ -1063,7 +1157,6 @@ function taskTypeToAssetKind(
   if (taskType === "image") return "image";
   if (taskType === "video") return "video";
   if (taskType === "audio" || taskType === "tts") return "audio";
-  if (taskType === "understand") return "document";
   return "file";
 }
 
@@ -1071,8 +1164,8 @@ function taskTypeToAssetKind(
  * The renderable media modality for the activity-feed preview (#1622), or
  * `undefined` when the task produces no previewable media. Normalizes
  * through {@link taskTypeToAssetKind} (tts→audio) and keeps only the three
- * modalities the HoverPreview can render — document / file (understand /
- * 3d) drop to `undefined` so the payload omits `kind` and stays valid.
+ * modalities the HoverPreview can render — file (3d) drops to `undefined`
+ * so the payload omits `kind` and stays valid.
  * @param taskType - The generation task type.
  * @returns `image` / `video` / `audio`, or `undefined` for non-media.
  */
@@ -1092,7 +1185,6 @@ const OUTPUT_EXTENSIONS: Record<string, string> = {
   audio: ".mp3",
   tts: ".mp3",
   three_d: ".glb",
-  understand: ".json",
 };
 
 /**
@@ -1108,7 +1200,6 @@ const OUTPUT_CONTENT_TYPES: Record<string, string> = {
   audio: "audio/mpeg",
   tts: "audio/mpeg",
   three_d: "model/gltf-binary",
-  understand: "application/json",
 };
 
 /** Provider-level result fields that may carry a URL consumers read. */
@@ -1307,7 +1398,7 @@ export async function runMiniTool(
       projectId,
     });
     const cost = result.cost ?? 0;
-    const credits = cost * 100 * env.CREDIT_MULTIPLIER;
+    const credits = creditsFor(cost);
     return [result as unknown as Record<string, unknown>, credits];
   }
 
@@ -1326,43 +1417,85 @@ export async function runMiniTool(
 
   const result = await provider.generateAsync(prompt, modelName, validated, resume);
   const cost = (result.cost as number) ?? 0;
-  const credits = cost * 100 * env.CREDIT_MULTIPLIER;
+  const credits = creditsFor(cost);
 
   return [result, credits];
 }
 
 /**
- * Execution path 2: run media understanding (image / video / audio
- * analysis or ASR) via the understand provider.
- * @param model - Model override, or undefined to use the per-source-type default
- * @param params - Task params carrying `source_type`, `source_url` and an optional prompt
- * @param resume - Async-transport resume context for at-most-once submit (#1628)
- * @returns A `[result, credits]` tuple: the analysis result dict and the credits to charge
+ * Execution path 2: read one node's media into text.
+ *
+ * The capability lives in `@breatic/domain` and the agent's tool calls the
+ * same one: getting the media and asking about it is one order of steps with
+ * one set of limits between them, and a second assembly of it here would
+ * classify failures its own way. This path supplies the figures — its own,
+ * from `config/understand.yaml`, sized for one press producing one task —
+ * and hands over.
+ *
+ * Nothing about this run produces an asset, so nothing here reaches for a
+ * URL: what comes back is text, and text is what the node gets.
+ *
+ * Exported for the same reason {@link runAigcDirect} is: a test that pins
+ * what this path sends has to be able to call it.
+ * @param params - Task params carrying `source_type`, `source_url` and an optional prompt.
+ * @returns A `[result, credits]` tuple: one output holding the text, and the credits to charge.
+ * @throws {MediaUnavailable} when the address yields no usable media.
+ * @throws {UnderstandRefused} when the service would not answer.
+ * @throws {Error} when the answer is empty.
  */
-async function runUnderstand(
-  model: string | undefined,
+export async function runUnderstand(
   params: Record<string, unknown>,
-  resume: ResumeContext,
 ): Promise<[Record<string, unknown>, number]> {
   const sourceType = params.source_type as string;
-  const sourceUrl = params.source_url as string;
-  const modelName = model ?? UNDERSTAND_DEFAULTS[sourceType] ?? "gemini-flash-vi";
-  const prompt = extractPromptText(params.prompt) || `Analyze this ${sourceType}`;
+  const cfg = getUnderstandConfig();
+  const question = understandQuestion(params.prompt, sourceType, params.reader_locale);
 
-  const cleanParams: Record<string, unknown> = {};
-  if (sourceType === "image") cleanParams.images = [sourceUrl];
-  else if (sourceType === "video") cleanParams.video_url = sourceUrl;
-  else if (sourceType === "audio") {
-    cleanParams.audio_url = sourceUrl;
-    cleanParams.audio = sourceUrl;
+  const answer = await understandMediaAt({
+    url: params.source_url as string,
+    // The ledger's judgement outranks what storage declares: the browser's
+    // gate let this run start on it, and storage answers with a type guessed
+    // from a file name.
+    ...(typeof params.source_mime_type === "string"
+      ? { ledgerType: params.source_mime_type }
+      : {}),
+    question,
+    model: UNDERSTAND_PINS.model,
+    backend: UNDERSTAND_PINS.backend,
+    apiKey: getRawEnvVar("OPENROUTER_API_KEY") ?? "",
+    baseUrl: UNDERSTAND_PINS.baseUrl,
+    maxBytes: cfg.max_media_bytes,
+    fetchTimeoutMs: cfg.fetch_timeout_ms,
+    minBytesPerSec: cfg.min_bytes_per_sec,
+    readFloorMs: cfg.read_floor_ms,
+    timeoutMs: cfg.call_timeout_ms,
+    maxOutputTokens: cfg.max_output_tokens,
+  });
+
+  // A run that answered nothing finished having put nothing on the node.
+  // Writing it would replace what the reader had with an empty node while
+  // the count says the run succeeded, so it fails instead and the row says
+  // so. The call was still paid for — the media was the prompt — and a run
+  // that fails charges nothing, so the log is where that figure has to land
+  // for reconciliation to find it.
+  if (answer.text === "") {
+    logger.warn(
+      { costUsd: answer.costUsd, finishReason: answer.finishReason },
+      "understand_answered_nothing_uncharged",
+    );
+    throw new AnsweredNothing();
   }
 
-  const { generateAsync } = await import("@worker/providers/understand/index.js");
-  const result = await generateAsync(prompt, modelName, cleanParams, resume);
-  const cost = (result.cost) ?? 0;
-  const credits = cost * 100 * env.CREDIT_MULTIPLIER;
+  // The same conversion every other transport's figure takes: the service
+  // reports dollars, a credit is a cent, and the deployment's multiplier is
+  // where the margin lives. A service that said nothing about cost has not
+  // said zero — this run is recorded uncharged and belongs to reconciliation,
+  // which is what a missing figure means everywhere else here too.
+  const credits = answer.costUsd === undefined ? 0 : creditsFor(answer.costUsd);
 
-  return [result, credits];
+  return [
+    { outputs: [{ content: answer.text }], finish_reason: answer.finishReason },
+    credits,
+  ];
 }
 
 /**
@@ -1401,7 +1534,7 @@ export async function runAigcDirect(
 
   const result = await provider.generateAsync(prompt, model, validated, resume);
   const cost = (result.cost as number) ?? 0;
-  const credits = cost * 100 * env.CREDIT_MULTIPLIER;
+  const credits = creditsFor(cost);
 
   return [result, credits];
 }

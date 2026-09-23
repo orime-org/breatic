@@ -41,8 +41,10 @@ import {
   projects,
   payments,
 } from "@breatic/core";
+import { GRANTED_SOURCE_KINDS, IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
 import type {
   CreditLotEntity,
+  CreditSourceKind,
   CreditLotLifecycle,
   CreditLedgerEntryEntity,
   CreditLedgerEntryType,
@@ -101,7 +103,8 @@ function designatedToStudio(studioId: string): SQL | undefined {
 function toLotEntity(row: typeof creditLots.$inferSelect): CreditLotEntity {
   return {
     id: row.id,
-    paymentId: row.paymentId,
+    sourceId: row.sourceId,
+    sourceKind: row.sourceKind as CreditSourceKind,
     userId: row.userId,
     purchasedCredits: row.purchasedCredits,
     remainingCredits: row.remainingCredits,
@@ -156,33 +159,63 @@ function toLedgerEntity(
  * studio each one is for mid-purchase puts two decisions in one flow.
  * Designation is its own step.
  *
- * The unique constraint on `payment_id` is what makes a redelivered webhook a
+ * The unique constraint on `source_id` is what makes a redelivered webhook a
  * failed insert rather than a second grant, so this deliberately does not
  * swallow the conflict — the caller decides what a duplicate means.
- * @param data - The purchase this lot records.
- * @param data.paymentId - The completed payment. Unique across lots.
- * @param data.userId - Who paid.
- * @param data.purchasedCredits - How many credits the payment bought, as a decimal string.
- * @param tx - Optional transaction to join.
+ * @param data - Where this lot's credits came from and who holds them.
+ * @param data.sourceId - What the credits came from. Unique across lots.
+ * @param data.sourceKind - Which kind of receipt that is. Held to the
+ *   receipt's own value by the composite foreign key, so it cannot be stated
+ *   wrongly, only stated.
+ * @param data.userId - Whose credits these are.
+ * @param data.purchasedCredits - How many credits it opened, as a decimal string.
+ * @param data.designatedStudioId - The studio allowed to spend them, or null
+ *   for the owner to point later. Required rather than defaulted: credits
+ *   nobody paid for are pinned as they are written, and a default would let
+ *   that be forgotten silently.
+ * @param tx - The transaction the lot and its `topup` ledger row are written
+ *   in. Required: a lot's remaining balance is the ledger summed over it, so a
+ *   lot that committed without its row would read as owing its whole value.
+ *   The row is written here rather than by the caller, which is what makes a
+ *   lot without one impossible to write.
  * @returns The new lot.
+ * @throws {Error} If a lot already records this source — the unique index on
+ *   `source_id` refuses the insert.
  */
 export async function createLot(
-  data: { paymentId: string; userId: string; purchasedCredits: string },
-  tx?: DbTx,
+  data: {
+    sourceId: string;
+    sourceKind: CreditSourceKind;
+    userId: string;
+    purchasedCredits: string;
+    designatedStudioId: string | null;
+  },
+  tx: DbTx,
 ): Promise<CreditLotEntity> {
-  const conn = tx ?? db;
-  const rows = await conn
+  const rows = await tx
     .insert(creditLots)
     .values({
-      paymentId: data.paymentId,
+      sourceId: data.sourceId,
+      sourceKind: data.sourceKind,
       userId: data.userId,
       purchasedCredits: data.purchasedCredits,
       remainingCredits: data.purchasedCredits,
-      designatedStudioId: null,
+      designatedStudioId: data.designatedStudioId,
       lifecycle: "active",
     })
     .returning();
-  return toLotEntity(rows[0]!);
+  const lot = toLotEntity(rows[0]!);
+  await appendLedgerEntry(
+    {
+      payerUserId: data.userId,
+      entryType: "topup",
+      amount: data.purchasedCredits,
+      lotId: lot.id,
+      referenceId: data.sourceId,
+    },
+    tx,
+  );
+  return lot;
 }
 
 /**
@@ -276,6 +309,23 @@ export async function applyCharge(
   return { remainingCredits: row.remaining_credits, lifecycle: row.lifecycle };
 }
 
+/** One movement of credits, as the ledger records it. */
+interface LedgerEntryInput {
+  /** Whose money moved. Null on a debt, which nobody has paid yet. */
+  payerUserId: string | null;
+  entryType: CreditLedgerEntryType;
+  amount: string;
+  actorUserId?: string | null;
+  lotId?: string | null;
+  studioId?: string | null;
+  projectId?: string | null;
+  model?: string | null;
+  provider?: string | null;
+  tokensUsed?: number | null;
+  description?: string | null;
+  referenceId?: string | null;
+}
+
 /**
  * Append one row to the ledger.
  *
@@ -296,29 +346,17 @@ export async function applyCharge(
  * @param entry.tokensUsed - Tokens consumed, for text usage.
  * @param entry.description - A human-readable line.
  * @param entry.referenceId - Task or idempotency key; shared by every row of one charge.
- * @param tx - Optional transaction to join.
+ * @param tx - The transaction this entry belongs in. Required, so an entry
+ *   that draws a lot down can never commit without the write that drew it.
+ *   Entries that draw no lot down reach here through
+ *   {@link recordStandaloneUsage}, which opens the transaction itself.
  * @returns The appended row.
  */
 export async function appendLedgerEntry(
-  entry: {
-    /** Whose money moved. Null on a debt, which nobody has paid yet. */
-    payerUserId: string | null;
-    entryType: CreditLedgerEntryType;
-    amount: string;
-    actorUserId?: string | null;
-    lotId?: string | null;
-    studioId?: string | null;
-    projectId?: string | null;
-    model?: string | null;
-    provider?: string | null;
-    tokensUsed?: number | null;
-    description?: string | null;
-    referenceId?: string | null;
-  },
-  tx?: DbTx,
+  entry: LedgerEntryInput,
+  tx: DbTx,
 ): Promise<CreditLedgerEntryEntity> {
-  const conn = tx ?? db;
-  const rows = await conn
+  const rows = await tx
     .insert(creditLedger)
     .values({
       payerUserId: entry.payerUserId,
@@ -336,6 +374,23 @@ export async function appendLedgerEntry(
     })
     .returning();
   return toLedgerEntity(rows[0]!);
+}
+
+/**
+ * Record usage that drew no lot down.
+ *
+ * Two deployments reach here: one that charges nobody, and an account whose
+ * work had no studio to bill. Both still want the ledger to say what was
+ * produced, and neither has a lot to keep in step with — so this write is
+ * whole on its own, which is the difference {@link appendLedgerEntry} cannot
+ * express while it demands a transaction.
+ * @param entry - What happened, with `lotId` necessarily absent.
+ * @returns The appended row.
+ */
+export async function recordStandaloneUsage(
+  entry: Omit<LedgerEntryInput, "lotId">,
+): Promise<CreditLedgerEntryEntity> {
+  return db.transaction((tx) => appendLedgerEntry({ ...entry, lotId: null }, tx));
 }
 
 /**
@@ -393,6 +448,32 @@ export async function studiosWithDebtFrom(
       studioSlug: row.studioSlug ?? "",
       deleted: row.deleted,
     }));
+}
+
+/**
+ * A row's studio is one this account administers — as a predicate, not a set.
+ *
+ * Both account-side reads narrow on this, and both have to put it inside the
+ * query. One is a keyset page, where filtering what the server already cut
+ * can empty a page while the cursor still says there is more; the other is an
+ * aggregate, which groups on the very column being tested. So the shared part
+ * is a fragment they each `and` into their own where, and the set-returning
+ * {@link studiosAdministeredBy} stays with the caller that already holds a
+ * list of ids.
+ *
+ * Read fresh, for the reason that function gives: administering is a role
+ * that changes hands, and the question is who administers the studio now.
+ * @param userId - The account reading.
+ * @returns A condition on `credit_ledger.studio_id`.
+ */
+export function administeredByReader(userId: string): SQL {
+  return sql`EXISTS (
+    SELECT 1 FROM ${studioMembers}
+    WHERE ${studioMembers.studioId} = ${creditLedger.studioId}
+      AND ${studioMembers.userId} = ${userId}
+      AND ${studioMembers.role} = 'admin'
+      AND ${studioMembers.deletedAt} IS NULL
+  )`;
 }
 
 /**
@@ -542,6 +623,64 @@ export async function sumUnassignedForUser(userId: string): Promise<string> {
 }
 
 /**
+ * What one account holds that it was granted rather than bought, in `numeric`.
+ *
+ * Asked at the moment a studio is found to have nothing to draw on, to tell
+ * "this account has none" apart from "this account has some and none of it
+ * reaches here". Granted credits are pinned to the holder's personal studio when
+ * they are written, so any that still have a balance are by definition
+ * somewhere other than the studio that just came up empty.
+ *
+ * Deleted studios are not tested for: a lot pointing at one is unreachable
+ * from everywhere, which is the same answer this question returns.
+ * @param userId - The account to total.
+ * @returns The sum as a decimal string; "0" when there is none.
+ */
+export async function sumGrantedForUser(userId: string): Promise<string> {
+  const rows = await db
+    .select({
+      total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text`,
+    })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.userId, userId),
+        eq(creditLots.lifecycle, "active"),
+        isNull(creditLots.deletedAt),
+        inArray(creditLots.sourceKind, GRANTED_SOURCE_KINDS),
+        sql`${creditLots.remainingCredits} > 0`,
+      ),
+    );
+  return rows[0]?.total ?? "0";
+}
+
+/**
+ * What one account has under refund, in `numeric`.
+ *
+ * The two in-flight lifecycles only. A `refunded` lot is no longer held — the
+ * money is back with the buyer — so counting it would report as held
+ * something the account no longer has.
+ *
+ * No join: a lot under refund carries no designation, which the table itself
+ * enforces, so there is no studio to ask about.
+ * @param userId - The account to total.
+ * @returns The sum as a decimal string; "0" when there is none.
+ */
+export async function sumUnderRefundForUser(userId: string): Promise<string> {
+  const rows = await db
+    .select({ total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text` })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.userId, userId),
+        inArray(creditLots.lifecycle, IN_FLIGHT_REFUND_LIFECYCLES),
+        isNull(creditLots.deletedAt),
+      ),
+    );
+  return rows[0]?.total ?? "0";
+}
+
+/**
  * One account's lots pointed at one studio, in the order a charge takes them.
  *
  * Ids rather than rows: every caller locks each one before deciding anything,
@@ -600,24 +739,83 @@ export async function setDesignation(
   return toLotEntity(rows[0]!);
 }
 
+/**
+ * Whether anything has ever been drawn from this purchase.
+ *
+ * Asked of the ledger rather than the balance, for the reason the read side
+ * states at `everSpent`: the refund rule turns on whether a credit was ever
+ * drawn, and the ledger is the record of that. Both readers ask this one
+ * question and name the same entry types.
+ * @param lotId - The lot to ask about.
+ * @param tx - The transaction reading it.
+ * @returns True if a generation or a debt repayment has drawn on this lot.
+ */
+export async function hasEverSpent(lotId: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx
+    .select({ id: creditLedger.id })
+    .from(creditLedger)
+    .where(
+      and(
+        eq(creditLedger.lotId, lotId),
+        inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Take the one refund transition this repository writes: `active` to
+ * `refund_pending`.
+ *
+ * The other three edges — approve, refuse, settle — are decided in the back
+ * office, so naming this one edge is what the function can promise. A generic
+ * mover would compile `refunded` back to `active`, which hands credits to a
+ * buyer who has already been paid out.
+ *
+ * `active` is in the predicate so the write applies to the state the caller
+ * decided on. The caller holds the row lock, which is what makes the decision
+ * and the write see the same row; the predicate is what says so in the
+ * statement, and it turns a lock that is ever missing into no rows updated
+ * rather than a transition taken from a state nobody checked.
+ * @param lotId - The lot to move.
+ * @param tx - The transaction holding the lock.
+ * @returns The lot as it now stands, or null if it was not `active`.
+ */
+export async function markRefundPending(
+  lotId: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .update(creditLots)
+    .set({ lifecycle: "refund_pending" })
+    .where(and(eq(creditLots.id, lotId), eq(creditLots.lifecycle, "active")))
+    .returning();
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
 /** What a lot's row carries beyond the lot itself. */
 export interface LotContext {
   /**
    * What the buyer paid for it, tax included, in the smallest unit of
    * `currency`. The same figure the purchase history prints.
+   *
+   * Null on credits nobody paid for, along with the currency beside it: a
+   * granted lot has no price, and a zero would read as one.
    */
-  paidCents: number;
-  currency: string;
+  paidCents: number | null;
+  currency: string | null;
   /** The studio it points at, named. Null when it points at none. */
   designatedStudioName: string | null;
+  /** Whether the column points at a studio at all, deleted or not. */
+  designated: boolean;
   /**
    * Whether anything has ever been drawn from this purchase.
    *
-   * Read off the ledger, not off the balance: a failed generation gives the
-   * credits back, so a purchase that has been spent from can carry its full
-   * count again. The refund rule turns on this fact rather than on the
-   * balance for that reason. Counts both ways of drawing on a purchase, a
-   * generation and the repayment of a studio's debt.
+   * Read off the ledger, not off the balance: the refund rule turns on
+   * whether a credit was ever drawn, and the ledger is where that is
+   * written. Counts both ways of drawing on a purchase, a generation and the
+   * repayment of a studio's debt.
    */
   everSpent: boolean;
 }
@@ -655,7 +853,7 @@ export async function listLotsByUser(
       // stands in for the rare session Stripe gave no total for — and reading
       // the face value everywhere is what made the same purchase show one
       // figure here and another in the history.
-      paidCents: sql<number>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
+      paidCents: sql<number | null>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
       currency: payments.currency,
       // A studio that is gone holds nothing: the moment it is deleted its
       // projects stop working, so a purchase pointed at it is pointed
@@ -669,9 +867,12 @@ export async function listLotsByUser(
       designatedStudioName: sql<
         string | null
       >`CASE WHEN ${studios.deletedAt} IS NULL THEN ${studios.name} END`,
+      // The raw column, beside the projection above: the refund rule and the
+      // constraint behind it both turn on whether anything is pointed at,
+      // which stays true after the studio is gone.
+      designated: sql<boolean>`${creditLots.designatedStudioId} IS NOT NULL`,
       // Whether anything was ever drawn from this purchase. The refund rule
-      // asks the ledger rather than the balance: a failed generation returns
-      // the credits, so a purchase spent from can be back at its full count.
+      // asks the ledger rather than the balance, which is the record of it.
       // Both ways of drawing on it count — a generation and the repayment of
       // a studio's debt — which is what `SPENDING_ENTRY_TYPES` names.
       // Served by `credit_ledger_lot_idx`.
@@ -685,7 +886,11 @@ export async function listLotsByUser(
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
     })
     .from(creditLots)
-    .innerJoin(payments, eq(payments.id, creditLots.paymentId))
+    // Outward, because a lot need not have come from a payment. Joining
+    // inward left every granted lot off this list: the credits counted
+    // towards what the account holds and appeared on no screen that could
+    // act on them.
+    .leftJoin(payments, eq(payments.id, creditLots.sourceId))
     .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(
       and(
@@ -712,6 +917,7 @@ export async function listLotsByUser(
     paidCents: row.paidCents,
     currency: row.currency,
     designatedStudioName: row.designatedStudioName,
+    designated: row.designated,
     everSpent: row.everSpent,
     cursorAt: row.cursorAt,
   }));
@@ -875,6 +1081,16 @@ export async function listLedgerByPayer(
         // is a keyset page — filtering a page that the server already cut can
         // empty it while the cursor still says there is more.
         inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES),
+        // Two branches, and the first is the one easy to lose. A run that
+        // belongs to no studio is one the reader made themselves — the text
+        // tools carry no project, and a project deleted mid-task leaves the
+        // same shape — so it is theirs to see. The rest is narrowed to what
+        // they administer: paying for a run does not make somebody else's
+        // studio, its projects and its output theirs to read.
+        or(
+          isNull(creditLedger.studioId),
+          administeredByReader(payerUserId),
+        ),
         studioId ? eq(creditLedger.studioId, studioId) : undefined,
       ),
     )
@@ -1062,6 +1278,10 @@ export async function sumSpentByStudio(
         // The studio ledger totals the same two types for the same reason.
         inArray(creditLedger.entryType, ["spend", "debt_repayment"]),
         isNotNull(creditLedger.studioId),
+        // The administering half of the same test the ledger list applies.
+        // Its other half — a run belonging to no studio — has no line here:
+        // this answers one line per studio, and such a run was in none.
+        administeredByReader(payerUserId),
       ),
     )
     .groupBy(

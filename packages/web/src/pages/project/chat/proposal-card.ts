@@ -302,7 +302,6 @@ function entryOf(
     catalog.audio,
     catalog.tts,
     catalog.three_d,
-    catalog.understand,
   ]) {
     const entry = bucket.find((m) => m.name === model);
     if (entry) return entry;

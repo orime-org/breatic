@@ -31,6 +31,7 @@ vi.mock('@web/data/api/projects', () => ({
   projectsApi: { create: vi.fn() },
 }));
 import { studiosApi } from '@web/data/api/studios';
+import { ApiException } from '@web/data/api/types';
 import { projectsApi } from '@web/data/api/projects';
 
 const TEAM: StudioDetail = {
@@ -174,6 +175,21 @@ function setup(slug = 'acme-studio', strict = false, tab?: string) {
 }
 
 describe('StudioContainerPage', () => {
+  it('shows 404 at the original address when the studio API returns 404', async () => {
+    vi.mocked(studiosApi.get).mockRejectedValue(new ApiException({ status: 404, message: 'missing' }));
+    setup('missing-studio');
+    expect(await screen.findByText('404')).toBeVisible();
+    expect(screen.getByTestId('location')).toHaveTextContent('/studio/missing-studio');
+    expect(studiosApi.listProjects).not.toHaveBeenCalled();
+  });
+
+  it('does not turn a server failure into 404', async () => {
+    vi.mocked(studiosApi.get).mockRejectedValue(new ApiException({ status: 500, message: 'failed' }));
+    setup('broken-studio');
+    expect(await screen.findByRole('alert')).toBeVisible();
+    expect(screen.queryByText('404')).toBeNull();
+  });
+
   it('renders the studio header and all 6 section links (shell from the real query)', async () => {
     setup('acme-studio');
     // The top bar moved to the layout route, so the container renders the
@@ -217,7 +233,7 @@ describe('StudioContainerPage', () => {
   it('shows the error state when the studio cannot be loaded', async () => {
     vi.mocked(studiosApi.get).mockRejectedValueOnce(new Error('not found'));
     setup('ghost');
-    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't load/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not be loaded/i);
   });
 
   it('fetches the studio once under StrictMode (no double request — invariant 5)', async () => {
@@ -322,42 +338,11 @@ describe('StudioContainerPage', () => {
     );
   });
 
-  it('sends an address naming no such tab back to the studio', async () => {
-    setup('acme-studio', false, 'nonsense');
-    // Not a blank page, and not left sitting in the bar: a wrong address
-    // resolves to the one address that is certainly right.
-    await waitFor(() =>
-      // Exact: the address under test is `/studio/acme-studio/nonsense`, which
-      // CONTAINS `/studio/acme-studio` — a substring assertion is satisfied
-      // before the redirect and could never fail.
-      expect(screen.getByTestId('location').textContent).toBe(
-        '/studio/acme-studio',
-      ),
-    );
+  it.each(['nonsense', 'projects'])('ignores the extra segment %s without changing the address', async (suffix) => {
+    setup('acme-studio', false, suffix);
     expect(await screen.findByRole('link', { name: /Projects/ })).toHaveAttribute('aria-current', 'page');
-  });
-
-  it('sends the default section spelled out back to the bare studio', async () => {
-    // `/studio/{slug}/projects` is a name the section list recognises, so the
-    // wrong-name redirect lets it through — and it then renders, giving the
-    // default section a SECOND live address. The strip's first link is built
-    // by `studioTabPath`, which only ever emits the bare one, so standing here
-    // means the link marked `aria-current="page"` points somewhere else than
-    // the page you are on.
-    //
-    // Nothing we ship produces this address; someone types it, or guesses it
-    // from `/members` and `/settings`. The fix is not to defend against that
-    // guess but to keep one rule true: the only segments we accept are the
-    // ones we write.
-    setup('acme-studio', false, 'projects');
-    await waitFor(() =>
-      expect(screen.getByTestId('location').textContent).toBe(
-        '/studio/acme-studio',
-      ),
-    );
-    expect(
-      await screen.findByRole('link', { name: /Projects/ }),
-    ).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('location').textContent).toBe(`/studio/acme-studio/${suffix}`);
+    expect(studiosApi.get).toHaveBeenCalledWith('acme-studio');
   });
 
   it('sends a non-member back to the studio even when the tab name is real', async () => {

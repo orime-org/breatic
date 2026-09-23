@@ -28,7 +28,15 @@ vi.mock('@web/data/api/credits', () => ({
 const paymentHistory = vi.fn();
 vi.mock('@web/data/api/payment', () => ({
   paymentApi: {
-    tiers: () => Promise.resolve({ packs: [], confirmTimeoutMs: 15000 }),
+    // The refund rule comes back with the packs, and two screens read it.
+    // Left out, this double answers with a shape the server never sends.
+    tiers: () =>
+      Promise.resolve({
+        packs: [],
+        refundLines: ['A refund rule.'],
+        consentText: 'I agree.',
+        confirmTimeoutMs: 15000,
+      }),
     history: (...args: unknown[]) => paymentHistory(...args),
     checkout: vi.fn(),
     resendConfirmation: vi.fn(),
@@ -57,6 +65,7 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
   return {
     assignedCredits: 0,
     unassignedCredits: 0,
+    underRefundCredits: 0,
     billing: true,
     studios: [],
     ...over,
@@ -118,7 +127,7 @@ describe('CreditsOverlay', () => {
     // Only the selected entry is in the tab order; otherwise leaving the
     // index takes seven presses.
     expect(first).toHaveAttribute('tabindex', '0');
-    expect(screen.getByRole('tab', { name: /Purchases/ })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: /Credit history/ })).toHaveAttribute(
       'tabindex',
       '-1',
     );
@@ -139,12 +148,12 @@ describe('CreditsOverlay', () => {
     // The overview reads no paged endpoint.
     expect(paymentHistory).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole('tab', { name: /Purchases/ }));
+    await user.click(screen.getByRole('tab', { name: /Credit history/ }));
 
     await waitFor(() => {
       expect(paymentHistory).toHaveBeenCalled();
     });
-    expect(screen.getByRole('tab', { name: /Purchases/ })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: /Credit history/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -163,7 +172,7 @@ describe('CreditsOverlay', () => {
     first.focus();
 
     await user.keyboard('{ArrowDown}');
-    expect(screen.getByRole('tab', { name: /Purchases/ })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: /Credit history/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );

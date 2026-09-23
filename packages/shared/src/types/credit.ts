@@ -17,6 +17,52 @@ import type { CreditLotLifecycle } from "@shared/types/entities.js";
  * value stops being arithmetic and becomes something to show.
  */
 
+/**
+ * What a lot of credits can come from.
+ *
+ * The same four words are the `credit_sources_kind_check` list in 0079. An
+ * integration test inserts every one of these, so a fifth added here without a
+ * migration widening that constraint fails there rather than at runtime.
+ *
+ * Here rather than beside the table, because the browser decides what a row
+ * prints and whether its controls are offered from this same value. The array
+ * and the type stay together: derived from one another they cannot disagree,
+ * and split across two packages they would be two hand-kept lists.
+ */
+export const CREDIT_SOURCE_KINDS = [
+  "payment",
+  "compensation",
+  "gift",
+  "discount",
+] as const;
+
+/** One of {@link CREDIT_SOURCE_KINDS}. */
+export type CreditSourceKind = (typeof CREDIT_SOURCE_KINDS)[number];
+
+/**
+ * Whether a lot's credits were bought, which is what decides where they may go.
+ *
+ * Three rules read this one question — a lot that was not bought cannot be
+ * re-designated, cannot be refunded, and prints its origin instead of a price.
+ * Written once so the three cannot drift: bought credits are the buyer's to
+ * move and to reclaim, granted ones stay where they were granted.
+ * @param kind - What the lot's receipt says it is.
+ * @returns True when someone paid for these credits.
+ */
+export function isPurchased(kind: CreditSourceKind): boolean {
+  return kind === "payment";
+}
+
+/**
+ * The kinds nobody paid for, for readers that ask in SQL.
+ *
+ * Derived rather than listed, so a fifth kind joins it by being added to
+ * {@link CREDIT_SOURCE_KINDS} and answering {@link isPurchased} — a query
+ * naming the bought kind itself would be the same rule written twice.
+ */
+export const GRANTED_SOURCE_KINDS: readonly CreditSourceKind[] =
+  CREDIT_SOURCE_KINDS.filter((kind) => !isPurchased(kind));
+
 /** One keyset page. */
 export interface CreditPage<T> {
   items: T[];
@@ -25,18 +71,34 @@ export interface CreditPage<T> {
 }
 
 /**
- * One row of the purchase history.
+ * One row of the acquisition history — how some credits got to this account.
  *
- * Built from `payments` rather than from the lots, because a purchase that has
- * not landed yet — one still processing, one the buyer abandoned — has no lot
- * and is exactly what this screen exists to show. Everything the lot carries
- * is therefore nullable here, and a row with nulls is a row that has not
- * landed rather than a row with something missing.
+ * Two kinds of row, and every nullable field below is how they tell apart.
+ * A row that opened credits comes from the lot: bought, granted, and whatever
+ * a back office grants later. A row that opened none comes from a payment on
+ * its own — a checkout still clearing, one the buyer abandoned — which is
+ * what this screen has always existed to show and what stops it being built
+ * from the lots alone.
+ *
+ * So a null here is never a missing value. No `paymentId` means nobody paid;
+ * no `remainingCredits` means no credits opened.
  */
 export interface PurchaseRow {
-  paymentId: string;
-  /** The listed price, before tax. Always known: it is what we charged for. */
-  amountCents: number;
+  /**
+   * What identifies this row: the lot's id where credits opened, the
+   * payment's where none did.
+   *
+   * The two cannot collide — they are ids of rows in different tables — and
+   * one of them always exists, which is what lets the keyset cursor name
+   * every row of either kind.
+   */
+  rowId: string;
+  /** Where these credits came from. */
+  sourceKind: CreditSourceKind;
+  /** The payment behind this row; null when nobody paid. */
+  paymentId: string | null;
+  /** The listed price, before tax. Null on a row nobody paid for. */
+  amountCents: number | null;
   /**
    * What Stripe worked out this purchase comes to, tax included.
    *
@@ -54,12 +116,12 @@ export interface PurchaseRow {
   /** The tax within that figure, on the same terms. */
   taxCents: number | null;
   currency: string;
-  /** How many credits this purchase buys. */
+  /** How many credits this row brought in. */
   creditsGranted: number;
   /** How many are left. Null until it lands. */
   remainingCredits: number | null;
   /** Where the lot stands. Null until it lands. */
-  lifecycle: string | null;
+  lifecycle: CreditLotLifecycle | null;
   /**
    * The studio these credits were pointed at, and its name. Both read through
    * the same "not deleted" predicate the overview uses, so one purchase cannot
@@ -67,15 +129,78 @@ export interface PurchaseRow {
    */
   designatedStudioId: string | null;
   designatedStudioName: string | null;
-  status: string;
+  /** Where the payment stands. Null on a row nobody paid for. */
+  status: string | null;
   createdAt: string;
-  /** Whether the resend control is offered, decided on the server. */
+  /**
+   * Whether the resend control is offered, decided on the server.
+   *
+   * Always false where there is no payment: the letter it would send again
+   * is a purchase confirmation.
+   */
   canResend: boolean;
+}
+
+/**
+ * The lifecycles in which a purchase still belongs to the buyer.
+ *
+ * Money waiting on a refund decision, or on its way back, has not reached the
+ * card yet — the buyer holds it. Once `refunded` it is theirs no longer, and
+ * `depleted` was spent. The confirmation email's balance reads this set
+ * (`payment.repo.ts`). The overview asks the same question in three parts and
+ * reaches it by another route — `active` for the two spendable figures, and
+ * {@link IN_FLIGHT_REFUND_LIFECYCLES} for the third — so the three of them
+ * cover exactly this set without sharing this list.
+ */
+export const HELD_LIFECYCLES: readonly CreditLotLifecycle[] = [
+  "active",
+  "refund_pending",
+  "refunding",
+];
+
+/**
+ * The lifecycles in which a refund decision is still coming.
+ *
+ * This is the money the buyer still holds and cannot spend, and the
+ * overview's third figure counts exactly it. Its relation to the other two
+ * groupings — it is what {@link HELD_LIFECYCLES} and `REFUND_LIFECYCLES`
+ * have in common — is asserted in `types/__tests__/lifecycle-sets.test.ts`,
+ * so a sixth lifecycle cannot join one grouping and quietly skip another.
+ */
+export const IN_FLIGHT_REFUND_LIFECYCLES: readonly CreditLotLifecycle[] = [
+  "refund_pending",
+  "refunding",
+];
+
+/**
+ * What the account holds, counting everything it paid for.
+ *
+ * Three terms, and the third is the one that is easy to drop: leaving a pack
+ * under refund out makes the total fall the moment it is asked about, with
+ * nothing on the screen saying where it went. Two screens print this figure
+ * under the same label, so it is stated once.
+ * @param overview - What the account holds, and where.
+ * @returns The total.
+ */
+export function accountTotal(overview: CreditOverview): number {
+  return (
+    overview.assignedCredits +
+    overview.unassignedCredits +
+    overview.underRefundCredits
+  );
 }
 
 /** One purchase of this account's, as the overlay shows it. */
 export interface CreditLotView {
   id: string;
+  /**
+   * Where these credits came from.
+   *
+   * The browser reads it for the same two questions the server does — may
+   * this be pointed somewhere else, may it be asked back — plus a third only
+   * it asks: what the row says instead of a price.
+   */
+  sourceKind: CreditSourceKind;
   purchasedCredits: number;
   remainingCredits: number;
   /**
@@ -89,20 +214,31 @@ export interface CreditLotView {
   /** That studio, named. Null whenever `designatedStudioId` is. */
   designatedStudioName: string | null;
   /**
-   * What the buyer paid for it, tax included, in the smallest unit of
-   * `currency`. The same figure the purchase history prints for this purchase.
+   * Whether the column points at a studio at all, deleted or not.
+   *
+   * The two fields above answer "which studio may spend this", and a deleted
+   * studio may spend nothing, so they read as null for one. The refund rule
+   * asks a different question — whether the purchase is still pointed
+   * somewhere — and the database answers that one on the raw column.
    */
-  paidCents: number;
-  currency: string;
+  designated: boolean;
+  /**
+   * What the buyer paid for it, tax included, in the smallest unit of
+   * `currency`. The same figure the acquisition history prints for it.
+   *
+   * Null on credits nobody paid for, along with the currency beside it.
+   */
+  paidCents: number | null;
+  currency: string | null;
   lifecycle: CreditLotLifecycle;
   /** How many refund requests were refused; the lifecycle keeps no trace. */
   refundAttempts: number;
   /**
    * Whether anything has ever been drawn from this purchase.
    *
-   * Read off the ledger, not off the balance. A failed generation gives the
-   * credits back, so a purchase that has been spent from can be back at its
-   * full count — and the refund rule refuses it either way. Being drawn on to
+   * Read off the ledger, not off the balance. The promise turns on whether a
+   * credit was ever drawn, and the ledger is where that is written; the
+   * balance answers the narrower question of what is left. Being drawn on to
    * repay a studio's debt counts as much as a generation does.
    */
   everSpent: boolean;
@@ -253,6 +389,12 @@ export interface CreditOverview {
   assignedCredits: number;
   /** Bought but pointed at no live studio, so unspendable until assigned. */
   unassignedCredits: number;
+  /**
+   * Under refund right now, so spendable nowhere. Held all the same, which is
+   * why it belongs beside the other two: without it the figures stop adding
+   * up to what was bought and not yet spent, the moment a refund is asked for.
+   */
+  underRefundCredits: number;
   /**
    * Whether this deployment charges for generation at all. Without it a fresh
    * account and a self-hosted install look identical on the wire: three zeros

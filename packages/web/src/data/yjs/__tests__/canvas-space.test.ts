@@ -42,7 +42,7 @@ import {
 import {
   bodyToPlainText,
   writePlainTextIntoBody,
-} from '@web/data/yjs/text-body';
+} from '@breatic/shared/canvas/text-body';
 
 /**
  * Builds a complete wire `CanvasNodeFields` fixture.

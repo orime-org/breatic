@@ -13,38 +13,55 @@
 //   - no page sits in a closure that is not its own — not index.html's, and
 //     not another page's, which is the same "downloaded without being asked
 //     for" in a different place
-//   - no entry reaches the canvas, the document editor, the model runtime or
-//     the rich-text editor, except the one page that renders a space
+//   - no entry reaches any of the heavy things `HEAVY` below names, except
+//     the one page that renders a space
 //   - the entry closure stays inside its byte budget, which covers the heavy
 //     things nobody has thought to name yet
+//   - every chunk a release renames is named by exactly one chunk — the
+//     loader for a page, the entry for the loader — so a release re-downloads
+//     only what changed
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 const DIST = process.argv[2] ?? path.join(import.meta.dirname, 'dist', 'breatic');
 const ASSETS = path.join(DIST, 'assets');
 const ROUTES = path.join(import.meta.dirname, 'src', 'app', 'routes.tsx');
+const ROUTE_IMPORTS = path.join(import.meta.dirname, 'src', 'app', 'route-imports.ts');
 
 /**
- * The production pages, read from the route table rather than listed here.
+ * The production pages, read from the loader module rather than listed here.
  *
  * A list written out in this file covers whatever it was written against: the
- * fourteenth entry gets added to `routes.tsx` and this guard goes on passing
- * without ever having looked at it. Rollup names a chunk after its module's
- * file, so the basename of each `lazyRoute` import is the name to expect.
- * @returns {string[]} Page module basenames, in table order.
+ * fourteenth entry gets added and this guard goes on passing without ever
+ * having looked at it. Rollup names a chunk after its module's file, so the
+ * basename of each `import()` specifier is the name to expect.
+ *
+ * Two counts are checked rather than trusted. A parse that reads twelve of
+ * thirteen entries covers twelve of them and says nothing about the one it
+ * missed; and the loader count is compared against the number of `lazyRoute`
+ * calls in `routes.tsx`, so a loader added without a route — or a route added
+ * without a loader — shows up as a mismatched total. Which loader each call
+ * names is not checked here: a page whose loader no route renders is caught
+ * downstream instead, where its chunk is missing and the entry cannot reach
+ * it.
+ * @returns {string[]} Page module basenames, in declaration order.
  */
 function routeTablePages() {
-  const src = readFileSync(ROUTES, 'utf8');
-  const named = [...src.matchAll(/lazyRoute\(\s*\(\)\s*=>\s*import\('([^']+)'\)/g)].map(
-    (m) => m[1].split('/').pop(),
+  const loaders = readFileSync(ROUTE_IMPORTS, 'utf8');
+  const named = [...loaders.matchAll(/=>\s*import\('([^']+)'\)/g)].map((m) =>
+    m[1].split('/').pop(),
   );
-  // A parse that reads twelve of thirteen entries covers twelve of them and
-  // says nothing about the one it missed, so the count is checked against the
-  // calls themselves rather than trusted.
-  const calls = (src.match(/lazyRoute\(/g) ?? []).length;
-  if (named.length !== calls) {
+  const declared = (loaders.match(/=>\s*import\(/g) ?? []).length;
+  if (named.length !== declared) {
     console.error(
-      `verify-chunks: ${ROUTES} makes ${calls} lazyRoute calls, ${named.length} of which this could read`,
+      `verify-chunks: ${ROUTE_IMPORTS} declares ${declared} loaders, ${named.length} of which this could read`,
+    );
+    process.exit(1);
+  }
+  const calls = (readFileSync(ROUTES, 'utf8').match(/lazyRoute\(/g) ?? []).length;
+  if (calls !== named.length) {
+    console.error(
+      `verify-chunks: ${ROUTE_IMPORTS} declares ${named.length} loaders but ${ROUTES} makes ${calls} lazyRoute calls`,
     );
     process.exit(1);
   }
@@ -65,19 +82,27 @@ if (!existsSync(ASSETS)) {
 
 const files = readdirSync(ASSETS);
 
-/** @returns {string[]} the files index.html loads before anything else. */
+/**
+ * What index.html asks for before anything else.
+ *
+ * `roots` is every file it names; `entry` is the one it runs. The rest are
+ * `<link rel=modulepreload>`, which say "fetch this, something will import it"
+ * — so a check that means the entry has to name the entry, not any of the
+ * eighteen.
+ * @returns {{roots: string[], entry: string}} The files, and the one that runs.
+ */
 function entryFiles() {
   const html = readFileSync(path.join(DIST, 'index.html'), 'utf8');
-  const found = [...html.matchAll(/(?:src|href)="\/assets\/([^"]+\.js)"/g)].map(
-    (m) => m[1],
-  );
-  // No roots means an empty closure, and an empty closure holds no page — the
-  // invariant below would pass by having nothing to look at.
-  if (found.length === 0) {
-    console.error(`verify-chunks: index.html in ${DIST} loads no script`);
+  const found = [...html.matchAll(/(src|href)="\/assets\/([^"]+\.js)"/g)];
+  const entry = found.find(([, attribute]) => attribute === 'src')?.[2];
+  // Without the one file index.html runs, no page is reachable, and the
+  // sole-reader check below loses the chunk it compares against — it would
+  // report every page chunk as named by the wrong thing.
+  if (entry === undefined) {
+    console.error(`verify-chunks: index.html in ${DIST} runs no script`);
     process.exit(1);
   }
-  return found;
+  return { roots: found.map(([, , file]) => file), entry };
 }
 
 const problems = [];
@@ -178,6 +203,39 @@ const HEAVY = [
     label: 'canvas engine',
     holds: (src) => /node_modules\/@xyflow\//.test(src),
   },
+  // The collaboration runtime, which only a space body uses. It is named here
+  // because `@breatic/shared` depends on it and that package's main entry is
+  // one bundled module: an export the browser calls that reaches Yjs is
+  // emitted in the entry chunk, and lib0 comes along behind it. Measured once,
+  // at 88,224 bytes for every reader; the byte budget below caught that, and
+  // this says which library arrived.
+  //
+  // Only `yjs` is matched. `lib0` arrives with it, so naming Yjs is enough to
+  // catch the same regression, and this build already holds a second copy of
+  // lib0 that has nothing to do with collaboration: `@blocknote/core` depends
+  // on `lib0@1.0.0-rc.22` for its id generator while listing Yjs itself as
+  // optional.
+  {
+    label: 'collaboration runtime',
+    holds: (src) => /node_modules\/yjs\//.test(src),
+  },
+  // Byte sniffing, which reaches the browser the same way the collaboration
+  // runtime did: `@breatic/shared` re-exports `sniff-mime` from its main
+  // entry, and that module imports `file-type` statically. No web module
+  // calls it today, so none of this is in the entry closure — the two callers
+  // are a Node service and the ingest Worker. Naming it is what the byte
+  // budget cannot do: importing `sniffMimeType` from `src/index.tsx` puts 21
+  // modules in front of every reader and carries the total past the budget,
+  // and without this entry the report is that number alone.
+  //
+  // The transitive dependencies are matched beside `file-type` because a
+  // build can reach them without it: `strtok3` and `token-types` are ordinary
+  // packages any other reader could pull in on its own.
+  {
+    label: 'mime sniffing',
+    holds: (src) =>
+      /node_modules\/(file-type|strtok3|token-types|uint8array-extras)\//.test(src),
+  },
 ];
 
 /**
@@ -223,7 +281,7 @@ if (missing.length > 0) {
 const pageChunks = new Set(
   PAGES.map((page) => chunkOf(page)).filter((chunk) => chunk !== undefined),
 );
-const entryRoots = entryFiles();
+const { roots: entryRoots, entry: entryChunk } = entryFiles();
 const entryDownloads = closure(entryRoots, (file) => !pageChunks.has(file));
 
 // Every page chunk has to be reachable from the entry, or that route cannot
@@ -300,8 +358,55 @@ if (entryBytes > ENTRY_BUDGET) {
   );
 }
 
+// A chunk's hashed filename is written into whoever holds an `import()` that
+// reaches it, so a renamed chunk renames every chunk that names it. Two kinds
+// get renamed on a release: a page chunk, when its own code changes, and the
+// loader chunk, when any page is renamed. Each is meant to have exactly one
+// reader — the loader for a page, the entry for the loader — and that pair is
+// the whole residue a page-only release costs a returning reader, 76,292 bytes
+// measured. Nothing in the source forces it, so this reads the built output.
+//
+// Measured while it did not hold, one mutation each against its own baseline.
+// A preload helper beside the loaders made `ProjectPage` name them: a one-line
+// login-page edit then cost 1,894,219 bytes across 4 chunks, against 84,088
+// across 3. A hover prefetch in the shared `Button` made that chunk name
+// `ProjectPage`: a one-line `ProjectPage` edit then cost 2,821,634 bytes
+// across 36 chunks, against 1,885,990 across 3.
+const loaderChunks = files.filter(
+  (f) => f.startsWith('route-imports-') && f.endsWith('.js'),
+);
+if (loaderChunks.length !== 1) {
+  problems.push(
+    loaderChunks.length === 0
+      ? 'no route-imports chunk — the page specifiers are back inside another chunk'
+      : `${loaderChunks.length} chunks carry the loader's name (${loaderChunks.join(', ')})`,
+  );
+} else {
+  const sources = new Map(
+    files
+      .filter((f) => f.endsWith('.js'))
+      .map((f) => [f, readFileSync(path.join(ASSETS, f), 'utf8')]),
+  );
+  const soleReader = [
+    [loaderChunks[0], entryChunk],
+    ...[...pageChunks].map((chunk) => [chunk, loaderChunks[0]]),
+  ];
+  for (const [renamed, allowed] of soleReader) {
+    const naming = [...sources]
+      .filter(([file, code]) => file !== renamed && code.includes(renamed))
+      .map(([file]) => file);
+    if (naming.length !== 1 || naming[0] !== allowed) {
+      problems.push(
+        `${renamed} should be named by exactly ${allowed}, which is renamed on every release anyway; the build has ${naming.join(', ') || 'nothing'}`,
+      );
+    }
+  }
+}
+
 if (problems.length > 0) {
-  console.error('verify-chunks: the build stopped splitting per entry');
+  console.error(
+    'verify-chunks: the build stopped splitting per entry, or a chunk gained a second reader',
+  );
   for (const p of problems) console.error(`  - ${p}`);
   process.exit(1);
 }

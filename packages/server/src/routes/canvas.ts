@@ -16,6 +16,7 @@ import { z } from "zod";
 import {
   taskCreateSchema,
   understandSchema,
+  nodeHistorySnapshotSchema,
   paginationSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -35,13 +36,18 @@ import {
   violatesSourceRequirementForModel,
   violatesReferenceCountForModel,
 } from "@breatic/domain";
+import { AppError } from "@breatic/core";
+import type { TaskFailureReason } from "@breatic/shared";
 import { nodeHistoryService } from "@breatic/domain";
 import { nodeTaskService, ingestReportService } from "@breatic/domain";
-import { openGenerationTasks } from "@server/modules/task/generation-task.js";
+import {
+  failOpenedTasks,
+  openGenerationTasks,
+} from "@server/modules/task/generation-task.js";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
-import { assertSkillUsable } from "@breatic/domain";
+import { assertSkillUsable, UNDERSTAND_PINS } from "@breatic/domain";
 import {
   assertStorageAllowance,
   precheckCredits,
@@ -52,7 +58,12 @@ import {
   defaultJobOpts,
   getStorageConfig,
 } from "@breatic/core";
-import { ValidationError, NotFoundError, logger } from "@breatic/core";
+import {
+  ValidationError,
+  NotFoundError,
+  getUnderstandConfig,
+  logger,
+} from "@breatic/core";
 import { t, INGEST_NOT_STARTED } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 
@@ -83,14 +94,21 @@ const urlIngestQueue = createQueue("url-ingest");
  *
  * `nodeHistoryPageSize`: page size the frontend requests per infinite-scroll
  * page of a node's history (#1619).
+ *
+ * `understandMaxBytes`: largest file an Understand run will read. The browser
+ * refuses a file over it before building anything and says the number, so the
+ * number has to reach it — and it comes from the same file the run itself
+ * reads, which is what keeps the two from drifting into a refusal the browser
+ * allows and the run rejects.
  * @param c - Hono context (auth required, no params)
- * @returns `200` with `{ data: { referencePoolCap, nodeHistoryPageSize } }`
+ * @returns `200` with the canvas knobs the frontend reads.
  */
 canvas.get("/limits", (c) => {
   return c.json({
     data: {
       referencePoolCap: getCanvasReferencePoolCap(),
       nodeHistoryPageSize: getNodeHistoryPageSize(),
+      understandMaxBytes: getUnderstandConfig().max_media_bytes,
     },
   });
 });
@@ -375,62 +393,200 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
 });
 
 /**
+ * `POST /canvas/node-history/snapshot` — keep a copy of what a node holds.
+ *
+ * A text node's words live in the canvas document, where the next edit
+ * replaces them, and the server never reads that document. So the browser is
+ * the only writer of this row, and this is its one way in.
+ * @param c - Hono context with validated `nodeHistorySnapshotSchema` body.
+ * @returns `201` with `{ id }`.
+ */
+canvas.post(
+  "/node-history/snapshot",
+  rateLimitFor("node-history-snapshot", "user"),
+  validate("json", nodeHistorySnapshotSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+
+    // Cross-tenant guard — see /canvas/tasks rationale. A snapshot writes a
+    // row against this project, so it asks what every write to one asks.
+    await projectService.assertAccess(body.project_id, user.id, "editor");
+
+    const entry = await nodeHistoryService.recordSnapshot({
+      projectId: body.project_id,
+      nodeId: body.node_id,
+      userId: user.id,
+      content: body.text,
+    });
+    return c.json({ data: { id: entry.id } }, 201);
+  },
+);
+
+/**
  * `POST /canvas/understand` — create an understand/transcription task.
  *
  * Convenience endpoint that wraps the task creation flow with
  * `task_type="understand"`.
  * @param c - Hono context with validated `understandSchema` body
- * @returns `201` with `{ task_id, status: "pending" }`
+ * @returns `201` with `{ task_id, status }` — `"pending"` once the job is
+ * queued, `"failed"` when the run was refused after its node's row opened
+ * (the row holds the cause, so the answer says so rather than raising).
+ * @throws {AppError} The refusal itself, when no row was opened to carry it —
+ * the rejection is then the only way the cause can travel.
  */
-canvas.post("/understand", validate("json", understandSchema), async (c) => {
-  const user = c.get("user");
-  const body = c.req.valid("json");
+canvas.post(
+  "/understand",
+  rateLimitFor("understand", "user"),
+  validate("json", understandSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+    // A reading runs on one model, pinned (user 2026-09-19). Naming it here is
+    // what puts it on the row the reader sees, in the history row this run
+    // writes, and against the charge — the three places every other modality
+    // names the model it ran on.
+    const model = UNDERSTAND_PINS.model;
 
-  // Cross-tenant guard — see /canvas/tasks rationale.
-  await projectService.assertAccess(body.project_id, user.id, "editor");
+    // Cross-tenant guard — see /canvas/tasks rationale.
+    await projectService.assertAccess(body.project_id, user.id, "editor");
 
-  // #1580 adversarial fix: understand tasks invoke real vision/ASR models
-  // and are billed at completion like every other task — this route was the
-  // only enqueue path without the shared credit pre-check.
-  await precheckCredits(body.project_id, user.id, estimateTaskCredits(body.model));
+    const params: Record<string, unknown> = {
+      source_type: body.source_type,
+      source_url: body.source_url,
+      // What the ledger judged off the landed bytes, which is what the node
+      // carries and what the browser's format gate judged by.
+      source_mime_type: body.source_mime_type,
+      prompt: body.prompt,
+      // Carried between the two ends that know about it: the browser, which is
+      // where the reader's language is set, and the run, which names that
+      // language to the model. Nothing here reads it.
+      reader_locale: body.reader_locale,
+    };
 
-  const params: Record<string, unknown> = {
-    source_type: body.source_type,
-    source_url: body.source_url,
-    prompt: body.prompt,
-  };
-
-  // Understand tasks transcribe / analyze a media URL into a result node;
-  // they always produce a new node ('append'), no overwrite semantics.
-  const task = await taskService.create(
-    user.id,
-    body.project_id,
-    body.space_id,
-    "understand",
-    "append",
-    params,
-    body.model,
-  );
-
-  const job = await tasksQueue.add(
-    "execute-task",
-    {
-      taskId: task.id,
-      userId: user.id,
-      projectId: body.project_id,
-      spaceId: body.space_id,
-      taskType: "understand",
-      model: body.model,
+    // Understand tasks transcribe / analyze a media URL into a result node;
+    // they always produce a new node ('append'), no overwrite semantics.
+    const task = await taskService.create(
+      user.id,
+      body.project_id,
+      body.space_id,
+      "understand",
+      "append",
       params,
-      mode: "append" as const,
-    },
-    defaultJobOpts(),
-  );
+      model,
+      undefined,
+      // The column every lane names itself in. Left unsaid it falls to the
+      // column's own default, which predates this vocabulary — these rows
+      // would then be the only ones it cannot account for.
+      "understand",
+    );
 
-  await taskService.setJobId(task.id, job.id ?? "");
+    // The node this run writes to is already on the canvas — the browser built
+    // it before the request went out — so its row is opened here, BEFORE the
+    // gates below. That order is the whole point: a run refused for credits has
+    // to be able to say so where the node can show it, and the row is the only
+    // thing that carries a cause back to a node (downstream-node-creation
+    // decision, stages 3 and 4).
+    const nodeIds = body.node_ids;
 
-  return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
-});
+    // Opening that row is inside the guard below for the same reason
+    // everything after it is: the task row exists from here on, and a task
+    // left `pending` is one no worker will pick up and no sweep will end.
+    // Understanding invokes a real model and is billed at completion like
+    // every other task; a short balance settles the rows just opened rather
+    // than leaving them running forever against a job that never gets queued.
+    let rows: Awaited<ReturnType<typeof openGenerationTasks>> = [];
+    try {
+      rows = await openGenerationTasks({
+        projectId: body.project_id,
+        spaceId: body.space_id,
+        nodeIds,
+        startedByUserId: user.id,
+        taskId: task.id,
+        label: model,
+      });
+
+      await precheckCredits(body.project_id, user.id, estimateTaskCredits(model));
+
+      const job = await tasksQueue.add(
+        "execute-task",
+        {
+          taskId: task.id,
+          userId: user.id,
+          projectId: body.project_id,
+          spaceId: body.space_id,
+          taskType: "understand",
+          model,
+          params,
+          // What the activity feed labels this row by. The payload's own
+          // vocabulary (`project-activity.ts`) has a word for this lane, and
+          // it is the only thing telling a reading apart from a generation in
+          // the feed.
+          source: "understand",
+          targetNodeIds: nodeIds,
+          mode: "append" as const,
+        },
+        defaultJobOpts(),
+      );
+
+      // Queueing is the point of no return: a worker will pick this job up,
+      // read the media and bill for it, and nothing here can call that back.
+      // The id is recorded for whoever has to find that job in the queue by
+      // hand — no code reads the column. So a run whose id went unrecorded
+      // still runs exactly as it would have: it keeps its rows and the reader
+      // watches it finish, and the log carries the id instead.
+      try {
+        await taskService.setJobId(task.id, job.id ?? "");
+      } catch (err) {
+        logger.error(
+          { err, taskId: task.id, jobId: job.id, projectId: body.project_id },
+          "understand_job_id_not_recorded",
+        );
+      }
+    } catch (err) {
+      // `no_credits` is the one cause the reader can act on; anything else
+      // that lands here is ours, and the row says so while the log carries
+      // the detail.
+      const reason: TaskFailureReason =
+        err instanceof AppError && err.statusCode === 402 ? "no_credits" : "internal";
+      // Two rows are open and each is somebody's only account of this run, so
+      // neither settlement is allowed to take the other down with it: a task
+      // left `pending` is one no worker picks up and no sweep ends, and a node
+      // row left `running` counts a run that is not happening.
+      for (const settle of [
+        (): Promise<unknown> => taskService.markFailed(task.id, reason),
+        (): Promise<unknown> =>
+          failOpenedTasks(body.project_id, body.space_id, rows, reason),
+      ]) {
+        try {
+          await settle();
+        } catch (settleErr) {
+          logger.error(
+            { err: settleErr, taskId: task.id, projectId: body.project_id },
+            "understand_run_settle_failed",
+          );
+        }
+      }
+      // Whether a row exists is something only this route knows, and a browser
+      // that has to guess at it guesses wrong: a 500 raised before the row
+      // opened looks exactly like one raised after. So the answer carries the
+      // fact instead. A row that is open IS the answer — it holds the cause and
+      // the node shows it — while opening the row is itself what failed here
+      // when there is none, which leaves the rejection as the only way the
+      // cause can travel.
+      logger.warn(
+        { err, taskId: task.id, projectId: body.project_id, reason },
+        "understand_run_failed",
+      );
+      if (rows.length > 0) {
+        return c.json({ data: { task_id: task.id, status: "failed" } }, 201);
+      }
+      throw err;
+    }
+
+    return c.json({ data: { task_id: task.id, status: "pending" } }, 201);
+  },
+);
 
 /**
  * `GET /canvas/tasks` — list tasks for the current user.
@@ -447,9 +603,9 @@ canvas.get("/tasks", validate("query", paginationSchema), async (c) => {
 /**
  * `GET /canvas/nodes/:nodeId/history` — list a node's content history.
  *
- * Returns AIGC generation results (success + failed) and user uploads
- * for the given canvas node, ordered by most recent first. Used by the
- * frontend to show version history and support restore.
+ * Returns AIGC generation results (success + failed), user uploads, and
+ * the copies a reader asked to keep, ordered by most recent first. Used by
+ * the frontend to show version history and support restore.
  * @param c - Hono context, requires `project_id` query param
  * @returns `{ data: { entries: NodeHistoryEntity[], total: number } }`
  */

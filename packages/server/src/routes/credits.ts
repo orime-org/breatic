@@ -22,7 +22,7 @@ import { validate } from "@server/middleware/validate.js";
 import { creditLotService } from "@breatic/domain";
 import { creditViewService, paymentService } from "@server/modules";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { env, logger } from "@breatic/core";
+import { env, logger, ForbiddenError } from "@breatic/core";
 import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import {
   creditLotQuerySchema,
@@ -128,10 +128,53 @@ credits.patch(
   validate("json", designationSchema),
   async (c) => {
     const user = c.get("user");
-    const data = await creditLotService.designateLot({
+    const lotId = c.req.valid("param").id;
+    const studioId = c.req.valid("json").studioId;
+    try {
+      const data = await creditLotService.designateLot({
+        lotId,
+        requestingUserId: user.id,
+        studioId,
+      });
+      return c.json({ data });
+    } catch (err) {
+      // Moving granted credits somewhere else is the one refusal here that
+      // answers an attempt rather than a mistake, so it leaves a trace that
+      // says who asked and where they aimed. Logged at the boundary that
+      // knows who is asking, and rethrown unread: the answer the caller gets
+      // is the service's.
+      if (err instanceof ForbiddenError) {
+        logger.warn(
+          { userId: user.id, lotId, studioId, err },
+          "credit_designation_refused",
+        );
+      }
+      throw err;
+    }
+  },
+);
+
+/**
+ * `POST /credits/lots/:id/refund` — ask for a refund on one purchase.
+ *
+ * The purchase moves to `refund_pending` and stops being spendable or
+ * designatable. Deciding the ask is the back office's.
+ *
+ * No body: the lot named in the path is the whole request, and what may be
+ * asked about is decided from the lot itself.
+ * @returns `200` with the purchase as it now stands; `404` when it is not
+ *   theirs, `409` when it still carries a designation or is already in the
+ *   refund flow, `422` when it has been spent from or its window has closed.
+ */
+credits.post(
+  "/lots/:id/refund",
+  rateLimitFor("credits-refund", "user"),
+  validate("param", idParamSchema),
+  async (c) => {
+    const user = c.get("user");
+    const data = await creditLotService.requestRefund({
       lotId: c.req.valid("param").id,
       requestingUserId: user.id,
-      studioId: c.req.valid("json").studioId,
     });
     return c.json({ data });
   },

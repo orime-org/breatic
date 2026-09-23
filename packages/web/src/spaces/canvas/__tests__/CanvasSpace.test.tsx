@@ -76,7 +76,7 @@ import { assetsApi } from '@web/data/api';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
-import { bodyToPlainText, writePlainTextIntoBody } from '@web/data/yjs/text-body';
+import { bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import * as downloadLib from '@web/lib/download';
@@ -4363,6 +4363,43 @@ describe('onLocateSource absolute-position contract (item 7 grouped source)', ()
     // The regression is centering on `node.position` (relative for a grouped
     // member). setCenter must not be fed a bare `.position.x`.
     expect(locate).not.toMatch(/setCenter\(\s*node\.position\.x/);
+  });
+});
+
+// What one press of Understand leaves the reader looking at (#2175). The node
+// it builds lands a whole node-step to the right of the one being read, which
+// on a canvas scrolled near its right edge is outside the viewport — and a
+// press whose only effect is off-screen reads as a press that did nothing.
+// Selecting it sets a flag and moves nothing, so the viewport is moved too.
+// jsdom cannot render the ReactFlow viewport, so this pins the wiring the way
+// the locate-source contract above does; what that move comes to is
+// `frameBuiltNode`'s, and it has its own tests.
+describe('what an Understand press leaves on screen', () => {
+  const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
+  const press = src.slice(
+    src.indexOf('const understandFromMenu'),
+    src.indexOf('const onUploadInputChange'),
+  );
+  const framing = src.slice(
+    src.indexOf('const frameNewNode'),
+    src.indexOf('const frameNewNode') + 1200,
+  );
+
+  it('moves the viewport to the node it built, not only its selection flag', () => {
+    // The call, not the name: a dependency array mentions it too, and a
+    // press that only lists it moves nothing.
+    expect(press).toContain('setSelectAfterCreate([id])');
+    expect(press).toContain('frameNewNode(position, host.id)');
+  });
+
+  // Both boxes are read where the reader is looking right now: the source
+  // from ReactFlow's own store, which folds in every parent offset, and the
+  // viewport from the live transform. A grouped source read off
+  // `node.position` would be measured a whole group-origin away.
+  it('frames against the live viewport and the source node absolute box', () => {
+    expect(framing).toContain('frameBuiltNode');
+    expect(framing).toContain('positionAbsolute');
+    expect(framing).toContain('rfStoreApi.getState()');
   });
 });
 

@@ -48,7 +48,6 @@ function catalog(image: unknown[]): Record<string, unknown> {
     audio: [],
     tts: [],
     three_d: [],
-    understand: [],
     total: image.length,
   };
 }
@@ -192,7 +191,6 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
       expect(out.audio).toEqual([]);
       expect(out.tts).toEqual([]);
       expect(out.three_d).toEqual([]);
-      expect(out.understand).toEqual([]);
       expect(out.total).toBe(0);
     }
   });
@@ -284,7 +282,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     // instead set the prototype at author time). The sanitizer must neither
     // crash, pollute the prototype, nor drop the legit sibling param.
     const raw = JSON.parse(
-      '{"image":[{"name":"flux","display_name":"F","modality":"image","mode":"generate","description":"","guide":"","tier":"optional","cost_per_call":5,"generation_time":10,"params":{"__proto__":{"description":"","values":["x"],"default":"x"},"aspect_ratio":{"description":"","values":["1:1"],"default":"1:1"}},"providers":[]}],"video":[],"audio":[],"tts":[],"three_d":[],"understand":[],"total":1}',
+      '{"image":[{"name":"flux","display_name":"F","modality":"image","mode":"generate","description":"","guide":"","tier":"optional","cost_per_call":5,"generation_time":10,"params":{"__proto__":{"description":"","values":["x"],"default":"x"},"aspect_ratio":{"description":"","values":["1:1"],"default":"1:1"}},"providers":[]}],"video":[],"audio":[],"tts":[],"three_d":[],"total":1}',
     ) as unknown;
     const out = sanitizeModelCatalog(raw);
     const params = out.image[0]?.params;

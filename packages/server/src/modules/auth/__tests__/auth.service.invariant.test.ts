@@ -32,6 +32,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import fc from "fast-check";
 
 // Redis + session funcs + env all resolve from the @breatic/core barrel
 // now (post core-convergence): auth.service reads getRedis() / setSession
@@ -75,6 +76,7 @@ vi.mock("@server/modules/auth/user.repo.js", () => ({
   getUserByGoogleId: vi.fn(),
   createUser: mockCreateUser,
   updateUser: vi.fn(),
+  linkGoogleIdentity: vi.fn(),
   getHashedPassword: vi.fn(),
   updatePassword: mockUpdatePassword,
   setRecoveryCode: mockSetRecoveryCode,
@@ -266,7 +268,7 @@ describe("auth.service invariant — Google OAuth is pure auth (#1808, INV-4)", 
     vi.clearAllMocks();
   });
 
-  it("loginOrCreateGoogle takes ONLY (googleId, email) — never imports Google name/avatar, only syncs email_verified", async () => {
+  it("loginOrCreateGoogle never imports Google profile fields — never imports Google name/avatar, only syncs email_verified", async () => {
     // #1808: Google is pure authentication. Identity is user-owned (the slug
     // picked at slug-setup + a UI avatar upload, #1809), so Google's display
     // name / picture are never accepted here. A regression that re-adds a
@@ -291,12 +293,110 @@ describe("auth.service invariant — Google OAuth is pure auth (#1808, INV-4)", 
     });
 
     const { loginOrCreateGoogle } = await import("../auth.service.js");
-    // The signature is (googleId, email) — TS would reject a 3rd/4th arg.
-    await loginOrCreateGoogle("g-1", "g@x.com");
+    // Only verified identity and email authority enter the service.
+    await loginOrCreateGoogle("g-1", "g@x.com", true);
 
     expect(capturedUpdate).toEqual({ emailVerified: true });
     expect(Object.keys(capturedUpdate!)).toEqual(["emailVerified"]);
     // No personal studio is created in the OAuth path (slug-setup handles it).
     expect(mockCreatePersonalStudio).not.toHaveBeenCalled();
   });
+});
+
+// Google must never claim an existing account using an email it does not own.
+describe('Google account binding', () => {
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    const repo = await import('../user.repo.js');
+    vi.mocked(repo.getUserByGoogleId).mockResolvedValue(null);
+  });
+
+  it('rejects automatic linking for a third-party email', async () => {
+    const repo = await import('../user.repo.js');
+    const core = await import('@breatic/core');
+    vi.mocked(repo.getUserByEmail).mockResolvedValue({ id: 'victim', email: 'owner@example.com', googleId: null } as never);
+    const { loginOrCreateGoogle } = await import('../auth.service.js');
+    await expect(loginOrCreateGoogle('new-google', 'owner@example.com', false)).rejects.toThrow();
+    expect(repo.updateUser).not.toHaveBeenCalled();
+    expect(core.setSession).not.toHaveBeenCalled();
+  });
+
+  it('never replaces a different linked Google identity', async () => {
+    const repo = await import('../user.repo.js');
+    const core = await import('@breatic/core');
+    vi.mocked(repo.getUserByEmail).mockResolvedValue({ id: 'victim', email: 'owner@gmail.com', googleId: 'old-google' } as never);
+    const { loginOrCreateGoogle } = await import('../auth.service.js');
+    await expect(loginOrCreateGoogle('new-google', 'owner@gmail.com', true)).rejects.toThrow();
+    expect(repo.updateUser).not.toHaveBeenCalled();
+    expect(core.setSession).not.toHaveBeenCalled();
+  });
+
+  it('does not mark an old address verified when the linked Google email changes', async () => {
+    const repo = await import('../user.repo.js');
+    vi.mocked(repo.getUserByGoogleId).mockResolvedValue({ id: 'bound', email: 'old@example.com', googleId: 'google-1', emailVerified: false } as never);
+    const { loginOrCreateGoogle } = await import('../auth.service.js');
+    await loginOrCreateGoogle('google-1', 'new@gmail.com', true);
+    expect(repo.updateUser).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('Google identity session success boundaries', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it('links a Google-authoritative email and issues a session', async () => {
+    const repo = await import('../user.repo.js');
+    const core = await import('@breatic/core');
+    const user = { id: 'existing', email: 'owner@gmail.com', googleId: null };
+    vi.mocked(repo.getUserByGoogleId).mockResolvedValue(null);
+    vi.mocked(repo.getUserByEmail).mockResolvedValue(user as never);
+    vi.mocked(repo.linkGoogleIdentity).mockResolvedValue({ ...user, googleId: 'subject' } as never);
+    vi.mocked(repo.updateUser).mockResolvedValue({ ...user, googleId: 'subject', emailVerified: true } as never);
+    const { loginOrCreateGoogle } = await import('../auth.service.js');
+    const result = await loginOrCreateGoogle('subject', user.email, true);
+    expect(repo.linkGoogleIdentity).toHaveBeenCalledWith('existing', 'subject');
+    expect(core.setSession).toHaveBeenCalledWith(mockRedis, result.token, 'existing');
+    expect(result.user.emailVerified).toBe(true);
+  });
+
+  it('does not issue a session if concurrent linking wins', async () => {
+    const repo = await import('../user.repo.js');
+    const core = await import('@breatic/core');
+    vi.mocked(repo.getUserByGoogleId).mockResolvedValue(null);
+    vi.mocked(repo.getUserByEmail).mockResolvedValue({ id: 'existing', email: 'owner@gmail.com', googleId: null } as never);
+    vi.mocked(repo.linkGoogleIdentity).mockResolvedValue(null);
+    const { loginOrCreateGoogle } = await import('../auth.service.js');
+    await expect(loginOrCreateGoogle('subject', 'owner@gmail.com', true)).rejects.toThrow();
+    expect(core.setSession).not.toHaveBeenCalled();
+  });
+
+  it('creates an unverified third-party-email account without claiming an existing user', async () => {
+    const repo = await import('../user.repo.js');
+    vi.mocked(repo.getUserByGoogleId).mockResolvedValue(null);
+    vi.mocked(repo.getUserByEmail).mockResolvedValue(null);
+    vi.mocked(repo.createUser).mockResolvedValue({ id: 'new', email: 'new@example.com', googleId: 'subject', emailVerified: false } as never);
+    const { loginOrCreateGoogle } = await import('../auth.service.js');
+    const result = await loginOrCreateGoogle('subject', 'new@example.com', false);
+    expect(repo.createUser).toHaveBeenCalledWith({ email: 'new@example.com', googleId: 'subject' });
+    expect(repo.updateUser).not.toHaveBeenCalled();
+    expect(result.user.emailVerified).toBe(false);
+  });
+});
+
+
+it('never issues a session for any conflicting Google subject', async () => {
+  const repo = await import('./../user.repo.js');
+  const core = await import('@breatic/core');
+  const { loginOrCreateGoogle } = await import('../auth.service.js');
+  await fc.assert(fc.asyncProperty(
+    fc.tuple(fc.uuid(), fc.uuid()).filter(([a, b]) => a !== b),
+    async ([existing, incoming]) => {
+      vi.resetAllMocks();
+      vi.mocked(repo.getUserByGoogleId).mockResolvedValue(null);
+      vi.mocked(repo.getUserByEmail).mockResolvedValue({ id: 'existing', email: 'same@gmail.com', googleId: existing } as never);
+      await expect(loginOrCreateGoogle(incoming, 'same@gmail.com', true)).rejects.toThrow();
+      expect(repo.linkGoogleIdentity).not.toHaveBeenCalled();
+      expect(core.setSession).not.toHaveBeenCalled();
+    },
+  ), { numRuns: 50 });
 });

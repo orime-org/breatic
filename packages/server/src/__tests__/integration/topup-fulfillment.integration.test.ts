@@ -153,9 +153,15 @@ async function seedPending(
     INSERT INTO users (email, email_verified)
     VALUES (${`fulfil-${stamp}@example.test`}, true) RETURNING id
   `;
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (user_id, stripe_session_id, amount_cents, credits_granted, currency, status, metadata)
-    VALUES (${user!.id}, ${sessionId}, 2000, 1700, 'usd', 'pending', ${sql.json(metadata)})
+    INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, credits_granted, currency, status, metadata)
+    VALUES (${source!.id}, ${user!.id}, ${sessionId}, 2000, 1700, 'usd', 'pending', ${sql.json(metadata)})
     RETURNING id
   `;
   return { userId: user!.id, paymentId: payment!.id, sessionId };
@@ -357,8 +363,8 @@ describe("the two guards cover different things", () => {
       // A lot already exists for this payment, so creating the second one
       // violates the unique constraint partway through the transaction.
       await sql`
-        INSERT INTO credit_lots (payment_id, user_id, purchased_credits, remaining_credits, lifecycle)
-        VALUES (${paymentId}, ${userId}, 1700, 1700, 'active')
+        INSERT INTO credit_lots (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle)
+        VALUES (${paymentId}, 'payment', ${userId}, 1700, 1700, 'active')
       `;
       stripe.checkout.sessions.retrieve.mockResolvedValue(
         paidSession(sessionId),
@@ -735,8 +741,8 @@ describe("what a purchase agreed to is read off our own row", () => {
         UPDATE payments SET metadata = ${sql.json({
           locale: "ja",
           timeZone: "Asia/Tokyo",
-          consentTextVersion: "consent-credits-v1",
-          refundTextVersion: "refund-credits-v1",
+          consentTextVersion: "consent-credits-v2",
+          refundTextVersion: "refund-credits-v2",
           consentedAt: ticked,
         })} WHERE id = ${paymentId}
       `;
@@ -759,8 +765,8 @@ describe("what a purchase agreed to is read off our own row", () => {
         FROM purchase_consents WHERE payment_id = ${paymentId}
       `;
       expect(consent!.locale).toBe("ja");
-      expect(consent!.consent_text_version).toBe("consent-credits-v1");
-      expect(consent!.refund_text_version).toBe("refund-credits-v1");
+      expect(consent!.consent_text_version).toBe("consent-credits-v2");
+      expect(consent!.refund_text_version).toBe("refund-credits-v2");
       // The instant is the one checkout stamped, not the one this row was
       // written at: the tick happened a request earlier, and settling can
       // arrive days later by way of reconciliation.
@@ -800,7 +806,7 @@ describe("what a purchase agreed to is read off our own row", () => {
       expect(consent!.user_id).toBe(userId);
 
       const [lot] = await sql<{ designated_studio_id: string | null }[]>`
-        SELECT designated_studio_id FROM credit_lots WHERE payment_id = ${paymentId}
+        SELECT designated_studio_id FROM credit_lots WHERE source_id = ${paymentId}
       `;
       expect(lot!.designated_studio_id).toBeNull();
     } finally {
@@ -825,7 +831,7 @@ describe("what a purchase agreed to is read off our own row", () => {
       expect((await fulfillPayment(sessionId, null)).status).toBe("granted");
 
       const [lot] = await sql<{ created_at: Date }[]>`
-        SELECT created_at FROM credit_lots WHERE payment_id = ${paymentId}
+        SELECT created_at FROM credit_lots WHERE source_id = ${paymentId}
       `;
       const before = await getConfirmationView(paymentId);
       expect(before!.grantedAt?.getTime()).toBe(lot!.created_at.getTime());

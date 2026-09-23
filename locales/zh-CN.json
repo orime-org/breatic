@@ -14,9 +14,16 @@
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
       "designation_locked": "这笔积分在退款流程中，不能改指定。",
+      "designation_not_purchased": "这笔积分是赠送的，只能用在你的个人 Studio 里，不能改指定。",
       "in_debt": "这个 Studio 欠着 {owed} 积分，指定新的积分会先抵掉它。",
       "unassigned": "你有 {available} 积分未指定，指定给 Studio 后才能使用。",
-      "none": "积分不足，请先充值。"
+      "none": "积分不足，请先充值。",
+      "granted_elsewhere": "你的积分是赠送的，只能用在你的个人 Studio 里。",
+      "refund_already_asked": "这笔已经提交过退款。",
+      "refund_not_purchased": "这笔积分是赠送的，没有付过款，所以不能退款。",
+      "refund_still_designated": "这笔已指定给某个 Studio，请先解除指定。",
+      "refund_already_spent": "这笔的积分已经用过，不能退款。",
+      "refund_window_closed": "这笔的退款期限已过。"
     },
     "text_tool": {
       "already_running": "另一个文本工具正在运行,请稍候。"
@@ -30,6 +37,7 @@
       "google_oauth_unconfigured": "本服务器未开启 Google 登录",
       "invalid_google_credential": "无法验证你的 Google 账号",
       "google_email_unverified": "你的 Google 账号邮箱未验证",
+      "google_link_requires_email_login": "请使用邮箱登录此账号，Google 无法安全关联此邮箱。",
       "reset_link_sent": "如果该邮箱已注册,重置链接已发送。",
       "reset_success": "密码重置成功,请登录。",
       "reset_recovery_success": "密码重置成功,请保存新的恢复码。",
@@ -68,10 +76,24 @@
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
       "price_not_configured": "套餐 {tier} 的价格未配置",
       "consent-credits-v1": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用的积分可在 30 天内全额退款。",
+      "consent-credits-v2": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用且未指定给 Studio 的积分可在 30 天内全额退款。",
       "refund-credits-v1": {
         "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
         "used": "只要花过其中任何一个，这一笔就不能再退了。",
         "expired": "超过 30 天，不再受理退款。"
+      },
+      "refund-credits-v2": {
+        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
+        "used": "只要花过其中任何一个，这一笔就不能再退了。",
+        "expired": "超过 30 天，不再受理退款。",
+        "unassigned": "只有未指定给 Studio 的积分包才能退款。"
+      },
+      "refund-credits-v3": {
+        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
+        "used": "只要花过其中任何一个，这一笔就不能再退了。",
+        "expired": "超过 30 天，不再受理退款。",
+        "unassigned": "只有未指定给 Studio 的积分包才能退款。",
+        "purchased": "只有购买的积分包可以退款。"
       },
       "not_found": "找不到这笔购买。",
       "unavailable": "这个部署不出售积分。"
@@ -324,6 +346,10 @@
       "cannotWrite": "你已不能在这里写了。",
       "unknownAuthor": "未知"
     },
+    "understand": {
+      "couldNotStart": "没能开始，可以重试。",
+      "sourceGone": "被读取的节点已不存在。这次理解没有连线。"
+    },
     "generatePanel": {
       "style": "风格",
       "focus": "聚焦",
@@ -493,7 +519,9 @@
       "unlock": "解锁节点",
       "resetEmpty": "重置为空图片",
       "history": "历史记录",
-      "download": "下载"
+      "snapshot": "保存快照",
+      "download": "下载",
+      "understand": "理解"
     },
     "edge": {
       "delete": "删除连线"
@@ -558,6 +586,10 @@
       "failed": "不可恢复",
       "typeGeneration": "生成",
       "typeUpload": "上传",
+      "typeSnapshot": "快照",
+      "snapshotKept": "快照已保存",
+      "snapshotEmpty": "没有内容可保存，这个节点是空的",
+      "snapshotFailed": "快照保存失败",
       "end": "没有更多了",
       "close": "关闭",
       "loadError": "历史记录加载失败",
@@ -600,13 +632,18 @@
       "failure": {
         "aborted": "上传没传完就中断了。",
         "over_cap": "这个文件超过了上传大小上限。",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {这个文件超过了理解的大小上限。} other {这个文件超过了理解的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {这个文件超过了理解的大小上限（{file}）。} other {这个文件超过了理解的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {这个文件超过了理解的大小上限（{file}，{bytes}）。} other {这个文件超过了理解的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}",
+        "understand_unsupported_type": "{file, select, none {{type, select, none {不能理解的文件类型。} other {不能理解的文件类型（{type}）。}}} other {{type, select, none {不能理解的文件类型（{file}）。} other {不能理解的文件类型（{file}，{type}）。}}}}",
         "expired": "它超时了。",
-        "no_result": "这次生成没有产出内容。",
+        "no_result": "这次运行没有产出内容。",
         "source_unreachable": "这个地址打不开。",
         "source_too_slow": "取这个地址的内容超时了。",
         "unsupported_type": "{kind, select, image {不是支持的格式，图片只收 {formats}。} video {不是支持的格式，视频只收 {formats}。} audio {不是支持的格式，音频只收 {formats}。} other {不是支持的格式。}}",
         "empty": "没有拿到任何内容。",
-        "internal": "我们这边出错了，可以重试。"
+        "internal": "我们这边出错了，可以重试。",
+        "no_credits": "没有可用积分。",
+        "declined": "模型拒绝了这次请求。",
+        "media_refused": "模型不接受这个文件。"
       }
     }
   },
@@ -626,8 +663,8 @@
       "signUp": "注册",
       "noAccount": "还没有账号?",
       "forgotPassword": "忘记密码?",
-      "continueWithGoogle": "使用 Google 继续",
-      "googleSoon": "Google 登录即将上线。",
+      "googleLoading": "正在加载 Google 登录…",
+      "googleFailed": "Google 登录暂不可用，请重试或使用邮箱登录。",
       "failed": "登录失败,请重试。"
     },
     "register": {
@@ -745,6 +782,14 @@
         "create": "正在创建 Space…"
       },
       "noActive": "没有打开的 Space — 点抽屉里的 Space 打开,或点 + 新建。"
+    },
+    "update": {
+      "available": "有新版本",
+      "title": "有新版本可用",
+      "description": "新版本已上线，刷新后即可使用。",
+      "busy": "有上传或其他操作正在进行，刷新会中断操作。建议完成后再刷新。",
+      "later": "稍后",
+      "refresh": "更新"
     }
   },
   "common": {
@@ -1090,6 +1135,7 @@
       "account": "账号",
       "signOut": "退出登录",
       "credits": "积分",
+      "creditsUnavailable": "当前不可用",
       "membership": "会员",
       "accountSettings": "账号设置"
     },
@@ -1490,15 +1536,22 @@
     },
     "section": {
       "overview": "总览",
-      "lots": "购买记录",
+      "lots": "获取记录",
       "ledger": "消耗流水",
       "studios": "各 Studio",
       "buy": "购买积分",
       "assign": "指定",
       "refunds": "退款"
     },
+    "source": {
+      "payment": "充值",
+      "gift": "体验积分",
+      "compensation": "补偿",
+      "discount": "优惠"
+    },
+    "pinnedToPersonalStudio": "只能用在你的个人 Studio",
     "lifecycle": {
-      "depleted": "已用完",
+      "depleted": "已消耗完毕",
       "refund_pending": "审核中",
       "refunding": "退款中",
       "refunded": "已退款"
@@ -1509,6 +1562,7 @@
     },
     "total": "账号总额",
     "unassigned": "未指定",
+    "unassignedWithNextStep": "未指定，去左侧「指定」分给要用的 Studio",
     "assigned": "已指定",
     "pricingHint": "1 积分 = 1 美分，永不过期。",
     "unassignedHint": "需要指定给某个 Studio 才能用。",
@@ -1519,15 +1573,11 @@
     },
     "lotsEmpty": "还没有购买记录。",
     "lotsEmptyNotice": {
-      "title": "每一笔购买都会列在这里",
-      "body": "每一笔会显示花了多少、处理到哪一步，以及积分去了哪个 Studio。"
+      "title": "积分是怎么来的，都列在这里",
+      "body": "买来的、赠送的都会列出来，显示来源、花了多少、处理到哪一步，以及积分去了哪个 Studio。"
     },
     "assignedTo": "指定给 {studio}",
     "ofPurchased": "共 {amount}",
-    "unassignedNotice": {
-      "title": "有 {count} 个积分包还没指定，需要指定才能用",
-      "body": "去左侧「指定」把它们分给要用的 Studio。"
-    },
     "allSpending": "全部消耗",
     "allStudios": "全部 Studio",
     "filterByStudio": "按 Studio 筛选",
@@ -1556,25 +1606,14 @@
       "body": "每个积分包整个指定给一个 Studio，随时可以改。"
     },
     "assignNote": "下拉里只有你是 Admin 的 Studio。改了之后原来那个 Studio 立刻失去这个积分包。",
-    "remaining": "还剩 {amount} 积分",
     "designationFor": "{amount} 这个积分包的指定去向",
     "designateFailed": "指定没能保存，请重试。",
-    "refundsEmpty": "没有可以退的积分。",
-    "refundable": "可以退的积分包",
-    "refundableHint": "还剩 {credits} 积分",
+    "refundsEmpty": "还没有买过积分包",
     "askRefund": "申请退款",
-    "refundNotOpen": "退款还没开放",
-    "refundsAsked": "已提交的申请",
-    "refundRefused": "已驳回",
-    "refundRefusedHint": "这个积分包已回到可用状态，重新指定时会先抵欠账",
-    "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
-    "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
-    "refundedHint": "{credits} 积分 · 已退款，不能再指定给 Studio",
-    "refundsNote": "一积分没花、且购买不满 30 天的，可全额原路退回，需要审核。",
+    "refundTitle": "退款规则",
     "buy": {
       "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
       "assignNotice": "积分需要指定给某个 Studio 才能使用。",
-      "refundTitle": "退款规则",
       "action": "购买",
       "confirmTitle": "确认购买",
       "confirmPack": "积分包",
@@ -1600,6 +1639,31 @@
       "title": "正在处理这笔购买",
       "body": "请不要关闭页面。",
       "skip": "查看购买记录"
+    },
+    "refundFailed": "申请退款没有成功，请再试一次。",
+    "underRefund": "退款流程中",
+    "underRefundHint": "在有结果之前哪里都花不出去",
+    "confirmRefund": {
+      "title": "申请退款？",
+      "body": "这一笔将进入退款审核，期间不能指定给 Studio，申请提交后也无法撤回。",
+      "cancel": "取消",
+      "confirm": "申请退款"
+    },
+    "refundReason": {
+      "spent": "已经用过",
+      "expired": "超过 30 天"
+    },
+    "refundHint": {
+      "assigned": "解除指定后可以申请退款"
     }
+  },
+  "notFound": {
+    "heading": "页面未找到",
+    "body": "你访问的页面不存在或已经移动。我们带你回首页。",
+    "cta": "返回首页"
+  },
+  "pageLoadError": {
+    "message": "页面加载失败，请重试。",
+    "retry": "重试"
   }
 }

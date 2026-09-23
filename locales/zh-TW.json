@@ -14,9 +14,16 @@
     "credit": {
       "not_studio_admin": "只能指定給你管理的 Studio。",
       "designation_locked": "這筆點數在退款流程中，不能改指定。",
+      "designation_not_purchased": "這筆點數是贈送的，只能用在你的個人 Studio 裡，不能改指定。",
       "in_debt": "這個 Studio 欠著 {owed} 點數，指定新的點數會先抵掉它。",
       "unassigned": "你有 {available} 點數未指定，指定給 Studio 後才能使用。",
-      "none": "點數不足，請先儲值。"
+      "none": "點數不足，請先儲值。",
+      "granted_elsewhere": "你的點數是贈送的，只能用在你的個人 Studio 裡。",
+      "refund_already_asked": "這筆已經提交過退款。",
+      "refund_not_purchased": "這筆點數是贈送的，沒有付過款，所以不能退款。",
+      "refund_still_designated": "這筆已指定給某個 Studio，請先解除指定。",
+      "refund_already_spent": "這筆的點數已經用過，不能退款。",
+      "refund_window_closed": "這筆的退款期限已過。"
     },
     "auth": {
       "invalid_credentials": "電子郵件或密碼錯誤",
@@ -27,6 +34,7 @@
       "google_oauth_unconfigured": "本伺服器未開啟 Google 登入",
       "invalid_google_credential": "無法驗證你的 Google 帳號",
       "google_email_unverified": "你的 Google 帳號電子郵件未驗證",
+      "google_link_requires_email_login": "請使用電子郵件登入此帳號，Google 無法安全關聯此信箱。",
       "reset_link_sent": "若該電子郵件已註冊,重設連結已寄送。",
       "reset_success": "密碼重設成功,請登入。",
       "reset_recovery_success": "密碼重設成功,請保存新的復原碼。",
@@ -65,10 +73,24 @@
       "tier_not_found": "未知的方案：{tier}。可選：{available}",
       "price_not_configured": "方案 {tier} 的價格未設定",
       "consent-credits-v1": "我要求立即交付點數，並知悉**一旦我使用其中任何一個，這筆購買將不能再退款**。未使用的點數可在 30 天內全額退款。",
+      "consent-credits-v2": "我要求立即交付點數，並知悉**一旦我使用其中任何一個，這筆購買將不能再退款**。未使用且未指定給 Studio 的點數可在 30 天內全額退款。",
       "refund-credits-v1": {
         "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
         "used": "只要花過其中任何一個，這一筆就不能再退了。",
         "expired": "超過 30 天，不再受理退款。"
+      },
+      "refund-credits-v2": {
+        "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
+        "used": "只要花過其中任何一個，這一筆就不能再退了。",
+        "expired": "超過 30 天，不再受理退款。",
+        "unassigned": "只有未指定給 Studio 的點數包才能退款。"
+      },
+      "refund-credits-v3": {
+        "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
+        "used": "只要花過其中任何一個，這一筆就不能再退了。",
+        "expired": "超過 30 天，不再受理退款。",
+        "unassigned": "只有未指定給 Studio 的點數包才能退款。",
+        "purchased": "只有購買的點數包可以退款。"
       },
       "not_found": "找不到這筆購買。",
       "unavailable": "這個部署不出售點數。"
@@ -324,6 +346,10 @@
       "cannotWrite": "你已無法在這裡書寫。",
       "unknownAuthor": "未知"
     },
+    "understand": {
+      "couldNotStart": "沒能開始，可以重試。",
+      "sourceGone": "被讀取的節點已不存在。這次理解沒有連線。"
+    },
     "generatePanel": {
       "style": "風格",
       "focus": "聚焦",
@@ -493,7 +519,9 @@
       "unlock": "解鎖節點",
       "resetEmpty": "重設為空白圖片",
       "history": "歷史記錄",
-      "download": "下載"
+      "snapshot": "儲存快照",
+      "download": "下載",
+      "understand": "理解"
     },
     "edge": {
       "delete": "刪除連線"
@@ -558,6 +586,10 @@
       "failed": "不可恢復",
       "typeGeneration": "生成",
       "typeUpload": "上傳",
+      "typeSnapshot": "快照",
+      "snapshotKept": "快照已儲存",
+      "snapshotEmpty": "沒有內容可儲存，這個節點是空的",
+      "snapshotFailed": "快照儲存失敗",
       "end": "沒有更多了",
       "close": "關閉",
       "loadError": "歷史記錄載入失敗",
@@ -600,13 +632,18 @@
       "failure": {
         "aborted": "上傳還沒完成就中斷了。",
         "over_cap": "這個檔案超過了上傳大小上限。",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {這個檔案超過了理解的大小上限。} other {這個檔案超過了理解的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {這個檔案超過了理解的大小上限（{file}）。} other {這個檔案超過了理解的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {這個檔案超過了理解的大小上限（{file}，{bytes}）。} other {這個檔案超過了理解的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}",
+        "understand_unsupported_type": "{file, select, none {{type, select, none {不能理解的檔案類型。} other {不能理解的檔案類型（{type}）。}}} other {{type, select, none {不能理解的檔案類型（{file}）。} other {不能理解的檔案類型（{file}，{type}）。}}}}",
         "expired": "它逾時了。",
-        "no_result": "這次生成沒有產出內容。",
+        "no_result": "這次執行沒有產出內容。",
         "source_unreachable": "這個網址打不開。",
         "source_too_slow": "取這個網址的內容逾時了。",
         "unsupported_type": "{kind, select, image {不是支援的格式，圖片只收 {formats}。} video {不是支援的格式，影片只收 {formats}。} audio {不是支援的格式，音訊只收 {formats}。} other {不是支援的格式。}}",
         "empty": "沒有拿到任何內容。",
-        "internal": "我們這邊出錯了，可以重試。"
+        "internal": "我們這邊出錯了，可以重試。",
+        "no_credits": "沒有可用積分。",
+        "declined": "模型拒絕了這次請求。",
+        "media_refused": "模型不接受這個檔案。"
       }
     }
   },
@@ -626,8 +663,8 @@
       "signUp": "註冊",
       "noAccount": "還沒有帳號?",
       "forgotPassword": "忘記密碼?",
-      "continueWithGoogle": "使用 Google 繼續",
-      "googleSoon": "Google 登入即將推出。",
+      "googleLoading": "正在載入 Google 登入…",
+      "googleFailed": "Google 登入暫不可用，請重試或使用電子郵件登入。",
       "failed": "登入失敗,請重試。"
     },
     "register": {
@@ -745,6 +782,14 @@
         "create": "正在建立 Space…"
       },
       "noActive": "沒有開啟的 Space — 點抽屜裡的 Space 開啟,或點 + 新增。"
+    },
+    "update": {
+      "available": "有新版本",
+      "title": "有新版本可用",
+      "description": "新版本已上線，重新整理後即可使用。",
+      "busy": "有上傳或其他操作正在進行，重新整理會中斷操作。建議完成後再重新整理。",
+      "later": "稍後",
+      "refresh": "更新"
     }
   },
   "common": {
@@ -1090,6 +1135,7 @@
       "account": "帳號",
       "signOut": "登出",
       "credits": "點數",
+      "creditsUnavailable": "目前無法取得",
       "membership": "會員",
       "accountSettings": "帳號設定"
     },
@@ -1490,15 +1536,22 @@
     },
     "section": {
       "overview": "總覽",
-      "lots": "購買記錄",
+      "lots": "取得紀錄",
       "ledger": "消耗明細",
       "studios": "各 Studio",
       "buy": "購買點數",
       "assign": "指定",
       "refunds": "退款"
     },
+    "source": {
+      "payment": "儲值",
+      "gift": "體驗點數",
+      "compensation": "補償",
+      "discount": "優惠"
+    },
+    "pinnedToPersonalStudio": "只能用在你的個人 Studio",
     "lifecycle": {
-      "depleted": "已用完",
+      "depleted": "已消耗完畢",
       "refund_pending": "審核中",
       "refunding": "退款中",
       "refunded": "已退款"
@@ -1509,6 +1562,7 @@
     },
     "total": "帳號總額",
     "unassigned": "未指定",
+    "unassignedWithNextStep": "未指定，到左側「指定」分給要用的 Studio",
     "assigned": "已指定",
     "pricingHint": "1 點數 = 1 美分，永不過期。",
     "unassignedHint": "需要指定給某個 Studio 才能使用。",
@@ -1519,15 +1573,11 @@
     },
     "lotsEmpty": "還沒有購買記錄。",
     "lotsEmptyNotice": {
-      "title": "每一筆購買都會列在這裡",
-      "body": "每一筆會顯示花了多少、處理到哪一步，以及點數去了哪個 Studio。"
+      "title": "點數是怎麼來的，都列在這裡",
+      "body": "買來的、贈送的都會列出來，顯示來源、花了多少、處理到哪一步，以及點數去了哪個 Studio。"
     },
     "assignedTo": "指定給 {studio}",
     "ofPurchased": "共 {amount}",
-    "unassignedNotice": {
-      "title": "有 {count} 個點數包還沒指定，需要指定才能用",
-      "body": "到左側「指定」把它們分給要用的 Studio。"
-    },
     "allSpending": "全部消耗",
     "allStudios": "全部 Studio",
     "filterByStudio": "依 Studio 篩選",
@@ -1556,25 +1606,14 @@
       "body": "每個點數包整個指定給一個 Studio，隨時可以改。"
     },
     "assignNote": "下拉裡只有你是 Admin 的 Studio。改了之後原本那個 Studio 立刻失去這個點數包。",
-    "remaining": "還剩 {amount} 點數",
     "designationFor": "{amount} 這個點數包的指定去向",
     "designateFailed": "指定沒能儲存，請重試。",
-    "refundsEmpty": "沒有可以退的點數。",
-    "refundable": "可以退的點數包",
-    "refundableHint": "還剩 {credits} 點數",
+    "refundsEmpty": "還沒有買過點數包",
     "askRefund": "申請退款",
-    "refundNotOpen": "退款還沒開放",
-    "refundsAsked": "已送出的申請",
-    "refundRefused": "已駁回",
-    "refundRefusedHint": "這個點數包已回到可用狀態，重新指定時會先抵欠帳",
-    "refundPendingHint": "{credits} 積分 · 審核期間不能指定給 Studio",
-    "refundingHint": "{credits} 積分 · 退款進行中，不能指定給 Studio",
-    "refundedHint": "{credits} 積分 · 已退款，不能再指定給 Studio",
-    "refundsNote": "一點數沒花、且購買不滿 30 天的，可全額原路退回，需要審核。",
+    "refundTitle": "退款規則",
     "buy": {
       "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
       "assignNotice": "點數需要指定給某個 Studio 才能使用。",
-      "refundTitle": "退款規則",
       "action": "購買",
       "confirmTitle": "確認購買",
       "confirmPack": "點數包",
@@ -1600,6 +1639,31 @@
       "title": "正在處理這筆購買",
       "body": "請不要關閉頁面。",
       "skip": "查看購買記錄"
+    },
+    "refundFailed": "申請退款沒有成功，請再試一次。",
+    "underRefund": "退款流程中",
+    "underRefundHint": "在有結果之前哪裡都花不出去",
+    "confirmRefund": {
+      "title": "申請退款？",
+      "body": "這一筆將進入退款審核，期間不能指定給 Studio，申請提交後也無法撤回。",
+      "cancel": "取消",
+      "confirm": "申請退款"
+    },
+    "refundReason": {
+      "spent": "已經用過",
+      "expired": "超過 30 天"
+    },
+    "refundHint": {
+      "assigned": "解除指定後可以申請退款"
     }
+  },
+  "notFound": {
+    "heading": "頁面未找到",
+    "body": "你造訪的頁面不存在或已經移動。我們帶你回首頁。",
+    "cta": "返回首頁"
+  },
+  "pageLoadError": {
+    "message": "頁面載入失敗，請重試。",
+    "retry": "重試"
   }
 }

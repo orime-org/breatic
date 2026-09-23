@@ -77,6 +77,14 @@ async function seedFixture(): Promise<{
     VALUES (${userId}, ${`off-s-${n}-${Date.now()}`}, 'team', 'Off') RETURNING id
   `;
   const studioId = studio!.id;
+  // Both production paths that create a studio write this row, and the
+  // account-side reads ask it who administers the studio.
+  // `created_by_user_id` records who opened it and never changes, so it
+  // cannot answer that.
+  await sql`
+    INSERT INTO studio_members (studio_id, user_id, role)
+    VALUES (${studioId}, ${userId}, 'admin')
+  `;
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
     VALUES (${studioId}, ${userId}, ${`off-p-${n}-${Date.now()}`}, 'Off') RETURNING id

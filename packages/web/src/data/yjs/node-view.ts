@@ -64,6 +64,17 @@ interface NodeViewCommon {
 /** Fields shared by every content-node view. */
 interface ContentNodeViewBase extends NodeViewCommon {
   /**
+   * What the ledger judged this node's file to be, and counted its bytes at
+   * (#240). Absent for a node stored before the ledger reported them, and for
+   * a text node, which holds no file.
+   *
+   * The Understand gate reads both: a format the endpoint cannot read and a
+   * file over the ceiling are refused in the browser, before anything is
+   * built.
+   */
+  mimeType?: string;
+  sizeBytes?: number;
+  /**
    * Editable display name shown in the node name header (fixed-English
    * default). Optional in the view (like `locked`) so component tests that
    * only exercise the body need not spell it out; `toNodeView` always
@@ -79,6 +90,12 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   taskCounts?: NodeTaskCounts;
   errorMessage?: string;
+  /**
+   * The history row a reader last put back on this node. The panel names it
+   * "current": content cannot tell two rows holding the same thing apart,
+   * and the reader picked one of them.
+   */
+  restoredFromEntryId?: string;
   // Generate panel inputs (model revision 2026-06-15) — a content node can
   // carry the Generate action's collaborative inputs. All optional: a node
   // with no Generate history simply omits them.
@@ -298,10 +315,21 @@ export type NodeView = ContentNodeView | AnnotationNodeView | GroupNodeView;
  * reaches the task table: text extracted in the browser (§3.7.4). It is the
  * only writer left for that field.
  *
+ * `holdsBody` is what a text node answers true to: its words live in a
+ * fragment the editor binds to, and an empty one is still a paragraph
+ * somebody can type into. A failed TASK on such a node shows in the counts
+ * column and in the row that failed, and the body stays readable and
+ * editable (user 2026-09-19: what a node shows and what its tasks did are
+ * two different things).
+ *
+ * The extraction failure is the other half and is not covered by that: it
+ * has no task row at all, so this box is the only place it can be said.
+ *
  * There is no clock: whether a task has run past its deadline is settled
  * server-side when somebody reads the node's task list (§4.6), never by
  * whoever is looking at the node.
  * @param data - The wire data fields carrying `taskCounts`, `errorMessage` and `content`.
+ * @param holdsBody - Whether this node shows a body rather than `content`.
  * @returns The derived display status.
  */
 export function deriveStatus(
@@ -309,14 +337,18 @@ export function deriveStatus(
     CanvasNodeFields['data'],
     'taskCounts' | 'errorMessage' | 'content'
   >,
+  holdsBody = false,
 ): DisplayStatus {
   const counts = data.taskCounts;
   if (counts !== undefined && counts.running > 0) return 'handling';
-  const wentWrong =
-    (counts !== undefined && (counts.failed > 0 || counts.expired > 0)) ||
-    data.errorMessage != null;
-  if (wentWrong && (data.content === undefined || data.content === ''))
-    return 'error';
+  const nothingToShow = data.content === undefined || data.content === '';
+  // Text this browser could not extract (§3.7.4). It opens no task row, so
+  // the box is where it is said, on a node holding a body as much as on one
+  // holding content.
+  if (data.errorMessage != null && nothingToShow) return 'error';
+  const taskFailed =
+    counts !== undefined && (counts.failed > 0 || counts.expired > 0);
+  if (taskFailed && !holdsBody && nothingToShow) return 'error';
   return 'idle';
 }
 
@@ -352,7 +384,7 @@ export function failedTaskListToOpen(
  */
 export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const { type, data } = fields;
-  const status = deriveStatus(data);
+  const status = deriveStatus(data, type === 'text');
   const errorMessage = data.errorMessage;
   const locked = data.locked;
   // Common content-view fields: the editable name (node name header), the
@@ -362,7 +394,13 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const contentCommon = {
     name: data.name,
     status,
+    // What the ledger judged off the bytes that landed. The Understand gate
+    // reads both before it builds anything; absent for a node stored before
+    // the ledger reported them.
+    mimeType: data.mimeType,
+    sizeBytes: data.size,
     taskCounts: data.taskCounts,
+    restoredFromEntryId: data.restoredFromEntryId,
     errorMessage,
     locked,
     prompt: data.prompt,

@@ -32,6 +32,7 @@ export type {
 
 export type {
   CreditPage,
+  CreditSourceKind,
   PurchaseRow,
   CreditLotView,
   StudioLotView,
@@ -41,6 +42,15 @@ export type {
   StudioCreditsView,
   StudioCreditSummary,
   CreditOverview,
+} from "@shared/types/credit.js";
+
+export {
+  accountTotal,
+  CREDIT_SOURCE_KINDS,
+  isPurchased,
+  GRANTED_SOURCE_KINDS,
+  HELD_LIFECYCLES,
+  IN_FLIGHT_REFUND_LIFECYCLES,
 } from "@shared/types/credit.js";
 
 export {
@@ -183,6 +193,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   AssetActivityPayloadSchema,
+  GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
   SpaceActivityPayloadSchema,
   MemberActivityPayloadSchema,

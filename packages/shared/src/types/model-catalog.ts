@@ -34,8 +34,7 @@ export type ModelModality =
   | 'video'
   | 'audio'
   | 'tts'
-  | 'three_d'
-  | 'understand';
+  | 'three_d';
 
 /** Model tier for frontend display filtering. */
 export type ModelTier = 'recommended' | 'optional' | 'internal';
@@ -259,7 +258,6 @@ export interface ModelCatalog {
   audio: ModelEntry[];
   tts: ModelEntry[];
   three_d: ModelEntry[];
-  understand: ModelEntry[];
   total: number;
 }
 
@@ -462,7 +460,7 @@ const modelEntrySchema = z.object({
   name: z.string().min(1),
   display_name: z.string().catch(""),
   modality: z
-    .enum(["image", "video", "audio", "tts", "three_d", "understand"])
+    .enum(["image", "video", "audio", "tts", "three_d"])
     .catch("image"),
   mode: z.union([z.string(), z.array(z.string())]).catch("generate"),
   description: z.string().catch(""),
@@ -551,7 +549,6 @@ const EMPTY_CATALOG = {
   audio: [],
   tts: [],
   three_d: [],
-  understand: [],
   total: 0,
 };
 
@@ -567,7 +564,6 @@ export const modelCatalogSchema = z
     audio: modelEntryBucketSchema,
     tts: modelEntryBucketSchema,
     three_d: modelEntryBucketSchema,
-    understand: modelEntryBucketSchema,
     total: z.number().catch(0),
   })
   .catch(EMPTY_CATALOG);

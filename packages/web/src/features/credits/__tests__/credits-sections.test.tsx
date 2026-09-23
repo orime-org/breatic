@@ -16,6 +16,7 @@ import type {
 
 import { setLocale } from '@breatic/shared';
 
+import { ApiException } from '@web/data/api/types';
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import type { CreditsSectionId } from '@web/features/credits/credits-sections';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -24,40 +25,67 @@ const fetchCreditOverview = vi.fn();
 const fetchCreditLots = vi.fn();
 const fetchCreditLedger = vi.fn();
 const designateCreditLot = vi.fn();
+const requestCreditLotRefund = vi.fn();
 vi.mock('@web/data/api/credits', () => ({
   fetchCreditOverview: () => fetchCreditOverview(),
   fetchCreditLots: (...args: unknown[]) => fetchCreditLots(...args),
   fetchCreditLedger: (...args: unknown[]) => fetchCreditLedger(...args),
   designateCreditLot: (...args: unknown[]) => designateCreditLot(...args),
+  requestCreditLotRefund: (...args: unknown[]) =>
+    requestCreditLotRefund(...args),
 }));
 
 const listUserStudios = vi.fn();
 const paymentHistory = vi.fn();
+const paymentTiers = vi.fn();
 vi.mock('@web/data/api/payment', () => ({
   paymentApi: {
-    tiers: () =>
-      Promise.resolve({
-        packs: [
-          { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
-          { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
-        ],
-        refundLines: ['unused', 'used', 'expired'],
-        confirmTimeoutMs: 15000,
-      }),
+    tiers: () => paymentTiers(),
     checkout: vi.fn(),
     history: (...args: unknown[]) => paymentHistory(...args),
     resendConfirmation: vi.fn(),
   },
 }));
 
+/**
+ * What `GET /payment/tiers` answers, in the shape the server sends.
+ * @returns The packs and the refund rule.
+ */
+function tiers(): {
+  packs: { name: string; credits: number; priceCents: number; currency: string }[];
+  refundLines: string[];
+  confirmTimeoutMs: number;
+  } {
+  return {
+    packs: [
+      { name: '830 Credits', credits: 830, priceCents: 1000, currency: 'usd' },
+      { name: '1,700 Credits', credits: 1700, priceCents: 2000, currency: 'usd' },
+    ],
+    // The five sentences `refundLinesAt` reads out of `refund-credits-v3`,
+    // copied from locales/en.json. A sentence of this file's own invention
+    // would let a test pin wording the server never sends.
+    refundLines: [
+      'Bought within the last 30 days and haven\'t spent a single credit? Refunded in full, back to the original card.',
+      'Spent any of them, even one? That pack can no longer be refunded.',
+      'Past 30 days, packs are no longer refundable.',
+      'Only a pack that is not assigned to a Studio can be refunded.',
+      'Only a pack that was bought can be refunded.',
+    ],
+    confirmTimeoutMs: 15000,
+  };
+}
+
 vi.mock('@web/data/api/studios', () => ({
   studiosApi: { listUserStudios: () => listUserStudios() },
 }));
 
 // jsdom does not scroll, so the callback the hook is given is captured here
-// and called directly.
+// and called directly. The element handed to `scrollerRef` is kept too: it is
+// what the hook would watch, and nothing else in this file can see which box
+// the overlay ended up passing down.
 let reachEnd: (() => void) | null = null;
 let watcherStopped: boolean | null = null;
+let watched: HTMLElement | null = null;
 vi.mock('@web/lib/use-scrolled-to-end', () => ({
   useScrolledToEnd: (opts: {
     enabled: boolean;
@@ -66,13 +94,22 @@ vi.mock('@web/lib/use-scrolled-to-end', () => ({
   }) => {
     reachEnd = opts.enabled ? opts.onReachEnd : null;
     watcherStopped = opts.failed;
-    return { scrollerRef: () => {}, sentinelRef: () => {} };
+    return {
+      scrollerRef: (node: HTMLElement | null) => {
+        if (node !== null) watched = node;
+      },
+      sentinelRef: () => {},
+    };
   },
 }));
 
 const toastWarning = vi.fn();
+const toastError = vi.fn();
 vi.mock('@web/lib/toast', () => ({
-  toast: { warning: (...a: unknown[]) => toastWarning(...a), error: vi.fn() },
+  toast: {
+    warning: (...a: unknown[]) => toastWarning(...a),
+    error: (...a: unknown[]) => toastError(...a),
+  },
 }));
 
 const ALEX = {
@@ -111,6 +148,7 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
   return {
     assignedCredits: 3640,
     unassignedCredits: 1790,
+    underRefundCredits: 0,
     billing: true,
     studios: [studio()],
     ...over,
@@ -123,20 +161,25 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
  * @returns The purchase.
  */
 function lot(over: Partial<CreditLotView> = {}): CreditLotView {
-  return {
+  const base = {
     id: 'l1',
+    sourceKind: 'payment' as CreditLotView['sourceKind'],
     purchasedCredits: 4550,
     remainingCredits: 2400,
-    designatedStudioId: 's1',
-    designatedStudioName: 'Orime Studio',
+    designatedStudioId: 's1' as string | null,
+    designatedStudioName: 'Orime Studio' as string | null,
     paidCents: 5000,
     currency: 'usd',
-    lifecycle: 'active',
+    lifecycle: 'active' as CreditLotView['lifecycle'],
     refundAttempts: 0,
     everSpent: false,
     createdAt: '2026-08-21T10:00:00.000Z',
     ...over,
   };
+  // The two say the same thing on every purchase a test writes, so the
+  // fixture derives one from the other rather than asking each test to keep
+  // them in step. A test that means to split them passes `designated`.
+  return { designated: base.designatedStudioId !== null, ...base, ...over };
 }
 
 /**
@@ -146,8 +189,10 @@ function lot(over: Partial<CreditLotView> = {}): CreditLotView {
  */
 function purchase(over: Partial<PurchaseRow> = {}): PurchaseRow {
   return {
-    paymentId: 'p1',
-    amountCents: 5000,
+    rowId: 'p1',
+    sourceKind: 'payment' as PurchaseRow['sourceKind'],
+    paymentId: 'p1' as string | null,
+    amountCents: 5000 as number | null,
     totalCents: 5000,
     taxCents: 0,
     currency: 'usd',
@@ -253,13 +298,17 @@ describe('the credits overlay, section by section', () => {
       .mockReset()
       .mockResolvedValue({ items: [entry()], nextCursor: null });
     designateCreditLot.mockReset().mockResolvedValue(lot());
+    requestCreditLotRefund.mockReset().mockResolvedValue(undefined);
     listUserStudios.mockReset().mockResolvedValue([
       { id: 's1', name: 'Orime Studio', myStudioRole: 'admin' },
       { id: 's2', name: 'Design squad', myStudioRole: 'guest' },
     ]);
     toastWarning.mockReset();
+    toastError.mockReset();
     reachEnd = null;
     watcherStopped = null;
+    watched = null;
+    paymentTiers.mockReset().mockResolvedValue(tiers());
   });
 
   afterEach(() => {
@@ -278,12 +327,26 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('3,640');
     });
 
-    it('gives the split a line per studio and one for the unassigned', async () => {
+    it('gives the split a line per studio, and none for credits at no studio', async () => {
+      fetchCreditOverview.mockResolvedValue(overview({ underRefundCredits: 500 }));
       await openOn('overview');
       const body = await panel();
 
       expect(body).toHaveTextContent('Orime Studio 2,400');
-      expect(body).toHaveTextContent(/Unassigned 1,790/);
+      const legend = body.querySelector('ul');
+      expect(legend?.textContent).not.toMatch(/Unassigned/);
+      expect(legend?.textContent).not.toMatch(/Under refund/);
+    });
+
+    it('drops the split when every credit is at no studio', async () => {
+      fetchCreditOverview.mockResolvedValue(
+        overview({ assignedCredits: 0, studios: [] }),
+      );
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('1,790');
+      expect(body).not.toHaveTextContent(/Which Studios hold it/);
     });
 
     it('drops the split when there is nothing, and says what to do instead', async () => {
@@ -321,7 +384,7 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('Assigned to Orime Studio');
     });
 
-    it('prompts when some point nowhere, and counts them right', async () => {
+    it('tells each purchase that points nowhere where to go', async () => {
       paymentHistory.mockResolvedValue({
         items: [
           purchase(),
@@ -333,13 +396,16 @@ describe('the credits overlay, section by section', () => {
       await openOn('lots');
       const body = await panel();
 
-      expect(body).toHaveTextContent('2 purchases are unassigned');
+      const carrying = within(body)
+        .getAllByTestId('purchase-row')
+        .filter((r) => (r.textContent ?? '').includes('use Assign on the left'));
+      expect(carrying).toHaveLength(2);
     });
 
-    it('leaves a purchase under refund out of that count', async () => {
+    it('leaves a purchase under refund without that instruction', async () => {
       // Asking for a refund detaches it from every studio and bars it from
-      // being pointed anywhere. Counting it asks the reader to do something
-      // the server refuses.
+      // being pointed anywhere. Telling this row to go and assign it asks the
+      // reader to do something the server refuses.
       paymentHistory.mockResolvedValue({
         items: [
           purchase(),
@@ -355,14 +421,59 @@ describe('the credits overlay, section by section', () => {
       await openOn('lots');
       const body = await panel();
 
-      expect(body).not.toHaveTextContent(/are unassigned/);
+      expect(body).not.toHaveTextContent(/use Assign on the left/);
+    });
+
+    // "Unassigned" is what this panel teaches the reader to act on — assign
+    // it to a Studio and it becomes spendable. On a purchase under refund
+    // that reading is wrong twice over: the detachment is the refund's doing,
+    // and the assign screen will not offer it.
+    it('names where a purchase under refund stands, rather than calling it unassigned', async () => {
+      paymentHistory.mockResolvedValue({
+        items: [
+          purchase({
+            paymentId: 'p4',
+            lifecycle: 'refund_pending',
+            designatedStudioId: null,
+            designatedStudioName: null,
+          }),
+        ],
+        nextCursor: null,
+      });
+      await openOn('lots');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('Under review');
+      expect(body).not.toHaveTextContent(/^Unassigned$/m);
+    });
+
+    // A pack spent to nothing keeps its designation — `applyCharge` moves the
+    // lifecycle and leaves the column alone — and this row is the only place
+    // the buyer can see which Studio the money went to.
+    it('keeps naming the Studio of a purchase that was spent to nothing', async () => {
+      paymentHistory.mockResolvedValue({
+        items: [
+          purchase({
+            paymentId: 'p5',
+            lifecycle: 'depleted',
+            remainingCredits: 0,
+            designatedStudioId: 's1',
+            designatedStudioName: 'Orime Studio',
+          }),
+        ],
+        nextCursor: null,
+      });
+      await openOn('lots');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('Assigned to Orime Studio');
     });
 
     it('says nothing when every purchase points somewhere', async () => {
       await openOn('lots');
       const body = await panel();
 
-      expect(body).not.toHaveTextContent(/are unassigned/);
+      expect(body).not.toHaveTextContent(/use Assign on the left/);
     });
 
     it('does not reach the endpoint at all where nothing is charged', async () => {
@@ -493,9 +604,9 @@ describe('the credits overlay, section by section', () => {
       expect(th!.className).toContain('top-0');
     });
 
-    it('withholds the unassigned count while a further page is coming', async () => {
-      // The count covers only the pages read so far, so stating it makes it
-      // climb as the reader scrolls.
+    it('says it on the row before the rest of the list has arrived', async () => {
+      // The sentence belongs to the purchase it is about, so it does not wait
+      // on a reading of the whole list the way a count at the foot would.
       paymentHistory.mockResolvedValue({
         items: [purchase({ designatedStudioId: null, designatedStudioName: null })],
         nextCursor: 'more',
@@ -503,42 +614,36 @@ describe('the credits overlay, section by section', () => {
       await openOn('lots');
       const body = await panel();
 
-      expect(body).not.toHaveTextContent(/are unassigned/);
+      expect(body).toHaveTextContent(/use Assign on the left/);
     });
 
-    it('keeps the sentinel when the refunds list filters a page away', async () => {
-      // This section filters again after the server has cut the page. With a
-      // whole page filtered away and no sentinel, it stops here for good.
-      fetchCreditLots.mockResolvedValue({
-        items: [lot({ remainingCredits: 0, lifecycle: 'depleted' })],
-        nextCursor: 'more',
-      });
-      await openOn('refunds');
+    it('scrolls the rows and leaves the heading where it is', async () => {
+      // The heading names the section and the terms explain it, so both hold
+      // whatever the rows are doing. Scrolling the whole column carries the
+      // heading off on the first turn of the wheel.
+      await openOn('ledger');
       const body = await panel();
 
-      expect(body).toHaveTextContent(/Nothing can be refunded/i);
-      // The sentinel has to be rendered on this branch. The hook watching it
-      // is stubbed here, so asking whether the hook received a callback
-      // cannot answer whether the element exists.
-      expect(body.querySelector('[aria-hidden="true"]')).not.toBeNull();
+      const viewport = body.querySelector(
+        '[data-radix-scroll-area-viewport]',
+      ) as HTMLElement | null;
+      expect(viewport).not.toBeNull();
+      const heading = body.querySelector('h2');
+      expect(heading).not.toBeNull();
+      expect(viewport!.contains(heading!)).toBe(false);
     });
 
-    it('returns the shared scroll area to the top when the section changes', async () => {
-      // 七项共用一个滚动区。留着上一项的偏移，换过去就落在列表中间，而且
-      // 哨兵可能已经在视野里，会去要一页读者从没滚到的内容。
-      await openOn('ledger');
-      await panel();
-      // 对话框里有两个滚动区：左边索引一个，右边内容一个。要的是含
-      // tabpanel 的那个。
-      const viewport = [
-        ...document
-          .querySelector('[role="dialog"]')!
-          .querySelectorAll('[data-radix-scroll-area-viewport]'),
-      ].find((v) => v.querySelector('[role="tabpanel"]')) as HTMLElement;
-      expect(viewport).toBeDefined();
-      viewport.scrollTop = 400;
+    it('starts a section at the top of its own list', async () => {
+      // Each section brings its own scroller, so an offset left in one cannot
+      // drop the reader into the middle of the next — where the sentinel may
+      // already be in view, asking for a page nobody scrolled to.
+      const user = await openOn('ledger');
+      const first = (await panel()).querySelector(
+        '[data-radix-scroll-area-viewport]',
+      ) as HTMLElement;
+      first.scrollTop = 400;
 
-      document.getElementById('credits-tab-studios')!.click();
+      await user.click(document.getElementById('credits-tab-studios')!);
       await waitFor(() => {
         expect(document.getElementById('credits-tab-studios')).toHaveAttribute(
           'aria-selected',
@@ -546,9 +651,10 @@ describe('the credits overlay, section by section', () => {
         );
       });
 
-      await waitFor(() => {
-        expect(viewport.scrollTop).toBe(0);
-      });
+      const next = (await panel()).querySelector(
+        '[data-radix-scroll-area-viewport]',
+      ) as HTMLElement;
+      expect(next.scrollTop).toBe(0);
     });
 
     it('marks a run that drew on no purchase, and leaves the rest unmarked', async () => {
@@ -575,7 +681,12 @@ describe('the credits overlay, section by section', () => {
     it('names what was paid, never what the credits would be worth', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [
-          lot({ remainingCredits: 880, paidCents: 1120, currency: 'usd' }),
+          lot({
+            remainingCredits: 880,
+            paidCents: 1120,
+            currency: 'usd',
+            designatedStudioId: null,
+          }),
         ],
         nextCursor: null,
       });
@@ -757,7 +868,7 @@ describe('the credits overlay, section by section', () => {
       ['lots' as const, /No purchases yet/i],
       ['ledger' as const, /Nothing spent yet/i],
       ['assign' as const, /Nothing to assign/i],
-      ['refunds' as const, /Nothing can be refunded/i],
+      ['refunds' as const, /No credit packs bought yet/i],
     ])('%s says what is missing when it is empty', async (section, message) => {
       fetchCreditLots.mockResolvedValue({ items: [], nextCursor: null });
       fetchCreditLedger.mockResolvedValue({ items: [], nextCursor: null });
@@ -766,6 +877,77 @@ describe('the credits overlay, section by section', () => {
       const body = await panel();
 
       expect(body).toHaveTextContent(message);
+    });
+
+    // "No more" belongs to the list it ends, so it sits inside the same
+    // bordered block. Outside it, it reads as a sentence about the screen.
+    it.each([
+      ['lots' as const],
+      ['ledger' as const],
+      ['assign' as const],
+      ['refunds' as const],
+    ])('%s ends its list inside the block the list is in', async (section) => {
+      await openOn(section);
+      const body = await panel();
+      const end = [...body.querySelectorAll('div')].find(
+        (node) => node.textContent?.trim() === 'No more',
+      );
+
+      expect(end).toBeDefined();
+      expect(end?.closest('.rounded-content-md')).not.toBeNull();
+    });
+
+    // The border stays whole while the rows move: all four of its corners are
+    // on screen at every scroll offset, because what scrolls is inside it.
+    it.each([
+      ['lots' as const],
+      ['ledger' as const],
+      ['assign' as const],
+      ['refunds' as const],
+    ])('%s scrolls its rows inside the block, not the block', async (section) => {
+      await openOn(section);
+      const body = await panel();
+      const block = body.querySelector('.rounded-content-md');
+      // The section's own heading, which stays put by construction.
+      const heading = body.querySelector('h2');
+
+      expect(block).not.toBeNull();
+      // The block sits where the heading sits, so whatever moves the one
+      // moves the other: no offset inside this screen can carry a corner
+      // away. (Both may sit inside the dialog's own scroller, which moves
+      // the whole panel rather than anything in it.)
+      const sel = '[data-radix-scroll-area-viewport]';
+      expect(block?.closest(sel)).toBe(heading?.closest(sel));
+      // And the rows have somewhere to go inside it.
+      expect(block?.querySelector(sel)).not.toBeNull();
+    });
+
+    // What the list is called and what it is filtered by describe the whole
+    // list, so they hold their place inside the block while the rows move
+    // under them.
+    it('keeps the spending filter still while the rows move', async () => {
+      await openOn('ledger');
+      const body = await panel();
+      const block = body.querySelector('.rounded-content-md');
+      const filter = screen.getByLabelText('Filter by Studio');
+      const heading = [...body.querySelectorAll('h3')].find(
+        (node) => node.textContent === 'All spending',
+      );
+      const sel = '[data-radix-scroll-area-viewport]';
+
+      expect(block).not.toBeNull();
+      expect(heading).toBeDefined();
+      // The block's own scroller. (The panel sits inside the dialog's
+      // scroller as well, which moves the whole panel rather than the rows.)
+      const scroller = block?.querySelector(sel);
+      expect(scroller).not.toBeNull();
+      // Both are in the block, and neither is in the part of it that moves.
+      expect(filter.closest('.rounded-content-md')).toBe(block);
+      expect(heading?.closest('.rounded-content-md')).toBe(block);
+      expect(scroller?.contains(filter)).toBe(false);
+      expect(scroller?.contains(heading ?? null)).toBe(false);
+      // The rows, meanwhile, are inside it.
+      expect(scroller?.contains(body.querySelector('table'))).toBe(true);
     });
 
     it('shows a skeleton while the first read is in flight', async () => {
@@ -847,6 +1029,42 @@ describe('the credits overlay, section by section', () => {
       );
     });
 
+    it('gives granted credits no picker, and says where they may go', async () => {
+      // Every option this picker could offer would be refused, and the
+      // screen already states, of the studios it leaves out, that offering
+      // the rest would be offering a rejection.
+      fetchCreditLots.mockResolvedValue({
+        items: [
+          lot({
+            id: 'lot-gift',
+            sourceKind: 'gift',
+            paidCents: null,
+            currency: null,
+          }),
+        ],
+        nextCursor: null,
+      });
+      await openOn('assign');
+      const body = await panel();
+
+      expect(within(body).getByTestId('assign-pinned')).toHaveTextContent(
+        'Your personal Studio only',
+      );
+      expect(within(body).queryByRole('combobox')).toBeNull();
+      // No price to print, so the row leads with where the credits came from.
+      expect(body).toHaveTextContent('Trial credits');
+    });
+
+    it('still gives a purchase its picker', async () => {
+      // The pair the one above needs: a section that dropped every picker
+      // would pass it and leave nobody able to assign anything.
+      await openOn('assign');
+      const body = await panel();
+
+      expect(within(body).getByRole('combobox')).toBeInTheDocument();
+      expect(within(body).queryByTestId('assign-pinned')).toBeNull();
+    });
+
     it('fails visibly when the studios cannot be read', async () => {
       // Either read failing leaves this section unable to do its one job.
       // Reporting only one of them leaves the picker silently down to a
@@ -902,6 +1120,43 @@ describe('the credits overlay, section by section', () => {
       });
     });
 
+    // The server writes a sentence for the one refusal this screen can earn —
+    // the purchase moved into the refund flow while the list was open — and it
+    // is the only true thing there is to say. "Try again" sends the reader
+    // back to an action that can never succeed.
+    it('says what the server said when a repoint is refused', async () => {
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ designatedStudioId: null, designatedStudioName: null })],
+        nextCursor: null,
+      });
+      designateCreditLot.mockRejectedValue(
+        new ApiException({
+          status: 409,
+          message: 'This purchase is being refunded and cannot be reassigned.',
+          fromServer: true,
+        }),
+      );
+      const user = await openOn('assign');
+      await panel();
+      fetchCreditLots.mockClear();
+
+      await user.click(screen.getByRole('combobox'));
+      await user.click(
+        await screen.findByRole('option', { name: 'Orime Studio' }),
+      );
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          'This purchase is being refunded and cannot be reassigned.',
+        );
+      });
+      // The row offered something the server turned down, so what this screen
+      // holds is out of date.
+      await waitFor(() => {
+        expect(fetchCreditLots).toHaveBeenCalled();
+      });
+    });
+
     it('makes the purchase history read again once a purchase is repointed', async () => {
       fetchCreditLots.mockResolvedValue({
         items: [lot({ designatedStudioId: null, designatedStudioName: null })],
@@ -948,56 +1203,142 @@ describe('the credits overlay, section by section', () => {
     });
   });
 
+  describe('the overview while a purchase is under refund', () => {
+    it('names the third figure and counts it in the total', async () => {
+      // The other two only count what is spendable, so without this one the
+      // total drops by the purchase the moment it is asked about and nothing
+      // on the screen says where it went.
+      fetchCreditOverview.mockResolvedValue(
+        overview({
+          assignedCredits: 100,
+          unassignedCredits: 40,
+          underRefundCredits: 25,
+        }),
+      );
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/Under refund/i);
+      expect(body).toHaveTextContent('165');
+    });
+
+    it('leaves the figure out when nothing is under refund', async () => {
+      fetchCreditOverview.mockResolvedValue(
+        overview({ underRefundCredits: 0 }),
+      );
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).not.toHaveTextContent(/Under refund/i);
+    });
+  });
+
   describe('refunds', () => {
-    it('lists what can be refunded and says why the button does nothing yet', async () => {
+    it('asks for a refund on the purchase whose button was confirmed', async () => {
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ id: 'l1', designatedStudioId: null })],
+        nextCursor: null,
+      });
       const user = await openOn('refunds');
       const body = await panel();
 
       const button = within(body).getByRole('button', { name: /refund/i });
-      // Dimmed rather than disabled: a control that cannot be pressed is a
-      // control that cannot be asked why.
-      expect(button).toHaveAttribute('aria-disabled', 'true');
-      expect(button).not.toHaveAttribute('disabled');
-
+      expect(button).toBeEnabled();
       await user.click(button);
-      expect(toastWarning).toHaveBeenCalled();
+
+      const dialog = await screen.findByRole('alertdialog');
+      await user.click(
+        within(dialog).getByRole('button', { name: /^ask for a refund$/i }),
+      );
+
+      expect(requestCreditLotRefund).toHaveBeenCalledWith('l1');
     });
 
-    it('lists those under review and those turned down before', async () => {
+    // The button only appears on a pack carrying no designation, and such a
+    // pack is unspendable already. Naming that as a consequence of pressing
+    // makes the buyer weigh a cost they are not taking.
+    it('names only what pressing the button changes', async () => {
       fetchCreditLots.mockResolvedValue({
-        items: [
-          lot({ id: 'l4', lifecycle: 'refund_pending', designatedStudioId: null }),
-          lot({ id: 'l5', refundAttempts: 1 }),
-        ],
+        items: [lot({ id: 'l1', designatedStudioId: null })],
         nextCursor: null,
       });
-      await openOn('refunds');
+      const user = await openOn('refunds');
       const body = await panel();
 
-      expect(body).toHaveTextContent(/Under review/);
-      // A refused purchase is `active` again; only the attempt count
-      // remembers.
-      expect(body).toHaveTextContent(/Refused/);
+      await user.click(within(body).getByRole('button', { name: /refund/i }));
+      const dialog = await screen.findByRole('alertdialog');
+
+      expect(dialog).toHaveTextContent(/cannot be assigned/i);
+      expect(dialog).not.toHaveTextContent(/cannot be spent/i);
+      // The one thing about pressing it that cannot be undone: there is no
+      // route back, and the decision is made elsewhere.
+      expect(dialog).toHaveTextContent(/cannot be taken back/i);
     });
 
-    it('tells each state in the submitted list what its own state is', async () => {
-      // The list holds three lifecycles. One sentence about a review still
-      // running is false on the two that are past it, and the badge beside it
-      // says so, leaving the row disagreeing with itself.
+    // A 409 on the ask means the pack is already in the refund flow, so the
+    // three figures the overview reports and the row the history repeats are
+    // as stale as this list is. The same three reads the success path moves.
+    it('reads the overview and the history again when an ask is refused', async () => {
       fetchCreditLots.mockResolvedValue({
-        items: [
-          lot({ id: 'l6', lifecycle: 'refund_pending' }),
-          lot({ id: 'l7', lifecycle: 'refunding' }),
-          lot({ id: 'l8', lifecycle: 'refunded' }),
-        ],
+        items: [lot({ id: 'l1', designatedStudioId: null })],
         nextCursor: null,
       });
-      await openOn('refunds');
+      requestCreditLotRefund.mockRejectedValue(
+        new ApiException({
+          status: 409,
+          message: 'This purchase is already on its way out.',
+          fromServer: true,
+        }),
+      );
+      // Open the history first so its query is in the cache: invalidating a
+      // key nothing has read does nothing at all.
+      const user = await openOn('lots', true);
+      await panel();
+      await user.click(document.getElementById('credits-tab-refunds')!);
+      const body = await panel();
+      fetchCreditOverview.mockClear();
+      paymentHistory.mockClear();
+
+      await user.click(within(body).getByRole('button', { name: /refund/i }));
+      const dialog = await screen.findByRole('alertdialog');
+      await user.click(
+        within(dialog).getByRole('button', { name: /^ask for a refund$/i }),
+      );
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          'This purchase is already on its way out.',
+        );
+      });
+      // The overview is on screen, so it reads again straight away.
+      await waitFor(() => {
+        expect(fetchCreditOverview).toHaveBeenCalled();
+      });
+      // The history is not, so it was marked stale: the reader going back to
+      // it gets the row as it now stands rather than the thirty-second-old
+      // answer saying the pack is theirs to spend.
+      await user.click(document.getElementById('credits-tab-lots')!);
+      await panel();
+      await waitFor(() => {
+        expect(paymentHistory).toHaveBeenCalled();
+      });
+    });
+
+    it('sends nothing when the buyer backs out of the confirmation', async () => {
+      // The ask is what the confirmation is for: once sent, the purchase
+      // waits on a decision this screen cannot take back.
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ id: 'l1', designatedStudioId: null })],
+        nextCursor: null,
+      });
+      const user = await openOn('refunds');
       const body = await panel();
 
-      expect(body).toHaveTextContent(/while it is under review/i);
-      expect(body).toHaveTextContent(/while the money goes back/i);
-      expect(body).toHaveTextContent(/the money went back/i);
+      await user.click(within(body).getByRole('button', { name: /refund/i }));
+      const dialog = await screen.findByRole('alertdialog');
+      await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
+
+      expect(requestCreditLotRefund).not.toHaveBeenCalled();
     });
 
     // Three screens read purchases and each wants a different subset, so each
@@ -1017,42 +1358,138 @@ describe('the credits overlay, section by section', () => {
       expect(fetchCreditLots).toHaveBeenCalled();
     });
 
-    it('says so once when there is nothing to refund and nothing pending', async () => {
-      fetchCreditLots.mockResolvedValue({
-        items: [lot({ remainingCredits: 0, lifecycle: 'depleted' })],
-        nextCursor: null,
-      });
+    it('says so when the account never bought anything', async () => {
+      fetchCreditLots.mockResolvedValue({ items: [], nextCursor: null });
       await openOn('refunds');
       const body = await panel();
 
-      expect(body).toHaveTextContent(/Nothing can be refunded/i);
+      expect(body).toHaveTextContent(/No credit packs bought yet/i);
     });
 
-    // The card says these are the refundable purchases, so the rule itself is
-    // the membership test: within thirty days, with no credit spent. Listing
-    // one the rule refuses offers the buyer something it will not honour.
-    describe('only purchases the rule allows are listed', () => {
-      it('leaves out one that has been spent from', async () => {
+    // The terms are read back from the version the purchase was made under,
+    // rather than summarised beside the list. A summary said two of the four
+    // rules, and the two it left out are the ones a buyer acts on.
+    it('prints the refund terms in full under the list', async () => {
+      await openOn('refunds');
+      await panel();
+
+      const terms = await screen.findByTestId('refunds-terms');
+      expect(within(terms).getAllByRole('listitem')).toHaveLength(5);
+      expect(terms).toHaveTextContent('not assigned to a Studio');
+      expect(terms).toHaveTextContent('was bought');
+    });
+
+    // The terms are the only place this screen states the rule, so a screen
+    // that could not read them says so. Silence there reads as "this screen
+    // has no terms", and the reader is left to work out from the rows alone
+    // why one carries a button and the next does not.
+    it('says so when the refund terms could not be read', async () => {
+      paymentTiers.mockRejectedValue(new Error('nope'));
+      await openOn('refunds');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        /Could not load/i,
+      );
+      expect(screen.queryByTestId('refunds-terms')).toBeNull();
+    });
+
+    // A list terminator under a list that was never drawn reads as a second,
+    // contradictory answer to the same question.
+    it('leaves the list terminator off when there is no list', async () => {
+      fetchCreditLots.mockResolvedValue({ items: [], nextCursor: null });
+      await openOn('refunds');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/No credit packs bought yet/i);
+      expect(body).not.toHaveTextContent(/No more/i);
+    });
+
+    // The ask is sent and the row has not caught up yet. Leaving the button
+    // live in that gap reads as a press that did not register, and pressing
+    // again earns a red toast for an action that in fact succeeded.
+    it('keeps the button down until the row it changed comes back', async () => {
+      fetchCreditLots.mockResolvedValue({
+        items: [lot({ id: 'l1', designatedStudioId: null })],
+        nextCursor: null,
+      });
+      requestCreditLotRefund.mockResolvedValue(undefined);
+      const user = await openOn('refunds');
+      const body = await panel();
+
+      await user.click(within(body).getByRole('button', { name: /refund/i }));
+      const dialog = await screen.findByRole('alertdialog');
+      // The read that follows the ask never answers, so the row stays as the
+      // browser already has it.
+      fetchCreditLots.mockReturnValue(new Promise(() => {}));
+      await user.click(
+        within(dialog).getByRole('button', { name: /^ask for a refund$/i }),
+      );
+      await waitFor(() => {
+        expect(requestCreditLotRefund).toHaveBeenCalledTimes(1);
+      });
+
+      expect(screen.getByRole('button', { name: /refund/i })).toBeDisabled();
+    });
+
+    // What scrolls is the box around the rows, not the panel: the heading and
+    // the terms stay on screen while the rows move under them. Nothing else
+    // in this file can see which element the overlay passed down, so the
+    // element the paging hook was handed is what gets asserted.
+    it('watches the box around the rows, not the whole panel', async () => {
+      await openOn('refunds');
+      const body = await panel();
+
+      expect(watched).not.toBeNull();
+      expect(watched!.contains(within(body).getByText(/\$50\.00/))).toBe(true);
+      expect(
+        watched!.contains(within(body).getByRole('heading', { level: 2 })),
+      ).toBe(false);
+      expect(watched!.contains(screen.getByTestId('refunds-terms'))).toBe(
+        false,
+      );
+    });
+
+    // A pack the buyer cannot find here is a pack he has to guess about, so
+    // every pack appears and each says where it stands. The right column of a
+    // row answers one question — can this be refunded — with the ask button
+    // when it can and the state when it cannot.
+    describe('every pack appears, carrying where it stands', () => {
+      it('offers the ask on one the rule allows', async () => {
         fetchCreditLots.mockResolvedValue({
-          items: [lot({ id: 'spent', remainingCredits: 818, everSpent: true })],
+          items: [lot({ id: 'ok', designatedStudioId: null })],
           nextCursor: null,
         });
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+        expect(
+          within(body).getByRole('button', { name: /refund/i }),
+        ).toBeInTheDocument();
       });
 
-      // The one case the balance cannot answer: a failed generation gave the
-      // credits back, so this purchase reads untouched and is not refundable.
-      it('leaves out one whose credits all came back after a failure', async () => {
+      it('names the studio a pack is assigned to', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [lot({ id: 'assigned', designatedStudioId: 's1' })],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Assigned to Orime Studio/i);
+        expect(body).toHaveTextContent(/unassign it to ask for a refund/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
+      });
+
+      it('marks one that has been spent from', async () => {
         fetchCreditLots.mockResolvedValue({
           items: [
             lot({
-              id: 'returned',
-              purchasedCredits: 830,
-              remainingCredits: 830,
+              id: 'spent',
+              remainingCredits: 818,
               everSpent: true,
+              designatedStudioId: null,
             }),
           ],
           nextCursor: null,
@@ -1060,33 +1497,281 @@ describe('the credits overlay, section by section', () => {
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+        expect(body).toHaveTextContent(/Already used/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
       });
 
-      it('leaves out one bought more than thirty days ago', async () => {
+      it('marks one spent to nothing, and its balance reads zero', async () => {
+        // The balance sits in the same place on every row, so the one that
+        // has none says zero there rather than going blank — a row missing
+        // the figure its neighbours carry reads as a row still loading.
         fetchCreditLots.mockResolvedValue({
           items: [
-            lot({ id: 'stale', createdAt: '2026-07-01T00:00:00.000Z' }),
+            lot({
+              id: 'empty',
+              purchasedCredits: 4550,
+              remainingCredits: 0,
+              everSpent: true,
+              lifecycle: 'depleted',
+              designatedStudioId: null,
+            }),
           ],
           nextCursor: null,
         });
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/Nothing can be refunded/i);
+        expect(within(body).getByTestId('lot-remaining')).toHaveTextContent(
+          '0',
+        );
+        expect(body).toHaveTextContent(/Used up/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
       });
 
-      it('keeps one on the thirtieth day, which counts in full', async () => {
+      it('leads the right column with the balance and the left with where it points', async () => {
+        // One figure, one place, on all three screens: a reader switching
+        // between them reads the balance off the same corner every time.
+        // What this screen is about goes under it, and the line under the
+        // name says where the purchase points.
+        await openOn('refunds');
+        const body = await panel();
+
+        const balance = within(body).getByTestId('lot-remaining');
+        const row = balance.closest('li');
+        expect(row).not.toBeNull();
+        expect(row?.lastElementChild?.firstElementChild).toBe(balance);
+        expect(row?.firstElementChild?.lastElementChild).toHaveTextContent(
+          'Assigned to Orime Studio',
+        );
+      });
+
+      it('marks one bought more than thirty days ago', async () => {
         fetchCreditLots.mockResolvedValue({
           items: [
-            lot({ id: 'lastday', createdAt: '2026-07-26T23:00:00.000Z' }),
+            lot({
+              id: 'stale',
+              createdAt: '2026-07-01T00:00:00.000Z',
+              designatedStudioId: null,
+            }),
           ],
           nextCursor: null,
         });
         await openOn('refunds');
         const body = await panel();
 
-        expect(body).toHaveTextContent(/Refundable purchases/i);
+        expect(body).toHaveTextContent(/Over 30 days/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
+      });
+
+      it('offers the ask past thirty days when the first ask was refused', async () => {
+        // Same purchase date as the one above; the one difference is that
+        // this buyer already asked while the window was open. The window runs
+        // from that ask, so however long the decision took, they keep the
+        // right — and the server answers the same way.
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'refused',
+              createdAt: '2026-07-01T00:00:00.000Z',
+              designatedStudioId: null,
+              refundAttempts: 1,
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(
+          within(body).getByRole('button', { name: /refund/i }),
+        ).toBeInTheDocument();
+      });
+
+      it('keeps the ask on the thirtieth day, which counts in full', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'lastday',
+              createdAt: '2026-07-26T23:00:00.000Z',
+              designatedStudioId: null,
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(
+          within(body).getByRole('button', { name: /refund/i }),
+        ).toBeInTheDocument();
+      });
+
+      it('names the step a pack under review is at', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'pending',
+              lifecycle: 'refund_pending',
+              // The database forbids a designation on the three refund
+              // lifecycles, so a fixture that kept the default would be a
+              // row the server cannot send.
+              designatedStudioId: null,
+              designatedStudioName: null,
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Under review/i);
+      });
+
+      it('names the step a pack being refunded is at', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'refunding',
+              lifecycle: 'refunding',
+              // The database forbids a designation on the three refund
+              // lifecycles, so a fixture that kept the default would be a
+              // row the server cannot send.
+              designatedStudioId: null,
+              designatedStudioName: null,
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Refunding/i);
+      });
+
+      // The right column holds the ask button, so anything drawn as a filled
+      // block there reads as a control — and `bg-secondary` carries a hover
+      // colour, which on a desktop-only product is the affordance of one.
+      // The decided rule has two classes, not three: the button when it can
+      // be refunded, quiet state text when it cannot.
+      it('draws a pack in the refund flow as quiet text, not as a block', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'pending',
+              lifecycle: 'refund_pending',
+              designatedStudioId: null,
+              designatedStudioName: null,
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        const state = within(body).getByText('Under review');
+        expect(state.className).not.toMatch(/bg-secondary/);
+        expect(state.className).toMatch(/text-muted-foreground/);
+      });
+
+      it('keeps a refunded pack on the list, saying it is refunded', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'gone',
+              lifecycle: 'refunded',
+              // The database forbids a designation on the three refund
+              // lifecycles, so a fixture that kept the default would be a
+              // row the server cannot send.
+              designatedStudioId: null,
+              designatedStudioName: null,
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Refunded/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
+      });
+    });
+
+    // Unassigning is the one thing a buyer can do about a refusal, so the row
+    // names it only when it would work. Naming it on a purchase refused on
+    // another count sends them to undo a designation for nothing.
+    describe('when a pack fails more than one condition', () => {
+      it('names the spending rather than the designation', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({ id: 'both', everSpent: true, designatedStudioId: 's1' }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Already used/i);
+        expect(body).not.toHaveTextContent(/unassign it/i);
+      });
+
+      it('names the closed window rather than the designation', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'stale-assigned',
+              createdAt: '2026-07-01T00:00:00.000Z',
+              designatedStudioId: 's1',
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/Over 30 days/i);
+        expect(body).not.toHaveTextContent(/unassign it/i);
+      });
+
+      // Credits nobody paid for reach this list like any other, and the one
+      // way out it knows how to offer is unassigning — which the server
+      // refuses on exactly these. So the row names where they came from and
+      // stops there.
+      it('names where granted credits came from and offers no way out', async () => {
+        fetchCreditLots.mockResolvedValue({
+          items: [
+            lot({
+              id: 'granted',
+              sourceKind: 'gift',
+              paidCents: null,
+              currency: null,
+              designatedStudioId: 's1',
+            }),
+          ],
+          nextCursor: null,
+        });
+        await openOn('refunds');
+        const body = await panel();
+
+        // Counted rather than matched: the row already names the source
+        // where a price would go, so a badge saying it again is the same
+        // word twice on one line.
+        expect(within(body).getAllByText(/Trial credits/i)).toHaveLength(1);
+        expect(body).not.toHaveTextContent(/unassign it/i);
+        // Where it points is what every row's second line says, granted or
+        // bought, so this one says it too — it is the rest of the row that
+        // offers nothing to do about it.
+        expect(body).toHaveTextContent(/Assigned to Orime Studio/i);
+        expect(
+          within(body).queryByRole('button', { name: /refund/i }),
+        ).toBeNull();
       });
     });
   });

@@ -9,7 +9,7 @@
  */
 
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
-import { creditLotService } from "@breatic/domain";
+import { creditLotService, creditSourceRepo } from "@breatic/domain";
 import { getStripeClient } from "@server/infra/stripe.js";
 import {
   findTierByPriceCents,
@@ -19,7 +19,13 @@ import {
   getConfirmTimeoutMs,
 } from "@server/config/pricing.js";
 import { getCreditPageLimits } from "@server/config/limits.js";
-import type { PaymentEntity, CreditPage, PurchaseRow } from "@breatic/shared";
+import type {
+  PaymentEntity,
+  CreditPage,
+  CreditLotLifecycle,
+  CreditSourceKind,
+  PurchaseRow,
+} from "@breatic/shared";
 import { t, getActiveLocale } from "@breatic/shared";
 import {
   AppError,
@@ -31,13 +37,13 @@ import {
   db,
   env,
   logger,
-  encodeActivityCursor,
   decodeActivityCursor,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { claimWebhookEvent } from "@server/modules/subscription/webhook-events.repo.js";
 import { sendPurchaseConfirmation } from "@server/modules/payment/purchase-mail.js";
 import { renderPurchaseConfirmation } from "@server/modules/payment/purchase-mail-template.js";
+import { toPage } from "@server/utils/keyset-page.js";
 import {
   CONSENT_CREDITS_VERSION,
   REFUND_CREDITS_VERSION,
@@ -583,23 +589,32 @@ export async function createCheckout(input: {
     metadata: { userId: input.userId, credits: String(tier.credits) },
   }, stripeCallBounds());
 
-  const payment = await paymentRepo.createPayment({
-    id: paymentId,
-    userId: input.userId,
-    stripeSessionId: session.id,
-    amountCents: tier.priceCents,
-    creditsGranted: tier.credits,
-    currency: tier.currency,
-    // These five cannot be worked out later. A webhook carries no
-    // `Accept-Language`, no hint of a time zone, and no idea what the buyer
-    // ticked; the versions say what wording this purchase was made under.
-    metadata: {
-      locale,
-      timeZone: knownTimeZone(input.timeZone),
-      consentTextVersion: CONSENT_CREDITS_VERSION,
-      refundTextVersion: REFUND_CREDITS_VERSION,
-      consentedAt: consentedAt.toISOString(),
-    },
+  // One transaction, because a payment shares its receipt's primary key —
+  // see `createSource` for why the receipt is opened here and not later.
+  const payment = await db.transaction(async (tx) => {
+    await creditSourceRepo.createSource({ id: paymentId, kind: "payment" }, tx);
+    return paymentRepo.createPayment(
+      {
+        id: paymentId,
+        userId: input.userId,
+        stripeSessionId: session.id,
+        amountCents: tier.priceCents,
+        creditsGranted: tier.credits,
+        currency: tier.currency,
+        // These five cannot be worked out later. A webhook carries no
+        // `Accept-Language`, no hint of a time zone, and no idea what the
+        // buyer ticked; the versions say what wording this purchase was made
+        // under.
+        metadata: {
+          locale,
+          timeZone: knownTimeZone(input.timeZone),
+          consentTextVersion: CONSENT_CREDITS_VERSION,
+          refundTextVersion: REFUND_CREDITS_VERSION,
+          consentedAt: consentedAt.toISOString(),
+        },
+      },
+      tx,
+    );
   });
 
   // Caller logs `payment_checkout_session_created` audit line with
@@ -940,17 +955,17 @@ export async function getPurchaseHistory(
       : Math.min(asked, bounds.max);
   const cursor = rawCursor ? decodeActivityCursor(rawCursor) : null;
 
-  const rows = await paymentRepo.listPurchaseHistory(
+  const rows = await paymentRepo.listAcquisitionHistory(
     userId,
     size,
     cursor === null ? null : { createdAt: cursor.createdAt, id: cursor.id },
   );
-  const hasMore = rows.length > size;
-  const page = hasMore ? rows.slice(0, size) : rows;
-  const last = page[page.length - 1];
-
-  return {
-    items: page.map((row) => ({
+  return toPage(
+    rows,
+    size,
+    (row) => ({
+      rowId: row.rowId,
+      sourceKind: row.sourceKind as CreditSourceKind,
       paymentId: row.paymentId,
       amountCents: row.amountCents,
       totalCents: row.totalCents,
@@ -959,16 +974,17 @@ export async function getPurchaseHistory(
       creditsGranted: row.creditsGranted,
       remainingCredits:
         row.remainingCredits === null ? null : Number(row.remainingCredits),
-      lifecycle: row.lifecycle,
+      lifecycle: row.lifecycle as CreditLotLifecycle | null,
       designatedStudioId: row.designatedStudioId,
       designatedStudioName: row.designatedStudioName,
       status: row.status,
       createdAt: row.createdAt.toISOString(),
-      canResend: canResend(row.mailStatus, row.mailUpdatedAt),
-    })),
-    nextCursor:
-      hasMore && last ? encodeActivityCursor(last.cursorAt, last.paymentId) : null,
-  };
+      // A row nobody paid for has no confirmation letter to send again.
+      canResend:
+        row.paymentId !== null && canResend(row.mailStatus, row.mailUpdatedAt),
+    }),
+    (row) => ({ cursorAt: row.cursorAt, id: row.rowId }),
+  );
 }
 
 /**

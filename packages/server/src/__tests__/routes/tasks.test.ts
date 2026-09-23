@@ -27,6 +27,11 @@ vi.mock("@server/modules", async (importOriginal) => {
 });
 
 import { createApp } from "../../app.js";
+// The real constant, from the source rather than the barrel: this file
+// mocks `@breatic/domain`, and a value typed out here again would be a
+// second copy of the very thing the assertions are checking against.
+import { UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
+
 import { mocks, mockQueueAdd } from "../helpers/mock-core.js";
 
 const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
@@ -80,7 +85,7 @@ describe("Tasks routes", () => {
           task_type: "image",
           params: { prompt: "a cat" },
           model: "test-model",
-          source: "canvas",
+          source: "task",
           project_id: PID,
           space_id: SID,
           mode: "append",
@@ -98,7 +103,7 @@ describe("Tasks routes", () => {
         task_type: "image",
         params: { prompt: "a cat" },
         model: "test-model",
-        source: "canvas",
+        source: "task",
         project_id: PID,
         space_id: SID,
         mode: "append",
@@ -159,7 +164,7 @@ describe("Tasks routes", () => {
           task_type: "image",
           params: {},
           model: "test",
-          source: "canvas",
+          source: "task",
           project_id: PID,
           space_id: SID,
           mode: "append",
@@ -179,7 +184,7 @@ describe("Tasks routes", () => {
           task_type: "image",
           params: {},
           model: "test-model",
-          source: "canvas",
+          source: "task",
           project_id: PID,
           space_id: SID,
           mode: "append",
@@ -203,7 +208,7 @@ describe("Tasks routes", () => {
           task_type: "image",
           params: {}, // no images
           model: "nano-banana-pro-edit",
-          source: "canvas",
+          source: "task",
           project_id: PID,
           space_id: SID,
           mode: "append",
@@ -225,7 +230,7 @@ describe("Tasks routes", () => {
           task_type: "image",
           params: { images: ["https://cdn/x.png"] },
           model: "nano-banana-pro-edit",
-          source: "canvas",
+          source: "task",
           project_id: PID,
           space_id: SID,
           mode: "append",
@@ -253,7 +258,7 @@ describe("Tasks routes", () => {
           task_type: "image",
           params: { images: Array.from({ length: 15 }, (_, i) => `https://cdn/${i}.png`) },
           model: "nano-banana-pro-edit",
-          source: "canvas",
+          source: "task",
           project_id: PID,
           space_id: SID,
           mode: "append",
@@ -275,7 +280,7 @@ describe("Tasks routes", () => {
           task_type: "image",
           params: { images: ["https://cdn/x.png", "https://cdn/y.png"] },
           model: "nano-banana-pro-edit",
-          source: "canvas",
+          source: "task",
           project_id: PID,
           space_id: SID,
           mode: "append",
@@ -296,7 +301,7 @@ describe("Tasks routes", () => {
         task_type: "image",
         params: {},
         model: "test-model",
-        source: "canvas",
+        source: "task",
         project_id: PID,
         space_id: SID,
         mode: "overwrite",
@@ -321,9 +326,401 @@ describe("Tasks routes", () => {
 
   });
 
-  describe("POST /canvas/understand — credit pre-check (#1580 adversarial)", () => {
-    it("rejects with 402 when the balance is below the estimate — no task row created", async () => {
+  describe("POST /canvas/node-history/snapshot", () => {
+    // A text node's words live in the canvas document, and a history row is
+    // the only copy of them that survives the next edit. This is the browser's
+    // one way to write one, so the endpoint validates what it is handed and
+    // asks the same question every write to a project asks.
+    it("records what the node holds right now", async () => {
+      mocks.nodeHistoryService.recordSnapshot.mockResolvedValue({ id: "h-9" });
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/node-history/snapshot", {
+        method: "POST",
+        headers: AUTH,
+        // The row is written against a project and a node. Nothing here reads
+        // a Space, and `node_history` has no column for one.
+        body: JSON.stringify({
+          project_id: PID,
+          node_id: "11111111-1111-4111-8111-111111111111",
+          text: "A red bicycle against a brick wall.",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mocks.projectService.assertAccess).toHaveBeenCalledWith(
+        PID,
+        expect.any(String),
+        "editor",
+      );
+      expect(mocks.nodeHistoryService.recordSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: PID,
+          nodeId: "11111111-1111-4111-8111-111111111111",
+          content: "A red bicycle against a brick wall.",
+        }),
+      );
+    });
+
+    // A snapshot of nothing is not one: the row would show the reader a
+    // blank line they cannot tell apart from any other. The browser greys
+    // the item out on a node saying nothing; this is the same rule where it
+    // is authoritative.
+    it("refuses a snapshot of nothing", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/node-history/snapshot", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          node_id: "11111111-1111-4111-8111-111111111111",
+          text: "",
+        }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(mocks.nodeHistoryService.recordSnapshot).not.toHaveBeenCalled();
+    });
+
+    it("refuses a node id that is not one", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/node-history/snapshot", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          node_id: "not-a-uuid",
+          text: "x",
+        }),
+      });
+
+      expect(res.status).toBe(422);
+    });
+  });
+
+  // The node a reading writes to, which the browser built and named before
+  // asking. It is an id of ours, the way every node on a canvas is.
+  const READ_INTO = "33333333-3333-4333-8333-333333333333";
+
+  describe("POST /canvas/understand — what a refusal leaves behind", () => {
+    // The node's row is opened before the credit gate so a refusal has
+    // somewhere to be said. That order leaves this route holding two rows,
+    // and a refusal has to finish both — a task left `pending` is one no
+    // worker will ever touch and no sweep will ever end.
+    it("ends the task it created when the balance is short", async () => {
       mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          space_id: SID,
+          source_type: "image",
+          source_url: "https://assets.invalid/image/a.png",
+          node_ids: ["11111111-1111-4111-8111-111111111111"],
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mocks.taskService.markFailed).toHaveBeenCalledWith(
+        expect.any(String),
+        "no_credits",
+      );
+    });
+
+    // Once a row is open, the row is the answer: it holds the cause and the
+    // node shows it. Saying 402 as well would leave the browser guessing at
+    // something only this route knows — whether a row exists — and a 500
+    // raised before the row opened looks exactly like one raised after.
+    it("answers with the row's own state once a row is open", async () => {
+      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          space_id: SID,
+          source_type: "image",
+          source_url: "https://assets.invalid/image/a.png",
+          node_ids: ["11111111-1111-4111-8111-111111111111"],
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({
+        data: { task_id: expect.any(String), status: "failed" },
+      });
+    });
+  });
+
+  // The reader's language is known at one end only — the browser — and the
+  // sentence it decides is written at the other, by the model. This route
+  // carries it between them without reading it.
+  it("carries the reader's locale through to the job", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO],
+        reader_locale: "ja",
+      }),
+    });
+
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        params: expect.objectContaining({ reader_locale: "ja" }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  // The label is what the reader sees naming this run in the node's task
+  // list, and the two other writers of that column put the model or the tool
+  // there — a proper noun, the same in every language. A reading is a model
+  // call like any other, so it names the model it pins.
+  it("names the row after the model the reading pins", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO],
+      }),
+    });
+
+    expect(mocks.nodeTaskService.open).toHaveBeenCalledWith(
+      expect.objectContaining({ label: UNDERSTAND_PINS.model }),
+    );
+  });
+
+  // The same fact, one step further on: the history row this run writes
+  // carries the model it ran on, the way every other modality's row does.
+  it("sends the pinned model to the worker", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO],
+      }),
+    });
+
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ model: UNDERSTAND_PINS.model }),
+      expect.anything(),
+    );
+  });
+
+  // A reading answers with one piece of text, so it writes to the one node the
+  // press built. Naming more opens a row per name — each an insert, a count
+  // and a publish — before the credit gate, for nodes no answer is coming to.
+  it("refuses a call naming more nodes than a reading writes to", async () => {
+    const app = createApp();
+    const res = await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO, "44444444-4444-4444-8444-444444444444"],
+      }),
+    });
+
+    expect(res.status).toBe(422);
+    expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
+  });
+
+  // A throttle that never refuses in a test is a throttle nobody has watched
+  // work: this is the refusal itself, and what it leaves behind — nothing.
+  it("opens no row for a press the throttle refused", async () => {
+    mocks.checkRateLimit.mockResolvedValueOnce(false);
+    const app = createApp();
+    const res = await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO],
+      }),
+    });
+
+    expect(res.status).toBe(429);
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
+    expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
+  });
+
+  // One call opens a row per node named and puts a model call behind it, and
+  // it opens those rows before the credit gate — by design, so a refusal has
+  // somewhere to be said. That order is what makes the throttle this route's
+  // own: both of its neighbours that write on a press carry one.
+  it("asks the throttle before it writes anything", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO],
+      }),
+    });
+
+    expect(mocks.checkRateLimit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining("understand:"),
+      expect.any(Number),
+      expect.any(Number),
+    );
+  });
+
+  // What one press leaves on the new node while the reading runs: a single
+  // task, counted and published to the canvas so the node shows it beside
+  // the words it is about to hold. It lands on the node the browser built
+  // and on no other — that node is the whole of what this run is about.
+  it("counts one running task on the node the browser built", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO],
+      }),
+    });
+
+    expect(mocks.emitNodeTaskCounts).toHaveBeenCalledTimes(1);
+    expect(mocks.emitNodeTaskCounts).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining(SID),
+      READ_INTO,
+      { running: 1, done: 0, failed: 0, expired: 0 },
+      undefined,
+    );
+  });
+
+  // `tasks.source` is one column with one vocabulary, and every lane that
+  // opens a task names itself in it. A lane that names nothing falls to the
+  // column's own default, which is a word from before that vocabulary
+  // existed — so the rows this lane writes would be the only ones the
+  // vocabulary cannot account for.
+  it("names this lane in the column every lane names itself in", async () => {
+    const app = createApp();
+    await app.request("/api/v1/canvas/understand", {
+      method: "POST",
+      headers: AUTH,
+      body: JSON.stringify({
+        project_id: PID,
+        space_id: SID,
+        source_type: "image",
+        source_url: "https://cdn/x.png",
+        node_ids: [READ_INTO],
+      }),
+    });
+
+    expect(mocks.taskService.create).toHaveBeenCalledWith(
+      expect.anything(),
+      PID,
+      SID,
+      "understand",
+      "append",
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      "understand",
+    );
+  });
+
+  describe("POST /canvas/understand — a refused run still has a row", () => {
+    // The node is on the canvas before this request goes out, so a refusal
+    // has somewhere to be said: the row this run opened is settled `failed`
+    // with the cause, and the node shows failed=1 (downstream-node-creation
+    // decision, stage 4). A toast with no row behind it would leave a node
+    // sitting there with nothing to explain it.
+    it("settles the row it opened when the balance is short", async () => {
+      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          source_type: "image",
+          source_url: "https://cdn/x.png",
+          node_ids: [READ_INTO],
+          project_id: PID,
+          space_id: SID,
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mocks.nodeTaskService.open).toHaveBeenCalledWith(
+        expect.objectContaining({ nodeId: READ_INTO }),
+      );
+      expect(mocks.nodeTaskService.settle).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "failed", errorMessage: "no_credits" }),
+      );
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+
+    // Queueing is the point of no return: past it a worker will pick the job
+    // up, read the media and bill for it. The job's id is recorded for
+    // whoever has to find that job by hand — no code reads it — so a run
+    // whose id went unrecorded still runs, and marking it failed would put
+    // "failed" on a node the reader
+    // then watches produce a reading, and bill them for it.
+    it("leaves a queued run running when its job id cannot be recorded", async () => {
+      mocks.taskService.setJobId.mockRejectedValueOnce(new Error("db down"));
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          space_id: SID,
+          source_type: "image",
+          source_url: "https://cdn/x.png",
+          node_ids: [READ_INTO],
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({
+        data: { task_id: expect.any(String), status: "pending" },
+      });
+      expect(mocks.taskService.markFailed).not.toHaveBeenCalled();
+      expect(mocks.nodeTaskService.settle).not.toHaveBeenCalled();
+    });
+
+    // A row on the node is the only thing that carries a cause back to the
+    // canvas, so a run that names no node is refused before anything is
+    // created: it would bill and answer into nowhere while the reader
+    // watches a node that never changes.
+    it("refuses a run that named no node", async () => {
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
         method: "POST",
@@ -336,8 +733,36 @@ describe("Tasks routes", () => {
         }),
       });
 
-      expect(res.status).toBe(402);
+      expect(res.status).toBe(422);
       expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
+    });
+
+    // The task row is written before the node's row is opened, so opening
+    // that row is one more way out that has to end the first: a task left
+    // `pending` is one no worker will pick up and no sweep will end, and the
+    // reader is told by the rejection, there being no row to hold the cause.
+    it("does not leave the task pending when the node's row cannot be opened", async () => {
+      mocks.nodeTaskService.open.mockRejectedValueOnce(new Error("collab down"));
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          source_type: "image",
+          source_url: "https://cdn/x.png",
+          node_ids: [READ_INTO],
+          project_id: PID,
+          space_id: SID,
+        }),
+      });
+
+      expect(res.status).toBe(503);
+      expect(mocks.taskService.markFailed).toHaveBeenCalledWith(
+        expect.any(String),
+        "internal",
+      );
+      expect(mockQueueAdd).not.toHaveBeenCalled();
     });
   });
 
