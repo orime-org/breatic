@@ -17,7 +17,7 @@
  */
 
 import { and, desc, eq, isNull, lte } from "drizzle-orm";
-import type { MembershipTier } from "@breatic/shared";
+import type { BillingPeriod, MembershipTier } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
 import { subscriptions } from "@core/db/schema.js";
 import type {
@@ -35,6 +35,8 @@ export interface StoredSubscription extends SubscriptionRecord {
   readonly stripeItemId: string | null;
   /** Which tier the unpaid upgrade is for, when there is one. */
   readonly pendingTier: MembershipTier | null;
+  /** Which period it moves to, when there is one. */
+  readonly pendingPeriod: BillingPeriod | null;
   /** Where to go to pay an outstanding invoice, when there is one. */
   readonly payableInvoiceUrl: string | null;
   /** When the Stripe snapshot behind this row was taken. */
@@ -49,6 +51,14 @@ export interface SubscriptionWrite {
   readonly stripeSubscriptionId: string;
   /** The tier it has been paid for. */
   readonly tier: MembershipTier;
+  /**
+   * How often it is billed.
+   *
+   * Beside the tier rather than folded into it: the same tier is sold over
+   * both periods at two prices, and the panel prints the price, the renewal
+   * date and what this account may move to from this pair.
+   */
+  readonly period: BillingPeriod;
   /** Stripe's own status word. */
   readonly status: StripeSubscriptionStatus;
   /** When the paid period ends, from `items.data[0].current_period_end`. */
@@ -61,6 +71,13 @@ export interface SubscriptionWrite {
   readonly hasPendingUpdate: boolean;
   /** The tier that upgrade is for, when there is one. */
   readonly pendingTier: MembershipTier | null;
+  /**
+   * The period that change moves to, when there is one.
+   *
+   * Separate from `pendingTier` because a change can move the period without
+   * moving the tier: PRO monthly to PRO annual is one of the moves on offer.
+   */
+  readonly pendingPeriod: BillingPeriod | null;
   /** The hosted page for an outstanding invoice, when there is one. */
   readonly payableInvoiceUrl: string | null;
   /**
@@ -88,12 +105,15 @@ function toStored(row: SubscriptionRow): StoredSubscription {
     // Both tier columns are checked by the database against the same five
     // values as `users.membership_tier`, so what comes back is one of them.
     tier: row.tier as MembershipTier,
+    // Checked by the database against the two the product sells (0081).
+    period: row.period as BillingPeriod,
     status: row.status,
     currentPeriodEnd: row.currentPeriodEnd,
     cancelAtPeriodEnd: row.cancelAtPeriodEnd,
     stripeItemId: row.stripeItemId,
     hasPendingUpdate: row.hasPendingUpdate,
     pendingTier: (row.pendingTier as MembershipTier | null) ?? null,
+    pendingPeriod: (row.pendingPeriod as BillingPeriod | null) ?? null,
     payableInvoiceUrl: row.payableInvoiceUrl,
     observedAt: row.observedAt,
   };
@@ -152,12 +172,14 @@ export async function upsertSubscription(
     userId: write.userId,
     stripeSubscriptionId: write.stripeSubscriptionId,
     tier: write.tier,
+    period: write.period,
     status: write.status,
     currentPeriodEnd: write.currentPeriodEnd,
     cancelAtPeriodEnd: write.cancelAtPeriodEnd,
     stripeItemId: write.stripeItemId,
     hasPendingUpdate: write.hasPendingUpdate,
     pendingTier: write.pendingTier,
+    pendingPeriod: write.pendingPeriod,
     payableInvoiceUrl: write.payableInvoiceUrl,
     observedAt: write.observedAt,
   };
