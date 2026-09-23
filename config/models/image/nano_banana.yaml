@@ -1,8 +1,13 @@
 # Nano Banana Image Models (Google Gemini) — Pro, 2
 # Guidelines:
-#   model.description    — max 40 chars. No panel shows it: the picker draws
-#                          display_name. Its one reader is the canvas capability
-#                          answer, which takes it when guide is empty.
+#   model.description    — max 40 chars. The picker draws it under display_name,
+#                          so it is what tells a reader which of several models
+#                          for one mode to pick: say what this model is good at
+#                          or what sets it apart, never restate the name or the
+#                          mode ("VEO 3.1 image-to-video" tells a reader nothing
+#                          the row does not already show). Also read by the
+#                          canvas capability answer, which takes it when guide
+#                          is empty.
 #   model.guide          — what this model is for, in prose. The Skill prompt
 #                          quotes it whole, to help the model choose; so does
 #                          the canvas capability answer, for the models a canvas
