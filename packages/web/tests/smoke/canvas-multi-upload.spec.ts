@@ -317,18 +317,23 @@ test('the Group grows to hold members that turned out taller', async ({
     .toBeGreaterThan(framedEmpty);
 });
 
-test('a batch dropped on a Group joins it', async ({ page }) => {
+test('a second batch over a Group makes its own and joins nothing', async ({
+  page,
+}) => {
   await handOverFiles(page, 'drop', 2);
-  const groupId = await theGroupOver(page, 2);
+  const first = await theGroupOver(page, 2);
 
   // The same drop point, which is inside the Group the first batch made.
   await handOverFiles(page, 'drop', 2);
 
-  const nodes = await settledNodes(page, 5);
-  expect(nodes.filter((n) => n.type === 'group').map((n) => n.id)).toEqual([
-    groupId,
-  ]);
-  expect(nodes.filter((n) => n.parentId === groupId)).toHaveLength(4);
+  const nodes = await settledNodes(page, 6);
+  const groups = nodes.filter((n) => n.type === 'group');
+  // Two batches, two Groups. Putting the second one into the first would
+  // assert that those four files belong together, and nobody said that.
+  expect(groups).toHaveLength(2);
+  expect(groups.map((n) => n.id)).toContain(first);
+  expect(nodes.filter((n) => n.parentId === first)).toHaveLength(2);
+  expect(groups.every((n) => n.parentId === null)).toBe(true);
 });
 
 test('one undo takes the whole batch back', async ({ page }) => {

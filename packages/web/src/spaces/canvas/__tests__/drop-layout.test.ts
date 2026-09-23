@@ -3,49 +3,78 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { dropPositionAt } from '@web/spaces/canvas/drop-layout';
+import { batchCentresAt, NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 
 const ORIGIN = { x: 100, y: 200 };
 
-/** The first index after the first that starts a row again. */
+/** How many go across before the layout starts a second row. */
 function firstWrap(): number {
-  for (let i = 1; i < 64; i += 1) {
-    if (dropPositionAt(ORIGIN, i).x === ORIGIN.x) return i;
+  const wide = batchCentresAt(ORIGIN, 64);
+  for (let i = 1; i < wide.length; i += 1) {
+    if (wide[i].y !== wide[0].y) return i;
   }
   throw new Error('the layout never wraps');
 }
 
-describe('dropPositionAt', () => {
-  it('puts the first file where the drop landed', () => {
-    expect(dropPositionAt(ORIGIN, 0)).toEqual(ORIGIN);
+/**
+ * The middle of the box the batch's node centres span.
+ * @param count - How many files the batch admitted.
+ * @returns The centre of the batch, in canvas coordinates.
+ */
+function centreOfBatch(count: number): { x: number; y: number } {
+  const at = batchCentresAt(ORIGIN, count);
+  const xs = at.map((p) => p.x);
+  const ys = at.map((p) => p.y);
+  return {
+    x: (Math.min(...xs) + Math.max(...xs)) / 2,
+    y: (Math.min(...ys) + Math.max(...ys)) / 2,
+  };
+}
+
+describe('batchCentresAt', () => {
+  it('puts a single file exactly where the batch came in', () => {
+    expect(batchCentresAt(ORIGIN, 1)).toEqual([ORIGIN]);
+  });
+
+  it('centres the batch on that point however many files it holds', () => {
+    // What the reader pointed at is the middle of what appears, so the batch
+    // does not sprawl off to one side the way a top-left anchor would.
+    for (const count of [2, 3, 4, 5, 9]) {
+      expect(centreOfBatch(count)).toEqual(ORIGIN);
+    }
   });
 
   it('steps neighbours a whole node apart, so neither hides the other', () => {
-    const second = dropPositionAt(ORIGIN, 1);
-    expect(second.x - ORIGIN.x).toBeGreaterThanOrEqual(EMPTY_NODE_SIZE.width);
-    expect(second.y).toBe(ORIGIN.y);
+    const [first, second] = batchCentresAt(ORIGIN, 2);
+    expect(second.x - first.x).toBeGreaterThanOrEqual(EMPTY_NODE_SIZE.width);
+    expect(second.y).toBe(first.y);
   });
 
   it('wraps to a new row rather than running off to the right', () => {
     const wrap = firstWrap();
-    const nextRow = dropPositionAt(ORIGIN, wrap);
-    expect(nextRow.y - ORIGIN.y).toBeGreaterThanOrEqual(
-      EMPTY_NODE_SIZE.height,
-    );
+    const at = batchCentresAt(ORIGIN, wrap + 1);
+    expect(at[wrap].y - at[0].y).toBeGreaterThanOrEqual(EMPTY_NODE_SIZE.height);
+    expect(at[wrap].x).toBe(at[0].x);
   });
 
   it('keeps a row narrow enough to sit in a desktop viewport', () => {
-    const last = dropPositionAt(ORIGIN, firstWrap() - 1);
-    expect(last.x - ORIGIN.x + EMPTY_NODE_SIZE.width).toBeLessThanOrEqual(1280);
+    const row = batchCentresAt(ORIGIN, firstWrap());
+    const span = row[row.length - 1].x - row[0].x + EMPTY_NODE_SIZE.width;
+    expect(span).toBeLessThanOrEqual(1280);
   });
 
   it('lays a batch out so no two nodes share a position', () => {
-    const seen = new Set<string>();
-    for (let i = 0; i < 20; i += 1) {
-      const at = dropPositionAt(ORIGIN, i);
-      seen.add(`${at.x},${at.y}`);
-    }
+    const seen = new Set(batchCentresAt(ORIGIN, 20).map((p) => `${p.x},${p.y}`));
     expect(seen.size).toBe(20);
+  });
+
+  it('makes nothing for an empty batch', () => {
+    expect(batchCentresAt(ORIGIN, 0)).toEqual([]);
+  });
+
+  it('steps by the node footprint plus a gap', () => {
+    expect(NODE_STEP.x).toBeGreaterThan(EMPTY_NODE_SIZE.width);
+    expect(NODE_STEP.y).toBeGreaterThan(EMPTY_NODE_SIZE.height);
   });
 });

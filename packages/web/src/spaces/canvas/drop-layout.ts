@@ -50,14 +50,28 @@ export const NODE_STEP = {
 } as const;
 
 /**
- * Where the nth file of a drop goes.
- * @param origin - Where the drop landed, which is where the first node goes.
- * @param index - The file's place in the batch, from zero.
- * @returns The position for that file's node.
+ * Where the nodes of one batch go, centred on the point it came in at.
+ *
+ * One file puts its node's centre on that point, so a batch puts the centre of
+ * what the batch adds up to there: the reader points at a place and the thing
+ * they handed over appears around it, however many files it was. The whole
+ * batch is laid out in one call because the centring needs the count, and a
+ * per-index function would let a caller place a batch without it.
+ * @param origin - Where the batch came in: the drop point, or the viewport
+ * centre when the files arrived by the upload button or a paste.
+ * @param count - How many files the batch admitted.
+ * @returns One centre per file, in the order the files were handed over.
  */
-export function dropPositionAt(origin: DropPoint, index: number): DropPoint {
-  return {
-    x: origin.x + (index % COLUMNS) * NODE_STEP.x,
-    y: origin.y + Math.floor(index / COLUMNS) * NODE_STEP.y,
-  };
+export function batchCentresAt(
+  origin: DropPoint,
+  count: number,
+): DropPoint[] {
+  const columns = Math.min(count, COLUMNS);
+  const rows = Math.ceil(count / COLUMNS);
+  const left = origin.x - ((columns - 1) * NODE_STEP.x) / 2;
+  const top = origin.y - ((rows - 1) * NODE_STEP.y) / 2;
+  return Array.from({ length: count }, (_, index) => ({
+    x: left + (index % COLUMNS) * NODE_STEP.x,
+    y: top + Math.floor(index / COLUMNS) * NODE_STEP.y,
+  }));
 }

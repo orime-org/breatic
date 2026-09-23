@@ -4,8 +4,8 @@
 import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 
-import { dropPositionAt } from '@web/spaces/canvas/drop-layout';
-import { planBatchGrouping, planGroupCreation } from '@web/spaces/canvas/group-creation';
+import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
+import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import {
   EMPTY_NODE_SIZE,
   GROUP_PADDING,
@@ -133,36 +133,43 @@ describe('planGroupCreation', () => {
   });
 
   describe('the Group one multi-file upload becomes (#2209)', () => {
+    const ORIGIN = { x: 0, y: 0 };
+
     /**
      * The batch as the drop hands it to the planner: one node per file, placed
-     * by `dropPositionAt` and written at the top-left `createUploadNodeAt`
+     * by `batchCentresAt` and written at the top-left `createUploadNodeAt`
      * derives from it. None is measured yet, which is what the canvas passes.
      * @param count - How many files the drop admitted.
      * @returns The flow nodes for that batch, in the order they were placed.
      */
     function batch(count: number): Node[] {
-      return Array.from({ length: count }, (_, i) => {
-        const centre = dropPositionAt({ x: 0, y: 0 }, i);
-        return {
-          id: `f${String(i)}`,
-          type: 'image',
-          position: centerToTopLeft(centre, EMPTY_NODE_SIZE),
-          data: {},
-        };
-      });
+      return batchCentresAt(ORIGIN, count).map((centre, i) => ({
+        id: `f${String(i)}`,
+        type: 'image',
+        position: centerToTopLeft(centre, EMPTY_NODE_SIZE),
+        data: {},
+      }));
+    }
+
+    /**
+     * Wrap a whole batch, the way the drop does.
+     * @param count - How many files the drop admitted.
+     * @returns The plan, or null when the batch is too small for a Group.
+     */
+    function wrap(count: number): ReturnType<typeof planGroupCreation> {
+      const nodes = batch(count);
+      return planGroupCreation(
+        nodes,
+        nodes.map((n) => n.id),
+        `g-${String(count)}`,
+      );
     }
 
     it('frames two files with the padding, and keeps them a gap apart', () => {
-      const nodes = batch(2);
-      const plan = planGroupCreation(
-        nodes,
-        nodes.map((n) => n.id),
-        'g-2',
-      );
+      const plan = wrap(2);
 
       // 288x192 nodes one 312 step apart, padded by 24 on every side.
       expect(plan).not.toBeNull();
-      expect(plan?.position).toEqual({ x: -168, y: -120 });
       expect(plan?.width).toBe(648);
       expect(plan?.height).toBe(240);
       expect(plan?.members).toEqual([
@@ -172,15 +179,9 @@ describe('planGroupCreation', () => {
     });
 
     it('is two rows tall once the fifth file wraps', () => {
-      const nodes = batch(5);
-      const plan = planGroupCreation(
-        nodes,
-        nodes.map((n) => n.id),
-        'g-5',
-      );
+      const plan = wrap(5);
 
       // Four across, so the fifth starts a second row one 216 step down.
-      expect(plan?.position).toEqual({ x: -168, y: -120 });
       expect(plan?.width).toBe(1272);
       expect(plan?.height).toBe(456);
       expect(plan?.members.map((m) => m.position)).toEqual([
@@ -192,85 +193,20 @@ describe('planGroupCreation', () => {
       ]);
     });
 
-    it('leaves a single file on its own', () => {
-      const nodes = batch(1);
-
-      expect(
-        planGroupCreation(
-          nodes,
-          nodes.map((n) => n.id),
-          'g-1',
-        ),
-      ).toBeNull();
+    it('centres the Group on the point the batch came in at', () => {
+      // A single file puts its node's centre there, so a batch puts the centre
+      // of the Group there: the reader points at a place and what they handed
+      // over appears around it, whatever the count.
+      for (const count of [2, 5, 9]) {
+        const plan = wrap(count);
+        expect(plan).not.toBeNull();
+        expect(plan!.position.x + plan!.width / 2).toBe(ORIGIN.x);
+        expect(plan!.position.y + plan!.height / 2).toBe(ORIGIN.y);
+      }
     });
-  });
-});
 
-describe('planBatchGrouping — where one upload batch belongs (#2209)', () => {
-  /**
-   * The nodes a drop just created, placed on the grid from its origin.
-   * @param count - How many files the batch admitted.
-   * @param origin - Where the drop landed.
-   * @returns The flow nodes, in placement order.
-   */
-  function batchAt(count: number, origin: { x: number; y: number }): Node[] {
-    return Array.from({ length: count }, (_, i) => ({
-      id: `f${String(i)}`,
-      type: 'image',
-      position: centerToTopLeft(dropPositionAt(origin, i), EMPTY_NODE_SIZE),
-      data: {},
-    }));
-  }
-
-  const host = {
-    id: 'existing',
-    rect: { x: 0, y: 0, width: 1000, height: 800 },
-  };
-
-  it('joins the Group the drop landed in', () => {
-    const origin = { x: 400, y: 400 };
-
-    // The host sits at the canvas origin, so each member keeps the top-left
-    // the grid placed it at.
-    expect(planBatchGrouping(batchAt(3, origin), [host], origin, 'new')).toEqual(
-      {
-        kind: 'join',
-        groupId: 'existing',
-        members: [
-          { id: 'f0', position: { x: 256, y: 304 } },
-          { id: 'f1', position: { x: 568, y: 304 } },
-          { id: 'f2', position: { x: 880, y: 304 } },
-        ],
-      },
-    );
-  });
-
-  it('joins it for a single file too, because that is where it was put', () => {
-    const origin = { x: 400, y: 400 };
-
-    expect(planBatchGrouping(batchAt(1, origin), [host], origin, 'new')).toEqual(
-      {
-        kind: 'join',
-        groupId: 'existing',
-        members: [{ id: 'f0', position: { x: 256, y: 304 } }],
-      },
-    );
-  });
-
-  it('wraps a batch dropped on open canvas in a Group of its own', () => {
-    const origin = { x: 5000, y: 5000 };
-
-    const out = planBatchGrouping(batchAt(2, origin), [host], origin, 'new');
-
-    expect(out.kind).toBe('wrap');
-    expect(out.kind === 'wrap' && out.plan.groupId).toBe('new');
-  });
-
-  it('leaves one file on open canvas alone', () => {
-    const origin = { x: 5000, y: 5000 };
-
-    expect(planBatchGrouping(batchAt(1, origin), [host], origin, 'new')).toEqual(
-      { kind: 'loose' },
-    );
+    it('leaves a single file on its own', () => {
+      expect(wrap(1)).toBeNull();
+    });
   });
 });

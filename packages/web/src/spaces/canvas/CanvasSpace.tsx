@@ -61,7 +61,7 @@ import {
   type FocusCropConfirm,
 } from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
-import { dropPositionAt } from '@web/spaces/canvas/drop-layout';
+import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
@@ -140,10 +140,8 @@ import type {
   Modality,
 } from '@web/data/yjs/node-view';
 import {
-  planBatchGrouping,
   planGroupCreation,
   type GroupCreationPlan,
-  type OpenGroup,
 } from '@web/spaces/canvas/group-creation';
 import {
   EMPTY_NODE_SIZE,
@@ -417,7 +415,7 @@ const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
  *
  * This is the chrome button's path, which creates one node per press: the
  * offset only has to keep the one before it visible underneath. A drop of
- * several files at once is laid out by `dropPositionAt` instead, which steps
+ * several files at once is laid out by `batchCentresAt` instead, which steps
  * by a whole node so none of them is buried.
  */
 const STAGGER_STEP_PX = 24;
@@ -661,38 +659,6 @@ function writeGroup(
     ),
     plan.members,
   );
-}
-
-/**
- * The Groups a batch may land in.
- *
- * A locked Group takes nobody in, and one a remote gesture is holding has a
- * rect that is about to change — this end writes nothing about either.
- * @param places - The nodes as the document has them.
- * @param heldByRemote - Ids remote gestures are holding right now.
- * @returns Each open Group with the rect it is drawn as.
- */
-function openGroupsFor(
-  places: ReadonlyArray<Node>,
-  heldByRemote: ReadonlySet<string>,
-): OpenGroup[] {
-  const out: OpenGroup[] = [];
-  for (const node of places) {
-    if (node.type !== 'group' || heldByRemote.has(node.id)) continue;
-    if ((node.data as { locked?: boolean } | undefined)?.locked === true) {
-      continue;
-    }
-    out.push({
-      id: node.id,
-      rect: {
-        x: node.position.x,
-        y: node.position.y,
-        width: node.width ?? GROUP_DRAG_FALLBACK_W,
-        height: node.height ?? GROUP_DRAG_FALLBACK_H,
-      },
-    });
-  }
-  return out;
 }
 
 /**
@@ -2677,49 +2643,36 @@ function CanvasSpaceInner({
         // Group around them go down as a single undo step.
         let selectAfter: string[] = [];
         runCanvasUndoBatch(projectId, spaceId, () => {
+          const centres = batchCentresAt(origin, admitted.length);
           for (let i = 0; i < admitted.length; i += 1) {
             const spec = fileToNodeSpec(admitted[i]);
             const { id, position } = createUploadNodeAt(
               spec.nodeType,
-              dropPositionAt(origin, i),
+              centres[i],
             );
             created.push({ id, type: spec.nodeType, position, data: {} });
           }
           if (created.length === 0) return;
-          // Files handed over together arrive as one thing, so they land as
-          // one: wrapped in a Group of their own on open canvas, or taken into
-          // the Group they were dropped on.
-          const placement = planBatchGrouping(
+          // Files handed over together arrive as one thing, so a Group says so:
+          // the reader can see which ones came in together and take the batch
+          // anywhere as one. Whatever Groups already sit under the point they
+          // came in at is not our business — joining one of those would assert
+          // a relationship the reader never asked for.
+          const plan = planGroupCreation(
             created,
-            openGroupsFor(buffer.documentPlaces(), buffer.heldByRemote()),
-            origin,
+            created.map((node) => node.id),
             newId(),
           );
-          if (placement.kind === 'loose') {
+          if (plan === null) {
+            // One file makes no Group, so what appeared is the node itself.
             selectAfter = created.map((node) => node.id);
             return;
           }
-          if (placement.kind === 'join') {
-            for (const member of placement.members) {
-              setNodeParent(
-                projectId,
-                spaceId,
-                member.id,
-                placement.groupId,
-                member.position,
-              );
-            }
-            // What just appeared is what the reader acts on; the Group they put
-            // it in was already theirs and holds other things they did not ask
-            // about.
-            selectAfter = placement.members.map((member) => member.id);
-            return;
-          }
-          writeGroup(projectId, spaceId, placement.plan, userId);
+          writeGroup(projectId, spaceId, plan, userId);
           // The Group is what the reader acts on next. Its members were never
           // selected, so there is nothing to clear first: `selectAfterCreate`
           // deselects everything else when the Group mirrors back.
-          selectAfter = [placement.plan.groupId];
+          selectAfter = [plan.groupId];
         });
         if (selectAfter.length > 0) setSelectAfterCreate(selectAfter);
         // The bytes travel once the canvas holds the nodes they belong to.
@@ -2778,7 +2731,6 @@ function CanvasSpaceInner({
       projectId,
       spaceId,
       userId,
-      buffer,
       failUploadNode,
       createUploadNodeAt,
       t,
