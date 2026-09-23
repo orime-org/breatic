@@ -102,7 +102,7 @@ web **用得到**吗?用得到 → `shared`;用不到 → `core`。
 
 **为什么会这样**:主入口打成**一个文件**,vite 眼里就是一个模块;应用入口为了 i18n 就 import 了这个包,于是这个模块被分配进入口 chunk,**web 从 barrel 调到的导出都要在那个 chunk 里发出来** —— 哪怕它只被画布那个懒加载页调。`canvas/text-body.ts` 进 barrel 那次实测:入口闭包 1,141,205 字节,换成 subpath 之后 1,052,981,**差出来的 88,224 字节是 yjs 和 lib0 的 31 个模块,每个打开登录页的读者本来都要下**。
 
-**守卫看得见什么**:`packages/web/verify-chunks.mjs` 的 `HEAVY` 点了 yjs 的名(lib0 跟着它走),再犯时它报「哪个入口下载了 collaboration runtime」;`ENTRY_BUDGET` 另外盯着总字节,兜没被点名的那些 —— 当下还剩多少跑一次守卫就打出来,别在这儿钉一个副本。
+**守卫看得见什么**:`packages/web/verify-chunks.mjs` 的 `HEAVY` 点名两类从这个包过来的重依赖 —— yjs(lib0 跟着它走,报「哪个入口下载了 collaboration runtime」)和 `file-type`(`sniff-mime` 静态 import 它,连同 `strtok3` / `token-types` / `uint8array-extras` 报「mime sniffing」);`ENTRY_BUDGET` 另外盯着总字节,兜没被点名的那些 —— 当下还剩多少跑一次守卫就打出来,别在这儿钉一个副本。**这张名单是滞后的**:它只认已经犯过或已经查过的那几个,新放进 barrel 的模块拖来一个陌生的重依赖时,守卫只报总字节超了、不报名字。
 
 **别名不会因此泄漏**:两个入口都是 bundle 模式,产出的 `dist/canvas/text-body.js` 只有一行 `import * as Y from "yjs"`。这一条由 repo-lint 的 `no-unresolved-alias-in-dist` 机械守着,不靠记。
 
