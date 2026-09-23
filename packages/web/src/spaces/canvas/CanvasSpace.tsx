@@ -62,6 +62,7 @@ import {
 } from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
+import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
@@ -576,12 +577,14 @@ function planDuplicateGroupGrowth(
  * @param spaceId - Canvas space to write into.
  * @param plan - The Group's stored rect and each member's relative position.
  * @param createdBy - Whoever is making it.
+ * @param backgroundColor - Tint token to open with; absent leaves it untinted.
  */
 function writeGroup(
   projectId: string,
   spaceId: string,
   plan: GroupCreationPlan,
   createdBy: string,
+  backgroundColor?: string,
 ): void {
   createGroup(
     projectId,
@@ -592,6 +595,7 @@ function writeGroup(
       plan.width,
       plan.height,
       createdBy,
+      backgroundColor,
     ),
     plan.members,
   );
@@ -2581,7 +2585,15 @@ function CanvasSpaceInner({
             selectAfter = created.map((node) => node.id);
             return;
           }
-          writeGroup(projectId, spaceId, plan, userId);
+          // A colour of its own, so two batches handed over at the same point
+          // are two boxes the reader can tell apart rather than one drawn twice.
+          writeGroup(
+            projectId,
+            spaceId,
+            plan,
+            userId,
+            groupBackgroundFor(Math.random()),
+          );
           // The Group is what the reader acts on next. Its members were never
           // selected, so there is nothing to clear first: `selectAfterCreate`
           // deselects everything else when the Group mirrors back.

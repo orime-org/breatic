@@ -152,6 +152,7 @@ const GROUP_DEFAULT_NAME = 'Group';
  * @param width - The Group's authoritative width.
  * @param height - The Group's authoritative height.
  * @param createdBy - User id of the creator (caller injects from the store).
+ * @param backgroundColor - Tint token to open with; absent leaves it untinted.
  * @returns A complete `CanvasNodeFields` for a Group node.
  */
 export function createGroupNode(
@@ -160,6 +161,7 @@ export function createGroupNode(
   width: number,
   height: number,
   createdBy: string,
+  backgroundColor?: string,
 ): CanvasNodeFields {
   return {
     id,
@@ -173,6 +175,7 @@ export function createGroupNode(
       attachments: [],
       width,
       height,
+      ...(backgroundColor !== undefined && { backgroundColor }),
     },
   };
 }

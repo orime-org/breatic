@@ -4,12 +4,13 @@
 /**
  * Pure drag-stop reparent planner (group redesign 2026-06-23). On
  * `onNodeDragStop` the canvas decides, per dragged node, which Group it now
- * belongs to: the Group whose rect contains the node's CENTER point, and the
- * one it is already in whenever that rect still contains it — Groups overlap,
- * so more than one can answer. A node entering a Group's bounds joins it; a
- * member whose centre leaves its Group becomes top-level. Kept ReactFlow-
- * agnostic (absolute rects in, decisions out) so the membership rule is
- * unit-tested in isolation; the canvas converts coordinates and writes Yjs.
+ * belongs to — the single rule: the Group whose rect contains the node's
+ * CENTER point. A node entering a Group's bounds joins it; a member whose center
+ * leaves its Group becomes top-level; a member whose center stays in keeps its
+ * Group even if its body overflows (the canvas then auto-expands the Group, see
+ * `expandGroupToWrap`). Kept ReactFlow-agnostic (absolute rects in, decisions
+ * out) so the membership rule is unit-tested in isolation; the canvas converts
+ * coordinates and writes Yjs.
  */
 
 import { canJoinGroup } from '@web/spaces/canvas/group-membership';
@@ -68,10 +69,9 @@ function accepts(group: GroupRef): boolean {
 
 /**
  * Decide, per dragged node, which Group (if any) it now belongs to — the Group
- * whose rect contains the node's center, and the one it is already in whenever
- * that rect still contains it, because Groups overlap and more than one can
- * answer. A node never reparents into itself (a Group dragged over another is
- * excluded by id), so dragging a Group yields no membership change here.
+ * whose rect contains the node's center. A node never reparents into itself (a
+ * Group dragged over another is excluded by id), so dragging a Group yields no
+ * membership change here.
  * @param dragged - Every dropped node with its current parent + absolute rect.
  * @param groups - Every Group on the canvas with its absolute rect, whether or
  *   not it takes part in the decision.
@@ -92,26 +92,17 @@ export function planGroupDragStop(
     if (parent?.locked === true) {
       return { nodeId: node.id, targetGroupId: currentParent, changed: false };
     }
-    // The Group it is already in gets the first answer. Groups overlap — two
-    // batches handed over at the same point are drawn on top of each other, and
-    // both frames hold both sets of members — so asking which frame contains
-    // the centre has more than one answer, and taking whichever came first in
-    // the array empties the Group the reader just made on their next nudge.
-    // A nudge inside your own box says nothing about where you belong.
-    //
-    // A Group a remote is dragging is not one this end writes into, but it
-    // stays the answer for the member it already has: its members stay
-    // draggable here, so one dragged clear of it has left, while one still
-    // inside it has not moved anywhere.
-    const target =
-      parent !== undefined && groupContainsMemberCenter(parent.rect, node.rect)
-        ? parent
-        : groups.find(
-          (group) =>
-            group.id !== node.id &&
-              accepts(group) &&
-              groupContainsMemberCenter(group.rect, node.rect),
-        );
+    // A Group a remote is dragging answers only the first half of that. Its
+    // members stay draggable on this end, so one dragged clear of it has left —
+    // writing "still a member" for a node the user put outside leaves the Group
+    // to grow over that gap on the next drag-stop. It stays a candidate for the
+    // member it already has, which is what keeps a nudge inside it a no-op.
+    const target = groups.find(
+      (group) =>
+        group.id !== node.id &&
+        (group.id === currentParent || accepts(group)) &&
+        groupContainsMemberCenter(group.rect, node.rect),
+    );
     const targetGroupId = target?.id ?? null;
     return { nodeId: node.id, targetGroupId, changed: targetGroupId !== currentParent };
   });

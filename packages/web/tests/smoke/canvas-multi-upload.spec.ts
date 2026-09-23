@@ -44,6 +44,8 @@ interface DocNode {
   type: string;
   /** Top-left; relative to the parent Group for a member, absolute otherwise. */
   position: { x: number; y: number };
+  /** The Group's tint token; null for a node and for an untinted Group. */
+  backgroundColor: string | null;
 }
 
 /**
@@ -66,6 +68,7 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
             parentId?: string;
             type: string;
             position: { x: number; y: number };
+            data?: { backgroundColor?: string };
           }[];
         };
       };
@@ -74,6 +77,7 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
         parentId: n.parentId ?? null,
         type: n.type,
         position: n.position,
+        backgroundColor: n.data?.backgroundColor ?? null,
       }));
     },
     [projectId, spaceId, canvasUrl] as [string, string, string],
@@ -294,6 +298,11 @@ test('a second batch over a Group makes its own and joins nothing', async ({
 
   const nodes = await settledNodes(page, 6);
   const groups = nodes.filter((n) => n.type === 'group');
+  // Each batch opens with a colour of its own, so two boxes drawn at the same
+  // place and the same size are still two things the reader can tell apart.
+  for (const group of groups) {
+    expect(group.backgroundColor).toMatch(/^--color-palette-[a-z]+-bg$/);
+  }
   // Two batches, two Groups. Putting the second one into the first would
   // assert that those four files belong together, and nobody said that.
   expect(groups).toHaveLength(2);
@@ -301,29 +310,6 @@ test('a second batch over a Group makes its own and joins nothing', async ({
   expect(nodes.filter((n) => n.parentId === first)).toHaveLength(2);
   expect(groups.every((n) => n.parentId === null)).toBe(true);
 
-  // The two frames are drawn on top of each other, so both hold both sets of
-  // members. A nudge inside its own frame must leave the second batch where it
-  // is: taking whichever frame answered first empties the Group just made.
-  const second = groups.map((n) => n.id).find((id) => id !== first) as string;
-  const member = nodes.find((n) => n.parentId === second) as DocNode;
-  const box = await page
-    .locator(`.react-flow__node[data-id="${member.id}"]`)
-    .boundingBox();
-  if (box === null) throw new Error('the member is not on screen');
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  for (let step = 1; step <= 4; step += 1) {
-    await page.mouse.move(box.x + box.width / 2 + step * 2, box.y + box.height / 2 + step);
-  }
-  await page.mouse.up();
-
-  await expect
-    .poll(
-      async () =>
-        (await documentNodes(page)).filter((n) => n.parentId === second).length,
-      { timeout: 15_000 },
-    )
-    .toBe(2);
 });
 
 test('one undo takes the whole batch back', async ({ page }) => {

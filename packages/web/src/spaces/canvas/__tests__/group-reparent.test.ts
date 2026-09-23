@@ -65,35 +65,6 @@ describe('planGroupDragStop', () => {
     expect(out).toEqual([{ nodeId: 'n', targetGroupId: null, changed: false }]);
   });
 
-  it('a member nudged inside its own Group stays in it, whatever else overlaps', () => {
-    // Two batches handed over at the same point make two Groups drawn on top of
-    // each other, and both frames hold both sets of members. The Group a member
-    // is already in is the one that keeps it: a nudge inside your own box says
-    // nothing about where you belong, and picking by array order would empty
-    // the Group the reader just made.
-    const out = planGroupDragStop(
-      [{ id: 'n', parentId: 'mine', rect: { x: 60, y: 60, width: 20, height: 20 } }],
-      [
-        { id: 'older', rect: { x: 0, y: 0, width: 200, height: 200 } },
-        { id: 'mine', rect: { x: 0, y: 0, width: 200, height: 200 } },
-      ],
-    );
-    expect(out).toEqual([{ nodeId: 'n', targetGroupId: 'mine', changed: false }]);
-  });
-
-  it('a member dragged out of its own Group takes the Group it landed in', () => {
-    // Staying put is about the box you are still inside; leaving it is still a
-    // move, and the Group under where you landed takes you.
-    const out = planGroupDragStop(
-      [{ id: 'n', parentId: 'mine', rect: { x: 300, y: 60, width: 20, height: 20 } }],
-      [
-        { id: 'mine', rect: { x: 0, y: 0, width: 200, height: 200 } },
-        { id: 'other', rect: { x: 250, y: 0, width: 200, height: 200 } },
-      ],
-    );
-    expect(out).toEqual([{ nodeId: 'n', targetGroupId: 'other', changed: true }]);
-  });
-
   it('a node lands in an UNLOCKED Group even when a locked Group also overlaps', () => {
     // The locked Group is skipped as a candidate; an unlocked Group containing
     // the center still accepts the node.

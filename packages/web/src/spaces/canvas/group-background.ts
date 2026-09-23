@@ -31,6 +31,29 @@ export const GROUP_BACKGROUND_OPTIONS: ReadonlyArray<GroupBackgroundOption> = [
   { key: 'teal', value: '--color-palette-teal-bg', labelKey: 'canvas.group.backgroundTeal' },
 ];
 
+/** The 7 tints, without the "no colour" option. */
+export const GROUP_BACKGROUND_TINTS: ReadonlyArray<string> =
+  GROUP_BACKGROUND_OPTIONS.flatMap((option) =>
+    option.value === undefined ? [] : [option.value],
+  );
+
+/**
+ * The tint a Group gets when it is made around a batch that just arrived.
+ *
+ * Two batches handed over at the same point are drawn on top of each other and
+ * are the same size, so without a colour of its own the second one is a box the
+ * reader cannot tell from the first. The roll comes from the caller so the
+ * choice is a value a test can pin.
+ * @param roll - A number in [0, 1], normally `Math.random()`.
+ * @returns One of {@link GROUP_BACKGROUND_TINTS}.
+ */
+export function groupBackgroundFor(roll: number): string {
+  const at = Math.floor(roll * GROUP_BACKGROUND_TINTS.length);
+  return GROUP_BACKGROUND_TINTS[
+    Math.min(Math.max(at, 0), GROUP_BACKGROUND_TINTS.length - 1)
+  ];
+}
+
 /**
  * Pre-#1549 stored token names → their palette successors. Groups persist the
  * token NAME in the Yjs doc, so documents saved under the 4-status palette
