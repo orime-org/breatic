@@ -117,6 +117,24 @@ describe('the comment panel', () => {
     });
   }
 
+  /**
+   * Aims a draft at part of the first line, without posting it.
+   * @param from - How far into the line it starts.
+   * @param to - Where it ends.
+   */
+  function aimDraft(from: number, to: number): void {
+    const run = firstRun();
+    const view = handle.editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(
+        view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+          from: run.from + from,
+          to: run.from + to,
+        }),
+      );
+    });
+  }
+
   /** Opens the whole-document menu and presses the comments row. */
   async function pressCommentsRow(): Promise<void> {
     const user = userEvent.setup();
@@ -596,4 +614,116 @@ describe('the comment panel', () => {
     });
     released.mockRestore();
   });
+
+  describe('the card a new comment is written in', () => {
+    it('opens the rail and puts a card in it', async () => {
+      // A1 · A2: the entries aim a draft, and that is what the rail answers.
+      show();
+
+      aimDraft(0, 5);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-comment-rail')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
+    });
+
+    it('carries no button until the reader writes something', async () => {
+      // A29. The reply box answers the same way, and for the same reason: a
+      // control that would send nothing has no business being on screen.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      expect(screen.queryByTestId('doc-comment-draft-save')).toBeNull();
+      expect(screen.queryByTestId('doc-comment-draft-cancel')).toBeNull();
+
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'worth saying',
+      );
+
+      expect(screen.getByTestId('doc-comment-draft-save')).toBeInTheDocument();
+      expect(
+        screen.getByTestId('doc-comment-draft-cancel'),
+      ).toBeInTheDocument();
+    });
+
+    it('offers neither resolve nor delete, there being no thread yet', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'worth saying',
+      );
+
+      expect(screen.queryByTestId('doc-comment-resolve')).toBeNull();
+      expect(screen.queryByTestId('doc-comment-delete')).toBeNull();
+    });
+
+    it('says nothing about an empty rail while a card is waiting to be filled', async () => {
+      // A1's commonest path is the first comment on a document that has none,
+      // and the empty-rail line would be arguing with the card on screen.
+      show();
+
+      aimDraft(0, 5);
+
+      await screen.findByTestId('doc-comment-draft-card');
+      expect(screen.queryByTestId('doc-comment-rail-empty')).toBeNull();
+    });
+
+    it('lets an empty draft go when the focus leaves, and keeps the rail', async () => {
+      // A30. The rail stays because opening it was the reader's own doing.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      act(() => {
+        screen.getByTestId('doc-comment-draft-input').blur();
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
+      });
+      expect(screen.getByTestId('doc-comment-rail')).toBeInTheDocument();
+    });
+
+    it('keeps a draft that has words in it when the focus leaves', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'half a thought',
+      );
+
+      act(() => {
+        screen.getByTestId('doc-comment-draft-input').blur();
+      });
+
+      expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
+      expect(screen.getByTestId('doc-comment-draft-input')).toHaveValue(
+        'half a thought',
+      );
+    });
+
+    it('writes the comment on save, and the card becomes a real one', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'said something',
+      );
+
+      await userEvent.click(screen.getByTestId('doc-comment-draft-save'));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
+      });
+      expect(screen.getByTestId('doc-comment-card')).toBeInTheDocument();
+    });
+  });
+
 });
