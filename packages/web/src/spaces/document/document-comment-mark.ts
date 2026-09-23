@@ -10,10 +10,12 @@
  * `keepOnSplit: true` carries it across Enter, and the `orphan` attribute is
  * the flag that stops a mark being painted once its thread is gone.
  *
- * Registered unconditionally, separate from anything that needs a thread
- * store. The schema is what `DOCUMENT_SCHEMA_VERSION` is computed from, so a
- * mark that came and went with a runtime option would make this build's
- * vocabulary depend on how the editor was constructed.
+ * This is the registrar for a body built with no thread store behind it —
+ * the library's own comments extension is the other, and `commentWiring`
+ * picks between them. What matters is that the mark is in the schema either
+ * way: `DOCUMENT_SCHEMA_VERSION` is computed from the schema, so a mark that
+ * came and went with a runtime option would make this build's vocabulary
+ * depend on how the editor was constructed.
  */
 
 import { createExtension } from '@blocknote/core';

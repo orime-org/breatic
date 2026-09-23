@@ -26,20 +26,11 @@
 import * as React from 'react';
 
 import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
+import { domElementOf } from '@web/spaces/document/document-editor-view';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /** Nothing measured, one object for every such answer. */
 const NOTHING: ReadonlyMap<string, number> = new Map();
-
-/**
- * The scroll container the body sits in, as the editor stands.
- * @param editor - The document editor.
- * @returns That element, or null before the editor is mounted.
- */
-export function bodyScrollerOf(editor: ToolEditor): HTMLElement | null {
-  const dom = (editor as unknown as { domElement?: HTMLElement }).domElement;
-  return dom?.closest<HTMLElement>('[data-radix-scroll-area-viewport]') ?? null;
-}
 
 /**
  * How far each thread's words sit from the top of the body's content.
@@ -72,6 +63,7 @@ export function useCommentAnchors(
       if (view === null || origin === null) return;
       const top = origin.getBoundingClientRect().top;
       const next = new Map<string, number>();
+      const stale: string[] = [];
       // One walk for every thread: this runs on each settle, and per-thread
       // it was one full walk of the document each.
       const ranges = threadRangesByThread(view.state.doc);
@@ -80,25 +72,38 @@ export function useCommentAnchors(
         .filter((id) => id.length > 0)
         .forEach((id) => {
           const at = ranges.get(id)?.[0];
+          // Absent from the ranges is the one thing that means no words
+          // left, and `layOutCards` reads a missing anchor as exactly that.
           if (at === undefined) return;
-          // `coordsAtPos` throws for a position the view has not laid out,
-          // which happens for a moment after a peer's delete arrives.
           try {
             next.set(id, view.coordsAtPos(at.from).top - top);
           } catch {
-            // Leaving it out reads as a thread with no words, and the next
-            // measurement puts it back.
+            // `coordsAtPos` throws for a position the view has not laid out,
+            // which happens for a moment after a peer's delete arrives. The
+            // thread still has its words, and the card still shows the quote
+            // it took from them — dropping it here would slide that card to
+            // the bottom of the panel, where A13 puts the ones whose text is
+            // gone, and nothing would bring it back until the reader typed.
+            stale.push(id);
           }
         });
-      setAnchors((held) => (sameAnchors(held, next) ? held : next));
+      setAnchors((held) => {
+        stale.forEach((id) => {
+          const last = held.get(id);
+          if (last !== undefined) next.set(id, last);
+        });
+        return sameAnchors(held, next) ? held : next;
+      });
     };
 
     measure();
-    const scroller = bodyScrollerOf(editor);
-    // The body's own height changes without the text changing — a window
-    // resize rewraps every line — so the element is watched as well.
+    // The body element, not the scroller it sits in. Text moves without the
+    // text changing — a window resize rewraps every line, the panel opening
+    // narrows the column, a web font arriving reflows the lot — and the
+    // scroller's own box holds still through the last two of those.
+    const body = domElementOf(editor);
     const sizes = new ResizeObserver(measure);
-    if (scroller !== null) sizes.observe(scroller);
+    if (body !== null) sizes.observe(body);
     // The document only: a caret move cannot move a thread's words, and
     // subscribing to it costs one full walk of the body per keypress.
     const stop = editor.onChange(measure);

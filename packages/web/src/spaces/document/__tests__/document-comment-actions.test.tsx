@@ -412,6 +412,9 @@ describe('what a card lets a reader do', () => {
     expect(screen.queryByTestId('doc-comment-reply-input')).toBeNull();
 
     card.parentElement!.focus();
+    // Focus is synchronous, the render it asks for is not — press only once
+    // the card has settled under it.
+    await screen.findByTestId('doc-comment-card');
     await userEvent.keyboard('{Enter}');
 
     expect(

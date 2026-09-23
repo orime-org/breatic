@@ -146,7 +146,7 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
   // Wrapped so `destroy()` also detaches the doc listener yjs leaks — see
   // `withDestroyListenerCleanup`; the canvas manager has the same problem and
   // the same wrapper.
-  const manager = withDestroyListenerCleanup(
+  const manager: Y.UndoManager = withDestroyListenerCleanup(
     doc,
     () =>
       new Y.UndoManager(documentBodyFragment(doc), {

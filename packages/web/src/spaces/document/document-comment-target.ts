@@ -56,8 +56,8 @@ import {
  */
 export function canCommentOver(doc: PMNode, over: Selection): boolean {
   const mark = markTypeIn(doc, COMMENT_MARK);
-  // Registered unconditionally by `documentCommentMarkExtension`, so this is
-  // only reached by a caller holding some other schema.
+  // Either registrar `commentWiring` picks puts the mark on the schema, so
+  // this is only reached by a caller holding some other schema.
   if (mark === undefined) return false;
   return reachesAnyRunOver(doc, over, mark);
 }

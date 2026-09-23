@@ -26,6 +26,7 @@ import {
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
 import { postComment } from '@web/spaces/document/document-comment-post';
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -153,14 +154,16 @@ function openWithComments(): {
 /**
  * Posts a comment over the first run, down the path the composer takes.
  * @param editor - The editor.
+ * @returns The thread's id.
  */
-async function postAComment(editor: Editor): Promise<void> {
+async function postAComment(editor: Editor): Promise<string> {
   const view = editor.prosemirrorView!;
   const { from, to } = firstRun(editor);
   view.dispatch(
     view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, { from, to }),
   );
-  await postComment(editor, 'have a look');
+  const thread = await postComment(editor, 'have a look');
+  return thread!.id;
 }
 
 /** How many threads the document holds. */
@@ -291,6 +294,27 @@ describe('undo right after posting a comment', () => {
     manager.stopCapturing();
 
     await postAComment(editor);
+    manager.undo();
+    expect(editor.prosemirrorState.doc.textContent).not.toContain('!');
+
+    manager.redo();
+
+    expect(editor.prosemirrorState.doc.textContent).toContain('!');
+  });
+
+  it('holds the reader to their own text when they settle a thread', async () => {
+    // The reader settling one goes down the same road a peer's does: the
+    // library rewrites the mark, and the sync binding follows with a replace
+    // over the whole body (measured 2026-09-23). Nothing about that is the
+    // reader's edit, so undo reaches past it and redo brings it back.
+    const { editor, manager } = openWithComments();
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('!', firstRun(editor).to - 1));
+    manager.stopCapturing();
+    const thread = await postAComment(editor);
+
+    const comments = commentsOn(editor)!;
+    await comments.threadStore.resolveThread({ threadId: thread });
     manager.undo();
     expect(editor.prosemirrorState.doc.textContent).not.toContain('!');
 

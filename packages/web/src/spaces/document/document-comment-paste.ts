@@ -73,9 +73,9 @@ import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
  */
 export function stripCommentMarks(slice: Slice, schema: Schema): Slice {
   const commentType = schema.marks[COMMENT_MARK];
-  // Registered unconditionally by `documentCommentMarkExtension`, so this is
-  // only reached by a caller holding some other schema — and a paste is a
-  // bad place to throw.
+  // Either registrar `commentWiring` picks puts the mark on the schema, so
+  // this is only reached by a caller holding some other schema — and a paste
+  // is a bad place to throw.
   if (commentType === undefined) return slice;
 
   /**
