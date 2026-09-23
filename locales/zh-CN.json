@@ -227,6 +227,7 @@
       "proposingNodes": "正在拟一份提议",
       "checkingModels": "正在查可用的模型",
       "understanding": "正在查看媒体",
+      "judging": "正在权衡",
       "running": "正在调用 {tool}"
     },
     "loadEarlier": "加载更早的消息",

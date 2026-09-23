@@ -108,7 +108,7 @@ async function askAll(abortSignal?: AbortSignal): Promise<unknown> {
         },
       },
     },
-    { abortSignal },
+    { toolCallId: "t1", messages: [], abortSignal } as never,
   );
 }
 
