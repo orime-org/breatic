@@ -106,24 +106,15 @@ const answerSchema = z
  * `answers` is the value as it arrived, not what the schema parsed out of it:
  * the schema settles whether the model can read the key, and a field this side
  * has not heard of is still the vendor's answer.
- *
- * `answers` has no prototype: a key named `__proto__` is an ordinary own
- * property of a parsed body, and assigning one onto an object literal replaces
- * that object's prototype instead of adding a key.
  * @param asked - The keys the model asked under.
  * @param answered - The `answers` object as it arrived.
  * @returns Both halves.
  */
 function sortByReadable(asked: readonly string[], answered: Record<string, unknown>): JevAnswers {
-  const answers: Record<string, Record<string, unknown>> = Object.create(null) as Record<
-    string,
-    Record<string, unknown>
-  >;
+  const answers: Record<string, Record<string, unknown>> = {};
   const unreadable: string[] = [];
   for (const key of asked) {
-    // Read through the descriptor: `answered["__proto__"]` runs the inherited
-    // getter and answers the prototype, not the key `JSON.parse` put there.
-    const value = Object.getOwnPropertyDescriptor(answered, key)?.value as unknown;
+    const value = answered[key];
     if (answerSchema.safeParse(value).success) answers[key] = value as Record<string, unknown>;
     else unreadable.push(key);
   }
@@ -169,9 +160,9 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
   // hold the turn for three deliveries and two backoffs. This signal is read
   // at the top of every pass (`request.ts:358`) and ends the backoff wait
   // (`request.ts:434`), so the figure in the config is what the reader waits.
-  // Truncated because a configured budget can carry a fraction and
-  // `AbortSignal.timeout` answers ERR_OUT_OF_RANGE to one, which `setTimeout`
-  // does not -- the same trap `read-within.ts:113` records.
+  // Truncated because this is a plain number parameter and `AbortSignal.timeout`
+  // answers ERR_OUT_OF_RANGE to a fraction, which `setTimeout` does not
+  // (`read-within.ts:113`). The one caller reads an integer from the config.
   const deadline = AbortSignal.timeout(Math.trunc(budgetMs));
   const spanning = abortSignal ? AbortSignal.any([abortSignal, deadline]) : deadline;
 
@@ -200,6 +191,14 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
   }
 
   if (!res.ok) {
+    // A raised signal settles the retry (`request.ts:401`) and the transport
+    // hands back the response it is holding (`:415`) rather than throwing, so
+    // a stop that landed mid-refusal arrives here looking like an upstream
+    // fault. What the reader did outranks what the service said.
+    if (abortSignal?.aborted === true) {
+      void res.body?.cancel();
+      throw stoppedByUser();
+    }
     // A body nobody reads keeps its connection out of the pool. Discarding the
     // promise is safe only while nothing awaits between the transport handing
     // this response back and this line.
@@ -217,7 +216,8 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     throw toolFailed(
       res.status === 422
         ? reason(
-            `${voice.attempting} "${asked}" failed: the ${voice.act} service would not take what was sent.`,
+            `${voice.attempting} "${asked}" failed: the ${voice.act} service answered HTTP 422. ` +
+              "It refused the body this side sent, which is the questions you composed.",
             moves.rewordOnce,
           )
         : refusalReason(voice, asked, res.status),

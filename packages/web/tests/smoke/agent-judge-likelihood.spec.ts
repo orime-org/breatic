@@ -109,37 +109,41 @@ test('asks for a judgement with the material attached @needs-model', async () =>
 
   // The state is what the answer is judged against, and a thin one is the
   // failure this case exists for: it returns a well-formed answer made of
-  // noise. Measured against the prompt rather than a bare length, because a
-  // state that is nothing but a copy of the prompt clears any length this
-  // prompt already exceeds.
+  // noise. So what is measured is the material that is not the prompt --
+  // subtracting lengths would pass a state made of the prompt twice over.
   const stateText = JSON.stringify(sent.state ?? '');
+  const beyondPrompt = stateText.split(PROMPT).join('');
   expect(
-    stateText.length - PROMPT.length,
-    `the state carries more than the prompt back: ${stateText}`,
+    beyondPrompt.length,
+    `the state carries material of its own, not the prompt back: ${stateText}`,
   ).toBeGreaterThan(200);
 
   const asked = Object.values(sent.questions ?? {});
   expect(asked, 'at least one question').not.toHaveLength(0);
 
   // Options written as sentences rather than bare labels. A label names the
-  // option; what it is is what Jev judges. Only `choice` carries these -- a
-  // `score` question's criteria are rung labels by definition, and `noul`
-  // carries none, so a turn made of those has nothing to measure here.
+  // option; what it is is what Jev judges.
   const optionText = asked.flatMap((question) => {
     const criteria = question.criteria;
     return typeof criteria === 'object' && criteria !== null && !Array.isArray(criteria)
       ? Object.values(criteria as Record<string, string>)
       : [];
   });
-  if (optionText.length > 0) {
-    // The floor, not the ceiling: one written-out option among bare labels is
-    // the shape this is here to catch.
-    const shortest = Math.min(...optionText.map((text) => text.length));
-    expect(
-      shortest,
-      `options are written out, not labelled: ${optionText.join(' | ')}`,
-    ).toBeGreaterThan(25);
-  }
+  // Asserted rather than guarded, because the guard would pass a turn that
+  // asked nothing with options at all -- and the prompt asks for each way to
+  // be weighed, which is what an option question is. A turn that answered it
+  // some other way is worth stopping on, not stepping over.
+  expect(
+    optionText,
+    `the turn put its options to the tool: ${JSON.stringify(asked)}`,
+  ).not.toHaveLength(0);
+  // The floor, not the ceiling: one written-out option among bare labels is
+  // the shape this is here to catch.
+  const shortest = Math.min(...optionText.map((text) => text.length));
+  expect(
+    shortest,
+    `options are written out, not labelled: ${optionText.join(' | ')}`,
+  ).toBeGreaterThan(25);
 
   // eslint-disable-next-line no-console -- the measurement is the point of this line
   console.log(

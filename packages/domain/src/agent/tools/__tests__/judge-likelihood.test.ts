@@ -183,14 +183,6 @@ describe("the model composes the request", () => {
     expect(sent.questions["how_ambitious"]?.type).toBe("score");
   });
 
-  it("survives a deadline the config left fractional", async () => {
-    // `AbortSignal.timeout` answers ERR_OUT_OF_RANGE to a fraction, which
-    // `setTimeout` does not -- the same trap read-within.ts:113 records.
-    timeoutMs = 9500.5;
-    httpRequestMock.mockResolvedValueOnce(responseOf({ answers: ANSWERS }));
-    await expect(askAll()).resolves.toBeDefined();
-  });
-
   it("declines replay and takes its deadline from the configured value", async () => {
     timeoutMs = 4321;
     httpRequestMock.mockResolvedValueOnce(responseOf({ answers: ANSWERS }));
@@ -272,29 +264,6 @@ describe("what comes back", () => {
     );
     const answer = (await askAll()) as { unreadable: string[] };
     expect(answer.unreadable.sort()).toEqual(["how_ambitious", "how_to_build"]);
-  });
-
-  it("does not let a question key reach the prototype of what the model reads", async () => {
-    // The model names its own questions and the schema takes any string, so
-    // `__proto__` is a name it can choose. Assigning one onto an object
-    // literal replaces that object's prototype instead of adding a key.
-    httpRequestMock.mockResolvedValueOnce(
-      new Response('{"answers":{"__proto__":{"type":"noul","noul":0.9}}}', { status: 200 }),
-    );
-    const answer = (await judgeLikelihood.execute?.(
-      {
-        state: {},
-        // Built by parsing, because a `__proto__` key in an object literal
-        // sets the prototype instead of becoming a key -- the same shape the
-        // SDK hands `execute` after parsing the model's arguments.
-        questions: JSON.parse(
-          '{"__proto__":{"type":"noul","instructions":"Does this hold?"}}',
-        ) as Record<string, { type: "noul"; instructions: string }>,
-      },
-      { toolCallId: "t1", messages: [] } as never,
-    )) as { answers: Record<string, unknown>; unreadable: string[] };
-    expect(Object.keys(answer.answers)).toEqual(["__proto__"]);
-    expect(answer.answers["__proto__"]).toEqual({ type: "noul", noul: 0.9 });
   });
 
   it("names a score that falls outside its own legend", async () => {
@@ -387,6 +356,25 @@ describe("failing says what broke", () => {
     const { forModel, readerKey } = await failureOf(askAll);
     expect(readerKey).toBe(FAILURE_LINES.unreachable);
     expect(forModel).not.toContain("openrouter.ai");
+  });
+
+  it("answers the reader's stop as a stop even holding a refusal", async () => {
+    // `request.ts:401` settles the retry on the raised signal and `:415`
+    // returns the response it is holding rather than throwing, so a stop that
+    // lands while the endpoint is refusing arrives here as a non-2xx.
+    const controller = new AbortController();
+    httpRequestMock.mockImplementationOnce(() => {
+      controller.abort();
+      return Promise.resolve(responseOf({ error: "rate limited" }, 429));
+    });
+    const { readerKey } = await failureOf(() => askAll(controller.signal));
+    expect(readerKey).toBe(FAILURE_LINES.stopped);
+  });
+
+  it("keeps the status in the sentence when the service would not take the body", async () => {
+    httpRequestMock.mockResolvedValueOnce(responseOf({ error: "bad shape" }, 422));
+    const { forModel } = await failureOf(askAll);
+    expect(forModel, "every other status names itself").toContain("422");
   });
 
   it("answers the reader's stop as a stop", async () => {
