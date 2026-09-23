@@ -46,6 +46,8 @@ interface DocNode {
   position: { x: number; y: number };
   /** The Group's tint token; null for a node and for an untinted Group. */
   backgroundColor: string | null;
+  /** The name shown above the node. */
+  name: string;
 }
 
 /**
@@ -68,7 +70,7 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
             parentId?: string;
             type: string;
             position: { x: number; y: number };
-            data?: { backgroundColor?: string };
+            data?: { backgroundColor?: string; name?: string };
           }[];
         };
       };
@@ -78,6 +80,7 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
         type: n.type,
         position: n.position,
         backgroundColor: n.data?.backgroundColor ?? null,
+        name: n.data?.name ?? '',
       }));
     },
     [projectId, spaceId, canvasUrl] as [string, string, string],
@@ -302,6 +305,11 @@ test('a second batch over a Group makes its own and joins nothing', async ({
   // place and the same size are still two things the reader can tell apart.
   for (const group of groups) {
     expect(group.backgroundColor).toMatch(/^--color-palette-[a-z]+-bg$/);
+  }
+  // And each one says what it holds, so the two are told apart by reading as
+  // well as by colour — the roll can hand both batches the same tint.
+  for (const group of groups) {
+    expect(group.name).toBe('2 files');
   }
   // Two batches, two Groups. Putting the second one into the first would
   // assert that those four files belong together, and nobody said that.

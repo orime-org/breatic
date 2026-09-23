@@ -578,6 +578,7 @@ function planDuplicateGroupGrowth(
  * @param plan - The Group's stored rect and each member's relative position.
  * @param createdBy - Whoever is making it.
  * @param backgroundColor - Tint token to open with; absent leaves it untinted.
+ * @param name - The name to open with; absent takes the default.
  */
 function writeGroup(
   projectId: string,
@@ -585,6 +586,7 @@ function writeGroup(
   plan: GroupCreationPlan,
   createdBy: string,
   backgroundColor?: string,
+  name?: string,
 ): void {
   createGroup(
     projectId,
@@ -596,6 +598,7 @@ function writeGroup(
       plan.height,
       createdBy,
       backgroundColor,
+      name,
     ),
     plan.members,
   );
@@ -2585,14 +2588,16 @@ function CanvasSpaceInner({
             selectAfter = created.map((node) => node.id);
             return;
           }
-          // A colour of its own, so two batches handed over at the same point
-          // are two boxes the reader can tell apart rather than one drawn twice.
+          // A colour and a name of its own, so two batches handed over at the
+          // same point are two boxes the reader can tell apart rather than one
+          // drawn twice. The name carries it when the roll repeats a tint.
           writeGroup(
             projectId,
             spaceId,
             plan,
             userId,
             groupBackgroundFor(Math.random()),
+            `${String(created.length)} files`,
           );
           // The Group is what the reader acts on next. Its members were never
           // selected, so there is nothing to clear first: `selectAfterCreate`
