@@ -31,7 +31,7 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
-import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
+import { isLiveCommentMark } from '@web/spaces/document/document-comment-extension';
 
 
 /**
@@ -54,8 +54,6 @@ export function threadsAtPosition(
   if (node === null) return [];
 
   return node.marks
-    .filter(
-      (mark) => mark.type.name === COMMENT_MARK && mark.attrs.orphan !== true,
-    )
+    .filter(isLiveCommentMark)
     .map((mark) => mark.attrs.threadId as string);
 }

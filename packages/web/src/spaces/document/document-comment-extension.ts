@@ -19,6 +19,7 @@
 
 import { CommentsExtension, CommentMark } from '@blocknote/core/comments';
 import type { ThreadData } from '@blocknote/core/comments';
+import type { Mark, Node as PMNode } from '@tiptap/pm/model';
 
 /**
  * The mark's name on the schema, taken from the mark itself.
@@ -27,6 +28,40 @@ import type { ThreadData } from '@blocknote/core/comments';
  * Space the moment the dependency moves.
  */
 export const COMMENT_MARK: string = CommentMark.name;
+
+/**
+ * Whether a mark is a highlight the reader can still act on.
+ *
+ * A settled thread keeps its mark with `orphan` set so the words under it
+ * read as prose (A8), and the library's own press handler reads the
+ * attribute the same way. Everything that decides whether a highlight is
+ * there asks through here — the paint, the hit test, and the thread this
+ * Space names to the library — so a settled one cannot be acted on from a
+ * side that forgot to look.
+ * @param mark - The mark to judge.
+ * @returns Whether it is a comment highlight still standing.
+ */
+export function isLiveCommentMark(mark: Mark): boolean {
+  return mark.type.name === COMMENT_MARK && mark.attrs.orphan !== true;
+}
+
+/**
+ * Whether the body still carries a standing highlight for one thread.
+ * @param doc - The body to walk.
+ * @param threadId - The thread to look for.
+ * @returns Whether any live mark names it.
+ */
+export function threadIsPaintedIn(doc: PMNode, threadId: string): boolean {
+  let found = false;
+  doc.descendants((node) => {
+    if (found) return false;
+    found = node.marks.some(
+      (mark) => isLiveCommentMark(mark) && mark.attrs.threadId === threadId,
+    );
+    return !found;
+  });
+  return found;
+}
 
 /** Where a thread's marks sit, as the library reports them. */
 export interface ThreadRange {

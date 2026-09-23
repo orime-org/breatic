@@ -235,6 +235,29 @@ describe('pressing a comment that is already open', () => {
 });
 
 describe('selecting from elsewhere', () => {
+  it('leaves the library out of a settled thread', async () => {
+    // The library draws its own decoration over whichever thread it is told
+    // is being read, and its stylesheet colours that decoration through the
+    // mark it nests inside — so naming a settled thread paints the words A8
+    // promises read as prose. Its own handler passes settled marks by, so
+    // there is nothing to ask it to stand aside from either. A9 sends the
+    // reader here: the "all" filter is where they open one.
+    const editor = open();
+    const threadId = await comment(editor, 0, 5);
+    const view = editor.prosemirrorView!;
+    const run = firstRun(editor);
+    const marks = view.state.schema.marks.comment!;
+    view.dispatch(
+      view.state.tr
+        .removeMark(run.from, run.to, marks.create({ threadId, orphan: false }))
+        .addMark(run.from, run.to, marks.create({ threadId, orphan: true })),
+    );
+
+    selectThreads(editor, [threadId]);
+
+    expect(librarySelection(editor)).toBeUndefined();
+  });
+
   it('opens a thread the panel names', async () => {
     const editor = open();
     const threadId = await comment(editor, 0, 5);

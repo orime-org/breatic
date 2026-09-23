@@ -1974,18 +1974,20 @@ body {
   padding: 0;
 }
 
-/* The thread being read. The decoration lands outside the marks rather than
-   on them, so the deeper colour is set here and on whatever marks sit inside
-   it.
+/* The thread being read. This class is ours, drawn per mark run
+   (`document-comment-selection.ts`); the library draws one of its own over
+   the thread's MERGED range — first start to last end — because telling it
+   which thread is being read is what makes its click handler stand aside
+   (A20).
 
-   The class is ours. Telling the library which thread is being read is what
-   makes its own click handler stand aside (A20), and the same write makes it
-   draw a decoration over the thread's MERGED range — first start to last end,
-   which paints over any stretch in between that carries no mark. Ours is
-   drawn per mark run (`document-comment-selection.ts`), and with the colour
-   on our class the library's decoration reaches the DOM carrying nothing. */
-.doc-body .doc-comment-mark-reading,
-.doc-body .doc-comment-mark-reading .bn-thread-mark {
+   Both decorations land on the same span, and that span sits INSIDE every
+   mark covering the run (measured 2026-09-23, single, overlapping and split
+   runs alike). So the library's `.bn-thread-mark .bn-thread-mark-selected`
+   does reach it and does carry a colour — this rule, unlayered, wins over
+   that one in `@layer base`. Over a stretch the merged range covers but no
+   mark does, the library's span has no mark around it, its own descendant
+   selector misses, and nothing is painted there. */
+.doc-body .doc-comment-mark-reading {
   background-color: var(--color-comment-mark-active);
 }
 

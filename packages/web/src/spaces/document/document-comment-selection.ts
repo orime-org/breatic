@@ -42,8 +42,9 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 import { threadsAtPosition } from '@web/spaces/document/document-comment-hit';
 import {
-  COMMENT_MARK,
   commentsOn,
+  isLiveCommentMark,
+  threadIsPaintedIn,
 } from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
@@ -131,14 +132,10 @@ function paintSelected(
   const painted: Decoration[] = [];
   doc.descendants((node, pos) => {
     node.marks.forEach((mark) => {
-      if (mark.type.name !== COMMENT_MARK) return;
-      // The same question the hit test asks (`document-comment-hit.ts`), and
-      // for the same reason: a settled thread keeps its mark with the paint
-      // taken off it, and A8 promises those words read as prose however the
-      // reader arrives at the card. Under the "all" filter the card stays on
-      // the panel, so nothing takes the thread out of `ids` — the paint has
-      // to refuse on its own (design §9.5, invariant one).
-      if (mark.attrs.orphan === true) return;
+      // Under the "all" filter a settled card stays on the panel, so nothing
+      // takes its thread out of `ids` — the paint refuses on its own
+      // (design §9.5, invariant one).
+      if (!isLiveCommentMark(mark)) return;
       if (!ids.includes(mark.attrs.threadId as string)) return;
       painted.push(
         Decoration.inline(pos, pos + node.nodeSize, { class: SELECTED_CLASS }),
@@ -268,19 +265,32 @@ export const documentCommentSelection = createExtension(
  * Its handler answers a press on any thread that is not the one it holds, so
  * leaving this unwritten would have it take every press this plugin lets
  * through — and the link behind them would still never open.
+ *
+ * Only a thread whose highlight is still standing is named. The library
+ * draws its own decoration over whichever thread it is told is being read,
+ * nested inside the mark and coloured through it by the library's own
+ * stylesheet, so naming a settled one paints the words A8 promises read as
+ * prose. Its handler passes settled marks by, so there is nothing to ask it
+ * to stand aside from either.
+ * @param doc - The body, for judging whether that highlight still stands.
  * @param editor - The editor whose comments extension to write.
  * @param threadId - The thread, or undefined for none.
  */
 function tellLibrary(
+  doc: ProseMirrorNode,
   editor: CommentSelectionHost,
   threadId: string | undefined,
 ): void {
   const comments = commentsOn(editor);
   if (comments === undefined) return;
-  if (comments.store.state.selectedThreadId === threadId) return;
+  const named =
+    threadId !== undefined && threadIsPaintedIn(doc, threadId)
+      ? threadId
+      : undefined;
+  if (comments.store.state.selectedThreadId === named) return;
   comments.store.setState((previous) => ({
     ...previous,
-    selectedThreadId: threadId,
+    selectedThreadId: named,
   }));
 }
 
@@ -426,7 +436,7 @@ function buildSelectionPlugin(
           const now = selectedThreadsIn(updated.state);
           if (now === last) return;
           last = now;
-          tellLibrary(editor, now[0]);
+          tellLibrary(updated.state.doc, editor, now[0]);
           listeners.forEach((listener) => {
             listener();
           });
