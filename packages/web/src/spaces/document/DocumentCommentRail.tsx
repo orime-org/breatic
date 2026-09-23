@@ -535,7 +535,12 @@ function PlacedCard({
       // card takes the focus itself or the keyboard reaches none of them.
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
       tabIndex={0}
-      onPointerDown={() => {
+      // The main button only, as the body's own press handler asks it
+      // (`document-comment-selection.ts`): reading a card makes it the
+      // column's pivot and moves it, and a right-click wanting the quote
+      // would have its menu open over words that then slide away.
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
         onRead(card.id);
       }}
       // Reaching a card is what resting a pointer on it is, not what

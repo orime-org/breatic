@@ -90,8 +90,6 @@ import {
   AiSlot,
 } from '@web/spaces/document/document-bubble-slots';
 import {
-} from '@web/spaces/document/document-unavailable-control';
-import {
   MARK_TOOLS,
   INLINE_TOOLS,
 } from '@web/spaces/document/document-tools';
@@ -156,11 +154,11 @@ interface BubbleGroup {
  * commands that used to sit flat in the first group now live inside the block
  * type menu, which is where the demo draws them.
  *
- * Comment stands here with no command behind it (its function is task #18), as
- * do alignment, colour, and every AI command — each of those needs schema or a
- * model call that arrives with its own slice. They all carry the treatment
- * `document-coming-tool.tsx` defines (user 2026-08-23: a control that reads as
- * available and answers a click with nothing tells the reader it is broken).
+ * Alignment, colour, and every AI command stand here with no command behind
+ * them — each needs schema or a model call that arrives with its own slice.
+ * They carry the treatment `document-unavailable-control.ts` defines (user
+ * 2026-08-23: a control that reads as available and answers a click with
+ * nothing tells the reader it is broken).
  */
 const BUBBLE_GROUPS: BubbleGroup[] = [
   { key: 'blocks', tools: [], panels: [], slot: BlockTypeSlot },

@@ -400,10 +400,10 @@ html[data-theme='light'] {
   /* ---- The highlight a comment leaves on the words it is about (#18).
      The sticky note's hue, because a comment already looks like that on the
      canvas, and because no palette colour is yellow — so it cannot be read as
-     a background colour somebody chose. The hue does NOT track
-     `--color-note-border`: that one darkens in the dark theme, and a
-     highlight has to stay bright behind light text. What changes per theme is
-     how much of it shows through. ---- */
+     a background colour somebody chose. The dark theme sets its own hue
+     below: layers of this one over a near-black ground come out brighter
+     the more of them there are, and light text on top of that loses its
+     contrast. ---- */
   --color-comment-hue: #f1e05a;
   --color-comment-mark: color-mix(in srgb, var(--color-comment-hue) 42%, transparent);
   --color-comment-mark-active: color-mix(in srgb, var(--color-comment-hue) 80%, transparent);
@@ -604,8 +604,14 @@ html[data-theme='dark'] {
   --color-note: #3a3214;
   --color-note-border: #5c5020;
 
-  /* Comment highlight · dark. The hue is unchanged; less of it shows through,
-     because the text behind it is light and the ground is near-black. */
+  /* Comment highlight · dark. Same hue and saturation, lightness down from
+     65% to 34%: a highlight here sits UNDER light text, and each layer of it
+     — the mark, the deeper shade a read thread carries, a second thread
+     overlapping — lifts the ground towards the text rather than away from
+     it. At the light theme's #f1e05a the deepest of those states measures
+     2.36:1; at this one the worst is 4.85:1 (`comment-highlight-contrast`
+     holds every state to WCAG 2.2 SC 1.4.3). */
+  --color-comment-hue: #a08f0e;
   --color-comment-mark: color-mix(in srgb, var(--color-comment-hue) 22%, transparent);
   --color-comment-mark-active: color-mix(in srgb, var(--color-comment-hue) 46%, transparent);
   --color-note-foreground: var(--neutral-900);

@@ -14,10 +14,10 @@
  * `canRun` is `canCommentOver`, so an entry over a range with no words in it
  * is unavailable rather than present and inert (A3, R7).
  *
- * THE ROLE DOES NOT COME INTO IT HERE. Both carriers render nothing at all
- * for a viewer — `DocumentEditor.tsx` gates the block strip and the bubble
- * bar on `!readOnly` — so a viewer never reaches either entry. A gate here
- * would be a second answer to a question already answered one layer up.
+ * THE ROLE DOES NOT COME INTO IT HERE. Neither carrier reaches a viewer:
+ * `DocumentEditor` gates the block strip on `!readOnly`, and the bubble bar
+ * is handed the same bit and keeps itself away. A gate here would be a
+ * second answer to a question already answered one layer up.
  */
 
 import { TextSelection } from '@tiptap/pm/state';

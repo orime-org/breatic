@@ -12,7 +12,7 @@
  * drawn the way the demo draws it and writes a line to the console when
  * pressed, the menu closing after it either way (user 2026-08-27).
  *
- * Three things carry the greyed treatment `document-coming-tool.tsx` defines:
+ * Three things carry the greyed treatment `document-unavailable-control.ts` defines:
  * the block type menu over a selection no row can act on, judged only while
  * the menu is down; the alignment slot over a selection alignment does not
  * reach; and the colour slot over a selection that takes no marks (R7).
