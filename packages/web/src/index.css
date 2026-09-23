@@ -449,7 +449,7 @@ body {
   pointer-events: none;
 }
 .react-flow .react-flow__node.canvas-pick-selectable {
-  cursor: auto;
+  cursor: pointer;
 }
 .react-flow .react-flow__node.canvas-pick-selectable:hover {
   /* Match the node card's real corner (NodeShell rounded-sm) — a hardcoded

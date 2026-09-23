@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Pasted words arrive without their comments (#18, A19).
+ * What arrives with pasted and dragged content (#18, A19 · A19.1).
  *
  * The rule is the user's (2026-09-22): copying text copies the content, not
  * the discussion about it — the same answer Google Docs gives, in both
@@ -16,7 +16,6 @@
  * are immutable, and `openStart` / `openEnd` have to survive untouched or the
  * paste lands as whole blocks where it should have joined a line.
  *
- * TDD: red because `stripCommentMarks` does not exist yet.
  */
 
 import { Fragment, Slice, type Schema } from '@tiptap/pm/model';
@@ -26,6 +25,7 @@ import * as Y from 'yjs';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   commentsArrivingWith,
+  commentPastePlugin,
   stripCommentMarks,
 } from '@web/spaces/document/document-comment-paste';
 
@@ -187,14 +187,18 @@ describe('commentsArrivingWith', () => {
       0,
     );
 
-  /** A view that is dragging what the argument says, or nothing. */
+  /** A view that has a drag in flight, or none. */
   const viewThatIs = (
-    dragging: { move: boolean } | null,
+    dragging: object | null,
   ): Parameters<typeof commentsArrivingWith>[1] =>
     ({ state: { schema }, dragging }) as never;
 
   it('takes the comment off content that was pasted', () => {
-    const landed = commentsArrivingWith(commented('commented'), viewThatIs(null));
+    const landed = commentsArrivingWith(
+      commented('commented'),
+      viewThatIs(null),
+      false,
+    );
 
     expect(threadIdsIn(landed.content)).toEqual([]);
   });
@@ -204,7 +208,8 @@ describe('commentsArrivingWith', () => {
     // however it was made.
     const landed = commentsArrivingWith(
       commented('commented'),
-      viewThatIs({ move: false }),
+      viewThatIs({}),
+      true,
     );
 
     expect(threadIdsIn(landed.content)).toEqual([]);
@@ -215,7 +220,8 @@ describe('commentsArrivingWith', () => {
     // them still applies (user 2026-09-23).
     const landed = commentsArrivingWith(
       commented('commented'),
-      viewThatIs({ move: true }),
+      viewThatIs({}),
+      false,
     );
 
     expect(threadIdsIn(landed.content)).toEqual(['t1']);
@@ -226,9 +232,71 @@ describe('commentsArrivingWith', () => {
     // half left behind keeps its own marks because nothing touched them. One
     // thread, highlighted in two places — the same shape an Enter through a
     // comment already leaves (measured 2026-09-23).
-    const landed = commentsArrivingWith(commented('half'), viewThatIs({ move: true }));
+    const landed = commentsArrivingWith(
+      commented('half'),
+      viewThatIs({}),
+      false,
+    );
 
     expect(threadIdsIn(landed.content)).toEqual(['t1']);
     expect(landed.content.child(0).textContent).toBe('half');
+  });
+
+  it('strips a paste even when the last drop was a move', () => {
+    // The flag outlives the drop that set it, so the question the drag asks
+    // is whether one is in flight at all.
+    const landed = commentsArrivingWith(
+      commented('commented'),
+      viewThatIs(null),
+      false,
+    );
+
+    expect(threadIdsIn(landed.content)).toEqual([]);
+  });
+});
+
+describe('the drop the plugin reads the modifier from', () => {
+  /** A slice of one commented run. */
+  const commented = (): Slice =>
+    new Slice(
+      Fragment.from(
+        schema.nodes.paragraph.create(null, [schema.text('run', [comment('t1')])]),
+      ),
+      0,
+      0,
+    );
+
+  /**
+   * Drops with the copy modifier as the argument says, then lands a slice.
+   * @param copying - Whether the modifier was down at the drop.
+   * @returns The thread ids that survived.
+   */
+  const landAfterDrop = (copying: boolean): readonly string[] => {
+    const props = commentPastePlugin().props as unknown as {
+      handleDOMEvents: {
+        drop: (view: unknown, event: MouseEvent) => boolean;
+      };
+      transformPasted: (slice: Slice, view: unknown) => Slice;
+    };
+    // ProseMirror reads `altKey` on a Mac and `ctrlKey` elsewhere; the test
+    // sets both so it says the same thing on either.
+    props.handleDOMEvents.drop(null, {
+      altKey: copying,
+      ctrlKey: copying,
+    } as MouseEvent);
+    const view = { state: { schema }, dragging: {} };
+    return threadIdsIn(props.transformPasted(commented(), view).content);
+  };
+
+  it('keeps the comment when the modifier was up at the drop', () => {
+    expect(landAfterDrop(false)).toEqual(['t1']);
+  });
+
+  it('takes it off when the modifier was down at the drop', () => {
+    // ProseMirror decides whether to delete the source by reading the DROP
+    // event (`prosemirror-view/dist/index.js:3850`), five lines after it
+    // hands the slice to `transformPasted` — so pressing the modifier mid-
+    // drag makes a copy, and the snapshot taken at dragstart still says move.
+    expect(landAfterDrop(true)).toEqual([]);
   });
 });

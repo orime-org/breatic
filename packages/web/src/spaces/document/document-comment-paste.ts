@@ -32,14 +32,23 @@
  * which is the shape the body already takes when an Enter splits a comment in
  * two (measured 2026-09-23).
  *
- * A drop reaches `transformPasted` through the same door a paste does
- * (`parseFromClipboard` is what the drop handler calls). `view.dragging` is
- * what tells them apart: ProseMirror's maintainer deferred clearing it until
- * after the drop is handled for exactly this, and it carries `move`, which is
- * false while the modifier turns the drag into a copy.
+ * WHICH OF THE TWO THIS IS, `view.dragging` answers. A drop from inside the
+ * body hands `transformPasted` the slice ProseMirror snapshotted at dragstart
+ * (`prosemirror-view/dist/index.js:3843-3846`); a paste and a drop from
+ * outside go through `parseFromClipboard` instead (`:2911`) with `dragging`
+ * null. ProseMirror's maintainer deferred clearing it until after the drop is
+ * handled for exactly this.
+ *
+ * WHETHER THE DRAG COPIES is read from the drop, not from that snapshot. The
+ * snapshot carries `move`, answered at dragstart; ProseMirror asks the same
+ * question a second time against the drop event before deleting the source
+ * (`:3850`), five lines after handing over the slice. A modifier pressed or
+ * released mid-drag moves the two apart, and the one that decides whether the
+ * source survives is the second.
  */
 
 import { createExtension } from '@blocknote/core';
+import { isMacOS } from '@tiptap/core';
 import {
   Fragment,
   Slice,
@@ -87,23 +96,88 @@ export function stripCommentMarks(slice: Slice, schema: Schema): Slice {
   return new Slice(rebuild(slice.content), slice.openStart, slice.openEnd);
 }
 
-/** What this needs of the view: the schema, and what is being dragged. */
+/** What this needs of the view: the schema, and whether a drag is in flight. */
 interface LandingView {
   /** The editor state, for the schema the slice was parsed against. */
   readonly state: { readonly schema: Schema };
-  /** What is being dragged right now, and whether it is moving or copying. */
-  readonly dragging: { readonly move: boolean } | null;
+  /** The drag in flight, or null for a paste and for a drop from outside. */
+  readonly dragging: object | null;
 }
 
 /**
  * The content as it should land, comments kept or taken off.
  * @param slice - The parsed clipboard or drop content.
  * @param view - The view it is landing in.
+ * @param dropCopies - Whether the modifier was down at the drop that brought
+ *   this content, which is what leaves the source in place.
  * @returns The same content, with comment marks only where they belong.
  */
-export function commentsArrivingWith(slice: Slice, view: LandingView): Slice {
-  if (view.dragging?.move === true) return slice;
+export function commentsArrivingWith(
+  slice: Slice,
+  view: LandingView,
+  dropCopies: boolean,
+): Slice {
+  if (view.dragging !== null && !dropCopies) return slice;
   return stripCommentMarks(slice, view.state.schema);
+}
+
+/**
+ * Whether this drop leaves the source where it is.
+ *
+ * The same key ProseMirror reads, in the same place: `dragMoves` takes
+ * `altKey` on a Mac and `ctrlKey` elsewhere
+ * (`prosemirror-view/dist/index.js:3783-3788`).
+ * @param event - The drop.
+ * @returns True when the modifier turns this drag into a copy.
+ */
+function dropCopiesWith(event: MouseEvent): boolean {
+  return isMacOS() ? event.altKey : event.ctrlKey;
+}
+
+/**
+ * The plugin that decides whether comments arrive with content.
+ *
+ * One per editor, because the flag it keeps is about the drop happening in
+ * that editor right now.
+ * @returns The plugin.
+ */
+export function commentPastePlugin(): Plugin {
+  // Read at the drop rather than from `view.dragging.move`, which is the
+  // answer to the same question asked at dragstart: ProseMirror asks it a
+  // second time against the drop event before deleting the source
+  // (`prosemirror-view/dist/index.js:3850`), five lines after it hands the
+  // slice to `transformPasted`, so a modifier pressed or released mid-drag
+  // changes what happens to the source and not the snapshot.
+  let dropCopies = false;
+  return new Plugin({
+    key: new PluginKey('documentCommentPaste'),
+    props: {
+      handleDOMEvents: {
+        /**
+         * Takes down what the modifier said, and leaves the drop alone.
+         *
+         * `handleDOMEvents` runs ahead of the built-in drop handler
+         * (`prosemirror-view/dist/index.js:3172`), so this lands before the
+         * slice reaches `transformPasted`.
+         * @param _view - The view the drop was in.
+         * @param event - The drop.
+         * @returns False, so ProseMirror handles the drop as it would.
+         */
+        drop: (_view, event): boolean => {
+          dropCopies = dropCopiesWith(event);
+          return false;
+        },
+      },
+      /**
+       * Decides whether the comments come with this content.
+       * @param slice - The parsed clipboard or drop content.
+       * @param view - The view it is landing in.
+       * @returns The content as it should land.
+       */
+      transformPasted: (slice, view): Slice =>
+        commentsArrivingWith(slice, view, dropCopies),
+    },
+  });
 }
 
 /**
@@ -112,19 +186,5 @@ export function commentsArrivingWith(slice: Slice, view: LandingView): Slice {
  */
 export const documentCommentPasteExtension = createExtension(() => ({
   key: 'document-comment-paste',
-  prosemirrorPlugins: [
-    new Plugin({
-      key: new PluginKey('documentCommentPaste'),
-      props: {
-        /**
-         * Decides whether the comments come with this content.
-         * @param slice - The parsed clipboard or drop content.
-         * @param view - The view it is landing in.
-         * @returns The content as it should land.
-         */
-        transformPasted: (slice, view): Slice =>
-          commentsArrivingWith(slice, view),
-      },
-    }),
-  ],
+  prosemirrorPlugins: [commentPastePlugin()],
 }));
