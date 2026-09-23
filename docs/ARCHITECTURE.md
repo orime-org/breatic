@@ -364,6 +364,15 @@ pnpm test / typecheck / lint
 | 测试 | Vitest + Playwright + @testing-library + fast-check |
 | 监控 | Sentry |
 
+### Brand home links
+
+The Studio and Project top-left brand links navigate to the localized Home Page
+(`/` for English, `/{locale}/` otherwise), matching the missing-page home link.
+They open a new tab with `target="_blank"` and `rel="noopener noreferrer"`.
+The hosting layer serves Home Page; the original Studio or Project stays open,
+so following the brand link does not interrupt editing or uploads.
+The separate return-to-Studio control still navigates to `/studio`.
+
 ### Media transport and source changes (#499)
 
 `useMediaPlayer` mirrors the native element; React does not own a second

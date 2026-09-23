@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type * as React from 'react';
-import { Link } from 'react-router-dom';
+import { getLocale } from '@breatic/shared';
 
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
@@ -33,6 +33,7 @@ interface StudioTopBarProps {
  */
 export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element {
   const t = useTranslation();
+  const locale = getLocale();
   return (
     <header
       role='banner'
@@ -40,14 +41,16 @@ export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element 
     >
       <div className='flex items-center gap-1'>
         {leading}
-        <Link
-          to='/studio'
-          aria-label={t('studio.topBar.home')}
+        <a
+          href={locale === 'en' ? '/' : `/${locale}/`}
+          target='_blank'
+          rel='noopener noreferrer'
+          aria-label={t('chrome.aria.home')}
           className='flex items-center gap-[7px]'
         >
           <BrandMark size={24} />
           <span className='text-sm font-semibold text-foreground'>Breatic</span>
-        </Link>
+        </a>
       </div>
       <div className='flex items-center gap-1'>
         <LangSwitcher />
