@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider as RqProvider } from '@tanstack/react-
 import * as React from 'react';
 
 import { ApiException } from '@web/data/api/types';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 /**
  * Global TanStack Query client.
@@ -34,6 +35,33 @@ const client = new QueryClient({
 });
 
 /**
+ * Empties the cache whenever the signed-in account changes.
+ *
+ * A query key names what was asked for, never who asked, and signing out
+ * ends a session without touching the cache — so on this browser the next
+ * account reads the previous one's answers, for as long as the stale time
+ * above says those answers are fresh. Scoping the whole cache to the account
+ * makes that unreachable; keying each query by the account would instead be a
+ * list every future query has to remember to join.
+ *
+ * Only a change AWAY from a signed-in account clears. The first account of a
+ * page load arrives as a change from nobody, and the cache it would drop is
+ * the one that same boot just filled.
+ * @param onChange - Called once per change, with the account being left.
+ */
+function useAccountChange(onChange: () => void): void {
+  const accountId = useCurrentUserStore((s) => s.user?.id ?? null);
+  const signedInAs = React.useRef(accountId);
+  React.useEffect(() => {
+    const before = signedInAs.current;
+    signedInAs.current = accountId;
+    if (before !== null && before !== accountId) {
+      onChange();
+    }
+  }, [accountId, onChange]);
+}
+
+/**
  * Provides the shared TanStack Query `client` to the subtree.
  * @param root0 - The component props.
  * @param root0.children - The subtree that gains access to the query client.
@@ -44,6 +72,11 @@ export function QueryClientProvider({
 }: {
   children: React.ReactNode;
 }): React.JSX.Element {
+  useAccountChange(
+    React.useCallback(() => {
+      client.clear();
+    }, []),
+  );
   return <RqProvider client={client}>{children}</RqProvider>;
 }
 
