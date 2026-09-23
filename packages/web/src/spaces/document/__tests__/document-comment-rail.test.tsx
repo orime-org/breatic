@@ -444,6 +444,28 @@ describe('the comment panel', () => {
     expect(deepened()).toBe(0);
   });
 
+  it('takes the paint off when the panel is closed from the keyboard', async () => {
+    // Measured 2026-09-23: the pointer can rest on a card while the keyboard
+    // works the close button, so `onMouseLeave` never fires and the hover
+    // outlives the panel that is the only thing able to release it — one run
+    // of the body stayed painted with nothing on screen to explain it.
+    show();
+    await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
+    await userEvent.hover(await screen.findByTestId('doc-comment-card'));
+    await waitFor(() => {
+      expect(deepened()).toBe(1);
+    });
+
+    screen.getByTestId('doc-comment-rail-close').focus();
+    await userEvent.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-comment-rail')).toBeNull();
+    });
+    expect(deepened()).toBe(0);
+  });
+
   it('keeps a half-written reply while its thread is settled and reopened', async () => {
     // The reply lived in the card's own state, so a thread settled by a peer
     // took the reader's unsent words with it when the card unmounted.

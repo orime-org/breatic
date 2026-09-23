@@ -34,6 +34,7 @@ import { documentBodyFragment, documentCommentThreads } from '@breatic/shared';
 import { toast } from '@web/lib/toast';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentCommentComposer } from '@web/spaces/document/DocumentCommentComposer';
+import { postComment } from '@web/spaces/document/document-comment-post';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
   documentCommentDraftRange,
@@ -110,6 +111,14 @@ vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
+// The real one throughout, wrapped so one case can ask for the answer it
+// gives when there is no range left to aim at.
+vi.mock('@web/spaces/document/document-comment-post', async (real) => {
+  const actual =
+    await real<typeof import('@web/spaces/document/document-comment-post')>();
+  return { ...actual, postComment: vi.fn(actual.postComment) };
+});
+
 describe('DocumentCommentComposer', () => {
   it('stays away while no draft is open', () => {
     const { editor } = open();
@@ -178,6 +187,26 @@ describe('DocumentCommentComposer', () => {
       expect(vi.mocked(toast.error)).toHaveBeenCalled();
     });
     expect(screen.getByTestId('doc-comment-input')).toHaveValue('a thought');
+  });
+
+  it('leaves the box open when the post wrote nothing', async () => {
+    // `postComment` answers null when there is no range left to aim at, which
+    // means what a refusal means: nothing was written. Closing on it takes
+    // the box away before the effect watching the range can raise A21's
+    // notice, so the reader is left with no comment and no account of why.
+    const { editor } = open();
+    const run = firstRun(editor);
+    show(editor);
+    aimAt(editor, { from: run.from, to: run.from + 5 });
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-comment-composer')).toBeInTheDocument();
+    });
+    vi.mocked(postComment).mockResolvedValueOnce(null);
+
+    await userEvent.type(screen.getByTestId('doc-comment-input'), 'a thought');
+    await userEvent.click(screen.getByTestId('doc-comment-post'));
+
+    expect(screen.getByTestId('doc-comment-composer')).toBeInTheDocument();
   });
 
   it('posts what the reader typed, marking the words', async () => {

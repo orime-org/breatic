@@ -242,13 +242,14 @@ describe('commentsArrivingWith', () => {
     expect(landed.content.child(0).textContent).toBe('half');
   });
 
-  it('strips a paste even when the last drop was a move', () => {
-    // The flag outlives the drop that set it, so the question the drag asks
-    // is whether one is in flight at all.
+  it('strips a paste even when the last drop was a copy', () => {
+    // The flag outlives the drop that set it — it is written on every drop
+    // and never reset, and the editor holding it lives as long as the tab —
+    // so the question a paste asks is whether a drag is in flight at all.
     const landed = commentsArrivingWith(
       commented('commented'),
       viewThatIs(null),
-      false,
+      true,
     );
 
     expect(threadIdsIn(landed.content)).toEqual([]);

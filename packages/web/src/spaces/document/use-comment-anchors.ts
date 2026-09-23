@@ -59,7 +59,13 @@ export function useCommentAnchors(
   // than on the identity of the array holding them.
   const key = threadIds.join(',');
 
-  React.useEffect(() => {
+  // Before paint, for the same reason `PlacedCard` takes a card's height
+  // before paint: a frame with these missing hands `layOutCards` no anchors
+  // at all, which stacks every card from the top of the column — and the
+  // cards animate their `top`, so the reader watches them slide into place
+  // (measured 2026-09-23: three cards painted at 11 and 141 before sliding
+  // to 384 and 913).
+  React.useLayoutEffect(() => {
     /** Measures every thread and keeps the answer if it moved. */
     const measure = (): void => {
       const view = editor.prosemirrorView;

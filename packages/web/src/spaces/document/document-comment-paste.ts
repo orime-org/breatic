@@ -124,9 +124,8 @@ export function commentsArrivingWith(
 /**
  * Whether this drop leaves the source where it is.
  *
- * The same key ProseMirror reads, in the same place: `dragMoves` takes
- * `altKey` on a Mac and `ctrlKey` elsewhere
- * (`prosemirror-view/dist/index.js:3783-3788`).
+ * The same key ProseMirror reads: `dragCopyModifier` is `altKey` on a Mac and
+ * `ctrlKey` elsewhere (`prosemirror-view/dist/index.js:3783`).
  * @param event - The drop.
  * @returns True when the modifier turns this drag into a copy.
  */
@@ -156,9 +155,10 @@ export function commentPastePlugin(): Plugin {
         /**
          * Takes down what the modifier said, and leaves the drop alone.
          *
-         * `handleDOMEvents` runs ahead of the built-in drop handler
-         * (`prosemirror-view/dist/index.js:3172`), so this lands before the
-         * slice reaches `transformPasted`.
+         * `handleDOMEvents` runs ahead of the built-in drop handler: the
+         * listener `initInput` puts on the editor's DOM calls
+         * `runCustomHandler` first (`prosemirror-view/dist/index.js:3121-3124`),
+         * so this lands before the slice reaches `transformPasted`.
          * @param _view - The view the drop was in.
          * @param event - The drop.
          * @returns False, so ProseMirror handles the drop as it would.

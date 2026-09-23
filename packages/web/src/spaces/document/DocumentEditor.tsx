@@ -16,6 +16,7 @@ import type { ProjectRole } from '@breatic/shared';
 import { DocumentCommentComposer } from '@web/spaces/document/DocumentCommentComposer';
 import { DocumentCommentRail } from '@web/spaces/document/DocumentCommentRail';
 import {
+  hoverThread,
   onSelectedThreadsChange,
   selectThreads,
   selectedThreadsIn,
@@ -83,14 +84,18 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   React.useEffect(() => {
     if (pressed.length > 0) setRailOpen(true);
   }, [pressed]);
-  // Closing it ends the reading as well: the selection is what a press on a
-  // highlight changes, and left standing it makes the next press on the same
-  // highlight read as "already open" — which answers nothing and leaves the
-  // panel shut. It also takes the deeper paint off the body, which had been
-  // marking a card that is no longer on screen.
+  // Closing it ends both the reading and the pointer, because the panel is
+  // the only thing that releases either and it is about to be gone. The
+  // reading, left standing, makes the next press on the same highlight read
+  // as "already open" — which answers nothing and leaves the panel shut. The
+  // pointer, left standing, keeps a run of the body painted with nothing on
+  // screen to explain it: the close button can be worked from the keyboard
+  // while the pointer still rests on a card, so `onMouseLeave` never fires
+  // (measured 2026-09-23, design §9.5).
   const closeRail = React.useCallback(() => {
     setRailOpen(false);
     selectThreads(handle.editor, []);
+    hoverThread(handle.editor, null);
   }, [handle.editor]);
   const rail = useCommentRail(handle.editor);
   // Held here because this is where the editor's DOM enters the scroller, and

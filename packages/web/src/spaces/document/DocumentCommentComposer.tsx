@@ -238,12 +238,16 @@ export function DocumentCommentComposer({
       return;
     }
     void said(postComment(editor, saved.commit)).then((thread) => {
-      // Refused, and `said` has already told the reader. Nothing moves: the
-      // words are theirs until they send them or throw them away, and the box
-      // is where they still are. This is the answer the reply box gives the
-      // same refusal (`DocumentCommentCard`'s `if (sent)`), and this is the
-      // one write carrying the reader's only copy of what they typed.
-      if (thread === undefined) return;
+      // No thread means nothing was written, whichever way: `undefined` is a
+      // refusal `said` has already reported, `null` is `postComment` finding
+      // no range left to aim at. Nothing moves either way — the words are
+      // theirs until they send them or throw them away, and the box is where
+      // they still are. This is the answer the reply box gives the same
+      // refusal (`DocumentCommentCard`'s `if (sent)`), and this is the one
+      // write carrying the reader's only copy of what they typed; on the
+      // `null` path the notice A21 owes them is raised by the effect that
+      // watches the range, and it needs the box still open to raise it in.
+      if (thread == null) return;
       setDraft(saved);
       // The range is what says a draft is open, so clearing it closes the box.
       clearRange(editor);
