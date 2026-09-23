@@ -134,8 +134,7 @@ describe('DocumentCommentComposer', () => {
   it('says so when the thread cannot be opened', async () => {
     // The store asks its auth before writing, and the words may be gone by
     // the time the press lands. Whether that happens is not ours to promise;
-    // whether the reader is told is — the box closes either way, so silence
-    // reads as "posted".
+    // whether the reader is told is.
     const { editor } = open();
     const run = firstRun(editor);
     show(editor);
@@ -154,6 +153,31 @@ describe('DocumentCommentComposer', () => {
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalled();
     });
+  });
+
+  it('keeps the words when the thread cannot be opened', async () => {
+    // The reply box answers the same refusal by keeping what was typed
+    // (`DocumentCommentCard`'s `if (sent)`), and this is the one write that
+    // carries the reader's only copy of it.
+    const { editor } = open();
+    const run = firstRun(editor);
+    show(editor);
+    aimAt(editor, { from: run.from, to: run.from + 5 });
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-comment-composer')).toBeInTheDocument();
+    });
+    const comments = editor.getExtension(CommentsExtension)!;
+    vi.spyOn(comments.threadStore, 'createThread').mockRejectedValue(
+      new Error('refused'),
+    );
+
+    await userEvent.type(screen.getByTestId('doc-comment-input'), 'a thought');
+    await userEvent.click(screen.getByTestId('doc-comment-post'));
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalled();
+    });
+    expect(screen.getByTestId('doc-comment-input')).toHaveValue('a thought');
   });
 
   it('posts what the reader typed, marking the words', async () => {

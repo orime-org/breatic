@@ -227,7 +227,7 @@ export function DocumentCommentComposer({
   const said = useCommentWrite();
 
   /**
-   * Posts what the reader wrote, then closes the box.
+   * Posts what the reader wrote, and closes the box once it has landed.
    */
   const post = React.useCallback((): void => {
     const saved = reduceDraft(draft, { type: 'save' });
@@ -237,10 +237,15 @@ export function DocumentCommentComposer({
       setDraft(saved);
       return;
     }
-    setDraft(saved);
-    void said(postComment(editor, saved.commit)).finally(() => {
-      // The range is what says a draft is open, so clearing it is what closes
-      // the box — and it has to happen whether the post landed or threw.
+    void said(postComment(editor, saved.commit)).then((thread) => {
+      // Refused, and `said` has already told the reader. Nothing moves: the
+      // words are theirs until they send them or throw them away, and the box
+      // is where they still are. This is the answer the reply box gives the
+      // same refusal (`DocumentCommentCard`'s `if (sent)`), and this is the
+      // one write carrying the reader's only copy of what they typed.
+      if (thread === undefined) return;
+      setDraft(saved);
+      // The range is what says a draft is open, so clearing it closes the box.
       clearRange(editor);
     });
   }, [draft, editor, clearRange, said]);

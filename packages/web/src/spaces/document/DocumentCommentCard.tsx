@@ -30,12 +30,13 @@
  * press on its highlight in the body — is what brings them out.
  *
  * A THREAD NOBODY IS READING IS FOLDED, for the same reason: a column where
- * every thread is written out in full cannot be read down at all. It shows
- * its first comment and its most recent one, each cut to three lines, which
- * is the shape CKEditor's sidebar folds an inactive thread into
- * (`maxCommentsWhenCollapsed` 2, `maxCommentCharsWhenCollapsed` trimming each
- * one). Opening it unfolds it; there is no separate control, because the
- * press that would work one is already the press that opens the thread.
+ * every thread is written out in full cannot be read down at all. Every
+ * comment on it is cut to three lines, and once it holds more than two only
+ * its first and its most recent are drawn — the shape CKEditor's sidebar
+ * folds an inactive thread into (`maxCommentCharsWhenCollapsed` trimming each
+ * one, `maxCommentsWhenCollapsed` 2 holding the rest back). Opening it
+ * unfolds it; there is no separate control, because the press that would
+ * work one is already the press that opens the thread.
  */
 
 import { X } from 'lucide-react';
@@ -114,7 +115,7 @@ interface DocumentCommentCardProps {
 const FOLDED_ENTRY_COUNT = 2;
 
 /**
- * How much of a comment a folded thread shows.
+ * How much of a comment a card nobody is reading shows.
  *
  * Cut by lines rather than by characters, which is what the browser can do
  * exactly: the ellipsis lands where the text actually wraps, at whatever
@@ -138,8 +139,8 @@ interface EntryProps {
   entry: CommentEntryView;
   /** Whether this reader may withdraw it. */
   canDelete: boolean;
-  /** Whether to cut it short, which a folded thread does. */
-  folded: boolean;
+  /** Whether to cut it to three lines, which every unread card does. */
+  shortened: boolean;
   /** Withdraws it. */
   onDelete: () => void;
 }
@@ -149,14 +150,14 @@ interface EntryProps {
  * @param root0 - See {@link EntryProps}.
  * @param root0.entry - The comment to draw.
  * @param root0.canDelete - Whether this reader may withdraw it.
- * @param root0.folded - Whether to cut it short.
+ * @param root0.shortened - Whether to cut it to three lines.
  * @param root0.onDelete - Withdraws it.
  * @returns The entry.
  */
 function Entry({
   entry,
   canDelete,
-  folded,
+  shortened,
   onDelete,
 }: EntryProps): React.JSX.Element {
   const t = useTranslation();
@@ -186,7 +187,7 @@ function Entry({
       </div>
       <div
         className={`mt-0.5 whitespace-pre-wrap break-words text-sm ${
-          folded ? FOLDED_LINE_CLAMP : ''
+          shortened ? FOLDED_LINE_CLAMP : ''
         }`}
       >
         {entry.body}
@@ -246,8 +247,12 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
     authorId: card.entries[0]?.authorId ?? '',
   }).canDelete;
 
-  // What a folded thread draws: its first comment and its most recent one.
-  const folded = !reading && card.entries.length > FOLDED_ENTRY_COUNT;
+  // Two questions, and only one of them counts comments. Every comment on a
+  // thread nobody is reading is cut to three lines, however few there are —
+  // one comment at the 300-character cap is about nine lines in this column.
+  // Holding comments back needs more than two of them to hold back.
+  const shortened = !reading;
+  const folded = shortened && card.entries.length > FOLDED_ENTRY_COUNT;
   const drawn = folded
     ? [card.entries[0]!, card.entries[card.entries.length - 1]!]
     : card.entries;
@@ -315,7 +320,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
                 authorId: entry.authorId,
               }).canDelete
             }
-            folded={folded}
+            shortened={shortened}
             onDelete={() => {
               onDeleteReply(card.id, entry.id);
             }}

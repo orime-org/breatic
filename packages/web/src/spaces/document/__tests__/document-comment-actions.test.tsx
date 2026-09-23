@@ -397,6 +397,29 @@ describe('what a card lets a reader do', () => {
     expect(screen.queryByTestId('doc-comment-folded-count')).toBeNull();
   });
 
+  it('cuts a lone comment short while nobody is reading it', async () => {
+    // The rule has no comment count in it: a thread nobody is reading shows
+    // its first and most recent comment, three lines each. Holding back
+    // comments needs more than two of them; cutting each one short does not,
+    // and a single comment at the 300-character cap is about nine lines in a
+    // 288px column.
+    await open();
+    await comment('x'.repeat(280));
+
+    const entry = screen.getByTestId('doc-comment-entry');
+    expect(entry.querySelector('.line-clamp-3')).not.toBeNull();
+  });
+
+  it('shows a lone comment whole once the reader opens it', async () => {
+    await open();
+    await comment('x'.repeat(280));
+
+    await read();
+
+    const entry = screen.getByTestId('doc-comment-entry');
+    expect(entry.querySelector('.line-clamp-3')).toBeNull();
+  });
+
   it('keeps a reply out of reach on a card nobody is reading', async () => {
     // Every other control obeys "only on the thread being read"; this one
     // withdraws a reply, so it obeys it too.
