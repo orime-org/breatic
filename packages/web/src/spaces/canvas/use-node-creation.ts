@@ -17,7 +17,7 @@ import {
   setNodeModel,
   setNodeName,
 } from '@web/data/yjs/canvas-space';
-import { writePlainTextIntoBody } from '@web/data/yjs/text-body';
+import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import {
   writeProposalPrompt,
   type ProposalFeeders,
