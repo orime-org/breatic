@@ -488,8 +488,10 @@ export function cardAction(input: CardActionInput): CardAction {
   // the Starter card current and makes the badge flicker with the switcher.
   const holds =
     holdsActionableSubscription(input.situation) && input.heldPeriod !== null;
+  // No assertion on the period: `holds` is inferred as a type predicate, so
+  // the branch below already knows it is not null.
   const held = holds
-    ? { tier: input.accountTier, period: input.heldPeriod as BillingPeriod }
+    ? { tier: input.accountTier, period: input.heldPeriod }
     : null;
 
   // 3. The card they are on, for the period they are on.

@@ -103,12 +103,29 @@ afterAll(async () => {
   await sql?.end({ timeout: 1 });
 });
 
-// Asked of the same loader the code under test asks, so the suite cannot
-// disagree with the price list it is running against. What that list holds
-// depends on the machine: a developer's own `config/subscription.yaml`, or
-// the fixture `global-setup.ts` lays down when there is none.
-const PRO_PRICE = getSubscriptionPlan("pro", "month").stripePriceId;
 const PERIOD_END = Math.floor(Date.now() / 1000) + 30 * 24 * 3600;
+
+/**
+ * A price object as Stripe expands it, built from the list we sell.
+ *
+ * All four fields, because the read compares three of them against our own
+ * plan before it will say what tier a subscription buys. A stub carrying only
+ * an id reads as a price charging an unknown amount, which is the one thing
+ * that answer is for.
+ * @param tier - Which tier this price sells.
+ * @param period - Which period it is billed over.
+ * @returns The price, expanded.
+ */
+function priceOf(tier: "pro" | "team", period: "month" | "year"): unknown {
+  const plan = getSubscriptionPlan(tier, period);
+  return {
+    id: plan.stripePriceId,
+    unit_amount: plan.priceCents,
+    currency: plan.currency,
+    recurring: { interval: period },
+  };
+}
+
 
 /**
  * Creates an account.
@@ -156,7 +173,7 @@ function stripeSub(over: Record<string, unknown> = {}): Stripe.Subscription {
     latest_invoice: null,
     items: {
       data: [
-        { id: "si_1", current_period_end: PERIOD_END, price: { id: PRO_PRICE } },
+        { id: "si_1", current_period_end: PERIOD_END, price: priceOf("pro", "month") },
       ],
     },
     ...over,

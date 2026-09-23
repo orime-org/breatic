@@ -22,7 +22,7 @@ describe("subscriptionActions — 升级入口", () => {
   });
 
   it("升级已买待付款时显示为处理中，不邀请再买一次", () => {
-    expect(subscriptionActions("upgradePending", false).upgrade).toBe(
+    expect(subscriptionActions("upgradePending", false).move).toBe(
       "pending",
     );
   });

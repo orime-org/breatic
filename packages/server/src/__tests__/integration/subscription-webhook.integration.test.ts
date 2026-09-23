@@ -101,7 +101,28 @@ afterAll(async () => {
 // depends on the machine: a developer's own `config/subscription.yaml`, or
 // the fixture `global-setup.ts` lays down when there is none.
 const PRO_PRICE = getSubscriptionPlan("pro", "month").stripePriceId;
-const TEAM_PRICE = getSubscriptionPlan("team", "month").stripePriceId;
+
+/**
+ * A price object as Stripe expands it, built from the list we sell.
+ *
+ * All four fields, because the read compares three of them against our own
+ * plan before it will say what tier a subscription buys. A stub carrying only
+ * an id reads as a price charging an unknown amount, which is the one thing
+ * that answer is for.
+ * @param tier - Which tier this price sells.
+ * @param period - Which period it is billed over.
+ * @returns The price, expanded.
+ */
+function priceOf(tier: "pro" | "team", period: "month" | "year"): unknown {
+  const plan = getSubscriptionPlan(tier, period);
+  return {
+    id: plan.stripePriceId,
+    unit_amount: plan.priceCents,
+    currency: plan.currency,
+    recurring: { interval: period },
+  };
+}
+
 const PERIOD_END = Math.floor(Date.now() / 1000) + 30 * 24 * 3600;
 
 /**
@@ -149,7 +170,7 @@ function stripeSub(over: Record<string, unknown> = {}): Stripe.Subscription {
     latest_invoice: null,
     items: {
       data: [
-        { id: "si_1", current_period_end: PERIOD_END, price: { id: PRO_PRICE } },
+        { id: "si_1", current_period_end: PERIOD_END, price: priceOf("pro", "month") },
       ],
     },
     ...over,
@@ -295,7 +316,7 @@ describe("handleSubscriptionEvent — out of order (#106 §8)", () => {
             {
               id: "si_1",
               current_period_end: PERIOD_END,
-              price: { id: TEAM_PRICE },
+              price: priceOf("team", "month"),
             },
           ],
         },
@@ -392,7 +413,7 @@ describe("handleSubscriptionEvent — an upgrade that went unpaid (#106 §7.3)",
         customer: customerId,
         pending_update: {
           expires_at: 0,
-          subscription_items: [{ id: "si_1", price: { id: TEAM_PRICE } }],
+          subscription_items: [{ id: "si_1", price: priceOf("team", "month") }],
         },
       });
       stripe.subscriptions.retrieve.mockResolvedValueOnce(pending);
@@ -420,7 +441,9 @@ describe("handleSubscriptionEvent — an upgrade that went unpaid (#106 §7.3)",
       expect(bells.map((b) => b.type)).toEqual([
         "membership.upgrade_incomplete",
       ]);
-      expect(bells[0]?.payload).toEqual({ toTier: "team" });
+      // The period travels with the tier: this line is read by somebody who
+      // may have been moving between periods rather than tiers.
+      expect(bells[0]?.payload).toEqual({ toTier: "team", toPeriod: "month" });
     } finally {
       await dropUser(userId);
     }
@@ -437,7 +460,7 @@ describe("handleSubscriptionEvent — an upgrade that went unpaid (#106 §7.3)",
         customer: customerId,
         pending_update: {
           expires_at: 0,
-          subscription_items: [{ id: "si_1", price: { id: TEAM_PRICE } }],
+          subscription_items: [{ id: "si_1", price: priceOf("team", "month") }],
         },
       });
       // 库里那一行是干净的：待付标记已经被别的写入方清掉了。
@@ -465,7 +488,9 @@ describe("handleSubscriptionEvent — an upgrade that went unpaid (#106 §7.3)",
       expect(bells.map((b) => b.type)).toEqual([
         "membership.upgrade_incomplete",
       ]);
-      expect(bells[0]?.payload).toEqual({ toTier: "team" });
+      // The period travels with the tier: this line is read by somebody who
+      // may have been moving between periods rather than tiers.
+      expect(bells[0]?.payload).toEqual({ toTier: "team", toPeriod: "month" });
     } finally {
       await dropUser(userId);
     }

@@ -103,8 +103,8 @@ beforeEach(() => {
 
 describe("订阅路由 — 关掉支付时的四个闸门", () => {
   it.each([
-    ["/checkout", { tier: "pro", return_url: "https://app.example/me" }],
-    ["/change", { tier: "team" }],
+    ["/checkout", { tier: "pro", period: "month", return_url: "https://app.example/me" }],
+    ["/change", { tier: "team", period: "year" }],
     ["/cancel", {}],
     ["/resume", {}],
   ])("%s 在不卖东西的部署上答 404", async (path, body) => {
@@ -130,9 +130,10 @@ describe("订阅路由 — 限流", () => {
 });
 
 describe("订阅路由 — 把请求翻译成业务调用", () => {
-  it("结账把档位和回跳地址原样交给服务层", async () => {
+  it("结账把档位、周期和回跳地址原样交给服务层", async () => {
     const res = await post("/checkout", {
       tier: "pro",
+      period: "year",
       return_url: "https://app.example/me",
     });
 
@@ -140,8 +141,28 @@ describe("订阅路由 — 把请求翻译成业务调用", () => {
     expect(service.startCheckout).toHaveBeenCalledWith({
       userId: "u-1",
       tier: "pro",
+      period: "year",
       returnUrl: "https://app.example/me",
     });
+  });
+
+  it("没说周期就不进业务层", async () => {
+    // 一档两个价，少了这一半服务层只能自己挑一个，而挑哪个都不是读者按的
+    // 那个。让校验拦在这里，业务层因此没有默认周期这回事。
+    const res = await post("/checkout", {
+      tier: "pro",
+      return_url: "https://app.example/me",
+    });
+
+    expect(res.status).toBe(422);
+    expect(service.startCheckout).not.toHaveBeenCalled();
+  });
+
+  it("周期不是那两个词之一也不进业务层", async () => {
+    const res = await post("/change", { tier: "team", period: "weekly" });
+
+    expect(res.status).toBe(422);
+    expect(service.changePlan).not.toHaveBeenCalled();
   });
 
   it("档位不在价目表上时不进业务层", async () => {

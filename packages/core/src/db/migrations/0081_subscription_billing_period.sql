@@ -16,14 +16,19 @@
 -- so a declaration beside the column would be a second copy with nothing
 -- comparing it against this one.
 ALTER TABLE subscriptions ADD COLUMN period varchar(8);
+--> statement-breakpoint
 UPDATE subscriptions SET period = 'month' WHERE period IS NULL;
+--> statement-breakpoint
 ALTER TABLE subscriptions ALTER COLUMN period SET NOT NULL;
+--> statement-breakpoint
 ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_period_check
   CHECK (period IN ('month', 'year'));
+--> statement-breakpoint
 
 -- Nullable: most subscriptions have no move in flight. It answers "the period
 -- this account is moving to", which is a different question from "the period
 -- it is on" whenever a change is waiting on a payment.
 ALTER TABLE subscriptions ADD COLUMN pending_period varchar(8);
+--> statement-breakpoint
 ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_pending_period_check
   CHECK (pending_period IS NULL OR pending_period IN ('month', 'year'));

@@ -113,9 +113,10 @@ async function ensureCustomer(userId: string): Promise<string> {
  * Also the path back for somebody whose subscription ended: an ended
  * subscription cannot be updated or revived, so a returning customer gets a
  * new one alongside the old row.
- * @param input - Who, which tier, and where to send them afterwards.
+ * @param input - Who, which offer, and where to send them afterwards.
  * @param input.userId - The account paying.
  * @param input.tier - The tier being bought.
+ * @param input.period - How often it is to be billed.
  * @param input.returnUrl - The page to come back to, paid or not.
  * @returns Stripe's hosted checkout page.
  * @throws {ConflictError} if the account already holds a membership.
@@ -290,13 +291,14 @@ function subscriptionGoneAtStripe(err: unknown): boolean {
 }
 
 /**
- * Moves an account that already subscribes onto a higher tier.
+ * Moves an account that already subscribes onto another offer.
  *
  * Replaces the price on the existing item rather than starting a second
  * subscription, and collects the difference before the change takes effect.
- * @param input - Who and which tier.
+ * @param input - Who and which offer.
  * @param input.userId - The account.
  * @param input.tier - The tier to move to.
+ * @param input.period - The period to be billed over from now on.
  * @returns Whether the new tier is in force, and where to pay if not.
  * @throws {ConflictError} if nothing is live, the tier is already held, or
  *   payment is overdue.
