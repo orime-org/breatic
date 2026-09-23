@@ -92,6 +92,21 @@ function responseOf(body: unknown, status = 200): Response {
 }
 
 /**
+ * A response whose body never finishes arriving.
+ * @returns A 200 whose stream stays open.
+ */
+function neverFinishes(): Response {
+  return new Response(
+    new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('{"answers":'));
+      },
+    }),
+    { status: 200 },
+  );
+}
+
+/**
  * Ask the tool one question of each type.
  * @param abortSignal - The reader's stop, when the test supplies one.
  * @returns Whatever the tool answers.
@@ -458,6 +473,40 @@ describe("failing says what broke", () => {
     });
     const { readerKey } = await failureOf(() => askAll(controller.signal));
     expect(readerKey).toBe(FAILURE_LINES.stopped);
+  });
+
+  it("holds the body read to the same budget as the deliveries", async () => {
+    // `read-within.ts:132-136` builds its own clock when no caller lends one,
+    // so a read that starts after the deliveries already spent the budget
+    // would get a second full one. Measured either way: the deliveries take
+    // most of the figure here, and the body then never finishes arriving.
+    timeoutMs = 200;
+    httpRequestMock.mockImplementationOnce(
+      async () => new Promise((f) => setTimeout(() => f(neverFinishes()), 180)),
+    );
+    const began = Date.now();
+    const { readerKey } = await failureOf(askAll);
+    expect(readerKey).toBe(FAILURE_LINES.unreachable);
+    expect(Date.now() - began, "one budget, not two").toBeLessThan(320);
+  });
+
+  it("answers the reader's stop as a stop while the body is arriving", async () => {
+    // Timed, because the key alone does not separate the two: `isStop`
+    // (failure.ts:isStop) answers true on a raised reader signal whatever
+    // ended the read, so a read running on its own clock reaches the same
+    // key -- a whole budget later.
+    timeoutMs = 800;
+    const controller = new AbortController();
+    httpRequestMock.mockResolvedValueOnce(neverFinishes());
+    setTimeout(() => {
+      controller.abort();
+    }, 20);
+    const began = Date.now();
+    const { readerKey } = await failureOf(() => askAll(controller.signal));
+    expect(readerKey).toBe(FAILURE_LINES.stopped);
+    expect(Date.now() - began, "the stop reaches the read, not just the deliveries").toBeLessThan(
+      300,
+    );
   });
 
   it("hands the model what the endpoint said it would not take", async () => {

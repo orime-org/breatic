@@ -36,6 +36,9 @@ const PROMPT =
 interface StoredCall {
   readonly name: string;
   readonly input: unknown;
+  /** `output-available`, `output-error` or `input-available`. */
+  readonly state: string;
+  readonly output: unknown;
 }
 
 /**
@@ -53,7 +56,7 @@ async function callsOfLatestConversation(p: Page): Promise<StoredCall[]> {
       await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })
     ).json();
     const messages = (read?.data?.messages ?? []) as {
-      parts?: { type?: string; input?: unknown }[];
+      parts?: { type?: string; input?: unknown; state?: string; output?: unknown }[];
     }[];
     // Each tool use is stored as its own part type, `tool-<name>`, which is
     // the SDK's naming for a typed tool part.
@@ -63,6 +66,8 @@ async function callsOfLatestConversation(p: Page): Promise<StoredCall[]> {
       .map((part) => ({
         name: (part.type ?? '').slice('tool-'.length),
         input: part.input,
+        state: (part as { state?: string }).state ?? '',
+        output: (part as { output?: unknown }).output,
       }));
   });
 }
@@ -102,7 +107,23 @@ test('asks for a judgement with the material attached @needs-model', async () =>
     `the turn asked for a judgement. Tools used: ${calls.map((c) => c.name).join(', ')}`,
   ).not.toHaveLength(0);
 
-  const sent = judged[0]?.input as {
+  // `message-part-mapping.ts:159-163` puts `input` on the base of all three
+  // states, so a call that came back 401, 422 or unreadable carries a full
+  // request and reads here exactly like one that worked. What settles whether
+  // the endpoint took it is the answer half.
+  const call = judged[0];
+  expect(call?.state, `the judgement came back: ${JSON.stringify(call?.output)}`).toBe(
+    'output-available',
+  );
+  const answered = (call?.output as { answers?: Record<string, { type?: string }> })?.answers ?? {};
+  expect(Object.keys(answered), 'at least one key answered').not.toHaveLength(0);
+  for (const [key, answer] of Object.entries(answered)) {
+    expect(['noul', 'choice', 'score'], `${key} came back one of the three shapes`).toContain(
+      answer.type,
+    );
+  }
+
+  const sent = call?.input as {
     state?: unknown;
     questions?: Record<string, { criteria?: unknown }>;
   };
@@ -149,6 +170,6 @@ test('asks for a judgement with the material attached @needs-model', async () =>
   console.log(
     `judgement calls: ${String(judged.length)}, state ${String(stateText.length)} chars ` +
       `over a ${String(PROMPT.length)}-char prompt, ${String(asked.length)} question(s), ` +
-      `${String(optionText.length)} option(s)`,
+      `${String(optionText.length)} option(s), ${String(Object.keys(answered).length)} answered`,
   );
 });
