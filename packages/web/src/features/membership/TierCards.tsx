@@ -11,6 +11,7 @@ import type {
   MoveOffer,
   SubscriptionSituation,
   TierOffer,
+  TierPrice,
 } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -58,6 +59,57 @@ function monthlyEquivalent(annualCents: number): number {
 }
 
 /**
+ * What stands in a priced card's price slot.
+ *
+ * A null price means two different things and they read differently. The free
+ * tier has none because it costs nothing, and says so. A priced tier has none
+ * where this deployment sells nothing, and "Free" there would be a claim that
+ * PRO costs nothing — it costs what it costs wherever it is sold.
+ * The figure itself carries the slot's own size; whatever the translator
+ * wrote around it reads smaller and quieter, which is how the confirmed demo
+ * sets the period apart from the number.
+ * @param offer - The tier this card describes.
+ * @param price - Its price over the selected period, or null.
+ * @param period - Which period the switcher is on.
+ * @param t - The translator.
+ * @param locale - Which locale's conventions to write money in.
+ * @returns What the price slot renders.
+ */
+function priceSlot(
+  offer: TierOffer,
+  price: TierPrice | null,
+  period: BillingPeriod,
+  t: ReturnType<typeof useTranslation>,
+  locale: string,
+): React.ReactNode {
+  if (price) {
+    const amount = formatPrice(price.priceCents, price.currency, locale);
+    const line = t(`membership.priceSuffix.${period}`, { amount });
+    // Split on the amount the translator placed rather than on a fixed
+    // order, so a language that writes "monthly $19.99" keeps its own
+    // arrangement while the figure still reads louder than the period.
+    const at = line.indexOf(amount);
+    const before = at < 0 ? '' : line.slice(0, at);
+    const after = at < 0 ? line : line.slice(at + amount.length);
+    return (
+      <>
+        <span className='text-xs font-normal text-foreground-secondary'>
+          {before}
+        </span>
+        {at < 0 ? null : amount}
+        <span className='text-xs font-normal text-foreground-secondary'>
+          {after}
+        </span>
+      </>
+    );
+  }
+  if (offer.tier === 'base') return t('membership.priceFree');
+  // An em dash, not a sentence: there is no price to quote here and nothing
+  // to explain about it.
+  return '—';
+}
+
+/**
  * The purchase page's four cards: the three priced tiers and one to talk to us.
  *
  * The fourth is local to this component rather than a row of `catalog`,
@@ -67,8 +119,9 @@ function monthlyEquivalent(annualCents: number): number {
  * to handle that tier explicitly. Inventing a `TierOffer` for it would defeat
  * exactly that.
  *
- * Which control each card carries is `cardAction`'s answer, not this file's:
- * the server reads the same function, so a button drawn here is one the
+ * Which control each card carries is `cardAction`'s answer, not this file's.
+ * That rule is built on `canMoveTo`, which the server reads too when it
+ * decides whether to accept a change, so a button drawn here is one the
  * endpoint accepts and a blank card is a purchase nobody could have made.
  * @param props - The offers, the account's position and the selected period.
  * @returns The card grid.
@@ -109,13 +162,7 @@ export const TierCards = React.memo(function TierCards({
             testId={`tier-card-${offer.tier}`}
             name={t(`membership.tier.${offer.tier}`)}
             current={action === 'current'}
-            price={
-              price
-                ? t(`membership.priceSuffix.${selectedPeriod}`, {
-                  amount: formatPrice(price.priceCents, price.currency, locale),
-                })
-                : t('membership.priceFree')
-            }
+            price={priceSlot(offer, price, selectedPeriod, t, locale)}
             priceTestId={`tier-price-${offer.tier}`}
             // Only where there is an annual price to divide. The monthly view
             // shows the price itself, and the free tier has nothing to save.
@@ -136,10 +183,10 @@ export const TierCards = React.memo(function TierCards({
                 value: formatBytes(offer.limits.storage_bytes),
               }),
               t('membership.card.teamStudios', {
-                count: String(offer.limits.team_studios),
+                count: offer.limits.team_studios,
               }),
               t('membership.card.connections', {
-                count: String(offer.limits.concurrent_editors),
+                count: offer.limits.concurrent_editors,
               }),
             ]}
             action={
@@ -152,6 +199,7 @@ export const TierCards = React.memo(function TierCards({
                 })}
                 inProgressLabel={t('membership.action.inProgress')}
                 currentLabel={t('membership.action.current')}
+                contactLabel={t('membership.contactSales')}
                 onChoose={onChoose}
                 period={selectedPeriod}
               />
@@ -176,21 +224,25 @@ export const TierCards = React.memo(function TierCards({
           t('membership.card.enterpriseGovernance'),
         ]}
         action={
-          cardAction({
-            card: 'enterprise',
-            selectedPeriod,
-            accountTier: currentTier,
-            sellsSubscriptions,
-            situation,
-            heldPeriod,
-            move,
-          }) === 'contactSales' ? (
-              <Button asChild type='button' variant='outline' size='sm'>
-                <a href={`mailto:${SALES_EMAIL}`} data-testid='membership-contact-sales'>
-                  {t('membership.contactSales')}
-                </a>
-              </Button>
-            ) : null
+          <TierCardAction
+            action={cardAction({
+              card: 'enterprise',
+              selectedPeriod,
+              accountTier: currentTier,
+              sellsSubscriptions,
+              situation,
+              heldPeriod,
+              move,
+            })}
+            busy={busy}
+            tier={null}
+            label=''
+            inProgressLabel=''
+            currentLabel=''
+            contactLabel={t('membership.contactSales')}
+            onChoose={onChoose}
+            period={selectedPeriod}
+          />
         }
       />
     </div>
@@ -206,7 +258,7 @@ interface TierCardProps {
   /** Whether this is the card the account is on. */
   current: boolean;
   /** The price, or what stands in for one. */
-  price: string;
+  price: React.ReactNode;
   /** Identifies the price slot for tests. */
   priceTestId: string;
   /** The small line under the price, or null where there is none. */
@@ -286,14 +338,14 @@ function TierCard({
   );
 }
 
-/** What one priced card's control needs. */
+/** What one card's control needs. */
 interface TierCardActionProps {
   /** What this card offers, decided by the shared rule. */
   action: CardAction;
   /** Whether an action is already running. */
   busy: boolean;
-  /** Which tier this card sells. */
-  tier: ComparableMembershipTier;
+  /** Which tier this card sells, null on the card that sells none. */
+  tier: ComparableMembershipTier | null;
   /** Which period the switcher is on. */
   period: BillingPeriod;
   /** The button's words. */
@@ -302,6 +354,8 @@ interface TierCardActionProps {
   inProgressLabel: string;
   /** What stands where a button would be on the card in force. */
   currentLabel: string;
+  /** What the card that sells nothing offers instead. */
+  contactLabel: string;
   /** Take the account to this card's offer. */
   onChoose: (chosen: {
     tier: ComparableMembershipTier;
@@ -310,11 +364,12 @@ interface TierCardActionProps {
 }
 
 /**
- * The control on a priced card, or nothing.
+ * The control on one card, or a slot of the same height.
  *
  * A card that cannot be moved to stays empty rather than showing a disabled
  * button or a sentence explaining the refusal: the reader is looking at what
- * they can buy, not at a list of what they cannot.
+ * they can buy, not at a list of what they cannot. The empty slot keeps the
+ * height of a button so the row of cards stays lined up.
  * @param props - What this card offers and how to take it.
  * @param props.action - What this card offers, decided by the shared rule.
  * @param props.busy - Whether an action is already running.
@@ -323,8 +378,9 @@ interface TierCardActionProps {
  * @param props.label - The button's words.
  * @param props.inProgressLabel - What it says while a move waits on payment.
  * @param props.currentLabel - What stands on the card in force.
+ * @param props.contactLabel - What the card that sells nothing offers.
  * @param props.onChoose - Take the account to this card's offer.
- * @returns The control, or null.
+ * @returns The control, or a slot the height of one.
  */
 function TierCardAction({
   action,
@@ -334,25 +390,38 @@ function TierCardAction({
   label,
   inProgressLabel,
   currentLabel,
+  contactLabel,
   onChoose,
-}: TierCardActionProps): React.JSX.Element | null {
+}: TierCardActionProps): React.JSX.Element {
   const handleClick = React.useCallback(() => {
-    onChoose({ tier, period });
+    if (tier) onChoose({ tier, period });
   }, [onChoose, tier, period]);
 
+  if (action === 'contactSales') {
+    return (
+      <Button asChild type='button' variant='outline' size='sm' className='w-full'>
+        <a href={`mailto:${SALES_EMAIL}`} data-testid='membership-contact-sales'>
+          {contactLabel}
+        </a>
+      </Button>
+    );
+  }
   if (action === 'current') {
     return (
       <span
-        className='text-xs font-semibold text-foreground'
+        className='flex h-[var(--btn-inline)] items-center justify-center text-xs font-semibold text-foreground'
         data-testid={`tier-current-${tier}`}
       >
         {currentLabel}
       </span>
     );
   }
-  // `contactSales` never reaches a priced card — the enterprise card carries
-  // its own control — and `blank` is the whole of "there is nothing here".
-  if (action === 'blank' || action === 'contactSales') return null;
+  // Blank, and still the height of a button: the four cards line their
+  // bodies up against each other, and a slot that collapses moves the three
+  // lines above it out of line with its neighbours.
+  if (action === 'blank') {
+    return <span className='block h-[var(--btn-inline)]' />;
+  }
   return (
     <Button
       type='button'

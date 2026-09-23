@@ -1537,8 +1537,8 @@
     "contactSales": "聯絡我們",
     "card": {
       "storage": "{value} 儲存",
-      "teamStudios": "{count} 個團隊 Studio",
-      "connections": "每個文件 {count} 個連線",
+      "teamStudios": "{count, plural, =0 {不含 Team Studio} other {# 個 Team Studio}}",
+      "connections": "{count, plural, other {每份文件 # 個連線}}",
       "enterpriseScale": "容量按協議約定",
       "enterpriseGovernance": "SSO、稽核、智慧財產保障"
     },

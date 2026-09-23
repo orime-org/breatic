@@ -836,7 +836,7 @@ describe('MembershipPanel', () => {
     setup();
 
     await screen.findByTestId('current-tier-name');
-    expect(screen.getByTestId('membership-period-switch')).toHaveTextContent(
+    expect(screen.getByTestId('membership-save-line')).toHaveTextContent(
       'Twelve months for the price of ten',
     );
     const page = document.body.textContent ?? '';
@@ -858,7 +858,7 @@ describe('MembershipPanel', () => {
 
     await screen.findByTestId('tier-price-pro');
     expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$199.99');
-    expect(screen.getByTestId('membership-period-switch')).toHaveTextContent(
+    expect(screen.getByTestId('membership-save-line')).toHaveTextContent(
       'Twelve months for the price of ten',
     );
 
@@ -867,9 +867,7 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$19.99');
     // 那句话讲的是年付省下的两个月。月付视图上它贴着月价，说的就不是眼前
     // 这件事了。
-    expect(screen.getByTestId('membership-period-switch')).not.toHaveTextContent(
-      'Twelve months for the price of ten',
-    );
+    expect(screen.queryByTestId('membership-save-line')).toBeNull();
 
     await user.click(screen.getByTestId('membership-period-year'));
     expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$199.99');
@@ -889,6 +887,27 @@ describe('MembershipPanel', () => {
   it('没有订阅时那一行只说档位，不带一个空的分隔号', async () => {
     membershipMock.mockResolvedValue(
       answer({ tier: 'base', subscription: null }),
+    );
+    setup();
+
+    const line = await screen.findByTestId('current-tier-name');
+    expect(line).toHaveTextContent('Starter');
+    expect(line.textContent).not.toContain('·');
+  });
+
+  it('首期未付成时那一行不给免费档安上周期', async () => {
+    // 订阅行存在、带着周期，而账号的档位仍是 Starter —— 这一行照着周期拼
+    // 就会读作「Starter · 年付」，给一个没人为之付费的档位安上计费周期。
+    // 卡片那边的判据早就带着「持有成立」这个附加条件，这一行要用同一个。
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({
+          state: 'firstPaymentUnsettled',
+          tier: 'pro',
+          period: 'year',
+        }),
+      }),
     );
     setup();
 

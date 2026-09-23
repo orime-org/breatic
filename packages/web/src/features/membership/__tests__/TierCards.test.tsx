@@ -77,6 +77,17 @@ const CATALOG: readonly TierOffer[] = [
   },
 ];
 
+/**
+ * The same tiers as a deployment that sells nothing reports them.
+ *
+ * `pricesOf` short-circuits on `selling` before it looks at the tier, so
+ * every row comes back with both periods null — including the priced ones.
+ */
+const UNPRICED: readonly TierOffer[] = CATALOG.map((offer) => ({
+  ...offer,
+  prices: { month: null, year: null },
+}));
+
 /** The position an account is in while its subscription sits in one situation. */
 interface Position {
   /** The tier in force, which is not always the tier that was paid for. */
@@ -227,6 +238,32 @@ describe('TierCards — four cards, two periods, seven situations', () => {
     expect(screen.getByTestId('membership-contact-sales')).toBeInTheDocument();
   });
 
+  it('quotes no price where nothing is sold, rather than calling PRO free', () => {
+    // Two different nulls reach this slot. The free tier has none because it
+    // costs nothing. A priced tier has none where this deployment sells
+    // nothing — and "Free" there is a claim that PRO costs nothing.
+    render(
+      <TierCards
+        offers={UNPRICED}
+        currentTier='base'
+        selectedPeriod='year'
+        situation='none'
+        heldPeriod={null}
+        sellsSubscriptions={false}
+        move='offered'
+        busy={false}
+        onChoose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('tier-price-base')).toHaveTextContent('Free');
+    for (const card of ['pro', 'team'] as const) {
+      const price = screen.getByTestId(`tier-price-${card}`);
+      expect(price).not.toHaveTextContent('Free');
+      expect(price.textContent?.trim()).toBe('—');
+    }
+  });
+
   it('presses with the card it is on and the period the switcher is on', async () => {
     const onChoose = vi.fn();
     const user = userEvent.setup();
@@ -300,6 +337,26 @@ describe('TierCards — the figures on the cards', () => {
     renderGrid('year', 'none');
     expect(screen.getByTestId('tier-price-enterprise')).toHaveTextContent(
       'On request',
+    );
+  });
+
+  it('counts one team studio in the singular', () => {
+    // PRO grants exactly one, and "1 Team Studios" is not English. Every
+    // other counted sentence in this product uses an ICU plural.
+    renderGrid('month', 'none');
+    expect(screen.getByTestId('tier-card-pro')).toHaveTextContent(
+      '1 Team Studio',
+    );
+    expect(screen.getByTestId('tier-card-pro')).not.toHaveTextContent(
+      '1 Team Studios',
+    );
+    expect(screen.getByTestId('tier-card-team')).toHaveTextContent(
+      '3 Team Studios',
+    );
+    // Zero reads as a sentence of its own, the way the rest of the product
+    // writes a zero ceiling.
+    expect(screen.getByTestId('tier-card-base')).not.toHaveTextContent(
+      '0 Team Studios',
     );
   });
 

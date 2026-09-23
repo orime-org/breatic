@@ -1537,8 +1537,8 @@
     "contactSales": "Talk to us",
     "card": {
       "storage": "{value} storage",
-      "teamStudios": "{count} Team Studios",
-      "connections": "{count} connections per document",
+      "teamStudios": "{count, plural, =0 {No Team Studios} one {# Team Studio} other {# Team Studios}}",
+      "connections": "{count, plural, one {# connection per document} other {# connections per document}}",
       "enterpriseScale": "Capacity by agreement",
       "enterpriseGovernance": "SSO, audit, IP indemnity"
     },

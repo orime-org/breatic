@@ -4,6 +4,7 @@
 import * as React from 'react';
 import {
   BILLING_PERIODS,
+  holdsActionableSubscription,
   isComparableMembershipTier,
   subscriptionActions,
   type AccountMembership,
@@ -122,12 +123,22 @@ export function MembershipContent({
     [subscription?.state, subscription?.cancelAtPeriodEnd],
   );
 
+  // The period this account is actually billed over. A stored row carries one
+  // as soon as it exists, which is before its first invoice settles — and
+  // until it does, the tier in force is Starter and nobody is being billed
+  // over anything. Both the heading and the cards read this, so they cannot
+  // disagree about what is held.
+  const heldPeriod =
+    subscription && holdsActionableSubscription(subscription.state)
+      ? subscription.period
+      : null;
+
   // Which period the reader is looking at. It starts on the one this account
   // is already billed over, because opening on the other one would answer
   // "what do I have" with a price they do not pay. An account with no
   // subscription starts on annual, which is what the page is recommending.
   const [selectedPeriod, setSelectedPeriod] = React.useState<BillingPeriod>(
-    subscription?.period ?? 'year',
+    heldPeriod ?? 'year',
   );
 
   // The table offers every comparable tier, `base` included; only the ones
@@ -149,14 +160,15 @@ export function MembershipContent({
         <SectionHeading>{t('membership.currentTier')}</SectionHeading>
         <div className='flex flex-col gap-1'>
           <div className='text-2xl font-bold' data-testid='current-tier-name'>
-            {/* The period joins the tier name only when there is one. An
-                account on Starter, self-hosted or enterprise is billed over
-                no period, and a separator with nothing after it reads as a
-                missing word. */}
-            {subscription?.period
+            {/* The period joins the tier name only where the account holds
+                something it is billed over — the same condition the cards
+                ask. A first invoice that has not settled leaves a row with a
+                period while the tier in force is still Starter, and naming a
+                period there bills a tier nobody pays for. */}
+            {heldPeriod
               ? t('membership.tierWithPeriod', {
                 tier: t(`membership.tier.${tier}`),
-                period: t(`membership.period.${subscription.period}`),
+                period: t(`membership.period.${heldPeriod}`),
               })
               : t(`membership.tier.${tier}`)}
           </div>
@@ -274,42 +286,57 @@ export function MembershipContent({
 
       {onPriceList ? (
         <section className='flex flex-col gap-4'>
-          <SectionHeading>{t('membership.chooseTier')}</SectionHeading>
-          {/* No switcher where nothing is sold: the periods it offers are
-              two prices, and this deployment quotes neither. */}
-          {subscription ? (
-            <div
-              className='flex items-center gap-1 self-start rounded-chrome border border-border p-0.5'
-              data-testid='membership-period-switch'
-            >
-              {BILLING_PERIODS.map((period) => (
-                <Button
-                  key={period}
-                  type='button'
-                  size='sm'
-                  variant={period === selectedPeriod ? 'default' : 'ghost'}
-                  data-testid={`membership-period-${period}`}
-                  onClick={() => setSelectedPeriod(period)}
+          {/* The heading and the switcher share one line, the two ends of
+              it, which is where the confirmed demo puts them. */}
+          <div className='flex flex-wrap items-center justify-between gap-3'>
+            <SectionHeading>{t('membership.chooseTier')}</SectionHeading>
+            {/* No switcher where nothing is sold: the periods it offers are
+                two prices, and this deployment quotes neither. */}
+            {subscription ? (
+              <div className='flex items-center gap-3'>
+                {/* What the annual price saves, so it belongs to the annual
+                    view. Beside monthly prices it describes something other
+                    than what the reader is looking at. */}
+                {selectedPeriod === 'year' ? (
+                  <span
+                    className='text-xs text-foreground-secondary'
+                    data-testid='membership-save-line'
+                  >
+                    {t('membership.saveTwoMonths')}
+                  </span>
+                ) : null}
+                {/* One frame around both segments with a single rule between
+                    them, so the pair reads as one control with two positions
+                    rather than as two buttons that happen to sit together. */}
+                <div
+                  role='group'
+                  className='flex items-center overflow-hidden rounded-chrome border border-border'
+                  data-testid='membership-period-switch'
                 >
-                  {t(`membership.period.${period}`)}
-                </Button>
-              ))}
-              {/* What the annual price saves, so it belongs to the annual
-                  view. Beside monthly prices it describes something other
-                  than what the reader is looking at. */}
-              {selectedPeriod === 'year' ? (
-                <span className='px-2 text-xs text-foreground-secondary'>
-                  {t('membership.saveTwoMonths')}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
+                  {BILLING_PERIODS.map((period) => (
+                    <Button
+                      key={period}
+                      type='button'
+                      size='sm'
+                      variant={period === selectedPeriod ? 'default' : 'ghost'}
+                      aria-pressed={period === selectedPeriod}
+                      className='rounded-none border-0 border-l border-border first:border-l-0'
+                      data-testid={`membership-period-${period}`}
+                      onClick={() => setSelectedPeriod(period)}
+                    >
+                      {t(`membership.period.${period}`)}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
           <TierCards
             offers={catalog}
             currentTier={tier}
             selectedPeriod={selectedPeriod}
             situation={subscription?.state ?? 'none'}
-            heldPeriod={subscription?.period ?? null}
+            heldPeriod={heldPeriod}
             // Null means this deployment sells no subscriptions at all, which
             // empties every priced card rather than drawing buttons that
             // cannot work.
