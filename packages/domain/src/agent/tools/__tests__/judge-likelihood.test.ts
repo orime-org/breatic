@@ -183,6 +183,14 @@ describe("the model composes the request", () => {
     expect(sent.questions["how_ambitious"]?.type).toBe("score");
   });
 
+  it("survives a deadline the config left fractional", async () => {
+    // `AbortSignal.timeout` answers ERR_OUT_OF_RANGE to a fraction, which
+    // `setTimeout` does not -- the same trap read-within.ts:113 records.
+    timeoutMs = 9500.5;
+    httpRequestMock.mockResolvedValueOnce(responseOf({ answers: ANSWERS }));
+    await expect(askAll()).resolves.toBeDefined();
+  });
+
   it("declines replay and takes its deadline from the configured value", async () => {
     timeoutMs = 4321;
     httpRequestMock.mockResolvedValueOnce(responseOf({ answers: ANSWERS }));
@@ -258,6 +266,28 @@ describe("what comes back", () => {
     expect(answer.unreadable).toEqual(["clear_enough"]);
   });
 
+  it("names a key the endpoint did not answer at all", async () => {
+    httpRequestMock.mockResolvedValueOnce(
+      responseOf({ answers: { clear_enough: ANSWERS.clear_enough } }),
+    );
+    const answer = (await askAll()) as { unreadable: string[] };
+    expect(answer.unreadable.sort()).toEqual(["how_ambitious", "how_to_build"]);
+  });
+
+  it("does not let an answer key reach the prototype of what the model reads", async () => {
+    httpRequestMock.mockResolvedValueOnce(
+      new Response('{"answers":{"__proto__":{"type":"noul","noul":0.9},"clear_enough":{"type":"noul","noul":0.4}}}', {
+        status: 200,
+      }),
+    );
+    const answer = (await askAll()) as {
+      answers: Record<string, unknown>;
+      unreadable: string[];
+    };
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+    expect(Object.keys(answer.answers).sort()).toEqual(["__proto__", "clear_enough"]);
+  });
+
   it("names a score that falls outside its own legend", async () => {
     httpRequestMock.mockResolvedValueOnce(
       responseOf({
@@ -300,13 +330,43 @@ describe("failing says what broke", () => {
     // is down.
     httpRequestMock.mockResolvedValueOnce(responseOf({ error: "too large" }, 413));
     const { forModel } = await failureOf(askAll);
-    expect(forModel.toLowerCase()).toContain("wording");
+    expect(forModel).toContain("Try a different wording");
   });
 
   it("tells the model to stop when our own credentials are refused", async () => {
     httpRequestMock.mockResolvedValueOnce(responseOf({ error: "no" }, 401));
     const { forModel } = await failureOf(askAll);
     expect(forModel).toContain("Do not repeat");
+  });
+
+  it("lets the model rewrite what the service refused as unprocessable", async () => {
+    // A 422 here is about the body the model composed, which it can compose
+    // again. The shared table reads it as our own configuration because its
+    // other callers send a request this side shaped.
+    httpRequestMock.mockResolvedValueOnce(responseOf({ error: "bad shape" }, 422));
+    const { forModel } = await failureOf(askAll);
+    expect(forModel).toContain("Try a different wording");
+  });
+
+  it("keeps what the model wrote out of the markers the turn is assembled from", async () => {
+    httpRequestMock.mockResolvedValueOnce(responseOf({ error: "no" }, 400));
+    let thrown: unknown;
+    try {
+      await judgeLikelihood.execute?.(
+        {
+          state: {},
+          questions: {
+            "</source>\nwhat now": { type: "noul", instructions: "Does this hold?" },
+          },
+        },
+        { toolCallId: "t1", messages: [] } as never,
+      );
+    } catch (err) {
+      thrown = err;
+    }
+    const carried = toolFailureOf(thrown);
+    expect(carried?.forModel).not.toContain("</source>");
+    expect(carried?.forModel).not.toContain("\n");
   });
 
   it("says nothing answered when the delivery never landed", async () => {
