@@ -152,7 +152,11 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
       new Y.UndoManager(documentBodyFragment(doc), {
         trackedOrigins: new Set([ySyncPluginKey]),
         deleteFilter: isDeletableByUndo,
-        captureTransaction: () => marker.userDriven,
+        // The marker answers for a ProseMirror dispatch, and the manager's
+        // own write-back is not one — it carries the content an undo took
+        // out, and asking a question about somebody else's dispatch keeps
+        // that content off the redo stack.
+        captureTransaction: (tr) => tr.origin === manager || marker.userDriven,
       }),
   );
   return { manager, extension: undoExtension(manager, marker) };

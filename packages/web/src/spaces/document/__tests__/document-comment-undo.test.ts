@@ -279,6 +279,26 @@ describe('undo right after posting a comment', () => {
     expect(commentMarks(editor)).toHaveLength(1);
   });
 
+  it('gives the reader their edit back when they redo it', async () => {
+    // The marker the manager reads carries across dispatches, so naming a
+    // comment write false has to not outlive that write. The undo pressed
+    // next puts its content back through the manager itself, and a marker
+    // still reading false refuses that transaction a place on the redo
+    // stack — leaving the reader's edit gone for good.
+    const { editor, manager } = openWithComments();
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('!', firstRun(editor).to - 1));
+    manager.stopCapturing();
+
+    await postAComment(editor);
+    manager.undo();
+    expect(editor.prosemirrorState.doc.textContent).not.toContain('!');
+
+    manager.redo();
+
+    expect(editor.prosemirrorState.doc.textContent).toContain('!');
+  });
+
   it('leaves a thread a peer wrote where it is', async () => {
     const { editor, manager, doc } = openWithComments();
     await postAComment(editor);
