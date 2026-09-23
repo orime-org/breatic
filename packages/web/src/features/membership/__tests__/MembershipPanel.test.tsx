@@ -427,8 +427,15 @@ describe('MembershipPanel', () => {
     setup();
 
     await screen.findByTestId('current-tier-name');
-    expect(screen.queryByTestId('compare-action-team')).toBeNull();
+    expect(screen.queryByTestId('membership-choose-team')).toBeNull();
     expect(screen.queryByTestId('membership-cancel')).toBeNull();
+    // 切换器提供的是两个价格，而这个部署两个都不报。
+    expect(screen.queryByTestId('membership-period-switch')).toBeNull();
+    // 商务谈那张卡留着：它从来就不是一次购买。
+    expect(screen.getByTestId('membership-contact-sales')).toHaveAttribute(
+      'href',
+      'mailto:breatic@orime.ai',
+    );
   });
 
   it('正常订阅显示下次扣费日期和取消入口', async () => {
@@ -578,6 +585,10 @@ describe('MembershipPanel', () => {
     );
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByTestId('membership-upgrade')).toBeNull();
+    // 整个「选择会员」段都不画：一张卡、一个切换器都没有。
+    expect(screen.queryByTestId('tier-card-pro')).toBeNull();
+    expect(screen.queryByTestId('tier-card-enterprise')).toBeNull();
+    expect(screen.queryByTestId('membership-period-switch')).toBeNull();
     // 自部署不向我们付费，所以价格一个字都不出现。
     expect(screen.queryByText(/\$\d/)).toBeNull();
     expect(screen.queryByText('Free')).toBeNull();
@@ -600,6 +611,8 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('enterprise-quota-note')).toBeInTheDocument();
     expect(screen.queryByTestId('quota-storage')).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByTestId('tier-card-pro')).toBeNull();
+    expect(screen.queryByTestId('membership-period-switch')).toBeNull();
     // 这一档的额度只存在于协议里，用户读完「由单独协议约定」之后想问的
     // 正是「那是多少」——没有邮箱他就没有任何去处。
     const contact = screen.getByTestId('membership-contact-enterprise');
@@ -794,6 +807,44 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('quota-storage')).toHaveTextContent(
       '38 GiB / 100 TiB',
     );
+  });
+
+  it('这一页说清两件事：不含生成额度、标价不含税', async () => {
+    // 两条都是定稿要求页面带上的。会员和积分是两条腿，读者以为买了档位
+    // 就有生成额度的话，要到生成到一半才发现；而今天没有任何地方在算税
+    // （#170 未做），所以这句到「不含税」就停。
+    membershipMock.mockResolvedValue(answer({ subscription: subscription() }));
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('membership-no-credits')).toHaveTextContent(
+      'no generation credits',
+    );
+    expect(screen.getByTestId('membership-tax-note')).toHaveTextContent(
+      'Prices exclude tax',
+    );
+    // 后半句「结账时加税」#106 删过一次，别再回来。
+    expect(screen.getByTestId('membership-tax-note')).not.toHaveTextContent(
+      'checkout',
+    );
+  });
+
+  it('年付说的是省两个月，不写百分比，也不承诺换档之后会怎样', async () => {
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ period: 'year' }) }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('membership-period-switch')).toHaveTextContent(
+      'Twelve months for the price of ten',
+    );
+    const page = document.body.textContent ?? '';
+    expect(page).not.toContain('%');
+    // 换档和换周期之后按什么比例折算、退不退钱，这一页一个字都不说。
+    for (const promise of ['prorat', 'refund', 'credit back', 'downgrade']) {
+      expect(page.toLowerCase()).not.toContain(promise);
+    }
   });
 
   it('「各档对比」是表格第一列的表头，跟三个档位名同一行', async () => {
