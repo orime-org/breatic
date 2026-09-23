@@ -1527,7 +1527,7 @@
       "year": "연간"
     },
     "saveTwoMonths": "12개월을 10개월 가격에",
-    "perMonthEquivalent": "월 {amount} 상당, 두 달 절약",
+    "annualSaving": "연간 결제 시 약 {percent}% 절약",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
       "month": "{amount} / 월",

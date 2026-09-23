@@ -1527,7 +1527,7 @@
       "year": "年付"
     },
     "saveTwoMonths": "十二個月，按十個月的價",
-    "perMonthEquivalent": "相當於每月 {amount}，省兩個月",
+    "annualSaving": "年付約省 {percent}%",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
       "month": "{amount} / 月",

@@ -1527,7 +1527,7 @@
       "year": "Annual"
     },
     "saveTwoMonths": "Twelve months for the price of ten",
-    "perMonthEquivalent": "Works out at {amount} a month, two months saved",
+    "annualSaving": "Save about {percent}% with annual billing",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
       "month": "{amount} /mo",

@@ -46,16 +46,23 @@ interface TierCardsProps {
 }
 
 /**
- * How many months of an annual price one month works out at.
+ * How much less a year costs than twelve months bought one at a time.
  *
- * Rounded to the cent rather than truncated, because this figure is read
- * beside the annual price it comes from and a truncated one reads a cent
- * cheaper than the division actually gives.
- * @param annualCents - The annual price, in the smallest currency unit.
- * @returns The monthly equivalent, in the same unit.
+ * Worked out from the two prices rather than written down, so the sentence it
+ * feeds stays true when either price changes. Rounded to a whole percent,
+ * which is what the sentence says it is.
+ * @param prices - The tier's price over each period.
+ * @returns The saving as a whole percent, or null where either price is
+ *   missing and there is nothing to compare.
  */
-function monthlyEquivalent(annualCents: number): number {
-  return Math.round(annualCents / 12);
+function annualSavingPercent(
+  prices: Readonly<Record<BillingPeriod, TierPrice | null>>,
+): number | null {
+  const { month, year } = prices;
+  if (!month || !year) return null;
+  const twelveMonths = month.priceCents * 12;
+  if (twelveMonths <= 0) return null;
+  return Math.round((1 - year.priceCents / twelveMonths) * 100);
 }
 
 /**
@@ -156,6 +163,7 @@ export const TierCards = React.memo(function TierCards({
           move,
         });
         const price = offer.prices[selectedPeriod];
+        const saving = annualSavingPercent(offer.prices);
         return (
           <TierCard
             key={offer.tier}
@@ -164,17 +172,12 @@ export const TierCards = React.memo(function TierCards({
             current={action === 'current'}
             price={priceSlot(offer, price, selectedPeriod, t, locale)}
             priceTestId={`tier-price-${offer.tier}`}
-            // Only where there is an annual price to divide. The monthly view
-            // shows the price itself, and the free tier has nothing to save.
+            // Only on the annual view, and only where both prices exist to
+            // compare. The monthly view is the price it is comparing against,
+            // and the free tier has nothing to save.
             note={
-              selectedPeriod === 'year' && price
-                ? t('membership.perMonthEquivalent', {
-                  amount: formatPrice(
-                    monthlyEquivalent(price.priceCents),
-                    price.currency,
-                    locale,
-                  ),
-                })
+              selectedPeriod === 'year' && saving !== null
+                ? t('membership.annualSaving', { percent: saving })
                 : null
             }
             noteTestId={`tier-note-${offer.tier}`}

@@ -829,7 +829,7 @@ describe('MembershipPanel', () => {
     );
   });
 
-  it('年付说的是省两个月，不写百分比，也不承诺换档之后会怎样', async () => {
+  it('年付说得出省多少，也不承诺换档之后会怎样', async () => {
     membershipMock.mockResolvedValue(
       answer({ subscription: subscription({ period: 'year' }) }),
     );
@@ -840,7 +840,6 @@ describe('MembershipPanel', () => {
       'Twelve months for the price of ten',
     );
     const page = document.body.textContent ?? '';
-    expect(page).not.toContain('%');
     // 换档和换周期之后按什么比例折算、退不退钱，这一页一个字都不说。
     for (const promise of ['prorat', 'refund', 'credit back', 'downgrade']) {
       expect(page.toLowerCase()).not.toContain(promise);

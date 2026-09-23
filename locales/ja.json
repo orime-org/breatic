@@ -1527,7 +1527,7 @@
       "year": "年払い"
     },
     "saveTwoMonths": "12 か月分を 10 か月分の料金で",
-    "perMonthEquivalent": "月あたり {amount} 相当、2 か月分お得",
+    "annualSaving": "年払いで約 {percent}% お得",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
       "month": "{amount} / 月",

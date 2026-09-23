@@ -309,13 +309,13 @@ describe('TierCards — the figures on the cards', () => {
     expect(screen.getByTestId('tier-price-team')).toHaveTextContent('$799.99');
   });
 
-  it('says what a year works out at per month, rounded to the cent', () => {
-    // 19999 / 12 is 1666.58, and 79999 / 12 is 6666.58. Truncating would
-    // quote a cent under what the division gives, next to the very figure it
-    // was divided from.
+  it('says how much a year saves, as a percentage off the monthly price', () => {
+    // 19999 against 1999 x 12 is 16.63% off, and 79999 against 7999 x 12 is
+    // 16.66% — both round to 17. The figure is worked out from the two
+    // prices, so a change to either one keeps the sentence true.
     renderGrid('year', 'none');
-    expect(screen.getByTestId('tier-note-pro')).toHaveTextContent('$16.67');
-    expect(screen.getByTestId('tier-note-team')).toHaveTextContent('$66.67');
+    expect(screen.getByTestId('tier-note-pro')).toHaveTextContent('17%');
+    expect(screen.getByTestId('tier-note-team')).toHaveTextContent('17%');
   });
 
   it('keeps that line off the monthly view and off the free card', () => {
@@ -370,10 +370,14 @@ describe('TierCards — the figures on the cards', () => {
     expect(screen.getByTestId('tier-card-base')).toHaveTextContent('5 GiB');
   });
 
-  it('never quotes a discount as a percentage', () => {
-    // Ratified: the page says two months, not a figure a reader has to work
-    // backwards from.
+  it('states the saving once, on the annual view, and never on the monthly one', () => {
+    // Ratified 2026-09-23: the card says a percentage. The monthly view is
+    // the price being compared against, so there is nothing to state there.
     renderGrid('year', 'none');
+    expect(document.body.textContent ?? '').toContain('%');
+
+    cleanup();
+    renderGrid('month', 'none');
     expect(document.body.textContent ?? '').not.toContain('%');
   });
 });
