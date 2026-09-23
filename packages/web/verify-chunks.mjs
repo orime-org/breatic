@@ -219,6 +219,23 @@ const HEAVY = [
     label: 'collaboration runtime',
     holds: (src) => /node_modules\/yjs\//.test(src),
   },
+  // Byte sniffing, which reaches the browser the same way the collaboration
+  // runtime did: `@breatic/shared` re-exports `sniff-mime` from its main
+  // entry, and that module imports `file-type` statically. No web module
+  // calls it today, so none of this is in the entry closure — the two callers
+  // are a Node service and the ingest Worker. Naming it is what the byte
+  // budget cannot do: importing `sniffMimeType` from `src/index.tsx` puts 21
+  // modules in front of every reader and carries the total past the budget,
+  // and without this entry the report is that number alone.
+  //
+  // The transitive dependencies are matched beside `file-type` because a
+  // build can reach them without it: `strtok3` and `token-types` are ordinary
+  // packages any other reader could pull in on its own.
+  {
+    label: 'mime sniffing',
+    holds: (src) =>
+      /node_modules\/(file-type|strtok3|token-types|uint8array-extras)\//.test(src),
+  },
 ];
 
 /**
