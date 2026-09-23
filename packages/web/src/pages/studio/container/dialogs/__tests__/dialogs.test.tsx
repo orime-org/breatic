@@ -105,6 +105,23 @@ describe('NewItemDialog (spec §3.12)', () => {
     expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
   });
 
+  it('puts the cursor on the slug when a press is refused over it (#255)', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn();
+    render(
+      <NewItemDialog kind='project' open onOpenChange={() => {}} onCreate={onCreate} />,
+    );
+    // A name and no slug: Create is live, because nothing has been judged yet.
+    await user.type(screen.getByLabelText('Name'), 'My Project');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(onCreate).not.toHaveBeenCalled();
+    // The message the press revealed sits further up the form than the button,
+    // so without the cursor landing on it the press reads as nothing having
+    // happened.
+    expect(screen.getByLabelText('Slug')).toHaveFocus();
+  });
+
   it('offers no visibility choice — every project is visible to the studio', () => {
     render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
     // Neither the group nor either option. The concept left the product on

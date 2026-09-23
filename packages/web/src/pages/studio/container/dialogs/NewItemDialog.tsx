@@ -96,6 +96,11 @@ export function NewItemDialog({
   const [studioId, setStudioId] = React.useState(defaultStudioId ?? '');
   const [slugError, setSlugError] = React.useState<SlugError>(null);
   const [submitted, setSubmitted] = React.useState(false);
+  // Where the cursor goes when a press is refused. The message a refusal
+  // reveals sits further up the form than the button that was pressed, so
+  // without this the press reads as nothing having happened.
+  const nameRef = React.useRef<HTMLInputElement>(null);
+  const slugRef = React.useRef<HTMLInputElement>(null);
   const showStudioSelect =
     kind === 'project' && studios !== undefined && studios.length > 0;
 
@@ -152,7 +157,12 @@ export function NewItemDialog({
     setSubmitted(true);
     const error = validateItemSlug(slug);
     setSlugError(error);
-    if (name.trim() === '' || error !== null) {
+    const nameMissing = name.trim() === '';
+    if (nameMissing || error !== null) {
+      // Calling `preventDefault` above took over the job the browser does for
+      // a form it validates itself: put the cursor on the first field that
+      // was rejected, which also brings it into view.
+      (nameMissing ? nameRef : slugRef).current?.focus();
       return;
     }
     onCreate?.({
@@ -206,6 +216,7 @@ export function NewItemDialog({
               </Label>
               <Input
                 id={nameId}
+                ref={nameRef}
                 autoComplete='off'
                 value={name}
                 onChange={(event) => setName(event.target.value)}
@@ -222,6 +233,7 @@ export function NewItemDialog({
             ) : null}
             <SlugField
               id={slugId}
+              inputRef={slugRef}
               label={t('studio.container.dialog.slugLabel')}
               placeholder={t('studio.container.dialog.slugPlaceholder')}
               value={slug}
