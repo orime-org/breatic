@@ -1984,11 +1984,21 @@ body {
    mark covering the run (measured 2026-09-23, single, overlapping and split
    runs alike). So the library's `.bn-thread-mark .bn-thread-mark-selected`
    does reach it and does carry a colour — this rule, unlayered, wins over
-   that one in `@layer base`. Over a stretch the merged range covers but no
-   mark does, the library's span has no mark around it, its own descendant
-   selector misses, and nothing is painted there. */
+   that one in `@layer base`. */
 .doc-body .doc-comment-mark-reading {
   background-color: var(--color-comment-mark-active);
+}
+
+/* The colour belongs to the rule above and to nothing else.
+   The library's decoration spans the thread's MERGED range, so it also
+   covers whatever sits between two runs of one thread — and that stretch
+   reaches the library's own descendant selector whenever it carries a mark
+   of its own, a settled thread's mark included. Measured 2026-09-23: a
+   resolved comment's words dragged between two runs of a live one come out
+   at rgba(255, 200, 0, 0.25) the moment that live comment is opened, while
+   belonging to no comment a reader can see. */
+.doc-body .bn-thread-mark-selected:not(.doc-comment-mark-reading) {
+  background-color: transparent;
 }
 
 /* ---- Room to click under the last block ----

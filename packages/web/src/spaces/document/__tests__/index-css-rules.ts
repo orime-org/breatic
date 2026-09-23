@@ -75,7 +75,10 @@ export function declarationsOf(
   const found: { selector: string; value: string }[] = [];
   for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
     const selector = rule[1].trim();
-    if (!selector.includes(selectorContains)) continue;
+    // What a selector names inside `:not(...)` is what it refuses to reach,
+    // so a rule mentioning a class there is not a rule about that class.
+    const reaches = selector.replace(/:not\([^)]*\)/g, '');
+    if (!reaches.includes(selectorContains)) continue;
     for (const declaration of rule[2].matchAll(
       new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, 'g'),
     )) {

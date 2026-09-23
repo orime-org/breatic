@@ -203,13 +203,23 @@ describe('what the highlight looks like', () => {
     });
   });
 
-  it('leaves the library own decoration unpainted', () => {
+  it('takes the colour off the library own decoration', () => {
     // Writing `selectedThreadId` into the library's store is what makes its
     // click handler stand aside (A20), and it also makes the library draw a
     // decoration of its own over the MERGED range — first start to last end,
-    // which covers any gap in between. Ours is drawn per mark run. Only ours
-    // carries a colour, so the library's is inert.
-    expect(declarationsOf('bn-thread-mark-selected', 'background-color'))
-      .toHaveLength(0);
+    // which covers any gap between two runs of one thread. The library
+    // colours that decoration through a descendant selector on the mark, so
+    // a gap carrying a mark of its own is painted as though it belonged to
+    // the thread being read; a settled comment's words dragged between two
+    // runs of a live one measured rgba(255, 200, 0, 0.25) that way.
+    const painted = declarationsOf(
+      'bn-thread-mark-selected',
+      'background-color',
+    );
+
+    expect(painted.length).toBeGreaterThan(0);
+    painted.forEach((declaration) => {
+      expect(declaration.value).toBe('transparent');
+    });
   });
 });

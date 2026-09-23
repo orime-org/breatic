@@ -625,3 +625,152 @@ test.describe('what the pointer says over the body', () => {
     ).toBe('pointer');
   });
 });
+
+test.describe('a comment split around words that are not its own', () => {
+  /**
+   * Selects a character range in the first paragraph.
+   * @param p - The page.
+   * @param from - Where the range starts.
+   * @param to - Where it ends.
+   */
+  async function selectChars(p: Page, from: number, to: number): Promise<void> {
+    await p.evaluate(
+      ({ sel, at }) => {
+        const para = document.querySelector(`${sel} p`)!;
+        const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
+        let seen = 0;
+        let startNode: Text | null = null;
+        let startOffset = 0;
+        let endNode: Text | null = null;
+        let endOffset = 0;
+        let node = walker.nextNode() as Text | null;
+        while (node !== null) {
+          const len = node.data.length;
+          if (startNode === null && seen + len >= at.from) {
+            startNode = node;
+            startOffset = at.from - seen;
+          }
+          if (endNode === null && seen + len >= at.to) {
+            endNode = node;
+            endOffset = at.to - seen;
+          }
+          seen += len;
+          node = walker.nextNode() as Text | null;
+        }
+        const range = document.createRange();
+        range.setStart(startNode!, startOffset);
+        range.setEnd(endNode!, endOffset);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      },
+      { sel: EDITOR, at: { from, to } },
+    );
+    await p.waitForTimeout(250);
+  }
+
+  test('leaves the words between its runs the colour of plain prose', async ({
+    page,
+  }) => {
+    // The library draws one decoration over a thread's merged range — first
+    // start to last end — and colours it through a descendant selector on the
+    // mark. Anything carrying a mark in the gap satisfies that selector, a
+    // settled thread's mark included, so words belonging to no live comment
+    // are painted the moment one is opened.
+    await openFreshDocument(page);
+    await page.keyboard.type('SETTLED ALPHABETA tail');
+
+    await selectParagraph(page, 0);
+    await selectChars(page, 0, 7);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-input').fill('to be resolved');
+    await page.getByTestId('doc-comment-post').click();
+    await page.locator(`${EDITOR} [data-bn-thread-id]`).first().click();
+    await page.getByTestId('doc-comment-resolve').first().click();
+    await expect(
+      page.locator(`${EDITOR} [data-bn-thread-id][data-orphan="true"]`),
+    ).toHaveCount(1);
+
+    await selectChars(page, 8, 17);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-input').fill('the live one');
+    await page.getByTestId('doc-comment-post').click();
+    await page.waitForTimeout(400);
+
+    // Drag the settled words into the middle of the live run, which is what
+    // splits one thread around words it never covered.
+    const at = await page.evaluate((sel) => {
+      const para = document.querySelector(`${sel} p`)!;
+      const nodes: Text[] = [];
+      const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode() as Text | null;
+      while (node !== null) {
+        nodes.push(node);
+        node = walker.nextNode() as Text | null;
+      }
+      const settled = nodes.find((n) => n.data.includes('SETTLED'))!;
+      const live = nodes.find((n) => n.data.includes('ALPHABETA'))!;
+      const source = document.createRange();
+      source.setStart(settled, settled.data.indexOf('SETTLED'));
+      source.setEnd(settled, settled.data.indexOf('SETTLED') + 7);
+      const landing = document.createRange();
+      const mid = live.data.indexOf('ALPHABETA') + 5;
+      landing.setStart(live, mid);
+      landing.setEnd(live, mid);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(source);
+      const from = source.getBoundingClientRect();
+      const to = landing.getBoundingClientRect();
+      return {
+        from: { x: from.x + from.width / 2, y: from.y + from.height / 2 },
+        to: { x: to.x, y: to.y + to.height / 2 },
+      };
+    }, EDITOR);
+
+    await page.evaluate(
+      ({ sel, drag }) => {
+        const body = document.querySelector(sel)!;
+        const data = new DataTransfer();
+        const send = (type: string, x: number, y: number): void => {
+          body.dispatchEvent(
+            new DragEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              dataTransfer: data,
+              clientX: x,
+              clientY: y,
+            }),
+          );
+        };
+        send('dragstart', drag.from.x, drag.from.y);
+        send('dragover', drag.to.x, drag.to.y);
+        send('drop', drag.to.x, drag.to.y);
+        send('dragend', drag.to.x, drag.to.y);
+      },
+      { sel: EDITOR, drag: at },
+    );
+    await page.waitForTimeout(600);
+
+    await page
+      .locator(`${EDITOR} [data-bn-thread-id]:not([data-orphan="true"])`)
+      .first()
+      .click();
+    await page.waitForTimeout(400);
+
+    const between = await page.evaluate((sel) => {
+      const body = document.querySelector(sel)!;
+      const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode() as Text | null;
+      while (node !== null) {
+        if (node.data === 'SETTLED') {
+          return getComputedStyle(node.parentElement!).backgroundColor;
+        }
+        node = walker.nextNode() as Text | null;
+      }
+      return null;
+    }, EDITOR);
+
+    expect(between).toBe('rgba(0, 0, 0, 0)');
+  });
+});
