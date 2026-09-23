@@ -23,12 +23,33 @@ import {
   isStop,
   keepInside,
   nextMovesFor,
+  notOurPayloadReason,
   onOneLine,
+  readFailedReason,
   reason,
   refusalReason,
   stoppedByUser,
   toolFailed,
 } from "@domain/agent/tools/failure.js";
+
+/**
+ * How this tool names what it does, in the sentences a failure carries.
+ *
+ * The fallback says what to do instead rather than what to announce: a
+ * judgement is the model's own deliberation, and the reader asked for the
+ * work rather than for this.
+ */
+const voice: FailureVoice = {
+  act: "judgement",
+  results: "that judgement",
+  retrying: "Asking once more",
+  elsewhere: "decide from what you already hold",
+  attempting: "Judging",
+  fallback: "continue without that judgement and decide from what you already hold.",
+};
+
+/** The moves a failure of this tool points the model at. */
+const moves = nextMovesFor(voice);
 
 /** Where the decisions endpoint lives, and which model answers there. */
 const JEV_PINS = {
@@ -49,8 +70,6 @@ interface JevRequest {
   readonly questions: Readonly<Record<string, JevQuestion>>;
   /** How long the whole call may take, deliveries and backoffs together. */
   readonly budgetMs: number;
-  /** How the calling tool names what it does, for the failure sentences. */
-  readonly voice: FailureVoice;
   /** The reader's stop, when the caller has one. */
   readonly abortSignal?: AbortSignal;
 }
@@ -71,32 +90,26 @@ const probability = z.number().min(0).max(1);
  *
  * `noul` carries no confidence, which is the endpoint's shape rather than an
  * omission: it answers one probability and that probability is the whole of
- * what it knows. `score` is the one number with a range of its own -- it may
- * land between rungs, so it is held to the legend it arrived with.
+ * what it knows. What this settles is whether the model can read the key --
+ * where a score falls within its own legend is the endpoint's answer, and the
+ * legend arrives beside it for the model to read.
  */
-const answerSchema = z
-  .discriminatedUnion("type", [
-    z.object({ type: z.literal("noul"), noul: probability }),
-    z.object({
-      type: z.literal("choice"),
-      choice: z.string(),
-      probabilities: z.record(z.string(), probability),
-      confidence: probability,
-    }),
-    z.object({
-      type: z.literal("score"),
-      score: z.number(),
-      legend: z.record(z.string(), z.string()),
-      probabilities: z.record(z.string(), probability),
-      confidence: probability,
-    }),
-  ])
-  .refine(
-    (answer) =>
-      answer.type !== "score" ||
-      (answer.score >= 0 && answer.score <= Object.keys(answer.legend).length - 1),
-    "a score outside its own legend is not a rung",
-  );
+const answerSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("noul"), noul: probability }),
+  z.object({
+    type: z.literal("choice"),
+    choice: z.string(),
+    probabilities: z.record(z.string(), probability),
+    confidence: probability,
+  }),
+  z.object({
+    type: z.literal("score"),
+    score: z.number(),
+    legend: z.record(z.string(), z.string()),
+    probabilities: z.record(z.string(), probability),
+    confidence: probability,
+  }),
+]);
 
 /**
  * Sort the asked keys into the ones that came back readable and the rest.
@@ -144,14 +157,48 @@ function readAnswers(text: string, asked: readonly string[]): JevAnswers | null 
 }
 
 /**
+ * What the endpoint said it would not take, in its own words.
+ *
+ * Read off a refusal because it names the field it refused -- measured,
+ * `path:["questions","a","criteria"] expected array` for a scale given a map,
+ * and `Choice question must have at least one choice: <key>` for an empty
+ * option set. The model wrote the request and is the one that can rewrite it.
+ *
+ * Only `error.message` travels. The body also carries `user_id`, which is who
+ * we are to the vendor and says nothing the model can act on.
+ * @param res - The refusal, body unread.
+ * @param budgetMs - How long the read may take.
+ * @param signal - The signal spanning the call.
+ * @returns The complaint, or an empty string when there is none to read.
+ */
+async function complaintOf(
+  res: Response,
+  budgetMs: number,
+  signal: AbortSignal,
+): Promise<string> {
+  let said: unknown;
+  try {
+    said = JSON.parse(await readWithin(res, budgetMs, signal));
+  } catch {
+    return "";
+  }
+  if (typeof said !== "object" || said === null) return "";
+  const message = (said as { error?: { message?: unknown } }).error?.message;
+  return typeof message === "string" ? clip(keepInside(onOneLine(message)), 400) : "";
+}
+
+/**
  * Put one set of questions to the endpoint and read what comes back.
  * @param request - Everything the call needs.
  * @returns The keys that read, and the names of the keys that did not.
  * @throws {Error} Carrying tool failure detail, or the reader's stop.
  */
 export async function askJev(request: JevRequest): Promise<JevAnswers> {
-  const { apiKey, state, questions, budgetMs, voice, abortSignal } = request;
-  const moves = nextMovesFor(voice);
+  const { apiKey, state, questions, budgetMs, abortSignal } = request;
+  // The keys are the model's own words, and every sentence below is stored on
+  // the call and read again by every later turn -- the same treatment the
+  // search tools give a query before it reaches one.
+  const asked = clip(keepInside(onOneLine(Object.keys(questions).join(", "))), 200);
 
   // The budget bounds the call rather than one delivery of it. `replaySafe`
   // settles only the deliveries the caller owns: `decide-retry.ts:287` replays
@@ -196,20 +243,11 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // a stop that landed mid-refusal arrives here looking like an upstream
     // fault. What the reader did outranks what the service said.
     if (abortSignal?.aborted === true) {
+      // A body nobody reads keeps its connection out of the pool.
       void res.body?.cancel();
       throw stoppedByUser();
     }
-    // A body nobody reads keeps its connection out of the pool. Discarding the
-    // promise is safe only while nothing awaits between the transport handing
-    // this response back and this line.
-    void res.body?.cancel();
-    // The shared table, which already separates a fault of ours from a request
-    // the service would take in another form. The model wrote this request, so
-    // that difference decides whether it may write another one.
-    // The keys are the model's own words, and this sentence is stored on the
-    // call and read again by every later turn -- the same treatment the search
-    // tools give a query before it reaches here.
-    const asked = clip(keepInside(onOneLine(Object.keys(questions).join(", "))), 200);
+    const complaint = await complaintOf(res, budgetMs, spanning);
     // 422 alone is read differently here. The shared table calls it a fault in
     // our configuration, which holds for a caller that shaped the request; the
     // model shaped this one, so it is one the model can shape again.
@@ -217,10 +255,11 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
       res.status === 422
         ? reason(
             `${voice.attempting} "${asked}" failed: the ${voice.act} service answered HTTP 422. ` +
-              "It refused the body this side sent, which is the questions you composed.",
+              `It refused the body this side sent, which is the questions you composed.` +
+              (complaint === "" ? "" : ` It said: ${complaint}`),
             moves.rewordOnce,
           )
-        : refusalReason(voice, asked, res.status),
+        : refusalReason(voice, asked, res.status, complaint),
       FAILURE_LINES.upstream,
     );
   }
@@ -233,18 +272,24 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // this: that guard passes anything carrying failure detail straight
     // through, past the question of whether the user stopped.
     if (isStop(err, abortSignal)) throw stoppedByUser();
+    // The budget covers the body as well as the deliveries, so a sender that
+    // writes its headers and then stops ends here with the whole figure spent.
+    // That is the same fact as nothing answering at all, and says so.
+    if (spanning.aborted) {
+      throw toolFailed(
+        reason(`Nothing answered the ${voice.act} request in time.`, moves.retryOnce),
+        FAILURE_LINES.unreachable,
+      );
+    }
     throw toolFailed(
-      reason(`The ${voice.act} answer could not be read: ${reasonOf(err)}.`, moves.retryOnce),
+      readFailedReason(voice, asked, reasonOf(err)),
       FAILURE_LINES.upstream,
     );
   }
 
   const split = readAnswers(text, Object.keys(questions));
   if (split === null || Object.keys(split.answers).length === 0) {
-    throw toolFailed(
-      reason(`The ${voice.act} service answered, and none of it could be read.`, moves.stop),
-      FAILURE_LINES.upstream,
-    );
+    throw toolFailed(notOurPayloadReason(voice, asked), FAILURE_LINES.upstream);
   }
   return split;
 }

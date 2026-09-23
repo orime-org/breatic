@@ -83,6 +83,11 @@ export interface FailureVoice {
   readonly elsewhere: string;
   /** Opens a sentence about one attempt: `<attempting> "query" failed`. */
   readonly attempting: string;
+  /**
+   * What to do instead, when this tool's failure is not the reader's business.
+   * A tool the reader asked for leaves this out and says it is unavailable.
+   */
+  readonly fallback?: string;
 }
 
 /** One of the moves a `nextMovesFor` table holds. */
@@ -117,7 +122,9 @@ export interface NextMoves {
  * @returns The four moves, phrased for that tool.
  */
 export function nextMovesFor(voice: FailureVoice): NextMoves {
-  const fallback = `continue without ${voice.results} and tell the user ${voice.act} is unavailable.`;
+  const fallback =
+    voice.fallback ??
+    `continue without ${voice.results} and tell the user ${voice.act} is unavailable.`;
   return {
     stop: `Do not repeat this ${voice.act}; ${fallback}` as NextMove,
     rewordOnce: `Try a different wording at most once, then ${fallback}` as NextMove,
@@ -153,11 +160,20 @@ export function reason(what: string, next: NextMove): string {
  * @param voice - How this tool names what it does.
  * @param query - What was searched for.
  * @param status - The status the service answered with.
+ * @param detail - What the service said about it, when it said anything.
  * @returns The reason, ending in what the model may do instead.
  */
-export function refusalReason(voice: FailureVoice, query: string, status: number): string {
+export function refusalReason(
+  voice: FailureVoice,
+  query: string,
+  status: number,
+  detail = "",
+): string {
   const moves = nextMovesFor(voice);
-  const opening = `${voice.attempting} "${query}" failed: the ${voice.act} service answered HTTP ${String(status)}.`;
+  // The service's own words when it gave any: it names the field it refused,
+  // and this side is the only place that sentence exists.
+  const said = detail === "" ? "" : ` It said: ${detail}`;
+  const opening = `${voice.attempting} "${query}" failed: the ${voice.act} service answered HTTP ${String(status)}.${said}`;
   // 408 travels with 429 because the transport already treats the two the same
   // (`decide-retry.ts`), and a 5xx joins them because these calls declare
   // themselves replay-safe. One that reaches here has survived every delivery

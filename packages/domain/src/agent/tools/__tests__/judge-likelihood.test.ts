@@ -261,12 +261,8 @@ describe("the shapes the model is told about", () => {
   it("refuses a question type the endpoint does not have", () => {
     // The one check this side is better at: the endpoint answers this with
     // `No matching discriminator`, which does not name the three it has.
-    expect(
-      schema().safeParse({
-        state: {},
-        questions: { q: { type: "vibes", instructions: "is it good" } },
-      }).success,
-    ).toBe(false);
+    const notAType: unknown = { type: "vibes", instructions: "is it good" };
+    expect(schema().safeParse({ state: {}, questions: { q: notAType } }).success).toBe(false);
   });
 });
 
@@ -341,7 +337,7 @@ describe("what comes back", () => {
     >;
     httpRequestMock.mockResolvedValueOnce(responseOf({ answers }));
     const answer = (await judgeLikelihood.execute?.(
-      { state: {}, questions: { constructor: { type: "noul", instructions: "does it hold" } } },
+      { state: {}, questions: { constructor: { type: "noul" as const, instructions: "does it hold" } } },
       { toolCallId: "t1", messages: [] } as never,
     )) as { answers: Record<string, Record<string, unknown>>; unreadable: string[] };
     expect(answer.unreadable).toEqual([]);
@@ -462,6 +458,45 @@ describe("failing says what broke", () => {
     });
     const { readerKey } = await failureOf(() => askAll(controller.signal));
     expect(readerKey).toBe(FAILURE_LINES.stopped);
+  });
+
+  it("hands the model what the endpoint said it would not take", async () => {
+    // The endpoint names the field it refused, and this side holds the only
+    // copy of that sentence. Measured, one request each:
+    // `path:["questions","a","criteria"] expected array` for a `score` given
+    // a map, and `Choice question must have at least one choice: no_options`
+    // for an empty option set. Discarding it leaves the model a sentence it
+    // cannot act on.
+    httpRequestMock.mockResolvedValueOnce(
+      responseOf(
+        {
+          error: {
+            message: 'HTTP 400: {"detail":"Choice question must have at least one choice: how_to_build"}',
+            code: 400,
+          },
+        },
+        400,
+      ),
+    );
+    const { forModel } = await failureOf(askAll);
+    expect(forModel, "the endpoint's own words reach the model").toContain(
+      "at least one choice: how_to_build",
+    );
+  });
+
+  it("leaves the account identifier the endpoint volunteers out of the sentence", async () => {
+    // Measured: a refusal arrives as `{error:{message}, user_id}`. The
+    // sentence is stored on the call and read again by every later turn, so
+    // what travels is the complaint and not who we are to the vendor.
+    httpRequestMock.mockResolvedValueOnce(
+      responseOf(
+        { error: { message: "Bad question shape", code: 400 }, user_id: "org_2yw4PHPsecret" },
+        400,
+      ),
+    );
+    const { forModel } = await failureOf(askAll);
+    expect(forModel).toContain("Bad question shape");
+    expect(forModel, "who we are to the vendor stays here").not.toContain("org_2yw4PHP");
   });
 
   it("keeps the status in the sentence when the service would not take the body", async () => {

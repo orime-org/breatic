@@ -21,42 +21,43 @@ import { tool } from "ai";
 import type { Tool } from "ai";
 import { z } from "zod";
 
-import type { FailureVoice } from "@domain/agent/tools/failure.js";
 import { toolFailed } from "@domain/agent/tools/failure.js";
 import { askJev } from "@domain/agent/tools/jev.js";
 import type { JevAnswers } from "@domain/agent/tools/jev.js";
 
-/** How this tool names what it does, in the sentences a failure carries. */
-const VOICE: FailureVoice = {
-  act: "judgement",
-  results: "that judgement",
-  retrying: "Asking once more",
-  elsewhere: "decide from what you already hold",
-  attempting: "Judging",
-};
-
-const questionSchema = z.union([
-  z.object({
+/**
+ * One question, in whichever of the three shapes it is being asked.
+ *
+ * The endpoint owns this format and judges it precisely: a wrong shape comes
+ * back naming the field (`path:["questions","a","criteria"] expected array`),
+ * and the model reads that and writes the call again. So what is declared
+ * here is what the model was told the shapes are -- the three types and the
+ * field each one carries -- and nothing about whether the content is any
+ * good. Whether one option is enough, or a scale of one rung is worth asking,
+ * is the endpoint's to answer; measured, it answers both.
+ *
+ * Each arm is loose, so a field this side never heard of travels on to the
+ * endpoint rather than being dropped in silence. Measured: a `choice`
+ * carrying `weights` answers 200.
+ */
+const questionSchema = z.discriminatedUnion("type", [
+  z.looseObject({
     type: z.literal("noul"),
     instructions: z
       .string()
-      .min(1)
       .describe("The claim to judge, as a question this can answer with one probability."),
   }),
-  z.object({
+  z.looseObject({
     type: z.literal("choice"),
-    instructions: z.string().min(1).describe("What is being decided between these options."),
+    instructions: z.string().describe("What is being decided between these options."),
     criteria: z
-      .record(z.string(), z.string().min(1))
+      .record(z.string(), z.string())
       .describe("The options: your own name for each one, and what that option is."),
   }),
-  z.object({
+  z.looseObject({
     type: z.literal("score"),
-    instructions: z.string().min(1).describe("What is being placed on this scale."),
-    criteria: z
-      .array(z.string().min(1))
-      .min(2)
-      .describe("The rungs of the scale, lowest first."),
+    instructions: z.string().describe("What is being placed on this scale."),
+    criteria: z.array(z.string()).describe("The rungs of the scale, lowest first."),
   }),
 ]);
 
@@ -70,7 +71,6 @@ const inputSchema = z.object({
     ),
   questions: z
     .record(z.string(), questionSchema)
-    .refine((asked) => Object.keys(asked).length > 0, "ask at least one question")
     .describe(
       "One or more questions, under names of your choosing. Answers come back under the " +
         "same names.",
@@ -89,11 +89,15 @@ const DESCRIPTION = [
       "judgement with the odds attached. It judges what stands up given what you gave it.",
     "",
     "Three ways to ask, and one call may mix them:",
-    "- whether a claim holds -- it answers one probability. \"Does what I am about to say " +
-      "square with the material I have?\"",
-    "- a set of options -- it answers a probability for each, which one comes out on top, " +
-      "and how sure it is. The options are yours: you name them, and the answer uses your names.",
-    "- a scale of rungs in order -- it answers where this falls, which may be between rungs.",
+    "- whether a claim holds -- `{\"type\":\"noul\",\"instructions\":\"...\"}`. It answers one " +
+      "probability. \"Does what I am about to say square with the material I have?\"",
+    "- a set of options -- `{\"type\":\"choice\",\"instructions\":\"...\",\"criteria\":" +
+      "{\"your_name_for_it\":\"what that option is\"}}`. It answers a probability for each, " +
+      "which one comes out on top, and how sure it is. The options are yours: you name them, " +
+      "and the answer uses your names.",
+    "- a scale of rungs in order -- `{\"type\":\"score\",\"instructions\":\"...\"," +
+      "\"criteria\":[\"lowest\",\"...\",\"highest\"]}`. It answers where this falls, which " +
+      "may be between rungs.",
     "",
     "Put what you are judging against into `state`: what the reader said, the turns before " +
       "this, what is on the canvas, the catalog rows. The fuller it is, the better it answers.",
@@ -105,8 +109,11 @@ const DESCRIPTION = [
     "- the reader asked for something you think is off, and you are unsure whether to do it",
     "- you cannot tell whether they said enough to start on, or whether to ask them first",
     "",
+    "It judges the questions, so word one badly and it says so by name. What it answers " +
+      "that back with reaches you unchanged; write the call again from it.",
+    "",
     "A question whose answer came back in a shape this side cannot read, or which it did " +
-    "not answer at all, is named in `unreadable` instead of `answers`. The rest stand.",
+      "not answer at all, is named in `unreadable` instead of `answers`. The rest stand.",
   "",
   "When it says it is unsure, the question has no answer in the material you gave it: the " +
       "option and scale shapes answer a confidence, and the claim shape answers a probability " +
@@ -145,7 +152,6 @@ export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers> = to
       state,
       questions,
       budgetMs: getAgentConfig().judge_likelihood_timeout_ms,
-      voice: VOICE,
       ...(abortSignal ? { abortSignal } : {}),
     });
   },
