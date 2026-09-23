@@ -328,7 +328,7 @@ export async function changePlan(input: {
   ) {
     throw new ValidationError(t("server.membership.change_not_offered"));
   }
-  if (subscriptionActions(situation, record.cancelAtPeriodEnd).upgrade === "withheld") {
+  if (subscriptionActions(situation, record.cancelAtPeriodEnd).move === "withheld") {
     // The paid tier is held while Stripe retries, but selling more during that
     // window would bill a card that is already failing. The panel reads the
     // same answer and draws no entrance, so nobody arrives here by clicking.

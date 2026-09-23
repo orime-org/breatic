@@ -547,6 +547,142 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
   });
 });
 
+describe("the period reaches Stripe on both paths (#253 A7, A8)", () => {
+  /**
+   * The live row for an account holding one offer.
+   * @param tier - The tier it holds.
+   * @param period - The period it is billed over.
+   * @returns A stored subscription.
+   */
+  function holding(tier: string, period: string): Record<string, unknown> {
+    return {
+      stripeSubscriptionId: "sub_1",
+      stripeItemId: "si_1",
+      tier,
+      period,
+      cancelAtPeriodEnd: false,
+    };
+  }
+
+  beforeEach(() => {
+    stripe.subscriptions.update.mockResolvedValue({
+      id: "sub_1",
+      status: "active",
+      pending_update: null,
+      cancel_at_period_end: false,
+      latest_invoice: null,
+      items: {
+        data: [
+          {
+            id: "si_1",
+            current_period_end: 1_789_000_000,
+            price: {
+              id: "price_team_year",
+              unit_amount: 79_990,
+              currency: "usd",
+              recurring: { interval: "year" },
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  for (const tier of ["pro", "team"] as const) {
+    for (const period of ["month", "year"] as const) {
+      it(`checks out ${tier} over ${period} with that combination's own price`, async () => {
+        // A tier is sold over two prices now, and only one of them is the one
+        // the reader pressed. Sending either half of the pair without the
+        // other bills a period nobody chose.
+        situationIs("none");
+        await service.startCheckout({
+          userId: USER,
+          tier,
+          period,
+          returnUrl: RETURN_URL,
+        });
+
+        expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            line_items: [{ price: `price_${tier}_${period}`, quantity: 1 }],
+          }),
+        );
+      });
+    }
+  }
+
+  /** Every offer, in the order the grid below reads them. */
+  const OFFERS = [
+    { tier: "pro", period: "month" },
+    { tier: "pro", period: "year" },
+    { tier: "team", period: "month" },
+    { tier: "team", period: "year" },
+  ] as const;
+
+  /**
+   * The permitted grid, rows = held, columns = wanted, in OFFERS order.
+   *
+   * The same sixteen cells `canMoveTo` is asserted against in shared. A rule
+   * that is right and an endpoint that never calls it would leave that suite
+   * green, so this drives each cell through the endpoint itself.
+   */
+  const PERMITTED: readonly (readonly boolean[])[] = [
+    //            PRO/m  PRO/y  Team/m Team/y
+    /* PRO/m  */ [false, true, true, true],
+    /* PRO/y  */ [false, false, false, true],
+    /* Team/m */ [false, false, false, true],
+    /* Team/y */ [false, false, false, false],
+  ];
+
+  for (const [row, from] of OFFERS.entries()) {
+    for (const [column, to] of OFFERS.entries()) {
+      const permitted = PERMITTED[row]?.[column] ?? false;
+      const held = `${from.tier}/${from.period}`;
+      const wanted = `${to.tier}/${to.period}`;
+
+      if (permitted) {
+        it(`moves ${held} to ${wanted} by swapping in that offer's price`, async () => {
+          situationIs("active", holding(from.tier, from.period));
+          await service.changePlan({
+            userId: USER,
+            tier: to.tier,
+            period: to.period,
+          });
+
+          expect(stripe.subscriptions.update).toHaveBeenCalledWith(
+            "sub_1",
+            expect.objectContaining({
+              items: [{ id: "si_1", price: `price_${to.tier}_${to.period}` }],
+            }),
+          );
+        });
+        continue;
+      }
+
+      it(`refuses ${held} to ${wanted}, and sends Stripe nothing`, async () => {
+        situationIs("active", holding(from.tier, from.period));
+        const same = from.tier === to.tier && from.period === to.period;
+        // Two refusals, two sentences: "you are already on this one" is not
+        // the same answer as "that direction is not on offer", and the status
+        // code is what tells the caller which.
+        await expect(
+          service.changePlan({ userId: USER, tier: to.tier, period: to.period }),
+        ).rejects.toBeInstanceOf(same ? ConflictError : ValidationError);
+        expect(stripe.subscriptions.update).not.toHaveBeenCalled();
+      });
+    }
+  }
+
+  it("refuses with the key that no longer says which direction", async () => {
+    // `downgrade_not_offered` named one of the two refusals this covers. The
+    // other is a period that got shorter, which is not a downgrade.
+    situationIs("active", holding("pro", "year"));
+    await expect(
+      service.changePlan({ userId: USER, tier: "pro", period: "month" }),
+    ).rejects.toThrow("server.membership.change_not_offered");
+  });
+});
+
 describe("cancel and resume (#106 §7.5)", () => {
   beforeEach(() => {
     stripe.subscriptions.update.mockResolvedValue({
