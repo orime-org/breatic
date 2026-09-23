@@ -21,23 +21,42 @@ export interface CanvasCapabilityAnswer {
 }
 
 /**
+ * What a text node is for, and what pointing a prompt at one does.
+ *
+ * Carried here rather than in the tool's description because a proposal needs
+ * it and an ordinary turn does not: the description is sent every turn, this
+ * is read on the call a proposal makes first. The modes list leaves text nodes
+ * out, since they generate nothing — which says where they are not without
+ * saying what they are.
+ */
+const TEXT_NODE_NOTE = [
+  "text node: holds words and generates nothing, so no mode applies to it.",
+  "- Mentioning one in a prompt is replaced by that node's words when the prompt is read, so the node generating reads them as if they had been typed into it. Mentioning a node of any other kind hands its picture, video or sound over as reference material instead.",
+  "- One text node can be mentioned by several nodes downstream, so wording they share is written once and mentioned from each of them.",
+  "- Three things one carries: a finished piece of writing the reader keeps, a description of what a group of nodes is for or how a script is set up, and a shared prompt fragment the nodes downstream mention.",
+].join("\n");
+
+/**
  * The answer as the model reads it.
  *
  * A list rather than the object it came from: the model picks a node type and
  * a mode out of this and hands both back to the second tool, so what it needs
  * is the codes spelled plainly next to what each one does.
  * @param answer - The tool's answer.
- * @returns One block per node type, each listing its modes.
+ * @returns One block per node type, each listing its modes, then what a text node is for.
  */
 export function renderCapabilitiesForModel(answer: CanvasCapabilityAnswer): string {
   if (answer.nodes.length === 0) {
-    return "The canvas cannot generate anything right now: no model this deployment can reach backs any mode.";
+    return [
+      "The canvas cannot generate anything right now: no model this deployment can reach backs any mode.",
+      TEXT_NODE_NOTE,
+    ].join("\n\n");
   }
   const blocks = answer.nodes.map((node) => {
     const lines = node.modes.map((mode) => `- ${mode.mode} (${mode.label}): ${mode.what}`);
     return [`${node.nodeType} node:`, ...lines].join("\n");
   });
-  return blocks.join("\n\n");
+  return [...blocks, TEXT_NODE_NOTE].join("\n\n");
 }
 
 export const canvasCapabilities: Tool<

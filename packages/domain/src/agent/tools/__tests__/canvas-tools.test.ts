@@ -86,6 +86,53 @@ describe("get_canvas_capabilities", () => {
   });
 });
 
+// A proposal decides how many nodes to lay down and which of them hold words
+// rather than generate, and that decision needs the text node's part in a
+// flow. The modes list answers what can be generated, so the one thing it says
+// about text nodes today is that they are absent from it — which leaves the
+// model to guess what mentioning one does.
+describe("what get_canvas_capabilities says about text nodes", () => {
+  it("says a mention of a text node is read as the words themselves", async () => {
+    const rendered = renderCapabilitiesForModel(
+      await run<CanvasCapabilityAnswer>(canvasCapabilities, {}),
+    );
+    expect(rendered).toContain("replaced by that node's words");
+  });
+
+  it("says a mention of any other node arrives as reference material", async () => {
+    const rendered = renderCapabilitiesForModel(
+      await run<CanvasCapabilityAnswer>(canvasCapabilities, {}),
+    );
+    expect(rendered).toContain("as reference material");
+  });
+
+  it("says one text node can be mentioned by several nodes downstream", async () => {
+    const rendered = renderCapabilitiesForModel(
+      await run<CanvasCapabilityAnswer>(canvasCapabilities, {}),
+    );
+    expect(rendered).toContain("mentioned by several nodes downstream");
+  });
+
+  it("names the three things a text node carries", async () => {
+    const rendered = renderCapabilitiesForModel(
+      await run<CanvasCapabilityAnswer>(canvasCapabilities, {}),
+    );
+    // The reader keeps one, the flow is described by another, and the third is
+    // the prompt fragment the nodes downstream mention.
+    expect(rendered).toContain("a finished piece of writing");
+    expect(rendered).toContain("what a group of nodes is for");
+    expect(rendered).toContain("a shared prompt fragment");
+  });
+
+  it("says it even when nothing on this canvas can generate", () => {
+    // A deployment that reaches no model still lays down text nodes, so the
+    // sentence naming that has to carry this alongside it.
+    const rendered = renderCapabilitiesForModel({ nodes: [] });
+    expect(rendered).toContain("cannot generate anything right now");
+    expect(rendered).toContain("replaced by that node's words");
+  });
+});
+
 describe("list_generation_models", () => {
   it("answers with the models behind one mode", async () => {
     const answer = await run<ModelsForMode>(generationModels, {
