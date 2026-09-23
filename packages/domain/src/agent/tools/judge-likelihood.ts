@@ -120,7 +120,6 @@ function describe(): string {
 
 /**
  * The tool, ready to be registered.
- *
  * @throws {Error} Carrying tool failure detail, or the reader's stop.
  */
 export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers> = tool({
