@@ -208,18 +208,65 @@ describe("the model composes the request", () => {
     expect(signal?.aborted, "and it expires on the configured figure").toBe(true);
   });
 
-  it("refuses a call that asks nothing", () => {
-    // Held at the schema, which the SDK runs before `execute`: an empty map
-    // would otherwise buy a round trip and come back reading as a broken
-    // service.
+  it("takes a question of the plainest shape", () => {
     const schema = judgeLikelihood.inputSchema as z.ZodType;
-    expect(schema.safeParse({ state: {}, questions: {} }).success).toBe(false);
     expect(
       schema.safeParse({
         state: {},
         questions: { q: { type: "noul", instructions: "Does this hold?" } },
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("the shapes the model is told about", () => {
+  /**
+   * The schema the SDK runs before `execute`.
+   * @returns It, typed for parsing.
+   */
+  function schema(): z.ZodType {
+    return judgeLikelihood.inputSchema as z.ZodType;
+  }
+
+  it("carries a field the endpoint takes and this side never declared", () => {
+    // Measured against the endpoint: a `choice` carrying `weights` answers
+    // 200. A field dropped on the way out is a use of the endpoint the model
+    // cannot reach and is never told it cannot reach.
+    const parsed = schema().safeParse({
+      state: {},
+      questions: {
+        q: { type: "choice", instructions: "which", criteria: { x: "one" }, weights: { x: 2 } },
+      },
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toMatchObject({ questions: { q: { weights: { x: 2 } } } });
+  });
+
+  it("takes a scale of one rung, which the endpoint answers", () => {
+    // Measured: `criteria: ["small"]` answers 200 with `score: 0` and
+    // `legend: {"0":"small"}`. A floor written here refuses what it answers.
+    expect(
+      schema().safeParse({
+        state: {},
+        questions: { q: { type: "score", instructions: "how big", criteria: ["small"] } },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("leaves asking nothing to the endpoint, which names the field", () => {
+    // Measured: `path:["questions"] "At least one question is required"`.
+    expect(schema().safeParse({ state: {}, questions: {} }).success).toBe(true);
+  });
+
+  it("refuses a question type the endpoint does not have", () => {
+    // The one check this side is better at: the endpoint answers this with
+    // `No matching discriminator`, which does not name the three it has.
+    expect(
+      schema().safeParse({
+        state: {},
+        questions: { q: { type: "vibes", instructions: "is it good" } },
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -266,14 +313,60 @@ describe("what comes back", () => {
     expect(answer.unreadable.sort()).toEqual(["how_ambitious", "how_to_build"]);
   });
 
-  it("names a score that falls outside its own legend", async () => {
+  it("hands a score on without judging whether it fits its own legend", async () => {
+    // Where the score falls is the endpoint's to answer, and the model reads
+    // the legend sitting beside it. A rule written here about the vendor's
+    // own output turns an answer it can read into an absence.
     httpRequestMock.mockResolvedValueOnce(
       responseOf({
         answers: { ...ANSWERS, how_ambitious: { ...ANSWERS.how_ambitious, score: 7 } },
       }),
     );
-    const answer = (await askAll()) as { unreadable: string[] };
-    expect(answer.unreadable).toEqual(["how_ambitious"]);
+    const answer = (await askAll()) as {
+      answers: Record<string, Record<string, unknown>>;
+      unreadable: string[];
+    };
+    expect(answer.unreadable).toEqual([]);
+    expect(answer.answers["how_ambitious"]).toMatchObject({ score: 7 });
+  });
+
+  it("reads an answer key off the payload rather than off the prototype", async () => {
+    // zod drops a key named `__proto__` before `execute` runs and leaves
+    // `constructor` and its siblings alone, so a question asked under one of
+    // those reads back as the inherited function unless the key is read
+    // through its descriptor -- and a good answer is reported unreadable.
+    const answers = JSON.parse('{"constructor":{"type":"noul","noul":0.4}}') as Record<
+      string,
+      unknown
+    >;
+    httpRequestMock.mockResolvedValueOnce(responseOf({ answers }));
+    const answer = (await judgeLikelihood.execute?.(
+      { state: {}, questions: { constructor: { type: "noul", instructions: "does it hold" } } },
+      { toolCallId: "t1", messages: [] } as never,
+    )) as { answers: Record<string, Record<string, unknown>>; unreadable: string[] };
+    expect(answer.unreadable).toEqual([]);
+    expect(answer.answers["constructor"]).toEqual({ type: "noul", noul: 0.4 });
+  });
+
+  it("hands on a field this side has not heard of", async () => {
+    // What the schema settles is whether the model can read the key. A field
+    // beyond the five it names is still the vendor's answer.
+    httpRequestMock.mockResolvedValueOnce(
+      responseOf({
+        answers: {
+          ...ANSWERS,
+          clear_enough: { type: "noul", noul: 0.12, rationale: "a length and a subject" },
+        },
+      }),
+    );
+    const answer = (await askAll()) as {
+      answers: Record<string, Record<string, unknown>>;
+    };
+    expect(answer.answers["clear_enough"]).toEqual({
+      type: "noul",
+      noul: 0.12,
+      rationale: "a length and a subject",
+    });
   });
 
   it("fails when no key at all can be read", async () => {
