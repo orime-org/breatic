@@ -220,6 +220,33 @@ async function readOne(
 }
 
 /**
+ * The columns one write to `subscriptions` carries.
+ *
+ * Every one of them is overwritten when the row already exists, apart from the
+ * two that name which row it is, so the shape is closed on purpose: a column
+ * the table has and this does not cannot reach the update, and a column added
+ * here reaches it without anybody remembering to list it twice.
+ */
+type SubscriptionValues = Required<
+  Pick<
+    typeof subscriptions.$inferInsert,
+    | "userId"
+    | "stripeSubscriptionId"
+    | "tier"
+    | "period"
+    | "status"
+    | "currentPeriodEnd"
+    | "cancelAtPeriodEnd"
+    | "stripeItemId"
+    | "hasPendingUpdate"
+    | "pendingTier"
+    | "pendingPeriod"
+    | "payableInvoiceUrl"
+    | "observedAt"
+  >
+>;
+
+/**
  * Runs the insert-or-update for one subscription row.
  *
  * No handling for "this account already holds a live subscription": that
@@ -235,24 +262,25 @@ async function readOne(
  *   view of this subscription is already stored.
  */
 async function insertOrUpdate(
-  values: typeof subscriptions.$inferInsert & { observedAt: Date },
+  values: SubscriptionValues,
   tx: DbTx | undefined,
 ): Promise<SubscriptionRow[]> {
+  // Everything this write carries, minus the two columns that say WHICH row
+  // it is. Derived rather than listed a second time: a hand-written set
+  // clause is a copy of the value list that nothing compares against, so a
+  // column added to one and forgotten in the other is written on insert and
+  // silently frozen on every update afterwards. That is what happened to
+  // `period` — an account moved to annual, Stripe billed annually, and the
+  // row went on saying monthly.
+  const { userId: _userId, stripeSubscriptionId: _id, ...overwritten } = values;
+
   return await (tx ?? db)
     .insert(subscriptions)
     .values(values)
     .onConflictDoUpdate({
       target: subscriptions.stripeSubscriptionId,
       set: {
-        tier: values.tier,
-        status: values.status,
-        currentPeriodEnd: values.currentPeriodEnd,
-        cancelAtPeriodEnd: values.cancelAtPeriodEnd,
-        stripeItemId: values.stripeItemId,
-        hasPendingUpdate: values.hasPendingUpdate,
-        pendingTier: values.pendingTier,
-        payableInvoiceUrl: values.payableInvoiceUrl,
-        observedAt: values.observedAt,
+        ...overwritten,
         // A subscription that was soft-deleted and then heard from again is
         // live; nothing else would put the row back in the account's list.
         deletedAt: null,

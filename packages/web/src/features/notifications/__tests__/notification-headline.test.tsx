@@ -190,6 +190,55 @@ describe('notificationHeadline', () => {
     expect(screen.getByTestId('m').querySelectorAll('a')).toHaveLength(0);
   });
 
+  it('names the period an incomplete move was going to', () => {
+    const tt = fakeT({
+      'notifications.headline.membershipUpgradeIncomplete':
+        'payment for your move to {tier} {period} was not completed',
+      'membership.period.year': 'annual',
+    });
+    const n = makeNotification({
+      type: 'membership.upgrade_incomplete',
+      payload: { toTier: 'team', toPeriod: 'year' },
+    });
+    render(
+      <MemoryRouter>
+        <span data-testid='m'>
+          {notificationHeadline(n, EMPTY_RESOLVED, tt)}
+        </span>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('m')).toHaveTextContent(
+      'payment for your move to Team annual was not completed',
+    );
+  });
+
+  it('drops the period from a row that was written before we recorded one', () => {
+    // Rows written before the period existed carry no `toPeriod`. Composing
+    // the key from an empty string produced `membership.period.`, which
+    // resolves to nothing, and an unresolved key is rendered verbatim — so
+    // the reader was shown a key name in the middle of a sentence.
+    const tt = fakeT({
+      'notifications.headline.membershipUpgradeIncomplete':
+        'payment for your move to {tier} {period} was not completed',
+      'notifications.headline.membershipUpgradeIncompleteNoPeriod':
+        'payment for your move to {tier} was not completed',
+    });
+    const n = makeNotification({
+      type: 'membership.upgrade_incomplete',
+      payload: { toTier: 'team' },
+    });
+    render(
+      <MemoryRouter>
+        <span data-testid='m'>
+          {notificationHeadline(n, EMPTY_RESOLVED, tt)}
+        </span>
+      </MemoryRouter>,
+    );
+    const text = screen.getByTestId('m').textContent ?? '';
+    expect(text).toBe('payment for your move to Team was not completed');
+    expect(text).not.toContain('membership.period.');
+  });
+
   it('falls back to the raw type for an unhandled type', () => {
     const n = makeNotification({
       type: 'unknown.future_type' as Notification['type'],

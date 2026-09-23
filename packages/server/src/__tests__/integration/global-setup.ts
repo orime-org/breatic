@@ -19,6 +19,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testconta
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
 import { copyFileSync, existsSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Shared state across setup / teardown. */
 let pgContainer: StartedPostgreSqlContainer;
@@ -36,7 +37,7 @@ let redisContainer: StartedTestContainer;
 const PAYMENT_CONFIGS = ["pricing", "subscription"] as const;
 
 /** Repo root, from this file at packages/server/src/__tests__/integration/. */
-const REPO_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "../../../../..");
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../..");
 
 /** The configs this run laid down, and therefore the ones it may remove. */
 const laidDown: string[] = [];
@@ -54,7 +55,7 @@ function layDownPaymentConfigs(): void {
     const target = resolve(REPO_ROOT, `config/${name}.yaml`);
     if (existsSync(target)) continue;
     copyFileSync(
-      resolve(dirname(new URL(import.meta.url).pathname), `fixtures/${name}.yaml`),
+      resolve(dirname(fileURLToPath(import.meta.url)), `fixtures/${name}.yaml`),
       target,
     );
     laidDown.push(target);

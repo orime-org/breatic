@@ -27,8 +27,14 @@ import { GENERATED, TEST_FILE } from "#repo-lint/file-kinds";
 const CJK =
   /[\u3000-\u312F\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7A3\uF900-\uFAFF\uFF00-\uFFEF\u{20000}-\u{2FA1F}]/u;
 
-/** Files a developer reads and runs, where English is the shared language. */
-const SCANNED = /\.(ts|mts|cts|tsx|css|ya?ml|sh|mjs|cjs)$/;
+/**
+ * Files a developer reads and runs, where English is the shared language.
+ *
+ * `.yaml.template` is here because a deployment's own `config/*.yaml` can be
+ * untracked — the two payment configs are — and then the template beside it
+ * is the only copy this check can see.
+ */
+const SCANNED = /\.(ts|mts|cts|tsx|css|ya?ml|sh|mjs|cjs)(\.template)?$/;
 
 /** Product translations — the one place non-English text belongs. */
 const LOCALE_CATALOG = /^locales\//;

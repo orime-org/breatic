@@ -1074,6 +1074,7 @@
       "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました",
       "membershipEnded": "{tier} メンバーシップが終了しました",
       "membershipUpgradeIncomplete": "{tier} {period} への変更のお支払いが完了しませんでした",
+      "membershipUpgradeIncompleteNoPeriod": "{tier} への変更のお支払いが完了しませんでした",
       "storageQuotaExceeded": "ストレージがいっぱいです"
     },
     "actorFallback": "誰か",

@@ -11,8 +11,8 @@ dist/
 
 # Payment configuration — what this deployment charges and which Stripe
 # objects it sells. Copy the .template beside each and fill in your own.
-# Read only when PAYMENT_ENABLED=true; initCore refuses to start without
-# them when it is.
+# The server checks both at startup when PAYMENT_ENABLED=true and refuses to
+# start without them.
 /config/subscription.yaml
 /config/pricing.yaml
 

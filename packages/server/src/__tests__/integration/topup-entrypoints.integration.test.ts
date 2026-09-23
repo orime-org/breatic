@@ -755,12 +755,15 @@ describe("POST /payment/checkout — who may start a purchase", () => {
   /**
    * Ask the endpoint to start a checkout.
    * @param cookie - The session cookie, or none for a signed-out caller.
-   * @param priceCents - Which pack, by face value.
+   * @param priceCents - Which pack, by face value. Defaults to the cheapest
+   *   one this deployment sells, read from the same loader the endpoint
+   *   reads — `config/pricing.yaml` is a deployment's own file and not in the
+   *   repository, so a literal would name a pack that may not exist.
    * @returns The response.
    */
   async function checkout(
     cookie: string | null,
-    priceCents = 1000,
+    priceCents = getPricingTiers()[0]?.priceCents ?? 0,
     over: Record<string, unknown> = {},
   ): Promise<Response> {
     return app.request("/api/v1/payment/checkout", {
@@ -936,11 +939,15 @@ describe("GET /payment/tiers — what the buy screen reads", () => {
       };
       // `toEqual` on the pack, not a subset match: this is the wire the buy
       // screen reads, and a field added or dropped on either side of it should
-      // redden here.
+      // redden here. The figures come from the same loader the endpoint
+      // reads, because `config/pricing.yaml` is a deployment's own file and
+      // not in the repository — a literal here would assert against whichever
+      // copy the machine happens to hold.
+      const [cheapest] = getPricingTiers();
       expect(body.data.packs[0]).toEqual({
-        priceCents: 1000,
-        credits: 830,
-        currency: "usd",
+        priceCents: cheapest?.priceCents,
+        credits: cheapest?.credits,
+        currency: cheapest?.currency,
       });
       expect(body.data.confirmTimeoutMs).toBeGreaterThan(0);
       // That the rule reaches the wire, and that every line of it resolved to

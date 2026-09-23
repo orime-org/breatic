@@ -847,6 +847,56 @@ describe('MembershipPanel', () => {
     }
   });
 
+  it('按一下切换器，价格和那句省两个月跟着换', async () => {
+    // 这一页的核心交互，而它此前一次都没被按过：矩阵测试把 selectedPeriod
+    // 当 prop 喂进去，按钮到状态那一段谁都没走。
+    const user = userEvent.setup();
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ period: 'year' }) }),
+    );
+    setup();
+
+    await screen.findByTestId('tier-price-pro');
+    expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$199.99');
+    expect(screen.getByTestId('membership-period-switch')).toHaveTextContent(
+      'Twelve months for the price of ten',
+    );
+
+    await user.click(screen.getByTestId('membership-period-month'));
+
+    expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$19.99');
+    // 那句话讲的是年付省下的两个月。月付视图上它贴着月价，说的就不是眼前
+    // 这件事了。
+    expect(screen.getByTestId('membership-period-switch')).not.toHaveTextContent(
+      'Twelve months for the price of ten',
+    );
+
+    await user.click(screen.getByTestId('membership-period-year'));
+    expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$199.99');
+  });
+
+  it('「当前会员」那一行把周期跟档位一起说出来', async () => {
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ tier: 'pro', period: 'year' }) }),
+    );
+    setup();
+
+    expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
+      'PRO · Annual',
+    );
+  });
+
+  it('没有订阅时那一行只说档位，不带一个空的分隔号', async () => {
+    membershipMock.mockResolvedValue(
+      answer({ tier: 'base', subscription: null }),
+    );
+    setup();
+
+    const line = await screen.findByTestId('current-tier-name');
+    expect(line).toHaveTextContent('Starter');
+    expect(line.textContent).not.toContain('·');
+  });
+
   it('「各档对比」是表格第一列的表头，跟三个档位名同一行', async () => {
     // 它原本是表格上方一个单独的标题，于是第一列没有任何标签。
     membershipMock.mockResolvedValue(answer());

@@ -176,11 +176,21 @@ export const TierCards = React.memo(function TierCards({
           t('membership.card.enterpriseGovernance'),
         ]}
         action={
-          <Button asChild type='button' variant='outline' size='sm'>
-            <a href={`mailto:${SALES_EMAIL}`} data-testid='membership-contact-sales'>
-              {t('membership.contactSales')}
-            </a>
-          </Button>
+          cardAction({
+            card: 'enterprise',
+            selectedPeriod,
+            accountTier: currentTier,
+            sellsSubscriptions,
+            situation,
+            heldPeriod,
+            move,
+          }) === 'contactSales' ? (
+              <Button asChild type='button' variant='outline' size='sm'>
+                <a href={`mailto:${SALES_EMAIL}`} data-testid='membership-contact-sales'>
+                  {t('membership.contactSales')}
+                </a>
+              </Button>
+            ) : null
         }
       />
     </div>

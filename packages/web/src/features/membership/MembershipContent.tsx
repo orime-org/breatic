@@ -294,9 +294,14 @@ export function MembershipContent({
                   {t(`membership.period.${period}`)}
                 </Button>
               ))}
-              <span className='px-2 text-xs text-foreground-secondary'>
-                {t('membership.saveTwoMonths')}
-              </span>
+              {/* What the annual price saves, so it belongs to the annual
+                  view. Beside monthly prices it describes something other
+                  than what the reader is looking at. */}
+              {selectedPeriod === 'year' ? (
+                <span className='px-2 text-xs text-foreground-secondary'>
+                  {t('membership.saveTwoMonths')}
+                </span>
+              ) : null}
             </div>
           ) : null}
           <TierCards

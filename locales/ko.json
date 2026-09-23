@@ -1074,6 +1074,7 @@
       "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다",
       "membershipEnded": "{tier} 멤버십이 종료되었습니다",
       "membershipUpgradeIncomplete": "{tier} {period}(으)로 변경하는 결제가 완료되지 않았습니다",
+      "membershipUpgradeIncompleteNoPeriod": "{tier}(으)로 변경하는 결제가 완료되지 않았습니다",
       "storageQuotaExceeded": "저장 공간이 가득 찼습니다"
     },
     "actorFallback": "누군가",

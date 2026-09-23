@@ -1074,6 +1074,7 @@
       "projectInviteAccepted": "{actor} accepted your invite to {project}",
       "membershipEnded": "Your {tier} membership has ended",
       "membershipUpgradeIncomplete": "Payment for your move to {tier} {period} was not completed",
+      "membershipUpgradeIncompleteNoPeriod": "Payment for your move to {tier} was not completed",
       "storageQuotaExceeded": "Your storage is full"
     },
     "actorFallback": "Someone",

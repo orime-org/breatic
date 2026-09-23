@@ -293,7 +293,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/limits.yaml` | 分页大小 · 画布参考池上限 · 答复期限等业务旋钮。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)。**成员容量不在这儿** —— studio 成员数和 project 协作者数都按会员档位查 `config/membership.yaml`,键是该 studio 当前 admin 的档位 |
 | `config/models/*.yaml` | AI 模型路由(按模态分目录,model-centric) |
 
-**`config/subscription.yaml` 和 `config/pricing.yaml` 两份不随仓库分发** —— 它们写的是某个部署收多少钱、卖的是哪几个 Stripe 对象。仓里跟着的是各自的 `.template`(价格 0、price id 空串),照着填自己的;两份 schema 都要求正整数,所以没改过的模板一读就被拒。**只在 `PAYMENT_ENABLED=true` 时读**:server 启动时预检这两份,读不出来就退出;没开支付的部署根本不碰它们。
+**`config/subscription.yaml` 和 `config/pricing.yaml` 两份不随仓库分发** —— 它们写的是某个部署收多少钱、卖的是哪几个 Stripe 对象。仓里跟着的是各自的 `.template`(价格 0、price id 空串),照着填自己的;两份 schema 都要求正整数,所以没改过的模板一读就被拒。**`PAYMENT_ENABLED=true` 时 server 启动预检这两份,读不出来就退出**;之后 `subscription.yaml` 还会在读档位上限时被打开一次(判一条过了付费期的订阅还认不认它的档,读 `stale_after_days`),没有订阅行的部署走不到那一步。
 
 ### Logging
 

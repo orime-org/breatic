@@ -1074,6 +1074,7 @@
       "projectInviteAccepted": "{actor} 接受了你对 {project} 的邀请",
       "membershipEnded": "{tier} 会员已结束",
       "membershipUpgradeIncomplete": "换到 {tier} {period} 的付款没有完成",
+      "membershipUpgradeIncompleteNoPeriod": "换到 {tier} 的付款没有完成",
       "storageQuotaExceeded": "存储已满"
     },
     "actorFallback": "某人",

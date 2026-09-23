@@ -124,6 +124,26 @@ describe("POST /payment/webhook — 分流与状态码", () => {
     expect(res.status).toBe(200);
   });
 
+  it("Stripe 收的钱跟我们的价目表对不上，答 500 不答 200", async () => {
+    // 200 等于把一条付过钱的订阅扔掉。500 让 Stripe 继续重投三天，那三天
+    // 正是有人把价格改对、事件自己落地的窗口。
+    handleSubscriptionEvent.mockResolvedValue({
+      status: "priceDisagreement",
+      userId: "u-1",
+      expected: { cents: 1999, currency: "usd", interval: "month" },
+      actual: { cents: 4999, currency: "usd", interval: "month" },
+    });
+
+    const res = await post({
+      id: "evt_money",
+      type: "customer.subscription.updated",
+      data: { object: { id: "sub_9" } },
+    });
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ received: false });
+  });
+
   it("不是订阅腿的事件才交给积分那条腿", async () => {
     handleSubscriptionEvent.mockResolvedValue({ status: "notMine" });
     paymentService.fulfillPayment.mockResolvedValue({

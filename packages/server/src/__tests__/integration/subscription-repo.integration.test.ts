@@ -162,6 +162,97 @@ describe("upsertSubscription (#106 §5.2)", () => {
       await dropUser(userId);
     }
   });
+
+  it("moves the billing period on a row that already exists", async () => {
+    // Moving from monthly to annual keeps the same Stripe subscription id, so
+    // the write that records it lands on the conflict branch. A period left
+    // behind there is an account billed for a year and recorded as paying by
+    // the month: the panel names the wrong period, the wrong card reads as
+    // current, and the annual card goes on offering a move that was made.
+    const userId = await makeUser();
+    const stripeId = `sub_period_${Date.now()}`;
+    try {
+      await upsertSubscription({
+        userId,
+        stripeSubscriptionId: stripeId,
+        tier: "pro",
+        period: "month",
+        status: "active",
+        currentPeriodEnd: new Date("2026-10-18T00:00:00.000Z"),
+        cancelAtPeriodEnd: false,
+        stripeItemId: "si_1",
+        hasPendingUpdate: false,
+        pendingTier: null,
+        pendingPeriod: null,
+        payableInvoiceUrl: null,
+        observedAt: new Date(),
+      });
+
+      const moved = await upsertSubscription({
+        userId,
+        stripeSubscriptionId: stripeId,
+        tier: "pro",
+        period: "year",
+        status: "active",
+        currentPeriodEnd: new Date("2027-09-18T00:00:00.000Z"),
+        cancelAtPeriodEnd: false,
+        stripeItemId: "si_1",
+        hasPendingUpdate: false,
+        pendingTier: null,
+        pendingPeriod: null,
+        payableInvoiceUrl: null,
+        observedAt: new Date(),
+      });
+
+      expect(moved.period).toBe("year");
+      const [reread] = await listSubscriptions(userId);
+      expect(reread?.period).toBe("year");
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("records the period a waiting change moves to, and clears it again", async () => {
+    // `pending_period` answers "the period this account is moving to", which
+    // is a different question from "the period it is on" for as long as the
+    // change waits on its invoice. It reaches an existing row the same way
+    // the period does.
+    const userId = await makeUser();
+    const stripeId = `sub_pending_${Date.now()}`;
+    /**
+     * One write for this subscription, with the waiting change described.
+     * @param pendingTier - The tier it is moving to, or null.
+     * @param pendingPeriod - The period it is moving to, or null.
+     * @returns The stored subscription.
+     */
+    const write = async (
+      pendingTier: "pro" | "team" | null,
+      pendingPeriod: "month" | "year" | null,
+    ): ReturnType<typeof upsertSubscription> =>
+      await upsertSubscription({
+        userId,
+        stripeSubscriptionId: stripeId,
+        tier: "pro",
+        period: "month",
+        status: "active",
+        currentPeriodEnd: new Date("2026-10-18T00:00:00.000Z"),
+        cancelAtPeriodEnd: false,
+        stripeItemId: "si_1",
+        hasPendingUpdate: pendingTier !== null,
+        pendingTier,
+        pendingPeriod,
+        payableInvoiceUrl: null,
+        observedAt: new Date(),
+      });
+
+    try {
+      await write(null, null);
+      expect((await write("team", "year")).pendingPeriod).toBe("year");
+      expect((await write(null, null)).pendingPeriod).toBeNull();
+    } finally {
+      await dropUser(userId);
+    }
+  });
 });
 
 describe("listSubscriptions (#106 §5.2)", () => {
