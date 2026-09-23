@@ -65,32 +65,23 @@ export function threadRangesByThread(
 }
 
 /**
- * Every stretch of body one thread's highlight covers, in document order.
- * @param doc - The body to walk.
- * @param threadId - Which thread.
- * @returns Its stretches, empty once the words are gone.
- */
-export function threadRangesIn(
-  doc: ProseMirrorNode,
-  threadId: string,
-): readonly ThreadRange[] {
-  return threadRangesByThread(doc).get(threadId) ?? [];
-}
-
-/**
  * The words one comment is about.
- * @param doc - The body to read.
+ *
+ * The walk is the caller's: every reader of this module needs the answer for
+ * every card it is drawing, so it walks once and quotes from that. Taking the
+ * table rather than a document to walk is what keeps a second walk per thread
+ * from creeping back in.
+ * @param doc - The body the stretches were walked out of.
  * @param threadId - Which thread.
- * @param walked - Every thread's stretches, when the caller has already
- *   walked the body for them; the walk happens here otherwise.
+ * @param walked - Every thread's stretches, from one walk of that body.
  * @returns Its words, stretches joined by a space; null once they are gone.
  */
 export function threadQuoteIn(
   doc: ProseMirrorNode,
   threadId: string,
-  walked?: ReadonlyMap<string, readonly ThreadRange[]>,
+  walked: ReadonlyMap<string, readonly ThreadRange[]>,
 ): string | null {
-  const ranges = walked?.get(threadId) ?? threadRangesIn(doc, threadId);
+  const ranges = walked.get(threadId) ?? [];
   if (ranges.length === 0) return null;
   return ranges.map((at) => doc.textBetween(at.from, at.to)).join(' ');
 }

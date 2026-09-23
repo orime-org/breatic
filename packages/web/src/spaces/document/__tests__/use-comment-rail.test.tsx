@@ -106,7 +106,7 @@ describe('useCommentRail', () => {
 
     expect(result.current.unresolved).toEqual([]);
     expect(result.current.resolved).toEqual([]);
-    expect(result.current.hasUnresolved).toBe(false);
+    expect(result.current.unresolved).toHaveLength(0);
   });
 
   it('picks up a comment as it is posted, and marks the button', async () => {
@@ -119,10 +119,10 @@ describe('useCommentRail', () => {
     });
 
     await waitFor(() => {
-      expect(result.current.hasUnresolved).toBe(true);
+      expect(result.current.unresolved.length).toBeGreaterThan(0);
     });
     expect(result.current.unresolved).toHaveLength(1);
-    expect(result.current.unresolved[0]?.state).toBe('open');
+    expect(result.current.unresolved[0]?.settled).toBe(false);
   });
 
   it('moves a resolved thread into its own group and drops the mark', async () => {
@@ -132,7 +132,7 @@ describe('useCommentRail', () => {
     await act(async () => {
       await comment(editor, { from: run.from, to: run.from + 5 }, 'first');
     });
-    await waitFor(() => expect(result.current.hasUnresolved).toBe(true));
+    await waitFor(() => expect(result.current.unresolved.length).toBeGreaterThan(0));
 
     const threadId = onlyThreadId(editor);
     await act(async () => {
@@ -142,10 +142,10 @@ describe('useCommentRail', () => {
     });
 
     await waitFor(() => {
-      expect(result.current.hasUnresolved).toBe(false);
+      expect(result.current.unresolved).toHaveLength(0);
     });
     expect(result.current.resolved).toHaveLength(1);
-    expect(result.current.resolved[0]?.state).toBe('resolved');
+    expect(result.current.resolved[0]?.settled).toBe(true);
   });
 
   it('keeps a comment whose words were deleted, as an orphan', async () => {
@@ -155,7 +155,7 @@ describe('useCommentRail', () => {
     await act(async () => {
       await comment(editor, { from: run.from, to: run.from + 5 }, 'first');
     });
-    await waitFor(() => expect(result.current.hasUnresolved).toBe(true));
+    await waitFor(() => expect(result.current.unresolved.length).toBeGreaterThan(0));
 
     const view = editor.prosemirrorView!;
     act(() => {
@@ -163,10 +163,10 @@ describe('useCommentRail', () => {
     });
 
     await waitFor(() => {
-      expect(result.current.unresolved[0]?.state).toBe('orphaned');
+      expect(result.current.unresolved).toHaveLength(1);
     });
     // Still the reader's to deal with, so the button stays marked (§9.2).
-    expect(result.current.hasUnresolved).toBe(true);
+    expect(result.current.unresolved.length).toBeGreaterThan(0);
   });
 
   it('drops an orphan that was deleted, which the body never hears about', async () => {
@@ -180,7 +180,7 @@ describe('useCommentRail', () => {
     await act(async () => {
       await comment(editor, { from: run.from, to: run.from + 5 }, 'first');
     });
-    await waitFor(() => expect(result.current.hasUnresolved).toBe(true));
+    await waitFor(() => expect(result.current.unresolved.length).toBeGreaterThan(0));
 
     const threadId = onlyThreadId(editor);
     const view = editor.prosemirrorView!;
@@ -188,7 +188,7 @@ describe('useCommentRail', () => {
       view.dispatch(view.state.tr.delete(run.from, run.from + 5));
     });
     await waitFor(() =>
-      expect(result.current.unresolved[0]?.state).toBe('orphaned'),
+      expect(result.current.unresolved).toHaveLength(1),
     );
 
     await act(async () => {
@@ -200,7 +200,7 @@ describe('useCommentRail', () => {
     await waitFor(() => {
       expect(result.current.unresolved).toEqual([]);
     });
-    expect(result.current.hasUnresolved).toBe(false);
+    expect(result.current.unresolved).toHaveLength(0);
   });
 
   it('hands back the same reading while nothing about it changed', async () => {
@@ -213,7 +213,7 @@ describe('useCommentRail', () => {
     await act(async () => {
       await comment(editor, { from: run.from, to: run.from + 5 }, 'first');
     });
-    await waitFor(() => expect(result.current.hasUnresolved).toBe(true));
+    await waitFor(() => expect(result.current.unresolved.length).toBeGreaterThan(0));
 
     const before = result.current;
     const view = editor.prosemirrorView!;

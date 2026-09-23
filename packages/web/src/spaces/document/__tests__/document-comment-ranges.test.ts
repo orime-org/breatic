@@ -28,7 +28,6 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import {
   threadQuoteIn,
   threadRangesByThread,
-  threadRangesIn,
 } from '@web/spaces/document/document-comment-ranges';
 
 /**
@@ -59,12 +58,12 @@ function block(
   ]);
 }
 
-describe('threadRangesIn', () => {
+describe('threadRangesByThread', () => {
   it('names the one stretch a single mark covers', () => {
     const doc = schema.nodes.doc.create(null, [
       block({ text: 'commented', marks: [comment('t1')] }),
     ]);
-    const found = threadRangesIn(doc, 't1');
+    const found = threadRangesByThread(doc).get('t1') ?? [];
     expect(found).toHaveLength(1);
     expect(doc.textBetween(found[0]!.from, found[0]!.to)).toBe('commented');
   });
@@ -75,19 +74,19 @@ describe('threadRangesIn', () => {
       block({ text: 'typed in between' }),
       block({ text: 'second half', marks: [comment('t1')] }),
     ]);
-    expect(threadRangesIn(doc, 't1')).toHaveLength(2);
+    expect(threadRangesByThread(doc).get('t1') ?? []).toHaveLength(2);
   });
 
   it('names nothing for a thread whose words are gone', () => {
     const doc = schema.nodes.doc.create(null, [block({ text: 'plain' })]);
-    expect(threadRangesIn(doc, 't1')).toEqual([]);
+    expect(threadRangesByThread(doc).get('t1') ?? []).toEqual([]);
   });
 
   it('names the marks of a settled thread, which still show their words', () => {
     const doc = schema.nodes.doc.create(null, [
       block({ text: 'settled', marks: [comment('t1', true)] }),
     ]);
-    expect(threadRangesIn(doc, 't1')).toHaveLength(1);
+    expect(threadRangesByThread(doc).get('t1') ?? []).toHaveLength(1);
   });
 
   it('names only the thread asked for', () => {
@@ -97,7 +96,7 @@ describe('threadRangesIn', () => {
         { text: 'theirs', marks: [comment('t2')] },
       ),
     ]);
-    const found = threadRangesIn(doc, 't2');
+    const found = threadRangesByThread(doc).get('t2') ?? [];
     expect(found).toHaveLength(1);
     expect(doc.textBetween(found[0]!.from, found[0]!.to)).toBe('theirs');
   });
@@ -112,7 +111,7 @@ describe('threadQuoteIn', () => {
         { text: ' after' },
       ),
     ]);
-    expect(threadQuoteIn(doc, 't1')).toBe('commented');
+    expect(threadQuoteIn(doc, 't1', threadRangesByThread(doc))).toBe('commented');
   });
 
   it('leaves out what was typed into the gap of a split comment', () => {
@@ -123,31 +122,27 @@ describe('threadQuoteIn', () => {
       block({ text: 'typed in between' }),
       block({ text: 'second half', marks: [comment('t1')] }),
     ]);
-    expect(threadQuoteIn(doc, 't1')).toBe('first half second half');
+    expect(threadQuoteIn(doc, 't1', threadRangesByThread(doc))).toBe('first half second half');
   });
 
   it('answers nothing once the words are gone', () => {
     const doc = schema.nodes.doc.create(null, [block({ text: 'plain' })]);
-    expect(threadQuoteIn(doc, 't1')).toBeNull();
+    expect(threadQuoteIn(doc, 't1', threadRangesByThread(doc))).toBeNull();
   });
 });
 
 describe('reading every thread at once', () => {
-  it('finds the same stretches the per-thread walk finds', () => {
+  it('keys every thread in the body, and only those', () => {
     const doc = schema.nodes.doc.create(null, [
       block({ text: 'alpha ', marks: [comment('t1')] }),
       block({ text: 'bravo' }),
       block({ text: 'charlie', marks: [comment('t2')] }),
     ]);
 
-    const all = threadRangesByThread(doc);
-
-    expect([...all.keys()].sort()).toEqual(['t1', 't2']);
-    expect(all.get('t1')).toEqual(threadRangesIn(doc, 't1'));
-    expect(all.get('t2')).toEqual(threadRangesIn(doc, 't2'));
+    expect([...threadRangesByThread(doc).keys()].sort()).toEqual(['t1', 't2']);
   });
 
-  it('joins neighbouring runs the way the per-thread walk does', () => {
+  it('joins neighbouring runs into one stretch', () => {
     const doc = schema.nodes.doc.create(null, [
       block(
         { text: 'alpha ', marks: [comment('t1')] },
@@ -156,9 +151,6 @@ describe('reading every thread at once', () => {
       ),
     ]);
 
-    expect(threadRangesByThread(doc).get('t1')).toEqual(
-      threadRangesIn(doc, 't1'),
-    );
     expect(threadRangesByThread(doc).get('t1')).toHaveLength(1);
   });
 

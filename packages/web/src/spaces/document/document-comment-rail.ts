@@ -4,16 +4,13 @@
 /**
  * How the panel orders and groups its cards (#18, A4 · A5 · A9).
  *
- * Three answers come out of one reading. The cards go in body order (A4), the
- * resolved ones sit in their own collapsed group (A9), and whether anything is
- * unresolved is the dot on the `⋯` button (A5). They are computed together so
- * the dot cannot disagree with the group it stands for — it is the same list,
- * counted rather than counted again.
+ * Two answers come out of one reading: the cards in body order (A4), and the
+ * resolved ones in their own group (A9). The dot on the `⋯` button is the
+ * first group's length, counted where it is drawn.
  *
- * Which group a thread is in follows from its state, and the state is the two
- * bits {@link commentCardState} reads. Unresolved and orphaned both go in the
- * first group, because an orphan is something the reader has not dealt with
- * yet (§9.2); resolved and resolved-orphaned go in the second.
+ * Which group a thread is in is whether it has been settled, and nothing
+ * else. A thread whose words were deleted stays with the unresolved ones,
+ * because it is something the reader has not dealt with yet (§9.2).
  *
  * ORDER. Body order is the position table's `from`. That leaves the orphans,
  * which have no position — the design's transition table keeps them in the
@@ -28,8 +25,7 @@
  */
 
 import {
-  commentCardState,
-  type CommentCardState,
+  isSettled,
   type ThreadRange,
 } from '@web/spaces/document/document-comment-state';
 
@@ -47,8 +43,8 @@ export interface RailThread {
 export interface RailCard {
   /** Which thread this card is for. */
   readonly id: string;
-  /** Which of the four states it is in, for what the card says. */
-  readonly state: CommentCardState;
+  /** Whether it has been settled, which is the group it sits in. */
+  readonly settled: boolean;
 }
 
 /** What the panel and the `⋯` button draw, off one reading. */
@@ -57,8 +53,6 @@ export interface CommentRail {
   readonly unresolved: readonly RailCard[];
   /** Resolved cards, in the same order, for the collapsed group. */
   readonly resolved: readonly RailCard[];
-  /** Whether the `⋯` button carries its dot. */
-  readonly hasUnresolved: boolean;
 }
 
 /** A card with what it takes to sort it. */
@@ -91,7 +85,7 @@ function inBodyOrder(a: Sortable, b: Sortable): number {
  * @param threads - Every thread in this document, in any order.
  * @param positions - Where each thread's marks reach in the body; a thread
  *   missing from it has lost the text it pointed at.
- * @returns The two groups in body order, and whether the button is marked.
+ * @returns The two groups, each in body order.
  */
 export function commentRail(
   threads: readonly RailThread[],
@@ -99,23 +93,15 @@ export function commentRail(
 ): CommentRail {
   const sortable: Sortable[] = threads.map((thread) => ({
     id: thread.id,
-    state: commentCardState(thread, thread.id, positions),
+    settled: isSettled(thread),
     from: positions.get(thread.id)?.from,
     opened: thread.createdAt.getTime(),
   }));
   sortable.sort(inBodyOrder);
 
-  const unresolved = sortable.filter(
-    (card) => card.state === 'open' || card.state === 'orphaned',
-  );
-  const resolved = sortable.filter(
-    (card) => card.state === 'resolved' || card.state === 'resolvedOrphaned',
-  );
-
   return {
-    unresolved: unresolved.map(asCard),
-    resolved: resolved.map(asCard),
-    hasUnresolved: unresolved.length > 0,
+    unresolved: sortable.filter((card) => !card.settled).map(asCard),
+    resolved: sortable.filter((card) => card.settled).map(asCard),
   };
 }
 
@@ -125,5 +111,5 @@ export function commentRail(
  * @returns The card the panel draws.
  */
 function asCard(card: Sortable): RailCard {
-  return { id: card.id, state: card.state };
+  return { id: card.id, settled: card.settled };
 }

@@ -69,8 +69,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // button and moves nothing (design §5). Held here because the menu opens
   // the panel and the panel closes itself, so neither owns it.
   const [railOpen, setRailOpen] = React.useState(false);
-  const toggleRail = React.useCallback(() => {
-    setRailOpen((open) => !open);
+  // Opening only: the menu row this is on stands aside while the panel is up,
+  // and the panel closes itself.
+  const openRail = React.useCallback(() => {
+    setRailOpen(true);
   }, []);
   // A press on a highlight opens the panel, which is where a comment is read
   // (user 2026-09-22). The panel then brings that card into view and marks
@@ -157,7 +159,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
             <div className='flex min-w-0 flex-1 flex-col px-[var(--doc-body-gutter)]'>
               <DocumentMenuEntry
                 commentsOpen={railOpen}
-                onToggleComments={toggleRail}
+                onOpenComments={openRail}
                 unresolvedComments={rail.unresolved.length}
               />
               <div

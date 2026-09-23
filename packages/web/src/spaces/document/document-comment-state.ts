@@ -2,31 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What one comment card is in (#18, design §9.2).
+ * Whether one comment has been settled (#18, design §9.2).
  *
- * A thread's state is two independent bits, and this is the one place they are
- * read together:
+ * The design names two bits — settled, and whether the body still carries the
+ * words. The second one reaches a card as its quote: a card with nothing to
+ * quote is a card whose words are gone, read off the same walk of the body
+ * that produces the quote itself (`use-comment-cards.ts`). So only the first
+ * is asked here.
  *
- * | bit | lives where | written by |
- * |---|---|---|
- * | `resolved` | the thread in the `comments` map | resolve / unresolve |
- * | has a range | whether the body carries a mark for it | any edit to the body |
- *
- * The second bit is derived and stored nowhere, which is why it is asked of
- * the position table rather than of the mark. The mark's own `orphan`
- * attribute cannot answer it: the library sets that from
+ * It is asked of the thread rather than of the mark. The mark's own `orphan`
+ * attribute answers a different question: the library sets it from
  * `!thread || thread.resolved || thread.deletedAt`
  * (`comments/extension.ts:138-142`), so a resolved thread's mark carries
  * `orphan: true` while its text is intact. That attribute says whether to
- * paint the mark; this function says what the card is.
+ * paint the mark.
  */
-
-/** The four combinations of the two bits, per design §9.2. */
-export type CommentCardState =
-  | 'open'
-  | 'resolved'
-  | 'orphaned'
-  | 'resolvedOrphaned';
 
 /** The half of a thread this reading needs. */
 export interface ResolvableThread {
@@ -41,21 +31,10 @@ export interface ThreadRange {
 }
 
 /**
- * Reads the two bits of one thread into the state its card is in.
- * @param thread - The thread, for its resolved flag.
- * @param threadId - Which thread to look up in the table.
- * @param positions - Ranges the body currently carries, keyed by thread id;
- *   a thread missing from it has lost the text it pointed at.
- * @returns Which of the four states that card is in.
+ * Whether this thread has been settled.
+ * @param thread - The thread to read.
+ * @returns True once somebody resolved it.
  */
-export function commentCardState(
-  thread: ResolvableThread,
-  threadId: string,
-  positions: ReadonlyMap<string, ThreadRange>,
-): CommentCardState {
-  const resolved = thread.resolved === true;
-  const hasRange = positions.has(threadId);
-
-  if (resolved) return hasRange ? 'resolved' : 'resolvedOrphaned';
-  return hasRange ? 'open' : 'orphaned';
+export function isSettled(thread: ResolvableThread): boolean {
+  return thread.resolved === true;
 }

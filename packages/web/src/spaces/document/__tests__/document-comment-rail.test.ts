@@ -81,13 +81,13 @@ describe('commentRail', () => {
   it('keeps a thread whose text was deleted in the unresolved group', () => {
     const rail = commentRail([thread('orphan', 1)], at());
     expect(ids(rail.unresolved)).toEqual(['orphan']);
-    expect(rail.unresolved[0]!.state).toBe('orphaned');
+    expect(rail.unresolved[0]!.settled).toBe(false);
   });
 
   it('sends a resolved thread whose text was deleted to the resolved group', () => {
     const rail = commentRail([thread('both', 1, true)], at());
     expect(ids(rail.resolved)).toEqual(['both']);
-    expect(rail.resolved[0]!.state).toBe('resolvedOrphaned');
+    expect(rail.resolved[0]!.settled).toBe(true);
   });
 
   it('puts the ones with no text left after the ones that have it', () => {
@@ -103,29 +103,30 @@ describe('commentRail', () => {
     expect(ids(rail.unresolved)).toEqual(['older', 'newer']);
   });
 
-  it('marks the button when something is unresolved', () => {
+  it('leaves something in the first group while anything is unresolved', () => {
+    // The dot on the `⋯` button is this group's length, counted where it is
+    // drawn (`DocumentEditor`), so this group is what the dot stands for.
     const rail = commentRail([thread('live', 1)], at(['live', 10]));
-    expect(rail.hasUnresolved).toBe(true);
+    expect(rail.unresolved).toHaveLength(1);
   });
 
-  it('marks the button for an orphan too, which nobody has dealt with', () => {
+  it('keeps an orphan in it too, which nobody has dealt with', () => {
     const rail = commentRail([thread('orphan', 1)], at());
-    expect(rail.hasUnresolved).toBe(true);
+    expect(rail.unresolved).toHaveLength(1);
   });
 
-  it('leaves the button unmarked when everything is resolved', () => {
+  it('empties it when everything is resolved', () => {
     const rail = commentRail(
       [thread('done', 1, true), thread('also-done', 2, true)],
       at(['done', 10]),
     );
-    expect(rail.hasUnresolved).toBe(false);
+    expect(rail.unresolved).toEqual([]);
   });
 
-  it('leaves the button unmarked when there are no threads at all', () => {
+  it('answers with two empty groups when there are no threads at all', () => {
     const rail = commentRail([], at());
     expect(rail.unresolved).toEqual([]);
     expect(rail.resolved).toEqual([]);
-    expect(rail.hasUnresolved).toBe(false);
   });
 
   it('orders the resolved group the same way', () => {

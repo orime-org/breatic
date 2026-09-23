@@ -36,7 +36,6 @@ import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 const EMPTY_RAIL: CommentRail = {
   unresolved: [],
   resolved: [],
-  hasUnresolved: false,
 };
 
 
@@ -67,7 +66,7 @@ function sameCards(a: readonly RailCard[], b: readonly RailCard[]): boolean {
     a.length === b.length &&
     a.every(
       (card, index) =>
-        card.id === b[index]?.id && card.state === b[index]?.state,
+        card.id === b[index]?.id && card.settled === b[index]?.settled,
     )
   );
 }
@@ -75,7 +74,7 @@ function sameCards(a: readonly RailCard[], b: readonly RailCard[]): boolean {
 /**
  * Reads what the panel and the `⋯` button draw, and keeps it current.
  * @param editor - The document editor.
- * @returns The two groups in body order, and whether the button is marked.
+ * @returns The two groups, each in body order.
  */
 export function useCommentRail(editor: ToolEditor): CommentRail {
   const comments = commentsOn(editor);

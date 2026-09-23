@@ -237,7 +237,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
   const box = React.useRef<HTMLTextAreaElement>(null);
   useAutosizeTextarea(box, reply);
   const mayWrite = canPostAnnotations(myRole);
-  const settled = card.state === 'resolved' || card.state === 'resolvedOrphaned';
+  const settled = card.settled;
   // A thread carries no author of its own, so whoever opened it is the author
   // of its first comment — the same reading the store's auth makes.
   const mayDeleteThread = annotationRights({
@@ -280,9 +280,9 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
     <article
       data-testid='doc-comment-card'
       data-thread={card.id}
-      data-state={card.state}
+      data-settled={settled}
       data-selected={marked}
-      className='rounded-content-sm border border-border bg-card p-2.5 data-[selected=true]:border-active-border data-[state=resolved]:opacity-70 data-[state=resolvedOrphaned]:opacity-70'
+      className='rounded-content-sm border border-border bg-card p-2.5 data-[selected=true]:border-active-border data-[settled=true]:opacity-70'
     >
       {card.quote === null ? (
         <p

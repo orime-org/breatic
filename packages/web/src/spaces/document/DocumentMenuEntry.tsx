@@ -96,10 +96,10 @@ function ComingCommand({
 }
 
 interface DocumentMenuEntryProps {
-  /** Whether the comment panel is on screen. */
+  /** Whether the comment panel is on screen, which takes this row away. */
   commentsOpen: boolean;
   /** Opens or closes the comment panel. */
-  onToggleComments: () => void;
+  onOpenComments: () => void;
   /**
    * How many threads in this document are unresolved.
    *
@@ -114,14 +114,14 @@ interface DocumentMenuEntryProps {
  * The whole-document command entry.
  * @param root0 - Entry props.
  * @param root0.commentsOpen - Whether the comment panel is on screen.
- * @param root0.onToggleComments - Opens or closes it.
+ * @param root0.onOpenComments - Opens it.
  * @param root0.unresolvedComments - How many threads are unresolved.
  * @returns The trigger and its menu.
  */
 export const DocumentMenuEntry = React.memo(
   function DocumentMenuEntry({
     commentsOpen,
-    onToggleComments,
+    onOpenComments,
     unresolvedComments,
   }: DocumentMenuEntryProps): React.JSX.Element | null {
     const t = useTranslation();
@@ -134,8 +134,9 @@ export const DocumentMenuEntry = React.memo(
     if (commentsOpen) return null;
 
     const note = t('spaces.document.docMenu.notOpenYet');
-    // What the row says the panel holds: that it is already open, else how
-    // much is waiting in it, else that there is nothing.
+    // What the row says the panel holds: how much is waiting in it, else
+    // that there is nothing. The row is only drawn while the panel is shut,
+    // so it never has to say that it is open.
     const tail =
       unresolvedComments > 0
         ? t('spaces.document.docMenu.commentsUnresolved', {
@@ -190,7 +191,7 @@ export const DocumentMenuEntry = React.memo(
           <DropdownMenuContent align='end' className='min-w-[190px]'>
             <DropdownMenuItem
               data-testid='doc-doc-menu-comments'
-              onSelect={onToggleComments}
+              onSelect={onOpenComments}
             >
               <span className='flex flex-1 items-center gap-2'>
                 <MessageSquareText className='h-4 w-4' />

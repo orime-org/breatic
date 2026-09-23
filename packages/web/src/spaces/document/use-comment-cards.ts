@@ -34,10 +34,7 @@ import {
   threadQuoteIn,
   threadRangesByThread,
 } from '@web/spaces/document/document-comment-ranges';
-import type {
-  CommentCardState,
-  ThreadRange,
-} from '@web/spaces/document/document-comment-state';
+import type { ThreadRange } from '@web/spaces/document/document-comment-state';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
 import { useCommentRail } from '@web/spaces/document/use-comment-rail';
@@ -60,8 +57,8 @@ export interface CommentEntryView {
 export interface CommentCardView {
   /** The thread this card is for. */
   readonly id: string;
-  /** Which of the four states it is in (§9.2). */
-  readonly state: CommentCardState;
+  /** Whether it has been settled, which is what the card offers on it. */
+  readonly settled: boolean;
   /** The words it is about, or null once they are gone. */
   readonly quote: string | null;
   /** The opening comment and every reply, oldest first. */
@@ -125,7 +122,7 @@ function entryOf(
 
 /**
  * Reads one thread into the card that stands for it.
- * @param card - Which thread, and which state the panel put it in.
+ * @param card - Which thread, and which group the panel put it in.
  * @param source - The threads and their positions.
  * @param doc - The body, which the quote is read out of.
  * @param walked - Every thread's stretches, walked once for the whole panel.
@@ -141,7 +138,7 @@ function drawCard(
   if (thread === undefined) return null;
   return {
     id: card.id,
-    state: card.state,
+    settled: card.settled,
     quote: threadQuoteIn(doc, card.id, walked),
     entries: thread.comments.map((comment) => entryOf(comment, source)),
   };
@@ -156,7 +153,7 @@ function drawCard(
 function sameCard(a: CommentCardView, b: CommentCardView): boolean {
   return (
     a.id === b.id &&
-    a.state === b.state &&
+    a.settled === b.settled &&
     a.quote === b.quote &&
     a.entries.length === b.entries.length &&
     a.entries.every((entry, index) => {

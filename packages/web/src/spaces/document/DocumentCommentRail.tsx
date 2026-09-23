@@ -236,13 +236,6 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const giveBack = React.useCallback(
     (node: HTMLDivElement, id: string): void => {
       sizes.current?.unobserve(node);
-      // A card can leave while the pointer is on it — Resolve is offered on
-      // the card being read, and settling takes that card out of the open
-      // filter, so `mouseleave` never arrives (measured 2026-09-23: the words
-      // stayed deep one press after being settled, A8).
-      if (hoveredThreadIn(editor.prosemirrorState) === id) {
-        hoverThread(editor, null);
-      }
       setHeights((have) => {
         if (!have.has(id)) return have;
         const next = new Map(have);
@@ -250,8 +243,24 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
         return next;
       });
     },
-    [editor],
+    [],
   );
+
+  // What the pointer is on, and what is being read, are both said about a
+  // card. A thread can leave the panel while they point at it — Resolve and
+  // Delete are offered on the card being read, and either takes it off — and
+  // the deep paint in the body then marks a card that is no longer on screen
+  // (measured 2026-09-23, A8). Asked of what the panel is showing rather than
+  // of whether an element was removed: a card's element goes on any render,
+  // and only some of those mean the thread went with it.
+  React.useEffect(() => {
+    if (!ids.includes(hoveredThreadIn(editor.prosemirrorState) ?? '')) {
+      hoverThread(editor, null);
+    }
+    const reading = selectedThreadsIn(editor.prosemirrorState);
+    const still = reading.filter((id) => ids.includes(id));
+    if (still.length !== reading.length) selectThreads(editor, still);
+  }, [ids, editor]);
 
   // The first of them, because a press on two overlapping highlights marks
   // both and only one can have the column to itself.

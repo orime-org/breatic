@@ -449,7 +449,7 @@ body {
   pointer-events: none;
 }
 .react-flow .react-flow__node.canvas-pick-selectable {
-  cursor: pointer;
+  cursor: auto;
 }
 .react-flow .react-flow__node.canvas-pick-selectable:hover {
   /* Match the node card's real corner (NodeShell rounded-sm) — a hardcoded
@@ -1966,6 +1966,10 @@ body {
    must not be removed — the library sets this attribute for a thread that is
    resolved, deleted, or not yet known here. */
 .doc-body .bn-thread-mark[data-orphan='true'] {
+  /* Stated rather than left to inherit: A8 promises these words read as
+     prose, and a case can only hold that promise against a rule that makes
+     it. `auto` over editable text is the text caret. */
+  cursor: auto;
   background-color: transparent;
   padding: 0;
 }

@@ -163,10 +163,22 @@ describe('what the highlight looks like', () => {
     );
   });
 
-  it('leaves the caret alone on a mark nothing answers', () => {
+  it('offers the caret on a mark nothing answers', () => {
     // A settled thread keeps its mark with the paint taken off it, so those
     // words read as prose and a press does nothing. Offered unconditionally,
     // the pointer made them read as a link mid-sentence (user 2026-09-22).
+    //
+    // Read by state rather than off the unconditional rule: what these words
+    // get is decided by every rule that matches them, so a case asking only
+    // whether one of those rules stays silent passes while another one hands
+    // them the pointer.
+    expect(ruleBody(`${MARK}[data-orphan='true']`)).toContain('cursor: auto');
+  });
+
+  it('says nothing about the caret without asking which mark this is', () => {
+    // The two rules above are the whole of it: one answers presses, one does
+    // not, and each says what its words get. A third answer written into the
+    // rule they share would reach both.
     expect(ruleBody(MARK)).not.toContain('cursor');
   });
 
