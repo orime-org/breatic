@@ -23,8 +23,8 @@ ALTER TABLE "credit_lots" ADD COLUMN "source_kind" varchar(16);
 --> statement-breakpoint
 
 -- Read from the receipt each lot already points at rather than written as a
--- constant: every lot today came from a payment, and asking the parent says
--- so for each row instead of asserting it for all of them.
+-- constant: every lot reaching this statement came from a payment, and asking
+-- the parent says so for each row instead of asserting it for all of them.
 UPDATE "credit_lots" SET "source_kind" = "credit_sources"."kind"
 	FROM "credit_sources" WHERE "credit_sources"."id" = "credit_lots"."source_id";
 --> statement-breakpoint

@@ -77,9 +77,10 @@ async function seedFixture(): Promise<{
     VALUES (${userId}, ${`off-s-${n}-${Date.now()}`}, 'team', 'Off') RETURNING id
   `;
   const studioId = studio!.id;
-  // 建 studio 的两条生产路径都写这一行，而账号侧的读按它判「我管不管
-  // 这个 studio」——`created_by_user_id` 只记最初是谁建的、永不改，
-  // 答不了这个问题。
+  // Both production paths that create a studio write this row, and the
+  // account-side reads ask it who administers the studio.
+  // `created_by_user_id` records who opened it and never changes, so it
+  // cannot answer that.
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, 'admin')

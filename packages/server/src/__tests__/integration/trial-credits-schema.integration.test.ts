@@ -24,8 +24,8 @@
  *      three decisions above then reads the wrong answer off the lot.
  *
  *   3. Lots written before this column existed read as `payment`. Every lot
- *      that exists today came from a payment, so the backfill is the truth
- *      about them rather than a default.
+ *      predating the migration came from a payment, so the backfill is the
+ *      truth about them rather than a default.
  *
  * Runs against the testcontainer Postgres started by global-setup.ts, so what
  * it reads is the schema the migration actually produced.
