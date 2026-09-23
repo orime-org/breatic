@@ -19,7 +19,7 @@
 
 import { render, screen, waitFor, renderHook, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 
@@ -382,5 +382,94 @@ describe('the comment panel', () => {
     await waitFor(() => {
       expect(screen.getByTestId('doc-doc-menu-trigger')).toBeInTheDocument();
     });
+  });
+
+  /** How many runs of the body are painted as the one being read. */
+  function deepened(): number {
+    return (
+      handle.editor.domElement?.querySelectorAll('.doc-comment-mark-reading')
+        .length ?? 0
+    );
+  }
+
+  it('lets go of a card that leaves while the pointer is on it', async () => {
+    // Measured 2026-09-23: resolving is pressed with the pointer on the card,
+    // the card then leaves the open filter, and `onMouseLeave` never fires —
+    // so those words stayed deep long after the thread was settled (A8).
+    show();
+    await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
+    // Resolve is offered on the card being read, so the press that settles a
+    // thread always lands with the pointer on its card.
+    const card = await screen.findByTestId('doc-comment-card');
+    await userEvent.click(card);
+    await userEvent.hover(card);
+    await waitFor(() => {
+      expect(deepened()).toBe(1);
+    });
+
+    await userEvent.click(screen.getByTestId('doc-comment-resolve'));
+    // The paint is redrawn on the next thing the reader does in the body.
+    // Measured 2026-09-23: it came back deep, one press after settling.
+    act(() => {
+      selectThreads(handle.editor, []);
+    });
+
+    await waitFor(() => {
+      expect(deepened()).toBe(0);
+    });
+  });
+
+  it('keeps a half-written reply while its thread is settled and reopened', async () => {
+    // The reply lived in the card's own state, so a thread settled by a peer
+    // took the reader's unsent words with it when the card unmounted.
+    show();
+    await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
+    await userEvent.click(await screen.findByTestId('doc-comment-card'));
+    await userEvent.type(
+      await screen.findByTestId('doc-comment-reply-input'),
+      'half written',
+    );
+
+    await userEvent.click(screen.getByTestId('doc-comment-resolve'));
+    await userEvent.click(screen.getByTestId('doc-comment-rail-filter-all'));
+    await userEvent.click(await screen.findByTestId('doc-comment-card'));
+    await userEvent.click(screen.getByTestId('doc-comment-reopen'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-comment-reply-input')).toHaveValue(
+        'half written',
+      );
+    });
+  });
+
+  it('stops watching a card once it has left the panel', async () => {
+    // By the node, not by the call count: the primitives the panel is built
+    // from watch elements of their own, so a bare `toHaveBeenCalled` passes
+    // without the panel releasing anything.
+    const released = vi.spyOn(
+      globalThis.ResizeObserver.prototype,
+      'unobserve',
+    );
+    /** Whether a card's own element has been handed back. */
+    const releasedACard = (): boolean =>
+      released.mock.calls.some(
+        ([node]) => (node as HTMLElement | undefined)?.dataset?.thread !== undefined,
+      );
+
+    show();
+    await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
+    await userEvent.click(await screen.findByTestId('doc-comment-card'));
+    released.mockClear();
+    expect(releasedACard()).toBe(false);
+
+    await userEvent.click(screen.getByTestId('doc-comment-resolve'));
+
+    await waitFor(() => {
+      expect(releasedACard()).toBe(true);
+    });
+    released.mockRestore();
   });
 });

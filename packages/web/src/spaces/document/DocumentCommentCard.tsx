@@ -69,6 +69,17 @@ interface DocumentCommentCardProps {
   myRole: ProjectRole;
   /** This reader's account id, absent until the session resolves. */
   viewerId: string | undefined;
+  /**
+   * What the reader has written into this thread's reply box and not sent.
+   *
+   * Held by the panel rather than by this card: a thread settled by a peer
+   * takes its card out of the open filter, and a reply living in the card's
+   * own state would go with it — words the reader typed and never agreed to
+   * throw away.
+   */
+  draft: string;
+  /** Remembers what has been written into the reply box. */
+  onDraft: (threadId: string, body: string) => void;
   /** Adds a reply. Returns false when the words were blank. */
   onReply: (threadId: string, body: string) => Promise<boolean>;
   /** Marks the thread settled. */
@@ -178,6 +189,8 @@ function Entry({
  * @param root0.selected - Whether the reader pressed this thread's highlight.
  * @param root0.myRole - This reader's role.
  * @param root0.viewerId - This reader's account id.
+ * @param root0.draft - What has been written into the reply box and not sent.
+ * @param root0.onDraft - Remembers what has been written there.
  * @param root0.onReply - Adds a reply.
  * @param root0.onResolve - Marks it settled.
  * @param root0.onReopen - Brings it back.
@@ -190,6 +203,8 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
   selected,
   myRole,
   viewerId,
+  draft,
+  onDraft,
   onReply,
   onResolve,
   onReopen,
@@ -197,7 +212,13 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
   onDeleteReply,
 }: DocumentCommentCardProps): React.JSX.Element {
   const t = useTranslation();
-  const [reply, setReply] = React.useState('');
+  const reply = draft;
+  const setReply = React.useCallback(
+    (body: string) => {
+      onDraft(card.id, body);
+    },
+    [card.id, onDraft],
+  );
   const box = React.useRef<HTMLTextAreaElement>(null);
   useAutosizeTextarea(box, reply);
   const mayWrite = canPostAnnotations(myRole);
@@ -220,12 +241,12 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
     void onReply(card.id, reply).then((sent) => {
       if (sent) setReply('');
     });
-  }, [card.id, onReply, reply]);
+  }, [card.id, onReply, reply, setReply]);
 
   /** Throws away what was written, which is what Cancel and Escape do. */
   const callOff = React.useCallback(() => {
     setReply('');
-  }, []);
+  }, [setReply]);
 
   // Enter saves, Shift+Enter is a line inside the reply, and nothing commits
   // while an input method is composing — the rules a canvas note's boxes take,

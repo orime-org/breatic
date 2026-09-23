@@ -32,6 +32,7 @@ import { DocumentCommentCard } from '@web/spaces/document/DocumentCommentCard';
 import { layOutCards } from '@web/spaces/document/document-comment-layout';
 import {
   hoverThread,
+  hoveredThreadIn,
   onSelectedThreadsChange,
   selectThreads,
   selectedThreadsIn,
@@ -68,6 +69,9 @@ const CARD_HEIGHT_GUESS_PX = 120;
 
 /** How close to the panel's header a card may come (user 2026-09-22). */
 const CLEARANCE_BELOW_HEADER_PX = 4;
+
+/** Takes the element one card is drawn in, and null once it leaves. */
+type CardRef = (node: HTMLDivElement | null) => void;
 
 /**
  * The comment panel.
@@ -124,19 +128,46 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     [editor],
   );
 
-  // One object, memoised: every card takes the same seven, and a fresh object
+  // What has been written into each thread's reply box and not sent yet. Held
+  // here rather than in the card, because a card is taken off the panel by
+  // things the reader did not do — a peer settling the thread, a peer
+  // deleting it — and unsent words are theirs until they send or clear them.
+  const [drafts, setDrafts] = React.useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const onDraft = React.useCallback((threadId: string, body: string) => {
+    setDrafts((held) => {
+      if ((held.get(threadId) ?? '') === body) return held;
+      const next = new Map(held);
+      if (body === '') next.delete(threadId);
+      else next.set(threadId, body);
+      return next;
+    });
+  }, []);
+
+  // One object, memoised: every card takes the same eight, and a fresh object
   // per render would stop `DocumentCommentCard`'s memo ever bailing out.
   const handling = React.useMemo(
     () => ({
       myRole,
       viewerId,
+      onDraft,
       onReply,
       onResolve,
       onReopen,
       onDelete,
       onDeleteReply,
     }),
-    [myRole, viewerId, onReply, onResolve, onReopen, onDelete, onDeleteReply],
+    [
+      myRole,
+      viewerId,
+      onDraft,
+      onReply,
+      onResolve,
+      onReopen,
+      onDelete,
+      onDeleteReply,
+    ],
   );
 
   const shown = React.useMemo(
@@ -180,19 +211,58 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     });
   }
   React.useEffect(() => () => sizes.current?.disconnect(), []);
+
+  // The element each card is drawn in, so that what a card took can be given
+  // back by id once the element itself is gone.
+  const watched = React.useRef(new Map<string, HTMLDivElement>());
+  // One callback per card, kept: React hands a ref callback `null` whenever
+  // its identity changes, so a fresh closure per render would read as the
+  // card leaving on every render. The editor outlives this panel, so nothing
+  // invalidates what is in here.
+  const refs = React.useRef(new Map<string, CardRef>());
   const measure = React.useCallback(
-    (id: string) =>
-      (node: HTMLDivElement | null): void => {
-        if (node === null) return;
+    (id: string): CardRef => {
+      const had = refs.current.get(id);
+      if (had !== undefined) return had;
+      /**
+       * Takes one card's element, and gives back what it held once it goes.
+       * @param node - The element, or null as the card leaves.
+       */
+      const made = (node: HTMLDivElement | null): void => {
+        if (node === null) {
+          // A card can leave while the pointer is on it — Resolve is offered
+          // on the card being read, and settling takes that card out of the
+          // open filter, so `mouseleave` never arrives (measured 2026-09-23:
+          // the words stayed deep one press after being settled). What a card
+          // took it gives back as it goes, whatever took it away.
+          const held = watched.current.get(id);
+          if (held !== undefined) sizes.current?.unobserve(held);
+          watched.current.delete(id);
+          refs.current.delete(id);
+          if (hoveredThreadIn(editor.prosemirrorState) === id) {
+            hoverThread(editor, null);
+          }
+          setHeights((have) => {
+            if (!have.has(id)) return have;
+            const next = new Map(have);
+            next.delete(id);
+            return next;
+          });
+          return;
+        }
         node.dataset.thread = id;
+        watched.current.set(id, node);
         setHeights((held) =>
           held.get(id) === node.offsetHeight
             ? held
             : new Map(held).set(id, node.offsetHeight),
         );
         sizes.current?.observe(node);
-      },
-    [],
+      };
+      refs.current.set(id, made);
+      return made;
+    },
+    [editor],
   );
 
   // The first of them, because a press on two overlapping highlights marks
@@ -334,6 +404,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
                 <DocumentCommentCard
                   card={card}
                   selected={selected.includes(card.id)}
+                  draft={drafts.get(card.id) ?? ''}
                   {...handling}
                 />
               </div>

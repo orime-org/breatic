@@ -176,6 +176,15 @@ export function onSelectedThreadsChange(listener: () => void): () => void {
 }
 
 /**
+ * The thread the pointer is resting on.
+ * @param state - The editor state to read.
+ * @returns Its id, or null when the pointer is on no card.
+ */
+export function hoveredThreadIn(state: EditorState): string | null {
+  return DOCUMENT_COMMENT_SELECTION.getState(state)?.hovered ?? null;
+}
+
+/**
  * Says which card the pointer is resting on, or that it rests on none.
  * @param editor - The document editor.
  * @param threadId - The thread under the pointer, or null.
