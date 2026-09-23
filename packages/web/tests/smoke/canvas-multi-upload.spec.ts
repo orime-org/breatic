@@ -213,23 +213,16 @@ test('the upload tool turns one batch into one Group', async ({ page }) => {
     .toEqual([groupId]);
 });
 
-test('a drag of several files turns into one Group', async ({ page }) => {
-  await handOverFiles(page, 'drop', 3);
+for (const entry of ['drop', 'paste'] as const) {
+  test(`a ${entry} of several files turns into one Group`, async ({ page }) => {
+    await handOverFiles(page, entry, 3);
 
-  const groupId = await theGroupOver(page, 3);
-  await expect
-    .poll(async () => selectedOnScreen(page), { timeout: 15_000 })
-    .toEqual([groupId]);
-});
-
-test('a paste of several files turns into one Group', async ({ page }) => {
-  await handOverFiles(page, 'paste', 3);
-
-  const groupId = await theGroupOver(page, 3);
-  await expect
-    .poll(async () => selectedOnScreen(page), { timeout: 15_000 })
-    .toEqual([groupId]);
-});
+    const groupId = await theGroupOver(page, 3);
+    await expect
+      .poll(async () => selectedOnScreen(page), { timeout: 15_000 })
+      .toEqual([groupId]);
+  });
+}
 
 test('the members keep the grid, and the Group takes them along', async ({
   page,

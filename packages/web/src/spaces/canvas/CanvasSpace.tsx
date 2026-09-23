@@ -3742,7 +3742,7 @@ function CanvasSpaceInner({
             setNodeExtractionError(projectId, spaceId, id, message),
           // The same outcome as the drop path, reason for reason: one place
           // decides the stash and says the remedy in the reader's language.
-          onUploadFailure: (outcome, _id, f) => failUploadNode(outcome, f),
+          onUploadFailure: (outcome, f) => failUploadNode(outcome, f),
         });
       })();
       trackOperation(nodeId, work);
