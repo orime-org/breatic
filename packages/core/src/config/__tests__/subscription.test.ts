@@ -21,7 +21,7 @@ import {
   getSubscriptionPlans,
   getSubscriptionPlan,
   getSubscriptionStaleAfterDays,
-  findSubscribableTierByPriceId,
+  findOfferByPriceId,
 } from "@core/config/subscription.js";
 
 const validFile = {
@@ -29,14 +29,30 @@ const validFile = {
   stripe_call_timeout_ms: 5000,
   plans: {
     pro: {
-      price_cents: 1200,
       currency: "usd",
-      stripe_price_id: { test: "price_test_pro", live: "price_live_pro" },
+      periods: {
+        month: {
+          price_cents: 1999,
+          stripe_price_id: { test: "price_test_pro", live: "price_live_pro" },
+        },
+        year: {
+          price_cents: 19999,
+          stripe_price_id: { test: "price_test_pro_y", live: "price_live_pro_y" },
+        },
+      },
     },
     team: {
-      price_cents: 3900,
       currency: "usd",
-      stripe_price_id: { test: "price_test_team", live: "price_live_team" },
+      periods: {
+        month: {
+          price_cents: 7999,
+          stripe_price_id: { test: "price_test_team", live: "price_live_team" },
+        },
+        year: {
+          price_cents: 79999,
+          stripe_price_id: { test: "price_test_team_y", live: "price_live_team_y" },
+        },
+      },
     },
   },
 };
@@ -44,13 +60,21 @@ const validFile = {
 describe("subscription config — schema", () => {
   it("accepts a file carrying every subscribable tier", () => {
     const parsed = subscriptionConfigSchema.parse(validFile);
-    expect(parsed.plans.pro?.price_cents).toBe(1200);
+    expect(parsed.plans.pro?.periods.month.price_cents).toBe(1999);
   });
 
   it("rejects a price that is not a positive integer", () => {
     expect(() =>
       subscriptionConfigSchema.parse({
-        plans: { pro: { ...validFile.plans.pro, price_cents: 0 } },
+        plans: {
+          pro: {
+            ...validFile.plans.pro,
+            periods: {
+              ...validFile.plans.pro.periods,
+              month: { ...validFile.plans.pro.periods.month, price_cents: 0 },
+            },
+          },
+        },
       }),
     ).toThrow();
   });
@@ -73,46 +97,58 @@ describe("subscription config — resolving plans", () => {
   });
 
   it("takes the test price id outside production", () => {
-    expect(resolvePlans(validFile, false).pro.stripePriceId).toBe(
+    expect(resolvePlans(validFile, false).pro.month.stripePriceId).toBe(
       "price_test_pro",
     );
   });
 
   it("takes the live price id in production", () => {
-    expect(resolvePlans(validFile, true).team.stripePriceId).toBe(
+    expect(resolvePlans(validFile, true).team.month.stripePriceId).toBe(
       "price_live_team",
     );
   });
 
   it("carries the price and currency through unchanged", () => {
     const plans = resolvePlans(validFile, false);
-    expect(plans.team.priceCents).toBe(3900);
-    expect(plans.team.currency).toBe("usd");
+    expect(plans.team.month.priceCents).toBe(7999);
+    expect(plans.team.month.currency).toBe("usd");
   });
 });
 
 describe("subscription config — reads config/subscription.yaml", () => {
-  it("ships a plan for every subscribable tier", () => {
+  it("ships a priced plan for every tier and period", () => {
     const plans = getSubscriptionPlans();
     for (const tier of SUBSCRIBABLE_MEMBERSHIP_TIERS) {
-      expect(plans[tier].priceCents).toBeGreaterThan(0);
-      expect(plans[tier].stripePriceId).not.toBe("");
+      expect(plans[tier].month.priceCents).toBeGreaterThan(0);
+      expect(plans[tier].year.priceCents).toBeGreaterThan(0);
+    }
+  });
+
+  it("still has no price id for the annual plans nobody has created yet", () => {
+    // The eight Stripe prices are created by hand before launch (design 1.1).
+    // Asserting the gap keeps it visible: when the annual ones arrive this
+    // goes red, which is the reminder to fill the file in.
+    const plans = getSubscriptionPlans();
+    for (const tier of SUBSCRIBABLE_MEMBERSHIP_TIERS) {
+      expect(plans[tier].month.stripePriceId).not.toBe("");
+      expect(plans[tier].year.stripePriceId).toBe("");
     }
   });
 
   it("carries the ratified monthly prices", () => {
-    // $12 and $39 (marketing decision 2026-07-30). Asserted against the file
-    // rather than against each other, so a swap of the two rows fails here.
-    expect(getSubscriptionPlan("pro").priceCents).toBe(1200);
-    expect(getSubscriptionPlan("team").priceCents).toBe(3900);
+    // $19.99 and $79.99 (marketing decision, repriced 2026-09-01). Asserted
+    // against the file rather than against each other, so a swap of the two
+    // rows fails here.
+    expect(getSubscriptionPlan("pro", "month").priceCents).toBe(1999);
+    expect(getSubscriptionPlan("team", "month").priceCents).toBe(7999);
   });
 
   it("reads the price ids the file really carries, for this environment", () => {
     const raw = parse(
       readFileSync(resolve(MONOREPO_ROOT, "config/subscription.yaml"), "utf-8"),
     ) as typeof validFile;
-    const ids = raw.plans.pro.stripe_price_id;
-    expect(getSubscriptionPlan("pro").stripePriceId).toBe(
+    const ids = raw.plans.pro.periods.month.stripe_price_id;
+    expect(getSubscriptionPlan("pro", "month").stripePriceId).toBe(
       env.ENV === "prod" ? ids.live : ids.test,
     );
   });
@@ -123,9 +159,12 @@ describe("subscription config — reads config/subscription.yaml", () => {
     expect(getSubscriptionStaleAfterDays()).toBe(14);
   });
 
-  it("maps a price id back to the tier it sells", () => {
-    const proPriceId = getSubscriptionPlan("pro").stripePriceId;
-    expect(findSubscribableTierByPriceId(proPriceId)).toBe("pro");
-    expect(findSubscribableTierByPriceId("price_nothing")).toBeNull();
+  it("maps a price id back to the offer it sells", () => {
+    const proPriceId = getSubscriptionPlan("pro", "month").stripePriceId;
+    expect(findOfferByPriceId(proPriceId)).toEqual({
+      tier: "pro",
+      period: "month",
+    });
+    expect(findOfferByPriceId("price_nothing")).toBeNull();
   });
 });

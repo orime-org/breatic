@@ -1,28 +1,51 @@
-# Membership subscription plans (task #106).
+# Membership subscription plans (task #106, periods added in #253).
 #
-# One entry per subscribable tier. `base` has no entry: it is what an account
-# falls back to when it subscribes to nothing, so there is nothing to sell.
+# One entry per subscribable tier, and inside it one per billing period.
+# `base` has no entry: it is what an account falls back to when it subscribes
+# to nothing, so there is nothing to sell.
 #
 # Separate from config/membership.yaml on purpose. That file answers "what are
 # this tier's six ceilings" and its header states that every number in it is a
-# plain ceiling; a monthly price is not one. config/pricing.yaml is the other
-# leg of the product entirely — credit packs bought once, not a subscription.
+# plain ceiling; a price is not one. config/pricing.yaml is the other leg of
+# the product entirely — credit packs bought once, not a subscription.
 #
 # `test` price ids are used outside production, `live` in production, the same
 # split config/pricing.yaml already uses.
+#
+# `currency` sits on the tier rather than on each period: one tier cannot sell
+# its two periods in different currencies, so putting it inside `periods`
+# would be the same value written twice.
+#
+# The figures here are what the page prints. What Stripe actually charges is
+# compared against them where money moves (design section 1.2), and checked by
+# hand before launch.
 plans:
   pro:
-    price_cents: 1200
     currency: usd
-    stripe_price_id:
-      test: "price_1U5OqmGeRYMxofhepn2ij8zp"
-      live: ""
+    periods:
+      month:
+        price_cents: 1999
+        stripe_price_id:
+          test: "price_1U5OqmGeRYMxofhepn2ij8zp"
+          live: ""
+      year:
+        price_cents: 19999
+        stripe_price_id:
+          test: ""
+          live: ""
   team:
-    price_cents: 3900
     currency: usd
-    stripe_price_id:
-      test: "price_1U5OrkGeRYMxofhepeUDWhqB"
-      live: ""
+    periods:
+      month:
+        price_cents: 7999
+        stripe_price_id:
+          test: "price_1U5OrkGeRYMxofhepeUDWhqB"
+          live: ""
+      year:
+        price_cents: 79999
+        stripe_price_id:
+          test: ""
+          live: ""
 
 # How long a stored subscription may sit past its paid period before its tier
 # stops being honoured.
