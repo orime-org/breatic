@@ -29,6 +29,7 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { DocumentCommentCard } from '@web/spaces/document/DocumentCommentCard';
+import type { CommentRail } from '@web/spaces/document/document-comment-rail';
 import {
   inColumnOrder,
   layOutCards,
@@ -59,6 +60,8 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 interface DocumentCommentRailProps {
   /** The editor whose threads this draws. */
   editor: ToolEditor;
+  /** The threads in panel order, read once for the whole Space. */
+  rail: CommentRail;
   /** This reader's role, which decides what the cards offer. */
   myRole: ProjectRole;
   /** Closes the panel, which only the reader ever does. */
@@ -87,17 +90,19 @@ type CardHandling = Omit<
  * The comment panel.
  * @param root0 - Panel props.
  * @param root0.editor - The editor whose threads this draws.
+ * @param root0.rail - The threads in panel order.
  * @param root0.myRole - This reader's role.
  * @param root0.onClose - Closes the panel.
  * @returns The panel.
  */
 export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   editor,
+  rail,
   myRole,
   onClose,
 }: DocumentCommentRailProps): React.JSX.Element {
   const t = useTranslation();
-  const cards = useCommentCards(editor);
+  const cards = useCommentCards(editor, rail);
   const [filter, setFilter] = React.useState<Filter>('open');
   // Who is reading, for the rights each card draws itself with. The store is
   // where every other surface asks the same question.
@@ -283,7 +288,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // The first of them, because a press on two overlapping highlights marks
   // both and only one can have the column to itself.
   const reading = selected[0] ?? null;
-  const placed = React.useMemo(
+  const placement = React.useMemo(
     () =>
       layOutCards(
         shown.map((card) => ({
@@ -299,27 +304,21 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       ),
     [shown, anchors, heights, reading],
   );
+  const placed = placement.tops;
 
   const written = React.useMemo(
     () => inColumnOrder(shown, placed),
     [shown, placed],
   );
 
-  // How far down the lowest card reaches. The cards are out of flow, so the
-  // panel's own box — its border, its background, and the block the sticky
-  // header is held inside — stops at whatever the header and the empty
-  // column come to, and a stack taller than that hangs below it (measured
-  // 2026-09-23: a comment on the last line of a 40-line document put its
-  // card 127.5px past the panel's bottom edge).
-  const stackHeight = React.useMemo(
-    () =>
-      [...placed].reduce(
-        (lowest, [id, top]) =>
-          Math.max(lowest, top + (heights.get(id) ?? CARD_HEIGHT_GUESS_PX)),
-        0,
-      ) + GAP_BETWEEN_CARDS_PX,
-    [placed, heights],
-  );
+  // How far down the lowest card reaches, which the layout knows as it puts
+  // them there. The cards are out of flow, so the panel's own box — its
+  // border, its background, and the block the sticky header is held inside
+  // — stops at whatever the header and the empty column come to, and a
+  // stack taller than that hangs below it (measured 2026-09-23: a comment
+  // on the last line of a 40-line document put its card 127.5px past the
+  // panel's bottom edge).
+  const stackHeight = placement.height;
 
   const onHover = React.useCallback(
     (threadId: string | null) => {

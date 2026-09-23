@@ -46,6 +46,7 @@ import {
   isLiveCommentMark,
   threadIsPaintedIn,
 } from '@web/spaces/document/document-comment-extension';
+import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /** The editor surface this plugin needs, past the view. */
@@ -160,24 +161,16 @@ function deepened(
   return [...ids, hovered];
 }
 
-/** Everyone waiting to hear that the selection changed. */
-const listeners = new Set<() => void>();
-
 /**
- * Hear about every change to which threads are being looked at.
- *
- * The editor's own events do not cover it: selecting a thread dispatches a
- * transaction carrying nothing but the meta, so neither the document nor the
- * text selection moves.
- * @param listener - Called after any change.
- * @returns The function that stops it.
+ * The broadcast for which threads are being looked at. The editor's own
+ * events do not cover it: selecting a thread dispatches a transaction
+ * carrying nothing but the meta.
  */
-export function onSelectedThreadsChange(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+const watch = watchPluginState(selectedThreadsIn);
+
+/** Hear about every change to which threads are being looked at. */
+export const onSelectedThreadsChange: (listener: () => void) => () => void =
+  watch.onChange;
 
 /**
  * The thread the pointer is resting on.
@@ -318,56 +311,46 @@ function buildSelectionPlugin(
        * @returns What is selected after it.
        */
       apply: (tr, current): SelectionState => {
-        const hovered = tr.getMeta(DOCUMENT_COMMENT_HOVER) as
-          | string
-          | null
-          | undefined;
-        if (hovered !== undefined) {
-          if (hovered === current.hovered) return current;
-          const ids = current.ids;
-          if (ids.length === 0 && hovered === null) return UNSELECTED;
-          return {
-            ids,
-            hovered,
-            decorations: paintSelected(tr.doc, deepened(ids, hovered)),
-          };
-        }
-
+        // Both metas are read up front so that one place decides what is
+        // being read and one place draws it. Either one absent leaves its
+        // half of the answer as it was.
         const asked = tr.getMeta(DOCUMENT_COMMENT_SELECTION) as
           | readonly string[]
           | undefined;
-        if (asked === undefined) {
-          if (current.ids.length === 0 && current.hovered === null) {
-            return current;
-          }
-          // Redrawn rather than carried across. Mapping keeps a decoration
-          // only while its endpoints survive the steps, and everything that
-          // arrives through Yjs replaces the whole body: measured
-          // 2026-09-23, settling a thread dispatches a mark rewrite whose
-          // step maps are empty — those would map fine — and then a
-          // `ReplaceStep` mapping `[0, 27, 27]` over a 27-long document.
-          // Every peer edit comes back the same way, so mapping loses the
-          // paint on any thread being read whenever anyone else types.
-          // Redrawing also makes invariant one (design §9.5) enforced by
-          // `paintSelected` on every path rather than only on the ones that
-          // carry a meta.
-          if (!tr.docChanged) return current;
-          return {
-            ids: current.ids,
-            hovered: current.hovered,
-            decorations: paintSelected(
-              tr.doc,
-              deepened(current.ids, current.hovered),
-            ),
-          };
+        const hoverMeta = tr.getMeta(DOCUMENT_COMMENT_HOVER) as
+          | string
+          | null
+          | undefined;
+        const ids = asked ?? current.ids;
+        const hovered = hoverMeta === undefined ? current.hovered : hoverMeta;
+
+        // Nothing read and nothing pointed at is one state, and handing the
+        // same object back is what makes a second clear read as no change.
+        if (ids.length === 0 && hovered === null) return UNSELECTED;
+
+        // Nothing asked of it, and nothing moved under what is drawn.
+        if (
+          ids === current.ids &&
+          hovered === current.hovered &&
+          !tr.docChanged
+        ) {
+          return current;
         }
-        // The same object back for an empty list, so a second clear reads
-        // as no change rather than as a new state.
-        if (asked.length === 0 && current.hovered === null) return UNSELECTED;
+
+        // Redrawn rather than carried across. Mapping keeps a decoration
+        // only while its endpoints survive the steps, and everything that
+        // arrives through Yjs replaces the whole body: measured 2026-09-23,
+        // settling a thread dispatches a mark rewrite whose step maps are
+        // empty — those would map fine — and then a `ReplaceStep` mapping
+        // `[0, 27, 27]` over a 27-long document. Every peer edit comes back
+        // the same way, so mapping loses the paint on any thread being read
+        // whenever anyone else types. Redrawing also makes invariant one
+        // (design §9.5) enforced by `paintSelected` on every path rather
+        // than only on the ones that carry a meta.
         return {
-          ids: asked,
-          hovered: current.hovered,
-          decorations: paintSelected(tr.doc, deepened(asked, current.hovered)),
+          ids,
+          hovered,
+          decorations: paintSelected(tr.doc, deepened(ids, hovered)),
         };
       },
     },
@@ -422,29 +405,10 @@ function buildSelectionPlugin(
       },
     },
 
-    /**
-     * Tells whoever is watching that the selection changed.
-     * @param view - The view this plugin is in.
-     * @returns The update hook.
-     */
-    view: (view) => {
-      let last = selectedThreadsIn(view.state);
-      return {
-        /**
-         * Fires the listeners when the selection is not what it was, and
-         * keeps the library's own store in step with it.
-         * @param updated - The view after the change.
-         */
-        update: (updated): void => {
-          const now = selectedThreadsIn(updated.state);
-          if (now === last) return;
-          last = now;
-          tellLibrary(updated.state.doc, editor, now[0]);
-          listeners.forEach((listener) => {
-            listener();
-          });
-        },
-      };
-    },
+    // The library is told before the listeners, so whatever they draw is
+    // drawn over a body whose own handler has already stood aside.
+    view: watch.viewWith((now, state) => {
+      tellLibrary(state.doc, editor, now[0]);
+    }),
   });
 }

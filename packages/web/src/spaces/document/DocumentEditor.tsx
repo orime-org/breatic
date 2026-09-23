@@ -178,6 +178,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
             {railOpen && (
               <DocumentCommentRail
                 editor={handle.editor}
+                rail={rail}
                 myRole={myRole}
                 onClose={closeRail}
               />

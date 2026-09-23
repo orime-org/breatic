@@ -34,7 +34,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { isCommentMarkWrite } from '@web/spaces/document/document-comment-orphan-sync';
+import { isCommentMarkWrite } from '@web/spaces/document/document-comment-undo-filter';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 

@@ -31,6 +31,8 @@ import { createExtension } from '@blocknote/core';
 import type { Mapping } from '@tiptap/pm/transform';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 
+import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
+
 /** Where an unposted comment is going. */
 export interface DraftRange {
   readonly from: number;
@@ -73,27 +75,18 @@ export function draftRangeIn(state: EditorState): DraftRange | null {
   return DOCUMENT_COMMENT_DRAFT_RANGE.getState(state) ?? null;
 }
 
-/** Everyone waiting to hear that a draft opened, moved or closed. */
-const listeners = new Set<() => void>();
-
 /**
- * Hear about every change to the open draft's range.
- *
- * The editor's own `onChange` and `onSelectionChange` do not cover this, and
- * measuring shows why: opening a draft dispatches a transaction carrying
- * nothing but the meta, so the document is untouched and the selection is
- * where the reader left it — neither event fires, and a composer subscribed
- * to them never learns it should be on screen. The plugin's `view` update is
- * what sees every state change, meta-only ones included.
- * @param listener - Called after any change that could have moved the range.
- * @returns The function that stops it.
+ * The broadcast for the open draft's range. A composer watching the editor's
+ * own events would never learn it should be on screen: opening a draft
+ * dispatches nothing but the meta.
  */
-export function onDraftRangeChange(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+const watch = watchPluginState(
+  (state) => DOCUMENT_COMMENT_DRAFT_RANGE.getState(state) ?? null,
+);
+
+/** Hear about every change that could have moved the open draft's range. */
+export const onDraftRangeChange: (listener: () => void) => () => void =
+  watch.onChange;
 
 /**
  * The extension that keeps an unposted comment's range on the text it was
@@ -149,31 +142,7 @@ export const documentCommentDraftRange = createExtension(() => ({
         },
       },
 
-      /**
-       * Tells whoever is watching that the range may have moved.
-       * @param view - The view this plugin is in.
-       * @returns The update hook.
-       */
-      view: (view) => {
-        let last = DOCUMENT_COMMENT_DRAFT_RANGE.getState(view.state) ?? null;
-        return {
-          /**
-           * Fires the listeners when the range is not what it was.
-           * @param updated - The view after the change.
-           */
-          update: (updated): void => {
-            const now =
-              DOCUMENT_COMMENT_DRAFT_RANGE.getState(updated.state) ?? null;
-            // Identity is the whole comparison: `apply` hands back the same
-            // object while the range has not moved.
-            if (now === last) return;
-            last = now;
-            listeners.forEach((listener) => {
-              listener();
-            });
-          },
-        };
-      },
+      view: watch.viewWith(),
     }),
   ],
 }));

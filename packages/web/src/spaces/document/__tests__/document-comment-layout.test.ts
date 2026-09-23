@@ -42,8 +42,8 @@ describe('layOutCards', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('a')).toBe(40);
-    expect(placed.get('b')).toBe(400);
+    expect(placed.tops.get('a')).toBe(40);
+    expect(placed.tops.get('b')).toBe(400);
   });
 
   it('pushes the second card down when the two would overlap', () => {
@@ -56,8 +56,8 @@ describe('layOutCards', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('a')).toBe(40);
-    expect(placed.get('b')).toBe(148);
+    expect(placed.tops.get('a')).toBe(40);
+    expect(placed.tops.get('b')).toBe(148);
   });
 
   it('keeps pushing down a run of crowded cards', () => {
@@ -71,7 +71,7 @@ describe('layOutCards', () => {
       GAP,
       MIN_TOP,
     );
-    expect([placed.get('a'), placed.get('b'), placed.get('c')]).toEqual([
+    expect([placed.tops.get('a'), placed.tops.get('b'), placed.tops.get('c')]).toEqual([
       40, 98, 156,
     ]);
   });
@@ -89,7 +89,7 @@ describe('layOutCards', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('b')).toBe(240);
+    expect(placed.tops.get('b')).toBe(240);
   });
 
   it('moves the cards above the one being read upwards', () => {
@@ -103,7 +103,7 @@ describe('layOutCards', () => {
       MIN_TOP,
     );
     // `a` would run into `b` at its own anchor, so it ends above it.
-    expect(placed.get('a')).toBe(240 - GAP - 100);
+    expect(placed.tops.get('a')).toBe(240 - GAP - 100);
   });
 
   it('moves the cards below the one being read downwards', () => {
@@ -116,8 +116,8 @@ describe('layOutCards', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('a')).toBe(40);
-    expect(placed.get('b')).toBe(148);
+    expect(placed.tops.get('a')).toBe(40);
+    expect(placed.tops.get('b')).toBe(148);
   });
 
   it('leaves a card above the one being read where it is when it fits', () => {
@@ -130,7 +130,7 @@ describe('layOutCards', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('a')).toBe(40);
+    expect(placed.tops.get('a')).toBe(40);
   });
 
   it('reads the cards in anchor order, whatever order they arrive in', () => {
@@ -143,12 +143,12 @@ describe('layOutCards', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('earlier')).toBe(40);
-    expect(placed.get('later')).toBe(400);
+    expect(placed.tops.get('earlier')).toBe(40);
+    expect(placed.tops.get('later')).toBe(400);
   });
 
   it('answers nothing for no cards', () => {
-    expect(layOutCards([], null, GAP, MIN_TOP).size).toBe(0);
+    expect(layOutCards([], null, GAP, MIN_TOP).tops.size).toBe(0);
   });
 
   it('ignores a card being named that it was not given', () => {
@@ -158,7 +158,7 @@ describe('layOutCards', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('a')).toBe(40);
+    expect(placed.tops.get('a')).toBe(40);
   });
 });
 
@@ -177,7 +177,7 @@ describe('a card with no words left', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('gone')).toBe(300 + 100 + GAP);
+    expect(placed.tops.get('gone')).toBe(300 + 100 + GAP);
   });
 
   it('stacks two of them below one another', () => {
@@ -191,8 +191,8 @@ describe('a card with no words left', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('gone1')).toBe(40 + 100 + GAP);
-    expect(placed.get('gone2')).toBe(40 + 100 + GAP + 80 + GAP);
+    expect(placed.tops.get('gone1')).toBe(40 + 100 + GAP);
+    expect(placed.tops.get('gone2')).toBe(40 + 100 + GAP + 80 + GAP);
   });
 
   it('starts them at the top when no card has an anchor at all', () => {
@@ -202,7 +202,7 @@ describe('a card with no words left', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('gone')).toBe(MIN_TOP);
+    expect(placed.tops.get('gone')).toBe(MIN_TOP);
   });
 });
 
@@ -216,7 +216,7 @@ describe('the panel header', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('a')).toBe(MIN_TOP);
+    expect(placed.tops.get('a')).toBe(MIN_TOP);
   });
 
   it('stacks down from it rather than letting a card give way over it', () => {
@@ -232,8 +232,8 @@ describe('the panel header', () => {
       GAP,
       MIN_TOP,
     );
-    expect(placed.get('a')).toBe(MIN_TOP);
-    expect(placed.get('b')).toBe(MIN_TOP + 100 + GAP);
+    expect(placed.tops.get('a')).toBe(MIN_TOP);
+    expect(placed.tops.get('b')).toBe(MIN_TOP + 100 + GAP);
   });
 });
 
@@ -257,5 +257,24 @@ describe('the order the cards are written in', () => {
       'settled-early',
       'open-late',
     ]);
+  });
+});
+
+describe('how much room the column needs', () => {
+  it('reaches past the lowest card by one gap', () => {
+    // The cards are out of flow, so the column is told how tall to be. The
+    // layout already knows: it walks them in order holding the floor each
+    // one leaves behind.
+    const placed = layOutCards(
+      [
+        { id: 'a', anchor: 100, height: 60 },
+        { id: 'b', anchor: 400, height: 90 },
+      ],
+      null,
+      GAP,
+      MIN_TOP,
+    );
+
+    expect(placed.height).toBe(400 + 90 + GAP);
   });
 });

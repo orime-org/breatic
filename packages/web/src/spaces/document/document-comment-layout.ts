@@ -46,20 +46,33 @@ export interface CardAnchor {
   readonly height: number;
 }
 
+/** Where the cards sit, and how much room they take. */
+export interface Placement {
+  /** Each card's top, by thread id. */
+  readonly tops: ReadonlyMap<string, number>;
+  /**
+   * How far down the lowest card reaches, gap included. The cards are out
+   * of flow, so the column is given this as its own height or a panel
+   * scrolled to the bottom ends above the last card.
+   */
+  readonly height: number;
+}
+
 /**
  * Places every card, keeping them clear of each other.
  * @param cards - The cards and their anchors, in any order.
  * @param readingId - The thread being read, which keeps its anchor.
  * @param gap - The space to leave between two cards.
  * @param minTop - How close to the panel's header a card may come.
- * @returns Each card's top, by thread id.
+ * @returns Each card's top by thread id, and how far down the column the
+ *   lowest of them reaches.
  */
 export function layOutCards(
   cards: readonly CardAnchor[],
   readingId: string | null,
   gap: number,
   minTop: number,
-): ReadonlyMap<string, number> {
+): Placement {
   const anchored = cards.filter(
     (card): card is CardAnchor & { anchor: number } => card.anchor !== null,
   );
@@ -72,7 +85,7 @@ export function layOutCards(
       placed.set(card.id, next);
       next += card.height + gap;
     }
-    return placed;
+    return { tops: placed, height: next };
   }
 
   // Where the run of cards starts from. The one being read is the anchor of
@@ -112,7 +125,7 @@ export function layOutCards(
     floor = top + card.height + gap;
   }
 
-  return placed;
+  return { tops: placed, height: floor };
 }
 
 /**

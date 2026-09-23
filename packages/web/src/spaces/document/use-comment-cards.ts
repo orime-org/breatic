@@ -4,8 +4,8 @@
 /**
  * What each card on the panel says (#18, A4 · A9 · A13).
  *
- * {@link useCommentRail} answers which cards there are, in what order, in
- * which state. This answers what is written on them, which takes three more
+ * The {@link CommentRail} handed in answers which cards there are, in what
+ * order, in which state. This answers what is written on them, which takes three more
  * readings: the thread itself for its comments, the body for the words the
  * comment is about, and the user store for who wrote each one.
  *
@@ -36,7 +36,7 @@ import {
 } from '@web/spaces/document/document-comment-ranges';
 import type { ThreadRange } from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
-import { useCommentRail } from '@web/spaces/document/use-comment-rail';
+import type { CommentRail } from '@web/spaces/document/document-comment-rail';
 
 /** One comment inside a card: the opening one, or a reply below it. */
 export interface CommentEntryView {
@@ -187,10 +187,13 @@ function sameCards(a: CommentCards, b: CommentCards): boolean {
 /**
  * Reads everything the panel draws, and keeps it current.
  * @param editor - The document editor.
+ * @param rail - The threads in panel order, read once for the whole Space.
  * @returns The two groups, each card carrying its quote and its comments.
  */
-export function useCommentCards(editor: ToolEditor): CommentCards {
-  const rail = useCommentRail(editor);
+export function useCommentCards(
+  editor: ToolEditor,
+  rail: CommentRail,
+): CommentCards {
   const comments = commentsOn(editor);
   const cached = React.useRef<CommentCards>(NO_CARDS);
 

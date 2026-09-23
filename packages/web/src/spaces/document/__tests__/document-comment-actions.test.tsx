@@ -411,15 +411,24 @@ describe('what a card lets a reader do', () => {
     const card = await screen.findByTestId('doc-comment-card');
     expect(screen.queryByTestId('doc-comment-reply-input')).toBeNull();
 
-    card.parentElement!.focus();
-    // Focus is synchronous, the render it asks for is not — press only once
-    // the card has settled under it.
-    await screen.findByTestId('doc-comment-card');
-    await userEvent.keyboard('{Enter}');
+    fireEvent.keyDown(card.parentElement!, { key: 'Enter' });
 
     expect(
       await screen.findByTestId('doc-comment-reply-input'),
     ).toBeInTheDocument();
+  });
+
+  it('gives the keyboard a card to land on', async () => {
+    // An unread card holds nothing focusable — its controls are what opening
+    // it draws — so without the card itself taking the focus, the panel is
+    // reachable and every thread in it is not.
+    await open();
+    await comment('the first thing');
+    const card = await screen.findByTestId('doc-comment-card');
+
+    card.parentElement!.focus();
+
+    expect(document.activeElement).toBe(card.parentElement);
   });
 
   it('leaves a thread shut when the focus only arrives', async () => {

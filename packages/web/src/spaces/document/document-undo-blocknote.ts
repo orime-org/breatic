@@ -38,7 +38,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { isCommentMarkWrite } from '@web/spaces/document/document-comment-orphan-sync';
+import { isCommentMarkWrite } from '@web/spaces/document/document-comment-undo-filter';
 import { documentUndoSelectionPlugin } from '@web/spaces/document/document-undo-selection';
 
 /** Computed once; the schema is fixed for the lifetime of the bundle. */
