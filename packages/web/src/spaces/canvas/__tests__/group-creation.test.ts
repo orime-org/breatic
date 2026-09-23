@@ -168,13 +168,14 @@ describe('planGroupCreation', () => {
     it('frames two files with the padding, and keeps them a gap apart', () => {
       const plan = wrap(2);
 
-      // 288x192 nodes one 312 step apart, padded by 24 on every side.
+      // 288x192 nodes one 346 step apart (the node plus the task-count
+      // column beside it plus a gap), padded by 24 on every side.
       expect(plan).not.toBeNull();
-      expect(plan?.width).toBe(648);
+      expect(plan?.width).toBe(682);
       expect(plan?.height).toBe(240);
       expect(plan?.members).toEqual([
         { id: 'f0', position: { x: 24, y: 24 } },
-        { id: 'f1', position: { x: 336, y: 24 } },
+        { id: 'f1', position: { x: 370, y: 24 } },
       ]);
     });
 
@@ -182,13 +183,13 @@ describe('planGroupCreation', () => {
       const plan = wrap(5);
 
       // Four across, so the fifth starts a second row one 216 step down.
-      expect(plan?.width).toBe(1272);
+      expect(plan?.width).toBe(1374);
       expect(plan?.height).toBe(456);
       expect(plan?.members.map((m) => m.position)).toEqual([
         { x: 24, y: 24 },
-        { x: 336, y: 24 },
-        { x: 648, y: 24 },
-        { x: 960, y: 24 },
+        { x: 370, y: 24 },
+        { x: 716, y: 24 },
+        { x: 1062, y: 24 },
         { x: 24, y: 240 },
       ]);
     });

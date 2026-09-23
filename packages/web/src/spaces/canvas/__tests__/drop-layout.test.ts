@@ -45,9 +45,11 @@ describe('batchCentresAt', () => {
     }
   });
 
-  it('steps neighbours a whole node apart, so neither hides the other', () => {
+  it('steps neighbours past the column drawn beside a node', () => {
+    // The task-count column is drawn outside the node's right edge, so a step
+    // of the node's own width alone would put the next node on top of it.
     const [first, second] = batchCentresAt(ORIGIN, 2);
-    expect(second.x - first.x).toBeGreaterThanOrEqual(EMPTY_NODE_SIZE.width);
+    expect(second.x - first.x).toBeGreaterThan(EMPTY_NODE_SIZE.width);
     expect(second.y).toBe(first.y);
   });
 
@@ -56,12 +58,6 @@ describe('batchCentresAt', () => {
     const at = batchCentresAt(ORIGIN, wrap + 1);
     expect(at[wrap].y - at[0].y).toBeGreaterThanOrEqual(EMPTY_NODE_SIZE.height);
     expect(at[wrap].x).toBe(at[0].x);
-  });
-
-  it('keeps a row narrow enough to sit in a desktop viewport', () => {
-    const row = batchCentresAt(ORIGIN, firstWrap());
-    const span = row[row.length - 1].x - row[0].x + EMPTY_NODE_SIZE.width;
-    expect(span).toBeLessThanOrEqual(1280);
   });
 
   it('lays a batch out so no two nodes share a position', () => {

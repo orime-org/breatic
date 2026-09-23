@@ -227,6 +227,43 @@ for (const entry of ['drop', 'paste'] as const) {
   });
 }
 
+test('a row leaves each node its task counts', async ({ page }) => {
+  // The count column is what the reader watches while an upload runs, and it
+  // is drawn outside the node's right edge. A row that steps by the node's own
+  // width alone puts the next node on top of it.
+  await handOverFiles(page, 'drop', 3);
+  await theGroupOver(page, 3);
+
+  const anchors = page.locator('[data-testid="node-task-counts-anchor"]');
+  await anchors.first().waitFor({ timeout: 40_000 });
+  await expect.poll(async () => anchors.count(), { timeout: 40_000 }).toBe(3);
+
+  const boxes = await page.evaluate(() =>
+    [
+      ...document.querySelectorAll(
+        '.react-flow__node:not(.react-flow__node-group)',
+      ),
+    ]
+      .map((el) => {
+        const anchor = el.querySelector(
+          '[data-testid="node-task-counts-anchor"]',
+        );
+        return {
+          left: el.getBoundingClientRect().left,
+          countsRight: anchor?.getBoundingClientRect().right ?? null,
+        };
+      })
+      .sort((a, b) => a.left - b.left),
+  );
+
+  // Every neighbour starts to the right of the counts belonging to the node
+  // before it.
+  for (let i = 0; i + 1 < boxes.length; i += 1) {
+    expect(boxes[i].countsRight).not.toBeNull();
+    expect(boxes[i + 1].left).toBeGreaterThan(boxes[i].countsRight as number);
+  }
+});
+
 test('the members keep the grid, and the Group takes them along', async ({
   page,
 }) => {
@@ -246,14 +283,15 @@ test('the members keep the grid, and the Group takes them along', async ({
       .map((n) => n.position)
       .sort((a, b) => a.y - b.y || a.x - b.x);
 
-  // 288x192 nodes stepped by 312 and 216, four across, inside 24 of padding.
+  // 288x192 nodes stepped by 346 and 216, four across, inside 24 of padding.
+  // The 346 is the node plus the task-count column beside it plus a gap.
   // Creating the Group rewrites every member's position, so this is where a
   // second answer to "where is node i" would show up as a jump.
   expect(await memberGrid()).toEqual([
     { x: 24, y: 24 },
-    { x: 336, y: 24 },
-    { x: 648, y: 24 },
-    { x: 960, y: 24 },
+    { x: 370, y: 24 },
+    { x: 716, y: 24 },
+    { x: 1062, y: 24 },
     { x: 24, y: 240 },
   ]);
 
@@ -283,9 +321,9 @@ test('the members keep the grid, and the Group takes them along', async ({
   // inside the frame.
   expect(await memberGrid()).toEqual([
     { x: 24, y: 24 },
-    { x: 336, y: 24 },
-    { x: 648, y: 24 },
-    { x: 960, y: 24 },
+    { x: 370, y: 24 },
+    { x: 716, y: 24 },
+    { x: 1062, y: 24 },
     { x: 24, y: 240 },
   ]);
 });

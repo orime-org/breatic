@@ -36,7 +36,22 @@ const GAP_PX = 24;
 const COLUMNS = 4;
 
 /**
+ * What a node draws to the right of its own box: the task-count column
+ * (`node-task-counts-anchor`, anchored `left-full`), which is what the reader
+ * watches while an upload runs. Measured at zoom 1 — `pl-2` (8) plus one cell
+ * (`p-1.5` on each side, a `size-3` mark and a 1px border, 26).
+ *
+ * The column counter-scales with the canvas, so below zoom 1 it covers more
+ * canvas than this. That is what zooming out does to every node's column,
+ * whether or not the node is in a row.
+ */
+const COUNTS_PX = 34;
+
+/**
  * The step between neighbours.
+ *
+ * The width stepped by is the node's box plus the column beside it, so a row
+ * leaves each node's counts visible instead of putting the next node on them.
  *
  * The height stepped by is the *empty* node's, not the height the node will
  * end up with: what it grows to depends on the aspect ratio of media that has
@@ -45,7 +60,7 @@ const COLUMNS = 4;
  * nodes apart, which is all the placement is for (user 2026-09-11).
  */
 export const NODE_STEP = {
-  x: EMPTY_NODE_SIZE.width + GAP_PX,
+  x: EMPTY_NODE_SIZE.width + COUNTS_PX + GAP_PX,
   y: EMPTY_NODE_SIZE.height + GAP_PX,
 } as const;
 
