@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { NewItemDialog } from '@web/pages/studio/container/dialogs/NewItemDialog';
@@ -120,6 +120,75 @@ describe('NewItemDialog (spec §3.12)', () => {
     // so without the cursor landing on it the press reads as nothing having
     // happened.
     expect(screen.getByLabelText('Slug')).toHaveFocus();
+  });
+
+  it('stays open with a busy Create button until the create settles (#255)', async () => {
+    const user = userEvent.setup();
+    let settle: () => void = () => {};
+    const onCreate = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const onOpenChange = vi.fn();
+    render(
+      <NewItemDialog
+        kind='project'
+        open
+        onOpenChange={onOpenChange}
+        onCreate={onCreate}
+      />,
+    );
+    await user.type(screen.getByLabelText('Name'), 'Fresh');
+    await user.type(screen.getByLabelText('Slug'), 'fresh-proj');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    // The label stays, so the button is still addressable by its name — which
+    // is the reason the label stays.
+    const button = screen.getByRole('button', { name: 'Create' });
+    expect(button).toBeDisabled();
+    expect(screen.getByTestId('new-project-pending')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      settle();
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('stays open with Create pressable again when the create is refused (#255)', async () => {
+    const user = userEvent.setup();
+    let refuse: (reason: Error) => void = () => {};
+    const onCreate = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          refuse = reject;
+        }),
+    );
+    const onOpenChange = vi.fn();
+    render(
+      <NewItemDialog
+        kind='project'
+        open
+        onOpenChange={onOpenChange}
+        onCreate={onCreate}
+      />,
+    );
+    await user.type(screen.getByLabelText('Name'), 'Fresh');
+    await user.type(screen.getByLabelText('Slug'), 'fresh-proj');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    await act(async () => {
+      refuse(new Error('Access denied'));
+    });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
+    expect(screen.queryByTestId('new-project-pending')).not.toBeInTheDocument();
+    // What was typed is still there to press again.
+    expect(screen.getByLabelText('Name')).toHaveValue('Fresh');
   });
 
   it('offers no visibility choice — every project is visible to the studio', () => {
