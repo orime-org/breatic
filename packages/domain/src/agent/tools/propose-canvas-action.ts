@@ -252,11 +252,10 @@ function capShapeOf(info: ParamInfo): CappedParam {
 /**
  * Whether a parameter is one only the reader can fill, in the panel.
  *
- * Exported because three readings turn on it and they have to agree: a value
- * set here is refused, a control left to them has to be marked in the prompt,
- * and the fixtures build their proposals to match. Answered differently, the
- * model is told to leave a value out and never told to mark its place, and
- * the group lands with a control the reader must set and nothing saying so.
+ * Exported because two readings turn on it and they have to agree: a value
+ * set here is refused, and the fixtures build their proposals to match.
+ * Answered differently, a fixture the check would turn away is the thing the
+ * cases are written against.
  * @param name - The parameter's name.
  * @param info - What the catalog says about it.
  * @returns True when the reader fills it once the group is placed.
@@ -583,10 +582,12 @@ function checkGenerateNode(
   // turned away. Read through the one function the panel, the server and the
   // worker read, so the number is the same everywhere it is judged.
   //
-  // What counts against it is what a mention will actually put there: the
-  // panel counts the reference IMAGES the prompt mentions
-  // (`mentionedReferenceUrls`), so a clip reaching the same generation, or the
-  // words upstream, cannot be the node that puts this group over the line.
+  // Counted over the image nodes wired in, which is the most the prompt's
+  // marks can put in the pool: the panel takes the reference IMAGES the
+  // prompt mentions (`mentionedReferenceUrls`), one per mark, so a clip
+  // reaching the same generation, or the words upstream, is never one of
+  // them. A wired image the prompt never marks is counted here, and reaches
+  // the pool only once the reader mentions it themselves.
   const pooled = nodesAt([...held.sources, ...held.upstream]).filter(
     (n) => n.type === "image",
   );
@@ -595,7 +596,7 @@ function checkGenerateNode(
   if (over) {
     return {
       ok: false,
-      reason: `"${model}" holds ${String(over.limit)} reference(s) at a time, and ${String(pooled.length)} node(s) reaching node ${String(index)} go in it.`,
+      reason: `"${model}" holds ${String(over.limit)} reference(s) at a time, and ${String(pooled.length)} image node(s) reach node ${String(index)}, any of which its prompt can put in it.`,
     };
   }
 
@@ -710,7 +711,7 @@ function hasRing(proposal: CanvasProposal): boolean {
  * Whether a proposal states a flow the reader can carry out.
  *
  * Pure, so the rule it applies is the one a test can hold: the catalog goes
- * in through `entriesForNode` and `modelsForMode`, and nothing else is read.
+ * in through `modelsForMode`, and nothing else is read.
  *
  * Shape is the model's to decide -- one generation, one empty node feeding
  * three of them, words standing beside them -- within one bound: something
