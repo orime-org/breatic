@@ -237,15 +237,13 @@ export function planGroupGrowth(
 export function planGroupFitToMembers(
   groups: ReadonlyArray<GroupGrowthInput>,
 ): GroupGrowth[] {
-  const rectById = new Map(groups.map((group) => [group.groupId, group.rect]));
-  return planGroupGrowth(groups).filter((growth) => {
-    const rect = rectById.get(growth.groupId);
-    return (
-      rect !== undefined &&
-      growth.position.x === rect.x &&
-      growth.position.y === rect.y
-    );
-  });
+  return groups.flatMap((group) =>
+    planGroupGrowth([group]).filter(
+      (growth) =>
+        growth.position.x === group.rect.x &&
+        growth.position.y === group.rect.y,
+    ),
+  );
 }
 
 /** The 8 NodeResizer control positions: 4 edge lines + 4 corner handles. */

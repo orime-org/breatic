@@ -143,12 +143,12 @@ import {
   planGroupCreation,
   type GroupCreationPlan,
 } from '@web/spaces/canvas/group-creation';
+import { planMeasuredGroupFit } from '@web/spaces/canvas/group-fit';
 import {
   EMPTY_NODE_SIZE,
   GROUP_MIN_SIZE,
   GROUP_PADDING,
   groupResizeBounds,
-  planGroupFitToMembers,
   planGroupGrowth,
   planGroupResize,
   type GroupGrowth,
@@ -570,68 +570,6 @@ function planDuplicateGroupGrowth(
     });
   }
   return planGroupGrowth(inputs);
-}
-
-/**
- * The growth every Group needs to hold members that turned out bigger than the
- * box drawn around them (#2209).
- *
- * A Group is sized around its members, and a member that is still uploading is
- * a fixed placeholder box; once its media arrives the node is as tall as the
- * media. Positions come from the document and sizes from the render, so the
- * only thing that moves the answer is a member changing size — an in-flight
- * drag says nothing here, and the gesture's own release still owns where
- * things land.
- * @param places - The nodes as the document has them (geometry + parentId).
- * @param rendered - The render buffer, for each node's measured size.
- * @param skip - Groups a remote gesture is holding, which this end writes nothing about.
- * @returns One growth per Group that must get bigger.
- */
-function planMeasuredGroupFit(
-  places: ReadonlyArray<Node>,
-  rendered: ReadonlyArray<Node>,
-  skip: ReadonlySet<string>,
-): GroupGrowth[] {
-  const measuredById = new Map(rendered.map((node) => [node.id, node]));
-  /**
-   * A node's rendered footprint, falling back to the empty node's box.
-   * @param node - The node as the document has it.
-   * @returns Its width / height.
-   */
-  const sizeOf = (node: Node): { width: number; height: number } => {
-    const drawn = measuredById.get(node.id);
-    return {
-      width: drawn?.measured?.width ?? node.width ?? GROUP_DRAG_FALLBACK_W,
-      height: drawn?.measured?.height ?? node.height ?? GROUP_DRAG_FALLBACK_H,
-    };
-  };
-  const inputs: GroupGrowthInput[] = [];
-  for (const group of places) {
-    if (group.type !== 'group' || skip.has(group.id)) continue;
-    const memberRects: Rect[] = [];
-    for (const node of places) {
-      if (node.parentId !== group.id) continue;
-      const size = sizeOf(node);
-      memberRects.push({
-        x: group.position.x + node.position.x,
-        y: group.position.y + node.position.y,
-        width: size.width,
-        height: size.height,
-      });
-    }
-    if (memberRects.length === 0) continue;
-    inputs.push({
-      groupId: group.id,
-      rect: {
-        x: group.position.x,
-        y: group.position.y,
-        width: group.width ?? GROUP_DRAG_FALLBACK_W,
-        height: group.height ?? GROUP_DRAG_FALLBACK_H,
-      },
-      memberRects,
-    });
-  }
-  return planGroupFitToMembers(inputs);
 }
 
 /**
@@ -2620,7 +2558,10 @@ function CanvasSpaceInner({
         } catch {
           // Server-side 413 remains the authoritative gate.
         }
-        const admitted: File[] = [];
+        // What a file becomes is read once, here, and travels with it: the
+        // node is made in one pass and the bytes are sent in another, and both
+        // need the same answer.
+        const admitted: { file: File; spec: UploadNodeSpec }[] = [];
         for (const file of files) {
           const rejection = checkFileAdmission(file, maxBytes);
           if (rejection !== null) {
@@ -2631,7 +2572,7 @@ function CanvasSpaceInner({
               }),
             );
           } else {
-            admitted.push(file);
+            admitted.push({ file, spec: fileToNodeSpec(file) });
           }
         }
         // Shaped as flow nodes so the Group below is planned by the same
@@ -2639,19 +2580,22 @@ function CanvasSpaceInner({
         // `planGroupCreation` falls back to the empty footprint the placement
         // stepped by.
         const created: Node[] = [];
+        // Each admitted file and the node it got, so the send below names its
+        // own node rather than counting to the same index twice.
+        const jobs: { file: File; spec: UploadNodeSpec; nodeId: string }[] = [];
         // One drop is one thing to take back, so every node it makes and the
         // Group around them go down as a single undo step.
         let selectAfter: string[] = [];
         runCanvasUndoBatch(projectId, spaceId, () => {
           const centres = batchCentresAt(origin, admitted.length);
-          for (let i = 0; i < admitted.length; i += 1) {
-            const spec = fileToNodeSpec(admitted[i]);
+          admitted.forEach(({ file, spec }, i) => {
             const { id, position } = createUploadNodeAt(
               spec.nodeType,
               centres[i],
             );
             created.push({ id, type: spec.nodeType, position, data: {} });
-          }
+            jobs.push({ file, spec, nodeId: id });
+          });
           if (created.length === 0) return;
           // Files handed over together arrive as one thing, so a Group says so:
           // the reader can see which ones came in together and take the batch
@@ -2676,10 +2620,7 @@ function CanvasSpaceInner({
         });
         if (selectAfter.length > 0) setSelectAfterCreate(selectAfter);
         // The bytes travel once the canvas holds the nodes they belong to.
-        for (let i = 0; i < admitted.length; i += 1) {
-          const file = admitted[i];
-          const spec = fileToNodeSpec(file);
-          const nodeId = created[i].id;
+        for (const { file, spec, nodeId } of jobs) {
           if (spec.needsUpload) {
             trackOperation(
               nodeId,
