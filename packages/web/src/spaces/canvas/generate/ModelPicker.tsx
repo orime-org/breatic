@@ -28,7 +28,8 @@ interface ModelPickerProps {
 
 /**
  * The Generate panel's model picker: a pill showing the current model that
- * opens a list of catalog models. Picking one fires `onChange` and closes the
+ * opens a list of catalog models, each row naming the model and, under it,
+ * what that model is good at. Picking one fires `onChange` and closes the
  * list. Backed by the shared Radix Popover (portaled out of ReactFlow's
  * transform, so it closes on a canvas click and flips above/below to stay
  * on-screen). Falls back to the raw model id on the trigger when the current
@@ -108,10 +109,25 @@ export const ModelPicker = React.memo(function ModelPicker({
                 }}
               >
                 <ModelIcon name={m.icon} className='h-4 w-4 shrink-0' />
-                {/* truncate: the catalog puts no length cap on display_name and
-                    Button's base carries whitespace-nowrap — unbounded, one long
-                    name would stretch the popover past the viewport. */}
-                <span className='min-w-0 truncate'>{m.display_name}</span>
+                {/* Two lines, the same shape VoicePicker gives its voices: the
+                    name, and under it what this model is good at. The catalog's
+                    `description` is written for this line — it says what sets a
+                    model apart, which is the only thing that tells a reader
+                    which of several models for one mode to pick. Empty when the
+                    catalog leaves it blank, and then the row is one line again.
+                    truncate on both: the catalog puts no length cap on either
+                    and Button's base carries whitespace-nowrap, so unbounded,
+                    one long string would stretch the popover past the viewport. */}
+                <span className='flex min-w-0 flex-1 flex-col items-start'>
+                  <span className='w-full truncate text-left'>
+                    {m.display_name}
+                  </span>
+                  {m.description !== '' && (
+                    <span className='w-full truncate text-left text-xs text-muted-foreground'>
+                      {m.description}
+                    </span>
+                  )}
+                </span>
               </Button>
             ))}
           </div>
