@@ -1710,6 +1710,73 @@ export function resizeGroup(
   width: number,
   height: number,
 ): boolean {
+  return writeGroupRect(
+    projectId,
+    spaceId,
+    groupId,
+    position,
+    width,
+    height,
+    CANVAS_UNDO,
+  );
+}
+
+/**
+ * Grow a Group around content that arrived, on {@link CONTENT_WRITE} so it
+ * stays out of the undo stack. A member filling in is not something the reader
+ * did, so the box following it is not something they should have to take back
+ * — their undo is still the drop that made the batch.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the Group.
+ * @param groupId - Id of the Group to fit.
+ * @param position - The Group's new top-left.
+ * @param position.x - New x coordinate.
+ * @param position.y - New y coordinate.
+ * @param width - The Group's new width.
+ * @param height - The Group's new height.
+ * @returns Whether the Group was still there to write.
+ */
+export function fitGroupToContent(
+  projectId: string,
+  spaceId: string,
+  groupId: string,
+  position: { x: number; y: number },
+  width: number,
+  height: number,
+): boolean {
+  return writeGroupRect(
+    projectId,
+    spaceId,
+    groupId,
+    position,
+    width,
+    height,
+    CONTENT_WRITE,
+  );
+}
+
+/**
+ * Write a Group's stored rect in one transaction under the given origin.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the Group.
+ * @param groupId - Id of the Group to write.
+ * @param position - The Group's new top-left.
+ * @param position.x - New x coordinate.
+ * @param position.y - New y coordinate.
+ * @param width - The Group's new width.
+ * @param height - The Group's new height.
+ * @param origin - Transaction origin, which decides whether undo sees it.
+ * @returns Whether the Group was still there to write.
+ */
+function writeGroupRect(
+  projectId: string,
+  spaceId: string,
+  groupId: string,
+  position: { x: number; y: number },
+  width: number,
+  height: number,
+  origin: symbol,
+): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const group = nodesMap.get(groupId);
@@ -1720,7 +1787,7 @@ export function resizeGroup(
     group.set('position', position);
     data.set('width', width);
     data.set('height', height);
-  }, CANVAS_UNDO);
+  }, origin);
   return true;
 }
 

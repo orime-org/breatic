@@ -338,6 +338,20 @@ test('a batch dropped on a Group joins it', async ({ page }) => {
   expect(nodes.filter((n) => n.parentId === groupId)).toHaveLength(4);
 });
 
+test('one undo takes the whole batch back', async ({ page }) => {
+  await handOverFiles(page, 'drop', 3);
+  await theGroupOver(page, 3);
+
+  // One drop is one thing the reader did, so it is one thing to take back.
+  // Aimed at the pane: the handler asks whether the event's target sits in
+  // the canvas region before it reads the chord.
+  await page.locator('.react-flow__pane').press('ControlOrMeta+z');
+
+  await expect
+    .poll(async () => (await documentNodes(page)).length, { timeout: 15_000 })
+    .toBe(0);
+});
+
 test('one file stays one node, with no Group around it', async ({ page }) => {
   await page
     .locator('input[data-testid="canvas-upload-input"][multiple]')

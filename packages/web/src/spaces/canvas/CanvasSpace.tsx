@@ -75,6 +75,7 @@ import {
   removeEdge,
   removeElements,
   removeNode,
+  fitGroupToContent,
   resizeGroup,
   runCanvasUndoBatch,
   setGroupBackground,
@@ -141,6 +142,7 @@ import type {
 import {
   planBatchGrouping,
   planGroupCreation,
+  type GroupCreationPlan,
   type OpenGroup,
 } from '@web/spaces/canvas/group-creation';
 import {
@@ -635,6 +637,33 @@ function planMeasuredGroupFit(
 }
 
 /**
+ * Write a planned Group and bind its members to it.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to write into.
+ * @param plan - The Group's stored rect and each member's relative position.
+ * @param createdBy - Whoever is making it.
+ */
+function writeGroup(
+  projectId: string,
+  spaceId: string,
+  plan: GroupCreationPlan,
+  createdBy: string,
+): void {
+  createGroup(
+    projectId,
+    spaceId,
+    createGroupNode(
+      plan.groupId,
+      plan.position,
+      plan.width,
+      plan.height,
+      createdBy,
+    ),
+    plan.members,
+  );
+}
+
+/**
  * The Groups a batch may land in.
  *
  * A locked Group takes nobody in, and one a remote gesture is holding has a
@@ -889,7 +918,7 @@ function CanvasSpaceInner({
       buffer.heldByRemote(),
     );
     for (const fit of fits) {
-      resizeGroup(
+      fitGroupToContent(
         projectId,
         spaceId,
         fit.groupId,
@@ -2644,19 +2673,60 @@ function CanvasSpaceInner({
         // `planGroupCreation` falls back to the empty footprint the placement
         // stepped by.
         const created: Node[] = [];
+        // One drop is one thing to take back, so every node it makes and the
+        // Group around them go down as a single undo step.
+        let selectAfter: string[] = [];
+        runCanvasUndoBatch(projectId, spaceId, () => {
+          for (let i = 0; i < admitted.length; i += 1) {
+            const spec = fileToNodeSpec(admitted[i]);
+            const { id, position } = createUploadNodeAt(
+              spec.nodeType,
+              dropPositionAt(origin, i),
+            );
+            created.push({ id, type: spec.nodeType, position, data: {} });
+          }
+          if (created.length === 0) return;
+          // Files handed over together arrive as one thing, so they land as
+          // one: wrapped in a Group of their own on open canvas, or taken into
+          // the Group they were dropped on.
+          const placement = planBatchGrouping(
+            created,
+            openGroupsFor(buffer.documentPlaces(), buffer.heldByRemote()),
+            origin,
+            newId(),
+          );
+          if (placement.kind === 'loose') {
+            selectAfter = created.map((node) => node.id);
+            return;
+          }
+          if (placement.kind === 'join') {
+            for (const member of placement.members) {
+              setNodeParent(
+                projectId,
+                spaceId,
+                member.id,
+                placement.groupId,
+                member.position,
+              );
+            }
+            // What just appeared is what the reader acts on; the Group they put
+            // it in was already theirs and holds other things they did not ask
+            // about.
+            selectAfter = placement.members.map((member) => member.id);
+            return;
+          }
+          writeGroup(projectId, spaceId, placement.plan, userId);
+          // The Group is what the reader acts on next. Its members were never
+          // selected, so there is nothing to clear first: `selectAfterCreate`
+          // deselects everything else when the Group mirrors back.
+          selectAfter = [placement.plan.groupId];
+        });
+        if (selectAfter.length > 0) setSelectAfterCreate(selectAfter);
+        // The bytes travel once the canvas holds the nodes they belong to.
         for (let i = 0; i < admitted.length; i += 1) {
           const file = admitted[i];
           const spec = fileToNodeSpec(file);
-          const { id: nodeId, position } = createUploadNodeAt(
-            spec.nodeType,
-            dropPositionAt(origin, i),
-          );
-          created.push({
-            id: nodeId,
-            type: spec.nodeType,
-            position,
-            data: {},
-          });
+          const nodeId = created[i].id;
           if (spec.needsUpload) {
             trackOperation(
               nodeId,
@@ -2700,54 +2770,6 @@ function CanvasSpaceInner({
             );
           }
         }
-        if (created.length === 0) return;
-        // Files handed over together arrive as one thing, so they land as one:
-        // wrapped in a Group of their own on open canvas, or taken into the
-        // Group they were dropped on.
-        const placement = planBatchGrouping(
-          created,
-          openGroupsFor(buffer.documentPlaces(), buffer.heldByRemote()),
-          origin,
-          newId(),
-        );
-        if (placement.kind === 'loose') {
-          setSelectAfterCreate(created.map((node) => node.id));
-          return;
-        }
-        if (placement.kind === 'join') {
-          for (const member of placement.members) {
-            setNodeParent(
-              projectId,
-              spaceId,
-              member.id,
-              placement.groupId,
-              member.position,
-            );
-          }
-          // What just appeared is what the reader acts on; the Group they put
-          // it in was already theirs and holds other things they did not ask
-          // about.
-          setSelectAfterCreate(placement.members.map((member) => member.id));
-          return;
-        }
-        const { plan } = placement;
-        createGroup(
-          projectId,
-          spaceId,
-          createGroupNode(
-            plan.groupId,
-            plan.position,
-            plan.width,
-            plan.height,
-            userId,
-          ),
-          plan.members,
-        );
-        // The Group is what the reader acts on next, so it is what ends up
-        // selected. Its members were never selected, so there is nothing to
-        // clear first: `selectAfterCreate` deselects everything else when the
-        // Group mirrors back.
-        setSelectAfterCreate([plan.groupId]);
       })();
       trackOperation(UPLOAD_BATCH_OP, batchWork);
     },
@@ -3274,14 +3296,7 @@ function CanvasSpaceInner({
     // selected, minus whatever a remote gesture is holding.
     const plan = planGroupCreation(buffer.settled(), groupableIds, groupId);
     if (!plan) return;
-    const group = createGroupNode(
-      groupId,
-      plan.position,
-      plan.width,
-      plan.height,
-      userId,
-    );
-    createGroup(projectId, spaceId, group, plan.members);
+    writeGroup(projectId, spaceId, plan, userId);
     // #1477: clear the marquee members' selection NOW so the mirror round-trip
     // window holds no stale multi-selection — otherwise ReactFlow routes a
     // right-click to the SELECTION menu instead of the Group menu. The Group
