@@ -32,7 +32,7 @@ export interface CanvasCapabilityAnswer {
 const TEXT_NODE_NOTE = [
   "text node: holds words and generates nothing, so no mode applies to it.",
   "- A mention names the node rather than copying it: what goes out is whatever that node holds at the moment the reader presses Generate, so editing the node changes what every mention of it sends.",
-  "- Mentioning a text node puts that node's words into the prompt, read as if they had been typed there. Mentioning a node of any other kind puts it in as reference material instead, which is what a model with a reference pool draws on.",
+  "- Mentioning a text node puts that node's words into the prompt, read as if they had been typed there. Mentioning an image node puts its picture in as reference material instead, which a model with a reference pool draws on; the picker offers no other kind.",
   "- One text node can be mentioned by several nodes downstream, so wording they share is written once and mentioned from each of them.",
   "- Three things one carries: a finished piece of writing the reader keeps, a description of what a group of nodes is for or how a script is set up, and a shared prompt fragment the nodes downstream mention.",
 ].join("\n");

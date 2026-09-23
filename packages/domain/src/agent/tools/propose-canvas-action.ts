@@ -59,7 +59,6 @@ import {
 } from "@breatic/shared";
 
 import {
-  materialKinds,
   modelsForMode,
   type ModelInfo,
   type ParamInfo,
@@ -447,35 +446,6 @@ function checkGenerateNode(
   const values = checkParams(chosen, node);
   if (!values.ok) return values;
 
-  // An empty node is the proposal saying "this part is yours to supply". Once
-  // it says that, it has to say it about every kind the mode runs on: a
-  // talking head placed with two empty portraits and no voice has the reader
-  // fill both of them and then find the panel asking for a voice. Nothing else
-  // catches that shape -- slot material is picked by clicking any node of the
-  // kind rather than wired, so no edge exists for the connection rule to read,
-  // and the marks say the same thing whichever kinds they stand for.
-  //
-  // Placing no empty node at all is the other answer to the question the tool
-  // tells the model to ask first: the reader already has the material, and
-  // picks it in the panel from what is on their canvas. The proposal cannot
-  // see that canvas, so a group of one generation node stands on its own.
-  //
-  // What counts as holding a kind is any node in the group but this one: an
-  // empty node the reader fills and the step before that made one reach the
-  // slot the same way.
-  const kinds = materialKinds(nodeType, mode);
-  const placesEmptyNode = proposal.nodes.some((n) => n.role === "source");
-  const kindsInGroup = new Set(
-    proposal.nodes.filter((_, at) => at !== index).map((n) => n.type),
-  );
-  const missing = placesEmptyNode ? kinds.filter((kind) => !kindsInGroup.has(kind)) : [];
-  if (missing.length > 0) {
-    return {
-      ok: false,
-      reason: `"${mode}" runs on ${kinds.join(" and ")} material, and this group asks the reader to supply some of it but places no ${missing.join(" or ")} node for them to put it in.`,
-    };
-  }
-
   const prompt = node.prompt ?? [];
   // Two ways the reader's material reaches a generation: the reference pool,
   // which an edge feeds, and a slot on the panel's toolbar, which the reader
@@ -756,6 +726,75 @@ export function checkProposal(sent: CanvasProposal): ProposalVerdict {
 }
 
 /**
+ * Where the empty nodes a proposal places can go, counted by kind.
+ *
+ * A proposal cannot see the canvas it lands on, so it cannot know whether the
+ * reader already holds a piece of material -- but it can be held to the nodes
+ * it places itself. An empty node is a to-do, and a to-do the reader completes
+ * and then has nowhere to put is the shape a talking head takes when it is
+ * proposed with two portraits: the panel has one place for a picture and one
+ * for a voice, so the second portrait can only sit there.
+ *
+ * Read off the places themselves rather than off the modes table, which speaks
+ * in kinds and says nothing about how many places hold each: `first_last` has
+ * two places and both take a picture.
+ * @param proposal - The proposal being read.
+ * @returns How many empty nodes of each kind the group can take.
+ * @throws {never} Never.
+ */
+function placesByKind(proposal: CanvasProposal): Map<string, number> {
+  const room = new Map<string, number>();
+  for (const node of proposal.nodes) {
+    if (node.role !== "generate" || node.type === "text") continue;
+    const { mode, model } = node;
+    if (!mode || !model) continue;
+    const reachable = modelsForMode(node.type, mode);
+    if (!reachable.available) continue;
+    const chosen = reachable.models.find((m) => m.name === model);
+    if (!chosen) continue;
+    for (const info of Object.values(chosen.params)) {
+      if (info.filledBySource !== true || info.accepts === undefined) continue;
+      // The pool holds several of its kind and says how many; a slot holds the
+      // one node the reader picks into it.
+      const takes = info.fromReferencePool === true ? (info.maxItems ?? Number.MAX_SAFE_INTEGER) : 1;
+      room.set(info.accepts, (room.get(info.accepts) ?? 0) + takes);
+    }
+  }
+  return room;
+}
+
+/**
+ * Whether every empty node the proposal places has a place to go.
+ *
+ * Asked of the group rather than of one generation, because a slot is filled
+ * by clicking any node of its kind: an empty node placed beside one generation
+ * is as reachable from the next one's panel.
+ * @param proposal - The proposal being read.
+ * @returns Whether it stands, and which kind is over its room when it does not.
+ * @throws {never} Never.
+ */
+function checkEmptyNodesFit(proposal: CanvasProposal): ProposalVerdict {
+  const room = placesByKind(proposal);
+  const placed = new Map<string, number>();
+  for (const node of proposal.nodes) {
+    if (node.role !== "source") continue;
+    placed.set(node.type, (placed.get(node.type) ?? 0) + 1);
+  }
+  for (const [kind, count] of placed) {
+    const takes = room.get(kind) ?? 0;
+    if (count > takes) {
+      return {
+        ok: false,
+        reason: takes === 0
+          ? `This group places ${String(count)} empty ${kind} node(s), and nothing in it takes ${kind} material.`
+          : `This group places ${String(count)} empty ${kind} node(s), and the panels in it hold ${String(takes)} at a time.`,
+      };
+    }
+  }
+  return { ok: true };
+}
+
+/**
  * The same rules, over a proposal the catalog has already been read onto.
  *
  * Apart from {@link checkProposal} by that one step, so the answer the tool
@@ -839,7 +878,12 @@ function checkResolved(proposal: CanvasProposal): ProposalVerdict {
     const verdict = checkGenerateNode(proposal, node, index);
     if (!verdict.ok) return verdict;
   }
-  return { ok: true };
+
+  // Last, because it reads every generation's places at once and a node the
+  // catalog cannot resolve contributes none: asked before the loop above, a
+  // proposal naming a model that does not exist would be answered about its
+  // empty nodes rather than about the name it got wrong.
+  return checkEmptyNodesFit(proposal);
 }
 
 /**

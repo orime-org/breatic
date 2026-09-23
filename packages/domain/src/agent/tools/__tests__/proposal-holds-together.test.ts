@@ -422,11 +422,82 @@ describe("a mode whose material arrives through a panel slot", () => {
     ).toEqual({ ok: true });
   });
 
-  it("is refused when the empty nodes leave one of the kinds this mode needs unfilled", () => {
+  it("stands when one branch's empty node sits beside a generation that needs another kind", () => {
+    // The empty node belongs to the branch it is wired into. A generation in
+    // the same group whose own material is already on the reader's canvas is
+    // not made wrong by a neighbour asking for something.
+    const slot = pick((m) => !m.byReference && m.needs.length > 0, "mode fed by a panel slot");
+    const other = pick(
+      (m) => !m.byReference && m.needs.length > 0 && !m.needs.includes(slot.needs[0] as GenerationNodeType),
+      "mode fed by a slot of another kind",
+    );
+
+    expect(
+      checkProposal({
+        nodes: [
+          { role: "source", type: slot.needs[0] as GenerationNodeType, name: "Your material" },
+          generation(slot, 1, 0),
+          { ...generation(other, 0, 0), name: "The other result" },
+        ],
+        edges: [{ fromIndex: 0, toIndex: 1 }],
+        modelNote: "",
+        rationale: "why this shape",
+        groupName: "Two jobs",
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("stands when it places an empty node for one kind and the reader holds the other", () => {
+    // Placing one empty node says that piece is theirs to put somewhere; it
+    // says nothing about the piece they already have on their canvas.
+    const at = pick(
+      (m) => !m.byReference && m.needs.length > 1,
+      "mode needing two kinds through panel slots",
+    );
+
+    expect(
+      checkProposal({
+        nodes: [
+          { role: "source", type: at.needs[1] as GenerationNodeType, name: "Your material" },
+          generation(at, 1, 0),
+        ],
+        edges: [],
+        modelNote: "",
+        rationale: "why this shape",
+        groupName: "One of the two",
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("is refused when it places an empty node no place in the group can take", () => {
+    // A to-do the reader cannot complete: they fill the node and there is no
+    // slot anywhere in this group to pick it into.
+    const at = pick(
+      (m) => !m.byReference && m.needs.length === 1,
+      "mode fed by one panel slot",
+    );
+    const alien: GenerationNodeType = at.needs[0] === "audio" ? "image" : "audio";
+
+    expect(
+      checkProposal({
+        nodes: [
+          { role: "source", type: at.needs[0] as GenerationNodeType, name: "Your material" },
+          { role: "source", type: alien, name: "Something else" },
+          generation(at, 1, 0),
+        ],
+        edges: [],
+        modelNote: "",
+        rationale: "why this shape",
+        groupName: "One too many",
+      }),
+    ).toEqual({ ok: false, reason: expect.stringContaining(alien) });
+  });
+
+  it("is refused when two empty nodes of one kind have one place between them", () => {
     // Slot material is picked in the panel rather than wired, so no edge is
-    // drawn and the rule holding the pool path to its kinds never runs here.
-    // A talking head takes a portrait and a voice; two portraits is a group
-    // the reader fills and then cannot generate from.
+    // drawn and the connection rule never sees these nodes. A talking head has
+    // one place for a picture and one for a voice; two portraits is a group
+    // the reader fills and then has nowhere to put the second one.
     const at = pick(
       (m) => !m.byReference && m.needs.length > 1,
       "mode needing two kinds through panel slots",
@@ -438,7 +509,7 @@ describe("a mode whose material arrives through a panel slot", () => {
 
     expect(checkProposal(propose(at, { sources: twiceTheFirst }))).toEqual({
       ok: false,
-      reason: expect.stringContaining(String(at.needs[1])),
+      reason: expect.stringContaining(String(at.needs[0])),
     });
   });
 });

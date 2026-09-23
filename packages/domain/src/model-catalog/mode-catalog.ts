@@ -108,6 +108,15 @@ export interface ParamInfo {
    */
   filledBySource?: boolean;
   /**
+   * The kind of node this place takes, for a place material goes.
+   *
+   * The catalog requires it of every such place (`assertParamDeclarations`),
+   * and it is what says a talking head's two places are a portrait and a
+   * voice rather than two of either. Carried because the modes table speaks
+   * in kinds and says nothing about how many places hold each.
+   */
+  accepts?: string;
+  /**
    * Whether that source is the reference pool, which takes a second gesture.
    *
    * An edge makes an image available; an `@`-mention in the prompt picks it
@@ -225,33 +234,6 @@ export function materialNeeded(
   return 0;
 }
 
-/**
- * Which kinds of material one mode of one node type asks the reader for.
- *
- * Beside {@link materialNeeded} rather than folded into it: that one says how
- * many pieces, this one says of what. A talking head takes two pieces and the
- * count alone is met by two portraits, which is a run the panel refuses for a
- * missing voice after the reader has filled both nodes.
- *
- * The model does not come into it. `config/models/modes.yaml` declares this
- * once per mode and holds every model offering that mode to it, and a node
- * type's buckets spell their modes apart, so the mode alone picks the row.
- * @param nodeType - The node the run is on, for the buckets it draws from.
- * @param mode - The mode it is set to.
- * @returns The kinds, in the order the mode declares them; empty for a mode
- * needing nothing and for one this node does not offer.
- */
-export function materialKinds(
-  nodeType: GenerationNodeType,
-  mode: string,
-): GenerationNodeType[] {
-  const config = getModeConfig();
-  for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
-    const declared = config[bucket]?.modes[mode];
-    if (declared) return [...(declared.sources ?? [])] as GenerationNodeType[];
-  }
-  return [];
-}
 
 /**
  * The modes a picker offers that the catalog can currently back.
@@ -446,6 +428,7 @@ function projectParam(
       : {}),
     ...(spec.remote_source !== undefined ? { valuesFrom: spec.remote_source } : {}),
     ...(by === "canvas" ? { filledBySource: true as const } : {}),
+    ...(by === "canvas" && spec.accepts !== undefined ? { accepts: spec.accepts } : {}),
     // Both fills reach the answer as "canvas", because both are material off
     // the canvas; the two gestures that put it there differ, and that is what
     // this says. It comes off `fill` rather than the name the pool travels
