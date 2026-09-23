@@ -44,6 +44,10 @@ vi.mock("@breatic/core", async (importOriginal) => {
       judge_likelihood_timeout_ms: timeoutMs,
     }),
     getRawEnvVar: (name: string) => (name === "OPENROUTER_API_KEY" ? apiKey : undefined),
+    env: new Proxy(
+      {},
+      { get: (_t, prop: string) => (prop === "OPENROUTER_API_KEY" ? apiKey : undefined) },
+    ),
   };
 });
 
@@ -55,6 +59,7 @@ vi.stubGlobal("fetch", () => {
 
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 import { TOOL_MAP, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
+import { buildAgentConfig } from "@domain/agent/agent-config.js";
 import { JUDGE_LIKELIHOOD } from "@domain/agent/tools/tool-names.js";
 
 /** One answer of each type, in the shape the endpoint really sends. */
@@ -148,7 +153,13 @@ describe("judge_likelihood is in the agent's hands", () => {
     expect(judgeLikelihood.metadata).toMatchObject({ runningLine: expect.any(String) });
   });
 
-  it("is left out of a deployment with no key", async () => {
+  it("is left out of a deployment with no key", () => {
+    apiKey = undefined;
+    const config = buildAgentConfig({ basePrompt: "base", interactive: true });
+    expect(Object.keys(config.tools)).not.toContain(JUDGE_LIKELIHOOD);
+  });
+
+  it("says so rather than throwing bare when a turn reaches it without a key", async () => {
     apiKey = undefined;
     const { readerKey } = await failureOf(askAll);
     expect(readerKey).toBe(FAILURE_LINES.generic);
@@ -172,11 +183,37 @@ describe("the model composes the request", () => {
   });
 
   it("declines replay and takes its deadline from the configured value", async () => {
-    timeoutMs = 10_000;
+    timeoutMs = 4321;
     httpRequestMock.mockResolvedValueOnce(responseOf({ answers: ANSWERS }));
     await askAll();
     const [, , options] = httpRequestMock.mock.calls[0] ?? [];
-    expect(options).toMatchObject({ replaySafe: false, timeoutMs: 10_000 });
+    expect(options).toMatchObject({ replaySafe: false, timeoutMs: 4321 });
+  });
+
+  it("bounds the whole call, not one delivery", async () => {
+    // `replaySafe: false` does not stop the transport replaying a 429 or a 408
+    // (decide-retry.ts:287 settles those ahead of the caller's declaration), so
+    // the only thing that holds the turn to the configured figure is a signal
+    // covering every delivery and every backoff.
+    timeoutMs = 20;
+    httpRequestMock.mockResolvedValueOnce(responseOf({ answers: ANSWERS }));
+    await askAll();
+    const [, , options] = httpRequestMock.mock.calls[0] ?? [];
+    const signal = (options as { signal?: AbortSignal }).signal;
+    expect(signal, "a signal spanning the call reaches the transport").toBeInstanceOf(
+      AbortSignal,
+    );
+    await new Promise((f) => setTimeout(f, 60));
+    expect(signal?.aborted, "and it expires on the configured figure").toBe(true);
+  });
+
+  it("refuses a call that asks nothing", async () => {
+    const answer = judgeLikelihood.execute?.(
+      { state: {}, questions: {} },
+      { toolCallId: "t1", messages: [] } as never,
+    );
+    await expect(answer).rejects.toThrow();
+    expect(httpRequestMock, "and does not spend a round trip on it").not.toHaveBeenCalled();
   });
 });
 
@@ -215,6 +252,16 @@ describe("what comes back", () => {
     expect(answer.unreadable).toEqual(["clear_enough"]);
   });
 
+  it("names a score that falls outside its own legend", async () => {
+    httpRequestMock.mockResolvedValueOnce(
+      responseOf({
+        answers: { ...ANSWERS, how_ambitious: { ...ANSWERS.how_ambitious, score: 7 } },
+      }),
+    );
+    const answer = (await askAll()) as { unreadable: string[] };
+    expect(answer.unreadable).toEqual(["how_ambitious"]);
+  });
+
   it("fails when no key at all can be read", async () => {
     httpRequestMock.mockResolvedValueOnce(responseOf({ answers: { clear_enough: {} } }));
     const { forModel, readerKey } = await failureOf(askAll);
@@ -232,8 +279,33 @@ describe("failing says what broke", () => {
     expect(forModel).not.toContain("openrouter.ai");
   });
 
+  it("carries a failure when the body is the JSON literal null", async () => {
+    httpRequestMock.mockResolvedValueOnce(responseOf(null));
+    const { readerKey } = await failureOf(askAll);
+    expect(readerKey).toBe(FAILURE_LINES.upstream);
+  });
+
+  it("lets the model rewrite a request the service would not take", async () => {
+    // A 413 or a 400 is about this request, which the model wrote and can
+    // write again smaller. `stop` would tell the reader a working capability
+    // is down.
+    httpRequestMock.mockResolvedValueOnce(responseOf({ error: "too large" }, 413));
+    const { forModel } = await failureOf(askAll);
+    expect(forModel.toLowerCase()).toContain("wording");
+  });
+
+  it("tells the model to stop when our own credentials are refused", async () => {
+    httpRequestMock.mockResolvedValueOnce(responseOf({ error: "no" }, 401));
+    const { forModel } = await failureOf(askAll);
+    expect(forModel).toContain("Do not repeat");
+  });
+
   it("says nothing answered when the delivery never landed", async () => {
-    httpRequestMock.mockRejectedValueOnce(new Error("http request to <redacted> timed out"));
+    // The message the transport really writes: `redactUrl` drops the query
+    // and keeps origin and path (redact-url.ts:42).
+    httpRequestMock.mockRejectedValueOnce(
+      new Error("http request to https://openrouter.ai/api/alpha/decisions timed out"),
+    );
     const { forModel, readerKey } = await failureOf(askAll);
     expect(readerKey).toBe(FAILURE_LINES.unreachable);
     expect(forModel).not.toContain("openrouter.ai");
