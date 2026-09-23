@@ -36,7 +36,22 @@ const GAP_PX = 24;
 const COLUMNS = 4;
 
 /**
+ * What a node draws to the right of its own box: the task-count column
+ * (`node-task-counts-anchor`, anchored `left-full`), which is what the reader
+ * watches while an upload runs. Measured at zoom 1 — `pl-2` (8) plus one cell
+ * (`p-1.5` on each side, a `size-3` mark and a 1px border, 26).
+ *
+ * The column counter-scales with the canvas, so below zoom 1 it covers more
+ * canvas than this. That is what zooming out does to every node's column,
+ * whether or not the node is in a row.
+ */
+const COUNTS_PX = 34;
+
+/**
  * The step between neighbours.
+ *
+ * The width stepped by is the node's box plus the column beside it, so a row
+ * leaves each node's counts visible instead of putting the next node on them.
  *
  * The height stepped by is the *empty* node's, not the height the node will
  * end up with: what it grows to depends on the aspect ratio of media that has
@@ -45,19 +60,33 @@ const COLUMNS = 4;
  * nodes apart, which is all the placement is for (user 2026-09-11).
  */
 export const NODE_STEP = {
-  x: EMPTY_NODE_SIZE.width + GAP_PX,
+  x: EMPTY_NODE_SIZE.width + COUNTS_PX + GAP_PX,
   y: EMPTY_NODE_SIZE.height + GAP_PX,
 } as const;
 
 /**
- * Where the nth file of a drop goes.
- * @param origin - Where the drop landed, which is where the first node goes.
- * @param index - The file's place in the batch, from zero.
- * @returns The position for that file's node.
+ * Where the nodes of one batch go, centred on the point it came in at.
+ *
+ * One file puts its node's centre on that point, so a batch puts the centre of
+ * what the batch adds up to there: the reader points at a place and the thing
+ * they handed over appears around it, however many files it was. The whole
+ * batch is laid out in one call because the centring needs the count, and a
+ * per-index function would let a caller place a batch without it.
+ * @param origin - Where the batch came in: the drop point, or the viewport
+ * centre when the files arrived by the upload button or a paste.
+ * @param count - How many files the batch admitted.
+ * @returns One centre per file, in the order the files were handed over.
  */
-export function dropPositionAt(origin: DropPoint, index: number): DropPoint {
-  return {
-    x: origin.x + (index % COLUMNS) * NODE_STEP.x,
-    y: origin.y + Math.floor(index / COLUMNS) * NODE_STEP.y,
-  };
+export function batchCentresAt(
+  origin: DropPoint,
+  count: number,
+): DropPoint[] {
+  const columns = Math.min(count, COLUMNS);
+  const rows = Math.ceil(count / COLUMNS);
+  const left = origin.x - ((columns - 1) * NODE_STEP.x) / 2;
+  const top = origin.y - ((rows - 1) * NODE_STEP.y) / 2;
+  return Array.from({ length: count }, (_, index) => ({
+    x: left + (index % COLUMNS) * NODE_STEP.x,
+    y: top + Math.floor(index / COLUMNS) * NODE_STEP.y,
+  }));
 }

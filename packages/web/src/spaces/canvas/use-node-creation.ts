@@ -43,6 +43,12 @@ import {
 } from '@web/spaces/canvas/group-geometry';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
+/** A node an upload just created: its id and the top-left it was written at. */
+export interface CreatedUploadNode {
+  id: string;
+  position: { x: number; y: number };
+}
+
 export interface NodeCreation {
   /**
    * Create an empty node of `type` CENTRED on a canvas point and return its id.
@@ -58,11 +64,14 @@ export interface NodeCreation {
    * Create a media node for an in-flight upload, CENTRED on the drop point.
    * What it ends up holding arrives from the server once the upload's task
    * settles (#186 §3.4); the caller writes nothing onto it.
+   *
+   * Reports the top-left it wrote alongside the id, so a batch that becomes a
+   * Group frames itself around where its members actually are.
    */
   createUploadNodeAt: (
     type: CreatableNodeType,
     position: { x: number; y: number },
-  ) => string;
+  ) => CreatedUploadNode;
   /**
    * Paste plain text as a new text node CENTRED on a point; returns its id.
    * The pasted text becomes the node's content.
@@ -182,14 +191,11 @@ export function useNodeCreation(
     (
       type: CreatableNodeType,
       position: { x: number; y: number },
-    ): string => {
-      const node = createEmptyNode(
-        type,
-        centerToTopLeft(position, EMPTY_NODE_SIZE),
-        userId,
-      );
+    ): CreatedUploadNode => {
+      const topLeft = centerToTopLeft(position, EMPTY_NODE_SIZE);
+      const node = createEmptyNode(type, topLeft, userId);
       addNode(projectId, spaceId, node);
-      return node.id;
+      return { id: node.id, position: topLeft };
     },
     [projectId, spaceId, userId],
   );

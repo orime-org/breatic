@@ -152,6 +152,9 @@ const GROUP_DEFAULT_NAME = 'Group';
  * @param width - The Group's authoritative width.
  * @param height - The Group's authoritative height.
  * @param createdBy - User id of the creator (caller injects from the store).
+ * @param backgroundColor - Tint token to open with; absent leaves it untinted.
+ * @param name - The name to open with; absent takes the default. An upload
+ *   batch names its Group after how many files it holds.
  * @returns A complete `CanvasNodeFields` for a Group node.
  */
 export function createGroupNode(
@@ -160,19 +163,22 @@ export function createGroupNode(
   width: number,
   height: number,
   createdBy: string,
+  backgroundColor?: string,
+  name?: string,
 ): CanvasNodeFields {
   return {
     id,
     type: 'group',
     position,
     data: {
-      name: GROUP_DEFAULT_NAME,
+      name: name ?? GROUP_DEFAULT_NAME,
       createdAt: Date.now(),
       createdBy,
       locked: false,
       attachments: [],
       width,
       height,
+      ...(backgroundColor !== undefined && { backgroundColor }),
     },
   };
 }
