@@ -4,11 +4,13 @@
 import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 
+import { dropPositionAt } from '@web/spaces/canvas/drop-layout';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import {
   EMPTY_NODE_SIZE,
   GROUP_PADDING,
 } from '@web/spaces/canvas/group-geometry';
+import { centerToTopLeft } from '@web/spaces/canvas/node-factory';
 
 /**
  * Build a flow node with an explicit measured size for deterministic rects.
@@ -130,4 +132,76 @@ describe('planGroupCreation', () => {
     expect(byId['b']).toEqual({ x: 200 - top.x, y: 180 - top.y });
   });
 
+  describe('the Group one multi-file upload becomes (#2209)', () => {
+    /**
+     * The batch as the drop hands it to the planner: one node per file, placed
+     * by `dropPositionAt` and written at the top-left `createUploadNodeAt`
+     * derives from it. None is measured yet, which is what the canvas passes.
+     * @param count - How many files the drop admitted.
+     * @returns The flow nodes for that batch, in the order they were placed.
+     */
+    function batch(count: number): Node[] {
+      return Array.from({ length: count }, (_, i) => {
+        const centre = dropPositionAt({ x: 0, y: 0 }, i);
+        return {
+          id: `f${String(i)}`,
+          type: 'image',
+          position: centerToTopLeft(centre, EMPTY_NODE_SIZE),
+          data: {},
+        };
+      });
+    }
+
+    it('frames two files with the padding, and keeps them a gap apart', () => {
+      const nodes = batch(2);
+      const plan = planGroupCreation(
+        nodes,
+        nodes.map((n) => n.id),
+        'g-2',
+      );
+
+      // 288x192 nodes one 312 step apart, padded by 24 on every side.
+      expect(plan).not.toBeNull();
+      expect(plan?.position).toEqual({ x: -168, y: -120 });
+      expect(plan?.width).toBe(648);
+      expect(plan?.height).toBe(240);
+      expect(plan?.members).toEqual([
+        { id: 'f0', position: { x: 24, y: 24 } },
+        { id: 'f1', position: { x: 336, y: 24 } },
+      ]);
+    });
+
+    it('is two rows tall once the fifth file wraps', () => {
+      const nodes = batch(5);
+      const plan = planGroupCreation(
+        nodes,
+        nodes.map((n) => n.id),
+        'g-5',
+      );
+
+      // Four across, so the fifth starts a second row one 216 step down.
+      expect(plan?.position).toEqual({ x: -168, y: -120 });
+      expect(plan?.width).toBe(1272);
+      expect(plan?.height).toBe(456);
+      expect(plan?.members.map((m) => m.position)).toEqual([
+        { x: 24, y: 24 },
+        { x: 336, y: 24 },
+        { x: 648, y: 24 },
+        { x: 960, y: 24 },
+        { x: 24, y: 240 },
+      ]);
+    });
+
+    it('leaves a single file on its own', () => {
+      const nodes = batch(1);
+
+      expect(
+        planGroupCreation(
+          nodes,
+          nodes.map((n) => n.id),
+          'g-1',
+        ),
+      ).toBeNull();
+    });
+  });
 });

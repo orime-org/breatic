@@ -75,20 +75,24 @@ describe('useNodeCreation', () => {
     addNode.mockRestore();
   });
 
-  it('createUploadNodeAt writes a media node already in handling state and returns its id + first lease (#1580 #7)', () => {
+  it('createUploadNodeAt writes a media node and reports where it put it', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
       .mockImplementation(() => undefined);
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
-    const nodeId = result.current.createUploadNodeAt('image', { x: 7, y: 8 });
+    const created = result.current.createUploadNodeAt('image', { x: 7, y: 8 });
 
     expect(addNode).toHaveBeenCalledTimes(1);
     const [, , node] = addNode.mock.calls[0];
-    expect(node.id).toBe(nodeId);
+    expect(node.id).toBe(created.id);
     expect(node.type).toBe('image');
     // Centred on the point (top-left = point − empty-node half-size).
     expect(node.position).toEqual({ x: 7 - 144, y: 8 - 96 });
+    // The top-left it reports is the one it wrote. A batch that becomes a
+    // Group reads its members' positions from here, so there is one answer to
+    // "where is node i" and the Group cannot be framed around a second one.
+    expect(created.position).toEqual(node.position);
     // A node is created carrying no tasks: how it looks while one runs comes
     // from the counts the server writes (#186 §3.3).
     expect(node.data.createdBy).toBe('u-9');

@@ -2407,6 +2407,10 @@ function CanvasSpaceInner({
     [spaceId],
   );
 
+  // Whoever is at this browser: stamped on everything created here, which is
+  // both the nodes a drop makes and the Group it wraps them in.
+  const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
+
   // Where a failed upload ONTO A NODE is presented, for every entry that has
   // one: dropping onto the canvas, filling an existing node (double-click /
   // Upload menu / Retry / reset-to-empty), and the video-with-cover path. Each
@@ -2513,15 +2517,24 @@ function CanvasSpaceInner({
             admitted.push(file);
           }
         }
-        const created: string[] = [];
+        // Shaped as flow nodes so the Group below is planned by the same
+        // planner the chord uses. No size is carried: none is measured yet, and
+        // `planGroupCreation` falls back to the empty footprint the placement
+        // stepped by.
+        const created: Node[] = [];
         for (let i = 0; i < admitted.length; i += 1) {
           const file = admitted[i];
           const spec = fileToNodeSpec(file);
-          const nodeId = createUploadNodeAt(
+          const { id: nodeId, position } = createUploadNodeAt(
             spec.nodeType,
             dropPositionAt(origin, i),
           );
-          created.push(nodeId);
+          created.push({
+            id: nodeId,
+            type: spec.nodeType,
+            position,
+            data: {},
+          });
           if (spec.needsUpload) {
             trackOperation(
               nodeId,
@@ -2565,7 +2578,37 @@ function CanvasSpaceInner({
             );
           }
         }
-        if (created.length > 0) setSelectAfterCreate(created);
+        if (created.length === 0) return;
+        // One upload is one node the reader can drag on its own. Two or more
+        // arrived as one batch, so they leave as one: the Group is what the
+        // reader grabs, and the members keep the grid they were placed on.
+        const groupId = newId();
+        const plan = planGroupCreation(
+          created,
+          created.map((node) => node.id),
+          groupId,
+        );
+        if (!plan) {
+          setSelectAfterCreate(created.map((node) => node.id));
+          return;
+        }
+        createGroup(
+          projectId,
+          spaceId,
+          createGroupNode(
+            groupId,
+            plan.position,
+            plan.width,
+            plan.height,
+            userId,
+          ),
+          plan.members,
+        );
+        // The Group is what the reader acts on next, so it is what ends up
+        // selected. Its members were never selected, so there is nothing to
+        // clear first: `selectAfterCreate` deselects everything else when the
+        // Group mirrors back.
+        setSelectAfterCreate([groupId]);
       })();
       trackOperation(UPLOAD_BATCH_OP, batchWork);
     },
@@ -2573,6 +2616,7 @@ function CanvasSpaceInner({
       readOnly,
       projectId,
       spaceId,
+      userId,
       failUploadNode,
       createUploadNodeAt,
       t,
@@ -2929,7 +2973,6 @@ function CanvasSpaceInner({
   }, [readOnly, captureClipboardWithText, buffer]);
 
   // ---- Grouping (selection → group / ungroup) ----
-  const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
   // Stable references (#1647 step 4): the Yjs mirror hands a fresh `flowNodes`
   // every doc change, so these re-derive a new array each render; `useStableList`
   // collapses identical results to the previous reference so `groupOffer` (and
