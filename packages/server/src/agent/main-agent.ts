@@ -80,7 +80,6 @@ export class MainAgent {
 
   /**
    * Everything a turn does before the model is called.
-   *
    * @param said - What to record and send as the user's turn
    * @param signal - Raised when the user stops the turn or the client leaves
    * @returns The turn, as the SDK's own message chunks.
