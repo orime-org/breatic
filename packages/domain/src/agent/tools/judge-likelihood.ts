@@ -105,7 +105,10 @@ const DESCRIPTION = [
     "- the reader asked for something you think is off, and you are unsure whether to do it",
     "- you cannot tell whether they said enough to start on, or whether to ask them first",
     "",
-    "When it says it is unsure, the question has no answer in the material you gave it: the " +
+    "A question whose answer came back in a shape this side cannot read, or which it did " +
+    "not answer at all, is named in `unreadable` instead of `answers`. The rest stand.",
+  "",
+  "When it says it is unsure, the question has no answer in the material you gave it: the " +
       "option and scale shapes answer a confidence, and the claim shape answers a probability " +
       "near a half. That is when to ask the reader, or to put more in and ask again.",
     "",

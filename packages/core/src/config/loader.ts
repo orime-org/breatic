@@ -266,11 +266,12 @@ const agentConfigSchema = z.object({
   /**
    * How long ONE DELIVERY of the judgement call may take, in milliseconds.
    *
-   * The call declines replay, so this bounds the wait rather than a third of
-   * it. Measured 2026-09-23: 285-395 ms once connected, 1181 ms on the first
-   * call of a process.
+   * A signal spanning the call is what holds the wait to this: declining
+   * replay settles only the deliveries the caller owns, and a 429 or a 408
+   * is replayed regardless. Measured 2026-09-23: 285-395 ms once connected,
+   * 1181 ms on the first call of a process.
    */
-  judge_likelihood_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10_000),
+  judge_likelihood_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(10_000),
   /**
    * How much the model may write about one piece of media, in tokens.
    *

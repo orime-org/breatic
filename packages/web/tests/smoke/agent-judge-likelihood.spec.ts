@@ -26,6 +26,12 @@ import { STATE_FILE, openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
+/** What the reader says, held here so the state can be measured against it. */
+const PROMPT =
+  'I want a thirty second product video. Do not ask me anything -- work out for ' +
+  'yourself which of the ways you can build one suits this best, and tell me how ' +
+  'likely each of them is to be the right call.';
+
 /** One tool call as the finished conversation stores it. */
 interface StoredCall {
   readonly name: string;
@@ -81,11 +87,7 @@ test('asks for a judgement with the material attached @needs-model', async () =>
   await page.getByTestId('new-conversation').click();
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
-  await composer.fill(
-    'I want a thirty second product video. Do not ask me anything -- work out for ' +
-      'yourself which of the ways you can build one suits this best, and tell me how ' +
-      'likely each of them is to be the right call.',
-  );
+  await composer.fill(PROMPT);
   await composer.press('Enter');
 
   // The reply settles when the composer takes input again.
@@ -107,36 +109,42 @@ test('asks for a judgement with the material attached @needs-model', async () =>
 
   // The state is what the answer is judged against, and a thin one is the
   // failure this case exists for: it returns a well-formed answer made of
-  // noise.
-  expect(JSON.stringify(sent.state ?? '').length, 'the state carries this turn').toBeGreaterThan(
-    120,
-  );
+  // noise. Measured against the prompt rather than a bare length, because a
+  // state that is nothing but a copy of the prompt clears any length this
+  // prompt already exceeds.
+  const stateText = JSON.stringify(sent.state ?? '');
+  expect(
+    stateText.length - PROMPT.length,
+    `the state carries more than the prompt back: ${stateText}`,
+  ).toBeGreaterThan(200);
 
   const asked = Object.values(sent.questions ?? {});
   expect(asked, 'at least one question').not.toHaveLength(0);
 
   // Options written as sentences rather than bare labels. A label names the
-  // option; what it is is what Jev judges.
-  const optionText = asked
-    .flatMap((question) => {
-      const criteria = question.criteria;
-      if (Array.isArray(criteria)) return criteria as string[];
-      if (typeof criteria === 'object' && criteria !== null) {
-        return Object.values(criteria as Record<string, string>);
-      }
-      return [];
-    })
-    .filter((text) => typeof text === 'string');
-  expect(optionText, 'the questions carry options').not.toHaveLength(0);
-  const longest = Math.max(...optionText.map((text) => text.length));
-  expect(longest, `options are written out, not labelled: ${optionText.join(' | ')}`).toBeGreaterThan(
-    25,
-  );
+  // option; what it is is what Jev judges. Only `choice` carries these -- a
+  // `score` question's criteria are rung labels by definition, and `noul`
+  // carries none, so a turn made of those has nothing to measure here.
+  const optionText = asked.flatMap((question) => {
+    const criteria = question.criteria;
+    return typeof criteria === 'object' && criteria !== null && !Array.isArray(criteria)
+      ? Object.values(criteria as Record<string, string>)
+      : [];
+  });
+  if (optionText.length > 0) {
+    // The floor, not the ceiling: one written-out option among bare labels is
+    // the shape this is here to catch.
+    const shortest = Math.min(...optionText.map((text) => text.length));
+    expect(
+      shortest,
+      `options are written out, not labelled: ${optionText.join(' | ')}`,
+    ).toBeGreaterThan(25);
+  }
 
   // eslint-disable-next-line no-console -- the measurement is the point of this line
   console.log(
-    `judgement calls: ${String(judged.length)}, state ${String(
-      JSON.stringify(sent.state ?? '').length,
-    )} chars, ${String(asked.length)} question(s), longest option ${String(longest)} chars`,
+    `judgement calls: ${String(judged.length)}, state ${String(stateText.length)} chars ` +
+      `over a ${String(PROMPT.length)}-char prompt, ${String(asked.length)} question(s), ` +
+      `${String(optionText.length)} option(s)`,
   );
 });

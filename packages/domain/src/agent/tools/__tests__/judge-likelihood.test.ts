@@ -274,18 +274,27 @@ describe("what comes back", () => {
     expect(answer.unreadable.sort()).toEqual(["how_ambitious", "how_to_build"]);
   });
 
-  it("does not let an answer key reach the prototype of what the model reads", async () => {
+  it("does not let a question key reach the prototype of what the model reads", async () => {
+    // The model names its own questions and the schema takes any string, so
+    // `__proto__` is a name it can choose. Assigning one onto an object
+    // literal replaces that object's prototype instead of adding a key.
     httpRequestMock.mockResolvedValueOnce(
-      new Response('{"answers":{"__proto__":{"type":"noul","noul":0.9},"clear_enough":{"type":"noul","noul":0.4}}}', {
-        status: 200,
-      }),
+      new Response('{"answers":{"__proto__":{"type":"noul","noul":0.9}}}', { status: 200 }),
     );
-    const answer = (await askAll()) as {
-      answers: Record<string, unknown>;
-      unreadable: string[];
-    };
-    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
-    expect(Object.keys(answer.answers).sort()).toEqual(["__proto__", "clear_enough"]);
+    const answer = (await judgeLikelihood.execute?.(
+      {
+        state: {},
+        // Built by parsing, because a `__proto__` key in an object literal
+        // sets the prototype instead of becoming a key -- the same shape the
+        // SDK hands `execute` after parsing the model's arguments.
+        questions: JSON.parse(
+          '{"__proto__":{"type":"noul","instructions":"Does this hold?"}}',
+        ) as Record<string, { type: "noul"; instructions: string }>,
+      },
+      { toolCallId: "t1", messages: [] } as never,
+    )) as { answers: Record<string, unknown>; unreadable: string[] };
+    expect(Object.keys(answer.answers)).toEqual(["__proto__"]);
+    expect(answer.answers["__proto__"]).toEqual({ type: "noul", noul: 0.9 });
   });
 
   it("names a score that falls outside its own legend", async () => {

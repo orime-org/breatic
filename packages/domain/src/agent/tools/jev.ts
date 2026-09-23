@@ -19,8 +19,11 @@ import { z } from "zod";
 
 import type { FailureVoice } from "@domain/agent/tools/failure.js";
 import {
+  clip,
   isStop,
+  keepInside,
   nextMovesFor,
+  onOneLine,
   reason,
   refusalReason,
   stoppedByUser,
@@ -28,16 +31,16 @@ import {
 } from "@domain/agent/tools/failure.js";
 
 /** Where the decisions endpoint lives, and which model answers there. */
-export const JEV_PINS = {
+const JEV_PINS = {
   url: "https://openrouter.ai/api/alpha/decisions",
   model: "typesafe/jev-1.13",
 } as const;
 
 /** One question, in whichever of the three shapes the model chose. */
-export type JevQuestion = Readonly<Record<string, unknown>>;
+type JevQuestion = Readonly<Record<string, unknown>>;
 
 /** What one call needs. */
-export interface JevRequest {
+interface JevRequest {
   /** The key, which only ever travels in a header. */
   readonly apiKey: string;
   /** Whatever the model is holding, in whatever shape it holds it. */
@@ -96,18 +99,31 @@ const answerSchema = z
   );
 
 /**
- * Split an answered object into the keys that read and the keys that did not.
+ * Sort the asked keys into the ones that came back readable and the rest.
  *
- * What goes into `answers` is the value as it arrived, not what the schema
- * parsed out of it: the schema settles whether the model can read the key,
- * and a field this side has not heard of is still the vendor's answer.
+ * Walks what was asked rather than what came back, so a question the endpoint
+ * skipped is named in `unreadable` instead of vanishing. What goes into
+ * `answers` is the value as it arrived, not what the schema parsed out of it:
+ * the schema settles whether the model can read the key, and a field this side
+ * has not heard of is still the vendor's answer.
+ *
+ * `answers` has no prototype: a key named `__proto__` is an ordinary own
+ * property of a parsed body, and assigning one onto an object literal replaces
+ * that object's prototype instead of adding a key.
+ * @param asked - The keys the model asked under.
  * @param answered - The `answers` object as it arrived.
  * @returns Both halves.
  */
-function splitByReadable(answered: Record<string, unknown>): JevAnswers {
-  const answers: Record<string, Record<string, unknown>> = {};
+function sortByReadable(asked: readonly string[], answered: Record<string, unknown>): JevAnswers {
+  const answers: Record<string, Record<string, unknown>> = Object.create(null) as Record<
+    string,
+    Record<string, unknown>
+  >;
   const unreadable: string[] = [];
-  for (const [key, value] of Object.entries(answered)) {
+  for (const key of asked) {
+    // Read through the descriptor: `answered["__proto__"]` runs the inherited
+    // getter and answers the prototype, not the key `JSON.parse` put there.
+    const value = Object.getOwnPropertyDescriptor(answered, key)?.value as unknown;
     if (answerSchema.safeParse(value).success) answers[key] = value as Record<string, unknown>;
     else unreadable.push(key);
   }
@@ -117,9 +133,10 @@ function splitByReadable(answered: Record<string, unknown>): JevAnswers {
 /**
  * Read the answered keys off a response body.
  * @param text - The body as it arrived.
+ * @param asked - The keys the model asked under.
  * @returns Both halves, or null when the body is not an answer at all.
  */
-function readAnswers(text: string): JevAnswers | null {
+function readAnswers(text: string, asked: readonly string[]): JevAnswers | null {
   let body: unknown;
   try {
     body = JSON.parse(text);
@@ -132,20 +149,7 @@ function readAnswers(text: string): JevAnswers | null {
   if (typeof body !== "object" || body === null) return null;
   const answered = (body as { answers?: unknown }).answers;
   if (typeof answered !== "object" || answered === null) return null;
-  return splitByReadable(answered as Record<string, unknown>);
-}
-
-/**
- * What to call this request in a sentence the model reads.
- *
- * The shared failure vocabulary quotes what was asked, the way a search quotes
- * its query. The keys are the model's own names for its questions, so they are
- * what it recognises this call by.
- * @param questions - The questions as sent.
- * @returns The keys, joined.
- */
-function whatWasAsked(questions: Readonly<Record<string, JevQuestion>>): string {
-  return Object.keys(questions).join(", ");
+  return sortByReadable(asked, answered as Record<string, unknown>);
 }
 
 /**
@@ -165,7 +169,10 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
   // hold the turn for three deliveries and two backoffs. This signal is read
   // at the top of every pass (`request.ts:358`) and ends the backoff wait
   // (`request.ts:434`), so the figure in the config is what the reader waits.
-  const deadline = AbortSignal.timeout(budgetMs);
+  // Truncated because a configured budget can carry a fraction and
+  // `AbortSignal.timeout` answers ERR_OUT_OF_RANGE to one, which `setTimeout`
+  // does not -- the same trap `read-within.ts:113` records.
+  const deadline = AbortSignal.timeout(Math.trunc(budgetMs));
   const spanning = abortSignal ? AbortSignal.any([abortSignal, deadline]) : deadline;
 
   let res: Response;
@@ -200,8 +207,20 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // The shared table, which already separates a fault of ours from a request
     // the service would take in another form. The model wrote this request, so
     // that difference decides whether it may write another one.
+    // The keys are the model's own words, and this sentence is stored on the
+    // call and read again by every later turn -- the same treatment the search
+    // tools give a query before it reaches here.
+    const asked = clip(keepInside(onOneLine(Object.keys(questions).join(", "))), 200);
+    // 422 alone is read differently here. The shared table calls it a fault in
+    // our configuration, which holds for a caller that shaped the request; the
+    // model shaped this one, so it is one the model can shape again.
     throw toolFailed(
-      refusalReason(voice, whatWasAsked(questions), res.status),
+      res.status === 422
+        ? reason(
+            `${voice.attempting} "${asked}" failed: the ${voice.act} service would not take what was sent.`,
+            moves.rewordOnce,
+          )
+        : refusalReason(voice, asked, res.status),
       FAILURE_LINES.upstream,
     );
   }
@@ -220,7 +239,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     );
   }
 
-  const split = readAnswers(text);
+  const split = readAnswers(text, Object.keys(questions));
   if (split === null || Object.keys(split.answers).length === 0) {
     throw toolFailed(
       reason(`The ${voice.act} service answered, and none of it could be read.`, moves.stop),
