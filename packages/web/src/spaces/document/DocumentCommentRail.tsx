@@ -29,7 +29,10 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { DocumentCommentCard } from '@web/spaces/document/DocumentCommentCard';
-import { layOutCards } from '@web/spaces/document/document-comment-layout';
+import {
+  inColumnOrder,
+  layOutCards,
+} from '@web/spaces/document/document-comment-layout';
 import {
   hoverThread,
   hoveredThreadIn,
@@ -297,6 +300,11 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     [shown, anchors, heights, reading],
   );
 
+  const written = React.useMemo(
+    () => inColumnOrder(shown, placed),
+    [shown, placed],
+  );
+
   // How far down the lowest card reaches. The cards are out of flow, so the
   // panel's own box — its border, its background, and the block the sticky
   // header is held inside — stops at whatever the header and the empty
@@ -408,7 +416,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
           </p>
         ) : (
           <div className='absolute inset-x-2.5 top-0'>
-            {shown.map((card) => (
+            {written.map((card) => (
               <PlacedCard
                 key={card.id}
                 card={card}
@@ -501,6 +509,12 @@ function PlacedCard({
   }, [card.id, take, giveBack]);
 
   return (
+    // A card is what the reader acts on, and it cannot be a button: an open
+    // one carries its own buttons and its reply box. What this rule asks for
+    // beyond focus and a press key is a role, which is screen reader
+    // semantics — not supported by this product (docs/ACCESSIBILITY.md), and
+    // the only part here no other reader gains from.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       ref={box}
       // The move is animated: a card giving way to the one being read should
@@ -518,23 +532,31 @@ function PlacedCard({
       onMouseLeave={() => {
         onHover(null);
       }}
-      // The keyboard's way in. An unread card holds nothing focusable — its
-      // controls are what opening it draws — so without this the focus has
-      // nothing to land on and `onFocusCapture` can never fire: the panel is
-      // reachable and every thread in it is not.
-      // The card is what a reader acts on, and the controls it holds are
-      // drawn only once it is open — so it takes the focus itself, or the
-      // keyboard reaches none of them. The role this rule asks for is screen
-      // reader semantics, which this product does not support
-      // (docs/ACCESSIBILITY.md); keyboard reach is what is delivered here.
+      // The controls a card holds are drawn only once it is open, so the
+      // card takes the focus itself or the keyboard reaches none of them.
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
       tabIndex={0}
-      // Both ways a reader arrives at a card: the pointer pressing it, and
-      // the focus landing on it or on any control inside it.
       onPointerDown={() => {
         onRead(card.id);
       }}
+      // Reaching a card is what resting a pointer on it is, not what
+      // pressing it is: the words go deeper (A24) and the thread stays shut
+      // until the reader says to open it (A7). Opening on arrival would also
+      // move the card — reading one makes it the column's pivot — out from
+      // under the focus ring the browser had just scrolled to.
       onFocusCapture={() => {
+        onHover(card.id);
+      }}
+      onBlurCapture={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        onHover(null);
+      }}
+      // The press, from the keyboard. Keys that reach here from a control
+      // inside an open card are that control's to answer.
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
         onRead(card.id);
       }}
     >

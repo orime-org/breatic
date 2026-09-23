@@ -20,7 +20,10 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { layOutCards } from '@web/spaces/document/document-comment-layout';
+import {
+  inColumnOrder,
+  layOutCards,
+} from '@web/spaces/document/document-comment-layout';
 
 /** The gap this Space keeps between two cards. */
 const GAP = 8;
@@ -231,5 +234,28 @@ describe('the panel header', () => {
     );
     expect(placed.get('a')).toBe(MIN_TOP);
     expect(placed.get('b')).toBe(MIN_TOP + 100 + GAP);
+  });
+});
+
+describe('the order the cards are written in', () => {
+  it('follows the column rather than the panel\'s two groups', () => {
+    // The panel reads every unresolved thread before every settled one,
+    // while the column mixes them by where their words are. Tab order is DOM
+    // order, so the writing order has to come from the placement or the
+    // keyboard walks the panel in an order nobody can see.
+    const placed = new Map([
+      ['settled-early', 20],
+      ['open-late', 300],
+    ]);
+
+    const written = inColumnOrder(
+      [{ id: 'open-late' }, { id: 'settled-early' }],
+      placed,
+    );
+
+    expect(written.map((card) => card.id)).toEqual([
+      'settled-early',
+      'open-late',
+    ]);
   });
 });

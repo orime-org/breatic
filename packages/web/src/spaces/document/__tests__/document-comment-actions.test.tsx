@@ -401,21 +401,38 @@ describe('what a card lets a reader do', () => {
 
   it('opens a thread from the keyboard', async () => {
     // Everything a reader can do to a thread is drawn only once it is open,
-    // and opening it had exactly two routes: a pointer press, and focus
-    // landing inside the card. An unread card holds nothing focusable, so
-    // the second route could never be taken — measured 2026-09-23: the panel
-    // offered the keyboard its two filters and its close button and nothing
-    // else.
+    // and opening it had exactly one route: a pointer press. An unread card
+    // holds nothing focusable — measured 2026-09-23: the panel offered the
+    // keyboard its two filters and its close button and nothing else — so
+    // the card itself takes the focus, and the key that opens it is the one
+    // that presses anything.
     await open();
     await comment('the first thing');
     const card = await screen.findByTestId('doc-comment-card');
     expect(screen.queryByTestId('doc-comment-reply-input')).toBeNull();
 
     card.parentElement!.focus();
+    await userEvent.keyboard('{Enter}');
 
     expect(
       await screen.findByTestId('doc-comment-reply-input'),
     ).toBeInTheDocument();
+  });
+
+  it('leaves a thread shut when the focus only arrives', async () => {
+    // Reaching a card is what resting a pointer on it is (A24), not what
+    // pressing it is (A7): the words it covers go deeper and the thread
+    // stays as it was. Opening on arrival would also move the card — it
+    // becomes the column's pivot — out from under the focus ring that just
+    // scrolled to it.
+    await open();
+    await comment('the first thing');
+    const card = await screen.findByTestId('doc-comment-card');
+
+    card.parentElement!.focus();
+    await screen.findByTestId('doc-comment-card');
+
+    expect(screen.queryByTestId('doc-comment-reply-input')).toBeNull();
   });
 
   it('offers nothing to send on a reply of only spaces', async () => {

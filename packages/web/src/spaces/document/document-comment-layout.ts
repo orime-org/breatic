@@ -114,3 +114,24 @@ export function layOutCards(
 
   return placed;
 }
+
+/**
+ * The cards in the order the column shows them, top first.
+ *
+ * Tab order is DOM order, and these cards are positioned out of flow — so
+ * whatever order they are written in is the order the keyboard walks them.
+ * The panel's own reading runs every unresolved thread before every settled
+ * one, while the column mixes the two by where their words are (A9), so the
+ * two disagree until the writing order is taken from the placement.
+ * @param cards - The cards to order.
+ * @param placed - Where each one sits, from {@link layOutCards}.
+ * @returns The same cards, ordered by how far down they sit.
+ */
+export function inColumnOrder<T extends { readonly id: string }>(
+  cards: readonly T[],
+  placed: ReadonlyMap<string, number>,
+): readonly T[] {
+  return [...cards].sort(
+    (a, b) => (placed.get(a.id) ?? 0) - (placed.get(b.id) ?? 0),
+  );
+}
