@@ -135,20 +135,17 @@ describe('AudioGenerateToolbar — Reference, then the mode\'s slots', () => {
     expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
   });
 
-  it('names no node kind, and never the one this pick refuses', async () => {
-    // The image and video toolbars share a tip naming images, and an image is
-    // the one kind an audio node's input refuses. Naming any other kind is
-    // a claim about what the pick takes, and what it takes follows the
-    // whitelist in `canvas-node.ts` -- which is where that claim would go
-    // stale the next time the whitelist changes.
+  it('sends the user after text, the one kind this pick can mention here', async () => {
+    // The image and video toolbars share a tip naming images. No audio model
+    // declares a reference pool, so `insertRefusal` turns away every media row
+    // on this panel and a text row is the only one that becomes a mention --
+    // which an audio node's input takes, alongside audio.
     setup();
     fireEvent.pointerMove(screen.getByTestId('generate-audio-tool-reference'), {
       pointerType: 'mouse',
     });
     const tip = await screen.findByRole('tooltip');
-    const said = tip.textContent?.toLowerCase() ?? '';
-    for (const kind of ['image', 'text', 'audio', 'video']) {
-      expect(said).not.toContain(kind);
-    }
+    expect(tip.textContent?.toLowerCase()).toContain('text');
+    expect(tip.textContent?.toLowerCase()).not.toContain('image');
   });
 });

@@ -90,7 +90,9 @@ export const AudioGenerateToolbar = React.memo(function AudioGenerateToolbar({
         testId='generate-audio-tool-reference'
         label={t('canvas.generatePanel.reference')}
         // Its own tip, not the one the image and video rows share: those name
-        // images, and an image is the one kind an audio node's input refuses.
+        // images, and no audio model declares a reference pool, so the rail
+        // refuses every media row here (`insertRefusal`). A text row is the
+        // one this pick can turn into a mention, which is what the tip says.
         tip={t('canvas.generatePanel.referenceTipAudio')}
         Icon={Plus}
         onClick={onReference}

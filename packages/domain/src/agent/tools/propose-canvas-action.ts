@@ -87,7 +87,7 @@ const promptSegment = z.union([
             .describe(
               "asset: material the reader supplies in an empty node. " +
                 "tweak: something only they can pick or write in the panel. " +
-                "ref: names the node upstream, not a to-do",
+                "ref: names a node wired in, no to-do; text lands here",
             ),
           label: z.string().trim().min(1),
           note: z
@@ -445,22 +445,21 @@ function checkGenerateNode(
   // fills by clicking any node of that kind anywhere on the canvas. Which one
   // this model uses is what it declares, carried here by the same projection
   // the agent is answered out of.
-  //
-  // Read before the prompt gate below, because what that gate measures
-  // depends on which nodes this prompt can name.
   const pool = poolParam(chosen);
   // A model drawing no box mounts no editor and forces the box empty, so both
   // the words and a mark that lands as a mention of upstream work reach
   // nobody. Asked further down instead, the mention would be turned away for
   // the panel it cannot fit in, and the way out named there is words -- which
-  // this same clause refuses. Material marks stay: they are what the card
-  // draws its to-dos from, and the reader picks that material in a slot.
-  const voidedHere = (segment: PromptSegment): boolean =>
-    segment.slot === undefined || segment.slot.kind === "ref";
-  if (!chosen.takesPrompt && prompt.some(voidedHere)) {
+  // this same clause refuses. What stays is what the card draws its to-dos
+  // from and the reader then acts on in the panel: material marks, and marks
+  // naming something for them to pick there.
+  if (
+    !chosen.takesPrompt &&
+    prompt.some((segment) => segment.slot === undefined || segment.slot.kind === "ref")
+  ) {
     return {
       ok: false,
-      reason: `"${model}" draws no prompt box, so words written there and marks pointing upstream reach nobody. Keep the material marks and take the rest out.`,
+      reason: `"${model}" draws no prompt box, so words written there and marks pointing upstream reach nobody. Keep the marks naming what the reader supplies or picks, and take the rest out.`,
     };
   }
   // The one reading of what feeds a node, shared with the card that files its

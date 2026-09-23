@@ -128,10 +128,9 @@ function feedersOnCanvas(
   // What the reader still has to fill goes in one list, what already carries
   // work in the other: an asset mark draws from the first and a ref mark
   // from the second, and one list would have them taking each other's turn.
-  // The split and its order come from the shared reading, which is also what
-  // the card files its to-dos by.
-  // Narrowed by the one rule the card files its to-dos by, which reads the
-  // two catalog facts off the node.
+  // The split and its order come from the shared reading, narrowed by the one
+  // rule the card files its to-dos by, which reads the two catalog facts off
+  // the node.
   const held = nameableFeeders(proposal, index);
   /**
    * The placed nodes behind a run of feeder indices.
