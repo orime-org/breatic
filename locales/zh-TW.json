@@ -272,6 +272,7 @@
       "use": "使用",
       "building": "正在建…",
       "failed": "沒建成，可以再試一次。",
+      "eachRun": "{s, number} 秒 × {n, number}",
       "needCanvas": "先開啟一個畫布。"
     },
     "thinking": "思考了一會兒",

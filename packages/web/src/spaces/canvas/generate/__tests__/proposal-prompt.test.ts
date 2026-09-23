@@ -42,16 +42,18 @@ import {
  * Write a prompt, then read it back through an editor bound to the fragment.
  * @param segments - The prompt as the model sent it.
  * @param sources - The empty nodes the asset spots mention.
+ * @param upstream - The nodes already carrying work that ref spots mention.
  * @returns What the editor makes of it, its plain text, and the string that
  *   would be sent to generation.
  */
 function roundTrip(
   segments: readonly PromptSegment[],
   sources: readonly ProposalSource[] = [],
+  upstream: readonly ProposalSource[] = [],
 ): { json: JSONContent; text: string; sent: string } {
   const doc = new Y.Doc();
   const fragment = doc.getXmlFragment('prompt');
-  writeProposalPrompt(fragment, segments, sources);
+  writeProposalPrompt(fragment, segments, { sources, upstream });
 
   const editor = new Editor({
     element: document.createElement('div'),
@@ -150,5 +152,62 @@ describe('a prompt written across more than one line', () => {
     expect(json.content).toHaveLength(2);
     expect(json.content?.[0]?.content?.[0]?.text).toBe('first line');
     expect(json.content?.[1]?.content?.[0]?.text).toBe('second line');
+  });
+});
+
+describe('a spot that points at the node upstream', () => {
+  const UPSTREAM: ProposalSource[] = [{ id: 'n-first', kind: 'image' }];
+
+  it('writes the mention and no bracket of its own', () => {
+    const { sent } = roundTrip(
+      [
+        { text: 'in the same light as ' },
+        { slot: { kind: 'ref', label: 'the first shot', note: 'Nothing to do' } },
+        { text: ', from the side' },
+      ],
+      [],
+      UPSTREAM,
+    );
+
+    // An image chip contributes no words to generation, so what is left is
+    // the sentence around it -- with the chip's own spaces on either side.
+    expect(sent).toBe('in the same light as  , from the side');
+  });
+
+  it('reaches generation as a mention of that node', () => {
+    const { json } = roundTrip(
+      [{ text: 'in the same light as ' }, { slot: { kind: 'ref', label: 'the first shot', note: 'x' } }],
+      [],
+      UPSTREAM,
+    );
+
+    expect(extractAtMentionedSourceIds(json)).toEqual(['n-first']);
+  });
+
+  it('takes its node from the upstream list, not the empty one', () => {
+    const { json } = roundTrip(
+      [
+        { slot: { kind: 'asset', label: 'your photo', note: 'x' } },
+        { text: ' in the light of ' },
+        { slot: { kind: 'ref', label: 'the first shot', note: 'x' } },
+      ],
+      [{ id: 'n-empty', kind: 'image' }],
+      UPSTREAM,
+    );
+
+    expect(extractAtMentionedSourceIds(json)).toEqual(['n-empty', 'n-first']);
+  });
+
+  it('mentions a text node upstream by its own kind', () => {
+    const { json } = roundTrip(
+      [{ text: 'follow ' }, { slot: { kind: 'ref', label: 'the copy', note: 'x' } }],
+      [],
+      [{ id: 'n-copy', kind: 'text' }],
+    );
+
+    const mention = json.content?.[0]?.content?.find(
+      (n) => n.type === REFERENCE_MENTION_NODE,
+    );
+    expect(mention?.attrs?.[MENTION_KIND_ATTR]).toBe('text');
   });
 });

@@ -25,7 +25,7 @@
 
 import * as Y from 'yjs';
 
-import { markText, type GenerationNodeType, type PromptSegment } from '@breatic/shared';
+import { markText, type ProposalNodeType, type PromptSegment } from '@breatic/shared';
 
 import {
   MENTION_SOURCE_ID_ATTR,
@@ -36,10 +36,26 @@ import { MENTION_KIND_ATTR } from '@web/spaces/canvas/generate/reference-mention
 /** The block element a line of the prompt becomes. */
 const BLOCK = 'paragraph';
 
-/** An empty node an asset spot points at, and what kind of node it is. */
+/** A node a spot in the prompt points at, and what kind of node it is. */
 export interface ProposalSource {
   id: string;
-  kind: GenerationNodeType;
+  kind: ProposalNodeType;
+}
+
+/**
+ * The two lists a prompt's marks draw their mentions from.
+ *
+ * Apart because they answer different questions and are filled at different
+ * moments: an asset mark says "your material goes in this empty node", a ref
+ * mark says "this sentence means the node that already did that work". One
+ * list would have the two competing for the same entries in order, and a
+ * written note listed before an empty node would take the empty node's mark.
+ */
+export interface ProposalFeeders {
+  /** The empty nodes wired in, in order; null writes no mention there. */
+  sources: readonly (ProposalSource | null)[];
+  /** The nodes carrying work, wired in in order; null writes none there. */
+  upstream: readonly (ProposalSource | null)[];
 }
 
 /** One piece of inline content: some words, or a mention of a source node. */
@@ -52,13 +68,13 @@ type Inline = { text: string } | { mention: ProposalSource };
  * text node is not something the editor's schema allows, so leaving one in
  * would break the box the moment the reader opened it.
  * @param segments - The prompt as the model sent it.
- * @param sources - The empty nodes to mention, one per asset spot in order.
+ * @param feeders - The nodes the marks mention, each list in its own order.
  * @returns One array of inline pieces per line.
  * @throws {never} Never.
  */
 function layOut(
   segments: readonly PromptSegment[],
-  sources: readonly ProposalSource[],
+  feeders: ProposalFeeders,
 ): Inline[][] {
   const lines: Inline[][] = [[]];
   /**
@@ -72,9 +88,12 @@ function layOut(
     });
   };
   let assetsSeen = 0;
+  let pointsSeen = 0;
   for (const segment of segments) {
     if (segment.slot) {
       const { kind } = segment.slot;
+      // A ref mark writes nothing here: the mention it lands as IS the text,
+      // and `markText` answers with an empty string for it.
       addText(markText(segment.slot));
       if (kind === 'asset') {
         // The mention sits right after the bracket that names it, so the
@@ -82,9 +101,14 @@ function layOut(
         // A mode whose material arrives through a panel slot has no edge and
         // so no source to mention: the bracket alone names the slot to pick
         // it in, which is the whole instruction there.
-        const source = sources[assetsSeen];
+        const source = feeders.sources[assetsSeen];
         assetsSeen += 1;
         if (source) lines[lines.length - 1]!.push({ mention: source });
+      }
+      if (kind === 'ref') {
+        const node = feeders.upstream[pointsSeen];
+        pointsSeen += 1;
+        if (node) lines[lines.length - 1]!.push({ mention: node });
       }
       continue;
     }
@@ -148,15 +172,15 @@ function blockFor(line: readonly Inline[]): Y.XmlElement {
  * spliced together.
  * @param prompt - The node's prompt fragment.
  * @param segments - The prompt as the model sent it.
- * @param sources - The empty nodes to mention, one per asset spot in order.
+ * @param feeders - The nodes the marks mention, each list in its own order.
  * @throws {never} Never.
  */
 export function writeProposalPrompt(
   prompt: Y.XmlFragment,
   segments: readonly PromptSegment[],
-  sources: readonly ProposalSource[],
+  feeders: ProposalFeeders,
 ): void {
-  const blocks = layOut(segments, sources).map((line) => blockFor(line));
+  const blocks = layOut(segments, feeders).map((line) => blockFor(line));
   /**
    * Swap the fragment's whole content for the new blocks.
    */

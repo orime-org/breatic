@@ -3,22 +3,27 @@
 
 import * as React from 'react';
 
-import type { CanvasProposal } from '@breatic/shared';
+import { nameableFeeders, newId, promptPlainText, type CanvasProposal } from '@breatic/shared';
 
 import {
   addEdge,
   addNode,
+  createGroup,
   getPromptFragment,
+  getTextBody,
   runCanvasUndoBatch,
+  setGroupBackground,
   setNodeMode,
   setNodeModel,
   setNodeName,
 } from '@web/data/yjs/canvas-space';
+import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import {
   writeProposalPrompt,
+  type ProposalFeeders,
   type ProposalSource,
 } from '@web/spaces/canvas/generate/proposal-prompt';
-import { placeLeftToRight, type Spot } from '@web/spaces/canvas/lib/place-group';
+import { planFlowLayout, type Spot } from '@web/spaces/canvas/lib/place-flow';
 import {
   cloneForPaste,
   textToNode,
@@ -27,9 +32,15 @@ import {
 import {
   centerToTopLeft,
   createEmptyNode,
+  createGroupNode,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
+import { GROUP_BACKGROUND_OPTIONS } from '@web/spaces/canvas/group-background';
+import {
+  EMPTY_NODE_SIZE,
+  groupRectForMembers,
+  toRelativePosition,
+} from '@web/spaces/canvas/group-geometry';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 export interface NodeCreation {
@@ -68,47 +79,72 @@ export interface NodeCreation {
     offset: { dx: number; dy: number },
   ) => string[];
   /**
-   * Place a whole proposed group starting at a point, wired and configured.
-   * Returns the new node ids in the proposal's own order, so the caller can
-   * select the one that generates. One press is ONE undo entry: a half-placed
-   * group -- nodes without their wires, or a generation node still on whatever
-   * mode it defaults to -- is worse than no group at all.
+   * Place a whole proposed flow around a point, wired and configured.
+   * One press is ONE undo entry: a half-placed flow -- nodes without their
+   * wires, or a generation node still on whatever mode it defaults to -- is
+   * worse than no flow at all.
    */
-  placeProposalAt: (proposal: CanvasProposal, start: Spot) => string[];
+  placeProposalAt: (proposal: CanvasProposal, start: Spot) => PlacedProposal;
 }
 
-/** How far apart two neighbours of a placed group sit, left to right. */
-const GROUP_STEP_PX = 360;
+/** What a placed proposal left on the canvas. */
+export interface PlacedProposal {
+  /** The new node ids, in the proposal's own order. */
+  nodeIds: string[];
+  /** The group they landed in, when there were two or more of them. */
+  groupId?: string;
+}
 
 /**
- * The empty nodes wired into one node of a proposal, in the order placed.
+ * The ground a placed flow sits on.
  *
- * These are what its prompt's asset spots mention, one each in order, so the
- * reader's material reaches generation without them making the mention. Read
- * off the node list rather than the edge list: the marks are numbered by the
- * nodes the reader sees left to right, and nothing makes a proposal list its
- * edges in that same order -- listed the other way round, each bracket would
- * carry the other node's name.
+ * Blue of the seven the group picker offers: red, orange and green carry a
+ * meaning on this canvas (something went wrong, something finished, something
+ * wants attention), and the remaining three read as a reader's own way of
+ * sorting their work. Blue says nothing except "these belong together", which
+ * is the whole of what this group means.
+ */
+const FLOW_GROUND = GROUP_BACKGROUND_OPTIONS.find((o) => o.key === 'blue')?.value;
+
+/**
+ * What is wired into one node of a proposal, as nodes now on the canvas.
+ *
+ * These are what its prompt's marks mention, one each in order, so what the
+ * generation reads reaches it without the reader making the mention by hand.
+ * Two lists, because the two kinds of mark point at different things: an asset
+ * mark at an empty node still to be filled, a ref mark at a node already
+ * carrying work.
  * @param proposal - The whole proposal.
  * @param index - Which of its nodes is being fed.
  * @param ids - The placed node ids, in the proposal's own order.
- * @returns One source per empty node wired into it, in placement order.
+ * @returns The two lists, each in placement order.
  * @throws {never} Never.
  */
-function feedersOf(
+function feedersOnCanvas(
   proposal: CanvasProposal,
   index: number,
   ids: readonly string[],
-): ProposalSource[] {
-  const fedFrom = new Set(
-    proposal.edges.filter((edge) => edge.toIndex === index).map((edge) => edge.fromIndex),
-  );
-  const out: ProposalSource[] = [];
-  proposal.nodes.forEach((node, at) => {
-    const id = ids[at];
-    if (node.role === 'source' && fedFrom.has(at) && id) out.push({ id, kind: node.type });
-  });
-  return out;
+): ProposalFeeders {
+  // What the reader still has to fill goes in one list, what already carries
+  // work in the other: an asset mark draws from the first and a ref mark
+  // from the second, and one list would have them taking each other's turn.
+  // The split and its order come from the shared reading, narrowed by the one
+  // rule the card files its to-dos by, which reads the two catalog facts off
+  // the node.
+  const held = nameableFeeders(proposal, index);
+  /**
+   * The placed nodes behind a run of feeder indices.
+   * @param at - The indices to resolve.
+   * @returns One entry per index that has a node on the canvas.
+   */
+  const placed = (at: readonly (number | null)[]): (ProposalSource | null)[] =>
+    at.map((i) => {
+      if (i === null) return null;
+      const id = ids[i];
+      const kind = proposal.nodes[i]?.type;
+      return id && kind ? { id, kind } : null;
+    });
+  return { sources: placed(held.sources), upstream: placed(held.upstream) };
 }
 
 /**
@@ -186,13 +222,22 @@ export function useNodeCreation(
     [projectId, spaceId, userId],
   );
   const placeProposalAt = React.useCallback(
-    (proposal: CanvasProposal, start: Spot): string[] => {
-      const spots = placeLeftToRight(proposal.nodes.length, start, GROUP_STEP_PX);
-      const ids: string[] = [];
+    (proposal: CanvasProposal, start: Spot): PlacedProposal => {
+      const spots = planFlowLayout(proposal, start);
+      const nodeIds: string[] = [];
+      let groupId: string | undefined;
       runCanvasUndoBatch(projectId, spaceId, () => {
         proposal.nodes.forEach((node, i) => {
-          const id = createNodeAt(node.type, spots[i] ?? start);
-          ids.push(id);
+          const at = spots[i] ?? { x: start.x, y: start.y };
+          // `createNodeAt` centres what it is given on the standard footprint,
+          // so the arrangement's top-left is handed over as that centre --
+          // otherwise every node lands half a footprint up and to the left of
+          // where the group was measured around it.
+          const id = createNodeAt(node.type, {
+            x: at.x + EMPTY_NODE_SIZE.width / 2,
+            y: at.y + EMPTY_NODE_SIZE.height / 2,
+          });
+          nodeIds.push(id);
           setNodeName(projectId, spaceId, id, node.name);
           // Mode and model go together in one write, so a collaborator never
           // sees the proposed mode paired with whatever model the node
@@ -207,12 +252,34 @@ export function useNodeCreation(
             setNodeModel(projectId, spaceId, id, node.mode, node.model, params);
           }
         });
+        // Two or more nodes are one piece of work, and a group is how the
+        // canvas says so -- a name and a ground of its own, rather than a
+        // handful of nodes the reader has to work out the relation between.
+        // Built from the arrangement's own rects: the nodes were written a
+        // moment ago and the render buffer has not seen them yet, so anything
+        // reading that buffer would find no members and quietly make nothing.
+        const rect = nodeIds.length > 1 ? groupRectForMembers(spots) : null;
+        if (rect) {
+          const id = newId();
+          createGroup(
+            projectId,
+            spaceId,
+            createGroupNode(id, { x: rect.x, y: rect.y }, rect.width, rect.height, userId),
+            nodeIds.map((member, i) => ({
+              id: member,
+              position: toRelativePosition(spots[i] ?? rect, rect),
+            })),
+          );
+          if (proposal.groupName) setNodeName(projectId, spaceId, id, proposal.groupName);
+          setGroupBackground(projectId, spaceId, id, FLOW_GROUND);
+          groupId = id;
+        }
         proposal.edges.forEach((edge) => {
-          const source = ids[edge.fromIndex];
-          const target = ids[edge.toIndex];
+          const source = nodeIds[edge.fromIndex];
+          const target = nodeIds[edge.toIndex];
           // Indices that point nowhere are refused before a card is ever drawn
           // (`checkProposal`); skipping rather than throwing keeps the rest of
-          // the group from being rolled back by one bad wire.
+          // the flow from being rolled back by one bad wire.
           if (source && target) {
             addEdge(projectId, spaceId, {
               id: `${source}->${target}`,
@@ -221,19 +288,26 @@ export function useNodeCreation(
             });
           }
         });
-        // Prompts last: an asset spot mentions the empty node feeding it, so
-        // the wiring has to be settled before the mentions are written.
+        // Words last: an asset mark mentions the empty node feeding it, so the
+        // wiring has to be settled before the mentions are written.
         proposal.nodes.forEach((node, i) => {
-          const id = ids[i];
+          const id = nodeIds[i];
           if (!id || !node.prompt) return;
+          if (node.role === 'written') {
+            // A written node's words are its body, not a prompt: nothing
+            // generates there, and the body is what the reader reads and edits.
+            const body = getTextBody(projectId, spaceId, id);
+            if (body) writePlainTextIntoBody(body, promptPlainText(node.prompt));
+            return;
+          }
           const fragment = getPromptFragment(projectId, spaceId, id);
           if (!fragment) return;
-          writeProposalPrompt(fragment, node.prompt, feedersOf(proposal, i, ids));
+          writeProposalPrompt(fragment, node.prompt, feedersOnCanvas(proposal, i, nodeIds));
         });
       });
-      return ids;
+      return groupId === undefined ? { nodeIds } : { nodeIds, groupId };
     },
-    [projectId, spaceId, createNodeAt],
+    [projectId, spaceId, createNodeAt, userId],
   );
   return {
     createNodeAt,

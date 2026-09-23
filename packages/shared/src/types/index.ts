@@ -54,6 +54,8 @@ export {
 } from "@shared/types/credit.js";
 
 export {
+  canConnect,
+  MAX_NODE_NAME_LEN,
   canGenerate,
   CANVAS_NODES_KEY,
 } from "@shared/types/canvas-node.js";
@@ -102,13 +104,31 @@ export type { ControlGate } from "@shared/types/generate-panel.js";
 export type { ParamOptionValue } from "@shared/types/param-values.js";
 
 export type {
+  MaterialPath,
   PromptSegment,
   ProposalNode,
+  ProposalNodeType,
   CanvasProposal,
   ProposalRefused,
   ProposalAnswer,
 } from "@shared/types/canvas-proposal.js";
-export { markText, promptTextOf } from "@shared/types/canvas-proposal.js";
+export {
+  feedersOf,
+  layersOf,
+  markText,
+  nameableFeeders,
+  promptPlainText,
+  promptTextOf,
+} from "@shared/types/canvas-proposal.js";
+
+export type {
+  ReferenceRefusal,
+  ReferenceUsabilityContext,
+} from "@shared/types/canvas-reference.js";
+export {
+  insertRefusal,
+  isReferenceMaterial,
+} from "@shared/types/canvas-reference.js";
 
 export type { Voice, VoicePage } from "@shared/types/voice.js";
 export { sanitizeVoicePage } from "@shared/types/voice.js";
