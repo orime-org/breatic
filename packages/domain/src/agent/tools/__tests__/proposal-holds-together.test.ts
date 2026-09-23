@@ -1887,3 +1887,34 @@ describe("a model the panel draws no prompt box for", () => {
     expect(verdict.ok ? "" : verdict.reason).not.toContain("in the words themselves");
   });
 });
+
+// What `get_canvas_capabilities` now tells the model a text node is for: one
+// holding wording several nodes share, mentioned from each of them rather than
+// retyped into every prompt. Pinned here because that sentence is a promise
+// about this check -- a rule that started turning the shape away would leave
+// the tool describing something a proposal can no longer carry.
+describe("a written node several generations draw on", () => {
+  it("stands when three nodes each mention the one text node wired into them", () => {
+    const at = sourceless();
+    const nodes: ProposalNode[] = [
+      {
+        role: "written",
+        type: "text",
+        name: "Shared brief",
+        prompt: [{ text: "A quiet room at dawn." }],
+      },
+      { ...generation(at, 0, 1), name: "First result" },
+      { ...generation(at, 0, 1), name: "Second result" },
+      { ...generation(at, 0, 1), name: "Third result" },
+    ];
+    expect(
+      checkProposal({
+        nodes,
+        edges: [1, 2, 3].map((toIndex) => ({ fromIndex: 0, toIndex })),
+        modelNote: "",
+        rationale: "",
+        groupName: "Three from one brief",
+      }),
+    ).toEqual({ ok: true });
+  });
+});
