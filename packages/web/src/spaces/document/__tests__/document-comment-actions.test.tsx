@@ -182,15 +182,17 @@ describe('what a card lets a reader do', () => {
   });
 
   it('refuses to send an empty reply', async () => {
+    // Enter is still reachable on a blank draft — the keys belong to the box,
+    // not to the button A26 only draws once there are words — so the write
+    // itself has to refuse as well.
     await open();
     await comment('the first thing');
     await read();
 
     await userEvent.type(
       await screen.findByTestId('doc-comment-reply-input'),
-      '   ',
+      '   {Enter}',
     );
-    await userEvent.click(screen.getByTestId('doc-comment-reply-save'));
 
     expect(onlyThread().comments).toHaveLength(1);
   });
@@ -395,6 +397,39 @@ describe('what a card lets a reader do', () => {
 
     expect(screen.getAllByTestId('doc-comment-entry')).toHaveLength(2);
     expect(screen.queryByTestId('doc-comment-folded-count')).toBeNull();
+  });
+
+  it('opens a thread from the keyboard', async () => {
+    // Everything a reader can do to a thread is drawn only once it is open,
+    // and opening it had exactly two routes: a pointer press, and focus
+    // landing inside the card. An unread card holds nothing focusable, so
+    // the second route could never be taken — measured 2026-09-23: the panel
+    // offered the keyboard its two filters and its close button and nothing
+    // else.
+    await open();
+    await comment('the first thing');
+    const card = await screen.findByTestId('doc-comment-card');
+    expect(screen.queryByTestId('doc-comment-reply-input')).toBeNull();
+
+    card.parentElement!.focus();
+
+    expect(
+      await screen.findByTestId('doc-comment-reply-input'),
+    ).toBeInTheDocument();
+  });
+
+  it('offers nothing to send on a reply of only spaces', async () => {
+    // `replyToThread` refuses blank words, so Save on a whitespace draft is a
+    // control that looks live and answers nothing — measured 2026-09-23: the
+    // thread stayed at one comment and no notice appeared, by pointer and by
+    // key. What is drawn now asks what the write asks.
+    await open();
+    await comment('the first');
+    await read();
+
+    await userEvent.type(screen.getByTestId('doc-comment-reply-input'), '   ');
+
+    expect(screen.queryByTestId('doc-comment-reply-save')).toBeNull();
   });
 
   it('cuts a lone comment short while nobody is reading it', async () => {

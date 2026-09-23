@@ -372,7 +372,11 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
               {...keys.box}
             />
           </ScrollArea>
-          {reply.length > 0 && (
+          {/* The same question `replyToThread` asks before it writes: words
+              that are only spaces are not worth sending, and a control that
+              looks live and answers nothing is the one thing a card must not
+              draw. */}
+          {reply.trim().length > 0 && (
             <div className='flex justify-end gap-1.5'>
               <Button
                 variant='outline'

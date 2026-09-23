@@ -337,7 +337,13 @@ export function DocumentCommentComposer({
             <Button
               data-testid='doc-comment-post'
               variant='outline'
-              onClick={post}
+              onClick={() => {
+                // A box has more ways out than its keyboard, and every one
+                // of them owes the input method the same answer
+                // (`useNoteBox`, and the reply box's own two buttons).
+                if (keys.composing()) return;
+                post();
+              }}
             >
               {t('spaces.document.comment.post')}
             </Button>

@@ -27,7 +27,6 @@ import * as React from 'react';
 
 import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
-import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
 
 /** Nothing measured, one object for every such answer. */
 const NOTHING: ReadonlyMap<string, number> = new Map();
@@ -100,7 +99,9 @@ export function useCommentAnchors(
     // resize rewraps every line — so the element is watched as well.
     const sizes = new ResizeObserver(measure);
     if (scroller !== null) sizes.observe(scroller);
-    const stop = onEditorSettled(editor as never, measure);
+    // The document only: a caret move cannot move a thread's words, and
+    // subscribing to it costs one full walk of the body per keypress.
+    const stop = editor.onChange(measure);
     return () => {
       sizes.disconnect();
       stop();

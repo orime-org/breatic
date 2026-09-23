@@ -86,8 +86,7 @@ export function stripCommentMarks(slice: Slice, schema: Schema): Slice {
   const rebuild = (fragment: Fragment): Fragment => {
     const out: PMNode[] = [];
     fragment.forEach((child) => {
-      const inner =
-        child.content.size > 0 ? child.copy(rebuild(child.content)) : child;
+      const inner = child.copy(rebuild(child.content));
       out.push(inner.mark(inner.marks.filter((m) => m.type !== commentType)));
     });
     return Fragment.fromArray(out);

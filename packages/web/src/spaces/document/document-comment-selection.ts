@@ -327,16 +327,25 @@ function buildSelectionPlugin(
           | readonly string[]
           | undefined;
         if (asked === undefined) {
-          // The paint follows the words: an edit moves the highlights it
-          // sits on, and mapping is how ProseMirror carries a decoration
-          // across one. Nothing painted means nothing to carry.
           if (current.ids.length === 0 && current.hovered === null) {
             return current;
           }
+          // Redrawn rather than carried across. Mapping keeps a decoration
+          // only while its endpoints survive the steps, and settling any
+          // thread rewrites that thread's marks — which drops the decoration
+          // standing over a DIFFERENT thread in the same body (measured
+          // 2026-09-23: reading one of two, settling the other took the
+          // first's paint with it). Redrawing also makes invariant one
+          // (design §9.5) enforced by `paintSelected` on every path rather
+          // than only on the ones that carry a meta.
+          if (!tr.docChanged) return current;
           return {
             ids: current.ids,
             hovered: current.hovered,
-            decorations: current.decorations.map(tr.mapping, tr.doc),
+            decorations: paintSelected(
+              tr.doc,
+              deepened(current.ids, current.hovered),
+            ),
           };
         }
         // The same object back for an empty list, so a second clear reads

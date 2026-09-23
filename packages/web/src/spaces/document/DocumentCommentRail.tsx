@@ -164,8 +164,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       [...cards.unresolved, ...cards.resolved].map((card) => card.id),
     );
     setDrafts((held) => {
-      if ([...held.keys()].every((id) => live.has(id))) return held;
-      return new Map([...held].filter(([id]) => live.has(id)));
+      const kept = [...held].filter(([id]) => live.has(id));
+      return kept.length === held.size ? held : new Map(kept);
     });
   }, [cards]);
 
@@ -506,7 +506,7 @@ function PlacedCard({
       // The move is animated: a card giving way to the one being read should
       // read as giving way rather than as the column jumping under the
       // reader (user 2026-09-22).
-      className='absolute inset-x-0 transition-[top] duration-200 ease-out motion-reduce:transition-none'
+      className='absolute inset-x-0 rounded-sm transition-[top] duration-200 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-active-border motion-reduce:transition-none'
       // The card being read comes to the front. Cards give way to each other
       // by moving, and while one is settling — a reply box opening, a height
       // not measured yet — they can still overlap; the one the reader is on
@@ -518,9 +518,19 @@ function PlacedCard({
       onMouseLeave={() => {
         onHover(null);
       }}
+      // The keyboard's way in. An unread card holds nothing focusable — its
+      // controls are what opening it draws — so without this the focus has
+      // nothing to land on and `onFocusCapture` can never fire: the panel is
+      // reachable and every thread in it is not.
+      // The card is what a reader acts on, and the controls it holds are
+      // drawn only once it is open — so it takes the focus itself, or the
+      // keyboard reaches none of them. The role this rule asks for is screen
+      // reader semantics, which this product does not support
+      // (docs/ACCESSIBILITY.md); keyboard reach is what is delivered here.
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+      tabIndex={0}
       // Both ways a reader arrives at a card: the pointer pressing it, and
-      // the focus landing on any control inside it — which is how the
-      // keyboard gets here.
+      // the focus landing on it or on any control inside it.
       onPointerDown={() => {
         onRead(card.id);
       }}

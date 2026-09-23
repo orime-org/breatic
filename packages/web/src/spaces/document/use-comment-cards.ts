@@ -36,7 +36,6 @@ import {
 } from '@web/spaces/document/document-comment-ranges';
 import type { ThreadRange } from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
-import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
 import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 
 /** One comment inside a card: the opening one, or a reply below it. */
@@ -205,7 +204,9 @@ export function useCommentCards(editor: ToolEditor): CommentCards {
         comments.threadStore.subscribe(onChange),
         comments.store.subscribe(onChange),
         comments.userStore.store.subscribe(onChange),
-        onEditorSettled(editor as never, onChange),
+        // The document only: the quote is read out of the body, and moving
+        // the caret changes nothing a card draws.
+        editor.onChange(onChange),
       ];
       return () => {
         stops.forEach((stop) => {

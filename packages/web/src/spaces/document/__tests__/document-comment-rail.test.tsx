@@ -466,6 +466,41 @@ describe('the comment panel', () => {
     expect(deepened()).toBe(0);
   });
 
+  it('keeps one thread deep while another is settled', async () => {
+    // The paint was carried across a change by mapping the decorations, and a
+    // settle rewrites the marks of the thread it settles — which drops the
+    // decoration standing over a different thread in the same body. Measured
+    // 2026-09-23: reading the second of two threads, settling the first took
+    // the second's paint with it while the card still said it was open.
+    show();
+    await comment(0, 5, 'about alpha');
+    await comment(6, 11, 'about bravo');
+    const ids = [
+      ...handle.editor
+        .getExtension(CommentsExtension)!
+        .threadStore.getThreads()
+        .keys(),
+    ];
+    act(() => {
+      selectThreads(handle.editor, [ids[1]!]);
+    });
+    await waitFor(() => {
+      expect(deepened()).toBe(1);
+    });
+
+    const comments = handle.editor.getExtension(CommentsExtension)!;
+    await act(async () => {
+      await comments.threadStore.resolveThread({ threadId: ids[0]! });
+    });
+
+    await waitFor(() => {
+      expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual([
+        ids[1],
+      ]);
+    });
+    expect(deepened()).toBe(1);
+  });
+
   it('keeps a half-written reply while its thread is settled and reopened', async () => {
     // The reply lived in the card's own state, so a thread settled by a peer
     // took the reader's unsent words with it when the card unmounted.
