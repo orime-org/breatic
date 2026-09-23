@@ -224,9 +224,9 @@ const HEAVY = [
   // entry, and that module imports `file-type` statically. No web module
   // calls it today, so none of this is in the entry closure — the two callers
   // are a Node service and the ingest Worker. Naming it is what the byte
-  // budget cannot do: a build that pulls it in reports 1,123,836 bytes over
-  // the 1,100,000 budget and says nothing about which library arrived
-  // (measured by importing `sniffMimeType` from `src/index.tsx`).
+  // budget cannot do: importing `sniffMimeType` from `src/index.tsx` puts 21
+  // modules in front of every reader and carries the total past the budget,
+  // and without this entry the report is that number alone.
   //
   // The transitive dependencies are matched beside `file-type` because a
   // build can reach them without it: `strtok3` and `token-types` are ordinary
