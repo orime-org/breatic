@@ -200,15 +200,6 @@ export const chatMessageSchema = z.object({
 });
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 
-export const skillCommandSchema = z.object({
-  skill_name: z.string().min(1),
-  input: z.string().min(1),
-  /** Same contract as `chatMessageSchema` — both entrances are checked alike. */
-  project_id: z.string().uuid(),
-  conversation_id: z.string().uuid(),
-});
-export type SkillCommandInput = z.infer<typeof skillCommandSchema>;
-
 // ── Canvas ───────────────────────────────────────────────────────────
 
 export const taskCreateSchema = z

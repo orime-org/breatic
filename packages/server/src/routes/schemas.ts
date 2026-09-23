@@ -14,7 +14,6 @@ export {
   setupStudioSchema,
   loginSchema,
   chatMessageSchema,
-  skillCommandSchema,
   taskCreateSchema,
   understandSchema,
   nodeHistorySnapshotSchema,

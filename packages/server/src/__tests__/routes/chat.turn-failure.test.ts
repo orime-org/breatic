@@ -66,9 +66,6 @@ vi.mock("@server/agent/main-agent.js", () => {
       chat(): Promise<never> {
         return diesEarly();
       }
-      handleSkillCommand(): Promise<never> {
-        return diesEarly();
-      }
     },
   };
 });

@@ -115,7 +115,7 @@ config/ skills/ locales/ (git-tracked)
 | 端点 | 行为 |
 |---|---|
 | `POST /chat/open` | 入参只有 `project_id`。返回这个用户在这个 project 的会话**第一页**(页大小取 `config/agent.yaml` 的 `conversation_page_size`)、后面还有没有,以及**最近交互**那条的消息;这个 project 一条会话都没有时**当场建一个空的**再返回。**它是唯一会自动建会话的入口**,`POST /chat/conversations` 是读者按「+」时的那条,只建不猜 |
-| `POST /chat/message` · `POST /chat/skill` | `conversation_id` **必填**,只写不建 |
+| `POST /chat/message` | `conversation_id` **必填**,只写不建 |
 | `POST /chat/conversations` | 读者按「+」时的那条,只建不猜 |
 | `PATCH /chat/conversations/:id` | 改名。**不动 `updated_at`**(见下) |
 | `GET /chat/conversations` | 列表,游标分页(见下) |
@@ -124,7 +124,7 @@ config/ skills/ locales/ (git-tracked)
 
 **为什么游标是两列而不是 offset**:这个顺序会随读者说话而动,offset 会漏行也会重复。第二键取会话 ID,让同一时刻的多条有稳定次序;判据写成 `(updated_at <) OR (updated_at = AND id <)`,两半必须一起给 —— 只给一半是在按另一个顺序翻页。
 
-**写入前三查,一律 404**(`conversationService.assertWritable`,`POST /chat/message` · `POST /chat/skill` · `PATCH /chat/conversations/:id` 走它):这条会话属于这个用户 · 属于这个 project · 没被软删。第三样不是边角料 —— 一个标签页记着会话 7、用户在另一个标签页把它删了,前两样对它都成立。三种可区分的答案会让状态码自己交代是哪一条没过,所以答案必须一样。
+**写入前三查,一律 404**(`conversationService.assertWritable`,`POST /chat/message` · `PATCH /chat/conversations/:id` 走它):这条会话属于这个用户 · 属于这个 project · 没被软删。第三样不是边角料 —— 一个标签页记着会话 7、用户在另一个标签页把它删了,前两样对它都成立。三种可区分的答案会让状态码自己交代是哪一条没过,所以答案必须一样。
 
 **删除走的是另一套,还没收拢**:`DELETE /chat/conversations/:id` 用的是 `validateOwnership`,只查「存不存在」和「是不是这个用户的」,而且不是他的时答 403 —— 403 跟 404 的差别本身就说出了这条会话存在。归 todo,别照着它写新的读路由。
 

@@ -13,25 +13,13 @@
  * removed.
  *
  * Replaced by behaviour, not by a roster. Each tool's own description already
- * reaches the model, and a list written here would drift from whatever the
- * running skill actually declares — the prompt would start naming tools the
- * model does not have.
+ * reaches the model, and a list written here would drift from the tools the
+ * turn was actually given — the prompt would start naming tools the model
+ * does not have.
  */
-import { describe, expect, it, vi } from "vitest";
-import type * as DomainModule from "@breatic/domain";
+import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { BASELINE_TOOLS } from "@breatic/domain";
-
-vi.mock("@breatic/domain", async (importOriginal) => {
-  const actual = await importOriginal<typeof DomainModule>();
-  return {
-    ...actual,
-    getSkillRegistry: () => ({
-      buildSummaryXml: () => "<skills />",
-      getAlwaysContent: () => "",
-    }),
-  };
-});
 
 describe("the system prompt", () => {
   // The template is hard-wrapped, so any phrase long enough to be worth
@@ -109,13 +97,13 @@ describe("the system prompt", () => {
 });
 
 describe("what the prompt says about citing what it found", () => {
-  it("asks for a marker the panel can resolve, and says what the number counts", async () => {
+  it("asks for a marker the panel can resolve, and says what the number counts", () => {
     // The panel turns `[N]` into a chip carrying that source's favicon, and it
     // resolves N against the sources the turn's searches returned, in order.
     // A prompt that asked for any other form -- a footnote, a bare url, the
     // publisher's name in brackets -- would leave the chips absent while the
     // reply still reads as sourced.
-    const prompt = await buildSystemPrompt({});
+    const prompt = buildSystemPrompt();
 
     expect(prompt).toContain("[1]");
     // Said about what a search returns, not about the tool that ran it. The
@@ -124,13 +112,13 @@ describe("what the prompt says about citing what it found", () => {
     expect(prompt).toMatch(/search returns sources/i);
   });
 
-  it("keeps the guidance inside How You Work rather than opening a section for it", async () => {
+  it("keeps the guidance inside How You Work rather than opening a section for it", () => {
     // #211 rewrites this prompt as a whole. A convention that sits with the
     // other things said about using tools travels with them; one under a
     // heading of its own is a second place to notice.
-    const prompt = await buildSystemPrompt({});
+    const prompt = buildSystemPrompt();
     const howToWork = prompt.indexOf("## How You Work");
-    const nextSection = prompt.indexOf("## Available Skills");
+    const nextSection = prompt.indexOf("## Where the work goes");
 
     expect(prompt.slice(howToWork, nextSection)).toContain("[1]");
   });

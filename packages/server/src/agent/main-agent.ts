@@ -24,7 +24,6 @@ import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
-import { skillCommandText } from "@server/agent/skill-command.js";
 import type { MessagePart, ToolFailure } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
@@ -80,46 +79,14 @@ export class MainAgent {
   }
 
   /**
-   * Execute a skill command (e.g. `/skill generate_image_plan ...`).
-   * @param skillName - Name of the skill to invoke
-   * @param userInput - User's input text for the skill
-   * @param signal - Raised when the user stops the turn or the client goes
-   *   away. Absent means this caller has no way to stop the turn.
-   * @returns The turn, as the SDK's own message chunks.
-   */
-  async handleSkillCommand(
-    skillName: string,
-    userInput: string,
-    signal?: AbortSignal,
-  ): Promise<ReadableStream<UIMessageChunk>> {
-    // Whether the skill exists is not asked here. `assertSkillUsable` on
-    // the route has already answered it — with a 404 the client can act on,
-    // before a message was saved or a stream opened. Asking again would be a
-    // second answer to a settled question, which is how the two entry points
-    // drifted apart in the first place.
-    return this.runTurn(skillCommandText(skillName, userInput), signal, skillName);
-  }
-
-  /**
-   * Everything a turn does before the model is called, for either entry point.
-   *
-   * Both ways in — a message and a skill command — save what the user said,
-   * assemble the same config and the same history, and hand off to the same
-   * loop. They differ in one word: which skill, if any, scopes the tools.
-   *
-   * This exists as one function because the two used to be one copy each, and
-   * that is exactly how the prompt assembly drifted into the bug this batch
-   * fixed (task #75): a line changed on one side and not the other, with
-   * nothing to say so.
+   * Everything a turn does before the model is called.
    * @param said - What to record and send as the user's turn
    * @param signal - Raised when the user stops the turn or the client leaves
-   * @param skillName - The skill scoping this turn, when it is a command
    * @returns The turn, as the SDK's own message chunks.
    */
   private async runTurn(
     said: string,
     signal: AbortSignal | undefined,
-    skillName?: string,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const { conversationId } = this.ctx;
 
@@ -146,7 +113,7 @@ export class MainAgent {
     // nothing of the turn could reach the reader until they were done, the
     // first word of the reply included, which is the one thing they were
     // waiting for.
-    return this.runStream(said, turnIndex, title, signal, skillName);
+    return this.runStream(said, turnIndex, title, signal);
   }
 
   /**
@@ -183,7 +150,6 @@ export class MainAgent {
    *   same name again -- which is what keeps the list and the header from
    *   showing a placeholder after the turn that named it.
    * @param signal - Raised when the user stops the turn or the client goes away.
-   * @param skillName - The skill scoping this turn, when it is a command.
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
@@ -191,7 +157,6 @@ export class MainAgent {
     turnIndex: number,
     title: string | null,
     signal?: AbortSignal,
-    skillName?: string,
   ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
     const agentCfg = getAgentConfig();
@@ -302,7 +267,6 @@ export class MainAgent {
       // One factory decides model, instructions and tools — see
       // domain/agent/agent-config.ts for why nothing else may assemble them.
       const agentConfig: ResolvedAgentConfig = buildAgentConfig({
-        ...(skillName !== undefined ? { skillName } : {}),
         basePrompt: buildSystemPrompt(),
         memoryContext,
         interactive: true,
