@@ -2,11 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The group background palette (#1549) — a purely human-chosen classification
- * tint with no system semantics: the full 7-color palette (each color's
- * 14%-opacity `-bg` token) plus no color (no tint → neutral dashed frame).
- * Options are keyed by plain color name — the picker IS a color choice, not a
- * status choice (the pre-#1549 i18n labels already said "Blue/Green/…").
+ * The group background palette (#1549) — a classification tint carrying no
+ * system semantics: the full 7-color palette (each color's 14%-opacity `-bg`
+ * token) plus no color (no tint → neutral dashed frame). Options are keyed by
+ * plain color name — the picker IS a color choice, not a status choice (the
+ * pre-#1549 i18n labels already said "Blue/Green/…").
+ *
+ * The reader picks one through {@link GROUP_BACKGROUND_OPTIONS}; a Group made
+ * around an upload batch opens with one of {@link GROUP_BACKGROUND_TINTS}, so
+ * two batches handed over at the same point are two boxes rather than one drawn
+ * twice. Either way the colour is the Group's from then on, and only the reader
+ * changes it.
  */
 
 /** One choice in the group background picker. */

@@ -4,11 +4,11 @@
 /**
  * Pure drag-stop reparent planner (group redesign 2026-06-23). On
  * `onNodeDragStop` the canvas decides, per dragged node, which Group it now
- * belongs to — the single rule: the Group whose rect contains the node's
- * CENTER point. A node entering a Group's bounds joins it; a member whose center
- * leaves its Group becomes top-level; a member whose center stays in keeps its
- * Group even if its body overflows (the canvas then auto-expands the Group, see
- * `expandGroupToWrap`). Kept ReactFlow-agnostic (absolute rects in, decisions
+ * belongs to: the Group whose rect contains the node's CENTER point, and where
+ * Groups overlap, the first of them the canvas listed. A node entering a
+ * Group's bounds joins it; a member whose centre leaves its Group becomes
+ * top-level; a member whose body overflows stays where it is while the canvas
+ * auto-expands the Group (see `expandGroupToWrap`). Kept ReactFlow-agnostic (absolute rects in, decisions
  * out) so the membership rule is unit-tested in isolation; the canvas converts
  * coordinates and writes Yjs.
  */
@@ -96,7 +96,7 @@ export function planGroupDragStop(
     // members stay draggable on this end, so one dragged clear of it has left —
     // writing "still a member" for a node the user put outside leaves the Group
     // to grow over that gap on the next drag-stop. It stays a candidate for the
-    // member it already has, which is what keeps a nudge inside it a no-op.
+    // member it already has, so a remote's grip alone never expels one.
     const target = groups.find(
       (group) =>
         group.id !== node.id &&
