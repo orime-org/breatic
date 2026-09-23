@@ -1073,7 +1073,7 @@
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",
       "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다",
       "membershipEnded": "{tier} 멤버십이 종료되었습니다",
-      "membershipUpgradeIncomplete": "{tier} 업그레이드가 완료되지 않았습니다",
+      "membershipUpgradeIncomplete": "{tier} {period}(으)로 변경하는 결제가 완료되지 않았습니다",
       "storageQuotaExceeded": "저장 공간이 가득 찼습니다"
     },
     "actorFallback": "누군가",
@@ -1471,7 +1471,7 @@
     "close": "닫기",
     "currentTier": "현재 멤버십",
     "tier": {
-      "base": "Base",
+      "base": "Starter",
       "pro": "PRO",
       "team": "Team",
       "self_hosted": "자체 호스팅",
@@ -1500,7 +1500,6 @@
     },
     "enterpriseQuota": "사용 한도는 별도 계약으로 정해져 있어 여기에 표시되지 않습니다.",
     "compare": "등급 비교",
-    "monthlyFee": "월 요금",
     "contactEnterprise": "더 큰 규모나 별도의 상업 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactSelfHosted": "상업용 라이선스나 별도의 지원 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactEnterpriseAccount": "사용 한도에 대해 궁금하거나 조정이 필요하신가요? 메일로 문의해 주세요:",
@@ -1516,11 +1515,32 @@
     "resume": "멤버십 재개",
     "notice": {
       "firstPaymentPending": "결제가 완료되지 않았습니다",
-      "upgradePending": "업그레이드 결제가 완료되지 않았습니다",
-      "paymentOverdue": "이번 달 결제가 이루어지지 않았습니다"
+      "upgradePending": "변경 건의 결제가 완료되지 않았습니다",
+      "paymentOverdue": "결제가 완료되지 않았습니다"
     },
     "payNow": "결제하기",
-    "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요."
+    "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요.",
+    "period": {
+      "month": "월간",
+      "year": "연간"
+    },
+    "saveTwoMonths": "12개월을 10개월 가격에",
+    "perMonthEquivalent": "월 {amount} 상당, 두 달 절약",
+    "tierWithPeriod": "{tier} · {period}",
+    "priceSuffix": {
+      "month": "{amount} / 월",
+      "year": "{amount} / 년"
+    },
+    "priceOnRequest": "문의",
+    "contactSales": "문의하기",
+    "card": {
+      "storage": "저장 공간 {value}",
+      "teamStudios": "팀 Studio {count}개",
+      "connections": "문서당 연결 {count}개",
+      "enterpriseScale": "용량은 협의로 결정",
+      "enterpriseGovernance": "SSO, 감사, 지식재산 보증"
+    },
+    "noCreditsIncluded": "멤버십에는 생성 크레딧이 포함되지 않습니다. 크레딧은 별도로 구매합니다."
   },
   "credits": {
     "panelTitle": "크레딧",

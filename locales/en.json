@@ -1073,7 +1073,7 @@
       "projectInviteRequest": "{actor} invited you to join {project}",
       "projectInviteAccepted": "{actor} accepted your invite to {project}",
       "membershipEnded": "Your {tier} membership has ended",
-      "membershipUpgradeIncomplete": "Your upgrade to {tier} was not completed",
+      "membershipUpgradeIncomplete": "Payment for your move to {tier} {period} was not completed",
       "storageQuotaExceeded": "Your storage is full"
     },
     "actorFallback": "Someone",
@@ -1471,7 +1471,7 @@
     "close": "Close",
     "currentTier": "Current membership",
     "tier": {
-      "base": "Base",
+      "base": "Starter",
       "pro": "PRO",
       "team": "Team",
       "self_hosted": "Self-hosted",
@@ -1500,7 +1500,6 @@
     },
     "enterpriseQuota": "Your allowances are set by a separate agreement and are not shown here.",
     "compare": "Compare tiers",
-    "monthlyFee": "Monthly",
     "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
     "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
     "contactEnterpriseAccount": "Questions about your allowances, or need them changed? Email us:",
@@ -1516,11 +1515,32 @@
     "resume": "Resume membership",
     "notice": {
       "firstPaymentPending": "Payment not completed",
-      "upgradePending": "Upgrade payment not completed",
-      "paymentOverdue": "This month's payment did not go through"
+      "upgradePending": "Payment for the change is not complete",
+      "paymentOverdue": "Payment did not go through"
     },
     "payNow": "Pay now",
-    "actionFailed": "That did not go through. Try again."
+    "actionFailed": "That did not go through. Try again.",
+    "period": {
+      "month": "Monthly",
+      "year": "Annual"
+    },
+    "saveTwoMonths": "Twelve months for the price of ten",
+    "perMonthEquivalent": "Works out at {amount} a month, two months saved",
+    "tierWithPeriod": "{tier} · {period}",
+    "priceSuffix": {
+      "month": "{amount} /mo",
+      "year": "{amount} /yr"
+    },
+    "priceOnRequest": "On request",
+    "contactSales": "Talk to us",
+    "card": {
+      "storage": "{value} storage",
+      "teamStudios": "{count} Team Studios",
+      "connections": "{count} connections per document",
+      "enterpriseScale": "Capacity by agreement",
+      "enterpriseGovernance": "SSO, audit, IP indemnity"
+    },
+    "noCreditsIncluded": "Membership includes no generation credits. Credits are bought separately."
   },
   "credits": {
     "panelTitle": "Credits",

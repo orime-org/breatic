@@ -310,7 +310,7 @@ export function holdsActionableSubscription(
 }
 
 /** What the panel may offer for the upgrade entrance (design §13). */
-export type UpgradeOffer = "offered" | "pending" | "withheld";
+export type MoveOffer = "offered" | "pending" | "withheld";
 
 /** Which of the three subscription actions an account can take right now. */
 export interface SubscriptionActionAvailability {
@@ -322,7 +322,7 @@ export interface SubscriptionActionAvailability {
    * `withheld` is S5: the server refuses to sell more while a card is already
    * failing, so offering it would only produce a refusal.
    */
-  readonly upgrade: UpgradeOffer;
+  readonly move: MoveOffer;
   /** Whether the membership can be set to end at the period boundary. */
   readonly cancel: boolean;
   /** Whether a scheduled ending can be taken back. */
@@ -355,7 +355,7 @@ export function subscriptionActions(
 ): SubscriptionActionAvailability {
   const actionable = holdsActionableSubscription(state);
   return {
-    upgrade:
+    move:
       state === "retrying"
         ? "withheld"
         : state === "upgradePending"
@@ -428,4 +428,98 @@ export interface AccountMembership {
    * (`state: "none"`) — it is the state the offers exist for.
    */
   readonly subscription: SubscriptionSummary | null;
+}
+
+/** Which card is being drawn: a comparable tier, or the local sales card. */
+export type MembershipCard = ComparableMembershipTier | "enterprise";
+
+/** What a card offers the reader. */
+export type CardAction =
+  | "blank"
+  | "current"
+  | "choose"
+  | "move"
+  | "inProgress"
+  | "contactSales";
+
+/** Everything {@link cardAction} reads. */
+export interface CardActionInput {
+  /** The card being drawn. */
+  readonly card: MembershipCard;
+  /** Which period the switcher is on. */
+  readonly selectedPeriod: BillingPeriod;
+  /** The tier in force on the account, which is not always the tier paid for. */
+  readonly accountTier: MembershipTier;
+  /** Whether this deployment sells subscriptions at all. */
+  readonly sellsSubscriptions: boolean;
+  /** Which situation the subscription is in. */
+  readonly situation: SubscriptionSituation;
+  /** The period of the stored subscription, null when there is none. */
+  readonly heldPeriod: BillingPeriod | null;
+  /** Whether a move is on offer, waiting, or withheld. */
+  readonly move: MoveOffer;
+}
+
+/**
+ * What one tier card offers, for the period the switcher is on.
+ *
+ * Ten conditions, the first match winning, in one place rather than spread
+ * through the markup: what the card shows and what the server accepts have to
+ * be the same answer. A card drawn where `changePlan` refuses is an entrance
+ * into an error; a card left blank where it accepts is a purchase nobody can
+ * make.
+ *
+ * Nothing here explains a refusal. A card that cannot be reached is blank,
+ * and whatever arrives at the endpoint anyway called it directly.
+ * @param input - The account, the deployment, and which card is being drawn.
+ * @returns What that card offers.
+ */
+export function cardAction(input: CardActionInput): CardAction {
+  // 1. The sales card sits above the "sells nothing" rule: it sells no
+  //    subscription either, so a deployment with no price list still shows it.
+  if (input.card === "enterprise") return "contactSales";
+
+  // 2. A deployment that sells nothing has no entrances and no switcher.
+  if (!input.sellsSubscriptions) return "blank";
+
+  // What the account holds. Only a subscription that can still be acted on
+  // counts: a first invoice that has not settled leaves a row with a period
+  // while the account is still on `base`, and reading that as "held" marks
+  // the Starter card current and makes the badge flicker with the switcher.
+  const holds =
+    holdsActionableSubscription(input.situation) && input.heldPeriod !== null;
+  const held = holds
+    ? { tier: input.accountTier, period: input.heldPeriod as BillingPeriod }
+    : null;
+
+  // 3. The card they are on, for the period they are on.
+  if (held && input.card === held.tier && input.selectedPeriod === held.period) {
+    return "current";
+  }
+
+  // 4. The free tier is not sold.
+  if (input.card === "base") return "blank";
+
+  // 5. Above rule 7 on purpose: while Stripe retries a failing card, every
+  //    entrance goes, including the ones that would otherwise be reachable.
+  if (input.move === "withheld") return "blank";
+
+  // 6. Nothing to move from, so this is a first purchase.
+  if (!held) return "choose";
+
+  // 7. Dropping a tier or shortening a period is never on offer.
+  if (
+    !canMoveTo(
+      { tier: held.tier as SubscribableMembershipTier, period: held.period },
+      { tier: input.card, period: input.selectedPeriod },
+    )
+  ) {
+    return "blank";
+  }
+
+  // 8. A move already made, waiting on its invoice.
+  if (input.move === "pending") return "inProgress";
+
+  // 9. Everything left is a move this account may make.
+  return "move";
 }

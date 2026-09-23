@@ -142,7 +142,7 @@ export type {
   MembershipOffer,
   SubscriptionSituation,
   SubscriptionActionAvailability,
-  UpgradeOffer,
+  MoveOffer,
   SubscriptionSummary,
   TierOffer,
   TierPrice,

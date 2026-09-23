@@ -1073,7 +1073,7 @@
       "projectInviteRequest": "{actor} 邀请你加入 {project}",
       "projectInviteAccepted": "{actor} 接受了你对 {project} 的邀请",
       "membershipEnded": "{tier} 会员已结束",
-      "membershipUpgradeIncomplete": "升级到 {tier} 未完成",
+      "membershipUpgradeIncomplete": "换到 {tier} {period} 的付款没有完成",
       "storageQuotaExceeded": "存储已满"
     },
     "actorFallback": "某人",
@@ -1471,7 +1471,7 @@
     "close": "关闭",
     "currentTier": "当前会员",
     "tier": {
-      "base": "Base",
+      "base": "Starter",
       "pro": "PRO",
       "team": "Team",
       "self_hosted": "自托管",
@@ -1500,7 +1500,6 @@
     },
     "enterpriseQuota": "你的额度由单独协议约定，不在这里显示。",
     "compare": "各档对比",
-    "monthlyFee": "月费",
     "contactEnterprise": "需要更大规模或单独的商用条款？发邮件跟我们谈：",
     "contactSelfHosted": "需要商用授权或单独的支持条款？发邮件跟我们谈：",
     "contactEnterpriseAccount": "额度有疑问或需要调整？发邮件跟我们谈：",
@@ -1516,11 +1515,32 @@
     "resume": "恢复会员",
     "notice": {
       "firstPaymentPending": "付款未完成",
-      "upgradePending": "升级付款未完成",
-      "paymentOverdue": "这个月的款项没有扣成功"
+      "upgradePending": "这次变更的付款还没完成",
+      "paymentOverdue": "这次扣款没有成功"
     },
     "payNow": "去付款",
-    "actionFailed": "没有成功，请再试一次。"
+    "actionFailed": "没有成功，请再试一次。",
+    "period": {
+      "month": "月付",
+      "year": "年付"
+    },
+    "saveTwoMonths": "十二个月，按十个月的价",
+    "perMonthEquivalent": "相当于每月 {amount}，省两个月",
+    "tierWithPeriod": "{tier} · {period}",
+    "priceSuffix": {
+      "month": "{amount} / 月",
+      "year": "{amount} / 年"
+    },
+    "priceOnRequest": "面议",
+    "contactSales": "联系我们",
+    "card": {
+      "storage": "{value} 存储",
+      "teamStudios": "{count} 个团队 Studio",
+      "connections": "每个文档 {count} 个连接",
+      "enterpriseScale": "容量按协议约定",
+      "enterpriseGovernance": "SSO、审计、知识产权保障"
+    },
+    "noCreditsIncluded": "会员不含生成积分，积分单独购买。"
   },
   "credits": {
     "panelTitle": "积分",

@@ -7,7 +7,7 @@ import type {
   ComparableMembershipTier,
   MembershipTier,
   TierOffer,
-  UpgradeOffer,
+  MoveOffer,
 } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -38,7 +38,7 @@ interface TierComparisonProps {
    * card is failing, which is the one situation the server refuses an upgrade
    * in — drawing the button there produced nothing but a 409.
    */
-  upgrade?: UpgradeOffer;
+  move?: MoveOffer;
 }
 
 /**

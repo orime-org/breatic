@@ -24,7 +24,7 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { DbTx } from "@server/modules/notification/notification.repo.js";
-import type { NotificationEntity } from "@breatic/shared";
+import type { BillingPeriod, NotificationEntity } from "@breatic/shared";
 
 export type { NotificationEntity };
 
@@ -359,6 +359,15 @@ export async function createMembershipEnded(input: {
 
 /** Payload for `membership.upgrade_incomplete` — the tier that was not reached. */
 export interface MembershipUpgradeIncompletePayload {
+  /**
+   * The period the move was to.
+   *
+   * Beside the tier because a move can keep the tier and change only this:
+   * PRO monthly to PRO annual left unpaid is a move to PRO, and naming the
+   * tier alone tells somebody who is already on PRO that their move to PRO
+   * did not complete.
+   */
+  readonly toPeriod: BillingPeriod;
   /** The tier the upgrade was for. */
   toTier: string;
 }

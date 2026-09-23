@@ -218,7 +218,7 @@ async function notifyIfUpgradeLapsed(
 
   await notificationService.createMembershipUpgradeIncomplete({
     userId,
-    payload: { toTier: toOffer.tier },
+    payload: { toTier: toOffer.tier, toPeriod: toOffer.period },
     tx,
   });
 }

@@ -261,7 +261,7 @@ export function MembershipContent({
               // the action row rather than showing buttons that cannot work.
               onChoose={subscription ? handleChoose : undefined}
               busy={busy}
-              upgrade={actions.upgrade}
+              move={actions.move}
             />
           </ScrollArea>
           {/* One line, contact on the left and the subscription control on

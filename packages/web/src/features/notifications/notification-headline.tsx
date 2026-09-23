@@ -300,6 +300,7 @@ export function notificationHeadline(
   if (n.type === 'membership.upgrade_incomplete') {
     return t('notifications.headline.membershipUpgradeIncomplete', {
       tier: TIER_LABEL[str(n.payload, 'toTier')] ?? '',
+      period: t(`membership.period.${str(n.payload, 'toPeriod')}` as 'membership.period.month'),
     });
   }
   // Like the two above: nobody did this to you and there is nothing to open.

@@ -89,7 +89,7 @@ export type {
   SubscribableMembershipTier,
   SubscriptionSituation,
   SubscriptionActionAvailability,
-  UpgradeOffer,
+  MoveOffer,
   SubscriptionSummary,
   TierOffer,
   TierPrice,
