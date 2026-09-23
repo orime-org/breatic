@@ -44,8 +44,6 @@ interface DocNode {
   type: string;
   /** Top-left; relative to the parent Group for a member, absolute otherwise. */
   position: { x: number; y: number };
-  /** A Group's authoritative height; null for a node, which sizes itself. */
-  height: number | null;
 }
 
 /**
@@ -68,7 +66,6 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
             parentId?: string;
             type: string;
             position: { x: number; y: number };
-            data?: { height?: number };
           }[];
         };
       };
@@ -77,7 +74,6 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
         parentId: n.parentId ?? null,
         type: n.type,
         position: n.position,
-        height: n.data?.height ?? null,
       }));
     },
     [projectId, spaceId, canvasUrl] as [string, string, string],

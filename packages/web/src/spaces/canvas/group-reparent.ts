@@ -4,13 +4,12 @@
 /**
  * Pure drag-stop reparent planner (group redesign 2026-06-23). On
  * `onNodeDragStop` the canvas decides, per dragged node, which Group it now
- * belongs to — the single rule: the Group whose rect contains the node's
- * CENTER point. A node entering a Group's bounds joins it; a member whose center
- * leaves its Group becomes top-level; a member whose center stays in keeps its
- * Group even if its body overflows (the canvas then auto-expands the Group, see
- * `expandGroupToWrap`). Kept ReactFlow-agnostic (absolute rects in, decisions
- * out) so the membership rule is unit-tested in isolation; the canvas converts
- * coordinates and writes Yjs.
+ * belongs to: the Group whose rect contains the node's CENTER point, and the
+ * one it is already in whenever that rect still contains it — Groups overlap,
+ * so more than one can answer. A node entering a Group's bounds joins it; a
+ * member whose centre leaves its Group becomes top-level. Kept ReactFlow-
+ * agnostic (absolute rects in, decisions out) so the membership rule is
+ * unit-tested in isolation; the canvas converts coordinates and writes Yjs.
  */
 
 import { canJoinGroup } from '@web/spaces/canvas/group-membership';
