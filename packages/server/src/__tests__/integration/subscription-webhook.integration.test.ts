@@ -596,6 +596,59 @@ describe("handleSubscriptionEvent — 哪些事件归这条腿 (#106 §8)", () =
       await dropUser(userId);
     }
   });
+
+  it("Stripe 收的钱跟价目表对不上时，两边的数都报出来、不标已处理、也不给档位", async () => {
+    // A price id pasted into the wrong slot, or an amount edited at Stripe,
+    // makes the two copies of one figure differ. Answering "unknown" here
+    // would be a lie the panel repeats: it knows exactly which offer this is,
+    // and what it disagrees about is the money.
+    const { userId, customerId } = await makeCustomerAccount();
+    const eventId = `evt_money_${Date.now()}`;
+    try {
+      const sub = stripeSub({
+        id: `sub_money_${seq}`,
+        customer: customerId,
+        items: {
+          data: [
+            {
+              id: "si_1",
+              current_period_end: PERIOD_END,
+              price: {
+                id: PRO_PRICE,
+                unit_amount: 1,
+                currency: "usd",
+                recurring: { interval: "month" },
+              },
+            },
+          ],
+        },
+      });
+      stripe.subscriptions.retrieve.mockResolvedValueOnce(sub);
+
+      const outcome = await handleSubscriptionEvent(
+        event("customer.subscription.created", sub, eventId),
+      );
+
+      expect(outcome.status).toBe("priceDisagreement");
+      expect(
+        outcome.status === "priceDisagreement" && outcome.actual.cents,
+      ).toBe(1);
+      expect(
+        outcome.status === "priceDisagreement" && outcome.expected.cents,
+      ).toBe(getSubscriptionPlan("pro", "month").priceCents);
+
+      // Unmarked, so a redelivery after the price is put right still works.
+      const marks = await sql<{ count: string }[]>`
+        SELECT count(*)::text AS count FROM stripe_webhook_events
+        WHERE event_id = ${eventId}
+      `;
+      expect(marks[0]?.count).toBe("0");
+      expect(await getUserMembershipTier(userId)).toBe("base");
+    } finally {
+      await sql`DELETE FROM stripe_webhook_events WHERE event_id = ${eventId}`;
+      await dropUser(userId);
+    }
+  });
 });
 
 describe("并发写入：后取到的快照说了算 (#106 §6.5.5)", () => {
@@ -622,8 +675,9 @@ describe("并发写入：后取到的快照说了算 (#106 §6.5.5)", () => {
         stripeSub({ id: stripeId, customer: customerId, status: "incomplete" }),
         userId,
       );
+      if (!stale.ok) throw new Error(`fixture unreadable: ${stale.reason}`);
       await upsertSubscription({
-        ...stale!,
+        ...stale.write,
         observedAt: new Date(Date.now() - 60_000),
       });
 

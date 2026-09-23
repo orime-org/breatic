@@ -12,7 +12,10 @@
  */
 
 import { z } from "zod";
-import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@shared/types/membership.js";
+import {
+  BILLING_PERIODS,
+  SUBSCRIBABLE_MEMBERSHIP_TIERS,
+} from "@shared/types/membership.js";
 
 import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
@@ -436,18 +439,31 @@ export type PaymentHistoryQuery = z.infer<typeof paymentHistoryQuerySchema>;
  * The tier is checked against the tiers that can actually be subscribed to, so
  * `base` — the tier an account falls back to — is refused at the boundary
  * rather than reaching Stripe as a missing price.
+ *
+ * The period is required rather than defaulted. A default here would pick a
+ * price for somebody: a request that forgot to say which one is a request
+ * nobody can price, and answering it by charging the monthly rate is a
+ * decision this boundary has no business making.
  */
 export const subscriptionPlanSchema = z.object({
   // Built from the one list of subscribable tiers, so a fourth priced tier
   // becomes acceptable here by itself rather than by somebody remembering.
   tier: z.enum(SUBSCRIBABLE_MEMBERSHIP_TIERS),
+  period: z.enum(BILLING_PERIODS),
   return_url: z.string().url(),
 });
 export type SubscriptionPlanInput = z.infer<typeof subscriptionPlanSchema>;
 
-/** Changing an existing subscription's tier (#106) — no return URL involved. */
+/**
+ * Moving an existing subscription to another offer (#106, #253) — no return
+ * URL involved.
+ *
+ * Both halves travel, because a move can change either one: PRO monthly to
+ * PRO annual keeps the tier, and PRO annual to Team annual keeps the period.
+ */
 export const subscriptionChangeSchema = z.object({
   tier: z.enum(SUBSCRIBABLE_MEMBERSHIP_TIERS),
+  period: z.enum(BILLING_PERIODS),
 });
 export type SubscriptionChangeInput = z.infer<typeof subscriptionChangeSchema>;
 

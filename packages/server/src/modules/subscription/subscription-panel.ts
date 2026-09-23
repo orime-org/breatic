@@ -33,7 +33,7 @@ import {
   tierForSituation,
   upsertSubscription,
 } from "@breatic/core";
-import type { DbTx } from "@breatic/core";
+import type { DbTx, SubscriptionWrite } from "@breatic/core";
 import type { MembershipTier, SubscriptionSummary } from "@breatic/shared";
 import { getStripeClient } from "@server/infra/stripe.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
@@ -116,6 +116,11 @@ async function reconcile(
  * One this deployment cannot price is skipped rather than guessed at: writing
  * it under some tier would hand out ceilings nobody bought, and the stored row
  * we already have stays as it was.
+ *
+ * One whose money disagrees with our price list is skipped too, and logged
+ * with both figures. Reconciling runs whenever somebody opens the panel, so
+ * this is the path most likely to meet a price that was edited at Stripe, and
+ * the log line is where an operator finds out.
  * @param subscriptions - What Stripe reported.
  * @param userId - The account.
  * @param tx - The shared transaction.
@@ -127,11 +132,25 @@ async function writeAll(
   tx: DbTx,
   observedAt: Date,
 ): Promise<void> {
-  const writes = subscriptions
-    .map((subscription) =>
-      readStripeSubscription(subscription, userId, observedAt),
-    )
-    .filter((write): write is NonNullable<typeof write> => write !== null);
+  const writes: SubscriptionWrite[] = [];
+  for (const subscription of subscriptions) {
+    const read = readStripeSubscription(subscription, userId, observedAt);
+    if (read.ok) {
+      writes.push(read.write);
+      continue;
+    }
+    if (read.reason === "priceDisagreement") {
+      logger.error(
+        {
+          userId,
+          stripeSubscriptionId: subscription.id,
+          expected: read.expected,
+          actual: read.actual,
+        },
+        "subscription_price_disagreement",
+      );
+    }
+  }
 
   // Order does not matter: each row is keyed by its own Stripe id, and which
   // one governs the account is decided when they are read. This used to write
@@ -190,6 +209,7 @@ export async function readSubscriptionSummary(
   return {
     state: situation,
     tier: record.tier,
+    period: record.period,
     currentPeriodEnd: record.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: record.cancelAtPeriodEnd,
     payableInvoiceUrl: record.payableInvoiceUrl,
@@ -207,6 +227,9 @@ export async function readSubscriptionSummary(
 const EMPTY_SUMMARY: SubscriptionSummary = {
   state: "none",
   tier: "base",
+  // No subscription, so no period: `base` is what an account falls back to
+  // rather than something anybody is billed for.
+  period: null,
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
   payableInvoiceUrl: null,

@@ -28,7 +28,7 @@
 import type Stripe from "stripe";
 import {
   db,
-  findSubscribableTierByPriceId,
+  findOfferByPriceId,
   getStripeCallTimeoutMs,
   listSubscriptions,
   lockAccountRow,
@@ -42,6 +42,10 @@ import { getStripeClient } from "@server/infra/stripe.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
+import type {
+  ActualPrice,
+  ExpectedPrice,
+} from "@server/modules/subscription/read-stripe-subscription.js";
 import { claimWebhookEvent } from "@server/modules/subscription/webhook-events.repo.js";
 import {
   settleTier,
@@ -67,6 +71,11 @@ import {
  */
 export type SubscriptionEventOutcome =
   | { status: "notMine" }
+  | {
+      status: "priceDisagreement";
+      expected: ExpectedPrice;
+      actual: ActualPrice;
+    }
   | { status: "acknowledged"; reason: string }
   | { status: "noop"; reason: string }
   | { status: "replay"; userId: string }
@@ -204,12 +213,12 @@ async function notifyIfUpgradeLapsed(
   // Narrowed by the check above: on this event type the SDK already types the
   // object as a subscription.
   const priceId = priceIdOfPendingUpdate(event.data.object);
-  const toTier = priceId ? findSubscribableTierByPriceId(priceId) : null;
-  if (!toTier) return;
+  const toOffer = priceId ? findOfferByPriceId(priceId) : null;
+  if (!toOffer) return;
 
   await notificationService.createMembershipUpgradeIncomplete({
     userId,
-    payload: { toTier },
+    payload: { toTier: toOffer.tier },
     tx,
   });
 }
@@ -286,13 +295,26 @@ export async function handleSubscriptionEvent(
       maxNetworkRetries: 0,
     },
   );
-  const write = readStripeSubscription(fresh, userId, observedAt);
-  if (!write) {
+  const read = readStripeSubscription(fresh, userId, observedAt);
+  if (!read.ok) {
+    // Two failures, two answers. A price nobody configured is answered 200
+    // and left unmarked, so a redelivery after somebody adds it still works.
+    // A price whose money disagrees with ours is not a configuration gap but
+    // a contradiction about what is being charged, and it is answered with a
+    // failure so Stripe keeps redelivering while somebody looks at it.
+    if (read.reason === "priceDisagreement") {
+      return {
+        status: "priceDisagreement",
+        expected: read.expected,
+        actual: read.actual,
+      };
+    }
     return {
       status: "noop",
       reason: `subscription ${subscription.id} sells a price this deployment does not know`,
     };
   }
+  const write = read.write;
 
   let outcome: SubscriptionEventOutcome = {
     status: "replay",

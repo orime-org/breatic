@@ -30,13 +30,23 @@ vi.mock("@breatic/core", () => ({
   listSubscriptions: vi.fn(),
   upsertSubscription: vi.fn(),
   subscriptionSituation: vi.fn(),
-  getSubscriptionPlan: (tier: string) => ({
-    priceCents: tier === "pro" ? 1200 : 3900,
+  // Keyed by both halves, because a price now sells a tier AND a period.
+  getSubscriptionPlan: (tier: string, period: string) => ({
+    priceCents: (tier === "pro" ? 1999 : 7999) * (period === "year" ? 10 : 1),
     currency: "usd",
-    stripePriceId: tier === "pro" ? "price_pro" : "price_team",
+    stripePriceId: `price_${tier}_${period}`,
   }),
-  findSubscribableTierByPriceId: (priceId: string) =>
-    ({ price_pro: "pro", price_team: "team" })[priceId] ?? null,
+  findOfferByPriceId: (priceId: string) => {
+    const [, tier, period] = priceId.split("_");
+    return tier && period ? { tier, period } : null;
+  },
+  AppError: class AppError extends Error {
+    public readonly statusCode: number;
+    constructor(statusCode: number, message: string) {
+      super(message);
+      this.statusCode = statusCode;
+    }
+  },
   ConflictError: class ConflictError extends Error {},
   ValidationError: class ValidationError extends Error {},
   NotFoundError: class NotFoundError extends Error {},
@@ -104,6 +114,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     await service.startCheckout({
       userId: USER,
       tier: "pro",
+      period: "month",
       returnUrl: RETURN_URL,
     });
 
@@ -119,6 +130,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     await service.startCheckout({
       userId: USER,
       tier: "pro",
+      period: "month",
       returnUrl: RETURN_URL,
     });
     expect(stripe.customers.create).not.toHaveBeenCalled();
@@ -131,6 +143,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     await service.startCheckout({
       userId: USER,
       tier: "team",
+      period: "month",
       returnUrl: RETURN_URL,
     });
 
@@ -138,7 +151,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
       expect.objectContaining({
         mode: "subscription",
         customer: "cus_1",
-        line_items: [{ price: "price_team", quantity: 1 }],
+        line_items: [{ price: "price_team_month", quantity: 1 }],
         subscription_data: { metadata: { userId: USER } },
       }),
     );
@@ -151,6 +164,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     await service.startCheckout({
       userId: USER,
       tier: "pro",
+      period: "month",
       returnUrl: RETURN_URL,
     });
     expect(stripe.checkout.sessions.create).toHaveBeenCalled();
@@ -164,6 +178,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     situationIs("firstPaymentUnsettled", {
       stripeSubscriptionId: "sub_unpaid",
       tier: "pro",
+      period: "month",
     });
     stripe.subscriptions.retrieve.mockResolvedValueOnce({
       id: "sub_unpaid",
@@ -174,6 +189,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     await service.startCheckout({
       userId: USER,
       tier: "pro",
+      period: "month",
       returnUrl: RETURN_URL,
     });
 
@@ -189,6 +205,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     situationIs("firstPaymentUnsettled", {
       stripeSubscriptionId: "sub_paid_meanwhile",
       tier: "pro",
+      period: "month",
     });
     stripe.subscriptions.retrieve.mockResolvedValueOnce({
       id: "sub_paid_meanwhile",
@@ -199,6 +216,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
       service.startCheckout({
         userId: USER,
         tier: "pro",
+        period: "month",
         returnUrl: RETURN_URL,
       }),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -211,6 +229,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     situationIs("firstPaymentUnsettled", {
       stripeSubscriptionId: "sub_still_unpaid",
       tier: "pro",
+      period: "month",
     });
     stripe.subscriptions.retrieve.mockResolvedValueOnce({
       id: "sub_still_unpaid",
@@ -221,6 +240,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     await service.startCheckout({
       userId: USER,
       tier: "pro",
+      period: "month",
       returnUrl: RETURN_URL,
     });
 
@@ -238,6 +258,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
       situationIs("firstPaymentUnsettled", {
         stripeSubscriptionId: "sub_dead",
         tier: "pro",
+        period: "month",
       });
       stripe.subscriptions.retrieve.mockResolvedValueOnce({
         id: "sub_dead",
@@ -247,6 +268,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
       await service.startCheckout({
         userId: USER,
         tier: "pro",
+        period: "month",
         returnUrl: RETURN_URL,
       });
 
@@ -259,6 +281,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     situationIs("firstPaymentUnsettled", {
       stripeSubscriptionId: "sub_gone",
       tier: "pro",
+      period: "month",
     });
     stripe.subscriptions.retrieve.mockRejectedValueOnce(
       Object.assign(new Error("No such subscription: sub_gone"), {
@@ -269,6 +292,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     await service.startCheckout({
       userId: USER,
       tier: "pro",
+      period: "month",
       returnUrl: RETURN_URL,
     });
 
@@ -282,6 +306,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     situationIs("firstPaymentUnsettled", {
       stripeSubscriptionId: "sub_expiring",
       tier: "pro",
+      period: "month",
     });
     stripe.subscriptions.retrieve.mockResolvedValueOnce({
       id: "sub_expiring",
@@ -296,6 +321,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     await service.startCheckout({
       userId: USER,
       tier: "pro",
+      period: "month",
       returnUrl: RETURN_URL,
     });
 
@@ -309,6 +335,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     situationIs("firstPaymentUnsettled", {
       stripeSubscriptionId: "sub_unpaid",
       tier: "pro",
+      period: "month",
     });
     stripe.subscriptions.retrieve.mockRejectedValueOnce(
       Object.assign(new Error("Connection error"), { code: "api_connection_error" }),
@@ -318,6 +345,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
       service.startCheckout({
         userId: USER,
         tier: "pro",
+        period: "month",
         returnUrl: RETURN_URL,
       }),
     ).rejects.toThrow("Connection error");
@@ -330,6 +358,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
       service.startCheckout({
         userId: USER,
         tier: "team",
+        period: "month",
         returnUrl: RETURN_URL,
       }),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -347,6 +376,7 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
       stripeSubscriptionId: "sub_1",
       stripeItemId: "si_1",
       tier: "pro",
+      period: "month",
       cancelAtPeriodEnd: false,
       ...over,
     };
@@ -361,7 +391,7 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
       latest_invoice: null,
       items: {
         data: [
-          { id: "si_1", current_period_end: 1_789_000_000, price: { id: "price_team" } },
+          { id: "si_1", current_period_end: 1_789_000_000, price: { id: "price_team_month", unit_amount: 7999, currency: "usd", recurring: { interval: "month" } } },
         ],
       },
     });
@@ -372,12 +402,12 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     // memberships and be billed for both.
     situationIs("active", proRow());
 
-    await service.changePlan({ userId: USER, tier: "team" });
+    await service.changePlan({ userId: USER, tier: "team", period: "month" });
 
     expect(stripe.subscriptions.update).toHaveBeenCalledWith(
       "sub_1",
       expect.objectContaining({
-        items: [{ id: "si_1", price: "price_team" }],
+        items: [{ id: "si_1", price: "price_team_month" }],
         proration_behavior: "always_invoice",
         payment_behavior: "pending_if_incomplete",
       }),
@@ -390,7 +420,7 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     // 100% 失败，而不是「多传一个没用的字段」。
     situationIs("cancelling", proRow({ cancelAtPeriodEnd: true }));
 
-    await service.changePlan({ userId: USER, tier: "team" });
+    await service.changePlan({ userId: USER, tier: "team", period: "month" });
 
     const [, params] = stripe.subscriptions.update.mock.calls[0] as [
       string,
@@ -407,7 +437,7 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     // 面板照常显示结束日期和「恢复」按钮，用户看得见也点得动。
     situationIs("cancelling", proRow({ cancelAtPeriodEnd: true }));
 
-    await service.changePlan({ userId: USER, tier: "team" });
+    await service.changePlan({ userId: USER, tier: "team", period: "month" });
 
     expect(stripe.subscriptions.update).toHaveBeenCalledTimes(2);
     expect(stripe.subscriptions.update).toHaveBeenLastCalledWith("sub_1", {
@@ -426,7 +456,7 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
       cancel_at_period_end: true,
       pending_update: {
         expires_at: 0,
-        subscription_items: [{ id: "si_1", price: { id: "price_team" } }],
+        subscription_items: [{ id: "si_1", price: { id: "price_team_month", unit_amount: 7999, currency: "usd", recurring: { interval: "month" } } }],
       },
       latest_invoice: {
         status: "open",
@@ -434,12 +464,12 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
       },
       items: {
         data: [
-          { id: "si_1", current_period_end: 1_789_000_000, price: { id: "price_pro" } },
+          { id: "si_1", current_period_end: 1_789_000_000, price: { id: "price_pro_month", unit_amount: 1999, currency: "usd", recurring: { interval: "month" } } },
         ],
       },
     });
 
-    await service.changePlan({ userId: USER, tier: "team" });
+    await service.changePlan({ userId: USER, tier: "team", period: "month" });
 
     expect(stripe.subscriptions.update).toHaveBeenCalledTimes(2);
     expect(stripe.subscriptions.update).toHaveBeenLastCalledWith("sub_1", {
@@ -449,7 +479,7 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
 
   it("账号没预约取消时只调一次", async () => {
     situationIs("active", proRow());
-    await service.changePlan({ userId: USER, tier: "team" });
+    await service.changePlan({ userId: USER, tier: "team", period: "month" });
     expect(stripe.subscriptions.update).toHaveBeenCalledTimes(1);
   });
 
@@ -460,7 +490,7 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     situationIs("active", proRow({ stripeItemId: null }));
 
     await expect(
-      service.changePlan({ userId: USER, tier: "team" }),
+      service.changePlan({ userId: USER, tier: "team", period: "month" }),
     ).rejects.toThrow(/no stored item id/i);
     expect(stripe.subscriptions.update).not.toHaveBeenCalled();
   });
@@ -470,14 +500,14 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     // directly.
     situationIs("active", proRow({ tier: "team" }));
     await expect(
-      service.changePlan({ userId: USER, tier: "pro" }),
+      service.changePlan({ userId: USER, tier: "pro", period: "month" }),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("refuses a move to the tier already held", async () => {
     situationIs("active", proRow());
     await expect(
-      service.changePlan({ userId: USER, tier: "pro" }),
+      service.changePlan({ userId: USER, tier: "pro", period: "month" }),
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
@@ -486,7 +516,7 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     // during that window would bill somebody whose card is already failing.
     situationIs("retrying", proRow());
     await expect(
-      service.changePlan({ userId: USER, tier: "team" }),
+      service.changePlan({ userId: USER, tier: "team", period: "month" }),
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
@@ -498,7 +528,7 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
       cancel_at_period_end: false,
       pending_update: {
         expires_at: 0,
-        subscription_items: [{ id: "si_1", price: { id: "price_team" } }],
+        subscription_items: [{ id: "si_1", price: { id: "price_team_month", unit_amount: 7999, currency: "usd", recurring: { interval: "month" } } }],
       },
       latest_invoice: {
         status: "open",
@@ -506,12 +536,12 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
       },
       items: {
         data: [
-          { id: "si_1", current_period_end: 1_789_000_000, price: { id: "price_pro" } },
+          { id: "si_1", current_period_end: 1_789_000_000, price: { id: "price_pro_month", unit_amount: 1999, currency: "usd", recurring: { interval: "month" } } },
         ],
       },
     });
 
-    const result = await service.changePlan({ userId: USER, tier: "team" });
+    const result = await service.changePlan({ userId: USER, tier: "team", period: "month" });
 
     expect(result.payableInvoiceUrl).toBe("https://invoice.example/pay");
   });
@@ -527,7 +557,7 @@ describe("cancel and resume (#106 §7.5)", () => {
       latest_invoice: null,
       items: {
         data: [
-          { id: "si_1", current_period_end: 1_789_000_000, price: { id: "price_pro" } },
+          { id: "si_1", current_period_end: 1_789_000_000, price: { id: "price_pro_month", unit_amount: 1999, currency: "usd", recurring: { interval: "month" } } },
         ],
       },
     });
@@ -553,6 +583,7 @@ describe("cancel and resume (#106 §7.5)", () => {
     situationIs("cancelling", {
       stripeSubscriptionId: "sub_1",
       tier: "pro",
+      period: "month",
       cancelAtPeriodEnd: true,
     });
 
@@ -575,6 +606,7 @@ describe("cancel and resume (#106 §7.5)", () => {
     situationIs("retrying", {
       stripeSubscriptionId: "sub_1",
       tier: "pro",
+      period: "month",
       cancelAtPeriodEnd: true,
     });
 
@@ -589,6 +621,7 @@ describe("cancel and resume (#106 §7.5)", () => {
     situationIs("cancelling", {
       stripeSubscriptionId: "sub_1",
       tier: "pro",
+      period: "month",
       cancelAtPeriodEnd: true,
     });
     await expect(service.cancel(USER)).rejects.toBeInstanceOf(ConflictError);

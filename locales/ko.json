@@ -128,7 +128,8 @@
       "already_subscribed": "이미 멤버십이 있습니다.",
       "no_subscription": "멤버십이 없습니다.",
       "not_cancelling": "이 멤버십은 종료 예정이 아닙니다.",
-      "downgrade_not_offered": "하위 등급으로 변경할 수 없습니다.",
+      "change_not_offered": "해당 변경은 제공되지 않습니다.",
+      "change_unconfirmed": "Stripe가 변경을 접수했지만 회신 내용이 가격표와 일치하지 않습니다. 플랜은 변경되지 않았습니다. 잠시 후 다시 시도해 주세요.",
       "same_tier": "이미 이 멤버십입니다.",
       "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
       "unavailable": "멤버십을 사용할 수 없습니다."

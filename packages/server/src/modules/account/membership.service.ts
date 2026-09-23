@@ -25,9 +25,12 @@ import {
   getSubscriptionPlan,
 } from "@breatic/core";
 import {
+  BILLING_PERIODS,
   COMPARABLE_MEMBERSHIP_TIERS,
   type AccountMembership,
+  type BillingPeriod,
   type ComparableMembershipTier,
+  type TierPrice,
 } from "@breatic/shared";
 
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
@@ -76,27 +79,33 @@ export async function readAccountMembership(
     catalog: COMPARABLE_MEMBERSHIP_TIERS.map((offered) => ({
       tier: offered,
       limits: getMembershipLimits(offered),
-      ...priceOf(offered, selling),
+      prices: pricesOf(offered, selling),
     })),
     subscription,
   };
 }
 
 /**
- * What one tier costs, when this deployment sells it.
+ * What one tier costs over each billing period, when this deployment sells it.
  * @param tier - The tier the row describes.
  * @param selling - Whether this deployment sells subscriptions.
- * @returns The price and its currency, both null when there is no price.
+ * @returns One entry per period, each null when there is no price to quote.
  */
-function priceOf(
+function pricesOf(
   tier: ComparableMembershipTier,
   selling: boolean,
-): { priceCents: number | null; currency: string | null } {
+): Record<BillingPeriod, TierPrice | null> {
   // `base` is free rather than cheap: it has no plan to quote, and quoting
   // zero would be a price nobody set.
   if (!selling || tier === "base") {
-    return { priceCents: null, currency: null };
+    return { month: null, year: null };
   }
-  const plan = getSubscriptionPlan(tier);
-  return { priceCents: plan.priceCents, currency: plan.currency };
+  // Built from the period list rather than written out, so a third period
+  // added to the product reaches this row without an edit here.
+  return Object.fromEntries(
+    BILLING_PERIODS.map((period) => {
+      const plan = getSubscriptionPlan(tier, period);
+      return [period, { priceCents: plan.priceCents, currency: plan.currency }];
+    }),
+  ) as Record<BillingPeriod, TierPrice | null>;
 }

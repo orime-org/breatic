@@ -21,12 +21,14 @@ vi.mock("@breatic/core", () => ({
   env: envRef,
   getUserMembershipTier: vi.fn(),
   getLimitsForUser: vi.fn(),
-  getSubscriptionPlan: (tier: string) => ({
-    priceCents: tier === "pro" ? 1200 : 3900,
+  getSubscriptionPlan: (tier: string, period: string) => ({
+    priceCents:
+      (tier === "pro" ? 1999 : 7999) * (period === "year" ? 10 : 1),
     currency: "usd",
   }),
   getMembershipLimits: () => LIMITS,
   COMPARABLE_MEMBERSHIP_TIERS: ["base", "pro", "team"],
+  BILLING_PERIODS: ["month", "year"],
 }));
 
 vi.mock("@server/modules/subscription/subscription-panel.js", () => ({
@@ -69,6 +71,7 @@ beforeEach(() => {
   vi.mocked(readSubscriptionSummary).mockResolvedValue({
     state: "active",
     tier: "pro",
+    period: "month",
     currentPeriodEnd: "2026-09-18T00:00:00.000Z",
     cancelAtPeriodEnd: false,
     payableInvoiceUrl: null,
@@ -78,13 +81,19 @@ beforeEach(() => {
 });
 
 describe("readAccountMembership — 这个部署卖东西时", () => {
-  it("有价格的档位报价格，免费档不报", async () => {
+  it("有价格的档位两个周期各报一个价，免费档两个都不报", async () => {
     const result = await readAccountMembership(USER);
 
-    expect(result.catalog.map((offer) => offer.priceCents)).toEqual([
-      null,
-      1200,
-      3900,
+    expect(result.catalog.map((offer) => offer.prices)).toEqual([
+      { month: null, year: null },
+      {
+        month: { priceCents: 1999, currency: "usd" },
+        year: { priceCents: 19990, currency: "usd" },
+      },
+      {
+        month: { priceCents: 7999, currency: "usd" },
+        year: { priceCents: 79990, currency: "usd" },
+      },
     ]);
     expect(result.subscription).not.toBeNull();
   });
@@ -95,18 +104,13 @@ describe("readAccountMembership — 这个部署不卖东西时（验收 6）", 
     envRef.PAYMENT_ENABLED = false;
   });
 
-  it("三档价格全空，而不是零", async () => {
+  it("三档两个周期全空，而不是零", async () => {
     const result = await readAccountMembership(USER);
 
-    expect(result.catalog.map((offer) => offer.priceCents)).toEqual([
-      null,
-      null,
-      null,
-    ]);
-    expect(result.catalog.map((offer) => offer.currency)).toEqual([
-      null,
-      null,
-      null,
+    expect(result.catalog.map((offer) => offer.prices)).toEqual([
+      { month: null, year: null },
+      { month: null, year: null },
+      { month: null, year: null },
     ]);
   });
 

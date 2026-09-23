@@ -227,21 +227,29 @@ export function canMoveTo(from: MembershipOffer, to: MembershipOffer): boolean {
 }
 
 /** One row of the tier comparison table. */
+/** What one tier costs over one billing period. */
+export interface TierPrice {
+  /** The amount, in the smallest currency unit. */
+  readonly priceCents: number;
+  /** ISO 4217 code, lower case, as Stripe writes it. */
+  readonly currency: string;
+}
+
 export interface TierOffer {
   /** Which tier this row describes. */
   readonly tier: ComparableMembershipTier;
   /** That tier's six ceilings, read from `config/membership.yaml`. */
   readonly limits: MembershipLimits;
   /**
-   * What it costs per month, in the smallest currency unit.
+   * What it costs over each billing period.
    *
-   * Null for the free tier, and null on every row when this deployment sells
-   * nothing: a self-hosted install has no prices, and inventing "$0" there
-   * would be a claim about a shop that does not exist.
+   * Both keys are always present, so forgetting the annual one is a compile
+   * error rather than an `undefined` reaching the page. A value is null for
+   * the free tier, and null on every row when this deployment sells nothing:
+   * a self-hosted install has no prices, and inventing "$0" there would be a
+   * claim about a shop that does not exist.
    */
-  readonly priceCents: number | null;
-  /** ISO 4217 code for `priceCents`, null wherever that is null. */
-  readonly currency: string | null;
+  readonly prices: Readonly<Record<BillingPeriod, TierPrice | null>>;
 }
 
 /**
@@ -364,6 +372,13 @@ export interface SubscriptionSummary {
   readonly state: SubscriptionSituation;
   /** The tier it has been paid for, which is not always the tier in force. */
   readonly tier: MembershipTier;
+  /**
+   * How often it is billed.
+   *
+   * Null wherever there is no subscription to describe: the panel prints the
+   * price and the renewal date from the tier and this together.
+   */
+  readonly period: BillingPeriod | null;
   /** When the paid period ends, ISO 8601, or null before the first payment. */
   readonly currentPeriodEnd: string | null;
   /** Whether it is set to end when that period runs out. */

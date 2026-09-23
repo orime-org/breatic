@@ -92,6 +92,7 @@ export type {
   UpgradeOffer,
   SubscriptionSummary,
   TierOffer,
+  TierPrice,
   AccountUsage,
   AccountMembership,
   BillingPeriod,

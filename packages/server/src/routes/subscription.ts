@@ -54,10 +54,11 @@ subscription.post(
     const result = await subscriptionService.startCheckout({
       userId: user.id,
       tier: body.tier,
+      period: body.period,
       returnUrl: body.return_url,
     });
     logger.info(
-      { userId: user.id, tier: body.tier },
+      { userId: user.id, tier: body.tier, period: body.period },
       "subscription_checkout_started",
     );
     return c.json({ data: result });
@@ -80,9 +81,10 @@ subscription.post(
     const result = await subscriptionService.changePlan({
       userId: user.id,
       tier: body.tier,
+      period: body.period,
     });
     logger.info(
-      { userId: user.id, tier: body.tier, status: result.status },
+      { userId: user.id, tier: body.tier, period: body.period, status: result.status },
       "subscription_plan_changed",
     );
     return c.json({ data: result });

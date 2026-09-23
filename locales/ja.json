@@ -128,7 +128,8 @@
       "already_subscribed": "すでにメンバーシップに加入しています。",
       "no_subscription": "メンバーシップに加入していません。",
       "not_cancelling": "このメンバーシップは終了予定ではありません。",
-      "downgrade_not_offered": "下位プランへの変更はできません。",
+      "change_not_offered": "その変更はご利用いただけません。",
+      "change_unconfirmed": "Stripe は変更を受け付けましたが、返ってきた内容が当社の価格表と一致しません。プランは更新されていません。しばらくしてからもう一度お試しください。",
       "same_tier": "すでにこのメンバーシップです。",
       "payment_overdue": "このメンバーシップの支払いが遅延しています。",
       "unavailable": "メンバーシップは利用できません。"

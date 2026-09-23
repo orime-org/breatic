@@ -145,6 +145,7 @@ export type {
   UpgradeOffer,
   SubscriptionSummary,
   TierOffer,
+  TierPrice,
   AccountUsage,
   AccountMembership,
 } from "@shared/types/membership.js";
