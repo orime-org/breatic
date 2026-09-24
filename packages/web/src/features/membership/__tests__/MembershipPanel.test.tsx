@@ -167,22 +167,27 @@ beforeEach(() => {
 });
 
 describe('MembershipPanel', () => {
-  it('caps the element that scrolls, not the box around it', async () => {
+  it('keeps the current tier in place while everything below it scrolls', async () => {
     membershipMock.mockResolvedValue(answer());
     const { container } = setup();
-    await screen.findAllByText(/Pro/);
+    await screen.findByTestId('current-tier-name');
 
-    // The scroll area's root is overflow-hidden with an auto height, so a cap
-    // there clips what it cannot scroll. The viewport is the element that
-    // scrolls, and the cap belongs to it.
+    // The head is what the reader opened the panel to see; the quota, the
+    // cards and the table under it are what they scroll through. So the head
+    // sits outside the scroll region and the rest sits inside it.
     // From the dialog outwards: the first `[data-scrollbars]` in the document
     // is the overlay's own scroller, which is a different element.
-    const root = container.ownerDocument.querySelector(
-      '[role="dialog"] [data-scrollbars]',
-    )!;
-    const viewport = root.querySelector('[data-radix-scroll-area-viewport]')!;
-    expect(viewport.className).toContain('max-h-[calc(100vh-80px)]');
-    expect(root.className).not.toContain('max-h-');
+    const dialog = container.ownerDocument.querySelector('[role="dialog"]')!;
+    const viewport = dialog.querySelector('[data-radix-scroll-area-viewport]')!;
+    expect(viewport.contains(screen.getByTestId('current-tier-name'))).toBe(false);
+    expect(viewport.contains(screen.getByTestId('quota-storage'))).toBe(true);
+
+    // The ceiling goes on the dialog, and its rows are a grid: under a
+    // `max-height` a flex column leaves its items at `height: auto`, the
+    // viewport grows to its content and the dialog clips instead of
+    // scrolling. Grid tracks are definite either way.
+    expect(dialog.className).toContain('max-h-[calc(100vh-80px)]');
+    expect(dialog.className).toContain('grid-rows-[auto_minmax(0,1fr)]');
   });
 
   it('显示档位和账号级的两项额度', async () => {
