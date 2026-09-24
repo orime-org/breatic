@@ -184,7 +184,7 @@ export async function readSubscriptionSummary(
   // the account is still in the state the offers exist for, and answering
   // "nothing" here is what would take the offers away from precisely the
   // people they are for.
-  if (!customerId) return { ...EMPTY_SUMMARY };
+  if (!customerId) return { ...EMPTY_SUMMARY, reconciled: true };
 
   // Reconciling is an enhancement: it repairs a lost event. The tier, the
   // allowances and the comparison table beside it are local facts that have
@@ -192,9 +192,11 @@ export async function readSubscriptionSummary(
   // panel down with it. What the reader then sees is our stored view, which
   // is the same thing they saw before this reconciliation existed.
   let endedFrom: MembershipTier | null = null;
+  let reconciled = true;
   try {
     endedFrom = await reconcile(userId, customerId);
   } catch (err) {
+    reconciled = false;
     logger.error({ err, userId }, "subscription_reconcile_failed");
   }
   // After the transaction: an email about a change that then rolled back
@@ -204,7 +206,7 @@ export async function readSubscriptionSummary(
   const { situation, record } = subscriptionSituation(
     await listSubscriptions(userId),
   );
-  if (!record) return { ...EMPTY_SUMMARY };
+  if (!record) return { ...EMPTY_SUMMARY, reconciled };
 
   return {
     state: situation,
@@ -213,6 +215,7 @@ export async function readSubscriptionSummary(
     currentPeriodEnd: record.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: record.cancelAtPeriodEnd,
     payableInvoiceUrl: record.payableInvoiceUrl,
+    reconciled,
   };
 }
 
@@ -224,7 +227,7 @@ export async function readSubscriptionSummary(
  * account that has never bought one, or whose subscription ended, is in the
  * state the offers exist for and must still see them.
  */
-const EMPTY_SUMMARY: SubscriptionSummary = {
+const EMPTY_SUMMARY: Omit<SubscriptionSummary, "reconciled"> = {
   state: "none",
   tier: "base",
   // No subscription, so no period: `base` is what an account falls back to

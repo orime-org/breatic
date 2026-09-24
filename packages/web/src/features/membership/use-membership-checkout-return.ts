@@ -68,6 +68,13 @@ export function useMembershipCheckoutReturn(): void {
       }
 
       const held = membership.subscription;
+      // The server answers from its stored rows when it could not check with
+      // Stripe, and those say "no subscription" until the webhook lands. That
+      // is the same unknown as a failed request, so it gets the same words.
+      if (held && !held.reconciled) {
+        toast.error(t('membership.loadFailed'));
+        return;
+      }
       if (
         held &&
         holdsActionableSubscription(held.state) &&

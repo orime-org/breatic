@@ -396,6 +396,16 @@ export interface SubscriptionSummary {
   readonly cancelAtPeriodEnd: boolean;
   /** Where to pay an outstanding invoice, when there is one. */
   readonly payableInvoiceUrl: string | null;
+  /**
+   * Whether this answer was checked against Stripe just now.
+   *
+   * False when that read failed and the answer is the stored rows alone. The
+   * panel shows those either way; what cannot be read from them is a
+   * purchase whose webhook has not landed yet, so "no subscription" here is
+   * not "nothing was bought" — and a caller that reports a purchase has to
+   * know which of the two it is holding.
+   */
+  readonly reconciled: boolean;
 }
 
 /** What one account has spent of the two allowances counted account-wide. */

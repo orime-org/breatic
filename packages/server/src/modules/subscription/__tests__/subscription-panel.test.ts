@@ -149,3 +149,30 @@ describe("reconciliation — a subscription we cannot price", () => {
     expect(logger.error).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("reconciliation — whether the answer came from Stripe", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("says it reconciled when Stripe answered", async () => {
+    stripe.subscriptions.list.mockResolvedValue({ data: [] });
+
+    const summary = await readSubscriptionSummary(USER);
+
+    expect(summary.reconciled).toBe(true);
+  });
+
+  it("says it did not reconcile when the Stripe read failed", async () => {
+    // The stored rows are still answered, because the rest of the panel does
+    // not depend on Stripe. But a reader coming back from a checkout whose
+    // webhook has not landed would read "no subscription" as "not bought",
+    // and only this flag tells that apart from Stripe saying so.
+    stripe.subscriptions.list.mockRejectedValue(new Error("stripe down"));
+
+    const summary = await readSubscriptionSummary(USER);
+
+    expect(summary.state).toBe("none");
+    expect(summary.reconciled).toBe(false);
+  });
+});

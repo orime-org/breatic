@@ -75,6 +75,7 @@ beforeEach(() => {
     currentPeriodEnd: "2026-09-18T00:00:00.000Z",
     cancelAtPeriodEnd: false,
     payableInvoiceUrl: null,
+    reconciled: true,
   });
   vi.mocked(studioRepo.countTeamStudiosAdministeredBy).mockResolvedValue(1);
   vi.mocked(assetUsageService.accountStorageUsage).mockResolvedValue(0);

@@ -312,6 +312,7 @@ describe('StudioAccountMenu', () => {
           cancelAtPeriodEnd: false,
           currentPeriodEnd: null,
           payableInvoiceUrl: null,
+          reconciled: true,
         },
       };
     }
@@ -351,6 +352,37 @@ describe('StudioAccountMenu', () => {
       await waitFor(() => {
         expect(toastMock.error).toHaveBeenCalledWith('Membership not activated');
       });
+    });
+
+    it('says it could not read the membership when Stripe could not be asked', async () => {
+      // The stored rows answer "no subscription" until the webhook lands. If
+      // the server could not check with Stripe either, that answer is not
+      // "nothing was bought", and saying so to someone who just paid is false.
+      membershipMock.mockResolvedValue({
+        tier: 'base',
+        limits: {},
+        usage: {},
+        catalog: { selling: true, tiers: [] },
+        subscription: {
+          state: 'none',
+          tier: 'base',
+          period: null,
+          cancelAtPeriodEnd: false,
+          currentPeriodEnd: null,
+          payableInvoiceUrl: null,
+          reconciled: false,
+        },
+      });
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup(false, '/studio?membership=1');
+
+      await waitFor(() => {
+        expect(toastMock.error).toHaveBeenCalledWith(
+          'We could not read your membership. It may be a network problem — try again in a moment.',
+        );
+      });
+      expect(toastMock.error).not.toHaveBeenCalledWith('Membership not activated');
+      expect(meMock).not.toHaveBeenCalled();
     });
 
     it('says nothing when the reader pressed back on Stripe', async () => {
