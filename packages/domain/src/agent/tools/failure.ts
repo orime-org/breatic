@@ -83,6 +83,11 @@ export interface FailureVoice {
   readonly elsewhere: string;
   /** Opens a sentence about one attempt: `<attempting> "query" failed`. */
   readonly attempting: string;
+  /**
+   * What to do instead, when this tool's failure is not the reader's business.
+   * A tool the reader asked for leaves this out and says it is unavailable.
+   */
+  readonly fallback?: string;
 }
 
 /** One of the moves a `nextMovesFor` table holds. */
@@ -117,7 +122,9 @@ export interface NextMoves {
  * @returns The four moves, phrased for that tool.
  */
 export function nextMovesFor(voice: FailureVoice): NextMoves {
-  const fallback = `continue without ${voice.results} and tell the user ${voice.act} is unavailable.`;
+  const fallback =
+    voice.fallback ??
+    `continue without ${voice.results} and tell the user ${voice.act} is unavailable.`;
   return {
     stop: `Do not repeat this ${voice.act}; ${fallback}` as NextMove,
     rewordOnce: `Try a different wording at most once, then ${fallback}` as NextMove,
@@ -150,19 +157,39 @@ export function reason(what: string, next: NextMove): string {
  * redirect is not followed, and means the address held here has moved. What is
  * left is this request being one the service would not take, which the model
  * wrote and can rewrite.
+ * A caller may know which of the two it is better than the status does: the
+ * model composes some request bodies, and a service that names something this
+ * side configured is refusing our doing, whichever 4xx it answers with. So
+ * `rewordable` overrides the sorting of the 4xx and 3xx statuses below when
+ * the caller can tell; a 5xx, 429 or 408 is their side whatever it says.
  * @param voice - How this tool names what it does.
  * @param query - What was searched for.
  * @param status - The status the service answered with.
+ * @param detail - What the service said about it, when it said anything.
+ * @param rewordable - Whether the model can write this request again, when the
+ * caller knows; left out, the status decides.
  * @returns The reason, ending in what the model may do instead.
  */
-export function refusalReason(voice: FailureVoice, query: string, status: number): string {
+export function refusalReason(
+  voice: FailureVoice,
+  query: string,
+  status: number,
+  detail = "",
+  rewordable?: boolean,
+): string {
   const moves = nextMovesFor(voice);
-  const opening = `${voice.attempting} "${query}" failed: the ${voice.act} service answered HTTP ${String(status)}.`;
+  // The service's own words when it gave any: it names the field it refused,
+  // and this side is the only place that sentence exists. Quoted and closed,
+  // because arbitrary text rarely ends in a full stop and what follows it
+  // here is our own instruction.
+  const said = detail === "" ? "" : ` It said: "${detail}".`;
+  const opening = `${voice.attempting} "${query}" failed: the ${voice.act} service answered HTTP ${String(status)}.${said}`;
   // 408 travels with 429 because the transport already treats the two the same
-  // (`decide-retry.ts`), and a 5xx joins them because these calls declare
-  // themselves replay-safe. One that reaches here has survived every delivery
-  // the transport was willing to make, or named a wait past the transport's own
-  // ceiling and was handed back on the first.
+  // (`decide-retry.ts`), and a 5xx joins them because it is their fault
+  // however many times it was delivered. One that reaches here has survived
+  // every delivery the transport was willing to make, or was handed back on
+  // the first -- because the caller declared the call not replay-safe, or
+  // because it named a wait past the transport's own ceiling.
   if (status >= 500 || status === 429 || status === 408) {
     return reason(
       `${opening} That is a fault on their side, not a problem with the query, so no ` +
@@ -171,15 +198,23 @@ export function refusalReason(voice: FailureVoice, query: string, status: number
     );
   }
 
+  if (rewordable === true) {
+    return reason(
+      `${opening} The service is reachable, so it is this request it would not take.`,
+      moves.rewordOnce,
+    );
+  }
   const ours =
-    status === 401 || status === 403
-      ? "It turned down the credentials this side sent, which is a fault in our configuration."
-      : status === 422
-        ? "It refused what this side sent it, which is a fault in our configuration."
-        : status < 400 || status === 404
-          ? "It answered from an address this side no longer reaches, so the address " +
-            "configured here has moved. That is a fault in our configuration."
-          : null;
+    rewordable === false
+      ? "It named something configured here, so this is a fault in our configuration."
+      : status === 401 || status === 403
+        ? "It turned down the credentials this side sent, which is a fault in our configuration."
+        : status === 422
+          ? "It refused what this side sent it, which is a fault in our configuration."
+          : status < 400 || status === 404
+            ? "It answered from an address this side no longer reaches, so the address " +
+              "configured here has moved. That is a fault in our configuration."
+            : null;
   if (ours !== null) {
     return reason(`${opening} ${ours} No wording of the query reaches it.`, moves.stop);
   }

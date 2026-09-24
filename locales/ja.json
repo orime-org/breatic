@@ -227,6 +227,7 @@
       "proposingNodes": "提案をまとめています",
       "checkingModels": "利用できるモデルを確認中",
       "understanding": "メディアを確認中",
+      "judging": "検討中",
       "running": "{tool} を実行中"
     },
     "loadEarlier": "以前のメッセージを読み込む",

@@ -227,6 +227,7 @@
       "proposingNodes": "Drafting a proposal",
       "checkingModels": "Looking up the models",
       "understanding": "Looking at the media",
+      "judging": "Weighing it up",
       "running": "Calling {tool}"
     },
     "loadEarlier": "Load earlier messages",

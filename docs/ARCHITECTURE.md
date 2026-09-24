@@ -197,7 +197,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **`metadata.json` 里的 `name` / `description` 不被读取** —— 内置 skill 两处各写了一份同样的值,看不出读的是哪一份;只在 `metadata.json` 里填 `name` 的 skill 会被静默跳过。字段的读取处是 `skills-loader.ts` 里那串 `pkg.*` 取值(没有 schema 声明)。**入口权限不在这里** —— 哪个界面能用、用户能不能直接调、模型能不能自己调起,三样都在 `config/skill-routing.yaml`。禁用 npm 字段(version/author/license/engines/files/main)。
 
-### Agent tools (7)
+### Agent tools (8)
+
+**一个工具的用途、时机和用法只写在它自己的 `description` 和字段的 `.describe()` 里**(MANDATORY)。系统提示词(`packages/server/src/agent/context.ts`)只放对所有工具都成立的规则 —— 调用工具而不是把调用写出来、读报错并照它说的做、拿不到的要说出来。工具可以从注册表里拆掉,说明跟着它一起走;规定在 `packages/domain/CLAUDE.md`,守卫是 `packages/server/src/__tests__/agent/system-prompt.test.ts`(遍历 `TOOL_MAP`,提示词里出现任何一个工具名即红)和 `packages/domain/src/agent/tools/__tests__/tools-say-their-own-use.test.ts`。
 
 `web_search` —— 打 Brave 的 LLM context 端点,回来的是每个来源页面正文的**摘录**(同一页可能给好几段、彼此不相连),既不是整页正文,也不是结果列表里那一行摘要。模型用 `count` 说想要几个来源,搜索回多少是多少。
 
@@ -220,6 +222,8 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 **每个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。交互工具那一个不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
 
 **`understand_media` —— 给一个图片 / 视频 / 音频的地址和一个问题,回一句它是什么**。图片当地址直传给后端去取,视频和音频在这台服务器下载、转 base64 装进请求体;模型和后端都钉死在工具里(`google/gemini-3.8-flash` 走 `google-vertex`),因为每一个实测数字都是对着这一组取的。取字节之前先判地址是不是公网可达(逐跳判,最多 10 跳)、类型在不在白名单里、大小在不在上限内,任何一条不过就不发起模型调用,把原因交回模型去跟用户说。**一轮之内一次只跑一个**:工具说明要求模型一次给一个地址、等到答复再问下一个,工具实例里另有一道闸把同一轮的第二个并发调用挡回去 —— 一步的几个调用在 SDK 里是同一个 `Promise.all`,而每个视频或音频调用要把文件握住好几份。
+
+**`judge_likelihood` —— 模型拿不准时,把手上的材料和一组问题交给它,它答一个带概率的判断**(#282)。打 OpenRouter 的 `/api/alpha/decisions`,模型钉在 `packages/domain/src/agent/tools/jev.ts`(`typesafe/jev-1.13`),密钥是 `OPENROUTER_API_KEY`(没配就不进工具集)。请求体是 `state` 加 `questions`:`state` 形状不限;每个问题是三种之一 —— `noul` 答一个主张成立的概率,`choice` 给一组由模型自己命名的选项、答每个的概率和把握,`score` 给一串从低到高的档、答落在哪。**格式由端点自己定义**:我们只校验三种问题的形状(未声明的字段原样透传),其余交给端点,它拒收时会点名哪个字段,那句话原样带回给模型去改(`complaintOf` 只读 `error.message`,限 500ms)。答复逐个问题判能不能读,读不出的名字进 `unreadable`,其余照常返回。**拒收的分类比共用那张表多两条**:422 说的是模型写的请求体,判为可改写;拒收原文里点到我们钉的模型名,判为我们这边的配置,不管状态码。整次调用(几次投递、退避、读正文)共用 `config/agent.yaml` 的 `judge_likelihood_timeout_ms`(10 秒)。它在 `BASELINE_TOOLS` 里,失败时给模型的出路是「不靠这次判断,用手上已有的材料自己决定」,不向读者宣告。
 
 **画布能力两个(`get_canvas_capabilities` / `list_generation_models`)—— 答的是「这个画布现在能生成什么」**。前者不带参数,答三种生成节点各自能选哪些模式,再加一段文本节点是什么、在提示词里提及一个节点会发生什么;后者带节点类型和模式,答那一档现在有哪些模型、每个的价钱、时长上限和每个参数怎么填。两个都只读,读的是按 provider key 过滤后的那份目录缓存。
 

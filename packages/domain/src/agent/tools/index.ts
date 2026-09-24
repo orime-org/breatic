@@ -11,6 +11,7 @@ import { askUser } from "@domain/agent/tools/ask-user.js";
 import {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
+  JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
 } from "@domain/agent/tools/tool-names.js";
@@ -20,6 +21,7 @@ import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js
 import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
 import { generationModels } from "@domain/agent/tools/generation-models.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
+import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 
 /**
  * Complete mapping of tool name to tool instance.
@@ -50,6 +52,8 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   [GET_CANVAS_CAPABILITIES]: () => canvasCapabilities,
   [LIST_GENERATION_MODELS]: () => generationModels,
   [PROPOSE_CANVAS_ACTION]: () => proposeCanvasAction,
+  // Holds nothing between calls, so one object serves every turn.
+  [JUDGE_LIKELIHOOD]: () => judgeLikelihood,
 } as const;
 
 /**
@@ -68,6 +72,7 @@ export const BASELINE_TOOLS: readonly string[] = [
   "search_images",
   "understand_media",
   ASK_USER,
+  JUDGE_LIKELIHOOD,
 ];
 
 /**
@@ -107,6 +112,7 @@ export const CANVAS_TOOLS: readonly string[] = [
 export {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
+  JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
 } from "@domain/agent/tools/tool-names.js";
@@ -134,6 +140,9 @@ const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
   // (measured 2026-09-11).
   search_images: "BRAVE_SEARCH_API_KEY",
   understand_media: "OPENROUTER_API_KEY",
+  // The same key: the decisions endpoint sits on the same host and accepts it
+  // (measured 2026-09-23).
+  [JUDGE_LIKELIHOOD]: "OPENROUTER_API_KEY",
 };
 
 /**
