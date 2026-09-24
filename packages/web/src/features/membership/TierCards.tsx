@@ -158,7 +158,14 @@ export const TierCards = React.memo(function TierCards({
   const locale = getLocale();
 
   return (
-    <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+    // Three rows — head, body, control — declared here and borrowed by every
+    // card, so a head that runs to one more line makes that row taller for
+    // all four at once and the lists below still start on one line. Reserving
+    // a fixed height inside each card cannot do this: the height that fits
+    // has to be the tallest of five languages, which leaves the other four
+    // padded out, and the first string that outgrows it puts one card's body
+    // out of line with its neighbours again.
+    <div className='grid grid-rows-[auto_auto_auto] gap-3 sm:grid-cols-2 lg:grid-cols-4'>
       {offers.map((offer) => {
         const action = cardAction({
           card: offer.tier,
@@ -316,8 +323,8 @@ function TierCard({
       aria-current={current ? 'true' : undefined}
       className={
         current
-          ? 'flex flex-col gap-3 rounded-chrome border border-active-border bg-accent p-4'
-          : 'flex flex-col gap-3 rounded-chrome border border-border p-4'
+          ? 'row-span-3 grid grid-rows-subgrid rounded-chrome border border-active-border bg-accent p-4'
+          : 'row-span-3 grid grid-rows-subgrid rounded-chrome border border-border p-4'
       }
     >
       <div className='flex flex-col gap-1'>
@@ -327,23 +334,18 @@ function TierCard({
         <div className='text-xl font-bold tabular-nums' data-testid={priceTestId}>
           {price}
         </div>
-        {/* Reserved whether or not there is a note, so the card bodies below
-            start on the same line across the row. */}
-        <div
-          className='min-h-4 text-xs text-foreground-secondary'
-          data-testid={noteTestId}
-        >
+        <div className='text-xs text-foreground-secondary' data-testid={noteTestId}>
           {note}
         </div>
       </div>
-      <ul className='flex flex-col gap-1 text-sm text-foreground-secondary'>
+      <ul className='list-disc space-y-1 pl-4 text-sm text-foreground-secondary'>
         {lines.map((line) => (
           <li key={line}>{line}</li>
         ))}
       </ul>
-      {/* Pushed to the bottom so the controls line up however tall the
-          bodies are. */}
-      <div className='mt-auto pt-1'>{action}</div>
+      {/* Its own row of the shared grid, so the controls line up however tall
+          the bodies are. */}
+      <div>{action}</div>
     </div>
   );
 }

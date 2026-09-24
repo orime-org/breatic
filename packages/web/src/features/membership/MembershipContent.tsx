@@ -327,9 +327,21 @@ export function MembershipContent({
                       key={period}
                       type='button'
                       size='sm'
-                      variant={period === selectedPeriod ? 'default' : 'ghost'}
+                      variant='ghost'
                       aria-pressed={period === selectedPeriod}
-                      className='rounded-none border-0 border-l border-border first:border-l-0'
+                      // The chosen segment is marked the way the credits
+                      // overlay marks its chosen row: one step above hover, so
+                      // hovering the other segment cannot make it look chosen
+                      // too. The page's primary fill would read as the thing
+                      // to press, and pressing it is what the reader has
+                      // already done.
+                      //
+                      // `ring-inset` is load-bearing: the frame around both
+                      // segments clips overflow to round its corners, and the
+                      // segments fill it exactly, so a ring drawn outside
+                      // their edges has nowhere to land. Drawn inside, the
+                      // keyboard reader sees where they are.
+                      className='rounded-none border-0 border-l border-border first:border-l-0 focus-visible:ring-inset aria-pressed:bg-accent-strong aria-pressed:font-semibold aria-pressed:text-foreground aria-pressed:hover:bg-accent-strong'
                       data-testid={`membership-period-${period}`}
                       onClick={() => setSelectedPeriod(period)}
                     >
