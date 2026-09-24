@@ -81,7 +81,7 @@ beforeEach(() => {
 });
 
 describe("readAccountMembership — 这个部署卖东西时", () => {
-  it("有价格的档位两个周期各报一个价，免费档两个都不报", async () => {
+  it("quotes a price per period for the priced tiers and neither for the free one", async () => {
     const result = await readAccountMembership(USER);
 
     expect(result.catalog.map((offer) => offer.prices)).toEqual([
@@ -104,7 +104,7 @@ describe("readAccountMembership — 这个部署不卖东西时（验收 6）", 
     envRef.PAYMENT_ENABLED = false;
   });
 
-  it("三档两个周期全空，而不是零", async () => {
+  it("leaves all three tiers empty over both periods rather than zero", async () => {
     const result = await readAccountMembership(USER);
 
     expect(result.catalog.map((offer) => offer.prices)).toEqual([

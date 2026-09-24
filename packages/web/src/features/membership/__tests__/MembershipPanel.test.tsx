@@ -215,9 +215,10 @@ describe('MembershipPanel', () => {
     expect(screen.queryByTestId('quota-concurrent-editors')).toBeNull();
   });
 
-  it('对比表列出三档，一档都不标「当前」', async () => {
-    // #253 起这张表只回答「各档的数字分别是多少」。档位名在第一段、
-    // 「当前」在卡片上，各说了一遍；第三遍只会给那一列压一层没人读的底色。
+  it('lists the three tiers and marks none of them as current', async () => {
+    // Since #253 this table answers one question: what each tier's figures
+    // are. The tier in force is named in the first section and marked on its
+    // card; a third telling would only tint a column nobody reads it from.
     membershipMock.mockResolvedValue(answer());
     setup();
 
@@ -241,7 +242,8 @@ describe('MembershipPanel', () => {
     await screen.findByTestId('current-tier-name');
     expect(screen.getByTestId('membership-choose-team')).toBeInTheDocument();
     expect(screen.queryByTestId('membership-choose-base')).toBeNull();
-    // 免费档那张卡上什么都没有：既不是压暗的按钮，也不是一句「不能降」。
+    // The free card carries nothing at all — neither a dimmed button nor a
+    // sentence about not being able to drop to it.
     expect(screen.getByTestId('tier-card-base')).not.toHaveTextContent('Choose');
     expect(screen.getByTestId('tier-current-pro')).toHaveTextContent('Current');
   });
@@ -265,7 +267,8 @@ describe('MembershipPanel', () => {
     const pro = screen.getByTestId('tier-price-pro').textContent ?? '';
     expect(pro).toMatch(/12[.,]50/);
     expect(pro).not.toContain('$');
-    // 免费档两个周期都没有价格，价格位上摆的是「免费」而不是一个 0。
+    // The free tier has no price over either period, and its price slot says
+    // so in words rather than as a zero.
     expect(screen.getByTestId('tier-price-base')).toHaveTextContent('Free');
   });
 
@@ -457,9 +460,10 @@ describe('MembershipPanel', () => {
     await screen.findByTestId('current-tier-name');
     expect(screen.queryByTestId('membership-choose-team')).toBeNull();
     expect(screen.queryByTestId('membership-cancel')).toBeNull();
-    // 切换器提供的是两个价格，而这个部署两个都不报。
+    // What the switcher offers is two prices, and this deployment quotes
+    // neither.
     expect(screen.queryByTestId('membership-period-switch')).toBeNull();
-    // 商务谈那张卡留着：它从来就不是一次购买。
+    // The sales card stays: it was never a purchase.
     expect(screen.getByTestId('membership-contact-sales')).toHaveAttribute(
       'href',
       'mailto:breatic@orime.ai',
@@ -613,7 +617,7 @@ describe('MembershipPanel', () => {
     );
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByTestId('membership-upgrade')).toBeNull();
-    // 整个「选择会员」段都不画：一张卡、一个切换器都没有。
+    // The whole purchase section is absent — no cards, no switcher.
     expect(screen.queryByTestId('tier-card-pro')).toBeNull();
     expect(screen.queryByTestId('tier-card-enterprise')).toBeNull();
     expect(screen.queryByTestId('membership-period-switch')).toBeNull();
@@ -711,11 +715,13 @@ describe('MembershipPanel', () => {
     }
   });
 
-  it('账号所在的那张卡有底色和激活边框，别的卡没有', async () => {
-    // 标记从对照表那一列搬到了卡片上（#253）。底色仍是 accent —— 亮色下比
-    // 页面暗、暗色下比页面亮，两个主题下都看得出来；card 两个主题都往亮走，
-    // 亮色下等于把该突出的那张卡往背景里推。边框走 active-border，那是全站
-    // 用中性色说「这一个」的唯一一个 token。
+  it('gives the held card a fill and an active border, and no other card', async () => {
+    // The mark moved from a column of the table onto the card (#253). The
+    // fill stays `accent`: darker than the page in light, lighter in dark, so
+    // it reads in both. `card` lifts in both themes, which in light pushes
+    // the very card being singled out toward the background. The border is
+    // `active-border`, the one token this product uses to say "this one" in
+    // a neutral colour.
     membershipMock.mockResolvedValue(
       answer({ subscription: subscription({ tier: 'pro', period: 'year' }) }),
     );
@@ -732,7 +738,7 @@ describe('MembershipPanel', () => {
     }
   });
 
-  it('对照表的六行是六项上限，价格不在表里', async () => {
+  it('gives the table six rows for six ceilings, and no price row', async () => {
     membershipMock.mockResolvedValue(answer());
     setup();
 
@@ -783,8 +789,9 @@ describe('MembershipPanel', () => {
     await screen.findByTestId('compare-column-pro');
 
     const expected: Record<string, [string, string, string]> = {
-      // 行 key: [base, pro, team]。月费那一行 #253 删了：一档一个周期一个
-      // 价，一行只装得下其中一个，价格因此搬去了卡片。
+      // Row keys: [base, pro, team]. The monthly-fee row went in #253 — a
+      // tier has one price per period and a row holds one of them, so the
+      // prices moved onto the cards.
       teamStudios: ['0', '1', '3'],
       projectsPerStudio: ['10', '100', '300'],
       studioMembers: ['1', '10', '100'],
@@ -837,10 +844,11 @@ describe('MembershipPanel', () => {
     );
   });
 
-  it('这一页说清两件事：不含生成额度、标价不含税', async () => {
-    // 两条都是定稿要求页面带上的。会员和积分是两条腿，读者以为买了档位
-    // 就有生成额度的话，要到生成到一半才发现；而今天没有任何地方在算税
-    // （#170 未做），所以这句到「不含税」就停。
+  it('says both of the two things this page owes the reader', async () => {
+    // Membership and credits are separate legs. Somebody who reads a tier as
+    // including generation allowance finds out part-way through generating.
+    // Nothing computes tax yet (#170), so that sentence stops at "excludes
+    // tax".
     membershipMock.mockResolvedValue(answer({ subscription: subscription() }));
     setup();
 
@@ -851,13 +859,13 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('membership-tax-note')).toHaveTextContent(
       'Prices exclude tax',
     );
-    // 后半句「结账时加税」#106 删过一次，别再回来。
+    // "Tax is added at checkout" was removed once already in #106.
     expect(screen.getByTestId('membership-tax-note')).not.toHaveTextContent(
       'checkout',
     );
   });
 
-  it('年付说得出省多少，也不承诺换档之后会怎样', async () => {
+  it('states what a year saves and promises nothing about changing plans', async () => {
     membershipMock.mockResolvedValue(
       answer({ subscription: subscription({ period: 'year' }) }),
     );
@@ -868,15 +876,17 @@ describe('MembershipPanel', () => {
       'Twelve months for the price of ten',
     );
     const page = document.body.textContent ?? '';
-    // 换档和换周期之后按什么比例折算、退不退钱，这一页一个字都不说。
+    // How a change is prorated, and whether anything is refunded, is not
+    // something this page says a word about.
     for (const promise of ['prorat', 'refund', 'credit back', 'downgrade']) {
       expect(page.toLowerCase()).not.toContain(promise);
     }
   });
 
-  it('按一下切换器，价格和那句省两个月跟着换', async () => {
-    // 这一页的核心交互，而它此前一次都没被按过：矩阵测试把 selectedPeriod
-    // 当 prop 喂进去，按钮到状态那一段谁都没走。
+  it('moves the prices and the saving line when the switcher is pressed', async () => {
+    // This page's central interaction, and nothing had ever pressed it: the
+    // matrix tests feed `selectedPeriod` in as a prop, so the stretch from
+    // the button to the state was never walked.
     const user = userEvent.setup();
     membershipMock.mockResolvedValue(
       answer({ subscription: subscription({ period: 'year' }) }),
@@ -892,15 +902,15 @@ describe('MembershipPanel', () => {
     await user.click(screen.getByTestId('membership-period-month'));
 
     expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$19.99');
-    // 那句话讲的是年付省下的两个月。月付视图上它贴着月价，说的就不是眼前
-    // 这件事了。
+    // That line is about what a year saves. Beside monthly prices it
+    // describes something other than what the reader is looking at.
     expect(screen.queryByTestId('membership-save-line')).toBeNull();
 
     await user.click(screen.getByTestId('membership-period-year'));
     expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$199.99');
   });
 
-  it('「当前会员」那一行把周期跟档位一起说出来', async () => {
+  it('names the period beside the tier on the current-membership line', async () => {
     membershipMock.mockResolvedValue(
       answer({ subscription: subscription({ tier: 'pro', period: 'year' }) }),
     );
@@ -911,7 +921,7 @@ describe('MembershipPanel', () => {
     );
   });
 
-  it('没有订阅时那一行只说档位，不带一个空的分隔号', async () => {
+  it('names the tier alone, with no dangling separator, when nothing is held', async () => {
     membershipMock.mockResolvedValue(
       answer({ tier: 'base', subscription: null }),
     );
@@ -922,10 +932,12 @@ describe('MembershipPanel', () => {
     expect(line.textContent).not.toContain('·');
   });
 
-  it('首期未付成时那一行不给免费档安上周期', async () => {
-    // 订阅行存在、带着周期，而账号的档位仍是 Starter —— 这一行照着周期拼
-    // 就会读作「Starter · 年付」，给一个没人为之付费的档位安上计费周期。
-    // 卡片那边的判据早就带着「持有成立」这个附加条件，这一行要用同一个。
+  it('keeps a period off the free tier while a first payment is unsettled', async () => {
+    // The subscription row exists and carries a period while the tier in
+    // force is still Starter. Composing from the period alone would read as
+    // "Starter · Yearly", putting a billing period on a tier nobody pays
+    // for. The cards already answer this with the held-and-actionable test,
+    // and this line has to use the same one.
     membershipMock.mockResolvedValue(
       answer({
         tier: 'base',

@@ -124,9 +124,10 @@ describe("POST /payment/webhook — 分流与状态码", () => {
     expect(res.status).toBe(200);
   });
 
-  it("Stripe 收的钱跟我们的价目表对不上，答 500 不答 200", async () => {
-    // 200 等于把一条付过钱的订阅扔掉。500 让 Stripe 继续重投三天，那三天
-    // 正是有人把价格改对、事件自己落地的窗口。
+  it("answers 500, not 200, when what Stripe charged is not what we list", async () => {
+    // 200 throws away a subscription somebody paid for. 500 keeps Stripe
+    // redelivering for three days, which is the window in which the price
+    // gets corrected and the event lands by itself.
     handleSubscriptionEvent.mockResolvedValue({
       status: "priceDisagreement",
       userId: "u-1",

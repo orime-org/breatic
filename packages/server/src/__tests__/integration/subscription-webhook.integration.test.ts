@@ -622,7 +622,7 @@ describe("handleSubscriptionEvent — 哪些事件归这条腿 (#106 §8)", () =
     }
   });
 
-  it("Stripe 收的钱跟价目表对不上时，两边的数都报出来、不标已处理、也不给档位", async () => {
+  it("reports both figures when what Stripe charged is not what we list, marks nothing done, and grants no tier", async () => {
     // A price id pasted into the wrong slot, or an amount edited at Stripe,
     // makes the two copies of one figure differ. Answering "unknown" here
     // would be a lie the panel repeats: it knows exactly which offer this is,

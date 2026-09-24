@@ -130,7 +130,7 @@ describe("订阅路由 — 限流", () => {
 });
 
 describe("订阅路由 — 把请求翻译成业务调用", () => {
-  it("结账把档位、周期和回跳地址原样交给服务层", async () => {
+  it("hands the tier, the period and the return address to the service as they came", async () => {
     const res = await post("/checkout", {
       tier: "pro",
       period: "year",
@@ -146,9 +146,10 @@ describe("订阅路由 — 把请求翻译成业务调用", () => {
     });
   });
 
-  it("没说周期就不进业务层", async () => {
-    // 一档两个价，少了这一半服务层只能自己挑一个，而挑哪个都不是读者按的
-    // 那个。让校验拦在这里，业务层因此没有默认周期这回事。
+  it("refuses a request that names no period before the service sees it", async () => {
+    // A tier has two prices. Without this half the service would have to
+    // pick one, and neither of them is the one the reader pressed. Stopping
+    // it here is what keeps a default period from existing at all.
     const res = await post("/checkout", {
       tier: "pro",
       return_url: "https://app.example/me",
@@ -158,7 +159,7 @@ describe("订阅路由 — 把请求翻译成业务调用", () => {
     expect(service.startCheckout).not.toHaveBeenCalled();
   });
 
-  it("周期不是那两个词之一也不进业务层", async () => {
+  it("refuses a period that is neither of the two words", async () => {
     const res = await post("/change", { tier: "team", period: "weekly" });
 
     expect(res.status).toBe(422);
