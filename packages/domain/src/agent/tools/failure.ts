@@ -184,10 +184,11 @@ export function refusalReason(
   const said = detail === "" ? "" : ` It said: "${detail}".`;
   const opening = `${voice.attempting} "${query}" failed: the ${voice.act} service answered HTTP ${String(status)}.${said}`;
   // 408 travels with 429 because the transport already treats the two the same
-  // (`decide-retry.ts`), and a 5xx joins them because these calls declare
-  // themselves replay-safe. One that reaches here has survived every delivery
-  // the transport was willing to make, or named a wait past the transport's own
-  // ceiling and was handed back on the first.
+  // (`decide-retry.ts`), and a 5xx joins them because it is their fault
+  // however many times it was delivered. One that reaches here has survived
+  // every delivery the transport was willing to make, or was handed back on
+  // the first -- because the caller declared the call not replay-safe, or
+  // because it named a wait past the transport's own ceiling.
   if (status >= 500 || status === 429 || status === 408) {
     return reason(
       `${opening} That is a fault on their side, not a problem with the query, so no ` +

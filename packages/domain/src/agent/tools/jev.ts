@@ -52,6 +52,17 @@ const voice: FailureVoice = {
 const moves = nextMovesFor(voice);
 
 /**
+ * The failure for a call whose budget ran out before an answer arrived.
+ * @returns The error to throw.
+ */
+function timedOut(): Error {
+  return toolFailed(
+    reason(`Nothing answered the ${voice.act} request in time.`, moves.retryOnce),
+    FAILURE_LINES.unreachable,
+  );
+}
+
+/**
  * How long to wait for the endpoint's own words about a refusal.
  *
  * The sentence is complete when the status arrives; what the service said is
@@ -249,10 +260,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // vendor's identity, it tells the model nothing it can act on, and it is
     // read again by every later turn off the stored row -- so what the model
     // gets is the fact instead.
-    throw toolFailed(
-      reason(`Nothing answered the ${voice.act} request in time.`, moves.retryOnce),
-      FAILURE_LINES.unreachable,
-    );
+    throw timedOut();
   }
 
   if (!res.ok) {
@@ -295,12 +303,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // The budget covers the body as well as the deliveries, so a sender that
     // writes its headers and then stops ends here with the whole figure spent.
     // That is the same fact as nothing answering at all, and says so.
-    if (spanning.aborted) {
-      throw toolFailed(
-        reason(`Nothing answered the ${voice.act} request in time.`, moves.retryOnce),
-        FAILURE_LINES.unreachable,
-      );
-    }
+    if (spanning.aborted) throw timedOut();
     throw toolFailed(
       readFailedReason(voice, asked, reasonOf(err)),
       FAILURE_LINES.upstream,

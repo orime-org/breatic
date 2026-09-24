@@ -447,6 +447,10 @@ describe("failing says what broke", () => {
     httpRequestMock.mockResolvedValueOnce(responseOf({ error: "no" }, 401));
     const { forModel } = await failureOf(askAll);
     expect(forModel).toContain("Do not repeat");
+    // A judgement is the model's own deliberation, so the fallback is to
+    // decide without it rather than to announce it to the reader.
+    expect(forModel).toContain("decide from what you already hold");
+    expect(forModel).not.toMatch(/tell the user/i);
   });
 
   it("lets the model rewrite what the service refused as unprocessable", async () => {
