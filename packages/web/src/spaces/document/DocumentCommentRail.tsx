@@ -55,6 +55,10 @@ import {
   draftRangeIn,
   onDraftRangeChange,
 } from '@web/spaces/document/document-comment-draft-range';
+import {
+  keepReplies,
+  keptReplies,
+} from '@web/spaces/document/document-comment-unsent';
 import { DocumentCommentDraftCard } from '@web/spaces/document/DocumentCommentDraftCard';
 import {
   useCommentCards,
@@ -190,9 +194,14 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // here rather than in the card, because a card is taken off the panel by
   // things the reader did not do — a peer settling the thread, a peer
   // deleting it — and unsent words are theirs until they send or clear them.
+  // A Space tab switch remounts the panel and not the editor, so the words
+  // are handed to the editor's keeping and read back from it.
   const [drafts, setDrafts] = React.useState<ReadonlyMap<string, string>>(
-    () => new Map(),
+    () => keptReplies(editor),
   );
+  React.useEffect(() => {
+    keepReplies(editor, drafts);
+  }, [editor, drafts]);
   const onDraft = React.useCallback((threadId: string, body: string) => {
     setDrafts((held) => {
       if ((held.get(threadId) ?? '') === body) return held;

@@ -19,6 +19,7 @@ import {
   selectFirstParagraph,
   selectParagraph,
 } from '../helpers/bubble-bar';
+import { createSpace, deleteSpace } from '../helpers/space';
 
 // `bubble-bar` registers the afterEach that removes what `openFreshDocument`
 // made, and it removes it off the fixture's page — so this file uses that one.
@@ -180,6 +181,73 @@ test.describe('the card a comment is written in', () => {
     await page.getByTestId('doc-comment-draft-input').fill('from the handle');
     await page.getByTestId('doc-comment-draft-save').click();
     await expect(page.locator(`${EDITOR} .bn-thread-mark`)).not.toHaveCount(0);
+  });
+
+  test('keeps what was written in it across a Space tab switch', async ({
+    page,
+  }) => {
+    // The panel is remounted by the switch and the editor is not; the words
+    // are the reader's until they send or clear them.
+    await openWithALongSelection(page);
+    const home = await page
+      .locator('[role="tab"][aria-selected="true"]')
+      .getAttribute('data-testid');
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-draft-input').fill('half a thought');
+
+    const away = await createSpace(page, 'document', `away-${Date.now()}`);
+    try {
+      await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+      await page.getByTestId(home!).click();
+
+      await expect(page.getByTestId('doc-comment-draft-input')).toHaveValue(
+        'half a thought',
+      );
+    } finally {
+      await deleteSpace(page, away);
+    }
+  });
+
+  test('keeps its words and its place while a peer writes elsewhere', async ({
+    page,
+  }) => {
+    // A peer's edit arrives through Yjs as one replacement of the whole body;
+    // the draft has to come out of it still aimed at the same words.
+    await openFreshDocument(page);
+    await page.keyboard.type('one\n');
+    await page.keyboard.type('two carrying the comment');
+    const home = (await page
+      .locator('[role="tab"][aria-selected="true"]')
+      .getAttribute('data-testid'))!;
+    await selectParagraph(page, 1);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-draft-input').fill('half a thought');
+
+    const peer = await page.context().newPage();
+    try {
+      await peer.setViewportSize({ width: 1680, height: 950 });
+      await peer.goto(page.url());
+      await peer.getByTestId(home).click();
+      const body = peer.locator(`${EDITOR} p`).first();
+      await expect(body).toHaveText('one', { timeout: 20_000 });
+      await body.click();
+      await peer.keyboard.press('End');
+      await peer.keyboard.type(' more');
+
+      // Contains, not equals: the peer's caret label is drawn inside the line.
+      await expect(page.locator(`${EDITOR} p`).first()).toContainText(
+        'one more',
+      );
+      await expect(page.getByTestId('doc-comment-draft-dropped')).toHaveCount(0);
+      await expect(page.getByTestId('doc-comment-draft-input')).toHaveValue(
+        'half a thought',
+      );
+      await expect(
+        page.locator(`${EDITOR} .doc-comment-draft-mark`),
+      ).toHaveText('two carrying the comment');
+    } finally {
+      await peer.close();
+    }
   });
 
   test('leaves no card being read once it is saved', async ({ page }) => {

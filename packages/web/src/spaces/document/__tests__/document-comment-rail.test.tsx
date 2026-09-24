@@ -32,7 +32,7 @@ import { Awareness } from 'y-protocols/awareness';
 
 import { CommentsExtension } from '@blocknote/core/comments';
 
-import { documentCommentThreads } from '@breatic/shared';
+import { documentBodyFragment, documentCommentThreads } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
@@ -123,6 +123,16 @@ describe('the comment panel', () => {
         />,
       );
     };
+    remount = () => {
+      rendered.unmount();
+      render(
+        <DocumentEditor
+          handle={handle}
+          myRole={myRole}
+          readOnly={myRole === 'viewer'}
+        />,
+      );
+    };
     act(() => {
       handle.editor.replaceBlocks(handle.editor.document, [
         { type: 'paragraph', content: 'alpha bravo charlie' },
@@ -132,6 +142,41 @@ describe('the comment panel', () => {
 
   /** Renders again under a different role, set by the last `show`. */
   let asRole: (next: 'editor' | 'viewer') => void;
+
+  /**
+   * Takes the chrome off and puts it back over the same editor, which is
+   * what a Space tab switch does: the editor belongs to the document and
+   * outlives the mount.
+   */
+  let remount: () => void;
+
+  /**
+   * Makes an edit on a second replica and brings it in, the way a peer's
+   * edit arrives: through Yjs, not through a ProseMirror transaction.
+   * @param edit - What the peer does to the first line's text.
+   */
+  function peerEdits(edit: (line: Y.XmlText) => void): void {
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    const find = (at: Y.XmlElement | Y.XmlFragment): Y.XmlText | null => {
+      for (const child of at.toArray()) {
+        if (child instanceof Y.XmlText) return child;
+        if (child instanceof Y.XmlElement) {
+          const inner = find(child);
+          if (inner !== null) return inner;
+        }
+      }
+      return null;
+    };
+    const line = find(documentBodyFragment(peer))!;
+    peer.transact(() => {
+      edit(line);
+    });
+    act(() => {
+      Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer));
+    });
+    peer.destroy();
+  }
 
   /** The words the open draft is aimed at, as the body stands. */
   function aimedWords(): string {
@@ -620,6 +665,44 @@ describe('the comment panel', () => {
     });
   });
 
+  it('keeps a half-written reply across a Space tab switch', async () => {
+    show();
+    await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
+    await userEvent.click(await screen.findByTestId('doc-comment-card'));
+    await userEvent.type(
+      await screen.findByTestId('doc-comment-reply-input'),
+      'half written',
+    );
+
+    // The card being read is kept in the editor, so the panel comes back
+    // open on it by itself.
+    remount();
+
+    expect(
+      await screen.findByTestId('doc-comment-reply-input'),
+    ).toHaveValue('half written');
+  });
+
+  it('drops a half-written reply when the reader closes the panel', async () => {
+    // Closing the panel is the reader's own doing, unlike a tab switch
+    // (design §9.6).
+    show();
+    await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
+    await userEvent.click(await screen.findByTestId('doc-comment-card'));
+    await userEvent.type(
+      await screen.findByTestId('doc-comment-reply-input'),
+      'half written',
+    );
+
+    await userEvent.click(screen.getByTestId('doc-comment-rail-close'));
+    await pressCommentsRow();
+    await userEvent.click(await screen.findByTestId('doc-comment-card'));
+
+    expect(await screen.findByTestId('doc-comment-reply-input')).toHaveValue('');
+  });
+
   it('says the filter is empty rather than the document', async () => {
     // A9: with the one comment settled, the open filter has nothing in it
     // while the document still holds a thread to read behind "all". Saying
@@ -813,6 +896,107 @@ describe('the comment panel', () => {
 
       expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
       focused.mockRestore();
+    });
+
+    it('keeps its words and its place when a peer edits elsewhere', async () => {
+      // A peer's edit arrives as one replacement of the whole body, so
+      // following it by the transaction's mapping lost the range every time.
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+
+      peerEdits((line) => {
+        line.insert(line.length, 'x');
+      });
+
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(screen.getByTestId('doc-comment-draft-input')).toHaveValue('half');
+      expect(draftPaint()?.textContent).toBe('bravo');
+    });
+
+    it('follows its words when a peer deletes something before them', async () => {
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      peerEdits((line) => {
+        line.delete(0, 6);
+      });
+
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(draftPaint()?.textContent).toBe('bravo');
+    });
+
+    it('keeps its place when the reader undoes an edit elsewhere', async () => {
+      // An undo comes back through Yjs as well, as one replacement of the
+      // whole body.
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      // Its own undo step, apart from the line `show` wrote.
+      handle.undoManager.stopCapturing();
+      act(() => {
+        const view = handle.editor.prosemirrorView!;
+        view.dispatch(view.state.tr.insertText('!', view.state.doc.content.size - 3));
+      });
+      handle.undoManager.stopCapturing();
+
+      act(() => {
+        handle.undoManager.undo();
+      });
+
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(draftPaint()?.textContent).toBe('bravo');
+    });
+
+    it('says so when a peer deletes the words it is on', async () => {
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      peerEdits((line) => {
+        line.delete(6, 5);
+      });
+
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps a half-written comment across a Space tab switch', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'half a thought',
+      );
+
+      remount();
+
+      expect(
+        await screen.findByTestId('doc-comment-draft-input'),
+      ).toHaveValue('half a thought');
+    });
+
+    it('starts empty once the panel was closed on it and a new one opens', async () => {
+      // Closing the panel throws the draft away (design §9.4): a new one
+      // over the same words starts from nothing.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'thrown away',
+      );
+      await userEvent.click(screen.getByTestId('doc-comment-rail-close'));
+
+      aimDraft(0, 5);
+
+      expect(
+        await screen.findByTestId('doc-comment-draft-input'),
+      ).toHaveValue('');
     });
 
     it('keeps a draft that has words in it on a press in the body', async () => {

@@ -172,7 +172,7 @@ describe('the draft range plugin', () => {
 
     view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, target));
 
-    expect(draftRangeIn(view.state)).toEqual(target);
+    expect(draftRangeIn(view.state)).toMatchObject(target);
   });
 
   it('moves the range as the body is edited under it', () => {
@@ -184,7 +184,7 @@ describe('the draft range plugin', () => {
     view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, target));
     view.dispatch(view.state.tr.insertText('xx', run.from));
 
-    expect(draftRangeIn(view.state)).toEqual({
+    expect(draftRangeIn(view.state)).toMatchObject({
       from: target.from + 2,
       to: target.to + 2,
     });
@@ -343,6 +343,6 @@ describe('the draft range plugin', () => {
       ),
     );
 
-    expect(draftRangeIn(view.state)).toEqual(target);
+    expect(draftRangeIn(view.state)).toMatchObject(target);
   });
 });

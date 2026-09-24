@@ -37,7 +37,11 @@ import {
   type DraftState,
 } from '@web/stores/annotation-draft';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
-import type { DraftRange } from '@web/spaces/document/document-comment-draft-range';
+import type { DraftAim } from '@web/spaces/document/document-comment-draft-range';
+import {
+  keepDraftWords,
+  keptDraftWords,
+} from '@web/spaces/document/document-comment-unsent';
 import { DocumentCommentWriteBox } from '@web/spaces/document/DocumentCommentWriteBox';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import {
@@ -51,7 +55,7 @@ interface DraftCardProps {
   /** The editor the comment lands in. */
   editor: ToolEditor;
   /** Where the comment is aimed, or null once that range is gone. */
-  aimedAt: DraftRange | null;
+  aimedAt: DraftAim | null;
   /**
    * The reader's role on the project, watched so losing the right to write
    * closes an open card (A22).
@@ -113,16 +117,32 @@ export function DocumentCommentDraftCard({
     );
   }, [editor]);
 
+  const opening = aimedAt?.opening ?? null;
+
   // The range opening is what opens the draft: the entries dispatch it, and
-  // this is where that becomes a card with words in it.
+  // this is where that becomes a card with words in it. The words are the
+  // ones already written in this opening, when a Space tab switch mounted the
+  // card again over a draft that stayed open.
   React.useEffect(() => {
-    if (aimedAt === null) return;
+    if (opening === null) return;
     setDraft((current) =>
       current.mode === 'closed'
-        ? reduceDraft(current, { type: 'open', use: 'annotation', text: '' })
+        ? reduceDraft(current, {
+          type: 'open',
+          use: 'annotation',
+          text: keptDraftWords(opening),
+        })
         : current,
     );
-  }, [aimedAt]);
+  }, [opening]);
+
+  // Handed to the editor's keeping as they change, since the card is
+  // remounted by a tab switch and the editor is not.
+  React.useEffect(() => {
+    if (opening !== null && draft.mode === 'typing') {
+      keepDraftWords(opening, draft.text);
+    }
+  }, [opening, draft]);
 
   // The two closings that are not the reader's doing. Each drops the draft
   // with its reason, and the reason is what the notice reads from.

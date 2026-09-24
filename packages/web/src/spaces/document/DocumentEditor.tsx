@@ -16,6 +16,7 @@ import {
   draftRangeIn,
   onDraftRangeChange,
 } from '@web/spaces/document/document-comment-draft-range';
+import { keepReplies } from '@web/spaces/document/document-comment-unsent';
 import type { ProjectRole } from '@breatic/shared';
 
 import { DocumentCommentRail } from '@web/spaces/document/DocumentCommentRail';
@@ -118,6 +119,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     if (view !== null) {
       view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null));
     }
+    // And every reply box's unsent words. They are kept by the editor so a
+    // Space tab switch does not take them; closing the panel is the reader's
+    // own doing, and it does (§9.6).
+    keepReplies(handle.editor, new Map());
   }, [handle.editor]);
   const rail = useCommentRail(handle.editor);
   // Held here because this is where the editor's DOM enters the scroller, and

@@ -140,7 +140,7 @@ describe('the bubble bar entry', () => {
 
     commentTool.run(editor);
 
-    expect(draftRangeIn(editor.prosemirrorState)).toEqual(chosen);
+    expect(draftRangeIn(editor.prosemirrorState)).toMatchObject(chosen);
   });
 });
 
@@ -152,7 +152,7 @@ describe('openCommentDraft', () => {
     const row = overRow(editor, 0);
 
     expect(openCommentDraft(editor, row)).toBe(true);
-    expect(draftRangeIn(editor.prosemirrorState)).toEqual({
+    expect(draftRangeIn(editor.prosemirrorState)).toMatchObject({
       from: row.from,
       to: row.to,
     });
@@ -190,6 +190,6 @@ describe('openCommentDraft', () => {
     openCommentDraft(editor, first);
     openCommentDraft(editor, second);
 
-    expect(draftRangeIn(editor.prosemirrorState)).toEqual(second);
+    expect(draftRangeIn(editor.prosemirrorState)).toMatchObject(second);
   });
 });
