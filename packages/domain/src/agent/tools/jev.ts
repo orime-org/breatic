@@ -51,6 +51,17 @@ const voice: FailureVoice = {
 /** The moves a failure of this tool points the model at. */
 const moves = nextMovesFor(voice);
 
+/**
+ * How long to wait for the endpoint's own words about a refusal.
+ *
+ * The sentence is complete when the status arrives; what the service said is
+ * an addition to it. So this is short on purpose: a body that has not arrived
+ * in this long is not worth holding the reader for, and the call's own budget
+ * would hold them for all of it. Not a knob anyone would tune -- it answers
+ * "how long is a decoration worth", not "how long may this call take".
+ */
+const COMPLAINT_READ_MS = 500;
+
 /** Where the decisions endpoint lives, and which model answers there. */
 const JEV_PINS = {
   url: "https://openrouter.ai/api/alpha/decisions",
@@ -167,19 +178,26 @@ function readAnswers(text: string, asked: readonly string[]): JevAnswers | null 
  * Only `error.message` travels. The body also carries `user_id`, which is who
  * we are to the vendor and says nothing the model can act on.
  * @param res - The refusal, body unread.
- * @param budgetMs - How long the read may take.
+ * @param abortSignal - The reader's stop, when the caller has one.
  * @param signal - The signal spanning the call.
  * @returns The complaint, or an empty string when there is none to read.
+ * @throws {Error} The reader's stop, which outranks anything the service said.
  */
 async function complaintOf(
   res: Response,
-  budgetMs: number,
+  abortSignal: AbortSignal | undefined,
   signal: AbortSignal,
 ): Promise<string> {
   let said: unknown;
   try {
-    said = JSON.parse(await readWithin(res, budgetMs, signal));
-  } catch {
+    // The figure goes in as the read's own budget, which `readWithin` turns
+    // into a clock of its own and ors with the spanning signal
+    // (`read-within.ts`), so the reader waits the shorter of the two.
+    said = JSON.parse(await readWithin(res, COMPLAINT_READ_MS, signal));
+  } catch (err: unknown) {
+    // Asked before the read is written off: a stop that landed inside it is
+    // what the reader did, and that outranks what the service said.
+    if (isStop(err, abortSignal)) throw stoppedByUser();
     return "";
   }
   if (typeof said !== "object" || said === null) return "";
@@ -247,19 +265,21 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
       void res.body?.cancel();
       throw stoppedByUser();
     }
-    const complaint = await complaintOf(res, budgetMs, spanning);
-    // 422 alone is read differently here. The shared table calls it a fault in
-    // our configuration, which holds for a caller that shaped the request; the
-    // model shaped this one, so it is one the model can shape again.
+    const complaint = await complaintOf(res, abortSignal, spanning);
+    // Which of the two this is, the status cannot always say. The model
+    // composed this body, so a 422 -- which the shared table reads as a fault
+    // in our configuration -- is one it may compose again. And a refusal that
+    // names the model pinned in this file is our doing whatever its number:
+    // measured, an unknown name answers 400, the same as a malformed question.
+    // Three answers, not two: this side knows about exactly two statuses, and
+    // every other one is the shared table's to sort.
+    const rewordable = complaint.includes(JEV_PINS.model)
+      ? false
+      : res.status === 422
+        ? true
+        : undefined;
     throw toolFailed(
-      res.status === 422
-        ? reason(
-            `${voice.attempting} "${asked}" failed: the ${voice.act} service answered HTTP 422. ` +
-              `It refused the body this side sent, which is the questions you composed.` +
-              (complaint === "" ? "" : ` It said: ${complaint}`),
-            moves.rewordOnce,
-          )
-        : refusalReason(voice, asked, res.status, complaint),
+      refusalReason(voice, asked, res.status, complaint, rewordable),
       FAILURE_LINES.upstream,
     );
   }
@@ -288,8 +308,10 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
   }
 
   const split = readAnswers(text, Object.keys(questions));
-  if (split === null || Object.keys(split.answers).length === 0) {
+  if (split === null) {
     throw toolFailed(notOurPayloadReason(voice, asked), FAILURE_LINES.upstream);
   }
+  // Every key unreadable is the same fact as one of them being unreadable, and
+  // A4's answer to it is the same: the names travel and the model decides.
   return split;
 }

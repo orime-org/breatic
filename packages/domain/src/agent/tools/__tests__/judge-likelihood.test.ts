@@ -274,6 +274,22 @@ describe("the shapes the model is told about", () => {
     expect(schema().safeParse({ state: {}, questions: {} }).success).toBe(true);
   });
 
+  it("drops a question asked under __proto__ before the call goes out", () => {
+    // Measured on zod 4.4.3: `z.record` reports success and the key is gone,
+    // so the reading side never sees one -- which is why it needs no guard of
+    // its own. A zod that stopped doing this would put a key in `questions`
+    // whose answer reads back as the prototype.
+    const asked: unknown = JSON.parse(
+      '{"__proto__":{"type":"noul","instructions":"holds?"},"ok":{"type":"noul","instructions":"holds?"}}',
+    );
+    const parsed = schema().safeParse({ state: {}, questions: asked });
+    expect(parsed.success).toBe(true);
+    expect(
+      Object.getOwnPropertyNames((parsed.data as { questions: object }).questions),
+      "only the key the model can be answered under survives",
+    ).toEqual(["ok"]);
+  });
+
   it("refuses a question type the endpoint does not have", () => {
     // The one check this side is better at: the endpoint answers this with
     // `No matching discriminator`, which does not name the three it has.
@@ -357,11 +373,13 @@ describe("what comes back", () => {
     expect(answer.answers["how_ambitious"]).toMatchObject({ score: 7 });
   });
 
-  it("reads an answer key off the payload rather than off the prototype", async () => {
-    // zod drops a key named `__proto__` before `execute` runs and leaves
-    // `constructor` and its siblings alone, so a question asked under one of
-    // those reads back as the inherited function unless the key is read
-    // through its descriptor -- and a good answer is reported unreadable.
+  it("answers a question asked under a prototype key", async () => {
+    // The model names its own keys, and zod leaves `constructor` and its
+    // siblings alone, so it may ask under one. What comes back is read with
+    // plain index access, which answers the own key `JSON.parse` put there
+    // and reaches the prototype only for a key the endpoint did not answer --
+    // where an inherited function fails the schema and the key is named in
+    // `unreadable`, which is the right answer for a key with no answer.
     const answers = JSON.parse('{"constructor":{"type":"noul","noul":0.4}}') as Record<
       string,
       unknown
@@ -396,12 +414,6 @@ describe("what comes back", () => {
     });
   });
 
-  it("fails when no key at all can be read", async () => {
-    httpRequestMock.mockResolvedValueOnce(responseOf({ answers: { clear_enough: {} } }));
-    const { forModel, readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.upstream);
-    expect(forModel).not.toContain("openrouter.ai");
-  });
 });
 
 describe("failing says what broke", () => {

@@ -26,11 +26,19 @@ import { STATE_FILE, openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
-/** What the reader says, held here so the state can be measured against it. */
+/**
+ * What the reader says, held here so the state can be measured against it.
+ *
+ * Ambiguous on purpose, and it names no likelihoods. The tool exists for what
+ * the agent is unsure about, so a prompt that asks for probabilities outright
+ * measures whether the tool works and not whether it gets reached for. This
+ * sentence has several readings -- who picks, whether to wait to be told, and
+ * whether one image or three -- and says not to ask, so the turn cannot end by
+ * putting the question back.
+ */
 const PROMPT =
-  'I want a thirty second product video. Do not ask me anything -- work out for ' +
-  'yourself which of the ways you can build one suits this best, and tell me how ' +
-  'likely each of them is to be the right call.';
+  'Write three titles, then make an image from the one that gets picked. Do not ' +
+  'ask me anything -- decide for yourself and go ahead.';
 
 /** One tool call as the finished conversation stores it. */
 interface StoredCall {
