@@ -93,16 +93,17 @@ function responseOf(body: unknown, status = 200): Response {
 
 /**
  * A response whose body never finishes arriving.
- * @returns A 200 whose stream stays open.
+ * @param status - The status line.
+ * @returns A response whose stream stays open.
  */
-function neverFinishes(): Response {
+function neverFinishes(status = 200): Response {
   return new Response(
     new ReadableStream({
       start(c) {
         c.enqueue(new TextEncoder().encode('{"answers":'));
       },
     }),
-    { status: 200 },
+    { status },
   );
 }
 
@@ -292,6 +293,21 @@ describe("what comes back", () => {
     expect(answer.answers["clear_enough"]).not.toHaveProperty("confidence");
     expect(answer.answers["how_ambitious"]).toHaveProperty("legend");
     expect(answer.unreadable).toEqual([]);
+  });
+
+  it("names every key when not one of them reads", async () => {
+    // A4 is the same answer whether one key is malformed or all of them are:
+    // the model is handed the names and decides. A throw here would tell it
+    // the payload was not ours, which it was.
+    httpRequestMock.mockResolvedValueOnce(
+      responseOf({ answers: { clear_enough: { type: "noul", noul: 4 } } }),
+    );
+    const answer = (await judgeLikelihood.execute?.(
+      { state: {}, questions: { clear_enough: { type: "noul" as const, instructions: "holds?" } } },
+      { toolCallId: "t1", messages: [] } as never,
+    )) as { answers: Record<string, unknown>; unreadable: string[] };
+    expect(answer.answers).toEqual({});
+    expect(answer.unreadable).toEqual(["clear_enough"]);
   });
 
   it("keeps the good keys when one is malformed", async () => {
@@ -507,6 +523,57 @@ describe("failing says what broke", () => {
     expect(Date.now() - began, "the stop reaches the read, not just the deliveries").toBeLessThan(
       300,
     );
+  });
+
+  it("answers the reader's stop as a stop while the refusal body is arriving", async () => {
+    // Reading the refusal for what it said is a second read inside the same
+    // call, and the reader may press stop during it. What the reader did
+    // outranks what the service said, here as at every other exit.
+    const controller = new AbortController();
+    httpRequestMock.mockResolvedValueOnce(neverFinishes(400));
+    setTimeout(() => {
+      controller.abort();
+    }, 20);
+    const { readerKey } = await failureOf(() => askAll(controller.signal));
+    expect(readerKey).toBe(FAILURE_LINES.stopped);
+  });
+
+  it("reports a refusal without waiting out the call for what it said", async () => {
+    // The sentence is complete when the status arrives; the service's own
+    // words are an addition to it. A body that stalls must not turn an
+    // instant failure into the whole budget.
+    timeoutMs = 4000;
+    httpRequestMock.mockResolvedValueOnce(neverFinishes(400));
+    const began = Date.now();
+    const { forModel } = await failureOf(askAll);
+    expect(forModel).toContain("400");
+    expect(Date.now() - began, "the reader is not held for the whole figure").toBeLessThan(1500);
+  });
+
+  it("says the body did not arrive when the answer holds nothing", async () => {
+    // A 200 whose body is empty: `readWithin` throws `EmptyBody`
+    // (read-within.ts) with the budget unspent, which is neither a stop nor
+    // the figure running out.
+    httpRequestMock.mockResolvedValueOnce(new Response("", { status: 200 }));
+    const { forModel, readerKey } = await failureOf(askAll);
+    expect(readerKey).toBe(FAILURE_LINES.upstream);
+    expect(forModel).toContain("while reading the answer");
+    expect(forModel, "asking again may get it").toContain("Asking once more");
+  });
+
+  it("tells the model to stop when the fault is the model name this side pinned", async () => {
+    // Measured against the endpoint: a name it does not have answers
+    // `400 {"error":{"message":"Model typesafe/jev-9.99 does not exist"}}`.
+    // The same status also carries a question the model can rewrite, so the
+    // two are told apart by what the service said, not by the number.
+    httpRequestMock.mockResolvedValueOnce(
+      responseOf(
+        { error: { message: "Model typesafe/jev-1.13 does not exist", code: 400 } },
+        400,
+      ),
+    );
+    const { forModel } = await failureOf(askAll);
+    expect(forModel, "no wording of the questions reaches it").toContain("Do not repeat");
   });
 
   it("hands the model what the endpoint said it would not take", async () => {
