@@ -936,9 +936,7 @@
       },
       "comment": {
         "placeholder": "Write a comment…",
-        "post": "Post",
         "targetGone": "The text is gone.",
-        "dismissNotice": "Dismiss",
         "cannotWrite": "You can no longer write here.",
         "railTitle": "Comments",
         "filterOpen": "Unresolved",

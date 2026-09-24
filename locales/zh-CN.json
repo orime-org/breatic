@@ -936,9 +936,7 @@
       },
       "comment": {
         "placeholder": "写一条批注…",
-        "post": "提交",
         "targetGone": "原文已删除。",
-        "dismissNotice": "知道了",
         "cannotWrite": "你已不能在这里写了。",
         "railTitle": "批注",
         "filterOpen": "未解决",
