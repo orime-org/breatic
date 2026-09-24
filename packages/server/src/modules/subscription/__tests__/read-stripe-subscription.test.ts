@@ -261,7 +261,7 @@ describe("readStripeSubscription — a price that disagrees with ours", () => {
   });
 
   it("reports both when Stripe bills over a different length of time", () => {
-    // A price created as "every 12 months" charges the same as an annual one
+    // A price created as "every 12 months" charges the same as an yearly one
     // and is not the same price. The slot a price sits in here is what the
     // panel, the renewal date and the move rules all read.
     const read = readStripeSubscription(

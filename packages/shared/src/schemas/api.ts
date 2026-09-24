@@ -459,7 +459,7 @@ export type SubscriptionPlanInput = z.infer<typeof subscriptionPlanSchema>;
  * URL involved.
  *
  * Both halves travel, because a move can change either one: PRO monthly to
- * PRO annual keeps the tier, and PRO annual to Team annual keeps the period.
+ * PRO yearly keeps the tier, and PRO yearly to Team yearly keeps the period.
  */
 export const subscriptionChangeSchema = z.object({
   tier: z.enum(SUBSCRIBABLE_MEMBERSHIP_TIERS),

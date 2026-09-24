@@ -61,7 +61,7 @@ interface TierCardsProps {
  * @returns The saving as a whole percent, or null where either price is
  *   missing or a year saves nothing.
  */
-function annualSavingPercent(
+function yearSavingPercent(
   prices: Readonly<Record<BillingPeriod, TierPrice | null>>,
 ): number | null {
   const { month, year } = prices;
@@ -170,7 +170,7 @@ export const TierCards = React.memo(function TierCards({
           move,
         });
         const price = offer.prices[selectedPeriod];
-        const saving = annualSavingPercent(offer.prices);
+        const saving = yearSavingPercent(offer.prices);
         return (
           <TierCard
             key={offer.tier}
@@ -179,12 +179,12 @@ export const TierCards = React.memo(function TierCards({
             current={action === 'current'}
             price={priceSlot(offer, price, selectedPeriod, t, locale)}
             priceTestId={`tier-price-${offer.tier}`}
-            // Only on the annual view, and only where both prices exist to
+            // Only on the yearly view, and only where both prices exist to
             // compare. The monthly view is the price it is comparing against,
             // and the free tier has nothing to save.
             note={
               selectedPeriod === 'year' && saving !== null
-                ? t('membership.annualSaving', { percent: saving })
+                ? t('membership.yearSaving', { percent: saving })
                 : null
             }
             noteTestId={`tier-note-${offer.tier}`}

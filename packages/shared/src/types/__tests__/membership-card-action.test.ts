@@ -62,8 +62,8 @@ describe("cardAction — the card the account is on", () => {
   });
 
   it("stops marking it current once the switcher moves to the other period", () => {
-    // The account holds PRO monthly. On the annual view this card is not what
-    // they have, and it is not reachable either: annual is longer, so rule 7
+    // The account holds PRO monthly. On the yearly view this card is not what
+    // they have, and it is not reachable either: yearly is longer, so rule 7
     // does not fire — rule 9 does, and this card offers the move.
     expect(cardAction({ ...holding(), selectedPeriod: "year" })).toBe("move");
   });
@@ -126,12 +126,12 @@ describe("cardAction — moves the product does not sell", () => {
   });
 
   it("leaves every card blank when the switcher shortens the period", () => {
-    // Holding PRO annual and looking at the monthly view: PRO is no longer
+    // Holding PRO yearly and looking at the monthly view: PRO is no longer
     // current (rule 3 needs both halves), and neither it nor Team can be
     // moved to, because a shorter period is never on offer.
-    const annual = { ...holding(), heldPeriod: "year" as const, selectedPeriod: "month" as const };
-    expect(cardAction({ ...annual, card: "pro" })).toBe("blank");
-    expect(cardAction({ ...annual, card: "team" })).toBe("blank");
+    const yearly = { ...holding(), heldPeriod: "year" as const, selectedPeriod: "month" as const };
+    expect(cardAction({ ...yearly, card: "pro" })).toBe("blank");
+    expect(cardAction({ ...yearly, card: "team" })).toBe("blank");
   });
 });
 

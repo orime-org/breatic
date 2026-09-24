@@ -77,14 +77,14 @@ describe("subscription config — the shape carries both periods", () => {
   });
 
   it("names the tier AND the period when a combination is missing", () => {
-    const withoutAnnualTeam = structuredClone(validFile);
+    const withoutYearlyTeam = structuredClone(validFile);
     // @ts-expect-error deleting a required key is the whole point of this case
-    delete withoutAnnualTeam.plans.team.periods.year;
+    delete withoutYearlyTeam.plans.team.periods.year;
     // Parsing and resolving run together: which of the two layers catches it
     // depends on whether a whole tier or one of its periods went missing, and
     // the reader only cares that the complaint names what is missing.
     expect(() =>
-      resolvePlans(subscriptionConfigSchema.parse(withoutAnnualTeam), false),
+      resolvePlans(subscriptionConfigSchema.parse(withoutYearlyTeam), false),
     ).toThrow(/team[\s\S]*year|year[\s\S]*team/);
   });
 

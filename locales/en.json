@@ -1524,10 +1524,10 @@
     "actionFailed": "That did not go through. Try again.",
     "period": {
       "month": "Monthly",
-      "year": "Annual"
+      "year": "Yearly"
     },
     "saveTwoMonths": "Twelve months for the price of ten",
-    "annualSaving": "Save about {percent}% with annual billing",
+    "yearSaving": "Save about {percent}% with yearly billing",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
       "month": "{amount} /mo",

@@ -164,11 +164,11 @@ describe("upsertSubscription (#106 §5.2)", () => {
   });
 
   it("moves the billing period on a row that already exists", async () => {
-    // Moving from monthly to annual keeps the same Stripe subscription id, so
+    // Moving from monthly to yearly keeps the same Stripe subscription id, so
     // the write that records it lands on the conflict branch. A period left
     // behind there is an account billed for a year and recorded as paying by
     // the month: the panel names the wrong period, the wrong card reads as
-    // current, and the annual card goes on offering a move that was made.
+    // current, and the yearly card goes on offering a move that was made.
     const userId = await makeUser();
     const stripeId = `sub_period_${Date.now()}`;
     try {

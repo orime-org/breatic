@@ -75,7 +75,7 @@ export interface SubscriptionWrite {
    * The period that change moves to, when there is one.
    *
    * Separate from `pendingTier` because a change can move the period without
-   * moving the tier: PRO monthly to PRO annual is one of the moves on offer.
+   * moving the tier: PRO monthly to PRO yearly is one of the moves on offer.
    */
   readonly pendingPeriod: BillingPeriod | null;
   /** The hosted page for an outstanding invoice, when there is one. */
@@ -270,7 +270,7 @@ async function insertOrUpdate(
   // clause is a copy of the value list that nothing compares against, so a
   // column added to one and forgotten in the other is written on insert and
   // silently frozen on every update afterwards. That is what happened to
-  // `period` — an account moved to annual, Stripe billed annually, and the
+  // `period` — an account moved to yearly, Stripe billed yearly, and the
   // row went on saying monthly.
   const { userId: _userId, stripeSubscriptionId: _id, ...overwritten } = values;
 

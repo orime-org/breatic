@@ -13,7 +13,7 @@
  * The matrix is four cards over two periods over all seven situations, which
  * is the acceptance item as written (#253 A4). The account holds PRO monthly
  * wherever it holds anything, so one pass covers a tier below, the tier
- * itself and a tier above, and the annual pass covers what lengthening the
+ * itself and a tier above, and the yearly pass covers what lengthening the
  * period does to each of them.
  */
 
@@ -123,7 +123,7 @@ type Shown = 'choose' | 'inProgress' | 'current' | 'nothing' | 'contactSales';
  * The whole matrix, one entry per period per situation.
  *
  * Read against §3.2: the monthly pass is the account looking at what it
- * already pays for, the annual pass is the same account looking at a longer
+ * already pays for, the yearly pass is the same account looking at a longer
  * period — where the tier it holds stops being "current" and becomes
  * something it can move to.
  */
@@ -143,7 +143,7 @@ const MATRIX: Record<
   year: {
     none: { base: 'nothing', pro: 'choose', team: 'choose' },
     firstPaymentUnsettled: { base: 'nothing', pro: 'choose', team: 'choose' },
-    // Holding PRO monthly, the annual view offers the same tier over the
+    // Holding PRO monthly, the yearly view offers the same tier over the
     // longer period — a move, not the card in force.
     active: { base: 'nothing', pro: 'choose', team: 'choose' },
     cancelling: { base: 'nothing', pro: 'choose', team: 'choose' },
@@ -303,7 +303,7 @@ describe('TierCards — the figures on the cards', () => {
     expect(screen.getByTestId('tier-price-team')).toHaveTextContent('$79.99');
   });
 
-  it('quotes the annual price on the annual view', () => {
+  it('quotes the yearly price on the yearly view', () => {
     renderGrid('year', 'none');
     expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$199.99');
     expect(screen.getByTestId('tier-price-team')).toHaveTextContent('$799.99');
@@ -370,7 +370,7 @@ describe('TierCards — the figures on the cards', () => {
     expect(screen.getByTestId('tier-card-base')).toHaveTextContent('5 GiB');
   });
 
-  it('states the saving once, on the annual view, and never on the monthly one', () => {
+  it('states the saving once, on the yearly view, and never on the monthly one', () => {
     // Ratified 2026-09-23: the card says a percentage. The monthly view is
     // the price being compared against, so there is nothing to state there.
     renderGrid('year', 'none');
@@ -382,12 +382,12 @@ describe('TierCards — the figures on the cards', () => {
   });
 });
 
-describe('TierCards — an annual price that saves nothing', () => {
+describe('TierCards — an yearly price that saves nothing', () => {
   beforeEach(() => {
     cleanup();
   });
 
-  /** The same three tiers, with an annual price that is not a discount. */
+  /** The same three tiers, with an yearly price that is not a discount. */
   const noSaving = (yearCents: number): readonly TierOffer[] =>
     CATALOG.map((offer) =>
       offer.tier === 'pro'

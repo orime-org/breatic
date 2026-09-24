@@ -1527,13 +1527,13 @@
       "year": "年払い"
     },
     "saveTwoMonths": "12 か月分を 10 か月分の料金で",
-    "annualSaving": "年払いで約 {percent}% お得",
+    "yearSaving": "年払いで約 {percent}% お得",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
       "month": "{amount} / 月",
       "year": "{amount} / 年"
     },
-    "priceOnRequest": "お問い合わせください",
+    "priceOnRequest": "応相談",
     "contactSales": "ご相談ください",
     "card": {
       "storage": "ストレージ {value}",

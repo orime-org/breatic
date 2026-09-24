@@ -28,9 +28,9 @@ const TEAM_YEAR: MembershipOffer = { tier: "team", period: "year" };
 /** Every offer, in the order the grid below reads them. */
 const OFFERS = [
   { name: "PRO monthly", offer: PRO_MONTH },
-  { name: "PRO annual", offer: PRO_YEAR },
+  { name: "PRO yearly", offer: PRO_YEAR },
   { name: "Team monthly", offer: TEAM_MONTH },
-  { name: "Team annual", offer: TEAM_YEAR },
+  { name: "Team yearly", offer: TEAM_YEAR },
 ] as const;
 
 /**
@@ -66,11 +66,11 @@ describe("canMoveTo", () => {
   it("matches the three rows of the ratified table exactly", () => {
     // The ratified decision (2026-07-30 membership tiers, "change of tier and
     // period") lists what each held offer may move to, in OFFERS order. Team
-    // annual has no row there at all, which is the empty list below.
+    // yearly has no row there at all, which is the empty list below.
     const ratified: readonly (readonly string[])[] = [
-      ["PRO annual", "Team monthly", "Team annual"],
-      ["Team annual"],
-      ["Team annual"],
+      ["PRO yearly", "Team monthly", "Team yearly"],
+      ["Team yearly"],
+      ["Team yearly"],
       [],
     ];
     for (const [row, from] of OFFERS.entries()) {

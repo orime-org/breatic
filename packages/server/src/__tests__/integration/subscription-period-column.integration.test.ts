@@ -6,7 +6,7 @@
  * (#253, design section 1.4).
  *
  * The tier alone no longer says what somebody pays: PRO monthly and PRO
- * annual are the same tier at two prices, over two lengths of time. The panel
+ * yearly are the same tier at two prices, over two lengths of time. The panel
  * prints the price, the renewal date and what the account may move to from
  * this row, and all three differ by period.
  *

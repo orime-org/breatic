@@ -74,7 +74,7 @@ export interface SubscriptionRecord {
    * How often it is billed.
    *
    * Beside the tier because the two together are what somebody bought: the
-   * same tier is sold monthly and annually at two prices, and which one a row
+   * same tier is sold monthly and yearly at two prices, and which one a row
    * holds decides the price shown, the renewal date and what it may move to.
    */
   readonly period: BillingPeriod;

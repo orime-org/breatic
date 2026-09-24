@@ -251,7 +251,7 @@ export interface TierOffer {
   /**
    * What it costs over each billing period.
    *
-   * Both keys are always present, so forgetting the annual one is a compile
+   * Both keys are always present, so forgetting the yearly one is a compile
    * error rather than an `undefined` reaching the page. A value is null for
    * the free tier, and null on every row when this deployment sells nothing:
    * a self-hosted install has no prices, and inventing "$0" there would be a

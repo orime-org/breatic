@@ -406,7 +406,7 @@ describe('MembershipPanel', () => {
   it('opens the switcher on the period being paid for, before that payment settles', async () => {
     // Which period was bought and whether the subscription can be acted on
     // are two questions. Answering the first with the second opens the page
-    // on annual for somebody in the middle of buying a month, so the prices
+    // on yearly for somebody in the middle of buying a month, so the prices
     // beside their own "finish paying" link are not the ones they owe.
     membershipMock.mockResolvedValue(
       answer({
@@ -907,7 +907,7 @@ describe('MembershipPanel', () => {
     setup();
 
     expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
-      'PRO · Annual',
+      'PRO · Yearly',
     );
   });
 

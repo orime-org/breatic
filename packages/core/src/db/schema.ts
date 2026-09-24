@@ -982,7 +982,7 @@ export const subscriptions = pgTable(
     // against the first.
     tier: varchar("tier", { length: 16 }).notNull(),
     // How often this subscription is billed. The tier alone no longer says
-    // what somebody pays: PRO monthly and PRO annual are the same tier at two
+    // what somebody pays: PRO monthly and PRO yearly are the same tier at two
     // prices. CHECK constraint added by hand in 0081, same reason as `tier`'s.
     //
     // No default, so a writer that forgets the column fails rather than
@@ -1004,7 +1004,7 @@ export const subscriptions = pgTable(
     pendingTier: varchar("pending_tier", { length: 16 }),
     // The period a waiting change moves to. Null whenever nothing is waiting,
     // and separate from `period` because a change can move the period without
-    // moving the tier — PRO monthly to PRO annual is one of the three moves
+    // moving the tier — PRO monthly to PRO yearly is one of the three moves
     // the product sells.
     pendingPeriod: varchar("pending_period", { length: 8 }),
     payableInvoiceUrl: text("payable_invoice_url"),

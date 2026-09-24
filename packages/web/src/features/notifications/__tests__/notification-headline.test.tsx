@@ -194,7 +194,7 @@ describe('notificationHeadline', () => {
     const tt = fakeT({
       'notifications.headline.membershipUpgradeIncomplete':
         'payment for your move to {tier} {period} was not completed',
-      'membership.period.year': 'annual',
+      'membership.period.year': 'yearly',
     });
     const n = makeNotification({
       type: 'membership.upgrade_incomplete',
@@ -208,7 +208,7 @@ describe('notificationHeadline', () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId('m')).toHaveTextContent(
-      'payment for your move to Team annual was not completed',
+      'payment for your move to Team yearly was not completed',
     );
   });
 

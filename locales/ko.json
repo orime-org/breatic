@@ -1527,13 +1527,13 @@
       "year": "연간"
     },
     "saveTwoMonths": "12개월을 10개월 가격에",
-    "annualSaving": "연간 결제 시 약 {percent}% 절약",
+    "yearSaving": "연간 결제 시 약 {percent}% 절약",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
       "month": "{amount} / 월",
       "year": "{amount} / 년"
     },
-    "priceOnRequest": "문의",
+    "priceOnRequest": "협의",
     "contactSales": "문의하기",
     "card": {
       "storage": "저장 공간 {value}",

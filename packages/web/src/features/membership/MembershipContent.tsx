@@ -128,7 +128,7 @@ export function MembershipContent({
   // `boughtPeriod` is which period this account is being charged over. A
   // stored row carries one from the moment it exists, so this is the answer
   // even while the first invoice is still unsettled — that account is in the
-  // middle of buying a month, and the page opening on annual would quote
+  // middle of buying a month, and the page opening on yearly would quote
   // prices other than the ones its own "finish paying" link is for.
   //
   // `heldPeriod` is what the cards may be compared against, which needs the
@@ -145,7 +145,7 @@ export function MembershipContent({
   // Which period the reader is looking at. It starts on the one this account
   // is being charged over, because opening on the other one would answer
   // "what do I have" with a price they do not pay. An account with no
-  // subscription starts on annual, which is what the page is recommending.
+  // subscription starts on yearly, which is what the page is recommending.
   const [selectedPeriod, setSelectedPeriod] = React.useState<BillingPeriod>(
     boughtPeriod ?? 'year',
   );
@@ -303,7 +303,7 @@ export function MembershipContent({
                 two prices, and this deployment quotes neither. */}
             {subscription ? (
               <div className='flex items-center gap-3'>
-                {/* What the annual price saves, so it belongs to the annual
+                {/* What the yearly price saves, so it belongs to the yearly
                     view. Beside monthly prices it describes something other
                     than what the reader is looking at. */}
                 {selectedPeriod === 'year' ? (

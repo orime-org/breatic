@@ -130,7 +130,7 @@ describe("findOfferByPriceId", () => {
     // Price ids are pasted in by hand, and a period nobody has created a
     // price for yet sits in the file as an empty string. Without this an
     // empty id would match whichever empty slot came first.
-    const withUnsoldAnnual = resolvePlans(
+    const withUnsoldYearly = resolvePlans(
       {
         ...validFile,
         plans: {
@@ -149,6 +149,6 @@ describe("findOfferByPriceId", () => {
       },
       false,
     );
-    expect(findOfferByPriceId("", withUnsoldAnnual)).toBeNull();
+    expect(findOfferByPriceId("", withUnsoldYearly)).toBeNull();
   });
 });

@@ -363,7 +363,7 @@ export interface MembershipUpgradeIncompletePayload {
    * The period the move was to.
    *
    * Beside the tier because a move can keep the tier and change only this:
-   * PRO monthly to PRO annual left unpaid is a move to PRO, and naming the
+   * PRO monthly to PRO yearly left unpaid is a move to PRO, and naming the
    * tier alone tells somebody who is already on PRO that their move to PRO
    * did not complete.
    */
