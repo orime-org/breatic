@@ -4,11 +4,10 @@
 /**
  * Commenting, end to end (task #18).
  *
- * The half jsdom cannot reach. Every rectangle it reports is zero, so the box
- * that floats beside the words has no size or place there; the body's own
- * selection is painted by the browser and by nobody in a test environment; and
- * which handler a press reaches depends on a real click travelling the plugin
- * chain.
+ * The half jsdom cannot reach. Every rectangle it reports is zero, so the
+ * cards have no size or place there; colours are resolved by the browser and
+ * by nobody in a test environment; and which handler a press reaches depends
+ * on a real click travelling the plugin chain.
  *
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
@@ -136,8 +135,7 @@ test.describe('the card a comment is written in', () => {
     await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
     const painted = await page.evaluate(
       (selector) =>
-        document.querySelectorAll(`${selector} [data-show-selection="true"]`)
-          .length,
+        document.querySelectorAll(`${selector} .doc-comment-draft-mark`).length,
       EDITOR,
     );
     expect(painted).toBe(0);
@@ -198,27 +196,86 @@ test.describe('the card a comment is written in', () => {
     await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
     const painted = await page.evaluate(
       (selector) =>
-        document.querySelectorAll(`${selector} [data-show-selection="true"]`)
-          .length,
+        document.querySelectorAll(`${selector} .doc-comment-draft-mark`).length,
       EDITOR,
     );
     expect(painted).toBe(0);
   });
 
-  test('leaves the words it is about drawn in the body', async ({ page }) => {
-    await openWithALongSelection(page);
-
+  test('paints the words it is about in the colours of a comment', async ({
+    page,
+  }) => {
+    // user 2026-09-24: the deep colour of a comment being read while the
+    // draft is the card being read, the plain comment wash once another card
+    // is — never the colour of a selection.
+    await openFreshDocument(page);
+    await page.keyboard.type('one line carrying a comment\n');
+    await page.keyboard.type('another line for the draft');
+    await commentOnParagraph(page, 0, 'already here');
+    await selectParagraph(page, 1);
     await page.getByTestId('doc-bubble-tool-comment').click();
     await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
 
-    const painted = await page.evaluate(
-      (selector) =>
-        document.querySelectorAll(
-          `${selector} [data-show-selection="true"]`,
-        ).length,
-      EDITOR,
+    const colours = (): Promise<{
+      draft: string;
+      deep: string;
+      plain: string;
+      selectionPaint: number;
+    }> =>
+      page.evaluate((selector) => {
+        const probe = (value: string): string => {
+          const el = document.createElement('span');
+          el.style.backgroundColor = value;
+          document.body.append(el);
+          const colour = getComputedStyle(el).backgroundColor;
+          el.remove();
+          return colour;
+        };
+        const draft = document.querySelector(
+          `${selector} .doc-comment-draft-mark`,
+        )!;
+        return {
+          draft: getComputedStyle(draft).backgroundColor,
+          deep: probe('var(--color-comment-mark-active)'),
+          plain: probe('var(--color-comment-mark)'),
+          selectionPaint: document.querySelectorAll(
+            `${selector} [data-show-selection="true"]`,
+          ).length,
+        };
+      }, EDITOR);
+
+    const reading = await colours();
+    expect(reading.draft).toBe(reading.deep);
+    expect(reading.selectionPaint).toBe(0);
+    await expect(page.getByTestId('doc-comment-draft-card')).toHaveAttribute(
+      'data-selected',
+      'true',
     );
-    expect(painted).toBeGreaterThan(0);
+
+    await page.getByTestId('doc-comment-draft-input').fill('half a thought');
+    await page.getByTestId('doc-comment-card').click();
+    await expect(page.getByTestId('doc-comment-card')).toHaveAttribute(
+      'data-selected',
+      'true',
+    );
+    const aside = await colours();
+    expect(aside.draft).toBe(aside.plain);
+    await expect(page.getByTestId('doc-comment-draft-card')).toHaveAttribute(
+      'data-selected',
+      'false',
+    );
+
+    await page.getByTestId('doc-comment-draft-card').click();
+    await expect(page.getByTestId('doc-comment-draft-card')).toHaveAttribute(
+      'data-selected',
+      'true',
+    );
+    await expect(page.getByTestId('doc-comment-card')).toHaveAttribute(
+      'data-selected',
+      'false',
+    );
+    const back = await colours();
+    expect(back.draft).toBe(back.deep);
   });
 });
 
@@ -411,11 +468,13 @@ test.describe('the panel, read across from the body', () => {
   test('deepens the words while the pointer rests on their card', async ({
     page,
   }) => {
-    await openWithALongSelection(page);
-    await page.getByTestId('doc-bubble-tool-comment').click();
-    await page.getByTestId('doc-comment-draft-input').fill('about this line');
-    await page.getByTestId('doc-comment-draft-save').click();
-    // Already open: the card it was written in is in the panel (A1).
+    // A comment that exists and a panel the reader opens, with nothing being
+    // read: a comment just saved is still the one being read (§9.4.1).
+    await openFreshDocument(page);
+    await page.keyboard.type(LONG_LINE);
+    await commentOnParagraph(page, 0, 'about this line');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
     await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
     // Off every card first: the menu row the panel was opened from leaves the
     // pointer where a card then appears, and a card under the pointer is

@@ -1947,8 +1947,12 @@ body {
    peer's edit splits the text, and every span paints itself. An edge drawn
    per span comes apart at each join: three spans of one live comment
    measured rectangles meeting at the same x, with the painted corners the
-   only thing between them. */
-.doc-body .bn-thread-mark {
+   only thing between them.
+
+   A comment being written wears the same colour over the words it is aimed
+   at (design §9.4.1): it is a comment that has not been saved yet. */
+.doc-body .bn-thread-mark,
+.doc-body .doc-comment-draft-mark {
   background-color: var(--color-comment-mark);
 }
 

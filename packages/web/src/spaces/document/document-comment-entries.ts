@@ -23,7 +23,11 @@
 import { TextSelection } from '@tiptap/pm/state';
 import { MessageSquareText } from 'lucide-react';
 
-import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
+import {
+  DOCUMENT_COMMENT_DRAFT_RANGE,
+  DRAFT_THREAD_ID,
+} from '@web/spaces/document/document-comment-draft-range';
+import { DOCUMENT_COMMENT_SELECTION } from '@web/spaces/document/document-comment-selection';
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import type { DraftRange } from '@web/spaces/document/document-comment-draft-range';
 import type {
@@ -34,9 +38,11 @@ import type {
 /**
  * Opens a comment draft aimed at one range.
  *
- * The dispatch carries only the meta: no steps, so the document does not
+ * The dispatch carries only metas: no steps, so the document does not
  * change, the reader's selection and caret stay where they are, and nothing
- * lands on the undo stack.
+ * lands on the undo stack. One of them makes the draft the card being read,
+ * in the same transaction that opens it, so there is no moment where the
+ * draft is open and some other card is the one being read (design §9.4.1).
  * @param editor - The document editor.
  * @param range - Where the comment will go.
  * @returns True when a draft opened; false when that range holds no words to
@@ -55,10 +61,12 @@ export function openCommentDraft(
   const asking = TextSelection.create(view.state.doc, range.from, range.to);
   if (!canCommentOver(view.state.doc, asking)) return false;
   view.dispatch(
-    view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
-      from: range.from,
-      to: range.to,
-    }),
+    view.state.tr
+      .setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+        from: range.from,
+        to: range.to,
+      })
+      .setMeta(DOCUMENT_COMMENT_SELECTION, [DRAFT_THREAD_ID]),
   );
   return true;
 }

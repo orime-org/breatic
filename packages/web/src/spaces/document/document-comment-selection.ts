@@ -106,7 +106,7 @@ const DOCUMENT_COMMENT_HOVER = 'documentCommentHover';
  * Ours, and the only thing that paints it is `index.css`. The library's own
  * decoration carries `bn-thread-mark-selected` and lands on the same span.
  */
-const SELECTED_CLASS = 'doc-comment-mark-reading';
+export const READING_CLASS = 'doc-comment-mark-reading';
 
 /**
  * The threads the reader is looking at.
@@ -143,7 +143,7 @@ function paintSelected(
       if (!isLiveCommentMark(mark)) return;
       if (!ids.includes(mark.attrs.threadId as string)) return;
       painted.push(
-        Decoration.inline(pos, pos + node.nodeSize, { class: SELECTED_CLASS }),
+        Decoration.inline(pos, pos + node.nodeSize, { class: READING_CLASS }),
       );
     });
     return true;

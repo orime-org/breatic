@@ -22,6 +22,19 @@ const css = readFileSync(
 ).replace(/\/\*[\s\S]*?\*\//g, '');
 
 /**
+ * Whether any selector in a list ends in the given text.
+ *
+ * A list is one rule reaching every one of its members, so a rule that also
+ * paints something else is still the rule for this.
+ * @param selector - A selector list, as written.
+ * @param endsWith - The tail of the selector.
+ * @returns True when one of its members ends in it.
+ */
+function endsIn(selector: string, endsWith: string): boolean {
+  return selector.split(',').some((member) => member.trim().endsWith(endsWith));
+}
+
+/**
  * The selector of the one rule whose selector ends in the given text.
  *
  * For the cases that ask a real DOM whether a rule reaches it: read from here
@@ -33,7 +46,7 @@ const css = readFileSync(
  */
 export function selectorEndingIn(endsWith: string): string {
   const found = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((match) =>
-    match[1].trim().endsWith(endsWith),
+    endsIn(match[1], endsWith),
   );
   if (found.length !== 1) {
     throw new Error(`${String(found.length)} rules end in ${endsWith}`);
@@ -49,7 +62,7 @@ export function selectorEndingIn(endsWith: string): string {
  */
 export function ruleBody(endsWith: string): string {
   const found = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((match) =>
-    match[1].trim().endsWith(endsWith),
+    endsIn(match[1], endsWith),
   );
   if (found.length !== 1) {
     throw new Error(`${String(found.length)} rules end in ${endsWith}`);

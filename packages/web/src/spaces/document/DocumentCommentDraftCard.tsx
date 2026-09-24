@@ -17,12 +17,11 @@
  * to write here was taken away mid-draft (A22). The notice stands until they
  * dismiss it, which is why this card outlives its range.
  *
- * WHICH WORDS ARE BEING COMMENTED ON is said by the body itself, through
- * `ShowSelectionExtension`: the focus is over here in the rail, and a
- * contenteditable that is not focused has its selection painted by nobody.
+ * WHICH WORDS ARE BEING COMMENTED ON is said by the body itself, in the
+ * comment colours: the draft range paints them (design §9.4.1). This card
+ * says only whether it is the card being read, the way every card does.
  */
 
-import { ShowSelectionExtension } from '@blocknote/core/extensions';
 import { TextSelection } from '@tiptap/pm/state';
 import { X } from 'lucide-react';
 import * as React from 'react';
@@ -38,25 +37,16 @@ import {
   type DraftState,
 } from '@web/stores/annotation-draft';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
+import { selectThreads } from '@web/spaces/document/document-comment-selection';
 import type { DraftRange } from '@web/spaces/document/document-comment-draft-range';
 import { DocumentCommentWriteBox } from '@web/spaces/document/DocumentCommentWriteBox';
 import { postComment } from '@web/spaces/document/document-comment-post';
-import { CARD_SURFACE } from '@web/spaces/document/DocumentCommentCard';
+import {
+  CARD_READING_OUTLINE,
+  CARD_SURFACE,
+} from '@web/spaces/document/DocumentCommentCard';
 import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
-
-/** This card's name on the selection extension, which keys its callers. */
-const SELECTION_MARK_KEY = 'documentCommentDraftCard';
-
-/** The half of `ShowSelectionExtension` this needs. */
-interface ShowSelectionLike {
-  /**
-   * Draws the body's selection whether or not the body has the focus.
-   * @param shouldShow - Whether to draw it.
-   * @param key - Which caller is asking.
-   */
-  showSelection(shouldShow: boolean, key: string): void;
-}
 
 interface DraftCardProps {
   /** The editor the comment lands in. */
@@ -71,6 +61,8 @@ interface DraftCardProps {
    * is read as the ARIA attribute, by the linter and by anyone reading it.
    */
   myRole: ProjectRole;
+  /** Whether this is the card being read. */
+  reading: boolean;
   /**
    * Said once this card has nothing left to draw.
    *
@@ -87,6 +79,7 @@ interface DraftCardProps {
  * @param root0.editor - The editor the comment lands in.
  * @param root0.aimedAt - Where the comment is aimed.
  * @param root0.myRole - The reader's role on the project.
+ * @param root0.reading - Whether this is the card being read.
  * @param root0.onGone - Said once this card has nothing left to draw.
  * @returns The card while a draft is open or its notice stands.
  */
@@ -94,25 +87,13 @@ export function DocumentCommentDraftCard({
   editor,
   aimedAt,
   myRole,
+  reading,
   onGone,
 }: DraftCardProps): React.JSX.Element | null {
   const t = useTranslation();
   const [draft, setDraft] = React.useState<DraftState>(CLOSED_DRAFT);
   const mayWrite = canPostAnnotations(myRole);
   const said = useCommentWrite();
-
-  // The words stay visible in the body while this card holds the focus.
-  React.useEffect(() => {
-    const selection = (
-      editor as unknown as {
-        getExtension(factory: unknown): ShowSelectionLike | undefined;
-      }
-    ).getExtension(ShowSelectionExtension);
-    selection?.showSelection(aimedAt !== null, SELECTION_MARK_KEY);
-    return () => {
-      selection?.showSelection(false, SELECTION_MARK_KEY);
-    };
-  }, [editor, aimedAt]);
 
   /**
    * Closes the draft's range, which is what takes the card off the rail.
@@ -196,6 +177,9 @@ export function DocumentCommentDraftCard({
       // they still are. On the `null` path the notice A21 owes them is raised
       // by the effect watching the range, which needs this card still open.
       if (thread == null) return;
+      // The comment it became is the one being read now: the reader has not
+      // turned to anything else.
+      selectThreads(editor, [thread.id]);
       setDraft(saved);
       // The range is what says a draft is open, so clearing it closes the card.
       clearRange();
@@ -206,7 +190,8 @@ export function DocumentCommentDraftCard({
     return (
       <article
         data-testid='doc-comment-draft-card'
-        className={`${CARD_SURFACE} flex items-start gap-1`}
+        data-selected={reading}
+        className={`${CARD_SURFACE} ${CARD_READING_OUTLINE} flex items-start gap-1`}
       >
         <p
           data-testid='doc-comment-draft-dropped'
@@ -238,7 +223,8 @@ export function DocumentCommentDraftCard({
   return (
     <article
       data-testid='doc-comment-draft-card'
-      className={CARD_SURFACE}
+      data-selected={reading}
+      className={`${CARD_SURFACE} ${CARD_READING_OUTLINE}`}
     >
       <DocumentCommentWriteBox
         name='draft'

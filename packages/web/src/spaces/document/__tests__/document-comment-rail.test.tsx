@@ -33,10 +33,7 @@ import {
   _resetDocumentEditorCacheForTests,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import {
-  DOCUMENT_COMMENT_DRAFT_RANGE,
-  draftRangeIn,
-} from '@web/spaces/document/document-comment-draft-range';
+import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
 import {
   selectThreads,
   selectedThreadsIn,
@@ -45,6 +42,7 @@ import {
   COMMENT_MARK,
   asCommentBody,
 } from '@web/spaces/document/document-comment-extension';
+import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
@@ -189,15 +187,19 @@ describe('the comment panel', () => {
    */
   function aimDraft(from: number, to: number): void {
     const run = firstRun();
-    const view = handle.editor.prosemirrorView!;
     act(() => {
-      view.dispatch(
-        view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
-          from: run.from + from,
-          to: run.from + to,
-        }),
-      );
+      openCommentDraft(handle.editor, {
+        from: run.from + from,
+        to: run.from + to,
+      });
     });
+  }
+
+  /** The body's paint over the words a draft is aimed at, if any. */
+  function draftPaint(): HTMLElement | null {
+    return handle.editor.prosemirrorView!.dom.querySelector<HTMLElement>(
+      '.doc-comment-draft-mark',
+    );
   }
 
   /** Opens the whole-document menu and presses the comments row. */
@@ -824,6 +826,116 @@ describe('the comment panel', () => {
         expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
       });
       expect(screen.getByTestId('doc-comment-card')).toBeInTheDocument();
+    });
+
+    it('paints the words it is aimed at in the colours of a comment being read', async () => {
+      // user 2026-09-24: the words belong to a comment from the moment the
+      // entry is pressed, so they wear the comment colours, not the colour
+      // of a selection.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      const paint = draftPaint();
+      expect(paint?.textContent).toBe('alpha');
+      expect(paint?.classList.contains('doc-comment-mark-reading')).toBe(true);
+      expect(
+        handle.editor.prosemirrorView!.dom.querySelector('[data-show-selection]'),
+      ).toBeNull();
+      expect(
+        screen.getByTestId('doc-comment-draft-card').dataset.selected,
+      ).toBe('true');
+    });
+
+    it('gives the column to another card that is pressed, keeping its words and its colour', async () => {
+      // One card in the panel is active at a time, a draft among them.
+      show();
+      await comment(6, 11, 'about bravo');
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'half a thought',
+      );
+
+      await userEvent.click(screen.getByTestId('doc-comment-card'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-comment-card').dataset.selected).toBe(
+          'true',
+        );
+      });
+      expect(
+        screen.getByTestId('doc-comment-draft-card').dataset.selected,
+      ).toBe('false');
+      expect(screen.getByTestId('doc-comment-draft-input')).toHaveValue(
+        'half a thought',
+      );
+      const paint = draftPaint();
+      expect(paint?.textContent).toBe('alpha');
+      expect(paint?.classList.contains('doc-comment-mark-reading')).toBe(false);
+    });
+
+    it('takes the column back when the draft card is pressed again', async () => {
+      show();
+      await comment(6, 11, 'about bravo');
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'half a thought',
+      );
+      await userEvent.click(screen.getByTestId('doc-comment-card'));
+
+      await userEvent.click(screen.getByTestId('doc-comment-draft-card'));
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('doc-comment-draft-card').dataset.selected,
+        ).toBe('true');
+      });
+      expect(screen.getByTestId('doc-comment-card').dataset.selected).toBe(
+        'false',
+      );
+      expect(
+        draftPaint()?.classList.contains('doc-comment-mark-reading'),
+      ).toBe(true);
+    });
+
+    it('takes the colours off the words when it is cancelled', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'never mind',
+      );
+
+      await userEvent.click(screen.getByTestId('doc-comment-draft-cancel'));
+
+      await waitFor(() => {
+        expect(draftPaint()).toBeNull();
+      });
+      expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual([]);
+    });
+
+    it('leaves the comment it became as the one being read', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'said something',
+      );
+
+      await userEvent.click(screen.getByTestId('doc-comment-draft-save'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-comment-card').dataset.selected).toBe(
+          'true',
+        );
+      });
+      expect(draftPaint()).toBeNull();
     });
 
     it('stays away while no draft is open', async () => {

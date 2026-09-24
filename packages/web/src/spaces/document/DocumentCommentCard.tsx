@@ -69,6 +69,9 @@ import type {
 export const CARD_SURFACE =
   'rounded-content-sm border border-border bg-card p-2.5';
 
+/** The outline a card wears while it is the one being read, on `data-selected`. */
+export const CARD_READING_OUTLINE = 'data-[selected=true]:border-active-border';
+
 interface DocumentCommentCardProps {
   /** The thread this card is for. */
   card: CommentCardView;
@@ -270,7 +273,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       data-thread={card.id}
       data-settled={settled}
       data-selected={marked}
-      className={`${CARD_SURFACE} data-[selected=true]:border-active-border data-[settled=true]:opacity-70`}
+      className={`${CARD_SURFACE} ${CARD_READING_OUTLINE} data-[settled=true]:opacity-70`}
     >
       {card.quote === null ? (
         <p

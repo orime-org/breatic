@@ -22,16 +22,35 @@
  * state would be mapped whenever a render happened to notice, which is neither
  * once nor in order.
  *
- * Nothing renders from this: the composer's own position comes from the range
- * too, but through a read at render time, and the highlight a reader sees
- * while typing is the browser's own selection.
+ * ## What it draws
+ *
+ * The words the draft is aimed at wear the comment colours from the moment
+ * the entry is pressed (user 2026-09-24): they belong to a comment that is not
+ * saved yet, not to a selection. The deep colour of a comment being read goes
+ * on top while the draft is the card being read — which is its placeholder id
+ * standing in the selection plugin's `ids`, where every card's turn at being
+ * read is kept (design §9.4.1).
  */
 
 import { createExtension } from '@blocknote/core';
 import type { Mapping } from '@tiptap/pm/transform';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
+import {
+  READING_CLASS,
+  selectedThreadsIn,
+} from '@web/spaces/document/document-comment-selection';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
+
+/**
+ * The draft's name wherever a comment is named by id: the panel's column and
+ * the selection plugin's `ids`. There is no thread yet to lend it one.
+ */
+export const DRAFT_THREAD_ID = 'doc-comment-draft';
+
+/** The comment wash over the words a draft is aimed at. */
+const DRAFT_MARK_CLASS = 'doc-comment-draft-mark';
 
 /** Where an unposted comment is going. */
 export interface DraftRange {
@@ -73,6 +92,23 @@ export function mapDraftRange(
  */
 export function draftRangeIn(state: EditorState): DraftRange | null {
   return DOCUMENT_COMMENT_DRAFT_RANGE.getState(state) ?? null;
+}
+
+/**
+ * The paint over the words the open draft is aimed at.
+ * @param state - The editor state.
+ * @returns One inline decoration over the range, deep while the draft is the
+ *   card being read; nothing while no draft is open.
+ */
+function paintDraft(state: EditorState): DecorationSet {
+  const range = draftRangeIn(state);
+  if (range === null) return DecorationSet.empty;
+  const reading = selectedThreadsIn(state).includes(DRAFT_THREAD_ID);
+  return DecorationSet.create(state.doc, [
+    Decoration.inline(range.from, range.to, {
+      class: reading ? `${DRAFT_MARK_CLASS} ${READING_CLASS}` : DRAFT_MARK_CLASS,
+    }),
+  ]);
 }
 
 /**
@@ -140,6 +176,10 @@ export const documentCommentDraftRange = createExtension(() => ({
             ? current
             : moved;
         },
+      },
+
+      props: {
+        decorations: paintDraft,
       },
 
       view: watch.view,
