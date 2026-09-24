@@ -21,6 +21,7 @@ import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import { NOTE_MAX_CHARS } from '@web/spaces/canvas/annotation/caps';
 import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 
@@ -71,6 +72,9 @@ export function DocumentCommentWriteBox({
 }: WriteBoxProps): React.JSX.Element {
   const t = useTranslation();
   const box = React.useRef<HTMLTextAreaElement>(null);
+  // A26: the box is exactly as tall as what is written, and the scroller
+  // around it is what stops at four lines.
+  useAutosizeTextarea(box, value);
 
   const keys = useNoteBox(
     React.useCallback(

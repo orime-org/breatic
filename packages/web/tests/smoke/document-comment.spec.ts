@@ -56,9 +56,14 @@ async function commentOnParagraph(
 ): Promise<void> {
   await selectParagraph(p, index);
   await p.getByTestId('doc-bubble-tool-comment').click();
-  await p.getByTestId('doc-comment-input').fill(body);
-  await p.getByTestId('doc-comment-post').click();
-  await expect(p.getByTestId('doc-comment-composer')).toHaveCount(0);
+  await p.getByTestId('doc-comment-draft-input').fill(body);
+  await p.getByTestId('doc-comment-draft-save').click();
+  await expect(p.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+  // Writing one opens the panel, because that is where the card is (A1).
+  // The cases below start from a comment that exists and a panel the reader
+  // has not opened, so it is closed again here.
+  await p.getByTestId('doc-comment-rail-close').click();
+  await expect(p.getByTestId('doc-comment-rail')).toHaveCount(0);
 }
 
 /** How many bubble bars are on screen. */
@@ -66,26 +71,97 @@ async function barCount(p: Page): Promise<number> {
   return p.getByTestId('doc-selection-bubble-bar').count();
 }
 
-test.describe('the box a comment is written in', () => {
-  test('stays its own width however much text is selected', async ({ page }) => {
+test.describe('the card a comment is written in', () => {
+  test('sits in the panel column, whatever the selection holds', async ({
+    page,
+  }) => {
+    // A28: it is a card, so it is where the cards are. What it was aimed at
+    // does not move it and does not stretch it.
     await openWithALongSelection(page);
 
     await page.getByTestId('doc-bubble-tool-comment').click();
 
-    const box = page.getByTestId('doc-comment-composer');
-    await expect(box).toBeVisible();
-    const shape = await box.boundingBox();
-    expect(shape).not.toBeNull();
-    expect(shape!.width).toBeLessThan(400);
-    expect(shape!.x).toBeGreaterThanOrEqual(0);
-    expect(shape!.x + shape!.width).toBeLessThanOrEqual(1680);
+    const card = page.getByTestId('doc-comment-draft-card');
+    await expect(card).toBeVisible();
+    const shape = (await card.boundingBox())!;
+    const column = (await page
+      .getByTestId('doc-comment-rail-column')
+      .boundingBox())!;
+    expect(shape.x).toBeGreaterThanOrEqual(column.x);
+    expect(shape.x + shape.width).toBeLessThanOrEqual(
+      column.x + column.width + 1,
+    );
+  });
+
+  test('sits level with the words it was aimed at', async ({ page }) => {
+    // A28 again, the half that makes it a card of the same kind: a reader
+    // looks across from the words to the card about them.
+    await openFreshDocument(page);
+    await page.keyboard.type('one\n');
+    await page.keyboard.type('two\n');
+    await page.keyboard.type('three carrying the comment');
+    await selectParagraph(page, 2);
+
+    await page.getByTestId('doc-bubble-tool-comment').click();
+
+    await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
+    const words = (await page
+      .locator(`${EDITOR} p`)
+      .nth(2)
+      .boundingBox())!;
+    const card = (await page
+      .getByTestId('doc-comment-draft-card')
+      .boundingBox())!;
+    expect(Math.abs(card.y - words.y)).toBeLessThan(40);
+  });
+
+  test('carries a pair of buttons only once there are words', async ({
+    page,
+  }) => {
+    // A29. Neither Resolve nor Delete: there is no thread to settle or to
+    // throw away until this is sent.
+    await openWithALongSelection(page);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
+
+    await expect(page.getByTestId('doc-comment-draft-save')).toHaveCount(0);
+    await expect(page.getByTestId('doc-comment-draft-cancel')).toHaveCount(0);
+
+    await page.getByTestId('doc-comment-draft-input').fill('worth saying');
+
+    await expect(page.getByTestId('doc-comment-draft-save')).toBeVisible();
+    await expect(page.getByTestId('doc-comment-draft-cancel')).toBeVisible();
+    await expect(page.getByTestId('doc-comment-resolve')).toHaveCount(0);
+    await expect(page.getByTestId('doc-comment-delete')).toHaveCount(0);
+  });
+
+  test('lets an empty one go on a press elsewhere, and keeps the panel', async ({
+    page,
+  }) => {
+    // A30: they changed their mind. The panel stays because opening it was
+    // their own doing, and the words go back to being unselected.
+    await openWithALongSelection(page);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
+
+    await page.locator(`${EDITOR} p`).first().click();
+
+    await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+    await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+    const painted = await page.evaluate(
+      (selector) =>
+        document.querySelectorAll(`${selector} [data-show-selection="true"]`)
+          .length,
+      EDITOR,
+    );
+    expect(painted).toBe(0);
   });
 
   test('leaves the words it is about drawn in the body', async ({ page }) => {
     await openWithALongSelection(page);
 
     await page.getByTestId('doc-bubble-tool-comment').click();
-    await expect(page.getByTestId('doc-comment-composer')).toBeVisible();
+    await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
 
     const painted = await page.evaluate(
       (selector) =>
@@ -102,7 +178,7 @@ test.describe('what the bubble bar does once an overlay closes', () => {
   test('stays away once the comment box is left by Escape', async ({ page }) => {
     await openWithALongSelection(page);
     await page.getByTestId('doc-bubble-tool-comment').click();
-    await expect(page.getByTestId('doc-comment-composer')).toBeVisible();
+    await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
 
     await page.keyboard.press('Escape');
     await page.waitForTimeout(500);
@@ -116,10 +192,10 @@ test.describe('what the bubble bar does once an overlay closes', () => {
     // stands back up after Escape or after an address is confirmed.
     await openWithALongSelection(page);
     await page.getByTestId('doc-bubble-tool-comment').click();
-    await expect(page.getByTestId('doc-comment-composer')).toBeVisible();
+    await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
 
-    await page.getByTestId('doc-comment-input').fill('a thought');
-    await page.getByTestId('doc-comment-post').click();
+    await page.getByTestId('doc-comment-draft-input').fill('a thought');
+    await page.getByTestId('doc-comment-draft-save').click();
     await page.waitForTimeout(500);
 
     expect(await barCount(page)).toBe(0);
@@ -130,11 +206,9 @@ test.describe('the panel, read across from the body', () => {
   test('opens itself and marks the card a press in the body names', async ({
     page,
   }) => {
-    await openWithALongSelection(page);
-    await page.getByTestId('doc-bubble-tool-comment').click();
-    await page.getByTestId('doc-comment-input').fill('about this line');
-    await page.getByTestId('doc-comment-post').click();
-    await expect(page.getByTestId('doc-comment-rail')).toHaveCount(0);
+    await openFreshDocument(page);
+    await page.keyboard.type(LONG_LINE);
+    await commentOnParagraph(page, 0, 'about this line');
 
     await page.locator(`${EDITOR} .bn-thread-mark`).first().click();
 
@@ -291,10 +365,9 @@ test.describe('the panel, read across from the body', () => {
   }) => {
     await openWithALongSelection(page);
     await page.getByTestId('doc-bubble-tool-comment').click();
-    await page.getByTestId('doc-comment-input').fill('about this line');
-    await page.getByTestId('doc-comment-post').click();
-    await page.getByTestId('doc-doc-menu-trigger').click();
-    await page.getByTestId('doc-doc-menu-comments').click();
+    await page.getByTestId('doc-comment-draft-input').fill('about this line');
+    await page.getByTestId('doc-comment-draft-save').click();
+    // Already open: the card it was written in is in the panel (A1).
     await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
     // Off every card first: the menu row the panel was opened from leaves the
     // pointer where a card then appears, and a card under the pointer is
@@ -683,8 +756,8 @@ test.describe('a comment split around words that are not its own', () => {
     await selectParagraph(page, 0);
     await selectChars(page, 0, 7);
     await page.getByTestId('doc-bubble-tool-comment').click();
-    await page.getByTestId('doc-comment-input').fill('to be resolved');
-    await page.getByTestId('doc-comment-post').click();
+    await page.getByTestId('doc-comment-draft-input').fill('to be resolved');
+    await page.getByTestId('doc-comment-draft-save').click();
     await page.locator(`${EDITOR} [data-bn-thread-id]`).first().click();
     await page.getByTestId('doc-comment-resolve').first().click();
     await expect(
@@ -693,8 +766,8 @@ test.describe('a comment split around words that are not its own', () => {
 
     await selectChars(page, 8, 17);
     await page.getByTestId('doc-bubble-tool-comment').click();
-    await page.getByTestId('doc-comment-input').fill('the live one');
-    await page.getByTestId('doc-comment-post').click();
+    await page.getByTestId('doc-comment-draft-input').fill('the live one');
+    await page.getByTestId('doc-comment-draft-save').click();
     await page.waitForTimeout(400);
 
     // Drag the settled words into the middle of the live run, which is what
