@@ -56,13 +56,16 @@ export type AskUserPayload = z.infer<typeof inputSchema>;
 
 export const askUser: Tool<z.infer<typeof inputSchema>, AskUserPayload> = tool({
   description:
-    "Ask the user a clarifying question. Use when you need more " +
-    "information to proceed. Put the question here rather than writing it " +
-    "yourself, and put every option in `options` -- both are drawn for you, " +
-    "the options numbered from one. Keep each option to one line saying what " +
-    "it is, with no argument for or against it. Nothing is written for you " +
-    "beyond the numbering: what the reader is told about answering is " +
-    "`howToAnswer`, in your own words.",
+    "Ask the user a clarifying question. It ends your turn there, so use it " +
+    "when you genuinely need an answer to continue, not to fill a pause. Put " +
+    "the question here rather than writing it yourself, and put every answer " +
+    "you are offering in `options` -- both are drawn for you, the options " +
+    "numbered from one. A question you also write out arrives twice, and " +
+    "answers listed in your own prose arrive as a run-on sentence with nothing " +
+    "to pick from. Keep each option to one line saying what it is, with no " +
+    "argument for or against it. Nothing is written for you beyond the " +
+    "numbering: what the reader is told about answering is `howToAnswer`, in " +
+    "your own words and in the language you are replying in.",
   inputSchema,
   execute: async (
     input: z.infer<typeof inputSchema>,

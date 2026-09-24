@@ -18,11 +18,14 @@ import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 
 /**
  * A description with its hard wraps folded, so assertions are about wording.
+ *
+ * The SDK also allows a description computed per call; these tools declare a
+ * string, and anything else reads as empty so the assertions below fail.
  * @param description - The description as declared.
  * @returns It on one line.
  */
-function flat(description: string | undefined): string {
-  return (description ?? "").replace(/\s+/g, " ");
+function flat(description: unknown): string {
+  return typeof description === "string" ? description.replace(/\s+/g, " ") : "";
 }
 
 describe("ask_user says how to ask", () => {
