@@ -4,7 +4,7 @@
 /**
  * What one tier card offers, for one selected period (#253, design 3.2).
  *
- * Ten conditions, the first match winning. They are a function rather than
+ * Nine conditions, the first match winning. They are a function rather than
  * conditions spread through the markup because both what the card shows and
  * what the server accepts have to agree: a card drawn where `changePlan`
  * refuses is an entrance into an error, and a card left blank where it
