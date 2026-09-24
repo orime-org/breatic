@@ -22,6 +22,12 @@ describe('createGroupNode — Group node factory', () => {
     expect(f.data.createdBy).toBe('user-1');
     expect(f.data.locked).toBe(false);
   });
+
+  it('takes the name the caller gives it', () => {
+    // An upload batch names its Group after how many files it holds.
+    const f = createGroupNode('f2', { x: 0, y: 0 }, 300, 200, 'user-1', undefined, '3 files');
+    expect(f.data.name).toBe('3 files');
+  });
 });
 
 describe('createEmptyNode — empty content node factory', () => {

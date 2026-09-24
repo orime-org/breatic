@@ -436,11 +436,7 @@ export interface FillNodeDeps {
    * could reach without wiring the hook) quietly became what the tests
    * measured.
    */
-  onUploadFailure: (
-    outcome: UploadFailure,
-    nodeId: string,
-    file: File,
-  ) => void;
+  onUploadFailure: (outcome: UploadFailure, file: File) => void;
   /**
    * Content write-back for the text path, which has no upload: the text is
    * read here and there is nobody else to write it. A media node's content
@@ -507,7 +503,7 @@ export async function fillNodeFromFile(
         // The node's content arrives from the server through Yjs.
         onSuccess: () => undefined,
         onFailure: (outcome) =>
-          deps.onUploadFailure(outcome, nodeId, file),
+          deps.onUploadFailure(outcome, file),
         ...(deps.sleep !== undefined && { sleep: deps.sleep }),
       },
     );

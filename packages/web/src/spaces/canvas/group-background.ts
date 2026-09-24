@@ -2,11 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The group background palette (#1549) — a purely human-chosen classification
- * tint with no system semantics: the full 7-color palette (each color's
- * 14%-opacity `-bg` token) plus no color (no tint → neutral dashed frame).
- * Options are keyed by plain color name — the picker IS a color choice, not a
- * status choice (the pre-#1549 i18n labels already said "Blue/Green/…").
+ * The group background palette (#1549) — a classification tint carrying no
+ * system semantics: the full 7-color palette (each color's 14%-opacity `-bg`
+ * token) plus no color (no tint → neutral dashed frame). Options are keyed by
+ * plain color name — the picker IS a color choice, not a status choice (the
+ * pre-#1549 i18n labels already said "Blue/Green/…").
+ *
+ * The reader picks one through {@link GROUP_BACKGROUND_OPTIONS}; a Group made
+ * around an upload batch opens with one of {@link GROUP_BACKGROUND_TINTS}, so a
+ * Group made at a point another Group is already on carries a mark of its own.
+ * The roll has no memory, so two batches in a row land on the same tint one
+ * time in seven. Either way the colour is the Group's from then on, and only
+ * the reader changes it.
  */
 
 /** One choice in the group background picker. */
@@ -30,6 +37,30 @@ export const GROUP_BACKGROUND_OPTIONS: ReadonlyArray<GroupBackgroundOption> = [
   { key: 'pink', value: '--color-palette-pink-bg', labelKey: 'canvas.group.backgroundPink' },
   { key: 'teal', value: '--color-palette-teal-bg', labelKey: 'canvas.group.backgroundTeal' },
 ];
+
+/** The 7 tints, without the "no colour" option. */
+export const GROUP_BACKGROUND_TINTS: ReadonlyArray<string> =
+  GROUP_BACKGROUND_OPTIONS.flatMap((option) =>
+    option.value === undefined ? [] : [option.value],
+  );
+
+/**
+ * The tint a Group gets when it is made around a batch that just arrived.
+ *
+ * Two batches handed over at the same point are drawn on top of each other and
+ * are the same size, so without a colour the second one is a box the reader
+ * cannot tell from the first. Seven tints drawn without memory repeat one time
+ * in seven. The roll comes from the caller so the choice is a value a test can
+ * pin.
+ * @param roll - A number in [0, 1], normally `Math.random()`.
+ * @returns One of {@link GROUP_BACKGROUND_TINTS}.
+ */
+export function groupBackgroundFor(roll: number): string {
+  const at = Math.floor(roll * GROUP_BACKGROUND_TINTS.length);
+  return GROUP_BACKGROUND_TINTS[
+    Math.min(Math.max(at, 0), GROUP_BACKGROUND_TINTS.length - 1)
+  ];
+}
 
 /**
  * Pre-#1549 stored token names → their palette successors. Groups persist the

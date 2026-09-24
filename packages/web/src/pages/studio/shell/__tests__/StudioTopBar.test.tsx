@@ -1,8 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { setLocale, type Locale } from '@breatic/shared';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -17,6 +19,8 @@ vi.mock('@web/data/api/notifications', () => ({
   EMPTY_RESOLVED: { users: {}, studios: {}, projects: {} },
 }));
 import { notificationsApi , EMPTY_RESOLVED } from '@web/data/api/notifications';
+
+afterEach(() => setLocale('en'));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -62,19 +66,29 @@ describe('StudioTopBar', () => {
     expect(screen.getByTestId('theme-toggle')).toBeInTheDocument();
   });
 
-  it('renders the brand (real logo mark + Breatic) linking to /studio, with no switcher or search', async () => {
+  it('renders the brand (real logo mark + Breatic) linking to the home page, with no switcher or search', async () => {
     setup();
     await flushInbox();
     // The studio switcher moved to the persistent rail and search is dropped
     // this version, so the top bar is just brand + tools.
-    const home = screen.getByRole('link', { name: 'Studio home' });
-    expect(home).toHaveAttribute('href', '/studio');
+    const home = screen.getByRole('link', { name: 'Home' });
+    expect(home).toHaveAttribute('href', OFFICIAL_HOME_URL);
     expect(screen.getByText('Breatic')).toBeInTheDocument();
     // The brand uses the shared REAL logo mark (the same `BrandMark` atom the
     // project top bar renders), not the old "b" placeholder square.
     expect(screen.getByTestId('top-bar-logo')).toBeInTheDocument();
     expect(screen.queryByText('b')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();
+  });
+
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as Locale[])('links the brand to the official home page in %s', async (locale) => {
+    setLocale(locale);
+    setup();
+    await flushInbox();
+    const link = screen.getByTestId('top-bar-logo').closest('a');
+    expect(link).toHaveAttribute('href', OFFICIAL_HOME_URL);
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('has no a11y violations', async () => {

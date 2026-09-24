@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   render as rtlRender,
   screen,
@@ -9,6 +10,7 @@ import {
   type RenderOptions,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { setLocale, type Locale } from '@breatic/shared';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as React from 'react';
@@ -17,6 +19,8 @@ import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopB
 import type { Member } from '@web/data/api/members';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+
+afterEach(() => setLocale('en'));
 
 // Chrome buttons (Export / Invite / Notifications) wrap their PopoverTrigger
 // in shadcn `Tooltip`, and BellMenu (PR-d follow-up `e73517c`) uses
@@ -55,7 +59,7 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
       <TopBar
         projectId='p1'
         projectName='Demo'
-        // eslint-disable-next-line jsx-a11y/aria-role -- `role` here is a TopBar component prop (owner | editor | viewer), not a DOM ARIA role
+        // eslint-disable-next-line jsx-a11y/aria-role -- component prop, not a DOM ARIA role
         role='owner'
         credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
@@ -180,10 +184,13 @@ describe('TopBar', () => {
     expect(screen.getByTestId('title-display')).toBeInTheDocument();
   });
 
-  it('renders the home logo link pointing at /studio', () => {
+  it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'] as Locale[])('links the brand to the official home page in %s', (locale) => {
+    setLocale(locale);
     setup();
-    const link = screen.getByLabelText('Home');
-    expect(link.getAttribute('href')).toBe('/studio');
+    const link = screen.getByTestId('top-bar-logo').closest('a');
+    expect(link).toHaveAttribute('href', OFFICIAL_HOME_URL);
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('renders both topbar groups (text-icon + icon-only)', () => {

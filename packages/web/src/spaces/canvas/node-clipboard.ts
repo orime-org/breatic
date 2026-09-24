@@ -339,15 +339,13 @@ export function cloneForPaste(
         node.width ?? GROUP_CLONE_FALLBACK,
         node.height ?? GROUP_CLONE_FALLBACK,
         createdBy,
+        node.backgroundColor,
       );
       return {
         ...group,
         data: {
           ...group.data,
           name: COPY_PREFIX + (node.name ?? group.data.name),
-          ...(node.backgroundColor !== undefined
-            ? { backgroundColor: node.backgroundColor }
-            : {}),
         },
       };
     }

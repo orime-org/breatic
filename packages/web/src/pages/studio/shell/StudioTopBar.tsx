@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
 import type * as React from 'react';
-import { Link } from 'react-router-dom';
 
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
@@ -40,14 +40,16 @@ export function StudioTopBar({ leading }: StudioTopBarProps): React.JSX.Element 
     >
       <div className='flex items-center gap-1'>
         {leading}
-        <Link
-          to='/studio'
-          aria-label={t('studio.topBar.home')}
+        <a
+          href={OFFICIAL_HOME_URL}
+          target='_blank'
+          rel='noopener noreferrer'
+          aria-label={t('chrome.aria.home')}
           className='flex items-center gap-[7px]'
         >
           <BrandMark size={24} />
           <span className='text-sm font-semibold text-foreground'>Breatic</span>
-        </Link>
+        </a>
       </div>
       <div className='flex items-center gap-1'>
         <LangSwitcher />
