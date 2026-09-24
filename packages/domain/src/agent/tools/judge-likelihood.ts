@@ -108,8 +108,8 @@ const DESCRIPTION = [
     "- the reader asked for something you think is off, and you are unsure whether to do it",
     "- you cannot tell whether they said enough to start on, or whether to ask them first",
     "",
-    "It judges the questions, so word one badly and it says so by name. What it answers " +
-      "that back with reaches you unchanged; write the call again from it.",
+    "It judges the questions, so word one badly and it says so by name. When it does, " +
+      "its words are passed on to you, quoted; write the call again from them.",
     "",
     "A question whose answer came back in a shape this side cannot read, or which it did " +
       "not answer at all, is named in `unreadable` instead of `answers`. The rest stand.",

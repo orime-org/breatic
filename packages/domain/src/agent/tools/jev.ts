@@ -52,12 +52,13 @@ const voice: FailureVoice = {
 const moves = nextMovesFor(voice);
 
 /**
- * The failure for a call whose budget ran out before an answer arrived.
+ * The failure for a call that got no answer: nothing came back before the
+ * budget ran out, or the delivery itself failed.
  * @returns The error to throw.
  */
-function timedOut(): Error {
+function unanswered(): Error {
   return toolFailed(
-    reason(`Nothing answered the ${voice.act} request in time.`, moves.retryOnce),
+    reason(`Nothing answered the ${voice.act} request.`, moves.retryOnce),
     FAILURE_LINES.unreachable,
   );
 }
@@ -235,7 +236,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
   // the server did not process the request -- so a rate-limited endpoint would
   // hold the turn for three deliveries and two backoffs. This signal is read
   // at the top of every pass (`request.ts:358`) and ends the backoff wait
-  // (`request.ts:434`), so the figure in the config is what the reader waits.
+  // (`request.ts:440`), so the figure in the config is what the reader waits.
   // Truncated because this is a plain number parameter and `AbortSignal.timeout`
   // answers ERR_OUT_OF_RANGE to a fraction, which `setTimeout` does not
   // (`read-within.ts:113`). The one caller reads an integer from the config.
@@ -260,7 +261,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // vendor's identity, it tells the model nothing it can act on, and it is
     // read again by every later turn off the stored row -- so what the model
     // gets is the fact instead.
-    throw timedOut();
+    throw unanswered();
   }
 
   if (!res.ok) {
@@ -277,7 +278,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // Which of the two this is, the status cannot always say. The model
     // composed this body, so a 422 -- which the shared table reads as a fault
     // in our configuration -- is one it may compose again. And a refusal that
-    // names the model pinned in this file is our doing whatever its number:
+    // names the model pinned in this file is our doing whichever 4xx it answers:
     // measured, an unknown name answers 400, the same as a malformed question.
     // Three answers, not two: this side knows about exactly two statuses, and
     // every other one is the shared table's to sort.
@@ -303,7 +304,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // The budget covers the body as well as the deliveries, so a sender that
     // writes its headers and then stops ends here with the whole figure spent.
     // That is the same fact as nothing answering at all, and says so.
-    if (spanning.aborted) throw timedOut();
+    if (spanning.aborted) throw unanswered();
     throw toolFailed(
       readFailedReason(voice, asked, reasonOf(err)),
       FAILURE_LINES.upstream,

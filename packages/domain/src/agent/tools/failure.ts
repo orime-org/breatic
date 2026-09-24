@@ -159,8 +159,9 @@ export function reason(what: string, next: NextMove): string {
  * wrote and can rewrite.
  * A caller may know which of the two it is better than the status does: the
  * model composes some request bodies, and a service that names something this
- * side configured is refusing our doing, whatever number it answers with. So
- * `rewordable` overrides the sorting below when the caller can tell.
+ * side configured is refusing our doing, whichever 4xx it answers with. So
+ * `rewordable` overrides the sorting of the 4xx and 3xx statuses below when
+ * the caller can tell; a 5xx, 429 or 408 is their side whatever it says.
  * @param voice - How this tool names what it does.
  * @param query - What was searched for.
  * @param status - The status the service answered with.

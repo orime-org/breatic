@@ -508,9 +508,9 @@ describe("failing says what broke", () => {
   });
 
   it("holds the body read to the same budget as the deliveries", async () => {
-    // `read-within.ts:132-136` builds its own clock when no caller lends one,
-    // so a read that starts after the deliveries already spent the budget
-    // would get a second full one. Measured either way: the deliveries take
+    // `read-within.ts` builds a fresh clock on every read, so without the
+    // spanning signal a read that starts after the deliveries already spent
+    // the budget would get a second full one. Measured either way: the deliveries take
     // most of the figure here, and the body then never finishes arriving.
     timeoutMs = 200;
     httpRequestMock.mockImplementationOnce(
