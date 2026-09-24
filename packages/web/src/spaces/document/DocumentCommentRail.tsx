@@ -140,8 +140,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   }, [draftAt]);
   // The card is also the one place that lets go of the draft's turn at being
   // read: a draft that is gone cannot be the card being read (design §9.4.1,
-  // invariant four). A save hands that turn to the thread it became before it
-  // gets here, and then there is nothing to let go of.
+  // invariant four). That holds for a save too — saving is the comment being
+  // finished, and nothing carries on as the one being read (user 2026-09-24).
   const draftGone = React.useCallback((): void => {
     setDraftLingers(false);
     const reading = selectedThreadsIn(editor.prosemirrorState);

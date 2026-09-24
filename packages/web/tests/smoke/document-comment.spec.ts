@@ -141,6 +141,28 @@ test.describe('the card a comment is written in', () => {
     expect(painted).toBe(0);
   });
 
+  test('leaves no card being read once it is saved', async ({ page }) => {
+    // user 2026-09-24: saving is the comment being finished.
+    await openFreshDocument(page);
+    await page.keyboard.type('one line carrying a comment\n');
+    await page.keyboard.type('another line for the new one');
+    await commentOnParagraph(page, 0, 'already here');
+    await selectParagraph(page, 1);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-draft-input').fill('the new one');
+
+    await page.getByTestId('doc-comment-draft-save').click();
+
+    await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+    await expect(page.getByTestId('doc-comment-card')).toHaveCount(2);
+    await expect(
+      page.locator('[data-testid="doc-comment-card"][data-selected="true"]'),
+    ).toHaveCount(0);
+    await expect(
+      page.locator(`${EDITOR} .doc-comment-mark-reading`),
+    ).toHaveCount(0);
+  });
+
   test('leaves the same space above the box as below it', async ({
     page,
   }) => {
@@ -469,7 +491,7 @@ test.describe('the panel, read across from the body', () => {
     page,
   }) => {
     // A comment that exists and a panel the reader opens, with nothing being
-    // read: a comment just saved is still the one being read (§9.4.1).
+    // read.
     await openFreshDocument(page);
     await page.keyboard.type(LONG_LINE);
     await commentOnParagraph(page, 0, 'about this line');

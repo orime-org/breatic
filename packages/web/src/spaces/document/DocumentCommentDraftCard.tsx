@@ -37,7 +37,6 @@ import {
   type DraftState,
 } from '@web/stores/annotation-draft';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
-import { selectThreads } from '@web/spaces/document/document-comment-selection';
 import type { DraftRange } from '@web/spaces/document/document-comment-draft-range';
 import { DocumentCommentWriteBox } from '@web/spaces/document/DocumentCommentWriteBox';
 import { postComment } from '@web/spaces/document/document-comment-post';
@@ -177,9 +176,6 @@ export function DocumentCommentDraftCard({
       // they still are. On the `null` path the notice A21 owes them is raised
       // by the effect watching the range, which needs this card still open.
       if (thread == null) return;
-      // The comment it became is the one being read now: the reader has not
-      // turned to anything else.
-      selectThreads(editor, [thread.id]);
       setDraft(saved);
       // The range is what says a draft is open, so clearing it closes the card.
       clearRange();

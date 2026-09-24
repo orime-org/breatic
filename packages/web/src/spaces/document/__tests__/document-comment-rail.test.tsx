@@ -919,8 +919,11 @@ describe('the comment panel', () => {
       expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual([]);
     });
 
-    it('leaves the comment it became as the one being read', async () => {
+    it('leaves no card being read once it is saved', async () => {
+      // user 2026-09-24: saving is the comment being finished, so nothing in
+      // the panel carries on as the one being read.
       show();
+      await comment(6, 11, 'about bravo');
       aimDraft(0, 5);
       await screen.findByTestId('doc-comment-draft-card');
       await userEvent.type(
@@ -931,10 +934,13 @@ describe('the comment panel', () => {
       await userEvent.click(screen.getByTestId('doc-comment-draft-save'));
 
       await waitFor(() => {
-        expect(screen.getByTestId('doc-comment-card').dataset.selected).toBe(
-          'true',
-        );
+        expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
       });
+      expect(screen.getAllByTestId('doc-comment-card')).toHaveLength(2);
+      for (const card of screen.getAllByTestId('doc-comment-card')) {
+        expect(card.dataset.selected).toBe('false');
+      }
+      expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual([]);
       expect(draftPaint()).toBeNull();
     });
 
