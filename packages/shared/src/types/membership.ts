@@ -469,8 +469,13 @@ export interface CardActionInput {
   readonly card: MembershipCard;
   /** Which period the switcher is on. */
   readonly selectedPeriod: BillingPeriod;
-  /** The tier in force on the account, which is not always the tier paid for. */
-  readonly accountTier: MembershipTier;
+  /**
+   * The tier in force on the account, which is not always the tier paid for.
+   *
+   * One of the three on the price list: the cards are only drawn for an
+   * account that has a position on it, and rule 7 compares that position.
+   */
+  readonly accountTier: ComparableMembershipTier;
   /** Whether this deployment sells subscriptions at all. */
   readonly sellsSubscriptions: boolean;
   /** Which situation the subscription is in. */
@@ -484,7 +489,7 @@ export interface CardActionInput {
 /**
  * What one tier card offers, for the period the switcher is on.
  *
- * Ten conditions, the first match winning, in one place rather than spread
+ * Nine conditions, the first match winning, in one place rather than spread
  * through the markup: what the card shows and what the server accepts have to
  * be the same answer. A card drawn where `changePlan` refuses is an entrance
  * into an error; a card left blank where it accepts is a purchase nobody can
@@ -511,11 +516,9 @@ export function cardAction(input: CardActionInput): CardAction {
     holdsActionableSubscription(input.situation) && input.heldPeriod !== null;
   // No assertion on the period: `holds` is inferred as a type predicate, so
   // the branch below already knows it is not null.
-  const onPriceList = isComparableMembershipTier(input.accountTier);
-  const held =
-    holds && onPriceList
-      ? { tier: input.accountTier, period: input.heldPeriod }
-      : null;
+  const held = holds
+    ? { tier: input.accountTier, period: input.heldPeriod }
+    : null;
 
   // 3. The card they are on, for the period they are on.
   if (held && input.card === held.tier && input.selectedPeriod === held.period) {
@@ -525,30 +528,23 @@ export function cardAction(input: CardActionInput): CardAction {
   // 4. The free tier is not sold.
   if (input.card === "base") return "blank";
 
-  // 5. Above rule 8 on purpose: while Stripe retries a failing card, every
+  // 5. Above rule 7 on purpose: while Stripe retries a failing card, every
   //    entrance goes, including the ones that would otherwise be reachable.
   if (input.move === "withheld") return "blank";
 
-  // 6. Above rule 8 on purpose: what this account is on has no position on
-  //    the price list, so rule 8 has nothing to compare against. `indexOf`
-  //    would answer -1 there, which reads as "below every tier" and would
-  //    turn every card into a move on offer — the opposite of the truth,
-  //    since `self_hosted` and `enterprise` are settled outside this page.
-  if (holds && !onPriceList) return "blank";
-
-  // 7. Nothing to move from, so this is a first purchase.
+  // 6. Nothing to move from, so this is a first purchase.
   if (!held) return "choose";
 
-  // 8. Dropping a tier or shortening a period is never on offer.
+  // 7. Dropping a tier or shortening a period is never on offer.
   if (
     !canMoveTo(held, { tier: input.card, period: input.selectedPeriod })
   ) {
     return "blank";
   }
 
-  // 9. A move already made, waiting on its invoice.
+  // 8. A move already made, waiting on its invoice.
   if (input.move === "pending") return "inProgress";
 
-  // 10. Everything left is a move this account may make.
+  // 9. Everything left is a move this account may make.
   return "move";
 }

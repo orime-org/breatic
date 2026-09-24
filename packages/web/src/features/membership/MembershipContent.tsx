@@ -344,7 +344,7 @@ export function MembershipContent({
                           // segments fill it exactly, so a ring drawn outside
                           // their edges has nowhere to land. Drawn inside, the
                           // keyboard reader sees where they are.
-                          className='rounded-none border-0 border-l border-border first:border-l-0 focus-visible:ring-inset aria-pressed:bg-accent-strong aria-pressed:font-semibold aria-pressed:text-foreground aria-pressed:hover:bg-accent-strong'
+                          className='rounded-none border-0 border-l border-border first:border-l-0 focus-visible:ring-inset aria-pressed:bg-accent-strong aria-pressed:font-semibold aria-pressed:hover:bg-accent-strong'
                           data-testid={`membership-period-${period}`}
                           onClick={() => setSelectedPeriod(period)}
                         >

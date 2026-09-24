@@ -26,7 +26,7 @@ import {
   type BillingPeriod,
   type MembershipLimits,
   type MoveOffer,
-  type MembershipTier,
+  type ComparableMembershipTier,
   type SubscriptionSituation,
   type TierOffer,
 } from '@breatic/shared';
@@ -91,7 +91,7 @@ const UNPRICED: readonly TierOffer[] = CATALOG.map((offer) => ({
 /** The position an account is in while its subscription sits in one situation. */
 interface Position {
   /** The tier in force, which is not always the tier that was paid for. */
-  readonly accountTier: MembershipTier;
+  readonly accountTier: ComparableMembershipTier;
   /** The stored subscription's period, null where there is no subscription. */
   readonly heldPeriod: BillingPeriod | null;
   /** Whether a move can be started from here. */

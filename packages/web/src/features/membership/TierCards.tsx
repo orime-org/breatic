@@ -7,7 +7,6 @@ import type {
   BillingPeriod,
   CardAction,
   ComparableMembershipTier,
-  MembershipTier,
   MoveOffer,
   SubscriptionSituation,
   TierOffer,
@@ -24,8 +23,8 @@ import { useTranslation } from '@web/i18n/use-translation';
 interface TierCardsProps {
   /** The priced tiers, cheapest first, as the server sends them. */
   offers: readonly TierOffer[];
-  /** The tier in force on this account. */
-  currentTier: MembershipTier;
+  /** The tier in force on this account, one of the three on the price list. */
+  currentTier: ComparableMembershipTier;
   /** Which period the switcher is on, which picks the price and the action. */
   selectedPeriod: BillingPeriod;
   /** Which situation the account's subscription is in. */
@@ -66,9 +65,7 @@ function yearSavingPercent(
 ): number | null {
   const { month, year } = prices;
   if (!month || !year) return null;
-  const twelveMonths = month.priceCents * 12;
-  if (twelveMonths <= 0) return null;
-  const saving = Math.round((1 - year.priceCents / twelveMonths) * 100);
+  const saving = Math.round((1 - year.priceCents / (month.priceCents * 12)) * 100);
   return saving > 0 ? saving : null;
 }
 
@@ -158,14 +155,11 @@ export const TierCards = React.memo(function TierCards({
   const locale = getLocale();
 
   return (
-    // Three rows — head, body, control — declared here and borrowed by every
-    // card, so a head that runs to one more line makes that row taller for
-    // all four at once and the lists below still start on one line. Reserving
-    // a fixed height inside each card cannot do this: the height that fits
-    // has to be the tallest of five languages, which leaves the other four
-    // padded out, and the first string that outgrows it puts one card's body
-    // out of line with its neighbours again.
-    <div className='grid grid-rows-[auto_auto_auto] gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+    // Each card spans three rows of this grid — head, body, control — through
+    // subgrid, so a head that runs to one more line in some language makes
+    // that row taller for every card in it, and the lists and controls below
+    // still start on one line.
+    <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
       {offers.map((offer) => {
         const action = cardAction({
           card: offer.tier,
