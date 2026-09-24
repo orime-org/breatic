@@ -66,6 +66,54 @@ async function commentOnParagraph(
   await expect(p.getByTestId('doc-comment-rail')).toHaveCount(0);
 }
 
+/**
+ * Selects a character range in one paragraph.
+ * @param p - The page.
+ * @param from - Where the range starts.
+ * @param to - Where it ends.
+ * @param paragraph - Which paragraph, counting from zero.
+ */
+async function selectChars(
+  p: Page,
+  from: number,
+  to: number,
+  paragraph = 0,
+): Promise<void> {
+  await p.evaluate(
+    ({ sel, at, index }) => {
+      const para = document.querySelectorAll(`${sel} p`)[index]!;
+      const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
+      let seen = 0;
+      let startNode: Text | null = null;
+      let startOffset = 0;
+      let endNode: Text | null = null;
+      let endOffset = 0;
+      let node = walker.nextNode() as Text | null;
+      while (node !== null) {
+        const len = node.data.length;
+        if (startNode === null && seen + len >= at.from) {
+          startNode = node;
+          startOffset = at.from - seen;
+        }
+        if (endNode === null && seen + len >= at.to) {
+          endNode = node;
+          endOffset = at.to - seen;
+        }
+        seen += len;
+        node = walker.nextNode() as Text | null;
+      }
+      const range = document.createRange();
+      range.setStart(startNode!, startOffset);
+      range.setEnd(endNode!, endOffset);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    },
+    { sel: EDITOR, at: { from, to }, index: paragraph },
+  );
+  await p.waitForTimeout(250);
+}
+
 /** How many bubble bars are on screen. */
 async function barCount(p: Page): Promise<number> {
   return p.getByTestId('doc-selection-bubble-bar').count();
@@ -384,6 +432,13 @@ test.describe('the card a comment is written in', () => {
     );
 
     await page.getByTestId('doc-comment-draft-input').fill('half a thought');
+    // The draft being read keeps its words' line, which puts the first line's
+    // card under the header; the panel's own scroll brings it back (§9.6.1).
+    const rail = (await page
+      .getByTestId('doc-comment-rail-column')
+      .boundingBox())!;
+    await page.mouse.move(rail.x + rail.width / 2, rail.y + 300);
+    for (let i = 0; i < 5; i += 1) await page.mouse.wheel(0, -100);
     await page.getByTestId('doc-comment-card').click();
     await expect(page.getByTestId('doc-comment-card')).toHaveAttribute(
       'data-selected',
@@ -938,48 +993,6 @@ test.describe('what the pointer says over the body', () => {
 });
 
 test.describe('a comment split around words that are not its own', () => {
-  /**
-   * Selects a character range in the first paragraph.
-   * @param p - The page.
-   * @param from - Where the range starts.
-   * @param to - Where it ends.
-   */
-  async function selectChars(p: Page, from: number, to: number): Promise<void> {
-    await p.evaluate(
-      ({ sel, at }) => {
-        const para = document.querySelector(`${sel} p`)!;
-        const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
-        let seen = 0;
-        let startNode: Text | null = null;
-        let startOffset = 0;
-        let endNode: Text | null = null;
-        let endOffset = 0;
-        let node = walker.nextNode() as Text | null;
-        while (node !== null) {
-          const len = node.data.length;
-          if (startNode === null && seen + len >= at.from) {
-            startNode = node;
-            startOffset = at.from - seen;
-          }
-          if (endNode === null && seen + len >= at.to) {
-            endNode = node;
-            endOffset = at.to - seen;
-          }
-          seen += len;
-          node = walker.nextNode() as Text | null;
-        }
-        const range = document.createRange();
-        range.setStart(startNode!, startOffset);
-        range.setEnd(endNode!, endOffset);
-        const selection = window.getSelection()!;
-        selection.removeAllRanges();
-        selection.addRange(range);
-      },
-      { sel: EDITOR, at: { from, to } },
-    );
-    await p.waitForTimeout(250);
-  }
-
   test('leaves the words between its runs the colour of plain prose', async ({
     page,
   }) => {
@@ -1083,5 +1096,119 @@ test.describe('a comment split around words that are not its own', () => {
     }, EDITOR);
 
     expect(between).toBe('rgba(0, 0, 0, 0)');
+  });
+});
+
+test.describe('a column crowded with comments', () => {
+  /** The line the comments crowd, below enough lines to be clear of the header. */
+  const LINE = 6;
+
+  /**
+   * Puts one comment on each of the first eight characters of one line.
+   * @param p - The page.
+   */
+  async function crowdOneLine(p: Page): Promise<void> {
+    await openFreshDocument(p);
+    for (let i = 0; i < LINE; i += 1) await p.keyboard.type(`line ${String(i)}\n`);
+    await p.keyboard.type('abcdefgh and more words after them');
+    for (let i = 0; i < 8; i += 1) {
+      await selectChars(p, i, i + 1, LINE);
+      await p.getByTestId('doc-bubble-tool-comment').click();
+      await p.getByTestId('doc-comment-draft-input').fill(`note ${String(i)}`);
+      await p.getByTestId('doc-comment-draft-save').click();
+      await expect(p.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+    }
+  }
+
+  /**
+   * Where each card sits on screen, by what it says.
+   * @param p - The page.
+   * @returns The top of each card.
+   */
+  async function cardTops(p: Page): Promise<Record<string, number>> {
+    return p.evaluate(() =>
+      Object.fromEntries(
+        [...document.querySelectorAll('[data-testid="doc-comment-card"]')].map(
+          (card) => [
+            /note \d/.exec(card.textContent ?? '')?.[0] ?? '',
+            card.getBoundingClientRect().top,
+          ],
+        ),
+      ),
+    );
+  }
+
+  /**
+   * Opens the card for one of the notes by pressing its words.
+   * @param p - The page.
+   * @param index - Which note.
+   */
+  async function readNote(p: Page, index: number): Promise<void> {
+    await p.locator(`${EDITOR} [data-bn-thread-id]`).nth(index).click();
+    await expect(
+      p.getByTestId('doc-comment-card').filter({ hasText: `note ${String(index)}` }),
+    ).toHaveAttribute('data-selected', 'true');
+    // The cards move by transition.
+    await p.waitForTimeout(400);
+  }
+
+  test('keeps the card being read level with its words', async ({ page }) => {
+    // user 2026-09-24: a card is read across from its words, however many
+    // other cards want the same place.
+    await crowdOneLine(page);
+    await readNote(page, 5);
+
+    const line = (await page.locator(`${EDITOR} p`).nth(LINE).boundingBox())!;
+    const tops = await cardTops(page);
+    expect(Math.abs(tops['note 5']! - line.y)).toBeLessThan(12);
+  });
+
+  test('lifts the column over the cards hidden above before the body moves', async ({
+    page,
+  }) => {
+    await crowdOneLine(page);
+    await readNote(page, 5);
+    const header = (await page
+      .getByTestId('doc-comment-rail-header')
+      .boundingBox())!;
+    const edge = header.y + header.height;
+    const before = await cardTops(page);
+    expect(before['note 0']!).toBeLessThan(edge);
+    const bodyTop = (await page.locator(`${EDITOR} p`).first().boundingBox())!.y;
+
+    const rail = (await page.getByTestId('doc-comment-rail-column').boundingBox())!;
+    await page.mouse.move(rail.x + rail.width / 2, edge + 200);
+    for (let i = 0; i < 20; i += 1) await page.mouse.wheel(0, -100);
+    await page.waitForTimeout(300);
+
+    const after = await cardTops(page);
+    // Every card is back below the header, and the body has not moved.
+    expect(after['note 0']!).toBeGreaterThanOrEqual(edge - 1);
+    expect((await page.locator(`${EDITOR} p`).first().boundingBox())!.y).toBe(
+      bodyTop,
+    );
+
+    // The other way, the column goes back first.
+    for (let i = 0; i < 20; i += 1) await page.mouse.wheel(0, 100);
+    await page.waitForTimeout(300);
+    const back = await cardTops(page);
+    expect(Math.abs(back['note 5']! - before['note 5']!)).toBeLessThan(2);
+  });
+
+  test('starts the column over when another card is read', async ({ page }) => {
+    await crowdOneLine(page);
+    await readNote(page, 5);
+    const header = (await page
+      .getByTestId('doc-comment-rail-header')
+      .boundingBox())!;
+    const rail = (await page.getByTestId('doc-comment-rail-column').boundingBox())!;
+    await page.mouse.move(rail.x + rail.width / 2, header.y + header.height + 200);
+    for (let i = 0; i < 5; i += 1) await page.mouse.wheel(0, -100);
+
+    await readNote(page, 6);
+
+    const line = (await page.locator(`${EDITOR} p`).nth(LINE).boundingBox())!;
+    const tops = await cardTops(page);
+    expect(Math.abs(tops['note 6']! - line.y)).toBeLessThan(12);
   });
 });

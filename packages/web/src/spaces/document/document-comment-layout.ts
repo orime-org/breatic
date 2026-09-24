@@ -17,11 +17,15 @@
  * deterministic offset. With nothing being read, the first card keeps its
  * anchor and the rest give way downwards.
  *
- * The panel's header is the top of the column and no card may reach it: a
- * card giving way upwards near the top of the body has nowhere to go, and
- * what it would cover is the filter and the close button. The run stacks down
- * from the header instead, which takes the one being read off its anchor —
- * up there that is the only place left (user 2026-09-22).
+ * The panel's header is the top of the column. The card being read never
+ * reaches it — covering the filter and the close button would also hide part
+ * of the one card being read — so near the top of the body it is held just
+ * below the header. The cards ABOVE it are another matter: the one being read
+ * stays level with its words, and a card above with no room left goes up
+ * under the header (user 2026-09-24). How far the furthest of them was pushed
+ * is handed back as `raised`, and the panel lifts its column by up to that
+ * much to bring them back ({@link nextLift}, design §9.6.1). With nothing
+ * being read, the whole column stays below the header as before.
  *
  * Cards move between one answer and the next rather than appearing at the new
  * one — the panel animates the change, which is what makes giving way read as
@@ -61,6 +65,11 @@ export interface Placement {
    * which is the order they end up sitting in.
    */
   readonly order: readonly string[];
+  /**
+   * How far the card pushed furthest above the one being read sits from its
+   * words, or 0 when none was pushed. The most the panel lifts its column by.
+   */
+  readonly raised: number;
 }
 
 /**
@@ -90,7 +99,12 @@ export function layOutCards(
       placed.set(card.id, next);
       next += card.height + gap;
     }
-    return { tops: placed, height: next, order: adrift.map((card) => card.id) };
+    return {
+      tops: placed,
+      height: next,
+      order: adrift.map((card) => card.id),
+      raised: 0,
+    };
   }
 
   // Where the run of cards starts from. The one being read is the anchor of
@@ -98,11 +112,14 @@ export function layOutCards(
   const pivot = inOrder.findIndex((card) => card.id === readingId);
   const from = pivot === -1 ? 0 : pivot;
 
-  placed.set(inOrder[from]!.id, inOrder[from]!.anchor);
+  // The one being read is never held anywhere but its anchor, except off the
+  // header: that is the only place near the top of the body it can be.
+  const pivotTop = Math.max(inOrder[from]!.anchor, minTop);
+  placed.set(inOrder[from]!.id, pivotTop);
 
   // Downwards from the pivot: a card takes its anchor, or the first place
   // below the card before it that clears the gap.
-  let below = inOrder[from]!.anchor + inOrder[from]!.height;
+  let below = pivotTop + inOrder[from]!.height;
   for (let i = from + 1; i < inOrder.length; i += 1) {
     const card = inOrder[i]!;
     const top = Math.max(card.anchor, below + gap);
@@ -111,27 +128,70 @@ export function layOutCards(
   }
 
   // Upwards from the pivot, for the cards a read one pushed out of the way.
-  let above = inOrder[from]!.anchor;
+  // Nothing holds them off the header: they go under it, and `raised` says
+  // how far.
+  let above = pivotTop;
+  let raised = 0;
   for (let i = from - 1; i >= 0; i -= 1) {
     const card = inOrder[i]!;
     const top = Math.min(card.anchor, above - gap - card.height);
     placed.set(card.id, top);
+    raised = Math.max(raised, card.anchor - top);
     above = top;
   }
 
-  // Held off the header, and off each other once held. The pass above places
-  // the cards in anchor order, so working down that order is enough: each
-  // card starts where it was put and comes down only as far as the one before
-  // it makes it.
+  // Held off the header, and off each other once held — from the pivot down.
+  // With nothing being read the pivot is the first card, so that is all of
+  // them. The passes above place the cards in anchor order, so working down
+  // that order is enough: each card starts where it was put and comes down
+  // only as far as the one before it makes it.
   let floor = minTop;
   const down = [...inOrder, ...adrift];
-  for (const card of down) {
+  for (const card of down.slice(from)) {
     const top = Math.max(placed.get(card.id) ?? floor, floor);
     placed.set(card.id, top);
     floor = top + card.height + gap;
   }
 
-  return { tops: placed, height: floor, order: down.map((card) => card.id) };
+  return {
+    tops: placed,
+    height: floor,
+    order: down.map((card) => card.id),
+    raised,
+  };
+}
+
+/** One wheel turn over the panel, and what it finds there. */
+export interface LiftTurn {
+  /** How far the column is lifted now. */
+  readonly lift: number;
+  /** The turn, in pixels; negative is upwards. */
+  readonly delta: number;
+  /** The most the column may be lifted, from {@link layOutCards}. */
+  readonly raised: number;
+  /** How far the most hidden of the pushed cards is above the header now. */
+  readonly hidden: number;
+}
+
+/**
+ * Where one wheel turn over the panel leaves its own lift (design §9.6.1).
+ *
+ * Upwards, the turn first brings back cards hidden under the header, as far
+ * as they are hidden and as far as they were pushed; downwards, it first puts
+ * the column back. Whatever it does not take goes to the body.
+ * @param turn - The lift now, the turn, and the room there is.
+ * @returns The lift after it, and whether the panel took the turn.
+ */
+export function nextLift(turn: LiftTurn): { lift: number; taken: boolean } {
+  const { lift, delta, raised, hidden } = turn;
+  if (delta < 0) {
+    const by = Math.min(-delta, raised - lift, hidden);
+    return by > 0 ? { lift: lift + by, taken: true } : { lift, taken: false };
+  }
+  if (delta > 0 && lift > 0) {
+    return { lift: Math.max(lift - delta, 0), taken: true };
+  }
+  return { lift, taken: false };
 }
 
 /**

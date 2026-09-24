@@ -33,6 +33,7 @@ import type { CommentRail } from '@web/spaces/document/document-comment-rail';
 import {
   inColumnOrder,
   layOutCards,
+  nextLift,
 } from '@web/spaces/document/document-comment-layout';
 import {
   hoverThread,
@@ -89,6 +90,9 @@ const CARD_HEIGHT_GUESS_PX = 120;
 
 /** How close to the panel's header a card may come (user 2026-09-22). */
 const CLEARANCE_BELOW_HEADER_PX = 4;
+
+/** One line of a wheel that counts in lines (Firefox), in pixels. */
+const WHEEL_LINE_PX = 16;
 
 /** What every card takes from the panel, the same for all of them. */
 type CardHandling = Omit<
@@ -377,6 +381,63 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   );
   const placed = placement.tops;
 
+  // The panel's own scroll: how far the column is lifted to bring back the
+  // cards the one being read pushed up under the header (design §9.6.1).
+  // `setLift` is its one writer. A new card being read starts the column
+  // over; a layout that leaves less room holds it to what there is.
+  const [lift, setLift] = React.useState(0);
+  React.useEffect(() => {
+    setLift(0);
+  }, [reading]);
+  React.useEffect(() => {
+    setLift((held) => Math.min(held, placement.raised));
+  }, [placement.raised]);
+  const lifted = Math.min(lift, placement.raised);
+
+  const aside = React.useRef<HTMLElement>(null);
+  const header = React.useRef<HTMLDivElement>(null);
+  // Read by the wheel listener, which is attached once.
+  const liftInputs = React.useRef({ lifted, placement, anchors });
+  React.useEffect(() => {
+    liftInputs.current = { lifted, placement, anchors };
+  }, [lifted, placement, anchors]);
+  React.useEffect(() => {
+    const node = aside.current;
+    if (node === null) return;
+    /**
+     * Takes a wheel turn over the panel when it brings a hidden card back or
+     * puts the column back; otherwise leaves it to the body.
+     * @param event - The turn.
+     */
+    const onWheel = (event: WheelEvent): void => {
+      const { lifted: now, placement: laid, anchors: at } = liftInputs.current;
+      const edge = header.current?.getBoundingClientRect().bottom;
+      const top = column.current?.getBoundingClientRect().top;
+      if (edge === undefined || top === undefined) return;
+      // How far the most hidden of the pushed cards reaches above the header.
+      let hidden = 0;
+      for (const [id, cardTop] of laid.tops) {
+        const anchor = at.get(id);
+        if (anchor === undefined || cardTop >= anchor) continue;
+        hidden = Math.max(hidden, edge - (top + cardTop + now));
+      }
+      const delta =
+        event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? event.deltaY * WHEEL_LINE_PX
+          : event.deltaY;
+      const next = nextLift({ lift: now, delta, raised: laid.raised, hidden });
+      if (!next.taken) return;
+      event.preventDefault();
+      setLift(next.lift);
+    };
+    // Not React's `onWheel`: that one is passive, and `preventDefault` there
+    // would not keep the turn from scrolling the body.
+    node.addEventListener('wheel', onWheel, { passive: false });
+    return (): void => {
+      node.removeEventListener('wheel', onWheel);
+    };
+  }, []);
+
   const written = React.useMemo(
     () => inColumnOrder(shown, placement.order),
     [shown, placement],
@@ -429,6 +490,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
 
   return (
     <aside
+      ref={aside}
       data-testid='doc-comment-rail'
       className='flex w-72 flex-none flex-col border-l border-border'
     >
@@ -437,6 +499,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
           out of the panel scroll away with the text (user 2026-09-22). The
           background is its own, because what passes beneath it is cards. */}
       <div
+        ref={header}
         data-testid='doc-comment-rail-header'
         className='sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-background px-3 py-2'
       >
@@ -488,7 +551,10 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
             )}
           </p>
         ) : (
-          <div className='absolute inset-x-2.5 top-0'>
+          <div
+            className='absolute inset-x-2.5 top-0'
+            style={{ transform: `translateY(${String(lifted)}px)` }}
+          >
             {written.map((card) => (
               <PlacedCard
                 key={card.id}

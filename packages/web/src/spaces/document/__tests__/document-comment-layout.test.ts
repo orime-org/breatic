@@ -23,6 +23,7 @@ import { describe, it, expect } from 'vitest';
 import {
   inColumnOrder,
   layOutCards,
+  nextLift,
 } from '@web/spaces/document/document-comment-layout';
 
 /** The gap this Space keeps between two cards. */
@@ -219,10 +220,10 @@ describe('the panel header', () => {
     expect(placed.tops.get('a')).toBe(MIN_TOP);
   });
 
-  it('stacks down from it rather than letting a card give way over it', () => {
-    // `b` is being read, so `a` gives way upwards — and there is nowhere up
-    // there to go. Both come down from the header instead, which takes `b`
-    // off its anchor: near the top of the body that is the only place left.
+  it('keeps the card being read on its words and lets the ones above pass under it', () => {
+    // user 2026-09-24: the card being read stays level with its words, and a
+    // card above it with no room left goes up under the header. The panel's
+    // own scroll brings it back.
     const placed = layOutCards(
       [
         { id: 'a', anchor: 0, height: 100 },
@@ -232,8 +233,67 @@ describe('the panel header', () => {
       GAP,
       MIN_TOP,
     );
+    expect(placed.tops.get('b')).toBe(40);
+    expect(placed.tops.get('a')).toBe(40 - GAP - 100);
+  });
+
+  it('holds the card being read itself back from it', () => {
+    // Covering the header would leave the reader unable to see all of the one
+    // card they are reading; below it is the only place left.
+    const placed = layOutCards(
+      [
+        { id: 'a', anchor: 0, height: 100 },
+        { id: 'b', anchor: 40, height: 100 },
+      ],
+      'a',
+      GAP,
+      MIN_TOP,
+    );
     expect(placed.tops.get('a')).toBe(MIN_TOP);
     expect(placed.tops.get('b')).toBe(MIN_TOP + 100 + GAP);
+  });
+});
+
+describe('how far the cards above the one being read were pushed', () => {
+  it('is how far the one pushed furthest is from its words', () => {
+    const placed = layOutCards(
+      [
+        { id: 'a', anchor: 0, height: 100 },
+        { id: 'b', anchor: 10, height: 100 },
+        { id: 'c', anchor: 40, height: 100 },
+      ],
+      'c',
+      GAP,
+      MIN_TOP,
+    );
+    // b sits at 40 - 8 - 100 = -68, a at -68 - 8 - 100 = -176.
+    expect(placed.raised).toBe(176);
+  });
+
+  it('is nothing when the cards above had room', () => {
+    const placed = layOutCards(
+      [
+        { id: 'a', anchor: 40, height: 100 },
+        { id: 'b', anchor: 400, height: 100 },
+      ],
+      'b',
+      GAP,
+      MIN_TOP,
+    );
+    expect(placed.raised).toBe(0);
+  });
+
+  it('is nothing when no card is being read', () => {
+    const placed = layOutCards(
+      [
+        { id: 'a', anchor: 0, height: 100 },
+        { id: 'b', anchor: 40, height: 100 },
+      ],
+      null,
+      GAP,
+      MIN_TOP,
+    );
+    expect(placed.raised).toBe(0);
   });
 });
 
@@ -270,5 +330,75 @@ describe('the order the cards are written in', () => {
     const written = inColumnOrder([{ id: 'a' }], ['a', 'gone']);
 
     expect(written.map((card) => card.id)).toEqual(['a']);
+  });
+});
+
+describe('the panel lifting its own column', () => {
+  // A wheel turn over the panel first brings back the cards hidden under the
+  // header, then goes to the body (user 2026-09-24, design §9.6.1).
+  const UP = -30;
+  const DOWN = 30;
+
+  it('lifts by the turn while a card is hidden and there is room', () => {
+    expect(nextLift({ lift: 0, delta: UP, raised: 100, hidden: 80 })).toEqual({
+      lift: 30,
+      taken: true,
+    });
+  });
+
+  it('stops at what is hidden', () => {
+    expect(nextLift({ lift: 0, delta: -200, raised: 100, hidden: 50 })).toEqual({
+      lift: 50,
+      taken: true,
+    });
+  });
+
+  it('stops at how far the cards were pushed', () => {
+    expect(nextLift({ lift: 90, delta: UP, raised: 100, hidden: 80 })).toEqual({
+      lift: 100,
+      taken: true,
+    });
+  });
+
+  it('hands the turn to the body once nothing is hidden', () => {
+    expect(nextLift({ lift: 20, delta: UP, raised: 100, hidden: 0 })).toEqual({
+      lift: 20,
+      taken: false,
+    });
+  });
+
+  it('hands the turn to the body once lifted all the way', () => {
+    expect(nextLift({ lift: 100, delta: UP, raised: 100, hidden: 40 })).toEqual({
+      lift: 100,
+      taken: false,
+    });
+  });
+
+  it('lowers first on a turn the other way', () => {
+    expect(nextLift({ lift: 50, delta: DOWN, raised: 100, hidden: 0 })).toEqual({
+      lift: 20,
+      taken: true,
+    });
+  });
+
+  it('lowers no further than where it started', () => {
+    expect(nextLift({ lift: 10, delta: DOWN, raised: 100, hidden: 0 })).toEqual({
+      lift: 0,
+      taken: true,
+    });
+  });
+
+  it('hands a turn down to the body when nothing is lifted', () => {
+    expect(nextLift({ lift: 0, delta: DOWN, raised: 100, hidden: 0 })).toEqual({
+      lift: 0,
+      taken: false,
+    });
+  });
+
+  it('never takes a turn when the cards were not pushed at all', () => {
+    expect(nextLift({ lift: 0, delta: UP, raised: 0, hidden: 80 })).toEqual({
+      lift: 0,
+      taken: false,
+    });
   });
 });
