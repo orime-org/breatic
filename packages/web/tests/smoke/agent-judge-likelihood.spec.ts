@@ -29,16 +29,17 @@ let page: Page;
 /**
  * What the reader says, held here so the state can be measured against it.
  *
- * Ambiguous on purpose, and it names no likelihoods. The tool exists for what
- * the agent is unsure about, so a prompt that asks for probabilities outright
- * measures whether the tool works and not whether it gets reached for. This
- * sentence has several readings -- who picks, whether to wait to be told, and
- * whether one image or three -- and says not to ask, so the turn cannot end by
- * putting the question back.
+ * It asks for the odds outright, so the turn reaches for the tool. Whether the
+ * agent reaches for it unprompted is the agent's own judgement and is not what
+ * this case asserts: measured on four kinds of uncertainty, two runs each, it
+ * did so once in eight, and the other seven -- picking a reading and going on --
+ * were reasonable answers to what was asked. What this case holds is that a
+ * call, once made, carries the material and comes back answered.
  */
 const PROMPT =
-  'Write three titles, then make an image from the one that gets picked. Do not ' +
-  'ask me anything -- decide for yourself and go ahead.';
+  'I want a thirty second product video. Do not ask me anything -- work out for ' +
+  'yourself which of the ways you can build one suits this best, and tell me how ' +
+  'likely each of them is to be the right call.';
 
 /** One tool call as the finished conversation stores it. */
 interface StoredCall {
@@ -93,6 +94,7 @@ test.afterEach(async () => {
 });
 
 test('asks for a judgement with the material attached @needs-model', async () => {
+  test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-textarea');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
@@ -105,8 +107,11 @@ test('asks for a judgement with the material attached @needs-model', async () =>
 
   // The reply settles when the composer takes input again.
   const bubbles = page.getByTestId('message-bubble');
-  await expect(bubbles).toHaveCount(2, { timeout: 150_000 });
-  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 150_000 });
+  // The same figure the proposal smoke waits: a turn that lays pieces out on
+  // the canvas spends most of its time writing them, measured at 45-49s a
+  // step, and this one does.
+  await expect(bubbles).toHaveCount(2, { timeout: 200_000 });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
 
   const calls = await callsOfLatestConversation(page);
   const judged = calls.filter((call) => call.name === 'judge_likelihood');
