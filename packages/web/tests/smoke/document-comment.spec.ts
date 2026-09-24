@@ -115,6 +115,26 @@ test.describe('the card a comment is written in', () => {
     expect(Math.abs(card.y - words.y)).toBeLessThan(40);
   });
 
+  test('leaves the same space above the box as below it', async ({
+    page,
+  }) => {
+    // Before anything is typed the card holds the box and nothing else, so
+    // the box sits in the middle of it.
+    await openWithALongSelection(page);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
+
+    const card = (await page
+      .getByTestId('doc-comment-draft-card')
+      .boundingBox())!;
+    const box = (await page
+      .getByTestId('doc-comment-draft-scroller')
+      .boundingBox())!;
+    const above = box.y - card.y;
+    const below = card.y + card.height - (box.y + box.height);
+    expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
+  });
+
   test('carries a pair of buttons only once there are words', async ({
     page,
   }) => {

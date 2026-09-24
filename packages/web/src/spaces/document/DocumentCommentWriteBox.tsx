@@ -21,6 +21,7 @@ import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import { NOTE_MAX_CHARS } from '@web/spaces/canvas/annotation/caps';
 import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
@@ -45,6 +46,12 @@ interface WriteBoxProps {
   autoFocus?: boolean;
   /** Called when the focus leaves the box and its buttons. */
   onLeave?: () => void;
+  /**
+   * Where the box sits in whatever holds it. The box brings no space of its
+   * own: a reply sits under the comments above it, a draft is the card's only
+   * content, and each of those is the holder's to say.
+   */
+  className?: string;
 }
 
 /**
@@ -58,6 +65,7 @@ interface WriteBoxProps {
  * @param root0.onCancel - Throws it away.
  * @param root0.autoFocus - Focuses the box on arrival.
  * @param root0.onLeave - Called when the focus leaves box and buttons.
+ * @param root0.className - Where the box sits in whatever holds it.
  * @returns The box and, once it holds words, the pair.
  */
 export function DocumentCommentWriteBox({
@@ -69,6 +77,7 @@ export function DocumentCommentWriteBox({
   onCancel,
   autoFocus = false,
   onLeave,
+  className,
 }: WriteBoxProps): React.JSX.Element {
   const t = useTranslation();
   const box = React.useRef<HTMLTextAreaElement>(null);
@@ -88,7 +97,7 @@ export function DocumentCommentWriteBox({
 
   return (
     <div
-      className='mt-2 flex flex-col gap-1.5'
+      className={cn('flex flex-col gap-1.5', className)}
       onBlur={(event) => {
         // Where the focus went, not merely that it left: the pair of buttons
         // sits in here too, so a press on Save is not a landing outside.

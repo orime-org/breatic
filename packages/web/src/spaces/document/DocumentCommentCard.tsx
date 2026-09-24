@@ -328,6 +328,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       {mayWrite && reading && !settled && (
         <DocumentCommentWriteBox
           name='reply'
+          className='mt-2'
           value={reply}
           placeholder={t('spaces.document.comment.reply')}
           onChange={setReply}
