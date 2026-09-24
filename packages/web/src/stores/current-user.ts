@@ -125,7 +125,11 @@ export function applyPersonalStudio(
 export async function refreshCurrentUser(): Promise<void> {
   try {
     const fresh = await authApi.me();
-    useCurrentUserStore.getState().setUser(toCurrentUser(fresh));
+    // Only over the account the read was about. Somebody can sign out, or
+    // sign in as someone else, while it is out; an answer landing after that
+    // would put the previous account back on screen.
+    const { user, setUser } = useCurrentUserStore.getState();
+    if (user?.id === fresh.id) setUser(toCurrentUser(fresh));
   } catch {
     // Nothing to do here and nothing to say: the fields on screen are the
     // ones from the last successful read, which is what they already were.
