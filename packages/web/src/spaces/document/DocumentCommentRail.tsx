@@ -138,20 +138,13 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   React.useEffect(() => {
     if (draftAt !== null) setDraftLingers(true);
   }, [draftAt]);
-  // The card is also the one place that lets go of the draft's turn at being
-  // read: a draft that is gone cannot be the card being read (design §9.4.1,
-  // invariant four). That holds for a save too — saving is the comment being
-  // finished, and nothing carries on as the one being read (user 2026-09-24).
+  // The draft's turn at being read goes with its place: once `draftShowing`
+  // turns false, the effect that keeps `ids` to cards on the panel takes the
+  // draft's id out (design §9.4.1, invariant four). A save goes the same way —
+  // saving is the comment being finished (user 2026-09-24).
   const draftGone = React.useCallback((): void => {
     setDraftLingers(false);
-    const reading = selectedThreadsIn(editor.prosemirrorState);
-    if (reading.includes(DRAFT_THREAD_ID)) {
-      selectThreads(
-        editor,
-        reading.filter((id) => id !== DRAFT_THREAD_ID),
-      );
-    }
-  }, [editor]);
+  }, []);
   // Pressing the draft card, or putting the focus into it, makes it the card
   // being read — every card in the panel takes that turn the same way.
   const readDraft = React.useCallback((): void => {

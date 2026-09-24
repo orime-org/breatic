@@ -4,10 +4,9 @@
 /**
  * Which threads the reader is looking at (#18, A6 · A20).
  *
- * A press on a highlight opens the comment it belongs to. Where that comment
- * appears is the chrome's business — in the panel if it is open, floating
- * beside the line if it is not — and this holds the one thing both need: which
- * threads were pressed.
+ * A press on a highlight opens the comment it belongs to: the panel opens,
+ * and the comment is read there. This holds the one thing the panel needs for
+ * that — which threads were pressed.
  *
  * A LIST, NOT ONE. Two comments may cover the same run, and the library's own
  * handler reaches only the first of them (grep `marks.find` in

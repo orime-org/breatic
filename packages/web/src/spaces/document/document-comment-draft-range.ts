@@ -13,7 +13,7 @@
  * change, and it is GONE once both ends map to the same point: every
  * character it covered has been deleted. Posting into a gone range would put
  * the reader's words in a thread pointing at nothing, which is what A21 is
- * about — the box closes and says so instead.
+ * about — the draft card keeps its place in the panel and says so instead.
  *
  * ## Why plugin state
  *
@@ -112,7 +112,7 @@ function paintDraft(state: EditorState): DecorationSet {
 }
 
 /**
- * The broadcast for the open draft's range. A composer watching the editor's
+ * The broadcast for the open draft's range. A draft card watching the editor's
  * own events would never learn it should be on screen: opening a draft
  * dispatches nothing but the meta.
  */

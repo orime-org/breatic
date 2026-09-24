@@ -33,7 +33,10 @@ import {
   _resetDocumentEditorCacheForTests,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
+import {
+  DOCUMENT_COMMENT_DRAFT_RANGE,
+  draftRangeIn,
+} from '@web/spaces/document/document-comment-draft-range';
 import {
   selectThreads,
   selectedThreadsIn,
@@ -942,6 +945,30 @@ describe('the comment panel', () => {
       }
       expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual([]);
       expect(draftPaint()).toBeNull();
+    });
+
+    it('touches nothing of a viewer\'s when the panel opens with no draft', async () => {
+      // A viewer has no draft to lose, so opening the panel is no reason to
+      // write a selection or a draft range into their editor.
+      show('viewer');
+      // A comment on the page, so the panel draws its column of cards — the
+      // draft card lives in that column.
+      await comment(0, 5, 'already here');
+      const view = handle.editor.prosemirrorView!;
+      const dispatch = view.dispatch.bind(view);
+      const drafts: unknown[] = [];
+      view.dispatch = (tr) => {
+        if (tr.getMeta(DOCUMENT_COMMENT_DRAFT_RANGE) !== undefined) {
+          drafts.push(tr.getMeta(DOCUMENT_COMMENT_DRAFT_RANGE));
+        }
+        dispatch(tr);
+      };
+
+      await pressCommentsRow();
+      await screen.findByTestId('doc-comment-rail');
+
+      expect(drafts).toEqual([]);
+      view.dispatch = dispatch;
     });
 
     it('stays away while no draft is open', async () => {

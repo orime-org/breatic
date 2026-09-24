@@ -21,7 +21,7 @@
  * it stands at the moment of posting. The plugin is the one thing that has
  * carried that range across every edit since the draft opened, and reading it
  * here closes a gap a caller cannot — a peer's deletion can arrive between
- * React rendering the composer and the reader pressing post, and a range read
+ * React rendering the draft card and the reader pressing post, and a range read
  * at render time would be stale by then. A gone range posts nothing and the
  * caller says why (A21).
  */

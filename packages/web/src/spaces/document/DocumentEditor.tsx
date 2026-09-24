@@ -38,7 +38,7 @@ interface DocumentEditorProps {
    * The reader's role on the project.
    *
    * `readOnly` answers "may this person write at all", which the carriers
-   * gate on. The comment box asks a second question — whether the right to
+   * gate on. The draft card asks a second question — whether the right to
    * write was taken away while it was open (A22) — and that needs the role
    * itself. Defaults to the most restrictive reading, as `SpaceBodyProps`
    * does.
@@ -60,8 +60,8 @@ interface DocumentEditorProps {
  * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
  * @param root0.myRole - The reader's role on the project.
- * @returns The editor body, the comment panel beside it, the entry, the
- *   bubble bar and the comment box.
+ * @returns The editor body, the comment panel beside it, the entry and the
+ *   bubble bar.
  */
 export const DocumentEditor = React.memo(function DocumentEditor({
   handle,

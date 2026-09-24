@@ -135,15 +135,17 @@ export function DocumentCommentDraftCard({
     );
   }, [aimedAt]);
 
+  // Only a draft that is still aimed somewhere can lose the right to be
+  // written; with no range there is nothing of the reader's to close.
   React.useEffect(() => {
-    if (mayWrite) return;
+    if (mayWrite || aimedAt === null) return;
     setDraft((current) =>
       current.mode === 'typing'
         ? reduceDraft(current, { type: 'drop', why: 'cannotWrite' })
         : current,
     );
     clearRange();
-  }, [mayWrite, clearRange]);
+  }, [mayWrite, aimedAt, clearRange]);
 
   // Nothing aimed at, nothing being written, nothing to say: this card is
   // drawing nothing, and the rail can have its place back.
