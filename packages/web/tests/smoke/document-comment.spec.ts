@@ -115,6 +115,34 @@ test.describe('the card a comment is written in', () => {
     expect(Math.abs(card.y - words.y)).toBeLessThan(40);
   });
 
+  test('lets an empty one go on a press on blank panel space', async ({
+    page,
+  }) => {
+    // A30 again. Blank space takes no focus, so the focus goes nowhere in
+    // particular — and that is still the reader pressing somewhere else.
+    await openWithALongSelection(page);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
+
+    const column = (await page
+      .getByTestId('doc-comment-rail-column')
+      .boundingBox())!;
+    await page.mouse.click(
+      column.x + column.width / 2,
+      column.y + column.height - 40,
+    );
+
+    await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+    await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
+    const painted = await page.evaluate(
+      (selector) =>
+        document.querySelectorAll(`${selector} [data-show-selection="true"]`)
+          .length,
+      EDITOR,
+    );
+    expect(painted).toBe(0);
+  });
+
   test('leaves the same space above the box as below it', async ({
     page,
   }) => {

@@ -743,6 +743,11 @@ describe('the comment panel', () => {
       show();
       aimDraft(0, 5);
       await screen.findByTestId('doc-comment-draft-card');
+      // jsdom answers `hasFocus` by whether an element holds the focus, and
+      // none does between the box letting go and the body taking over. A
+      // browser answers whether the page has the system focus, which it keeps
+      // through a press inside it (measured in Chrome, 2026-09-24).
+      const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
 
       await clickTheBody();
 
@@ -750,6 +755,41 @@ describe('the comment panel', () => {
         expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
       });
       expect(screen.getByTestId('doc-comment-rail')).toBeInTheDocument();
+      focused.mockRestore();
+    });
+
+    it('lets an empty draft go when the press lands on nothing that takes the focus', async () => {
+      // A30: blank panel space takes no focus, so the blur names nowhere in
+      // particular while the page itself still has the focus.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+      act(() => {
+        screen.getByTestId('doc-comment-draft-input').blur();
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
+      });
+      focused.mockRestore();
+    });
+
+    it('keeps an empty draft while the reader is in another window', async () => {
+      // The page losing the focus is the reader switching away, and they come
+      // back to the card they were about to write in.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+
+      act(() => {
+        screen.getByTestId('doc-comment-draft-input').blur();
+      });
+
+      expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
+      focused.mockRestore();
     });
 
     it('keeps a draft that has words in it when the focus leaves', async () => {

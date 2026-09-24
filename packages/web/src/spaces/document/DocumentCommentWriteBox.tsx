@@ -101,10 +101,12 @@ export function DocumentCommentWriteBox({
       onBlur={(event) => {
         // Where the focus went, not merely that it left: the pair of buttons
         // sits in here too, so a press on Save is not a landing outside.
-        // A null landing is the window itself losing the focus — the reader
-        // switching away is not them giving up on what they were writing.
-        if (event.relatedTarget === null) return;
         if (event.currentTarget.contains(event.relatedTarget)) return;
+        // The page itself losing the focus is the reader switching to another
+        // window, which is not them giving up on what they were writing. A
+        // press on blank space in the page also names no landing, and the
+        // page keeps the focus through that one.
+        if (!document.hasFocus()) return;
         onLeave?.();
       }}
     >
