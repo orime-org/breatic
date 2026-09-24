@@ -117,8 +117,8 @@ test.describe('the card a comment is written in', () => {
   test('lets an empty one go on a press on blank panel space', async ({
     page,
   }) => {
-    // A30 again. Blank space takes no focus, so the focus goes nowhere in
-    // particular — and that is still the reader pressing somewhere else.
+    // A30 again. Blank space is outside the card, and pressing there is the
+    // reader going somewhere else.
     await openWithALongSelection(page);
     await page.getByTestId('doc-bubble-tool-comment').click();
     await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
@@ -139,6 +139,47 @@ test.describe('the card a comment is written in', () => {
       EDITOR,
     );
     expect(painted).toBe(0);
+  });
+
+  test('keeps an empty one on a press on its own padding', async ({ page }) => {
+    // The press takes the focus off the box without the reader leaving: the
+    // card's edge is still the card.
+    await openWithALongSelection(page);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    const card = page.getByTestId('doc-comment-draft-card');
+    await expect(card).toBeVisible();
+
+    const box = (await card.boundingBox())!;
+    await page.mouse.click(box.x + 4, box.y + 4);
+
+    await expect(card).toBeVisible();
+  });
+
+  test('stays open when it is asked for from the block handle', async ({
+    page,
+  }) => {
+    // A2. The menu hands the focus back to the body as it closes, which is
+    // not the reader pressing anywhere.
+    await openFreshDocument(page);
+    await page.keyboard.type('a block to comment on');
+    const row = (await page
+      .locator(`${EDITOR} .bn-block-content`)
+      .first()
+      .boundingBox())!;
+    await page.mouse.move(row.x + 40, row.y + row.height / 2);
+    await expect(page.getByTestId('doc-block-handle')).toBeVisible();
+    await page.getByTestId('doc-block-handle').click();
+
+    await page.getByTestId('doc-block-row-comment').click();
+
+    const card = page.getByTestId('doc-comment-draft-card');
+    await expect(card).toBeVisible();
+    // Long enough for the menu to have closed and the focus to have moved.
+    await page.waitForTimeout(500);
+    await expect(card).toBeVisible();
+    await page.getByTestId('doc-comment-draft-input').fill('from the handle');
+    await page.getByTestId('doc-comment-draft-save').click();
+    await expect(page.locator(`${EDITOR} .bn-thread-mark`)).not.toHaveCount(0);
   });
 
   test('leaves no card being read once it is saved', async ({ page }) => {

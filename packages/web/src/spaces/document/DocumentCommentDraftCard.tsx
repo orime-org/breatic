@@ -161,6 +161,36 @@ export function DocumentCommentDraftCard({
     clearRange();
   }, [clearRange]);
 
+  // A30: an empty draft ends on a press anywhere outside the card — the body,
+  // blank panel space, another card. It is the press, not the focus leaving,
+  // that says the reader went elsewhere: a menu handing the focus back to the
+  // body as it closes, a press on the card's own padding and a switch to
+  // another window all move the focus without the reader leaving. Radix's
+  // DismissableLayer answers "outside" the same way (`onPointerDownOutside`).
+  // Words the reader wrote are theirs to keep until they say otherwise.
+  const card = React.useRef<HTMLElement>(null);
+  const empty =
+    aimedAt !== null &&
+    draft.mode === 'typing' &&
+    draft.text.trim().length === 0;
+  React.useEffect(() => {
+    const own = card.current;
+    if (!empty || own === null) return;
+    const doc = own.ownerDocument;
+    /**
+     * Cancels the draft when the press lands outside the card.
+     * @param event - The press.
+     */
+    const onPress = (event: PointerEvent): void => {
+      if (event.target instanceof Node && own.contains(event.target)) return;
+      cancel();
+    };
+    doc.addEventListener('pointerdown', onPress, true);
+    return (): void => {
+      doc.removeEventListener('pointerdown', onPress, true);
+    };
+  }, [empty, cancel]);
+
   /** Posts what the reader wrote, and closes the card once it has landed. */
   const post = React.useCallback((): void => {
     const saved = reduceDraft(draft, { type: 'save' });
@@ -220,6 +250,7 @@ export function DocumentCommentDraftCard({
 
   return (
     <article
+      ref={card}
       data-testid='doc-comment-draft-card'
       data-selected={reading}
       className={`${CARD_SURFACE} ${CARD_READING_OUTLINE}`}
@@ -235,13 +266,6 @@ export function DocumentCommentDraftCard({
         }}
         onSave={post}
         onCancel={cancel}
-        onLeave={() => {
-          // A30: an empty draft is the reader having changed their mind, and
-          // words they wrote are theirs to keep until they say otherwise.
-          if (draft.mode === 'typing' && draft.text.trim().length === 0) {
-            cancel();
-          }
-        }}
       />
     </article>
   );

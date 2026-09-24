@@ -44,8 +44,6 @@ interface WriteBoxProps {
   onCancel: () => void;
   /** Focuses the box as soon as it is on screen. */
   autoFocus?: boolean;
-  /** Called when the focus leaves the box and its buttons. */
-  onLeave?: () => void;
   /**
    * Where the box sits in whatever holds it. The box brings no space of its
    * own: a reply sits under the comments above it, a draft is the card's only
@@ -64,7 +62,6 @@ interface WriteBoxProps {
  * @param root0.onSave - Sends what was written.
  * @param root0.onCancel - Throws it away.
  * @param root0.autoFocus - Focuses the box on arrival.
- * @param root0.onLeave - Called when the focus leaves box and buttons.
  * @param root0.className - Where the box sits in whatever holds it.
  * @returns The box and, once it holds words, the pair.
  */
@@ -76,7 +73,6 @@ export function DocumentCommentWriteBox({
   onSave,
   onCancel,
   autoFocus = false,
-  onLeave,
   className,
 }: WriteBoxProps): React.JSX.Element {
   const t = useTranslation();
@@ -96,20 +92,7 @@ export function DocumentCommentWriteBox({
   );
 
   return (
-    <div
-      className={cn('flex flex-col gap-1.5', className)}
-      onBlur={(event) => {
-        // Where the focus went, not merely that it left: the pair of buttons
-        // sits in here too, so a press on Save is not a landing outside.
-        if (event.currentTarget.contains(event.relatedTarget)) return;
-        // The page itself losing the focus is the reader switching to another
-        // window, which is not them giving up on what they were writing. A
-        // press on blank space in the page also names no landing, and the
-        // page keeps the focus through that one.
-        if (!document.hasFocus()) return;
-        onLeave?.();
-      }}
-    >
+    <div className={cn('flex flex-col gap-1.5', className)}>
       {/* The border and the focus colour sit on the scroller, which is the
           element that stays still; the box inside it is always exactly as
           tall as what is written, so what scrolls is the words. */}
