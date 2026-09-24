@@ -25,18 +25,40 @@ import { Awareness } from 'y-protocols/awareness';
 
 import { CommentsExtension } from '@blocknote/core/comments';
 
+import { documentCommentThreads } from '@breatic/shared';
+
+import { toast } from '@web/lib/toast';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import {
   _resetDocumentEditorCacheForTests,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
+import {
+  DOCUMENT_COMMENT_DRAFT_RANGE,
+  draftRangeIn,
+} from '@web/spaces/document/document-comment-draft-range';
 import {
   selectThreads,
   selectedThreadsIn,
 } from '@web/spaces/document/document-comment-selection';
+import {
+  COMMENT_MARK,
+  asCommentBody,
+} from '@web/spaces/document/document-comment-extension';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
+
+vi.mock('@web/lib/toast', () => ({
+  toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
+}));
+
+// The real one throughout, wrapped so one case can ask for the answer it
+// gives when there is no range left to aim at.
+vi.mock('@web/spaces/document/document-comment-post', async (real) => {
+  const actual =
+    await real<typeof import('@web/spaces/document/document-comment-post')>();
+  return { ...actual, postComment: vi.fn(actual.postComment) };
+});
 
 describe('the comment panel', () => {
   const NAME = 'project-p/document-comment-rail';
@@ -72,13 +94,35 @@ describe('the comment panel', () => {
    * `DocumentEditor`'s own effect, and writing blocks into an unmounted one
    * leaves the body empty.
    */
-  function show(): void {
-    render(<DocumentEditor handle={handle} myRole='editor' />);
+  function show(myRole: 'editor' | 'viewer' = 'editor'): void {
+    const rendered = render(
+      <DocumentEditor handle={handle} myRole={myRole} />,
+    );
+    // One case takes the right to write away mid-draft, which is a change of
+    // this prop and nothing else (A22).
+    asRole = (next) => {
+      rendered.rerender(<DocumentEditor handle={handle} myRole={next} />);
+    };
     act(() => {
       handle.editor.replaceBlocks(handle.editor.document, [
         { type: 'paragraph', content: 'alpha bravo charlie' },
       ] as never);
     });
+  }
+
+  /** Renders again under a different role, set by the last `show`. */
+  let asRole: (next: 'editor' | 'viewer') => void;
+
+  /** The words the open draft is aimed at, as the body stands. */
+  function aimedWords(): string {
+    const at = draftRangeIn(handle.editor.prosemirrorState);
+    if (at === null) return '';
+    return handle.editor.prosemirrorState.doc.textBetween(at.from, at.to);
+  }
+
+  /** Puts the focus somewhere the reader could have put it: the body. */
+  async function clickTheBody(): Promise<void> {
+    await userEvent.click(handle.editor.prosemirrorView!.dom);
   }
 
   /** Where the first run of text sits. */
@@ -94,7 +138,12 @@ describe('the comment panel', () => {
   }
 
   /**
-   * Writes one comment over part of the first line.
+   * Puts one comment on part of the first line, the way a peer's arrives: a
+   * thread in the store and a mark over the words.
+   *
+   * Deliberately not through the entries and `postComment`. That path opens a
+   * draft, and a draft opens the panel (A1) — which is the very thing several
+   * of these cases are here to say does not happen on its own.
    * @param from - How far into the line it starts.
    * @param to - Where it ends.
    * @param body - What the comment says.
@@ -105,15 +154,19 @@ describe('the comment panel', () => {
     body: string,
   ): Promise<void> {
     const run = firstRun();
-    const view = handle.editor.prosemirrorView!;
+    const comments = handle.editor.getExtension(CommentsExtension)!;
     await act(async () => {
+      const thread = await comments.threadStore.createThread({
+        initialComment: { body: asCommentBody(body) },
+      });
+      const view = handle.editor.prosemirrorView!;
+      const mark = view.state.schema.marks[COMMENT_MARK]!.create({
+        threadId: thread.id,
+        orphan: false,
+      });
       view.dispatch(
-        view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
-          from: run.from + from,
-          to: run.from + to,
-        }),
+        view.state.tr.addMark(run.from + from, run.from + to, mark),
       );
-      await postComment(handle.editor, body);
     });
   }
 
@@ -202,6 +255,7 @@ describe('the comment panel', () => {
     show();
     await comment(6, 11, 'about bravo');
     await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
     await screen.findByTestId('doc-comment-rail');
 
     const quotes = Array.from(
@@ -214,6 +268,7 @@ describe('the comment panel', () => {
   it('shows what each comment says', async () => {
     show();
     await comment(0, 5, 'the whole point');
+    await pressCommentsRow();
 
     expect(await screen.findByText('the whole point')).toBeInTheDocument();
   });
@@ -224,6 +279,7 @@ describe('the comment panel', () => {
     show();
     await comment(0, 5, 'about alpha');
     await comment(6, 11, 'about bravo');
+    await pressCommentsRow();
     const cards = await screen.findAllByTestId('doc-comment-card');
     expect(cards.map((card) => card.getAttribute('data-selected'))).toEqual([
       'false',
@@ -316,6 +372,7 @@ describe('the comment panel', () => {
     // reader has left to work through.
     show();
     await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
     await screen.findAllByTestId('doc-comment-card');
     const threadId = [
       ...handle.editor
@@ -339,6 +396,7 @@ describe('the comment panel', () => {
     // A13: the thread stays and stays readable, with the highlight gone.
     show();
     await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
     await screen.findByTestId('doc-comment-rail');
 
     const run = firstRun();
@@ -359,6 +417,7 @@ describe('the comment panel', () => {
     show();
     await comment(0, 5, 'about alpha');
     await comment(6, 11, 'about bravo');
+    await pressCommentsRow();
     const cards = await screen.findAllByTestId('doc-comment-card');
     const second = cards[1]!.getAttribute('data-thread')!;
 
@@ -410,6 +469,7 @@ describe('the comment panel', () => {
     // so those words stayed deep long after the thread was settled (A8).
     show();
     await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
     // Resolve is offered on the card being read, so the press that settles a
     // thread always lands with the pointer on its card.
     const card = await screen.findByTestId('doc-comment-card');
@@ -438,6 +498,7 @@ describe('the comment panel', () => {
     // put the active colour back on words A8 promises read as prose.
     show();
     await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
     await userEvent.click(await screen.findByTestId('doc-comment-card'));
     await userEvent.click(screen.getByTestId('doc-comment-resolve'));
     await userEvent.click(
@@ -461,6 +522,7 @@ describe('the comment panel', () => {
     // of the body stayed painted with nothing on screen to explain it.
     show();
     await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
     await userEvent.hover(await screen.findByTestId('doc-comment-card'));
     await waitFor(() => {
       expect(deepened()).toBe(1);
@@ -515,6 +577,7 @@ describe('the comment panel', () => {
     // took the reader's unsent words with it when the card unmounted.
     show();
     await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
     await userEvent.click(await screen.findByTestId('doc-comment-card'));
     await userEvent.type(
       await screen.findByTestId('doc-comment-reply-input'),
@@ -540,6 +603,7 @@ describe('the comment panel', () => {
     // press, and the thing they want is one filter away.
     show();
     await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
     await userEvent.click(await screen.findByTestId('doc-comment-card'));
     await userEvent.click(screen.getByTestId('doc-comment-resolve'));
 
@@ -557,6 +621,7 @@ describe('the comment panel', () => {
     show();
     await comment(0, 11, 'the wider one');
     await comment(6, 19, 'the other one');
+    await pressCommentsRow();
     const ids = [
       ...handle.editor
         .getExtension(CommentsExtension)!
@@ -590,6 +655,7 @@ describe('the comment panel', () => {
 
     show();
     await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
     await userEvent.click(await screen.findByTestId('doc-comment-card'));
     released.mockClear();
     expect(releasedACard()).toBe(false);
@@ -666,9 +732,7 @@ describe('the comment panel', () => {
       aimDraft(0, 5);
       await screen.findByTestId('doc-comment-draft-card');
 
-      act(() => {
-        screen.getByTestId('doc-comment-draft-input').blur();
-      });
+      await clickTheBody();
 
       await waitFor(() => {
         expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
@@ -685,9 +749,7 @@ describe('the comment panel', () => {
         'half a thought',
       );
 
-      act(() => {
-        screen.getByTestId('doc-comment-draft-input').blur();
-      });
+      await clickTheBody();
 
       expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
       expect(screen.getByTestId('doc-comment-draft-input')).toHaveValue(
@@ -710,6 +772,260 @@ describe('the comment panel', () => {
         expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
       });
       expect(screen.getByTestId('doc-comment-card')).toBeInTheDocument();
+    });
+
+    it('stays away while no draft is open', async () => {
+      show();
+
+      await pressCommentsRow();
+
+      expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
+    });
+
+    it('says so when the thread cannot be opened', async () => {
+      // The store asks its auth before writing, and the words may be gone by
+      // the time the press lands. Whether that happens is not ours to
+      // promise; whether the reader is told is.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      const comments = handle.editor.getExtension(CommentsExtension)!;
+      vi.spyOn(comments.threadStore, 'createThread').mockRejectedValue(
+        new Error('refused'),
+      );
+
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'a thought',
+      );
+      await userEvent.click(screen.getByTestId('doc-comment-draft-save'));
+
+      await waitFor(() => {
+        expect(vi.mocked(toast.error)).toHaveBeenCalled();
+      });
+    });
+
+    it('keeps the words when the thread cannot be opened', async () => {
+      // The reply box answers the same refusal by keeping what was typed, and
+      // this is the one write that carries the reader's only copy of it.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      const comments = handle.editor.getExtension(CommentsExtension)!;
+      vi.spyOn(comments.threadStore, 'createThread').mockRejectedValue(
+        new Error('refused'),
+      );
+
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'a thought',
+      );
+      await userEvent.click(screen.getByTestId('doc-comment-draft-save'));
+
+      await waitFor(() => {
+        expect(vi.mocked(toast.error)).toHaveBeenCalled();
+      });
+      expect(screen.getByTestId('doc-comment-draft-input')).toHaveValue(
+        'a thought',
+      );
+    });
+
+    it('leaves the card open when the post wrote nothing', async () => {
+      // `postComment` answers null when there is no range left to aim at,
+      // which means what a refusal means: nothing was written. Closing on it
+      // takes the card away before the effect watching the range can raise
+      // A21's notice, so the reader is left with no comment and no account.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      vi.mocked(postComment).mockResolvedValueOnce(null);
+
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'a thought',
+      );
+      await userEvent.click(screen.getByTestId('doc-comment-draft-save'));
+
+      expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
+    });
+
+    it('marks the words it was aimed at with what was written', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'a first thought',
+      );
+      await userEvent.click(screen.getByTestId('doc-comment-draft-save'));
+
+      await waitFor(() => {
+        expect([...documentCommentThreads(doc).keys()]).toHaveLength(1);
+      });
+      const comments = handle.editor.getExtension(CommentsExtension)!;
+      const stored = [...comments.threadStore.getThreads().values()][0];
+      expect(JSON.stringify(stored?.comments[0]?.body)).toContain(
+        'a first thought',
+      );
+    });
+
+    it('refuses to write words that are only spaces', async () => {
+      // `reduceDraft` answers a save on blank words by leaving the draft
+      // alone, so the card stays and nothing is made. The pair of buttons
+      // never appears over them either (A29), which leaves the Enter key as
+      // the way to ask.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), '   ');
+      await userEvent.keyboard('{Enter}');
+
+      expect([...documentCommentThreads(doc).keys()]).toHaveLength(0);
+      expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
+    });
+
+    it('throws the words away on Escape, per the demo', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'never mind',
+      );
+      await userEvent.keyboard('{Escape}');
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
+      });
+      expect([...documentCommentThreads(doc).keys()]).toHaveLength(0);
+    });
+
+    it('closes on Escape with nothing typed', async () => {
+      // A reader who presses the entry and changes their mind before typing.
+      // Discarding and saving differ here: a save on blank words leaves the
+      // draft alone, so the card would stay.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      await userEvent.click(screen.getByTestId('doc-comment-draft-input'));
+      await userEvent.keyboard('{Escape}');
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
+      });
+    });
+
+    it('closes the draft in the plugin too, not only on screen', async () => {
+      // The range IS whether a draft is open, so a save that took the card
+      // off screen but left the range behind would leave the plugin saying
+      // one is still open — and whoever reads it next would believe it.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'done',
+      );
+      await userEvent.click(screen.getByTestId('doc-comment-draft-save'));
+
+      await waitFor(() => {
+        expect(draftRangeIn(handle.editor.prosemirrorState)).toBeNull();
+      });
+    });
+
+    it('follows the words when a peer inserts text above', async () => {
+      // The range is mapped through every edit, so it keeps naming the same
+      // words rather than whatever now sits at those offsets.
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      expect(aimedWords()).toBe('bravo');
+
+      const view = handle.editor.prosemirrorView!;
+      act(() => {
+        view.dispatch(view.state.tr.insertText('xx ', firstRun().from));
+      });
+
+      await waitFor(() => {
+        expect(aimedWords()).toBe('bravo');
+      });
+      expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
+    });
+
+    it('says so when the words it was aimed at are deleted', async () => {
+      // A21. The card outlives its range for exactly this: the reader is owed
+      // an account of a closing that was not their doing.
+      show();
+      const run = firstRun();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'about this',
+      );
+
+      const view = handle.editor.prosemirrorView!;
+      act(() => {
+        view.dispatch(view.state.tr.delete(run.from, run.from + 5));
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('doc-comment-draft-dropped'),
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('doc-comment-draft-input')).toBeNull();
+    });
+
+    it('takes that notice away when the reader is done with it', async () => {
+      // Nothing else can: the range is already gone, so the two gestures the
+      // card otherwise closes on have nothing left to clear.
+      show();
+      const run = firstRun();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'about this',
+      );
+      const view = handle.editor.prosemirrorView!;
+      act(() => {
+        view.dispatch(view.state.tr.delete(run.from, run.from + 5));
+      });
+      await screen.findByTestId('doc-comment-draft-dropped');
+
+      await userEvent.click(screen.getByTestId('doc-comment-draft-dismiss'));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
+      });
+    });
+
+    it('says so when the reader loses the right to write mid-draft', async () => {
+      // A22. The same debt as A21, from the other direction.
+      show('editor');
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'half a',
+      );
+
+      act(() => {
+        asRole('viewer');
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('doc-comment-draft-dropped'),
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('doc-comment-draft-input')).toBeNull();
     });
   });
 

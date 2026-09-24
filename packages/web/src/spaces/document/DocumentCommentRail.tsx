@@ -134,6 +134,21 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     onDraftRangeChange,
     () => draftRangeIn(editor.prosemirrorState),
   );
+  // The card outlives its range. Two of the ways a draft ends are not the
+  // reader's doing and owe them an account — the words it was aimed at are
+  // gone (A21), the right to write here was taken away (A22) — and the range
+  // going is exactly what raises the first of them. A place kept only while
+  // the range stands would take the card away in the same render that gave it
+  // something to say. So the rail holds the place until the card says it is
+  // finished, which is what `onGone` is.
+  const [draftLingers, setDraftLingers] = React.useState(false);
+  React.useEffect(() => {
+    if (draftAt !== null) setDraftLingers(true);
+  }, [draftAt]);
+  const draftGone = React.useCallback((): void => {
+    setDraftLingers(false);
+  }, []);
+  const draftShowing = draftAt !== null || draftLingers;
 
   const said = useCommentWrite();
 
@@ -317,7 +332,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // pressed before starting to write gives way, the way any other card does.
   // Otherwise the first of the selected, because a press on two overlapping
   // highlights marks both and only one can have the column to itself.
-  const reading = draftAt !== null ? DRAFT_CARD_ID : (selected[0] ?? null);
+  const reading = draftShowing ? DRAFT_CARD_ID : (selected[0] ?? null);
   const placement = React.useMemo(
     () =>
       layOutCards(
@@ -329,7 +344,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
             anchor: anchors.get(card.id) ?? null,
             height: heights.get(card.id) ?? CARD_HEIGHT_GUESS_PX,
           })),
-          ...(draftAt === null
+          ...(!draftShowing
             ? []
             : [
               {
@@ -343,7 +358,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
         GAP_BETWEEN_CARDS_PX,
         CLEARANCE_BELOW_HEADER_PX,
       ),
-    [shown, anchors, heights, reading, draftAt],
+    [shown, anchors, heights, reading, draftShowing],
   );
   const placed = placement.tops;
 
@@ -393,7 +408,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // A draft is something to draw, so the line about an empty rail would be
   // arguing with the card on screen (A1's commonest path is the first comment
   // on a document that has none).
-  const nothingHere = shown.length === 0 && draftAt === null;
+  const nothingHere = shown.length === 0 && !draftShowing;
   const nothingAnywhere =
     cards.unresolved.length === 0 && cards.resolved.length === 0;
 
@@ -486,6 +501,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
                 editor={editor}
                 aimedAt={draftAt}
                 myRole={myRole}
+                onGone={draftGone}
               />
             </PlacedDraft>
           </div>

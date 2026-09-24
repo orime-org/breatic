@@ -31,7 +31,6 @@ import type { ProjectRole } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
-import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import { canPostAnnotations } from '@web/spaces/canvas/annotation/rights';
 import {
   CLOSED_DRAFT,
@@ -72,6 +71,14 @@ interface DraftCardProps {
    * is read as the ARIA attribute, by the linter and by anyone reading it.
    */
   myRole: ProjectRole;
+  /**
+   * Said once this card has nothing left to draw.
+   *
+   * The rail keeps its place until it hears this, rather than until the range
+   * goes: the notice A21 owes the reader is raised by the range going, so a
+   * place tied to the range would be gone in the same render.
+   */
+  onGone?: () => void;
 }
 
 /**
@@ -80,12 +87,14 @@ interface DraftCardProps {
  * @param root0.editor - The editor the comment lands in.
  * @param root0.aimedAt - Where the comment is aimed.
  * @param root0.myRole - The reader's role on the project.
+ * @param root0.onGone - Said once this card has nothing left to draw.
  * @returns The card while a draft is open or its notice stands.
  */
 export function DocumentCommentDraftCard({
   editor,
   aimedAt,
   myRole,
+  onGone,
 }: DraftCardProps): React.JSX.Element | null {
   const t = useTranslation();
   const [draft, setDraft] = React.useState<DraftState>(CLOSED_DRAFT);
@@ -156,6 +165,14 @@ export function DocumentCommentDraftCard({
     clearRange();
   }, [mayWrite, clearRange]);
 
+  // Nothing aimed at, nothing being written, nothing to say: this card is
+  // drawing nothing, and the rail can have its place back.
+  const finished =
+    aimedAt === null && draft.dropped === undefined && draft.mode !== 'typing';
+  React.useEffect(() => {
+    if (finished) onGone?.();
+  }, [finished, onGone]);
+
   /** Throws the words away, which Cancel and Escape both do. */
   const cancel = React.useCallback((): void => {
     setDraft((current) => reduceDraft(current, { type: 'escape' }));
@@ -184,17 +201,6 @@ export function DocumentCommentDraftCard({
       clearRange();
     });
   }, [draft, editor, clearRange, said]);
-
-  // Enter saves and Escape throws away, the same pair the write box hands to
-  // its buttons; the notice takes only the dismissal.
-  const keys = useNoteBox(
-    React.useCallback(
-      (action) => {
-        if (action.type === 'escape') cancel();
-      },
-      [cancel],
-    ),
-  );
 
   if (draft.dropped !== undefined) {
     return (
@@ -233,7 +239,6 @@ export function DocumentCommentDraftCard({
     <article
       data-testid='doc-comment-draft-card'
       className={CARD_SURFACE}
-      {...keys.box}
     >
       <DocumentCommentWriteBox
         name='draft'

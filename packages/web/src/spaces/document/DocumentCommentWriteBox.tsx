@@ -86,8 +86,11 @@ export function DocumentCommentWriteBox({
     <div
       className='mt-2 flex flex-col gap-1.5'
       onBlur={(event) => {
-        // The pair sits in here too, so a press on Save is not the focus
-        // leaving — only a landing outside this whole group is.
+        // Where the focus went, not merely that it left: the pair of buttons
+        // sits in here too, so a press on Save is not a landing outside.
+        // A null landing is the window itself losing the focus — the reader
+        // switching away is not them giving up on what they were writing.
+        if (event.relatedTarget === null) return;
         if (event.currentTarget.contains(event.relatedTarget)) return;
         onLeave?.();
       }}
