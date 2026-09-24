@@ -42,10 +42,12 @@ import {
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
 import { NOTE_MAX_CHARS } from '@web/spaces/canvas/annotation/caps';
-import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
 import { selectThreads } from '@web/spaces/document/document-comment-selection';
 import { replyToThread } from '@web/spaces/document/document-comment-thread-actions';
-import { postComment } from '@web/spaces/document/document-comment-post';
+import {
+  COMMENT_MARK,
+  asCommentBody,
+} from '@web/spaces/document/document-comment-extension';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { toast } from '@web/lib/toast';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -120,15 +122,17 @@ describe('what a card lets a reader do', () => {
       }
       return true;
     });
-    const view = handle.editor.prosemirrorView!;
+    const comments = handle.editor.getExtension(CommentsExtension)!;
     await act(async () => {
-      view.dispatch(
-        view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
-          from: run!.from,
-          to: run!.from + 5,
-        }),
-      );
-      await postComment(handle.editor, body);
+      const thread = await comments.threadStore.createThread({
+        initialComment: { body: asCommentBody(body) },
+      });
+      const view = handle.editor.prosemirrorView!;
+      const mark = view.state.schema.marks[COMMENT_MARK]!.create({
+        threadId: thread.id,
+        orphan: false,
+      });
+      view.dispatch(view.state.tr.addMark(run!.from, run!.from + 5, mark));
     });
   }
 
@@ -496,53 +500,6 @@ describe('what a card lets a reader do', () => {
     lookAway();
 
     expect(screen.queryByTestId('doc-comment-delete-reply')).toBeNull();
-  });
-
-  it('says so when the right to write is taken away mid-draft', async () => {
-    // A22. The notice has to reach the screen through the chrome the reader
-    // actually has: `DocumentEditor` decides whether the box is mounted at
-    // all, and it decides on the same `readOnly` that turns `myRole` into
-    // `viewer` — so the box that carries the notice is the one being taken
-    // away at that moment.
-    role = 'editor';
-    const shown = render(
-      <DocumentEditor handle={handle} myRole='editor' readOnly={false} />,
-    );
-    act(() => {
-      handle.editor.replaceBlocks(handle.editor.document, [
-        { type: 'paragraph', content: 'alpha bravo charlie' },
-      ] as never);
-    });
-    let run: { from: number; to: number } | undefined;
-    handle.editor.prosemirrorState.doc.descendants((node, pos) => {
-      if (node.isText && run === undefined) {
-        run = { from: pos, to: pos + node.nodeSize };
-      }
-      return true;
-    });
-    const view = handle.editor.prosemirrorView!;
-    act(() => {
-      view.dispatch(
-        view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
-          from: run!.from,
-          to: run!.from + 5,
-        }),
-      );
-    });
-    await screen.findByTestId('doc-comment-input');
-    await userEvent.type(
-      screen.getByTestId('doc-comment-input'),
-      'half a thought',
-    );
-
-    role = 'viewer';
-    shown.rerender(
-      <DocumentEditor handle={handle} myRole='viewer' readOnly={true} />,
-    );
-
-    expect(await screen.findByTestId('doc-comment-dropped')).toHaveTextContent(
-      /.+/,
-    );
   });
 
   it('offers a viewer nothing to write with', async () => {

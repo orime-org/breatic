@@ -96,12 +96,24 @@ describe('the comment panel', () => {
    */
   function show(myRole: 'editor' | 'viewer' = 'editor'): void {
     const rendered = render(
-      <DocumentEditor handle={handle} myRole={myRole} />,
+      <DocumentEditor
+        handle={handle}
+        myRole={myRole}
+        readOnly={myRole === 'viewer'}
+      />,
     );
-    // One case takes the right to write away mid-draft, which is a change of
-    // this prop and nothing else (A22).
+    // One case takes the right to write away mid-draft. Both props move
+    // together, the way they do in the product: `readOnly` is what decides
+    // whether the chrome carrying the notice is mounted at all, and it turns
+    // over on the same change that makes the reader a viewer (A22).
     asRole = (next) => {
-      rendered.rerender(<DocumentEditor handle={handle} myRole={next} />);
+      rendered.rerender(
+        <DocumentEditor
+          handle={handle}
+          myRole={next}
+          readOnly={next === 'viewer'}
+        />,
+      );
     };
     act(() => {
       handle.editor.replaceBlocks(handle.editor.document, [

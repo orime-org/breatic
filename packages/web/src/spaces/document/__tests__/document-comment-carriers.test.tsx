@@ -72,7 +72,7 @@ function openMenuOver(editor: HarnessEditor, index: number): void {
 }
 
 describe('the bubble bar entry', () => {
-  it('opens the box on the words the reader selected', async () => {
+  it('aims a draft at the words the reader selected', async () => {
     const editor = openSharedBody('<p>alpha bravo charlie</p>');
     mountDocumentEditor(editor);
     focusBody(editor);
@@ -80,8 +80,10 @@ describe('the bubble bar entry', () => {
 
     await userEvent.click(await screen.findByTestId('doc-bubble-tool-comment'));
 
+    // The range is the whole of what this entry does. Where a comment is
+    // then written, and what it looks like, is the panel's (A28).
     await waitFor(() => {
-      expect(screen.getByTestId('doc-comment-composer')).toBeInTheDocument();
+      expect(draftRangeIn(editor.prosemirrorState)).not.toBeNull();
     });
     const at = draftRangeIn(editor.prosemirrorState)!;
     expect(editor.prosemirrorState.doc.textBetween(at.from, at.to)).toBe(
