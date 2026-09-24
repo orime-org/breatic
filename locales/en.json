@@ -1520,6 +1520,11 @@
       "upgradePending": "Payment for the change is not complete",
       "paymentOverdue": "Payment did not go through"
     },
+    "checkout": {
+      "done": "{plan} is active",
+      "processing": "Payment is still going through",
+      "failed": "Membership not activated"
+    },
     "payNow": "Pay now",
     "actionFailed": "That did not go through. Try again.",
     "period": {

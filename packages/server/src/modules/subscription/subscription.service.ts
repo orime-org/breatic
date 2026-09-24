@@ -108,6 +108,35 @@ async function ensureCustomer(userId: string): Promise<string> {
 }
 
 /**
+ * The two addresses Stripe sends somebody back to, marked apart.
+ *
+ * Both land on the page they left, so without a mark the page cannot tell a
+ * completed payment from somebody pressing Stripe's back link — and a page
+ * that cannot tell them apart cannot report either one.
+ *
+ * No session id on the paid one. What the account now holds is read by
+ * reconciling it, which happens anyway and answers for a webhook that has not
+ * landed yet; a session id would only name a second way to ask the same
+ * question. It would also collide with the credits return, which gates on
+ * that very parameter.
+ * @param returnUrl - The page the purchase was started from.
+ * @returns The two URLs, named as Stripe's own fields.
+ */
+function returnUrls(returnUrl: string): {
+  success_url: string;
+  cancel_url: string;
+} {
+  const paid = new URL(returnUrl);
+  paid.searchParams.set("membership", "1");
+
+  const left = new URL(returnUrl);
+  left.searchParams.set("membership", "1");
+  left.searchParams.set("cancelled", "1");
+
+  return { success_url: paid.toString(), cancel_url: left.toString() };
+}
+
+/**
  * Starts a checkout for an account that does not subscribe yet.
  *
  * Also the path back for somebody whose subscription ended: an ended
@@ -155,8 +184,7 @@ export async function startCheckout(input: {
     // metadata and `client_reference_id` stop at the Session.
     subscription_data: { metadata: { userId: input.userId } },
     client_reference_id: input.userId,
-    success_url: input.returnUrl,
-    cancel_url: input.returnUrl,
+    ...returnUrls(input.returnUrl),
   });
 
   if (!session.url) {

@@ -125,6 +125,25 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     expect(userRepo.setStripeCustomerId).toHaveBeenCalledWith(USER, "cus_new");
   });
 
+  it("marks the two ways back apart, so the page can say what happened", async () => {
+    // Both URLs land on the page they left. Without a mark on them it cannot
+    // tell a completed payment from somebody pressing Stripe's back link, and
+    // so cannot report either.
+    situationIs("none");
+    await service.startCheckout({
+      userId: USER,
+      tier: "pro",
+      period: "year",
+      returnUrl: RETURN_URL,
+    });
+
+    const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
+    expect(call.success_url).toContain("membership=1");
+    expect(call.success_url).not.toContain("cancelled");
+    expect(call.cancel_url).toContain("membership=1");
+    expect(call.cancel_url).toContain("cancelled=1");
+  });
+
   it("reuses the stored customer rather than making a second one", async () => {
     situationIs("none");
     await service.startCheckout({

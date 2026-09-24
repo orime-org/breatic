@@ -1520,6 +1520,11 @@
       "upgradePending": "변경 건의 결제가 완료되지 않았습니다",
       "paymentOverdue": "결제가 완료되지 않았습니다"
     },
+    "checkout": {
+      "done": "{plan} 이(가) 활성화되었습니다",
+      "processing": "결제를 처리하고 있습니다",
+      "failed": "멤버십이 활성화되지 않았습니다"
+    },
     "payNow": "결제하기",
     "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요.",
     "period": {

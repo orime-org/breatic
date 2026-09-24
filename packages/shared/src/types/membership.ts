@@ -208,6 +208,9 @@ export interface MembershipOffer {
  * the server accepts a change only where this says yes, so an entrance the
  * reader can press is one the server will take.
  * @param from - What the account holds now.
+ * @param from.tier - Which tier is held, `base` included: it has a position
+ *   on the price list, which is what this compares.
+ * @param from.period - How often that is billed.
  * @param to - What it wants instead.
  * @returns Whether that move is on offer.
  */

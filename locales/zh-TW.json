@@ -1520,6 +1520,11 @@
       "upgradePending": "這次變更的付款還沒完成",
       "paymentOverdue": "這次扣款沒有成功"
     },
+    "checkout": {
+      "done": "{plan} 已生效",
+      "processing": "付款還在處理中",
+      "failed": "會員沒有開通"
+    },
     "payNow": "去付款",
     "actionFailed": "沒有成功，請再試一次。",
     "period": {
