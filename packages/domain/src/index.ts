@@ -60,6 +60,7 @@ export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js"
 export {
   buildToolSet,
   BASELINE_TOOLS,
+  TOOL_MAP,
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS,

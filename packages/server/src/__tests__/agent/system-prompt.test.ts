@@ -19,7 +19,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "@server/agent/context.js";
-import { BASELINE_TOOLS } from "@breatic/domain";
+import { TOOL_MAP } from "@breatic/domain";
 
 describe("the system prompt", () => {
   // The template is hard-wrapped, so any phrase long enough to be worth
@@ -66,10 +66,10 @@ describe("the system prompt", () => {
 
   it("names no tools", () => {
     // The drift this prevents: a roster in the prompt outliving the tool set.
-    // Checked against the real baseline rather than a copy of it, so adding a
-    // tool and pasting its name into the prompt fails here.
+    // Checked against every registered tool rather than a copy of the list,
+    // so adding a tool and pasting its name into the prompt fails here.
     const prompt = buildSystemPrompt();
-    for (const name of BASELINE_TOOLS) {
+    for (const name of Object.keys(TOOL_MAP)) {
       expect(prompt).not.toContain(name);
     }
   });
@@ -92,6 +92,7 @@ describe("the prompt says nothing about any one tool", () => {
   });
 
   it("carries none of the canvas guidance", () => {
-    expect(wording()).not.toMatch(/canvas/i);
+    expect(wording()).not.toMatch(/canvas is where models are run/i);
+    expect(wording()).not.toMatch(/rather than half in your reply/i);
   });
 });
