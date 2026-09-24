@@ -123,22 +123,31 @@ export function MembershipContent({
     [subscription?.state, subscription?.cancelAtPeriodEnd],
   );
 
-  // The period this account is actually billed over. A stored row carries one
-  // as soon as it exists, which is before its first invoice settles — and
-  // until it does, the tier in force is Starter and nobody is being billed
-  // over anything. Both the heading and the cards read this, so they cannot
-  // disagree about what is held.
+  // Two questions about the same column, and they have different answers.
+  //
+  // `boughtPeriod` is which period this account is being charged over. A
+  // stored row carries one from the moment it exists, so this is the answer
+  // even while the first invoice is still unsettled — that account is in the
+  // middle of buying a month, and the page opening on annual would quote
+  // prices other than the ones its own "finish paying" link is for.
+  //
+  // `heldPeriod` is what the cards may be compared against, which needs the
+  // subscription to be one that can still be acted on. Until the first
+  // invoice settles the tier in force is Starter and there is nothing to move
+  // from, so the cards read null and the Starter card does not flicker
+  // between "current" and not as the switcher moves.
+  const boughtPeriod = subscription?.period ?? null;
   const heldPeriod =
     subscription && holdsActionableSubscription(subscription.state)
       ? subscription.period
       : null;
 
   // Which period the reader is looking at. It starts on the one this account
-  // is already billed over, because opening on the other one would answer
+  // is being charged over, because opening on the other one would answer
   // "what do I have" with a price they do not pay. An account with no
   // subscription starts on annual, which is what the page is recommending.
   const [selectedPeriod, setSelectedPeriod] = React.useState<BillingPeriod>(
-    heldPeriod ?? 'year',
+    boughtPeriod ?? 'year',
   );
 
   // The table offers every comparable tier, `base` included; only the ones

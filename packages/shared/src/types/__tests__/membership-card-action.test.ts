@@ -155,3 +155,19 @@ describe("cardAction — while a payment is in the way", () => {
     ).toBe("inProgress");
   });
 });
+
+describe("cardAction — an account on a tier the price list does not carry", () => {
+  // `accountTier` is the full five-value set, and only three of them sit on
+  // the price list. Reading a tier that is not on it as a position in that
+  // list answers "above this" for every card, which is the opposite of the
+  // refusal rule 7 exists to state.
+  it.each(["self_hosted", "enterprise"] as const)(
+    "leaves every priced card blank for an account on %s",
+    (accountTier) => {
+      const off = { ...holding(), accountTier, situation: "active" as const };
+      expect(cardAction({ ...off, card: "base" })).toBe("blank");
+      expect(cardAction({ ...off, card: "pro" })).toBe("blank");
+      expect(cardAction({ ...off, card: "team" })).toBe("blank");
+    },
+  );
+});

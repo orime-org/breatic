@@ -381,3 +381,37 @@ describe('TierCards — the figures on the cards', () => {
     expect(document.body.textContent ?? '').not.toContain('%');
   });
 });
+
+describe('TierCards — an annual price that saves nothing', () => {
+  beforeEach(() => {
+    cleanup();
+  });
+
+  /** The same three tiers, with an annual price that is not a discount. */
+  const noSaving = (yearCents: number): readonly TierOffer[] =>
+    CATALOG.map((offer) =>
+      offer.tier === 'pro'
+        ? { ...offer, prices: { ...offer.prices, year: { priceCents: yearCents, currency: 'usd' } } }
+        : offer,
+    );
+
+  it.each([
+    ['the same as twelve months', 1999 * 12],
+    ['more than twelve months', 1999 * 12 + 1],
+  ])('keeps the saving line off a year that costs %s', (_case, yearCents) => {
+    render(
+      <TierCards
+        offers={noSaving(yearCents)}
+        currentTier='base'
+        selectedPeriod='year'
+        situation='none'
+        heldPeriod={null}
+        sellsSubscriptions
+        move='offered'
+        busy={false}
+        onChoose={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('tier-note-pro')).toBeEmptyDOMElement();
+  });
+});

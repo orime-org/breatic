@@ -403,6 +403,34 @@ describe('MembershipPanel', () => {
     expect(screen.queryByTestId('membership-resume')).toBeNull();
   });
 
+  it('opens the switcher on the period being paid for, before that payment settles', async () => {
+    // Which period was bought and whether the subscription can be acted on
+    // are two questions. Answering the first with the second opens the page
+    // on annual for somebody in the middle of buying a month, so the prices
+    // beside their own "finish paying" link are not the ones they owe.
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({
+          state: 'firstPaymentUnsettled',
+          tier: 'pro',
+          period: 'month',
+        }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('membership-period-switch');
+    expect(screen.getByTestId('membership-period-month')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByTestId('membership-period-year')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
   it('从没订过的 Base 账号照样看得到升级入口', async () => {
     // 真机上抓到的：后端把「这个部署不卖订阅」和「这个账号还没订」都答成
     // null，前端据此把整行藏了 —— 结果是最需要那几个按钮的人反而看不到。

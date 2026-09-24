@@ -51,9 +51,15 @@ interface TierCardsProps {
  * Worked out from the two prices rather than written down, so the sentence it
  * feeds stays true when either price changes. Rounded to a whole percent,
  * which is what the sentence says it is.
+ *
+ * A year that costs the same as twelve months, or more, answers null: the
+ * sentence this feeds says a year saves something, and a function that can
+ * hand it a zero or a negative is a function that can make it read "saves
+ * about 0%". The caller draws nothing on null, so the claim holds by
+ * construction rather than by the price list happening to agree with it.
  * @param prices - The tier's price over each period.
  * @returns The saving as a whole percent, or null where either price is
- *   missing and there is nothing to compare.
+ *   missing or a year saves nothing.
  */
 function annualSavingPercent(
   prices: Readonly<Record<BillingPeriod, TierPrice | null>>,
@@ -62,7 +68,8 @@ function annualSavingPercent(
   if (!month || !year) return null;
   const twelveMonths = month.priceCents * 12;
   if (twelveMonths <= 0) return null;
-  return Math.round((1 - year.priceCents / twelveMonths) * 100);
+  const saving = Math.round((1 - year.priceCents / twelveMonths) * 100);
+  return saving > 0 ? saving : null;
 }
 
 /**

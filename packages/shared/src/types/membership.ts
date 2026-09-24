@@ -211,7 +211,15 @@ export interface MembershipOffer {
  * @param to - What it wants instead.
  * @returns Whether that move is on offer.
  */
-export function canMoveTo(from: MembershipOffer, to: MembershipOffer): boolean {
+export function canMoveTo(
+  from: {
+    /** Which tier is held, `base` included: it has a position on the list. */
+    readonly tier: ComparableMembershipTier;
+    /** How often it is billed. */
+    readonly period: BillingPeriod;
+  },
+  to: MembershipOffer,
+): boolean {
   // Moving to what is already held is not a move. The server answers that
   // case with "you are already on this one", which is a different sentence
   // from "that direction is not on offer".
@@ -490,9 +498,11 @@ export function cardAction(input: CardActionInput): CardAction {
     holdsActionableSubscription(input.situation) && input.heldPeriod !== null;
   // No assertion on the period: `holds` is inferred as a type predicate, so
   // the branch below already knows it is not null.
-  const held = holds
-    ? { tier: input.accountTier, period: input.heldPeriod }
-    : null;
+  const onPriceList = isComparableMembershipTier(input.accountTier);
+  const held =
+    holds && onPriceList
+      ? { tier: input.accountTier, period: input.heldPeriod }
+      : null;
 
   // 3. The card they are on, for the period they are on.
   if (held && input.card === held.tier && input.selectedPeriod === held.period) {
@@ -502,26 +512,30 @@ export function cardAction(input: CardActionInput): CardAction {
   // 4. The free tier is not sold.
   if (input.card === "base") return "blank";
 
-  // 5. Above rule 7 on purpose: while Stripe retries a failing card, every
+  // 5. Above rule 8 on purpose: while Stripe retries a failing card, every
   //    entrance goes, including the ones that would otherwise be reachable.
   if (input.move === "withheld") return "blank";
 
-  // 6. Nothing to move from, so this is a first purchase.
+  // 6. Above rule 8 on purpose: what this account is on has no position on
+  //    the price list, so rule 8 has nothing to compare against. `indexOf`
+  //    would answer -1 there, which reads as "below every tier" and would
+  //    turn every card into a move on offer — the opposite of the truth,
+  //    since `self_hosted` and `enterprise` are settled outside this page.
+  if (holds && !onPriceList) return "blank";
+
+  // 7. Nothing to move from, so this is a first purchase.
   if (!held) return "choose";
 
-  // 7. Dropping a tier or shortening a period is never on offer.
+  // 8. Dropping a tier or shortening a period is never on offer.
   if (
-    !canMoveTo(
-      { tier: held.tier as SubscribableMembershipTier, period: held.period },
-      { tier: input.card, period: input.selectedPeriod },
-    )
+    !canMoveTo(held, { tier: input.card, period: input.selectedPeriod })
   ) {
     return "blank";
   }
 
-  // 8. A move already made, waiting on its invoice.
+  // 9. A move already made, waiting on its invoice.
   if (input.move === "pending") return "inProgress";
 
-  // 9. Everything left is a move this account may make.
+  // 10. Everything left is a move this account may make.
   return "move";
 }
