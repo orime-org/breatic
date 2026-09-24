@@ -99,8 +99,7 @@ const DESCRIPTION = [
       "\"criteria\":[\"lowest\",\"...\",\"highest\"]}`. It answers where this falls, which " +
       "may be between rungs.",
     "",
-    "Put what you are judging against into `state`: what the reader said, the turns before " +
-      "this, what is on the canvas, the catalog rows. The fuller it is, the better it answers.",
+    "Put what you are judging against into `state`.",
     "",
     "Use it when you are unsure. For instance:",
     "- the reader's sentence has several readings and you do not know which to act on",

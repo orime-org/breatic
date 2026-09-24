@@ -39,8 +39,9 @@ const inputSchema = z
       .optional()
       .describe(
         "One line telling the user how to answer, in your own words and in " +
-          "the language you are replying in. Drawn on its own under the " +
-          "options. Leave it out when the question speaks for itself.",
+          "the language you are replying in: that a number will do, and that " +
+          "they may answer in their own words instead. Drawn on its own under " +
+          "the options. Leave it out when the question speaks for itself.",
       ),
   })
   .strict();
@@ -64,8 +65,7 @@ export const askUser: Tool<z.infer<typeof inputSchema>, AskUserPayload> = tool({
     "answers listed in your own prose arrive as a run-on sentence with nothing " +
     "to pick from. Keep each option to one line saying what it is, with no " +
     "argument for or against it. Nothing is written for you beyond the " +
-    "numbering: what the reader is told about answering is `howToAnswer`, in " +
-    "your own words and in the language you are replying in.",
+    "numbering: what the reader is told about answering is `howToAnswer`.",
   inputSchema,
   execute: async (
     input: z.infer<typeof inputSchema>,

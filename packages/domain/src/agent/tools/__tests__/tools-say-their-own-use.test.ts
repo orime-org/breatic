@@ -13,8 +13,20 @@
 import { describe, expect, it } from "vitest";
 
 import { askUser } from "@domain/agent/tools/ask-user.js";
+import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
+
+/**
+ * What one input field of a tool says about itself.
+ * @param schema - The tool's input schema, as declared.
+ * @param field - The field.
+ * @returns Its `.describe()` text on one line, or empty when it has none.
+ */
+function fieldSays(schema: unknown, field: string): string {
+  const shape = (schema as { shape?: Record<string, { description?: unknown }> }).shape;
+  return flat(shape?.[field]?.description);
+}
 
 /**
  * A description with its hard wraps folded, so assertions are about wording.
@@ -41,9 +53,15 @@ describe("ask_user says how to ask", () => {
     expect(said()).toMatch(/run-on sentence with nothing to pick from/i);
   });
 
-  it("says whose words and whose language the answering line is in", () => {
+  it("points at the field that tells the reader how to answer", () => {
     expect(said()).toMatch(/howToAnswer/);
-    expect(said()).toMatch(/in the language you are replying in/i);
+  });
+
+  it("says in that field what the line tells the reader, whose words and whose language", () => {
+    const line = fieldSays(askUser.inputSchema, "howToAnswer");
+    expect(line).toMatch(/a number will do/i);
+    expect(line).toMatch(/answer in their own words instead/i);
+    expect(line).toMatch(/in the language you are replying in/i);
   });
 });
 
@@ -71,5 +89,18 @@ describe("propose_canvas_action says what the canvas is for", () => {
 
   it("keeps copy that belongs to a canvas job with the rest of it", () => {
     expect(said()).toMatch(/rather than half in your reply/i);
+  });
+});
+
+describe("judge_likelihood says when to use it", () => {
+  const said = (): string => flat(judgeLikelihood.description);
+
+  it("says it is for when the model is unsure, with cases", () => {
+    expect(said()).toMatch(/Use it when you are unsure/);
+    expect(said()).toMatch(/several readings/i);
+  });
+
+  it("says where it stops and asking the reader starts", () => {
+    expect(said()).toMatch(/Asking the reader is for what only they know/);
   });
 });
