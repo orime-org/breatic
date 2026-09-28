@@ -59,6 +59,8 @@
       "avatar_unsupported_type": "That file could not be read as an image. Try a different picture."
     },
     "project": {
+      "join_already_member": "You're already a member of this project.",
+      "join_already_pending": "You've already asked to join this project. The owner hasn't answered yet.",
       "email_not_registered": "No account is registered with that email.",
       "already_member": "That user already has access.",
       "already_invited": "That user already has a pending invitation.",

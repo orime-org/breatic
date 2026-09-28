@@ -59,6 +59,8 @@
       "avatar_unsupported_type": "このファイルは画像として読み取れませんでした。別の画像をお試しください。"
     },
     "project": {
+      "join_already_member": "すでにこの Project のメンバーです。",
+      "join_already_pending": "この Project への参加はリクエスト済みです。Owner の承認待ちです。",
       "email_not_registered": "そのメールアドレスは登録されていません。",
       "already_member": "そのユーザーはすでにアクセス権を持っています。",
       "already_invited": "そのユーザーには保留中の招待があります。",

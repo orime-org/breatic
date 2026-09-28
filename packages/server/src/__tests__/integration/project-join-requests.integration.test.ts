@@ -314,9 +314,9 @@ describe("filing a request (A5 A6)", () => {
   it("a second request while one is pending is refused with 409", async () => {
     const { requester, project } = await scene();
     await joinService.request({ projectId: project.id, requesterUserId: requester.id });
-    await expect(
-      joinService.request({ projectId: project.id, requesterUserId: requester.id }),
-    ).rejects.toBeInstanceOf(ConflictError);
+    const refused = joinService.request({ projectId: project.id, requesterUserId: requester.id });
+    await expect(refused).rejects.toBeInstanceOf(ConflictError);
+    await expect(refused).rejects.toThrow("server.project.join_already_pending");
   });
 
   it("two simultaneous requests leave exactly one pending row", async () => {
@@ -337,7 +337,7 @@ describe("filing a request (A5 A6)", () => {
     const { owner, project } = await scene();
     await expect(
       joinService.request({ projectId: project.id, requesterUserId: owner.id }),
-    ).rejects.toBeInstanceOf(ConflictError);
+    ).rejects.toThrow(new ConflictError("server.project.join_already_member"));
   });
 
   it("someone outside the studio cannot file one", async () => {

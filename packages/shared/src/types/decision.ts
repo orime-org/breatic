@@ -65,7 +65,10 @@ export interface DecisionView {
    * else.
    */
   actorHandle: string | null;
-  /** The role at stake; null for transfers, which always mean ownership. */
+  /**
+   * The role at stake; null for transfers, which always mean ownership, and
+   * for join requests, whose role the owner picks when approving.
+   */
   role: string | null;
   /** The requester's own words; role upgrades and join requests only. */
   message: string | null;

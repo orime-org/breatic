@@ -59,6 +59,8 @@
       "avatar_unsupported_type": "這個檔案無法作為圖片讀取，請換一張試試。"
     },
     "project": {
+      "join_already_member": "你已經是這個 Project 的成員。",
+      "join_already_pending": "你已經申請加入這個 Project，正在等 Owner 審核。",
       "email_not_registered": "該信箱尚未註冊。",
       "already_member": "該使用者已有存取權限。",
       "already_invited": "該使用者已有一個待確認的邀請。",
@@ -1467,7 +1469,7 @@
       "message": "留言",
       "expires": "有效期"
     },
-    "expiresBefore": "{date} 前",
+    "expiresBefore": "{date} 截止",
     "actorWithHandle": "{name}（@{handle}）",
     "windowNote": "這個請求當時可在 {days} 天內答覆。",
     "acceptedTitle": "你已經接受過了",

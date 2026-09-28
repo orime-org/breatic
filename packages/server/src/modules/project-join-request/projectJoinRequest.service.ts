@@ -131,7 +131,7 @@ export async function request(input: {
 }): Promise<void> {
   const project = await loadForStudioMember(input.projectId, input.requesterUserId);
   if ((await projectMembersRepo.getRole(project.id, input.requesterUserId)) !== null) {
-    throw new ConflictError(t("server.project.already_member"));
+    throw new ConflictError(t("server.project.join_already_member"));
   }
   const requesterName = await displayName(input.requesterUserId);
   const message = input.message?.trim() ? input.message : null;
@@ -177,11 +177,11 @@ export async function request(input: {
       return { shareToken: created.shareToken, ownerUserId };
     });
   } catch (err) {
-    if (isUniqueViolation(err)) throw new ConflictError(t("server.error.conflict"));
+    if (isUniqueViolation(err)) throw new ConflictError(t("server.project.join_already_pending"));
     throw err;
   }
   if (isRefused(filed)) {
-    if (filed.refusal === "conflict") throw new ConflictError(t("server.project.already_member"));
+    if (filed.refusal === "conflict") throw new ConflictError(t("server.project.join_already_member"));
     throw refusalError(filed.refusal);
   }
 

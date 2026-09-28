@@ -21,7 +21,10 @@ import type {
 
 interface ProjectsTabProps {
   projects: readonly ContainerProject[];
-  /** The viewer's studio role (`null` = non-member) — decides whether the create entry shows. */
+  /**
+   * The viewer's studio role (`null` = non-member) — decides whether the
+   * create entry shows and, on each card, whether a studio Admin gets the ⋯ entry.
+   */
   studioRole: StudioRole | null;
   /** Called when a project is created via the dialog (stub no-op in slice 3). */
   onCreateProject?: (values: NewItemValues) => void;

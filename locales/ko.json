@@ -59,6 +59,8 @@
       "avatar_unsupported_type": "이 파일은 이미지로 읽을 수 없습니다. 다른 사진을 사용해 보세요."
     },
     "project": {
+      "join_already_member": "이미 이 Project의 멤버입니다.",
+      "join_already_pending": "이 Project에 이미 참여를 요청했습니다. Owner의 승인을 기다리는 중입니다.",
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
       "already_member": "해당 사용자는 이미 접근 권한을 가지고 있습니다.",
       "already_invited": "해당 사용자에게 이미 대기 중인 초대가 있습니다.",
