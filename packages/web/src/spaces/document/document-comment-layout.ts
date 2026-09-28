@@ -171,6 +171,42 @@ export function layOutCards(
   };
 }
 
+/** Where the header's bottom edge and the column are on screen, and the lift. */
+export interface HiddenAboveAt {
+  /** The header's bottom edge. */
+  readonly edge: number;
+  /** The column's top, which the cards' tops are measured from. */
+  readonly columnTop: number;
+  /** How far the column is lifted now. */
+  readonly lift: number;
+}
+
+/**
+ * How far a card the one being read pushed up reaches above the header
+ * (design §9.6.1), read from the layout: where the card is going, not where
+ * its slide to a new top has got to. The wheel and the focus both ask this.
+ * @param placement - The layout.
+ * @param id - The card, or null for the most hidden of the pushed cards.
+ * @param at - Where the header and the column are, and the lift.
+ * @returns How far it is hidden; zero for a card that was not pushed, and
+ *   zero or less for one in view.
+ */
+export function hiddenAbove(
+  placement: Placement,
+  id: string | null,
+  at: HiddenAboveAt,
+): number {
+  /**
+   * How far one card reaches above the header.
+   * @param card - The card.
+   * @returns The distance.
+   */
+  const of = (card: string): number =>
+    at.edge - (at.columnTop + (placement.tops.get(card) ?? 0) + at.lift);
+  if (id !== null) return placement.pushed.has(id) ? of(id) : 0;
+  return Math.max(0, ...[...placement.pushed].map(of));
+}
+
 /** One wheel turn over the panel, and what it finds there. */
 export interface LiftTurn {
   /** How far the column is lifted now. */

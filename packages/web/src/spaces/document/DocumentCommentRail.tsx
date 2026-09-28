@@ -31,6 +31,7 @@ import { cn } from '@web/lib/utils';
 import { DocumentCommentCard } from '@web/spaces/document/DocumentCommentCard';
 import type { CommentRail } from '@web/spaces/document/document-comment-rail';
 import {
+  hiddenAbove,
   inColumnOrder,
   layOutCards,
   liftToReveal,
@@ -378,6 +379,24 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
 
   const aside = React.useRef<HTMLElement>(null);
   const header = React.useRef<HTMLDivElement>(null);
+  /**
+   * How far a pushed card, or the most hidden of them, reaches above the
+   * header — from the layout, the one reading both the wheel and the focus
+   * take.
+   * @param laid - The layout.
+   * @param id - The card, or null for the most hidden.
+   * @param now - The lift.
+   * @returns The distance, or null before the panel is on screen.
+   */
+  const hiddenNow = React.useCallback(
+    (laid: typeof placement, id: string | null, now: number): number | null => {
+      const edge = header.current?.getBoundingClientRect().bottom;
+      const columnTop = column.current?.getBoundingClientRect().top;
+      if (edge === undefined || columnTop === undefined) return null;
+      return hiddenAbove(laid, id, { edge, columnTop, lift: now });
+    },
+    [],
+  );
   // Read by the wheel listener, which is attached once.
   const liftInputs = React.useRef({ lifted, placement });
   React.useEffect(() => {
@@ -395,15 +414,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       // A pinch or Ctrl+wheel is the page zooming, not a scroll.
       if (event.ctrlKey) return;
       const { lifted: now, placement: laid } = liftInputs.current;
-      const edge = header.current?.getBoundingClientRect().bottom;
-      const top = column.current?.getBoundingClientRect().top;
-      if (edge === undefined || top === undefined) return;
-      // How far the most hidden of the pushed cards reaches above the header.
-      let hidden = 0;
-      for (const id of laid.pushed) {
-        const cardTop = laid.tops.get(id) ?? 0;
-        hidden = Math.max(hidden, edge - (top + cardTop + now));
-      }
+      const hidden = hiddenNow(laid, null, now);
+      if (hidden === null) return;
       const delta =
         event.deltaMode === WheelEvent.DOM_DELTA_LINE
           ? event.deltaY * WHEEL_LINE_PX
@@ -419,7 +431,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     return (): void => {
       node.removeEventListener('wheel', onWheel);
     };
-  }, []);
+  }, [hiddenNow]);
 
   // The focus landing on a card the column pushed up under the header lifts
   // the column to show it: Tab reaches cards in column order, so the first
@@ -427,18 +439,13 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // back, named once by the layout. A card hidden because the body was
   // scrolled is the browser's to bring into view, and the scroll margin
   // below keeps it clear of the header.
-  const revealFocused = React.useCallback(
-    (node: HTMLElement, id: string): void => {
-      const { lifted: now, placement: laid } = liftInputs.current;
-      if (!laid.pushed.has(id)) return;
-      const edge = header.current?.getBoundingClientRect().bottom;
-      if (edge === undefined) return;
-      const hidden = edge - node.getBoundingClientRect().top;
-      const next = liftToReveal({ lift: now, raised: laid.raised, hidden });
-      if (next !== now) setLift(next);
-    },
-    [],
-  );
+  const revealFocused = React.useCallback((id: string): void => {
+    const { lifted: now, placement: laid } = liftInputs.current;
+    const hidden = hiddenNow(laid, id, now);
+    if (hidden === null) return;
+    const next = liftToReveal({ lift: now, raised: laid.raised, hidden });
+    if (next !== now) setLift(next);
+  }, [hiddenNow]);
 
   // How tall the header is, for the scroll margin everything in the column
   // keeps: the browser bringing a focused card, or a control inside one, into
@@ -715,8 +722,8 @@ interface PlacedCardProps {
   onHover: (threadId: string | null) => void;
   /** Opens this thread. */
   onRead: (threadId: string) => void;
-  /** Told when the focus lands on this card, with its element and id. */
-  onFocused: (node: HTMLElement, id: string) => void;
+  /** Told when the focus lands on this card. */
+  onFocused: (id: string) => void;
   /** What every card takes, memoised once by the panel. */
   handling: CardHandling;
 }
@@ -815,9 +822,9 @@ function PlacedCard({
       // move the card — reading one makes it the column's pivot — out from
       // under the focus ring the browser had just scrolled to. A card the
       // column pushed up under the header is lifted into view (§9.6.1).
-      onFocusCapture={(event) => {
+      onFocusCapture={() => {
         onHover(card.id);
-        onFocused(event.currentTarget, card.id);
+        onFocused(card.id);
       }}
       onBlurCapture={(event) => {
         if (event.currentTarget.contains(event.relatedTarget)) return;

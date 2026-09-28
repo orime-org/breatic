@@ -21,6 +21,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  hiddenAbove,
   inColumnOrder,
   layOutCards,
   liftToReveal,
@@ -453,5 +454,40 @@ describe('lifting the column to show a card the focus landed on', () => {
   it('leaves the column where it is for a card in view', () => {
     expect(liftToReveal({ lift: 40, raised: 200, hidden: 0 })).toBe(40);
     expect(liftToReveal({ lift: 40, raised: 200, hidden: -20 })).toBe(40);
+  });
+});
+
+describe('how far a pushed card is hidden under the header', () => {
+  // The cards slide to a new top, so what a card's own box says in the
+  // middle of a slide is where it has got to, not where it is going. Both the
+  // wheel and the focus ask where it is going, from the layout.
+  const placement = layOutCards(
+    [
+      { id: 'a', anchor: 0, height: 100 },
+      { id: 'b', anchor: 10, height: 100 },
+    ],
+    'b',
+    GAP,
+    MIN_TOP,
+  );
+
+  it('reads the card from the layout, lift included', () => {
+    const top = placement.tops.get('a')!;
+    expect(
+      hiddenAbove(placement, 'a', { edge: 50, columnTop: 40, lift: 5 }),
+    ).toBe(50 - (40 + top + 5));
+  });
+
+  it('is zero for a card the layout did not push', () => {
+    expect(
+      hiddenAbove(placement, 'b', { edge: 500, columnTop: 0, lift: 0 }),
+    ).toBe(0);
+  });
+
+  it('is the most hidden of the pushed cards when asked about them all', () => {
+    const tops = [...placement.pushed].map((id) => placement.tops.get(id)!);
+    expect(
+      hiddenAbove(placement, null, { edge: 50, columnTop: 40, lift: 0 }),
+    ).toBe(Math.max(0, ...tops.map((top) => 50 - (40 + top))));
   });
 });
