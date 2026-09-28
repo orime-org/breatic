@@ -5,7 +5,7 @@ import type { ChatAttachedChip } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import type * as Y from 'yjs';
 
-import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import {
   MENTION_KIND_ATTR,
@@ -13,8 +13,8 @@ import {
 } from '@web/spaces/canvas/generate/reference-mention';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
-/** The node kinds the chat can be handed. */
-const ATTACHABLE = new Set<string>(['text', 'image', 'audio', 'video', 'annotation']);
+/** The node kinds the chat can be handed; a group comes with its members. */
+const ATTACHABLE = new Set<string>(['text', 'image', 'audio', 'video', 'annotation', 'group']);
 
 /** How long a note's own words may run when they stand in for its name. */
 const NOTE_NAME_CHARS = 40;
@@ -48,7 +48,7 @@ function plainTexts(fragments: Record<string, Y.XmlFragment>): Record<string, st
 }
 
 /**
- * The ids a pick stands for: a group stands for its members.
+ * The ids a pick stands for: a group brings its members along.
  * @param nodes - Every node on the canvas.
  * @param picked - The ids that were picked, in order.
  * @returns Node ids, each once, in the order they were reached.
@@ -67,17 +67,16 @@ function expand(nodes: readonly CanvasNodeView[], picked: readonly string[]): st
   };
   const byId = new Map(nodes.map((n) => [n.id, n]));
   for (const id of picked) {
+    add(id);
     if (byId.get(id)?.data.kind === 'group') {
       for (const n of nodes) if (n.parentId === id) add(n.id);
-    } else {
-      add(id);
     }
   }
   return out;
 }
 
 /**
- * What a node is called in the list above the box.
+ * What a node is called on the card.
  * @param node - The node.
  * @returns Its name, or for a note its own words cut short.
  */
@@ -90,35 +89,61 @@ function nameOf(node: CanvasNodeView): string {
 }
 
 /**
- * The items handed to the chat when nodes are added to the agent.
+ * A short, stable id for a set of node ids, whatever order they came in.
+ * @param ids - The node ids.
+ * @returns The same string for the same set.
+ */
+function pickId(ids: readonly string[]): string {
+  let hash = 0x811c9dc5;
+  for (const ch of [...ids].sort().join('\u0000')) {
+    hash = Math.imul(hash ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+  }
+  return `canvas-${ids.length}-${hash.toString(36)}`;
+}
+
+/**
+ * The item handed to the chat when a piece of the canvas is added to the agent.
  *
- * Each goes as a snapshot of its data taken now. A fragment's field in the
- * view holds its XML markup, so each is replaced by its words as plain text.
- * @param nodes - Every node on the canvas, read fresh.
+ * One press is one item: the picked nodes as they are -- each with where it
+ * sits, the group it is in and its data -- and the links between them. A
+ * fragment's field in the view holds its XML markup, so each is replaced by
+ * its words as plain text. Named after the node or group when one was picked,
+ * and left unnamed for several, which the card counts.
+ * @param graph - The canvas, read fresh.
+ * @param graph.nodes - Every node on it.
+ * @param graph.edges - Every link on it.
  * @param picked - The ids that were picked.
  * @param readers - Reads the words the view does not carry.
- * @returns Ready items, in order, each node once.
+ * @returns The ready item, or null when nothing picked can be handed over.
  */
-export function itemsForNodes(
-  nodes: readonly CanvasNodeView[],
+export function itemForPick(
+  graph: { nodes: readonly CanvasNodeView[]; edges: readonly CanvasEdge[] },
   picked: readonly string[],
   readers: NodeTextReaders,
-): TrayItem[] {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  return expand(nodes, picked).flatMap((id): TrayItem[] => {
+): TrayItem | null {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const nodes = expand(graph.nodes, picked).flatMap((id) => {
     const node = byId.get(id);
-    if (!node || !ATTACHABLE.has(node.data.kind)) return [];
-    const type = node.data.kind as ChatAttachedChip['type'];
-    const name = nameOf(node);
-    const chip: ChatAttachedChip = {
-      id,
-      type,
-      name,
-      data_snapshot: {
-        ...(node.data as unknown as Record<string, unknown>),
-        ...plainTexts(readers.fragmentsOf(id)),
-      },
-    };
-    return [{ id, name, type, status: 'ready', chip }];
+    return node && ATTACHABLE.has(node.data.kind) ? [node] : [];
   });
+  if (nodes.length === 0) return null;
+  const ids = new Set(nodes.map((n) => n.id));
+  const snapshot = {
+    nodes: nodes.map((node) => ({
+      id: node.id,
+      type: node.data.kind,
+      position: node.position,
+      ...(node.parentId ? { parentId: node.parentId } : {}),
+      data: {
+        ...(node.data as unknown as Record<string, unknown>),
+        ...plainTexts(readers.fragmentsOf(node.id)),
+      },
+    })),
+    edges: graph.edges.filter((e) => ids.has(e.source) && ids.has(e.target)),
+  };
+  const lead = picked.length === 1 ? byId.get(picked[0] ?? '') : undefined;
+  const name = lead && ids.has(lead.id) ? nameOf(lead) : '';
+  const id = pickId(nodes.map((n) => n.id));
+  const chip: ChatAttachedChip = { id, type: 'canvas', name, data_snapshot: snapshot };
+  return { id, name, type: 'canvas', status: 'ready', chip };
 }

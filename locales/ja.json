@@ -286,7 +286,8 @@
     "thinkingNow": "考え中",
     "thinkingFor": "{m, plural, =0 {} other {# 分}}{s, number} 秒 考えました",
     "attachment": {
-      "kind": "{kind, select, image {画像} video {動画} audio {音声} text {テキスト} annotation {注釈} other {項目}}"
+      "kind": "{kind, select, canvas {キャンバス} image {画像} video {動画} audio {音声} text {テキスト} other {項目}}",
+      "nodes": "{count} 個のノード"
     }
   },
   "canvas": {

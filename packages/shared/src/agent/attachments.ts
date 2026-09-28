@@ -38,6 +38,18 @@ export function chipOfPart(part: { type: string }): ChatAttachedChip | undefined
 }
 
 /**
+ * What an item's section is headed with: its name, or for several canvas
+ * nodes picked together, how many there are.
+ * @param chip - The item.
+ * @returns The heading.
+ */
+function titleOf(chip: ChatAttachedChip): string {
+  if (chip.name) return chip.name;
+  const nodes = chip.data_snapshot.nodes;
+  return Array.isArray(nodes) ? `${chip.type}, ${nodes.length} nodes` : chip.type;
+}
+
+/**
  * The attached items, laid out the way the model reads them.
  *
  * Shared because the browser and the server measure this same text against
@@ -49,7 +61,7 @@ export function chipOfPart(part: { type: string }): ChatAttachedChip | undefined
 export function attachmentSection(chips: readonly ChatAttachedChip[]): string {
   if (chips.length === 0) return "";
   const items = chips
-    .map((c) => `### ${c.name} (type: ${c.type})\n${JSON.stringify(c.data_snapshot, null, 2)}`)
+    .map((c) => `### ${titleOf(c)} (type: ${c.type})\n${JSON.stringify(c.data_snapshot, null, 2)}`)
     .join("\n\n");
   return `## Attached content (a snapshot taken when it was attached)\n\n${items}`;
 }

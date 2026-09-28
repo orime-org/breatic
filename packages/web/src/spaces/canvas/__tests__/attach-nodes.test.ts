@@ -4,14 +4,14 @@
 /**
  * What the canvas hands the chat when nodes are added to the agent.
  *
- * Each node goes as a snapshot of its data with its words as plain text; a
- * group goes as its members; kinds that are not canvas features are left out.
+ * One press hands over one item: the picked piece of the canvas as it is --
+ * its nodes, where they sit, the groups they are in and the links between them.
  */
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
-import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { itemsForNodes } from '@web/spaces/canvas/attach-nodes';
+import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { itemForPick } from '@web/spaces/canvas/attach-nodes';
 
 /**
  * A node on the canvas.
@@ -91,72 +91,88 @@ function fragments(): (id: string) => Record<string, Y.XmlFragment> {
 
 const readers = { fragmentsOf: fragments() };
 
-describe('nodes handed to the agent', () => {
-  it('sends a node as a snapshot of its data, its prompt as plain text', () => {
-    const [item] = itemsForNodes(ALL, ['i1'], readers);
+const EDGES: CanvasEdge[] = [
+  { id: 'e1', source: 'i1', target: 'v1' },
+  { id: 'e2', source: 't1', target: 'x9' },
+];
+const GRAPH = { nodes: ALL, edges: EDGES };
 
-    expect(item).toEqual({
-      id: 'i1',
-      name: 'Cover',
-      type: 'image',
-      status: 'ready',
-      chip: {
-        id: 'i1',
-        type: 'image',
-        name: 'Cover',
-        data_snapshot: {
-          kind: 'image',
-          name: 'Cover',
-          content: 'https://cdn.example/c.png',
-          prompt: 'a red car at dusk',
-        },
-      },
-    });
+/**
+ * The snapshot of one pick.
+ * @param picked - The ids picked.
+ * @returns The data handed over.
+ */
+function snapshot(picked: string[]): { nodes: Array<Record<string, unknown>>; edges: CanvasEdge[] } {
+  const item = itemForPick(GRAPH, picked, readers);
+  return item?.chip?.data_snapshot as { nodes: Array<Record<string, unknown>>; edges: CanvasEdge[] };
+}
+
+describe('a piece of the canvas handed to the agent', () => {
+  it('goes as one item however many nodes were picked', () => {
+    const item = itemForPick(GRAPH, ['i1', 't1', 'v1'], readers);
+
+    expect(item).toMatchObject({ type: 'canvas', status: 'ready', name: '' });
+    expect(snapshot(['i1', 't1', 'v1']).nodes.map((n) => n.id)).toEqual(['i1', 't1', 'v1']);
   });
 
-  it('carries a text node its words as plain text, once', () => {
-    const [item] = itemsForNodes(ALL, ['t1'], readers);
+  it('keeps where each node sits and the group it is in', () => {
+    const [video] = snapshot(['v1']).nodes;
 
-    expect(item?.chip?.data_snapshot).toEqual({
-      kind: 'text',
-      name: 'Script',
-      body: 'Line one\nLine two',
-      prompt: '',
-    });
+    expect(video).toMatchObject({ id: 'v1', type: 'video', position: { x: 0, y: 0 }, parentId: 'g1' });
   });
 
-  it('turns every fragment a node holds into plain text, markup and all', () => {
+  it('keeps the links between the picked nodes, and only those', () => {
+    expect(snapshot(['i1', 't1', 'v1']).edges).toEqual([{ id: 'e1', source: 'i1', target: 'v1' }]);
+  });
+
+  it('carries each node its data with its words as plain text', () => {
+    const [text] = snapshot(['t1']).nodes;
+
+    expect(text?.data).toEqual({ kind: 'text', name: 'Script', body: 'Line one\nLine two', prompt: '' });
+  });
+
+  it('turns every fragment into plain text, mentions read as their label', () => {
     const withMarkup = node('v1', {
       kind: 'video',
       name: 'Opening',
       prompt: '<paragraph>stale</paragraph>',
       lyrics: '<paragraph>stale</paragraph>',
     });
-    const [item] = itemsForNodes([withMarkup], ['v1'], readers);
+    const item = itemForPick({ nodes: [withMarkup], edges: [] }, ['v1'], readers);
 
-    expect(item?.chip?.data_snapshot).toMatchObject({ prompt: 'Use @Image 1 as the style', lyrics: 'La la' });
     expect(JSON.stringify(item?.chip?.data_snapshot)).not.toContain('<paragraph>');
+    expect(JSON.stringify(item?.chip?.data_snapshot)).toContain('Use @Image 1 as the style');
   });
 
-  it('hands a group over as its members', () => {
-    expect(itemsForNodes(ALL, ['g1'], readers).map((i) => i.id)).toEqual(['v1']);
+  it('names a single node by its own name', () => {
+    expect(itemForPick(GRAPH, ['i1'], readers)).toMatchObject({ name: 'Cover' });
+  });
+
+  it('hands a group over with its members, named after the group', () => {
+    const item = itemForPick(GRAPH, ['g1'], readers);
+
+    expect(item).toMatchObject({ name: 'Shots' });
+    expect(snapshot(['g1']).nodes.map((n) => n.id)).toEqual(['g1', 'v1']);
   });
 
   it('names each node once, even when picked alone and inside its group', () => {
-    expect(itemsForNodes(ALL, ['v1', 'g1'], readers).map((i) => i.id)).toEqual(['v1']);
+    expect(snapshot(['v1', 'g1']).nodes.map((n) => n.id)).toEqual(['v1', 'g1']);
   });
 
   it('leaves out kinds that are not canvas features', () => {
-    expect(itemsForNodes(ALL, ['m1'], readers)).toEqual([]);
+    expect(snapshot(['i1', 'm1']).nodes.map((n) => n.id)).toEqual(['i1']);
+  });
+
+  it('hands nothing over when nothing picked can be', () => {
+    expect(itemForPick(GRAPH, ['m1', 'gone'], readers)).toBeNull();
+  });
+
+  it('gives the same pick the same id, in any order', () => {
+    expect(itemForPick(GRAPH, ['t1', 'i1'], readers)?.id).toBe(itemForPick(GRAPH, ['i1', 't1'], readers)?.id);
+    expect(itemForPick(GRAPH, ['i1'], readers)?.id).not.toBe(itemForPick(GRAPH, ['t1'], readers)?.id);
   });
 
   it('names a note by its own words, having no name', () => {
-    const [item] = itemsForNodes(ALL, ['a1'], readers);
-
-    expect(item).toMatchObject({ type: 'annotation', name: 'Check the colours here' });
-  });
-
-  it('skips an id no longer on the canvas', () => {
-    expect(itemsForNodes(ALL, ['gone'], readers)).toEqual([]);
+    expect(itemForPick(GRAPH, ['a1'], readers)).toMatchObject({ name: 'Check the colours here' });
   });
 });

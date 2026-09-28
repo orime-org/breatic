@@ -9,7 +9,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import { useTranslation } from '@web/i18n/use-translation';
-import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
+import { AttachmentChip, nodeCountOf } from '@web/pages/project/chat/AttachmentChip';
 import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
 import { NO_ATTACHMENTS, type TrayItem } from '@web/stores/chat-attachments';
 import type { TurnPhase } from '@web/stores/conversation-runtime';
@@ -183,6 +183,7 @@ function ChatComposerInner({
                 id={item.id}
                 type={item.type}
                 name={item.name}
+                count={nodeCountOf(item.chip)}
                 status={item.status}
                 {...(item.failure ? { failure: item.failure } : {})}
                 {...(onRemoveAttachment ? { onRemove: onRemoveAttachment } : {})}

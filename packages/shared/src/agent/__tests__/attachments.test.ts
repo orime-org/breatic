@@ -79,3 +79,16 @@ describe("an attached item on the chat wire", () => {
     expect(chipOfPart({ type: "text" })).toBeUndefined();
   });
 });
+
+describe("an unnamed piece of the canvas", () => {
+  it("is titled by its kind and node count", () => {
+    const piece: ChatAttachedChip = {
+      id: "canvas-2-x",
+      type: "canvas",
+      name: "",
+      data_snapshot: { nodes: [{ id: "a" }, { id: "b" }], edges: [] },
+    };
+
+    expect(attachmentSection([piece])).toContain("### canvas, 2 nodes (type: canvas)");
+  });
+});

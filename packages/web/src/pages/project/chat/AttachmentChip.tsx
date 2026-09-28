@@ -9,13 +9,25 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { ChatAttachedChip } from '@breatic/shared';
 import type { TrayFailure, TrayStatus } from '@web/stores/chat-attachments';
 
+/**
+ * How many canvas nodes an item holds.
+ * @param chip - What is sent for the item, once it has it.
+ * @returns The count for a piece of the canvas, or undefined for a file.
+ */
+export function nodeCountOf(chip: ChatAttachedChip | undefined): number | undefined {
+  const nodes = chip?.type === 'canvas' ? chip.data_snapshot.nodes : undefined;
+  return Array.isArray(nodes) ? nodes.length : undefined;
+}
+
 interface AttachmentChipProps {
   /** Which item this is, handed back to `onRemove`. */
   id: string;
   /** What kind of thing it is. */
   type: ChatAttachedChip['type'];
-  /** What the reader sees it called. */
+  /** What the reader sees it called; empty for several canvas nodes. */
   name: string;
+  /** How many canvas nodes it holds, counted when it has no name. */
+  count?: number;
   /** Where it stands; a sent item is always ready. */
   status?: TrayStatus;
   /** Why it failed, when it has. */
@@ -33,6 +45,7 @@ interface AttachmentChipProps {
  * @param root0.id - Which item this is.
  * @param root0.type - What kind of thing it is.
  * @param root0.name - What the reader sees it called.
+ * @param root0.count - How many canvas nodes it holds.
  * @param root0.status - Where it stands.
  * @param root0.failure - Why it failed, when it has.
  * @param root0.onRemove - Takes an item out by id, when it can still be taken out.
@@ -44,6 +57,7 @@ function AttachmentChipInner({
   id,
   type,
   name,
+  count,
   status = 'ready',
   failure,
   onRemove,
@@ -78,7 +92,7 @@ function AttachmentChipInner({
           {t('chat.attachment.kind', { kind: type })}
         </span>
       )}
-      <span className='truncate'>{name}</span>
+      <span className='truncate'>{name || t('chat.attachment.nodes', { count: count ?? 0 })}</span>
       {status === 'failed' && failure ? (
         <span className='shrink-0'>{t('chat.composer.attachmentFailed', { reason: failure })}</span>
       ) : null}

@@ -143,3 +143,23 @@ describe('what is said about an attempt to attach', () => {
     expect(screen.getByTestId('chat-composer-attach')).not.toHaveAttribute('title');
   });
 });
+
+describe('a piece of the canvas above the box', () => {
+  it('is counted when several nodes went in unnamed', () => {
+    const piece: TrayItem = {
+      id: 'canvas-3-x',
+      name: '',
+      type: 'canvas',
+      status: 'ready',
+      chip: {
+        id: 'canvas-3-x',
+        type: 'canvas',
+        name: '',
+        data_snapshot: { nodes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], edges: [] },
+      },
+    };
+    render(<ChatComposer {...BASICS} attachments={[piece]} />);
+
+    expect(screen.getByTestId('chat-chip-canvas-3-x')).toHaveTextContent('3 nodes');
+  });
+});

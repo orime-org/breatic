@@ -94,7 +94,7 @@ import {
   readTextBodies,
   readNodeFragments,
 } from '@web/data/yjs/canvas-space';
-import { itemsForNodes } from '@web/spaces/canvas/attach-nodes';
+import { itemForPick } from '@web/spaces/canvas/attach-nodes';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -3355,15 +3355,16 @@ function CanvasSpaceInner({
   );
 
   /**
-   * Hand nodes to the agent, read fresh from the document at the press.
-   * @param ids - The picked node ids; a group stands for its members.
+   * Hand the picked piece of the canvas to the agent as one item, read fresh
+   * from the document at the press.
+   * @param ids - The picked node ids; a group brings its members.
    */
   const addToAgent = React.useCallback(
     (ids: readonly string[]): void => {
-      const items = itemsForNodes(readCanvasGraph(projectId, spaceId).nodes, ids, {
+      const item = itemForPick(readCanvasGraph(projectId, spaceId), ids, {
         fragmentsOf: (id) => readNodeFragments(projectId, spaceId, id),
       });
-      void attachToChat(projectId, items);
+      void attachToChat(projectId, item ? [item] : []);
     },
     [projectId, spaceId],
   );

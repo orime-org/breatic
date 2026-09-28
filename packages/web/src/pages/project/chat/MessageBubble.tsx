@@ -9,7 +9,7 @@ import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { AssetRow } from '@web/pages/project/chat/AssetRow';
-import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
+import { AttachmentChip, nodeCountOf } from '@web/pages/project/chat/AttachmentChip';
 import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
 import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
@@ -101,7 +101,13 @@ export const MessageBubble = React.memo(function MessageBubble({
             className='mb-1 flex max-w-full flex-wrap justify-end gap-1'
           >
             {message.attachments.map((chip) => (
-              <AttachmentChip key={chip.id} id={chip.id} type={chip.type} name={chip.name} />
+              <AttachmentChip
+                key={chip.id}
+                id={chip.id}
+                type={chip.type}
+                name={chip.name}
+                count={nodeCountOf(chip)}
+              />
             ))}
           </div>
         ) : null}
