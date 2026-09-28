@@ -13,7 +13,7 @@ import { attachAccept, attachFiles, type AttachDeps } from '@web/pages/project/c
 import { runMediaUpload } from '@web/spaces/canvas/canvas-upload';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import { openTray } from '@web/stores/attach-to-chat';
-import { useChatAttachments } from '@web/stores/chat-attachments';
+import { useTrayNotice } from '@web/stores/chat-attachments';
 
 /**
  * Upload one file for a chat message.
@@ -70,9 +70,7 @@ export interface AttachFiles {
  */
 export function useAttachFiles(projectId: string, conversationId: string | undefined): AttachFiles {
   const t = useTranslation();
-  const said = useChatAttachments((s) =>
-    conversationId ? (s.noticeByConversation[conversationId] ?? null) : null,
-  );
+  const said = useTrayNotice(conversationId);
 
   const attach = React.useCallback(
     (files: File[]): void => {

@@ -3,7 +3,12 @@
 
 import type { ChatAttachedChip } from '@breatic/shared';
 
-import { checkFileAdmission, uploadAcceptFor } from '@web/spaces/canvas/canvas-upload';
+import {
+  checkFileAdmission,
+  fileToNodeSpec,
+  uploadAcceptFor,
+  type UploadNodeSpec,
+} from '@web/spaces/canvas/canvas-upload';
 import { pickExtractor } from '@web/spaces/canvas/text-extract';
 import type { Tray } from '@web/stores/attach-to-chat';
 import {
@@ -33,9 +38,6 @@ export interface AttachDeps {
  */
 const MAX_BYTES_PER_CHAR = 3;
 
-/** The media kinds a file can be sent as. */
-type MediaKind = 'image' | 'video' | 'audio';
-
 /** The document types the picker offers, beside the media it offers. */
 const DOCUMENT_ACCEPT = [
   '.pdf',
@@ -60,19 +62,6 @@ export function attachAccept(): string {
   ].join(',');
 }
 
-/**
- * Which media kind a file is, going by its type.
- * @param file - The file.
- * @returns Its kind, or null when it is not media.
- */
-function mediaKindOf(file: File): MediaKind | null {
-  const family = file.type.split('/')[0];
-  return family === 'image' || family === 'video' || family === 'audio' ? family : null;
-}
-
-/** What a picked file is sent as: media uploaded, or a document read to text. */
-type SentAs = MediaKind | 'text';
-
 /** A file that will be attached. */
 interface Accepted {
   file: File;
@@ -91,17 +80,17 @@ function classify(
   file: File,
   maxBytes: number,
   limits: AttachmentLimits,
-): { as: SentAs } | { refused: TrayNotice } {
-  const kind = mediaKindOf(file);
-  const extractor = kind === null ? pickExtractor(file.type) : null;
-  if (kind === null && extractor === null) return { refused: { key: 'unsupported', filename: file.name } };
+): { as: UploadNodeSpec['nodeType'] } | { refused: TrayNotice } {
+  const { nodeType, needsUpload } = fileToNodeSpec(file);
+  const extractor = needsUpload ? null : pickExtractor(file.type);
+  if (!needsUpload && extractor === null) return { refused: { key: 'unsupported', filename: file.name } };
   const rejection = checkFileAdmission(file, maxBytes);
   if (rejection === 'tooLarge') return { refused: { key: 'tooLarge', filename: file.name } };
   if (rejection !== null) return { refused: { key: 'unsupported', filename: file.name } };
   if (extractor === 'text' && file.size > limits.maxChars * MAX_BYTES_PER_CHAR) {
     return { refused: { key: 'tooLong' } };
   }
-  return { as: kind ?? 'text' };
+  return { as: nodeType };
 }
 
 /**

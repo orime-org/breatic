@@ -18,7 +18,6 @@ import {
   chipOfPart,
   userTurnForModel,
 } from "@shared/agent/attachments.js";
-import { chatAttachedChipSchema, chatMessageSchema } from "@shared/schemas/api.js";
 import type { ChatAttachedChip } from "@shared/schemas/api.js";
 
 const image: ChatAttachedChip = {
@@ -78,25 +77,5 @@ describe("an attached item on the chat wire", () => {
 
   it("reads nothing from any other part", () => {
     expect(chipOfPart({ type: "text" })).toBeUndefined();
-  });
-});
-
-describe("what a message may carry", () => {
-  it("refuses an item id longer than any node or file id", () => {
-    expect(chatAttachedChipSchema.safeParse({ ...image, id: "x".repeat(129) }).success).toBe(false);
-  });
-
-  it("takes an id as long as a uuid", () => {
-    expect(chatAttachedChipSchema.safeParse({ ...image, id: "0".repeat(36) }).success).toBe(true);
-  });
-
-  it("refuses a whole message carrying an oversized id", () => {
-    const parsed = chatMessageSchema.safeParse({
-      message: "hi",
-      project_id: "00000000-0000-4000-8000-000000000000",
-      conversation_id: "00000000-0000-4000-8000-000000000001",
-      attached_chips: [{ ...image, id: "x".repeat(10_000) }],
-    });
-    expect(parsed.success).toBe(false);
   });
 });

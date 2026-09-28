@@ -195,17 +195,19 @@ function fail(conversationId: string, id: string, failure: TrayFailure): void {
 }
 
 /**
- * Keep the items that pass, and say nothing more about the last attempt.
+ * Take out the items that match, and say nothing more about the last attempt.
  *
  * The list is written only when something left it, so a turn that carried
  * nothing does not hand the box a new list to redraw.
  * @param conversationId - The conversation.
- * @param keep - Whether an item stays.
+ * @param leaves - Whether an item goes.
  */
-function removeWhere(conversationId: string, keep: (item: TrayItem) => boolean): void {
+function removeWhere(conversationId: string, leaves: (item: TrayItem) => boolean): void {
   const current = useStore.getState().byConversation[conversationId];
-  const next = current?.filter(keep);
-  if (current && next && next.length !== current.length) write(conversationId, next);
+  if (current) {
+    const next = current.filter((item) => !leaves(item));
+    if (next.length !== current.length) write(conversationId, next);
+  }
   say(conversationId, null);
 }
 
@@ -215,7 +217,7 @@ function removeWhere(conversationId: string, keep: (item: TrayItem) => boolean):
  * @param id - The item.
  */
 function remove(conversationId: string, id: string): void {
-  removeWhere(conversationId, (item) => item.id !== id);
+  removeWhere(conversationId, (item) => item.id === id);
 }
 
 /**
@@ -230,7 +232,7 @@ function remove(conversationId: string, id: string): void {
  */
 function removeSent(conversationId: string, sent: readonly ChatAttachedChip[]): void {
   const gone = new Set(sent.map((chip) => JSON.stringify(chip)));
-  removeWhere(conversationId, (item) => !item.chip || !gone.has(JSON.stringify(item.chip)));
+  removeWhere(conversationId, (item) => item.chip !== undefined && gone.has(JSON.stringify(item.chip)));
 }
 
 /**
@@ -284,6 +286,17 @@ export const useChatAttachments = useStore;
 export function useTray(conversationId: string | undefined): readonly TrayItem[] {
   return useStore((s) =>
     conversationId ? (s.byConversation[conversationId] ?? NO_ATTACHMENTS) : NO_ATTACHMENTS,
+  );
+}
+
+/**
+ * What is said above the box in one conversation, kept current.
+ * @param conversationId - The conversation on screen, if one is.
+ * @returns The notice, or null when there is none.
+ */
+export function useTrayNotice(conversationId: string | undefined): TrayNotice | null {
+  return useStore((s) =>
+    conversationId ? (s.noticeByConversation[conversationId] ?? null) : null,
   );
 }
 
