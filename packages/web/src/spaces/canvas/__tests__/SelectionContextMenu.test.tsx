@@ -134,7 +134,7 @@ describe('SelectionContextMenu — adding to the agent', () => {
     expect(screen.getByTestId('selection-menu-add-to-agent')).toHaveAttribute('data-disabled');
   });
 
-  it('sits right above delete, at the foot of the menu', () => {
+  it('sits right above delete, each in a group of its own', () => {
     render(
       <SelectionContextMenu
         open
@@ -147,9 +147,11 @@ describe('SelectionContextMenu — adding to the agent', () => {
         onDelete={() => {}}
       />,
     );
-    const items = screen.getAllByRole('menuitem').map((el) => el.getAttribute('data-testid'));
+    const items = Array.from(document.querySelectorAll('[role="menuitem"], [role="separator"]')).map((el) =>
+      el.getAttribute('role') === 'separator' ? '---' : el.getAttribute('data-testid'),
+    );
 
-    expect(items.slice(-2)).toEqual(['selection-menu-add-to-agent', 'selection-menu-delete']);
+    expect(items.slice(-4)).toEqual(['---', 'selection-menu-add-to-agent', '---', 'selection-menu-delete']);
   });
 });
 

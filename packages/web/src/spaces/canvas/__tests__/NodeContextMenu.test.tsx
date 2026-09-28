@@ -335,11 +335,13 @@ describe('NodeContextMenu — adding to the agent', () => {
     expect(screen.queryByTestId('node-menu-add-to-agent')).not.toBeInTheDocument();
   });
 
-  it('sits right above delete, at the foot of the menu', () => {
+  it('sits right above delete, each in a group of its own', () => {
     setup({ onAddToAgent: () => {}, onDelete: () => {}, onUpload: () => {}, onCopy: () => {} });
-    const items = screen.getAllByRole('menuitem').map((el) => el.getAttribute('data-testid'));
+    const items = Array.from(document.querySelectorAll('[role="menuitem"], [role="separator"]')).map((el) =>
+      el.getAttribute('role') === 'separator' ? '---' : el.getAttribute('data-testid'),
+    );
 
-    expect(items.slice(-2)).toEqual(['node-menu-add-to-agent', 'node-menu-delete']);
+    expect(items.slice(-4)).toEqual(['---', 'node-menu-add-to-agent', '---', 'node-menu-delete']);
   });
 });
 
