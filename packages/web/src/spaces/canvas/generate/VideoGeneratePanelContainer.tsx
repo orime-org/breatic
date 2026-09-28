@@ -30,7 +30,6 @@ import {
   type ExecuteVerdict,
 } from '@breatic/shared';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
-import { slotFillLowersCapBelowPicks } from '@web/spaces/canvas/generate/model-reference-cap';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import {
   CatalogGatedFrame,
@@ -495,30 +494,9 @@ function VideoGeneratePanelBody({
         endPick();
         return;
       }
-      // A slot can carry a lower reference-image cap with it (#1928): this
-      // model takes 7 alone and 4 alongside a clip. Refused HERE rather than
-      // on the clicked node, so the user is not walked into a picking session
-      // whose every candidate would be rejected — and refused rather than
-      // trimming the images, which would throw away picks they never offered.
-      // Read fresh for the same reason the execute gate is: a collaborator can
-      // change the mode, the model or the picks between render and click.
-      const fresh = freshVm(new Set(atMentionedRef.current));
-      const overCap = slotFillLowersCapBelowPicks(
-        models.find((m) => m.name === fresh.model),
-        fresh.mode,
-        fresh.slotUrls,
-        slot,
-        fresh.referenceUrls.length,
-      );
-      if (overCap) {
-        toast.warning(
-          t('canvas.generatePanel.refusePickTooManyReferences', overCap),
-        );
-        return;
-      }
       startSlotPick[slot](nodeId);
     },
-    [startSlotPick, endPick, nodeId, freshVm, models, t],
+    [startSlotPick, endPick, nodeId],
   );
   // A running slot pick outlives the control that started it when the mode
   // changes (locally or via a collaborator's setNodeMode): the slot stops

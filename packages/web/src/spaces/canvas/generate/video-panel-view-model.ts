@@ -338,7 +338,7 @@ export function buildVideoPanelViewModel(input: {
     referenceUrls,
     // Through the shared rule, so this number and the one the server
     // re-checks before enqueue are the same arithmetic (#1928).
-    maxReferences: modelReferenceCap(current, mode, slotUrls),
+    maxReferences: modelReferenceCap(current),
     // Declared per mode in the catalog and precomputed onto the wire, beside
     // the source types the same row states (#269).
     sourceRule: current?.sourceRuleByMode[mode] ?? 'all_of',
