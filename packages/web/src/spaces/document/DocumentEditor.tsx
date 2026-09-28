@@ -14,9 +14,9 @@ import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
   draftRangeIn,
-  onDraftRangeChange,
+  onDraftChange,
 } from '@web/spaces/document/document-comment-draft-range';
-import { keepReplies } from '@web/spaces/document/document-comment-unsent';
+import { clearReplies } from '@web/spaces/document/document-comment-unsent';
 import type { ProjectRole } from '@breatic/shared';
 
 import { DocumentCommentRail } from '@web/spaces/document/DocumentCommentRail';
@@ -93,7 +93,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // it (A1 · A2). The entries dispatch the range and nothing else; this is
   // the one place that turns it into the panel being up, the same shape the
   // press on a highlight above takes.
-  const draftAt = React.useSyncExternalStore(onDraftRangeChange, () =>
+  const draftAt = React.useSyncExternalStore(onDraftChange, () =>
     draftRangeIn(handle.editor.prosemirrorState),
   );
   React.useEffect(() => {
@@ -122,7 +122,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     // And every reply box's unsent words. They are kept by the editor so a
     // Space tab switch does not take them; closing the panel is the reader's
     // own doing, and it does (§9.6).
-    keepReplies(handle.editor, new Map());
+    clearReplies(handle.editor);
   }, [handle.editor]);
   const rail = useCommentRail(handle.editor);
   // Held here because this is where the editor's DOM enters the scroller, and

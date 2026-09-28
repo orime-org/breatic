@@ -26,6 +26,15 @@
  * pointing at nothing, which is what A21 is about — the draft card keeps its
  * place in the panel and says so instead.
  *
+ * ## One draft, one place
+ *
+ * Everything about the open draft that is not the reader's words lives here:
+ * where it is aimed, which opening it is, and — once it can no longer be
+ * written — why (A21, A22). The editor outlives the panel, which a Space tab
+ * switch mounts again, so a draft whose words went while its card was not on
+ * screen still says so when the card comes back (design §9.4.1). The words
+ * themselves are kept against the opening in `document-comment-unsent.ts`.
+ *
  * ## Why plugin state
  *
  * The mapping has to be applied once per transaction, in order, and a plugin's
@@ -95,11 +104,30 @@ export interface DraftAim extends DraftRange {
   readonly opening: DraftOpening;
 }
 
+/** Why a draft can no longer be written (A21, A22). */
+export type DraftDropReason = 'targetGone' | 'cannotWrite';
+
 /**
- * The plugin's key, which is also the meta a caller opens and closes a draft
- * with: dispatching a range opens one, dispatching `null` closes it.
+ * The draft as the panel shows it: aimed at words, or dropped and saying why
+ * until the reader dismisses the notice.
  */
-export const DOCUMENT_COMMENT_DRAFT_RANGE = new PluginKey<DraftAim | null>(
+export type Draft =
+  | ({ readonly kind: 'aimed' } & DraftAim)
+  | {
+    readonly kind: 'dropped';
+    readonly why: DraftDropReason;
+    readonly opening: DraftOpening;
+  };
+
+/**
+ * What a caller dispatches under the plugin's key: a range opens a draft,
+ * `null` closes it, and `{ drop }` drops it for a reason the plugin cannot
+ * see for itself.
+ */
+export type DraftCommand = DraftRange | null | { readonly drop: 'cannotWrite' };
+
+/** The plugin's key, which is also the meta a {@link DraftCommand} goes under. */
+export const DOCUMENT_COMMENT_DRAFT_RANGE = new PluginKey<Draft | null>(
   'documentCommentDraftRange',
 );
 
@@ -132,9 +160,9 @@ export function mapDraftRange(
  */
 function carryDraft(
   tr: Transaction,
-  current: DraftAim,
+  current: Draft & { kind: 'aimed' },
   before: EditorState,
-): DraftAim | null {
+): Draft {
   if (!tr.docChanged) return current;
   const sync = tr.getMeta(ySyncPluginKey) as
     | { isChangeOrigin?: boolean }
@@ -150,19 +178,37 @@ function carryDraft(
   // `useSyncExternalStore` requires the snapshot to be identical while the
   // store has not changed, and a fresh object per transaction would make
   // every keystroke anywhere in the body read as a change to this range.
-  if (moved === null) return null;
+  if (moved === null) {
+    return { kind: 'dropped', why: 'targetGone', opening: current.opening };
+  }
   return moved.from === current.from && moved.to === current.to
     ? current
-    : { from: moved.from, to: moved.to, opening: current.opening };
+    : {
+      kind: 'aimed',
+      from: moved.from,
+      to: moved.to,
+      opening: current.opening,
+    };
+}
+
+/**
+ * The open draft, aimed or dropped.
+ * @param state - The editor state to read.
+ * @returns The draft, or null when there is none.
+ */
+export function draftIn(state: EditorState): Draft | null {
+  return DOCUMENT_COMMENT_DRAFT_RANGE.getState(state) ?? null;
 }
 
 /**
  * The range the open draft is going to land on.
  * @param state - The editor state to read.
- * @returns That range and which opening it is, or null when no draft is open.
+ * @returns That range and which opening it is, or null when no draft is
+ *   aimed anywhere.
  */
 export function draftRangeIn(state: EditorState): DraftAim | null {
-  return DOCUMENT_COMMENT_DRAFT_RANGE.getState(state) ?? null;
+  const draft = draftIn(state);
+  return draft?.kind === 'aimed' ? draft : null;
 }
 
 /**
@@ -183,16 +229,14 @@ function paintDraft(state: EditorState): DecorationSet {
 }
 
 /**
- * The broadcast for the open draft's range. A draft card watching the editor's
- * own events would never learn it should be on screen: opening a draft
- * dispatches nothing but the meta.
+ * The broadcast for the open draft. A draft card watching the editor's own
+ * events would never learn it should be on screen: opening a draft dispatches
+ * nothing but the meta.
  */
-const watch = watchPluginState(
-  (state) => DOCUMENT_COMMENT_DRAFT_RANGE.getState(state) ?? null,
-);
+const watch = watchPluginState(draftIn);
 
-/** Hear about every change that could have moved the open draft's range. */
-export const onDraftRangeChange: (listener: () => void) => () => void =
+/** Hear about every change to the open draft. */
+export const onDraftChange: (listener: () => void) => () => void =
   watch.onChange;
 
 /**
@@ -203,27 +247,31 @@ export const onDraftRangeChange: (listener: () => void) => () => void =
 export const documentCommentDraftRange = createExtension(() => ({
   key: 'document-comment-draft-range',
   prosemirrorPlugins: [
-    new Plugin<DraftAim | null>({
+    new Plugin<Draft | null>({
       key: DOCUMENT_COMMENT_DRAFT_RANGE,
       state: {
         /**
          * Starts with no draft open.
          * @returns Null.
          */
-        init: (): DraftAim | null => null,
+        init: (): Draft | null => null,
 
         /**
-         * Opens, closes, or carries the range across this change.
+         * Opens, closes, drops, or carries the draft across this change.
          * @param tr - The transaction being applied.
-         * @param current - The range before it.
+         * @param current - The draft before it.
          * @param before - The state the transaction applies to.
-         * @returns The range after it.
+         * @returns The draft after it.
          */
-        apply: (tr, current, before): DraftAim | null => {
+        apply: (tr, current, before): Draft | null => {
           const asked = tr.getMeta(DOCUMENT_COMMENT_DRAFT_RANGE) as
-            | DraftRange
-            | null
+            | DraftCommand
             | undefined;
+          if (asked !== undefined && asked !== null && 'drop' in asked) {
+            return current?.kind === 'aimed'
+              ? { kind: 'dropped', why: asked.drop, opening: current.opening }
+              : current;
+          }
           if (asked !== undefined) {
             // A range covering nothing is refused here rather than left for
             // the post to notice: the entries are unavailable over text-less
@@ -232,12 +280,13 @@ export const documentCommentDraftRange = createExtension(() => ({
             // with no words under it.
             if (asked === null || asked.to <= asked.from) return null;
             return {
+              kind: 'aimed',
               from: asked.from,
               to: asked.to,
               opening: { tracked: trackLink(before, asked) },
             };
           }
-          if (current === null) return null;
+          if (current?.kind !== 'aimed') return current;
           // A selection change carries no steps and the range comes back
           // unchanged — which is what a reader clicking elsewhere before
           // typing their comment needs.

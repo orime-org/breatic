@@ -123,15 +123,22 @@ describe('the comment panel', () => {
         />,
       );
     };
-    remount = () => {
-      rendered.unmount();
-      render(
+    let current = rendered;
+    mountBody = () => {
+      current = render(
         <DocumentEditor
           handle={handle}
           myRole={myRole}
           readOnly={myRole === 'viewer'}
         />,
       );
+    };
+    unmountBody = () => {
+      current.unmount();
+    };
+    remount = () => {
+      unmountBody();
+      mountBody();
     };
     act(() => {
       handle.editor.replaceBlocks(handle.editor.document, [
@@ -149,6 +156,10 @@ describe('the comment panel', () => {
    * outlives the mount.
    */
   let remount: () => void;
+
+  /** The two halves of a tab switch, for a case that acts in between. */
+  let unmountBody: () => void;
+  let mountBody: () => void;
 
   /**
    * Makes an edit on a second replica and brings it in, the way a peer's
@@ -980,6 +991,82 @@ describe('the comment panel', () => {
       ).toHaveValue('half a thought');
     });
 
+    it('posts what was written after a Space tab switch', async () => {
+      // The draft is one thing kept by the editor, so the card mounted again
+      // over it is the same draft: Save sends what the reader wrote.
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'half a thought',
+      );
+
+      remount();
+      await userEvent.click(await screen.findByTestId('doc-comment-draft-save'));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('doc-comment-draft-card')).toBeNull();
+      });
+      const threads = await handle.editor
+        .getExtension(CommentsExtension)!
+        .threadStore.getThreads();
+      expect(threads.size).toBe(1);
+      expect(draftPaint()).toBeNull();
+    });
+
+    it('says so after a tab switch when the words went while it was away', async () => {
+      // A21 while the card is not mounted: the editor keeps syncing, so the
+      // draft learns its words are gone whether or not anyone is drawing it.
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+      unmountBody();
+
+      peerEdits((line) => {
+        line.delete(6, 5);
+      });
+      mountBody();
+
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps a notice on screen across a tab switch', async () => {
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      peerEdits((line) => {
+        line.delete(6, 5);
+      });
+      await screen.findByTestId('doc-comment-draft-dropped');
+
+      remount();
+
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
+    });
+
+    it('leaves another card being read after a tab switch', async () => {
+      // The card being read changes when the reader presses one, not when the
+      // panel is mounted again.
+      show();
+      await comment(0, 5, 'about alpha');
+      aimDraft(12, 19);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'words');
+      await userEvent.click(screen.getByTestId('doc-comment-card'));
+      const reading = selectedThreadsIn(handle.editor.prosemirrorState);
+
+      remount();
+      await screen.findByTestId('doc-comment-draft-card');
+
+      expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual(reading);
+    });
+
     it('starts empty once the panel was closed on it and a new one opens', async () => {
       // Closing the panel throws the draft away (design §9.4): a new one
       // over the same words starts from nothing.
@@ -1270,8 +1357,8 @@ describe('the comment panel', () => {
     });
 
     it('refuses to write words that are only spaces', async () => {
-      // `reduceDraft` answers a save on blank words by leaving the draft
-      // alone, so the card stays and nothing is made. The pair of buttons
+      // A save on blank words leaves the draft alone, so the card stays and
+      // nothing is made. The pair of buttons
       // never appears over them either (A29), which leaves the Enter key as
       // the way to ask.
       show();

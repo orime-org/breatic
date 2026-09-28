@@ -29,7 +29,7 @@ import {
   documentCommentDraftRange,
   draftRangeIn,
   mapDraftRange,
-  onDraftRangeChange,
+  onDraftChange,
 } from '@web/spaces/document/document-comment-draft-range';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -245,7 +245,7 @@ describe('the draft range plugin', () => {
     const view = editor.prosemirrorView!;
     const run = firstRun(editor);
     let heard = 0;
-    const stop = onDraftRangeChange(() => {
+    const stop = onDraftChange(() => {
       heard += 1;
     });
 
@@ -285,7 +285,7 @@ describe('the draft range plugin', () => {
     );
 
     let heard = 0;
-    const stop = onDraftRangeChange(() => {
+    const stop = onDraftChange(() => {
       heard += 1;
     });
     // An edit after the range, which moves neither end.

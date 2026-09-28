@@ -53,12 +53,14 @@ import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import { useCommentAnchors } from '@web/spaces/document/use-comment-anchors';
 import {
   DRAFT_THREAD_ID,
-  draftRangeIn,
-  onDraftRangeChange,
+  draftIn,
+  onDraftChange,
 } from '@web/spaces/document/document-comment-draft-range';
 import {
-  keepReplies,
-  keptReplies,
+  keepRepliesOf,
+  onUnsentChange,
+  repliesOf,
+  writeReply,
 } from '@web/spaces/document/document-comment-unsent';
 import { DocumentCommentDraftCard } from '@web/spaces/document/DocumentCommentDraftCard';
 import {
@@ -128,39 +130,27 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     () => selectedThreadsIn(editor.prosemirrorState),
   );
 
-  // Where a comment is being written, if one is. The rail answers it with a
-  // card of its own (§9.4.1); everything else about that card's place is the
-  // same rule every other card follows.
-  const draftAt = React.useSyncExternalStore(
-    onDraftRangeChange,
-    () => draftRangeIn(editor.prosemirrorState),
+  // The comment being written, if one is: aimed at words, or dropped and
+  // saying why (§9.4.1). The rail answers it with a card of its own; everything
+  // else about that card's place is the same rule every other card follows.
+  // Read from the editor, which a Space tab switch does not take away.
+  const draft = React.useSyncExternalStore(onDraftChange, () =>
+    draftIn(editor.prosemirrorState),
   );
-  // The card outlives its range. Two of the ways a draft ends are not the
-  // reader's doing and owe them an account — the words it was aimed at are
-  // gone (A21), the right to write here was taken away (A22) — and the range
-  // going is exactly what raises the first of them. A place kept only while
-  // the range stands would take the card away in the same render that gave it
-  // something to say. So the rail holds the place until the card says it is
-  // finished, which is what `onGone` is.
-  const [draftLingers, setDraftLingers] = React.useState(false);
-  React.useEffect(() => {
-    if (draftAt !== null) setDraftLingers(true);
-  }, [draftAt]);
-  // The draft's turn at being read goes with its place: once `draftShowing`
-  // turns false, the effect that keeps `ids` to cards on the panel takes the
-  // draft's id out (design §9.4.1, invariant four). A save goes the same way —
-  // saving is the comment being finished (user 2026-09-24).
-  const draftGone = React.useCallback((): void => {
-    setDraftLingers(false);
-  }, []);
+  const draftAt = draft?.kind === 'aimed' ? draft : null;
   // Pressing the draft card, or putting the focus into it, makes it the card
-  // being read — every card in the panel takes that turn the same way.
+  // being read. A thread's card takes that turn on a press only; focus on it
+  // is the pointer resting there (A7, A24).
   const readDraft = React.useCallback((): void => {
     const reading = selectedThreadsIn(editor.prosemirrorState);
     if (reading.length === 1 && reading[0] === DRAFT_THREAD_ID) return;
     selectThreads(editor, [DRAFT_THREAD_ID]);
   }, [editor]);
-  const draftShowing = draftAt !== null || draftLingers;
+  // The draft's turn at being read goes with it: once there is no draft, the
+  // effect that keeps `ids` to cards on the panel takes its id out (design
+  // §9.4.1, invariant four). A save goes the same way — saving is the comment
+  // being finished (user 2026-09-24).
+  const draftShowing = draft !== null;
 
   const said = useCommentWrite();
 
@@ -194,41 +184,30 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     [editor, said],
   );
 
-  // What has been written into each thread's reply box and not sent yet. Held
-  // here rather than in the card, because a card is taken off the panel by
-  // things the reader did not do — a peer settling the thread, a peer
-  // deleting it — and unsent words are theirs until they send or clear them.
-  // A Space tab switch remounts the panel and not the editor, so the words
-  // are handed to the editor's keeping and read back from it.
-  const [drafts, setDrafts] = React.useState<ReadonlyMap<string, string>>(
-    () => keptReplies(editor),
+  // What has been written into each thread's reply box and not sent yet. Kept
+  // by the editor rather than by the card or this panel: a card is taken off
+  // the panel by things the reader did not do — a peer settling the thread, a
+  // peer deleting it — and a Space tab switch mounts the panel again, while
+  // unsent words are the reader's until they send or clear them.
+  const drafts = React.useSyncExternalStore(onUnsentChange, () =>
+    repliesOf(editor),
   );
-  React.useEffect(() => {
-    keepReplies(editor, drafts);
-  }, [editor, drafts]);
-  const onDraft = React.useCallback((threadId: string, body: string) => {
-    setDrafts((held) => {
-      if ((held.get(threadId) ?? '') === body) return held;
-      const next = new Map(held);
-      if (body === '') next.delete(threadId);
-      else next.set(threadId, body);
-      return next;
-    });
-  }, []);
+  const onDraft = React.useCallback(
+    (threadId: string, body: string) => {
+      writeReply(editor, threadId, body);
+    },
+    [editor],
+  );
 
-  // A draft outlives the card, so it is let go of when the thread itself is
-  // gone rather than when the card leaves — a settled thread is still one
-  // filter press away with those words in it (design §9.6). Asked of both
-  // groups, not of what the panel is showing.
+  // Let go of when the thread itself is gone rather than when the card
+  // leaves — a settled thread is still one filter press away with those words
+  // in it (design §9.6). Asked of both groups, not of what the panel shows.
   React.useEffect(() => {
-    const live = new Set(
-      [...cards.unresolved, ...cards.resolved].map((card) => card.id),
+    keepRepliesOf(
+      editor,
+      new Set([...cards.unresolved, ...cards.resolved].map((card) => card.id)),
     );
-    setDrafts((held) => {
-      const kept = [...held].filter(([id]) => live.has(id));
-      return kept.length === held.size ? held : new Map(kept);
-    });
-  }, [cards]);
+  }, [editor, cards]);
 
   // One object, memoised: every card takes the same eight, and a fresh object
   // per render would stop `DocumentCommentCard`'s memo ever bailing out.
@@ -573,20 +552,21 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
             {/* Placed by the same numbers as the rest, and measured like
                 them: it grows as the reader writes, and the cards below have
                 to give way (§9.6). */}
-            <PlacedDraft
-              top={placed.get(DRAFT_THREAD_ID) ?? 0}
-              take={take}
-              giveBack={giveBack}
-              onRead={readDraft}
-            >
-              <DocumentCommentDraftCard
-                editor={editor}
-                aimedAt={draftAt}
-                myRole={myRole}
-                reading={reading === DRAFT_THREAD_ID}
-                onGone={draftGone}
-              />
-            </PlacedDraft>
+            {draft !== null && (
+              <PlacedDraft
+                top={placed.get(DRAFT_THREAD_ID) ?? 0}
+                take={take}
+                giveBack={giveBack}
+                onRead={readDraft}
+              >
+                <DocumentCommentDraftCard
+                  editor={editor}
+                  draft={draft}
+                  myRole={myRole}
+                  reading={reading === DRAFT_THREAD_ID}
+                />
+              </PlacedDraft>
+            )}
           </div>
         )}
       </div>

@@ -8,14 +8,17 @@
  * somebody wants it to be and a line floating beside the words holds one
  * line (user 2026-09-23). Everything about where it sits is the rail's, the
  * same rule every other card follows; what is here is the words, the two
- * buttons, and the three ways a draft ends.
+ * buttons, and the ways a draft ends.
  *
- * WHAT IT OWNS is the words, through `reduceDraft` — the same reducer the
- * canvas annotations use (#1881), unchanged. Its `drop` action carries the
- * two closings that are not the reader's doing, and both owe them an
- * account: the text the comment was aimed at is gone (A21), or their right
- * to write here was taken away mid-draft (A22). The notice stands until they
- * dismiss it, which is why this card outlives its range.
+ * IT KEEPS NOTHING OF ITS OWN. The draft is the editor's: where it is aimed
+ * and why it was dropped live in the draft range plugin, the words in
+ * `document-comment-unsent.ts`, and whether it is the card being read in the
+ * selection plugin. A Space tab switch mounts this card again over the same
+ * draft, so what the reader wrote, and any notice they were owed, are still
+ * there (design §9.4.1).
+ *
+ * A dropped draft says why until the reader dismisses it: the text it was
+ * aimed at is gone (A21), or their right to write here was taken away (A22).
  *
  * WHICH WORDS ARE BEING COMMENTED ON is said by the body itself, in the
  * comment colours: the draft range paints them (design §9.4.1). This card
@@ -32,15 +35,14 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { canPostAnnotations } from '@web/spaces/canvas/annotation/rights';
 import {
-  CLOSED_DRAFT,
-  reduceDraft,
-  type DraftState,
-} from '@web/stores/annotation-draft';
-import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
-import type { DraftAim } from '@web/spaces/document/document-comment-draft-range';
+  DOCUMENT_COMMENT_DRAFT_RANGE,
+  type Draft,
+  type DraftCommand,
+} from '@web/spaces/document/document-comment-draft-range';
 import {
-  keepDraftWords,
-  keptDraftWords,
+  draftWordsOf,
+  onUnsentChange,
+  writeDraftWords,
 } from '@web/spaces/document/document-comment-unsent';
 import { DocumentCommentWriteBox } from '@web/spaces/document/DocumentCommentWriteBox';
 import { postComment } from '@web/spaces/document/document-comment-post';
@@ -54,11 +56,11 @@ import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 interface DraftCardProps {
   /** The editor the comment lands in. */
   editor: ToolEditor;
-  /** Where the comment is aimed, or null once that range is gone. */
-  aimedAt: DraftAim | null;
+  /** The draft this card draws. */
+  draft: Draft;
   /**
    * The reader's role on the project, watched so losing the right to write
-   * closes an open card (A22).
+   * drops the draft (A22).
    *
    * Named as `SpaceBodyProps` names it. A prop called `role` on a JSX element
    * is read as the ARIA attribute, by the linter and by anyone reading it.
@@ -66,120 +68,64 @@ interface DraftCardProps {
   myRole: ProjectRole;
   /** Whether this is the card being read. */
   reading: boolean;
-  /**
-   * Said once this card has nothing left to draw.
-   *
-   * The rail keeps its place until it hears this, rather than until the range
-   * goes: the notice A21 owes the reader is raised by the range going, so a
-   * place tied to the range would be gone in the same render.
-   */
-  onGone?: () => void;
 }
 
 /**
  * The card a new comment is written in.
- * @param root0 - The editor, where the comment is aimed, and the role.
+ * @param root0 - The editor, the draft, the role, and whether it is read.
  * @param root0.editor - The editor the comment lands in.
- * @param root0.aimedAt - Where the comment is aimed.
+ * @param root0.draft - The draft this card draws.
  * @param root0.myRole - The reader's role on the project.
  * @param root0.reading - Whether this is the card being read.
- * @param root0.onGone - Said once this card has nothing left to draw.
- * @returns The card while a draft is open or its notice stands.
+ * @returns The card.
  */
 export function DocumentCommentDraftCard({
   editor,
-  aimedAt,
+  draft,
   myRole,
   reading,
-  onGone,
-}: DraftCardProps): React.JSX.Element | null {
+}: DraftCardProps): React.JSX.Element {
   const t = useTranslation();
-  const [draft, setDraft] = React.useState<DraftState>(CLOSED_DRAFT);
   const mayWrite = canPostAnnotations(myRole);
   const said = useCommentWrite();
+  const { opening } = draft;
+  const words = React.useSyncExternalStore(onUnsentChange, () =>
+    draftWordsOf(opening),
+  );
 
   /**
-   * Closes the draft's range, which is what takes the card off the rail.
+   * Sends one command to the draft, dropping the selection with it (A30).
    *
-   * The selection is dropped with it (A30). Every way out goes through here,
-   * and leaving a selection behind stands the bubble bar back up the moment
-   * the card goes — which is not what the reader asked for by saving or by
-   * pressing Escape (user 2026-09-22).
+   * Every way a draft closes or drops goes through here, and leaving a
+   * selection behind stands the bubble bar back up the moment the card goes —
+   * which is not what the reader asked for by saving or by pressing Escape
+   * (user 2026-09-22).
+   * @param command - What to do with the draft.
    */
-  const clearRange = React.useCallback((): void => {
-    const view = editor.prosemirrorView;
-    if (view === null) return;
-    const { selection } = view.state;
-    view.dispatch(
-      view.state.tr
-        .setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null)
-        .setSelection(TextSelection.create(view.state.doc, selection.to)),
-    );
-  }, [editor]);
+  const command = React.useCallback(
+    (command: DraftCommand): void => {
+      const view = editor.prosemirrorView;
+      if (view === null) return;
+      const { selection } = view.state;
+      view.dispatch(
+        view.state.tr
+          .setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, command)
+          .setSelection(TextSelection.create(view.state.doc, selection.to)),
+      );
+    },
+    [editor],
+  );
 
-  const opening = aimedAt?.opening ?? null;
+  /** Throws the draft away, which Cancel, Escape and Dismiss all do. */
+  const close = React.useCallback((): void => {
+    command(null);
+  }, [command]);
 
-  // The range opening is what opens the draft: the entries dispatch it, and
-  // this is where that becomes a card with words in it. The words are the
-  // ones already written in this opening, when a Space tab switch mounted the
-  // card again over a draft that stayed open.
+  // A22: only a draft still aimed somewhere can lose the right to be written.
   React.useEffect(() => {
-    if (opening === null) return;
-    setDraft((current) =>
-      current.mode === 'closed'
-        ? reduceDraft(current, {
-          type: 'open',
-          use: 'annotation',
-          text: keptDraftWords(opening),
-        })
-        : current,
-    );
-  }, [opening]);
-
-  // Handed to the editor's keeping as they change, since the card is
-  // remounted by a tab switch and the editor is not.
-  React.useEffect(() => {
-    if (opening !== null && draft.mode === 'typing') {
-      keepDraftWords(opening, draft.text);
-    }
-  }, [opening, draft]);
-
-  // The two closings that are not the reader's doing. Each drops the draft
-  // with its reason, and the reason is what the notice reads from.
-  React.useEffect(() => {
-    if (aimedAt !== null) return;
-    setDraft((current) =>
-      current.mode === 'typing'
-        ? reduceDraft(current, { type: 'drop', why: 'targetGone' })
-        : current,
-    );
-  }, [aimedAt]);
-
-  // Only a draft that is still aimed somewhere can lose the right to be
-  // written; with no range there is nothing of the reader's to close.
-  React.useEffect(() => {
-    if (mayWrite || aimedAt === null) return;
-    setDraft((current) =>
-      current.mode === 'typing'
-        ? reduceDraft(current, { type: 'drop', why: 'cannotWrite' })
-        : current,
-    );
-    clearRange();
-  }, [mayWrite, aimedAt, clearRange]);
-
-  // Nothing aimed at, nothing being written, nothing to say: this card is
-  // drawing nothing, and the rail can have its place back.
-  const finished =
-    aimedAt === null && draft.dropped === undefined && draft.mode !== 'typing';
-  React.useEffect(() => {
-    if (finished) onGone?.();
-  }, [finished, onGone]);
-
-  /** Throws the words away, which Cancel and Escape both do. */
-  const cancel = React.useCallback((): void => {
-    setDraft((current) => reduceDraft(current, { type: 'escape' }));
-    clearRange();
-  }, [clearRange]);
+    if (mayWrite || draft.kind !== 'aimed') return;
+    command({ drop: 'cannotWrite' });
+  }, [mayWrite, draft.kind, command]);
 
   // A30: an empty draft ends on a press anywhere outside the card — the body,
   // blank panel space, another card. It is the press, not the focus leaving,
@@ -189,52 +135,42 @@ export function DocumentCommentDraftCard({
   // DismissableLayer answers "outside" the same way (`onPointerDownOutside`).
   // Words the reader wrote are theirs to keep until they say otherwise.
   const card = React.useRef<HTMLElement>(null);
-  const empty =
-    aimedAt !== null &&
-    draft.mode === 'typing' &&
-    draft.text.trim().length === 0;
+  const empty = draft.kind === 'aimed' && words.trim().length === 0;
   React.useEffect(() => {
     const own = card.current;
     if (!empty || own === null) return;
     const doc = own.ownerDocument;
     /**
-     * Cancels the draft when the press lands outside the card.
+     * Closes the draft when the press lands outside the card.
      * @param event - The press.
      */
     const onPress = (event: PointerEvent): void => {
       if (event.target instanceof Node && own.contains(event.target)) return;
-      cancel();
+      close();
     };
     doc.addEventListener('pointerdown', onPress, true);
     return (): void => {
       doc.removeEventListener('pointerdown', onPress, true);
     };
-  }, [empty, cancel]);
+  }, [empty, close]);
 
   /** Posts what the reader wrote, and closes the card once it has landed. */
   const post = React.useCallback((): void => {
-    const saved = reduceDraft(draft, { type: 'save' });
-    if (saved.commit === undefined) {
-      // Blank words are not worth writing, and the reducer says so by handing
-      // back a draft with no `commit` — the card stays open.
-      setDraft(saved);
-      return;
-    }
-    void said(postComment(editor, saved.commit)).then((thread) => {
+    // Words that are only spaces are not worth writing; the card stays open.
+    if (words.trim().length === 0) return;
+    void said(postComment(editor, words)).then((thread) => {
       // No thread means nothing was written, whichever way: `undefined` is a
       // refusal `said` has already reported, `null` is `postComment` finding
-      // no range left to aim at. Nothing moves either way — the words are
-      // theirs until they send them or throw them away, and the card is where
-      // they still are. On the `null` path the notice A21 owes them is raised
-      // by the effect watching the range, which needs this card still open.
+      // no range left to aim at — and the draft range plugin has already
+      // dropped the draft for that, so the notice A21 owes them is showing.
+      // Nothing else moves: the words are theirs until they send them or
+      // throw them away.
       if (thread == null) return;
-      setDraft(saved);
-      // The range is what says a draft is open, so clearing it closes the card.
-      clearRange();
+      close();
     });
-  }, [draft, editor, clearRange, said]);
+  }, [words, editor, close, said]);
 
-  if (draft.dropped !== undefined) {
+  if (draft.kind === 'dropped') {
     return (
       <article
         data-testid='doc-comment-draft-card'
@@ -246,7 +182,7 @@ export function DocumentCommentDraftCard({
           className='flex-1 px-1 py-0.5 text-xs text-muted-foreground'
         >
           {t(
-            draft.dropped === 'targetGone'
+            draft.why === 'targetGone'
               ? 'spaces.document.comment.targetGone'
               : 'spaces.document.comment.cannotWrite',
           )}
@@ -256,17 +192,13 @@ export function DocumentCommentDraftCard({
           size='icon'
           className='size-4.5 shrink-0'
           data-testid='doc-comment-draft-dismiss'
-          onClick={() => {
-            setDraft(CLOSED_DRAFT);
-          }}
+          onClick={close}
         >
           <X className='h-3 w-3' />
         </Button>
       </article>
     );
   }
-
-  if (aimedAt === null || draft.mode !== 'typing') return null;
 
   return (
     <article
@@ -277,15 +209,18 @@ export function DocumentCommentDraftCard({
     >
       <DocumentCommentWriteBox
         name='draft'
+        // The focus goes to a draft the reader just asked for, which is the
+        // card being read the moment it opens. A Space tab switch mounting the
+        // card again while another card is being read leaves that one alone.
         // eslint-disable-next-line jsx-a11y/no-autofocus -- a card the reader just asked for by pressing the comment entry; they expect to type immediately
-        autoFocus
-        value={draft.text}
+        autoFocus={reading}
+        value={words}
         placeholder={t('spaces.document.comment.placeholder')}
         onChange={(next) => {
-          setDraft((current) => reduceDraft(current, { type: 'type', text: next }));
+          writeDraftWords(opening, next);
         }}
         onSave={post}
-        onCancel={cancel}
+        onCancel={close}
       />
     </article>
   );
