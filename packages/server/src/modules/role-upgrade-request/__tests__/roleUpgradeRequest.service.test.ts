@@ -67,6 +67,7 @@ vi.mock("@breatic/core", () => {
 vi.mock("../roleUpgradeRequests.repo.js", () => ({
   createPending: vi.fn(),
   attachNotification: vi.fn(),
+  getProjectIdOf: vi.fn(),
   lockRequest: vi.fn(),
   settleIfPending: vi.fn(async () => true),
   cancelIfPending: vi.fn(),
@@ -142,6 +143,7 @@ beforeEach(() => {
     studioService.getPersonalStudioProfilesByUserIds,
   ).mockResolvedValue(new Map());
   vi.mocked(projectRepo.lockLiveProject).mockResolvedValue(true);
+  vi.mocked(requestsRepo.getProjectIdOf).mockResolvedValue(PID);
   vi.mocked(userRepo.getUserById).mockResolvedValue({
     id: OWNER,
     email: "olivia@example.com",

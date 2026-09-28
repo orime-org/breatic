@@ -87,6 +87,16 @@ function sqlStateOf(err: unknown): string | null {
 }
 
 /**
+ * Settle a call as soon as it starts, so a rejection that lands while the test
+ * is still holding a gate is observed rather than reported as unhandled.
+ * @param running - The call under test.
+ * @returns How it ended.
+ */
+function track<T>(running: Promise<T>): Promise<PromiseSettledResult<T>> {
+  return Promise.allSettled([running]).then(([outcome]) => outcome!);
+}
+
+/**
  * Resolve once `running` has either finished or parked on a statement matching
  * `queryLike` — whichever the code under test does.
  * @param running - The call under test.
@@ -222,7 +232,7 @@ async function againstDelete(
 ): Promise<{ sweepError: unknown; otherError: unknown }> {
   const cascade = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
   let sweepError: unknown = null;
-  let running: Promise<unknown> | undefined;
+  let running: Promise<PromiseSettledResult<unknown>> | undefined;
   try {
     await cascade.begin(async (c) => {
       await c`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
@@ -230,7 +240,7 @@ async function againstDelete(
         UPDATE project_join_requests SET deleted_at = now()
         WHERE project_id = ${projectId} AND deleted_at IS NULL
       `;
-      running = other();
+      running = track(other());
       await waitUntilBlockedOn(sql, parkedOn, 1);
       try {
         await closingStep(c);
@@ -243,7 +253,7 @@ async function againstDelete(
   } finally {
     await cascade.end({ timeout: 5 });
   }
-  const [settled] = await Promise.allSettled([running!]);
+  const settled = await running!;
   return { sweepError, otherError: settled.status === "rejected" ? settled.reason : null };
 }
 
@@ -259,15 +269,15 @@ describe("deciding a request against removing the requester from the studio", ()
     // Holding the owner's bell entry parks the approval on retiring it, after
     // the member row is written and before the transaction commits.
     const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
-    let approving: Promise<unknown> | undefined;
-    let removing: Promise<unknown> | undefined;
+    let approving: Promise<PromiseSettledResult<unknown>> | undefined;
+    let removing: Promise<PromiseSettledResult<unknown>> | undefined;
     try {
       await gate
         .begin(async (g) => {
           await g`SELECT id FROM notifications WHERE id = ${pending!.notification_id} FOR UPDATE`;
-          approving = decisionService.respond(pending!.share_token, s.ownerId, "confirm");
+          approving = track(decisionService.respond(pending!.share_token, s.ownerId, "confirm"));
           await waitUntilBlockedOn(sql, ["update", "notifications"], 1);
-          removing = studioMemberService.removeMember(s.studioSlug, s.requesterId);
+          removing = track(studioMemberService.removeMember(s.studioSlug, s.requesterId));
           await settledOrParked(removing, ["studio_members", "for update"]);
           throw new RollBack();
         })
@@ -277,7 +287,7 @@ describe("deciding a request against removing the requester from the studio", ()
     } finally {
       await gate.end({ timeout: 5 });
     }
-    const [approved] = await Promise.allSettled([approving!, removing!]);
+    const [approved] = await Promise.all([approving!, removing!]);
     expect(approved.status).toBe("fulfilled");
 
     const [seat] = await sql<{ n: number }[]>`
@@ -315,8 +325,8 @@ describe("removing the requester before the approval reaches them", () => {
     `;
 
     const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
-    let removing: Promise<unknown> | undefined;
-    let approving: Promise<unknown> | undefined;
+    let removing: Promise<PromiseSettledResult<unknown>> | undefined;
+    let approving: Promise<PromiseSettledResult<unknown>> | undefined;
     try {
       await gate
         .begin(async (g) => {
@@ -324,9 +334,9 @@ describe("removing the requester before the approval reaches them", () => {
             SELECT user_id FROM project_members
             WHERE project_id = ${other!.id} AND user_id = ${s.requesterId} FOR UPDATE
           `;
-          removing = studioMemberService.removeMember(s.studioSlug, s.requesterId);
+          removing = track(studioMemberService.removeMember(s.studioSlug, s.requesterId));
           await waitUntilBlockedOn(sql, ["update", "project_members"], 1);
-          approving = decisionService.respond(pending!.share_token, s.ownerId, "confirm");
+          approving = track(decisionService.respond(pending!.share_token, s.ownerId, "confirm"));
           await settledOrParked(approving, ["studio_members", "for update"]);
           throw new RollBack();
         })
@@ -336,7 +346,7 @@ describe("removing the requester before the approval reaches them", () => {
     } finally {
       await gate.end({ timeout: 5 });
     }
-    const [removed, approved] = await Promise.allSettled([removing!, approving!]);
+    const [removed, approved] = await Promise.all([removing!, approving!]);
     expect(removed.status).toBe("fulfilled");
     expect(approved.status === "rejected" ? approved.reason : null).toBeInstanceOf(ConflictError);
 
@@ -369,20 +379,20 @@ describe("a role upgrade decision against an owner change", () => {
 
     // Holding the project row lines both up behind it, the accept first.
     const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
-    let accepting: Promise<unknown> | undefined;
-    let approving: Promise<unknown> | undefined;
+    let accepting: Promise<PromiseSettledResult<unknown>> | undefined;
+    let approving: Promise<PromiseSettledResult<unknown>> | undefined;
     try {
       await gate.begin(async (g) => {
         await g`SELECT id FROM projects WHERE id = ${s.projectId} FOR UPDATE`;
-        accepting = projectTransferService.confirmProjectTransfer(offer!.id, viewerId);
+        accepting = track(projectTransferService.confirmProjectTransfer(offer!.id, viewerId));
         await waitUntilBlockedOn(sql, ["projects", "for update"], 1);
-        approving = roleUpgradeService.approve({ requestId, ownerUserId: s.ownerId });
+        approving = track(roleUpgradeService.approve({ requestId, ownerUserId: s.ownerId }));
         await waitUntilBlockedOn(sql, [], 2);
       });
     } finally {
       await gate.end({ timeout: 5 });
     }
-    const [accepted, approved] = await Promise.allSettled([accepting!, approving!]);
+    const [accepted, approved] = await Promise.all([accepting!, approving!]);
 
     expect(accepted.status).toBe("fulfilled");
     expect(sqlStateOf(approved.status === "rejected" ? approved.reason : null)).not.toBe(DEADLOCK);
@@ -410,20 +420,20 @@ describe("withdrawing a request against an owner change", () => {
     // Holding the owner's bell entry parks the accept where it moves the
     // request to the new owner, with the project already locked.
     const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
-    let accepting: Promise<unknown> | undefined;
-    let withdrawing: Promise<unknown> | undefined;
+    let accepting: Promise<PromiseSettledResult<unknown>> | undefined;
+    let withdrawing: Promise<PromiseSettledResult<unknown>> | undefined;
     try {
       await gate.begin(async (g) => {
         await g`SELECT id FROM notifications WHERE id = ${pending!.notification_id} FOR UPDATE`;
-        accepting = projectTransferService.confirmProjectTransfer(offer!.id, s.heirId);
+        accepting = track(projectTransferService.confirmProjectTransfer(offer!.id, s.heirId));
         await waitUntilBlockedOn(sql, ["update", "notifications"], 1);
-        withdrawing = joinService.cancelMine(s.projectId, s.requesterId);
+        withdrawing = track(joinService.cancelMine(s.projectId, s.requesterId));
         await waitUntilBlockedOn(sql, [], 2);
       });
     } finally {
       await gate.end({ timeout: 5 });
     }
-    const [accepted, withdrawn] = await Promise.allSettled([accepting!, withdrawing!]);
+    const [accepted, withdrawn] = await Promise.all([accepting!, withdrawing!]);
 
     expect(accepted.status).toBe("fulfilled");
     expect(withdrawn.status).toBe("fulfilled");
@@ -507,15 +517,15 @@ describe("a request filed while the project changes owner", () => {
       RETURNING id
     `;
     const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
-    let filing: Promise<unknown> | undefined;
-    let transferring: Promise<unknown> | undefined;
+    let filing: Promise<PromiseSettledResult<unknown>> | undefined;
+    let transferring: Promise<PromiseSettledResult<unknown>> | undefined;
     try {
       await gate
         .begin(async (g) => {
           await g`SELECT id FROM project_join_requests WHERE id = ${stale!.id} FOR UPDATE`;
-          filing = joinService.request({ projectId: s.projectId, requesterUserId: s.requesterId });
+          filing = track(joinService.request({ projectId: s.projectId, requesterUserId: s.requesterId }));
           await waitUntilBlockedOn(sql, ["update", "project_join_requests"], 1);
-          transferring = projectTransferService.confirmProjectTransfer(offer!.id, s.heirId);
+          transferring = track(projectTransferService.confirmProjectTransfer(offer!.id, s.heirId));
           await settledOrParked(transferring, ["projects", "for update"]);
           throw new RollBack();
         })
@@ -525,7 +535,7 @@ describe("a request filed while the project changes owner", () => {
     } finally {
       await gate.end({ timeout: 5 });
     }
-    const [filed, transferred] = await Promise.allSettled([filing!, transferring!]);
+    const [filed, transferred] = await Promise.all([filing!, transferring!]);
     expect(filed.status).toBe("fulfilled");
     expect(transferred.status).toBe("fulfilled");
 
