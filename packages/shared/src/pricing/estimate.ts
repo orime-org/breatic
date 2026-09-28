@@ -10,6 +10,7 @@ export interface PricedParam {
   readonly default?: unknown;
   readonly fill?: string;
   readonly type?: string;
+  readonly optional?: boolean;
 }
 
 /** What the estimate reads off one catalog model. */
@@ -105,10 +106,14 @@ export async function estimateCredits(
     const field = spec.upstream ?? name;
     const value = input.params[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
     upstream[field] = value;
-    if ((spec.fill === "canvas" || spec.fill === "pool") && holds(value)) {
+    if (spec.fill === "canvas" || spec.fill === "pool") {
       const known = input.durations?.[name] ?? [];
-      if (known.length >= itemCount(value)) durations[field] = known;
-      else if (billsBy(formulas, "get_duration", field)) lengthUnknown = true;
+      if (holds(value) && known.length >= itemCount(value)) durations[field] = known;
+      // A source not picked yet is one the run cannot go without unless the
+      // model says so, and its length is as unknown as a picked one's.
+      else if ((holds(value) || spec.optional !== true) && billsBy(formulas, "get_duration", field)) {
+        lengthUnknown = true;
+      }
     }
   }
 

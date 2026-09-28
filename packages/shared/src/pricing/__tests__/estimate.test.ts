@@ -31,10 +31,22 @@ const MIDJOURNEY: PricedModel = {
 
 const DRIVEN_BY_REFS: PricedModel = {
   takes_prompt: false,
-  params: { refs: { upstream: "reference_videos", fill: "pool", type: "list", default: null } },
+  params: {
+    refs: { upstream: "reference_videos", fill: "pool", type: "list", default: null, optional: true },
+  },
   pricing: {
     base_price: 50_000,
     formula: '{"total_price": $ceil(get_duration(reference_videos)) * base_price}',
+    discount_rate: 100,
+  },
+};
+
+const REQUIRED_CLIP: PricedModel = {
+  takes_prompt: false,
+  params: { video: { fill: "canvas", default: null } },
+  pricing: {
+    base_price: 50_000,
+    formula: '{"total_price": $ceil(get_duration(video)) * base_price}',
     discount_rate: 100,
   },
 };
@@ -135,6 +147,16 @@ describe("estimateCredits", () => {
   it("answers a lower bound while a source's length is unknown", async () => {
     const estimate = await estimateCredits(DRIVEN_BY_REFS, { params: { refs: ["a"] } }, 1);
     expect(estimate).toEqual({ credits: 0, bound: "at_least" });
+  });
+
+  it("answers a lower bound while a required source priced by its length is still empty", async () => {
+    const estimate = await estimateCredits(REQUIRED_CLIP, { params: {} }, 1);
+    expect(estimate).toEqual({ credits: 0, bound: "at_least" });
+  });
+
+  it("prices an optional source left empty at nothing, exactly", async () => {
+    const estimate = await estimateCredits(DRIVEN_BY_REFS, { params: {} }, 1);
+    expect(estimate).toEqual({ credits: 0, bound: "exact" });
   });
 
   it("prices a thousand characters while a per-character model has no text", async () => {
