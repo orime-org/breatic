@@ -219,8 +219,8 @@ models:
     mode: "t2v"
     takes_prompt: true
     tier: "optional"
-    description: "Six-shot storyboard, 4K, neg prompt"
-    guide: "The director's desk: steer the shot away from what you do not want and cut a six-segment sequence inside one clip."
+    description: "4K with a negative prompt"
+    guide: "The director's desk: 4K picture you can steer away from what you do not want with a negative prompt."
     generation_time: 600
     params:
       aspect_ratio:
@@ -245,7 +245,8 @@ models:
           duration:
             values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
             default: 5
-        fill: "panel"
+        fill: "none"
+        note: "storyboard: built in its own task (#2218)"
       negative_prompt:
         description: "What to keep out of the video"
         label: "Negative prompt"
@@ -411,7 +412,7 @@ models:
     takes_prompt: true
     tier: "optional"
     description: "Six scene cuts in one 4K take"
-    guide: "Cutting between shots inside one generation: a storyboard of up to six segments with elements held across the cuts."
+    guide: "Keeping a character or product consistent: up to three images you mention become elements the model holds throughout the clip."
     generation_time: 600
     params:
       duration:
@@ -445,7 +446,8 @@ models:
           duration:
             values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
             default: 5
-        fill: "panel"
+        fill: "none"
+        note: "storyboard: built in its own task (#2218)"
       generate_audio:
         upstream: "sound"
         description: "Generate a soundtrack with the video"
