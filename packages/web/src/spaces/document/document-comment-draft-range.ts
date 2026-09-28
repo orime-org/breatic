@@ -248,6 +248,31 @@ function inLine(doc: ProseMirrorNode, pos: number, line: EndLine): boolean {
 }
 
 /**
+ * Carries one end of a range across a change: where its path puts it while
+ * that is still in the line the end sat in, otherwise found again by that
+ * line. Neither path's own answer says which line a position is in: mapping
+ * sends an end whose line was moved into the gap it left, and a letter a
+ * peer's editor keeps while rewriting a line into another line's words is in
+ * that other line now.
+ * @param tr - The change.
+ * @param was - The end before it.
+ * @param at - Where the end's path puts it, or null once the path lost it.
+ * @param fallback - What stands when the end's line is gone or changed.
+ * @returns Where the end is now, or null once it is lost.
+ */
+function carryEnd(
+  tr: Transaction,
+  was: number,
+  at: number | null,
+  fallback: number | null,
+): number | null {
+  const line = endLineAt(tr.before, was);
+  if (line === null) return at ?? fallback;
+  if (at !== null && inLine(tr.doc, at, line)) return at;
+  return lineStill(tr.doc, line) ?? fallback;
+}
+
+/**
  * Names a range in the shared document: the start by the first letter it
  * covers, the end by the last one, associated to its left.
  * @param bound - The sync binding, in step with the range's state.
@@ -299,8 +324,8 @@ function endAfterYjs(bound: Binding, end: Y.RelativePosition): EndAfterYjs {
 
 /**
  * Carries the range across a change that came in through Yjs, each end on its
- * own: where Yjs puts it while the letter it names stands, otherwise found
- * again by its line.
+ * own: where Yjs puts it while the letter it names stands in the end's line,
+ * otherwise found again by that line, and lost when that fails too.
  * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param held - What was taken before the change.
@@ -315,17 +340,8 @@ function carryAcrossYjs(
 ): DraftRange | null {
   const start = endAfterYjs(bound, held.tracked.start);
   const end = endAfterYjs(bound, held.tracked.end);
-  /**
-   * Finds an end again by the line it sat in before the change.
-   * @param pos - The end before the change.
-   * @returns Where it is now, or null once its line is gone or changed.
-   */
-  const byLine = (pos: number): number | null => {
-    const line = endLineAt(tr.before, pos);
-    return line === null ? null : lineStill(tr.doc, line);
-  };
-  const from = start.deleted ? byLine(range.from) : start.at;
-  const to = end.deleted ? byLine(range.to) : end.at;
+  const from = carryEnd(tr, range.from, start.deleted ? null : start.at, null);
+  const to = carryEnd(tr, range.to, end.deleted ? null : end.at, null);
   return from !== null && to !== null && to > from ? { from, to } : null;
 }
 
@@ -369,8 +385,8 @@ export const DOCUMENT_COMMENT_DRAFT_RANGE = new PluginKey<Draft | null>(
 
 /**
  * Carries a draft's range across one of the reader's own changes, each end on
- * its own: where ProseMirror maps it while it stays in its line, otherwise
- * found again by its line. A line moved is taken out and put back, which
+ * its own: where ProseMirror maps it while that stays in the end's line,
+ * otherwise found again by that line. A line moved is taken out and put back, which
  * mapping reads as a deletion; a line the reader deleted or changed is gone,
  * and the mapped position — the range drawn in, or nothing left — stands.
  * @param range - Where the draft was going before this change.
@@ -390,12 +406,7 @@ export function mapDraftRange(
    */
   const carry = (pos: number, bias: 1 | -1): number => {
     const mapped = tr.mapping.map(pos, bias);
-    const line = endLineAt(tr.before, pos);
-    // An end still in its line is where mapping puts it; asking the line
-    // would give the same answer after walking the body for its row.
-    return line === null || inLine(tr.doc, mapped, line)
-      ? mapped
-      : lineStill(tr.doc, line) ?? mapped;
+    return carryEnd(tr, pos, mapped, mapped) ?? mapped;
   };
   const from = carry(range.from, 1);
   const to = carry(range.to, -1);
