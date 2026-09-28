@@ -105,5 +105,26 @@ describe('AttachmentChip hover preview', () => {
 
     expect(screen.getByTestId('hover-preview-content')).toHaveAttribute('data-side', 'top');
   });
+
+  it('opens no preview when the keyboard lands on the remove button', () => {
+    vi.useFakeTimers();
+    const chip: ChatAttachedChip = { id: 'f', type: 'image', name: 'a.png', data_snapshot: { url: 'https://a/i.png' } };
+    render(<AttachmentChip id='f' type='image' name='a.png' chip={chip} onRemove={() => undefined} testId='card' />);
+    act(() => {
+      screen.getByRole('button').focus();
+      vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS + 10);
+    });
+
+    expect(screen.queryByTestId('hover-preview-content')).not.toBeInTheDocument();
+  });
+
+  it('opens no preview when the pointer is on the remove button', () => {
+    vi.useFakeTimers();
+    const chip: ChatAttachedChip = { id: 'f', type: 'image', name: 'a.png', data_snapshot: { url: 'https://a/i.png' } };
+    render(<AttachmentChip id='f' type='image' name='a.png' chip={chip} onRemove={() => undefined} testId='card' />);
+    hover(screen.getByRole('button'));
+
+    expect(screen.queryByTestId('hover-preview-content')).not.toBeInTheDocument();
+  });
 });
 
