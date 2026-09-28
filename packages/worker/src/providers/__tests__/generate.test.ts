@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { initCore } from "@breatic/core";
+import type * as httpModule from "@worker/providers/http.js";
 
 const runPredictionMock = vi.fn();
 const queryBillingMock = vi.fn();
@@ -18,7 +19,7 @@ vi.mock("@worker/providers/wavespeed.js", () => ({
 }));
 
 vi.mock("@worker/providers/http.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@worker/providers/http.js")>();
+  const actual = await importOriginal<typeof httpModule>();
   return { ...actual, queryBilling: (...args: unknown[]) => queryBillingMock(...args) };
 });
 

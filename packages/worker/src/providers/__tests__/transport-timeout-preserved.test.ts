@@ -63,30 +63,14 @@ const PROVIDERS_DIR = join(import.meta.dirname, "..");
  * Order matters: it is what catches two deadlines in one file being swapped.
  */
 const DEADLINES_BEFORE: ReadonlyArray<readonly [string, readonly string[]]> = [
-  ["audio/transports/elevenlabs.ts", ["resolved.timeout * 1000"]],
-  ["audio/transports/fal.ts", ["resolved.timeout * 1000"]],
-  // `audio/transports/minimax.ts` was here and is gone: the two music models
-  // were the only ones routing to it, and #1960 moved both to WaveSpeed
-  // because the direct connection builds prompt / lyrics / is_instrumental
-  // alone and sends none of the three reference URLs music-01 reads. A call
-  // site genuinely removed, which is the one edit this list takes.
-  ["audio/transports/wavespeed.ts", ["resolved.timeout * 1000"]],
-  ["image/transports/byteplus.ts", ["resolved.timeout * 1000"]],
-  ["image/transports/dashscope.ts", ["resolved.timeout * 1000"]],
-  ["image/transports/google.ts", ["resolved.timeout * 1000"]],
-  // topaz carries three: the estimate call's own 30s, then the sync submit and
-  // the async submit, both on the model's figure.
-  ["image/transports/topaz.ts", ["30_000", "resolved.timeout * 1000", "resolved.timeout * 1000"]],
-  ["image/transports/wavespeed.ts", ["resolved.timeout * 1000"]],
+  // The sixteen image / video / audio / tts transports were here and are
+  // gone: #2156 runs every catalog model on WaveSpeed, so the four WaveSpeed
+  // transports became the one below — carrying the same model figure, now
+  // read off the endpoint it is handed — and the twelve other vendors' went
+  // with their providers. Call sites genuinely removed, which is the one edit
+  // this list takes.
+  ["wavespeed.ts", ["endpoint.timeout * 1000"]],
   ["three-d/transports/wavespeed.ts", ["resolved.timeout * 1000"]],
-  ["tts/transports/elevenlabs.ts", ["resolved.timeout * 1000"]],
-  ["tts/transports/fish.ts", ["resolved.timeout * 1000"]],
-  ["tts/transports/minimax.ts", ["resolved.timeout * 1000"]],
-  ["tts/transports/wavespeed.ts", ["resolved.timeout * 1000"]],
-  ["video/transports/byteplus.ts", ["resolved.timeout * 1000"]],
-  ["video/transports/google.ts", ["resolved.timeout * 1000"]],
-  ["video/transports/klingai.ts", ["resolved.timeout * 1000"]],
-  ["video/transports/wavespeed.ts", ["resolved.timeout * 1000"]],
   // Not a transport, but it was migrated in the same pass and carried a
   // deadline of its own.
   ["http.ts", ["httpConfig().billingTimeout"]],
@@ -278,7 +262,7 @@ describe("shared-transport migration — every deadline survives the move", () =
   it("leaves no AbortSignal.timeout behind", () => {
     // The transport discards a caller's signal, so one left in place is not a
     // stylistic leftover — it is a deadline that silently stopped applying.
-    const offenders = [...transportSources(), "http.ts"].flatMap((rel) =>
+    const offenders = [...transportSources(), "http.ts", "wavespeed.ts"].flatMap((rel) =>
       blankCommentsAndStrings(readFileSync(join(PROVIDERS_DIR, rel), "utf8"))
         .split("\n")
         .map((text, i) => ({ n: i + 1, text }))

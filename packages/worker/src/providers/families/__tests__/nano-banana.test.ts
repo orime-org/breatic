@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // The prompt is rewritten by an LLM through @breatic/domain; stubbed so the
 // test is hermetic.
+vi.mock("@breatic/core", () => ({ logger: { warn: (): undefined => undefined } }));
 vi.mock("@breatic/domain", () => ({
   generateTextRetry: vi.fn(),
   getModel: vi.fn(() => "mock-model"),

@@ -81,8 +81,10 @@ vi.mock("ai", () => ({
 
 // The provider module `importProvider` reaches for. Its validator behaves like
 // the real `validateParams`: it drops every key the model does not declare.
-vi.mock("@worker/providers/video/index.js", () => ({
-  validateVideoParams: (
+// Both functions take the modality first; the spy sees what follows it.
+vi.mock("@worker/providers/generate.js", () => ({
+  validateModelParams: (
+    _modality: string,
     model: string | undefined,
     params?: Record<string, unknown>,
   ): [string, Record<string, unknown>] => {
@@ -93,7 +95,7 @@ vi.mock("@worker/providers/video/index.js", () => ({
     }
     return [model ?? "kling-o3-pro", kept];
   },
-  generateAsync: mockGenerateAsync,
+  generateAsync: (_modality: string, ...rest: unknown[]): unknown => mockGenerateAsync(...rest),
 }));
 
 import { runAigcDirect, runMiniTool } from "@worker/handlers/dispatch.js";

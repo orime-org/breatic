@@ -60,7 +60,6 @@ const RESOLVED: ResolvedModel = {
   apiKey: "ws-key",
   timeout: 60,
   maxConcurrency: 5,
-  costPerCall: 0,
   extraParams: {},
   litellmModel: undefined,
   tokenPrice: undefined,

@@ -1605,10 +1605,16 @@ async function importProvider(taskType: string): Promise<{
     generateAsync: generate,
   });
   switch (modality) {
-    case "image": { const m = await import("@worker/providers/image/index.js"); return wrap(m.validateImageParams, m.generateAsync); }
-    case "video": { const m = await import("@worker/providers/video/index.js"); return wrap(m.validateVideoParams, m.generateAsync); }
-    case "audio": { const m = await import("@worker/providers/audio/index.js"); return wrap(m.validateAudioParams, m.generateAsync); }
-    case "tts": { const m = await import("@worker/providers/tts/index.js"); return wrap(m.validateTtsParams, m.generateAsync); }
+    case "image":
+    case "video":
+    case "audio":
+    case "tts": {
+      const m = await import("@worker/providers/generate.js");
+      return wrap(
+        (model, params) => m.validateModelParams(modality, model, params),
+        async (prompt, model, params, resume) => ({ ...(await m.generateAsync(modality, prompt, model, params, resume)) }),
+      );
+    }
     case "three-d": { const m = await import("@worker/providers/three-d/index.js"); return wrap(m.validateThreeDParams, m.generateAsync); }
     default: throw new Error(`Unknown AIGC task type: ${taskType}`);
   }
