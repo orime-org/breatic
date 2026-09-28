@@ -1622,6 +1622,108 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('bravo');
     });
 
+    it('stays on its words when a peer presses Enter at the start of their line', async () => {
+      show('editor', ['one', 'two carrying three']);
+      const second = lineStarts()[1]!;
+      aimAt(second + 4, second + 12);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Enter');
+
+      expect(lines()).toEqual(['one', '', 'two carrying three']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('carrying');
+    });
+
+    it('stays on its words when the reader presses Enter at the start of their line and undoes it', async () => {
+      show('editor', ['one', 'two carrying three']);
+      const second = lineStarts()[1]!;
+      aimAt(second + 4, second + 12);
+      await screen.findByTestId('doc-comment-draft-card');
+      handle.undoManager.stopCapturing();
+      await peerPresses(handle, second, 'Enter');
+      handle.undoManager.stopCapturing();
+
+      act(() => {
+        handle.undoManager.undo();
+      });
+
+      expect(lines()).toEqual(['one', 'two carrying three']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('carrying');
+    });
+
+    it('stays on its words when the reader undoes typing in their line and moving it, made together', async () => {
+      show('editor', ['alpha bravo', 'charlie delta']);
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      handle.undoManager.stopCapturing();
+      act(() => {
+        const view = handle.editor.prosemirrorView!;
+        view.dispatch(view.state.tr.insertText('X', lineStarts()[0]!));
+        handle.editor.setTextCursorPosition(handle.editor.document[0]!);
+        view.someProp('handleKeyDown', (handler) =>
+          handler(
+            view,
+            new KeyboardEvent('keydown', {
+              key: 'ArrowDown',
+              ctrlKey: true,
+              shiftKey: true,
+            }),
+          ),
+        );
+      });
+      handle.undoManager.stopCapturing();
+
+      act(() => {
+        handle.undoManager.undo();
+      });
+
+      expect(lines()).toEqual(['alpha bravo', 'charlie delta']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('bravo');
+    });
+
+    it('stays on its words when a peer deletes the same word before them', async () => {
+      show('editor', ['the the cat']);
+      aimDraft(4, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        const view = peer.editor.prosemirrorView!;
+        const at = lineStarts(peer.editor.prosemirrorState)[0]!;
+        view.dispatch(view.state.tr.delete(at, at + 4));
+      });
+
+      expect(lines()).toEqual(['the cat']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('the cat');
+    });
+
+    it('shrinks when the reader undoes words they typed that it starts on', async () => {
+      // Undoing is deleting those words, the way pressing Backspace over them
+      // would be: the rest of its words stay.
+      show('editor', ['alpha bravo']);
+      handle.undoManager.stopCapturing();
+      act(() => {
+        const view = handle.editor.prosemirrorView!;
+        view.dispatch(view.state.tr.insertText('new ', lineStarts()[0]!));
+      });
+      handle.undoManager.stopCapturing();
+      aimDraft(0, 9);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      act(() => {
+        handle.undoManager.undo();
+      });
+
+      expect(lines()).toEqual(['alpha bravo']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('alpha');
+    });
+
     it('says so when a peer deletes the words it is on', async () => {
       show();
       aimDraft(6, 11);
