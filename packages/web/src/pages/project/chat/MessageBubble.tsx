@@ -9,6 +9,7 @@ import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { AssetRow } from '@web/pages/project/chat/AssetRow';
+import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
 import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
@@ -91,6 +92,19 @@ export const MessageBubble = React.memo(function MessageBubble({
           isUser ? 'max-w-[80%] items-end text-foreground' : 'w-full text-foreground',
         )}
       >
+        {/* What the reader attached, above their words and outside their
+            container: it is what the words are about, not part of them. */}
+        {message.attachments ? (
+          <div
+            role='list'
+            data-testid='message-attachments'
+            className='mb-1 flex max-w-full flex-wrap justify-end gap-1'
+          >
+            {message.attachments.map((chip) => (
+              <AttachmentChip key={chip.id} id={chip.id} type={chip.type} name={chip.name} />
+            ))}
+          </div>
+        ) : null}
         {/* The reader's own words keep their container; the line under it is
             outside that container, on the surface. */}
         {/* Held to the width the row gives it. `items-end` above leaves the

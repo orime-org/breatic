@@ -7,7 +7,7 @@
  * regardless of the backend wire schema (data/api/chat.ts adapts).
  */
 
-import type { CanvasProposal, ToolFailureKind } from '@breatic/shared';
+import type { CanvasProposal, ChatAttachedChip, ToolFailureKind } from '@breatic/shared';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -119,6 +119,8 @@ export interface ChatMessage {
    * to a markdown renderer with raw HTML enabled counts.
    */
   content: string;
+  /** What the reader attached to this message, in order. Absent when nothing. */
+  attachments?: ChatAttachedChip[];
   /**
    * When the message was written down, as an absolute instant.
    *

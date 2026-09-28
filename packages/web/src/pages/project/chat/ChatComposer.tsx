@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { AlertCircle, ArrowUp, Loader2, Plus, Square, X } from 'lucide-react';
+import { ArrowUp, Loader2, Plus, Square } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
+import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
 
 /**
@@ -181,49 +182,17 @@ function ChatComposerInner({
             aria-label={t('chat.composer.chipsAria')}
           >
             {attachments.map((item) => (
-              <span
+              <AttachmentChip
                 key={item.id}
-                role='listitem'
-                data-status={item.status}
-                className={`inline-flex h-6 max-w-full items-center gap-1 rounded-chrome border pl-2 pr-1 text-xs ${
-                  item.status === 'failed'
-                    ? 'border-status-error-border bg-status-error-bg text-status-error-foreground'
-                    : 'border-border bg-muted text-foreground'
-                }`}
-                data-testid={`chat-chip-${item.id}`}
-              >
-                {item.status === 'uploading' ? (
-                  <Loader2
-                    className='h-3 w-3 shrink-0 animate-spin text-muted-foreground'
-                    aria-label={t('chat.composer.attachmentUploading')}
-                  />
-                ) : item.status === 'failed' ? (
-                  <AlertCircle className='h-3 w-3 shrink-0' aria-hidden='true' />
-                ) : (
-                  <span className='text-2xs text-muted-foreground'>
-                    {t('chat.attachment.kind', { kind: item.type })}
-                  </span>
-                )}
-                <span className='truncate'>{item.name}</span>
-                {item.status === 'failed' && item.failure ? (
-                  <span className='shrink-0'>
-                    {t('chat.composer.attachmentFailed', { reason: item.failure })}
-                  </span>
-                ) : null}
-                {onRemoveAttachment ? (
-                  <Button
-                    type='button'
-                    variant={null}
-                    size={null}
-                    disabled={frozen}
-                    aria-label={t('chat.composer.removeAttachment', { name: item.name })}
-                    onClick={() => onRemoveAttachment(item.id)}
-                    className='inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-chrome text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50'
-                  >
-                    <X className='h-3 w-3' />
-                  </Button>
-                ) : null}
-              </span>
+                id={item.id}
+                type={item.type}
+                name={item.name}
+                status={item.status}
+                {...(item.failure ? { failure: item.failure } : {})}
+                {...(onRemoveAttachment ? { onRemove: onRemoveAttachment } : {})}
+                removeDisabled={frozen}
+                testId={`chat-chip-${item.id}`}
+              />
             ))}
           </div>
         </div>

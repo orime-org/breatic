@@ -16,8 +16,8 @@
  */
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
-import { isReaderLine } from '@breatic/shared';
-import type { CanvasProposal } from '@breatic/shared';
+import { ATTACHMENT_DATA_PART, isReaderLine } from '@breatic/shared';
+import type { CanvasProposal, ChatAttachedChip } from '@breatic/shared';
 import type { ChatAsset, ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
 /** The part type carrying a turn that was stopped. */
@@ -203,6 +203,7 @@ export function toChatMessage(
   const found: Array<[number, ChatSource]> = [];
   const assets: ChatAsset[] = [];
   const proposals: CanvasProposal[] = [];
+  const attachments: ChatAttachedChip[] = [];
   // The server writes it onto the stored message; a message this reader has
   // only just sent is not stored yet and carries none.
   const written = (message.metadata as { ts?: unknown } | undefined)?.ts;
@@ -273,6 +274,9 @@ export function toChatMessage(
     else if (part.type === FAILED) failed = true;
     else if (part.type === TRUNCATED) truncated = true;
     else if (part.type === BLOCKED) blocked = true;
+    else if (part.type === ATTACHMENT_DATA_PART) {
+      attachments.push((part as { data: ChatAttachedChip }).data);
+    }
     else if (part.type === THINKING_TIME) {
       const ms = (part as { data?: { ms?: unknown } }).data?.ms;
       if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) thinkingMs = ms;
@@ -317,6 +321,7 @@ export function toChatMessage(
     ...(sources.length > 0 ? { sources, citations } : {}),
     ...(assets.length > 0 ? { assets } : {}),
     ...(proposals.length > 0 ? { proposals } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),
     ...(options.streaming === true ? { streaming: true } : {}),
   };
