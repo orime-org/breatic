@@ -509,7 +509,8 @@
       "musicLyricsLabel": "歌詞",
       "lyricsMissing": "歌詞を書いてください",
       "refuseExecuteNoStyle": "スタイルを書いてください",
-      "refuseExecuteNoReference": "楽曲・ボーカル・伴奏のいずれかを選んでください"
+      "refuseExecuteNoReference": "楽曲・ボーカル・伴奏のいずれかを選んでください",
+      "creditsPerThousandChars": "{credits} / 1000文字"
     },
     "nodeMenu": {
       "generate": "生成",

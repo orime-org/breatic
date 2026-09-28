@@ -509,7 +509,8 @@
       "musicLyricsLabel": "歌詞",
       "lyricsMissing": "先寫下歌詞",
       "refuseExecuteNoStyle": "先寫下風格",
-      "refuseExecuteNoReference": "挑一段整曲、人聲或伴奏"
+      "refuseExecuteNoReference": "挑一段整曲、人聲或伴奏",
+      "creditsPerThousandChars": "{credits} / 千字"
     },
     "nodeMenu": {
       "generate": "生成",

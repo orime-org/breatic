@@ -521,7 +521,8 @@
       "musicLyricsLabel": "Lyrics",
       "lyricsMissing": "Write the lyrics first",
       "refuseExecuteNoStyle": "Write the style first",
-      "refuseExecuteNoReference": "Pick a song, vocals or backing"
+      "refuseExecuteNoReference": "Pick a song, vocals or backing",
+      "creditsPerThousandChars": "{credits} / 1K chars"
     },
     "edge": {
       "delete": "Delete connection"
