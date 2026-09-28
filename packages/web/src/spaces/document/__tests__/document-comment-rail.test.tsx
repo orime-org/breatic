@@ -1217,6 +1217,43 @@ describe('the comment panel', () => {
       },
     );
 
+    it('keeps to its words when the reader empties the second line of it and a peer edits', async () => {
+      // The reader's own deletion leaves the end at the start of the next
+      // line; the next peer edit must still see only the first line's words.
+      show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second! + 4);
+      await screen.findByTestId('doc-comment-draft-card');
+      act(() => {
+        const view = handle.editor.prosemirrorView!;
+        view.dispatch(view.state.tr.delete(second!, second! + 4));
+      });
+
+      peerEdits((line) => {
+        line.insert(0, 'Z');
+      });
+
+      expect(aimedWords()).toBe('bravo charlie');
+    });
+
+    it('keeps its other end where it stands when a peer retypes one line with its words twice', async () => {
+      // The words written again appear twice on the retyped line; only one of
+      // them runs on into the line that was not touched.
+      show('editor', ['charlie', 'delta']);
+      const [first, second] = lineStarts();
+      aimAt(first!, second! + 4);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      peerEdits((line) => {
+        line.delete(0, line.length);
+        line.insert(0, 'charliedeltX charlie');
+      });
+
+      const at = draftRangeIn(handle.editor.prosemirrorState)!;
+      expect(aimedWords()).toBe('charliedelt');
+      expect(at.to).toBe(lineStarts()[1]! + 4);
+    });
+
     it('says so rather than moving to the same word elsewhere when its words are deleted', async () => {
       show('editor', ['alpha bravo', 'bravo charlie']);
       aimDraft(6, 11);

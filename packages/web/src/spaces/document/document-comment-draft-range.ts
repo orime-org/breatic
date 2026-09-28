@@ -28,15 +28,24 @@
  * letter" and, once the letter is deleted, to where it was — `yjs.cjs:2566`).
  * Text written against either edge stays outside, whichever way it arrives.
  *
- * A peer changing a block's type rebuilds its text in the shared document, so
- * no Yjs position taken before survives it (y-tiptap recovers the selection
- * from the same case with `findAbsolutePositionAfterStructuralChange`, keyed
- * by block order). BlockNote gives every block a lasting id, so the draft is
- * also held by block id and offset; when the Yjs positions come back empty,
- * that finds the words again, and it is taken only where the words found are
- * exactly the words the draft covered.
+ * A peer's editor writes some changes by deleting text and writing it again:
+ * splitting a line, joining two, changing a block's type. A Yjs position on a
+ * deleted letter resolves to where that letter was, so an end whose letter was
+ * rewritten no longer names the words. Each end is checked on its own: the
+ * letter it names is either still there, or deleted. A deleted end is
+ * re-anchored the way web annotations are — by the words the range covered,
+ * with where it was as the hint (W3C Web Annotation's TextQuoteSelector and
+ * TextPositionSelector, as the Hypothesis client uses them) — and only onto
+ * words this same change wrote. An end whose letter really went (a peer
+ * deleting the first letters) finds no such words and stays where Yjs puts
+ * it, so the range shrinks; the same words elsewhere in the body are never
+ * taken. The other end, still standing, has to match where it is.
  *
- * It is GONE once both ends meet: every character it covered has been
+ * Both ends always sit against a letter: the first one covered and just past
+ * the last. A range that reaches into the next line, or past non-text at an
+ * edge, is drawn in to its letters wherever a range is written.
+ *
+ * It is GONE once it covers no letters: every character it covered has been
  * deleted. Posting into a gone range would put the reader's words in a thread
  * pointing at nothing, which is what A21 is about — the draft card keeps its
  * place in the panel and says so instead.
@@ -79,6 +88,7 @@ import {
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
   absolutePositionToRelativePosition,
+  relativePositionToAbsolutePosition,
   ySyncPluginKey,
 } from 'y-prosemirror';
 import * as Y from 'yjs';
@@ -88,7 +98,6 @@ import {
   selectedThreadsIn,
 } from '@web/spaces/document/document-comment-selection';
 import {
-  resolveTrackedSpan,
   syncBindingOf,
   type TrackedLink,
 } from '@web/spaces/document/document-link-tracking';
@@ -122,79 +131,66 @@ export interface DraftOpening {
 /** How many drafts have opened in this page. */
 let openings = 0;
 
-/** A place in the body named by the block it is in and how far into it. */
-interface BlockPoint {
-  readonly blockId: string;
-  readonly offset: number;
-}
+/** The sync binding, as a position conversion takes it. */
+type Binding = NonNullable<ReturnType<typeof syncBindingOf>>;
 
 /**
- * The open draft's range as it stood right before a Yjs transaction, named
- * two ways, together with the opening it was taken for.
+ * The open draft's range as it stood right before a Yjs transaction, with the
+ * opening it was taken for.
  */
 interface HeldAcrossYjs {
   readonly opening: DraftOpening;
   readonly tracked: TrackedLink;
-  /** The range by block id and offset, with the words it covered. */
-  readonly byBlock: {
-    readonly from: BlockPoint;
-    readonly to: BlockPoint;
-    readonly words: string;
-  } | null;
+  /** The letters it covered, run together across lines. */
+  readonly words: string;
+  /** How far each client's writes reached; anything past is this change's. */
+  readonly written: ReadonlyMap<number, number>;
 }
 
 /**
- * Names a position by the block around it and its offset into that block's
- * text.
+ * Draws a range in to the letters it covers.
  * @param doc - The body.
- * @param pos - The position, inside a block's text.
- * @returns The block's id and the offset, or null outside any block's text.
+ * @param range - The range.
+ * @returns From the first letter covered to just past the last, or null when
+ *   it covers none.
  */
-function blockPointAt(doc: ProseMirrorNode, pos: number): BlockPoint | null {
-  const $pos = doc.resolve(pos);
-  if (!$pos.parent.isTextblock) return null;
-  for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    const id: unknown = $pos.node(depth).attrs.id;
-    if (typeof id === 'string') {
-      return { blockId: id, offset: pos - $pos.start() };
+function letterBounds(
+  doc: ProseMirrorNode,
+  range: DraftRange,
+): DraftRange | null {
+  let from: number | null = null;
+  let to = 0;
+  doc.nodesBetween(range.from, range.to, (node, pos) => {
+    if (!node.isText) return true;
+    const start = Math.max(pos, range.from);
+    const end = Math.min(pos + node.nodeSize, range.to);
+    if (end > start) {
+      from ??= start;
+      to = end;
     }
-  }
-  return null;
-}
-
-/**
- * Finds a block point again in a body that changed.
- * @param doc - The body now.
- * @param point - The point as it was taken.
- * @returns The position, or null when the block or the offset is gone.
- */
-function positionOf(doc: ProseMirrorNode, point: BlockPoint): number | null {
-  let found: number | null = null;
-  doc.descendants((node, pos) => {
-    if (found !== null) return false;
-    if (node.attrs.id !== point.blockId) return true;
-    node.descendants((inner, innerPos) => {
-      if (found !== null || !inner.isTextblock) return found === null;
-      if (point.offset <= inner.content.size) {
-        found = pos + 1 + innerPos + 1 + point.offset;
-      }
-      return false;
-    });
     return false;
   });
-  return found;
+  return from === null ? null : { from, to };
+}
+
+/**
+ * The letters a range covers, run together across lines.
+ * @param doc - The body.
+ * @param range - The range.
+ * @returns Its letters.
+ */
+function lettersIn(doc: ProseMirrorNode, range: DraftRange): string {
+  return doc.textBetween(range.from, range.to, '', () => '');
 }
 
 /**
  * Names a range in the shared document: the start by the first letter it
  * covers, the end by the last one, associated to its left.
- * @param state - The state the range belongs to, in step with the Yjs doc.
- * @param range - The range.
- * @returns The two positions, or null while the editor has no binding.
+ * @param bound - The sync binding, in step with the range's state.
+ * @param range - The range, against its letters.
+ * @returns The two positions.
  */
-function trackDraft(state: EditorState, range: DraftRange): TrackedLink | null {
-  const bound = syncBindingOf(state);
-  if (bound === null) return null;
+function trackDraft(bound: Binding, range: DraftRange): TrackedLink {
   const start = absolutePositionToRelativePosition(
     range.from,
     bound.type,
@@ -205,17 +201,131 @@ function trackDraft(state: EditorState, range: DraftRange): TrackedLink | null {
     bound.type,
     bound.mapping,
   ) as Y.RelativePosition;
-  // A last letter with no item is a range ending past the end of a block's
-  // text; the position right after the range names that end already.
-  const end =
-    last.item === null
-      ? (absolutePositionToRelativePosition(
-        range.to,
-        bound.type,
-        bound.mapping,
-      ) as Y.RelativePosition)
-      : new Y.RelativePosition(last.type, last.tname, last.item, -1);
-  return { start, end };
+  return {
+    start,
+    end: new Y.RelativePosition(last.type, last.tname, last.item, -1),
+  };
+}
+
+/**
+ * Whether the letter a position names has been deleted.
+ * @param bound - The sync binding.
+ * @param at - The position.
+ * @returns True once that letter is gone from the shared document.
+ */
+function letterDeleted(bound: Binding, at: Y.RelativePosition): boolean {
+  return at.item !== null && Y.getItem(bound.doc.store, at.item).deleted;
+}
+
+/**
+ * Whether the letter at a body position was written by the change in hand.
+ * @param bound - The sync binding, rebuilt to the body after the change.
+ * @param pos - The position right before the letter.
+ * @param written - How far each client's writes reached before the change.
+ * @returns True for a letter this change wrote.
+ */
+function writtenNow(
+  bound: Binding,
+  pos: number,
+  written: ReadonlyMap<number, number>,
+): boolean {
+  const { item } = absolutePositionToRelativePosition(
+    pos,
+    bound.type,
+    bound.mapping,
+  ) as Y.RelativePosition;
+  return item !== null && item.clock >= (written.get(item.client) ?? 0);
+}
+
+/** Each end of a range as Yjs resolves it after a change. */
+interface ResolvedEnds {
+  /** Where the start resolves to, or null outside the body. */
+  readonly from: number | null;
+  /** Where the end resolves to, or null outside the body. */
+  readonly to: number | null;
+  /** Whether the letter the start named was deleted. */
+  readonly startDeleted: boolean;
+  /** Whether the letter the end named was deleted. */
+  readonly endDeleted: boolean;
+}
+
+/**
+ * Finds the words again after a change that rewrote the letters an end named.
+ * @param doc - The body after the change.
+ * @param bound - The sync binding, rebuilt to that body.
+ * @param held - What was taken before the change.
+ * @param ends - Each end as Yjs resolves it.
+ * @returns The same words where this change wrote them and the standing end
+ *   still is, nearest to where the range was; null when there are none.
+ */
+function reanchor(
+  doc: ProseMirrorNode,
+  bound: Binding,
+  held: HeldAcrossYjs,
+  ends: ResolvedEnds,
+): DraftRange | null {
+  let letters = '';
+  const at: number[] = [];
+  doc.descendants((node, pos) => {
+    if (!node.isText) return true;
+    letters += node.text ?? '';
+    for (let i = 0; i < node.nodeSize; i += 1) at.push(pos + i);
+    return false;
+  });
+  const hint = ends.from ?? ends.to ?? 0;
+  let best: DraftRange | null = null;
+  for (
+    let i = letters.indexOf(held.words);
+    i !== -1;
+    i = letters.indexOf(held.words, i + 1)
+  ) {
+    const from = at[i]!;
+    const to = at[i + held.words.length - 1]! + 1;
+    const fits =
+      (ends.startDeleted
+        ? writtenNow(bound, from, held.written)
+        : from === ends.from) &&
+      (ends.endDeleted
+        ? writtenNow(bound, to - 1, held.written)
+        : to === ends.to);
+    if (fits && (best === null || Math.abs(from - hint) < Math.abs(best.from - hint))) {
+      best = { from, to };
+    }
+  }
+  return best;
+}
+
+/**
+ * Carries the range across a change that came in through Yjs.
+ * @param doc - The body after the change.
+ * @param bound - The sync binding, rebuilt to that body.
+ * @param held - What was taken before the change.
+ * @returns Where the range is now, or null once its letters are gone.
+ */
+function carryAcrossYjs(
+  doc: ProseMirrorNode,
+  bound: Binding,
+  held: HeldAcrossYjs,
+): DraftRange | null {
+  /**
+   * Where one end is now.
+   * @param at - The end.
+   * @returns Its position, or null outside the body.
+   */
+  const resolve = (at: Y.RelativePosition): number | null =>
+    relativePositionToAbsolutePosition(bound.doc, bound.type, at, bound.mapping);
+  const ends: ResolvedEnds = {
+    from: resolve(held.tracked.start),
+    to: resolve(held.tracked.end),
+    startDeleted: letterDeleted(bound, held.tracked.start),
+    endDeleted: letterDeleted(bound, held.tracked.end),
+  };
+  const rewritten =
+    ends.startDeleted || ends.endDeleted ? reanchor(doc, bound, held, ends) : null;
+  if (rewritten !== null) return rewritten;
+  return ends.from !== null && ends.to !== null && ends.to > ends.from
+    ? { from: ends.from, to: ends.to }
+    : null;
 }
 
 /** The open draft: where it is now, and which opening it is. */
@@ -270,25 +380,6 @@ export function mapDraftRange(
 }
 
 /**
- * Finds the draft's words again by block id, after a change that rebuilt the
- * text the Yjs positions named.
- * @param doc - The body after the change.
- * @param held - What was taken before it.
- * @returns The range, only where it covers exactly the same words.
- */
-function findByBlock(
-  doc: ProseMirrorNode,
-  held: HeldAcrossYjs | null,
-): DraftRange | null {
-  const byBlock = held?.byBlock;
-  if (byBlock == null) return null;
-  const from = positionOf(doc, byBlock.from);
-  const to = positionOf(doc, byBlock.to);
-  if (from === null || to === null || to <= from) return null;
-  return doc.textBetween(from, to) === byBlock.words ? { from, to } : null;
-}
-
-/**
  * Carries the open draft across one transaction.
  * @param tr - The transaction.
  * @param current - The draft before it.
@@ -309,16 +400,16 @@ function carryDraft(
   const sync = tr.getMeta(ySyncPluginKey) as
     | { isChangeOrigin?: boolean }
     | undefined;
-  const tracked =
-    sync?.isChangeOrigin === true && held?.opening === current.opening
-      ? held.tracked
-      : null;
+  const bound = syncBindingOf(before);
   // The binding has rebuilt its index to the new nodes before it dispatches
   // (`_typeChanged`), so the relative positions resolve against this change.
-  const moved =
-    tracked !== null
-      ? (resolveTrackedSpan(before, tracked) ?? findByBlock(tr.doc, held))
+  const carried =
+    sync?.isChangeOrigin === true &&
+    held?.opening === current.opening &&
+    bound !== null
+      ? carryAcrossYjs(tr.doc, bound, held)
       : mapDraftRange(current, tr.mapping);
+  const moved = carried === null ? null : letterBounds(tr.doc, carried);
   // The SAME object back when nothing moved, not an equal one.
   // `useSyncExternalStore` requires the snapshot to be identical while the
   // store has not changed, and a fresh object per transaction would make
@@ -421,12 +512,14 @@ export const documentCommentDraftRange = createExtension(() => {
                 : current;
             }
             if (asked !== undefined) {
-              // A range covering nothing is refused here rather than left for
-              // the post to notice: the entries are unavailable over text-less
+              if (asked === null) return null;
+              // A range covering no letters is refused here rather than left
+              // for the post to notice: the entries are unavailable over such
               // ranges already (`canCommentOver`), so one arriving means a
               // caller is wrong, and holding it would let a comment be written
               // with no words under it.
-              if (asked === null || asked.to <= asked.from) return null;
+              const aim = letterBounds(tr.doc, asked);
+              if (aim === null) return current;
               // An open draft is moved, not replaced: it ends only on cancel
               // or save, and its words are kept against its opening.
               let opening = current?.opening;
@@ -434,12 +527,7 @@ export const documentCommentDraftRange = createExtension(() => {
                 openings += 1;
                 opening = { serial: openings };
               }
-              return {
-                kind: 'aimed',
-                from: asked.from,
-                to: asked.to,
-                opening,
-              };
+              return { kind: 'aimed', ...aim, opening };
             }
             if (current?.kind !== 'aimed') return current;
             // A selection change carries no steps and the range comes back
@@ -466,20 +554,15 @@ export const documentCommentDraftRange = createExtension(() => {
           )?.doc;
           /** Takes the open draft's range as Yjs names it now. */
           const beforeAll = (): void => {
-            if (held !== null) return;
+            if (held !== null || doc === undefined) return;
             const range = draftRangeIn(view.state);
-            const tracked = range === null ? null : trackDraft(view.state, range);
-            if (range === null || tracked === null) return;
-            const { doc: body } = view.state;
-            const from = blockPointAt(body, range.from);
-            const to = blockPointAt(body, range.to);
+            const bound = syncBindingOf(view.state);
+            if (range === null || bound === null) return;
             held = {
               opening: range.opening,
-              tracked,
-              byBlock:
-                from === null || to === null
-                  ? null
-                  : { from, to, words: body.textBetween(range.from, range.to) },
+              tracked: trackDraft(bound, range),
+              words: lettersIn(view.state.doc, range),
+              written: Y.decodeStateVector(Y.encodeStateVector(doc)),
             };
           };
           /** Forgets it once the Yjs batch is over. */
