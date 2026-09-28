@@ -108,7 +108,6 @@ const PROJECTS: readonly ProjectSummary[] = [
     studioId: 's-acme',
     name: 'Real Studio Project',
     slug: 'real-studio-project',
-    visibility: 'studio',
     thumbnailUrl: null,
     myRole: 'owner',
     createdAt: new Date('2026-06-07T00:00:00.000Z'),

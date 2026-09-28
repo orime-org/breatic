@@ -21,7 +21,6 @@ export type {
   NotificationRef,
   NotificationListView,
   ProjectEntity,
-  ProjectVisibility,
   ProjectDetail,
   ProjectSummary,
   RecentItem,

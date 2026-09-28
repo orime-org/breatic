@@ -94,8 +94,8 @@ async function seedOwner(): Promise<Seeded> {
     INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')
   `;
   const [project] = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}, 'private') RETURNING id
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}) RETURNING id
   `;
   await sql`
     INSERT INTO project_members (project_id, user_id, role, added_by)

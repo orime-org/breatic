@@ -87,12 +87,8 @@ describe("Projects routes", () => {
       expect(mocks.projectService.create.mock.calls[0]?.[1]).toBe(
         "11111111-1111-4111-8111-111111111111",
       );
-      // The body above carries no visibility — the client stopped sending one
-      // on 2026-08-07 — so the 5th arg is whatever the schema defaulted to.
-      // This is the far end of the only wire that now decides what a new
-      // project gets, and the schema end of it is pinned in
-      // packages/shared/src/schemas/__tests__/api.test.ts.
-      expect(mocks.projectService.create.mock.calls[0]?.[4]).toBe("studio");
+      // The 5th arg is the space type, which the schema defaults to canvas.
+      expect(mocks.projectService.create.mock.calls[0]?.[4]).toBe("canvas");
     });
 
     it("rejects missing name with 422", async () => {

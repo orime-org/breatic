@@ -38,7 +38,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore } from "@breatic/core";
+import { db, initCore } from "@breatic/core";
 
 initCore(process.env);
 
@@ -48,6 +48,7 @@ import * as projectInvitationsRepo from "@server/modules/project-invite/projectI
 import * as roleUpgradeRequestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import * as projectTransfersRepo from "@server/modules/project/projectTransfers.repo.js";
 import * as studioTransfersRepo from "@server/modules/studio/studioTransfers.repo.js";
+import * as projectJoinRequestsRepo from "@server/modules/project-join-request/projectJoinRequests.repo.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -69,6 +70,7 @@ interface Scene {
   ownerId: string;
   ownerName: string;
   memberId: string;
+  memberHandle: string;
   studioId: string;
   studioName: string;
   projectId: string;
@@ -120,6 +122,7 @@ async function seedScene(): Promise<Scene> {
     ownerId: owner.id,
     ownerName,
     memberId: member.id,
+    memberHandle: `${tag}-mh`,
     studioId: studio.id,
     studioName,
     projectId: project.id,
@@ -262,6 +265,30 @@ describe("the view names the right thing, in every flow", () => {
   });
 });
 
+describe("who asked, by handle", () => {
+  it("a join request shows its requester's handle to the owner answering it, and to nobody else", async () => {
+    const s = await seedScene();
+    const { id } = await db.transaction((tx) =>
+      projectJoinRequestsRepo.createPending({
+        projectId: s.projectId,
+        requesterUserId: s.memberId,
+        message: "I cut the trailer",
+        expiresAt: IN_A_WEEK(),
+        tx,
+      }),
+    );
+    const token = await tokenOf("project_join_requests", id);
+
+    const asOwner = await decisionService.viewByToken(token, s.ownerId);
+    expect(asOwner!.kind).toBe("project_join");
+    expect(asOwner!.actorHandle).toBe(s.memberHandle);
+
+    const asSomeoneElse = await decisionService.viewByToken(token, s.memberId);
+    expect(asSomeoneElse!.isRecipient).toBe(false);
+    expect(asSomeoneElse!.actorHandle).toBeNull();
+  });
+});
+
 describe("the view tells the four dead ends apart", () => {
   it("a token nobody issued is the only invalid link", async () => {
     const s = await seedScene();
@@ -355,10 +382,10 @@ describe("the view tells the four dead ends apart", () => {
 describe("already-a-member applies to invites only", () => {
   it("an invite that would still raise the recipient stays answerable", async () => {
     const s = await seedScene();
-    // The reachable path this guards: a studio member opens a `studio`-visible
-    // project from the studio list, which materializes a baseline `viewer` row
-    // (`project.service.ts:loadForViewer`). Reading "already a member" off the
-    // mere existence of a row would then kill a pending EDITOR invite — the
+    // The reachable path this guards: the owner invites a studio member as
+    // editor, then approves that member's pending join request with its
+    // default `viewer` role. Reading "already a member" off the mere
+    // existence of a row would then kill the pending EDITOR invite — the
     // recipient never got what the invite offered, and could not ask again.
     const { id } = await projectInvitationsRepo.createPending({
       projectId: s.projectId,

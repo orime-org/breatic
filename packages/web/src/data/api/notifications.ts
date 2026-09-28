@@ -8,9 +8,9 @@ import { apiGet, apiPatch, apiPost } from '@web/data/api/request';
  * (`notification.repo.ts`). The `access.*` types are project access-permission
  * (spec 2026-05-28 § 7); the `studio.*` types are studio member / transfer /
  * invite notifications; the `project.*` types are the project invite-confirm
- * handshake (#1337) plus the project transfer. Five of them wait for an
- * answer — the two invites, the two transfers, and the role upgrade — and all
- * five behave identically: the row carries a TTL and LINKS OUT to the
+ * handshake (#1337), the project transfer and the join request. Six of them
+ * wait for an answer — the two invites, the two transfers, the role upgrade and
+ * the join request — and all six behave identically: the row carries a TTL and LINKS OUT to the
  * `/decision?token=` landing page named by the token in its payload. Nothing
  * is answered inside the bell. The rest are informational (read-on-click).
  */
@@ -26,6 +26,9 @@ export type NotificationType =
   | 'project.invite_accepted'
   | 'project.transfer_request'
   | 'project.transfer_approved'
+  | 'project.join_request'
+  | 'project.join_approved'
+  | 'project.join_rejected'
   | 'membership.ended'
   | 'membership.upgrade_incomplete'
   | 'storage.quota_exceeded';

@@ -20,47 +20,31 @@ function withRouter(ui: ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
 }
 
-// ── ProjectsTab — invariant 1 (visibility filter) ──────────────────────────
+// ── ProjectsTab ────────────────────────────────────────────────────────────
 const STUDIO_VISIBLE: ContainerProject = {
   id: 'a',
   slug: 'open',
   name: 'Open Project',
   thumbnailUrl: null,
-  visibility: 'studio',
   myRole: 'viewer',
   createdAt: '2026-06-01T00:00:00.000Z',
 };
-const PRIVATE_UNINVOLVED: ContainerProject = {
+const NOT_JOINED: ContainerProject = {
   id: 'b',
-  slug: 'hidden',
-  name: 'Hidden Project',
+  slug: 'other',
+  name: 'Other Project',
   thumbnailUrl: null,
-  visibility: 'private',
   myRole: null,
   createdAt: '2026-06-01T00:00:00.000Z',
 };
 
-describe('ProjectsTab (spec §4 invariant 1: visibility filter)', () => {
-  it('hides a private uninvolved project from a Member', () => {
-    withRouter(
-      <ProjectsTab
-        projects={[STUDIO_VISIBLE, PRIVATE_UNINVOLVED]}
-        studioRole='guest'
-      />,
+describe('ProjectsTab', () => {
+  it('shows a guest every project the server listed, including ones they are not on', () => {
+    withQuery(
+      <ProjectsTab projects={[STUDIO_VISIBLE, NOT_JOINED]} studioRole='guest' />,
     );
     expect(screen.getByText('Open Project')).toBeInTheDocument();
-    expect(screen.queryByText('Hidden Project')).toBeNull();
-  });
-
-  it('shows every project to an Admin', () => {
-    withRouter(
-      <ProjectsTab
-        projects={[STUDIO_VISIBLE, PRIVATE_UNINVOLVED]}
-        studioRole='admin'
-      />,
-    );
-    expect(screen.getByText('Open Project')).toBeInTheDocument();
-    expect(screen.getByText('Hidden Project')).toBeInTheDocument();
+    expect(screen.getByText('Other Project')).toBeInTheDocument();
   });
 
   it('offers create to an admin/maintainer, never to a guest or non-member (spec §7.1)', () => {

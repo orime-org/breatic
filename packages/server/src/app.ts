@@ -20,6 +20,7 @@ import { chatRoute } from "@server/routes/chat.js";
 import { canvasRoute } from "@server/routes/canvas.js";
 import { miniToolsRoute } from "@server/routes/mini-tools.js";
 import { projectsRoute } from "@server/routes/projects.js";
+import { projectJoinRequestsRoute } from "@server/routes/project-join-requests.js";
 import { skillsRoute } from "@server/routes/skills.js";
 import { tasksRoute } from "@server/routes/tasks.js";
 import { paymentRoute } from "@server/routes/payment.js";
@@ -72,6 +73,7 @@ export function createApp(): Hono {
   app.route("/api/v1/projects", projectsRoute);
   app.route("/api/v1/projects/:pid/members", membersRoute);
   app.route("/api/v1/projects/:pid/invitations", projectInvitesRoute);
+  app.route("/api/v1/projects/:pid/join-requests", projectJoinRequestsRoute);
   app.route("/api/v1/users/me/notifications", notificationsRoute);
   app.route(
     "/api/v1/projects/:pid/role-upgrade-requests",

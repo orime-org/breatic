@@ -25,7 +25,8 @@
  * A confirm re-checks every premise, because it runs up to a week after the
  * offer was made and all three participants may have moved:
  *
- *   1. lock the offer by id (never by status — see the repo header)
+ *   1. lock the recipient's studio membership, then the project, then the
+ *      offer by id (never by status — see the repo header)
  *   2. it must still be pending, else 409
  *   3. it must not have timed out, else retire it and 409
  *   4. the caller must be the named recipient, else 403
@@ -67,6 +68,7 @@ import {
   refusalError,
 } from "@server/utils/deferred-decision.js";
 import type { Refused } from "@server/utils/deferred-decision.js";
+import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 
 /**
  * The current owner offers the project to another collaborator.
@@ -247,33 +249,31 @@ export async function confirmProjectTransfer(
   const outcome = await db.transaction<
     Refused | { projectId: string; oldOwnerId: string }
   >(async (tx) => {
+    // The request-time two-layer eligibility (ADR D3) can go stale within the
+    // TTL — the recipient may have been demoted to studio guest or kicked from
+    // the studio since. Re-verify BOTH layers BEFORE the swap, under row locks;
+    // otherwise materializeOwner (ON CONFLICT DO UPDATE, no setWhere) would
+    // revive a soft-deleted / guest row straight to owner and move the project
+    // out of its studio. Unlocked, a concurrent leave / kick could commit
+    // between the check and materializeOwner, and the upsert would REVIVE the
+    // membership row it had just soft-deleted.
+    //
+    // The locks go the recipient's `studio_members` row, the `projects` row,
+    // the offer, then the recipient's `project_members` row. Leaving locks
+    // `studio_members` before `project_members`, and the delete cascade locks
+    // the project before the offer, so both queue with this.
+    // `studio_id` never changes, so the unlocked read names the right studio.
+    const offerProjectId = await transfersRepo.getProjectIdOf(transferId, tx);
+    const project = offerProjectId ? await projectRepo.getProjectById(offerProjectId, tx) : null;
+    const recipientStudioRole = project
+      ? await studioMembersRepo.lockMemberRole(project.studioId, receiverUserId, tx)
+      : null;
+    if (project) await projectRepo.lockLiveProject(project.id, tx);
     const opened = await openForDecision(tx, transferId, receiverUserId);
     if (isRefused(opened)) return opened;
     const offer = opened;
     const { projectId, fromUserId } = offer;
 
-    // The request-time two-layer eligibility (ADR D3) can go stale within the
-    // TTL — the recipient may have been demoted to studio guest or kicked from
-    // the studio since. Re-verify BOTH layers BEFORE the swap; otherwise
-    // materializeOwner (ON CONFLICT DO UPDATE, no setWhere) would revive a
-    // soft-deleted / guest row straight to owner and move the project out of
-    // its studio.
-    //
-    // Both re-reads take a ROW LOCK, and the order is load-bearing:
-    //   1. the recipient's `studio_members` row
-    //   2. the recipient's `project_members` row
-    // Re-reading without the lock left a window wide enough to lose the guard
-    // entirely: a concurrent leave / kick could commit between the check and
-    // materializeOwner, and since that upsert clears `deleted_at`, it REVIVED
-    // the membership row the leave had just soft-deleted. The result was a
-    // permanent inconsistency — a non-member owning one of the studio's
-    // projects, still able to open it. Leaving locks `studio_members` first
-    // and then writes `project_members`, so taking the two in the same order
-    // here makes the two transactions queue rather than deadlock.
-    //
-    // The project row itself is read unlocked: `studio_id` is immutable, so
-    // there is nothing here for a concurrent writer to change.
-    const project = await projectRepo.getProjectById(projectId, tx);
     if (!project) {
       // The project was soft-deleted under an outstanding offer. Nothing will
       // ever answer it, so it is settled here rather than left holding the
@@ -282,11 +282,6 @@ export async function confirmProjectTransfer(
       await settle(offer, "expired", tx);
       return { refusal: "conflict" };
     }
-    const recipientStudioRole = await studioMembersRepo.lockMemberRole(
-      project.studioId,
-      receiverUserId,
-      tx,
-    );
     if (!recipientStudioRole || recipientStudioRole === "guest") {
       await settle(offer, "expired", tx);
       return { refusal: "conflict" };
@@ -318,6 +313,7 @@ export async function confirmProjectTransfer(
       return { refusal: "conflict" };
     }
     await projectMembersRepo.materializeOwner(projectId, receiverUserId, tx);
+    await projectJoinRequestService.readdressOnOwnerChange(projectId, receiverUserId, tx);
     await settle(offer, "accepted", tx);
 
     const accepter = accepterProfiles.get(receiverUserId);

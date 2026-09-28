@@ -16,7 +16,7 @@
  * the `yjs_documents` table.
  */
 
-import { eq, and, isNull, isNotNull, or, desc, inArray, count } from "drizzle-orm";
+import { eq, and, isNull, desc, inArray, count } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectActivitiesRepo, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
@@ -29,6 +29,7 @@ import {
   projectMembers,
   projectTransfers,
   roleUpgradeRequests,
+  projectJoinRequests,
   conversations,
   nodeHistory,
   projectMemories,
@@ -40,7 +41,6 @@ import type {
   ProjectEntity,
   ProjectRole,
   ProjectSummary,
-  ProjectVisibility,
   SpaceType,
 } from "@breatic/shared";
 
@@ -58,7 +58,6 @@ function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
     description: row.description,
     thumbnailUrl: row.thumbnailUrl,
     slug: row.slug,
-    visibility: row.visibility as ProjectVisibility,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -183,29 +182,20 @@ export async function getProjectById(
 }
 
 /**
- * List a studio's projects visible to a viewer, each tagged with the
- * viewer's role (slice 2 — the studio container's "projects" tab).
+ * List every active project of a studio, each tagged with the viewer's role
+ * (the studio container's "projects" tab).
  *
- * Open-baseline visibility (design doc §2.3), enforced server-side so a
- * private project is never shipped to a client that should not see it:
- *   - a studio **admin** (`isStudioAdmin = true`) sees every active project
- *     in the studio — including other members' private projects (governance,
- *     GitHub-org model);
- *   - a studio **member** sees every `visibility = 'studio'` project plus the
- *     private projects they hold an active `project_members` role on.
- *
- * Non-members are handled one layer up (`project.service.listByStudioForViewer`
+ * Every studio member sees every project; entering one needs a member row,
+ * which only the project's owner grants (`project-join-request`). Non-members
+ * of the studio are handled one layer up (`project.service.listByStudioForViewer`
  * short-circuits to `[]`), so this query is only reached for studio members.
  *
  * `myRole` comes from a LEFT JOIN on the viewer's ACTIVE membership row
  * (`deleted_at IS NULL` lives in the JOIN's ON clause, not the WHERE, so a
  * soft-deleted row simply yields no join → `myRole = null` rather than
- * dropping the project). A studio-visible project the viewer has not entered
- * yet has no row → `myRole = null` until they open it (which materializes a
- * viewer row — see `materializeBaselineViewer`).
+ * dropping the project).
  * @param studioId - Studio UUID whose projects to list
  * @param viewerUserId - The viewing user's UUID (resolves `myRole`)
- * @param isStudioAdmin - Whether the viewer is this studio's admin (sees all)
  * @returns The visible project summaries, newest-CREATED first (the studio
  *   container is a catalog: a stable creation order, not a last-activity order
  *   — canvas edits live in Yjs and never bump the project row)
@@ -213,7 +203,6 @@ export async function getProjectById(
 export async function listProjectsByStudioForViewer(
   studioId: string,
   viewerUserId: string,
-  isStudioAdmin: boolean,
 ): Promise<ProjectSummary[]> {
   const rows = await db
     .select({
@@ -221,7 +210,6 @@ export async function listProjectsByStudioForViewer(
       studioId: projects.studioId,
       name: projects.name,
       slug: projects.slug,
-      visibility: projects.visibility,
       thumbnailUrl: projects.thumbnailUrl,
       myRole: projectMembers.role,
       createdAt: projects.createdAt,
@@ -237,16 +225,7 @@ export async function listProjectsByStudioForViewer(
       ),
     )
     .where(
-      and(
-        eq(projects.studioId, studioId),
-        isNull(projects.deletedAt),
-        isStudioAdmin
-          ? undefined
-          : or(
-              eq(projects.visibility, "studio"),
-              isNotNull(projectMembers.role),
-            ),
-      ),
+      and(eq(projects.studioId, studioId), isNull(projects.deletedAt)),
     )
     .orderBy(desc(projects.createdAt));
 
@@ -255,7 +234,6 @@ export async function listProjectsByStudioForViewer(
     studioId: row.studioId,
     name: row.name,
     slug: row.slug,
-    visibility: row.visibility as ProjectVisibility,
     thumbnailUrl: row.thumbnailUrl,
     myRole: (row.myRole as ProjectRole | null) ?? null,
     createdAt: row.createdAt,
@@ -293,8 +271,6 @@ type Tx = PgTransaction<any, any, any>;
  * @param name - Project name
  * @param slug - URL slug for `/project/{slug}-{uuid}` (format-validated
  *   app-side, NOT unique)
- * @param visibility - `'studio'` (open baseline) | `'private'` (explicit
- *   members only)
  * @param spaceType - Initial Space type stored on the row; collab seeds
  *   the first Space's content doc of this type on first load
  * @param description - Optional description
@@ -306,7 +282,6 @@ export async function createProject(
   creatorUserId: string,
   name: string,
   slug: string,
-  visibility: ProjectVisibility,
   spaceType: SpaceType,
   description?: string,
 ): Promise<ProjectEntity> {
@@ -317,7 +292,6 @@ export async function createProject(
       createdByUserId: creatorUserId,
       name,
       slug,
-      visibility,
       initialSpaceType: spaceType,
       description,
     })
@@ -417,7 +391,6 @@ export async function duplicateProject(
       createdByUserId: creatorUserId,
       name: `${source.name} (copy)`,
       slug: `${source.slug}-copy`.slice(0, 120),
-      visibility: source.visibility,
       description: source.description,
       thumbnailUrl: source.thumbnailUrl,
     })
@@ -480,10 +453,6 @@ export async function deleteProject(id: string): Promise<void> {
     // cascade exists to prevent — so every path that files a project-scoped
     // REQUEST row (invite, transfer offer, role-upgrade request) takes it too
     // (see `lockLiveProject`).
-    //
-    // Membership rows are NOT in that set: `materializeBaselineViewer` writes
-    // one with no lock and no transaction at all, so it can still commit after
-    // this cascade has swept the table. That gap predates this comment.
     await tx
       .select({ id: projects.id })
       .from(projects)
@@ -536,12 +505,13 @@ export async function deleteProject(id: string): Promise<void> {
     // permanently and its `restrict` foreign key blocks the project from ever
     // being hard-deleted.
     //
-    // ORDER IS LOAD-BEARING. Both decision paths take these rows before they
-    // touch `project_members` — the transfer locks its offer then the member
-    // rows, the role upgrade locks its request then writes the member row. A
-    // cascade that took `project_members` first would close the cycle, and
-    // deleting a project while somebody answers a request would abort one side
-    // with a deadlock rather than serialising them.
+    // ORDER IS LOAD-BEARING. Deciding a join request or a role upgrade,
+    // withdrawing a join request, accepting a transfer and removing a studio
+    // member all lock this project row before its request and member rows, so
+    // they queue behind this cascade. A cascade that took `project_members`
+    // first would close a cycle with any path that does not, and deleting a
+    // project while somebody answers a request would abort one side with a
+    // deadlock rather than serialising them.
     await tx
       .update(roleUpgradeRequests)
       .set({ deletedAt: now })
@@ -549,6 +519,16 @@ export async function deleteProject(id: string): Promise<void> {
         and(
           eq(roleUpgradeRequests.projectId, id),
           isNull(roleUpgradeRequests.deletedAt),
+        ),
+      );
+
+    await tx
+      .update(projectJoinRequests)
+      .set({ deletedAt: now })
+      .where(
+        and(
+          eq(projectJoinRequests.projectId, id),
+          isNull(projectJoinRequests.deletedAt),
         ),
       );
 

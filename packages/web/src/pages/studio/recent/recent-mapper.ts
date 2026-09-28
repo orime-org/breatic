@@ -9,9 +9,7 @@ import type { RecentItem } from '@web/pages/studio/recent/recent-types';
  *
  * The wire contract (`RecentFeedItem`, derived from shared) is project-only in
  * V1 — collections are deferred — so `kind` is always `'project'` and the card
- * URL is `/project/{slug}-{id}`. A wire `myRole` of `null` (a studio-visible
- * project admitted via open baseline with no membership row) maps to `viewer`,
- * the effective access level. Keeps the wire→view derivation in one place (the
+ * URL is `/project/{slug}-{id}`. Keeps the wire→view derivation in one place (the
  * same split as the canvas `node-view`), so `RecentCard` consumes only the view
  * shape and never the raw wire row.
  * @param item - one recent-feed row from the server.
@@ -27,6 +25,6 @@ export function toRecentItemView(item: RecentFeedItem): RecentItem {
     lastOpenedAt: item.lastOpenedAt,
     studioId: item.studioId,
     studioName: item.studioName,
-    myRole: item.myRole ?? 'viewer',
+    myRole: item.myRole,
   };
 }

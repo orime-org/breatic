@@ -49,14 +49,12 @@ projects.use(requireAuth);
  */
 projects.post("/", validate("json", projectCreateSchema), async (c) => {
   const user = c.get("user");
-  const { studioId, name, slug, visibility, spaceType, description } =
-    c.req.valid("json");
+  const { studioId, name, slug, spaceType, description } = c.req.valid("json");
   const project = await projectService.create(
     user.id,
     studioId,
     name,
     slug,
-    visibility,
     spaceType,
     description,
   );
@@ -154,13 +152,10 @@ projects.delete(
  * `GET /projects/:id` — read a project plus the caller's role (the
  * project-open path).
  *
- * NOT behind `requireRoleOnParam`: this is the open-baseline entry point
- * (slice 2). `projectService.loadForViewer` resolves access including the
- * open-baseline grant (a studio member opening a studio-visible project is
- * admitted as a viewer and a `project_members` row is materialized on this
- * server path, before the client opens collab) and returns the effective
- * `myRole`. No access (private with no row / not a studio member / missing)
- * collapses to a `404`, never leaking project existence. v10 §7.2.6.
+ * NOT behind `requireRoleOnParam`: `projectService.loadForViewer` tells a
+ * studio member who is not on the project (`403`, answered by the client with
+ * the join dialog) apart from everyone else without access (`404`, never
+ * leaking project existence). v10 §7.2.6.
  * @returns `200` with `{ data: ProjectDetail }`
  */
 projects.get("/:id", async (c) => {
@@ -211,9 +206,8 @@ projects.get("/:id/credits", async (c) => {
  * `POST /projects/:id/opened` — record that the caller just opened this
  * project, floating it to the top of their cross-studio "Recent" feed.
  *
- * A dedicated write endpoint: the `GET /:id` open path stays side-effect-light
- * (it only materializes the baseline membership), while recording an open is
- * an explicit write the project page fires on mount. NOT behind
+ * A dedicated write endpoint: the `GET /:id` open path writes nothing, while
+ * recording an open is an explicit write the project page fires on mount. NOT behind
  * `requireRoleOnParam` — the service access-gates it (`assertAccess('viewer')`,
  * collapsing no-access to a `404` so existence is never leaked) and UPSERTs
  * idempotently, so re-opening just bumps the timestamp in place.
@@ -233,8 +227,8 @@ projects.post("/:id/opened", async (c) => {
 // minRole)`. The middleware resolves the caller's role on `:id`, rejects
 // non-members / insufficient roles with 403, and stamps the role on
 // `c.var.role`. (The read path `GET /:id` above is intentionally NOT here —
-// it grants open-baseline access + materializes, which the role middleware
-// would block before the handler runs.)
+// it answers a studio member who is not on the project with 403 and anyone
+// else without access with 404, which the middleware cannot tell apart.)
 
 const membershipScoped = new Hono<{ Variables: AuthRoleVariables }>();
 

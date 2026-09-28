@@ -93,8 +93,8 @@ async function seedProject(): Promise<{
     INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')
   `;
   const [project] = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}, 'private') RETURNING id
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}) RETURNING id
   `;
   await sql`
     INSERT INTO project_members (project_id, user_id, role, added_by)
@@ -414,8 +414,8 @@ describe("PATCH /chat/conversations/:id — who may name one", () => {
     const { projectId, cookie, userId } = await seedProject();
     const conversationId = await openAndGetId(projectId, cookie);
     const [other] = await sql<{ id: string }[]>`
-      INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-      SELECT studio_id, ${userId}, 'other', ${`cn-other-${seq++}`}, 'private'
+      INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+      SELECT studio_id, ${userId}, 'other', ${`cn-other-${seq++}`}
       FROM projects WHERE id = ${projectId} RETURNING id
     `;
 

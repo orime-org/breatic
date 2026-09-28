@@ -59,6 +59,8 @@
       "avatar_unsupported_type": "這個檔案無法作為圖片讀取，請換一張試試。"
     },
     "project": {
+      "join_already_member": "你已經是這個 Project 的成員。",
+      "join_already_pending": "你已經申請加入這個 Project，正在等 Owner 審核。",
       "email_not_registered": "該信箱尚未註冊。",
       "already_member": "該使用者已有存取權限。",
       "already_invited": "該使用者已有一個待確認的邀請。",
@@ -1088,6 +1090,9 @@
       "studioTransferApproved": "{actor} 接受了你對 {studio} 的 Admin 轉讓",
       "projectTransferRequest": "{actor} 邀請你接管 {project}",
       "projectTransferApproved": "{actor} 接受了你對 {project} 的所有權轉讓",
+      "projectJoinRequest": "{actor} 申請加入 {project}",
+      "projectJoinApproved": "{actor} 同意你加入 {project}",
+      "projectJoinRejected": "{actor} 沒有通過你加入 {project} 的申請",
       "studioInviteRequest": "{actor} 邀請你加入 {studio}",
       "studioInviteAccepted": "{actor} 接受了你對 {studio} 的邀請",
       "projectInviteRequest": "{actor} 邀請你加入 {project}",
@@ -1406,10 +1411,22 @@
       "theme": "主題：{theme}"
     }
   },
-  "noAccess": {
-    "title": "你沒有存取此 Project 的權限",
-    "description": "請聯絡 Project Owner 申請存取,他們可以透過電子郵件邀請你。",
-    "backToStudio": "返回 Studio"
+  "projectJoin": {
+    "title": "你還不是這個 Project 的成員",
+    "body": "「{project}」需要 Owner 同意後才能進入。",
+    "messageLabel": "給 Owner 留言（可選）",
+    "messagePlaceholder": "說說你為什麼想加入",
+    "cancel": "取消",
+    "request": "申請加入",
+    "sentTitle": "申請已送出",
+    "sentBody": "Owner 通過後你會收到通知。",
+    "ok": "好的",
+    "pendingTitle": "申請審核中",
+    "pendingBody": "你在 {date} 申請加入「{project}」，Owner 還沒有處理。",
+    "withdraw": "撤回申請",
+    "requestFailed": "申請沒有送出，請重試。",
+    "withdrawFailed": "撤回沒有成功，請重試。",
+    "loadFailed": "沒能打開這個 Project，請重試。"
   },
   "activity": {
     "description": "上傳、生成、Space 與成員變更",
@@ -1458,11 +1475,20 @@
   "decision": {
     "loadingTitle": "正在開啟這個請求…",
     "loadingBody": "稍等，正在查找。",
-    "title": "{kind, select, studio_invite {有人邀請你加入一個 Studio} project_invite {有人邀請你加入一個 Project} role_upgrade {有人申請更高的角色} project_transfer {有人要把一個 Project 交給你} studio_transfer {有人要把一個 Studio 交給你} other {有件事等你答覆}}",
-    "body": "{kind, select, studio_invite {{actor} 邀請你以{role, select, maintainer {Maintainer} guest {Guest} other {Member}}身分加入 {entity}。} project_invite {{actor} 邀請你以{role, select, editor {Editor} viewer {Viewer} other {Member}}身分參與 {entity}。} role_upgrade {{actor} 申請在 {entity} 中成為 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}。} project_transfer {{actor} 想把 {entity} 的所有權交給你。} studio_transfer {{actor} 想讓你成為 {entity} 的 Admin。} other {{actor} 在等你對 {entity} 的答覆。}}",
+    "title": "{kind, select, studio_invite {有人邀請你加入一個 Studio} project_invite {有人邀請你加入一個 Project} role_upgrade {有人申請更高的角色} project_join {加入申請} project_transfer {有人要把一個 Project 交給你} studio_transfer {有人要把一個 Studio 交給你} other {有件事等你答覆}}",
+    "body": "{kind, select, studio_invite {{actor} 邀請你以{role, select, maintainer {Maintainer} guest {Guest} other {Member}}身分加入 {entity}。} project_invite {{actor} 邀請你以{role, select, editor {Editor} viewer {Viewer} other {Member}}身分參與 {entity}。} role_upgrade {{actor} 申請在 {entity} 中成為 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}。} project_join {{actor} 申請加入 {entity}。} project_transfer {{actor} 想把 {entity} 的所有權交給你。} studio_transfer {{actor} 想讓你成為 {entity} 的 Admin。} other {{actor} 在等你對 {entity} 的答覆。}}",
     "reason": "附言：{message}",
-    "confirm": "{kind, select, role_upgrade {核准} other {接受}}",
-    "decline": "{kind, select, role_upgrade {拒絕} other {拒絕}}",
+    "confirm": "{kind, select, role_upgrade {核准} project_join {通過} other {接受}}",
+    "decline": "{kind, select, role_upgrade {拒絕} project_join {拒絕} other {拒絕}}",
+    "grantRole": "角色",
+    "field": {
+      "requester": "申請人",
+      "project": "Project",
+      "message": "留言",
+      "expires": "有效期"
+    },
+    "expiresBefore": "{date} 截止",
+    "actorWithHandle": "{name}（@{handle}）",
     "windowNote": "這個請求當時可在 {days} 天內答覆。",
     "acceptedTitle": "你已經接受過了",
     "acceptedBody": "這裡沒有別的事要做了。",

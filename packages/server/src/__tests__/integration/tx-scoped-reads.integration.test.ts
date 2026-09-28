@@ -136,7 +136,7 @@ describe("reads inside the confirm transactions run inside them", () => {
     });
   });
 
-  it("countExplicitMembers counts a collaborator this transaction has not committed", async () => {
+  it("countCollaborators counts a collaborator this transaction has not committed", async () => {
     const { projectId, userId } = await seedScene();
     const other = await seedScene();
 
@@ -147,7 +147,7 @@ describe("reads inside the confirm transactions run inside them", () => {
         role: "viewer",
         addedBy: userId,
       });
-      expect(await projectMembersRepo.countExplicitMembers(projectId, tx)).toBe(
+      expect(await projectMembersRepo.countCollaborators(projectId, tx)).toBe(
         1,
       );
     });

@@ -29,7 +29,6 @@ export const routeImports = {
   studioContainerPage: () => import('@web/pages/studio/container/StudioContainerPage'),
   projectPage: () => import('@web/pages/project/ProjectPage'),
   decisionLandingPage: () => import('@web/pages/decision/DecisionLandingPage'),
-  noAccessPage: () => import('@web/pages/project/access/NoAccessPage'),
   loginPage: () => import('@web/pages/auth/LoginPage'),
   registerPage: () => import('@web/pages/auth/RegisterPage'),
   recoveryCodePage: () => import('@web/pages/auth/RecoveryCodePage'),
