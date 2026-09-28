@@ -37,9 +37,6 @@ describe("resolveModel (#1672 behavior pins)", () => {
       maxConcurrency: 50,
       mode: "t2i",
     });
-    expect(resolved.tokenPrice).toBeUndefined();
-    expect(resolved.creditPrice).toBeUndefined();
-    expect(resolved.litellmModel).toBeUndefined();
   });
 
   it("throws for an unknown model", () => {

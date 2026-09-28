@@ -80,10 +80,6 @@ export interface FullProviderEndpoint {
   name: string;
   model_id: string;
   priority?: number;
-  token_price?: number;
-  credit_price?: number;
-  extra_params?: Record<string, unknown>;
-  litellm_model?: string;
   /** The endpoint's WaveSpeed pricing contract. */
   pricing?: PricingContract;
   [extra: string]: unknown;
@@ -257,8 +253,8 @@ function isProviderAvailable(providerName: string, keyMap: ReadonlyMap<string, s
 
 /**
  * Project a full yaml model entry onto the shared wire {@link ModelEntry},
- * dropping backend-only fields (provider prices, extra_params, litellm ids)
- * and resolving per-provider availability.
+ * dropping `note` (it is for whoever ships the yaml) and resolving
+ * per-provider availability.
  * @param m - Full model entry from {@link getFullModelConfig}.
  * @param modality - Modality the entry belongs to (stamped onto the projection).
  * @param keyMap - Provider→env-var map used to resolve provider availability.
@@ -327,10 +323,8 @@ let _cache: ModelCatalog | null = null;
  *
  * There used to be one: with not a single key set anywhere, the filter was
  * skipped and every model came back, for development. What that bought was a
- * full catalog with nothing configured — one placeholder does not buy it back,
- * since a set variable only unlocks the models of that one provider and there
- * are 17 distinct `api_key_env` names across the configs. Availability asks
- * only whether the variable is non-empty, never whether the key works.
+ * full catalog with nothing configured. Availability asks only whether the
+ * variable is non-empty, never whether the key works.
  * What it cost was a deployment showing capabilities it cannot deliver:
  * the panel opened, the pickers filled, the execute button armed, and the
  * task failed upstream (user 2026-08-18 ruled it a bug).

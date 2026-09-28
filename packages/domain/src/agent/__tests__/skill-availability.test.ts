@@ -65,9 +65,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // `getRawEnvVar`, not the `env` proxy. The proxy resolves against the
     // validated config, which holds only the schema's keys — and a provider's
     // key name comes off a yaml file that is free to name one the schema has
-    // never heard of. `KLING_ACCESS_KEY` is exactly that: providers.yaml
-    // declares it, the schema declares KLINGAI_ACCESS_KEY, and reading it
-    // through the proxy yields undefined however the process was started.
+    // never heard of, and reading such a name through the proxy yields
+    // undefined however the process was started.
     getRawEnvVar: (name: string) => keys[name],
     // Both fixtures are permitted, so the only thing left that can refuse
     // them is the availability check — which is what these tests are about.

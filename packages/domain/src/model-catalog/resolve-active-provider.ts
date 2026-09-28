@@ -39,12 +39,9 @@ export interface ActiveProvider {
 /**
  * Read a provider's API key out of the injected configuration.
  *
- * Reads the `env` proxy, which answers only for names core's schema declares.
- * Two of the names the modality catalogs declare are outside it today —
- * `KLING_ACCESS_KEY` and `GEMINI_API_KEY` — so those providers resolve as
- * keyless however the deployment is configured, a standing gap tracked
- * separately (#1912, #1629). This rule reads exactly as it did in the worker,
- * because moving it must not change which upstream a generation goes to.
+ * Reads the `env` proxy, which answers only for names core's schema declares:
+ * a provider whose `api_key_env` the schema does not know resolves as
+ * keyless however the deployment is configured.
  * @param envVarName - The var name declared as `api_key_env` in providers.yaml.
  * @returns The key, or an empty string when unset.
  */

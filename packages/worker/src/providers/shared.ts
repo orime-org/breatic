@@ -27,10 +27,6 @@ export interface ResolvedModel {
   apiKey: string;
   timeout: number;
   maxConcurrency: number;
-  tokenPrice?: number;
-  creditPrice?: number;
-  extraParams?: Record<string, unknown>;
-  litellmModel?: string;
   mode?: string | string[];
 }
 
@@ -174,10 +170,6 @@ export function resolveModel(modality: string, modelName: string | undefined): R
     apiKey: active.apiKey,
     timeout: active.timeout,
     maxConcurrency: active.maxConcurrency,
-    tokenPrice: active.providerEntry.token_price,
-    creditPrice: active.providerEntry.credit_price,
-    extraParams: active.providerEntry.extra_params,
-    litellmModel: active.providerEntry.litellm_model,
     mode: active.modelConfig.mode,
   };
 }

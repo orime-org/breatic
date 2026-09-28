@@ -7,7 +7,7 @@
  * worker's resolveModel/validateParams consume this instead of parsing
  * config/models themselves, so these tests pin exactly the fields the
  * worker's transport connection building depends on (base_url,
- * api_key_env, timeout, token_price, extra_params, ...) against the real
+ * api_key_env, timeout, ...) against the real
  * config files.
  */
 
