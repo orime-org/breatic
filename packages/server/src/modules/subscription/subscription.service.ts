@@ -328,8 +328,8 @@ function subscriptionGoneAtStripe(err: unknown): boolean {
  * @param input.tier - The tier to move to.
  * @param input.period - The period to be billed over from now on.
  * @returns Whether the new tier is in force, and where to pay if not.
- * @throws {ConflictError} if nothing is live, the tier is already held, or
- *   payment is overdue.
+ * @throws {ConflictError} if nothing is live, the same tier and period are
+ *   already held, or payment is overdue.
  * @throws {ValidationError} if the target is a lower tier or a shorter period
  *   than the one held.
  */

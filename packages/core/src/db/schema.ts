@@ -1004,8 +1004,8 @@ export const subscriptions = pgTable(
     pendingTier: varchar("pending_tier", { length: 16 }),
     // The period a waiting change moves to. Null whenever nothing is waiting,
     // and separate from `period` because a change can move the period without
-    // moving the tier — PRO monthly to PRO yearly is one of the three moves
-    // the product sells.
+    // moving the tier — PRO monthly to PRO yearly is one of the moves the
+    // product sells.
     pendingPeriod: varchar("pending_period", { length: 8 }),
     payableInvoiceUrl: text("payable_invoice_url"),
     // When the snapshot this row was written from was taken (0058).

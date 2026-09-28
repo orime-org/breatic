@@ -46,10 +46,9 @@ export interface CurrentUser {
    * Which membership tier the account is on.
    *
    * The avatar menu names it, and the membership panel opens from there.
-   * It arrives with the session payload, so it is as fresh as the last
-   * `/auth/me` — a tier changed elsewhere reaches this tab on the next boot
-   * (#110 makes that immediate, and belongs with the upgrade flow that can
-   * change it).
+   * It arrives with the session payload and is read again each time the
+   * avatar menu opens (`refreshCurrentUser`), so a tier changed in another tab
+   * shows here the next time the menu is opened.
    */
   membershipTier: MembershipTier;
 }

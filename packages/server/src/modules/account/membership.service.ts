@@ -100,8 +100,6 @@ function pricesOf(
   if (!selling || tier === "base") {
     return { month: null, year: null };
   }
-  // Built from the period list rather than written out, so a third period
-  // added to the product reaches this row without an edit here.
   return Object.fromEntries(
     BILLING_PERIODS.map((period) => {
       const plan = getSubscriptionPlan(tier, period);

@@ -4,8 +4,8 @@
 /**
  * Subscription plan configuration loader (task #106, design §12).
  *
- * Reads `config/subscription.yaml`: what each subscribable tier costs per
- * month, and which Stripe price sells it.
+ * Reads `config/subscription.yaml`: what each subscribable tier costs over
+ * each billing period, and which Stripe price sells it.
  *
  * Lives in core, beside the membership ceilings, because two callers in two
  * packages read this one file: server needs the price ids to talk to Stripe,
