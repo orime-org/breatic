@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 import {
   modelTakesReferences,
   videoMissing,
+  videoSlotsForModel,
 } from '@web/spaces/canvas/generate/video-slots';
 
 /**
@@ -129,5 +130,34 @@ describe('what a video run still needs', () => {
     expect(modelTakesReferences(pooled, 'ref')).toBe(true);
     expect(modelTakesReferences(pooled, 'i2v')).toBe(false);
     expect(modelTakesReferences(undefined, 'ref')).toBe(false);
+  });
+});
+
+describe('which slots the video toolbar draws', () => {
+  const PICTURE: ParamDescriptor = { description: '', default: null, fill: 'canvas', accepts: 'image' };
+  const CLIP: ParamDescriptor = { description: '', default: null, fill: 'canvas', accepts: 'video' };
+  const TRACK: ParamDescriptor = { description: '', default: null, fill: 'canvas', accepts: 'audio' };
+
+  it('draws the talking-head slots the model declares, and no others', () => {
+    // Portrait-driven, clip-driven and two-speaker models all run under the
+    // one mode, and each collects a different set.
+    expect(videoSlotsForModel(model({ image: PICTURE, audio: TRACK }), 'talking_head')).toEqual([
+      'characterImage',
+      'drivingAudio',
+    ]);
+    expect(videoSlotsForModel(model({ video: CLIP, audio: TRACK }), 'talking_head')).toEqual([
+      'sourceVideo',
+      'drivingAudio',
+    ]);
+    expect(
+      videoSlotsForModel(
+        model({ image: PICTURE, left_audio: TRACK, right_audio: TRACK }),
+        'talking_head',
+      ),
+    ).toEqual(['characterImage', 'leftAudio', 'rightAudio']);
+  });
+
+  it('draws the mode\'s whole row while no model resolves', () => {
+    expect(videoSlotsForModel(undefined, 'first_last')).toEqual(['firstFrame', 'endFrame']);
   });
 });
