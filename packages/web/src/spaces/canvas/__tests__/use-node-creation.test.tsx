@@ -12,6 +12,7 @@ import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { planFlowLayout } from '@web/spaces/canvas/lib/place-flow';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 
@@ -488,6 +489,20 @@ describe('useNodeCreation', () => {
       expect(nodes.filter((n) => n.parentId === groupId).map((n) => n.id).sort()).toEqual(
         [...nodeIds].sort(),
       );
+    });
+
+    it.each([0, 0.99])('grounds the group on the tint a roll of %s picks', (roll) => {
+      const random = vi.spyOn(Math, 'random').mockReturnValue(roll);
+      const { result } = renderHook(() => useNodeCreation(`p-roll-${roll}`, 's-roll'));
+
+      const { groupId } = result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
+      random.mockRestore();
+
+      const group = canvasSpace
+        .readCanvasGraph(`p-roll-${roll}`, 's-roll')
+        .nodes.find((n) => n.id === groupId);
+      if (!group || group.data.kind !== 'group') throw new Error('no group was placed');
+      expect(group.data.backgroundColor).toBe(groupBackgroundFor(roll));
     });
 
     it('draws the group tall enough for the words inside it', () => {
