@@ -107,6 +107,12 @@ export interface ParamDescriptor {
   fill?: ParamFill;
   /** Which kind of node this parameter carries, when it carries one. */
   accepts?: "image" | "video" | "audio";
+  /**
+   * How a chip picked from this pool is written into the prompt (#2156,
+   * design §13.2): `{n}` is its place in the sent list of this kind counted
+   * from 1, `{i}` counted from 0. Absent, the chip adds nothing to the text.
+   */
+  mention?: string;
   /** Whether a run can go out with this slot empty. */
   optional?: boolean;
   /** What has to hold before this control counts. */
@@ -405,6 +411,7 @@ const paramDescriptorSchema = z
       .optional()
       .catch(undefined),
     accepts: z.enum(["image", "video", "audio"]).optional().catch(undefined),
+    mention: z.string().optional().catch(undefined),
     optional: z.boolean().optional().catch(undefined),
     when: z
       .object({

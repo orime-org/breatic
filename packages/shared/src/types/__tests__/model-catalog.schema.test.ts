@@ -480,6 +480,21 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(params?.motion?.values).toEqual(["low"]);
   });
 
+  it("keeps how a pool writes its chips, and drops a mention that is not text", () => {
+    const raw = catalog([
+      entry("seedance", {
+        params: {
+          images: { description: "", default: null, fill: "pool", accepts: "image", mention: "@image{n}" },
+          videos: { description: "", default: null, fill: "pool", accepts: "video", mention: 3 },
+        },
+      }),
+    ]);
+    const params = sanitizeModelCatalog(raw).image[0]?.params;
+    expect(params?.images?.mention).toBe("@image{n}");
+    expect(params?.videos?.mention).toBeUndefined();
+    expect(params?.videos?.accepts).toBe("video");
+  });
+
   it("drops a non-numeric step but keeps the descriptor", () => {
     const raw = catalog([
       entry("flux", {

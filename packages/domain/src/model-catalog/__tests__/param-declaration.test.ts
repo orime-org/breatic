@@ -50,6 +50,36 @@ describe("a parameter declaration", () => {
     );
   });
 
+  it("takes a pool's mention with one position placeholder", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({
+          images: { fill: "pool", accepts: "image", type: "list", mention: "@image{n}" },
+          videos: { fill: "pool", accepts: "video", type: "list", mention: "<VIDEO_{i}>" },
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("is refused when a mention sits on a param the pool does not fill", () => {
+    // Only a chip picked from the pool is written with it; anywhere else it is
+    // a spelling nothing reads.
+    expect(() =>
+      assertParamDeclarations("video", modelWith({ image: { fill: "canvas", accepts: "image", mention: "image {n}" } })),
+    ).toThrow(/a-model\.image: only a pool param writes its chips with a mention/);
+  });
+
+  it.each([
+    ["no placeholder", "the image"],
+    ["both placeholders", "{n} of {i}"],
+    ["the same placeholder twice", "{n}{n}"],
+  ])("is refused when a mention has %s", (_case, mention) => {
+    expect(() =>
+      assertParamDeclarations("video", modelWith({ images: { fill: "pool", accepts: "image", type: "list", mention } })),
+    ).toThrow(/a-model\.images: a mention holds exactly one \{n\} or \{i\}/);
+  });
+
   it("is refused when a pool does not say which kind of node it takes", () => {
     // The gate finds a carrier by what it accepts, so a pool that says nothing
     // carries nothing and every submission through it is refused before it is

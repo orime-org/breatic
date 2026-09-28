@@ -29,6 +29,8 @@ export interface PoolPlace {
   readonly param: string;
   /** The most one run takes, or undefined when the model caps none. */
   readonly cap: number | undefined;
+  /** How a chip of this kind is written into the prompt, if the model says. */
+  readonly mention: string | undefined;
 }
 
 /** The pool of one model in one mode: a place for each kind it takes. */
@@ -59,7 +61,7 @@ export function referencePool(
     if (spec.fill !== "pool") continue;
     if (spec.modes !== undefined && !spec.modes.includes(mode)) continue;
     const kind = asKind(spec.accepts);
-    if (kind !== undefined) pool[kind] = { param, cap: positiveCap(itemCap(spec)) };
+    if (kind !== undefined) pool[kind] = { param, cap: positiveCap(itemCap(spec)), mention: spec.mention };
   }
   return pool;
 }

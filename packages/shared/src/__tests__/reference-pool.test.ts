@@ -48,6 +48,17 @@ describe("referencePool", () => {
     });
   });
 
+  it("carries how the model writes a chip of each kind", () => {
+    const m = model({
+      images: pool("image", { mention: "<Picture {n}>" }),
+      videos: pool("video"),
+    });
+    expect(referencePool(m, "r2v")).toEqual({
+      image: { param: "images", cap: undefined, mention: "<Picture {n}>" },
+      video: { param: "videos", cap: undefined, mention: undefined },
+    });
+  });
+
   it("leaves out a pool the mode does not use, and anything filled another way", () => {
     const m = model({
       images: pool("image", { modes: ["i2i"] }),

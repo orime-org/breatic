@@ -73,6 +73,10 @@ const declarationSchema = z.object({
   // cap at all, so it widens the limit the yaml meant to state; a fraction is
   // read as a cap and enforced, and there is no half a piece of material.
   max_items: z.number().int().positive().optional(),
+  // How a chip picked from this pool is written into the prompt the model
+  // reads (#2156, design §13.2): `{n}` counts the sent list of this kind from
+  // 1, `{i}` from 0.
+  mention: z.string().optional(),
 });
 
 /**
@@ -103,6 +107,7 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "label",
   "value_labels",
   "fields",
+  "mention",
 ]);
 
 /** One parameter's declaration, as these checks read it. */
@@ -222,6 +227,19 @@ function faultsOn(
   // is refused by one reader and iterated by the other.
   if (declared.max_items !== undefined && declared.type !== "list" && declared.type !== "items") {
     faults.push("max_items counts entries, so this has to declare type: list or items");
+  }
+
+  if (declared.mention !== undefined) {
+    // Only a chip the pool fills is numbered in a sent list; anywhere else
+    // the spelling is read by nothing.
+    if (declared.fill !== "pool") {
+      faults.push("only a pool param writes its chips with a mention");
+    }
+    // One position per chip: none leaves every chip the same word, two make
+    // the number ambiguous.
+    if ((declared.mention.match(/\{[ni]\}/g) ?? []).length !== 1) {
+      faults.push("a mention holds exactly one {n} or {i}");
+    }
   }
 
   return faults;
