@@ -46,6 +46,27 @@ describe('RecentCard', () => {
     expect(screen.getByText(/^Opened\b/i)).toBeInTheDocument();
   });
 
+  it('puts the source studio, the opened time and the role on one meta line', () => {
+    setup();
+    const meta = screen.getByTestId('item-card-meta');
+    expect(meta).toContainElement(screen.getByText('Acme Studio'));
+    expect(meta).toContainElement(screen.getByText(/^Opened\b/));
+    expect(meta).toContainElement(screen.getByText('Owner'));
+  });
+
+  it('shows the role as plain meta text, not a bordered badge', () => {
+    setup();
+    const role = screen.getByText('Owner');
+    expect(role.tagName).toBe('SPAN');
+    expect(role.className).not.toMatch(/\bborder\b/);
+  });
+
+  it('keeps the opened time whole and lets the studio name truncate', () => {
+    setup();
+    expect(screen.getByText('Acme Studio').className).toMatch(/\btruncate\b/);
+    expect(screen.getByText(/^Opened\b/).className).toMatch(/\bshrink-0\b/);
+  });
+
   it('links a project to /project/{slug}-{uuid}', () => {
     setup();
     expect(screen.getByRole('link')).toHaveAttribute(
