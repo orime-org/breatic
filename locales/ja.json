@@ -274,7 +274,9 @@
       "building": "作成中…",
       "failed": "作成できませんでした。",
       "eachRun": "{s, number}秒 × {n, number}",
-      "needCanvas": "先にキャンバスを開いてください。"
+      "needCanvas": "先にキャンバスを開いてください。",
+      "promptReady": "プロンプトは作成済みです。ノードを右クリックして「生成」で確認できます。",
+      "settingsReady": "設定は完了しています。ノードを右クリックして「生成」で確認できます。"
     },
     "thinking": "少し考えました",
     "thinkingNow": "考え中",

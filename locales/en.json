@@ -274,7 +274,9 @@
       "building": "Creating…",
       "failed": "Could not create these nodes.",
       "eachRun": "{s, number}s × {n, number}",
-      "needCanvas": "Open a canvas first."
+      "needCanvas": "Open a canvas first.",
+      "promptReady": "Prompt ready. Right-click the node and choose Generate to see it.",
+      "settingsReady": "Settings ready. Right-click the node and choose Generate to see them."
     },
     "thinking": "Thought for a moment",
     "thinkingNow": "Thinking",

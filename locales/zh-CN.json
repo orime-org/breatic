@@ -274,7 +274,9 @@
       "building": "正在建…",
       "failed": "没建成，可以再试一次。",
       "eachRun": "{s, number} 秒 × {n, number}",
-      "needCanvas": "先打开一个画布。"
+      "needCanvas": "先打开一个画布。",
+      "promptReady": "提示词已写好，右键节点选「生成」查看",
+      "settingsReady": "设置已配好，右键节点选「生成」查看"
     },
     "thinking": "思考了一会儿",
     "thinkingNow": "思考中",
