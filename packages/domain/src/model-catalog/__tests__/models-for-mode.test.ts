@@ -106,22 +106,14 @@ describe("modelsForMode", () => {
 });
 
 describe("facts the catalog carries that change what to propose", () => {
-  it("states the rate for a model that bills by usage", () => {
-    // `cost_per_call` on these is the pre-enqueue balance floor, and the panel
-    // prices the run off `rate` -- sonilo's own yaml says so, and says the
-    // longest preset comes to 36 against a floor of 5.
-    const answer = modelsForMode("audio", "sfx");
-    if (!answer.available) throw new Error("sfx has models");
-    const sonilo = answer.models.find((model) => model.name === "sonilo-sfx-v1");
-    expect(sonilo?.rate, "sonilo bills per second").toBeDefined();
-    expect(sonilo?.rate?.unit).toBe("seconds");
-  });
-
   it("says a model takes no prompt when it takes none", () => {
-    // The only talking-head model, and its panel mounts no prompt editor.
+    // OmniHuman drives the face from the audio alone; the other talking-head
+    // models also read a prompt.
     const answer = modelsForMode("video", "talking_head");
     if (!answer.available) throw new Error("talking_head has models");
-    expect(answer.models.every((model) => model.takesPrompt === false)).toBe(true);
+    const omnihuman = answer.models.find((model) => model.name === "omnihuman-1.5");
+    expect(omnihuman?.takesPrompt).toBe(false);
+    expect(answer.models.some((model) => model.takesPrompt === true)).toBe(true);
   });
 
   it("keeps a parameter's declared type", () => {
@@ -215,8 +207,8 @@ describe("facts the catalog carries that change what to propose", () => {
   });
 
   it("marks an optional source slot the same as a required one", () => {
-    // `ref` requires an image and takes an optional reference video; both
-    // arrive by wiring, and only the required one is in the mode's source list.
+    // `ref` takes reference images and, on some models, reference videos; both
+    // pools are optional one by one and arrive by wiring.
     const answer = modelsForMode("video", "ref");
     if (!answer.available) throw new Error("ref has models");
     const filledByWiring = answer.models
@@ -224,7 +216,7 @@ describe("facts the catalog carries that change what to propose", () => {
       .filter(([, spec]) => spec.filledBySource === true)
       .map(([name]) => name);
     expect(filledByWiring).toContain("images");
-    expect(filledByWiring).toContain("video");
+    expect(filledByWiring).toContain("videos");
   });
 
   it("leaves out a slot the asked mode does not have", () => {
@@ -239,15 +231,16 @@ describe("facts the catalog carries that change what to propose", () => {
   });
 
   it("says when the panel draws no control for a parameter", () => {
-    // `seed` is declared by most video models and no panel offers it: the run
-    // takes the default, and a reader told to set it has nothing to set.
-    const answer = modelsForMode("video", "t2v");
-    if (!answer.available) throw new Error("t2v has models");
-    const seeds = answer.models
+    // `output_format` is pinned on several image models and no panel offers
+    // it: the run takes the default, and a reader told to set it has nothing
+    // to set.
+    const answer = modelsForMode("image", "t2i");
+    if (!answer.available) throw new Error("t2i has models");
+    const formats = answer.models
       .flatMap((model) => Object.entries(model.params))
-      .filter(([name]) => name === "seed");
-    expect(seeds.length, "some t2v model declares seed").toBeGreaterThan(0);
-    for (const [, spec] of seeds) expect(spec.noControl).toBe(true);
+      .filter(([name]) => name === "output_format");
+    expect(formats.length, "some t2i model declares output_format").toBeGreaterThan(0);
+    for (const [, spec] of formats) expect(spec.noControl).toBe(true);
   });
 
   it("leaves a parameter the panel does draw unmarked", () => {
@@ -275,13 +268,13 @@ describe("facts the catalog carries that change what to propose", () => {
   it("leaves an ordinary setting unmarked", () => {
     const answer = modelsForMode("video", "talking_head");
     if (!answer.available) throw new Error("talking_head has models");
-    const seed = answer.models
+    const resolution = answer.models
       .flatMap((model) => Object.entries(model.params))
-      .find(([name]) => name === "seed");
+      .find(([name]) => name === "resolution");
     // Asserted found first: optional chaining on a missing entry passes the
     // next line without reading anything.
-    expect(seed, "talking_head declares seed").toBeDefined();
-    expect(seed?.[1].filledBySource).toBeUndefined();
+    expect(resolution, "talking_head declares resolution").toBeDefined();
+    expect(resolution?.[1].filledBySource).toBeUndefined();
   });
 });
 

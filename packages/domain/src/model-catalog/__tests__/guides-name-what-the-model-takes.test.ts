@@ -71,8 +71,8 @@ const PROMISED_SLOT: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
  */
 const MODE_PROMISED_SOURCE: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
   [/reference images?/i, ["images", "style_images"]],
-  [/reference video|driving motion/i, ["video"]],
-  [/reference audio|audio (sample|track)/i, ["audio", "song"]],
+  [/reference videos?|driving motion/i, ["video", "videos"]],
+  [/reference audio|audio (sample|track)/i, ["audio", "audios", "song"]],
   [/first frame|portrait image|character image/i, ["image"]],
   [/ends on another|end frame/i, ["end_image"]],
 ];

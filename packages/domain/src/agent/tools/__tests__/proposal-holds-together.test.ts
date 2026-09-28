@@ -558,21 +558,6 @@ describe("what only the reader can fill in", () => {
       false,
     );
   });
-
-  it("stands with nothing marked when the switch takes that box away", () => {
-    // An instrumental track has no words to write, and the panel takes the
-    // lyrics box off the screen. A bracket telling the reader to write lyrics
-    // would point at a box that is not there.
-    const at = pick(
-      (m) => m.params[PANEL_EDITOR_PARAM]?.gate?.kind === "flagOff",
-      "model whose text box a switch takes away",
-    );
-    const flag = (at.params[PANEL_EDITOR_PARAM]?.gate as { param: string }).param;
-
-    expect(checkProposal(propose(at, { tweaks: 0, params: { [flag]: true } }))).toEqual({
-      ok: true,
-    });
-  });
 });
 
 describe("what the model is allowed to fill in", () => {

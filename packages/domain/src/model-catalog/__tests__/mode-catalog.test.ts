@@ -105,25 +105,17 @@ describe("getCanvasCapabilities", () => {
     expect(getCanvasCapabilities()).toEqual([]);
   });
 
-  it("follows the catalog: revoking one provider's key takes its models with it", () => {
+  it("follows the catalog: revoking the provider's key takes its models with it", () => {
     // A subset assertion against the full answer holds even for code that
-    // ignores keys entirely -- measured: with only the first key configured
-    // the answer is byte-identical to the all-keys one. So this subtracts a
-    // key whose models nothing else backs, and names what has to disappear.
-    const withoutFish = allProviderKeyNames().filter((name) => name !== "FISH_API_KEY");
-    useEnvWithKeys(withoutFish);
-    const answer = modelsForMode("audio", "tts");
-    expect(answer.available, "other models still serve tts").toBe(true);
-    if (!answer.available) return;
-    expect(
-      answer.models.map((model) => model.name),
-      "fish-s2-pro is served by fish alone",
-    ).not.toContain("fish-s2-pro");
+    // ignores keys entirely, so this subtracts the key and names what has to
+    // disappear.
+    useEnvWithKeys(allProviderKeyNames().filter((name) => name !== "WAVESPEED_API_KEY"));
+    expect(modelsForMode("audio", "tts").available, "tts runs on WaveSpeed alone").toBe(false);
 
     useEnvWithKeys(allProviderKeyNames());
-    const withFish = modelsForMode("audio", "tts");
-    expect(withFish.available && withFish.models.map((model) => model.name)).toContain(
-      "fish-s2-pro",
+    const withKey = modelsForMode("audio", "tts");
+    expect(withKey.available && withKey.models.map((model) => model.name)).toContain(
+      "realtime-tts-2",
     );
   });
 
@@ -138,7 +130,7 @@ describe("getCanvasCapabilities", () => {
     useEnvWithKeys(allProviderKeyNames().filter((name) => !both.includes(name)));
     expect(
       modesOfNode(getCanvasCapabilities(), "audio"),
-      "both music models are wavespeed-only",
+      "every music model is wavespeed-only",
     ).not.toContain("a2m");
   });
 });

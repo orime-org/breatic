@@ -87,7 +87,6 @@ models:
         default: 5
         min: 2
         max: 30
-        step: 1
         fill: "panel"
       generate_audio:
         upstream: "enable_audio"
@@ -128,7 +127,6 @@ models:
         default: 5
         min: 4
         max: 30
-        step: 1
         fill: "panel"
       generate_audio:
         description: "Generate a soundtrack with the video"
@@ -368,7 +366,6 @@ models:
         default: 5
         min: 2
         max: 30
-        step: 1
         fill: "panel"
       generate_audio:
         upstream: "enable_audio"
@@ -425,12 +422,6 @@ models:
         accepts: "image"
         optional: true
         fill: "pool"
-      end_image:
-        description: "Last frame image"
-        default: null
-        accepts: "image"
-        optional: true
-        fill: "canvas"
       image:
         description: "Source image"
         default: null
@@ -699,7 +690,6 @@ models:
         default: 5
         min: 2
         max: 30
-        step: 1
         fill: "panel"
       generate_audio:
         upstream: "enable_audio"
@@ -767,7 +757,6 @@ models:
         default: 5
         min: 3
         max: 15
-        step: 1
         fill: "panel"
       images:
         description: "Reference images"
@@ -809,7 +798,6 @@ models:
         default: 5
         min: 5
         max: 20
-        step: 1
         fill: "panel"
       end_image:
         description: "Last frame image"
