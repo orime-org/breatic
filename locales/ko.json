@@ -1542,7 +1542,7 @@
     "contactSales": "문의하기",
     "card": {
       "storage": "저장 공간 {value}",
-      "teamStudios": "{count, plural, =0 {Team Studio 없음} other {Team Studio #개}}",
+      "teamStudios": "{count, plural, =0 {팀 Studio 없음} other {팀 Studio #개}}",
       "connections": "{count, plural, other {문서당 연결 #개}}",
       "enterpriseScale": "용량은 협의로 결정",
       "enterpriseGovernance": "SSO, 감사, 지식재산 보증"

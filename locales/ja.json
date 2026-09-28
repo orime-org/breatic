@@ -1542,7 +1542,7 @@
     "contactSales": "ご相談ください",
     "card": {
       "storage": "ストレージ {value}",
-      "teamStudios": "{count, plural, =0 {Team Studio なし} other {Team Studio # 個}}",
+      "teamStudios": "{count, plural, =0 {チーム Studio なし} other {チーム Studio # 個}}",
       "connections": "{count, plural, other {1 ドキュメントあたり # 接続}}",
       "enterpriseScale": "容量は個別契約",
       "enterpriseGovernance": "SSO・監査・知的財産補償"

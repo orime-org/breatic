@@ -1542,7 +1542,7 @@
     "contactSales": "联系我们",
     "card": {
       "storage": "{value} 存储",
-      "teamStudios": "{count, plural, =0 {不含 Team Studio} other {# 个 Team Studio}}",
+      "teamStudios": "{count, plural, =0 {不含团队 Studio} other {# 个团队 Studio}}",
       "connections": "{count, plural, other {每个文档 # 个连接}}",
       "enterpriseScale": "容量按协议约定",
       "enterpriseGovernance": "SSO、审计、知识产权保障"
