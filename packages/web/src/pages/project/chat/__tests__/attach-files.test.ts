@@ -153,6 +153,12 @@ describe('attaching picked files', () => {
     expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'extract' });
   });
 
+  it('marks a document with no words in it, such as a scanned pdf, as not read', async () => {
+    await pick([file('scan.pdf', 'application/pdf')], deps({ extract: async () => ' \n\t ' }));
+
+    expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'extract' });
+  });
+
   it('marks a document too long to send, and says so', async () => {
     await pick(
       [file('report.pdf', 'application/pdf')],
