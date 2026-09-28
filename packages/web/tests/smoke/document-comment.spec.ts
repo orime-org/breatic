@@ -359,6 +359,51 @@ test.describe('the card a comment is written in', () => {
     }
   });
 
+  test('keeps both ends on their lines when the reader moves its last line', async ({
+    page,
+  }) => {
+    // A move takes the line out and puts it back; each end follows its own
+    // line, and the line moved past now lies between them.
+    await openFreshDocument(page);
+    await page.keyboard.type('alpha bravo\n');
+    await page.keyboard.type('charlie delta\n');
+    await page.keyboard.type('echo');
+    await page.evaluate((sel) => {
+      const [first, second] = document.querySelectorAll(`${sel} p`);
+      const range = document.createRange();
+      range.setStart(first!.firstChild!, 6);
+      range.setEnd(second!.firstChild!, 7);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }, EDITOR);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-draft-input').fill('half a thought');
+
+    // Back in the body the editor puts its old selection back, which runs
+    // over both lines; collapsing it leaves the caret in the last line only.
+    await page.locator(`${EDITOR} p`).nth(1).click();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ControlOrMeta+Shift+ArrowDown');
+
+    await expect(page.locator(`${EDITOR} p`)).toHaveText([
+      'alpha bravo',
+      'echo',
+      'charlie delta',
+    ]);
+    await expect(page.getByTestId('doc-comment-draft-dropped')).toHaveCount(0);
+    await expect(page.getByTestId('doc-comment-draft-input')).toHaveValue(
+      'half a thought',
+    );
+    await expect
+      .poll(() =>
+        page
+          .locator(`${EDITOR} .doc-comment-draft-mark`)
+          .evaluateAll((marks) => marks.map((mark) => mark.textContent).join('|')),
+      )
+      .toBe('bravo|echo|charlie');
+  });
+
   test('leaves no card being read once it is saved', async ({ page }) => {
     // user 2026-09-24: saving is the comment being finished.
     await openFreshDocument(page);

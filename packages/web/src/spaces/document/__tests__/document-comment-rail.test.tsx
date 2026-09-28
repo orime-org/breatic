@@ -1345,6 +1345,24 @@ describe('the comment panel', () => {
       },
     );
 
+    it('stays on its words when a peer moves up a line that starts with the same letter', async () => {
+      // Rewriting "two…" into "three" keeps their shared first letter, so the
+      // letter the start names survives, but in the other line.
+      show('editor', ['one', 'two carrying the comment', 'three']);
+      aimAt(lineStarts()[1]!, lineStarts()[1]! + 24);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.setTextCursorPosition(peer.editor.document[2]!);
+        peer.editor.moveBlocksUp();
+      });
+
+      expect(lines()).toEqual(['one', 'three', 'two carrying the comment']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('two carrying the comment');
+    });
+
     it('stays on its words across two lines when a peer moves another line across both', async () => {
       show('editor', ['alpha bravo', 'charlie delta', 'echo']);
       const [first, second] = lineStarts();
