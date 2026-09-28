@@ -9,14 +9,11 @@ import {
   chatAttachments,
   type AttachmentLimits,
   type TrayItem,
+  type TrayNotice,
 } from '@web/stores/chat-attachments';
 
 /** What the attach button can say about a batch it was handed. */
-export type AttachNotice =
-  | { key: 'full'; limit: number }
-  | { key: 'tooLong' }
-  | { key: 'unsupported'; filename: string }
-  | { key: 'tooLarge'; filename: string };
+export type AttachNotice = TrayNotice;
 
 /** What attaching needs from outside. Injected so it can be exercised alone. */
 export interface AttachDeps {

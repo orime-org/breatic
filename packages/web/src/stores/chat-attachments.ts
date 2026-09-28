@@ -39,12 +39,27 @@ export interface AttachmentLimits {
 /** What adding a batch came to. */
 export type AddOutcome = 'added' | 'full' | 'too_long';
 
+/** What to say above the box about the last attempt to attach. */
+export type TrayNotice =
+  | { key: 'full'; limit: number }
+  | { key: 'tooLong' }
+  | { key: 'unsupported'; filename: string }
+  | { key: 'tooLarge'; filename: string }
+  | { key: 'unavailable' };
+
 interface TrayState {
   /** The list above the box in each conversation, keyed by conversation. */
   byConversation: Record<string, TrayItem[]>;
+  /**
+   * What was said about the last attempt to attach, keyed by conversation.
+   *
+   * Here rather than with whoever attached: the canvas attaches too, and what
+   * it has to say belongs above the same box.
+   */
+  noticeByConversation: Record<string, TrayNotice>;
 }
 
-const useStore = create<TrayState>(() => ({ byConversation: {} }));
+const useStore = create<TrayState>(() => ({ byConversation: {}, noticeByConversation: {} }));
 
 const EMPTY: TrayItem[] = [];
 
@@ -202,9 +217,36 @@ function removeSent(conversationId: string, ids: readonly string[]): void {
 function forget(conversationIds: readonly string[]): void {
   useStore.setState((s) => {
     const byConversation = { ...s.byConversation };
-    for (const id of conversationIds) delete byConversation[id];
-    return { byConversation };
+    const noticeByConversation = { ...s.noticeByConversation };
+    for (const id of conversationIds) {
+      delete byConversation[id];
+      delete noticeByConversation[id];
+    }
+    return { byConversation, noticeByConversation };
   });
+}
+
+/**
+ * Say something above the box about the last attempt to attach, or clear it.
+ * @param conversationId - The conversation.
+ * @param notice - What to say, or null to say nothing.
+ */
+function say(conversationId: string, notice: TrayNotice | null): void {
+  useStore.setState((s) => {
+    const noticeByConversation = { ...s.noticeByConversation };
+    if (notice === null) delete noticeByConversation[conversationId];
+    else noticeByConversation[conversationId] = notice;
+    return { noticeByConversation };
+  });
+}
+
+/**
+ * What is said above the box in one conversation.
+ * @param conversationId - The conversation.
+ * @returns The notice, or null when there is none.
+ */
+function noticeOf(conversationId: string): TrayNotice | null {
+  return useStore.getState().noticeByConversation[conversationId] ?? null;
 }
 
 /**
@@ -229,4 +271,6 @@ export const chatAttachments = {
   removeSent,
   forget,
   sendable,
+  say,
+  noticeOf,
 };

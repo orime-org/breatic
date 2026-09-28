@@ -17,6 +17,7 @@ import {
   type AttachNotice,
 } from '@web/pages/project/chat/attach-files';
 import { runMediaUpload } from '@web/spaces/canvas/canvas-upload';
+import { chatAttachments, useChatAttachments } from '@web/stores/chat-attachments';
 import { extractText } from '@web/spaces/canvas/text-extract';
 
 /**
@@ -77,18 +78,24 @@ export interface AttachFiles {
  */
 export function useAttachFiles(projectId: string, conversationId: string | undefined): AttachFiles {
   const t = useTranslation();
-  const [said, setSaid] = React.useState<AttachNotice | 'unavailable' | null>(null);
-
-  // What was said about one conversation is not about the next.
-  React.useEffect(() => setSaid(null), [conversationId]);
+  const said = useChatAttachments((s) =>
+    conversationId ? (s.noticeByConversation[conversationId] ?? null) : null,
+  );
 
   const attach = React.useCallback(
     (files: File[]): void => {
       if (conversationId === undefined) return;
-      setSaid(null);
+      chatAttachments.say(conversationId, null);
+      /**
+       * Say something above this conversation's box.
+       * @param notice - What to say.
+       */
+      const say = (notice: AttachNotice): void => {
+        chatAttachments.say(conversationId, notice);
+      };
       // The limits could not be read, so nothing was attached.
-      void attachFiles(files, { conversationId, projectId }, LIVE, setSaid).catch(() =>
-        setSaid('unavailable'),
+      void attachFiles(files, { conversationId, projectId }, LIVE, say).catch(() =>
+        say({ key: 'unavailable' }),
       );
     },
     [conversationId, projectId],
@@ -98,7 +105,7 @@ export function useAttachFiles(projectId: string, conversationId: string | undef
 
   const notice = React.useMemo((): string | undefined => {
     if (said === null) return undefined;
-    if (said === 'unavailable') return t('chat.composer.attachUnavailable');
+    if (said.key === 'unavailable') return t('chat.composer.attachUnavailable');
     if (said.key === 'full') return t('chat.composer.attachFull', { limit: said.limit });
     if (said.key === 'tooLong') return t('chat.composer.attachTooLong');
     if (said.key === 'tooLarge') return t('chat.composer.attachTooLarge', { filename: said.filename });
