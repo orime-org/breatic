@@ -1701,6 +1701,37 @@ describe('the comment panel', () => {
       });
     });
 
+    it('puts the caret after what was written when the entry is pressed over other words', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+      await clickTheBody();
+
+      aimDraft(12, 19);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-comment-draft-input')).toHaveFocus();
+      });
+      const box = screen.getByTestId<HTMLTextAreaElement>('doc-comment-draft-input');
+      expect([box.selectionStart, box.selectionEnd]).toEqual([4, 4]);
+    });
+
+    it('puts the caret after what was written when a tab switch brings the card back', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+
+      remount();
+
+      const box = await screen.findByTestId<HTMLTextAreaElement>('doc-comment-draft-input');
+      await waitFor(() => {
+        expect(box).toHaveFocus();
+      });
+      expect([box.selectionStart, box.selectionEnd]).toEqual([4, 4]);
+    });
+
     it('leaves the keyboard in the box while a peer edit moves its words', async () => {
       show();
       aimDraft(6, 11);
