@@ -132,6 +132,38 @@ export async function lockLiveProject(
 }
 
 /**
+ * Lock the `projects` rows of every live project in a studio that a user owns.
+ *
+ * Taken after the studio's membership and before any `project_members` row,
+ * the order the delete cascade and the join-request paths share. Rows are
+ * locked in id order, so two callers queue instead of deadlocking.
+ * @param studioId - The studio.
+ * @param userId - The owner.
+ * @param tx - The enclosing transaction; the lock is meaningless without one.
+ */
+export async function lockProjectsOwnedBy(
+  studioId: string,
+  userId: string,
+  tx: DbTx,
+): Promise<void> {
+  await tx
+    .select({ id: projects.id })
+    .from(projects)
+    .innerJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+    .where(
+      and(
+        eq(projects.studioId, studioId),
+        isNull(projects.deletedAt),
+        eq(projectMembers.userId, userId),
+        eq(projectMembers.role, "owner"),
+        isNull(projectMembers.deletedAt),
+      ),
+    )
+    .orderBy(projects.id)
+    .for("update", { of: projects });
+}
+
+/**
  * How many live projects a studio currently holds.
  *
  * Backs the per-studio project ceiling, whose value comes from the tier of
@@ -505,12 +537,13 @@ export async function deleteProject(id: string): Promise<void> {
     // permanently and its `restrict` foreign key blocks the project from ever
     // being hard-deleted.
     //
-    // ORDER IS LOAD-BEARING. Both decision paths take these rows before they
-    // touch `project_members` — the transfer locks its offer then the member
-    // rows, the role upgrade locks its request then writes the member row. A
-    // cascade that took `project_members` first would close the cycle, and
-    // deleting a project while somebody answers a request would abort one side
-    // with a deadlock rather than serialising them.
+    // ORDER IS LOAD-BEARING. The decision paths take these rows before they
+    // touch `project_members` — accepting a transfer or answering a join
+    // request locks the project, then its request row, then member rows; the
+    // role upgrade locks its request then writes the member row. A cascade
+    // that took `project_members` first would close the cycle, and deleting a
+    // project while somebody answers a request would abort one side with a
+    // deadlock rather than serialising them.
     await tx
       .update(roleUpgradeRequests)
       .set({ deletedAt: now })

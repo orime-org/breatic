@@ -17,10 +17,19 @@
  *   - {@link readdressOnOwnerChange} — a project that changed owner moves the
  *     bell entries of its pending requests to the new owner.
  *
- * A decision re-checks everything it assumed, under the project lock and then
- * the request lock (the order the delete cascade uses): the request is still
- * pending and not timed out, the caller owns the project now, the requester is
- * still in the studio and not yet on the project, and the project has a seat.
+ * Every path that touches join requests takes its locks in one order:
+ * `studio_members` → `projects` → request rows → `project_members`. The delete
+ * cascade takes the project first and sweeps the request tables before the
+ * member rows; deciding, transferring a project and removing a studio member
+ * follow the same order, so any two of them queue instead of deadlocking.
+ * {@link readdressOnOwnerChange} relies on its caller already holding the
+ * project lock.
+ *
+ * A decision re-checks everything it assumed under those locks: the request is
+ * still pending and not timed out, the caller owns the project now, the
+ * requester is still in the studio (their membership row stays locked, so a
+ * concurrent removal waits for the decision) and not yet on the project, and
+ * the project has a seat.
  */
 
 import { db, projectMembersRepo, ConflictError, NotFoundError, getLimitsForStudio } from "@breatic/core";
@@ -223,7 +232,8 @@ interface OpenRequest {
 }
 
 /**
- * Lock the project, then the request, and run the gates both decisions share.
+ * Lock the requester's studio membership, the project and the request, and
+ * run the gates both decisions share.
  *
  * Refusals come back as values: the branches that settle the request before
  * refusing need their write to commit, which throwing would roll back.
@@ -237,8 +247,13 @@ async function openForDecision(
   requestId: string,
   ownerUserId: string,
 ): Promise<OpenRequest | Refused> {
-  const projectId = await requestsRepo.getProjectIdOf(requestId, tx);
-  if (projectId === null) return { refusal: "not_found" };
+  const keys = await requestsRepo.getDecisionKeys(requestId, tx);
+  if (keys === null) return { refusal: "not_found" };
+  const { projectId, requesterUserId } = keys;
+  // `studio_id` never changes, so the unlocked read names the right studio.
+  const unlocked = await projectRepo.getProjectById(projectId, tx);
+  if (!unlocked) return { refusal: "not_found" };
+  const inStudio = await studioMembersRepo.lockMemberRole(unlocked.studioId, requesterUserId, tx);
   if (!(await projectRepo.lockLiveProject(projectId, tx))) return { refusal: "not_found" };
   const row = await requestsRepo.lockRequest(requestId, tx);
   if (!row) return { refusal: "not_found" };
@@ -250,7 +265,7 @@ async function openForDecision(
     projectId,
     projectName: project.name,
     studioId: project.studioId,
-    requesterUserId: row.requesterUserId,
+    requesterUserId,
     notificationId: row.notificationId,
   };
   if (row.expired) {
@@ -262,10 +277,7 @@ async function openForDecision(
     // request, which the current owner can still answer.
     return { refusal: "forbidden" };
   }
-  const [inStudio, onProject] = await Promise.all([
-    studioMembersRepo.getRole(project.studioId, row.requesterUserId, tx),
-    projectMembersRepo.getRole(projectId, row.requesterUserId, tx),
-  ]);
+  const onProject = await projectMembersRepo.getRole(projectId, requesterUserId, tx);
   if (inStudio === null || onProject !== null) {
     await expire(req, tx);
     return { refusal: "conflict" };

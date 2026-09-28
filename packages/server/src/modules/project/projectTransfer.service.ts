@@ -25,7 +25,8 @@
  * A confirm re-checks every premise, because it runs up to a week after the
  * offer was made and all three participants may have moved:
  *
- *   1. lock the offer by id (never by status — see the repo header)
+ *   1. lock the recipient's studio membership, then the project, then the
+ *      offer by id (never by status — see the repo header)
  *   2. it must still be pending, else 409
  *   3. it must not have timed out, else retire it and 409
  *   4. the caller must be the named recipient, else 403
@@ -248,6 +249,17 @@ export async function confirmProjectTransfer(
   const outcome = await db.transaction<
     Refused | { projectId: string; oldOwnerId: string }
   >(async (tx) => {
+    // The recipient's studio membership, then the project, then the offer:
+    // the order the delete cascade and the join-request paths share, so an
+    // accept that moves pending join requests to the new owner queues behind
+    // a concurrent delete instead of deadlocking with it. `studio_id` never
+    // changes, so the unlocked read names the right studio.
+    const keys = await transfersRepo.getDecisionKeys(transferId, tx);
+    const unlocked = keys ? await projectRepo.getProjectById(keys.projectId, tx) : null;
+    if (keys && unlocked) {
+      await studioMembersRepo.lockMemberRole(unlocked.studioId, receiverUserId, tx);
+      await projectRepo.lockLiveProject(keys.projectId, tx);
+    }
     const opened = await openForDecision(tx, transferId, receiverUserId);
     if (isRefused(opened)) return opened;
     const offer = opened;
@@ -272,8 +284,6 @@ export async function confirmProjectTransfer(
     // and then writes `project_members`, so taking the two in the same order
     // here makes the two transactions queue rather than deadlock.
     //
-    // The project row itself is read unlocked: `studio_id` is immutable, so
-    // there is nothing here for a concurrent writer to change.
     const project = await projectRepo.getProjectById(projectId, tx);
     if (!project) {
       // The project was soft-deleted under an outstanding offer. Nothing will

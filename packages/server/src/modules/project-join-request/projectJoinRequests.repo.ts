@@ -340,20 +340,27 @@ export async function listLivePendingForProject(
 }
 
 /**
- * Which project a request is about, read WITHOUT a lock.
+ * Which project a request is about and who filed it, read WITHOUT a lock.
  *
- * The decision path locks the project before the request (the order every
- * project-scoped request path and the delete cascade share), so it needs the
- * project id first. A request's `project_id` never changes, so an unlocked
- * read is safe; whether it may still be answered is decided under the locks.
+ * The decision path locks the requester's studio membership, then the project,
+ * then the request (the order every path touching join requests shares with
+ * the delete cascade), so it needs both ids first. Neither column ever
+ * changes, so an unlocked read is safe; whether the request may still be
+ * answered is decided under the locks.
  * @param id - Request id.
  * @param tx - The deciding transaction.
- * @returns The project id, or null when there is no such live row.
+ * @returns The two ids, or null when there is no such live row.
  */
-export async function getProjectIdOf(id: string, tx: DbTx): Promise<string | null> {
+export async function getDecisionKeys(
+  id: string,
+  tx: DbTx,
+): Promise<{ projectId: string; requesterUserId: string } | null> {
   const rows = await tx
-    .select({ projectId: projectJoinRequests.projectId })
+    .select({
+      projectId: projectJoinRequests.projectId,
+      requesterUserId: projectJoinRequests.requesterUserId,
+    })
     .from(projectJoinRequests)
     .where(and(eq(projectJoinRequests.id, id), isNull(projectJoinRequests.deletedAt)));
-  return rows[0]?.projectId ?? null;
+  return rows[0] ?? null;
 }
