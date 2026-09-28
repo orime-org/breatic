@@ -215,6 +215,13 @@ export async function pollUntilDone(
   throw new Error(`${provider} task did not complete within ${maxWait / 1000}s`);
 }
 
+/**
+ * How a billing line moves the prediction's cost: a deduction adds its price,
+ * a refund takes its price back. A prediction that failed upstream carries one
+ * of each at the same price (captured 2026-09-28 from a failed vocal-clone).
+ */
+const BILLING_SIGN: Readonly<Record<string, number>> = { deduct: 1, refund: -1 };
+
 /** One line of a WaveSpeed billing answer. */
 interface BillingLine {
   billing_type?: string;
@@ -232,9 +239,8 @@ interface BillingLine {
  *        "order":{"origin_price":0.0026,"price":0.0026,"state":"done"},
  *        "prediction":{"model_uuid":"elevenlabs/eleven-v3","status":"completed"}}]}}
  *
- * Lines are summed because one prediction may carry more than one, and only
- * the deducting ones count — adding a refund would state the opposite of what
- * happened.
+ * Lines are summed because one prediction may carry more than one: deductions
+ * add, refunds take back, and any other line type is left out.
  *
  * Every zero that comes from a lookup going wrong is logged — a refused
  * request, no deducting line, a line carrying no price. What is left, a zero
@@ -270,13 +276,15 @@ export async function queryBilling(resolved: ResolvedModel, taskId: string): Pro
       return 0;
     }
     let total = 0;
-    for (const line of deducted) {
+    for (const line of body.data?.items ?? []) {
+      const sign = BILLING_SIGN[line.billing_type ?? ""];
+      if (sign === undefined) continue;
       const price = line.order?.price;
       if (typeof price !== "number") {
-        logger.warn({ taskId }, "billing_line_without_price");
+        logger.warn({ taskId, billingType: line.billing_type }, "billing_line_without_price");
         continue;
       }
-      total += price;
+      total += sign * price;
     }
     return total;
   } catch (err) {
