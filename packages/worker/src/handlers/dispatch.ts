@@ -28,7 +28,7 @@ import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/c
 import { taskService } from "@breatic/domain";
 import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { settleTaskForNode, understandMediaAt, UNDERSTAND_PINS } from "@breatic/domain";
+import { assetService, settleTaskForNode, understandMediaAt, UNDERSTAND_PINS } from "@breatic/domain";
 import {
   AnsweredNothing,
   verdictStands,
@@ -479,6 +479,7 @@ async function runTaskBody(
         jobId: job.id ?? "",
         userId,
         projectId,
+        taskId,
         resume,
       });
     } else if (taskType === "understand") {
@@ -492,7 +493,7 @@ async function runTaskBody(
       }
       [providerResult, creditsUsed] = await runUnderstand(params);
     } else if (taskType in AIGC_TASK_TYPES && !skillName) {
-      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, resume);
+      [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, { resume, taskId, projectId: projectId ?? undefined });
     } else if (skillName) {
       const [text, skills] = await runSkillAgent(skillName, params);
       resolvedSkills = skills;
@@ -1341,6 +1342,14 @@ export async function persistOutputs(
 
 // ── Execution Path Helpers ───────────────────────────────────────────
 
+/** What a provider call needs to know about the task it runs for. */
+export interface ProviderRun {
+  /** Async-transport resume context for at-most-once vendor submit (#1628). */
+  resume: ResumeContext;
+  taskId: string;
+  projectId: string | undefined;
+}
+
 interface RunMiniToolOpts {
   toolName: string;
   taskType: string;
@@ -1348,6 +1357,7 @@ interface RunMiniToolOpts {
   jobId: string;
   userId: string;
   projectId: string | undefined;
+  taskId: string;
   /** Async-transport resume context for at-most-once vendor submit (#1628). */
   resume: ResumeContext;
 }
@@ -1368,7 +1378,7 @@ interface RunMiniToolOpts {
 export async function runMiniTool(
   opts: RunMiniToolOpts,
 ): Promise<[Record<string, unknown>, number]> {
-  const { toolName, taskType, params, jobId, userId, projectId, resume } = opts;
+  const { toolName, taskType, params, jobId, userId, projectId, taskId, resume } = opts;
   const entry = resolveMiniToolEntry(taskType, toolName);
 
   // Strip workflow-meta fields that are for infra (not for the
@@ -1415,7 +1425,7 @@ export async function runMiniTool(
     provider.validateParams,
   );
 
-  const result = await provider.generateAsync(prompt, modelName, validated, resume);
+  const result = await provider.generateAsync(prompt, modelName, validated, { resume, taskId, projectId });
   const cost = (result.cost as number) ?? 0;
   const credits = creditsFor(cost);
 
@@ -1504,7 +1514,7 @@ export async function runUnderstand(
  * @param taskType - AIGC task type (image / audio / video / tts / three_d)
  * @param model - Model name to invoke; required for this path
  * @param params - Task params, including the raw prompt/text to sanitise
- * @param resume - Async-transport resume context for at-most-once submit (#1628)
+ * @param run - The task the call runs for, with its resume context (#1628)
  * Exported alongside {@link runMiniTool}, and for the same reason: this is the
  * other half of the pair whose orders drifted apart, so the test that pins one
  * has to be able to pin the other.
@@ -1515,7 +1525,7 @@ export async function runAigcDirect(
   taskType: string,
   model: string | undefined,
   params: Record<string, unknown>,
-  resume: ResumeContext,
+  run: ProviderRun,
 ): Promise<[Record<string, unknown>, number]> {
   if (!model) throw new Error(`model is required for AIGC direct path (${taskType})`);
 
@@ -1532,7 +1542,7 @@ export async function runAigcDirect(
     provider.validateParams,
   );
 
-  const result = await provider.generateAsync(prompt, model, validated, resume);
+  const result = await provider.generateAsync(prompt, model, validated, run);
   const cost = (result.cost as number) ?? 0;
   const credits = creditsFor(cost);
 
@@ -1584,7 +1594,7 @@ export async function runSkillAgent(
  */
 async function importProvider(taskType: string): Promise<{
   validateParams: (model: string, params: Record<string, unknown>) => [string, Record<string, unknown>];
-  generateAsync: (prompt: string, model: string, params: Record<string, unknown>, resume?: ResumeContext) => Promise<Record<string, unknown>>;
+  generateAsync: (prompt: string, model: string, params: Record<string, unknown>, run: ProviderRun) => Promise<Record<string, unknown>>;
 }> {
   const modality = AIGC_TASK_TYPES[taskType] ?? taskType;
   /**
@@ -1596,10 +1606,10 @@ async function importProvider(taskType: string): Promise<{
    */
   const wrap = (
     validate: (m: string | undefined, p?: Record<string, unknown>) => [string, Record<string, unknown>],
-    generate: (prompt: string, model: string, params: Record<string, unknown>, resume?: ResumeContext) => Promise<Record<string, unknown>>,
+    generate: (prompt: string, model: string, params: Record<string, unknown>, run: ProviderRun) => Promise<Record<string, unknown>>,
   ): {
     validateParams: (model: string, params: Record<string, unknown>) => [string, Record<string, unknown>];
-    generateAsync: (prompt: string, model: string, params: Record<string, unknown>, resume?: ResumeContext) => Promise<Record<string, unknown>>;
+    generateAsync: (prompt: string, model: string, params: Record<string, unknown>, run: ProviderRun) => Promise<Record<string, unknown>>;
   } => ({
     validateParams: (model: string, params: Record<string, unknown>) => validate(model, params),
     generateAsync: generate,
@@ -1609,13 +1619,23 @@ async function importProvider(taskType: string): Promise<{
     case "video":
     case "audio":
     case "tts": {
-      const m = await import("@worker/providers/generate.js");
+      const { validateModelParams } = await import("@worker/providers/generate.js");
+      const { runCatalogTask } = await import("@worker/providers/run-steps.js");
+      const { stepDepsFor } = await import("@worker/handlers/step-deps.js");
       return wrap(
-        (model, params) => m.validateModelParams(modality, model, params),
-        async (prompt, model, params, resume) => ({ ...(await m.generateAsync(modality, prompt, model, params, resume)) }),
+        (model, params) => validateModelParams(modality, model, params),
+        async (prompt, model, params, run) => {
+          const studioId = run.projectId ? await assetService.resolveOwnerStudioId(run.projectId) : null;
+          return {
+            ...(await runCatalogTask(stepDepsFor(studioId), { taskId: run.taskId, studioId }, modality, prompt, model, params)),
+          };
+        },
       );
     }
-    case "three-d": { const m = await import("@worker/providers/three-d/index.js"); return wrap(m.validateThreeDParams, m.generateAsync); }
+    case "three-d": {
+      const m = await import("@worker/providers/three-d/index.js");
+      return wrap(m.validateThreeDParams, (prompt, model, params, run) => m.generateAsync(prompt, model, params, run.resume));
+    }
     default: throw new Error(`Unknown AIGC task type: ${taskType}`);
   }
 }

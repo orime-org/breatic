@@ -8,25 +8,14 @@
  * declaration, not from per-vendor code. The two models whose request needs
  * more than a field mapping have a family in `families/`.
  *
- * Public API (consumed by worker/handlers):
- *
- * - {@link validateModelParams} -- validate and fill defaults
- * - {@link generateAsync} -- resolve -> body -> prediction -> billed result
+ * A run itself goes through `run-steps.ts`; this module holds what it reads
+ * about the model: the catalog entry, the family, and param validation.
  */
 
 import { getFullModelConfig } from "@breatic/domain";
 import type { FullModelEntry } from "@breatic/domain";
 
-import {
-  resolveModel,
-  acquireSemaphore,
-  validateParams,
-  type ModelFamily,
-  type ResumeContext,
-} from "@worker/providers/shared.js";
-import { upstreamBody } from "@worker/providers/upstream-body.js";
-import { runPrediction } from "@worker/providers/wavespeed.js";
-import { queryBilling } from "@worker/providers/http.js";
+import { validateParams, type ModelFamily } from "@worker/providers/shared.js";
 import midjourney from "@worker/providers/families/midjourney.js";
 import nanoBanana from "@worker/providers/families/nano-banana.js";
 
@@ -57,43 +46,6 @@ export function entryOf(modality: CatalogModality, modelName: string): FullModel
   const entry = getFullModelConfig(modality).models.find((m) => m.name === modelName);
   if (!entry) throw new Error(`Model '${modelName}' not found`);
   return entry;
-}
-
-/**
- * Run one generation: build the body from the model's declaration, run the
- * prediction under the provider's concurrency cap, and bill what it cost.
- * @param modality - The model's modality.
- * @param prompt - The reader's prompt.
- * @param modelName - Model name (required).
- * @param params - Validated params (see {@link validateModelParams}).
- * @param resume - Worker resume context for at-most-once submit (#1628).
- * @returns The first output's url, the model and the billed cost.
- * @throws {Error} when the model cannot be resolved, the prediction fails, or
- *   it answers no output.
- */
-export async function generateAsync(
-  modality: CatalogModality,
-  prompt: string,
-  modelName: string | undefined,
-  params: Readonly<Record<string, unknown>> = {},
-  resume?: ResumeContext,
-): Promise<GenerationResult> {
-  const resolved = resolveModel(modality, modelName);
-  const entry = entryOf(modality, resolved.modelName);
-  const family = FAMILIES.get(resolved.modelName);
-  const prepared = family ? await family.prepare(prompt, params) : { prompt, fields: {} };
-  const body = {
-    ...upstreamBody(entry, params, prepared.prompt, family?.CONSUMES),
-    ...prepared.fields,
-  };
-
-  const release = await acquireSemaphore(resolved.providerName, resolved.maxConcurrency);
-  const run = await runPrediction(resolved, resolved.modelId, body, resume).finally(release);
-
-  const url = run.outputs[0];
-  if (typeof url !== "string" || url === "") throw new Error("No output URL after WaveSpeed polling");
-  const cost = run.taskId ? await queryBilling(resolved, run.taskId) : 0;
-  return { url, model: resolved.modelName, cost };
 }
 
 /**
