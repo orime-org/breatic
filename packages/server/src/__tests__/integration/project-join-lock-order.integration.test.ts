@@ -92,7 +92,7 @@ function sqlStateOf(err: unknown): string | null {
  * @returns How it ended.
  */
 function track<T>(running: Promise<T>): Promise<PromiseSettledResult<T>> {
-  return Promise.allSettled([running]).then(([outcome]) => outcome!);
+  return Promise.allSettled([running]).then(([outcome]) => outcome);
 }
 
 /**
