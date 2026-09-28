@@ -60,6 +60,10 @@ const declarationSchema = z.object({
     .optional(),
   modes: z.array(z.string()).optional(),
   note: z.string().optional(),
+  values: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
+  // How a value reads on screen, when its own spelling is not that sentence
+  // (`left_right` reads "Left first"). English, like `label`.
+  value_labels: z.record(z.string(), z.string()).optional(),
   // One spelling each, because readers compare against these exact strings:
   // the source gate takes anything that is not `list` as a single URL, while
   // the cap check and the transport iterate it; `items` is a list editor whose
@@ -97,6 +101,7 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "remote_source",
   "upstream",
   "label",
+  "value_labels",
   "fields",
 ]);
 
@@ -186,6 +191,15 @@ function faultsOn(
   const gate = declared.when?.flag_on;
   if (gate !== undefined && !names.has(gate)) {
     faults.push(`when names "${gate}", which this model does not declare`);
+  }
+
+  // A label for a value the choice does not offer is a label for nothing, and
+  // usually a value renamed in one place and not the other.
+  const offered = new Set((declared.values ?? []).map(String));
+  for (const value of Object.keys(declared.value_labels ?? {})) {
+    if (!offered.has(value)) {
+      faults.push(`value_labels names "${value}", which values does not offer`);
+    }
   }
 
   for (const mode of declared.modes ?? []) {

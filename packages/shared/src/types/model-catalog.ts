@@ -141,6 +141,8 @@ export interface ParamDescriptor {
   upstream?: string;
   /** English label for a control only this model has. */
   label?: string;
+  /** How a value of `values` reads on screen, when its spelling is not that; English. */
+  value_labels?: Readonly<Record<string, string>>;
   /**
    * Names the picker that fills this param, for params whose value domain
    * lives upstream instead of in `values` (#1960). Two models spell the same
@@ -391,6 +393,7 @@ const paramDescriptorSchema = z
     fields: z.record(z.string(), itemFieldSchema).optional().catch(undefined),
     upstream: z.string().optional().catch(undefined),
     label: z.string().optional().catch(undefined),
+    value_labels: z.record(z.string(), z.string()).optional().catch(undefined),
     // An unrecognised name would send the panel looking for a picker that does
     // not exist, so it degrades to an ordinary param rather than to a guess.
     remote_source: z.enum(["voices"]).optional().catch(undefined),

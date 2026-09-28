@@ -25,6 +25,9 @@
 #                          the price estimate and the source check all read.
 #   param.label          — English label for a control only this model has;
 #                          shared controls take theirs from the locales.
+#   param.value_labels   — how a value of `values` reads on screen, when its
+#                          own spelling is not that (English); the rest read
+#                          as themselves with a capital first letter.
 #   param.type           — list (reference pool), items (a list editor, with
 #                          `fields` and `max_items`), text (a free text field).
 #                          `values: [true, false]` draws a switch; `min`, `max`
