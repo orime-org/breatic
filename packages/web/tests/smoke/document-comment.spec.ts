@@ -394,15 +394,72 @@ test.describe('the card a comment is written in', () => {
       await peer.getByTestId(home).click();
       const line = peer.locator(`${EDITOR} p`).nth(1);
       await expect(line).toContainText('two carrying three', { timeout: 20_000 });
-      await line.click();
-      await peer.keyboard.press('Home');
+      await line.click({ position: { x: 1, y: 8 } });
       await peer.keyboard.press('Enter');
 
-      await expect(page.locator(`${EDITOR} p`)).toHaveCount(3);
+      // Contains, not equals: the peer's caret label is drawn inside the line.
+      const rows = page.locator(`${EDITOR} p`);
+      await expect(rows).toHaveCount(3);
+      await expect(rows.nth(0)).toHaveText('one');
+      await expect(rows.nth(1)).toHaveText('');
+      await expect(rows.nth(2)).toContainText('two carrying three');
       await expect(page.getByTestId('doc-comment-draft-dropped')).toHaveCount(0);
       await expect(
         page.locator(`${EDITOR} .doc-comment-draft-mark`),
       ).toHaveText('carrying');
+    } finally {
+      await peer.close();
+    }
+  });
+
+  test('keeps showing a peer\'s edits after the peer turns its line into a heading', async ({
+    page,
+  }) => {
+    // Turning the line into a heading deletes its old element, and Yjs
+    // collects its letters when that change ends; the peer's next edit is
+    // the one that has to arrive.
+    await openFreshDocument(page);
+    await page.keyboard.type('one\n');
+    await page.keyboard.type('alpha bravo charlie');
+    await expect(page.locator(`${EDITOR} p`).nth(1)).toHaveText(
+      'alpha bravo charlie',
+    );
+    const home = (await page
+      .locator('[role="tab"][aria-selected="true"]')
+      .getAttribute('data-testid'))!;
+    await page.evaluate((sel) => {
+      const second = document.querySelectorAll(`${sel} p`)[1]!;
+      const range = document.createRange();
+      range.setStart(second.firstChild!, 6);
+      range.setEnd(second.firstChild!, 11);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }, EDITOR);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-draft-input').fill('half a thought');
+
+    const peer = await page.context().newPage();
+    try {
+      await peer.setViewportSize({ width: 1680, height: 950 });
+      await peer.goto(page.url());
+      await peer.getByTestId(home).click();
+      const line = peer.locator(`${EDITOR} p`).nth(1);
+      await expect(line).toContainText('alpha bravo charlie', { timeout: 20_000 });
+      await line.click({ position: { x: 1, y: 8 } });
+      await peer.keyboard.type('## ');
+      await expect(page.locator(`${EDITOR} h2`)).toContainText('alpha bravo charlie');
+
+      const first = peer.locator(`${EDITOR} p`).first();
+      await first.click();
+      await peer.keyboard.press('End');
+      await peer.keyboard.type('ZZ');
+
+      await expect(page.locator(`${EDITOR} p`).first()).toContainText('oneZZ');
+      await expect(page.getByTestId('doc-comment-draft-dropped')).toHaveCount(0);
+      await expect(
+        page.locator(`${EDITOR} .doc-comment-draft-mark`),
+      ).toHaveText('bravo');
     } finally {
       await peer.close();
     }
