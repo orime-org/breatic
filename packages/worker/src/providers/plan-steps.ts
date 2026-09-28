@@ -53,6 +53,22 @@ function expand(step: ExtraStep, params: Readonly<Record<string, unknown>>): Pla
 }
 
 /**
+ * The steps of the extra calls placed on one side of the model's own call.
+ * @param steps - The model's declared extra steps.
+ * @param at - Which side.
+ * @param params - The run's validated params.
+ * @returns Their steps, in declared order.
+ * @throws {Error} when a step's endpoint has no step the worker can run.
+ */
+function placed(
+  steps: readonly ExtraStep[],
+  at: ExtraStep["at"],
+  params: Readonly<Record<string, unknown>>,
+): PlannedStep[] {
+  return steps.filter((step) => step.at === at).flatMap((step) => expand(step, params));
+}
+
+/**
  * Plan a run's upstream calls.
  * @param entry - The model's catalog entry.
  * @param params - The run's validated params.
@@ -65,11 +81,9 @@ export function planSteps(entry: FullModelEntry, params: Readonly<Record<string,
   const endpoint = entry.providers?.[0]?.model_id;
   if (endpoint === undefined) throw new Error(`Model '${entry.name}' has no provider endpoint`);
   const steps = entry.extra_steps ?? [];
-  const around = (at: ExtraStep["at"]): PlannedStep[] =>
-    steps.filter((step) => step.at === at).flatMap((step) => expand(step, params));
   return [
-    ...around("before"),
+    ...placed(steps, "before", params),
     { kind: entry.reused_by === undefined ? "generate" : "voice", endpoint, itemIndex: null },
-    ...around("after"),
+    ...placed(steps, "after", params),
   ];
 }
