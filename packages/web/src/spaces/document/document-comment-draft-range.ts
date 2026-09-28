@@ -28,25 +28,25 @@
  * letter"). Text written against either edge stays outside, whichever way it
  * arrives.
  *
- * A peer's editor writes some changes by deleting a line's letters and
- * writing them again: moving a line, and every line between where it left and
- * where it lands; undoing or redoing such a move; changing a line's type;
- * splitting or joining lines. Once an end's letter is deleted its Yjs position
- * no longer names the words. The lines are asked instead: every line keeps
- * its id through such a rewrite, so when the lines the range starts and ends
- * in are still there word for word, the first still before the last, the
- * range stays at the same place in them and takes in whatever lies between
- * ({@link endLinesStill}). The
- * reader's own edits get the same question when mapping them leaves no
- * letters, which is what moving the draft's own line does.
+ * Each end is carried on its own, the way BlockNote keeps a selection across
+ * a block move (`moveBlocks.ts`, `getBlockSelectionData`): where its path puts
+ * it while that position can be trusted, otherwise found again as the same
+ * offset in its line, while the row with that line's id is still there word
+ * for word ({@link lineStill}). A move takes a line out and puts the same line
+ * back, and both paths read that as a deletion: ProseMirror mapping sends the
+ * end into the gap, and a peer's editor deletes and rewrites the letters of
+ * every line between where a line left and where it lands (undo and redo of a
+ * move, and a change of a line's type, do the same). The line's id survives
+ * all of it. Whatever lies between the two ends is the range.
  *
  * Both ends always sit against a letter: the first one covered and just past
  * the last. A range that reaches into the next line, or past non-text at an
  * edge, is drawn in to its letters wherever a range is written.
  *
- * It is GONE once neither way finds it: an end's letter was deleted, or the
- * reader's own edit left no letters, and the lines it starts and ends in are
- * no longer both there as they were. Nothing is guessed about where changed words went.
+ * It is GONE once it covers no letters, its last line is before its first, or
+ * a Yjs change deleted the letter an end names and that end's line is no
+ * longer there word for word. Nothing is guessed about where changed words
+ * went.
  * Posting then would put the reader's words in a thread pointing at nothing,
  * or at other words, which is what A21 is about — the draft card keeps its
  * place in the panel and says so instead, keeping what the reader wrote.
@@ -79,7 +79,6 @@
 
 import { createExtension } from '@blocknote/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import type { Mapping } from '@tiptap/pm/transform';
 import {
   Plugin,
   PluginKey,
@@ -180,95 +179,73 @@ function letterBounds(
 /** Stands in for a non-text node inside a line, one position wide. */
 const LEAF = '\ufffc';
 
-/** A line a range starts or ends in, as it stood. */
-interface Line {
+/** The line one end of a range sits in, as it stood, and where in it. */
+interface EndLine {
   /** The id of the row the line belongs to. */
   readonly id: string;
   /** Its words, one character per position. */
   readonly words: string;
-}
-
-/** The lines a range starts and ends in, and where in them. */
-interface EndLines {
-  readonly first: Line;
-  readonly last: Line;
-  /** Where the range starts in the first line. */
-  readonly start: number;
-  /** Where it ends in the last line. */
-  readonly end: number;
+  /** Where the end sits in the line. */
+  readonly offset: number;
 }
 
 /**
- * The words of one line, a non-text node counted as one character so that
- * an offset into them is an offset into the line.
- * @param line - The line.
- * @returns Its words.
- */
-function wordsOf(line: ProseMirrorNode): string {
-  return line.textBetween(0, line.content.size, '', LEAF);
-}
-
-/**
- * The lines a range starts and ends in.
+ * The words between two positions, a non-text node counted as one character
+ * so that an offset into them is an offset into the line.
  * @param doc - The body.
- * @param range - The range, against its letters.
- * @returns Them, or null when either end is not in a row's line.
+ * @param from - Where they start.
+ * @param to - Where they end.
+ * @returns The words.
  */
-function endLinesOf(doc: ProseMirrorNode, range: DraftRange): EndLines | null {
-  /**
-   * The line a position sits in.
-   * @param pos - The position.
-   * @returns The line and where the position is in it, or null outside one.
-   */
-  const lineAt = (pos: number): { line: Line; offset: number } | null => {
-    const at = doc.resolve(pos);
-    const id: unknown = at.node(at.depth - 1).attrs['id'];
-    return at.parent.isTextblock && typeof id === 'string'
-      ? { line: { id, words: wordsOf(at.parent) }, offset: at.parentOffset }
-      : null;
-  };
-  const first = lineAt(range.from);
-  const last = lineAt(range.to);
-  return first === null || last === null
-    ? null
-    : { first: first.line, last: last.line, start: first.offset, end: last.offset };
+function wordsBetween(doc: ProseMirrorNode, from: number, to: number): string {
+  return doc.textBetween(from, to, '', LEAF);
 }
 
 /**
- * Where a range is after a change that rewrote the lines it starts and ends
- * in without changing them: both found again by their row's id, word for word
- * the same, the first still before the last. Whatever lies between them is
- * the range, the way it is for a range whose ends Yjs still names.
- * @param doc - The body after the change.
- * @param held - The end lines as they were.
- * @returns The range at the same place in them, or null when either line is
- *   gone or changed, or they are out of order.
+ * The line a position sits in.
+ * @param doc - The body.
+ * @param pos - The position.
+ * @returns The line and where the position is in it, or null outside a
+ *   row's line.
  */
-function endLinesStill(
-  doc: ProseMirrorNode,
-  held: EndLines | null,
-): DraftRange | null {
-  if (held === null) return null;
-  /**
-   * Where a line's words start now, if it is there word for word.
-   * @param line - The line as it was.
-   * @returns The position before its first character, or null.
-   */
-  const startOf = (line: Line): number | null => {
-    const row = rowById(doc, line.id);
-    const content = row?.node.firstChild;
-    return row !== undefined &&
-      content != null &&
-      wordsOf(content) === line.words
-      ? contentRangeOf(row)!.from
-      : null;
-  };
-  const first = startOf(held.first);
-  const last = startOf(held.last);
-  if (first === null || last === null) return null;
-  const from = first + held.start;
-  const to = last + held.end;
-  return to > from ? { from, to } : null;
+function endLineAt(doc: ProseMirrorNode, pos: number): EndLine | null {
+  if (pos < 0 || pos > doc.content.size) return null;
+  const at = doc.resolve(pos);
+  if (!at.parent.isTextblock || at.depth < 1) return null;
+  const id: unknown = at.node(at.depth - 1).attrs['id'];
+  return typeof id === 'string'
+    ? { id, words: wordsBetween(doc, at.start(), at.end()), offset: at.parentOffset }
+    : null;
+}
+
+/**
+ * Where an end is after a change, found again by its line: the row with the
+ * line's id, still word for word the same, at the same offset in it. The way
+ * BlockNote keeps a selection across a block move (`moveBlocks.ts`,
+ * `getBlockSelectionData`), each end on its own.
+ * @param doc - The body after the change.
+ * @param line - The line the end sat in before it.
+ * @returns The position, or null when the line is gone or changed.
+ */
+function lineStill(doc: ProseMirrorNode, line: EndLine | null): number | null {
+  if (line === null) return null;
+  const row = rowById(doc, line.id);
+  const words = row === undefined ? undefined : contentRangeOf(row);
+  return words !== undefined &&
+    wordsBetween(doc, words.from, words.to) === line.words
+    ? words.from + line.offset
+    : null;
+}
+
+/**
+ * Whether a position still sits in the line an end sat in.
+ * @param doc - The body after the change.
+ * @param pos - The position.
+ * @param line - The line.
+ * @returns True when it is in a line of that row.
+ */
+function inLine(doc: ProseMirrorNode, pos: number, line: EndLine): boolean {
+  return endLineAt(doc, pos)?.id === line.id;
 }
 
 /**
@@ -322,21 +299,30 @@ function endAfterYjs(bound: Binding, end: Y.RelativePosition): EndAfterYjs {
 }
 
 /**
- * Carries the range across a change that came in through Yjs.
+ * Carries the range across a change that came in through Yjs, each end on its
+ * own: where Yjs puts it while the letter it names stands, otherwise found
+ * again by its line.
+ * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param held - What was taken before the change.
- * @returns Where the range is now, or null once either end's letter is gone.
+ * @param range - The range before the change.
+ * @returns Where the range is now, or null once an end is lost.
  */
 function carryAcrossYjs(
+  tr: Transaction,
   bound: Binding,
   held: HeldAcrossYjs,
+  range: DraftRange,
 ): DraftRange | null {
   const start = endAfterYjs(bound, held.tracked.start);
   const end = endAfterYjs(bound, held.tracked.end);
-  if (start.deleted || end.deleted) return null;
-  return start.at !== null && end.at !== null && end.at > start.at
-    ? { from: start.at, to: end.at }
-    : null;
+  const from = start.deleted
+    ? lineStill(tr.doc, endLineAt(tr.before, range.from))
+    : start.at;
+  const to = end.deleted
+    ? lineStill(tr.doc, endLineAt(tr.before, range.to))
+    : end.at;
+  return from !== null && to !== null && to > from ? { from, to } : null;
 }
 
 /** The open draft: where it is now, and which opening it is. */
@@ -378,21 +364,37 @@ export const DOCUMENT_COMMENT_DRAFT_RANGE = new PluginKey<Draft | null>(
 );
 
 /**
- * Carries a draft's range across one change.
+ * Carries a draft's range across one of the reader's own changes, each end on
+ * its own: where ProseMirror maps it while it stays in its line, otherwise
+ * found again by its line. A line moved is taken out and put back, which
+ * mapping reads as a deletion; a line the reader deleted or changed is gone,
+ * and the mapped position — the range drawn in, or nothing left — stands.
  * @param range - Where the draft was going before this change.
- * @param mapping - The change, as ProseMirror maps positions across it.
+ * @param tr - The change.
  * @returns Where it is going now, or null once the text it covered is gone.
  */
 export function mapDraftRange(
   range: DraftRange,
-  mapping: Mapping,
+  tr: Transaction,
 ): DraftRange | null {
-  const from = mapping.map(range.from, 1);
-  const to = mapping.map(range.to, -1);
-  // Equal ends mean every character between them was deleted. The bias pair
-  // is what makes that test true only for a real deletion: mapping `from`
-  // forward and `to` back keeps an insertion at either edge outside the
-  // range, so text typed against its boundary does not widen it.
+  /**
+   * Carries one end.
+   * @param pos - The end before the change.
+   * @param bias - Which side it keeps: the start stays right of text typed
+   *   against it, the end left of it, so neither takes in what is typed there.
+   * @returns The end after the change.
+   */
+  const carry = (pos: number, bias: 1 | -1): number => {
+    const mapped = tr.mapping.map(pos, bias);
+    const line = endLineAt(tr.before, pos);
+    // An end still in its line is where mapping puts it; asking the line
+    // would give the same answer after walking the body for its row.
+    return line === null || inLine(tr.doc, mapped, line)
+      ? mapped
+      : lineStill(tr.doc, line) ?? mapped;
+  };
+  const from = carry(range.from, 1);
+  const to = carry(range.to, -1);
   return to <= from ? null : { from, to };
 }
 
@@ -424,11 +426,9 @@ function carryDraft(
     sync?.isChangeOrigin === true &&
     held?.opening === current.opening &&
     bound !== null
-      ? carryAcrossYjs(bound, held)
-      : mapDraftRange(current, tr.mapping);
-  const moved =
-    (carried === null ? null : letterBounds(tr.doc, carried)) ??
-    endLinesStill(tr.doc, endLinesOf(tr.before, current));
+      ? carryAcrossYjs(tr, bound, held, current)
+      : mapDraftRange(current, tr);
+  const moved = carried === null ? null : letterBounds(tr.doc, carried);
   if (moved === null) {
     return { kind: 'dropped', why: 'targetGone', opening: current.opening };
   }

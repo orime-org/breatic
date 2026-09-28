@@ -80,7 +80,7 @@ describe('mapDraftRange', () => {
     const target = { from: run.from + 6, to: run.from + 11 };
     const tr = editor.prosemirrorState.tr.insertText('xx', run.from);
 
-    expect(mapDraftRange(target, tr.mapping)).toEqual({
+    expect(mapDraftRange(target, tr)).toEqual({
       from: target.from + 2,
       to: target.to + 2,
     });
@@ -92,7 +92,7 @@ describe('mapDraftRange', () => {
     const target = { from: run.from, to: run.from + 5 };
     const tr = editor.prosemirrorState.tr.insertText('xx', run.to - 1);
 
-    expect(mapDraftRange(target, tr.mapping)).toEqual(target);
+    expect(mapDraftRange(target, tr)).toEqual(target);
   });
 
   it('does not widen when text is typed against its end', () => {
@@ -105,7 +105,7 @@ describe('mapDraftRange', () => {
     const target = { from: run.from, to: run.from + 5 };
     const tr = editor.prosemirrorState.tr.insertText('xx', target.to);
 
-    expect(mapDraftRange(target, tr.mapping)).toEqual(target);
+    expect(mapDraftRange(target, tr)).toEqual(target);
   });
 
   it('does not widen when text is typed against its start', () => {
@@ -114,7 +114,7 @@ describe('mapDraftRange', () => {
     const target = { from: run.from + 6, to: run.from + 11 };
     const tr = editor.prosemirrorState.tr.insertText('xx', target.from);
 
-    expect(mapDraftRange(target, tr.mapping)).toEqual({
+    expect(mapDraftRange(target, tr)).toEqual({
       from: target.from + 2,
       to: target.to + 2,
     });
@@ -126,7 +126,7 @@ describe('mapDraftRange', () => {
     const target = { from: run.from, to: run.from + 11 };
     const tr = editor.prosemirrorState.tr.delete(run.from + 5, run.from + 8);
 
-    expect(mapDraftRange(target, tr.mapping)).toEqual({
+    expect(mapDraftRange(target, tr)).toEqual({
       from: target.from,
       to: target.to - 3,
     });
@@ -138,7 +138,7 @@ describe('mapDraftRange', () => {
     const target = { from: run.from, to: run.from + 5 };
     const tr = editor.prosemirrorState.tr.delete(target.from, target.to);
 
-    expect(mapDraftRange(target, tr.mapping)).toBeNull();
+    expect(mapDraftRange(target, tr)).toBeNull();
   });
 
   it('is gone when a larger deletion takes it with it', () => {
@@ -147,7 +147,7 @@ describe('mapDraftRange', () => {
     const target = { from: run.from + 6, to: run.from + 11 };
     const tr = editor.prosemirrorState.tr.delete(run.from, run.to - 1);
 
-    expect(mapDraftRange(target, tr.mapping)).toBeNull();
+    expect(mapDraftRange(target, tr)).toBeNull();
   });
 
   it('is gone for a range that had already collapsed', () => {
@@ -155,7 +155,7 @@ describe('mapDraftRange', () => {
     const run = firstRun(editor);
     const tr = editor.prosemirrorState.tr.insertText('x', run.to - 1);
 
-    expect(mapDraftRange({ from: run.from, to: run.from }, tr.mapping)).toBeNull();
+    expect(mapDraftRange({ from: run.from, to: run.from }, tr)).toBeNull();
   });
 });
 
