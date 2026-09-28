@@ -129,10 +129,22 @@ const DialogContent = React.forwardRef<
           // the grid says.
           className={cn(
             OVERLAY_CONTENT_CLASS,
-            'flex max-w-[520px] flex-col rounded-overlay p-0',
+            'flex max-w-[520px] flex-col rounded-overlay p-0 focus:outline-none',
             className,
           )}
           {...props}
+          // Opening puts focus on the dialog itself, which draws no ring. Its
+          // first control is the header's close button, and focus handed to it
+          // by script shows a ring only when the previous focus did, so it
+          // came and went with how the dialog was opened. Tab reaches the
+          // first control; a field that should take focus says `autoFocus`,
+          // which Radix leaves in place.
+          onOpenAutoFocus={(e) => {
+            props.onOpenAutoFocus?.(e);
+            if (e.defaultPrevented) return;
+            e.preventDefault();
+            (e.currentTarget as HTMLElement | null)?.focus();
+          }}
           // The overlay's scrollbar rail sits outside the content and so
           // counts as "outside" — but it is the dialog's own bar. The middle
           // and secondary buttons both arrive here and are both vetoed;
