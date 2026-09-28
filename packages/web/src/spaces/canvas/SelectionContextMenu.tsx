@@ -82,19 +82,6 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent align='start'>
-        {onAddToAgent ? (
-          <>
-            <DropdownMenuItem
-              data-testid='selection-menu-add-to-agent'
-              disabled={addToAgentDisabled}
-              onSelect={onAddToAgent}
-            >
-              <MessageSquarePlus className='mr-2 h-4 w-4' aria-hidden='true' />
-              {t('canvas.contextMenu.addToAgent')}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
         {onGroup ? (
           <>
             <DropdownMenuItem
@@ -131,20 +118,28 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
             </DropdownMenuShortcut>
           </DropdownMenuItem>
         ) : null}
+        {onAddToAgent || onDelete ? <DropdownMenuSeparator /> : null}
+        {onAddToAgent ? (
+          <DropdownMenuItem
+            data-testid='selection-menu-add-to-agent'
+            disabled={addToAgentDisabled}
+            onSelect={onAddToAgent}
+          >
+            <MessageSquarePlus className='mr-2 h-4 w-4' aria-hidden='true' />
+            {t('canvas.contextMenu.addToAgent')}
+          </DropdownMenuItem>
+        ) : null}
         {onDelete ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              data-testid='selection-menu-delete'
-              onSelect={onDelete}
-            >
-              <Trash2 className='mr-2 h-4 w-4' aria-hidden='true' />
-              {t('canvas.contextMenu.deleteSelection')}
-              <DropdownMenuShortcut>
-                {formatShortcut({ key: 'Delete' })}
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
-          </>
+          <DropdownMenuItem
+            data-testid='selection-menu-delete'
+            onSelect={onDelete}
+          >
+            <Trash2 className='mr-2 h-4 w-4' aria-hidden='true' />
+            {t('canvas.contextMenu.deleteSelection')}
+            <DropdownMenuShortcut>
+              {formatShortcut({ key: 'Delete' })}
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
