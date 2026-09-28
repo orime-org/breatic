@@ -10,9 +10,7 @@
  * declaration: `values` is a row of options (a true/false pair is a switch),
  * `min`/`max` is a slider, `type: text` is a text box. The `label` is what
  * marks a param as one of these. A list of entries (`type: items`) is a list
- * editor whose rows follow the entry's `fields`; a list whose entries carry a
- * `prompt` and a `duration` is a storyboard, which stands in for the prompt
- * box rather than sitting in the popover.
+ * editor whose rows follow the entry's `fields`.
  */
 
 import type { ItemField, ModelEntry, ParamDescriptor } from '@breatic/shared';
@@ -31,17 +29,6 @@ export type ModelControl =
   | { kind: 'range'; name: string; label: string; min: number; max: number; step: number }
   | { kind: 'text'; name: string; label: string }
   | { kind: 'items'; name: string; label: string; max: number | undefined; fields: ItemFieldControl[] };
-
-/** A storyboard: shots, each with its own prompt and length (#2156). */
-export interface StoryboardControl {
-  name: string;
-  label: string;
-  max: number | undefined;
-  /** The lengths one shot may take, in seconds. */
-  durations: number[];
-  /** The length a new shot starts at. */
-  defaultDuration: number;
-}
 
 /**
  * How one value of a choice reads on screen.
@@ -67,7 +54,6 @@ function controlFor(
   spec: ParamDescriptor,
 ): ModelControl | undefined {
   if (spec.type === 'items') {
-    if (isStoryboard(spec)) return undefined;
     const fields = Object.entries(spec.fields ?? {}).map(([field, declared]) => fieldControl(field, declared));
     return { kind: 'items', name, label, max: spec.max_items, fields };
   }
@@ -97,36 +83,6 @@ function fieldControl(name: string, field: ItemField): ItemFieldControl {
   return values.length > 0
     ? { name, kind: 'choice', options: values.map((v) => ({ value: v, label: optionLabel({}, v) })) }
     : { name, kind: 'text' };
-}
-
-/**
- * Whether a list's entries are shots: a prompt and a length each.
- * @param spec - The list's declaration.
- * @returns True for a storyboard.
- */
-function isStoryboard(spec: ParamDescriptor): boolean {
-  return spec.fields?.prompt?.type === 'text' && (spec.fields.duration?.values?.length ?? 0) > 0;
-}
-
-/**
- * The storyboard this model offers, if any.
- * @param model - The active model.
- * @returns Its storyboard param, or undefined.
- */
-export function storyboardControl(model: ModelEntry | undefined): StoryboardControl | undefined {
-  for (const [name, spec] of Object.entries(model?.params ?? {})) {
-    if (spec.fill !== 'panel' || spec.type !== 'items' || !isStoryboard(spec)) continue;
-    const durations = (spec.fields?.duration?.values ?? []).filter((v): v is number => typeof v === 'number');
-    const declared = spec.fields?.duration?.default;
-    return {
-      name,
-      label: spec.label ?? name,
-      max: spec.max_items,
-      durations,
-      defaultDuration: typeof declared === 'number' ? declared : (durations[0] ?? 1),
-    };
-  }
-  return undefined;
 }
 
 /**

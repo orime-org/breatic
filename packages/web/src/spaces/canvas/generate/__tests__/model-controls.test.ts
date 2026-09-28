@@ -10,7 +10,7 @@
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 
-import { modelControls, storyboardControl } from '@web/spaces/canvas/generate/model-controls';
+import { modelControls } from '@web/spaces/canvas/generate/model-controls';
 
 /**
  * A model declaring the given params.
@@ -138,29 +138,6 @@ describe('modelControls', () => {
         ],
       },
     ]);
-  });
-
-  it('keeps a storyboard out of the popover and names it on its own', () => {
-    const storyboard = model({
-      multi_prompt: {
-        description: '',
-        label: 'Storyboard',
-        type: 'items',
-        max_items: 6,
-        default: null,
-        fill: 'panel',
-        fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3], default: 2 } },
-      },
-    });
-    expect(modelControls(storyboard)).toEqual([]);
-    expect(storyboardControl(storyboard)).toEqual({
-      name: 'multi_prompt',
-      label: 'Storyboard',
-      max: 6,
-      durations: [1, 2, 3],
-      defaultDuration: 2,
-    });
-    expect(storyboardControl(model({}))).toBeUndefined();
   });
 
   it('leaves out the shared controls and anything not the panel\'s to fill', () => {
