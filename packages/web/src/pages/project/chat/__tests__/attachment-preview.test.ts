@@ -149,7 +149,9 @@ describe('what the card of a picked piece of the canvas previews', () => {
     ],
     edges: [],
   };
-  const readers = { fragmentsOf: (id: string) => (id === 't1' ? { body } : {}) };
+  const readers = {
+    fragmentsOf: (id: string): Record<string, Y.XmlFragment> => (id === 't1' ? { body } : {}),
+  };
   const pick = (ids: string[]) => previewOf(itemForPick(graph, ids, readers)?.chip);
 
   it('shows a text node its words', () => {

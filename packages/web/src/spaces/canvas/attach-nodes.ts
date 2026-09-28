@@ -6,6 +6,7 @@ import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import type * as Y from 'yjs';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { toAbsolutePosition } from '@web/spaces/canvas/group-geometry';
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import {
   MENTION_KIND_ATTR,
@@ -76,16 +77,21 @@ function expand(nodes: readonly CanvasNodeView[], picked: readonly string[]): st
 }
 
 /**
- * What a node is called on the card.
- * @param node - The node.
- * @returns Its name, or for a note its own words cut short.
+ * What a node is called on the card and in its preview.
+ * @param data - The node's data, from the canvas or from a stored snapshot.
+ * @param data.kind - Its kind.
+ * @param data.name - Its name, when it has one.
+ * @param data.content - A note's words.
+ * @returns Its name, or for a note its own words cut short, or its kind.
  */
-function nameOf(node: CanvasNodeView): string {
-  const data = node.data as { kind: string; name?: string; content?: string };
-  const named = data.name?.trim();
+export function nodeNameOf(data: { kind?: unknown; name?: unknown; content?: unknown }): string {
+  const named = typeof data.name === 'string' ? data.name.trim() : '';
   if (named) return named;
-  if (data.kind === 'annotation') return (data.content ?? '').trim().slice(0, NOTE_NAME_CHARS);
-  return data.kind;
+  const kind = typeof data.kind === 'string' ? data.kind : '';
+  if (kind === 'annotation' && typeof data.content === 'string') {
+    return data.content.trim().slice(0, NOTE_NAME_CHARS);
+  }
+  return kind;
 }
 
 /**
@@ -122,6 +128,16 @@ export function itemForPick(
   readers: NodeTextReaders,
 ): TrayItem | null {
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  /**
+   * Where a node sits on the canvas: a member's stored position is relative
+   * to its group, which need not be in the pick.
+   * @param node - The node.
+   * @returns Its canvas position.
+   */
+  const canvasPosition = (node: CanvasNodeView): { x: number; y: number } => {
+    const group = node.parentId ? byId.get(node.parentId) : undefined;
+    return group ? toAbsolutePosition(node.position, group.position) : node.position;
+  };
   const nodes = expand(graph.nodes, picked).flatMap((id) => {
     const node = byId.get(id);
     return node && ATTACHABLE.has(node.data.kind) ? [node] : [];
@@ -132,7 +148,7 @@ export function itemForPick(
     nodes: nodes.map((node) => ({
       id: node.id,
       type: node.data.kind,
-      position: node.position,
+      position: canvasPosition(node),
       ...(node.parentId ? { parentId: node.parentId } : {}),
       data: {
         ...(node.data as unknown as Record<string, unknown>),
@@ -142,7 +158,7 @@ export function itemForPick(
     edges: graph.edges.filter((e) => ids.has(e.source) && ids.has(e.target)),
   };
   const lead = picked.length === 1 ? byId.get(picked[0] ?? '') : undefined;
-  const name = lead && ids.has(lead.id) ? nameOf(lead) : '';
+  const name = lead && ids.has(lead.id) ? nodeNameOf(lead.data as { kind: string }) : '';
   const id = pickId(nodes.map((n) => n.id));
   const chip: ChatAttachedChip = { id, type: 'canvas', name, data_snapshot: snapshot };
   return { id, name, type: 'canvas', status: 'ready', chip };

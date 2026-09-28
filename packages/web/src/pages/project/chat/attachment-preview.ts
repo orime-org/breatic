@@ -3,6 +3,8 @@
 
 import type { ChatAttachedChip } from '@breatic/shared';
 
+import { nodeNameOf } from '@web/spaces/canvas/attach-nodes';
+
 /** How many node rows a canvas card's preview lists before counting the rest. */
 export const PREVIEW_ROWS = 6;
 
@@ -26,7 +28,7 @@ export type AttachmentPreview =
 interface SnapshotNode {
   id?: unknown;
   type?: unknown;
-  data?: { name?: unknown; content?: unknown; coverUrl?: unknown };
+  data?: { kind?: unknown; name?: unknown; content?: unknown; body?: unknown; coverUrl?: unknown };
 }
 
 /**
@@ -44,7 +46,8 @@ function str(value: unknown): string | undefined {
  * @returns Its preview, or null for a kind that is listed as a row.
  */
 function nodePreview(node: SnapshotNode): AttachmentPreview | null {
-  const content = str(node.data?.content);
+  // A text node's words are under `body`; the media kinds keep their asset under `content`.
+  const content = str(node.type === 'text' ? node.data?.body : node.data?.content);
   if (!content) return null;
   switch (node.type) {
     case 'image':
@@ -71,7 +74,7 @@ function rowOf(node: SnapshotNode, index: number): PreviewRow {
   const kind = str(node.type) ?? '';
   const thumbnail =
     kind === 'image' ? str(node.data?.content) : kind === 'video' ? str(node.data?.coverUrl) : undefined;
-  const row: PreviewRow = { id: str(node.id) ?? String(index), kind, name: str(node.data?.name) ?? kind };
+  const row: PreviewRow = { id: str(node.id) ?? String(index), kind, name: nodeNameOf({ ...node.data, kind }) };
   return thumbnail ? { ...row, thumbnail } : row;
 }
 
