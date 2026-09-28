@@ -758,9 +758,9 @@ describe("the period reaches Stripe on both paths (#253 A7, A8)", () => {
     ).rejects.toThrow("server.membership.change_unconfirmed");
   });
 
-  it("refuses with the key that no longer says which direction", async () => {
-    // `downgrade_not_offered` named one of the two refusals this covers. The
-    // other is a period that got shorter, which is not a downgrade.
+  it("refuses with the key that does not say which direction", async () => {
+    // `change_not_offered` covers every move `canMoveTo` refuses: a lower
+    // tier, or a shorter period. The words fit both.
     situationIs("active", holding("pro", "year"));
     await expect(
       service.changePlan({ userId: USER, tier: "pro", period: "month" }),
