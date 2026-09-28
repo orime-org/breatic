@@ -212,45 +212,46 @@ describe('buildAudioTaskPayload — the music models (#1960)', () => {
     expect(payload.params).not.toHaveProperty('lyrics');
   });
 
-  it('puts each of the three reference tracks under its own vendor name', () => {
+  it('puts each reference track under its own vendor name', () => {
     const payload = buildAudioTaskPayload({
       ...BASE,
-      model: model('minimax-music-01', 'audio'),
-      slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
+      model: model('mureka-v9.5-generate-song', 'audio'),
+      slots: ['musicSong', 'musicMelody', 'musicVocal'],
       slotUrls: {
         musicSong: 'https://cdn/song.mp3',
-        musicVoice: 'https://cdn/voice.mp3',
-        musicInstrumental: 'https://cdn/backing.mp3',
+        musicMelody: 'https://cdn/melody.mp3',
+        musicVocal: 'https://cdn/vocal.mp3',
       },
     });
     expect(payload.params).toMatchObject({
       song: 'https://cdn/song.mp3',
-      voice: 'https://cdn/voice.mp3',
-      instrumental: 'https://cdn/backing.mp3',
+      melody: 'https://cdn/melody.mp3',
+      vocal: 'https://cdn/vocal.mp3',
     });
   });
 
   it('sends only what was picked, on a mode where one is enough', () => {
     const payload = buildAudioTaskPayload({
       ...BASE,
-      model: model('minimax-music-01', 'audio'),
-      slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
-      slotUrls: { musicVoice: 'https://cdn/voice.mp3' },
+      model: model('mureka-v9.5-generate-song', 'audio'),
+      slots: ['musicSong', 'musicMelody', 'musicVocal'],
+      slotUrls: { musicVocal: 'https://cdn/vocal.mp3' },
     });
-    expect(payload.params).toMatchObject({ voice: 'https://cdn/voice.mp3' });
+    expect(payload.params).toMatchObject({ vocal: 'https://cdn/vocal.mp3' });
     expect(payload.params).not.toHaveProperty('song');
-    expect(payload.params).not.toHaveProperty('instrumental');
+    expect(payload.params).not.toHaveProperty('melody');
   });
 
-  it('leaves a voice sample behind, which music never asked for', () => {
-    // The cloning pick survives a mode switch by design. It is not one of the
-    // three this mode collects, so it must not travel as one.
+  it('sends the song to cover as `audio`, leaving the voice sample behind', () => {
+    // Both travel as `audio`. The cloning pick survives a mode switch by
+    // design; it is not drawn under Reference to Music, so it must not ride
+    // in place of the song.
     const payload = buildAudioTaskPayload({
       ...BASE,
-      model: model('minimax-music-01', 'audio'),
-      slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
-      slotUrls: { refAudio: 'https://cdn/sample.mp3' },
+      model: model('minimax-music-cover', 'audio'),
+      slots: ['coverSong'],
+      slotUrls: { refAudio: 'https://cdn/sample.mp3', coverSong: 'https://cdn/song.mp3' },
     });
-    expect(payload.params).not.toHaveProperty('audio');
+    expect(payload.params).toMatchObject({ audio: 'https://cdn/song.mp3' });
   });
 });

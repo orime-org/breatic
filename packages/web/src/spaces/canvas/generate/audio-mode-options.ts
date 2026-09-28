@@ -18,6 +18,7 @@
  * so they read identically across all locales.
  */
 
+import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import type { ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 
 /** An audio mode and what its prompt box asks for. */
@@ -30,6 +31,13 @@ export interface AudioModeOption extends ModeOption {
    * string told someone writing a sound effect to write lines to speak.
    */
   placeholderKey: string;
+  /**
+   * Every place a run under this mode can collect a source, in toolbar order.
+   * A model draws the ones it declares (#2156, design §6); one param can be a
+   * different place in different modes — `audio` is the voice sample here
+   * and the song to cover there.
+   */
+  slots: readonly AudioSlot[];
 }
 
 /** The audio modes offered so far. */
@@ -38,12 +46,14 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     value: 'tts',
     label: 'Text to Speech',
     testId: 'generate-audio-mode-tts',
+    slots: [],
     placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
   },
   {
     value: 'voice_clone',
     label: 'Voice Cloning',
     testId: 'generate-audio-mode-voice-clone',
+    slots: ['refAudio'],
     // The same words as text to speech: both ask for lines to be spoken, and
     // the difference between them is whose voice speaks them.
     placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
@@ -52,12 +62,14 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     value: 'sfx',
     label: 'Sound Effects',
     testId: 'generate-audio-mode-sfx',
+    slots: ['soundVideo'],
     placeholderKey: 'canvas.generatePanel.sfxPromptPlaceholder',
   },
   {
     value: 't2m',
     label: 'Text to Music',
     testId: 'generate-audio-mode-t2m',
+    slots: ['moodImage'],
     // A style brief, not lines to speak — the words go in the lyrics box.
     placeholderKey: 'canvas.generatePanel.musicPromptPlaceholder',
   },
@@ -65,6 +77,7 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     value: 'a2m',
     label: 'Reference to Music',
     testId: 'generate-audio-mode-a2m',
+    slots: ['musicSong', 'coverSong', 'musicMelody', 'musicVocal', 'soundVideo'],
     placeholderKey: 'canvas.generatePanel.musicPromptPlaceholder',
   },
 ];
@@ -74,6 +87,7 @@ const NOT_OURS: AudioModeOption = {
   value: '',
   label: '',
   testId: 'generate-audio-mode-none',
+  slots: [],
   placeholderKey: 'canvas.generatePanel.audioPromptPlaceholder',
 };
 

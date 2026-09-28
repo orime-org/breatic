@@ -539,19 +539,26 @@ export interface CanvasNodeFields {
     leftAudio?: { url: string; cover?: string };
     rightAudio?: { url: string; cover?: string };
     /**
-     * The three references the audio panel's reference-to-music mode collects
-     * (#1960, wire `data.musicSong` / `musicVoice` / `musicInstrumental`) —
-     * a whole song to write after, a vocal line to follow, a backing track to
-     * play over. Their `url`s are sent as `params.song` / `voice` /
-     * `instrumental`, the names minimax/music-01 reads them under.
+     * The references the audio panel's music and sound modes collect (#1960,
+     * #2156; wire `data.musicSong` / `coverSong` / `musicMelody` /
+     * `musicVocal` / `soundVideo`) — a song to write after, a song to cover,
+     * a melody, a singing voice, and the picture a run is scored or sounded
+     * to. Sent as `params.song` / `audio` / `melody` / `vocal` / `video`.
      *
-     * Three fields rather than one list because the vendor gives each its own
-     * role and a user may supply any combination. Shaped like `refAudio` for
-     * the same convergence reason, and `cover` is likewise always absent.
+     * One field per role because the vendor reads each under its own name and
+     * a user may supply any combination. Shaped like `refAudio` for the same
+     * convergence reason.
      */
     musicSong?: { url: string; cover?: string };
-    musicVoice?: { url: string; cover?: string };
-    musicInstrumental?: { url: string; cover?: string };
+    coverSong?: { url: string; cover?: string };
+    musicMelody?: { url: string; cover?: string };
+    musicVocal?: { url: string; cover?: string };
+    soundVideo?: { url: string; cover?: string };
+    /**
+     * The picture a piece of music takes its mood from (#2156, wire
+     * `data.moodImageUrl`) — sent as `params.image`.
+     */
+    moodImageUrl?: string;
     /**
      * The words to sing, on an audio node (#1960, wire `data.lyrics`) — a
      * `Y.XmlFragment` beside `prompt`, since two people may write lyrics at

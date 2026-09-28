@@ -108,12 +108,24 @@ export const PICK_PURPOSE_UI = {
     banner: 'canvas.generatePanel.selectMusicSongFromCanvas',
     trigger: { generateAudio: AUDIO_SLOTS.musicSong.testId },
   },
-  musicVoice: {
-    banner: 'canvas.generatePanel.selectMusicVoiceFromCanvas',
-    trigger: { generateAudio: AUDIO_SLOTS.musicVoice.testId },
+  coverSong: {
+    banner: 'canvas.generatePanel.selectCoverSongFromCanvas',
+    trigger: { generateAudio: AUDIO_SLOTS.coverSong.testId },
   },
-  musicInstrumental: {
-    banner: 'canvas.generatePanel.selectMusicInstrumentalFromCanvas',
-    trigger: { generateAudio: AUDIO_SLOTS.musicInstrumental.testId },
+  musicMelody: {
+    banner: 'canvas.generatePanel.selectMusicMelodyFromCanvas',
+    trigger: { generateAudio: AUDIO_SLOTS.musicMelody.testId },
+  },
+  musicVocal: {
+    banner: 'canvas.generatePanel.selectMusicVocalFromCanvas',
+    trigger: { generateAudio: AUDIO_SLOTS.musicVocal.testId },
+  },
+  soundVideo: {
+    banner: 'canvas.generatePanel.selectSoundVideoFromCanvas',
+    trigger: { generateAudio: AUDIO_SLOTS.soundVideo.testId },
+  },
+  moodImage: {
+    banner: 'canvas.generatePanel.selectMoodImageFromCanvas',
+    trigger: { generateAudio: AUDIO_SLOTS.moodImage.testId },
   },
 } as const satisfies Record<PickPurpose, PickPurposeUi>;

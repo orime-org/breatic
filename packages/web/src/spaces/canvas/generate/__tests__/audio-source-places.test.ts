@@ -47,19 +47,43 @@ const REFERENCE: ParamDescriptor = {
 };
 
 describe('what an audio run collects', () => {
-  it('offers the places the model declares for this mode', () => {
-    const music = model({
+  it('draws the slots of the mode row its model declares, in the row\'s order', () => {
+    const song = model({
+      melody: REFERENCE,
       song: REFERENCE,
-      voice: REFERENCE,
-      instrumental: REFERENCE,
+      vocal: REFERENCE,
     });
 
-    expect(audioSlotsForModel(music, 'a2m')).toEqual([
+    expect(audioSlotsForModel(song, 'a2m')).toEqual([
       'musicSong',
-      'musicVoice',
-      'musicInstrumental',
+      'musicMelody',
+      'musicVocal',
     ]);
-    expect(audioSlotsForModel(music, 't2m')).toEqual([]);
+    expect(audioSlotsForModel(song, 't2m')).toEqual([]);
+  });
+
+  it('gives one param to whichever slot the mode row names for it', () => {
+    // `audio` is the voice sample under Voice Cloning and the song to cover
+    // under Reference to Music: the mode row decides which place draws it.
+    const takesAudio = model({
+      audio: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
+    });
+
+    expect(audioSlotsForModel(takesAudio, 'voice_clone')).toEqual(['refAudio']);
+    expect(audioSlotsForModel(takesAudio, 'a2m')).toEqual(['coverSong']);
+  });
+
+  it('draws the video slot for sound effects and the image slot for text to music', () => {
+    const video = model({
+      video: { description: '', default: null, fill: 'canvas', accepts: 'video' },
+    });
+    const image = model({
+      image: { description: '', default: null, fill: 'canvas', accepts: 'image', optional: true },
+    });
+
+    expect(audioSlotsForModel(video, 'sfx')).toEqual(['soundVideo']);
+    expect(audioSlotsForModel(video, 'a2m')).toEqual(['soundVideo']);
+    expect(audioSlotsForModel(image, 't2m')).toEqual(['moodImage']);
   });
 
   it('offers only the ones the model has', () => {
@@ -90,10 +114,10 @@ describe('what an audio run still needs', () => {
   it('asks for a place the model does not mark optional', () => {
     const music = model({
       song: REFERENCE,
-      voice: { ...REFERENCE, optional: true },
+      vocal: { ...REFERENCE, optional: true },
     });
 
-    expect(audioSlotsForModel(music, 'a2m')).toEqual(['musicSong', 'musicVoice']);
+    expect(audioSlotsForModel(music, 'a2m')).toEqual(['musicSong', 'musicVocal']);
     expect(audioMissing(music, 'a2m', {})).toEqual([['song']]);
   });
 
@@ -111,13 +135,13 @@ describe('what an audio run still needs', () => {
     const music: ModelEntry = {
       ...model({
         song: { ...REFERENCE, optional: true },
-        voice: { ...REFERENCE, optional: true },
+        vocal: { ...REFERENCE, optional: true },
       }),
-      source_groups: [{ mode: 'a2m', any_of: ['song', 'voice'] }],
+      source_groups: [{ mode: 'a2m', any_of: ['song', 'vocal'] }],
     };
 
-    expect(audioMissing(music, 'a2m', {})).toEqual([['song', 'voice']]);
-    expect(audioMissing(music, 'a2m', { musicVoice: 'https://v.mp3' })).toEqual([]);
+    expect(audioMissing(music, 'a2m', {})).toEqual([['song', 'vocal']]);
+    expect(audioMissing(music, 'a2m', { musicVocal: 'https://v.mp3' })).toEqual([]);
   });
 
   it('needs nothing when no model resolves', () => {

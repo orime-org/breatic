@@ -40,7 +40,7 @@ import {
   modelTakesLyrics,
   AUDIO_SLOTS,
 } from '@web/spaces/canvas/generate/audio-slots';
-import { slotForPurpose } from '@web/spaces/canvas/generate/slots';
+import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
 import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import {
   AUDIO_MODE_OPTIONS,
@@ -57,7 +57,6 @@ import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-m
 import {
   evaluateExecute,
   extractPromptText,
-  refusalToastKey,
 } from '@breatic/shared';
 import {
   CatalogGatedFrame,
@@ -127,23 +126,30 @@ function AudioGeneratePanelBody({
   const startReferencePick = useCanvasStore((s) => s.startReferencePick);
   const startRefAudioPick = useCanvasStore((s) => s.startRefAudioPick);
   const startMusicSongPick = useCanvasStore((s) => s.startMusicSongPick);
-  const startMusicVoicePick = useCanvasStore((s) => s.startMusicVoicePick);
-  const startMusicInstrumentalPick = useCanvasStore(
-    (s) => s.startMusicInstrumentalPick,
-  );
+  const startCoverSongPick = useCanvasStore((s) => s.startCoverSongPick);
+  const startMusicMelodyPick = useCanvasStore((s) => s.startMusicMelodyPick);
+  const startMusicVocalPick = useCanvasStore((s) => s.startMusicVocalPick);
+  const startSoundVideoPick = useCanvasStore((s) => s.startSoundVideoPick);
+  const startMoodImagePick = useCanvasStore((s) => s.startMoodImagePick);
   /** Which store action starts each slot's pick. */
   const startPick = React.useMemo(
     (): Record<AudioSlot, (id: string) => void> => ({
       refAudio: startRefAudioPick,
+      soundVideo: startSoundVideoPick,
+      moodImage: startMoodImagePick,
       musicSong: startMusicSongPick,
-      musicVoice: startMusicVoicePick,
-      musicInstrumental: startMusicInstrumentalPick,
+      coverSong: startCoverSongPick,
+      musicMelody: startMusicMelodyPick,
+      musicVocal: startMusicVocalPick,
     }),
     [
       startRefAudioPick,
+      startSoundVideoPick,
+      startMoodImagePick,
       startMusicSongPick,
-      startMusicVoicePick,
-      startMusicInstrumentalPick,
+      startCoverSongPick,
+      startMusicMelodyPick,
+      startMusicVocalPick,
     ],
   );
   const referencePicking = useCanvasStore(
@@ -480,7 +486,11 @@ function AudioGeneratePanelBody({
       lyricsText: freshLyrics,
     });
     if (verdict != null) {
-      const key = refusalToastKey(verdict.refusal);
+      const key = slotRefusalKey(
+        AUDIO_SLOTS,
+        audioSlotsForModel(fresh.modelEntry, mode),
+        verdict,
+      );
       // `max` comes from the same value the gate judged by, so the sentence
       // can never name a limit other than the one that refused.
       if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));

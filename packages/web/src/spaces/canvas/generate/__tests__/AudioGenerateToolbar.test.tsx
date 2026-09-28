@@ -65,7 +65,7 @@ describe('AudioGenerateToolbar — Reference, then the mode\'s slots', () => {
     setup();
     expect(screen.queryByTestId('generate-audio-tool-sep')).toBeNull();
 
-    setup({ slots: ['musicSong', 'musicVoice', 'musicInstrumental'] });
+    setup({ slots: ['musicSong', 'musicMelody', 'musicVocal'] });
     expect(screen.getByTestId('generate-audio-tool-sep')).toBeInTheDocument();
   });
 

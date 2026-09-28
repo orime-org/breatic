@@ -25,7 +25,6 @@ import { useCanvasStore } from '@web/stores';
 import {
   evaluateExecute,
   extractPromptText,
-  refusalToastKey,
   REFERENCE_POOL_PARAM,
   type ExecuteVerdict,
 } from '@breatic/shared';
@@ -62,7 +61,7 @@ import {
   VIDEO_MODE_OPTIONS,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
-import { slotForPurpose, type SlotSpec } from '@web/spaces/canvas/generate/slots';
+import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
 import {
   modelTakesReferences,
   videoMissing,
@@ -834,10 +833,7 @@ function videoRefusalKey(
   if (verdict.slot === REFERENCE_POOL_PARAM) {
     return 'canvas.generatePanel.errorNoReferenceMention';
   }
-  // The gate names the param; the toolbar slot drawn for it names the place.
-  const slot = slots.find((drawn) => VIDEO_SLOTS[drawn].param === verdict.slot);
-  const spec: SlotSpec | undefined = slot === undefined ? undefined : VIDEO_SLOTS[slot];
-  return spec?.errorKey ?? refusalToastKey(verdict.refusal);
+  return slotRefusalKey(VIDEO_SLOTS, slots, verdict);
 }
 
 /**

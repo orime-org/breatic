@@ -161,24 +161,18 @@ const T2M: ModelEntry = {
 /** Reference to music: three audio slots, and lyrics the gateway insists on. */
 const A2M: ModelEntry = {
   ...T2M,
-  name: 'minimax-music-01',
-  display_name: 'MiniMax Music 01',
+  name: 'mureka-v9.5-generate-song',
+  display_name: 'Mureka V9.5 Song',
   mode: 'a2m',
   params: {
     lyrics: { description: '', default: null, fill: 'editor' },
     song: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
-    voice: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
-    instrumental: {
-      description: '',
-      default: null,
-      fill: 'canvas',
-      accepts: 'audio',
-      optional: true,
-    },
+    melody: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
+    vocal: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
   },
   // The mode takes any one of its three places, which is what lets a submit
   // carrying only a song through.
-  source_groups: [{ mode: 'a2m', any_of: ['song', 'voice', 'instrumental'] }],
+  source_groups: [{ mode: 'a2m', any_of: ['song', 'melody', 'vocal'] }],
 };
 
 /**
@@ -806,7 +800,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openPanel({
       mode: 'a2m',
-      model: 'minimax-music-01',
+      model: 'mureka-v9.5-generate-song',
       musicSong: { url: 'https://x/y.mp3' },
     });
     typePrompt('same mood, slower');
@@ -842,7 +836,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openPanel({
       mode: 'a2m',
-      model: 'minimax-music-01',
+      model: 'mureka-v9.5-generate-song',
       musicSong: { url: 'https://x/y.mp3' },
     });
     typePrompt('same mood, slower');

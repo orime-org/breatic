@@ -18,6 +18,7 @@
  * silently does the wrong thing, with nothing failing to compile (#1960).
  */
 
+import { refusalToastKey, type ExecuteVerdict } from '@breatic/shared';
 import type { LucideIcon } from 'lucide-react';
 
 // The two registries are imported for their DATA; each imports only the types
@@ -70,13 +71,9 @@ export interface SlotSpec {
   /** Translation key for the clear badge's accessible name. */
   clearLabelKey: string;
   /**
-   * Translation key for the refusal shown when execute finds this slot empty.
-   *
-   * Only on a slot whose panel looks the sentence up here — the video
-   * container does (`VideoGeneratePanelContainer`). The audio panel reaches
-   * every refusal sentence through `refusalToastKey`, the way it reaches every
-   * other one, so its slots carry none and there is one place per panel
-   * where a refusal is worded.
+   * Translation key for the refusal shown when execute finds this slot empty,
+   * read by {@link slotRefusalKey}. A slot a run may go without never refuses
+   * and carries none.
    */
   errorKey?: string;
 }
@@ -194,6 +191,26 @@ export function readSlotThumbnails<K extends string>(
     if (pick?.thumbnail !== undefined) thumbnails[slot] = pick.thumbnail;
   }
   return thumbnails;
+}
+
+/**
+ * The i18n key a refusal speaks with, in the words of the slot it names.
+ *
+ * The gate names only the param that is empty; the toolbar slot drawn for it
+ * calls it a first frame or a voice sample. A refusal no drawn slot answers
+ * for falls back to the gate's own sentence.
+ * @param registry - The panel's slots.
+ * @param drawn - The slots the toolbar draws for this run.
+ * @param verdict - What the gate answered.
+ * @returns The key, or null when the refusal says nothing.
+ */
+export function slotRefusalKey<K extends string>(
+  registry: Readonly<Record<K, SlotSpec>>,
+  drawn: readonly K[],
+  verdict: ExecuteVerdict,
+): string | null {
+  const slot = drawn.find((name) => registry[name].param === verdict.slot);
+  return (slot === undefined ? undefined : registry[slot].errorKey) ?? refusalToastKey(verdict.refusal);
 }
 
 /** Every registry a pick can fill a slot in. */

@@ -42,7 +42,10 @@ import type { GenerationNodeType, ModelEntry } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 
-import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
+import {
+  AUDIO_MODE_OPTIONS,
+  audioModeOption,
+} from '@web/spaces/canvas/generate/audio-mode-options';
 import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
@@ -195,9 +198,7 @@ const PANEL: Readonly<
     controls: [...EDITED_PARAMS],
   },
   audio: {
-    // One param per slot here, so every audio mode reaches all of them and
-    // which ones a model actually offers is its own declaration's business.
-    slots: () => Object.values(AUDIO_SLOTS).map((spec) => spec.param),
+    slots: (mode) => audioModeOption(mode).slots.map((slot) => AUDIO_SLOTS[slot].param),
     controls: Object.keys(AUDIO_PARAMS),
   },
 };
