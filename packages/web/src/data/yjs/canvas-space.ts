@@ -919,7 +919,7 @@ export function setNodeSlotValue(
   spaceId: string,
   nodeId: string,
   key: string,
-  value: string | Readonly<Record<string, string>> | null,
+  value: string | Readonly<Record<string, string | number>> | null,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);

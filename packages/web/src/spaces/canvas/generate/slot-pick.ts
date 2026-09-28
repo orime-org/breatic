@@ -36,7 +36,7 @@ export interface ClickedNode {
    * The node's live data map; `content` is its asset URL when filled and
    * `coverUrl` the poster a video node carries alongside it.
    */
-  data?: { content?: unknown; coverUrl?: unknown };
+  data?: { content?: unknown; coverUrl?: unknown; duration?: unknown };
 }
 
 /**
@@ -80,4 +80,22 @@ export function pickedSlotUrl(
 export function pickedSlotCover(node: ClickedNode): string | null {
   const cover = node.data?.coverUrl;
   return typeof cover === 'string' && cover.length > 0 ? cover : null;
+}
+
+/**
+ * How long the clicked clip or track runs, when its node knows (#2156).
+ * @param node - The clicked node; its data is collaborative, so untrusted.
+ * @returns Seconds, or null when the node states no usable length.
+ */
+export function pickedSlotDuration(node: ClickedNode): number | null {
+  return usableDuration(node.data?.duration) ?? null;
+}
+
+/**
+ * A stored length a price can use: a positive, finite number of seconds.
+ * @param value - The stored value, untrusted.
+ * @returns The seconds, or undefined for anything else.
+ */
+export function usableDuration(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }

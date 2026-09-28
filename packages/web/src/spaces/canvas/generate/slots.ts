@@ -25,6 +25,7 @@ import type { LucideIcon } from 'lucide-react';
 // declared below, and `import type` is erased at compile time, so there is no
 // cycle at runtime.
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import { usableDuration } from '@web/spaces/canvas/generate/slot-pick';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { PickPurpose } from '@web/stores/canvas';
 
@@ -124,7 +125,7 @@ function usableUrl(value: unknown): string | undefined {
 export function readSlotPick(
   spec: SlotSpec,
   value: unknown,
-): { url: string; thumbnail?: string } | null {
+): { url: string; thumbnail?: string; duration?: number } | null {
   if (!spec.storesCover) {
     const bare = usableUrl(value);
     return bare ? { url: bare, thumbnail: bare } : null;
@@ -133,7 +134,12 @@ export function readSlotPick(
   const url = usableUrl((value as { url?: unknown }).url);
   if (!url) return null;
   const cover = usableUrl((value as { cover?: unknown }).cover);
-  return cover ? { url, thumbnail: cover } : { url };
+  const duration = usableDuration((value as { duration?: unknown }).duration);
+  return {
+    url,
+    ...(cover ? { thumbnail: cover } : {}),
+    ...(duration !== undefined ? { duration } : {}),
+  };
 }
 
 /**
@@ -191,6 +197,28 @@ export function readSlotThumbnails<K extends string>(
     if (pick?.thumbnail !== undefined) thumbnails[slot] = pick.thumbnail;
   }
   return thumbnails;
+}
+
+/**
+ * How long each filled slot's clip or track runs, where its pick recorded it
+ * (#2156, design §14) — what a price by the second reads.
+ * @param registry - The panel's slot registry.
+ * @param content - The node's data; collaborative, so untrusted.
+ * @returns Seconds by slot, for the slots that know theirs.
+ */
+export function readSlotDurations<K extends string>(
+  registry: Readonly<Record<K, SlotSpec>>,
+  content: unknown,
+): Partial<Record<K, number>> {
+  const durations: Partial<Record<K, number>> = {};
+  for (const slot of Object.keys(registry) as K[]) {
+    const pick = readSlotPick(
+      registry[slot],
+      (content as Record<string, unknown> | undefined)?.[registry[slot].field],
+    );
+    if (pick?.duration !== undefined) durations[slot] = pick.duration;
+  }
+  return durations;
 }
 
 /**
