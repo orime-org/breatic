@@ -84,6 +84,7 @@ function stores(preset: Step[] = []): {
       },
     },
     sourceKeyOf: async (url) => `sha-of-${url}`,
+    describeImage: async (url) => ({ text: `a picture at ${url}`, costUsd: 0.002 }),
   };
   return { steps, clones, retired, deps };
 }
@@ -244,5 +245,47 @@ describe("runCatalogTask", () => {
       runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" }),
     ).rejects.toThrow(/Voice ID does not exist/);
     expect(retired).toEqual(["voice:BreaticGone1"]);
+  });
+
+  it("makes one element per reference image, named by its place, and sends their ids with the video", async () => {
+    const { deps, clones, steps } = stores();
+    answers([{ element_id: "el-1" }], [{ element_id: "el-2" }], ["https://cdn/video.mp4"]);
+
+    const result = await runCatalogTask(deps, CTX, "video", "Element 1 hands Element 2 a cup", "kling-video-o3-4k-image-to-video", {
+      image: "https://a/first.png",
+      elements: ["https://a/cat.png", "https://a/dog.png"],
+      duration: 5,
+    });
+
+    expect(call(0)).toEqual({
+      endpoint: "kwaivgi/kling-elements",
+      body: {
+        name: "Element 1",
+        description: "a picture at https://a/cat.png",
+        image: "https://a/cat.png",
+        element_refer_list: ["https://a/cat.png"],
+      },
+    });
+    expect(call(1).body).toMatchObject({ name: "Element 2", image: "https://a/dog.png" });
+    expect(call(2).body).toMatchObject({ element_list: [{ element_id: "el-1" }, { element_id: "el-2" }] });
+    expect(clones.get("element:sha-of-https://a/cat.png:Element 1")).toBe("el-1");
+    expect(steps[0]!.output).toMatchObject({ description: "a picture at https://a/cat.png" });
+    expect(result.cost).toBeCloseTo(0.03 + 0.004, 10);
+  });
+
+  it("reuses a cached element without describing or creating it again", async () => {
+    const { deps, clones } = stores();
+    clones.set("element:sha-of-https://a/cat.png:Element 1", "el-cached");
+    const describe = vi.spyOn(deps, "describeImage");
+    answers(["https://cdn/video.mp4"]);
+
+    await runCatalogTask(deps, CTX, "video", "Element 1 waves", "kling-video-o3-4k-image-to-video", {
+      image: "https://a/first.png",
+      elements: ["https://a/cat.png"],
+      duration: 5,
+    });
+
+    expect(describe).not.toHaveBeenCalled();
+    expect(call(0).body).toMatchObject({ element_list: [{ element_id: "el-cached" }] });
   });
 });
