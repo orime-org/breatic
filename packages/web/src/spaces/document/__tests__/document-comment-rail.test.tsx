@@ -1254,6 +1254,62 @@ describe('the comment panel', () => {
       expect(at.to).toBe(lineStarts()[1]! + 4);
     });
 
+    it('stays on the same copy of repeated words when a peer retypes their line', async () => {
+      // The line is written again as a whole; which copy the reader chose is
+      // told apart by where it stood and the words around it.
+      show('editor', ['bravo one bravo two bravo']);
+      aimDraft(10, 15);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.updateBlock(peer.editor.document[0]!, {
+          type: 'heading',
+          props: { level: 2 },
+        } as never);
+      });
+
+      expect(draftRangeIn(handle.editor.prosemirrorState)!.from).toBe(
+        lineStarts()[0]! + 10,
+      );
+    });
+
+    it('keeps the part of its words left in place when a peer moves the other part away', async () => {
+      show('editor', ['alpha bravo', 'charlie delta', 'echo foxtrot']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second! + 7);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.setTextCursorPosition(peer.editor.document[0]!);
+        peer.editor.moveBlocksDown();
+        peer.editor.moveBlocksDown();
+      });
+
+      expect(lines()).toEqual(['charlie delta', 'echo foxtrot', 'alpha bravo']);
+      expect(aimedWords()).toBe('charlie');
+    });
+
+    it('keeps its words when a peer retypes their line and corrects a letter in them at once', async () => {
+      // One update carrying both, as a peer coming back online sends it.
+      show('editor', ['one two', 'alpha bravo charlie', 'echo foxtrot']);
+      const second = lineStarts()[1]!;
+      aimAt(second + 6, second + 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.updateBlock(peer.editor.document[1]!, {
+          type: 'heading',
+          content: 'alpha brave charlie',
+        } as never);
+      });
+
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('brave');
+    });
+
     it('says so rather than moving to the same word elsewhere when its words are deleted', async () => {
       show('editor', ['alpha bravo', 'bravo charlie']);
       aimDraft(6, 11);
