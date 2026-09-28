@@ -17,6 +17,7 @@ import type { FullModelEntry } from "@breatic/domain";
 
 import { validateParams, type ModelFamily } from "@worker/providers/shared.js";
 import midjourney from "@worker/providers/families/midjourney.js";
+import minimaxSpeech from "@worker/providers/families/minimax-speech.js";
 import nanoBanana from "@worker/providers/families/nano-banana.js";
 
 /** The catalog modalities this path serves (3D keeps its own). */
@@ -32,7 +33,7 @@ export interface GenerationResult {
 
 /** Model name -> family, for the models that have one. */
 export const FAMILIES = new Map<string, ModelFamily>(
-  [midjourney, nanoBanana].flatMap((family) => [...family.MODELS].map((name) => [name, family] as const)),
+  [midjourney, minimaxSpeech, nanoBanana].flatMap((family) => [...family.MODELS].map((name) => [name, family] as const)),
 );
 
 /**
