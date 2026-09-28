@@ -4,6 +4,8 @@
 import * as React from 'react';
 import { useChat } from '@ai-sdk/react';
 
+import type { ChatAttachedChip } from '@breatic/shared';
+
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import { visibleMessages } from '@web/pages/project/chat/visible-messages';
@@ -205,11 +207,11 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
   // back to — over whatever the reader has typed since.
   const emptyTheBox = React.useCallback(
     (id: string) =>
-      (sentAttachmentIds: readonly string[]): void => {
+      (sent: readonly ChatAttachedChip[]): void => {
         conversationRuntime.setDraft(id, '');
         // The items the turn carried leave with the words, and only they: an
         // item attached after the press is for the next message.
-        chatAttachments.removeSent(id, sentAttachmentIds);
+        chatAttachments.removeSent(id, sent);
       },
     [],
   );

@@ -66,7 +66,7 @@ afterEach(() => {
  * @returns The session.
  */
 async function sendWithAttachment(
-  onFirstFrame: (sentAttachmentIds: readonly string[]) => void = () => undefined,
+  onFirstFrame: (sent: readonly ChatAttachedChip[]) => void = () => undefined,
 ) {
   const chat = chatSessionFor({
     projectId: 'p-1',
@@ -98,13 +98,13 @@ describe('a message carrying attachments', () => {
     ]);
   });
 
-  it('names the items it carried when the turn opens', async () => {
+  it('hands back what it carried when the turn opens', async () => {
     const opened = vi.fn();
 
     await sendWithAttachment(opened);
 
     expect(opened).toHaveBeenCalledTimes(1);
-    expect(opened).toHaveBeenCalledWith(['a1']);
+    expect(opened).toHaveBeenCalledWith([image]);
   });
 
   it('sends an empty list when nothing is attached', async () => {

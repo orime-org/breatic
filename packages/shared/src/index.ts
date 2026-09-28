@@ -389,7 +389,14 @@ export {
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { extractPromptText } from "@shared/agent/extract-prompt.js";
-export { ATTACHMENT_DATA_PART, attachmentSection, userTurnForModel } from "@shared/agent/attachments.js";
+export {
+  ATTACHMENT_DATA_PART,
+  attachmentPart,
+  attachmentSection,
+  chipOfPart,
+  userTurnForModel,
+} from "@shared/agent/attachments.js";
+export type { AttachmentDataPart } from "@shared/agent/attachments.js";
 export {
   carrying,
   FAILURE_LINES,

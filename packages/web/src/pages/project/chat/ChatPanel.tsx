@@ -7,7 +7,7 @@ import {
   conversationRuntime,
   useConversationRuntime,
 } from '@web/stores/conversation-runtime';
-import { chatAttachments, useChatAttachments, type TrayItem } from '@web/stores/chat-attachments';
+import { chatAttachments, useTray } from '@web/stores/chat-attachments';
 import { useConsolidating } from '@web/stores/consolidating';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -18,9 +18,6 @@ import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHi
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import { useAttachFiles } from '@web/pages/project/chat/use-attach-files';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
-
-/** Nothing attached, one array so a selector answering it keeps its identity. */
-const NO_ATTACHMENTS: TrayItem[] = [];
 
 /**
  * How long a wait goes unmentioned.
@@ -125,9 +122,7 @@ export function ChatPanel({
   const [sentCount, setSentCount] = React.useState(0);
 
   // What is attached above the box in the conversation on screen.
-  const attachments = useChatAttachments((s) =>
-    currentId ? (s.byConversation[currentId] ?? NO_ATTACHMENTS) : NO_ATTACHMENTS,
-  );
+  const attachments = useTray(currentId);
   const removeAttachment = React.useCallback(
     (id: string): void => {
       if (currentId) chatAttachments.remove(currentId, id);

@@ -61,7 +61,8 @@ interface TrayState {
 
 const useStore = create<TrayState>(() => ({ byConversation: {}, noticeByConversation: {} }));
 
-const EMPTY: TrayItem[] = [];
+/** Nothing attached; one array, so whoever reads it keeps its identity. */
+export const NO_ATTACHMENTS: readonly TrayItem[] = [];
 
 /**
  * The chips of the items that have one, in order.
@@ -98,8 +99,8 @@ function write(conversationId: string, items: TrayItem[]): void {
  * @param conversationId - The conversation.
  * @returns Its items, in the order they were attached.
  */
-function trayOf(conversationId: string): TrayItem[] {
-  return useStore.getState().byConversation[conversationId] ?? EMPTY;
+function trayOf(conversationId: string): readonly TrayItem[] {
+  return useStore.getState().byConversation[conversationId] ?? NO_ATTACHMENTS;
 }
 
 /**
@@ -194,32 +195,42 @@ function fail(conversationId: string, id: string, failure: TrayFailure): void {
 }
 
 /**
+ * Keep the items that pass, and say nothing more about the last attempt.
+ *
+ * The list is written only when something left it, so a turn that carried
+ * nothing does not hand the box a new list to redraw.
+ * @param conversationId - The conversation.
+ * @param keep - Whether an item stays.
+ */
+function removeWhere(conversationId: string, keep: (item: TrayItem) => boolean): void {
+  const current = useStore.getState().byConversation[conversationId];
+  const next = current?.filter(keep);
+  if (current && next && next.length !== current.length) write(conversationId, next);
+  say(conversationId, null);
+}
+
+/**
  * Take one item out.
  * @param conversationId - The conversation.
  * @param id - The item.
  */
 function remove(conversationId: string, id: string): void {
-  removeSent(conversationId, [id]);
+  removeWhere(conversationId, (item) => item.id !== id);
 }
 
 /**
  * Take out the items a turn carried, once it has opened.
  *
- * By id, so an item attached after the press stays for the next message.
- * What was said about the last attempt goes too: the list it was about has
- * changed.
+ * Matched on what was sent, not on the id: a node attached again after the
+ * press holds a new snapshot under the same id, and that one is for the next
+ * message. A turn opening ends the attempt the notice was about, so the
+ * notice goes whether or not anything was attached.
  * @param conversationId - The conversation.
- * @param ids - The items that went with the turn.
+ * @param sent - What the turn carried.
  */
-function removeSent(conversationId: string, ids: readonly string[]): void {
-  const current = useStore.getState().byConversation[conversationId];
-  if (!current) return;
-  const gone = new Set(ids);
-  write(
-    conversationId,
-    current.filter((item) => !gone.has(item.id)),
-  );
-  say(conversationId, null);
+function removeSent(conversationId: string, sent: readonly ChatAttachedChip[]): void {
+  const gone = new Set(sent.map((chip) => JSON.stringify(chip)));
+  removeWhere(conversationId, (item) => !item.chip || !gone.has(JSON.stringify(item.chip)));
 }
 
 /**
@@ -264,6 +275,17 @@ function sendable(conversationId: string): ChatAttachedChip[] | null {
 }
 
 export const useChatAttachments = useStore;
+
+/**
+ * The list above the box in one conversation, kept current.
+ * @param conversationId - The conversation on screen, if one is.
+ * @returns Its items.
+ */
+export function useTray(conversationId: string | undefined): readonly TrayItem[] {
+  return useStore((s) =>
+    conversationId ? (s.byConversation[conversationId] ?? NO_ATTACHMENTS) : NO_ATTACHMENTS,
+  );
+}
 
 export const chatAttachments = {
   trayOf,

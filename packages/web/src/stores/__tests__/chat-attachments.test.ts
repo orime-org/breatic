@@ -185,11 +185,31 @@ describe('what can be sent', () => {
 describe('after a turn opens', () => {
   it('takes out only the items that went with it', () => {
     chatAttachments.add('c1', [node('a'), node('b')], LIMITS);
+    const sent = chatAttachments.sendable('c1')!;
     chatAttachments.add('c1', [node('c')], LIMITS);
 
-    chatAttachments.removeSent('c1', ['a', 'b']);
+    chatAttachments.removeSent('c1', sent);
 
     expect(chatAttachments.trayOf('c1').map((i) => i.id)).toEqual(['c']);
+  });
+
+  it('keeps a node attached again after the press, with its new snapshot', () => {
+    chatAttachments.add('c1', [node('a', 'before')], LIMITS);
+    const sent = chatAttachments.sendable('c1')!;
+    chatAttachments.add('c1', [node('a', 'after')], LIMITS);
+
+    chatAttachments.removeSent('c1', sent);
+
+    expect(chatAttachments.trayOf('c1').map((i) => i.chip?.data_snapshot)).toEqual([{ text: 'after' }]);
+  });
+
+  it('leaves the list as it is when the turn carried nothing', () => {
+    chatAttachments.add('c1', [node('a')], LIMITS);
+    const before = chatAttachments.trayOf('c1');
+
+    chatAttachments.removeSent('c1', []);
+
+    expect(chatAttachments.trayOf('c1')).toBe(before);
   });
 });
 
@@ -203,11 +223,20 @@ describe('what was said about the last attempt', () => {
     expect(noticeIn('c1')).toBeNull();
   });
 
-  it('goes when the items a turn carried are taken out', () => {
+  it('goes when a turn opens', () => {
     chatAttachments.add('c1', [node('a')], LIMITS);
+    const sent = chatAttachments.sendable('c1')!;
     chatAttachments.say('c1', { key: 'full', limit: 3 });
 
-    chatAttachments.removeSent('c1', ['a']);
+    chatAttachments.removeSent('c1', sent);
+
+    expect(noticeIn('c1')).toBeNull();
+  });
+
+  it('goes when a turn opens in a conversation nothing was ever attached in', () => {
+    chatAttachments.say('c1', { key: 'unsupported', filename: 'x.zip' });
+
+    chatAttachments.removeSent('c1', []);
 
     expect(noticeIn('c1')).toBeNull();
   });

@@ -12,6 +12,31 @@ import type { ChatAttachedChip } from "@shared/schemas/api.js";
  */
 export const ATTACHMENT_DATA_PART = "data-attachment";
 
+/** One attached item as a data part on the chat wire. */
+export interface AttachmentDataPart {
+  type: typeof ATTACHMENT_DATA_PART;
+  data: ChatAttachedChip;
+}
+
+/**
+ * Put an attached item on the wire.
+ * @param chip - The item.
+ * @returns Its data part.
+ */
+export function attachmentPart(chip: ChatAttachedChip): AttachmentDataPart {
+  return { type: ATTACHMENT_DATA_PART, data: chip };
+}
+
+/**
+ * Read an attached item back off the wire.
+ * @param part - Any part of a message.
+ * @param part.type - What kind of part it is.
+ * @returns The item, or undefined for a part of another kind.
+ */
+export function chipOfPart(part: { type: string }): ChatAttachedChip | undefined {
+  return part.type === ATTACHMENT_DATA_PART ? (part as AttachmentDataPart).data : undefined;
+}
+
 /**
  * The attached items, laid out the way the model reads them.
  *

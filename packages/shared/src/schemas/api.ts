@@ -156,9 +156,12 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
  * do NOT mutate the chip (C1 full-snapshot model — same philosophy as
  * spec §6.2 Studio→Space copies).
  */
+/** Longer than any node or file id; the id is stored with the message. */
+const ATTACHED_CHIP_ID_MAX = 128;
+
 export const chatAttachedChipSchema = z.object({
   /** Source node id (audit only — not a live reference). */
-  id: z.string(),
+  id: z.string().max(ATTACHED_CHIP_ID_MAX),
   type: z.enum(["image", "video", "audio", "text", "annotation"]),
   /** Display name for the chip; LLM context renders this as the section title. */
   name: z.string(),

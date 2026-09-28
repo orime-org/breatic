@@ -16,7 +16,7 @@
  */
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
-import { ATTACHMENT_DATA_PART, isReaderLine } from '@breatic/shared';
+import { chipOfPart, isReaderLine } from '@breatic/shared';
 import type { CanvasProposal, ChatAttachedChip } from '@breatic/shared';
 import type { ChatAsset, ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
@@ -262,6 +262,11 @@ export function toChatMessage(
       }
       continue;
     }
+    const chip = chipOfPart(part);
+    if (chip) {
+      attachments.push(chip);
+      continue;
+    }
     if (part.type === 'text') content += part.text;
     else if (part.type === 'reasoning') {
       thinking += part.text;
@@ -274,9 +279,6 @@ export function toChatMessage(
     else if (part.type === FAILED) failed = true;
     else if (part.type === TRUNCATED) truncated = true;
     else if (part.type === BLOCKED) blocked = true;
-    else if (part.type === ATTACHMENT_DATA_PART) {
-      attachments.push((part as { data: ChatAttachedChip }).data);
-    }
     else if (part.type === THINKING_TIME) {
       const ms = (part as { data?: { ms?: unknown } }).data?.ms;
       if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) thinkingMs = ms;

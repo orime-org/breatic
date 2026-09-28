@@ -22,7 +22,7 @@ import { Chat } from '@ai-sdk/react';
 import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
 import type { ChatTransport, UIMessageChunk } from 'ai';
-import { ATTACHMENT_DATA_PART, SSE_HEARTBEAT_MISSES_ALLOWED, getLocale } from '@breatic/shared';
+import { SSE_HEARTBEAT_MISSES_ALLOWED, attachmentPart, chipOfPart, getLocale } from '@breatic/shared';
 import type { ChatAttachedChip } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
@@ -75,11 +75,11 @@ export interface ChatSessionInit {
    * while a panel coming back to a turn already streaming would empty it a
    * second time, over whatever the reader has typed since.
    *
-   * Handed the ids of the items the turn carried, so they leave the list
-   * above the box then too -- and only they: an item attached after the press
-   * waits for the next message.
+   * Handed the items the turn carried, so they leave the list above the box
+   * then too -- and only they: an item attached after the press waits for the
+   * next message.
    */
-  onFirstFrame: (sentAttachmentIds: readonly string[]) => void;
+  onFirstFrame: (sent: readonly ChatAttachedChip[]) => void;
 }
 
 /** The chunk the server names a conversation on. */
@@ -175,9 +175,10 @@ function sayWhenItOpens(
  * @returns Its attached items, in order.
  */
 function attachedOn(message: StoredUiMessage | undefined): ChatAttachedChip[] {
-  return (message?.parts ?? []).flatMap((part) =>
-    part.type === ATTACHMENT_DATA_PART ? [(part as { data: ChatAttachedChip }).data] : [],
-  );
+  return (message?.parts ?? []).flatMap((part) => {
+    const chip = chipOfPart(part);
+    return chip ? [chip] : [];
+  });
 }
 
 /**
@@ -195,7 +196,7 @@ function attachedOn(message: StoredUiMessage | undefined): ChatAttachedChip[] {
 function transportFor(
   projectId: string,
   conversationId: string,
-  onFirstFrame: (sentAttachmentIds: readonly string[]) => void,
+  onFirstFrame: (sent: readonly ChatAttachedChip[]) => void,
 ): ChatTransport<StoredUiMessage> {
   const wire = new DefaultChatTransport<StoredUiMessage>({
     // Built from the one definition of the prefix rather than spelled out.
@@ -236,9 +237,7 @@ function transportFor(
   });
   return {
     sendMessages: async (options) => {
-      const carried = attachedOn(options.messages[options.messages.length - 1]).map(
-        (chip) => chip.id,
-      );
+      const carried = attachedOn(options.messages[options.messages.length - 1]);
       return sayWhenItOpens(
         await wire.sendMessages(options),
         // On every answering frame, because the fold begins after the turn
@@ -559,7 +558,7 @@ export async function sendInSession(
   try {
     await chat.sendMessage({
       parts: [
-        ...attached.map((chip) => ({ type: ATTACHMENT_DATA_PART, data: chip }) as const),
+        ...attached.map(attachmentPart),
         { type: 'text', text: said },
       ],
     });
