@@ -162,7 +162,7 @@ async function callFor(
     }
   });
 
-  return runningOn.model?.doStreamCalls[0] as SentCall | undefined;
+  return runningOn.model?.doStreamCalls[0];
 }
 
 describe("asking DeepSeek for its working", () => {
