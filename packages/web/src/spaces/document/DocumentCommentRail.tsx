@@ -142,7 +142,6 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const draft = React.useSyncExternalStore(onDraftChange, () =>
     draftIn(editor.prosemirrorState),
   );
-  const draftAt = draft?.kind === 'aimed' ? draft : null;
   // Pressing the draft card, or putting the focus into it, makes it the card
   // being read. A thread's card takes that turn on a press only; focus on it
   // is the pointer resting there (A7, A24).
@@ -251,11 +250,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // The element the cards are placed inside is what they are measured
   // against, so a card's top needs nothing added to it.
   const column = React.useRef<HTMLDivElement>(null);
-  // Held steady so the hook re-measures when the range moves rather than on
-  // every render: the plugin hands back a fresh object each read.
+  // Keyed on the start alone, which is all the hook measures: the card sits
+  // level with where the words begin.
+  const draftFrom = draft?.kind === 'aimed' ? draft.from : null;
   const draftAnchor = React.useMemo(
-    () => (draftAt === null ? null : { id: DRAFT_THREAD_ID, from: draftAt.from }),
-    [draftAt],
+    () => (draftFrom === null ? null : { id: DRAFT_THREAD_ID, from: draftFrom }),
+    [draftFrom],
   );
   const anchors = useCommentAnchors(editor, ids, column, draftAnchor);
 
@@ -368,14 +368,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // The panel's own scroll: how far the column is lifted to bring back the
   // cards the one being read pushed up under the header (design §9.6.1).
   // `setLift` is its one writer. A new card being read starts the column
-  // over; a layout that leaves less room holds it to what there is.
+  // over; a layout that leaves less room holds it to what there is, which is
+  // what everything reading it takes.
   const [lift, setLift] = React.useState(0);
   React.useEffect(() => {
     setLift(0);
   }, [reading]);
-  React.useEffect(() => {
-    setLift((held) => Math.min(held, placement.raised));
-  }, [placement.raised]);
   const lifted = Math.min(lift, placement.raised);
 
   const aside = React.useRef<HTMLElement>(null);
