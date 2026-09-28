@@ -69,9 +69,6 @@ const declarationSchema = z.object({
   // cap at all, so it widens the limit the yaml meant to state; a fraction is
   // read as a cap and enforced, and there is no half a piece of material.
   max_items: z.number().int().positive().optional(),
-  max_items_when_present: z
-    .record(z.string(), z.number().int().positive())
-    .optional(),
 });
 
 /**
@@ -91,7 +88,6 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "note",
   "type",
   "max_items",
-  "max_items_when_present",
   "description",
   "default",
   "values",
@@ -210,31 +206,8 @@ function faultsOn(
   // while the cap check and the transport iterate it. A declaration carrying a
   // cap without the shape is read two ways at once, and the run it describes
   // is refused by one reader and iterated by the other.
-  const capped =
-    declared.max_items !== undefined || declared.max_items_when_present !== undefined;
-  if (capped && declared.type !== "list" && declared.type !== "items") {
-    const which = declared.max_items !== undefined ? "max_items" : "max_items_when_present";
-    faults.push(`${which} counts entries, so this has to declare type: list or items`);
-  }
-
-  // The conditional cap states a LOWER number that takes over while another
-  // param is filled, so it needs one to be lower than. The reader takes a
-  // param with no `max_items` as uncapped and stops there, which makes a
-  // declaration that states a cap and gets none.
-  if (declared.max_items_when_present !== undefined && declared.max_items === undefined) {
-    faults.push("max_items_when_present narrows a cap, so this has to declare max_items");
-  }
-
-  // Those keys name params of the same model, read by looking each one up
-  // among the submitted values. A name from some other vendor's spelling is
-  // never found, so the narrowing silently never applies and the wider cap
-  // stands — the same failure the gate above is checked for.
-  for (const named of Object.keys(declared.max_items_when_present ?? {})) {
-    if (!names.has(named)) {
-      faults.push(
-        `max_items_when_present names "${named}", which this model does not declare`,
-      );
-    }
+  if (declared.max_items !== undefined && declared.type !== "list" && declared.type !== "items") {
+    faults.push("max_items counts entries, so this has to declare type: list or items");
   }
 
   return faults;

@@ -62,11 +62,10 @@ export interface FullParamSpec {
   min?: number;
   max?: number;
   max_items?: number;
-  /**
-   * Caps that replace `max_items` while another param carries a value (#1928).
-   * Projected onto the wire `ParamDescriptor` unchanged.
-   */
-  max_items_when_present?: Record<string, number>;
+  /** The upstream field this param is sent as, when it is not the param's name. */
+  upstream?: string;
+  /** How the param's value reaches the run. */
+  fill?: string;
   /**
    * Names the picker that fills this param, for params whose value domain
    * lives upstream instead of in `values` (#1960). Projected onto the wire
