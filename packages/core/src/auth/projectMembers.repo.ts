@@ -18,7 +18,7 @@ import { and, eq, isNull, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import type { DbTx } from "@core/db/client.js";
 import { projectMembers, projects, studioMembers } from "@core/db/schema.js";
-import type { ProjectMember, ProjectRole } from "@breatic/shared";
+import type { DecisionGrantRole, ProjectMember, ProjectRole } from "@breatic/shared";
 
 /**
  * Map a raw `project_members` drizzle row to the shared domain entity.
@@ -354,7 +354,7 @@ export async function upsertMember(
 export async function addUnlessActive(
   projectId: string,
   userId: string,
-  role: "viewer" | "editor",
+  role: DecisionGrantRole,
   addedBy: string,
   tx: DbTx,
 ): Promise<boolean> {

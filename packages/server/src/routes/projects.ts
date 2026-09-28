@@ -206,9 +206,8 @@ projects.get("/:id/credits", async (c) => {
  * `POST /projects/:id/opened` — record that the caller just opened this
  * project, floating it to the top of their cross-studio "Recent" feed.
  *
- * A dedicated write endpoint: the `GET /:id` open path stays side-effect-light
- * (it only materializes the baseline membership), while recording an open is
- * an explicit write the project page fires on mount. NOT behind
+ * A dedicated write endpoint: the `GET /:id` open path writes nothing, while
+ * recording an open is an explicit write the project page fires on mount. NOT behind
  * `requireRoleOnParam` — the service access-gates it (`assertAccess('viewer')`,
  * collapsing no-access to a `404` so existence is never leaked) and UPSERTs
  * idempotently, so re-opening just bumps the timestamp in place.

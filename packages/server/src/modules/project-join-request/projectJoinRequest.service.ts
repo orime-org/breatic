@@ -36,13 +36,13 @@ import { db, projectMembersRepo, ConflictError, NotFoundError, getLimitsForStudi
 import type { DbTx } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
+import type { DecisionGrantRole } from "@breatic/shared";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import * as requestsRepo from "@server/modules/project-join-request/projectJoinRequests.repo.js";
-import type { GrantableRole } from "@server/modules/project-join-request/projectJoinRequests.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildProjectJoinRequestMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";
@@ -52,7 +52,6 @@ import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { isRefused, refusalError } from "@server/utils/deferred-decision.js";
 import type { Refused } from "@server/utils/deferred-decision.js";
 
-export type { GrantableRole };
 
 /** What the join dialog needs about a project the caller cannot enter. */
 export interface MyJoinRequestView {
@@ -309,7 +308,7 @@ async function expire(req: OpenRequest, tx: DbTx): Promise<void> {
 export async function approve(input: {
   requestId: string;
   ownerUserId: string;
-  role: GrantableRole;
+  role: DecisionGrantRole;
 }): Promise<void> {
   const deciderName = await displayName(input.ownerUserId);
   const outcome = await db.transaction<Refused | { projectId: string; requesterUserId: string } | { full: number }>(

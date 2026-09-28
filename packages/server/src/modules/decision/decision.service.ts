@@ -211,13 +211,13 @@ async function readDisplayName(userId: string): Promise<string> {
  * Whether an invitation has anything left to give its recipient.
  *
  * Holding a row is not the question — holding AT LEAST what is on offer is.
- * Opening a `studio`-visible project from the studio list materializes a
- * baseline `viewer` row (`project.service.ts:loadForViewer`), so a recipient who
- * merely looked at the project before answering would otherwise have their
- * pending EDITOR invite ruled moot: they never got what was offered, they
- * cannot answer, and re-inviting is refused as already-a-member. Accepting
- * upserts the row (`projectInvite.confirmInvite`), so a lower-ranked member
- * answering yes is exactly the upgrade the invite was for.
+ * A recipient can already be a lower-ranked member when an EDITOR invite
+ * arrives — a viewer row left from the time opening a project joined people
+ * automatically, or a viewer let in through a join request. Ruling their
+ * invite moot would leave them without what was offered, unable to answer,
+ * and refused as already-a-member when re-invited. Accepting upserts the row
+ * (`projectInvite.confirmInvite`), so a lower-ranked member answering yes is
+ * exactly the upgrade the invite was for.
  * @param container - Which studio or project.
  * @param userId - The recipient.
  * @param offeredRole - The role the invite would grant.

@@ -23,6 +23,7 @@
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, projectJoinRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import type { DecisionGrantRole } from "@breatic/shared";
 import { mintShareToken } from "@server/utils/share-token.js";
 
 /** Where a request sits in its lifecycle. */
@@ -32,9 +33,6 @@ export type ProjectJoinStatus =
   | "rejected"
   | "expired"
   | "cancelled";
-
-/** The two roles an owner can grant when letting someone in. */
-export type GrantableRole = "viewer" | "editor";
 
 /** A locked request, with what the decision path needs to judge it. */
 export interface LockedJoinRequest {
@@ -195,7 +193,7 @@ export async function lockRequest(
 export async function settleIfPending(
   id: string,
   settlement:
-    | { status: "approved"; decidedByUserId: string; grantedRole: GrantableRole }
+    | { status: "approved"; decidedByUserId: string; grantedRole: DecisionGrantRole }
     | { status: "rejected"; decidedByUserId: string }
     | { status: "expired" },
   tx: DbTx,

@@ -24,7 +24,7 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { DbTx } from "@server/modules/notification/notification.repo.js";
-import type { BillingPeriod, NotificationEntity } from "@breatic/shared";
+import type { BillingPeriod, DecisionGrantRole, NotificationEntity } from "@breatic/shared";
 
 export type { NotificationEntity };
 
@@ -769,7 +769,7 @@ export interface ProjectJoinDecisionPayload {
   projectId: string;
   projectName: string;
   /** The role granted; present on approval only. */
-  grantedRole?: "viewer" | "editor";
+  grantedRole?: DecisionGrantRole;
 }
 
 /**
