@@ -141,7 +141,10 @@ async function fillIn(picked: Accepted, tray: Tray, projectId: string, deps: Att
       if (url === undefined) throw new Error('upload answered no address');
       chip = { ...base, data_snapshot: { url } };
     } else {
-      chip = { ...base, data_snapshot: { text: await deps.extract(file) } };
+      const text = await deps.extract(file);
+      // A scanned pdf has no text layer: nothing to hand the agent.
+      if (text.trim() === '') throw new Error('document holds no words');
+      chip = { ...base, data_snapshot: { text } };
     }
   } catch {
     // The item says it failed, which is what the reader acts on: take it out
