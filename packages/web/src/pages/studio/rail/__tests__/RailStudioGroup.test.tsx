@@ -73,46 +73,45 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     expect(screen.getByText('还没加入任何 studio')).toBeInTheDocument();
   });
 
-  // ---- The collapse contract (user 2026-08-10) --------------------------
-  // Collapsing answers to the chevron alone. The title is a label, not a
-  // control: a whole row that lights up on hover reads as "this row goes
-  // somewhere", and this one only opens and closes.
+  // ---- The collapse contract (user 2026-09-28) --------------------------
+  // The whole heading — title text and chevron — is one control: clicking the
+  // words opens and closes the group just as the chevron does. It does not
+  // fill on hover, so it does not read as a row that navigates somewhere.
 
-  it('does NOT collapse when the group title text is clicked', () => {
+  it('collapses and expands when the group title text is clicked', () => {
     renderGroup();
 
     fireEvent.click(screen.getByText('My Studios'));
+    expect(screen.queryByRole('link', { name: /Acme/ })).toBeNull();
 
-    // Still expanded: the studios are all still there.
+    fireEvent.click(screen.getByText('My Studios'));
     expect(screen.getByRole('link', { name: /Acme/ })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Nova Lab/ })).toBeInTheDocument();
   });
 
-  it('collapses and expands when the chevron button is clicked', () => {
+  it('collapses and expands when the chevron is clicked', () => {
     renderGroup();
     const toggle = screen.getByRole('button', { name: 'My Studios' });
+    // The glyph is swapped on every toggle, so it is found afresh each time.
+    const chevron = (): Element => {
+      const svg = toggle.querySelector('svg');
+      expect(svg).not.toBeNull();
+      return svg!;
+    };
 
-    fireEvent.click(toggle);
+    fireEvent.click(chevron());
     expect(screen.queryByRole('link', { name: /Acme/ })).toBeNull();
     expect(screen.getByText('My Studios')).toBeInTheDocument();
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
-    fireEvent.click(toggle);
+    fireEvent.click(chevron());
     expect(screen.getByRole('link', { name: /Acme/ })).toBeInTheDocument();
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('names the chevron button after the group it controls, and points at the list', () => {
+  it('names the heading control by its own title, and points at the list', () => {
     const { container } = renderGroup();
     const toggle = screen.getByRole('button', { name: 'My Studios' });
-
-    // The accessible name comes from the title element, so there is one
-    // translated string and no second copy to keep in sync.
-    const labelledBy = toggle.getAttribute('aria-labelledby');
-    expect(labelledBy).toBeTruthy();
-    expect(container.querySelector(`#${CSS.escape(labelledBy!)}`)).toHaveTextContent(
-      'My Studios',
-    );
+    expect(toggle).toHaveTextContent('My Studios');
 
     const controls = toggle.getAttribute('aria-controls');
     expect(controls).toBeTruthy();
@@ -137,26 +136,11 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     expect(toggle).not.toHaveAttribute('aria-controls');
   });
 
-  it('gives the chevron a 24px hit area of its own', () => {
+  it('lights its words under the pointer without filling the row', () => {
     renderGroup();
     const toggle = screen.getByRole('button', { name: 'My Studios' });
-    // --btn-compact, the smallest step on the chrome ladder.
-    expect(toggle.className).toMatch(/(^|\s)h-6(\s|$)/);
-    expect(toggle.className).toMatch(/(^|\s)w-6(\s|$)/);
-  });
-
-  it('takes its chrome look from the variant that already describes it', () => {
-    // An icon-only chrome button — muted at rest, accent fill and full
-    // foreground under the pointer — is what `chrome-ghost` is. Spelling those
-    // classes out by hand produces a copy of a variant that already exists,
-    // and of the fourteen classes such a copy needs, seven come from the
-    // `Button` base unconditionally and three more are exactly what
-    // `chrome-ghost` says — so most of the copy was inert as well.
-    renderGroup();
-    const toggle = screen.getByRole('button', { name: 'My Studios' });
-    expect(toggle.className).toContain('text-muted-foreground');
-    expect(toggle.className).toContain('hover:bg-accent');
     expect(toggle.className).toContain('hover:text-foreground');
+    expect(toggle.className).not.toMatch(/hover:bg-/);
     expect(toggle.className).toContain('focus-visible:ring-1');
   });
 
@@ -225,8 +209,8 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     // gap only decides where the title starts truncating — but it is on the
     // ratified demo at --space-2, and 8 is a different step of the same grid.
     renderGroup();
-    const head = screen.getByText('My Studios').closest('div');
-    expect(head?.className).toMatch(/(^|\s)gap-1(\s|$)/);
+    const head = screen.getByRole('button', { name: 'My Studios' });
+    expect(head.className).toMatch(/(^|\s)gap-1(\s|$)/);
   });
 
   it('renders the group header as a quiet label, not a full-size row', () => {
