@@ -51,6 +51,12 @@ export interface HoverPreviewProps {
    * screen centre, since the activity Sheet hugs the right edge) and may flip.
    */
   followCanvas?: boolean;
+  /**
+   * A preview of the caller's own, for a form this component does not draw
+   * (the chat's attached cards list canvas nodes as rows). When present it is
+   * the card's content and the kind-driven forms are not used.
+   */
+  body?: React.ReactNode;
   /** The trigger element (the small thumbnail / chip). */
   children: React.ReactNode;
 }
@@ -80,6 +86,7 @@ export interface HoverPreviewProps {
  * @param root0.emptyHint - Hint shown when the source is empty.
  * @param root0.resolveOnOpen - Live text/hint resolver read at hover-open (overrides text/emptyHint).
  * @param root0.followCanvas - Follow the ReactFlow viewport while open (canvas surfaces).
+ * @param root0.body - A preview of the caller's own, used in place of the kind's form.
  * @param root0.children - The trigger element (thumbnail / chip).
  * @returns The trigger with (when it has content) a hover preview.
  */
@@ -92,6 +99,7 @@ export function HoverPreview({
   emptyHint,
   resolveOnOpen,
   followCanvas = false,
+  body,
   children,
 }: HoverPreviewProps): React.JSX.Element {
   // Live-at-open cache (decision C, the prompt `@` chip's live projection):
@@ -116,11 +124,13 @@ export function HoverPreview({
   // because a caller whose content comes and goes (a generate slot being filled
   // and cleared) would otherwise have its trigger unmounted and remounted on
   // every flip — dropping keyboard focus to <body> (#1946).
-  const hasAnything = Boolean(src || text || emptyHint || resolveOnOpen);
+  const hasAnything = Boolean(body || src || text || emptyHint || resolveOnOpen);
 
   const isMedia = kind === 'audio' || kind === 'video';
   let content: React.ReactNode = null;
-  if (isMedia && src) {
+  if (body) {
+    content = body;
+  } else if (isMedia && src) {
     content = (
       <div className='w-[220px] max-w-[220px]'>
         <MediaPlayer

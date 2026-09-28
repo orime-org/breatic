@@ -7,6 +7,9 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { ChatAttachedChip } from '@breatic/shared';
+import { previewOf, type PreviewRow } from '@web/pages/project/chat/attachment-preview';
+import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
+import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { TrayFailure, TrayStatus } from '@web/stores/chat-attachments';
 
 /**
@@ -14,7 +17,7 @@ import type { TrayFailure, TrayStatus } from '@web/stores/chat-attachments';
  * @param chip - What is sent for the item, once it has it.
  * @returns The count for a piece of the canvas, or undefined for a file.
  */
-export function nodeCountOf(chip: ChatAttachedChip | undefined): number | undefined {
+function nodeCountOf(chip: ChatAttachedChip | undefined): number | undefined {
   const nodes = chip?.type === 'canvas' ? chip.data_snapshot.nodes : undefined;
   return Array.isArray(nodes) ? nodes.length : undefined;
 }
@@ -26,8 +29,8 @@ interface AttachmentChipProps {
   type: ChatAttachedChip['type'];
   /** What the reader sees it called; empty for several canvas nodes. */
   name: string;
-  /** How many canvas nodes it holds, counted when it has no name. */
-  count?: number;
+  /** What is sent for the item, once it has it: previewed on hover. */
+  chip?: ChatAttachedChip;
   /** Where it stands; a sent item is always ready. */
   status?: TrayStatus;
   /** Why it failed, when it has. */
@@ -45,7 +48,7 @@ interface AttachmentChipProps {
  * @param root0.id - Which item this is.
  * @param root0.type - What kind of thing it is.
  * @param root0.name - What the reader sees it called.
- * @param root0.count - How many canvas nodes it holds.
+ * @param root0.chip - What is sent for the item, once it has it.
  * @param root0.status - Where it stands.
  * @param root0.failure - Why it failed, when it has.
  * @param root0.onRemove - Takes an item out by id, when it can still be taken out.
@@ -57,7 +60,7 @@ function AttachmentChipInner({
   id,
   type,
   name,
-  count,
+  chip,
   status = 'ready',
   failure,
   onRemove,
@@ -65,7 +68,9 @@ function AttachmentChipInner({
   testId,
 }: AttachmentChipProps): React.JSX.Element {
   const t = useTranslation();
-  return (
+  const preview = React.useMemo(() => previewOf(chip), [chip]);
+  const count = nodeCountOf(chip);
+  const card = (
     <span
       role='listitem'
       data-status={status}
@@ -110,6 +115,56 @@ function AttachmentChipInner({
         </Button>
       ) : null}
     </span>
+  );
+  // Wrapped whether or not there is anything to show yet, so a card whose
+  // upload finishes keeps its element -- and the focus on its remove button.
+  return (
+    <HoverPreview
+      kind={preview && preview.kind !== 'nodes' ? preview.kind : 'image'}
+      src={preview && 'src' in preview ? preview.src : undefined}
+      poster={preview?.kind === 'video' ? preview.poster : undefined}
+      text={preview?.kind === 'text' ? preview.text : undefined}
+      body={preview?.kind === 'nodes' ? <NodeRows rows={preview.rows} more={preview.more} /> : undefined}
+      alt={name}
+    >
+      {card}
+    </HoverPreview>
+  );
+}
+
+/**
+ * The nodes a canvas card carries, one row each: a still or the kind's icon,
+ * then the name. Laid out like the generate panel's reference rail.
+ * @param root0 - The component props.
+ * @param root0.rows - The rows to list.
+ * @param root0.more - How many nodes are left unlisted.
+ * @returns The list.
+ */
+function NodeRows({ rows, more }: { rows: PreviewRow[]; more: number }): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <div className='flex w-[220px] flex-col gap-1'>
+      {rows.map((row) => {
+        const Icon = getNodeIcon(row.kind);
+        return (
+          <div key={row.id} data-testid='attachment-preview-row' className='flex items-center gap-1.5'>
+            {row.thumbnail ? (
+              <img src={row.thumbnail} alt='' className='h-6 w-6 shrink-0 rounded object-cover' />
+            ) : (
+              <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground'>
+                <Icon className='h-3.5 w-3.5' aria-hidden='true' />
+              </span>
+            )}
+            <span className='truncate text-xs text-popover-foreground'>{row.name}</span>
+          </div>
+        );
+      })}
+      {more > 0 ? (
+        <span data-testid='attachment-preview-more' className='text-xs text-muted-foreground'>
+          {t('chat.attachment.more', { count: more })}
+        </span>
+      ) : null}
+    </div>
   );
 }
 

@@ -287,7 +287,8 @@
     "thinkingFor": "Thought for {m, plural, =0 {} other {# min }}{s, number} s",
     "attachment": {
       "kind": "{kind, select, canvas {Canvas} image {Image} video {Video} audio {Audio} text {Text} other {Item}}",
-      "nodes": "{count, plural, one {# node} other {# nodes}}"
+      "nodes": "{count, plural, one {# node} other {# nodes}}",
+      "more": "{count} more"
     }
   },
   "canvas": {

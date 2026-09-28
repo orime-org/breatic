@@ -100,7 +100,25 @@ describe('previewOf', () => {
   });
 
   it('names an unnamed node by its kind', () => {
-    const preview = previewOf(canvas([{ ...node('a', 'image'), data: { kind: 'image' } }, node('b', 'text')]));
+    const unnamed = { ...node('a', 'image'), data: { kind: 'image', name: '' } };
+    const preview = previewOf(canvas([unnamed, node('b', 'text')]));
     expect(preview?.kind === 'nodes' && preview.rows[0]?.name).toBe('image');
+  });
+
+  it('lists nodes a stored message carries without their data', () => {
+    const chip: ChatAttachedChip = {
+      id: 'c',
+      type: 'canvas',
+      name: '',
+      data_snapshot: { nodes: [{ id: 'a' }, { id: 'b' }, null, 'x'], edges: [] },
+    };
+    expect(previewOf(chip)).toEqual({
+      kind: 'nodes',
+      rows: [
+        { id: 'a', kind: '', name: '' },
+        { id: 'b', kind: '', name: '' },
+      ],
+      more: 0,
+    });
   });
 });

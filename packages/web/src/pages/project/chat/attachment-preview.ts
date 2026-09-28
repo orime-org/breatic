@@ -22,10 +22,11 @@ export type AttachmentPreview =
   | { kind: 'text'; text: string }
   | { kind: 'nodes'; rows: PreviewRow[]; more: number };
 
+/** A node as the snapshot holds it; stored messages are checked only as records. */
 interface SnapshotNode {
-  id: string;
-  type: string;
-  data: { name?: unknown; content?: unknown; coverUrl?: unknown };
+  id?: unknown;
+  type?: unknown;
+  data?: { name?: unknown; content?: unknown; coverUrl?: unknown };
 }
 
 /**
@@ -43,14 +44,14 @@ function str(value: unknown): string | undefined {
  * @returns Its preview, or null for a kind that is listed as a row.
  */
 function nodePreview(node: SnapshotNode): AttachmentPreview | null {
-  const content = str(node.data.content);
+  const content = str(node.data?.content);
   if (!content) return null;
   switch (node.type) {
     case 'image':
     case 'audio':
       return { kind: node.type, src: content };
     case 'video': {
-      const poster = str(node.data.coverUrl);
+      const poster = str(node.data?.coverUrl);
       return poster ? { kind: 'video', src: content, poster } : { kind: 'video', src: content };
     }
     case 'text':
@@ -63,12 +64,14 @@ function nodePreview(node: SnapshotNode): AttachmentPreview | null {
 /**
  * A node as a row: its name and, for an image or a video, its still.
  * @param node - The node.
+ * @param index - Its place in the list, its key when it carries no id.
  * @returns The row.
  */
-function rowOf(node: SnapshotNode): PreviewRow {
+function rowOf(node: SnapshotNode, index: number): PreviewRow {
+  const kind = str(node.type) ?? '';
   const thumbnail =
-    node.type === 'image' ? str(node.data.content) : node.type === 'video' ? str(node.data.coverUrl) : undefined;
-  const row: PreviewRow = { id: node.id, kind: node.type, name: str(node.data.name) ?? node.type };
+    kind === 'image' ? str(node.data?.content) : kind === 'video' ? str(node.data?.coverUrl) : undefined;
+  const row: PreviewRow = { id: str(node.id) ?? String(index), kind, name: str(node.data?.name) ?? kind };
   return thumbnail ? { ...row, thumbnail } : row;
 }
 
@@ -94,7 +97,9 @@ export function previewOf(chip: ChatAttachedChip | undefined): AttachmentPreview
       return text ? { kind: 'text', text } : null;
     }
     case 'canvas': {
-      const nodes = Array.isArray(snapshot.nodes) ? (snapshot.nodes as SnapshotNode[]) : [];
+      const nodes = Array.isArray(snapshot.nodes)
+        ? (snapshot.nodes as unknown[]).filter((n): n is SnapshotNode => typeof n === 'object' && n !== null)
+        : [];
       if (nodes.length === 0) return null;
       const own = nodes.length === 1 && nodes[0] ? nodePreview(nodes[0]) : null;
       if (own) return own;

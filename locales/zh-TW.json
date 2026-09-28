@@ -287,7 +287,8 @@
     "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒",
     "attachment": {
       "kind": "{kind, select, canvas {畫布} image {圖片} video {影片} audio {音訊} text {文字} other {內容}}",
-      "nodes": "{count} 個節點"
+      "nodes": "{count} 個節點",
+      "more": "還有 {count} 個"
     }
   },
   "canvas": {

@@ -240,3 +240,18 @@ describe('HoverPreview — its shape does not depend on having content', () => {
     expect(document.activeElement).toBe(before);
   });
 });
+
+describe('HoverPreview — a body of the caller\'s own', () => {
+  it('opens on the body it is handed, whatever the kind says', () => {
+    vi.useFakeTimers();
+    render(
+      <HoverPreview kind='image' body={<p data-testid='own-body'>rows</p>}>
+        <span data-testid='trigger'>chip</span>
+      </HoverPreview>,
+    );
+    openCard(screen.getByTestId('trigger'));
+    const content = screen.getByTestId('hover-preview-content');
+    expect(content.querySelector('[data-testid="own-body"]')).not.toBeNull();
+    expect(content.querySelector('img')).toBeNull();
+  });
+});

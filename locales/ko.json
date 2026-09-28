@@ -287,7 +287,8 @@
     "thinkingFor": "{m, plural, =0 {} other {# 분 }}{s, number}초 동안 생각했습니다",
     "attachment": {
       "kind": "{kind, select, canvas {캔버스} image {이미지} video {동영상} audio {오디오} text {텍스트} other {항목}}",
-      "nodes": "노드 {count}개"
+      "nodes": "노드 {count}개",
+      "more": "외 {count}개"
     }
   },
   "canvas": {

@@ -75,4 +75,25 @@ describe('AttachmentChip hover preview', () => {
     hover(screen.getByTestId('card'));
     expect(screen.queryByTestId('hover-preview-content')).not.toBeInTheDocument();
   });
+
+  it('keeps the same card, and focus on its remove button, when its upload finishes', () => {
+    const chip: ChatAttachedChip = { id: 'f', type: 'image', name: 'a.png', data_snapshot: { url: 'https://a/i.png' } };
+    const view = (ready: boolean): React.JSX.Element => (
+      <AttachmentChip
+        id='f'
+        type='image'
+        name='a.png'
+        status={ready ? 'ready' : 'uploading'}
+        chip={ready ? chip : undefined}
+        onRemove={() => undefined}
+        testId='card'
+      />
+    );
+    const { rerender } = render(view(false));
+    const button = screen.getByRole('button');
+    button.focus();
+    rerender(view(true));
+    expect(screen.getByRole('button')).toBe(button);
+    expect(document.activeElement).toBe(button);
+  });
 });
