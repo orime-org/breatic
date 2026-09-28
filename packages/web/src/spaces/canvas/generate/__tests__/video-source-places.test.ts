@@ -15,50 +15,52 @@ import { describe, it, expect } from 'vitest';
 
 import {
   modelTakesReferences,
-  videoSourcePlaces,
+  videoMissing,
 } from '@web/spaces/canvas/generate/video-slots';
 
 /**
  * A video model declaring the given params.
  * @param params - What it declares.
+ * @param sourceGroups - Its "any one of these" groups, if any.
  * @returns The catalog entry.
  */
-function model(params: Record<string, ParamDescriptor>): ModelEntry {
+function model(
+  params: Record<string, ParamDescriptor>,
+  sourceGroups?: ModelEntry['source_groups'],
+): ModelEntry {
   return {
     name: 'a-model',
     display_name: 'A Model',
     modality: 'video',
-    mode: ['ref', 'i2v'],
+    mode: ['ref', 'i2v', 'first_last'],
     description: '',
     guide: '',
     tier: 'optional',
-    cost_per_call: 1,
     generation_time: 10,
     takes_prompt: true,
     params,
     providers: [],
-    sourcesByMode: { ref: ['image'], i2v: ['image'] },
-    sourceRuleByMode: { ref: 'all_of', i2v: 'all_of' },
+    ...(sourceGroups ? { source_groups: sourceGroups } : {}),
   };
 }
 
 const POOL: ParamDescriptor = {
   description: '',
   default: [],
+  type: 'list',
   fill: 'pool',
   accepts: 'image',
   modes: ['ref'],
 };
 
-describe('where a video run takes material', () => {
+describe('what a video run still needs', () => {
   it('asks for a slot the model does not mark optional', () => {
     const strict = model({
       images: POOL,
       video: { description: '', default: null, fill: 'canvas', accepts: 'video', modes: ['ref'] },
     });
 
-    expect(videoSourcePlaces(strict, 'ref', ['referenceVideo'], {}, ['https://a']))
-      .toEqual({ requiredSlots: ['referenceVideo', 'images'], filledSlots: ['images'] });
+    expect(videoMissing(strict, 'ref', ['referenceVideo'], {}, ['https://a'])).toEqual([['video']]);
   });
 
   it('leaves out a slot the model does mark optional', () => {
@@ -74,18 +76,7 @@ describe('where a video run takes material', () => {
       },
     });
 
-    expect(videoSourcePlaces(lenient, 'ref', ['referenceVideo'], {}, ['https://a']))
-      .toEqual({ requiredSlots: ['images'], filledSlots: ['images'] });
-  });
-
-  it('leaves out the pool the model marks optional', () => {
-    const lenient = model({
-      images: { ...POOL, optional: true },
-      video: { description: '', default: null, fill: 'canvas', accepts: 'video', modes: ['ref'] },
-    });
-
-    expect(videoSourcePlaces(lenient, 'ref', ['referenceVideo'], {}, []))
-      .toEqual({ requiredSlots: ['referenceVideo'], filledSlots: [] });
+    expect(videoMissing(lenient, 'ref', ['referenceVideo'], {}, [])).toEqual([['images']]);
   });
 
   it('leaves out a slot this mode does not fill', () => {
@@ -93,19 +84,43 @@ describe('where a video run takes material', () => {
       image: { description: '', default: null, fill: 'canvas', accepts: 'image', modes: ['i2v'] },
     });
 
-    expect(videoSourcePlaces(framed, 'ref', ['firstFrame'], {}, []).requiredSlots).toEqual([]);
-    expect(videoSourcePlaces(framed, 'i2v', ['firstFrame'], {}, []).requiredSlots)
-      .toEqual(['firstFrame']);
+    expect(videoMissing(framed, 'ref', ['firstFrame'], {}, [])).toEqual([]);
+    expect(videoMissing(framed, 'i2v', ['firstFrame'], {}, [])).toEqual([['image']]);
   });
 
-  it('reports a filled slot as filled', () => {
+  it('counts a filled slot as filled', () => {
     const framed = model({
       image: { description: '', default: null, fill: 'canvas', accepts: 'image' },
     });
 
-    expect(
-      videoSourcePlaces(framed, 'i2v', ['firstFrame'], { firstFrame: 'https://a.png' }, []),
-    ).toEqual({ requiredSlots: ['firstFrame'], filledSlots: ['firstFrame'] });
+    expect(videoMissing(framed, 'i2v', ['firstFrame'], { firstFrame: 'https://a.png' }, []))
+      .toEqual([]);
+  });
+
+  it('names the empty places in the order the toolbar offers them', () => {
+    // A model may declare its last frame before its first; the reader is told
+    // about the first place on the toolbar that is still empty.
+    const frames = model({
+      end_image: { description: '', default: null, fill: 'canvas', accepts: 'image' },
+      image: { description: '', default: null, fill: 'canvas', accepts: 'image' },
+    });
+
+    expect(videoMissing(frames, 'first_last', ['firstFrame', 'endFrame'], {}, []))
+      .toEqual([['image'], ['end_image']]);
+  });
+
+  it('asks for any one of a group the model declares for the mode', () => {
+    const grouped = model(
+      { images: { ...POOL, optional: true } },
+      [{ mode: 'ref', any_of: ['images', 'videos'] }],
+    );
+
+    expect(videoMissing(grouped, 'ref', [], {}, [])).toEqual([['images', 'videos']]);
+    expect(videoMissing(grouped, 'ref', [], {}, ['https://a'])).toEqual([]);
+  });
+
+  it('needs nothing when no model resolves', () => {
+    expect(videoMissing(undefined, 'ref', ['referenceVideo'], {}, [])).toEqual([]);
   });
 
   it('says the pool feeds only the modes the model gives it', () => {
