@@ -115,6 +115,12 @@ vi.mock("@server/agent/context.js", () => ({
   buildSystemPrompt: () => "系统提示词",
 }));
 
+/** The part of the model call these cases read. */
+interface SentCall {
+  providerOptions?: Record<string, Record<string, unknown>>;
+  temperature?: number;
+}
+
 /**
  * Run one turn and report the provider options the model call was given.
  * @param modelId - What the turn runs on.
@@ -127,6 +133,21 @@ async function providerOptionsFor(
   anthropicKey?: string,
   googleKey?: string,
 ): Promise<Record<string, Record<string, unknown>> | undefined> {
+  return (await callFor(modelId, anthropicKey, googleKey))?.providerOptions;
+}
+
+/**
+ * Run one turn and report the call the model was given.
+ * @param modelId - What the turn runs on.
+ * @param anthropicKey - What this deployment holds for Anthropic, if anything.
+ * @param googleKey - And for Google.
+ * @returns The first call the model received, or undefined when there was none.
+ */
+async function callFor(
+  modelId: string,
+  anthropicKey?: string,
+  googleKey?: string,
+): Promise<SentCall | undefined> {
   runningOn.modelId = modelId;
   runningOn.anthropicKey = anthropicKey;
   runningOn.googleKey = googleKey;
@@ -141,8 +162,7 @@ async function providerOptionsFor(
     }
   });
 
-  const called = runningOn.model?.doStreamCalls[0];
-  return called?.providerOptions;
+  return runningOn.model?.doStreamCalls[0] as SentCall | undefined;
 }
 
 describe("asking DeepSeek for its working", () => {
@@ -212,3 +232,22 @@ describe("asking Gemini for its working", () => {
   });
 });
 
+
+describe("a turn that asks for the model's working", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // With reasoning on, DeepSeek and Anthropic drop a temperature and say so,
+  // OpenAI's reasoning models reject it, and Google asks that Gemini 3 be left
+  // at its default of 1.0. There is no route where one set here takes effect.
+  it.each([
+    ["deepseek/deepseek-v4-pro", undefined, undefined],
+    ["anthropic/claude-sonnet-4-6", "sk-ant-test", undefined],
+    ["google/gemini-2.5-pro", undefined, "goog-test"],
+  ])("leaves the temperature to %s", async (modelId, anthropicKey, googleKey) => {
+    const call = await callFor(modelId, anthropicKey, googleKey);
+    expect(call).toBeDefined();
+    expect(call?.temperature).toBeUndefined();
+  });
+});
