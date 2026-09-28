@@ -58,8 +58,9 @@ const UPLOADS = {
 } as const;
 
 /**
- * How the upstream says a cloned id it once gave is gone, by clone kind
- * (2026-09-28 probe, engineering/audit/2026-09-28-2156-helper-endpoint-probe-audit.md).
+ * How the upstream says a cloned id it once gave is gone, by clone kind —
+ * the error text a call with an unknown voice id returned when probed on
+ * 2026-09-28.
  */
 const GONE: Readonly<Partial<Record<CloneKind, RegExp>>> = {
   voice: /Voice ID does not exist/,
