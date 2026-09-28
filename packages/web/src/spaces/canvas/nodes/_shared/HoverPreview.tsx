@@ -57,6 +57,12 @@ export interface HoverPreviewProps {
    * the card's content and the kind-driven forms are not used.
    */
   body?: React.ReactNode;
+  /**
+   * Which side of the trigger the card opens on, for a surface whose free
+   * room is known (the chat's cards sit above its input box, so they open
+   * upward). Radix still flips it when that side has no room.
+   */
+  side?: 'top' | 'right' | 'bottom' | 'left';
   /** The trigger element (the small thumbnail / chip). */
   children: React.ReactNode;
 }
@@ -87,6 +93,7 @@ export interface HoverPreviewProps {
  * @param root0.resolveOnOpen - Live text/hint resolver read at hover-open (overrides text/emptyHint).
  * @param root0.followCanvas - Follow the ReactFlow viewport while open (canvas surfaces).
  * @param root0.body - A preview of the caller's own, used in place of the kind's form.
+ * @param root0.side - The side the card opens on, in place of the default.
  * @param root0.children - The trigger element (thumbnail / chip).
  * @returns The trigger with (when it has content) a hover preview.
  */
@@ -100,6 +107,7 @@ export function HoverPreview({
   resolveOnOpen,
   followCanvas = false,
   body,
+  side,
   children,
 }: HoverPreviewProps): React.JSX.Element {
   // Live-at-open cache (decision C, the prompt `@` chip's live projection):
@@ -167,7 +175,7 @@ export function HoverPreview({
       {hasAnything ? (
         <HoverCardContent
           data-testid='hover-preview-content'
-          side={followCanvas ? 'top' : 'left'}
+          side={side ?? (followCanvas ? 'top' : 'left')}
           avoidCollisions={followCanvas ? false : undefined}
           // Re-enable clicks inside a modal Sheet: the modal sets the body to
           // `pointer-events: none`, which the portaled content inherits; an

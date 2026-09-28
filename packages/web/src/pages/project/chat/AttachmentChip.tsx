@@ -127,6 +127,7 @@ function AttachmentChipInner({
       text={preview?.kind === 'text' ? preview.text : undefined}
       body={preview?.kind === 'nodes' ? <NodeRows rows={preview.rows} more={preview.more} /> : undefined}
       alt={name}
+      side='top'
     >
       {card}
     </HoverPreview>
