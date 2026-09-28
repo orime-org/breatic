@@ -13,14 +13,12 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type { VideoSlot, VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 import {
   ParamOptionGroup,
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
-import { isPresent, paramValues } from '@breatic/shared';
+import { paramValues } from '@breatic/shared';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
@@ -39,30 +37,12 @@ interface VideoParamsPickerProps {
   model: ModelEntry;
   /**
    * What a submission through this panel would carry, keyed as the model
-   * declares it: the node's params reconciled against the model, plus the
-   * references the prompt names under the pool's own name.
+   * declares it: the node's params reconciled against the model.
    *
-   * The whole record rather than the handful this picker edits, so a condition
-   * naming any of them is answered out of the value the run carries.
+   * The whole record rather than the handful this picker edits, so a switch
+   * a control waits on is read out of the value the run carries.
    */
   params: Readonly<Record<string, unknown>>;
-  /**
-   * The source slots the active mode collects, in display order.
-   *
-   * A pick survives a mode switch, so the node holds picks for slots this
-   * mode never offers; a control waiting on one of those waits on something
-   * this run does not carry.
-   */
-  slots: readonly VideoSlot[];
-  /**
-   * What the node's slots hold (#1928).
-   *
-   * A control's condition is the model's to state (`when`, #269), and a
-   * `source` gate names a param the canvas fills rather than this popover —
-   * `keep_original_sound` waits on the reference clip that way. So the
-   * picker has to know what the slots hold to answer what it offers.
-   */
-  slotUrls: VideoSlotUrls;
   /** Called with the changed field only. */
   onChange: (partial: VideoParamsValue) => void;
 }
@@ -122,40 +102,13 @@ export const EDITED_PARAMS = Object.keys(READERS) as ReadonlyArray<
 >;
 
 /**
- * What a submission from this picker would carry, as a gate reads it.
- *
- * Two slots carry the `video` param — the driving clip an animation takes and
- * the reference clip — so only the slots this mode collects are added: a pick
- * is kept when the reader switches modes, and one left in the other mode's
- * slot is not material this run carries.
- * @param params - The node's params for this model.
- * @param slots - The source slots the active mode collects.
- * @param slotUrls - What the node's slots hold.
- * @returns The params, keyed as the model declares them.
- */
-function submitted(
-  params: Readonly<Record<string, unknown>>,
-  slots: readonly VideoSlot[],
-  slotUrls: VideoSlotUrls,
-): Record<string, unknown> {
-  const carried: Record<string, unknown> = { ...params };
-  for (const slot of slots) {
-    const url = slotUrls[slot];
-    if (url !== undefined && url !== '') carried[VIDEO_SLOTS[slot].param] = url;
-  }
-  return carried;
-}
-
-/**
  * Whether this model offers that control right now.
  *
  * Two questions with one answer, asked the same way for every control here:
  * the model has to declare the param, and whatever it says the control waits
- * on has to be satisfied. A model names that condition and which way — held
- * (`when.source`), switched on (`when.flag_on`), switched off
- * (`when.flag_off`) — and all three say the same thing to a reader, that
- * setting this is wasted until the other one is dealt with. A control
- * declaring no condition waits on nothing, which is how the catalog
+ * on has to be satisfied. The one condition a model names is a switch that
+ * has to be on (`when.flag_on`): setting this control is wasted until it is.
+ * A control declaring no condition waits on nothing, which is how the catalog
  * projection reads an absent `when` too.
  * @param model - The current model, for what its control declares.
  * @param params - What a submission would carry.
@@ -168,17 +121,13 @@ function offers(
   param: string,
 ): boolean {
   if (model.params?.[param] == null) return false;
-  const gate = model.params[param].when;
-  if (gate?.source !== undefined) return isPresent(params[gate.source]);
+  const flag = model.params[param].when?.flag_on;
+  if (flag === undefined) return true;
   // A switch the record does not carry counts as whatever the model defaults
   // it to, the same fallback the agent's proposal check makes.
-  const flag = gate?.flag_on ?? gate?.flag_off;
-  if (flag === undefined) return true;
-  const on =
-    typeof params[flag] === 'boolean'
-      ? params[flag] === true
-      : model.params[flag]?.default === true;
-  return gate?.flag_on !== undefined ? on : !on;
+  return typeof params[flag] === 'boolean'
+    ? params[flag] === true
+    : model.params[flag]?.default === true;
 }
 
 /**
@@ -223,22 +172,16 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
  *
  * A group appears only when the active model declares its param, so a model
  * that does not simply has no group for it — several video models declare no
- * resolution, and not all of them can generate sound. The keep-original-sound
- * switch takes a second condition from outside the model, which is what
- * `slotUrls` is here for.
+ * resolution, and not all of them can generate sound.
  * @param root0 - Component props.
  * @param root0.model - The current model.
  * @param root0.params - The node's params for this model.
- * @param root0.slots - The source slots the active mode collects.
- * @param root0.slotUrls - What the node's slots hold, read for that second condition.
  * @param root0.onChange - Called with the changed field.
  * @returns The video params picker.
  */
 export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   model,
   params,
-  slots,
-  slotUrls,
   onChange,
 }: VideoParamsPickerProps): React.JSX.Element {
   const t = useTranslation();
@@ -248,27 +191,23 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   useFollowCanvasViewport(open);
 
   const value = editedParams(params);
-  // Every control asks with its own name. A control naming a condition the
-  // picker does not ask about is drawn while the run throws away what the
-  // reader sets in it.
-  const carried = submitted(params, slots, slotUrls);
 
   // Ratios and resolutions are strings in the catalog; duration is a number,
   // and it keeps that type all the way to the payload (a provider given "6"
   // where it expects 6 is a rejected request).
-  const ratios: ParamOption[] = offers(model, carried, 'aspect_ratio')
+  const ratios: ParamOption[] = offers(model, params, 'aspect_ratio')
     ? paramValues(model, 'aspect_ratio').map((v) => ({ value: String(v), label: String(v) }))
     : [];
-  const resolutions: ParamOption[] = offers(model, carried, 'resolution')
+  const resolutions: ParamOption[] = offers(model, params, 'resolution')
     ? paramValues(model, 'resolution').map((v) => ({ value: String(v), label: String(v) }))
     : [];
-  const durations: ParamOption[] = offers(model, carried, 'duration')
+  const durations: ParamOption[] = offers(model, params, 'duration')
     ? paramValues(model, 'duration')
       .filter((v): v is number => typeof v === 'number')
       .map((v) => ({ value: v, label: t('canvas.generatePanel.durationSeconds', { n: v }) }))
     : [];
-  const audioSupported = offers(model, carried, 'generate_audio');
-  const keepSoundOffered = offers(model, carried, 'keep_original_sound');
+  const audioSupported = offers(model, params, 'generate_audio');
+  const keepSoundOffered = offers(model, params, 'keep_original_sound');
 
   // Every gap in this popover is the preceding block's `mb-3`, carried only
   // while something follows. A group renders nothing when the model declares

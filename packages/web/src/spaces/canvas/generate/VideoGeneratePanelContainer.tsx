@@ -68,7 +68,7 @@ import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets'
 import { slotForPurpose, type SlotSpec } from '@web/spaces/canvas/generate/slots';
 import {
   modelTakesReferences,
-  videoSourcePlaces,
+  videoMissing,
   VIDEO_SLOTS,
 } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
@@ -600,14 +600,13 @@ function VideoGeneratePanelBody({
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
       maxInputChars,
-      ...videoSourcePlaces(
+      missing: videoMissing(
         fresh.modelEntry,
         fresh.mode,
         fresh.slots,
         fresh.slotUrls,
         fresh.referenceUrls,
       ),
-      sourceRule: fresh.sourceRule,
       poolCount: fresh.referenceUrls.length,
       poolCap: fresh.maxReferences,
     });
@@ -618,7 +617,7 @@ function VideoGeneratePanelBody({
         toast.warning(t('canvas.generatePanel.errorTooManyReferences', verdict.over));
         return;
       }
-      const key = videoRefusalKey(verdict);
+      const key = videoRefusalKey(verdict, fresh.slots);
       // `max` comes from the same value the gate judged by, so the sentence
       // can never name a limit other than the one that refused.
       if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
@@ -800,14 +799,13 @@ function VideoGeneratePanelBody({
           isSubmitting,
           promptRequired: vm.promptRequired,
           maxInputChars: vm.modelEntry?.max_input_chars,
-          ...videoSourcePlaces(
+          missing: videoMissing(
             vm.modelEntry,
             vm.mode,
             vm.slots,
             vm.slotUrls,
             vm.referenceUrls,
           ),
-          sourceRule: vm.sourceRule,
           poolCount: vm.referenceUrls.length,
           poolCap: vm.maxReferences,
         })?.refusal ?? null
@@ -828,14 +826,19 @@ function VideoGeneratePanelBody({
  * the panel calls it a first frame or a driving video, where the gate knows
  * only that it is empty.
  * @param verdict - What the gate answered.
+ * @param slots - The slots the toolbar draws for this mode.
  * @returns The key, or null when the refusal says nothing.
  */
-function videoRefusalKey(verdict: ExecuteVerdict): string | null {
+function videoRefusalKey(
+  verdict: ExecuteVerdict,
+  slots: readonly VideoSlot[],
+): string | null {
   if (verdict.slot === REFERENCE_POOL_PARAM) {
     return 'canvas.generatePanel.errorNoReferenceMention';
   }
-  const spec: SlotSpec | undefined =
-    verdict.slot === undefined ? undefined : VIDEO_SLOTS[verdict.slot as VideoSlot];
+  // The gate names the param; the toolbar slot drawn for it names the place.
+  const slot = slots.find((drawn) => VIDEO_SLOTS[drawn].param === verdict.slot);
+  const spec: SlotSpec | undefined = slot === undefined ? undefined : VIDEO_SLOTS[slot];
   return spec?.errorKey ?? refusalToastKey(verdict.refusal);
 }
 

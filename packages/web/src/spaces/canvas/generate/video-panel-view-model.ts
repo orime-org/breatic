@@ -14,7 +14,7 @@
  */
 
 import { VIDEO_GENERATION_MODES } from '@breatic/shared';
-import type { FocusImage, ModelEntry, SourceRule } from '@breatic/shared';
+import type { FocusImage, ModelEntry } from '@breatic/shared';
 
 import { validFocusImages } from '@web/data/focus-images';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
@@ -124,13 +124,6 @@ export interface VideoPanelViewModel {
    * all count against the same figure.
    */
   maxReferences: number | undefined;
-  /**
-   * Whether the mode takes every place it offers material in, or any one.
-   *
-   * Off the catalog, where the mode declares it: the panel cannot derive it,
-   * since two modes offering the same number of slots can differ on it.
-   */
-  sourceRule: SourceRule;
   /**
    * The resolved catalog entry, for the declarations the panel reads off it.
    *
@@ -339,9 +332,6 @@ export function buildVideoPanelViewModel(input: {
     // Through the shared rule, so this number and the one the server
     // re-checks before enqueue are the same arithmetic (#1928).
     maxReferences: modelReferenceCap(current),
-    // Declared per mode in the catalog and precomputed onto the wire, beside
-    // the source types the same row states (#269).
-    sourceRule: current?.sourceRuleByMode[mode] ?? 'all_of',
     modelEntry: current,
 
     // The model states it (#1966). This used to be inferred from a `prompt`

@@ -18,8 +18,8 @@
  * fourth was not. A slot is one entry here plus the mode options that name it.
  */
 
-import { REFERENCE_POOL_PARAM } from '@breatic/shared';
-import type { ModelEntry } from '@breatic/shared';
+import { REFERENCE_POOL_PARAM, missingSources } from '@breatic/shared';
+import type { MissingSource, ModelEntry } from '@breatic/shared';
 import { AudioLines, Image, UserRound, Video } from 'lucide-react';
 
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
@@ -40,7 +40,7 @@ export type VideoSlot =
  * The execute gate refuses on the first empty REQUIRED slot and words the
  * refusal from that slot's own `errorKey`, so a required slot without one
  * would refuse with a blank message. Which slots are required is the model's
- * to say (#269) and is read per run in {@link videoSourcePlaces}, so any slot
+ * to say (#269) and is read per run in {@link videoMissing}, so any slot
  * here may turn out to be the one refused on: the key is required of every
  * entry rather than of a shape the registry could predict.
  */
@@ -155,41 +155,43 @@ export type VideoSlotUrls = Partial<Record<VideoSlot, string>>;
 
 
 /**
- * Where a video run takes material, in the order the toolbar offers it.
+ * What a video run still needs, in the order the toolbar offers it.
  *
  * A slot and the reference pool are two gestures for one thing, and both are
- * places the run's material comes from. Which of them this mode has, and which
- * it may leave empty, is the model's to say: one vendor's reference-to-video
- * generates without the motion clip and another may not, and the panel cannot
- * tell them apart from its own registry.
+ * places the run's material comes from. Which of them this mode needs is the
+ * model's to say, through `missingSources` — the rule the server re-checks
+ * before enqueue. The panel only reorders the answer, so the reader is told
+ * about the first empty place on the toolbar rather than the first one the
+ * model happened to declare.
  * @param model - The model the run names.
  * @param mode - The mode it is set to.
  * @param slots - The slots this panel draws for that mode, in display order.
  * @param slotUrls - What those slots hold.
  * @param references - The references the prompt names.
- * @returns The places, and which of them hold something.
+ * @returns Each unmet requirement, in toolbar order; empty when the run has
+ *   what it needs or no model resolves.
  */
-export function videoSourcePlaces(
+export function videoMissing(
   model: ModelEntry | undefined,
   mode: string,
   slots: readonly VideoSlot[],
   slotUrls: VideoSlotUrls,
   references: readonly string[],
-): { requiredSlots: string[]; filledSlots: string[] } {
-  const params = model?.params ?? {};
-  const requiredSlots: string[] = [];
-  for (const slot of slots) {
-    const declared = filledFromCanvas(params[VIDEO_SLOTS[slot].param], mode);
-    if (declared && !declared.optional) requiredSlots.push(slot);
-  }
-  const pool = filledFromCanvas(params[REFERENCE_POOL_PARAM], mode);
-  if (pool?.fill === 'pool' && !pool.optional) requiredSlots.push(REFERENCE_POOL_PARAM);
-  const filledSlots = requiredSlots.filter((place) =>
-    place === REFERENCE_POOL_PARAM
-      ? references.length > 0
-      : slotUrls[place as VideoSlot] !== undefined,
-  );
-  return { requiredSlots, filledSlots };
+): MissingSource[] {
+  if (model === undefined) return [];
+  const params: Record<string, unknown> = { [REFERENCE_POOL_PARAM]: references };
+  for (const slot of slots) params[VIDEO_SLOTS[slot].param] = slotUrls[slot];
+  const order = [...slots.map((slot) => VIDEO_SLOTS[slot].param), REFERENCE_POOL_PARAM];
+  /**
+   * Where a requirement's first param sits on the toolbar.
+   * @param need - One unmet requirement.
+   * @returns Its position; past the end for a param the toolbar does not draw.
+   */
+  const rank = (need: MissingSource): number => {
+    const at = order.indexOf(need[0] ?? '');
+    return at === -1 ? order.length : at;
+  };
+  return [...missingSources(model, mode, params)].sort((a, b) => rank(a) - rank(b));
 }
 
 /**
