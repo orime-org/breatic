@@ -102,7 +102,10 @@ describe('the comment panel', () => {
    * `DocumentEditor`'s own effect, and writing blocks into an unmounted one
    * leaves the body empty.
    */
-  function show(myRole: 'editor' | 'viewer' = 'editor'): void {
+  function show(
+    myRole: 'editor' | 'viewer' = 'editor',
+    lines: readonly string[] = ['alpha bravo charlie'],
+  ): void {
     const rendered = render(
       <DocumentEditor
         handle={handle}
@@ -141,9 +144,10 @@ describe('the comment panel', () => {
       mountBody();
     };
     act(() => {
-      handle.editor.replaceBlocks(handle.editor.document, [
-        { type: 'paragraph', content: 'alpha bravo charlie' },
-      ] as never);
+      handle.editor.replaceBlocks(
+        handle.editor.document,
+        lines.map((content) => ({ type: 'paragraph', content })) as never,
+      );
     });
   }
 
@@ -199,6 +203,106 @@ describe('the comment panel', () => {
   /** Puts the focus somewhere the reader could have put it: the body. */
   async function clickTheBody(): Promise<void> {
     await userEvent.click(handle.editor.prosemirrorView!.dom);
+  }
+
+  /**
+   * Where each line's text starts, in body order.
+   * @param state - The editor state to read; the reader's own by default.
+   * @returns One position per run of text.
+   */
+  function lineStarts(
+    state = handle.editor.prosemirrorState,
+  ): readonly number[] {
+    const at: number[] = [];
+    state.doc.descendants((node, pos) => {
+      if (node.isText) at.push(pos);
+      return true;
+    });
+    return at;
+  }
+
+  /**
+   * A second editor over a copy of the body, whose every change comes in to
+   * the reader's the way a co-editor's does. Its own editor makes the changes,
+   * so a block split or joined is rebuilt in the shared document exactly as a
+   * peer's would be.
+   * @returns The peer's editor.
+   */
+  async function peerEditor(): Promise<DocumentEditorHandle> {
+    const peerDoc = new Y.Doc();
+    Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(doc));
+    peerDoc.on('update', (update: Uint8Array) => {
+      act(() => {
+        Y.applyUpdate(doc, update);
+      });
+    });
+    const peerAwareness = new Awareness(peerDoc);
+    const { result } = renderHook(() =>
+      useDocumentEditor({
+        doc: peerDoc,
+        name: 'project-p/document-comment-rail-peer',
+        caretProvider: { awareness: peerAwareness },
+        readWho: () => ({ role: 'editor', viewerId: 'u2' }),
+      }),
+    );
+    await waitFor(() => expect(result.current).not.toBeNull());
+    const peer = result.current!;
+    const host = document.createElement('div');
+    document.body.append(host);
+    render(<DocumentEditor handle={peer} myRole='editor' />, {
+      container: host,
+    });
+    peers.push(peerAwareness);
+    return peer;
+  }
+
+  /** The peers' awareness, destroyed with the case. */
+  const peers: Awareness[] = [];
+  afterEach(() => {
+    for (const peer of peers.splice(0)) peer.destroy();
+  });
+
+  /**
+   * Presses a key in the peer's editor with the caret at a position.
+   * @param peer - The peer's editor.
+   * @param at - Where the caret is.
+   * @param key - The key.
+   */
+  async function peerPresses(
+    peer: DocumentEditorHandle,
+    at: number,
+    key: string,
+  ): Promise<void> {
+    const { TextSelection } = await import('@tiptap/pm/state');
+    act(() => {
+      const view = peer.editor.prosemirrorView!;
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, at)),
+      );
+      view.dom.dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true }),
+      );
+    });
+  }
+
+  /** The body's lines as the reader's editor has them. */
+  function lines(): readonly string[] {
+    return handle.editor.document.map((block) =>
+      (block.content as unknown as readonly { text: string }[])
+        .map((run) => run.text)
+        .join(''),
+    );
+  }
+
+  /**
+   * Aims a draft at an absolute range.
+   * @param from - Its start.
+   * @param to - Its end.
+   */
+  function aimAt(from: number, to: number): void {
+    act(() => {
+      openCommentDraft(handle.editor, { from, to });
+    });
   }
 
   /** Where the first run of text sits. */
@@ -1029,35 +1133,12 @@ describe('the comment panel', () => {
 
     it('keeps its words when a peer turns their line into a heading', async () => {
       // The peer's editor rebuilds the block's text under a new type, so no
-      // Yjs position from before survives; the block itself does, and the
-      // words are still there.
+      // Yjs position from before survives; the words are still there.
       show();
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
       await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
-      const peerDoc = new Y.Doc();
-      Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(doc));
-      peerDoc.on('update', (update: Uint8Array) => {
-        act(() => {
-          Y.applyUpdate(doc, update);
-        });
-      });
-      const peerAwareness = new Awareness(peerDoc);
-      const { result } = renderHook(() =>
-        useDocumentEditor({
-          doc: peerDoc,
-          name: 'project-p/document-comment-rail-peer',
-          caretProvider: { awareness: peerAwareness },
-          readWho: () => ({ role: 'editor', viewerId: 'u2' }),
-        }),
-      );
-      await waitFor(() => expect(result.current).not.toBeNull());
-      const peer = result.current!;
-      const host = document.createElement('div');
-      document.body.append(host);
-      render(<DocumentEditor handle={peer} myRole='editor' />, {
-        container: host,
-      });
+      const peer = await peerEditor();
 
       act(() => {
         peer.editor.updateBlock(peer.editor.document[0]!, {
@@ -1069,7 +1150,100 @@ describe('the comment panel', () => {
       expect(handle.editor.document[0]?.type).toBe('heading');
       expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
       expect(aimedWords()).toBe('bravo');
-      peerAwareness.destroy();
+    });
+
+    it('keeps to its words when it ends where the next line starts', async () => {
+      // A drag to the start of the next line ends the range there; the words
+      // it covers are still only the ones on the first line.
+      show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second!);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      peerEdits((line) => {
+        line.insert(0, 'Z');
+      });
+
+      expect(aimedWords()).toBe('bravo charlie');
+    });
+
+    it('keeps its words when a peer splits their line ahead of them', async () => {
+      show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
+      const second = lineStarts()[1]!;
+      aimAt(second + 6, second + 10);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 5, 'Enter');
+
+      expect(lines()).toEqual(['alpha bravo charlie', 'delta', ' echo foxtrot']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('echo');
+    });
+
+    it('keeps its words when a peer joins their line onto the one above', async () => {
+      show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
+      const second = lineStarts()[1]!;
+      aimAt(second + 6, second + 10);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
+
+      expect(lines()).toEqual(['alpha bravo charliedelta echo foxtrot']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('echo');
+    });
+
+    it.each([0, 1])(
+      'keeps both lines of its words when a peer changes line %i\'s type',
+      async (changed) => {
+        // Only one end's text is rebuilt; the other end still stands.
+        show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
+        const [first, second] = lineStarts();
+        aimAt(first! + 6, second! + 4);
+        await screen.findByTestId('doc-comment-draft-card');
+        const peer = await peerEditor();
+
+        act(() => {
+          peer.editor.updateBlock(peer.editor.document[changed]!, {
+            type: 'heading',
+            props: { level: 2 },
+          } as never);
+        });
+
+        expect(handle.editor.document[changed]?.type).toBe('heading');
+        expect(aimedWords()).toBe('bravo charliedelt');
+      },
+    );
+
+    it('says so rather than moving to the same word elsewhere when its words are deleted', async () => {
+      show('editor', ['alpha bravo', 'bravo charlie']);
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      peerEdits((line) => {
+        line.delete(6, 5);
+      });
+
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
+    });
+
+    it('shrinks rather than moving to the same word elsewhere when a peer deletes its first letters', async () => {
+      show('editor', ['alpha bravo', 'bravo charlie']);
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      peerEdits((line) => {
+        line.delete(6, 2);
+      });
+
+      expect(aimedWords()).toBe('avo');
+      expect(draftRangeIn(handle.editor.prosemirrorState)!.from).toBeLessThan(
+        lineStarts()[1]!,
+      );
     });
 
     it('says so when a peer deletes the words it is on', async () => {
