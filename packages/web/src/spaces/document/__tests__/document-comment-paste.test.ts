@@ -24,7 +24,7 @@ import * as Y from 'yjs';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
-  commentsArrivingWith,
+  landingSlice,
   commentPastePlugin,
   stripCommentMarks,
 } from '@web/spaces/document/document-comment-paste';
@@ -176,7 +176,7 @@ describe('stripCommentMarks', () => {
   });
 });
 
-describe('commentsArrivingWith', () => {
+describe('landingSlice', () => {
   /** A slice of one commented run, the shape every case below starts from. */
   const commented = (text: string): Slice =>
     new Slice(
@@ -190,11 +190,11 @@ describe('commentsArrivingWith', () => {
   /** A view that has a drag in flight, or none. */
   const viewThatIs = (
     dragging: object | null,
-  ): Parameters<typeof commentsArrivingWith>[1] =>
+  ): Parameters<typeof landingSlice>[1] =>
     ({ state: { schema }, dragging }) as never;
 
   it('takes the comment off content that was pasted', () => {
-    const landed = commentsArrivingWith(
+    const landed = landingSlice(
       commented('commented'),
       viewThatIs(null),
       false,
@@ -206,7 +206,7 @@ describe('commentsArrivingWith', () => {
   it('takes it off content that was dragged as a copy', () => {
     // Holding the modifier turns a drag into a copy, and a copy is a copy
     // however it was made.
-    const landed = commentsArrivingWith(
+    const landed = landingSlice(
       commented('commented'),
       viewThatIs({}),
       true,
@@ -218,7 +218,7 @@ describe('commentsArrivingWith', () => {
   it('keeps it on content that was dragged to a new place', () => {
     // The words are the same words, in a new position: what was said about
     // them still applies (user 2026-09-23).
-    const landed = commentsArrivingWith(
+    const landed = landingSlice(
       commented('commented'),
       viewThatIs({}),
       false,
@@ -232,7 +232,7 @@ describe('commentsArrivingWith', () => {
     // half left behind keeps its own marks because nothing touched them. One
     // thread, highlighted in two places — the same shape an Enter through a
     // comment already leaves (measured 2026-09-23).
-    const landed = commentsArrivingWith(
+    const landed = landingSlice(
       commented('half'),
       viewThatIs({}),
       false,
@@ -246,7 +246,7 @@ describe('commentsArrivingWith', () => {
     // The flag outlives the drop that set it — it is written on every drop
     // and never reset, and the editor holding it lives as long as the tab —
     // so the question a paste asks is whether a drag is in flight at all.
-    const landed = commentsArrivingWith(
+    const landed = landingSlice(
       commented('commented'),
       viewThatIs(null),
       true,

@@ -113,29 +113,12 @@ interface LandingView {
 }
 
 /**
- * The content as it should land, comments kept or taken off.
- * @param slice - The parsed clipboard or drop content.
- * @param view - The view it is landing in.
- * @param dropCopies - Whether the modifier was down at the drop that brought
- *   this content, which is what leaves the source in place.
- * @returns The same content, with comment marks only where they belong.
- */
-export function commentsArrivingWith(
-  slice: Slice,
-  view: LandingView,
-  dropCopies: boolean,
-): Slice {
-  if (view.dragging !== null && !dropCopies) return slice;
-  return stripCommentMarks(slice, view.state.schema);
-}
-
-/**
  * Rebuilds a slice with no row ids. The editor fills an id that is null with
  * a new one (BlockNote's `UniqueID`, `appendTransaction`).
  * @param slice - The slice about to be inserted.
  * @returns The same content and open depths, every row's id null.
  */
-export function withoutRowIds(slice: Slice): Slice {
+function withoutRowIds(slice: Slice): Slice {
   /**
    * Rebuilds one fragment, clearing ids at every depth.
    * @param fragment - The fragment to rebuild.
@@ -154,6 +137,28 @@ export function withoutRowIds(slice: Slice): Slice {
     return Fragment.fromArray(out);
   };
   return new Slice(rebuild(slice.content), slice.openStart, slice.openEnd);
+}
+
+/**
+ * The content as it should land. A drag moving content keeps it as it is; a
+ * paste arrives without its comments; a drag that copies arrives without its
+ * comments and without its row ids, which the editor then renews.
+ * @param slice - The parsed clipboard or drop content.
+ * @param view - The view it is landing in.
+ * @param dropCopies - Whether the modifier was down at the drop that brought
+ *   this content, which is what leaves the source in place.
+ * @returns The content as it should land.
+ */
+export function landingSlice(
+  slice: Slice,
+  view: LandingView,
+  dropCopies: boolean,
+): Slice {
+  if (view.dragging === null) {
+    return stripCommentMarks(slice, view.state.schema);
+  }
+  if (!dropCopies) return slice;
+  return withoutRowIds(stripCommentMarks(slice, view.state.schema));
 }
 
 /**
@@ -210,12 +215,8 @@ export function commentPastePlugin(): Plugin {
        * @param view - The view it is landing in.
        * @returns The content as it should land.
        */
-      transformPasted: (slice, view): Slice => {
-        const landed = commentsArrivingWith(slice, view, dropCopies);
-        return view.dragging !== null && dropCopies
-          ? withoutRowIds(landed)
-          : landed;
-      },
+      transformPasted: (slice, view): Slice =>
+        landingSlice(slice, view, dropCopies),
     },
   });
 }
