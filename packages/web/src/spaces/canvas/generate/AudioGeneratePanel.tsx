@@ -15,7 +15,6 @@ import type {
 import { AudioGenerateToolbar } from '@web/spaces/canvas/generate/AudioGenerateToolbar';
 import {
   AudioParamsPicker,
-  type AudioParamsValue,
 } from '@web/spaces/canvas/generate/AudioParamsPicker';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
@@ -128,7 +127,7 @@ interface AudioGeneratePanelProps {
   /** Insert a row's @-mention into the prompt at the caret. */
   onInsertReference: (item: ReferenceRailItem) => void;
   /** One of the model's params changed. */
-  onChangeParams: (partial: AudioParamsValue) => void;
+  onChangeParams: (partial: object) => void;
   /** The voice list opened or collapsed. */
   onVoiceOpenChange: (open: boolean) => void;
   /** What was typed into the voice search. */

@@ -76,6 +76,9 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
  * decisions and its role hints and per-kind request lines lost their reader.
  */
 const REMOVED_DEAD_KEYS: readonly string[] = [
+  // No model the catalog carries has a vocal-free switch any more (#2156).
+  'canvas.generatePanel.musicInstrumentalOnly',
+  'canvas.generatePanel.musicWithVocals',
   // Google now renders and localizes its official button; the placeholder is gone.
   'auth.login.continueWithGoogle',
   'auth.login.googleSoon',
@@ -137,7 +140,7 @@ describe('frozen product terms (#1336)', () => {
   beforeEach(() => {
     resetLocales();
     for (const [locale, catalog] of LOCALE_CATALOGS) {
-      setLocaleMessages(locale, catalog as Record<string, unknown>);
+      setLocaleMessages(locale, catalog);
     }
     setLocale('en');
   });

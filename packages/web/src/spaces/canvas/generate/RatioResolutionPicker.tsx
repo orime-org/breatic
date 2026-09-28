@@ -18,6 +18,7 @@ import {
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { paramValues } from '@breatic/shared';
+import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
@@ -29,10 +30,10 @@ interface RatioResolutionValue {
 interface RatioResolutionPickerProps {
   /** The current model, whose params define the allowed ratios / resolutions. */
   model: ModelEntry;
-  /** The current ratio + resolution selection. */
-  value: RatioResolutionValue;
-  /** Called with the changed field ({ aspect_ratio } or { resolution }). */
-  onChange: (partial: RatioResolutionValue) => void;
+  /** What the node holds for this model: ratio and resolution, and the model's own params. */
+  value: RatioResolutionValue & Readonly<Record<string, unknown>>;
+  /** Called with the changed field only. */
+  onChange: (partial: object) => void;
 }
 
 /**
@@ -78,7 +79,10 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
     value: String(v),
     label: String(v),
   }));
-  const label = [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ');
+  // A model with none of the shared two still has its own controls to open.
+  const label =
+    [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ') ||
+    t('canvas.generatePanel.imageParams');
   const onSelectRatio = React.useCallback(
     (v: string | number) => onChange({ aspect_ratio: String(v) }),
     [onChange],
@@ -131,6 +135,12 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
           value={value.aspect_ratio}
           onSelect={onSelectRatio}
           testIdPrefix='generate-ratio-option'
+        />
+        <ModelParamControls
+          model={model}
+          value={value}
+          onChange={onChange}
+          className={ratios.length + resolutions.length > 0 ? 'mt-3 border-t border-border pt-3' : undefined}
         />
       </PopoverContent>
     </Popover>

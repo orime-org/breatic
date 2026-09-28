@@ -14,23 +14,18 @@ import {
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
-  audioFlagValue,
   audioParamControls,
   formatAudioParam,
   type AudioParamControl,
 } from '@web/spaces/canvas/generate/audio-params';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
-import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
+import { modelControls } from '@web/spaces/canvas/generate/model-controls';
+import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
-/**
- * What this picker edits, by the catalog's own param names.
- *
- * Booleans as well as numbers since #1960: the music models take a switch
- * ("no vocals at all"), which is a decision rather than a quantity.
- */
-export type AudioParamsValue = Record<string, number | boolean>;
+/** What this picker's shared controls edit, by the catalog's own param names. */
+export type AudioParamsValue = Record<string, number>;
 
 interface AudioParamsPickerProps {
   /** The current model, whose declarations decide what is offered. */
@@ -44,7 +39,7 @@ interface AudioParamsPickerProps {
    */
   value: Record<string, unknown>;
   /** Called with the changed param only. */
-  onChange: (partial: AudioParamsValue) => void;
+  onChange: (partial: object) => void;
 }
 
 /**
@@ -99,28 +94,19 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
   useFollowCanvasViewport(open);
 
   const controls = audioParamControls(model);
+  const ownControls = modelControls(model).length > 0;
   // No empty pill that opens onto nothing: a model declaring none of these has
   // no picker at all (the same rule the video params pill follows).
-  if (controls.length === 0) return null;
+  if (controls.length === 0 && !ownControls) return null;
 
   const label = controls
     .map((control) => {
-      // A switch reads as the state it is in, which is how every other pill
-      // here reads: the current value. Its value is a boolean rather than a
-      // number, and that is the only difference.
-      if (control.kind === 'toggle') {
-        return formatAudioParam(
-          control.name,
-          audioFlagValue(model, control.name, value[control.name]),
-          t,
-        );
-      }
       const shown = shownValue(model, control.name, value[control.name]);
       if (shown === undefined) return undefined;
       return formatAudioParam(control.name, shown, t);
     })
     .filter(Boolean)
-    .join(' · ');
+    .join(' · ') || t('canvas.generatePanel.audioParams');
 
   const triggerClass =
     'flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border ' +
@@ -164,15 +150,17 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
             key={control.name}
             control={control}
             label={t(control.labelKey)}
-            value={
-              control.kind === 'toggle'
-                ? audioFlagValue(model, control.name, value[control.name])
-                : shownValue(model, control.name, value[control.name])
-            }
+            value={shownValue(model, control.name, value[control.name])}
             onChange={onChange}
             last={index === controls.length - 1}
           />
         ))}
+        <ModelParamControls
+          model={model}
+          value={value}
+          onChange={onChange}
+          className={controls.length > 0 ? 'mt-3 border-t border-border pt-3' : undefined}
+        />
       </PopoverContent>
     </Popover>
   );
@@ -181,8 +169,8 @@ export const AudioParamsPicker = React.memo(function AudioParamsPicker({
 interface ParamControlRowProps {
   control: AudioParamControl;
   label: string;
-  /** What this param is currently set to: a boolean on a switch, else a number. */
-  value: number | boolean | undefined;
+  /** What this param is currently set to. */
+  value: number | undefined;
   onChange: (partial: AudioParamsValue) => void;
   /** The last row carries no bottom margin. */
   last: boolean;
@@ -214,21 +202,7 @@ function ParamControlRow({
   const t = useTranslation();
   const spacing = last ? undefined : 'mb-3';
 
-  if (control.kind === 'toggle') {
-    return (
-      <ParamToggleRow
-        id={`generate-audio-${control.name}-toggle`}
-        label={label}
-        checked={value === true}
-        onCheckedChange={(next) => onChange({ [control.name]: next })}
-        className={spacing}
-      />
-    );
-  }
-
-  // Past the switch branch the value is a number or absent: a boolean reaches
-  // this row only on a toggle, and that branch has returned.
-  const shown = typeof value === 'number' ? value : undefined;
+  const shown = value;
 
   if (control.kind === 'choice') {
     return (

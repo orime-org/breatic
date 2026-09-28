@@ -50,7 +50,6 @@ import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-pane
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
-import type { AudioParamsValue } from '@web/spaces/canvas/generate/AudioParamsPicker';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
@@ -358,7 +357,7 @@ function AudioGeneratePanelBody({
   );
 
   const onChangeParams = React.useCallback(
-    (partial: AudioParamsValue) => {
+    (partial: object) => {
       // Keyed on the RESOLVED model — the one whose controls were just used.
       // The node's stored model can be absent or no longer offered, and keying
       // the record on that would write the edit where the panel never reads it.

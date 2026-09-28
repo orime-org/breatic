@@ -19,6 +19,8 @@ import {
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
 import { paramValues } from '@breatic/shared';
+import { modelControls } from '@web/spaces/canvas/generate/model-controls';
+import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
@@ -44,7 +46,7 @@ interface VideoParamsPickerProps {
    */
   params: Readonly<Record<string, unknown>>;
   /** Called with the changed field only. */
-  onChange: (partial: VideoParamsValue) => void;
+  onChange: (partial: object) => void;
 }
 
 /**
@@ -146,7 +148,7 @@ export function editedParams(
   for (const [name, read] of Object.entries(READERS)) {
     value[name] = read(params[name]);
   }
-  return value as VideoParamsValue;
+  return value;
 }
 
 /**
@@ -162,7 +164,10 @@ export function editedParams(
  * @returns True when the model declares at least one param this pill edits.
  */
 export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
-  return EDITED_PARAMS.some((name) => model.params?.[name] != null);
+  return (
+    EDITED_PARAMS.some((name) => model.params?.[name] != null) ||
+    modelControls(model).length > 0
+  );
 }
 
 /**
@@ -229,7 +234,9 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
     durations.length > 0 ? durationLabel : undefined,
   ]
     .filter(Boolean)
-    .join(' · ');
+    .join(' · ') || t('canvas.generatePanel.videoParams');
+  const sharedShown =
+    ratios.length + resolutions.length + durations.length > 0 || switchesShown;
 
   const onSelectRatio = React.useCallback(
     (v: string | number) => onChange({ aspect_ratio: String(v) }),
@@ -319,6 +326,12 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
             }
           />
         ) : null}
+        <ModelParamControls
+          model={model}
+          value={params}
+          onChange={onChange}
+          className={sharedShown ? 'mt-3 border-t border-border pt-3' : undefined}
+        />
       </PopoverContent>
     </Popover>
   );

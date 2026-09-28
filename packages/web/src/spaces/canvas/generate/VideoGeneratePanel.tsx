@@ -27,7 +27,6 @@ import {
 import {
   VideoParamsPicker,
   videoParamsPickerHasOptions,
-  type VideoParamsValue,
 } from '@web/spaces/canvas/generate/VideoParamsPicker';
 
 interface VideoGeneratePanelProps {
@@ -120,7 +119,7 @@ interface VideoGeneratePanelProps {
   /** Pick a model. */
   onSelectModel: (modelId: string) => void;
   /** Change one parameter. */
-  onChangeParams: (partial: VideoParamsValue) => void;
+  onChangeParams: (partial: object) => void;
   /**
    * Execute: submit the task (the panel closes on success). The node does NOT
    * enter handling here — the server publishes handling only after it accepts

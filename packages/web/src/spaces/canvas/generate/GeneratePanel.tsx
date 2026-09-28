@@ -62,7 +62,7 @@ interface GeneratePanelProps {
    */
   promptRequired: boolean;
   /** Current ratio + resolution selection. */
-  params: { aspect_ratio?: string; resolution?: string } & CameraValue;
+  params: { aspect_ratio?: string; resolution?: string } & CameraValue & Readonly<Record<string, unknown>>;
   /** The node's derived reference rows. */
   references: ReferenceRailItem[];
   /** The run's estimate as printed beside the star; undefined until it resolves. */
@@ -86,9 +86,7 @@ interface GeneratePanelProps {
   /** Switch the generation sub-mode (t2i / i2i). */
   onToggleMode: (mode: ImageGenMode) => void;
   /** Change ratio / resolution. */
-  onChangeParams: (
-    partial: { aspect_ratio?: string; resolution?: string } & CameraValue,
-  ) => void;
+  onChangeParams: (partial: object) => void;
   /** Toggle the canvas reference-pick mode (enter, or exit when already picking). */
   onAddReference: () => void;
   /** Whether THIS node's reference pick is running — highlights the button. */

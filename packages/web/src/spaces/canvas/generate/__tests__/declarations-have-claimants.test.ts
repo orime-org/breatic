@@ -38,7 +38,7 @@ import {
   PANEL_EDITOR_PARAM,
   REFERENCE_POOL_PARAM,
 } from '@breatic/shared';
-import type { GenerationNodeType } from '@breatic/shared';
+import type { GenerationNodeType, ModelEntry } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 
@@ -48,6 +48,7 @@ import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
+import { modelControls } from '@web/spaces/canvas/generate/model-controls';
 import { RATIO_RESOLUTION_PARAMS } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import {
   slotsForMode,
@@ -236,6 +237,11 @@ function claimsFor(
     if (!GENERATION_NODE_MODES[node].includes(mode)) continue;
     for (const param of PANEL[node].slots(mode)) slots.add(param);
     for (const param of PANEL[node].controls) controls.add(param);
+    // Every panel also draws the controls only this model has, by the shape
+    // its declaration takes — the same function the popovers call.
+    for (const control of modelControls({ params: model.params } as unknown as ModelEntry)) {
+      controls.add(control.name);
+    }
   }
   return { slots, controls };
 }
@@ -482,7 +488,7 @@ describe('what the catalog declares', () => {
     ];
     const apart: string[] = [];
     for (const [node, mode, printed] of drawn) {
-      const declared = GENERATION_NODE_BUCKETS[node as GenerationNodeType]
+      const declared = GENERATION_NODE_BUCKETS[node]
         .map((bucket) => declaredModes.get(`${bucket}.${mode}`))
         .find((found) => found !== undefined);
       if (declared === undefined) {

@@ -196,8 +196,7 @@ describe('the music reference slots', () => {
     // the panel would print the raw key at whichever locale forgot it.
     const paramKeys = Object.values(AUDIO_PARAMS).flatMap((spec) => [
       spec.labelKey,
-      ...('stops' in spec && spec.stops ? spec.stops.map((s) => s.labelKey) : []),
-      ...('stateKeys' in spec ? [spec.stateKeys.on, spec.stateKeys.off] : []),
+      ...(spec.stops ? spec.stops.map((s) => s.labelKey) : []),
     ]);
     const keys = [
       ...AUDIO_MODE_OPTIONS.map((o) => o.placeholderKey),

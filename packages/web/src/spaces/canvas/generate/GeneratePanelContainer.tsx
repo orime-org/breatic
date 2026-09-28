@@ -22,7 +22,6 @@ import {
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
@@ -63,6 +62,7 @@ import {
   selectModeModels,
   type GeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
+import { ownControlValues } from '@web/spaces/canvas/generate/model-controls';
 import {
   deriveReferences,
   focusToRailItem,
@@ -287,8 +287,11 @@ function GeneratePanelBody({
   const focalLength = asNum(vm.params.focal_length);
   const aperture = asStr(vm.params.aperture);
   const enableCamera = vm.params.enable_camera === true;
+  // The model's own controls (#2156), keyed on their values like the rest.
+  const ownKey = JSON.stringify(ownControlValues(vm.modelEntry, vm.params));
   const stableParams = React.useMemo(
     () => ({
+      ...(JSON.parse(ownKey) as Record<string, unknown>),
       aspect_ratio: aspectRatio,
       resolution,
       camera,
@@ -297,7 +300,7 @@ function GeneratePanelBody({
       aperture,
       enable_camera: enableCamera,
     }),
-    [aspectRatio, resolution, camera, lens, focalLength, aperture, enableCamera],
+    [ownKey, aspectRatio, resolution, camera, lens, focalLength, aperture, enableCamera],
   );
   // References change identity on every derive; key the memo on their CONTENT
   // (small array — a stringify key is cheap and exact). The pool the rail /
@@ -413,7 +416,7 @@ function GeneratePanelBody({
   );
 
   const onChangeParams = React.useCallback(
-    (partial: { aspect_ratio?: string; resolution?: string } & CameraValue) => {
+    (partial: object) => {
       // The edit lands on the record of the model it was made on, so coming
       // back to that model finds it (#1948).
       // freshVm().model is the RESOLVED model — the one whose controls the

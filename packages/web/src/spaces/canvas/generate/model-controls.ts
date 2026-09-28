@@ -77,3 +77,25 @@ export function modelControls(model: ModelEntry): ModelControl[] {
   }
   return controls;
 }
+
+/**
+ * What the node holds for this model's own controls, and nothing else.
+ *
+ * A panel hands its pickers a record built from the handful of params it
+ * draws, memoised on their values; the model's own ones join that record the
+ * same way, so a change to any other param does not redraw the popover.
+ * @param model - The active model, or undefined before one resolves.
+ * @param params - Everything the node holds for it.
+ * @returns The own controls' values, by param name.
+ */
+export function ownControlValues(
+  model: ModelEntry | undefined,
+  params: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  if (!model) return {};
+  const out: Record<string, unknown> = {};
+  for (const control of modelControls(model)) {
+    if (params[control.name] !== undefined) out[control.name] = params[control.name];
+  }
+  return out;
+}

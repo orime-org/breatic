@@ -59,9 +59,6 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 import {
-  type VideoParamsValue,
-} from '@web/spaces/canvas/generate/VideoParamsPicker';
-import {
   VIDEO_MODE_OPTIONS,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
@@ -293,15 +290,7 @@ function VideoGeneratePanelBody({
   );
   // Content-stable because the panel below is memoized and the view model
   // rebuilds on every canvas mutation.
-  //
-  // The pool is not a param the node stores — it is the references the prompt
-  // names, and the payload builder writes them under the pool's name at
-  // submit. Merged here so the picker answers a condition naming the pool out
-  // of the same value the run will carry.
-  const stableParams = useContentStable({
-    ...vm.params,
-    [REFERENCE_POOL_PARAM]: vm.referenceUrls,
-  });
+  const stableParams = useContentStable(vm.params);
   // Crops uploading right now, for THIS node (#1978). Without them the rail
   // stays empty from the moment the marquee is confirmed until the upload
   // lands — and on a node whose rail is otherwise empty the rail does not
@@ -392,7 +381,7 @@ function VideoGeneratePanelBody({
   );
 
   const onChangeParams = React.useCallback(
-    (partial: VideoParamsValue) => {
+    (partial: object) => {
       // The edit lands on the record of the model it was made on, so coming
       // back to that model finds it (#1948).
       // freshVm().model is the RESOLVED model — the one whose controls the
