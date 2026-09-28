@@ -70,29 +70,38 @@ function mediaKindOf(file: File): MediaKind | null {
   return family === 'image' || family === 'video' || family === 'audio' ? family : null;
 }
 
-/** A file that will be attached, and how it is read. */
+/** What a picked file is sent as: media uploaded, or a document read to text. */
+type SentAs = MediaKind | 'text';
+
+/** A file that will be attached. */
 interface Accepted {
   file: File;
   item: TrayItem;
-  media: boolean;
 }
 
 /**
- * Why a picked file is turned away before it is read or uploaded.
+ * What a picked file is sent as, or why it is turned away before it is read
+ * or uploaded.
  * @param file - The file.
  * @param maxBytes - The largest file that may be uploaded.
  * @param limits - The limits the list is held to.
- * @returns What to say about it, or null to take it.
+ * @returns What it is sent as, or what to say about it.
  */
-function turnedAway(file: File, maxBytes: number, limits: AttachmentLimits): TrayNotice | null {
+function classify(
+  file: File,
+  maxBytes: number,
+  limits: AttachmentLimits,
+): { as: SentAs } | { refused: TrayNotice } {
   const kind = mediaKindOf(file);
   const extractor = kind === null ? pickExtractor(file.type) : null;
-  if (kind === null && extractor === null) return { key: 'unsupported', filename: file.name };
+  if (kind === null && extractor === null) return { refused: { key: 'unsupported', filename: file.name } };
   const rejection = checkFileAdmission(file, maxBytes);
-  if (rejection === 'tooLarge') return { key: 'tooLarge', filename: file.name };
-  if (rejection !== null) return { key: 'unsupported', filename: file.name };
-  if (extractor === 'text' && file.size > limits.maxChars * MAX_BYTES_PER_CHAR) return { key: 'tooLong' };
-  return null;
+  if (rejection === 'tooLarge') return { refused: { key: 'tooLarge', filename: file.name } };
+  if (rejection !== null) return { refused: { key: 'unsupported', filename: file.name } };
+  if (extractor === 'text' && file.size > limits.maxChars * MAX_BYTES_PER_CHAR) {
+    return { refused: { key: 'tooLong' } };
+  }
+  return { as: kind ?? 'text' };
 }
 
 /**
@@ -112,16 +121,14 @@ function sortPicked(
   const accepted: Accepted[] = [];
   let notice: TrayNotice | null = null;
   for (const file of files) {
-    const refused = turnedAway(file, maxBytes, limits);
-    if (refused !== null) {
-      notice ??= refused;
+    const sorted = classify(file, maxBytes, limits);
+    if ('refused' in sorted) {
+      notice ??= sorted.refused;
       continue;
     }
-    const kind = mediaKindOf(file);
     accepted.push({
       file,
-      media: kind !== null,
-      item: { id: newId(), name: file.name, type: kind ?? 'text', status: 'uploading' },
+      item: { id: newId(), name: file.name, type: sorted.as, status: 'uploading' },
     });
   }
   return { accepted, notice };
@@ -135,7 +142,8 @@ function sortPicked(
  * @param deps - What reading and uploading need.
  */
 async function fillIn(picked: Accepted, tray: Tray, projectId: string, deps: AttachDeps): Promise<void> {
-  const { file, item, media } = picked;
+  const { file, item } = picked;
+  const media = item.type !== 'text';
   const base = { id: item.id, type: item.type, name: item.name };
   let chip: ChatAttachedChip;
   try {
