@@ -58,7 +58,7 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         models={MODELS}
         model='veo-3.1'
         params={{ aspect_ratio: '16:9', duration: 8 }}
-        creditEstimate={88}
+        creditText='88'
         mode='t2v'
         onToggleMode={() => {}}
         modeOptions={VIDEO_MODE_OPTIONS}
@@ -96,7 +96,7 @@ describe('VideoGeneratePanel', () => {
   });
 
   it('shows the credit estimate — video costs several times an image', () => {
-    renderPanel({ creditEstimate: 56 });
+    renderPanel({ creditText: '56' });
     expect(screen.getByTestId('generate-video-credit')).toHaveTextContent('56');
   });
 

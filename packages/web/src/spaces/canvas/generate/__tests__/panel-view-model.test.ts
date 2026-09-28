@@ -109,14 +109,12 @@ describe('buildGeneratePanelViewModel', () => {
     const nodes = [node('n1', imageView({ model: 'flux' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.model).toBe('flux');
-    expect(vm.creditEstimate).toBe(7);
   });
 
   it('picks the FIRST offered model when the node has none (user 2026-07-11)', () => {
     const nodes = [node('n1', imageView())];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.model).toBe('flux'); // first in the list; sdxl's badge does not promote it
-    expect(vm.creditEstimate).toBe(7);
   });
 
   it('restores the mode\'s remembered model over the first', () => {
@@ -480,13 +478,12 @@ describe('buildGeneratePanelViewModel', () => {
   // sanitized, trusted ModelEntry[], so those impossible-after-boundary states
   // are no longer re-tested here. (An EMPTY catalog is a real state and stays.)
 
-  it('yields an empty model + zero credit when the catalog is empty', () => {
+  it('yields an empty model when the catalog is empty', () => {
     // Guards the empty-catalog path: with no models the execute gate must see
     // model='' and refuse to submit an invalid task.
     const nodes = [node('n1', imageView())];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [] });
     expect(vm.model).toBe('');
-    expect(vm.creditEstimate).toBe(0);
   });
 
   it('当前档必须是这个部署服务得了的那些之一 (#1951)', () => {

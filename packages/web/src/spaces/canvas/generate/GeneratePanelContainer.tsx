@@ -29,6 +29,7 @@ import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import {
   evaluateExecute,
+  extractPromptText,
   refusalToastKey,
   REFERENCE_POOL_PARAM,
 } from '@breatic/shared';
@@ -75,6 +76,7 @@ import { useCanvasStore } from '@web/stores';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
+import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 
 /**
@@ -245,6 +247,11 @@ function GeneratePanelBody({
     () =>
       buildGeneratePanelViewModel({ nodeId, nodes, edges, models, textById }),
     [nodeId, nodes, edges, models, textById],
+  );
+  const creditText = useCreditText(
+    vm.modelEntry,
+    { params: vm.params, prompt: extractPromptText(promptText) },
+    catalog?.credit_multiplier ?? 1,
   );
   // Stable model-list identity for the memo'd pickers: the vm rebuilds on
   // EVERY canvas graph mutation (nodes/edges deps), and its freshly-filtered
@@ -760,7 +767,7 @@ function GeneratePanelBody({
       promptRequired={vm.promptRequired}
       params={stableParams}
       references={stableReferences}
-      creditEstimate={vm.creditEstimate}
+      creditText={creditText}
       executeRefusal={executeRefusal}
       promptSlot={promptSlot}
       onExit={closeActivePanel}

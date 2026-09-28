@@ -67,8 +67,6 @@ export interface VideoPanelViewModel {
   model: string;
   /** Effective params, reconciled against the current model. */
   params: Record<string, unknown>;
-  /** Credit cost of one generation with the current model. */
-  creditEstimate: number;
   /** The target node's display status — gates execute (no submit while handling). */
   nodeStatus: string | undefined;
   /**
@@ -327,9 +325,6 @@ export function buildVideoPanelViewModel(input: {
     // slice closes. The records this returns are dropped — rendering reads,
     // it does not persist.
     params: current ? resolveModelSwitch(content, current).params : {},
-    // `?? 0` covers only the model-not-found case (empty catalog / stale
-    // model); when current is found, cost_per_call is a trusted number.
-    creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
     mode,
     slots: slotsForMode(mode),

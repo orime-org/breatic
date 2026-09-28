@@ -51,15 +51,8 @@ interface AudioGeneratePanelProps {
    * needed, and a second lookup is a second chance to answer differently.
    */
   currentModel: ModelEntry | undefined;
-  /**
-   * What one generation would cost, in credits.
-   *
-   * A model stating a rate counts the unit it bills in — the text for a
-   * speech model, the picked clip length for a sound effect — so the number
-   * moves as that input changes; one stating none prints its cost per call
-   * and holds still. Undefined until a model is picked.
-   */
-  creditEstimate: number | undefined;
+  /** The run's estimate as printed beside the star; undefined until it resolves. */
+  creditText: string | undefined;
   /** Whether that model consumes the prompt (its `takes_prompt`). */
   modelTakesPrompt: boolean;
   /** The selected mode. */
@@ -159,9 +152,8 @@ interface AudioGeneratePanelProps {
  * footer carrying the mode picker, the model picker, the voice picker, the
  * model's params, the credit figure and the submit button.
  *
- * The figure is one number beside a star, the shape VideoGeneratePanel uses.
- * There it is always the model's cost per call; here it is whichever of the
- * two the model states (`estimateAudioCredits`).
+ * The figure is the run's estimate beside a star, the shape every generate
+ * panel uses.
  *
  * Presentational throughout; every piece of node data and every Yjs write is
  * threaded in by the container.
@@ -169,7 +161,7 @@ interface AudioGeneratePanelProps {
  * @param root0.models - The tts models to offer.
  * @param root0.model - The selected model id.
  * @param root0.currentModel - That model's catalog entry.
- * @param root0.creditEstimate - What this prompt would cost, in credits.
+ * @param root0.creditText - The run's estimate as printed beside the star.
  * @param root0.modelTakesPrompt - Whether it consumes the prompt.
  * @param root0.mode - The selected mode.
  * @param root0.modeOptions - The modes to offer.
@@ -208,7 +200,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   models,
   model,
   currentModel,
-  creditEstimate,
+  creditText,
   modelTakesPrompt,
   mode,
   modeOptions,
@@ -377,13 +369,13 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {creditEstimate !== undefined && (
+          {creditText !== undefined && (
             <span
               data-testid='generate-audio-rate'
               className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
             >
               <Star className='h-3.5 w-3.5' aria-hidden='true' />
-              {creditEstimate}
+              {creditText}
             </span>
           )}
           <Button

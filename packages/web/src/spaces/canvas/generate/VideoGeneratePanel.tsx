@@ -37,8 +37,8 @@ interface VideoGeneratePanelProps {
   model: string;
   /** What a submission would carry, forwarded to the picker. */
   params: Readonly<Record<string, unknown>>;
-  /** Estimated credit cost of one generation (current model's cost_per_call). */
-  creditEstimate: number;
+  /** The run's estimate as printed beside the star; undefined until it resolves. */
+  creditText: string | undefined;
   /** The active generation mode. */
   mode: string;
   /** Switch generation mode. */
@@ -147,7 +147,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   models,
   model,
   params,
-  creditEstimate,
+  creditText,
   mode,
   onToggleMode,
   modeOptions,
@@ -243,13 +243,15 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          <span
-            data-testid='generate-video-credit'
-            className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
-          >
-            <Star className='h-3.5 w-3.5' aria-hidden='true' />
-            {creditEstimate}
-          </span>
+          {creditText !== undefined && (
+            <span
+              data-testid='generate-video-credit'
+              className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
+            >
+              <Star className='h-3.5 w-3.5' aria-hidden='true' />
+              {creditText}
+            </span>
+          )}
           <Button
             type='button'
             variant={null}

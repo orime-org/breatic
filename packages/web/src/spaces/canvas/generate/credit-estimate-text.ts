@@ -4,7 +4,7 @@
 import type { CreditEstimate } from '@breatic/shared/pricing';
 
 /** The shape of `t` this reads. */
-type Translate = (key: string, params?: Record<string, unknown>) => string;
+type Translate = (key: string, params?: Record<string, string | number | Date>) => string;
 
 /**
  * What the panel prints beside the star for one estimate.

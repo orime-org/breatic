@@ -51,7 +51,7 @@ import {
   audioFlagValue,
 } from '@web/spaces/canvas/generate/audio-params';
 import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
-import { estimateAudioCredits } from '@web/spaces/canvas/generate/audio-credits';
+import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import type { AudioParamsValue } from '@web/spaces/canvas/generate/AudioParamsPicker';
@@ -61,6 +61,7 @@ import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-refer
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import {
   evaluateExecute,
+  extractPromptText,
   refusalToastKey,
 } from '@breatic/shared';
 import {
@@ -685,19 +686,18 @@ function AudioGeneratePanelBody({
     ],
   );
 
+  const creditText = useCreditText(
+    vm.modelEntry,
+    { params, prompt: extractPromptText(promptText) },
+    catalog?.credit_multiplier ?? 1,
+  );
+
   return (
     <AudioGeneratePanel
       models={modeModels}
       model={vm.model}
       currentModel={vm.modelEntry}
-      creditEstimate={estimateAudioCredits(vm.modelEntry, {
-        text: promptText,
-        // Read off the node's record for the active model, which is where the
-        // length picker writes it. A model billing per second declares this
-        // param with a default, so a node that has never touched the picker
-        // still carries one.
-        ...(typeof params.duration === 'number' ? { seconds: params.duration } : {}),
-      })}
+      creditText={creditText}
       modelTakesPrompt={vm.promptRequired}
       mode={mode}
       modeOptions={availableModes}

@@ -29,7 +29,7 @@ import {
 } from '@web/spaces/canvas/generate/mode-selection';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import { REFERENCE_POOL_PARAM, effectiveItemCap, positiveCap } from '@breatic/shared';
+import { REFERENCE_POOL_PARAM, itemCap, missingSources, positiveCap } from '@breatic/shared';
 import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import { asContentView } from '@web/data/yjs/node-view';
 
@@ -79,24 +79,22 @@ export interface GeneratePanelViewModel {
    * node references). Malformed entries (untrusted Yjs) are dropped.
    */
   focusImages: FocusImage[];
-  /** Credit cost of one generation with the current model. */
-  creditEstimate: number;
+  /** The selected model's catalog entry, when the catalog has it. */
+  modelEntry: ModelEntry | undefined;
   /** The target node's display status — gates execute (no submit while handling). */
   nodeStatus: string | undefined;
   /** Active generation sub-mode (the t2i / i2i toggle state; default t2i). */
   mode: ImageGenMode;
   /**
-   * Whether the effective model needs a source image (i2i / edit modes). Drives
-   * the #1675 execute gate: submitting one of these with no `@`-picked source
-   * image is blocked in the panel (and re-checked server-side before billing).
-   * False when the catalog is empty (no model resolved) — nothing to gate.
+   * Whether the effective model needs a source image in this mode, by its own
+   * declarations (`missingSources`, the rule the server re-checks before
+   * enqueue). Drives the #1675 execute gate. False when the catalog is empty
+   * (no model resolved) — nothing to gate.
    */
   requiresSource: boolean;
   /**
-   * Max reference images the active model accepts under what this node
-   * currently carries — the reference pool's cap on the wire, narrowed by any
-   * `max_items_when_present` the picked sources trigger, normalized so only a
-   * POSITIVE finite cap is set (0 / negative / absent → undefined = uncapped,
+   * Max reference images the active model accepts — the reference pool's cap
+   * on the wire, normalized so only a POSITIVE finite cap is set (0 / negative / absent → undefined = uncapped,
    * matching the server rule + worker guard). Drives the #1735 count gate:
    * submitting more `@`-picked sources than this is blocked in the panel (and
    * re-checked server-side before enqueue, which otherwise silently truncates).
@@ -154,31 +152,15 @@ export function selectModeModels(
 }
 
 /**
- * The reference-image cap in force for one node's model and its style pick.
- *
- * The number the panel holds the reader to is the one the run is really under,
- * so it goes through `effectiveItemCap` the way the server gate and the worker
- * do: a catalog narrowing the cap while a style reference is carried states
- * that beside the cap it narrows, and reading the plain number here would let
- * the reader fill a pool the server then refuses.
+ * The reference-image cap for one node's model, read through `itemCap` the way
+ * the server gate and the worker read it.
  * @param model - The catalog entry the node has selected, if the catalog has answered.
- * @param styleImageUrl - The style reference the node carries, if any.
  * @returns The cap, or undefined when the model is unknown or states none.
  */
-function referenceCap(
-  model: ModelEntry | undefined,
-  styleImageUrl: string | undefined,
-): number | undefined {
+function referenceCap(model: ModelEntry | undefined): number | undefined {
   const descriptor = model?.params[REFERENCE_POOL_PARAM];
   if (!descriptor) return undefined;
-  // The presence conditions are read off the params a submission carries, so
-  // this is the slot half of the payload the panel would build.
-  return positiveCap(
-    effectiveItemCap(
-      descriptor,
-      styleImageUrl ? { [IMAGE_SLOTS.style.param]: [styleImageUrl] } : {},
-    ),
-  );
+  return positiveCap(itemCap(descriptor));
 }
 
 /**
@@ -274,29 +256,16 @@ export function buildGeneratePanelViewModel(input: {
     // omit it, so `params.camera` is undefined and the Camera control is hidden
     // (rendered only when supported, unlike the greyed-disabled Style button).
     cameraSupported: current ? current.params.camera != null : false,
-    // `?? 0` covers only the model-not-found case (empty catalog / stale model);
-    // when current is found, cost_per_call is a trusted number (boundary).
-    creditEstimate: current?.cost_per_call ?? 0,
+    modelEntry: current,
     nodeStatus: content?.status,
     mode,
-    // Execute gate (#1675, cross-modality): the ACTIVE PANEL MODE decides the
-    // submission semantics — read the model's precomputed per-mode source needs
-    // (`sourcesByMode`, backend-computed on the wire) for the active mode. Under
-    // t2i that is `[]` (no source), even for a HYBRID whose capability array
-    // also spans i2i; under i2i it is `["image"]`. No model resolved (empty
-    // catalog) → no gate. The rule itself lives backend-side; the panel only
-    // reads the wire field, never runs it.
-    requiresSource: current ? (current.sourcesByMode[mode]?.length ?? 0) > 0 : false,
-    // #1735 count gate: the active model's reference-image cap, read through
-    // `effectiveItemCap` so a cap the catalog narrows while another source is
-    // carried is the one in force here too — the server gate and the worker
-    // read it the same way, and a panel reading the plain number would let the
-    // reader fill more than the run can hold. Only a POSITIVE finite cap counts
-    // — 0 / negative / NaN / undefined all mean "uncapped", matching the server
-    // rule (reference-count.ts, `limit >= 1`) and the worker's truthy
-    // `spec.max_items` guard, so all three layers agree (else a `max_items: 0`
-    // would block every submit here with a nonsensical "limit: 0" toast).
-    maxReferences: referenceCap(current, styleImageUrl),
+    // Execute gate (#1675): the active panel mode and the model's own
+    // declarations decide, through the same rule the server re-checks.
+    requiresSource: current ? missingSources(current, mode, {}).length > 0 : false,
+    // #1735 count gate: only a POSITIVE finite cap counts — 0 / negative /
+    // NaN / undefined all mean "uncapped", matching the server rule and the
+    // worker, so all three layers agree.
+    maxReferences: referenceCap(current),
     maxInputChars: current?.max_input_chars,
     promptRequired: current?.takes_prompt ?? true,
   };

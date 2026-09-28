@@ -65,8 +65,8 @@ interface GeneratePanelProps {
   params: { aspect_ratio?: string; resolution?: string } & CameraValue;
   /** The node's derived reference rows. */
   references: ReferenceRailItem[];
-  /** Estimated credit cost of one generation (current model's cost_per_call). */
-  creditEstimate: number;
+  /** The run's estimate as printed beside the star; undefined until it resolves. */
+  creditText: string | undefined;
   /**
    * Which execute precondition fails, or null when Generate may proceed.
    *
@@ -154,7 +154,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   promptRequired,
   params,
   references,
-  creditEstimate,
+  creditText,
   executeRefusal,
   promptSlot,
   onExit,
@@ -295,13 +295,15 @@ export const GeneratePanel = React.memo(function GeneratePanel({
               <Icon className='h-4 w-4' aria-hidden='true' />
             </Button>
           ))}
-          <span
-            data-testid='generate-credit'
-            className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
-          >
-            <Star className='h-3.5 w-3.5' aria-hidden='true' />
-            {creditEstimate}
-          </span>
+          {creditText !== undefined && (
+            <span
+              data-testid='generate-credit'
+              className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
+            >
+              <Star className='h-3.5 w-3.5' aria-hidden='true' />
+              {creditText}
+            </span>
+          )}
           <Button
             type='button'
             variant={null}

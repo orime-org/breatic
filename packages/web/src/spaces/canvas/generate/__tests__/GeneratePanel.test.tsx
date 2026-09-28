@@ -56,7 +56,7 @@ function setup(
       modeOptions={IMAGE_MODE_OPTIONS}
       params={{ aspect_ratio: '16:9', resolution: '2K' }}
       references={[]}
-      creditEstimate={7}
+      creditText='7'
       executeRefusal={null}
       promptSlot={<div data-testid='prompt-slot'>prompt</div>}
       onExit={() => {}}

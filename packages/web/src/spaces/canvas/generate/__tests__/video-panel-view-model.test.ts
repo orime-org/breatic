@@ -249,7 +249,6 @@ describe('buildVideoPanelViewModel', () => {
       mode: 't2v',
     });
     expect(vm.model).toBe('veo-3.1-lite');
-    expect(vm.creditEstimate).toBe(21);
   });
 
   it('falls back to the first offered model when none is stored', () => {
@@ -261,7 +260,6 @@ describe('buildVideoPanelViewModel', () => {
       mode: 't2v',
     });
     expect(vm.model).toBe('veo-3.1');
-    expect(vm.creditEstimate).toBe(88);
   });
 
   it('falls back to the first offered model when the stored one is not offered here', () => {
@@ -289,7 +287,6 @@ describe('buildVideoPanelViewModel', () => {
     });
     expect(vm.model).toBe('');
     expect(vm.params).toEqual({});
-    expect(vm.creditEstimate).toBe(0);
   });
 
   it('reconciles stored params against the effective model', () => {
@@ -385,7 +382,6 @@ describe('buildVideoPanelViewModel', () => {
       mode: 't2v',
     });
     expect(vm.model).toBe('');
-    expect(vm.creditEstimate).toBe(0);
     expect(vm.params).toEqual({});
   });
 });

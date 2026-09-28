@@ -6,6 +6,9 @@ import * as React from 'react';
 import type { ModelEntry } from '@breatic/shared';
 import type { CreditEstimate, EstimateInput } from '@breatic/shared/pricing';
 
+import { useTranslation } from '@web/i18n/use-translation';
+import { creditEstimateText } from '@web/spaces/canvas/generate/credit-estimate-text';
+
 /**
  * What one run as set up would cost, priced by the model's contract.
  *
@@ -52,4 +55,21 @@ export function useCreditEstimate(
   }, [model, pricing, key, creditMultiplier]);
 
   return estimate;
+}
+
+/**
+ * What the panel prints beside the star for the run as set up.
+ * @param model - The selected model, or undefined when none is picked yet.
+ * @param input - The run as set up: params, prompt and known source lengths.
+ * @param creditMultiplier - Credits per US cent, off the catalog.
+ * @returns The text, or undefined until the estimate resolves.
+ */
+export function useCreditText(
+  model: ModelEntry | undefined,
+  input: EstimateInput,
+  creditMultiplier: number,
+): string | undefined {
+  const t = useTranslation();
+  const estimate = useCreditEstimate(model, input, creditMultiplier);
+  return estimate ? creditEstimateText(estimate, t) : undefined;
 }

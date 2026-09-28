@@ -24,10 +24,12 @@ import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores';
 import {
   evaluateExecute,
+  extractPromptText,
   refusalToastKey,
   REFERENCE_POOL_PARAM,
   type ExecuteVerdict,
 } from '@breatic/shared';
+import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { slotFillLowersCapBelowPicks } from '@web/spaces/canvas/generate/model-reference-cap';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import {
@@ -223,6 +225,11 @@ function VideoGeneratePanelBody({
     () =>
       buildVideoPanelViewModel({ nodeId, nodes, edges, models, mode, textById }),
     [nodeId, nodes, edges, models, mode, textById],
+  );
+  const creditText = useCreditText(
+    vm.modelEntry,
+    { params: vm.params, prompt: extractPromptText(promptText) },
+    catalog?.credit_multiplier ?? 1,
   );
 
   // The rail refuses this itself now (#1966): `takesPrompt` is one of the two
@@ -785,7 +792,7 @@ function VideoGeneratePanelBody({
       models={stableModels}
       model={vm.model}
       params={stableParams}
-      creditEstimate={vm.creditEstimate}
+      creditText={creditText}
       mode={mode}
       takesReferences={takesReferences}
       onToggleMode={onToggleMode}
