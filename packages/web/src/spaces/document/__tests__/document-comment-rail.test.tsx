@@ -1228,17 +1228,6 @@ describe('the comment panel', () => {
 
     it.each([
       [
-        'turns their line into a heading',
-        async (peer: DocumentEditorHandle): Promise<void> => {
-          act(() => {
-            peer.editor.updateBlock(peer.editor.document[1]!, {
-              type: 'heading',
-              props: { level: 2 },
-            } as never);
-          });
-        },
-      ],
-      [
         'splits the line inside them',
         async (peer: DocumentEditorHandle): Promise<void> => {
           await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 8, 'Enter');
@@ -1251,20 +1240,23 @@ describe('the comment panel', () => {
         },
       ],
       [
-        'moves their line to the end',
+        'moves their line and retypes it at once',
         async (peer: DocumentEditorHandle): Promise<void> => {
           act(() => {
-            peer.editor.setTextCursorPosition(peer.editor.document[1]!);
-            peer.editor.moveBlocksDown();
+            peer.editor.transact(() => {
+              peer.editor.setTextCursorPosition(peer.editor.document[1]!);
+              peer.editor.moveBlocksDown();
+              peer.editor.updateBlock(peer.editor.document[2]!, {
+                content: 'delta ekko foxtrot',
+              } as never);
+            });
           });
         },
       ],
     ])(
       'says so when a peer %s',
       async (_what, change) => {
-        // The peer's editor writes each of these back into Yjs by deleting the
-        // line's letters and writing them again, so the letters the ends name
-        // are gone.
+        // The line holding its words is no longer there word for word.
         show('editor', ['alpha bravo charlie', 'delta echo foxtrot', 'golf']);
         const second = lineStarts()[1]!;
         aimAt(second + 6, second + 10);
@@ -1280,20 +1272,156 @@ describe('the comment panel', () => {
       },
     );
 
-    it('says so when the reader moves the line its words are on', async () => {
+    it.each([
+      [
+        'turns their line into a heading',
+        async (peer: DocumentEditorHandle): Promise<void> => {
+          act(() => {
+            peer.editor.updateBlock(peer.editor.document[1]!, {
+              type: 'heading',
+              props: { level: 2 },
+            } as never);
+          });
+        },
+      ],
+      [
+        'moves their line to the end',
+        async (peer: DocumentEditorHandle): Promise<void> => {
+          act(() => {
+            peer.editor.setTextCursorPosition(peer.editor.document[1]!);
+            peer.editor.moveBlocksDown();
+          });
+        },
+      ],
+      [
+        'moves the line below up past theirs',
+        async (peer: DocumentEditorHandle): Promise<void> => {
+          act(() => {
+            peer.editor.setTextCursorPosition(peer.editor.document[2]!);
+            peer.editor.moveBlocksUp();
+          });
+        },
+      ],
+      [
+        'moves the last line to the top, across theirs',
+        async (peer: DocumentEditorHandle): Promise<void> => {
+          act(() => {
+            const view = peer.editor.prosemirrorView!;
+            const last = peer.editor.document[2]!;
+            peer.editor.setTextCursorPosition(last);
+            let row: { from: number; to: number; node: never } | null = null;
+            view.state.doc.descendants((node, pos) => {
+              if (node.attrs['id'] !== last.id) return true;
+              row = { from: pos, to: pos + node.nodeSize, node: node as never };
+              return false;
+            });
+            const tr = view.state.tr;
+            tr.delete(row!.from, row!.to);
+            tr.insert(1, row!.node);
+            view.dispatch(tr);
+          });
+        },
+      ],
+    ])(
+      'stays on its words when a peer %s',
+      async (_what, change) => {
+        // The peer's editor writes each of these back into Yjs by deleting
+        // lines' letters and writing them again, while every line keeps its
+        // id and its words.
+        show('editor', ['alpha bravo charlie', 'delta echo foxtrot', 'golf']);
+        const second = lineStarts()[1]!;
+        aimAt(second + 6, second + 10);
+        await screen.findByTestId('doc-comment-draft-card');
+        await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+        const peer = await peerEditor();
+
+        await change(peer);
+
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe('echo');
+        expect(screen.getByTestId('doc-comment-draft-input')).toHaveValue('half');
+      },
+    );
+
+    it('stays on its words across two lines when a peer moves another line across both', async () => {
+      show('editor', ['alpha bravo', 'charlie delta', 'echo']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second! + 7);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.setTextCursorPosition(peer.editor.document[2]!);
+        peer.editor.moveBlocksUp();
+        peer.editor.moveBlocksUp();
+      });
+
+      expect(lines()).toEqual(['echo', 'alpha bravo', 'charlie delta']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('bravocharlie');
+    });
+
+    it('says so when a peer moves one of its two lines away from the other', async () => {
+      show('editor', ['alpha bravo', 'charlie delta', 'echo']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second! + 7);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.setTextCursorPosition(peer.editor.document[1]!);
+        peer.editor.moveBlocksDown();
+      });
+
+      expect(lines()).toEqual(['alpha bravo', 'echo', 'charlie delta']);
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
+    });
+
+    it('stays on its words when the reader moves the line they are on', async () => {
       show('editor', ['alpha bravo', 'charlie delta']);
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
 
       act(() => {
+        const view = handle.editor.prosemirrorView!;
         handle.editor.setTextCursorPosition(handle.editor.document[0]!);
-        handle.editor.moveBlocksDown();
+        view.someProp('handleKeyDown', (handler) =>
+          handler(
+            view,
+            new KeyboardEvent('keydown', {
+              key: 'ArrowDown',
+              ctrlKey: true,
+              shiftKey: true,
+            }),
+          ),
+        );
       });
 
       expect(lines()).toEqual(['charlie delta', 'alpha bravo']);
-      expect(
-        await screen.findByTestId('doc-comment-draft-dropped'),
-      ).toBeInTheDocument();
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('bravo');
+    });
+
+    it('stays on its words when the reader undoes moving another line across them', async () => {
+      show('editor', ['w', 'bravo charlie', 'z']);
+      aimAt(lineStarts()[1]!, lineStarts()[1]! + 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      handle.undoManager.stopCapturing();
+      act(() => {
+        handle.editor.setTextCursorPosition(handle.editor.document[2]!);
+        handle.editor.moveBlocksUp();
+      });
+      handle.undoManager.stopCapturing();
+
+      act(() => {
+        handle.undoManager.undo();
+      });
+
+      expect(lines()).toEqual(['w', 'bravo charlie', 'z']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('bravo');
     });
 
     it('says so when a peer deletes the words it is on', async () => {
