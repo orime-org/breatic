@@ -347,7 +347,7 @@ models:
         values: ["1:1", "1:2", "2:1", "1:3", "3:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "9:21", "21:9"]
         fill: "panel"
       images:
-        description: "Reference images"
+        description: "Images to edit"
         default: null
         type: "list"
         max_items: 16
@@ -391,7 +391,7 @@ models:
         fill: "panel"
       images:
         upstream: "image_urls"
-        description: "Reference images"
+        description: "Images to edit"
         default: null
         type: "list"
         max_items: 10
@@ -429,7 +429,7 @@ models:
         values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]
         fill: "panel"
       images:
-        description: "Reference images"
+        description: "Images to edit"
         default: null
         type: "list"
         max_items: 14
@@ -477,7 +477,7 @@ models:
         step: 1
         fill: "panel"
       images:
-        description: "Reference images"
+        description: "Images to edit"
         default: null
         type: "list"
         max_items: 3
