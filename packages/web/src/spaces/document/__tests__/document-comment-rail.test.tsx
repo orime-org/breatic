@@ -878,16 +878,12 @@ describe('the comment panel', () => {
       aimDraft(0, 5);
       const card = await screen.findByTestId('doc-comment-draft-card');
 
-      // A browser keeps the page's focus through both (measured in Chrome,
-      // 2026-09-24); jsdom would say it lost it.
-      const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
       fireEvent.pointerDown(card);
       act(() => {
         screen.getByTestId('doc-comment-draft-input').blur();
       });
 
       expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
-      focused.mockRestore();
     });
 
     it('keeps an empty draft when the focus moves without a press', async () => {
@@ -898,15 +894,11 @@ describe('the comment panel', () => {
       aimDraft(0, 5);
       await screen.findByTestId('doc-comment-draft-card');
 
-      // A browser keeps the page's focus through both (measured in Chrome,
-      // 2026-09-24); jsdom would say it lost it.
-      const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
       act(() => {
         handle.editor.prosemirrorView!.focus();
       });
 
       expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
-      focused.mockRestore();
     });
 
     it('keeps its words and its place when a peer edits elsewhere', async () => {

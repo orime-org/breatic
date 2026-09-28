@@ -47,7 +47,6 @@ import type { ProjectRole } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
-import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import { DocumentCommentWriteBox } from '@web/spaces/document/DocumentCommentWriteBox';
 import {
   annotationRights,
@@ -236,8 +235,6 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
     },
     [card.id, onDraft],
   );
-  const box = React.useRef<HTMLTextAreaElement>(null);
-  useAutosizeTextarea(box, reply);
   const mayWrite = canPostAnnotations(myRole);
   const settled = card.settled;
   const mayDeleteThread = annotationRights({

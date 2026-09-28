@@ -195,6 +195,26 @@ export function nextLift(turn: LiftTurn): { lift: number; taken: boolean } {
 }
 
 /**
+ * Where the lift goes when the focus lands on a card hidden under the header
+ * (design §9.6.1): up by as much as the card is hidden, no further than the
+ * cards were pushed.
+ * @param show - The lift now, the most it may be, and how far the card is
+ *   hidden above the header (zero or less when it is in view).
+ * @param show.lift - How far the column is lifted now.
+ * @param show.raised - The most it may be lifted, from {@link layOutCards}.
+ * @param show.hidden - How far the card reaches above the header.
+ * @returns The lift after.
+ */
+export function liftToReveal(show: {
+  lift: number;
+  raised: number;
+  hidden: number;
+}): number {
+  const { lift, raised, hidden } = show;
+  return lift + Math.max(0, Math.min(hidden, raised - lift));
+}
+
+/**
  * The cards in the order the column shows them, top first.
  *
  * Tab order is DOM order, and these cards are positioned out of flow — so

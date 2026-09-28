@@ -1195,6 +1195,46 @@ test.describe('a column crowded with comments', () => {
     expect(Math.abs(back['note 5']! - before['note 5']!)).toBeLessThan(2);
   });
 
+  test('brings each card the keyboard reaches into view below the header', async ({
+    page,
+  }) => {
+    // Tab walks the column top first, so its first stops are the cards the
+    // one being read pushed up under the header.
+    await crowdOneLine(page);
+    await readNote(page, 5);
+    await page.getByTestId('doc-comment-rail-close').focus();
+    const header = (await page
+      .getByTestId('doc-comment-rail-header')
+      .boundingBox())!;
+    const edge = header.y + header.height;
+
+    for (let i = 0; i < 4; i += 1) {
+      await page.keyboard.press('Tab');
+      await page.waitForTimeout(250);
+      const top = await page.evaluate(
+        () => (document.activeElement as HTMLElement).getBoundingClientRect().top,
+      );
+      expect(top).toBeGreaterThanOrEqual(edge - 1);
+    }
+  });
+
+  test('leaves the column alone on a Ctrl+wheel, which is the page zooming', async ({
+    page,
+  }) => {
+    await crowdOneLine(page);
+    await readNote(page, 5);
+    const before = await cardTops(page);
+    const rail = (await page.getByTestId('doc-comment-rail-column').boundingBox())!;
+    await page.mouse.move(rail.x + rail.width / 2, rail.y + 300);
+
+    await page.keyboard.down('Control');
+    for (let i = 0; i < 5; i += 1) await page.mouse.wheel(0, -100);
+    await page.keyboard.up('Control');
+    await page.waitForTimeout(300);
+
+    expect(await cardTops(page)).toEqual(before);
+  });
+
   test('starts the column over when another card is read', async ({ page }) => {
     await crowdOneLine(page);
     await readNote(page, 5);

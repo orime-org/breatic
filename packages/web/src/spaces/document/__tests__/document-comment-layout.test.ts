@@ -23,6 +23,7 @@ import { describe, it, expect } from 'vitest';
 import {
   inColumnOrder,
   layOutCards,
+  liftToReveal,
   nextLift,
 } from '@web/spaces/document/document-comment-layout';
 
@@ -400,5 +401,26 @@ describe('the panel lifting its own column', () => {
       lift: 0,
       taken: false,
     });
+  });
+});
+
+describe('lifting the column to show a card the focus landed on', () => {
+  // Tab reaches cards in column order, so the first stops are the ones the
+  // card being read pushed up under the header (design §9.6.1).
+  it('lifts by as much as the card is hidden', () => {
+    expect(liftToReveal({ lift: 0, raised: 200, hidden: 80 })).toBe(80);
+  });
+
+  it('adds to what the column is lifted already', () => {
+    expect(liftToReveal({ lift: 30, raised: 200, hidden: 50 })).toBe(80);
+  });
+
+  it('stops at how far the cards were pushed', () => {
+    expect(liftToReveal({ lift: 150, raised: 200, hidden: 80 })).toBe(200);
+  });
+
+  it('leaves the column where it is for a card in view', () => {
+    expect(liftToReveal({ lift: 40, raised: 200, hidden: 0 })).toBe(40);
+    expect(liftToReveal({ lift: 40, raised: 200, hidden: -20 })).toBe(40);
   });
 });

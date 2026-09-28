@@ -33,6 +33,7 @@ import type { CommentRail } from '@web/spaces/document/document-comment-rail';
 import {
   inColumnOrder,
   layOutCards,
+  liftToReveal,
   nextLift,
 } from '@web/spaces/document/document-comment-layout';
 import {
@@ -389,6 +390,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
      * @param event - The turn.
      */
     const onWheel = (event: WheelEvent): void => {
+      // A pinch or Ctrl+wheel is the page zooming, not a scroll.
+      if (event.ctrlKey) return;
       const { lifted: now, placement: laid, anchors: at } = liftInputs.current;
       const edge = header.current?.getBoundingClientRect().bottom;
       const top = column.current?.getBoundingClientRect().top;
@@ -416,6 +419,31 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       node.removeEventListener('wheel', onWheel);
     };
   }, []);
+
+  // The focus landing on a card the column pushed up under the header lifts
+  // the column to show it: Tab reaches cards in column order, so the first
+  // stops are exactly those (design §9.6.1). A card hidden because the body
+  // was scrolled is the browser's to bring into view, and the scroll margin
+  // below keeps it clear of the header.
+  const revealFocused = React.useCallback((node: HTMLElement): void => {
+    const edge = header.current?.getBoundingClientRect().bottom;
+    if (edge === undefined) return;
+    const hidden = edge - node.getBoundingClientRect().top;
+    const { lifted: now, placement: laid } = liftInputs.current;
+    const next = liftToReveal({ lift: now, raised: laid.raised, hidden });
+    if (next !== now) setLift(next);
+  }, []);
+
+  // How tall the header is, for the scroll margin every card keeps: the
+  // browser bringing a focused card into view then leaves it below the
+  // header rather than under it.
+  const [headerHeight, setHeaderHeight] = React.useState(0);
+  React.useLayoutEffect(() => {
+    const node = header.current;
+    if (node === null) return;
+    setHeaderHeight(node.offsetHeight);
+  }, []);
+  const clearOfHeader = headerHeight + CLEARANCE_BELOW_HEADER_PX;
 
   const written = React.useMemo(
     () => inColumnOrder(shown, placement.order),
@@ -546,6 +574,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
                 giveBack={giveBack}
                 onHover={onHover}
                 onRead={onRead}
+                onFocused={revealFocused}
+                clearOfHeader={clearOfHeader}
                 handling={handling}
               />
             ))}
@@ -558,6 +588,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
                 take={take}
                 giveBack={giveBack}
                 onRead={readDraft}
+                clearOfHeader={clearOfHeader}
               >
                 <DocumentCommentDraftCard
                   editor={editor}
@@ -583,7 +614,9 @@ interface PlacedDraftProps {
   giveBack: (node: HTMLDivElement, id: string) => void;
   /** Makes the draft the card being read. */
   onRead: () => void;
-  /** The draft card, or nothing while no comment is being written. */
+  /** How far below the top of the scroller the header reaches. */
+  clearOfHeader: number;
+  /** The draft card. */
   children: React.ReactNode;
 }
 
@@ -598,6 +631,7 @@ interface PlacedDraftProps {
  * @param root0.take - Takes its element into the measurements.
  * @param root0.giveBack - Gives back what was held under its id.
  * @param root0.onRead - Makes the draft the card being read.
+ * @param root0.clearOfHeader - How far below the scroller's top the header reaches.
  * @param root0.children - The draft card.
  * @returns The positioned box.
  */
@@ -606,6 +640,7 @@ function PlacedDraft({
   take,
   giveBack,
   onRead,
+  clearOfHeader,
   children,
 }: PlacedDraftProps): React.JSX.Element {
   const box = React.useRef<HTMLDivElement>(null);
@@ -624,7 +659,13 @@ function PlacedDraft({
       className='absolute inset-x-0 rounded-sm transition-[top] duration-200 ease-out motion-reduce:transition-none'
       // The draft is what the reader is working in, so it comes to the front
       // whenever a settling card would otherwise overlap it.
-      style={{ top: `${String(top)}px`, zIndex: 1 }}
+      // The browser bringing the focused box into view keeps it below the
+      // header, which sits over the top of the same scroller.
+      style={{
+        top: `${String(top)}px`,
+        zIndex: 1,
+        scrollMarginTop: `${String(clearOfHeader)}px`,
+      }}
       // The main button only, as a thread's card asks it.
       onPointerDown={(event) => {
         if (event.button !== 0) return;
@@ -656,6 +697,10 @@ interface PlacedCardProps {
   onHover: (threadId: string | null) => void;
   /** Opens this thread. */
   onRead: (threadId: string) => void;
+  /** Told when the focus lands on this card, with its element. */
+  onFocused: (node: HTMLElement) => void;
+  /** How far below the top of the scroller the header reaches. */
+  clearOfHeader: number;
   /** What every card takes, memoised once by the panel. */
   handling: CardHandling;
 }
@@ -680,6 +725,8 @@ interface PlacedCardProps {
  * @param root0.giveBack - Gives back what was held under this card's id.
  * @param root0.onHover - Says the pointer is resting on it, or on none.
  * @param root0.onRead - Opens this thread.
+ * @param root0.onFocused - Told when the focus lands on this card.
+ * @param root0.clearOfHeader - How far below the scroller's top the header reaches.
  * @param root0.handling - What every card takes.
  * @returns The card in its place.
  */
@@ -693,6 +740,8 @@ function PlacedCard({
   giveBack,
   onHover,
   onRead,
+  onFocused,
+  clearOfHeader,
   handling,
 }: PlacedCardProps): React.JSX.Element {
   const box = React.useRef<HTMLDivElement>(null);
@@ -724,7 +773,13 @@ function PlacedCard({
       // by moving, and while one is settling — a reply box opening, a height
       // not measured yet — they can still overlap; the one the reader is on
       // is the one to see whole.
-      style={{ top: `${String(top)}px`, zIndex: reading ? 1 : undefined }}
+      // The scroll margin keeps a card the browser brings into view below the
+      // header, which sits over the top of the same scroller.
+      style={{
+        top: `${String(top)}px`,
+        zIndex: reading ? 1 : undefined,
+        scrollMarginTop: `${String(clearOfHeader)}px`,
+      }}
       onMouseEnter={() => {
         onHover(card.id);
       }}
@@ -747,9 +802,11 @@ function PlacedCard({
       // pressing it is: the words go deeper (A24) and the thread stays shut
       // until the reader says to open it (A7). Opening on arrival would also
       // move the card — reading one makes it the column's pivot — out from
-      // under the focus ring the browser had just scrolled to.
-      onFocusCapture={() => {
+      // under the focus ring the browser had just scrolled to. A card the
+      // column pushed up under the header is lifted into view (§9.6.1).
+      onFocusCapture={(event) => {
         onHover(card.id);
+        onFocused(event.currentTarget);
       }}
       onBlurCapture={(event) => {
         if (event.currentTarget.contains(event.relatedTarget)) return;
