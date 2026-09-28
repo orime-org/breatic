@@ -60,7 +60,7 @@ function AttachmentChipInner({
         onRemove ? 'pr-1' : 'pr-2'
       } ${
         status === 'failed'
-          ? 'border-status-error-border bg-status-error-bg text-status-error-foreground'
+          ? 'border-status-error-border bg-status-error-bg text-foreground'
           : 'border-border bg-muted text-foreground'
       }`}
     >
@@ -70,7 +70,9 @@ function AttachmentChipInner({
           aria-label={t('chat.composer.attachmentUploading')}
         />
       ) : status === 'failed' ? (
-        <AlertCircle className='h-3 w-3 shrink-0' aria-hidden='true' />
+        // The words stay in the body colour: red on its own tint does not
+        // reach 4.5:1 at this size. The border, tint and icon carry the red.
+        <AlertCircle className='h-3 w-3 shrink-0 text-status-error-foreground' aria-hidden='true' />
       ) : (
         <span className='shrink-0 text-2xs text-muted-foreground'>
           {t('chat.attachment.kind', { kind: type })}
