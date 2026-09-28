@@ -35,12 +35,14 @@
  * letter was deleted, the words are found again the way web annotations are
  * re-anchored (`document-comment-quote.ts`): by the words, what stood around
  * them and how far into the body they were, scored the way the Hypothesis
- * client scores them. A run is taken only where the letter at each deleted
- * end was written by this very change and each end that stands is met. When
- * no run qualifies, each end stays where Yjs puts it, and a deleted end is
- * brought in past the letters this change wrote: what lies between is what
- * was there before, and letters written against the edge are not the
- * reader's, whichever way they arrive.
+ * client scores them. A run is taken only where it is the words written
+ * again at each deleted end — from that edge in, the letters this change
+ * wrote run across the whole run or up to another line — and each end that
+ * stands is met. Letters a peer types in place next to the original ones are
+ * an edit, not the words written again. When no run qualifies, each end
+ * stays where Yjs puts it, and a deleted end is brought in past the letters
+ * this change wrote: what lies between is what was there before, and letters
+ * written against the edge are not the reader's, whichever way they arrive.
  *
  * Both ends always sit against a letter: the first one covered and just past
  * the last. A range that reaches into the next line, or past non-text at an
@@ -105,7 +107,7 @@ import {
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import {
   QUOTE_CONTEXT_LENGTH,
-  rankQuoteCandidates,
+  findQuote,
   type Quote,
 } from '@web/spaces/document/document-comment-quote';
 
@@ -150,8 +152,10 @@ type Binding = NonNullable<ReturnType<typeof syncBindingOf>>;
 interface HeldAcrossYjs {
   readonly opening: DraftOpening;
   readonly tracked: TrackedLink;
-  /** The words it covered and where they stood. */
-  readonly quote: Quote;
+  /** The body the range was taken against, from which its words are read. */
+  readonly before: ProseMirrorNode;
+  /** The range in that body. */
+  readonly range: DraftRange;
   /** How far each client's writes reached; anything past is this change's. */
   readonly written: ReadonlyMap<number, number>;
 }
@@ -274,30 +278,46 @@ function endAfterYjs(bound: Binding, end: Y.RelativePosition): EndAfterYjs {
 }
 
 /**
- * Whether the letter at a body position was written by the change in hand.
+ * The shared letter at a body position.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param pos - The position right before the letter.
- * @param written - How far each client's writes reached before the change.
- * @returns True for a letter this change wrote.
+ * @returns The letter, or null where there is none.
  */
-function writtenNow(
-  bound: Binding,
-  pos: number,
-  written: ReadonlyMap<number, number>,
-): boolean {
+function letterAt(bound: Binding, pos: number): Y.Item | null {
   const { item } = absolutePositionToRelativePosition(
     pos,
     bound.type,
     bound.mapping,
   ) as Y.RelativePosition;
-  return item !== null && item.clock >= (written.get(item.client) ?? 0);
+  return item === null ? null : Y.getItem(bound.doc.store, item);
 }
 
 /**
- * Finds the words again after a change that deleted the letter an end named:
- * the best-scoring run of the body that this change wrote at every such end,
- * and that still meets every end that stands.
- * @param doc - The body after the change.
+ * Whether a letter was written by the change in hand.
+ * @param letter - The letter.
+ * @param written - How far each client's writes reached before the change.
+ * @returns True for a letter this change wrote.
+ */
+function writtenNow(
+  letter: Y.Item | null,
+  written: ReadonlyMap<number, number>,
+): boolean {
+  return (
+    letter !== null && letter.id.clock >= (written.get(letter.id.client) ?? 0)
+  );
+}
+
+/**
+ * Finds the words again after a change that deleted the letter an end named.
+ *
+ * The run taken is the best-scoring one that meets every standing end and is
+ * written again at every deleted end: from that edge in, the letters this
+ * change wrote run either across the whole run or up to a line boundary.
+ * Written again that way, the words were moved or rewritten — a line split
+ * or joined, a block's type changed, a block moved. Letters this change wrote
+ * against original letters of the same line are an edit in place, and belong
+ * to whoever typed them.
+ * @param letters - The body's letters after the change.
  * @param bound - The sync binding, rebuilt to that body.
  * @param held - What was taken before the change.
  * @param start - The start after the change.
@@ -305,22 +325,48 @@ function writtenNow(
  * @returns The words where they are now, or null when there is no such run.
  */
 function reanchor(
-  doc: ProseMirrorNode,
+  letters: BodyLetters,
   bound: Binding,
   held: HeldAcrossYjs,
   start: EndAfterYjs,
   end: EndAfterYjs,
 ): DraftRange | null {
-  const letters = bodyLetters(doc);
-  for (const candidate of rankQuoteCandidates(letters.text, held.quote)) {
-    const from = letters.at[candidate.start]!;
-    const to = letters.at[candidate.end - 1]! + 1;
-    const fits =
-      (start.deleted ? writtenNow(bound, from, held.written) : from === start.at) &&
-      (end.deleted ? writtenNow(bound, to - 1, held.written) : to === end.at);
-    if (fits) return { from, to };
-  }
-  return null;
+  /**
+   * Whether a run is its words written again at one edge.
+   * @param run - The run's letter positions, from that edge inwards.
+   * @returns True when the letters this change wrote from the edge in stop
+   *   only at the run's far end or at another line.
+   */
+  const rewrittenFrom = (run: readonly number[]): boolean => {
+    let last: Y.Item | null = null;
+    for (const pos of run) {
+      const letter = letterAt(bound, pos);
+      if (!writtenNow(letter, held.written)) {
+        return last !== null && letter?.parent !== last.parent;
+      }
+      last = letter;
+    }
+    return true;
+  };
+  const found = findQuote(
+    letters.text,
+    quoteOf(bodyLetters(held.before), held.range),
+    (candidate) => {
+      const run = letters.at.slice(candidate.start, candidate.end);
+      const from = run[0]!;
+      const to = run[run.length - 1]! + 1;
+      return (
+        (start.deleted ? rewrittenFrom(run) : from === start.at) &&
+        (end.deleted ? rewrittenFrom([...run].reverse()) : to === end.at)
+      );
+    },
+  );
+  return found === null
+    ? null
+    : {
+      from: letters.at[found.start]!,
+      to: letters.at[found.end - 1]! + 1,
+    };
 }
 
 /**
@@ -328,9 +374,9 @@ function reanchor(
  * puts it, and an end whose letter was deleted brought in past the letters
  * this change wrote. Yjs puts a deleted letter where it was, so what lies
  * between is what was there before; letters written against that edge by the
- * same change — a peer's retyped copy of a line, or words typed at the edge —
+ * same change — a peer's retyped copy of a line, or letters typed in place —
  * are not the reader's (§9.4).
- * @param doc - The body after the change.
+ * @param letters - The body's letters after the change.
  * @param bound - The sync binding, rebuilt to that body.
  * @param held - What was taken before the change.
  * @param start - The start after the change.
@@ -338,31 +384,25 @@ function reanchor(
  * @returns The range, or null once nothing of it is left.
  */
 function whatStayed(
-  doc: ProseMirrorNode,
+  letters: BodyLetters,
   bound: Binding,
   held: HeldAcrossYjs,
   start: EndAfterYjs,
   end: EndAfterYjs,
 ): DraftRange | null {
   if (start.at === null || end.at === null) return null;
-  const { at } = bodyLetters(doc);
-  const inside = at.filter((pos) => pos >= start.at! && pos < end.at!);
+  const inside = letters.at.filter((pos) => pos >= start.at! && pos < end.at!);
+  /**
+   * Whether the letter at a position was written by this change.
+   * @param pos - The position right before the letter.
+   * @returns True for a letter this change wrote.
+   */
+  const fresh = (pos: number): boolean =>
+    writtenNow(letterAt(bound, pos), held.written);
   let first = 0;
   let last = inside.length - 1;
-  while (
-    start.deleted &&
-    first <= last &&
-    writtenNow(bound, inside[first]!, held.written)
-  ) {
-    first += 1;
-  }
-  while (
-    end.deleted &&
-    last >= first &&
-    writtenNow(bound, inside[last]!, held.written)
-  ) {
-    last -= 1;
-  }
+  while (start.deleted && first <= last && fresh(inside[first]!)) first += 1;
+  while (end.deleted && last >= first && fresh(inside[last]!)) last -= 1;
   return first > last ? null : { from: inside[first]!, to: inside[last]! + 1 };
 }
 
@@ -380,11 +420,16 @@ function carryAcrossYjs(
 ): DraftRange | null {
   const start = endAfterYjs(bound, held.tracked.start);
   const end = endAfterYjs(bound, held.tracked.end);
-  const found =
-    start.deleted || end.deleted
-      ? reanchor(doc, bound, held, start, end)
+  if (!start.deleted && !end.deleted) {
+    return start.at !== null && end.at !== null && end.at > start.at
+      ? { from: start.at, to: end.at }
       : null;
-  return found ?? whatStayed(doc, bound, held, start, end);
+  }
+  const letters = bodyLetters(doc);
+  return (
+    reanchor(letters, bound, held, start, end) ??
+    whatStayed(letters, bound, held, start, end)
+  );
 }
 
 /** The open draft: where it is now, and which opening it is. */
@@ -413,9 +458,10 @@ export type Draft =
   };
 
 /**
- * What a caller dispatches under the plugin's key: a range opens a draft,
- * `null` closes it, and `{ drop }` drops it for a reason the plugin cannot
- * see for itself.
+ * What a caller dispatches under the plugin's key: a range opens a draft, or
+ * moves the open one there — aimed or dropped — keeping its opening and so
+ * its words; `null` closes it; `{ drop }` drops it for a reason the plugin
+ * cannot see for itself.
  */
 export type DraftCommand = DraftRange | null | { readonly drop: 'cannotWrite' };
 
@@ -621,7 +667,8 @@ export const documentCommentDraftRange = createExtension(() => {
             held = {
               opening: range.opening,
               tracked: trackDraft(bound, range),
-              quote: quoteOf(bodyLetters(view.state.doc), range),
+              before: view.state.doc,
+              range: { from: range.from, to: range.to },
               written: Y.decodeStateVector(Y.encodeStateVector(doc)),
             };
           };

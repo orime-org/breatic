@@ -58,8 +58,8 @@ function search(
   text: string,
   str: string,
   maxErrors: number,
-): readonly { start: number; end: number; errors: number }[] {
-  const exact: { start: number; end: number; errors: number }[] = [];
+): readonly CloseRun[] {
+  const exact: CloseRun[] = [];
   for (let at = text.indexOf(str); at !== -1; at = text.indexOf(str, at + 1)) {
     exact.push({ start: at, end: at + str.length, errors: 0 });
   }
@@ -78,33 +78,77 @@ function likeness(text: string, str: string): number {
   return best === undefined ? 0 : 1 - best.errors / str.length;
 }
 
+/** A run close to the words, and how many edits it is from them. */
+interface CloseRun {
+  readonly start: number;
+  readonly end: number;
+  readonly errors: number;
+}
+
+/** Stands in for text already looked at; never a letter of the body. */
+const SEEN = '\u0000';
+
 /**
- * The runs of a body that may be a quote's words, best first.
+ * Finds a quote's words in a body: the best-scoring run close enough to them
+ * that the caller accepts.
+ *
+ * The closest runs are scored first. When the caller accepts none of them,
+ * they are blanked out of the search and the next closest are scored, until
+ * a run is accepted or none is left within half the words' length of edits:
+ * `approx-string-match` hands back only the closest runs, so a caller that
+ * turns those down would otherwise never see the next ones.
  * @param text - The body's letters.
  * @param quote - The words and where they stood.
- * @returns Every run close enough to the words, ordered by score.
+ * @param accept - Whether a run can be the words.
+ * @returns The run taken, or null when none is accepted.
  */
-export function rankQuoteCandidates(
+export function findQuote(
   text: string,
   quote: Quote,
-): readonly QuoteCandidate[] {
-  if (quote.exact.length === 0) return [];
+  accept: (candidate: QuoteCandidate) => boolean,
+): QuoteCandidate | null {
+  if (quote.exact.length === 0) return null;
   const maxErrors = Math.min(256, quote.exact.length / 2);
-  const scored = search(text, quote.exact, maxErrors).map((match) => {
-    const before = text.slice(
-      Math.max(0, match.start - quote.prefix.length),
-      match.start,
-    );
-    const after = text.slice(match.end, match.end + quote.suffix.length);
-    const score =
-      QUOTE_WEIGHT * (1 - match.errors / quote.exact.length) +
-      PREFIX_WEIGHT * (quote.prefix === '' ? 1 : likeness(before, quote.prefix)) +
-      SUFFIX_WEIGHT * (quote.suffix === '' ? 1 : likeness(after, quote.suffix)) +
-      POSITION_WEIGHT *
-        (1 - Math.abs(match.start - quote.start) / Math.max(1, text.length));
-    return { start: match.start, end: match.end, score };
-  });
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .map(({ start, end }) => ({ start, end }));
+  let searched = text;
+  for (;;) {
+    const matches = search(searched, quote.exact, maxErrors);
+    if (matches.length === 0) return null;
+    const ranked = matches
+      .map((match) => ({
+        start: match.start,
+        end: match.end,
+        score: scoreOf(text, quote, match),
+      }))
+      .sort((a, b) => b.score - a.score);
+    const taken = ranked.find((candidate) => accept(candidate));
+    if (taken !== undefined) return { start: taken.start, end: taken.end };
+    for (const match of matches) {
+      searched =
+        searched.slice(0, match.start) +
+        SEEN.repeat(match.end - match.start) +
+        searched.slice(match.end);
+    }
+  }
+}
+
+/**
+ * How well a run matches a quote, weighted the way `match-quote.ts` weighs it.
+ * @param text - The body's letters.
+ * @param quote - The words and where they stood.
+ * @param match - The run, with how many edits it is from the words.
+ * @returns The score; higher is better.
+ */
+function scoreOf(text: string, quote: Quote, match: CloseRun): number {
+  const before = text.slice(
+    Math.max(0, match.start - quote.prefix.length),
+    match.start,
+  );
+  const after = text.slice(match.end, match.end + quote.suffix.length);
+  return (
+    QUOTE_WEIGHT * (1 - match.errors / quote.exact.length) +
+    PREFIX_WEIGHT * (quote.prefix === '' ? 1 : likeness(before, quote.prefix)) +
+    SUFFIX_WEIGHT * (quote.suffix === '' ? 1 : likeness(after, quote.suffix)) +
+    POSITION_WEIGHT *
+      (1 - Math.abs(match.start - quote.start) / Math.max(1, text.length))
+  );
 }

@@ -1452,6 +1452,48 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('brave');
     });
 
+    it('keeps its end on the untouched line when a better-placed copy ends elsewhere', async () => {
+      // The retyped first line holds a copy whose surroundings match better,
+      // but it ends inside that line; the end that stood is where it stays.
+      show('editor', ['zz charlie', 'delta']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 3, second! + 4);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.updateBlock(peer.editor.document[0]!, {
+          type: 'heading',
+          content: 'zz charliedelta charlie',
+        } as never);
+      });
+
+      expect(draftRangeIn(handle.editor.prosemirrorState)!.to).toBe(
+        lineStarts()[1]! + 4,
+      );
+      expect(aimedWords()).toBe('charliedelt');
+    });
+
+    it('keeps its start on the untouched line when a better-placed copy starts elsewhere', async () => {
+      show('editor', ['alpha bravo', 'charlie zz']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second! + 7);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.updateBlock(peer.editor.document[1]!, {
+          type: 'heading',
+          content: 'charlie alpha bravocharlie zz',
+        } as never);
+      });
+
+      expect(draftRangeIn(handle.editor.prosemirrorState)!.from).toBe(
+        lineStarts()[0]! + 6,
+      );
+      expect(aimedWords()).toBe('bravocharlie');
+    });
+
     it('says so rather than moving to the same word elsewhere when its words are deleted', async () => {
       show('editor', ['alpha bravo', 'bravo charlie']);
       aimDraft(6, 11);
