@@ -12,9 +12,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
-import { Slider } from '@web/components/ui/slider';
 import { useTranslation } from '@web/i18n/use-translation';
-import { cn } from '@web/lib/utils';
 import {
   audioFlagValue,
   audioParamControls,
@@ -22,6 +20,7 @@ import {
   type AudioParamControl,
 } from '@web/spaces/canvas/generate/audio-params';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
@@ -249,178 +248,17 @@ function ParamControlRow({
 
   return (
     <ParamSliderRow
-      control={control}
+      name={control.name}
       label={label}
+      min={control.min}
+      max={control.max}
+      step={control.step}
+      stops={control.stops?.map((stop) => ({ value: stop.value, label: t(stop.labelKey) }))}
       value={shown}
+      format={(v) => formatAudioParam(control.name, v, t)}
       onChange={onChange}
+      testIdPrefix='generate-audio'
       className={spacing}
     />
-  );
-}
-
-/**
- * Whether the value has landed on a named stop.
- *
- * Radix rounds to the step's decimal count before reporting, and the stops are
- * written at that precision, so the two meet exactly — the tolerance is what
- * keeps that true if a step ever divides less evenly.
- * @param shown - The value the slider is showing.
- * @param stop - The stop's value.
- * @returns True when the slider is sitting on that stop.
- */
-function atStop(shown: number | undefined, stop: number): boolean {
-  return shown !== undefined && Math.abs(shown - stop) < 1e-9;
-}
-
-interface ParamSliderRowProps {
-  control: Extract<AudioParamControl, { kind: 'range' }>;
-  label: string;
-  value: number | undefined;
-  onChange: (partial: AudioParamsValue) => void;
-  className: string | undefined;
-}
-
-/**
- * One numeric param as a slider, written to the document once per gesture.
- *
- * A drag crosses every step between where it starts and where it ends, and
- * Radix reports each one. Each report written straight through is one canvas
- * undo entry — that stack holds 50 and merges nothing by time — so a single
- * drag of `volume` (41 stops) would push out nearly everything the user could
- * still undo. `onValueCommit` fires once when a gesture ends and once per key
- * press, which is the granularity a person would name as one change.
- * @param root0 - Props.
- * @param root0.control - The control this param calls for.
- * @param root0.label - The localized param name.
- * @param root0.value - The stored value.
- * @param root0.onChange - Called with the committed param.
- * @param root0.className - Row spacing.
- * @returns The row.
- */
-function ParamSliderRow({
-  control,
-  label,
-  value,
-  onChange,
-  className,
-}: ParamSliderRowProps): React.JSX.Element {
-  const t = useTranslation();
-  // Where the thumb sits until the gesture ends. Held apart from `value` so
-  // the control follows the pointer while the document does not.
-  const [dragged, setDragged] = React.useState<number | null>(null);
-  const shown = dragged ?? value;
-
-  // A key the browser is repeating, and the step the last repeat reached.
-  const repeatingRef = React.useRef(false);
-  const repeatedToRef = React.useRef<number | null>(null);
-
-  const onValueChange = React.useCallback(([next]: number[]) => setDragged(next), []);
-
-  const onValueCommit = React.useCallback(
-    ([next]: number[]) => {
-      // Radix commits on every repeat of a held key. The press is the
-      // decision and the repeats are it continuing, so they wait for the
-      // release rather than each becoming its own undo entry.
-      if (repeatingRef.current) {
-        repeatedToRef.current = next;
-        return;
-      }
-      setDragged(null);
-      onChange({ [control.name]: next });
-    },
-    [onChange, control.name],
-  );
-
-  const endKeyGesture = React.useCallback((): void => {
-    repeatingRef.current = false;
-    const reached = repeatedToRef.current;
-    repeatedToRef.current = null;
-    // Also where the draft is released: Radix reports a keyboard commit
-    // BEFORE it reports the change, so clearing it inside the commit is
-    // written straight back, and a draft left set shows this client's number
-    // over whatever a collaborator stores.
-    setDragged(null);
-    if (reached !== null) onChange({ [control.name]: reached });
-  }, [onChange, control.name]);
-
-  // Four ways a key gesture ends, and every one of them has to write. Keyup
-  // alone leaves the flag set when the release lands on another window, and
-  // a set flag holds back every commit after it — the pointer's included, so
-  // the thumb would move under drags the node never hears about.
-  const onKeyDown = React.useCallback(
-    (event: React.KeyboardEvent): void => {
-      if (event.repeat) {
-        repeatingRef.current = true;
-        return;
-      }
-      endKeyGesture();
-    },
-    [endKeyGesture],
-  );
-
-  return (
-    <div className={className}>
-      <div className='mb-1.5 flex items-center justify-between'>
-        <span className='text-xs font-medium text-muted-foreground'>{label}</span>
-        <span
-          data-testid={`generate-audio-${control.name}-value`}
-          // Digits line up as the value changes rather than shifting the label.
-          className='text-xs tabular-nums text-muted-foreground'
-        >
-          {shown === undefined ? '' : formatAudioParam(control.name, shown, t)}
-        </span>
-      </div>
-      <Slider
-        className='text-foreground'
-        data-testid={`generate-audio-${control.name}-slider`}
-        aria-label={label}
-        min={control.min}
-        max={control.max}
-        step={control.step}
-        value={shown === undefined ? [control.min] : [shown]}
-        // Radix reports a value already rounded to the step's decimal count
-        // (`roundValue(…, getDecimalCount(step))` in its own snapping), so the
-        // float error of repeated addition never reaches here.
-        onValueChange={onValueChange}
-        onValueCommit={onValueCommit}
-        onKeyDown={onKeyDown}
-        onKeyUp={endKeyGesture}
-        onBlur={endKeyGesture}
-        onPointerDown={endKeyGesture}
-      />
-      {control.stops && (
-        // Under the track, at the positions they name: `justify-between` puts
-        // the first at its start and the last at its end, and the negative
-        // margin pulls each label's own padding back off those ends so the
-        // words line up with the track rather than sitting inside it.
-        <div className='-mx-1 mt-1.5 flex justify-between'>
-          {control.stops.map((stop) => (
-            <Button
-              key={stop.value}
-              type='button'
-              variant='ghost'
-              size={null}
-              aria-pressed={atStop(shown, stop.value)}
-              data-testid={`generate-audio-${control.name}-stop-${stop.value}`}
-              className={cn(
-                // 24px tall so the word is a pointer target the standard takes
-                // (WCAG 2.2 SC 2.5.8 AA). The words sit 6px under a 12px slider
-                // thumb, close enough that the spacing exception cannot rescue
-                // an undersized one: at 16px the two 24px circles were 20.3px
-                // apart, so a click meant for a label dragged the value instead.
-                // The text keeps its own size — only the box around it grows.
-                'h-6 px-1 text-2xs',
-                atStop(shown, stop.value)
-                  ? 'text-foreground'
-                  : 'font-normal text-muted-foreground',
-              )}
-              onClick={() => onChange({ [control.name]: stop.value })}
-            >
-              {t(stop.labelKey)}
-            </Button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
