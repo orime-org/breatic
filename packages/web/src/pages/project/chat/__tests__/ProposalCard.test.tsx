@@ -79,13 +79,17 @@ const CATALOG = {
     {
       name: 'some-model',
       display_name: 'Some Model',
-      cost_per_call: 4,
+      takes_prompt: true,
+      params: {},
+      pricing: { base_price: 40_000, formula: '', discount_rate: 100 },
       generation_time: 12,
     },
     {
       name: 'slow-model',
       display_name: 'Slow Model',
-      cost_per_call: 4,
+      takes_prompt: true,
+      params: {},
+      pricing: { base_price: 40_000, formula: '', discount_rate: 100 },
       generation_time: 30,
     },
   ],
@@ -94,6 +98,7 @@ const CATALOG = {
   tts: [],
   three_d: [],
   total: 1,
+  credit_multiplier: 1,
 } as unknown as ModelCatalog;
 
 /**
@@ -173,26 +178,16 @@ describe('what the card says before it is pressed', () => {
     expect(screen.getByText('12s')).toBeTruthy();
   });
 
-  it('omits the credits when the model bills by what the reader gives it', async () => {
-    // `cost_per_call` on a model that declares a `rate` is the balance gate's
-    // floor, not a price -- the panel one press later computes the real one
-    // from the duration or the script. A number the panel contradicts is
-    // worse than no number.
+  it('omits the credits when the model states no pricing', async () => {
+    // A number the panel one press later would not show is worse than none.
     listModels.mockResolvedValue({
       ...CATALOG,
-      image: [
-        {
-          name: 'some-model',
-          cost_per_call: 5,
-          generation_time: 12,
-          rate: { credits: 1, per: 5, unit: 'seconds' },
-        },
-      ],
+      image: [{ name: 'some-model', takes_prompt: true, params: {}, generation_time: 12 }],
     });
     const client = renderCard();
 
     await waitFor(() => expect(client.getQueryData(['models'])).toBeDefined());
-    expect(screen.queryByText('5')).toBeNull();
+    expect(screen.queryByText('4')).toBeNull();
     // The wait is a declared number either way, so it still shows.
     expect(screen.getByText('12s')).toBeTruthy();
   });

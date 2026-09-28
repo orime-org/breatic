@@ -11,8 +11,9 @@
  * quote its own price.
  */
 
-import { layersOf, nameableFeeders } from '@breatic/shared';
+import { layersOf, nameableFeeders, promptPlainText } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
+import type { CreditEstimate } from '@breatic/shared/pricing';
 
 /** What one node contributes to the little shape drawn on the card. */
 export interface ShapeChip {
@@ -54,14 +55,6 @@ export interface NodeTodos {
 
 /** What the card costs and how long it takes, when the catalog knows. */
 export interface ProposalPrice {
-  /**
-   * What the whole press costs, when every model charges the same per run.
-   *
-   * Absent when any of them charges by what the reader gives it: until they
-   * set the duration or write the script there is no per-call price, and the
-   * field that looks like one is the balance gate's floor.
-   */
-  credits?: number;
   /** The longest of the runs. */
   seconds: number;
   /** How many generations the placed group will run. */
@@ -248,15 +241,14 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
 }
 
 /**
- * What this generation costs and how long it takes, from the catalog.
+ * How long this flow's generations take and how many there are, from the
+ * catalog. What they cost is {@link creditsOf}.
  *
- * The model proposed the model, not its price: a quote it wrote itself would
- * be a guess the reader had no way to check. A model the catalog does not
- * carry gives nothing rather than a zero, and the card simply omits the line
- * -- a price of 0 reads as free.
+ * A model the catalog does not carry gives nothing rather than a zero, and
+ * the card simply omits the line.
  * @param catalog - The model catalog, or undefined while it is being fetched.
  * @param proposal - The proposal the card draws.
- * @returns The price and the wait, or undefined when the catalog cannot say.
+ * @returns The wait and the run count, or undefined when the catalog cannot say.
  * @throws {never} Never.
  */
 export function costOf(
@@ -268,20 +260,56 @@ export function costOf(
     .map((node) => entryOf(catalog, node.model));
   if (rows.length === 0 || rows.some((row) => row === undefined)) return undefined;
   const known = rows.filter((row) => row !== undefined);
-  // A model charging by what it is given has no per-call price at all, so a
-  // total carrying it would be a number nobody can arrive at. The wait is the
-  // longest of them: the runs that can start together do, and a run waiting on
-  // the one before it is waiting on a press the reader has not made yet.
-  const metered = known.some((row) => row.rate !== undefined);
+  // The wait is the longest of them: the runs that can start together do, and
+  // a run waiting on the one before it is waiting on a press the reader has
+  // not made yet.
   const times = known.map((row) => row.generation_time);
   return {
-    ...(metered
-      ? {}
-      : { credits: known.reduce((sum, row) => sum + row.cost_per_call, 0) }),
     seconds: Math.max(...times),
     runs: known.length,
     sameLength: new Set(times).size === 1,
   };
+}
+
+/**
+ * What one press of this flow costs, priced the way the panels price each run.
+ *
+ * The model proposed the model, not its price: a quote it wrote itself would
+ * be a guess the reader had no way to check. The runs add up, and the total
+ * keeps the weakest bound among them: a run whose source is not picked yet
+ * makes the total a lower bound, a run that may reuse a clone an upper one.
+ * Where both happen, or a run is priced per thousand characters of text it
+ * does not have, there is no single number and the card omits the line.
+ * @param catalog - The model catalog, or undefined while it is being fetched.
+ * @param proposal - The proposal the card draws.
+ * @returns The total, or undefined when the catalog cannot say.
+ * @throws {Error} When a pricing formula does not produce a finite price.
+ */
+export async function creditsOf(
+  catalog: ModelCatalog | undefined,
+  proposal: CanvasProposal,
+): Promise<CreditEstimate | undefined> {
+  const runs = proposal.nodes
+    .filter((node) => node.role === 'generate')
+    .map((node) => ({ node, entry: entryOf(catalog, node.model) }));
+  if (!catalog || runs.length === 0) return undefined;
+  if (runs.some(({ entry }) => entry?.pricing === undefined)) return undefined;
+  const { estimateCredits } = await import('@breatic/shared/pricing');
+  const estimates = await Promise.all(
+    runs.map(({ node, entry }) =>
+      estimateCredits(
+        { ...entry!, pricing: entry!.pricing! },
+        { params: node.params ?? {}, prompt: promptPlainText(node.prompt ?? []) },
+        catalog.credit_multiplier,
+      ),
+    ),
+  );
+  const bounds = new Set(estimates.map((e) => e.bound));
+  if (bounds.has('per_thousand_chars')) return undefined;
+  if (bounds.has('at_least') && bounds.has('at_most')) return undefined;
+  const credits = estimates.reduce((sum, e) => sum + e.credits, 0);
+  const bound = bounds.has('at_least') ? 'at_least' : bounds.has('at_most') ? 'at_most' : 'exact';
+  return { credits, bound };
 }
 
 /**
