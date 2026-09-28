@@ -73,6 +73,7 @@ function AttachmentChipInner({
   const card = (
     <span
       role='listitem'
+      data-attachment-id={id}
       data-status={status}
       data-testid={testId}
       className={`inline-flex h-6 max-w-full items-center gap-1 rounded-chrome border pl-2 text-xs ${

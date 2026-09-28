@@ -111,6 +111,12 @@ function ChatComposerInner({
   const ready = draft.trim().length > 0 && turnPhase === 'idle' && !navigating && allReady;
   const picker = React.useRef<HTMLInputElement>(null);
   const box = React.useRef<HTMLTextAreaElement>(null);
+  const tray = React.useRef<HTMLDivElement>(null);
+  const shown = React.useRef(attachments);
+  shown.current = attachments;
+  // Where the keyboard goes once the item it stood on is gone: an item's id,
+  // '' for the box, null when nothing is pending.
+  const landing = React.useRef<string | null>(null);
 
   // The box takes exactly the height of what is written in it, and the
   // wrapper below caps how much of that is on screen.
@@ -160,6 +166,35 @@ function ChatComposerInner({
     box.current?.focus();
   };
 
+  /**
+   * Take an item out, keeping the keyboard in the tray: the removed item's
+   * button unmounts with it, and focus would otherwise fall to the body.
+   */
+  const removeAttachment = React.useCallback(
+    (id: string): void => {
+      const items = shown.current;
+      const at = items.findIndex((item) => item.id === id);
+      if (tray.current?.contains(document.activeElement)) {
+        landing.current = (items[at + 1] ?? items[at - 1])?.id ?? '';
+      }
+      onRemoveAttachment?.(id);
+    },
+    [onRemoveAttachment],
+  );
+
+  React.useEffect(() => {
+    const target = landing.current;
+    if (target === null) return;
+    landing.current = null;
+    if (target === '') {
+      box.current?.focus();
+      return;
+    }
+    tray.current
+      ?.querySelector<HTMLButtonElement>(`[data-attachment-id="${CSS.escape(target)}"] button`)
+      ?.focus();
+  }, [attachments]);
+
   return (
     <div
       data-testid='chat-composer'
@@ -173,6 +208,7 @@ function ChatComposerInner({
         <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
           <div
             className='flex min-w-0 flex-1 flex-wrap items-center gap-1 py-0.5'
+            ref={tray}
             data-testid='chat-composer-chips'
             role='list'
             aria-label={t('chat.composer.chipsAria')}
@@ -186,7 +222,7 @@ function ChatComposerInner({
                 chip={item.chip}
                 status={item.status}
                 {...(item.failure ? { failure: item.failure } : {})}
-                {...(onRemoveAttachment ? { onRemove: onRemoveAttachment } : {})}
+                {...(onRemoveAttachment ? { onRemove: removeAttachment } : {})}
                 removeDisabled={frozen}
                 testId={`chat-chip-${item.id}`}
               />
