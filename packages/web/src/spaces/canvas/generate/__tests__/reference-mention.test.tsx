@@ -1105,6 +1105,22 @@ describe('serializePromptText — backend prompt string with text-chip substitut
     }
   });
 
+  it('writes a media chip the way its model reads it, and nothing when it names no way', () => {
+    // #2156, design §13.2: the words have to point at the file the model is
+    // sent, so the panel hands over each chip's spelling by pool id.
+    const editor = seededEditor();
+    try {
+      expect(serializePromptText(editor, [textRef, imageRef], '\n\n', { img: '@image1' })).toBe(
+        'draw a red panda on a bike next to @image1 ',
+      );
+      expect(serializePromptText(editor, [textRef, imageRef], '\n\n', {})).toBe(
+        'draw a red panda on a bike next to  ',
+      );
+    } finally {
+      editor.destroy();
+    }
+  });
+
   // The editor's schema has no hard break, so Enter splits a block and that is
   // the only line a user can make. What joins two blocks is therefore what the
   // vendor receives as line structure. Prose reads with a blank line between

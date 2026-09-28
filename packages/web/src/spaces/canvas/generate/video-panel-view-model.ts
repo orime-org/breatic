@@ -29,8 +29,11 @@ import {
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import {
+  mentionTokens,
   mentionedReferenceUrls,
+  NO_MENTION_TOKENS,
   NO_REFERENCE_URLS,
+  type MentionTokens,
   type ReferenceUrls,
 } from '@web/spaces/canvas/generate/reference-urls';
 import {
@@ -116,6 +119,12 @@ export interface VideoPanelViewModel {
    * it uses it.
    */
   referenceUrls: ReferenceUrls;
+  /**
+   * How each mentioned picture, clip or track is written into the prompt the
+   * model reads, by pool id (#2156, design §13.2) — numbered in the same lists
+   * `referenceUrls` sends.
+   */
+  mentionTokens: MentionTokens;
   /**
    * Where the active model's pool takes each kind in this mode, and how many
    * (#2156). Read off the wire so the panel, the server rule and the worker
@@ -304,9 +313,13 @@ export function buildVideoPanelViewModel(input: {
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
   const focusImages = validFocusImages(content?.focusImages);
   const pool = referencePool(current, mode);
-  const referenceUrls = referenceKinds(pool).length === 0
-    ? NO_REFERENCE_URLS
-    : mentionedReferenceUrls({ references, focusImages, atMentioned, nodes });
+  const sendsReferences = referenceKinds(pool).length > 0;
+  const referenceUrls = sendsReferences
+    ? mentionedReferenceUrls({ references, focusImages, atMentioned, nodes })
+    : NO_REFERENCE_URLS;
+  const mentionTokenMap = sendsReferences
+    ? mentionTokens(pool, { references, focusImages, atMentioned, nodes })
+    : NO_MENTION_TOKENS;
 
   return {
     model,
@@ -328,6 +341,7 @@ export function buildVideoPanelViewModel(input: {
     // as an entry (#1978).
     focusImages,
     referenceUrls,
+    mentionTokens: mentionTokenMap,
     // Through the shared rule, so these caps and the ones the server
     // re-checks before enqueue are the same arithmetic (#1928).
     pool,

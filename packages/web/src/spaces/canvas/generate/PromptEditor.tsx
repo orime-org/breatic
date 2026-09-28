@@ -34,6 +34,7 @@ import {
   serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
 import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-mention-local-input';
+import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { planCascadeDeletion } from '@web/spaces/canvas/generate/reference-mention-whitespace';
 
@@ -47,12 +48,14 @@ export interface PromptEditorHandle {
   insertReference: (item: ReferenceRailItem) => void;
   /**
    * Serializes the backend-bound prompt string RIGHT NOW (spec §9.1): text
-   * chips substitute their source node's current content, image chips
-   * contribute nothing. Called at execute-click so a text node edited since
-   * the last prompt keystroke still lands its latest words.
+   * chips substitute their source node's current content, media chips are
+   * written as `tokens` says. Called at execute-click so a text node edited
+   * since the last prompt keystroke still lands its latest words.
+   * @param tokens - Media chips' words from the same snapshot as the lists
+   *   the submit sends; the last rendered ones when absent.
    * @returns The backend prompt string, or null when the editor is not ready.
    */
-  serializePrompt: () => string | null;
+  serializePrompt: (tokens?: MentionTokens) => string | null;
 }
 
 
@@ -104,6 +107,11 @@ interface PromptEditorProps {
    * a blank line between every pair is not what was typed.
    */
   blockSeparator?: string;
+  /**
+   * How each picture, clip or track chip is written into the prompt the model
+   * reads, by pool id (#2156, design §13.2). Absent, such chips add nothing.
+   */
+  mentionTokens?: MentionTokens;
   /**
    * Placeholder shown while the box is empty.
    *
@@ -169,6 +177,7 @@ interface PromptEditorProps {
  * @param root0.startingHeight - How tall the box opens before anything is typed.
  * @param root0.onFocus - Called when the caret enters this box.
  * @param root0.blockSeparator - What joins two blocks in the serialized string.
+ * @param root0.mentionTokens - Each media chip's words in the serialized string, by pool id.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
@@ -190,6 +199,7 @@ export const PromptEditor = React.forwardRef<
     startingHeight = 'full',
     onFocus,
     blockSeparator,
+    mentionTokens = NO_MENTION_TOKENS,
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -215,6 +225,8 @@ export const PromptEditor = React.forwardRef<
   // a separator would tear down the collaborative binding.
   const blockSeparatorRef = React.useRef(blockSeparator);
   blockSeparatorRef.current = blockSeparator;
+  const mentionTokensRef = React.useRef(mentionTokens);
+  mentionTokensRef.current = mentionTokens;
   // Live for the same reason: what this box asks for is a property of the
   // state it is in, not of the box, and a string baked in at creation would go
   // on asking for what the panel no longer wants.
@@ -284,13 +296,13 @@ export const PromptEditor = React.forwardRef<
       // current for both local and remote changes.
       onCreate: ({ editor: e }) => {
         onTextChange(
-          serializePromptText(e, poolRef.current, blockSeparatorRef.current),
+          serializePromptText(e, poolRef.current, blockSeparatorRef.current, mentionTokensRef.current),
         );
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
       onUpdate: ({ editor: e }) => {
         onTextChange(
-          serializePromptText(e, poolRef.current, blockSeparatorRef.current),
+          serializePromptText(e, poolRef.current, blockSeparatorRef.current, mentionTokensRef.current),
         );
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
@@ -340,9 +352,14 @@ export const PromptEditor = React.forwardRef<
           editor.chain().focus('end').insertContent(content).run();
         }
       },
-      serializePrompt: (): string | null =>
+      serializePrompt: (tokens?: MentionTokens): string | null =>
         editor
-          ? serializePromptText(editor, poolRef.current, blockSeparatorRef.current)
+          ? serializePromptText(
+            editor,
+            poolRef.current,
+            blockSeparatorRef.current,
+            tokens ?? mentionTokensRef.current,
+          )
           : null,
     }),
     [editor],
@@ -353,13 +370,15 @@ export const PromptEditor = React.forwardRef<
   // edit (the user types into the text node on the canvas) — onUpdate never
   // fires, so the container's execute-gate mirror would stay stuck on the
   // stale substitution (an empty node @-ed keeps the button dead after the
-  // node gains words; an emptied node leaves the button lit but dead).
+  // node gains words; an emptied node leaves the button lit but dead). A media
+  // chip's words move the same way: mentioning a second picture or switching
+  // model renumbers them with no edit to this chip.
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     onTextChange(
-      serializePromptText(editor, references, blockSeparatorRef.current),
+      serializePromptText(editor, references, blockSeparatorRef.current, mentionTokens),
     );
-  }, [editor, references, onTextChange]);
+  }, [editor, references, mentionTokens, onTextChange]);
 
   // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
   // residual 2): a REMOTE peer toggling this node's mode or editing its

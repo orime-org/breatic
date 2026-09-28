@@ -216,6 +216,34 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.referenceUrls.image).toEqual(['https://cdn/x.png']);
   });
 
+  it('hands the prompt each mentioned picture in the words its model reads (#2156)', () => {
+    const editModels = [
+      makeModel('muse-image-edit', {
+        mode: 'i2i',
+        params: {
+          images: { description: '', type: 'list', default: null, fill: 'pool', accepts: 'image', mention: 'image {n}' },
+        },
+      }),
+    ];
+    const nodes = [
+      node('n1', imageView({ mode: 'i2i', model: 'muse-image-edit' })),
+      node('a', imageView({ name: 'A', content: 'https://cdn/a.png' })),
+      node('b', imageView({ name: 'B', content: 'https://cdn/b.png' })),
+    ];
+    const edges: CanvasEdge[] = [
+      { id: 'e1', source: 'a', target: 'n1' },
+      { id: 'e2', source: 'b', target: 'n1' },
+    ];
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: editModels,
+      atMentionedSourceIds: new Set(['b', 'a']),
+    });
+    expect(vm.mentionTokens).toEqual({ a: 'image 1', b: 'image 2' });
+  });
+
   it('i2i with an incoming edge but NO @-mention submits no source image (design B)', () => {
     const nodes = [
       node('n1', i2iView()),

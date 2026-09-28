@@ -180,6 +180,43 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
     );
   });
 
+  // #2156, design §13.2: a picture chip's words carry its place in the list the
+  // model is sent, and that place moves with no edit to the prompt (another
+  // picture mentioned before it, a switch to a model that spells it otherwise).
+  it('re-reports the prompt when a media chip\'s words change, and serializes with the tokens it is handed', async () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment('prompt');
+    const onTextChange = vi.fn();
+    const imgRef: ReferenceRailItem = {
+      refId: 'e->me',
+      sourceNodeId: 'e',
+      sourceNodeType: 'image',
+      sourceNodeName: 'E',
+      thumbnail: 'e.png',
+    };
+    const ref = React.createRef<PromptEditorHandle>();
+    const props = {
+      fragment,
+      placeholder: 'Describe',
+      onTextChange,
+      onAtMentionsChange: vi.fn(),
+      referenceKinds: ['image'] as const,
+      mentionEmptyLabel: 'No references',
+      mentionNoMatchLabel: 'No matches',
+      references: [imgRef],
+    };
+    const { rerender } = render(<PromptEditor {...props} ref={ref} mentionTokens={{ e: 'image 1' }} />);
+    await waitFor(() => expect(ref.current).not.toBeNull());
+    act(() => {
+      ref.current?.insertReference(imgRef);
+    });
+    await waitFor(() => expect(onTextChange).toHaveBeenLastCalledWith(' image 1 '));
+    rerender(<PromptEditor {...props} ref={ref} mentionTokens={{ e: 'image 2' }} />);
+    await waitFor(() => expect(onTextChange).toHaveBeenLastCalledWith(' image 2 '));
+    expect(ref.current?.serializePrompt({ e: '@image1' })).toBe(' @image1 ');
+    expect(ref.current?.serializePrompt()).toBe(' image 2 ');
+  });
+
   it('cascade-clears a chip AND its flanking spaces when its edge leaves the pool (no orphan)', async () => {
     const doc = new Y.Doc();
     const fragment = doc.getXmlFragment('prompt');

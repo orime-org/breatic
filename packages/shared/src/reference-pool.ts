@@ -30,7 +30,7 @@ export interface PoolPlace {
   /** The most one run takes, or undefined when the model caps none. */
   readonly cap: number | undefined;
   /** How a chip of this kind is written into the prompt, if the model says. */
-  readonly mention: string | undefined;
+  readonly mention?: string;
 }
 
 /** The pool of one model in one mode: a place for each kind it takes. */

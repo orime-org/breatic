@@ -1271,12 +1271,14 @@ describe('VideoGeneratePanelContainer', () => {
      * vanish the moment execute is pressed.
      * @param mentioned - The source ids the prompt `@`-mentions.
      * @param over - Extra node data to seed, merged over mode and model.
+     * @param models - The catalog the panel is served.
      */
     async function openRefPanel(
       mentioned: string[],
       over: Record<string, unknown> = {},
+      models: ModelCatalog = catalog(),
     ): Promise<void> {
-      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(models);
       const stored = { mode: 'ref', model: 'kling-o3-pro-ref', ...over };
       seedVideoNode(stored);
       for (const source of SOURCES) {
@@ -1330,6 +1332,24 @@ describe('VideoGeneratePanelContainer', () => {
       expect(create.mock.calls[0]![0].params.images).toEqual([
         'https://cdn/b.png',
       ]);
+    });
+
+    it('writes each chip into the prompt by its place in the list it is sent in (#2156)', async () => {
+      // The prompt names c before a; the rail, and so the images list, puts a
+      // first. The words have to point at the file the vendor gets there.
+      const named: ModelEntry = {
+        ...REF,
+        params: { ...REF.params, images: { ...REF.params.images!, mention: 'image {n}' } },
+      };
+      await openRefPanel(['ref-c', 'ref-a'], {}, { ...catalog(), video: [named] });
+      const create = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue({ id: 't1' } as Awaited<ReturnType<typeof canvasApi.createTask>>);
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      const sent = create.mock.calls[0]![0];
+      expect(sent.params.images).toEqual(['https://cdn/a.png', 'https://cdn/c.png']);
+      expect(sent.params.prompt).toMatch(/^the two of them walk into frame\s*image 2\s+image 1\s*$/);
     });
 
     it('stays clickable with nothing mentioned, and says what to do', async () => {

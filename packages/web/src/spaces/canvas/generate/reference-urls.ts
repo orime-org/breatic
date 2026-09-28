@@ -37,6 +37,12 @@ export type ReferenceUrls = Readonly<Record<ReferenceKind, readonly string[]>>;
 /** A pool that takes no kind at all — every mode of a model without one. */
 export const NO_REFERENCE_KINDS: readonly ReferenceKind[] = [];
 
+/** Each media chip's words in the prompt, by pool id. */
+export type MentionTokens = Readonly<Record<string, string>>;
+
+/** No chip has words: the model names no way to point at a file. */
+export const NO_MENTION_TOKENS: MentionTokens = {};
+
 /** A pool that holds nothing. */
 export const NO_REFERENCE_URLS: ReferenceUrls = { image: [], video: [], audio: [] };
 
@@ -69,38 +75,83 @@ interface MentionableCrop {
   url: string;
 }
 
+/** What a submit reads to decide which references travel. */
+interface MentionInput {
+  /** Edge-derived rail rows, in rail order. */
+  references: ReadonlyArray<MentionableRow>;
+  /** The panel node's crops, in stored order. */
+  focusImages: ReadonlyArray<MentionableCrop>;
+  /** The pool ids the prompt mentions right now. */
+  atMentioned: ReadonlySet<string>;
+  /** Current canvas node views, for looking a row's source up. */
+  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+}
+
+/** One mentioned reference, as it is sent. */
+interface SentReference {
+  /** Its pool id — what the prompt's chip carries. */
+  id: string;
+  kind: ReferenceKind;
+  url: string;
+}
+
 /**
- * Every reference URL a submit sends, sorted by kind: the mentioned
- * edge-derived rows first, then the mentioned crops, which are pictures.
+ * The mentioned references in the order they are sent: the edge-derived rows
+ * first, then the crops, which are pictures.
  *
  * Rail order, not mention order: the payload should read the way the panel
  * does, and the rail shows crops after node rows. Crops need no node lookup —
  * a crop IS its asset, and its pool id is namespaced (`focus:<id>`), so a node
  * whose id happens to equal a crop id cannot pull that crop along.
  * @param input - The two row sources plus what the prompt mentions.
- * @param input.references - Edge-derived rail rows, in rail order.
- * @param input.focusImages - The panel node's crops, in stored order.
- * @param input.atMentioned - The pool ids the prompt mentions right now.
- * @param input.nodes - Current canvas node views, for looking a row's source up.
- * @returns The URLs to send, one list per kind, each in rail order.
+ * @returns Each mentioned reference that lends an asset, in send order.
  */
-export function mentionedReferenceUrls(input: {
-  references: ReadonlyArray<MentionableRow>;
-  focusImages: ReadonlyArray<MentionableCrop>;
-  atMentioned: ReadonlySet<string>;
-  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
-}): ReferenceUrls {
+function sentReferences(input: MentionInput): SentReference[] {
   const byId = new Map(input.nodes.map((n) => [n.id, n]));
-  const urls: Record<ReferenceKind, string[]> = { image: [], video: [], audio: [] };
+  const sent: SentReference[] = [];
   for (const row of input.references) {
     if (!input.atMentioned.has(row.sourceNodeId)) continue;
     const asset = assetOf(byId.get(row.sourceNodeId)?.data);
-    if (asset) urls[asset.kind].push(asset.url);
+    if (asset) sent.push({ id: row.sourceNodeId, ...asset });
   }
   for (const crop of input.focusImages) {
-    if (input.atMentioned.has(focusRefId(crop.id))) urls.image.push(crop.url);
+    const id = focusRefId(crop.id);
+    if (input.atMentioned.has(id)) sent.push({ id, kind: 'image', url: crop.url });
   }
+  return sent;
+}
+
+/**
+ * Every reference URL a submit sends, sorted by kind, each list in send order.
+ * @param input - The two row sources plus what the prompt mentions.
+ * @returns The URLs to send, one list per kind.
+ */
+export function mentionedReferenceUrls(input: MentionInput): ReferenceUrls {
+  const urls: Record<ReferenceKind, string[]> = { image: [], video: [], audio: [] };
+  for (const ref of sentReferences(input)) urls[ref.kind].push(ref.url);
   return urls;
+}
+
+/**
+ * How each mentioned chip is written into the prompt the model reads (#2156,
+ * design §13.2): its kind's `mention`, with `{n}` its place in that kind's sent
+ * list counted from 1 and `{i}` counted from 0, so the words point at the same
+ * file the list carries there.
+ * @param pool - The model's pool in this mode.
+ * @param input - The two row sources plus what the prompt mentions.
+ * @returns Pool id to its words; a chip whose kind the model takes nothing of,
+ *   or names no spelling for, is absent and adds nothing to the text.
+ */
+export function mentionTokens(pool: ReferencePool, input: MentionInput): MentionTokens {
+  const tokens: Record<string, string> = {};
+  const counts: Record<ReferenceKind, number> = { image: 0, video: 0, audio: 0 };
+  for (const ref of sentReferences(input)) {
+    const index = counts[ref.kind]++;
+    const mention = pool[ref.kind]?.mention;
+    if (mention === undefined) continue;
+    tokens[ref.id] = mention.replace('{n}', String(index + 1)).replace('{i}', String(index));
+  }
+  return tokens;
 }
 
 /**

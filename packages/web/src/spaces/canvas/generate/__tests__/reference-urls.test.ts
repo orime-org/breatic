@@ -18,6 +18,7 @@ import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/data/yjs/node-view';
 import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
 import {
+  mentionTokens,
   mentionedReferenceUrls,
   poolCounts,
   poolParams,
@@ -177,5 +178,67 @@ describe('the pool in a task', () => {
       { kind: 'video', count: 1, cap: 10 },
       { kind: 'audio', count: 0, cap: 10 },
     ]);
+  });
+});
+
+describe('mentionTokens — how each mentioned chip is written into the prompt', () => {
+  /** A pool that names its chips per kind, counted from 1. */
+  const h3: ReferencePool = {
+    image: { param: 'images', cap: 9, mention: '<Picture {n}>' },
+    video: { param: 'videos', cap: 3, mention: '<Video {n}>' },
+  };
+  const nodes = [IMAGE_A, IMAGE_B, CLIP, TRACK];
+
+  it('numbers each kind on its own, in rail order, the way the lists are sent', () => {
+    // The rail reads a, v, b: pictures are counted apart from clips, and the
+    // number is the place in the list that goes to the vendor.
+    const tokens = mentionTokens(h3, {
+      references: rows('a', 'v', 'b'),
+      focusImages: [],
+      atMentioned: new Set(['b', 'v', 'a']),
+      nodes,
+    });
+    expect(tokens).toEqual({
+      a: '<Picture 1>',
+      v: '<Video 1>',
+      b: '<Picture 2>',
+    });
+  });
+
+  it('counts a crop after the node rows, since it is sent after them', () => {
+    const tokens = mentionTokens(h3, {
+      references: rows('a'),
+      focusImages: [{ id: 'c1', url: 'https://cdn/c1.png' }],
+      atMentioned: new Set(['a', focusRefId('c1')]),
+      nodes,
+    });
+    expect(tokens[focusRefId('c1')]).toBe('<Picture 2>');
+  });
+
+  it('counts from 0 where the model says {i}', () => {
+    const gemini: ReferencePool = { image: { param: 'images', cap: 10, mention: '<IMAGE_REF_{i}>' } };
+    const tokens = mentionTokens(gemini, {
+      references: rows('a', 'b'),
+      focusImages: [],
+      atMentioned: new Set(['a', 'b']),
+      nodes,
+    });
+    expect(tokens).toEqual({ a: '<IMAGE_REF_0>', b: '<IMAGE_REF_1>' });
+  });
+
+  it('writes nothing for what is not sent: unmentioned, not taken, or unnamed', () => {
+    // A row nobody mentioned skips its number; the track is a kind this model
+    // takes nothing of; the clip travels but its model names no spelling.
+    const quiet: ReferencePool = {
+      image: { param: 'images', cap: undefined, mention: 'image {n}' },
+      video: { param: 'videos', cap: undefined, mention: undefined },
+    };
+    const tokens = mentionTokens(quiet, {
+      references: rows('a', 'b', 'v', 's'),
+      focusImages: [],
+      atMentioned: new Set(['b', 'v', 's']),
+      nodes,
+    });
+    expect(tokens).toEqual({ b: 'image 1' });
   });
 });

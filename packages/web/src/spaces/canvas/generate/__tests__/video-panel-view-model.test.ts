@@ -809,6 +809,47 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     expect(vm.pool.video).toEqual({ param: 'videos', cap: 5 });
   });
 
+  it('hands the prompt each mentioned chip in the words its model reads (#2156)', () => {
+    const wan = [
+      makeModel('wan-3.0-reference-to-video', {
+        mode: 'ref',
+        params: {
+          images: { description: '', type: 'list', default: null, fill: 'pool', accepts: 'image', mention: 'Image {n}' },
+          videos: { description: '', type: 'list', default: null, fill: 'pool', accepts: 'video', mention: 'Video {n}' },
+        },
+      }),
+    ];
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node('n1', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
+        node('src-a', { kind: 'image', status: 'idle', content: 'https://cdn/a.png' }),
+        node('src-v', { kind: 'video', status: 'idle', content: 'https://cdn/v.mp4' }),
+      ],
+      edges: [
+        { id: 'e-a', source: 'src-a', target: 'n1' },
+        { id: 'e-v', source: 'src-v', target: 'n1' },
+      ],
+      models: wan,
+      mode: 'ref',
+      atMentionedSourceIds: new Set(['src-a', 'src-v']),
+    });
+    expect(vm.mentionTokens).toEqual({ 'src-a': 'Image 1', 'src-v': 'Video 1' });
+  });
+
+  it('hands the prompt no words under a mode that sends no references', () => {
+    const { nodes, edges } = twoConnectedImages();
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: REF_MODELS,
+      mode: 't2v',
+      atMentionedSourceIds: new Set(['src-a']),
+    });
+    expect(vm.mentionTokens).toEqual({});
+  });
+
   it('shows every connected source in the rail, @-mentioned or not', () => {
     const { nodes, edges } = twoConnectedImages();
     const vm = buildVm({ nodeId: 'n1', nodes, edges, models: REF_MODELS, mode: 'ref' });

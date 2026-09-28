@@ -596,7 +596,7 @@ function GeneratePanelBody({
     // line a task for a model that wants no prompt would carry the last one's
     // words. Same line, same reason, as `VideoGeneratePanelContainer.tsx`.
     const freshPrompt = fresh.promptRequired
-      ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
+      ? (promptEditorRef.current?.serializePrompt(fresh.mentionTokens) ?? promptTextRef.current)
       : '';
     // One evaluation, its own inputs: the button asked the same question of
     // the RENDER-time view model, this asks it of live Yjs. Never reuse the
@@ -727,6 +727,9 @@ function GeneratePanelBody({
   // The model's pool says which `@` chips it uses; text-to-image models take
   // none, so there every media chip contributes nothing and greys (§2.4 C).
   const referenceKinds = useReferenceKinds(vm.pool);
+  // A media chip's words follow the pool, and a new record on every derive
+  // would rebuild the prompt slot each time the canvas moves.
+  const stableMentionTokens = useContentStable(vm.mentionTokens);
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
@@ -743,6 +746,7 @@ function GeneratePanelBody({
           mentionEmptyLabel={mentionEmptyLabel}
           mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
+          mentionTokens={stableMentionTokens}
         />
       ) : null,
     [
@@ -757,6 +761,7 @@ function GeneratePanelBody({
       referenceKinds,
       caretProvider,
       promptEditorRef,
+      stableMentionTokens,
     ],
   );
 

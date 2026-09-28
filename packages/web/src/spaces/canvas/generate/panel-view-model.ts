@@ -30,9 +30,12 @@ import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { missingSources, referenceKinds, referencePool, type ReferencePool } from '@breatic/shared';
 import {
+  mentionTokens,
   mentionedReferenceUrls,
+  NO_MENTION_TOKENS,
   NO_REFERENCE_URLS,
   poolParams,
+  type MentionTokens,
   type ReferenceUrls,
 } from '@web/spaces/canvas/generate/reference-urls';
 import { asContentView } from '@web/data/yjs/node-view';
@@ -52,6 +55,12 @@ export interface GeneratePanelViewModel {
   references: ReferenceRailItem[];
   /** The `@`-mentioned reference URLs, by kind, snapshotted for the execute payload. */
   referenceUrls: ReferenceUrls;
+  /**
+   * How each mentioned picture, clip or track is written into the prompt the
+   * model reads, by pool id (#2156, design §13.2) — numbered in the same lists
+   * `referenceUrls` sends.
+   */
+  mentionTokens: MentionTokens;
   /** Where the active model's pool takes each kind in this mode, and how many (#2156). */
   pool: ReferencePool;
   /**
@@ -214,10 +223,13 @@ export function buildGeneratePanelViewModel(input: {
   // The model's own pool says which kinds a run sends and under which param
   // (#2156); text-to-image models declare none.
   const pool = referencePool(current, mode);
-  const referenceUrls =
-    referenceKinds(pool).length === 0
-      ? NO_REFERENCE_URLS
-      : mentionedReferenceUrls({ references, focusImages, atMentioned, nodes });
+  const sendsReferences = referenceKinds(pool).length > 0;
+  const referenceUrls = sendsReferences
+    ? mentionedReferenceUrls({ references, focusImages, atMentioned, nodes })
+    : NO_REFERENCE_URLS;
+  const mentionTokenMap = sendsReferences
+    ? mentionTokens(pool, { references, focusImages, atMentioned, nodes })
+    : NO_MENTION_TOKENS;
 
   // Style image (#1664): a pick-time URL copy stored on the node itself, so —
   // unlike i2i references — it survives t2i and rides the payload in every
@@ -234,6 +246,7 @@ export function buildGeneratePanelViewModel(input: {
     params,
     references,
     referenceUrls,
+    mentionTokens: mentionTokenMap,
     pool,
     styleImageUrl,
     focusImages,
