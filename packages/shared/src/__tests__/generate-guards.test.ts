@@ -465,25 +465,6 @@ describe('evaluateExecute — the lyrics box', () => {
       'canvas.generatePanel.lyricsMissing',
     );
   });
-
-  // Measured against the gateway on 2026-09-05: `is_instrumental: true` with
-  // an empty `lyrics` is accepted and completes. Demanding words to sing for a
-  // track the user marked vocal-free is our own rule, not the vendor's.
-  it('asks for no lyrics once the track is marked instrumental', () => {
-    expect(refusalOf({ ...t2m, instrumental: true })).toBeNull();
-  });
-
-  it('asks for them again the moment that switch goes back off', () => {
-    expect(refusalOf({ ...t2m, instrumental: false })).toBe('lyrics-missing');
-  });
-
-  it('says nothing about the switch on a mode that collects no lyrics', () => {
-    // Text to speech declares no lyrics box, so the switch it never shows
-    // must not turn into a condition here.
-    expect(
-      refusalOf({ ...ok, lyricsRequired: false, instrumental: true }),
-    ).toBeNull();
-  });
 });
 
 describe('evaluateExecute — more references than the model takes', () => {

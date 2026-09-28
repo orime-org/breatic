@@ -85,7 +85,6 @@ const ELEVEN: ModelEntry = {
   description: '',
   guide: '',
   tier: 'recommended',
-  cost_per_call: 10,
   generation_time: 30,
   takes_prompt: true,
   params: {
@@ -95,9 +94,6 @@ const ELEVEN: ModelEntry = {
     stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
   },
   providers: [],
-  sourcesByMode: { tts: [] },
-  sourceRuleByMode: { tts: 'all_of' as const },
-  rate: { credits: 10, per: 1000, unit: 'characters' },
 };
 
 const FISH: ModelEntry = {
@@ -108,7 +104,6 @@ const FISH: ModelEntry = {
     reference_id: { description: '', default: null, remote_source: 'voices' },
     speed: { description: '', min: 0.5, max: 2, step: 0.05, default: 1 },
   },
-  rate: { credits: 1.5, per: 1000, unit: 'utf8_bytes' },
 };
 
 /** The voice-cloning model: no voice catalog, one audio source (#1960 PR2). */
@@ -120,9 +115,6 @@ const CLONE: ModelEntry = {
   params: {
     audio: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
   },
-  sourcesByMode: { voice_clone: ['audio'] },
-  sourceRuleByMode: { voice_clone: 'all_of' as const },
-  rate: { credits: 5, per: 1000, unit: 'characters' },
 };
 
 /** The sound-effect model, as `config/models/audio/sonilo.yaml` declares it. */
@@ -140,10 +132,6 @@ const SFX: ModelEntry = {
     },
     audio_format: { description: '', default: 'mp3' },
   },
-  sourcesByMode: { sfx: [] },
-  sourceRuleByMode: { sfx: 'all_of' as const },
-  // $0.002 a second at 1 credit = 1 cent, so five seconds is one credit.
-  rate: { credits: 1, per: 5, unit: 'seconds' },
 };
 
 /** Text to music, as `config/models/audio/minimax.yaml` declares it (#1960). */
@@ -154,18 +142,8 @@ const T2M: ModelEntry = {
   modality: 'audio',
   mode: 't2m',
   params: {
-    lyrics: {
-      description: '',
-      default: null,
-      fill: 'editor',
-      when: { flag_off: 'is_instrumental' },
-    },
-    is_instrumental: { description: '', default: false, fill: 'panel' },
+    lyrics: { description: '', default: null, fill: 'editor' },
   },
-  sourcesByMode: { t2m: [] },
-  sourceRuleByMode: { t2m: 'all_of' as const },
-  cost_per_call: 15,
-  rate: undefined,
 };
 
 /** Reference to music: three audio slots, and lyrics the gateway insists on. */
@@ -176,15 +154,19 @@ const A2M: ModelEntry = {
   mode: 'a2m',
   params: {
     lyrics: { description: '', default: null, fill: 'editor' },
-    song: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
-    voice: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
-    instrumental: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
+    song: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
+    voice: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
+    instrumental: {
+      description: '',
+      default: null,
+      fill: 'canvas',
+      accepts: 'audio',
+      optional: true,
+    },
   },
-  sourcesByMode: { a2m: ['audio'] },
   // The mode takes any one of its three places, which is what lets a submit
   // carrying only a song through.
-  sourceRuleByMode: { a2m: 'any_of' as const },
-  cost_per_call: 35,
+  source_groups: [{ mode: 'a2m', any_of: ['song', 'voice', 'instrumental'] }],
 };
 
 /**
@@ -201,6 +183,7 @@ function catalog(): ModelCatalog {
     tts: [ELEVEN, FISH, CLONE],
     three_d: [],
     total: 2,
+    credit_multiplier: 1,
   };
 }
 
@@ -770,8 +753,7 @@ describe('AudioGeneratePanelContainer — a mode switch that takes the slot away
  * why the container owns them and the panel takes them as slots.
  *
  * Measured against the WaveSpeed gateway on 2026-09-05: both models refuse a
- * run without lyrics — music-3.0 unless the track is marked instrumental,
- * music-01 unconditionally, since it declares no such switch.
+ * run without lyrics.
  */
 describe('AudioGeneratePanelContainer — the music modes', () => {
   it('opens a second box for the words to sing', async () => {
@@ -800,7 +782,6 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
   });
 
   it('refuses reference to music on the same empty box', async () => {
-    // It has no instrumental switch, so nothing lifts the requirement here.
     const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openPanel({
       mode: 'a2m',
@@ -851,32 +832,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     expect(create.mock.calls[0]?.[0]?.params.song).toBe('https://x/y.mp3');
   });
 
-  // The switch and the box are one statement: with no vocals there are no words
-  // to write, so the box is not there — rather than standing there explaining
-  // why it refuses typing (user 2026-09-06). What was written stays on the
-  // node, and comes back with the box when the switch goes off.
-  it('takes the lyrics box away while the track is marked instrumental', async () => {
-    await openPanel({
-      mode: 't2m',
-      model: 'minimax-music-3.0',
-      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
-    });
-    typeLyrics('morning light');
-    // The style box is still there, so this is the panel settling on the mode
-    // rather than the panel not having rendered yet.
-    await screen.findByTestId('generate-prompt-editor');
-    expect(screen.queryByTestId('generate-lyrics-editor')).toBeNull();
-    // The box that stays keeps its name. Deciding this off the lyrics box
-    // being present would strip it at the moment the switch flips.
-    expect(screen.getByText('Style')).toBeInTheDocument();
-    // Untouched on the node: the switch decides what the run uses, not what
-    // the user wrote.
-    expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
-      'morning light',
-    );
-  });
-
-  it('asks for words again once the track has vocals', async () => {
+  it('asks for the words in the lyrics box placeholder', async () => {
     await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
     const box = await screen.findByTestId('generate-lyrics-editor');
     await waitFor(() =>
@@ -887,7 +843,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
-  it('leaves it writable while the track has vocals', async () => {
+  it('leaves the lyrics box writable', async () => {
     await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
     const box = await screen.findByTestId('generate-lyrics-editor');
     await waitFor(() =>
@@ -895,29 +851,6 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
         'contenteditable',
         'true',
       ),
-    );
-  });
-
-  // The panel offers no box to write words in; the request has to agree.
-  // Measured 2026-09-05, `is_instrumental: true` with an empty `lyrics` is
-  // accepted and completes — that combination is the one this sends. The words
-  // stay on the node, so turning the switch back off returns them.
-  it('sends no words for a track the user marked vocal-free', async () => {
-    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
-    await openPanel({
-      mode: 't2m',
-      model: 'minimax-music-3.0',
-      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
-    });
-    typePrompt('rain on a tin roof');
-    typeLyrics('morning light');
-    fireEvent.click(screen.getByTestId('generate-audio-execute'));
-
-    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
-    expect(create.mock.calls[0]?.[0]?.params.lyrics).toBe('');
-    // Still on the node: the fragment is untouched.
-    expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
-      'morning light',
     );
   });
 
@@ -1007,8 +940,8 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
   });
 
   it('still inserts once the box the caret was in goes away', async () => {
-    // The caret was in the lyrics box, and then the box left — the instrumental
-    // switch takes it away mid-mode, and a mode switch takes it away outright.
+    // The caret was in the lyrics box, and then the box left — a mode switch
+    // takes it away.
     // The remembered box is gone; the button still has to land the chip.
     const board = textSource('src', 'let the river carry me home');
     const view = await openPanel(
@@ -1039,16 +972,4 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
-  it('runs an instrumental track with the lyrics box empty', async () => {
-    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
-    await openPanel({
-      mode: 't2m',
-      model: 'minimax-music-3.0',
-      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
-    });
-    typePrompt('rain on a tin roof');
-    fireEvent.click(screen.getByTestId('generate-audio-execute'));
-    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
-    expect(create.mock.calls[0]?.[0]?.params.is_instrumental).toBe(true);
-  });
 });

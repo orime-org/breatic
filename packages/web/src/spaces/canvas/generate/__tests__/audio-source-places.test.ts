@@ -12,7 +12,7 @@ import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 
 import {
-  audioRequiredSlots,
+  audioMissing,
   audioSlotsForModel,
   modelTakesLyrics,
 } from '@web/spaces/canvas/generate/audio-slots';
@@ -31,13 +31,10 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
     description: '',
     guide: '',
     tier: 'optional',
-    cost_per_call: 1,
     generation_time: 10,
     takes_prompt: true,
     params,
     providers: [],
-    sourcesByMode: { a2m: ['audio'], t2m: [] },
-    sourceRuleByMode: { a2m: 'any_of', t2m: 'all_of' },
   };
 }
 
@@ -89,20 +86,41 @@ describe('what an audio run collects', () => {
   });
 });
 
-describe('what an audio run may leave empty', () => {
-  it('draws a place the model marks optional and does not require it', () => {
+describe('what an audio run still needs', () => {
+  it('asks for a place the model does not mark optional', () => {
     const music = model({
       song: REFERENCE,
       voice: { ...REFERENCE, optional: true },
     });
 
     expect(audioSlotsForModel(music, 'a2m')).toEqual(['musicSong', 'musicVoice']);
-    expect(audioRequiredSlots(music, 'a2m')).toEqual(['musicSong']);
+    expect(audioMissing(music, 'a2m', {})).toEqual([['song']]);
   });
 
-  it('requires every place a model says nothing about', () => {
-    const music = model({ song: REFERENCE, voice: REFERENCE });
+  it('counts a filled place as filled', () => {
+    const music = model({ song: REFERENCE });
 
-    expect(audioRequiredSlots(music, 'a2m')).toEqual(['musicSong', 'musicVoice']);
+    expect(audioMissing(music, 'a2m', { musicSong: 'https://a.mp3' })).toEqual([]);
+  });
+
+  it('asks nothing of a place this mode does not collect', () => {
+    expect(audioMissing(model({ song: REFERENCE }), 't2m', {})).toEqual([]);
+  });
+
+  it('asks for any one of a group the model declares for the mode', () => {
+    const music: ModelEntry = {
+      ...model({
+        song: { ...REFERENCE, optional: true },
+        voice: { ...REFERENCE, optional: true },
+      }),
+      source_groups: [{ mode: 'a2m', any_of: ['song', 'voice'] }],
+    };
+
+    expect(audioMissing(music, 'a2m', {})).toEqual([['song', 'voice']]);
+    expect(audioMissing(music, 'a2m', { musicVoice: 'https://v.mp3' })).toEqual([]);
+  });
+
+  it('needs nothing when no model resolves', () => {
+    expect(audioMissing(undefined, 'a2m', {})).toEqual([]);
   });
 });
