@@ -155,7 +155,8 @@
       "support": "이번 구매에 대한 문의는 {email} 로 보내주세요."
     },
     "chat": {
-      "message_too_long": "이 메시지는 너무 깁니다. 첨부한 내용을 포함해 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다."
+      "message_too_long": "이 메시지는 너무 깁니다. 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다.",
+      "attachments_too_long": "첨부한 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다."
     }
   },
   "chat": {
