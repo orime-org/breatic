@@ -13,7 +13,7 @@ import { attachAccept, attachFiles, type AttachDeps } from '@web/pages/project/c
 import { runMediaUpload } from '@web/spaces/canvas/canvas-upload';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import { openTray } from '@web/stores/attach-to-chat';
-import { useTrayNotice } from '@web/stores/chat-attachments';
+import { useTrayNotice, type TrayNotice } from '@web/stores/chat-attachments';
 
 /**
  * Upload one file for a chat message.
@@ -41,6 +41,27 @@ function uploadForChat(file: File, projectId: string): Promise<string | undefine
       },
     );
   });
+}
+
+/**
+ * What the reader is told about their last attempt to attach something.
+ * @param said - What the tray said.
+ * @param t - The translator.
+ * @returns The sentence.
+ */
+function noticeText(said: TrayNotice, t: ReturnType<typeof useTranslation>): string {
+  switch (said.key) {
+    case 'unavailable':
+      return t('chat.composer.attachUnavailable');
+    case 'full':
+      return t('chat.composer.attachFull', { limit: said.limit });
+    case 'tooLong':
+      return t('chat.composer.attachTooLong');
+    case 'tooLarge':
+      return t('chat.composer.attachTooLarge', { filename: said.filename });
+    case 'unsupported':
+      return t('chat.composer.attachUnsupported', { filename: said.filename });
+  }
 }
 
 /** The real dependencies. */
@@ -84,18 +105,7 @@ export function useAttachFiles(projectId: string, conversationId: string | undef
   // Worked out on every render: `t` keeps one identity across a language
   // switch, so a memo on it would keep the first language. A string compares
   // by value, so the composer's memo still holds.
-  const notice =
-    said === null
-      ? undefined
-      : said.key === 'unavailable'
-        ? t('chat.composer.attachUnavailable')
-        : said.key === 'full'
-          ? t('chat.composer.attachFull', { limit: said.limit })
-          : said.key === 'tooLong'
-            ? t('chat.composer.attachTooLong')
-            : said.key === 'tooLarge'
-              ? t('chat.composer.attachTooLarge', { filename: said.filename })
-              : t('chat.composer.attachUnsupported', { filename: said.filename });
+  const notice = said === null ? undefined : noticeText(said, t);
 
   return { attach, accept, notice };
 }
