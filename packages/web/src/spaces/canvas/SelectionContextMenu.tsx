@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Copy, CopyPlus, Group, Trash2 } from 'lucide-react';
+import { Copy, CopyPlus, Group, MessageSquarePlus, Trash2 } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -32,6 +32,10 @@ interface SelectionContextMenuProps {
   onDuplicate?: () => void;
   /** Delete the selection (routed through the guarded delete path). */
   onDelete?: () => void;
+  /** Hand the selection to the agent. */
+  onAddToAgent?: () => void;
+  /** Shown but held still: the chat is changing conversation. */
+  addToAgentDisabled?: boolean;
 }
 
 /**
@@ -51,6 +55,8 @@ interface SelectionContextMenuProps {
  * @param root0.onCopy - Copy the selection.
  * @param root0.onDuplicate - Duplicate the selection.
  * @param root0.onDelete - Delete the selection.
+ * @param root0.onAddToAgent - Hand the selection to the agent.
+ * @param root0.addToAgentDisabled - Hold the add-to-agent item still.
  * @returns The cursor-anchored selection action menu.
  */
 export const SelectionContextMenu = React.memo(function SelectionContextMenu({
@@ -62,6 +68,8 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
   onCopy,
   onDuplicate,
   onDelete,
+  onAddToAgent,
+  addToAgentDisabled = false,
 }: SelectionContextMenuProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -74,6 +82,19 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent align='start'>
+        {onAddToAgent ? (
+          <>
+            <DropdownMenuItem
+              data-testid='selection-menu-add-to-agent'
+              disabled={addToAgentDisabled}
+              onSelect={onAddToAgent}
+            >
+              <MessageSquarePlus className='mr-2 h-4 w-4' aria-hidden='true' />
+              {t('canvas.contextMenu.addToAgent')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         {onGroup ? (
           <>
             <DropdownMenuItem

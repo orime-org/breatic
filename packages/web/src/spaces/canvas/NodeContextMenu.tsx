@@ -9,6 +9,7 @@ import {
   History,
   ImagePlus,
   Lock,
+  MessageSquarePlus,
   Pencil,
   ScanText,
   Sparkles,
@@ -117,6 +118,10 @@ interface NodeContextMenuProps {
   onDuplicate?: () => void;
   /** Ungroup the group (group target only). */
   onUngroup?: () => void;
+  /** Hand the node, or the group's members, to the agent. */
+  onAddToAgent?: () => void;
+  /** Shown but held still: the chat is changing conversation. */
+  addToAgentDisabled?: boolean;
 }
 
 /**
@@ -160,6 +165,8 @@ interface NodeContextMenuProps {
  * @param root0.onCopy - Copy the node / group (with its members).
  * @param root0.onDuplicate - Duplicate the node / group (with its members).
  * @param root0.onUngroup - Ungroup the group (group target only).
+ * @param root0.onAddToAgent - Hand the node, or the group's members, to the agent.
+ * @param root0.addToAgentDisabled - Hold the add-to-agent item still.
  * @returns The cursor-anchored node / group action menu.
  */
 export const NodeContextMenu = React.memo(function NodeContextMenu({
@@ -184,6 +191,8 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onCopy,
   onDuplicate,
   onUngroup,
+  onAddToAgent,
+  addToAgentDisabled = false,
 }: NodeContextMenuProps): React.JSX.Element {
   const t = useTranslation();
   const isGroup = target === 'group';
@@ -213,6 +222,19 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
           onRename?.();
         }}
       >
+        {onAddToAgent ? (
+          <>
+            <DropdownMenuItem
+              data-testid='node-menu-add-to-agent'
+              disabled={addToAgentDisabled}
+              onSelect={onAddToAgent}
+            >
+              <MessageSquarePlus className='mr-2 h-4 w-4' aria-hidden='true' />
+              {t('canvas.contextMenu.addToAgent')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         {!isGroup && onUpload ? (
           <>
             {/* Generate is enabled for content nodes that support it (image),

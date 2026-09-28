@@ -335,7 +335,8 @@
       "deleteNode": "ノードを削除",
       "deleteGroup": "グループを削除",
       "deleteSelection": "選択を削除",
-      "clipboardError": "クリップボードにアクセスできません。キーボードショートカットをお使いください。"
+      "clipboardError": "クリップボードにアクセスできません。キーボードショートカットをお使いください。",
+      "addToAgent": "Agent に追加"
     },
     "gate": {
       "locked": "この項目はロックされています。変更するにはロックを解除してください。",

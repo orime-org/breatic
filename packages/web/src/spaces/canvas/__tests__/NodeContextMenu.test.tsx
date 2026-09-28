@@ -306,3 +306,32 @@ describe('NodeContextMenu', () => {
     expect(screen.queryByTestId('node-menu-download')).toBeNull();
   });
 });
+
+describe('NodeContextMenu — adding to the agent', () => {
+  it('hands the node to the agent when chosen', () => {
+    const onAddToAgent = vi.fn();
+    setup({ onAddToAgent });
+
+    fireEvent.click(screen.getByTestId('node-menu-add-to-agent'));
+
+    expect(onAddToAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it('is offered for a group too', () => {
+    setup({ target: 'group', onAddToAgent: () => {} });
+
+    expect(screen.getByTestId('node-menu-add-to-agent')).toBeInTheDocument();
+  });
+
+  it('is shown but not available while the chat is changing conversation', () => {
+    setup({ onAddToAgent: () => {}, addToAgentDisabled: true });
+
+    expect(screen.getByTestId('node-menu-add-to-agent')).toHaveAttribute('data-disabled');
+  });
+
+  it('is not offered without a handler', () => {
+    setup();
+
+    expect(screen.queryByTestId('node-menu-add-to-agent')).not.toBeInTheDocument();
+  });
+});

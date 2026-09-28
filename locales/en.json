@@ -335,7 +335,8 @@
       "deleteNode": "Delete node",
       "deleteGroup": "Delete group",
       "deleteSelection": "Delete selection",
-      "clipboardError": "Couldn't reach the clipboard. Use the keyboard shortcut instead."
+      "clipboardError": "Couldn't reach the clipboard. Use the keyboard shortcut instead.",
+      "addToAgent": "Add to Agent"
     },
     "gate": {
       "locked": "This item is locked — unlock it to make changes.",

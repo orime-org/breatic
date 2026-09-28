@@ -335,7 +335,8 @@
       "deleteNode": "删除节点",
       "deleteGroup": "删除编组",
       "deleteSelection": "删除选中",
-      "clipboardError": "无法访问剪贴板，请改用键盘快捷键。"
+      "clipboardError": "无法访问剪贴板，请改用键盘快捷键。",
+      "addToAgent": "添加到 Agent"
     },
     "gate": {
       "locked": "此项已锁定，解锁后才能修改。",

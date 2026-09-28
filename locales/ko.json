@@ -335,7 +335,8 @@
       "deleteNode": "노드 삭제",
       "deleteGroup": "그룹 삭제",
       "deleteSelection": "선택 항목 삭제",
-      "clipboardError": "클립보드에 접근할 수 없습니다. 키보드 단축키를 사용하세요."
+      "clipboardError": "클립보드에 접근할 수 없습니다. 키보드 단축키를 사용하세요.",
+      "addToAgent": "Agent에 추가"
     },
     "gate": {
       "locked": "이 항목은 잠겨 있습니다. 변경하려면 잠금을 해제하세요.",
