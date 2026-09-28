@@ -369,7 +369,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
             description: "",
             default: true,
             fill: "panel",
-            when: { source: "video" },
+            when: { flag_on: "enable_audio" },
           },
         },
       }),
@@ -378,7 +378,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
 
     expect(params?.image).toMatchObject({ fill: "canvas", accepts: "image" });
     expect(params?.video).toMatchObject({ optional: true, modes: ["ref"] });
-    expect(params?.keep_original_sound?.when).toEqual({ source: "video" });
+    expect(params?.keep_original_sound?.when).toEqual({ flag_on: "enable_audio" });
   });
 
   it("draws no control for a fill it does not recognise", () => {

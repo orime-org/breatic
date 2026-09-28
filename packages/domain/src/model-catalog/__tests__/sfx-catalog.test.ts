@@ -14,10 +14,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
-import {
-  getFullModelConfig,
-  getModelCatalog,
-} from "../model-catalog.js";
+import { getModelCatalog } from "../model-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 beforeAll(() => {

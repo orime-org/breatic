@@ -26,7 +26,6 @@ function fsWith(params: string[]): Record<string, unknown> {
     "      label: text-to-video",
     "    i2v:",
     "      label: image-to-video",
-    "      sources: [image]",
   ].join("\n");
   const model = [
     "models:",

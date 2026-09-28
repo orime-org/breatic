@@ -204,10 +204,9 @@ export function materialNeeded(
   model: string,
 ): number {
   const catalog = getModelCatalog();
-  const config = getModeConfig();
   for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
     const entry = (catalog[bucket] ?? []).find((e) => e.name === model);
-    if (entry) return materialCount(entry, mode, config[bucket]?.modes[mode]);
+    if (entry) return materialCount(entry, mode);
   }
   return 0;
 }

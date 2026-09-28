@@ -20,11 +20,9 @@ import { initCore } from "@breatic/core";
 import { parse } from "yaml";
 import { describe, it, expect, beforeAll } from "vitest";
 
+import { missingSources } from "@breatic/shared";
+
 import { getFullModelConfig } from "../model-catalog.js";
-import {
-  computeSourcesByMode,
-  violatesSourceRequirement,
-} from "../source-requirement.js";
 
 
 const MODES_YAML = resolve(
@@ -44,28 +42,12 @@ beforeAll(() => {
 });
 
 describe("first-last frame config wiring (#1904)", () => {
-  it("requires an image for the mode", () => {
-    expect(computeSourcesByMode("video", "first_last")).toEqual({
-      first_last: ["image"],
-    });
-  });
-
-  it("keeps the source gate up for a model that offers both modes", () => {
-    // Without a row of its own, `first_last` would resolve to "needs
-    // nothing", and one source-less mode lets the whole model through — the
-    // image-to-video half would stop asking for a first frame too.
-    const sources = computeSourcesByMode("video", ["i2v", "first_last"]);
-    // The model's own declarations, which is where the gate reads both halves
-    // of the question: which of its params takes a picture, and in what shape.
-    // A param this model does not declare reaches the upstream as nothing.
-    const config = getFullModelConfig("video");
-    const model = config.models.find((m) => m.name === FIRST_LAST_MODELS[0]);
-    const declared = (model?.params ?? {}) as Record<string, { accepts?: string }>;
-    expect(declared.image?.accepts, `${FIRST_LAST_MODELS[0]} takes an image`).toBe("image");
-    expect(violatesSourceRequirement(sources, { prompt: "x" }, declared)).toBe(true);
-    expect(
-      violatesSourceRequirement(sources, { prompt: "x", image: "https://cdn/a.png" }, declared),
-    ).toBe(false);
+  it.each(FIRST_LAST_MODELS)("%s asks for both frames in first_last and one in i2v", (name) => {
+    const model = getFullModelConfig("video").models.find((m) => m.name === name);
+    if (!model) throw new Error(`${name} missing from the video catalog`);
+    const entry = { params: model.params ?? {}, source_groups: model.source_groups };
+    expect(missingSources(entry, "first_last", {})).toEqual([["image"], ["end_image"]]);
+    expect(missingSources(entry, "i2v", {})).toEqual([["image"]]);
   });
 
   it("defines the mode in modes.yaml, where the agent reads its mode list", () => {

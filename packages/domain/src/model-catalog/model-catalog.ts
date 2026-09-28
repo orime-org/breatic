@@ -14,11 +14,6 @@ import { resolve, extname } from "node:path";
 import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "@breatic/core";
 import {
-  computeSourceRuleByMode,
-  computeSourcesByMode,
-  violatesSourceRequirement,
-} from "@domain/model-catalog/source-requirement.js";
-import {
   violatesReferenceCount,
   type ReferenceCountViolation,
 } from "@domain/model-catalog/reference-count.js";
@@ -39,6 +34,7 @@ import type {
   RemoteParamSource,
   SourceGroup,
 } from "@breatic/shared";
+import { fitsSomeMode } from "@breatic/shared";
 import { estimateCredits, type CreditEstimate, type EstimateInput } from "@breatic/shared/pricing";
 
 /** Root directory for model YAML configs. */
@@ -316,12 +312,6 @@ function projectModelEntry(
     // sending text the upstream will reject. Absent on models whose upstream
     // publishes no cap.
     max_input_chars: m.max_input_chars,
-    // #1675 cross-modality execute gate: precompute per-mode source needs so
-    // the frontend reads them off the wire (the rule stays backend-side).
-    sourcesByMode: computeSourcesByMode(modality, m.mode as string | string[]),
-    // #269: and how many of the slots carrying those kinds have to be filled,
-    // which the kinds cannot say (a2m needs one audio source and offers three).
-    sourceRuleByMode: computeSourceRuleByMode(modality, m.mode as string | string[]),
     icon: m.icon,
   };
 }
@@ -509,39 +499,24 @@ function findCatalogEntry(model: string): ModelEntry | undefined {
 }
 
 /**
- * #1675 server execute gate (cross-modality): whether a model whose modes all
- * require a source input was submitted without the required source(s) in
- * `params`. The /canvas/tasks route runs this BEFORE enqueue — billing happens
- * post-worker (markCompletedAndBill), so rejecting here means no task row, no
- * job, no bill for an input the model would reject (e.g. Nano Banana Edit
- * requires an image; a video-edit requires a video). Defence in depth behind the
- * panel's frontend gate.
- *
- * The rule is the SAME `sourcesByMode` the frontend reads off the wire — this
- * looks the model up and applies `violatesSourceRequirement` to the
- * submitted params. A model that can run source-less (any t2i-like mode / a
- * hybrid), an unknown model, or an absent model all pass.
+ * #1675 server execute gate: whether a submission makes a valid run of none
+ * of the model's modes. The /canvas/tasks route runs this BEFORE enqueue, so a
+ * run the upstream would reject never becomes a task row or a job. Defence in
+ * depth behind the panel's gate, which asks the same `missingSources` for the
+ * one mode it is in; the request carries no mode, so any mode will do here.
+ * An unknown or absent model passes: existence is not this gate's job.
  * @param model - The task's model name from the request body, if any.
- * @param params - The task params (the wire `params.images` / `video_url` / … carry sources).
- * @returns True when a required source type is missing → reject before billing.
+ * @param params - The task params, keyed by the catalog's names.
+ * @returns True when no mode of the model has what it needs.
  */
 export function violatesSourceRequirementForModel(
   model: string | undefined,
   params: Record<string, unknown>,
 ): boolean {
-  if (!model) return false;
-  const catalog = getModelCatalog();
-  for (const modality of MODALITIES) {
-    const entry = catalog[modality].find((m) => m.name === model);
-    if (entry) {
-      return violatesSourceRequirement(
-        entry.sourcesByMode,
-        params,
-        entry.params ?? {},
-      );
-    }
-  }
-  return false; // unknown model — existence is not this gate's job
+  const entry = model ? findCatalogEntry(model) : undefined;
+  if (!entry) return false;
+  const modes = Array.isArray(entry.mode) ? entry.mode : [entry.mode];
+  return !fitsSomeMode(entry, modes, params);
 }
 
 /**
@@ -573,10 +548,10 @@ export function violatesReferenceCountForModel(
 /**
  * Hand back every cached answer the catalog carries (for testing).
  *
- * The mode layer goes with it: an entry's `sourcesByMode` and
- * `sourceRuleByMode` are built from `modes.yaml`, so a reset that left that
- * cache alone would serve the new models under the old modes, and the caller
- * has no second reset to reach for.
+ * The mode layer goes with it: the catalog checks its models against
+ * `modes.yaml`, so a reset that left that cache alone would check the new
+ * models against the old modes, and the caller has no second reset to reach
+ * for.
  */
 export function resetModelCatalog(): void {
   _cache = null;

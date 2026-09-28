@@ -29,6 +29,7 @@ import {
   GENERATION_NODE_MODES,
   markText,
   MAX_NODE_NAME_LEN,
+  missingSources,
   PANEL_EDITOR_PARAM,
   REFERENCE_POOL_PARAM,
   type CanvasProposal,
@@ -88,10 +89,13 @@ function reachableModes(): Reachable[] {
     for (const mode of GENERATION_NODE_MODES[nodeType]) {
       const answer = modelsForMode(nodeType, mode);
       if (!answer.available) continue;
-      const needs = [
-        ...new Set(entries.flatMap((e) => e.sourcesByMode[mode] ?? [])),
-      ] as GenerationNodeType[];
       for (const model of answer.models) {
+        // The kinds of node this model's empty run still asks for: one per
+        // requirement, named by what its first member takes.
+        const entry = entries.find((e) => e.name === model.name);
+        const needs = (entry ? missingSources(entry, mode, {}) : [])
+          .map(([field]) => (field === undefined ? undefined : entry?.params[field]?.accepts))
+          .filter((kind): kind is GenerationNodeType => kind !== undefined);
         const places = Object.entries(model.params).filter(
           ([, p]) => p.filledBySource === true,
         );
@@ -330,7 +334,7 @@ describe("a mode whose material arrives through the reference pool", () => {
     // reader would have mentioned, so it takes one of the rows -- counting
     // only the empty nodes lets a group be placed that the panel then refuses.
     const at = pick(
-      (m) => m.byReference && m.poolCap !== undefined && m.nodeType === "video",
+      (m) => m.byReference && m.poolCap !== undefined && m.nodeType === "video" && m.needs.length > 0,
       "video pool with a declared cap",
     );
     const kind = at.needs[0] as GenerationNodeType;
@@ -428,7 +432,12 @@ describe("a mode whose material arrives through a panel slot", () => {
     // not made wrong by a neighbour asking for something.
     const slot = pick((m) => !m.byReference && m.needs.length > 0, "mode fed by a panel slot");
     const other = pick(
-      (m) => !m.byReference && m.needs.length > 0 && !m.needs.includes(slot.needs[0] as GenerationNodeType),
+      // Built with a prompt below, so it has to be a model that reads one.
+      (m) =>
+        !m.byReference &&
+        m.takesPrompt &&
+        m.needs.length > 0 &&
+        !m.needs.includes(slot.needs[0] as GenerationNodeType),
       "mode fed by a slot of another kind",
     );
 
@@ -451,7 +460,7 @@ describe("a mode whose material arrives through a panel slot", () => {
     // Placing one empty node says that piece is theirs to put somewhere; it
     // says nothing about the piece they already have on their canvas.
     const at = pick(
-      (m) => !m.byReference && m.needs.length > 1,
+      (m) => !m.byReference && new Set(m.needs).size > 1,
       "mode needing two kinds through panel slots",
     );
 
@@ -499,7 +508,7 @@ describe("a mode whose material arrives through a panel slot", () => {
     // one place for a picture and one for a voice; two portraits is a group
     // the reader fills and then has nowhere to put the second one.
     const at = pick(
-      (m) => !m.byReference && m.needs.length > 1,
+      (m) => !m.byReference && new Set(m.needs).size > 1,
       "mode needing two kinds through panel slots",
     );
     const twiceTheFirst = [

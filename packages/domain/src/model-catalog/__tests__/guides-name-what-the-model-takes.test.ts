@@ -19,7 +19,7 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import type { GenerationNodeType, ModelEntry, ParamDescriptor } from "@breatic/shared";
 
-import { getModelCatalog } from "../model-catalog.js";
+import { estimateModelCredits, getModelCatalog } from "../model-catalog.js";
 import { entriesForNode, getCanvasCapabilities, modelsForMode } from "../mode-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
@@ -146,7 +146,7 @@ afterAll(() => {
 });
 
 describe("a model's guide", () => {
-  it("claims nothing this deployment cannot give", () => {
+  it("claims nothing this deployment cannot give", async () => {
     useFullCatalog();
     // A catalog with no models in it would walk over nothing and say nothing.
     // Counting the keys cannot see that: every modality key is present whatever
@@ -169,8 +169,13 @@ describe("a model's guide", () => {
           .map((m) => byName.get(m.name))
           .filter((e): e is ModelEntry => e !== undefined);
         if (shown.length === 0) continue;
-        const dearest = Math.max(...shown.map((e) => e.cost_per_call));
-        const cheapest = Math.min(...shown.map((e) => e.cost_per_call));
+        // What a run at its defaults costs, the number the panel shows first.
+        const cost = new Map<string, number>();
+        for (const e of shown) {
+          cost.set(e.name, (await estimateModelCredits(e.name, { params: {} }))?.credits ?? 0);
+        }
+        const dearest = Math.max(...cost.values());
+        const cheapest = Math.min(...cost.values());
         const slowest = Math.max(...shown.map((e) => e.generation_time));
         const quickest = Math.min(...shown.map((e) => e.generation_time));
         for (const entry of shown) {
@@ -225,7 +230,7 @@ describe("a model's guide", () => {
           }
           for (const [phrase, field] of CLAIMS_EXTREME) {
             if (!says(phrase)) continue;
-            const mine = field === "cost" ? entry.cost_per_call : entry.generation_time;
+            const mine = field === "cost" ? (cost.get(entry.name) ?? 0) : entry.generation_time;
             const [most, least] =
               field === "cost" ? [dearest, cheapest] : [slowest, quickest];
             const superlative = /most expensive|slowest/i.test(phrase.source) ? most : least;

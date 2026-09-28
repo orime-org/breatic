@@ -158,12 +158,7 @@ export interface ModelProvider {
   available: boolean;
 }
 
-/**
- * A kind of source input a generation mode may require (#1675 cross-modality
- * execute gate). i2i/edit/i2v/… need an `image`; video edit/upscale need a
- * `video`; a2m/voice_clone need an `audio`. A mode may need several (e.g.
- * `talking_head` needs image + audio).
- */
+/** A kind of node a source slot takes. */
 export type SourceType = "image" | "video" | "audio";
 
 /** How many of a mode's slots have to hold something. */
@@ -222,25 +217,6 @@ export interface ModelEntry {
    * invented here would refuse text the vendor accepts.
    */
   max_input_chars?: number;
-  /**
-   * Per-mode source requirements (#1675 cross-modality execute gate),
-   * computed backend-side (the rule lives in domain). Maps each of the
-   * model's modes to the source types that mode needs (`t2i` → `[]`,
-   * `i2i` → `["image"]`, `talking_head` → `["image","audio"]`). The frontend
-   * gate reads `sourcesByMode[activePanelMode]` to decide whether to block
-   * execution — it never runs the rule itself. Empty when the catalog entry
-   * carries no recognized mode.
-   */
-  sourcesByMode: Record<string, SourceType[]>;
-  /**
-   * Per-mode source rule, computed backend-side from the same declarations.
-   *
-   * The source types cannot carry it: a2m needs one audio source and offers
-   * three slots to carry it, so a reader counting types would demand all
-   * three. `all_of` means every non-optional slot the mode offers has to hold
-   * something, `any_of` that one of them is enough.
-   */
-  sourceRuleByMode: Record<string, SourceRule>;
   /**
    * Brand icon name for the Generate picker (mapped to an inline SVG on the
    * frontend, e.g. `nano-banana` / `midjourney` / `seedream`). Optional so a
@@ -326,12 +302,6 @@ export const VIDEO_GENERATION_MODES = [
   "ref",
   "talking_head",
 ] as const;
-
-// The source-image predicates (SOURCE_IMAGE_MODES / requiresSourceImage /
-// supportsTextToImage) were replaced by the cross-modality execute gate
-// (#1675): the (modality, mode) → source-type rule now lives backend-side in
-// domain/model-catalog/source-requirement.ts and reaches the frontend as the
-// precomputed ModelEntry.sourcesByMode wire field.
 
 /**
  * Audio model `mode` values the audio Generate panel offers (#261).
@@ -489,20 +459,9 @@ const modelEntrySchema = z.object({
       return out;
     }),
   providers: z.array(modelProviderSchema).catch([]),
-  // Per-mode source requirements (#1675); non-object / garbage → {} so the
-  // entry still survives (a missing gate degrades open, matching the lenient
-  // sanitizer contract — the server gate is the authoritative enforcement).
-  sourcesByMode: z
-    .record(z.string(), z.array(z.enum(["image", "video", "audio"])))
-    .catch({}),
-  // The rule beside those types (#269). A garbage one degrades to {}, and a
-  // mode absent from it reads as `all_of` — the stricter of the two, so a
-  // version-skewed wire refuses a submission rather than waving it through.
-  sourceRuleByMode: z.record(z.string(), z.enum(SOURCE_RULES)).catch({}),
   // Whether the model consumes the user's text (#1966). The backend refuses to
   // load a catalog where a model omits it, so this `.catch` only fires on a
-  // corrupted or version-skewed wire — and there it degrades OPEN, same as
-  // `sourcesByMode` above.
+  // corrupted or version-skewed wire — and there it degrades OPEN.
   //
   // `true` mounts the editor and makes `canExecuteGenerate` demand a non-empty
   // prompt, which at worst reproduces the pre-#1966 behaviour of a prompt the

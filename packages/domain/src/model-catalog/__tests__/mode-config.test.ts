@@ -2,17 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What a mode declares about the material it needs (#269).
- *
- * The source requirement is indexed by mode, not by model: one row says what
- * a first-and-last-frame run needs, and every model offering that mode is
- * held to it. Deriving it from each model's parameters instead reaches only
- * the models a generation panel reaches, which is ten short of the models the
- * enqueue gate actually guards.
- *
- * So the rows live beside the modes they describe, and a row that names a
- * source type nothing can carry, or a rule nothing can read, is refused while
- * the catalog loads rather than answered around at request time.
+ * What a mode declares: its name and what it is for (#269). The material a
+ * run needs is on each model (#2156), so a mode row carrying a source list is
+ * refused while the catalog loads rather than read by nobody.
  */
 
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -20,25 +12,11 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { assertModesDeclared, parseModeConfig } from "../mode-config.js";
 
 describe("a mode's declaration", () => {
-  it("carries the source types it needs and the rule over its slots", () => {
+  it("carries its label and what it is for", () => {
     const config = parseModeConfig({
       video: {
         modes: {
-          first_last: {
-            label: "first-last frame",
-            description: "Interpolate between two frames.",
-            sources: ["image"],
-          },
-        },
-      },
-      audio: {
-        modes: {
-          a2m: {
-            label: "reference to music",
-            description: "Write music from a reference.",
-            sources: ["audio"],
-            source_rule: "any_of",
-          },
+          first_last: { label: "first-last frame", description: "Interpolate between two frames." },
         },
       },
     });
@@ -46,48 +24,17 @@ describe("a mode's declaration", () => {
     expect(config.video?.modes.first_last).toEqual({
       label: "first-last frame",
       description: "Interpolate between two frames.",
-      sources: ["image"],
-      sourceRule: "all_of",
     });
-    expect(config.audio?.modes.a2m?.sourceRule).toBe("any_of");
   });
 
-  it("needs no material when it names no source", () => {
-    const config = parseModeConfig({
-      image: { modes: { t2i: { label: "text to image", description: "From words." } } },
-    });
-
-    expect(config.image?.modes.t2i?.sources).toEqual([]);
-    expect(config.image?.modes.t2i?.sourceRule).toBe("all_of");
-  });
-
-  it("is refused when it names a source type nothing can carry", () => {
+  it("is refused when it still names the sources it needs", () => {
     expect(() =>
       parseModeConfig({
         video: {
-          modes: {
-            i2v: { label: "image to video", description: "Animate.", sources: ["hologram"] },
-          },
+          modes: { i2v: { label: "image to video", description: "Animate.", sources: ["image"] } },
         },
       }),
-    ).toThrow(/video\.i2v.*hologram/s);
-  });
-
-  it("is refused when its rule is one no reader knows", () => {
-    expect(() =>
-      parseModeConfig({
-        audio: {
-          modes: {
-            a2m: {
-              label: "reference to music",
-              description: "From a reference.",
-              sources: ["audio"],
-              source_rule: "at_least_two",
-            },
-          },
-        },
-      }),
-    ).toThrow(/audio\.a2m.*at_least_two/s);
+    ).toThrow(/video\.i2v.*sources/s);
   });
 
   it("is refused when it has no label to put on a picker", () => {
