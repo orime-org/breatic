@@ -41,22 +41,7 @@ describe("resolveActiveProvider (#1960)", () => {
     deployWith({});
   });
 
-  it("takes the highest-priority provider that has a key", () => {
-    // elevenlabs-v3 declares elevenlabs at priority 1 and wavespeed at 2.
-    deployWith({
-      ELEVENLABS_API_KEY: "el-key",
-      WAVESPEED_API_KEY: "ws-key",
-    });
-    const resolved = resolveActiveProvider("tts", "elevenlabs-v3");
-    expect(resolved.providerName).toBe("elevenlabs");
-    expect(resolved.apiKey).toBe("el-key");
-    expect(resolved.modelId).toBe("eleven_v3");
-  });
-
-  // The same model, the same yaml — a different deployment. This is why the
-  // voice endpoint has to resolve rather than read the model: the two
-  // upstreams take different value domains for the same param.
-  it("falls to the next provider when the first has no key", () => {
+  it("resolves the model's WaveSpeed endpoint when the key is set", () => {
     deployWith({ WAVESPEED_API_KEY: "ws-key" });
     const resolved = resolveActiveProvider("tts", "elevenlabs-v3");
     expect(resolved.providerName).toBe("wavespeed");
@@ -65,31 +50,31 @@ describe("resolveActiveProvider (#1960)", () => {
   });
 
   it("carries the provider's connection settings from providers.yaml", () => {
-    deployWith({ FISH_API_KEY: "fish-key" });
-    const resolved = resolveActiveProvider("tts", "fish-s2-pro");
-    expect(resolved.baseUrl).toBe("https://api.fish.audio");
+    deployWith({ WAVESPEED_API_KEY: "ws-key" });
+    const resolved = resolveActiveProvider("tts", "elevenlabs-v3");
+    expect(resolved.baseUrl).toBe("https://api.wavespeed.ai/api/v3");
     expect(typeof resolved.timeout).toBe("number");
     expect(resolved.timeout).toBeGreaterThan(0);
   });
 
   it("hands back the model config and the provider entry, not just names", () => {
-    deployWith({ FISH_API_KEY: "fish-key" });
-    const resolved = resolveActiveProvider("tts", "fish-s2-pro");
-    // The worker builds cost / token price / extra params off these, so the
-    // resolution stays one rule rather than one rule plus a second lookup.
-    expect(resolved.modelConfig.name).toBe("fish-s2-pro");
-    expect(resolved.providerEntry.model_id).toBe("s2-pro");
+    deployWith({ WAVESPEED_API_KEY: "ws-key" });
+    const resolved = resolveActiveProvider("tts", "elevenlabs-v3");
+    // The worker builds cost and extra params off these, so the resolution
+    // stays one rule rather than one rule plus a second lookup.
+    expect(resolved.modelConfig.name).toBe("elevenlabs-v3");
+    expect(resolved.providerEntry.model_id).toBe("elevenlabs/eleven-v3");
   });
 
   it("refuses when no provider of the model has a key", () => {
     deployWith({});
-    expect(() => resolveActiveProvider("tts", "fish-s2-pro")).toThrow(
+    expect(() => resolveActiveProvider("tts", "elevenlabs-v3")).toThrow(
       /active API key/,
     );
   });
 
   it("refuses when the model is not in the catalog", () => {
-    deployWith({ FISH_API_KEY: "fish-key" });
+    deployWith({ WAVESPEED_API_KEY: "ws-key" });
     expect(() => resolveActiveProvider("tts", "no-such-model")).toThrow(
       /not found/,
     );

@@ -36,13 +36,10 @@ describe("getFullModelConfig (#1672)", () => {
 
   it("keeps full per-provider model fields the catalog projection drops", () => {
     const config = getFullModelConfig("image");
-    const midjourney = config.models.find((m) => m.name === "midjourney-v7");
+    const midjourney = config.models.find((m) => m.name === "midjourney");
     expect(midjourney).toBeTruthy();
     expect(midjourney!.providers?.[0]?.model_id).toBe("midjourney/text-to-image");
-    const anyTokenPriced = config.models.some((m) =>
-      (m.providers ?? []).some((p) => typeof p.token_price === "number"),
-    );
-    expect(anyTokenPriced).toBe(true);
+    expect(midjourney!.providers?.[0]?.pricing).toMatchObject({ base_price: 100_000 });
   });
 
   it("preserves array modes as authored in yaml", () => {
@@ -53,7 +50,7 @@ describe("getFullModelConfig (#1672)", () => {
 
   it("preserves param specs (values + default) the worker validates against", () => {
     const config = getFullModelConfig("image");
-    const midjourney = config.models.find((m) => m.name === "midjourney-v7");
+    const midjourney = config.models.find((m) => m.name === "midjourney");
     const aspect = midjourney?.params?.["aspect_ratio"];
     expect(aspect?.values).toContain("16:9");
     expect(aspect?.default).toBe("1:1");

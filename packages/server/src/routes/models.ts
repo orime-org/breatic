@@ -86,7 +86,7 @@ models.get(
       return c.json({ data: JSON.parse(cached) as VoicePage });
     }
 
-    const page = await listVoices(modelName, {
+    const page = listVoices(modelName, {
       ...(query ? { query } : {}),
       ...(cursor ? { cursor } : {}),
     });
@@ -115,7 +115,7 @@ models.get(
     const modelName = c.req.param("modelName");
     const voiceId = c.req.param("voiceId");
 
-    const voice = await getVoice(modelName, voiceId);
+    const voice = getVoice(modelName, voiceId);
     if (!voice) {
       return c.json(
         { error: { code: 404, message: t("server.canvas.voices_model_not_found") } },

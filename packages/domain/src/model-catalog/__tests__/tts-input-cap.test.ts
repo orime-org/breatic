@@ -43,27 +43,27 @@ describe("a tts model states how much text it takes (#1960 A17)", () => {
     expect(ttsEntry("elevenlabs-v3").max_input_chars).toBe(5000);
   });
 
-  // Fish publishes no hard cap — its OpenAPI schema states no maxLength and it
-  // describes usage as a fair-use policy. Absent is the honest answer, and the
-  // panel reads absent as uncapped; a number invented here would refuse text
-  // the vendor accepts.
-  it("leaves fish-s2-pro uncapped, because its upstream states no cap", () => {
+  // The gateway schemas state these caps in the text field's description.
+  it.each([
+    ["realtime-tts-2", 2000],
+    ["minimax-speech-2.8-hd", 10000],
+  ])("gives %s the %i characters its upstream states", (model, cap) => {
     useFullCatalog();
-    expect(ttsEntry("fish-s2-pro").max_input_chars).toBeUndefined();
+    expect(ttsEntry(model).max_input_chars).toBe(cap);
   });
 
-  // elevenlabs-v3 is carried by two providers, and which one answers is decided
-  // by which key this deployment set. The cap must not move with that choice: a
-  // reseller forwards the request to the same vendor API and cannot raise the
-  // vendor's own limit, so a per-provider number would let one deployment offer
-  // room the generation does not have.
-  it.each([["ELEVENLABS_API_KEY"], ["WAVESPEED_API_KEY"]])(
-    "answers 5000 whichever provider %s selects",
-    (key) => {
-      useEnvWithKeys([key]);
-      expect(ttsEntry("elevenlabs-v3").max_input_chars).toBe(5000);
-    },
-  );
+  // The Gemini schema states no cap. Absent is the honest answer, and the panel
+  // reads absent as uncapped; a number invented here would refuse text the
+  // upstream accepts.
+  it("leaves gemini-3.1-flash-text-to-speech uncapped, because its upstream states no cap", () => {
+    useFullCatalog();
+    expect(ttsEntry("gemini-3.1-flash-text-to-speech").max_input_chars).toBeUndefined();
+  });
+
+  it("answers 5000 on a deployment with only the WaveSpeed key", () => {
+    useEnvWithKeys(["WAVESPEED_API_KEY"]);
+    expect(ttsEntry("elevenlabs-v3").max_input_chars).toBe(5000);
+  });
 
   it("declares the cap in yaml, not somewhere on the way out", () => {
     useFullCatalog();

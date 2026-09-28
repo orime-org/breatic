@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #1960 — the two fields the audio panel reads off a tts model.
+ * #1960 — the fields the audio panel reads off a tts model.
  *
- * `rate` states what a model charges before the user generates; `remote_source`
- * names the picker that fills a param whose value domain lives upstream. Both
- * travel yaml → `projectModelEntry` → the wire, and that projection lists its
- * fields one by one: a field nobody adds a line for is simply absent, with
- * nothing failing to say so.
+ * `remote_source` names the picker that fills a param whose value domain lives
+ * upstream, and a ranged param carries what a slider needs. Both travel yaml →
+ * `projectModelEntry` → the wire, and that projection lists its fields one by
+ * one: a field nobody adds a line for is simply absent, with nothing failing to
+ * say so.
  *
  * These read the REAL config files. A fixture would prove the projection can
  * carry a field; only the real catalog proves the models actually declare one.
@@ -39,42 +39,12 @@ function ttsEntry(name: string): ReturnType<typeof getModelCatalog>["tts"][numbe
   return found;
 }
 
-describe("tts rate reaches the wire (#1960 A5)", () => {
-  // Both figures come from the vendors' own pricing pages, read 2026-09-01,
-  // at 1 credit = 1 US cent on the zero-margin deduction rule.
-  it("states elevenlabs-v3 at 10 credits per 1000 characters", () => {
-    expect(ttsEntry("elevenlabs-v3").rate).toEqual({
-      credits: 10,
-      per: 1000,
-      unit: "characters",
-    });
-  });
-
-  // Fish bills per UTF-8 byte ($15.00 / M UTF-8 bytes), not per character —
-  // a Chinese character is three of them, so the unit has to travel with the
-  // number or the panel understates this model threefold.
-  it("states fish-s2-pro at 1.5 credits per 1000 utf-8 bytes", () => {
-    expect(ttsEntry("fish-s2-pro").rate).toEqual({
-      credits: 1.5,
-      per: 1000,
-      unit: "utf8_bytes",
-    });
-  });
-
-  it("declares the rate in yaml, not somewhere on the way out", () => {
-    const yaml = getFullModelConfig("tts").models.find(
-      (m) => m.name === "fish-s2-pro",
-    );
-    expect(yaml?.rate).toEqual({ credits: 1.5, per: 1000, unit: "utf8_bytes" });
-  });
-});
-
 describe("the voice param names itself to the panel (#1960 A2)", () => {
   // The two models spell the same choice differently, so the panel finds the
   // param by this marker rather than by name.
   it.each([
     ["elevenlabs-v3", "voice_id"],
-    ["fish-s2-pro", "reference_id"],
+    ["minimax-speech-2.8-hd", "voice_id"],
   ])("marks %s's %s as filled from the voice catalog", (model, param) => {
     expect(ttsEntry(model).params[param]?.remote_source).toBe("voices");
   });
@@ -94,7 +64,7 @@ describe("the voice param names itself to the panel (#1960 A2)", () => {
   });
 
   it("leaves ordinary params unmarked", () => {
-    expect(ttsEntry("fish-s2-pro").params.speed?.remote_source).toBeUndefined();
+    expect(ttsEntry("minimax-speech-2.8-hd").params.speed?.remote_source).toBeUndefined();
   });
 });
 
@@ -107,8 +77,8 @@ describe("the speaking params declare what a control needs (#1960 A15)", () => {
   it.each([
     ["elevenlabs-v3", "stability"],
     ["elevenlabs-v3", "similarity"],
-    ["fish-s2-pro", "speed"],
-    ["fish-s2-pro", "volume"],
+    ["minimax-speech-2.8-hd", "speed"],
+    ["minimax-speech-2.8-hd", "volume"],
   ])("gives %s's %s a complete range", (model, param) => {
     const spec = ttsEntry(model).params[param];
     expect(typeof spec?.min).toBe("number");

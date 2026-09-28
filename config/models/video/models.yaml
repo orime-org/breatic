@@ -480,6 +480,7 @@ models:
         accepts: "image"
         fill: "canvas"
       motion:
+        description: "How much the scene moves"
         label: "Motion"
         default: "low"
         values: ["low", "high"]
@@ -891,11 +892,13 @@ models:
     generation_time: 600
     params:
       reference_audios:
+        description: "Reference audios"
         default: null
         type: "list"
         fill: "none"
         note: "mini-tool: no panel reaches this model"
       reference_images:
+        description: "Reference images"
         default: null
         type: "list"
         fill: "none"
@@ -1054,6 +1057,7 @@ models:
         accepts: "audio"
         fill: "canvas"
       order:
+        description: "Which speaker talks first"
         label: "Order"
         default: "left_right"
         values: ["meanwhile", "left_right", "right_left"]
@@ -1092,11 +1096,13 @@ models:
         accepts: "audio"
         fill: "canvas"
       emotion:
+        description: "Emotion of the delivery"
         label: "Emotion"
         default: "neutral"
         values: ["happy", "sad", "angry", "disgusted", "surprised", "neutral"]
         fill: "panel"
       model_mode:
+        description: "Which part of the face moves"
         label: "Region"
         default: "face"
         values: ["lips", "face", "head"]
@@ -1159,6 +1165,7 @@ models:
     generation_time: 600
     params:
       target_resolution:
+        description: "Output resolution"
         default: "1080p"
         values: ["720p", "1080p", "2k", "4k"]
         fill: "none"

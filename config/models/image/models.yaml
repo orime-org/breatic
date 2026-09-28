@@ -112,6 +112,7 @@ models:
         values: ["4:1", "3:1", "21:9", "2:1", "17:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16", "1:2", "1:3", "1:4"]
         fill: "panel"
       output_format:
+        description: "Output file format"
         default: "png"
         values: ["png", "jpeg", "webp"]
         fill: "none"
@@ -141,12 +142,13 @@ models:
         values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "1:4", "4:1", "1:8", "8:1"]
         fill: "panel"
       enable_image_search:
+        description: "Look up reference images before drawing"
         label: "Image search"
         default: false
         values: [true, false]
         fill: "panel"
       enable_web_search:
-        description: "Enable web search for better results"
+        description: "Look up facts before drawing"
         label: "Web search"
         default: false
         values: [true, false]
@@ -222,6 +224,7 @@ models:
         step: 1
         fill: "panel"
       hd:
+        description: "Render in HD"
         default: true
         fill: "none"
         note: "our default: highest"
@@ -308,6 +311,7 @@ models:
         values: ["1k", "2k", "4k"]
         fill: "panel"
       transparency:
+        description: "Transparent background"
         label: "Transparent background"
         default: false
         values: [true, false]
@@ -385,6 +389,7 @@ models:
         accepts: "image"
         fill: "pool"
       output_format:
+        description: "Output file format"
         default: "png"
         values: ["webp", "png", "jpeg"]
         fill: "none"
@@ -445,6 +450,7 @@ models:
     icon: "qwen"
     params:
       distance:
+        description: "Camera distance from the subject"
         label: "Distance"
         default: 1
         min: 0
@@ -452,6 +458,7 @@ models:
         step: 1
         fill: "panel"
       horizontal_angle:
+        description: "Camera angle around the subject, degrees"
         label: "Horizontal angle"
         default: 0
         min: 0
@@ -466,11 +473,13 @@ models:
         accepts: "image"
         fill: "pool"
       output_format:
+        description: "Output file format"
         default: "png"
         values: ["jpeg", "png", "webp"]
         fill: "none"
         note: "our default: png (lossless, keeps alpha)"
       vertical_angle:
+        description: "Camera angle above or below, degrees"
         label: "Vertical angle"
         default: 0
         min: -30
@@ -496,6 +505,7 @@ models:
     generation_time: 120
     params:
       creativity:
+        description: "How freely detail is invented"
         default: 0
         fill: "none"
         note: "mini-tool: no panel reaches this model"
@@ -506,6 +516,7 @@ models:
         fill: "none"
         note: "mini-tool: no panel reaches this model"
       target_megapixels:
+        description: "Output size in megapixels"
         default: 4
         fill: "none"
         note: "mini-tool: no panel reaches this model"

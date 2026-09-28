@@ -44,6 +44,7 @@ models:
     description: "Most natural single-voice read here"
     guide: "The straight read — one narrator, the most human-sounding output the catalog can reach."
     generation_time: 120
+    max_input_chars: 2000
     voices:
       - id: "Alex"
         name: "Alex"
@@ -270,11 +271,13 @@ models:
         name: "Zubenelgenubi"
     params:
       language:
+        description: "Language of the script"
         label: "Language"
         default: "English (United States)"
         values: ["Arabic (Egypt)", "Bangla (Bangladesh)", "Dutch (Netherlands)", "English (India)", "English (United States)", "French (France)", "German (Germany)", "Hindi (India)", "Indonesian (Indonesia)", "Italian (Italy)", "Japanese (Japan)", "Korean (South Korea)", "Marathi (India)", "Polish (Poland)", "Portuguese (Brazil)", "Romanian (Romania)", "Russian (Russia)", "Spanish (Spain)", "Tamil (India)", "Telugu (India)", "Thai (Thailand)", "Turkish (Turkey)", "Ukrainian (Ukraine)", "Vietnamese (Vietnam)"]
         fill: "panel"
       speakers:
+        description: "Named speakers and their voices"
         label: "Speakers"
         default: null
         type: "items"
@@ -310,6 +313,7 @@ models:
     guide: "The line said exactly your way — you supply the pronunciations and name the emotion."
     generation_time: 120
     icon: "minimax"
+    max_input_chars: 10000
     voices:
       - id: "Wise_Woman"
         name: "Wise Woman"
@@ -1257,11 +1261,13 @@ models:
         name: "Afrikaans female 1 v1"
     params:
       emotion:
+        description: "Emotion of the delivery"
         label: "Emotion"
         default: "happy"
         values: ["happy", "sad", "angry", "fearful", "disgusted", "surprised", "neutral"]
         fill: "panel"
       pronunciation_dict:
+        description: "How specific words are read"
         label: "Pronunciations"
         default: null
         type: "items"
@@ -1285,6 +1291,7 @@ models:
         remote_source: "voices"
         fill: "remote"
       volume:
+        description: "Loudness"
         default: 1
         min: 0.1
         max: 10
@@ -1610,6 +1617,7 @@ models:
     guide: "One character's voice, minted once and reused by ID across every shot in the project."
     generation_time: 120
     icon: "minimax"
+    max_input_chars: 2000
     params:
       audio:
         description: "Source audio"
@@ -1617,15 +1625,18 @@ models:
         accepts: "audio"
         fill: "canvas"
       custom_voice_id:
+        description: "Id for the cloned voice"
         default: null
         fill: "none"
         note: "worker generates it on the first use of a reference audio and reuses it for that audio (keep reason)"
       model:
+        description: "Speech model that uses the clone"
         default: "speech-2.8-hd"
         values: ["speech-02-hd", "speech-02-turbo", "speech-2.5-hd-preview", "speech-2.5-turbo-preview", "speech-2.6-hd", "speech-2.6-turbo", "speech-2.8-hd", "speech-2.8-turbo"]
         fill: "none"
         note: "our default: the TTS model we keep"
       need_noise_reduction:
+        description: "Clean background noise from the sample"
         default: true
         fill: "none"
         note: "our default: cleaner clone"

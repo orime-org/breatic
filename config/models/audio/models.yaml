@@ -186,11 +186,13 @@ models:
     params:
       loop:
         upstream: "ambience"
+        description: "Loops seamlessly end to start"
         label: "Seamless loop"
         default: false
         values: [true, false]
         fill: "panel"
       double_output:
+        description: "Return two variations"
         default: false
         fill: "none"
         note: "pinned: one generation lands one result"
@@ -202,6 +204,7 @@ models:
         step: 0.1
         fill: "panel"
       num_samples:
+        description: "Results per run"
         default: 1
         fill: "none"
         note: "pinned: one generation lands one result"
@@ -301,10 +304,12 @@ models:
     generation_time: 300
     params:
       ambience:
+        description: "Loops seamlessly end to start"
         default: false
         fill: "none"
         note: "mini-tool: no panel reaches this model"
       append_duration:
+        description: "Seconds to add"
         default: 10
         fill: "none"
         note: "mini-tool: no panel reaches this model"
@@ -315,10 +320,12 @@ models:
         fill: "none"
         note: "mini-tool: no panel reaches this model"
       double_output:
+        description: "Return two variations"
         default: false
         fill: "none"
         note: "pinned: one generation lands one result"
       num_samples:
+        description: "Results per run"
         default: 1
         fill: "none"
         note: "pinned: one generation lands one result"

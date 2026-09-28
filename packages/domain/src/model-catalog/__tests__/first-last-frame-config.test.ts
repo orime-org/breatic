@@ -33,7 +33,11 @@ const MODES_YAML = resolve(
 );
 
 /** The two models that carry an end frame (config/models/video/*.yaml). */
-const FIRST_LAST_MODELS = ["kling-o3-pro-i2v", "seedance-1.5-pro-i2v"];
+const FIRST_LAST_MODELS = [
+  "gemini-omni-1.1-flash-image-to-video",
+  "minimax-h3-image-to-video",
+  "wan-3.0-image-to-video",
+];
 
 beforeAll(() => {
   initCore(process.env);
@@ -75,7 +79,7 @@ describe("first-last frame config wiring (#1904)", () => {
     expect(firstLast!.description?.trim().length).toBeGreaterThan(0);
   });
 
-  it("declares the mode on both models that can run it", () => {
+  it("declares the mode on every model listed as running it", () => {
     const config = getFullModelConfig("video");
     for (const name of FIRST_LAST_MODELS) {
       const model = config.models.find((m) => m.name === name);
@@ -86,7 +90,7 @@ describe("first-last frame config wiring (#1904)", () => {
     }
   });
 
-  it("keeps the end frame declared as a param on both models", () => {
+  it("keeps the end frame declared as a param on every one of them", () => {
     // The slot's URL travels as `end_image`; a model that stopped declaring it
     // would have it dropped by validateParams before the family ever saw it.
     const config = getFullModelConfig("video");
