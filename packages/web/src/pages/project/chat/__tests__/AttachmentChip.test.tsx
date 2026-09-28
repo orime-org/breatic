@@ -15,8 +15,8 @@ afterEach(() => {
 });
 
 /**
- * Hovers the card long enough for its preview to open.
- * @param card - The card element.
+ * Hovers an element long enough for a preview to open.
+ * @param card - The element under the pointer.
  */
 function hover(card: HTMLElement): void {
   fireEvent.pointerEnter(card, { pointerType: 'mouse' });
@@ -24,6 +24,12 @@ function hover(card: HTMLElement): void {
     vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS + 10);
   });
 }
+
+/**
+ * The part of a card that opens its preview: its kind and name.
+ * @returns The label element.
+ */
+const label = (): HTMLElement => screen.getByTestId('card').firstElementChild as HTMLElement;
 
 const canvasChip = (count: number): ChatAttachedChip => ({
   id: 'c',
@@ -45,7 +51,7 @@ describe('AttachmentChip hover preview', () => {
     vi.useFakeTimers();
     const chip: ChatAttachedChip = { id: 'f', type: 'image', name: 'a.png', data_snapshot: { url: 'https://a/i.png' } };
     render(<AttachmentChip id='f' type='image' name='a.png' chip={chip} testId='card' />);
-    hover(screen.getByTestId('card'));
+    hover(label());
     const content = screen.getByTestId('hover-preview-content');
     expect(content.querySelector('img')?.getAttribute('src')).toBe('https://a/i.png');
   });
@@ -54,7 +60,7 @@ describe('AttachmentChip hover preview', () => {
     vi.useFakeTimers();
     const chip = canvasChip(PREVIEW_ROWS + 2);
     render(<AttachmentChip id='c' type='canvas' name='' chip={chip} testId='card' />);
-    hover(screen.getByTestId('card'));
+    hover(label());
     const rows = screen.getAllByTestId('attachment-preview-row');
     expect(rows).toHaveLength(PREVIEW_ROWS);
     expect(rows[0]?.textContent).toBe('Node 0');
@@ -72,7 +78,7 @@ describe('AttachmentChip hover preview', () => {
   it('opens nothing for a card that has no address yet', () => {
     vi.useFakeTimers();
     render(<AttachmentChip id='f' type='image' name='a.png' status='uploading' testId='card' />);
-    hover(screen.getByTestId('card'));
+    hover(label());
     expect(screen.queryByTestId('hover-preview-content')).not.toBeInTheDocument();
   });
 
@@ -101,7 +107,7 @@ describe('AttachmentChip hover preview', () => {
     vi.useFakeTimers();
     const chip: ChatAttachedChip = { id: 'f', type: 'image', name: 'a.png', data_snapshot: { url: 'https://a/i.png' } };
     render(<AttachmentChip id='f' type='image' name='a.png' chip={chip} testId='card' />);
-    hover(screen.getByTestId('card'));
+    hover(label());
 
     expect(screen.getByTestId('hover-preview-content')).toHaveAttribute('data-side', 'top');
   });

@@ -70,7 +70,43 @@ function AttachmentChipInner({
   const t = useTranslation();
   const preview = React.useMemo(() => previewOf(chip), [chip]);
   const count = nodeCountOf(chip);
-  const card = (
+  // Only the kind and name open the preview: the remove button is a different
+  // control, and it takes the keyboard when a neighbouring card is removed.
+  // Wrapped whether or not there is anything to show yet, so the label keeps
+  // its element when an upload finishes.
+  const label = (
+    <HoverPreview
+      kind={preview && preview.kind !== 'nodes' ? preview.kind : 'image'}
+      src={preview && 'src' in preview ? preview.src : undefined}
+      poster={preview?.kind === 'video' ? preview.poster : undefined}
+      text={preview?.kind === 'text' ? preview.text : undefined}
+      body={preview?.kind === 'nodes' ? <NodeRows rows={preview.rows} more={preview.more} /> : undefined}
+      alt={name}
+      side='top'
+    >
+      <span className='inline-flex min-w-0 items-center gap-1'>
+        {status === 'uploading' ? (
+          <Loader2
+            className='h-3 w-3 shrink-0 animate-spin text-muted-foreground'
+            aria-label={t('chat.composer.attachmentUploading')}
+          />
+        ) : status === 'failed' ? (
+          // The words stay in the body colour: red on its own tint does not
+          // reach 4.5:1 at this size. The border, tint and icon carry the red.
+          <AlertCircle className='h-3 w-3 shrink-0 text-status-error-foreground' aria-hidden='true' />
+        ) : (
+          <span className='shrink-0 text-2xs text-muted-foreground'>
+            {t('chat.attachment.kind', { kind: type })}
+          </span>
+        )}
+        <span className='truncate'>{name || t('chat.attachment.nodes', { count: count ?? 0 })}</span>
+        {status === 'failed' && failure ? (
+          <span className='shrink-0'>{t('chat.composer.attachmentFailed', { reason: failure })}</span>
+        ) : null}
+      </span>
+    </HoverPreview>
+  );
+  return (
     <span
       role='listitem'
       data-attachment-id={id}
@@ -84,24 +120,7 @@ function AttachmentChipInner({
           : 'border-border bg-chip text-foreground'
       }`}
     >
-      {status === 'uploading' ? (
-        <Loader2
-          className='h-3 w-3 shrink-0 animate-spin text-muted-foreground'
-          aria-label={t('chat.composer.attachmentUploading')}
-        />
-      ) : status === 'failed' ? (
-        // The words stay in the body colour: red on its own tint does not
-        // reach 4.5:1 at this size. The border, tint and icon carry the red.
-        <AlertCircle className='h-3 w-3 shrink-0 text-status-error-foreground' aria-hidden='true' />
-      ) : (
-        <span className='shrink-0 text-2xs text-muted-foreground'>
-          {t('chat.attachment.kind', { kind: type })}
-        </span>
-      )}
-      <span className='truncate'>{name || t('chat.attachment.nodes', { count: count ?? 0 })}</span>
-      {status === 'failed' && failure ? (
-        <span className='shrink-0'>{t('chat.composer.attachmentFailed', { reason: failure })}</span>
-      ) : null}
+      {label}
       {onRemove ? (
         <Button
           type='button'
@@ -116,21 +135,6 @@ function AttachmentChipInner({
         </Button>
       ) : null}
     </span>
-  );
-  // Wrapped whether or not there is anything to show yet, so a card whose
-  // upload finishes keeps its element -- and the focus on its remove button.
-  return (
-    <HoverPreview
-      kind={preview && preview.kind !== 'nodes' ? preview.kind : 'image'}
-      src={preview && 'src' in preview ? preview.src : undefined}
-      poster={preview?.kind === 'video' ? preview.poster : undefined}
-      text={preview?.kind === 'text' ? preview.text : undefined}
-      body={preview?.kind === 'nodes' ? <NodeRows rows={preview.rows} more={preview.more} /> : undefined}
-      alt={name}
-      side='top'
-    >
-      {card}
-    </HoverPreview>
   );
 }
 

@@ -15,6 +15,9 @@ import {
 } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
+/** How far the preview stays from the viewport edge when pushed against it, in px. */
+const HOVER_PREVIEW_EDGE_GAP = 6;
+
 /** Which content form the large preview renders. */
 export type HoverPreviewKind = 'image' | 'text' | 'audio' | 'video';
 
@@ -177,6 +180,8 @@ export function HoverPreview({
           data-testid='hover-preview-content'
           side={side ?? (followCanvas ? 'top' : 'left')}
           avoidCollisions={followCanvas ? false : undefined}
+          // Pushed in from the viewport edge rather than flush against it.
+          collisionPadding={HOVER_PREVIEW_EDGE_GAP}
           // Re-enable clicks inside a modal Sheet: the modal sets the body to
           // `pointer-events: none`, which the portaled content inherits; an
           // explicit `auto` on the content lets its play / seek subtree be
