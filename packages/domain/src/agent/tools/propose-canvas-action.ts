@@ -51,7 +51,7 @@ import {
   type CanvasProposal,
   type ControlGate,
   type GenerationNodeType,
-  type MaterialPath,
+  type ReferenceKind,
   type PromptSegment,
   type ProposalAnswer,
   type ProposalNode,
@@ -171,17 +171,31 @@ export const inputSchema = z
   .strict();
 
 /**
- * The parameter a model fills from nodes wired into it, when it has one.
+ * The parameters a model fills from nodes wired into it, one per kind it
+ * takes that way (#2156: pictures, clips and tracks each have a pool).
  *
  * Two gates turn on this answer -- whether an empty node has to be wired in
  * at all, and what a mark in the prompt lands as once the group is placed --
  * so it is given once.
  * @param chosen - The model the proposal picked, as the catalog projects it.
- * @returns The pool parameter, or undefined when material arrives by slot.
+ * @returns Each pool parameter with the kind it takes; empty when material
+ *   arrives by slot.
  * @throws {never} Never.
  */
-function poolParam(chosen: ModelInfo): ParamInfo | undefined {
-  return Object.values(chosen.params).find((info) => info.fromReferencePool === true);
+function poolParams(chosen: ModelInfo): Array<{ kind: ReferenceKind; info: ParamInfo }> {
+  return Object.values(chosen.params).flatMap((info) =>
+    info.fromReferencePool === true && isReferenceKind(info.accepts) ? [{ kind: info.accepts, info }] : [],
+  );
+}
+
+/**
+ * Whether a declared `accepts` names a kind a pool carries.
+ * @param accepts - What the param says it takes.
+ * @returns True for a picture, clip or track.
+ * @throws {never} Never.
+ */
+function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind {
+  return accepts === "image" || accepts === "video" || accepts === "audio";
 }
 
 /**
@@ -197,7 +211,7 @@ function poolParam(chosen: ModelInfo): ParamInfo | undefined {
  */
 function catalogFactsOf(
   node: ProposalNode,
-): { takesFrom: MaterialPath; takesPrompt: boolean } | undefined {
+): { poolKinds: ReferenceKind[]; takesPrompt: boolean } | undefined {
   if (node.role !== "generate" || node.type === "text") return undefined;
   const { mode, model } = node;
   if (!mode || !model) return undefined;
@@ -206,7 +220,7 @@ function catalogFactsOf(
   const chosen = reachable.models.find((m) => m.name === model);
   if (!chosen) return undefined;
   return {
-    takesFrom: poolParam(chosen) ? "pool" : "slot",
+    poolKinds: poolParams(chosen).map((pool) => pool.kind),
     takesPrompt: chosen.takesPrompt,
   };
 }
@@ -432,7 +446,7 @@ function checkGenerateNode(
   // fills by clicking any node of that kind anywhere on the canvas. Which one
   // this model uses is what it declares, carried here by the same projection
   // the agent is answered out of.
-  const pool = poolParam(chosen);
+  const pools = poolParams(chosen);
   // A model drawing no box mounts no editor and forces the box empty, so both
   // the words and a mark that lands as a mention of upstream work reach
   // nobody. Asked further down instead, the mention would be turned away for
@@ -558,26 +572,25 @@ function checkGenerateNode(
     };
   }
 
-  // The pool has a ceiling as well, stated by the model and enforced by the
+  // Each pool has a ceiling as well, stated by the model and enforced by the
   // panel by name, so a group placed over it is filled by the reader and then
   // turned away.
   //
-  // Counted over the image nodes wired in, which is the most the prompt's
-  // marks can put in the pool: the panel takes the reference IMAGES the
-  // prompt mentions (`mentionedReferenceUrls`), one per mark, so a clip
-  // reaching the same generation, or the words upstream, is never one of
-  // them. A wired image the prompt never marks is counted here, and reaches
-  // the pool only once the reader mentions it themselves.
-  const pooled = nodesAt([...held.sources, ...held.upstream]).filter(
-    (n) => n.type === "image",
-  );
-  const cap = pool?.maxItems;
-  const over = pool ? referenceCapExceeded(pooled.length, cap) : null;
-  if (over) {
-    return {
-      ok: false,
-      reason: `"${model}" holds ${String(over.limit)} reference(s) at a time, and ${String(pooled.length)} image node(s) reach node ${String(index)}, any of which its prompt can put in it.`,
-    };
+  // Counted per kind over the nodes of that kind wired in, which is the most
+  // the prompt's marks can put in that pool: the panel sends each mentioned
+  // row in the list of its own kind (`mentionedReferenceUrls`), and the words
+  // upstream are never one of them. A wired node the prompt never marks is
+  // counted here, and reaches the pool only once the reader mentions it.
+  const wired = nodesAt([...held.sources, ...held.upstream]);
+  for (const { kind, info } of pools) {
+    const pooled = wired.filter((n) => n.type === kind).length;
+    const over = referenceCapExceeded(pooled, info.maxItems);
+    if (over) {
+      return {
+        ok: false,
+        reason: `"${model}" holds ${String(over.limit)} ${kind} reference(s) at a time, and ${String(pooled)} ${kind} node(s) reach node ${String(index)}, any of which its prompt can put in it.`,
+      };
+    }
   }
 
   return { ok: true };

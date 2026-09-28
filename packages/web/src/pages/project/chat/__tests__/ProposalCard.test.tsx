@@ -45,7 +45,7 @@ const PAIR: CanvasProposal = {
       // Written by the check before the card ever sees a proposal, and what
       // the card reads to work out which node a mark is about. Left off, every
       // to-do in here would be filed the way an unjudged proposal files them.
-      takesFrom: 'pool',
+      poolKinds: ['image'],
       takesPrompt: true,
       prompt: [
         { text: 'white ground, ' },
@@ -393,7 +393,7 @@ describe('a flow that is more than one thing', () => {
     listModels.mockResolvedValue(CATALOG);
     const same = (name: string): ProposalNode => ({
       role: 'generate', type: 'image', name, mode: 'i2i', model: 'some-model',
-      takesFrom: 'pool', takesPrompt: true,
+      poolKinds: ['image'], takesPrompt: true,
       prompt: [{ text: 'white ground' }],
     });
     renderCard(true, {

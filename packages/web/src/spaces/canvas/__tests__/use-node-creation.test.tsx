@@ -161,7 +161,7 @@ describe('useNodeCreation', () => {
           name: 'On white',
           mode: 'i2i',
           model: 'some-model',
-          takesFrom: 'pool',
+          poolKinds: ['image'],
           takesPrompt: true,
           params: { ratio: '1:1' },
           prompt: [{ text: 'white ground' }],
@@ -242,7 +242,7 @@ describe('useNodeCreation', () => {
           PAIR.nodes[0]!,
           {
             ...PAIR.nodes[1]!,
-            takesFrom: 'slot', takesPrompt: true,
+            poolKinds: [], takesPrompt: true,
             prompt: [
               { text: 'animate ' },
               { slot: { kind: 'asset', label: 'your photo', note: 'pick it in the panel' } },
@@ -269,13 +269,13 @@ describe('useNodeCreation', () => {
         nodes: [
           {
             role: 'generate', type: 'image', name: 'The shot', mode: 't2i',
-            model: 'some-model', params: {}, takesFrom: 'slot', takesPrompt: true,
+            model: 'some-model', params: {}, poolKinds: [], takesPrompt: true,
             prompt: [{ text: 'a running shoe' }],
           },
           { role: 'written', type: 'text', name: 'The caption', prompt: [{ text: 'slow and warm' }] },
           {
             role: 'generate', type: 'video', name: 'It turns', mode: 'i2v',
-            model: 'some-model', params: {}, takesFrom: 'slot', takesPrompt: true,
+            model: 'some-model', params: {}, poolKinds: [], takesPrompt: true,
             prompt: [
               { slot: { kind: 'ref', label: 'the shot', note: '' } },
               { text: 'in the tone of ' },
@@ -324,7 +324,7 @@ describe('useNodeCreation', () => {
             name: 'Composited',
             mode: 'i2i',
             model: 'some-model',
-            takesFrom: 'pool',
+            poolKinds: ['image'],
             takesPrompt: true,
             prompt: [
               { text: 'the product, ' },

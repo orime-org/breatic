@@ -178,7 +178,6 @@ export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationSource } from "@shared/types/project-activity.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
-  MaterialPath,
   ReferenceRefusal,
   ReferenceUsabilityContext,
   PromptSegment,

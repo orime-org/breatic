@@ -311,6 +311,50 @@ describe("a mode whose material arrives through the reference pool", () => {
     expect(checkProposal(propose(at, { sources: twice }))).toEqual({ ok: true });
   });
 
+  it("counts a clip the step before made against the clip pool, not the picture one (#2156)", () => {
+    // Each kind has its own pool with its own ceiling. A generated clip wired
+    // in lands in the clip pool, so a group that fills it with empty clips and
+    // wires one more made clip in is placed, filled, and then turned away.
+    const clipPool = (m: Reachable): ParamInfo | undefined =>
+      Object.values(m.params).find((p) => p.fromReferencePool === true && p.accepts === "video");
+    const at = pick((m) => clipPool(m)?.maxItems !== undefined, "clip pool with a declared cap");
+    const cap = clipPool(at)?.maxItems ?? 0;
+    const filled = propose(at, { sources: Array.from({ length: cap }, (): GenerationNodeType => "video") });
+    const generation = filled.nodes.length - 1;
+    const maker = sourcelessOn("video");
+    const made = filled.nodes[generation] as ProposalNode;
+
+    const verdict = checkProposal({
+      ...filled,
+      nodes: [
+        ...filled.nodes.slice(0, generation),
+        {
+          ...made,
+          prompt: [
+            ...(made.prompt ?? []),
+            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
+          ],
+        },
+        {
+          role: "generate",
+          type: "video",
+          name: "The first take",
+          mode: maker.mode,
+          model: maker.model,
+          params: {},
+          prompt: [{ text: "an opening shot" }],
+        },
+      ],
+      edges: [...filled.edges, { fromIndex: filled.nodes.length, toIndex: generation }],
+      groupName: "One clip more than it holds",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining(`${String(cap)} video reference(s) at a time`),
+    });
+  });
+
   it("is refused when it wires in more than the pool holds", () => {
     // The pool has a ceiling as well as a floor, and the panel refuses over
     // it by name. A group past it is placed, filled, and then turned away.
@@ -884,8 +928,10 @@ describe("what the answer tells the canvas", () => {
     const pool = pooled();
     const slot = slotted();
 
-    expect(answered(propose(pool)).map((n) => n.takesFrom)).toEqual([undefined, "pool"]);
-    expect(answered(propose(slot)).map((n) => n.takesFrom)).toEqual([undefined, "slot"]);
+    const pooledNodes = answered(propose(pool));
+    expect(pooledNodes[0]?.poolKinds).toBeUndefined();
+    expect(pooledNodes[1]?.poolKinds).toContain(pool.needs[0]);
+    expect(answered(propose(slot)).map((n) => n.poolKinds)).toEqual([undefined, []]);
   });
 
   it("refuses a proposal that says it itself", () => {
@@ -896,7 +942,7 @@ describe("what the answer tells the canvas", () => {
     const generate = said.nodes[said.nodes.length - 1] as ProposalNode;
 
     expect(
-      inputSchema.safeParse({ ...said, nodes: [...said.nodes.slice(0, -1), { ...generate, takesFrom: "pool" }] })
+      inputSchema.safeParse({ ...said, nodes: [...said.nodes.slice(0, -1), { ...generate, poolKinds: ["image"] }] })
         .success,
     ).toBe(false);
   });
