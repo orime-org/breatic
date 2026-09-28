@@ -255,3 +255,23 @@ describe('HoverPreview — a body of the caller\'s own', () => {
     expect(content.querySelector('img')).toBeNull();
   });
 });
+
+describe('HoverPreview — one width for every form', () => {
+  const forms: Array<[string, React.JSX.Element]> = [
+    ['image', <HoverPreview key='i' kind='image' src='https://cdn/p.png'><span data-testid='trigger'>x</span></HoverPreview>],
+    ['video', <HoverPreview key='v' kind='video' src='https://cdn/v.mp4'><span data-testid='trigger'>x</span></HoverPreview>],
+    ['audio', <HoverPreview key='a' kind='audio' src='https://cdn/a.mp3'><span data-testid='trigger'>x</span></HoverPreview>],
+    ['short text', <HoverPreview key='t' kind='text' text='Hi.'><span data-testid='trigger'>x</span></HoverPreview>],
+    ['empty hint', <HoverPreview key='e' kind='image' emptyHint='Nothing yet'><span data-testid='trigger'>x</span></HoverPreview>],
+    ['own body', <HoverPreview key='b' kind='image' body={<p>rows</p>}><span data-testid='trigger'>x</span></HoverPreview>],
+  ];
+
+  it.each(forms)('%s opens at the same fixed width', (_name, view) => {
+    vi.useFakeTimers();
+    render(view);
+    openCard(screen.getByTestId('trigger'));
+    const inner = screen.getByTestId('hover-preview-content').firstElementChild;
+    expect(inner?.className.split(' ')).toContain('w-[220px]');
+  });
+});
+
