@@ -35,7 +35,8 @@ describe("a parameter declaration", () => {
         modelWith({
           image: { fill: "canvas", accepts: "image" },
           duration: { fill: "panel" },
-          keep_original_sound: { fill: "panel", when: { source: "image" } },
+          enable_camera: { fill: "panel" },
+          lens: { fill: "panel", when: { flag_on: "enable_camera" } },
           end_image: { fill: "canvas", accepts: "image", modes: ["first_last"] },
           seed: { fill: "none", note: "reproducibility plumbing" },
         }, ["i2v", "first_last"]),
@@ -62,9 +63,9 @@ describe("a parameter declaration", () => {
     expect(() =>
       assertParamDeclarations(
         "video",
-        modelWith({ keep_original_sound: { fill: "panel", when: { source: "video" } } }),
+        modelWith({ lens: { fill: "panel", when: { flag_on: "enable_camera" } } }),
       ),
-    ).toThrow(/a-model.*keep_original_sound.*video/s);
+    ).toThrow(/a-model.*lens.*enable_camera/s);
   });
 
   it("is refused when it limits itself to a mode the model does not serve", () => {

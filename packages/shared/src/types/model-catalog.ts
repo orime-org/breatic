@@ -87,12 +87,8 @@ export type ParamFill = "canvas" | "pool" | "editor" | "panel" | "remote" | "non
 
 /** What has to hold before a declared control counts for anything (#269). */
 export interface ParamGate {
-  /** That source parameter has to hold something first. */
-  source?: string;
   /** That switch has to be on; the value is dropped while it is off. */
   flag_on?: string;
-  /** That switch has to be off; the control goes away while it is on. */
-  flag_off?: string;
 }
 
 export interface ParamDescriptor {
@@ -443,9 +439,7 @@ const paramDescriptorSchema = z
     optional: z.boolean().optional().catch(undefined),
     when: z
       .object({
-        source: z.string().optional(),
         flag_on: z.string().optional(),
-        flag_off: z.string().optional(),
       })
       .optional()
       .catch(undefined),

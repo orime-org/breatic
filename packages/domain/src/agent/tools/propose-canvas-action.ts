@@ -38,7 +38,6 @@ import { z } from "zod";
 
 import {
   canConnect,
-  effectiveItemCap,
   evaluateExecute,
   extractPromptText,
   feedersOf,
@@ -50,7 +49,7 @@ import {
   promptTextOf,
   referenceCapExceeded,
   type CanvasProposal,
-  type CappedParam,
+  type ControlGate,
   type GenerationNodeType,
   type MaterialPath,
   type PromptSegment,
@@ -233,23 +232,6 @@ function withCatalogFacts(proposal: CanvasProposal): CanvasProposal {
 }
 
 /**
- * A capped parameter in the words the shared cap rule reads it in.
- *
- * The catalog projects a parameter into camel case and the rule is stated on
- * the wire shape, so the two names for one fact meet here rather than the rule
- * being written a second time for this caller.
- * @param info - What the catalog says about the parameter.
- * @returns The same two fields, named the way the rule asks for them.
- * @throws {never} Never.
- */
-function capShapeOf(info: ParamInfo): CappedParam {
-  return {
-    ...(info.maxItems === undefined ? {} : { max_items: info.maxItems }),
-    ...(info.maxItemsWhen === undefined ? {} : { max_items_when_present: info.maxItemsWhen }),
-  };
-}
-
-/**
  * Whether a parameter is one only the reader can fill, in the panel.
  *
  * Exported because two readings turn on it and they have to agree: a value
@@ -287,10 +269,9 @@ function isDrawn(
   info: ParamInfo,
 ): boolean {
   const gate = info.gate;
-  if (gate === undefined || gate.kind === "source") return true;
+  if (gate === undefined) return true;
   const held = params[gate.param];
-  const on = typeof held === "boolean" ? held : chosen.params[gate.param]?.default === true;
-  return gate.kind === "flagOn" ? on : !on;
+  return typeof held === "boolean" ? held : chosen.params[gate.param]?.default === true;
 }
 
 /**
@@ -341,10 +322,10 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
       };
     }
     if (!isDrawn(chosen, node.params ?? {}, info)) {
-      const gate = info.gate as { kind: "flagOn" | "flagOff"; param: string };
+      const gate = info.gate as ControlGate;
       return {
         ok: false,
-        reason: `"${key}" only counts while "${gate.param}" is ${gate.kind === "flagOn" ? "on" : "off"}, and this proposal leaves it the other way. Set that switch or leave "${key}" out.`,
+        reason: `"${key}" only counts while "${gate.param}" is on, and this proposal leaves it off. Set that switch or leave "${key}" out.`,
       };
     }
     const options = info.options ?? [];
@@ -579,8 +560,7 @@ function checkGenerateNode(
 
   // The pool has a ceiling as well, stated by the model and enforced by the
   // panel by name, so a group placed over it is filled by the reader and then
-  // turned away. Read through the one function the panel, the server and the
-  // worker read, so the number is the same everywhere it is judged.
+  // turned away.
   //
   // Counted over the image nodes wired in, which is the most the prompt's
   // marks can put in the pool: the panel takes the reference IMAGES the
@@ -591,7 +571,7 @@ function checkGenerateNode(
   const pooled = nodesAt([...held.sources, ...held.upstream]).filter(
     (n) => n.type === "image",
   );
-  const cap = pool && effectiveItemCap(capShapeOf(pool), node.params ?? {});
+  const cap = pool?.maxItems;
   const over = pool ? referenceCapExceeded(pooled.length, cap) : null;
   if (over) {
     return {

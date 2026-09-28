@@ -15,22 +15,13 @@
  * What has to hold before one of these controls counts for anything.
  *
  * A panel offering a control is not the same as that control being live: the
- * reference-clip switch is not mounted until a clip is picked, the lyrics box
- * is taken away while the track is marked instrumental, and the four camera
- * wheels are drawn whatever the switch says while the run throws their values
- * out until it is on. Told only that a control exists, a reader who sets one
- * of these three gets nothing for it.
- *
- * One shape for all three because they ask the same of a reader — do this
- * first, or setting it is wasted — and one clause in the answer can say so.
+ * four camera wheels are drawn whatever the switch says while the run throws
+ * their values out until it is on. Told only that a control exists, a reader
+ * who sets one gets nothing for it.
  */
 export type ControlGate =
-  /** That source parameter has to hold something first. */
-  | { readonly kind: "source"; readonly param: string }
   /** That switch has to be on; the value is dropped while it is off. */
-  | { readonly kind: "flagOn"; readonly param: string }
-  /** That switch has to be off; the control goes away while it is on. */
-  | { readonly kind: "flagOff"; readonly param: string };
+  { readonly kind: "flagOn"; readonly param: string };
 
 
 

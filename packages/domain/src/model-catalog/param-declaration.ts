@@ -55,9 +55,7 @@ const declarationSchema = z.object({
   // silence — the control then read as waiting on nothing.
   when: z
     .strictObject({
-      source: z.string().optional(),
       flag_on: z.string().optional(),
-      flag_off: z.string().optional(),
     })
     .optional(),
   modes: z.array(z.string()).optional(),
@@ -189,10 +187,9 @@ function faultsOn(
 
   // A gate reads another parameter of the same model, so a name from some
   // other vendor's spelling leaves the control permanently shut.
-  for (const gate of [declared.when?.source, declared.when?.flag_on, declared.when?.flag_off]) {
-    if (gate !== undefined && !names.has(gate)) {
-      faults.push(`when names "${gate}", which this model does not declare`);
-    }
+  const gate = declared.when?.flag_on;
+  if (gate !== undefined && !names.has(gate)) {
+    faults.push(`when names "${gate}", which this model does not declare`);
   }
 
   for (const mode of declared.modes ?? []) {
