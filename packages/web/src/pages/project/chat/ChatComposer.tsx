@@ -8,8 +8,11 @@ import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
+import { useTranslation } from '@web/i18n/use-translation';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
+import type { TrayItem } from '@web/stores/chat-attachments';
+import type { TurnPhase } from '@web/stores/conversation-runtime';
 
 /**
  * The id the at-limit line carries, so the box can point at it.
@@ -22,10 +25,6 @@ export const CHAT_LIMIT_NOTICE_ID = 'chat-composer-at-limit';
 
 /** Nothing attached, one array so the default keeps its identity. */
 const NO_ATTACHMENTS: ReadonlyArray<TrayItem> = [];
-
-import { useTranslation } from '@web/i18n/use-translation';
-import type { TrayItem } from '@web/stores/chat-attachments';
-import type { TurnPhase } from '@web/stores/conversation-runtime';
 
 interface ChatComposerProps {
   draft: string;
