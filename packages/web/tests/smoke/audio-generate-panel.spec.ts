@@ -4,8 +4,8 @@
 /**
  * Trying to generate audio on a canvas node, end to end (#1960 PR1).
  *
- * What no jsdom test reaches: the voice list comes from an endpoint that asks
- * a vendor, the panel opens off a real context menu on a real canvas node, and
+ * What no jsdom test reaches: the voice list comes from a real endpoint, the
+ * panel opens off a real context menu on a real canvas node, and
  * the submit gate is judged against a prompt the collaborative editor
  * serialized rather than a string a test handed it.
  *
@@ -33,12 +33,20 @@ test('the panel opens, offers what the model declares, and refuses a voiceless s
   await expect(page.getByTestId('generate-model-trigger')).toBeVisible();
   await expect(page.getByTestId('generate-voice-trigger')).toBeVisible();
   await expect(page.getByTestId('generate-audio-tool-reference')).toBeVisible();
-  // The rate, not a total: both vendors bill by how much text is sent.
+  // The rate, not a total: the model bills by how much text is sent.
   await expect(page.getByTestId('generate-audio-rate')).toBeVisible();
 
-  // Both params are 0-1 ranges, so both render as sliders. Stability carries
-  // the three positions ElevenLabs names on that scale beneath its own.
+  // The default model declares one range, its speaking speed.
   await page.getByTestId('generate-audio-params-trigger').click();
+  await expect(page.getByRole('slider', { name: /speed/i })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Another model, other params: ElevenLabs declares two 0-1 ranges, and
+  // stability carries the three positions ElevenLabs names on that scale.
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-elevenlabs-v3').click();
+  await page.getByTestId('generate-audio-params-trigger').click();
+  await expect(page.getByRole('slider', { name: /speed/i })).toHaveCount(0);
   await expect(page.getByRole('slider', { name: /stability/i })).toBeVisible();
   await expect(page.getByRole('slider', { name: /similarity/i })).toBeVisible();
   await expect(page.getByTestId('generate-audio-stability-stop-0')).toBeVisible();
@@ -62,16 +70,16 @@ test('text past the model’s limit is refused before anything is sent', async (
   await seedNode(nodeId, 'audio');
   await openGenerate(nodeId);
 
-  // elevenlabs-v3 takes 5,000 characters (elevenlabs.io/docs/models). Inserted
-  // in one go rather than keystroke by keystroke: 5,001 of those would take
-  // minutes, and what is under test is the length, not the typing.
+  // The default model, realtime-tts-2, takes 2,000 characters (its catalog
+  // entry's `max_input_chars`). Inserted in one go rather than keystroke by
+  // keystroke: what is under test is the length, not the typing.
   await page.getByTestId('generate-prompt-editor').click();
-  await page.keyboard.insertText('x'.repeat(5001));
+  await page.keyboard.insertText('x'.repeat(2001));
 
   await page.getByTestId('generate-audio-execute').click();
 
   // Named, not merely refused: the reader has to know how much to cut.
-  await expect(page.locator('[data-sonner-toast]').first()).toContainText('5,000', { timeout: 10_000 });
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText('2,000', { timeout: 10_000 });
 });
 
 test('the voice list matches the deployment it is served from, and a pick survives a reopen @needs-tts', async ({ page }) => {
@@ -83,12 +91,10 @@ test('the voice list matches the deployment it is served from, and a pick surviv
   const options = page.locator('[data-testid^="generate-voice-option-"]');
   await expect(options.first()).toBeVisible({ timeout: 20_000 });
 
-  // Two deployments, two sources (§6.1.1): a direct ElevenLabs or fish key
-  // gets the vendor's live list, every row of which previews; WaveSpeed has no
-  // voice endpoint, so the list is the catalog's own and nothing previews.
-  // Asserting a count would pin this to whichever box ran it, so the invariant
-  // is that the list is served WHOLE from one of the two — every row previews
-  // or none does.
+  // The list is the model's own catalog entry (#2156): WaveSpeed has no voice
+  // endpoint to ask. A row previews when its entry carries a sample, so the
+  // invariant is that the entry is served whole — every row previews or none
+  // does — rather than a count this box happens to hold.
   const rows = await options.count();
   const samples = await page.locator('[data-testid^="generate-voice-sample-"]').count();
   expect(rows).toBeGreaterThan(0);
@@ -223,18 +229,19 @@ test('reference to music: three slots, and any one of them satisfies the gate', 
   await page.getByTestId('generate-audio-mode-trigger').click();
   await page.getByTestId('generate-audio-mode-a2m').click();
 
-  // Three slots, not one. The rule that used to decide this asked the catalog
-  // "does this mode need an audio source", which reads true here as well and
-  // would have offered the voice sample instead.
+  // Three slots, not one: the model takes a reference song, a melody and a
+  // voice to sing with, any of them on its own. None of them is the voice
+  // sample the cloning mode asks for.
   await expect(page.getByTestId('generate-audio-tool-music-song')).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByTestId('generate-audio-tool-music-voice')).toBeVisible();
-  await expect(page.getByTestId('generate-audio-tool-music-instrumental')).toBeVisible();
+  await expect(page.getByTestId('generate-audio-tool-music-melody')).toBeVisible();
+  await expect(page.getByTestId('generate-audio-tool-music-vocal')).toBeVisible();
   await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
 
-  // $0.35 a call, the price this model actually bills — it was declared as 10.
-  await expect(page.getByTestId('generate-audio-rate')).toHaveText('35', {
+  // $0.225 a call rounds up to 23 credits. Nothing is picked yet, so no
+  // upload or clone step is priced in.
+  await expect(page.getByTestId('generate-audio-rate')).toHaveText('23', {
     timeout: 15_000,
   });
 
@@ -246,20 +253,20 @@ test('reference to music: three slots, and any one of them satisfies the gate', 
   await page.getByTestId('generate-lyrics-editor').click();
   await page.keyboard.type('same road home');
   await page.getByTestId('generate-audio-execute').click();
-  await expect(page.locator('[data-sonner-toast]').first()).toContainText('Pick a song, vocals or backing', {
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText('Pick a song, melody or vocals', {
     timeout: 10_000,
   });
 
   // The middle slot alone is enough: the vendor takes whichever are given, and
   // a gate demanding a particular one would grey the button out for a user who
   // filled another.
-  await page.getByTestId('generate-audio-tool-music-voice').click();
+  await page.getByTestId('generate-audio-tool-music-melody').click();
   await page.locator(`.react-flow__node[data-id="${sourceId}"]`).click();
-  await expect(page.getByTestId('generate-audio-music-voice-clear')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('generate-audio-music-melody-clear')).toBeVisible({ timeout: 10_000 });
 
   // Stopping here rather than clicking submit again: with the gate satisfied
-  // the click sends a real task to the vendor and spends the 35 credits this
-  // model bills. Which of the three satisfies it is pinned by the unit case
+  // the click sends a real task to the vendor and spends what this model
+  // bills. Which of the three satisfies it is pinned by the unit case
   // that walks all three (`generate-guards.test.ts`); what only a real run
   // reaches is the wiring above — the slot renders, the pick lands on the node
   // and the toolbar shows it.
@@ -272,9 +279,9 @@ test('reference to music: three slots, and any one of them satisfies the gate', 
   await expect(page.getByTestId('generate-audio-tool-ref-audio')).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByTestId('generate-audio-tool-music-voice')).toHaveCount(0);
+  await expect(page.getByTestId('generate-audio-tool-music-melody')).toHaveCount(0);
 
   await page.getByTestId('generate-audio-mode-trigger').click();
   await page.getByTestId('generate-audio-mode-a2m').click();
-  await expect(page.getByTestId('generate-audio-music-voice-clear')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('generate-audio-music-melody-clear')).toBeVisible({ timeout: 15_000 });
 });
