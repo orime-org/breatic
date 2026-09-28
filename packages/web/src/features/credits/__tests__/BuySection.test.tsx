@@ -316,6 +316,62 @@ describe('the confirmation before paying', () => {
     }
   });
 
+  it('spins the pay button while the checkout starts, and drops the spin on failure', async () => {
+    const user = userEvent.setup();
+    let fail: (reason: Error) => void = () => undefined;
+    startCheckout.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+    );
+    vi.stubGlobal('location', { assign: vi.fn(), href: 'https://app.test/s/mine' });
+    try {
+      renderBuy();
+      const packs = await screen.findAllByTestId('credit-pack');
+      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(await screen.findByTestId('confirm-consent'));
+      const pay = screen.getByTestId('confirm-pay');
+      const label = pay.textContent;
+      await user.click(pay);
+
+      await waitFor(() => {
+        expect(within(pay).getByTestId('confirm-pay-pending')).toBeInTheDocument();
+      });
+      expect(pay).toBeDisabled();
+      expect(pay.textContent).toBe(label);
+
+      fail(new Error('offline'));
+      await waitFor(() => {
+        expect(pay).toBeEnabled();
+      });
+      expect(within(pay).queryByTestId('confirm-pay-pending')).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps the spin on the pay button once the browser is leaving for Stripe', async () => {
+    const user = userEvent.setup();
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign, href: 'https://app.test/s/mine' });
+    try {
+      renderBuy();
+      const packs = await screen.findAllByTestId('credit-pack');
+      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(await screen.findByTestId('confirm-consent'));
+      const pay = screen.getByTestId('confirm-pay');
+      await user.click(pay);
+
+      await waitFor(() => {
+        expect(assign).toHaveBeenCalled();
+      });
+      expect(pay).toBeDisabled();
+      expect(within(pay).getByTestId('confirm-pay-pending')).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('sends the buyer time zone along, since nothing later knows it', async () => {
     const user = userEvent.setup();
     vi.stubGlobal('location', { assign: vi.fn(), href: 'https://app.test/s/mine' });

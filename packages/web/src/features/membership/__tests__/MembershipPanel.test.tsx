@@ -27,7 +27,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
@@ -301,6 +301,102 @@ describe('MembershipPanel', () => {
     await waitFor(() => expect(errorSpy).toHaveBeenCalled());
     // 失败之后按钮要还能再点，否则用户连重试都做不到。
     expect(screen.getByTestId('membership-choose-pro')).not.toBeDisabled();
+  });
+
+  it('spins the chosen card, holds every card, and keeps holding once the page is leaving', async () => {
+    const subscriptionApi = await import('@web/data/api/subscription');
+    let open: (value: { url: string }) => void = () => undefined;
+    vi.spyOn(subscriptionApi, 'startSubscriptionCheckout').mockReturnValue(
+      new Promise((resolve) => {
+        open = resolve;
+      }) as never,
+    );
+    const assignSpy = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign: assignSpy,
+      reload: vi.fn(),
+    } as never);
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'none', tier: 'base', currentPeriodEnd: null }),
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    const pro = await screen.findByTestId('membership-choose-pro');
+    const team = screen.getByTestId('membership-choose-team');
+    const label = pro.textContent;
+    await user.click(pro);
+
+    await waitFor(() => {
+      expect(within(pro).getByTestId('membership-choose-pending')).toBeInTheDocument();
+    });
+    expect(pro).toBeDisabled();
+    expect(pro.textContent).toBe(label);
+    expect(team).toBeDisabled();
+    expect(within(team).queryByTestId('membership-choose-pending')).toBeNull();
+
+    open({ url: 'https://checkout.stripe.example/c/pay/abc' });
+    await waitFor(() => expect(assignSpy).toHaveBeenCalled());
+    expect(pro).toBeDisabled();
+    expect(within(pro).getByTestId('membership-choose-pending')).toBeInTheDocument();
+  });
+
+  it('drops the spin and frees every card when starting the checkout fails', async () => {
+    const subscriptionApi = await import('@web/data/api/subscription');
+    let fail: (reason: Error) => void = () => undefined;
+    vi.spyOn(subscriptionApi, 'startSubscriptionCheckout').mockReturnValue(
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }) as never,
+    );
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'none', tier: 'base', currentPeriodEnd: null }),
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    const pro = await screen.findByTestId('membership-choose-pro');
+    await user.click(pro);
+    await waitFor(() => {
+      expect(within(pro).getByTestId('membership-choose-pending')).toBeInTheDocument();
+    });
+
+    fail(new Error('409'));
+    await waitFor(() => expect(pro).toBeEnabled());
+    expect(within(pro).queryByTestId('membership-choose-pending')).toBeNull();
+    expect(screen.getByTestId('membership-choose-team')).toBeEnabled();
+  });
+
+  it('spins the cancel button while the cancel runs, and frees it after', async () => {
+    const subscriptionApi = await import('@web/data/api/subscription');
+    let done: () => void = () => undefined;
+    vi.spyOn(subscriptionApi, 'cancelSubscription').mockReturnValue(
+      new Promise<void>((resolve) => {
+        done = resolve;
+      }) as never,
+    );
+    membershipMock.mockResolvedValue(answer({ subscription: subscription() }));
+    const user = userEvent.setup();
+    setup();
+
+    const cancel = await screen.findByTestId('membership-cancel');
+    await user.click(cancel);
+    await waitFor(() => {
+      expect(within(cancel).getByTestId('membership-cancel-pending')).toBeInTheDocument();
+    });
+    expect(cancel).toBeDisabled();
+
+    done();
+    await waitFor(() => {
+      expect(screen.queryByTestId('membership-cancel-pending')).toBeNull();
+    });
   });
 
   it('点取消打的是取消接口，并且重新拉面板而不是整页重载', async () => {

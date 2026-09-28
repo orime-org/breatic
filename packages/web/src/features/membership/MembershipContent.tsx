@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { Loader2 } from 'lucide-react';
 import {
   BILLING_PERIODS,
   holdsActionableSubscription,
@@ -109,7 +110,8 @@ export function MembershipContent({
   const t = useTranslation();
   const { tier, limits, usage, catalog, subscription } = membership;
   const onPriceList = isComparableMembershipTier(tier);
-  const { choose, cancel, resume, busy } = useSubscriptionActions(subscription);
+  const { choose, cancel, resume, busy, pending } =
+    useSubscriptionActions(subscription);
   // What this account may do, decided on the same rule the server enforces.
   // Both ends asking their own version is what drew a resume button the
   // server always refused, and an upgrade entrance during the retry window
@@ -367,6 +369,7 @@ export function MembershipContent({
                 sellsSubscriptions={subscription !== null}
                 move={actions.move}
                 busy={busy}
+                choosing={pending?.kind === 'choose' ? pending.offer : null}
                 onChoose={handleChoose}
               />
               {/* Two sentences the page has to carry, together because both are
@@ -416,6 +419,17 @@ export function MembershipContent({
                     onClick={actions.resume ? resume : cancel}
                     className='shrink-0'
                   >
+                    {pending?.kind === 'cancel' || pending?.kind === 'resume' ? (
+                      <Loader2
+                        data-testid={
+                          pending.kind === 'resume'
+                            ? 'membership-resume-pending'
+                            : 'membership-cancel-pending'
+                        }
+                        aria-hidden='true'
+                        className='mr-2 h-3.5 w-3.5 animate-spin'
+                      />
+                    ) : null}
                     {actions.resume ? t('membership.resume') : t('membership.cancel')}
                   </Button>
                 ) : null}
