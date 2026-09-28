@@ -382,10 +382,10 @@ describe("the view tells the four dead ends apart", () => {
 describe("already-a-member applies to invites only", () => {
   it("an invite that would still raise the recipient stays answerable", async () => {
     const s = await seedScene();
-    // The reachable path this guards: a studio member opens a `studio`-visible
-    // project from the studio list, which materializes a baseline `viewer` row
-    // (`project.service.ts:loadForViewer`). Reading "already a member" off the
-    // mere existence of a row would then kill a pending EDITOR invite — the
+    // The reachable path this guards: the owner invites a studio member as
+    // editor, then approves that member's pending join request with its
+    // default `viewer` role. Reading "already a member" off the mere
+    // existence of a row would then kill the pending EDITOR invite — the
     // recipient never got what the invite offered, and could not ask again.
     const { id } = await projectInvitationsRepo.createPending({
       projectId: s.projectId,
