@@ -137,6 +137,9 @@ export interface DraftOpening {
 /** How many drafts have opened in this page. */
 let openings = 0;
 
+/** How many times a comment entry has been pressed in this page. */
+let entries = 0;
+
 /** The sync binding, as a position conversion takes it. */
 type Binding = NonNullable<ReturnType<typeof syncBindingOf>>;
 
@@ -387,6 +390,11 @@ function carryAcrossYjs(
 /** The open draft: where it is now, and which opening it is. */
 export interface DraftAim extends DraftRange {
   readonly opening: DraftOpening;
+  /**
+   * Counts the presses on a comment entry in this page; a new one is the
+   * reader asking to write again, which the card answers by taking the focus.
+   */
+  readonly entry: number;
 }
 
 /** Why a draft can no longer be written (A21, A22). */
@@ -475,12 +483,7 @@ function carryDraft(
   }
   return moved.from === current.from && moved.to === current.to
     ? current
-    : {
-      kind: 'aimed',
-      from: moved.from,
-      to: moved.to,
-      opening: current.opening,
-    };
+    : { ...current, from: moved.from, to: moved.to };
 }
 
 /**
@@ -583,7 +586,8 @@ export const documentCommentDraftRange = createExtension(() => {
                 openings += 1;
                 opening = { serial: openings };
               }
-              return { kind: 'aimed', ...aim, opening };
+              entries += 1;
+              return { kind: 'aimed', ...aim, opening, entry: entries };
             }
             if (current?.kind !== 'aimed') return current;
             // A selection change carries no steps and the range comes back

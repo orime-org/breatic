@@ -1600,6 +1600,21 @@ describe('the comment panel', () => {
       });
     });
 
+    it('leaves the keyboard in the box while a peer edit moves its words', async () => {
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      const box = screen.getByTestId('doc-comment-draft-input');
+      await userEvent.type(box, 'half');
+
+      peerEdits((line) => {
+        line.insert(0, 'q');
+      });
+
+      expect(screen.getByTestId('doc-comment-draft-input')).toBe(box);
+      expect(box).toHaveFocus();
+    });
+
     it('carries what was written out of a notice when the entry is pressed', async () => {
       show();
       aimDraft(6, 11);

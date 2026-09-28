@@ -208,6 +208,9 @@ export function DocumentCommentDraftCard({
       className={`${CARD_SURFACE} ${CARD_READING_OUTLINE}`}
     >
       <DocumentCommentWriteBox
+        // Mounted afresh on every press of an entry, the first one or one
+        // that only moves the draft: each is the reader asking to write.
+        key={draft.entry}
         name='draft'
         // The focus goes to a draft the reader just asked for, which is the
         // card being read the moment it opens. A Space tab switch mounting the
