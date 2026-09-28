@@ -961,6 +961,125 @@ describe('the comment panel', () => {
       expect(draftPaint()?.textContent).toBe('bravo');
     });
 
+    it('leaves out what a peer types right after its words', async () => {
+      // Words typed against the end are not the ones the reader chose.
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      peerEdits((line) => {
+        line.insert(11, 'QQ');
+      });
+
+      expect(draftPaint()?.textContent).toBe('bravo');
+    });
+
+    it('keeps out what the reader typed after its words when a peer edits', async () => {
+      // The reader's own typing and a later peer edit must agree on the range:
+      // the peer edit carries it from where it is now.
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      const run = firstRun();
+      act(() => {
+        const view = handle.editor.prosemirrorView!;
+        view.dispatch(view.state.tr.insertText('zz', run.from + 11));
+      });
+
+      peerEdits((line) => {
+        line.insert(0, 'q');
+      });
+
+      expect(draftPaint()?.textContent).toBe('bravo');
+    });
+
+    it('keeps its words when the reader turns their line into a heading', async () => {
+      // Changing the block's type makes new text underneath the same words; a
+      // later peer edit must not read that as the words being deleted.
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+      act(() => {
+        handle.editor.updateBlock(handle.editor.document[0]!, {
+          type: 'heading',
+          props: { level: 2 },
+        } as never);
+      });
+
+      peerEdits((line) => {
+        line.insert(line.length, '!');
+      });
+
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(draftPaint()?.textContent).toBe('bravo');
+      expect(screen.getByTestId('doc-comment-draft-input')).toHaveValue('half');
+    });
+
+    it('keeps its range when the reader deletes its last word\'s last letter and a peer edits', async () => {
+      // The end names the last letter it covers; losing that letter shortens
+      // the range, it does not reach into the words after it.
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      const run = firstRun();
+      act(() => {
+        const view = handle.editor.prosemirrorView!;
+        view.dispatch(view.state.tr.delete(run.from + 10, run.from + 11));
+      });
+
+      peerEdits((line) => {
+        line.insert(0, 'q');
+      });
+
+      expect(draftPaint()?.textContent).toBe('brav');
+    });
+
+    it('keeps its words when a peer turns their line into a heading', async () => {
+      // The peer's editor rebuilds the block's text under a new type, so no
+      // Yjs position from before survives; the block itself does, and the
+      // words are still there.
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+      const peerDoc = new Y.Doc();
+      Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(doc));
+      peerDoc.on('update', (update: Uint8Array) => {
+        act(() => {
+          Y.applyUpdate(doc, update);
+        });
+      });
+      const peerAwareness = new Awareness(peerDoc);
+      const { result } = renderHook(() =>
+        useDocumentEditor({
+          doc: peerDoc,
+          name: 'project-p/document-comment-rail-peer',
+          caretProvider: { awareness: peerAwareness },
+          readWho: () => ({ role: 'editor', viewerId: 'u2' }),
+        }),
+      );
+      await waitFor(() => expect(result.current).not.toBeNull());
+      const peer = result.current!;
+      const host = document.createElement('div');
+      document.body.append(host);
+      render(<DocumentEditor handle={peer} myRole='editor' />, {
+        container: host,
+      });
+
+      act(() => {
+        peer.editor.updateBlock(peer.editor.document[0]!, {
+          type: 'heading',
+          props: { level: 2 },
+        } as never);
+      });
+
+      expect(handle.editor.document[0]?.type).toBe('heading');
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('bravo');
+      peerAwareness.destroy();
+    });
+
     it('says so when a peer deletes the words it is on', async () => {
       show();
       aimDraft(6, 11);
