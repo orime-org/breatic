@@ -24,6 +24,7 @@ import { AudioLines, Image, UserRound, Video } from 'lucide-react';
 
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { filledFromCanvas } from '@web/spaces/canvas/generate/canvas-filled';
+import { slotsForMode } from '@web/spaces/canvas/generate/video-mode-options';
 
 /** The source slots the video panel knows how to offer. */
 export type VideoSlot =
@@ -32,7 +33,10 @@ export type VideoSlot =
   | 'characterImage'
   | 'drivingVideo'
   | 'drivingAudio'
-  | 'referenceVideo';
+  | 'referenceVideo'
+  | 'sourceVideo'
+  | 'leftAudio'
+  | 'rightAudio';
 
 /**
  * A video slot.
@@ -143,6 +147,54 @@ export const VIDEO_SLOTS = {
     clearLabelKey: 'canvas.generatePanel.removeReferenceVideo',
     errorKey: 'canvas.generatePanel.errorNoReferenceVideo',
   },
+  // The talking-head sources beyond a portrait and one track (#2156). The
+  // lipsync models take a clip instead of a portrait and redo its lips; the
+  // two-speaker model takes one track per side of the frame.
+  sourceVideo: {
+    field: 'sourceVideo',
+    storesCover: true,
+    param: 'video',
+    purpose: 'sourceVideo',
+    accepts: 'video',
+    Icon: Video,
+    testId: 'generate-video-tool-source-video',
+    thumbnailTestId: 'generate-video-source-video-thumbnail',
+    clearTestId: 'generate-video-source-video-clear',
+    labelKey: 'canvas.generatePanel.sourceVideo',
+    tipKey: 'canvas.generatePanel.sourceVideoTip',
+    clearLabelKey: 'canvas.generatePanel.removeSourceVideo',
+    errorKey: 'canvas.generatePanel.errorNoSourceVideo',
+  },
+  leftAudio: {
+    field: 'leftAudio',
+    storesCover: true,
+    param: 'left_audio',
+    purpose: 'leftAudio',
+    accepts: 'audio',
+    Icon: AudioLines,
+    testId: 'generate-video-tool-left-audio',
+    thumbnailTestId: 'generate-video-left-audio-thumbnail',
+    clearTestId: 'generate-video-left-audio-clear',
+    labelKey: 'canvas.generatePanel.leftAudio',
+    tipKey: 'canvas.generatePanel.leftAudioTip',
+    clearLabelKey: 'canvas.generatePanel.removeLeftAudio',
+    errorKey: 'canvas.generatePanel.errorNoLeftAudio',
+  },
+  rightAudio: {
+    field: 'rightAudio',
+    storesCover: true,
+    param: 'right_audio',
+    purpose: 'rightAudio',
+    accepts: 'audio',
+    Icon: AudioLines,
+    testId: 'generate-video-tool-right-audio',
+    thumbnailTestId: 'generate-video-right-audio-thumbnail',
+    clearTestId: 'generate-video-right-audio-clear',
+    labelKey: 'canvas.generatePanel.rightAudio',
+    tipKey: 'canvas.generatePanel.rightAudioTip',
+    clearLabelKey: 'canvas.generatePanel.removeRightAudio',
+    errorKey: 'canvas.generatePanel.errorNoRightAudio',
+  },
 } as const satisfies Record<VideoSlot, VideoSlotSpec>;
 
 /**
@@ -206,4 +258,26 @@ export function videoMissing(
  */
 export function modelTakesReferences(model: ModelEntry | undefined, mode: string): boolean {
   return filledFromCanvas(model?.params?.[REFERENCE_POOL_PARAM], mode)?.fill === 'pool';
+}
+
+/**
+ * The slots the toolbar draws for this model in this mode, in display order.
+ *
+ * The mode's row says which slots it can collect; the model says which of
+ * them it takes (#2156, design §6). One mode serves models collecting
+ * different sets — a talking head is driven by a portrait, a clip, or two
+ * speakers' tracks — so a slot the model does not declare is not drawn.
+ * @param model - The model the run names, or undefined before one resolves.
+ * @param mode - The mode it is set to.
+ * @returns The drawn slots; the mode's whole row while no model resolves.
+ */
+export function videoSlotsForModel(
+  model: ModelEntry | undefined,
+  mode: string,
+): readonly VideoSlot[] {
+  const row = slotsForMode(mode);
+  if (model === undefined) return row;
+  return row.filter(
+    (slot) => filledFromCanvas(model.params[VIDEO_SLOTS[slot].param], mode) !== undefined,
+  );
 }

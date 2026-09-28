@@ -530,6 +530,15 @@ export interface CanvasNodeFields {
      */
     refAudio?: { url: string; cover?: string };
     /**
+     * The talking-head sources beyond a portrait and one track (#2156, wire
+     * `data.sourceVideo` / `leftAudio` / `rightAudio`): the clip whose lips
+     * are redone, and the two speakers' tracks of a two-person scene. Sent as
+     * `params.video` / `left_audio` / `right_audio`. Shaped like `refAudio`.
+     */
+    sourceVideo?: { url: string; cover?: string };
+    leftAudio?: { url: string; cover?: string };
+    rightAudio?: { url: string; cover?: string };
+    /**
      * The three references the audio panel's reference-to-music mode collects
      * (#1960, wire `data.musicSong` / `musicVoice` / `musicInstrumental`) —
      * a whole song to write after, a vocal line to follow, a backing track to

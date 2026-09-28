@@ -375,21 +375,22 @@ describe('buildVideoPanelViewModel', () => {
 });
 
 describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () => {
+  const frame = { description: '', default: null, fill: 'canvas', accepts: 'image' } as const;
   const models = [
     makeModel('veo-3.1', { mode: 't2v' }),
-    makeModel('kling-o3-pro-i2v', { mode: 'i2v' }),
+    makeModel('kling-o3-pro-i2v', { mode: 'i2v', params: { image: frame } }),
+    makeModel('text-only-i2v', { mode: 'i2v', params: {} }),
   ];
 
-  it('collects the slots the active mode states, not a rule of its own', () => {
-    // What a mode sends upstream is a fixed set of fields, and it states that
-    // set itself (#1904). Text-to-video collects nothing; image-to-video the
-    // first frame; first-last frame both, in the order they are shown.
+  it('draws the slots of the mode row its model declares, in the order they are shown', () => {
+    // A mode's row lists every source it can take (#1904); a model draws the
+    // ones it declares (#2156, design §6). Text-to-video collects nothing.
     const nodes = [node('n1', videoView())];
-    const slotsIn = (mode: VideoGenMode): readonly string[] =>
-      buildVm({ nodeId: 'n1', nodes, models, mode }).slots;
+    const slotsIn = (mode: VideoGenMode, model?: string): readonly string[] =>
+      buildVm({ nodeId: 'n1', nodes: model ? [node('n1', videoView({ model }))] : nodes, models, mode }).slots;
     expect(slotsIn('t2v')).toEqual([]);
-    expect(slotsIn('i2v')).toEqual(['firstFrame']);
-    expect(slotsIn('first_last')).toEqual(['firstFrame', 'endFrame']);
+    expect(slotsIn('i2v', 'kling-o3-pro-i2v')).toEqual(['firstFrame']);
+    expect(slotsIn('i2v', 'text-only-i2v')).toEqual([]);
   });
 
   it('echoes the mode back, so the payload is built from the same one', () => {

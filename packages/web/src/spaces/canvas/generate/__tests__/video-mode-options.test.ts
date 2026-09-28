@@ -39,7 +39,10 @@ describe('video mode options (#1904)', () => {
     expect(slotsForMode('animate')).toEqual(['characterImage', 'drivingVideo']);
     expect(slotsForMode('talking_head')).toEqual([
       'characterImage',
+      'sourceVideo',
       'drivingAudio',
+      'leftAudio',
+      'rightAudio',
     ]);
   });
 

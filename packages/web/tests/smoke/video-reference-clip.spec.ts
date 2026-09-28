@@ -256,13 +256,6 @@ test('picks a clip into the slot and sends it as the mode\'s motion guidance', a
     page.getByTestId('generate-video-reference-video-clear'),
   ).toBeVisible({ timeout: 10_000 });
 
-  // The clip's own audio: offered only now that a clip is picked.
-  await page.getByTestId('generate-video-params-trigger').click();
-  await expect(
-    page.getByTestId('generate-video-keep-original-sound-toggle'),
-  ).toBeVisible({ timeout: 10_000 });
-  await page.keyboard.press('Escape');
-
   await page.getByTestId('generate-prompt-editor').click();
   await page.keyboard.type('follow the motion in ');
   // The `@` mention is what makes a connected image a model input (#1927), so
@@ -289,5 +282,4 @@ test('picks a clip into the slot and sends it as the mode\'s motion guidance', a
   const params = (body as { params: Record<string, unknown> }).params;
   expect(params.video).toBe(CLIP);
   expect(params.images).toEqual([PIXEL]);
-  expect(params.keep_original_sound).toBe(true);
 });

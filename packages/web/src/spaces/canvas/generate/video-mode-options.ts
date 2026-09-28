@@ -73,10 +73,10 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     label: 'Talking Head',
     testId: 'generate-video-mode-talking-head',
     // The character image is the same slot image animation collects: both
-    // modes want one picture of a person, and a slot shared across modes is
-    // how the first frame already works. The driving audio is the first slot
-    // in this panel that takes an audio node.
-    slots: ['characterImage', 'drivingAudio'],
+    // modes want one picture of a person. The models under this mode collect
+    // different sets — a portrait, a clip whose lips are redone, or two
+    // speakers' tracks — and each draws only the ones it declares.
+    slots: ['characterImage', 'sourceVideo', 'drivingAudio', 'leftAudio', 'rightAudio'],
   },
 ];
 

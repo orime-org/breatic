@@ -30,8 +30,6 @@ export interface VideoParamsValue {
   /** Seconds — a number in every catalog family that declares it. */
   duration?: number;
   generate_audio?: boolean;
-  /** Whether the reference clip's own audio survives into the result (#1928). */
-  keep_original_sound?: boolean;
 }
 
 interface VideoParamsPickerProps {
@@ -39,10 +37,8 @@ interface VideoParamsPickerProps {
   model: ModelEntry;
   /**
    * What a submission through this panel would carry, keyed as the model
-   * declares it: the node's params reconciled against the model.
-   *
-   * The whole record rather than the handful this picker edits, so a switch
-   * a control waits on is read out of the value the run carries.
+   * declares it: the node's params reconciled against the model. The whole
+   * record, so the model's own controls read their values out of it too.
    */
   params: Readonly<Record<string, unknown>>;
   /** Called with the changed field only. */
@@ -81,10 +77,7 @@ function asBoolean(value: unknown): boolean {
  * The params this pill edits, each with how its control reads a raw value.
  *
  * Two readers take it from here: the has-anything check below, and the value
- * the container hands down. Those were separate hand-written lists until one
- * fell behind, which left `keep_original_sound` stuck off — the switch
- * rendered, reported its flip, and read back a value the container never
- * passed.
+ * the container hands down, so the two cannot fall out of step.
  *
  * The groups in the component are a third copy kept in step by hand: a group
  * whose name is missing here gets no pill at all, so a model declaring only
@@ -95,7 +88,6 @@ const READERS = {
   resolution: asString,
   duration: asNumber,
   generate_audio: asBoolean,
-  keep_original_sound: asBoolean,
 } as const;
 
 /** The names {@link READERS} covers, for the has-anything check below. */
@@ -104,32 +96,13 @@ export const EDITED_PARAMS = Object.keys(READERS) as ReadonlyArray<
 >;
 
 /**
- * Whether this model offers that control right now.
- *
- * Two questions with one answer, asked the same way for every control here:
- * the model has to declare the param, and whatever it says the control waits
- * on has to be satisfied. The one condition a model names is a switch that
- * has to be on (`when.flag_on`): setting this control is wasted until it is.
- * A control declaring no condition waits on nothing, which is how the catalog
- * projection reads an absent `when` too.
- * @param model - The current model, for what its control declares.
- * @param params - What a submission would carry.
+ * Whether this model offers that control.
+ * @param model - The current model.
  * @param param - The control's name.
- * @returns True when the control is ready to be drawn.
+ * @returns True when the model declares the param.
  */
-function offers(
-  model: ModelEntry,
-  params: Readonly<Record<string, unknown>>,
-  param: string,
-): boolean {
-  if (model.params?.[param] == null) return false;
-  const flag = model.params[param].when?.flag_on;
-  if (flag === undefined) return true;
-  // A switch the record does not carry counts as whatever the model defaults
-  // it to, the same fallback the agent's proposal check makes.
-  return typeof params[flag] === 'boolean'
-    ? params[flag] === true
-    : model.params[flag]?.default === true;
+function offers(model: ModelEntry, param: string): boolean {
+  return model.params?.[param] != null;
 }
 
 /**
@@ -173,7 +146,8 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
 /**
  * The video panel's parameter picker: a pill showing the current
  * `ratio · resolution · duration` that opens a popover with those three as
- * identically-shaped option rows, followed by up to two switch rows.
+ * identically-shaped option rows, followed by the sound switch and the
+ * controls only this model has.
  *
  * A group appears only when the active model declares its param, so a model
  * that does not simply has no group for it — several video models declare no
@@ -200,26 +174,24 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   // Ratios and resolutions are strings in the catalog; duration is a number,
   // and it keeps that type all the way to the payload (a provider given "6"
   // where it expects 6 is a rejected request).
-  const ratios: ParamOption[] = offers(model, params, 'aspect_ratio')
+  const ratios: ParamOption[] = offers(model, 'aspect_ratio')
     ? paramValues(model, 'aspect_ratio').map((v) => ({ value: String(v), label: String(v) }))
     : [];
-  const resolutions: ParamOption[] = offers(model, params, 'resolution')
+  const resolutions: ParamOption[] = offers(model, 'resolution')
     ? paramValues(model, 'resolution').map((v) => ({ value: String(v), label: String(v) }))
     : [];
-  const durations: ParamOption[] = offers(model, params, 'duration')
+  const durations: ParamOption[] = offers(model, 'duration')
     ? paramValues(model, 'duration')
       .filter((v): v is number => typeof v === 'number')
       .map((v) => ({ value: v, label: t('canvas.generatePanel.durationSeconds', { n: v }) }))
     : [];
-  const audioSupported = offers(model, params, 'generate_audio');
-  const keepSoundOffered = offers(model, params, 'keep_original_sound');
+  const audioSupported = offers(model, 'generate_audio');
 
   // Every gap in this popover is the preceding block's `mb-3`, carried only
   // while something follows. A group renders nothing when the model declares
   // no options for it, so what follows is read off the options rather than off
   // the group being written — otherwise the last thing rendered leaves room
   // under itself that the popover's own padding never asked for (#2115).
-  const switchesShown = audioSupported || keepSoundOffered;
 
   // The trigger states only what this model actually has: a fixed
   // `ratio · resolution · duration` shape would show gaps for the several
@@ -236,7 +208,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
     .filter(Boolean)
     .join(' · ') || t('canvas.generatePanel.videoParams');
   const sharedShown =
-    ratios.length + resolutions.length + durations.length > 0 || switchesShown;
+    ratios.length + resolutions.length + durations.length > 0 || audioSupported;
 
   const onSelectRatio = React.useCallback(
     (v: string | number) => onChange({ aspect_ratio: String(v) }),
@@ -286,7 +258,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           onSelect={onSelectRatio}
           testIdPrefix='generate-video-ratio-option'
           className={
-            resolutions.length > 0 || durations.length > 0 || switchesShown
+            resolutions.length > 0 || durations.length > 0 || audioSupported
               ? 'mb-3'
               : undefined
           }
@@ -297,7 +269,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           value={value.resolution}
           onSelect={onSelectResolution}
           testIdPrefix='generate-video-resolution-option'
-          className={durations.length > 0 || switchesShown ? 'mb-3' : undefined}
+          className={durations.length > 0 || audioSupported ? 'mb-3' : undefined}
         />
         <ParamOptionGroup
           label={t('canvas.generatePanel.duration')}
@@ -305,7 +277,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           value={value.duration}
           onSelect={onSelectDuration}
           testIdPrefix='generate-video-duration-option'
-          className={switchesShown ? 'mb-3' : undefined}
+          className={audioSupported ? 'mb-3' : undefined}
         />
         {audioSupported ? (
           <ParamToggleRow
@@ -313,17 +285,6 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
             label={t('canvas.generatePanel.generateAudio')}
             checked={value.generate_audio === true}
             onCheckedChange={(checked) => onChange({ generate_audio: checked })}
-            className={keepSoundOffered ? 'mb-3' : undefined}
-          />
-        ) : null}
-        {keepSoundOffered ? (
-          <ParamToggleRow
-            id='generate-video-keep-original-sound-toggle'
-            label={t('canvas.generatePanel.keepOriginalSound')}
-            checked={value.keep_original_sound === true}
-            onCheckedChange={(checked) =>
-              onChange({ keep_original_sound: checked })
-            }
           />
         ) : null}
         <ModelParamControls

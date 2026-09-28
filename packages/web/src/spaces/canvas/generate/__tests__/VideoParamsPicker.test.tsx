@@ -3,7 +3,6 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import { VideoParamsPicker } from '@web/spaces/canvas/generate/VideoParamsPicker';
@@ -210,96 +209,6 @@ describe('VideoParamsPicker', () => {
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(screen.getByTestId('generate-video-audio-toggle'));
     expect(onChange).toHaveBeenCalledWith({ generate_audio: false });
-  });
-});
-
-
-describe('VideoParamsPicker and a control a switch gates', () => {
-  it('offers a control that waits on nothing', async () => {
-    const ungated = model({
-      aspect_ratio: RATIO,
-      duration: DURATION_LIST,
-      keep_original_sound: { description: '', values: [true, false], default: true },
-    });
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={ungated}
-        params={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.getByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeInTheDocument();
-  });
-
-  const KEEP: ParamDescriptor = {
-    description: '',
-    values: [true, false],
-    default: true,
-  };
-
-  /**
-   * Builds a model whose sound switch waits on the audio switch.
-   * @returns A model entry declaring that gate.
-   */
-  function gated(): ModelEntry {
-    return model({
-      aspect_ratio: RATIO,
-      duration: DURATION_LIST,
-      generate_audio: AUDIO,
-      keep_original_sound: { ...KEEP, when: { flag_on: 'generate_audio' } },
-    });
-  }
-
-  it('offers a flag_on control while that switch is on', async () => {
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={gated()}
-        params={{ aspect_ratio: '16:9', duration: 6, generate_audio: true }}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.getByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeInTheDocument();
-  });
-
-  it('leaves a flag_on control out while that switch is off', async () => {
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={gated()}
-        params={{ aspect_ratio: '16:9', duration: 6, generate_audio: false }}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeNull();
-  });
-
-  it('reads a switch the record does not carry as the model defaults it', async () => {
-    // The container reconciles a node's params against the model before this
-    // renders, so every declared param has a key by then. This is the answer
-    // for a record that reaches here without one.
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={gated()}
-        params={{ aspect_ratio: '16:9', duration: 6 }}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.getByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeInTheDocument();
   });
 });
 

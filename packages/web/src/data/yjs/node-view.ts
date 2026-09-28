@@ -180,6 +180,14 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   refAudio?: { url: string; cover?: string };
   /**
+   * The talking-head sources beyond a portrait and one track (#2156, wire
+   * `data.sourceVideo` / `leftAudio` / `rightAudio`) — sent as `params.video`
+   * / `left_audio` / `right_audio`.
+   */
+  sourceVideo?: { url: string; cover?: string };
+  leftAudio?: { url: string; cover?: string };
+  rightAudio?: { url: string; cover?: string };
+  /**
    * The three references reference-to-music collects (#1960, wire
    * `data.musicSong` / `musicVoice` / `musicInstrumental`) — sent as
    * `params.song` / `voice` / `instrumental`. `cover` is always absent, as
@@ -416,6 +424,9 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     referenceVideo: data.referenceVideo,
     drivingAudio: data.drivingAudio,
     refAudio: data.refAudio,
+    sourceVideo: data.sourceVideo,
+    leftAudio: data.leftAudio,
+    rightAudio: data.rightAudio,
     musicSong: data.musicSong,
     musicVoice: data.musicVoice,
     musicInstrumental: data.musicInstrumental,

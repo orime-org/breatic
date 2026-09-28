@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+import { slotsForMode } from '@web/spaces/canvas/generate/video-mode-options';
 import { buildVideoTaskPayload } from '@web/spaces/canvas/generate/video-task-payload';
 
 const BASE = {
@@ -12,7 +13,7 @@ const BASE = {
   model: 'veo-3.1',
   params: { aspect_ratio: '16:9', resolution: '720p', duration: 8 },
   promptText: 'a drone shot over a canyon at dawn',
-  mode: 't2v',
+  slots: slotsForMode('t2v'),
   slotUrls: {},
   // The model answers this; the default here is every mode that takes its
   // material through slots.
@@ -46,7 +47,7 @@ describe('buildVideoTaskPayload', () => {
     // @-picked pool and means something different.
     const out = buildVideoTaskPayload({
       ...BASE,
-      mode: 'i2v',
+      slots: slotsForMode('i2v'),
       slotUrls: { firstFrame: 'https://cdn/first.png' },
     });
     expect(out.params).toMatchObject({ image: 'https://cdn/first.png' });
@@ -56,7 +57,7 @@ describe('buildVideoTaskPayload', () => {
   it('sends first-last frame both frames, under their own params', () => {
     const out = buildVideoTaskPayload({
       ...BASE,
-      mode: 'first_last',
+      slots: slotsForMode('first_last'),
       slotUrls: {
         firstFrame: 'https://cdn/first.png',
         endFrame: 'https://cdn/last.png',
@@ -74,7 +75,7 @@ describe('buildVideoTaskPayload', () => {
     // (source-requirement maps `animate` to `["image", "video"]`).
     const out = buildVideoTaskPayload({
       ...BASE,
-      mode: 'animate',
+      slots: slotsForMode('animate'),
       slotUrls: {
         characterImage: 'https://cdn/character.png',
         drivingVideo: 'https://cdn/driving.mp4',
@@ -97,7 +98,7 @@ describe('buildVideoTaskPayload', () => {
     // (source-requirement maps `talking_head` to `["image", "audio"]`).
     const out = buildVideoTaskPayload({
       ...BASE,
-      mode: 'talking_head',
+      slots: slotsForMode('talking_head'),
       slotUrls: {
         characterImage: 'https://cdn/portrait.png',
         drivingAudio: 'https://cdn/speech.mp3',
@@ -121,7 +122,7 @@ describe('buildVideoTaskPayload', () => {
     // must not invent a key, or the server gate would see a complete request.
     const out = buildVideoTaskPayload({
       ...BASE,
-      mode: 'talking_head',
+      slots: slotsForMode('talking_head'),
       slotUrls: { characterImage: 'https://cdn/portrait.png' },
     });
     expect(out.params).not.toHaveProperty('audio');
@@ -133,7 +134,7 @@ describe('buildVideoTaskPayload', () => {
     // The two are separate slots; that one is not this mode's character.
     const out = buildVideoTaskPayload({
       ...BASE,
-      mode: 'animate',
+      slots: slotsForMode('animate'),
       slotUrls: {
         firstFrame: 'https://cdn/first.png',
         drivingVideo: 'https://cdn/driving.mp4',
@@ -151,7 +152,7 @@ describe('buildVideoTaskPayload', () => {
     // decides what is built, so nothing has to guard against it afterwards.
     const out = buildVideoTaskPayload({
       ...BASE,
-      mode: 'i2v',
+      slots: slotsForMode('i2v'),
       slotUrls: {
         firstFrame: 'https://cdn/first.png',
         endFrame: 'https://cdn/left-behind.png',
@@ -161,10 +162,26 @@ describe('buildVideoTaskPayload', () => {
     expect(out.params).not.toHaveProperty('end_image');
   });
 
+  it('carries only the slots the model draws, not a pick another model left behind', () => {
+    // A lipsync model takes a clip and a track; a portrait picked for another
+    // talking-head model stays on the node and must not ride along.
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      slots: ['sourceVideo', 'drivingAudio'],
+      slotUrls: {
+        characterImage: 'https://cdn/face.png',
+        sourceVideo: 'https://cdn/clip.mp4',
+        drivingAudio: 'https://cdn/line.mp3',
+      },
+    });
+    expect(out.params).toMatchObject({ video: 'https://cdn/clip.mp4', audio: 'https://cdn/line.mp3' });
+    expect(out.params).not.toHaveProperty('image');
+  });
+
   it('omits a slot the mode collects but nobody filled', () => {
     // The upstream provider reads a source field's presence, not its value, so
     // an empty slot must leave no key behind.
-    const out = buildVideoTaskPayload({ ...BASE, mode: 'i2v', slotUrls: {} });
+    const out = buildVideoTaskPayload({ ...BASE, slots: slotsForMode('i2v'), slotUrls: {} });
     expect(out.params).not.toHaveProperty('image');
   });
 
@@ -211,7 +228,7 @@ describe('buildVideoTaskPayload — reference images (#1927)', () => {
   it('sends reference-to-video the @-picked images, in order', () => {
     const out = buildVideoTaskPayload({
       ...BASE,
-      mode: 'ref',
+      slots: slotsForMode('ref'),
       takesReferences: true,
       referenceUrls: REFS,
     });
@@ -222,7 +239,7 @@ describe('buildVideoTaskPayload — reference images (#1927)', () => {
     for (const mode of ['t2v', 'i2v', 'first_last', 'animate']) {
       const out = buildVideoTaskPayload({
         ...BASE,
-        mode,
+        slots: slotsForMode(mode),
         slotUrls: {
           firstFrame: 'https://cdn/first.png',
           endFrame: 'https://cdn/last.png',
@@ -239,7 +256,7 @@ describe('buildVideoTaskPayload — reference images (#1927)', () => {
     // The execute gate refuses this submit, so the builder never sees it in
     // practice; an empty key would still be wrong — upstream reads a source
     // field's presence, so an empty list is a claim of its own.
-    const out = buildVideoTaskPayload({ ...BASE, mode: 'ref', referenceUrls: [] });
+    const out = buildVideoTaskPayload({ ...BASE, slots: slotsForMode('ref'), referenceUrls: [] });
     expect(out.params).not.toHaveProperty('images');
   });
 
@@ -248,7 +265,7 @@ describe('buildVideoTaskPayload — reference images (#1927)', () => {
     // the other — never both.
     const out = buildVideoTaskPayload({
       ...BASE,
-      mode: 'ref',
+      slots: slotsForMode('ref'),
       takesReferences: true,
       slotUrls: { firstFrame: 'https://cdn/first.png' },
       referenceUrls: REFS,
@@ -277,7 +294,7 @@ describe('buildVideoTaskPayload — the model brings its own `images` key', () =
   it('overwrites the declared null with the @-picked list', () => {
     const out = buildVideoTaskPayload({
       ...WITH_DECLARED,
-      mode: 'ref',
+      slots: slotsForMode('ref'),
       takesReferences: true,
       referenceUrls: ['https://cdn/a.png'],
     });
@@ -289,14 +306,14 @@ describe('buildVideoTaskPayload — the model brings its own `images` key', () =
     // special case for one param among many that arrive the same way (`seed`,
     // `generate_audio`). Upstream is unbothered — the worker drops null values
     // before mapping and the server's source gate wants a non-empty array.
-    const out = buildVideoTaskPayload({ ...WITH_DECLARED, mode: 'ref', referenceUrls: [] });
+    const out = buildVideoTaskPayload({ ...WITH_DECLARED, slots: slotsForMode('ref'), referenceUrls: [] });
     expect(out.params.images).toBeNull();
   });
 
   it('leaves it alone under a mode that does not take references', () => {
     const out = buildVideoTaskPayload({
       ...WITH_DECLARED,
-      mode: 't2v',
+      slots: slotsForMode('t2v'),
       referenceUrls: ['https://cdn/a.png'],
     });
     expect(out.params.images).toBeNull();
@@ -317,7 +334,7 @@ describe('buildVideoTaskPayload — reference-to-video and its motion clip', () 
   it('sends the picked clip as the `video` param', () => {
     const out = buildVideoTaskPayload({
       ...BASE,
-      mode: 'ref',
+      slots: slotsForMode('ref'),
       takesReferences: true,
       slotUrls: { referenceVideo: CLIP },
       referenceUrls: ['https://cdn/a.png'],
@@ -333,7 +350,7 @@ describe('buildVideoTaskPayload — reference-to-video and its motion clip', () 
     const out = buildVideoTaskPayload({
       ...BASE,
       params: { ...BASE.params, video: null },
-      mode: 'ref',
+      slots: slotsForMode('ref'),
       takesReferences: true,
       slotUrls: {},
       referenceUrls: ['https://cdn/a.png'],
@@ -347,7 +364,7 @@ describe('buildVideoTaskPayload — reference-to-video and its motion clip', () 
     for (const mode of ['t2v', 'i2v', 'first_last', 'animate', 'talking_head']) {
       const out = buildVideoTaskPayload({
         ...BASE,
-        mode,
+        slots: slotsForMode(mode),
         slotUrls: { referenceVideo: CLIP },
       });
       expect(out.params.video, `${mode} sends no reference clip`).toBeUndefined();
@@ -357,7 +374,7 @@ describe('buildVideoTaskPayload — reference-to-video and its motion clip', () 
   it('keeps the clip apart from the driving video image animation takes', () => {
     const out = buildVideoTaskPayload({
       ...BASE,
-      mode: 'animate',
+      slots: slotsForMode('animate'),
       slotUrls: {
         characterImage: 'https://cdn/who.png',
         drivingVideo: 'https://cdn/drive.mp4',

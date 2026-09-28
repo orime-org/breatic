@@ -190,13 +190,6 @@ const REF: ModelEntry = {
       accepts: 'video',
       optional: true,
     },
-    // On by default, so a run carrying a clip keeps that clip's sound unless
-    // the user says otherwise (#1928).
-    keep_original_sound: {
-      description: '',
-      values: [true, false],
-      default: true,
-    },
   },
 };
 
@@ -1338,51 +1331,6 @@ describe('VideoGeneratePanelContainer', () => {
         purpose: 'referenceVideo',
       });
       expect(toast.warning).not.toHaveBeenCalled();
-    });
-
-    it('shows the stored keep-original-sound value, so the switch can be turned off', async () => {
-      // A7's promise is that the user can turn it OFF, and the switch is
-      // controlled by what the container hands down. Asserted on a node
-      // storing `true` — the declared default and what every real node
-      // carries — because a switch handed no value at all also renders
-      // unchecked and also reports `true` on click, so a `false` node cannot
-      // tell the two apart.
-      await openRefPanel(['ref-a'], {
-        referenceVideo: { url: 'https://cdn/clip.mp4' },
-        paramsByModel: { 'kling-o3-pro-ref': { keep_original_sound: true } },
-      });
-      fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
-      const toggle = await screen.findByTestId(
-        'generate-video-keep-original-sound-toggle',
-      );
-      expect(toggle).toHaveAttribute('data-state', 'checked');
-
-      fireEvent.click(toggle);
-      await waitFor(() => {
-        const data = readCanvasGraph('p', 's').nodes.find(
-          (n) => n.id === 'target',
-        )?.data;
-        const records = (
-          data as { paramsByModel?: Record<string, Record<string, unknown>> }
-        ).paramsByModel;
-        expect(records?.['kling-o3-pro-ref']?.keep_original_sound).toBe(false);
-      });
-    });
-
-    it('keeps the switch off on a node that turned it off', async () => {
-      // The complement of the case above, and the only one that catches a
-      // container handing the picker a constant: seeded `true` renders checked
-      // whether the value is read or hardcoded on, seeded `false` renders
-      // unchecked whether it is read or hardcoded off. Both directions are
-      // needed to say the stored value is what reaches the control.
-      await openRefPanel(['ref-a'], {
-        referenceVideo: { url: 'https://cdn/clip.mp4' },
-        paramsByModel: { 'kling-o3-pro-ref': { keep_original_sound: false } },
-      });
-      fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
-      await expect(
-        screen.findByTestId('generate-video-keep-original-sound-toggle'),
-      ).resolves.toHaveAttribute('data-state', 'unchecked');
     });
 
     it('sends only the @-mentioned image, not everything connected', async () => {

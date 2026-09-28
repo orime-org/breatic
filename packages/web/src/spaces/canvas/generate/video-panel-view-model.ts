@@ -31,15 +31,13 @@ import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { modelReferenceCap } from '@web/spaces/canvas/generate/model-reference-cap';
 import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import {
-  slotsForMode,
-} from '@web/spaces/canvas/generate/video-mode-options';
-import {
   readSlotThumbnails,
   readSlotUrls,
 } from '@web/spaces/canvas/generate/slots';
 import {
   modelTakesReferences,
   VIDEO_SLOTS,
+  videoSlotsForModel,
 } from '@web/spaces/canvas/generate/video-slots';
 import type {
   VideoSlot,
@@ -320,7 +318,7 @@ export function buildVideoPanelViewModel(input: {
     params: current ? resolveModelSwitch(content, current).params : {},
     nodeStatus: content?.status,
     mode,
-    slots: slotsForMode(mode),
+    slots: videoSlotsForModel(current, mode),
     slotUrls,
     slotThumbnails: readSlotThumbnails(VIDEO_SLOTS, content),
     references,

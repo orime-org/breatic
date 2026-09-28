@@ -18,11 +18,8 @@ import { REFERENCE_POOL_PARAM } from '@breatic/shared';
 import type { TaskCreateInput } from '@breatic/shared';
 
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
-import {
-  slotsForMode,
-} from '@web/spaces/canvas/generate/video-mode-options';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlot, VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 
 /** Video-node generation task type (AIGC_TASK_TYPES key on the worker). */
 const VIDEO_TASK_TYPE = 'video';
@@ -39,13 +36,13 @@ export interface VideoTaskInput {
   params: Record<string, unknown>;
   /** Plain-text prompt (extracted from the rich-text prompt). */
   promptText: string;
-  /** The active generation mode — it decides which source fields are built. */
-  mode: string;
   /**
-   * URLs picked into slots. Only the ones the active mode collects are built
-   * into the payload; the rest stay on the node, where a switch back to their
-   * mode finds them again.
+   * The slots the toolbar draws for this model in this mode — the source
+   * fields that are built. Picks in any other slot stay on the node, where a
+   * switch back to their mode or model finds them again.
    */
+  slots: readonly VideoSlot[];
+  /** URLs picked into slots, by slot. */
   slotUrls: VideoSlotUrls;
   /**
    * The reference image URLs the prompt `@`-mentions, snapshotted at execute
@@ -63,11 +60,11 @@ export interface VideoTaskInput {
 }
 
 /**
- * The source params one mode sends.
+ * The source params one run sends.
  *
- * Built FROM the mode rather than collected and then guarded: a mode's field
- * set is fixed, so a slot the mode does not collect has no way in and needs no
- * check to keep it out (user 2026-08-10). Each URL travels as its own param,
+ * Built FROM the drawn slots rather than collected and then guarded: a slot
+ * the toolbar does not draw has no way in and needs no check to keep it out
+ * (user 2026-08-10). Each URL travels as its own param,
  * never folded into the reference array — that array is the `@`-picked pool
  * and means something else to the model. An empty slot adds no key here,
  * because the upstream provider reads a source field's presence, not its
@@ -79,20 +76,20 @@ export interface VideoTaskInput {
  * key there whatever this returns. That is the same route `seed` and
  * `generate_audio` arrive by, and the worker drops null values before mapping
  * them to vendor names.
- * @param mode - The active generation mode.
+ * @param slots - The slots the toolbar draws.
  * @param slotUrls - What is currently picked, by slot.
  * @param referenceUrls - The `@`-mentioned reference images.
  * @param takesReferences - Whether the model draws on the pool in this mode.
  * @returns The source params, ready to merge into the payload.
  */
 export function sourceParams(
-  mode: string,
+  slots: readonly VideoSlot[],
   slotUrls: VideoSlotUrls,
   referenceUrls: readonly string[],
   takesReferences: boolean,
 ): Record<string, unknown> {
   const params: Record<string, unknown> = {};
-  for (const slot of slotsForMode(mode)) {
+  for (const slot of slots) {
     const url = slotUrls[slot];
     if (url) params[VIDEO_SLOTS[slot].param] = url;
   }
@@ -110,7 +107,7 @@ export function sourceParams(
 
 /**
  * Builds the overwrite-mode task payload for a video-node Generate.
- * @param input - The node, project/space, model, params, prompt, mode, picked slots and references.
+ * @param input - The node, project/space, model, params, prompt, drawn slots, picks and references.
  * @returns The `POST /canvas/tasks` request body, in overwrite mode.
  */
 export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
@@ -127,7 +124,7 @@ export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
       ...input.params,
       prompt: input.promptText,
       ...sourceParams(
-        input.mode,
+        input.slots,
         input.slotUrls,
         input.referenceUrls ?? [],
         input.takesReferences,

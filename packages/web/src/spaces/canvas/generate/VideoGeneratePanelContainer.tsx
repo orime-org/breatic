@@ -415,6 +415,9 @@ function VideoGeneratePanelBody({
     (s) => s.startReferenceVideoPick,
   );
   const startDrivingAudioPick = useCanvasStore((s) => s.startDrivingAudioPick);
+  const startSourceVideoPick = useCanvasStore((s) => s.startSourceVideoPick);
+  const startLeftAudioPick = useCanvasStore((s) => s.startLeftAudioPick);
+  const startRightAudioPick = useCanvasStore((s) => s.startRightAudioPick);
   const referencePicking = useCanvasStore(
     (s) =>
       s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
@@ -445,8 +448,14 @@ function VideoGeneratePanelBody({
       drivingVideo: startDrivingVideoPick,
       referenceVideo: startReferenceVideoPick,
       drivingAudio: startDrivingAudioPick,
+      sourceVideo: startSourceVideoPick,
+      leftAudio: startLeftAudioPick,
+      rightAudio: startRightAudioPick,
     }),
     [
+      startSourceVideoPick,
+      startLeftAudioPick,
+      startRightAudioPick,
       startFirstFramePick,
       startEndFramePick,
       startCharacterImagePick,
@@ -624,9 +633,9 @@ function VideoGeneratePanelBody({
         model: fresh.model,
         params: fresh.params,
         promptText: freshPrompt,
-        // The payload's source fields are built FROM the mode, so a pick left
-        // behind by a mode switch has no way in and needs no gate here.
-        mode: fresh.mode,
+        // The payload's source fields are built FROM the drawn slots, so a
+        // pick left behind by a mode or model switch has no way in.
+        slots: fresh.slots,
         slotUrls: fresh.slotUrls,
         referenceUrls: fresh.referenceUrls,
         takesReferences: modelTakesReferences(fresh.modelEntry, fresh.mode),

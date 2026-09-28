@@ -110,6 +110,9 @@ export type HistoryCommand = 'undo' | 'redo';
  *     same one-field shape as `drivingVideo` for the same reason, though an
  *     audio node has no poster to copy, so the toolbar keeps showing the
  *     slot's icon.
+ *   - `sourceVideo` / `leftAudio` / `rightAudio` — the same, into their own
+ *     fields (#2156): the clip a lipsync model redoes, and the two speakers'
+ *     tracks of a two-person talking head.
  *   - `refAudio` — the same, into `refAudio` (#1960 PR2), also from an AUDIO
  *     node: the voice a cloning model speaks the new lines in. Its own slot
  *     rather than `drivingAudio`'s, though both travel as `audio`, because
@@ -131,6 +134,9 @@ export type PickPurpose =
   | 'drivingVideo'
   | 'referenceVideo'
   | 'drivingAudio'
+  | 'sourceVideo'
+  | 'leftAudio'
+  | 'rightAudio'
   | 'refAudio'
   | 'musicSong'
   | 'musicVoice'
@@ -369,6 +375,12 @@ interface CanvasState {
   startReferenceVideoPick: (nodeId: string) => void;
   /** Enter the driving-audio pick for a video node (#1935). */
   startDrivingAudioPick: (nodeId: string) => void;
+  /** Enter the source-video pick for a video node (#2156). */
+  startSourceVideoPick: (nodeId: string) => void;
+  /** Enter the left-speaker audio pick for a video node (#2156). */
+  startLeftAudioPick: (nodeId: string) => void;
+  /** Enter the right-speaker audio pick for a video node (#2156). */
+  startRightAudioPick: (nodeId: string) => void;
   /** Enter the reference-audio pick for an audio node (#1960 PR2). */
   startRefAudioPick: (nodeId: string) => void;
   /** Enter the whole-song reference pick for an audio node (#1960). */
@@ -650,6 +662,9 @@ export const useCanvasStore = create<CanvasState>()(
     startDrivingVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'drivingVideo' })),
     startReferenceVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'referenceVideo' })),
     startDrivingAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'drivingAudio' })),
+    startSourceVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'sourceVideo' })),
+    startLeftAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'leftAudio' })),
+    startRightAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'rightAudio' })),
     startRefAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'refAudio' })),
     startMusicSongPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicSong' })),
     startMusicVoicePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicVoice' })),
