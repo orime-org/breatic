@@ -14,13 +14,13 @@
       "types": "./src/canvas/text-body.ts"
     },
     "./pricing": {
-      "import": "./dist/pricing/upstream-price.js",
-      "types": "./src/pricing/upstream-price.ts"
+      "import": "./dist/pricing/index.js",
+      "types": "./src/pricing/index.ts"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/canvas/text-body.ts src/pricing/upstream-price.ts --format esm --clean",
-    "dev": "tsup src/index.ts src/canvas/text-body.ts src/pricing/upstream-price.ts --format esm --watch",
+    "build": "tsup src/index.ts src/canvas/text-body.ts src/pricing/index.ts --format esm --clean",
+    "dev": "tsup src/index.ts src/canvas/text-body.ts src/pricing/index.ts --format esm --watch",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
