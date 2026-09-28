@@ -42,7 +42,7 @@ export interface GenerationResult {
 }
 
 /** Model name -> family, for the models that have one. */
-const FAMILIES = new Map<string, ModelFamily>(
+export const FAMILIES = new Map<string, ModelFamily>(
   [midjourney, nanoBanana].flatMap((family) => [...family.MODELS].map((name) => [name, family] as const)),
 );
 
@@ -53,7 +53,7 @@ const FAMILIES = new Map<string, ModelFamily>(
  * @returns The entry.
  * @throws {Error} when the catalog has no such model.
  */
-function entryOf(modality: CatalogModality, modelName: string): FullModelEntry {
+export function entryOf(modality: CatalogModality, modelName: string): FullModelEntry {
   const entry = getFullModelConfig(modality).models.find((m) => m.name === modelName);
   if (!entry) throw new Error(`Model '${modelName}' not found`);
   return entry;

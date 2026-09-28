@@ -28,6 +28,7 @@ vi.mock("@worker/providers/http.js", async (importOriginal) => {
 });
 
 const { runCatalogTask } = await import("@worker/providers/run-steps.js");
+const { validateModelParams } = await import("@worker/providers/generate.js");
 const { UpstreamTaskFailed } = await import("@worker/providers/http.js");
 
 beforeAll(() => {
@@ -175,7 +176,8 @@ describe("runCatalogTask", () => {
     const { deps, clones } = stores();
     answers([], ["https://cdn/speech.mp3"]);
 
-    const result = await runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" });
+    const [, params] = validateModelParams("tts", "minimax-voice-clone", { audio: "https://a/me.mp3" });
+    const result = await runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", params);
 
     const clone = call(0);
     expect(clone.endpoint).toBe("minimax/voice-clone");
@@ -191,7 +193,7 @@ describe("runCatalogTask", () => {
 
   it("skips the steps a previous delivery finished and uses what they answered", async () => {
     const { deps } = stores([
-      { id: "s0", position: 0, kind: "voice", endpoint: "minimax/voice-clone", itemIndex: null, status: "done", predictionId: "pred-a", output: { id: "Breatic0f5c" }, inlineCostUsd: 0 },
+      { id: "s0", position: 0, kind: "voice", endpoint: "minimax/voice-clone", itemIndex: null, status: "done", predictionId: "pred-a", output: { voiceId: "Breatic0f5c", cached: false, prediction: "pred-a" }, inlineCostUsd: 0 },
       { id: "s1", position: 1, kind: "speak", endpoint: "minimax/speech-2.8-hd", itemIndex: null, status: "pending", predictionId: null, output: {}, inlineCostUsd: 0 },
     ]);
     answers(["https://cdn/speech.mp3"]);
