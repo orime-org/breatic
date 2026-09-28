@@ -193,11 +193,6 @@ function ChatComposerInner({
           </div>
         </div>
       ) : null}
-      {attachNotice ? (
-        <p data-testid='chat-composer-attach-notice' className='px-3 pt-1.5 text-xs text-muted-foreground'>
-          {attachNotice}
-        </p>
-      ) : null}
       {atLimit.showing ? (
         // On the box's own top edge, where this panel puts everything it has
         // to say about the box below.
@@ -282,7 +277,7 @@ function ChatComposerInner({
         />
       </ScrollArea>
       <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
-        <div className='flex items-center gap-1.5'>
+        <div className='flex min-w-0 flex-1 items-center gap-1.5'>
           <input
             ref={picker}
             type='file'
@@ -299,17 +294,26 @@ function ChatComposerInner({
           />
           <Button
             type='button'
-            variant={null}
+            variant='chrome-ghost'
             size={null}
             aria-label={t('chat.composer.attach')}
-            title={t('chat.composer.attach')}
             disabled={frozen || !onAttachFiles}
             onClick={() => picker.current?.click()}
             data-testid='chat-composer-attach'
-            className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50'
+            className='h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 bg-transparent'
           >
             <Plus className='h-4 w-4' />
           </Button>
+          {attachNotice ? (
+            // Beside the button that attaches, in the warning colour: it says
+            // something the reader tried did not go in.
+            <p
+              data-testid='chat-composer-attach-notice'
+              className='min-w-0 truncate text-xs text-status-warning-foreground'
+            >
+              {attachNotice}
+            </p>
+          ) : null}
         </div>
         {turnPhase === 'sending' ? (
           // The press landed and the server has not spoken yet. Something has

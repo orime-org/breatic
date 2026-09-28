@@ -126,3 +126,20 @@ describe('the box the reader types in', () => {
     expect(written).toContain(120);
   });
 });
+
+describe('what is said about an attempt to attach', () => {
+  it('sits between the attach button and send, in the warning colour', () => {
+    render(<ChatComposer {...BASICS} attachNotice='At most 10 items' />);
+
+    const notice = screen.getByTestId('chat-composer-attach-notice');
+    const attach = screen.getByTestId('chat-composer-attach');
+    expect(attach.parentElement?.contains(notice)).toBe(true);
+    expect(notice.className).toContain('text-status-warning-foreground');
+  });
+
+  it('gives the attach button no hover title', () => {
+    render(<ChatComposer {...BASICS} />);
+
+    expect(screen.getByTestId('chat-composer-attach')).not.toHaveAttribute('title');
+  });
+});

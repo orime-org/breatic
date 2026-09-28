@@ -163,7 +163,7 @@
   "chat": {
     "composer": {
       "chipsAria": "Selected chips",
-      "placeholder": "Describe what you want to do…",
+      "placeholder": "Ask something, or hand me things from the canvas…",
       "inputAria": "Chat input",
       "send": "Send",
       "sending": "Sending",

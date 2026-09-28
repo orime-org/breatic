@@ -163,7 +163,7 @@
   "chat": {
     "composer": {
       "chipsAria": "已選 chips",
-      "placeholder": "描述你想做什麼…",
+      "placeholder": "問點什麼，或者把畫布上的東西交給我…",
       "inputAria": "Chat 輸入",
       "send": "傳送",
       "sending": "傳送中",

@@ -61,7 +61,7 @@ function AttachmentChipInner({
       } ${
         status === 'failed'
           ? 'border-status-error-border bg-status-error-bg text-foreground'
-          : 'border-border bg-muted text-foreground'
+          : 'border-border bg-chip text-foreground'
       }`}
     >
       {status === 'uploading' ? (

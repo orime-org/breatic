@@ -163,7 +163,7 @@
   "chat": {
     "composer": {
       "chipsAria": "選択された chips",
-      "placeholder": "やりたいことを入力…",
+      "placeholder": "質問するか、キャンバス上のものを渡してください…",
       "inputAria": "Chat 入力",
       "send": "送信",
       "sending": "送信中",

@@ -163,7 +163,7 @@
   "chat": {
     "composer": {
       "chipsAria": "선택된 칩",
-      "placeholder": "하고 싶은 작업을 설명하세요…",
+      "placeholder": "질문하거나 캔버스의 항목을 넘겨주세요…",
       "inputAria": "채팅 입력",
       "send": "전송",
       "sending": "보내는 중",
