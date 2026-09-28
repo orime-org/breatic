@@ -154,6 +154,27 @@ export interface PollOptions {
 }
 
 /**
+ * The upstream ran the task and reported it failed. A retry would ask about
+ * the same failed task, so a caller that tracks steps marks the step failed
+ * on this and on nothing else.
+ */
+export class UpstreamTaskFailed extends Error {
+  /** The upstream's own words for why. */
+  readonly upstreamError: string;
+
+  /**
+   * Record which upstream failed the task and what it said.
+   * @param provider - The upstream that ran the task.
+   * @param upstreamError - The upstream's own words for why.
+   */
+  constructor(provider: string, upstreamError: string) {
+    super(`${provider} task failed: ${upstreamError}`);
+    this.name = "UpstreamTaskFailed";
+    this.upstreamError = upstreamError;
+  }
+}
+
+/**
  * Poll an async task endpoint until it reaches a terminal status.
  *
  * Both timings come from `config/worker.yaml` and no caller can override
@@ -203,7 +224,7 @@ export async function pollUntilDone(
       // #1628: log at the poll layer (not only via the bubbled-up job error)
       // so vendor-side failures are attributable to the specific poll URL.
       logger.warn({ provider, url, status, errorMsg }, "poll_task_failed");
-      throw new Error(`${provider} task failed: ${errorMsg}`);
+      throw new UpstreamTaskFailed(provider, errorMsg);
     }
 
     await sleep(interval);
