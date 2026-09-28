@@ -28,10 +28,11 @@
  *   (`ySyncPluginKey` meta `isChangeOrigin`), and that mapping sends every
  *   position to the end. Those are resolved from Yjs relative positions, the
  *   way y-prosemirror's cursor plugin places a cursor (`cursor-plugin.js`).
- *   They are taken again only after the reader's own edits, once the binding
- *   has written them into Yjs; across Yjs changes the same positions are kept,
- *   so a letter a peer deletes and then brings back with undo is followed to
- *   where it came back (`followUndoneDeletions`).
+ *   They are taken again after the reader's own edits, once the binding has
+ *   written them into Yjs, and whenever they stop resolving; otherwise the
+ *   same positions are kept across Yjs changes, so a letter a peer deletes
+ *   and then brings back with undo is followed to where it came back
+ *   (`followUndoneDeletions`).
  *
  * The start names the first letter covered and the end the last one, with its
  * association to the left (`assoc = -1`, which Yjs resolves to "after this
@@ -320,17 +321,64 @@ function trackDraft(bound: Binding, range: DraftRange): TrackedLink {
 }
 
 /**
- * Whether the letter a position names is deleted and not brought back. An
- * undo brings a deleted letter back as a new one, which the deleted one
- * points to (`redone`); Yjs resolves the position to the new one.
+ * The letter a name points to now. An undo brings a deleted letter back as a
+ * new one, which the deleted one points to (`redone`), and Yjs resolves the
+ * name to the new one. A letter whose line element was deleted is collected
+ * into a struct that is not an item and has no `redone`; Yjs's own walk stops
+ * there too (`followRedone`, `yjs/src/structs/Item.js`).
+ * @param store - The document's store.
+ * @param id - The letter the name was taken on.
+ * @returns The letter, or null once it was collected.
+ */
+function letterNow(store: Y.Doc['store'], id: Y.ID): Y.Item | null {
+  let item = Y.getItem(store, id);
+  while (item instanceof Y.Item && item.redone !== null) {
+    item = Y.getItem(store, item.redone);
+  }
+  return item instanceof Y.Item ? item : null;
+}
+
+/**
+ * Whether the letter a position names is deleted and not brought back.
  * @param store - The document's store.
  * @param id - The letter.
  * @returns True once it is gone for good.
  */
 function letterGone(store: Y.Doc['store'], id: Y.ID): boolean {
-  let item = Y.getItem(store, id) as Y.Item;
-  while (item.redone !== null) item = Y.getItem(store, item.redone) as Y.Item;
-  return item.deleted;
+  return letterNow(store, id)?.deleted ?? true;
+}
+
+/**
+ * Whether a name still has a line to live in: the element holding the letter
+ * it names is not deleted. A peer changing that line's type, or moving it,
+ * deletes the element and writes a new one, and Yjs collects the old one's
+ * letters when that change ends — after which the name resolves to nothing.
+ * @param store - The document's store.
+ * @param end - The name.
+ * @returns True while its element stands.
+ */
+function lineElementStands(
+  store: Y.Doc['store'],
+  end: Y.RelativePosition,
+): boolean {
+  if (end.item === null) return true;
+  const element = (
+    letterNow(store, end.item)?.parent as Y.AbstractType<unknown> | undefined
+  )?._item;
+  return element !== undefined && (element === null || !element.deleted);
+}
+
+/**
+ * Whether both ends of a range, as Yjs names them, can go on naming it.
+ * @param bound - The sync binding.
+ * @param link - The range as Yjs names it.
+ * @returns True while both ends' elements stand.
+ */
+function stillNamed(bound: Binding, link: TrackedLink): boolean {
+  return (
+    lineElementStands(bound.doc.store, link.start) &&
+    lineElementStands(bound.doc.store, link.end)
+  );
 }
 
 /**
@@ -637,11 +685,12 @@ export const documentCommentDraftRange = createExtension(() => {
         },
 
         /**
-         * Broadcasts the draft, and names its range in Yjs terms after it was
-         * placed afresh. The sync plugin's view writes the reader's edit into
-         * Yjs before this one runs, so the names are taken against the body
-         * as it now stands — which is when y-prosemirror's cursor plugin takes
-         * the reader's cursor.
+         * Broadcasts the draft, and names its range in Yjs terms again when it
+         * was placed afresh, or when the names it has no longer resolve. The
+         * sync plugin's view writes the reader's edit into Yjs before this
+         * one runs, so the names are taken against the body as it now stands
+         * — which is when y-prosemirror's cursor plugin takes the reader's
+         * cursor.
          * @param view - The editor view.
          * @returns The view's update and teardown.
          */
@@ -655,7 +704,9 @@ export const documentCommentDraftRange = createExtension(() => {
                 tracked = null;
               } else if (
                 bound !== null &&
-                (retrack || tracked?.opening !== range.opening)
+                (retrack ||
+                  tracked?.opening !== range.opening ||
+                  !stillNamed(bound, tracked.link))
               ) {
                 tracked = { opening: range.opening, link: trackDraft(bound, range) };
               }
