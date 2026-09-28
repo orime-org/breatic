@@ -1214,6 +1214,64 @@ describe('the comment panel', () => {
       );
     });
 
+    it('carries what was written to other words the entry is pressed over', async () => {
+      // A draft with words in it ends on cancel or save only (user
+      // 2026-09-24); pressing the entry again moves it (design §9.4.1).
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'half a thought',
+      );
+      await clickTheBody();
+
+      aimDraft(12, 19);
+
+      expect(aimedWords()).toBe('charlie');
+      expect(screen.getByTestId('doc-comment-draft-input')).toHaveValue(
+        'half a thought',
+      );
+    });
+
+    it('carries what was written out of a notice when the entry is pressed', async () => {
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+      peerEdits((line) => {
+        line.delete(6, 5);
+      });
+      await screen.findByTestId('doc-comment-draft-dropped');
+
+      aimDraft(0, 5);
+
+      expect(aimedWords()).toBe('alpha');
+      expect(
+        await screen.findByTestId('doc-comment-draft-input'),
+      ).toHaveValue('half');
+    });
+
+    it('opens the panel on a notice after a tab switch while another thing was pressed', async () => {
+      // The draft not being the card read does not make it any less open:
+      // the panel is open whenever a draft is (design §9.6).
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+      await clickTheBody();
+      unmountBody();
+
+      peerEdits((line) => {
+        line.delete(6, 5);
+      });
+      mountBody();
+
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
+    });
+
     it('writes the comment on save, and the card becomes a real one', async () => {
       show();
       aimDraft(0, 5);
