@@ -8,7 +8,7 @@
  * all unit-testable without React / Yjs / react-query.
  */
 
-import type { FocusImage, ModelEntry } from '@breatic/shared';
+import type { FocusImage, MissingSource, ModelEntry } from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
@@ -86,12 +86,12 @@ export interface GeneratePanelViewModel {
   /** Active generation sub-mode (the t2i / i2i toggle state; default t2i). */
   mode: ImageGenMode;
   /**
-   * Whether the effective model needs a source image in this mode, by its own
+   * The sources this run still needs, by the effective model's own
    * declarations (`missingSources`, the rule the server re-checks before
-   * enqueue). Drives the #1675 execute gate. False when the catalog is empty
+   * enqueue). Drives the #1675 execute gate. Empty when the catalog is empty
    * (no model resolved) — nothing to gate.
    */
-  requiresSource: boolean;
+  missing: readonly MissingSource[];
   /**
    * Max reference images the active model accepts — the reference pool's cap
    * on the wire, normalized so only a POSITIVE finite cap is set (0 / negative / absent → undefined = uncapped,
@@ -261,7 +261,12 @@ export function buildGeneratePanelViewModel(input: {
     mode,
     // Execute gate (#1675): the active panel mode and the model's own
     // declarations decide, through the same rule the server re-checks.
-    requiresSource: current ? missingSources(current, mode, {}).length > 0 : false,
+    missing: current
+      ? missingSources(current, mode, {
+        [REFERENCE_POOL_PARAM]: referenceUrls,
+        [IMAGE_SLOTS.style.param]: styleImageUrl === undefined ? [] : [styleImageUrl],
+      })
+      : [],
     // #1735 count gate: only a POSITIVE finite cap counts — 0 / negative /
     // NaN / undefined all mean "uncapped", matching the server rule and the
     // worker, so all three layers agree.

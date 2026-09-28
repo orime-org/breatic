@@ -7,7 +7,7 @@
 
 import { extractPromptText } from "@shared/agent/extract-prompt.js";
 import { referenceCapExceeded } from "@shared/reference-cap.js";
-import type { SourceRule } from "@shared/types/model-catalog.js";
+import type { MissingSource } from "@shared/missing-sources.js";
 
 /** Everything the execute gate must weigh before a task may be submitted. */
 export interface ExecuteGateInput {
@@ -62,32 +62,14 @@ export interface ExecuteGateInput {
    */
   voiceRequired?: boolean;
   /**
-   * The places the active mode takes material in, in the order the panel
-   * refuses them (#1960, #269).
+   * What the run still needs, as `missingSources` answers it for the active
+   * mode (#2156): each unmet requirement, required params first in the order
+   * the model declares them, then its "any one of these" groups.
    *
-   * Every place a run's material can come from is one of these, whether the
-   * panel draws it as a slot on its toolbar or fills it from the reference
-   * pool: what differs is the gesture, and a gate told about one kind and not
-   * the other would be judging half the modes. A slot the mode may run
-   * without is left out rather than marked, since a gate has nothing to say
-   * about it.
-   *
-   * Empty or absent means this mode takes no material — the truth for
-   * text-to-image and for the three audio modes that collect nothing.
+   * Empty or absent means the run has every source it needs — the truth for
+   * text-to-image and every mode that collects nothing.
    */
-  requiredSlots?: readonly string[];
-  /** Which of those hold something. Read only against `requiredSlots`. */
-  filledSlots?: readonly string[];
-  /**
-   * Whether the mode takes every one of them or any one (#269).
-   *
-   * Read off the catalog, where the mode declares it, rather than inferred
-   * from the panel: reference-to-music offers three places and takes any one,
-   * and first-and-last-frame offers two and takes both. Absent reads as
-   * `all_of`, the stricter of the two, so a mode whose rule did not reach the
-   * browser refuses rather than submits a run the upstream will reject.
-   */
-  sourceRule?: SourceRule;
+  missing?: readonly MissingSource[];
   /** How many references the pool holds, for the cap below. */
   poolCount?: number;
   /**
@@ -254,33 +236,18 @@ export function evaluateExecute(
   }
   // The remaining refusals name a control the user has to go and fill. Only
   // one can be live at a time: `voiceRequired` says the model picks from a
-  // preset catalog, `requiredSlots` says the mode needs a source picked off
+  // preset catalog, `missing` says the model needs a source picked off
   // the canvas, and a model answering yes to both would be one whose panel
   // shows a picker and a slot for the same voice.
   if (input.voiceRequired && !input.voiceChosen) return { refusal: 'voice-missing' };
-  const required = input.requiredSlots ?? [];
-  const filled = input.filledSlots ?? [];
-  if (required.length > 0) {
-    if (input.sourceRule === 'any_of') {
-      // One of them is enough, so nothing is missing until all of them are. A
-      // mode offering several refuses with a sentence about the set, because
-      // naming any single member of it would be the wrong sentence.
-      if (!required.some((slot) => filled.includes(slot))) {
-        return required.length === 1
-          ? { refusal: 'source-missing', slot: required[0] }
-          : { refusal: 'sources-missing' };
-      }
-    } else {
-      // Every one of them, refused in the order the panel offers them, so the
-      // sentence names the first empty place rather than an arbitrary one.
-      const empty = required.find((slot) => !filled.includes(slot));
-      if (empty !== undefined) {
-        return {
-          refusal: required.length === 1 ? 'source-missing' : 'sources-missing',
-          slot: empty,
-        };
-      }
-    }
+  // The first unmet requirement is the one named. One param names its place;
+  // a group any member of which would do refuses with a sentence about the
+  // set, because naming a single member of it would be the wrong sentence.
+  const first = input.missing?.[0];
+  if (first !== undefined) {
+    return first.length === 1
+      ? { refusal: 'source-missing', slot: first[0] }
+      : { refusal: 'sources-missing' };
   }
   // The other end of the same question: more than the model takes. Naming the
   // limit is the point -- otherwise the only way to find it is to remove one

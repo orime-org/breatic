@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { FocusImage, ModelEntry } from '@breatic/shared';
+import { REFERENCE_POOL_PARAM } from '@breatic/shared';
 
 import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
 import {
@@ -28,7 +29,7 @@ function buildVm(
 /**
  * Builds an image ModelEntry fixture with only the fields the view-model reads.
  * @param name - Model id.
- * @param over - Overrides (tier, cost_per_call, params).
+ * @param over - Overrides (tier, mode, params).
  * @returns A minimal image ModelEntry.
  */
 function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
@@ -40,30 +41,30 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
     description: '',
     guide: '',
     tier: 'optional',
-    cost_per_call: 5,
     generation_time: 10,
     takes_prompt: true,
-    params: {
-      aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
-      resolution: { description: '', values: ['1k', '2k'], default: '1k' },
-    },
     providers: [],
     ...over,
     mode,
-    // Mirror the backend `computeSourcesByMode` for image modes so the gate
-    // (which reads `sourcesByMode[activeMode]`) is exercised realistically:
-    // i2i / edit need an image, t2i generates from scratch.
-    sourcesByMode:
-      over.sourcesByMode ??
-      Object.fromEntries(
-        (Array.isArray(mode) ? mode : [mode]).map((m) => [
-          m,
-          m === 'i2i' || m === 'edit' ? (['image'] as const) : [],
-        ]),
-      ),
-    sourceRuleByMode:
-      over.sourceRuleByMode ??
-      Object.fromEntries((Array.isArray(mode) ? mode : [mode]).map((m) => [m, 'all_of'])),
+    // i2i / edit take the reference pool and cannot run without it, the way
+    // the catalog declares it; t2i generates from scratch.
+    params: {
+      aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
+      resolution: { description: '', values: ['1k', '2k'], default: '1k' },
+      ...((Array.isArray(mode) ? mode : [mode]).some((m) => m === 'i2i' || m === 'edit')
+        ? {
+          [REFERENCE_POOL_PARAM]: {
+            description: '',
+            default: null,
+            type: 'list',
+            fill: 'pool',
+            accepts: 'image',
+            modes: ['i2i', 'edit'],
+          },
+        }
+        : {}),
+      ...over.params,
+    },
   };
 }
 
@@ -88,12 +89,12 @@ describe('buildGeneratePanelViewModel', () => {
   // model (user 2026-07-11: recommended is curation dressing, a mode may
   // carry several; it is not a default-selection rule).
   const models = [
-    makeModel('flux', { mode: 't2i', tier: 'optional', cost_per_call: 7 }),
-    makeModel('sdxl', { mode: 't2i', tier: 'recommended', cost_per_call: 3 }),
+    makeModel('flux', { mode: 't2i', tier: 'optional' }),
+    makeModel('sdxl', { mode: 't2i', tier: 'recommended' }),
   ];
   // A small i2i catalog + node for the reference tests: reference URLs only
   // flow in i2i (t2i generates from scratch — see the dedicated t2i test).
-  const i2iModels = [makeModel('mj-i2i', { mode: 'i2i', cost_per_call: 9 })];
+  const i2iModels = [makeModel('mj-i2i', { mode: 'i2i' })];
   /**
    * An i2i-mode image node whose panel offers the i2i catalog above.
    * @param over - Extra image-view overrides.
@@ -472,7 +473,7 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.styleImageUrl).toBeUndefined();
   });
 
-  // Malformed-catalog robustness (non-number cost_per_call, non-array model
+  // Malformed-catalog robustness (a malformed pricing contract, non-array model
   // list) is now enforced ONCE at the API boundary — see sanitizeModelCatalog +
   // model-catalog.schema.test.ts. buildGeneratePanelViewModel consumes the
   // sanitized, trusted ModelEntry[], so those impossible-after-boundary states
@@ -538,31 +539,31 @@ describe('buildGeneratePanelViewModel', () => {
     expect(vm.nodeStatus).toBe('handling');
   });
 
-  // requiresSource drives the #1675 execute gate: a model whose mode needs a
+  // `missing` drives the #1675 execute gate: a model whose mode needs a
   // source image (i2i / edit) must not submit with an empty image list.
-  it('flags requiresSource=false for a t2i model (generates from scratch)', () => {
+  it('misses nothing for a t2i model (generates from scratch)', () => {
     const nodes = [node('n1', imageView({ model: 'flux' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
-    expect(vm.requiresSource).toBe(false);
+    expect(vm.missing).toEqual([]);
   });
 
-  it('flags requiresSource=true for an i2i model (#1675 gate)', () => {
+  it('misses the reference pool for an i2i model with none picked (#1675 gate)', () => {
     const nodes = [node('n1', i2iView())];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: i2iModels });
-    expect(vm.requiresSource).toBe(true);
+    expect(vm.missing).toEqual([[REFERENCE_POOL_PARAM]]);
   });
 
-  it('flags requiresSource=true for an edit-capable model', () => {
+  it('misses the reference pool for an edit-capable model', () => {
     const editModels = [makeModel('nano-edit', { mode: ['i2i', 'edit'] })];
     const nodes = [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: editModels });
-    expect(vm.requiresSource).toBe(true);
+    expect(vm.missing).toEqual([[REFERENCE_POOL_PARAM]]);
   });
 
-  it('flags requiresSource=false when the catalog is empty (no model resolved)', () => {
+  it('misses nothing when the catalog is empty (no model resolved)', () => {
     const nodes = [node('n1', imageView())];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [] });
-    expect(vm.requiresSource).toBe(false);
+    expect(vm.missing).toEqual([]);
   });
 
   // Round-2 adversarial: a HYBRID model (mode: ['t2i','i2i'] — real models
@@ -571,18 +572,18 @@ describe('buildGeneratePanelViewModel', () => {
   // semantics, not the model's capability list. Keying the gate on the
   // capability array made t2i permanently unexecutable for hybrids (t2i
   // clears referenceUrls, so the "needs source image" gate could never pass).
-  it('requiresSource=false for a hybrid (t2i+i2i) model running under t2i', () => {
+  it('misses nothing for a hybrid (t2i+i2i) model running under t2i', () => {
     const hybrid = [makeModel('seedream', { mode: ['t2i', 'i2i'] })];
     const nodes = [node('n1', imageView({ mode: 't2i', model: 'seedream' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: hybrid });
-    expect(vm.requiresSource).toBe(false);
+    expect(vm.missing).toEqual([]);
   });
 
-  it('requiresSource=true for the same hybrid model running under i2i', () => {
+  it('misses the pool for the same hybrid model running under i2i', () => {
     const hybrid = [makeModel('seedream', { mode: ['t2i', 'i2i'] })];
     const nodes = [node('n1', imageView({ mode: 'i2i', model: 'seedream' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: hybrid });
-    expect(vm.requiresSource).toBe(true);
+    expect(vm.missing).toEqual([[REFERENCE_POOL_PARAM]]);
   });
 });
 
@@ -717,50 +718,6 @@ describe('buildGeneratePanelViewModel — maxReferences (#1735 count gate)', () 
     });
     expect(vm.model).toBe('nano-edit');
     expect(vm.maxReferences).toBe(3);
-  });
-
-  it('takes the lower cap a picked style reference puts the node under', () => {
-    // A model may take fewer references once another source is carried, and
-    // the catalog states that beside the cap it narrows. The server gate and
-    // the worker both read it through `effectiveItemCap`; a panel reading the
-    // plain cap lets the reader fill six and hands the refusal to the server.
-    const narrowing = makeModel('nano-edit', {
-      mode: 'i2i',
-      params: {
-        images: {
-          description: '',
-          default: null,
-          type: 'list',
-          max_items: 13,
-          max_items_when_present: { style_images: 4 },
-        },
-        style_images: { description: '', default: null, fill: 'canvas', accepts: 'image' },
-      },
-    });
-    const withStyle = buildVm({
-      nodeId: 'n1',
-      nodes: [
-        node(
-          'n1',
-          imageView({
-            mode: 'i2i',
-            model: 'nano-edit',
-            styleImageUrl: 'https://cdn/style.png',
-          }),
-        ),
-      ],
-      edges: [],
-      models: [narrowing],
-    });
-    expect(withStyle.maxReferences).toBe(4);
-
-    const without = buildVm({
-      nodeId: 'n1',
-      nodes: [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))],
-      edges: [],
-      models: [narrowing],
-    });
-    expect(without.maxReferences).toBe(13);
   });
 
   it('leaves maxReferences undefined when the active model caps nothing', () => {

@@ -187,7 +187,7 @@ function GeneratePanelBody({
   // prompt text: onExecute reads them SYNCHRONOUSLY so the i2i source subset is
   // the prompt's state at click time (state would lag a frame). No React state
   // mirror — nothing in the render tree depends on the picks (the rail shows the
-  // full pool; requiresSource is model-derived).
+  // full pool).
   const atMentionedRef = React.useRef<string[]>([]);
   const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
     atMentionedRef.current = sourceIds;
@@ -352,7 +352,7 @@ function GeneratePanelBody({
       // entry under `params` that no image model writes.
       promptRequired: vm.promptRequired,
       maxInputChars: vm.maxInputChars,
-      ...sourcePlaces(vm.requiresSource, vm.referenceUrls),
+      missing: vm.missing,
       poolCount: vm.referenceUrls.length,
       poolCap: vm.maxReferences,
     })?.refusal ?? null;
@@ -619,7 +619,7 @@ function GeneratePanelBody({
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
       maxInputChars,
-      ...sourcePlaces(fresh.requiresSource, fresh.referenceUrls),
+      missing: fresh.missing,
       poolCount: fresh.referenceUrls.length,
       poolCap: fresh.maxReferences,
     });
@@ -790,27 +790,6 @@ function GeneratePanelBody({
       onExecute={onExecute}
     />
   );
-}
-
-/**
- * Where an image mode takes material.
- *
- * One place, the reference pool: connecting an image offers it and naming it
- * in the prompt uses it. Whether the mode needs one is the catalog's answer,
- * read off the wire as `sourcesByMode`.
- * @param requiresSource - Whether the active mode needs material at all.
- * @param references - The references named in the prompt.
- * @returns The place, and whether it holds anything.
- */
-function sourcePlaces(
-  requiresSource: boolean,
-  references: readonly string[],
-): { requiredSlots: string[]; filledSlots: string[] } {
-  if (!requiresSource) return { requiredSlots: [], filledSlots: [] };
-  return {
-    requiredSlots: [REFERENCE_POOL_PARAM],
-    filledSlots: references.length > 0 ? [REFERENCE_POOL_PARAM] : [],
-  };
 }
 
 /**

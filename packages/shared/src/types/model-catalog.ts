@@ -163,12 +163,6 @@ export interface ModelProvider {
 /** A kind of node a source slot takes. */
 export type SourceType = "image" | "video" | "audio";
 
-/** How many of a mode's slots have to hold something. */
-export const SOURCE_RULES = ["all_of", "any_of"] as const;
-
-/** Whether a mode takes every slot it offers or any one of them. */
-export type SourceRule = (typeof SOURCE_RULES)[number];
-
 /** Single model definition — one entry in the catalog response. */
 export interface ModelEntry {
   name: string;
