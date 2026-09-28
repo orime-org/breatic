@@ -131,34 +131,14 @@ export function HoverPreview({
   if (body) {
     content = body;
   } else if (isMedia && src) {
-    content = (
-      <div className='w-[220px] max-w-[220px]'>
-        <MediaPlayer
-          modality={kind}
-          src={src}
-          poster={poster}
-          variant='preview'
-        />
-      </div>
-    );
+    content = <MediaPlayer modality={kind} src={src} poster={poster} variant='preview' />;
   } else if (kind === 'image' && src) {
-    // Same sizing model as the media wrapper below (user 2026-07-23, decision
-    // B): a 220px-wide box filled by the image, height following its aspect —
-    // and sharp corners (decision A), matching video / audio which are already
-    // square. Not the old 220×220 object-contain bounding box.
-    content = (
-      <div className='w-[220px] max-w-[220px]'>
-        <img
-          src={src}
-          alt={alt}
-          draggable={false}
-          className='block w-full'
-        />
-      </div>
-    );
+    // Filling the preview's width, height following its aspect, sharp corners
+    // like video / audio (user 2026-07-23, decisions A and B).
+    content = <img src={src} alt={alt} draggable={false} className='block w-full' />;
   } else if (previewText) {
     content = (
-      <div className='max-h-[220px] max-w-[220px] overflow-hidden whitespace-pre-wrap p-1 text-xs text-popover-foreground'>
+      <div className='max-h-[220px] overflow-hidden whitespace-pre-wrap p-1 text-xs text-popover-foreground'>
         {previewText}
       </div>
     );
@@ -196,7 +176,9 @@ export function HoverPreview({
           // (already auto there). See the hover-preview spec §3.10 / INV-11.
           style={{ pointerEvents: 'auto' }}
         >
-          {content}
+          {/* One width for every form, so a short text or a hint opens as
+              wide as a picture does. */}
+          <div className='w-[220px]'>{content}</div>
         </HoverCardContent>
       ) : null}
     </HoverCard>

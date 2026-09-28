@@ -144,7 +144,7 @@ function AttachmentChipInner({
 function NodeRows({ rows, more }: { rows: PreviewRow[]; more: number }): React.JSX.Element {
   const t = useTranslation();
   return (
-    <div className='flex w-[220px] flex-col gap-1'>
+    <div className='flex flex-col gap-1'>
       {rows.map((row) => {
         const Icon = getNodeIcon(row.kind);
         return (
