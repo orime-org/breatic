@@ -4,11 +4,10 @@
 /**
  * Lock order of every path that touches join requests — real Postgres.
  *
- * Every path that writes a project's request rows, member rows or bell entries
- * takes that project's `projects` row lock first — `deleteProject` does, and so
- * do deciding a join request or a role upgrade, withdrawing a join request,
- * accepting a transfer and removing a studio member — so any two of them queue
- * instead of deadlocking. Deciding a join request also locks the requester's
+ * `deleteProject`, deciding a join request or a role upgrade, withdrawing a
+ * join request, accepting a transfer and removing a studio member each lock a
+ * project's `projects` row before its request and member rows, so any two of
+ * them queue instead of deadlocking. Deciding a join request also locks the requester's
  * studio membership before the project, so it never acts on a membership that a
  * concurrent removal is taking away.
  *
@@ -34,7 +33,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { ConflictError, initCore, NotFoundError } from "@breatic/core";
+import { ConflictError, ForbiddenError, initCore, NotFoundError } from "@breatic/core";
 import * as joinService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import * as decisionService from "@server/modules/decision/decision.service.js";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
@@ -395,7 +394,12 @@ describe("a role upgrade decision against an owner change", () => {
     const [accepted, approved] = await Promise.all([accepting!, approving!]);
 
     expect(accepted.status).toBe("fulfilled");
-    expect(sqlStateOf(approved.status === "rejected" ? approved.reason : null)).not.toBe(DEADLOCK);
+    // By the time the approval holds the project, its caller no longer owns it.
+    expect(approved.status === "rejected" ? approved.reason : null).toBeInstanceOf(ForbiddenError);
+    const [upgrade] = await sql<{ status: string }[]>`
+      SELECT status FROM role_upgrade_requests WHERE id = ${requestId}
+    `;
+    expect(upgrade!.status).toBe("pending");
     const [owner] = await sql<{ user_id: string }[]>`
       SELECT user_id FROM project_members
       WHERE project_id = ${s.projectId} AND role = 'owner' AND deleted_at IS NULL

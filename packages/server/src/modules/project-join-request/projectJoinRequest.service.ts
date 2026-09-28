@@ -17,13 +17,13 @@
  *   - {@link readdressOnOwnerChange} — a project that changed owner moves the
  *     bell entries of its pending requests to the new owner.
  *
- * Every path that writes a project's request rows, member rows or bell
- * entries takes that project's `projects` row lock first — filing, deciding
- * and withdrawing here, the delete cascade, accepting a transfer and removing
- * a studio member alike — so any two of them queue instead of deadlocking.
- * Deciding also locks the requester's studio membership before the project.
- * {@link readdressOnOwnerChange} relies on its caller already holding the
- * project lock.
+ * A path that locks a project's `projects` row together with any of its
+ * request or member rows takes the project row first: filing, deciding and
+ * withdrawing here, deciding a role upgrade, accepting a transfer, removing a
+ * studio member and the delete cascade. Every write to a join request happens
+ * under that project lock, which {@link readdressOnOwnerChange} relies on when
+ * it reads the pending requests unlocked. Deciding also locks the requester's
+ * studio membership before the project.
  *
  * A decision re-checks everything it assumed under those locks: the request is
  * still pending and not timed out, the caller owns the project now, the
@@ -213,7 +213,7 @@ export async function request(input: {
  */
 export async function cancelMine(projectId: string, requesterUserId: string): Promise<void> {
   const cancelled = await db.transaction(async (tx) => {
-    if (!(await projectRepo.lockLiveProject(projectId, tx))) return null;
+    await projectRepo.lockLiveProject(projectId, tx);
     const row = await requestsRepo.cancelPendingFor(projectId, requesterUserId, tx);
     if (row?.notificationId) await notificationRepo.retire(row.notificationId, tx);
     return row;
@@ -251,15 +251,13 @@ async function openForDecision(
   if (keys === null) return { refusal: "not_found" };
   const { projectId, requesterUserId } = keys;
   // `studio_id` never changes, so the unlocked read names the right studio.
-  const unlocked = await projectRepo.getProjectById(projectId, tx);
-  if (!unlocked) return { refusal: "not_found" };
-  const inStudio = await studioMembersRepo.lockMemberRole(unlocked.studioId, requesterUserId, tx);
-  if (!(await projectRepo.lockLiveProject(projectId, tx))) return { refusal: "not_found" };
+  const project = await projectRepo.getProjectById(projectId, tx);
+  if (!project) return { refusal: "not_found" };
+  const inStudio = await studioMembersRepo.lockMemberRole(project.studioId, requesterUserId, tx);
+  await projectRepo.lockLiveProject(projectId, tx);
   const row = await requestsRepo.lockRequest(requestId, tx);
   if (!row) return { refusal: "not_found" };
   if (row.status !== "pending") return { refusal: "conflict" };
-  const project = await projectRepo.getProjectById(projectId, tx);
-  if (!project) return { refusal: "not_found" };
   const req: OpenRequest = {
     id: row.id,
     projectId,

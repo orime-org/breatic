@@ -34,16 +34,14 @@ import type { StudioRole } from "@breatic/shared";
  * access outside this repo).
  * @param studioId - Studio UUID
  * @param userId - User UUID
- * @param tx - Enclosing transaction, when the caller is inside one
  * @returns Role, or null if the studio is missing/deleted or the user
  *   has no active membership
  */
 export async function getRole(
   studioId: string,
   userId: string,
-  tx?: DbTx,
 ): Promise<StudioRole | null> {
-  const rows = await (tx ?? db)
+  const rows = await db
     .select({ role: studioMembers.role })
     .from(studioMembers)
     .innerJoin(studios, eq(studios.id, studioMembers.studioId))

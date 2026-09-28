@@ -90,8 +90,8 @@ export async function leaveStudio(slug: string, userId: string): Promise<void> {
  *      already gone — and read it UNDER A LOCK, or a project transfer
  *      committing in the gap moves one of them to somebody else and the
  *      handover below collides with the one-owner index. The project rows
- *      are locked before their member rows, the order every path that
- *      writes a project's request or member rows follows
+ *      are locked before their member rows, the order the delete cascade
+ *      and the request decisions follow
  *   3. soft-delete the target's project rows BEFORE handing them over —
  *      `materializeOwner` upserts and clears `deleted_at`, so the one-owner
  *      partial unique index rejects the handover while the leaver still holds

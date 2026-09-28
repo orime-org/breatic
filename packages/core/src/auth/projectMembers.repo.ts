@@ -634,10 +634,10 @@ export async function softDeleteAllInProject(
  *
  * The `projects` rows are locked first, in id order, and the membership rows
  * second, in a separate statement. Handing a project over moves its pending
- * join requests to the admin, and every path that writes a project's request
- * or member rows (the delete cascade included) locks the project row before
- * them; one statement locking both tables would take the two rows of a pair in
- * an unspecified order.
+ * join requests to the admin, and the delete cascade and the request decisions
+ * lock the project row before its request and member rows; one statement
+ * locking both tables would take the two rows of a pair in an unspecified
+ * order.
  * @param studioId - Studio UUID
  * @param userId - The departing member's user UUID
  * @param tx - The enclosing transaction; the lock is meaningless without one

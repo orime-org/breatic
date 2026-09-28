@@ -411,7 +411,7 @@ async function openForDecision(
 ): Promise<OpenRequest | Refused> {
   const projectId = await requestsRepo.getProjectIdOf(input.requestId, tx);
   if (projectId === null) return { refusal: "not_found" };
-  if (!(await projectRepo.lockLiveProject(projectId, tx))) return { refusal: "not_found" };
+  await projectRepo.lockLiveProject(projectId, tx);
   const row = await requestsRepo.lockRequest(input.requestId, tx);
   if (!row) return { refusal: "not_found" };
   const req: OpenRequest = {

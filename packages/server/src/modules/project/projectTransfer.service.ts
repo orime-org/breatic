@@ -258,24 +258,23 @@ export async function confirmProjectTransfer(
     // between the check and materializeOwner, and the upsert would REVIVE the
     // membership row it had just soft-deleted.
     //
-    // The locks go in the order every path that writes a project's member or
-    // request rows shares: the recipient's `studio_members` row, the
-    // `projects` row, the offer, then the recipient's `project_members` row.
-    // Leaving locks `studio_members` before `project_members`, and the delete
-    // cascade locks the project before the offer, so both queue with this.
+    // The locks go the recipient's `studio_members` row, the `projects` row,
+    // the offer, then the recipient's `project_members` row. Leaving locks
+    // `studio_members` before `project_members`, and the delete cascade locks
+    // the project before the offer, so both queue with this.
     // `studio_id` never changes, so the unlocked read names the right studio.
     const offerProjectId = await transfersRepo.getProjectIdOf(transferId, tx);
     const project = offerProjectId ? await projectRepo.getProjectById(offerProjectId, tx) : null;
     const recipientStudioRole = project
       ? await studioMembersRepo.lockMemberRole(project.studioId, receiverUserId, tx)
       : null;
-    const live = project ? await projectRepo.lockLiveProject(project.id, tx) : false;
+    if (project) await projectRepo.lockLiveProject(project.id, tx);
     const opened = await openForDecision(tx, transferId, receiverUserId);
     if (isRefused(opened)) return opened;
     const offer = opened;
     const { projectId, fromUserId } = offer;
 
-    if (!project || !live) {
+    if (!project) {
       // The project was soft-deleted under an outstanding offer. Nothing will
       // ever answer it, so it is settled here rather than left holding the
       // project's only transfer slot — the same treatment the sibling branches
