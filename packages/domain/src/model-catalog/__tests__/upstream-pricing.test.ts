@@ -172,13 +172,14 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
 };
 
 /**
- * Every WaveSpeed provider entry in the catalog, keyed by its endpoint.
+ * Every WaveSpeed provider entry in the catalog, keyed by its endpoint. 3D is
+ * left out: its two models stay as they are and are not part of this catalog.
  *
  * @returns The provider entries by `model_id`.
  */
 function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
   const byEndpoint = new Map<string, FullProviderEndpoint>();
-  for (const modality of MODALITIES) {
+  for (const modality of MODALITIES.filter((m) => m !== "three_d")) {
     for (const model of getFullModelConfig(modality).models) {
       for (const provider of model.providers ?? []) {
         if (provider.name === "wavespeed") byEndpoint.set(provider.model_id, provider);

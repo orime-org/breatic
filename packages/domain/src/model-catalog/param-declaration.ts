@@ -62,11 +62,11 @@ const declarationSchema = z.object({
     .optional(),
   modes: z.array(z.string()).optional(),
   note: z.string().optional(),
-  // One spelling, because readers compare against this exact string: the
-  // source gate takes anything that is not `list` as a single URL, while the
-  // cap check and the transport iterate it. A capitalised spelling would pass
-  // a plain string check and flip both of those answers.
-  type: z.literal("list").optional(),
+  // One spelling each, because readers compare against these exact strings:
+  // the source gate takes anything that is not `list` as a single URL, while
+  // the cap check and the transport iterate it; `items` is a list editor whose
+  // entries carry `fields`; `text` is a free text control.
+  type: z.enum(["list", "items", "text"]).optional(),
   // Positive integers. A zero or a minus sign is read by every reader as no
   // cap at all, so it widens the limit the yaml meant to state; a fraction is
   // read as a cap and enforced, and there is no half a piece of material.
@@ -101,6 +101,9 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "max",
   "step",
   "remote_source",
+  "upstream",
+  "label",
+  "fields",
 ]);
 
 /** One parameter's declaration, as these checks read it. */
@@ -212,9 +215,9 @@ function faultsOn(
   // is refused by one reader and iterated by the other.
   const capped =
     declared.max_items !== undefined || declared.max_items_when_present !== undefined;
-  if (capped && declared.type !== "list") {
+  if (capped && declared.type !== "list" && declared.type !== "items") {
     const which = declared.max_items !== undefined ? "max_items" : "max_items_when_present";
-    faults.push(`${which} counts entries, so this has to declare type: list`);
+    faults.push(`${which} counts entries, so this has to declare type: list or items`);
   }
 
   // The conditional cap states a LOWER number that takes over while another

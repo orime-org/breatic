@@ -1,0 +1,332 @@
+# Models of this modality, every one run on WaveSpeed. Within a mode the first
+# model listed is the one a panel opens on, so entries are ordered by how the
+# catalog ranks them for their mode.
+# Guidelines:
+#   model.description    — max 40 chars, English. The picker draws it under
+#                          display_name, so it is what tells a reader which of
+#                          several models for one mode to pick: say what this
+#                          model is good at, never restate the name or the mode.
+#                          Only capabilities the panel reaches.
+#   model.guide          — what this model is for, in prose. The Skill prompt
+#                          and the canvas capability answer quote it whole, so a
+#                          sentence here the catalog or the panel can prove wrong
+#                          is a promise nothing keeps. Guarded by domain's
+#                          guides-name-what-the-model-takes test.
+#   model.prompt_upstream — the upstream field the prompt is sent as, when it is
+#                          not `prompt` (`text`, `text_prompt`).
+#   model.source_groups  — per mode, params of which at least one has to carry
+#                          material, for inputs the upstream schema leaves
+#                          optional one by one but refuses all empty.
+#   param.upstream       — the upstream field this param is sent as, when the
+#                          names differ. The one mapping the request builder,
+#                          the price estimate and the source check all read.
+#   param.label          — English label for a control only this model has;
+#                          shared controls take theirs from the locales.
+#   param.type           — list (reference pool), items (a list editor, with
+#                          `fields` and `max_items`), text (a free text field).
+#                          `values: [true, false]` draws a switch; `min`, `max`
+#                          and `step` draw a slider; other `values` an option group.
+#   param.default        — what a run sends when the reader sets nothing.
+#   provider.pricing     — the endpoint's WaveSpeed pricing contract, verbatim:
+#                          base_price (1,000,000 = 1 USD), the JSONata formula
+#                          (empty means base_price per call) and discount_rate
+#                          in percent. The price estimate evaluates it.
+#   generation_time      — max generation time in seconds (worst case)
+
+models:
+
+  - name: "mureka-v9.5-generate-song"
+    display_name: "Mureka V9.5 Song"
+    mode: ["t2m", "a2m"]
+    takes_prompt: true
+    tier: "recommended"
+    description: "Top-ranked; sings lyrics you write"
+    guide: "The full song when you have written the lyrics yourself."
+    generation_time: 300
+    source_groups:
+      - mode: "a2m"
+        any_of: ["song", "vocal", "melody"]
+    params:
+      lyrics:
+        description: "Lyrics to sing"
+        default: null
+        fill: "editor"
+      melody:
+        upstream: "melody_id"
+        description: "Melody to follow"
+        default: null
+        accepts: "audio"
+        optional: true
+        modes: ["a2m"]
+        fill: "canvas"
+      song:
+        upstream: "reference_id"
+        description: "Reference song"
+        default: null
+        accepts: "audio"
+        optional: true
+        modes: ["a2m"]
+        fill: "canvas"
+      vocal:
+        upstream: "vocal_id"
+        description: "Voice to sing with"
+        default: null
+        accepts: "audio"
+        optional: true
+        modes: ["a2m"]
+        fill: "canvas"
+    providers:
+      - name: "wavespeed"
+        model_id: "mureka-ai/mureka-v9.5/generate-song"
+        priority: 1
+        pricing:
+          base_price: 225000
+          formula: ""
+          discount_rate: 100
+
+  - name: "mureka-v9.5-generate-bgm"
+    display_name: "Mureka V9.5 BGM"
+    mode: "t2m"
+    takes_prompt: true
+    tier: "optional"
+    description: "Instrumental beds, no vocals"
+    guide: "An instrumental bed when you have no lyrics and do not want vocals."
+    generation_time: 300
+    params: {}
+    providers:
+      - name: "wavespeed"
+        model_id: "mureka-ai/mureka-v9.5/generate-bgm"
+        priority: 1
+        pricing:
+          base_price: 225000
+          formula: ""
+          discount_rate: 100
+
+  - name: "lyria-3-pro-music"
+    display_name: "Lyria 3 Pro"
+    mode: "t2m"
+    takes_prompt: true
+    tier: "optional"
+    description: "Mood steered by a reference image"
+    guide: "Music whose mood is set by a picture rather than by words."
+    generation_time: 300
+    params:
+      image:
+        description: "Source image"
+        default: null
+        accepts: "image"
+        optional: true
+        fill: "canvas"
+    providers:
+      - name: "wavespeed"
+        model_id: "google/lyria-3-pro/music"
+        priority: 1
+        pricing:
+          base_price: 80000
+          formula: ""
+          discount_rate: 100
+
+  - name: "minimax-music-cover"
+    display_name: "MiniMax Music Cover"
+    mode: "a2m"
+    takes_prompt: true
+    tier: "optional"
+    description: "Keeps the melody, swaps the style"
+    guide: "An existing recording kept as the melody and re-recorded in another style."
+    generation_time: 300
+    icon: "minimax"
+    params:
+      audio:
+        description: "Source audio"
+        default: null
+        accepts: "audio"
+        fill: "canvas"
+    providers:
+      - name: "wavespeed"
+        model_id: "minimax/music-cover"
+        priority: 1
+        pricing:
+          base_price: 150000
+          formula: ""
+          discount_rate: 100
+
+  - name: "sonilo-video-to-music"
+    display_name: "Sonilo Video to Music"
+    mode: "a2m"
+    takes_prompt: true
+    tier: "optional"
+    description: "Music timed to a clip's cuts"
+    guide: "A moving image as the reference, with the music following its pacing."
+    generation_time: 300
+    icon: "sonilo"
+    params:
+      video:
+        description: "Source video"
+        default: null
+        accepts: "video"
+        fill: "canvas"
+    providers:
+      - name: "wavespeed"
+        model_id: "sonilo/video-to-music"
+        priority: 1
+        pricing:
+          base_price: 9000
+          formula: "{\"total_price\": base_price * $max([10, $min([$ceil(get_duration(video)), 360])])}"
+          discount_rate: 100
+
+  - name: "sfx-1.6-text-to-audio"
+    display_name: "Mirelo SFX 1.6"
+    mode: "sfx"
+    takes_prompt: true
+    prompt_upstream: "text_prompt"
+    tier: "recommended"
+    description: "Foley-grade effects, seamless loops"
+    guide: "Text input — auditioning several takes of one effect and looping ambience seamlessly."
+    generation_time: 300
+    params:
+      loop:
+        upstream: "ambience"
+        label: "Seamless loop"
+        default: false
+        values: [true, false]
+        fill: "panel"
+      double_output:
+        default: false
+        fill: "none"
+        note: "pinned: one generation lands one result"
+      duration:
+        description: "Length in seconds"
+        default: 10
+        min: 0.1
+        max: 60
+        step: 0.1
+        fill: "panel"
+      num_samples:
+        default: 1
+        fill: "none"
+        note: "pinned: one generation lands one result"
+    providers:
+      - name: "wavespeed"
+        model_id: "mirelo-ai/sfx-1.6/text-to-audio"
+        priority: 1
+        pricing:
+          base_price: 10000
+          formula: "{\"total_price\": base_price * duration * num_samples}"
+          discount_rate: 100
+
+  - name: "sonilo-sfx-v1"
+    display_name: "Sonilo Text to SFX"
+    mode: "sfx"
+    takes_prompt: true
+    tier: "optional"
+    description: "Up to 3 min, lossless wav or flac"
+    guide: "Text input — one long unbroken bed, delivered lossless."
+    generation_time: 10
+    icon: "sonilo"
+    params:
+      audio_format:
+        description: "Output container"
+        values: ["mp3"]
+        default: "mp3"
+        fill: "none"
+        note: "output container, fixed by what the asset pipeline stores"
+      duration:
+        description: "Clip length in seconds"
+        values: [1, 2, 5, 10, 15, 20, 30, 60, 120, 180]
+        default: 5
+        fill: "panel"
+    providers:
+      - name: "wavespeed"
+        model_id: "sonilo/v1/text-to-sfx"
+        priority: 1
+        pricing:
+          base_price: 2000
+          formula: "{\"total_price\": base_price * $max([3, $min([duration, 180])])}"
+          discount_rate: 100
+
+  - name: "hunyuan-video-foley"
+    display_name: "HunyuanVideo-Foley"
+    mode: "sfx"
+    takes_prompt: true
+    tier: "optional"
+    description: "48 kHz foley locked to footage"
+    guide: "Video input — the model watches the footage and places the foley itself."
+    generation_time: 300
+    params:
+      video:
+        description: "Source video"
+        default: null
+        accepts: "video"
+        fill: "canvas"
+    providers:
+      - name: "wavespeed"
+        model_id: "wavespeed-ai/hunyuan-video-foley"
+        priority: 1
+        pricing:
+          base_price: 50000
+          formula: ""
+          discount_rate: 100
+
+  - name: "vocal-remover"
+    display_name: "Vocal Remover"
+    mode: "separate"
+    takes_prompt: false
+    tier: "internal"
+    description: "Voice out, backing track out"
+    guide: "A track split into the voice and everything else."
+    generation_time: 30
+    params:
+      audio:
+        description: "Source audio"
+        default: null
+        accepts: "audio"
+        fill: "none"
+        note: "mini-tool: no panel reaches this model"
+    providers:
+      - name: "wavespeed"
+        model_id: "wavespeed-ai/audio-vocal-isolator"
+        priority: 1
+        pricing:
+          base_price: 1000
+          formula: "{\"total_price\": $min([$ceil(get_duration(audio)), 600]) * base_price}"
+          discount_rate: 100
+
+  - name: "sfx-1.6-extend-audio"
+    display_name: "Mirelo Extend Audio"
+    mode: "extend"
+    takes_prompt: true
+    tier: "internal"
+    description: "Extends audio with a seamless tail"
+    guide: "Extends audio with a seamless tail"
+    generation_time: 300
+    params:
+      ambience:
+        default: false
+        fill: "none"
+        note: "mini-tool: no panel reaches this model"
+      append_duration:
+        default: 10
+        fill: "none"
+        note: "mini-tool: no panel reaches this model"
+      audio:
+        description: "Source audio"
+        default: null
+        accepts: "audio"
+        fill: "none"
+        note: "mini-tool: no panel reaches this model"
+      double_output:
+        default: false
+        fill: "none"
+        note: "pinned: one generation lands one result"
+      num_samples:
+        default: 1
+        fill: "none"
+        note: "pinned: one generation lands one result"
+    providers:
+      - name: "wavespeed"
+        model_id: "mirelo-ai/sfx-1.6/extend-audio"
+        priority: 1
+        pricing:
+          base_price: 10000
+          formula: "{\"total_price\": base_price * append_duration * num_samples}"
+          discount_rate: 100
