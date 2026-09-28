@@ -112,11 +112,6 @@ function ChatComposerInner({
   const picker = React.useRef<HTMLInputElement>(null);
   const box = React.useRef<HTMLTextAreaElement>(null);
   const tray = React.useRef<HTMLDivElement>(null);
-  const shown = React.useRef(attachments);
-  shown.current = attachments;
-  // Where the keyboard goes once the item it stood on is gone: an item's id,
-  // '' for the box, null when nothing is pending.
-  const landing = React.useRef<string | null>(null);
 
   // The box takes exactly the height of what is written in it, and the
   // wrapper below caps how much of that is on screen.
@@ -167,33 +162,21 @@ function ChatComposerInner({
   };
 
   /**
-   * Take an item out, keeping the keyboard in the tray: the removed item's
-   * button unmounts with it, and focus would otherwise fall to the body.
+   * Take an item out. When the keyboard stands on it, hand the keyboard to the
+   * next item, the previous one, or the box -- before the row unmounts and
+   * focus falls to the body.
    */
   const removeAttachment = React.useCallback(
     (id: string): void => {
-      const items = shown.current;
-      const at = items.findIndex((item) => item.id === id);
-      if (tray.current?.contains(document.activeElement)) {
-        landing.current = (items[at + 1] ?? items[at - 1])?.id ?? '';
+      const row = tray.current?.querySelector(`[data-attachment-id="${CSS.escape(id)}"]`);
+      if (row?.contains(document.activeElement)) {
+        const neighbour = (row.nextElementSibling ?? row.previousElementSibling)?.querySelector('button');
+        (neighbour ?? box.current)?.focus();
       }
       onRemoveAttachment?.(id);
     },
     [onRemoveAttachment],
   );
-
-  React.useEffect(() => {
-    const target = landing.current;
-    if (target === null) return;
-    landing.current = null;
-    if (target === '') {
-      box.current?.focus();
-      return;
-    }
-    tray.current
-      ?.querySelector<HTMLButtonElement>(`[data-attachment-id="${CSS.escape(target)}"] button`)
-      ?.focus();
-  }, [attachments]);
 
   return (
     <div
