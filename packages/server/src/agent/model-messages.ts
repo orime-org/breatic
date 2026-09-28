@@ -104,11 +104,13 @@ export function reachesTheModel(part: ToolPart): boolean {
  * `understand_media` answers with a string, which goes on as text unchanged.
  *
  * The `json` arm is what a tool reaches that answers with an object and says
- * nothing about how that object reads. No tool that gets this far does:
- * `ask_user` answers with an object and names no rendering, but it never
- * arrives here at all, being turned away by `reachesTheModel` before this is
- * called. A tool that arrives without adding itself to `RENDER_FOR_MODEL`
- * lands here rather than failing. Putting an object in the `text` arm fails
+ * nothing about how that object reads. `judge_likelihood` takes it on
+ * purpose: its whole answer is a handful of numbers under the model's own
+ * keys, so a renderer would cost more to keep true than the JSON costs to
+ * carry. `ask_user` also answers with an object and names no rendering, but
+ * it never arrives here at all, being turned away by `reachesTheModel` before
+ * this is called. A tool that arrives without adding itself to
+ * `RENDER_FOR_MODEL` lands here rather than failing. Putting an object in the `text` arm fails
  * validation instead, and it fails inside the stream -- nothing reaches the screen and nothing says
  * why, so a conversation goes quiet from that call onward.
  *

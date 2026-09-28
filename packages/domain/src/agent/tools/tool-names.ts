@@ -43,3 +43,12 @@ export const LIST_GENERATION_MODELS = "list_generation_models";
 
 /** Proposes a wired group of nodes for the reader to place (#229). */
 export const PROPOSE_CANVAS_ACTION = "propose_canvas_action";
+
+/**
+ * Ask for a judgement over what the model is holding, with the odds (#282).
+ *
+ * Written here for the reason above: the registry key, the baseline list and
+ * the requirements table all have to name the same tool, and a tool missing
+ * from the requirements table is one a deployment with no key offers anyway.
+ */
+export const JUDGE_LIKELIHOOD = "judge_likelihood";

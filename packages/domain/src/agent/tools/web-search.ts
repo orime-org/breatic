@@ -321,7 +321,13 @@ export function makeSearchTools(): {
     description:
       "Search the web. Returns extracts of the pages that answer the query, drawn from parts " +
       "of each page. Something absent from an extract may still be on the page. `count` asks " +
-      "for that many sources; the search returns what it finds.",
+      "for that many sources; the search returns what it finds. Each source arrives with a " +
+      "number: write something you took from one of them and mark it with that number where " +
+      "you write it, like [1], and a sentence drawing on several takes several markers, like " +
+      "[2][5]. Searches within one reply share one run of numbers, so use the number each " +
+      "source arrived with in this reply. Every reply numbers its own sources from one, so a " +
+      "number an earlier reply used stands for something else here: write about those " +
+      "sources in words. Never write a number no source arrived with in this reply.",
     inputSchema,
     // What the panel reads about a running call. The key is resolved by the web
     // package, which cannot import this one -- the SDK carries this field onto

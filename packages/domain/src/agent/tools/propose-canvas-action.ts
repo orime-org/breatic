@@ -924,9 +924,14 @@ export function renderProposalForModel(answer: ProposalAnswer): string {
 
 export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnswer> = tool({
   description:
-    "Propose the canvas nodes for what the reader asked for, as a card they " +
-    "place with one press. Something has to generate here: asked for words " +
-    "and nothing else, write them in your reply instead. You decide the " +
+    "The canvas is where models are run and where the pieces of one job are " +
+    "laid out in relation to each other. Propose the canvas nodes for what " +
+    "the reader asked for, as a card they place with one press, and the " +
+    "nodes are there, configured and wired. Something has to generate here: " +
+    "asked for words and nothing else, write them in your reply instead, " +
+    "where they read them and take them. Copy that is one part of a job the " +
+    "canvas is doing goes with the rest, held with it in one group, rather " +
+    "than half in your reply and half on the canvas. You decide the " +
     "shape: an empty node and a generation for a picture; the copy for the " +
     "same job as a written node beside them; one " +
     "empty node feeding several generations for several takes on one thing. " +

@@ -144,6 +144,12 @@ understand_media_read_floor_ms: 5000
 # The whole clip goes up inside it: measured, 26 MiB of base64 took 61 seconds.
 understand_media_call_timeout_ms: 180000
 
+# How long the WHOLE judgement call may take, in milliseconds -- every
+# delivery of it and every backoff between them, because a signal spanning the
+# call is what holds the wait to this figure. Measured, the endpoint answers in
+# 285-395 ms once connected, and 1181 ms on the first call of a process.
+judge_likelihood_timeout_ms: 10000
+
 # How much the model may write about one piece of media, in tokens.
 # The same figure web_search takes, for the same measured reason: 2048 returns
 # about a third of the text 8192 does, and the difference in time is 19ms.
