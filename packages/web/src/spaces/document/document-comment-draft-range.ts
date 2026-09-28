@@ -227,8 +227,7 @@ function endLineAt(doc: ProseMirrorNode, pos: number): EndLine | null {
  * @param line - The line the end sat in before it.
  * @returns The position, or null when the line is gone or changed.
  */
-function lineStill(doc: ProseMirrorNode, line: EndLine | null): number | null {
-  if (line === null) return null;
+function lineStill(doc: ProseMirrorNode, line: EndLine): number | null {
   const row = rowById(doc, line.id);
   const words = row === undefined ? undefined : contentRangeOf(row);
   return words !== undefined &&
@@ -316,12 +315,17 @@ function carryAcrossYjs(
 ): DraftRange | null {
   const start = endAfterYjs(bound, held.tracked.start);
   const end = endAfterYjs(bound, held.tracked.end);
-  const from = start.deleted
-    ? lineStill(tr.doc, endLineAt(tr.before, range.from))
-    : start.at;
-  const to = end.deleted
-    ? lineStill(tr.doc, endLineAt(tr.before, range.to))
-    : end.at;
+  /**
+   * Finds an end again by the line it sat in before the change.
+   * @param pos - The end before the change.
+   * @returns Where it is now, or null once its line is gone or changed.
+   */
+  const byLine = (pos: number): number | null => {
+    const line = endLineAt(tr.before, pos);
+    return line === null ? null : lineStill(tr.doc, line);
+  };
+  const from = start.deleted ? byLine(range.from) : start.at;
+  const to = end.deleted ? byLine(range.to) : end.at;
   return from !== null && to !== null && to > from ? { from, to } : null;
 }
 
