@@ -83,6 +83,10 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   // one and nothing aborts a task over a stream that would not take an event:
   // the lock that answered "busy", the error naming its holder, and the 503
   // the handling-open publish raised are all gone.
+  // Voices come from the catalog alone since #2156: the two errors of the
+  // vendor voice lookups went with the lookups.
+  'server.canvas.voices_provider_unconfigured',
+  'server.canvas.voices_upstream_failed',
   'canvas.generatePanel.errorBusy',
   'server.canvas.node_locked',
   'server.canvas.stream_unavailable',

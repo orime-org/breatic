@@ -120,9 +120,7 @@
       "too_many_inputs": "이 모델은 이런 종류의 입력을 최대 {limit}개까지 받지만 {actual}개가 전달되었습니다",
       "history_entry_not_found": "기록을 찾을 수 없습니다",
       "voices_model_not_found": "이 모델은 사용할 수 없습니다",
-      "voices_not_offered": "이 모델에는 음성 목록이 없습니다",
-      "voices_provider_unconfigured": "이 서버에서는 음성을 사용할 수 없습니다",
-      "voices_upstream_failed": "음성을 불러오지 못했습니다. 다시 시도해 주세요."
+      "voices_not_offered": "이 모델에는 음성 목록이 없습니다"
     },
     "membership": {
       "already_subscribed": "이미 멤버십이 있습니다.",
