@@ -81,14 +81,21 @@ export function useAttachFiles(projectId: string, conversationId: string | undef
 
   const accept = React.useMemo(() => attachAccept(), []);
 
-  const notice = React.useMemo((): string | undefined => {
-    if (said === null) return undefined;
-    if (said.key === 'unavailable') return t('chat.composer.attachUnavailable');
-    if (said.key === 'full') return t('chat.composer.attachFull', { limit: said.limit });
-    if (said.key === 'tooLong') return t('chat.composer.attachTooLong');
-    if (said.key === 'tooLarge') return t('chat.composer.attachTooLarge', { filename: said.filename });
-    return t('chat.composer.attachUnsupported', { filename: said.filename });
-  }, [said, t]);
+  // Worked out on every render: `t` keeps one identity across a language
+  // switch, so a memo on it would keep the first language. A string compares
+  // by value, so the composer's memo still holds.
+  const notice =
+    said === null
+      ? undefined
+      : said.key === 'unavailable'
+        ? t('chat.composer.attachUnavailable')
+        : said.key === 'full'
+          ? t('chat.composer.attachFull', { limit: said.limit })
+          : said.key === 'tooLong'
+            ? t('chat.composer.attachTooLong')
+            : said.key === 'tooLarge'
+              ? t('chat.composer.attachTooLarge', { filename: said.filename })
+              : t('chat.composer.attachUnsupported', { filename: said.filename });
 
   return { attach, accept, notice };
 }
