@@ -64,7 +64,7 @@ vi.mock("@server/utils/send-best-effort-mail.js", () => ({
 
 import type Stripe from "stripe";
 import postgres from "postgres";
-import { initCore, loadLocales, getUserMembershipTier } from "@breatic/core";
+import { initCore, loadLocales, getUserMembershipTier, getSubscriptionPlan } from "@breatic/core";
 import { upsertSubscription } from "@breatic/core";
 import { handleSubscriptionEvent } from "@server/modules/subscription/subscription-events.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
@@ -96,8 +96,33 @@ afterAll(async () => {
   await sql?.end({ timeout: 1 });
 });
 
-const PRO_PRICE = "price_1U5OqmGeRYMxofhepn2ij8zp";
-const TEAM_PRICE = "price_1U5OrkGeRYMxofhepeUDWhqB";
+// Asked of the same loader the code under test asks, so the suite cannot
+// disagree with the price list it is running against. What that list holds
+// depends on the machine: a developer's own `config/subscription.yaml`, or
+// the fixture `global-setup.ts` lays down when there is none.
+const PRO_PRICE = getSubscriptionPlan("pro", "month").stripePriceId;
+
+/**
+ * A price object as Stripe expands it, built from the list we sell.
+ *
+ * All four fields, because the read compares three of them against our own
+ * plan before it will say what tier a subscription buys. A stub carrying only
+ * an id reads as a price charging an unknown amount, which is the one thing
+ * that answer is for.
+ * @param tier - Which tier this price sells.
+ * @param period - Which period it is billed over.
+ * @returns The price, expanded.
+ */
+function priceOf(tier: "pro" | "team", period: "month" | "year"): unknown {
+  const plan = getSubscriptionPlan(tier, period);
+  return {
+    id: plan.stripePriceId,
+    unit_amount: plan.priceCents,
+    currency: plan.currency,
+    recurring: { interval: period },
+  };
+}
+
 const PERIOD_END = Math.floor(Date.now() / 1000) + 30 * 24 * 3600;
 
 /**
@@ -145,7 +170,7 @@ function stripeSub(over: Record<string, unknown> = {}): Stripe.Subscription {
     latest_invoice: null,
     items: {
       data: [
-        { id: "si_1", current_period_end: PERIOD_END, price: { id: PRO_PRICE } },
+        { id: "si_1", current_period_end: PERIOD_END, price: priceOf("pro", "month") },
       ],
     },
     ...over,
@@ -291,7 +316,7 @@ describe("handleSubscriptionEvent — out of order (#106 §8)", () => {
             {
               id: "si_1",
               current_period_end: PERIOD_END,
-              price: { id: TEAM_PRICE },
+              price: priceOf("team", "month"),
             },
           ],
         },
@@ -388,7 +413,7 @@ describe("handleSubscriptionEvent — an upgrade that went unpaid (#106 §7.3)",
         customer: customerId,
         pending_update: {
           expires_at: 0,
-          subscription_items: [{ id: "si_1", price: { id: TEAM_PRICE } }],
+          subscription_items: [{ id: "si_1", price: priceOf("team", "month") }],
         },
       });
       stripe.subscriptions.retrieve.mockResolvedValueOnce(pending);
@@ -416,7 +441,9 @@ describe("handleSubscriptionEvent — an upgrade that went unpaid (#106 §7.3)",
       expect(bells.map((b) => b.type)).toEqual([
         "membership.upgrade_incomplete",
       ]);
-      expect(bells[0]?.payload).toEqual({ toTier: "team" });
+      // The period travels with the tier: this line is read by somebody who
+      // may have been moving between periods rather than tiers.
+      expect(bells[0]?.payload).toEqual({ toTier: "team", toPeriod: "month" });
     } finally {
       await dropUser(userId);
     }
@@ -433,7 +460,7 @@ describe("handleSubscriptionEvent — an upgrade that went unpaid (#106 §7.3)",
         customer: customerId,
         pending_update: {
           expires_at: 0,
-          subscription_items: [{ id: "si_1", price: { id: TEAM_PRICE } }],
+          subscription_items: [{ id: "si_1", price: priceOf("team", "month") }],
         },
       });
       // 库里那一行是干净的：待付标记已经被别的写入方清掉了。
@@ -461,7 +488,9 @@ describe("handleSubscriptionEvent — an upgrade that went unpaid (#106 §7.3)",
       expect(bells.map((b) => b.type)).toEqual([
         "membership.upgrade_incomplete",
       ]);
-      expect(bells[0]?.payload).toEqual({ toTier: "team" });
+      // The period travels with the tier: this line is read by somebody who
+      // may have been moving between periods rather than tiers.
+      expect(bells[0]?.payload).toEqual({ toTier: "team", toPeriod: "month" });
     } finally {
       await dropUser(userId);
     }
@@ -592,6 +621,59 @@ describe("handleSubscriptionEvent — 哪些事件归这条腿 (#106 §8)", () =
       await dropUser(userId);
     }
   });
+
+  it("reports both figures when what Stripe charged is not what we list, marks nothing done, and grants no tier", async () => {
+    // A price id pasted into the wrong slot, or an amount edited at Stripe,
+    // makes the two copies of one figure differ. Answering "unknown" here
+    // would be a lie the panel repeats: it knows exactly which offer this is,
+    // and what it disagrees about is the money.
+    const { userId, customerId } = await makeCustomerAccount();
+    const eventId = `evt_money_${Date.now()}`;
+    try {
+      const sub = stripeSub({
+        id: `sub_money_${seq}`,
+        customer: customerId,
+        items: {
+          data: [
+            {
+              id: "si_1",
+              current_period_end: PERIOD_END,
+              price: {
+                id: PRO_PRICE,
+                unit_amount: 1,
+                currency: "usd",
+                recurring: { interval: "month" },
+              },
+            },
+          ],
+        },
+      });
+      stripe.subscriptions.retrieve.mockResolvedValueOnce(sub);
+
+      const outcome = await handleSubscriptionEvent(
+        event("customer.subscription.created", sub, eventId),
+      );
+
+      expect(outcome.status).toBe("priceDisagreement");
+      expect(
+        outcome.status === "priceDisagreement" && outcome.actual.cents,
+      ).toBe(1);
+      expect(
+        outcome.status === "priceDisagreement" && outcome.expected.cents,
+      ).toBe(getSubscriptionPlan("pro", "month").priceCents);
+
+      // Unmarked, so a redelivery after the price is put right still works.
+      const marks = await sql<{ count: string }[]>`
+        SELECT count(*)::text AS count FROM stripe_webhook_events
+        WHERE event_id = ${eventId}
+      `;
+      expect(marks[0]?.count).toBe("0");
+      expect(await getUserMembershipTier(userId)).toBe("base");
+    } finally {
+      await sql`DELETE FROM stripe_webhook_events WHERE event_id = ${eventId}`;
+      await dropUser(userId);
+    }
+  });
 });
 
 describe("并发写入：后取到的快照说了算 (#106 §6.5.5)", () => {
@@ -618,8 +700,9 @@ describe("并发写入：后取到的快照说了算 (#106 §6.5.5)", () => {
         stripeSub({ id: stripeId, customer: customerId, status: "incomplete" }),
         userId,
       );
+      if (!stale.ok) throw new Error(`fixture unreadable: ${stale.reason}`);
       await upsertSubscription({
-        ...stale!,
+        ...stale.write,
         observedAt: new Date(Date.now() - 60_000),
       });
 

@@ -161,11 +161,17 @@ export type {
   MembershipLimits,
   ComparableMembershipTier,
   SubscribableMembershipTier,
+  BillingPeriod,
+  MembershipOffer,
   SubscriptionSituation,
   SubscriptionActionAvailability,
-  UpgradeOffer,
+  MoveOffer,
+  CardAction,
+  CardActionInput,
+  MembershipCard,
   SubscriptionSummary,
   TierOffer,
+  TierPrice,
   AccountUsage,
   AccountMembership,
 } from "@shared/types/membership.js";
@@ -181,6 +187,9 @@ export {
   holdsActionableSubscription,
   subscriptionActions,
   isComparableMembershipTier,
+  BILLING_PERIODS,
+  canMoveTo,
+  cardAction,
 } from "@shared/types/membership.js";
 
 export type {

@@ -168,6 +168,29 @@ describe('what the card says before it is pressed', () => {
     ).toBeTruthy();
   });
 
+  it('tells the reader where the prompt the agent wrote is found', () => {
+    // The prompt lives in the generation panel, and a reader new to the canvas
+    // does not know a right-click opens it (#289).
+    listModels.mockResolvedValue(CATALOG);
+    renderCard();
+
+    expect(
+      screen.getByText('Prompt ready. Right-click the node and choose Generate to open the generation panel and see it.'),
+    ).toBeTruthy();
+  });
+
+  it('says the settings are ready where the model draws no prompt box', () => {
+    listModels.mockResolvedValue(CATALOG);
+    renderCard(true, {
+      ...PAIR,
+      nodes: PAIR.nodes.map((n) => (n.role === 'generate' ? { ...n, takesPrompt: false } : n)),
+    });
+
+    expect(
+      screen.getByText('Settings ready. Right-click the node and choose Generate to open the generation panel and see them.'),
+    ).toBeTruthy();
+  });
+
   it('quotes the price from the catalog, not from the model that proposed it', async () => {
     listModels.mockResolvedValue(CATALOG);
     renderCard();

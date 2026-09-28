@@ -17,7 +17,7 @@
  */
 
 import { and, desc, eq, isNull, lte } from "drizzle-orm";
-import type { MembershipTier } from "@breatic/shared";
+import type { BillingPeriod, MembershipTier } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
 import { subscriptions } from "@core/db/schema.js";
 import type {
@@ -35,6 +35,8 @@ export interface StoredSubscription extends SubscriptionRecord {
   readonly stripeItemId: string | null;
   /** Which tier the unpaid upgrade is for, when there is one. */
   readonly pendingTier: MembershipTier | null;
+  /** Which period it moves to, when there is one. */
+  readonly pendingPeriod: BillingPeriod | null;
   /** Where to go to pay an outstanding invoice, when there is one. */
   readonly payableInvoiceUrl: string | null;
   /** When the Stripe snapshot behind this row was taken. */
@@ -49,6 +51,14 @@ export interface SubscriptionWrite {
   readonly stripeSubscriptionId: string;
   /** The tier it has been paid for. */
   readonly tier: MembershipTier;
+  /**
+   * How often it is billed.
+   *
+   * Beside the tier rather than folded into it: the same tier is sold over
+   * both periods at two prices, and the panel prints the price, the renewal
+   * date and what this account may move to from this pair.
+   */
+  readonly period: BillingPeriod;
   /** Stripe's own status word. */
   readonly status: StripeSubscriptionStatus;
   /** When the paid period ends, from `items.data[0].current_period_end`. */
@@ -61,6 +71,13 @@ export interface SubscriptionWrite {
   readonly hasPendingUpdate: boolean;
   /** The tier that upgrade is for, when there is one. */
   readonly pendingTier: MembershipTier | null;
+  /**
+   * The period that change moves to, when there is one.
+   *
+   * Separate from `pendingTier` because a change can move the period without
+   * moving the tier: PRO monthly to PRO yearly is one of the moves on offer.
+   */
+  readonly pendingPeriod: BillingPeriod | null;
   /** The hosted page for an outstanding invoice, when there is one. */
   readonly payableInvoiceUrl: string | null;
   /**
@@ -88,12 +105,15 @@ function toStored(row: SubscriptionRow): StoredSubscription {
     // Both tier columns are checked by the database against the same five
     // values as `users.membership_tier`, so what comes back is one of them.
     tier: row.tier as MembershipTier,
+    // Checked by the database against the two the product sells (0081).
+    period: row.period as BillingPeriod,
     status: row.status,
     currentPeriodEnd: row.currentPeriodEnd,
     cancelAtPeriodEnd: row.cancelAtPeriodEnd,
     stripeItemId: row.stripeItemId,
     hasPendingUpdate: row.hasPendingUpdate,
     pendingTier: (row.pendingTier as MembershipTier | null) ?? null,
+    pendingPeriod: (row.pendingPeriod as BillingPeriod | null) ?? null,
     payableInvoiceUrl: row.payableInvoiceUrl,
     observedAt: row.observedAt,
   };
@@ -152,12 +172,14 @@ export async function upsertSubscription(
     userId: write.userId,
     stripeSubscriptionId: write.stripeSubscriptionId,
     tier: write.tier,
+    period: write.period,
     status: write.status,
     currentPeriodEnd: write.currentPeriodEnd,
     cancelAtPeriodEnd: write.cancelAtPeriodEnd,
     stripeItemId: write.stripeItemId,
     hasPendingUpdate: write.hasPendingUpdate,
     pendingTier: write.pendingTier,
+    pendingPeriod: write.pendingPeriod,
     payableInvoiceUrl: write.payableInvoiceUrl,
     observedAt: write.observedAt,
   };
@@ -198,6 +220,33 @@ async function readOne(
 }
 
 /**
+ * The columns one write to `subscriptions` carries.
+ *
+ * Every one of them is overwritten when the row already exists, apart from the
+ * two that name which row it is, so the shape is closed on purpose: a column
+ * the table has and this does not cannot reach the update, and a column added
+ * here reaches it without anybody remembering to list it twice.
+ */
+type SubscriptionValues = Required<
+  Pick<
+    typeof subscriptions.$inferInsert,
+    | "userId"
+    | "stripeSubscriptionId"
+    | "tier"
+    | "period"
+    | "status"
+    | "currentPeriodEnd"
+    | "cancelAtPeriodEnd"
+    | "stripeItemId"
+    | "hasPendingUpdate"
+    | "pendingTier"
+    | "pendingPeriod"
+    | "payableInvoiceUrl"
+    | "observedAt"
+  >
+>;
+
+/**
  * Runs the insert-or-update for one subscription row.
  *
  * No handling for "this account already holds a live subscription": that
@@ -213,24 +262,25 @@ async function readOne(
  *   view of this subscription is already stored.
  */
 async function insertOrUpdate(
-  values: typeof subscriptions.$inferInsert & { observedAt: Date },
+  values: SubscriptionValues,
   tx: DbTx | undefined,
 ): Promise<SubscriptionRow[]> {
+  // Everything this write carries, minus the two columns that say WHICH row
+  // it is. Derived rather than listed a second time: a hand-written set
+  // clause is a copy of the value list that nothing compares against, so a
+  // column added to one and forgotten in the other is written on insert and
+  // silently frozen on every update afterwards. That is what happened to
+  // `period` — an account moved to yearly, Stripe billed yearly, and the
+  // row went on saying monthly.
+  const { userId: _userId, stripeSubscriptionId: _id, ...overwritten } = values;
+
   return await (tx ?? db)
     .insert(subscriptions)
     .values(values)
     .onConflictDoUpdate({
       target: subscriptions.stripeSubscriptionId,
       set: {
-        tier: values.tier,
-        status: values.status,
-        currentPeriodEnd: values.currentPeriodEnd,
-        cancelAtPeriodEnd: values.cancelAtPeriodEnd,
-        stripeItemId: values.stripeItemId,
-        hasPendingUpdate: values.hasPendingUpdate,
-        pendingTier: values.pendingTier,
-        payableInvoiceUrl: values.payableInvoiceUrl,
-        observedAt: values.observedAt,
+        ...overwritten,
         // A subscription that was soft-deleted and then heard from again is
         // live; nothing else would put the row back in the account's list.
         deletedAt: null,

@@ -568,6 +568,13 @@
       "when": 1790060261169,
       "tag": "0080_credit_lots_source_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1790155738138,
+      "tag": "0081_subscription_billing_period",
+      "breakpoints": true
     }
   ]
 }

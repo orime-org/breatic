@@ -107,8 +107,8 @@ async function giveSubscription(
   seq += 1;
   await sql`
     INSERT INTO subscriptions
-      (user_id, stripe_subscription_id, tier, status, current_period_end)
-    VALUES (${userId}, ${`sub_stale_${Date.now()}_${seq}`}, 'pro', ${status},
+      (user_id, stripe_subscription_id, tier, period, status, current_period_end)
+    VALUES (${userId}, ${`sub_stale_${Date.now()}_${seq}`}, 'pro', 'month', ${status},
             ${periodEnd})
   `;
 }

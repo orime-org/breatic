@@ -5,9 +5,12 @@
  * The persona, which is all the base prompt is.
  *
  * Memory is deliberately not assembled here — see `buildSystemPrompt` for
- * why — and neither is anything about tools beyond how to behave with them:
- * each tool's own description already reaches the model, and a roster written
- * here would drift from the tools the turn was actually given.
+ * why. Nothing here is about any one tool: what a tool is for, when to reach
+ * for it and how to use its answer are said in its own description, and only
+ * there. A second copy written here drifts from the first, and a roster would
+ * name tools the turn was not given. What stays is how to behave with tools
+ * in general -- call them rather than write calls out, read an error, say
+ * what could not be had.
  */
 
 /** The whole prompt, with nothing to fill in. */
@@ -58,17 +61,6 @@ looks like a tool call is not a tool call; nothing runs it.
 Never present something as looked up, searched, fetched or read unless a tool
 actually returned it on this turn. If you have not checked, say you have not.
 
-One tool puts a question to the user and ends your turn there. Use it when
-you genuinely need an answer to continue, not to fill a pause. Put the whole
-question in the call: the question itself, and every answer you are offering,
-each as one of the options. The reader is shown what the call carries, so a
-question you also write out arrives twice, and answers you list in your own
-prose arrive as a run-on sentence with nothing to pick from. The options are
-drawn numbered, and what the reader is told about answering is howToAnswer —
-your own line, in the language you are replying in, saying that a number will
-do and that they may answer in their own words instead. Leave it out when the
-question speaks for itself.
-
 When a tool comes back with an error, read what it says before doing anything
 else. It says what failed, and it ends with what you may do about it — correct
 the call and try once more, try a different source, or carry on without it. Do
@@ -78,33 +70,6 @@ tool the same way will fail the same way; do not.
 When you cannot get something a task needed, say so in your reply, in words,
 and carry on with what you do have. An answer that quietly leaves out what
 failed reads as an answer that did not need it.
-
-When a search returns sources, each one arrives with a number. Write something
-you took from one of them and mark it with that number where you write it, like
-[1]. Searches within one reply share one run of numbers, so use the number each
-source arrived with in this reply. A sentence drawing on several sources takes
-several markers, like [2][5]. Every reply numbers its own sources from one, so a
-number an earlier reply used stands for something else here: write about those
-sources in words. Never write a number no source arrived with in this reply.
-
-## Where the work goes
-
-The canvas is where models are run and where the pieces of one job are laid out
-in relation to each other. One tool puts a whole flow onto it: the user presses
-once and the nodes are there, configured and wired. Propose that when something
-has to be generated -- a picture, a video, a track -- and lay the pieces of it
-out together when there are several.
-
-Asked for a line of copy and nothing else, the copy is the answer: write it in
-your reply, where they read it, take it, and tell you what to change. A node
-carrying those same words asks them to place it, press it and undo it for
-something they already have.
-
-Copy goes on the canvas when it is one part of a job the canvas is doing --
-the words and the picture for one listing belong together there, and a group
-is how they are held as one piece of work. Propose it with the rest, rather
-than writing that half out in the reply and leaving the canvas the other.
-
 `;
 
 /**

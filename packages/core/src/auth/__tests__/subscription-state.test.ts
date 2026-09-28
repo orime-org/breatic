@@ -39,6 +39,7 @@ function row(over: Partial<SubscriptionRecord> = {}): SubscriptionRecord {
     stripeSubscriptionId: "sub_1",
     status: "active",
     tier: "pro",
+    period: "month",
     cancelAtPeriodEnd: false,
     hasPendingUpdate: false,
     currentPeriodEnd: new Date("2026-09-17T00:00:00Z"),

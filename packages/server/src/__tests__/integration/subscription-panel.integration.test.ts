@@ -60,7 +60,7 @@ vi.mock("@server/infra/stripe.js", () => ({
 
 import type Stripe from "stripe";
 import postgres from "postgres";
-import { env, initCore, loadLocales, getUserMembershipTier } from "@breatic/core";
+import { env, initCore, loadLocales, getUserMembershipTier, getSubscriptionPlan } from "@breatic/core";
 import { readSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
 
@@ -103,8 +103,29 @@ afterAll(async () => {
   await sql?.end({ timeout: 1 });
 });
 
-const PRO_PRICE = "price_1U5OqmGeRYMxofhepn2ij8zp";
 const PERIOD_END = Math.floor(Date.now() / 1000) + 30 * 24 * 3600;
+
+/**
+ * A price object as Stripe expands it, built from the list we sell.
+ *
+ * All four fields, because the read compares three of them against our own
+ * plan before it will say what tier a subscription buys. A stub carrying only
+ * an id reads as a price charging an unknown amount, which is the one thing
+ * that answer is for.
+ * @param tier - Which tier this price sells.
+ * @param period - Which period it is billed over.
+ * @returns The price, expanded.
+ */
+function priceOf(tier: "pro" | "team", period: "month" | "year"): unknown {
+  const plan = getSubscriptionPlan(tier, period);
+  return {
+    id: plan.stripePriceId,
+    unit_amount: plan.priceCents,
+    currency: plan.currency,
+    recurring: { interval: period },
+  };
+}
+
 
 /**
  * Creates an account.
@@ -152,7 +173,7 @@ function stripeSub(over: Record<string, unknown> = {}): Stripe.Subscription {
     latest_invoice: null,
     items: {
       data: [
-        { id: "si_1", current_period_end: PERIOD_END, price: { id: PRO_PRICE } },
+        { id: "si_1", current_period_end: PERIOD_END, price: priceOf("pro", "month") },
       ],
     },
     ...over,

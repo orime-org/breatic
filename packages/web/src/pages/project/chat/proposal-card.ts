@@ -53,6 +53,19 @@ export interface NodeTodos {
   notes: string[];
 }
 
+/**
+ * The two lines that tell the reader where a generation's setup is found.
+ *
+ * Passed in rather than looked up here, so this file stays free of the
+ * translation layer and the card decides the words.
+ */
+export interface PanelLines {
+  /** For a generation whose prompt the agent wrote. */
+  prompt: string;
+  /** For one whose panel has no prompt box, or that carries no prompt. */
+  settings: string;
+}
+
 /** What the card costs and how long it takes, when the catalog knows. */
 export interface ProposalPrice {
   /** The longest of the runs. */
@@ -162,11 +175,16 @@ function runsOf(proposal: CanvasProposal): number[] {
  * prompt itself: the mark says what goes in that place, the line here says
  * what to do about it before pressing. Filed under the node they are about,
  * and nodes asking for the same things in the same words share one group.
+ *
+ * Every generation ends with one more line saying where its setup is found:
+ * what the agent wrote lives in the generation panel, and a reader new to the
+ * canvas does not know a right-click opens it (#289).
  * @param proposal - The proposal the card draws.
+ * @param lines - The words for that last line, in the reader's language.
  * @returns One group per node that asks for anything, in the proposal's order.
  * @throws {never} Never.
  */
-export function todosOf(proposal: CanvasProposal): NodeTodos[] {
+export function todosOf(proposal: CanvasProposal, lines: PanelLines): NodeTodos[] {
   // A mark asking for material is about the empty node it points at, and
   // several generations may point at the same one. Named under that node, it
   // is said once; named under each generation, the reader reads three photos
@@ -224,6 +242,12 @@ export function todosOf(proposal: CanvasProposal): NodeTodos[] {
         slot.note,
       );
     }
+    if (node.role !== 'generate') return;
+    // A model drawing no prompt box shows nothing the agent wrote, so saying
+    // the prompt is written would send the reader looking for a box that is
+    // not there. The check has already answered which kind this is.
+    const writtenPrompt = node.takesPrompt !== false && (node.prompt?.length ?? 0) > 0;
+    add(at, at, writtenPrompt ? lines.prompt : lines.settings);
   });
   const groups: NodeTodos[] = [];
   proposal.nodes.forEach((node, at) => {

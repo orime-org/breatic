@@ -26,10 +26,14 @@ import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
 import { useCreditOverview } from '@web/features/credits/use-credit-overview';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
+import { useMembershipCheckoutReturn } from '@web/features/membership/use-membership-checkout-return';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { studioTabPath } from '@web/pages/studio/container/studio-tabs';
-import { useCurrentUserStore } from '@web/stores/current-user';
+import {
+  refreshCurrentUser,
+  useCurrentUserStore,
+} from '@web/stores/current-user';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 import { usePaymentTiers } from '@web/features/credits/use-payment-tiers';
 
@@ -102,6 +106,20 @@ export function StudioAccountMenu(): React.JSX.Element {
   // designating a pack or asking for a refund invalidates it, so the next
   // open here reads the new figure rather than the one from before.
   const overview = useCreditOverview(menuOpen);
+
+  // Reports what a membership checkout came to, on the way back from it. It
+  // lives beside the credits return for the same reason that one does: the
+  // studio layout mounts this menu, so it is on screen whichever page the
+  // purchase was started from.
+  useMembershipCheckoutReturn();
+
+  // Opening the menu is the moment somebody looks at the tier and the avatar,
+  // and both of them arrived with the session payload at boot. A purchase
+  // settles server-side after Stripe has already sent the browser home, so
+  // without this the menu can go on naming the tier the account left behind.
+  React.useEffect(() => {
+    if (menuOpen) void refreshCurrentUser();
+  }, [menuOpen]);
 
   // How long the return page may wait comes from the server, on the list the
   // buy screen reads anyway. Until it arrives there is nothing to wait for.

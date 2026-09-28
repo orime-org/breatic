@@ -4,8 +4,8 @@
 /**
  * Subscription plan configuration loader (task #106, design §12).
  *
- * Reads `config/subscription.yaml`: what each subscribable tier costs per
- * month, and which Stripe price sells it.
+ * Reads `config/subscription.yaml`: what each subscribable tier costs over
+ * each billing period, and which Stripe price sells it.
  *
  * Lives in core, beside the membership ceilings, because two callers in two
  * packages read this one file: server needs the price ids to talk to Stripe,
@@ -22,17 +22,35 @@ import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 import {
+  BILLING_PERIODS,
   SUBSCRIBABLE_MEMBERSHIP_TIERS,
+  type BillingPeriod,
+  type MembershipOffer,
   type SubscribableMembershipTier,
 } from "@breatic/shared";
 import { env, MONOREPO_ROOT } from "@core/config/env.js";
 
-const planSchema = z.object({
+/** What one tier costs over one billing period, and which price sells it. */
+const periodSchema = z.object({
   price_cents: z.number().int().positive(),
-  currency: z.string().default("usd"),
   stripe_price_id: z.object({
     test: z.string(),
     live: z.string(),
+  }),
+});
+
+/**
+ * One tier's entry.
+ *
+ * `currency` sits here rather than inside each period: one tier cannot sell
+ * its two periods in different currencies, so putting it below would be the
+ * same value written twice.
+ */
+const planSchema = z.object({
+  currency: z.string().default("usd"),
+  periods: z.object({
+    month: periodSchema,
+    year: periodSchema,
   }),
 });
 
@@ -73,9 +91,9 @@ export const subscriptionConfigSchema = z.object({
 /** The file's contents, before a price id is chosen for this environment. */
 export type SubscriptionConfigFile = z.infer<typeof subscriptionConfigSchema>;
 
-/** One tier's monthly plan, with the price id this environment sells. */
+/** What one tier costs over one period, with the price this environment sells. */
 export interface SubscriptionPlan {
-  /** Monthly price in the smallest currency unit. */
+  /** The price for one period, in the smallest currency unit. */
   readonly priceCents: number;
   /** ISO 4217 code, lower case, as Stripe writes it. */
   readonly currency: string;
@@ -83,10 +101,10 @@ export interface SubscriptionPlan {
   readonly stripePriceId: string;
 }
 
-/** Every subscribable tier's plan. */
+/** Every subscribable tier's plan, for every billing period. */
 export type SubscriptionPlans = Record<
   SubscribableMembershipTier,
-  SubscriptionPlan
+  Record<BillingPeriod, SubscriptionPlan>
 >;
 
 let cachedFile: SubscriptionConfigFile | null = null;
@@ -124,16 +142,20 @@ export function resolvePlans(
         `config/subscription.yaml has no plan for membership tier "${tier}"`,
       );
     }
-    return [
-      tier,
-      {
-        priceCents: plan.price_cents,
-        currency: plan.currency,
-        stripePriceId: isLive
-          ? plan.stripe_price_id.live
-          : plan.stripe_price_id.test,
-      },
-    ] as const;
+    const periods = BILLING_PERIODS.map((period) => {
+      const sold = plan.periods[period];
+      return [
+        period,
+        {
+          priceCents: sold.price_cents,
+          currency: plan.currency,
+          stripePriceId: isLive
+            ? sold.stripe_price_id.live
+            : sold.stripe_price_id.test,
+        },
+      ] as const;
+    });
+    return [tier, Object.fromEntries(periods)] as const;
   });
   return Object.fromEntries(entries) as SubscriptionPlans;
 }
@@ -169,35 +191,50 @@ export function getSubscriptionStaleAfterDays(): number {
 }
 
 /**
- * Reads one tier's plan.
+ * Reads what one tier costs over one billing period.
  * @param tier - The tier being sold.
- * @returns That tier's plan.
+ * @param period - How often it is billed.
+ * @returns That tier-and-period plan.
  * @throws {Error} When the file is missing, malformed, or lacks a tier's plan.
  */
 export function getSubscriptionPlan(
   tier: SubscribableMembershipTier,
+  period: BillingPeriod,
 ): SubscriptionPlan {
-  return getSubscriptionPlans()[tier];
+  return getSubscriptionPlans()[tier][period];
 }
 
 /**
- * Reads which tier a Stripe price sells.
+ * Reads which tier and period a Stripe price sells.
  *
- * Used when a subscription arrives carrying a price rather than a tier, which
- * is every subscription Stripe tells us about.
+ * Used when a subscription arrives carrying a price rather than an offer,
+ * which is every subscription Stripe tells us about. One lookup answers both
+ * halves, so no caller has to derive the period a second way.
+ *
+ * An empty slot never matches. Price ids are pasted in by hand, and a period
+ * nobody has created a price for yet sits here as an empty string — without
+ * this, asking about an empty id would get back whichever empty slot came
+ * first.
  * @param priceId - A Stripe price id.
- * @returns The tier it sells, or null when no plan uses it.
+ * @param plans - The plans to search. Defaults to this deployment's, which is
+ *   what every caller wants; a test passes its own so that asserting this
+ *   mapping does not require the deployment's own price file to exist.
+ * @returns The offer it sells, or null when no plan uses it.
  * @throws {Error} When the file is missing, malformed, or lacks a tier's plan.
  */
-export function findSubscribableTierByPriceId(
+export function findOfferByPriceId(
   priceId: string,
-): SubscribableMembershipTier | null {
-  const plans = getSubscriptionPlans();
-  return (
-    SUBSCRIBABLE_MEMBERSHIP_TIERS.find(
-      (tier) => plans[tier].stripePriceId === priceId,
-    ) ?? null
-  );
+  plans: SubscriptionPlans = getSubscriptionPlans(),
+): MembershipOffer | null {
+  if (priceId === "") return null;
+  for (const tier of SUBSCRIBABLE_MEMBERSHIP_TIERS) {
+    for (const period of BILLING_PERIODS) {
+      if (plans[tier][period].stripePriceId === priceId) {
+        return { tier, period };
+      }
+    }
+  }
+  return null;
 }
 
 /** Forgets the cached plans, so a test can read the file again. */

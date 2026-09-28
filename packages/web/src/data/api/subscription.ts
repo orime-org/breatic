@@ -11,7 +11,7 @@
  */
 
 import { apiPost } from '@web/data/api/request';
-import type { SubscribableMembershipTier } from '@breatic/shared';
+import type { MembershipOffer } from '@breatic/shared';
 
 /** Where Stripe's hosted checkout page is. */
 export interface CheckoutStart {
@@ -29,29 +29,33 @@ export interface PlanChange {
 
 /**
  * Starts paying for a membership, for an account that holds none.
- * @param tier - The tier being bought.
+ * @param offer - The tier and the billing period being bought.
  * @param returnUrl - Where Stripe sends the browser back to, paid or not.
  * @returns Stripe's hosted checkout page.
  */
 export async function startSubscriptionCheckout(
-  tier: SubscribableMembershipTier,
+  offer: MembershipOffer,
   returnUrl: string,
 ): Promise<CheckoutStart> {
   return apiPost<CheckoutStart>('/account/subscription/checkout', {
-    tier,
+    tier: offer.tier,
+    period: offer.period,
     return_url: returnUrl,
   });
 }
 
 /**
- * Moves an existing membership up a tier.
- * @param tier - The tier to move to.
- * @returns Whether the new tier is in force, and where to pay if not.
+ * Moves an existing membership to another offer.
+ * @param offer - The tier and the billing period to move to.
+ * @returns Whether the new offer is in force, and where to pay if not.
  */
 export async function changeSubscriptionPlan(
-  tier: SubscribableMembershipTier,
+  offer: MembershipOffer,
 ): Promise<PlanChange> {
-  return apiPost<PlanChange>('/account/subscription/change', { tier });
+  return apiPost<PlanChange>('/account/subscription/change', {
+    tier: offer.tier,
+    period: offer.period,
+  });
 }
 
 /** Stops the membership renewing at the end of the paid period. */

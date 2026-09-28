@@ -89,7 +89,13 @@ export const ProposalCard = React.memo(function ProposalCard({
   const { data: catalog } = useQuery(modelCatalogQuery());
 
   const shape = React.useMemo(() => shapeOf(proposal), [proposal]);
-  const todos = React.useMemo(() => todosOf(proposal), [proposal]);
+  // Where each generation's setup is found, in the reader's language. The
+  // name in it is the one the canvas's right-click menu shows.
+  const panelLines = React.useMemo(
+    () => ({ prompt: t('chat.proposal.promptReady'), settings: t('chat.proposal.settingsReady') }),
+    [t],
+  );
+  const todos = React.useMemo(() => todosOf(proposal, panelLines), [proposal, panelLines]);
   const words = React.useMemo(() => writtenOf(proposal), [proposal]);
   const price = React.useMemo(() => costOf(catalog, proposal), [catalog, proposal]);
   const credits = useProposalCredits(catalog, proposal);

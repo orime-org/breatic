@@ -25,6 +25,7 @@ import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { db } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { lockLimitsForUser } from "@breatic/core";
+import { env } from "@breatic/core";
 import {
   studioMembersRepo,
   studioAuthService,
@@ -73,8 +74,18 @@ export async function createPersonalStudio(
       // that did not. How many to give is read here because the file it comes
       // from is this package's to read; whether to give any at all is the
       // grant's own question, and it answers silently.
+      //
+      // The read itself is behind the same flag the grant checks, because an
+      // argument is evaluated before the call that discards it: a deployment
+      // that charges nobody has no `config/pricing.yaml` to open, and reading
+      // it anyway would fail registration over a figure about to be thrown
+      // away.
       await creditLotService.grantTrialCredits(
-        { userId, studioId: studio.id, credits: getTrialGrantCredits() },
+        {
+          userId,
+          studioId: studio.id,
+          credits: env.PAYMENT_ENABLED ? getTrialGrantCredits() : 0,
+        },
         tx,
       );
       return studio;

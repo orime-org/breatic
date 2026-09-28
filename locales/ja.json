@@ -128,7 +128,8 @@
       "already_subscribed": "すでにメンバーシップに加入しています。",
       "no_subscription": "メンバーシップに加入していません。",
       "not_cancelling": "このメンバーシップは終了予定ではありません。",
-      "downgrade_not_offered": "下位プランへの変更はできません。",
+      "change_not_offered": "その変更はご利用いただけません。",
+      "change_unconfirmed": "変更は Stripe に送信されましたが、結果を確認できませんでした。もう一度操作する前にお問い合わせください。",
       "same_tier": "すでにこのメンバーシップです。",
       "payment_overdue": "このメンバーシップの支払いが遅延しています。",
       "unavailable": "メンバーシップは利用できません。"
@@ -227,6 +228,7 @@
       "proposingNodes": "提案をまとめています",
       "checkingModels": "利用できるモデルを確認中",
       "understanding": "メディアを確認中",
+      "judging": "検討中",
       "running": "{tool} を実行中"
     },
     "loadEarlier": "以前のメッセージを読み込む",
@@ -273,7 +275,9 @@
       "building": "作成中…",
       "failed": "作成できませんでした。",
       "eachRun": "{s, number}秒 × {n, number}",
-      "needCanvas": "先にキャンバスを開いてください。"
+      "needCanvas": "先にキャンバスを開いてください。",
+      "promptReady": "プロンプトは作成済みです。ノードを右クリックして「生成」を選ぶと、開いた生成パネルで確認できます。",
+      "settingsReady": "設定は完了しています。ノードを右クリックして「生成」を選ぶと、開いた生成パネルで確認できます。"
     },
     "thinking": "少し考えました",
     "thinkingNow": "考え中",
@@ -1073,7 +1077,8 @@
       "projectInviteRequest": "{actor} さんが {project} への参加に招待しました",
       "projectInviteAccepted": "{actor} さんが {project} への招待を承認しました",
       "membershipEnded": "{tier} メンバーシップが終了しました",
-      "membershipUpgradeIncomplete": "{tier} へのアップグレードは完了しませんでした",
+      "membershipUpgradeIncomplete": "{tier} {period} への変更のお支払いが完了しませんでした",
+      "membershipUpgradeIncompleteNoPeriod": "{tier} への変更のお支払いが完了しませんでした",
       "storageQuotaExceeded": "ストレージがいっぱいです"
     },
     "actorFallback": "誰か",
@@ -1470,8 +1475,9 @@
     "panelTitle": "メンバーシップ",
     "close": "閉じる",
     "currentTier": "現在のプラン",
+    "chooseTier": "メンバーシップを選ぶ",
     "tier": {
-      "base": "Base",
+      "base": "Starter",
       "pro": "PRO",
       "team": "Team",
       "self_hosted": "セルフホスト",
@@ -1500,7 +1506,6 @@
     },
     "enterpriseQuota": "利用上限は個別契約で定められているため、ここには表示されません。",
     "compare": "プラン比較",
-    "monthlyFee": "月額",
     "contactEnterprise": "より大きな規模や個別の商用条件が必要ですか。メールでご相談ください:",
     "contactSelfHosted": "商用ライセンスや個別のサポート条件が必要ですか。メールでご相談ください:",
     "contactEnterpriseAccount": "利用上限についてのご質問や変更のご相談は、メールでお問い合わせください:",
@@ -1516,11 +1521,37 @@
     "resume": "メンバーシップを再開",
     "notice": {
       "firstPaymentPending": "支払いが完了していません",
-      "upgradePending": "アップグレードの支払いが完了していません",
-      "paymentOverdue": "今月の支払いができませんでした"
+      "upgradePending": "変更分のお支払いが完了していません",
+      "paymentOverdue": "お支払いが完了しませんでした"
+    },
+    "checkout": {
+      "done": "{plan} が有効になりました",
+      "processing": "お支払いを処理しています",
+      "failed": "メンバーシップは有効になっていません"
     },
     "payNow": "支払う",
-    "actionFailed": "実行できませんでした。もう一度お試しください。"
+    "actionFailed": "実行できませんでした。もう一度お試しください。",
+    "period": {
+      "month": "月払い",
+      "year": "年払い"
+    },
+    "saveTwoMonths": "12 か月分を 10 か月分の料金で",
+    "yearSaving": "年払いで約 {percent}% お得",
+    "tierWithPeriod": "{tier} · {period}",
+    "priceSuffix": {
+      "month": "{amount} / 月",
+      "year": "{amount} / 年"
+    },
+    "priceOnRequest": "応相談",
+    "contactSales": "ご相談ください",
+    "card": {
+      "storage": "ストレージ {value}",
+      "teamStudios": "{count, plural, =0 {チーム Studio なし} other {チーム Studio # 個}}",
+      "connections": "{count, plural, other {1 ドキュメントあたり # 接続}}",
+      "enterpriseScale": "容量は個別契約",
+      "enterpriseGovernance": "SSO・監査・知的財産補償"
+    },
+    "noCreditsIncluded": "メンバーシップに生成クレジットは含まれません。クレジットは別途購入します。"
   },
   "credits": {
     "panelTitle": "クレジット",

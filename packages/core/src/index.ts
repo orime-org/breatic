@@ -70,7 +70,7 @@ export type { MembershipConfig, MembershipLimits } from "@core/config/membership
 export {
   getSubscriptionPlans,
   getSubscriptionPlan,
-  findSubscribableTierByPriceId,
+  findOfferByPriceId,
   getSubscriptionStaleAfterDays,
   getStripeCallTimeoutMs,
   resetSubscriptionConfigCache,

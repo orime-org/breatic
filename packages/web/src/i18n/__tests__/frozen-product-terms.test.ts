@@ -98,6 +98,14 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   'studio.topBar.notOpenYet',
   'membership.pricePerMonth',
   'membership.upgrade',
+  // The comparison table's monthly-fee row, gone in #253: a tier has a price
+  // per period now, and the cards carry both. A single row headed "Monthly"
+  // could only show one of them.
+  'membership.monthlyFee',
+  // The yearly card's small line said what a year worked out at per month and
+  // that it saved two months. It states the saving as a percentage now, which
+  // is how the products this one sits beside write it.
+  'membership.perMonthEquivalent',
   'chat.conversation.startNew',
   'notifications.roleHint.editor',
   'notifications.roleHint.viewer',
