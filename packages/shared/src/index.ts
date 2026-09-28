@@ -63,9 +63,12 @@ export type {
   ModelTier,
   ParamDescriptor,
   RemoteParamSource,
-  ModelRate,
   ModelProvider,
   ModelEntry,
+  PricingContract,
+  ExtraStep,
+  SourceGroup,
+  ItemField,
   ModelCatalog,
   SourceType,
   SourceRule,
@@ -362,7 +365,7 @@ export { newId, deriveId } from "@shared/ids.js";
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
-export { effectiveItemCap, isPresent } from "@shared/item-cap.js";
+export { itemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 
 // The tab bar belongs to one browser; these are the pure ordering rules the

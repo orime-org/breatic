@@ -1,14 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { ExtraStep, PricingContract } from "@shared/types/model-catalog";
 import { upstreamPriceUsd } from "@shared/pricing/upstream-price";
-
-/** An endpoint's WaveSpeed pricing contract, as the catalog yaml writes it. */
-export interface PricingContract {
-  readonly base_price: number;
-  readonly formula: string;
-  readonly discount_rate: number;
-}
 
 /** What the estimate reads off one declared param. */
 export interface PricedParam {
@@ -16,18 +10,6 @@ export interface PricedParam {
   readonly default?: unknown;
   readonly fill?: string;
   readonly type?: string;
-}
-
-/** An upstream call a run makes besides the model's own. */
-export interface PricedStep {
-  readonly endpoint: string;
-  readonly pricing: PricingContract;
-  /** The param whose value makes the run take this step; absent means every run does. */
-  readonly for_param?: string;
-  /** One call per item of `for_param`. */
-  readonly per_item?: boolean;
-  /** Skipped when the same source was sent through it before. */
-  readonly reused?: boolean;
 }
 
 /** What the estimate reads off one catalog model. */
@@ -39,7 +21,7 @@ export interface PricedModel {
   readonly pricing: PricingContract;
   /** The param whose source, once sent, lets later runs skip the model's own call. */
   readonly reused_by?: string;
-  readonly extra_steps?: readonly PricedStep[];
+  readonly extra_steps?: readonly ExtraStep[];
 }
 
 /** One run as the reader has set it up so far. */

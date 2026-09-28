@@ -47,7 +47,41 @@ export type ModelTier = 'recommended' | 'optional' | 'internal';
  */
 export type RemoteParamSource = "voices";
 
-/** Single parameter descriptor — drives dynamic frontend form rendering. */
+/** An endpoint's WaveSpeed pricing contract, as the catalog yaml writes it. */
+export interface PricingContract {
+  /** Price basis in millionths of a US dollar. */
+  readonly base_price: number;
+  /** JSONata formula WaveSpeed publishes; empty means `base_price` per call. */
+  readonly formula: string;
+  /** Percent of the formula's price actually charged. */
+  readonly discount_rate: number;
+}
+
+/** An upstream call a run of this model makes besides the model's own. */
+export interface ExtraStep {
+  readonly endpoint: string;
+  readonly pricing: PricingContract;
+  /** The param whose value makes the run take this step; absent means every run does. */
+  readonly for_param?: string;
+  /** One call per item of `for_param`. */
+  readonly per_item?: boolean;
+  /** Skipped when the same source was sent through it before. */
+  readonly reused?: boolean;
+}
+
+/** Params of which at least one has to carry material in one mode. */
+export interface SourceGroup {
+  readonly mode: string;
+  readonly any_of: readonly string[];
+}
+
+/** One field of an entry in a list editor. */
+export interface ItemField {
+  readonly type?: "text";
+  readonly values?: readonly (string | number | boolean)[];
+  readonly default?: unknown;
+}
+
 /** How a parameter's value reaches the run (#269). */
 export type ParamFill = "canvas" | "pool" | "editor" | "panel" | "remote" | "none";
 
@@ -96,31 +130,19 @@ export interface ParamDescriptor {
    */
   step?: number;
   /**
-   * `"list"` when this param carries several values rather than one.
-   *
-   * One spelling and one meaning: readers compare against this exact string
-   * and take anything else as a single URL — the source gate, the item cap,
-   * and the transport that maps params to vendor names. It is not a general
-   * type annotation, and the loader refuses any other value.
+   * The shape of the value when it is not a single scalar: `list` carries
+   * several sources (the reference pool), `items` is a list editor whose
+   * entries carry `fields`, `text` is a free text control. Readers compare
+   * against these exact strings, and the loader refuses any other value.
    */
-  type?: "list";
+  type?: "list" | "items" | "text";
   max_items?: number;
-  /**
-   * Caps that replace `max_items` while another param carries a value,
-   * keyed by that param's name (#1928).
-   *
-   * A vendor may state one list's limit in terms of another input:
-   * `kling-o3-pro-ref` takes up to 7 reference images on its own and up to 4
-   * alongside a reference video. The condition is the presence of the named
-   * param, never its value, and the key is whatever the model declares — the
-   * rule's shape is "this list shrinks when that one is filled", not one
-   * hard-coded pairing.
-   *
-   * Read through `effectiveItemCap`, never directly: the panel, the server's
-   * pre-enqueue gate and the worker's truncation all have to reach the same
-   * number for one submission.
-   */
-  max_items_when_present?: Readonly<Record<string, number>>;
+  /** The fields of one entry of an `items` list. */
+  fields?: Readonly<Record<string, ItemField>>;
+  /** The upstream field this param is sent as, when the names differ. */
+  upstream?: string;
+  /** English label for a control only this model has. */
+  label?: string;
   /**
    * Names the picker that fills this param, for params whose value domain
    * lives upstream instead of in `values` (#1960). Two models spell the same
@@ -130,32 +152,6 @@ export interface ParamDescriptor {
    */
   remote_source?: RemoteParamSource;
   default: unknown;
-}
-
-/**
- * What a model charges, in the unit its vendor bills by (#1960).
- *
- * The unit travels with the number because vendors do not share one: Fish
- * bills per UTF-8 byte, ElevenLabs per character, and a Chinese character is
- * three bytes — one shared "per 1000 characters" wording would understate
- * Fish threefold. This states a rate, not a total: charging happens after
- * generation, on actual usage.
- */
-export interface ModelRate {
-  /** Credits charged per `per` units. 1 credit = 1 US cent. */
-  credits: number;
-  /** How many units that many credits buy. */
-  per: number;
-  /**
-   * What the vendor counts. The first two measure the input the model is
-   * handed; `seconds` measures the output it is asked for, which is how a
-   * sound effect is priced.
-   *
-   * This list is stated twice — here and in `modelEntrySchema` below — and a
-   * unit missing from THAT one silently drops the whole rate, since the rate
-   * object degrades to absent rather than throwing.
-   */
-  unit: "characters" | "utf8_bytes" | "seconds";
 }
 
 /** One provider backing a model (with resolved availability). */
@@ -189,7 +185,6 @@ export interface ModelEntry {
   description: string;
   guide: string;
   tier: ModelTier;
-  cost_per_call: number;
   generation_time: number;
   params: Record<string, ParamDescriptor>;
   providers: ModelProvider[];
@@ -207,13 +202,20 @@ export interface ModelEntry {
    */
   takes_prompt: boolean;
   /**
-   * What this model charges per unit of whatever its vendor counts (#1960) --
-   * see {@link ModelRate.unit}, which spans both the input handed to the model
-   * and the output asked of it -- for the panel to state before the user
-   * generates. Absent on models that bill per call, which state
-   * `cost_per_call` instead.
+   * The WaveSpeed pricing contract of the model's endpoint, which the panel,
+   * the proposal card, the agent and the balance gate all estimate a run by.
+   * Absent only on a version-skewed or corrupted wire: the panel then states
+   * no price.
    */
-  rate?: ModelRate;
+  pricing?: PricingContract;
+  /** The upstream field the prompt is sent as, when it is not `prompt`. */
+  prompt_upstream?: string;
+  /** Upstream calls a run makes besides the model's own. */
+  extra_steps?: readonly ExtraStep[];
+  /** The param whose source, once sent, lets later runs skip the model's own call. */
+  reused_by?: string;
+  /** Per mode, params of which at least one has to carry material. */
+  source_groups?: readonly SourceGroup[];
   /**
    * How much input text this model accepts in one request (#1960), so the
    * panel can refuse before sending text the upstream would reject.
@@ -259,6 +261,8 @@ export interface ModelCatalog {
   tts: ModelEntry[];
   three_d: ModelEntry[];
   total: number;
+  /** Credits per US cent charged upstream; the estimate converts by it. */
+  credit_multiplier: number;
 }
 
 // ── Image model classification ───────────────────────────────────────
@@ -398,6 +402,18 @@ export const GENERATION_NODE_MODES: Readonly<
  * inferred type carries it as a required property (a bare `z.unknown()` infers
  * it optional), keeping the output assignable to {@link ParamDescriptor}.
  */
+const itemFieldSchema = z.object({
+  type: z.literal("text").optional(),
+  values: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
+  default: z.unknown().optional(),
+});
+
+const pricingContractSchema = z.object({
+  base_price: z.number(),
+  formula: z.string(),
+  discount_rate: z.number(),
+});
+
 const paramDescriptorSchema = z
   .object({
     description: z.string().catch(""),
@@ -408,15 +424,11 @@ const paramDescriptorSchema = z
     min: z.number().optional().catch(undefined),
     max: z.number().optional().catch(undefined),
     step: z.number().optional().catch(undefined),
-    type: z.literal("list").optional().catch(undefined),
+    type: z.enum(["list", "items", "text"]).optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
-    // Keys are param names the model itself declares, so the record stays open
-    // rather than enumerating them here; a malformed entry degrades the whole
-    // map to absent, which `effectiveItemCap` reads as "plainly capped".
-    max_items_when_present: z
-      .record(z.string(), z.number())
-      .optional()
-      .catch(undefined),
+    fields: z.record(z.string(), itemFieldSchema).optional().catch(undefined),
+    upstream: z.string().optional().catch(undefined),
+    label: z.string().optional().catch(undefined),
     // An unrecognised name would send the panel looking for a picker that does
     // not exist, so it degrades to an ordinary param rather than to a guess.
     remote_source: z.enum(["voices"]).optional().catch(undefined),
@@ -466,7 +478,6 @@ const modelEntrySchema = z.object({
   description: z.string().catch(""),
   guide: z.string().catch(""),
   tier: z.enum(["recommended", "optional", "internal"]).catch("optional"),
-  cost_per_call: z.number().catch(0),
   generation_time: z.number().catch(0),
   // Brand icon name; a non-string → undefined so the entry still survives.
   icon: z.string().optional().catch(undefined),
@@ -509,16 +520,25 @@ const modelEntrySchema = z.object({
   // editor and then happily submit a paid generation with an empty prompt from
   // a model that actually wanted one.
   takes_prompt: z.boolean().catch(true),
-  // What the model charges per unit of what its vendor counts (#1960). Absent
-  // on models that bill per call, and a malformed one degrades to absent — a
-  // panel with no rate says nothing, where a half-parsed one would state a
-  // wrong price.
-  rate: z
-    .object({
-      credits: z.number(),
-      per: z.number(),
-      unit: z.enum(["characters", "utf8_bytes", "seconds"]),
-    })
+  // A malformed contract degrades to absent: the panel then states no price,
+  // where a half-parsed one would state a wrong one.
+  pricing: pricingContractSchema.optional().catch(undefined),
+  prompt_upstream: z.string().optional().catch(undefined),
+  extra_steps: z
+    .array(
+      z.object({
+        endpoint: z.string(),
+        pricing: pricingContractSchema,
+        for_param: z.string().optional(),
+        per_item: z.boolean().optional(),
+        reused: z.boolean().optional(),
+      }),
+    )
+    .optional()
+    .catch(undefined),
+  reused_by: z.string().optional().catch(undefined),
+  source_groups: z
+    .array(z.object({ mode: z.string(), any_of: z.array(z.string()) }))
     .optional()
     .catch(undefined),
   // How much text the model takes (#1960). Absent reads as uncapped, and a
@@ -550,6 +570,7 @@ const EMPTY_CATALOG = {
   tts: [],
   three_d: [],
   total: 0,
+  credit_multiplier: 1,
 };
 
 /**
@@ -565,6 +586,7 @@ export const modelCatalogSchema = z
     tts: modelEntryBucketSchema,
     three_d: modelEntryBucketSchema,
     total: z.number().catch(0),
+    credit_multiplier: z.number().positive().catch(1),
   })
   .catch(EMPTY_CATALOG);
 
