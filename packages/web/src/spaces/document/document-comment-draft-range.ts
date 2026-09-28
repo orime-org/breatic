@@ -9,47 +9,49 @@
  * body keeps being edited underneath: the reader typing elsewhere, a peer
  * inserting a paragraph above, somebody pressing undo.
  *
+ * The range lives only in this editor: it is never written to the shared
+ * document, and closing the page ends it. That is how the editors with a
+ * pending comment keep one (CKEditor 5's draft marker "is not managed using
+ * operations"; BlockNote and Liveblocks use the reader's selection).
+ *
  * Two ways it is carried across a change, because changes arrive two ways:
  *
  * - The reader's own edits ride `tr.mapping`, which is how ProseMirror carries
- *   a position across a change.
+ *   a position across a change. A line the reader moves is taken out and put
+ *   back, which mapping reads as a deletion, so an end whose mapped position
+ *   left its line is found again at the letter it named in the row with
+ *   that line's id, carried across what changed in that line — the way
+ *   BlockNote keeps a selection across a block move (`moveBlocks.ts`,
+ *   `getBlockSelectionData`).
  * - Everything that comes in through Yjs — a peer's edit, an undo, a thread
  *   being settled — lands as ONE replacement of the whole body
  *   (`ySyncPluginKey` meta `isChangeOrigin`), and that mapping sends every
- *   position to the end. Those are resolved from Yjs relative positions, taken
- *   from the range as it stands right before each Yjs transaction begins — the
- *   moment y-prosemirror takes the selection for the same purpose
- *   (`beforeAllTransactions`, `y-prosemirror.cjs:409-419`). Taken then, they
- *   name the text the range covers now, whatever the reader typed or however
- *   the block was rebuilt since the draft opened.
+ *   position to the end. Those are resolved from Yjs relative positions, the
+ *   way y-prosemirror's cursor plugin places a cursor (`cursor-plugin.js`).
+ *   They are taken again only after the reader's own edits, once the binding
+ *   has written them into Yjs; across Yjs changes the same positions are kept,
+ *   so a letter a peer deletes and then brings back with undo is followed to
+ *   where it came back (`followUndoneDeletions`).
  *
  * The start names the first letter covered and the end the last one, with its
  * association to the left (`assoc = -1`, which Yjs resolves to "after this
  * letter"). Text written against either edge stays outside, whichever way it
- * arrives.
+ * arrives. Whatever lies between the two ends is the range.
  *
- * Each end is carried on its own, the way BlockNote keeps a selection across
- * a block move (`moveBlocks.ts`, `getBlockSelectionData`): where its path puts
- * it while that position can be trusted, otherwise found again as the same
- * offset in its line, while the row with that line's id is still there word
- * for word ({@link lineStill}). A move takes a line out and puts the same line
- * back, and both paths read that as a deletion: ProseMirror mapping sends the
- * end into the gap, and a peer's editor deletes and rewrites the letters of
- * every line between where a line left and where it lands (undo and redo of a
- * move, and a change of a line's type, do the same). The line's id survives
- * all of it. Whatever lies between the two ends is the range.
+ * A peer's editor writes a moved line, a line whose type changed, and every
+ * line between as new letters, so the letter an end names being deleted says
+ * nothing about the reader's words. Such an end is found again by its line,
+ * the same way as a mapped one; an end whose letter was itself deleted stands
+ * where that letter was.
  *
  * Both ends always sit against a letter: the first one covered and just past
  * the last. A range that reaches into the next line, or past non-text at an
  * edge, is drawn in to its letters wherever a range is written.
  *
- * It is GONE once it covers no letters, its last line is before its first, or
- * a Yjs change deleted the letter an end names and that end's line is no
- * longer there word for word. Nothing is guessed about where changed words
- * went.
+ * It is GONE once it covers no letters, or its end comes before its start.
  * Posting then would put the reader's words in a thread pointing at nothing,
- * or at other words, which is what A21 is about — the draft card keeps its
- * place in the panel and says so instead, keeping what the reader wrote.
+ * which is what A21 is about — the draft card keeps its place in the panel
+ * and says so instead, keeping what the reader wrote.
  *
  * ## One draft, one place
  *
@@ -91,6 +93,7 @@ import {
   relativePositionToAbsolutePosition,
   ySyncPluginKey,
 } from 'y-prosemirror';
+import { simpleDiffString } from 'lib0/diff';
 import * as Y from 'yjs';
 
 import {
@@ -141,13 +144,10 @@ let entries = 0;
 /** The sync binding, as a position conversion takes it. */
 type Binding = NonNullable<ReturnType<typeof syncBindingOf>>;
 
-/**
- * The open draft's range as it stood right before a Yjs transaction, with the
- * opening it was taken for.
- */
-interface HeldAcrossYjs {
+/** The open draft's range as Yjs names it, with the opening it names. */
+interface TrackedDraft {
   readonly opening: DraftOpening;
-  readonly tracked: TrackedLink;
+  readonly link: TrackedLink;
 }
 
 /**
@@ -179,14 +179,18 @@ function letterBounds(
 /** Stands in for a non-text node inside a line, one position wide. */
 const LEAF = '\ufffc';
 
-/** The line one end of a range sits in, as it stood, and where in it. */
+/** Which end of a range: the start names the letter after it, the end the one before. */
+type Side = 'start' | 'end';
+
+/** The line one end of a range sits in, as it stood, and the letter it names. */
 interface EndLine {
   /** The id of the row the line belongs to. */
   readonly id: string;
   /** Its words, one character per position. */
   readonly words: string;
-  /** Where the end sits in the line. */
-  readonly offset: number;
+  /** The letter the end names: its index in the words. */
+  readonly letter: number;
+  readonly side: Side;
 }
 
 /**
@@ -202,38 +206,50 @@ function wordsBetween(doc: ProseMirrorNode, from: number, to: number): string {
 }
 
 /**
- * The line a position sits in.
+ * The line an end of a range sits in.
  * @param doc - The body.
- * @param pos - The position.
- * @returns The line and where the position is in it, or null outside a
- *   row's line.
+ * @param pos - The end.
+ * @param side - Which end it is.
+ * @returns The line and the letter the end names in it, or null when it
+ *   names no letter of a row's line.
  */
-function endLineAt(doc: ProseMirrorNode, pos: number): EndLine | null {
-  if (pos < 0 || pos > doc.content.size) return null;
+function endLineAt(doc: ProseMirrorNode, pos: number, side: Side): EndLine | null {
   const at = doc.resolve(pos);
-  if (!at.parent.isTextblock || at.depth < 1) return null;
+  if (!at.parent.isTextblock) return null;
   const id: unknown = at.node(at.depth - 1).attrs['id'];
-  return typeof id === 'string'
-    ? { id, words: wordsBetween(doc, at.start(), at.end()), offset: at.parentOffset }
+  const words = wordsBetween(doc, at.start(), at.end());
+  const letter = side === 'start' ? at.parentOffset : at.parentOffset - 1;
+  return typeof id === 'string' && letter >= 0 && letter < words.length
+    ? { id, words, letter, side }
     : null;
 }
 
 /**
- * Where an end is after a change, found again by its line: the row with the
- * line's id, still word for word the same, at the same offset in it. The way
- * BlockNote keeps a selection across a block move (`moveBlocks.ts`,
+ * Where an end is after a change, found again by its line: in the row with
+ * the line's id, at the letter it named, carried across what changed in that
+ * line's words the way the binding finds what changed in a line (the common
+ * start and end of the two versions, `simpleDiffString`). The way BlockNote
+ * keeps a selection across a block move (`moveBlocks.ts`,
  * `getBlockSelectionData`), each end on its own.
  * @param doc - The body after the change.
  * @param line - The line the end sat in before it.
- * @returns The position, or null when the line is gone or changed.
+ * @returns The position, or null when the row is gone or the letter is not
+ *   in it any more.
  */
-function lineStill(doc: ProseMirrorNode, line: EndLine): number | null {
+function lineNow(doc: ProseMirrorNode, line: EndLine): number | null {
   const row = rowById(doc, line.id);
   const words = row === undefined ? undefined : contentRangeOf(row);
-  return words !== undefined &&
-    wordsBetween(doc, words.from, words.to) === line.words
-    ? words.from + line.offset
-    : null;
+  if (words === undefined) return null;
+  const change = simpleDiffString(
+    line.words,
+    wordsBetween(doc, words.from, words.to),
+  );
+  let letter: number;
+  if (line.letter < change.index) letter = line.letter;
+  else if (line.letter >= change.index + change.remove) {
+    letter = line.letter - change.remove + change.insert.length;
+  } else return null;
+  return words.from + letter + (line.side === 'end' ? 1 : 0);
 }
 
 /**
@@ -244,32 +260,37 @@ function lineStill(doc: ProseMirrorNode, line: EndLine): number | null {
  * @returns True when it is in a line of that row.
  */
 function inLine(doc: ProseMirrorNode, pos: number, line: EndLine): boolean {
-  return endLineAt(doc, pos)?.id === line.id;
+  const at = doc.resolve(pos);
+  return at.parent.isTextblock && at.node(at.depth - 1).attrs['id'] === line.id;
 }
 
 /**
  * Carries one end of a range across a change: where its path puts it while
  * that is still in the line the end sat in, otherwise found again by that
- * line. Neither path's own answer says which line a position is in: mapping
- * sends an end whose line was moved into the gap it left, and a letter a
- * peer's editor keeps while rewriting a line into another line's words is in
- * that other line now.
+ * line, otherwise where its path puts it after all. Neither path's own answer
+ * says which line a position is in: mapping sends an end whose line was moved
+ * into the gap it left, and a peer's editor that rewrites a line into another
+ * line's words keeps the letters the two share.
  * @param tr - The change.
  * @param was - The end before it.
- * @param at - Where the end's path puts it, or null once the path lost it.
- * @param fallback - What stands when the end's line is gone or changed.
- * @returns Where the end is now, or null once it is lost.
+ * @param side - Which end it is.
+ * @param trusted - Where its path puts it, or null when that answer is
+ *   known to be stale.
+ * @param fallback - Where its path puts it when neither holds.
+ * @returns Where the end is now.
  */
-function carryEnd(
+function carryEnd<Fallback extends number | null>(
   tr: Transaction,
   was: number,
-  at: number | null,
-  fallback: number | null,
-): number | null {
-  const line = endLineAt(tr.before, was);
-  if (line === null) return at ?? fallback;
-  if (at !== null && inLine(tr.doc, at, line)) return at;
-  return lineStill(tr.doc, line) ?? fallback;
+  side: Side,
+  trusted: number | null,
+  fallback: Fallback,
+): number | Fallback {
+  const line = endLineAt(tr.before, was, side);
+  if (trusted !== null && (line === null || inLine(tr.doc, trusted, line))) {
+    return trusted;
+  }
+  return (line === null ? null : lineNow(tr.doc, line)) ?? fallback;
 }
 
 /**
@@ -296,53 +317,67 @@ function trackDraft(bound: Binding, range: DraftRange): TrackedLink {
   };
 }
 
-/** One end of a range after a Yjs change. */
-interface EndAfterYjs {
-  /** Where Yjs resolves it, or null outside the body. */
-  readonly at: number | null;
-  /** Whether the letter it named was deleted. */
-  readonly deleted: boolean;
+/**
+ * Whether the letter a position names is deleted and not brought back. An
+ * undo brings a deleted letter back as a new one, which the deleted one
+ * points to (`redone`); Yjs resolves the position to the new one.
+ * @param store - The document's store.
+ * @param id - The letter.
+ * @returns True once it is gone for good.
+ */
+function letterGone(store: Y.Doc['store'], id: Y.ID): boolean {
+  let item = Y.getItem(store, id) as Y.Item;
+  while (item.redone !== null) item = Y.getItem(store, item.redone) as Y.Item;
+  return item.deleted;
 }
 
 /**
- * Reads one end of the range after a Yjs change.
+ * Carries one end across a change that came in through Yjs. A peer's editor
+ * writes a moved line, a line whose type changed, and every line between as
+ * new letters, so a letter the end names being gone says nothing about the
+ * reader's words: the end is found again by its line when the line is still
+ * there, and stands where the letter was otherwise.
+ * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
- * @param end - The end as it was named before the change.
- * @returns Where it is and what became of its letter.
+ * @param end - The end as Yjs names it.
+ * @param was - The end before the change.
+ * @param side - Which end it is.
+ * @returns Where the end is now, or null once it is lost.
  */
-function endAfterYjs(bound: Binding, end: Y.RelativePosition): EndAfterYjs {
+function endAcrossYjs(
+  tr: Transaction,
+  bound: Binding,
+  end: Y.RelativePosition,
+  was: number,
+  side: Side,
+): number | null {
   const at = relativePositionToAbsolutePosition(
     bound.doc,
     bound.type,
     end,
     bound.mapping,
   );
-  const deleted =
-    end.item !== null && Y.getItem(bound.doc.store, end.item).deleted;
-  return { at, deleted };
+  const gone = end.item !== null && letterGone(bound.doc.store, end.item);
+  return carryEnd(tr, was, side, gone ? null : at, at);
 }
 
 /**
- * Carries the range across a change that came in through Yjs, each end on its
- * own: where Yjs puts it while the letter it names stands in the end's line,
- * otherwise found again by that line, and lost when that fails too.
+ * Carries the range across a change that came in through Yjs.
  * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
- * @param held - What was taken before the change.
+ * @param link - The range as Yjs names it.
  * @param range - The range before the change.
  * @returns Where the range is now, or null once an end is lost.
  */
 function carryAcrossYjs(
   tr: Transaction,
   bound: Binding,
-  held: HeldAcrossYjs,
+  link: TrackedLink,
   range: DraftRange,
 ): DraftRange | null {
-  const start = endAfterYjs(bound, held.tracked.start);
-  const end = endAfterYjs(bound, held.tracked.end);
-  const from = carryEnd(tr, range.from, start.deleted ? null : start.at, null);
-  const to = carryEnd(tr, range.to, end.deleted ? null : end.at, null);
-  return from !== null && to !== null && to > from ? { from, to } : null;
+  const from = endAcrossYjs(tr, bound, link.start, range.from, 'start');
+  const to = endAcrossYjs(tr, bound, link.end, range.to, 'end');
+  return from !== null && to !== null ? { from, to } : null;
 }
 
 /** The open draft: where it is now, and which opening it is. */
@@ -386,9 +421,10 @@ export const DOCUMENT_COMMENT_DRAFT_RANGE = new PluginKey<Draft | null>(
 /**
  * Carries a draft's range across one of the reader's own changes, each end on
  * its own: where ProseMirror maps it while that stays in the end's line,
- * otherwise found again by that line. A line moved is taken out and put back, which
- * mapping reads as a deletion; a line the reader deleted or changed is gone,
- * and the mapped position — the range drawn in, or nothing left — stands.
+ * otherwise found again by that line. A line moved is taken out and put back,
+ * which mapping reads as a deletion; a line the reader deleted or changed is
+ * gone, and the mapped position — the range drawn in, or nothing left —
+ * stands.
  * @param range - Where the draft was going before this change.
  * @param tr - The change.
  * @returns Where it is going now, or null once the text it covered is gone.
@@ -406,7 +442,7 @@ export function mapDraftRange(
    */
   const carry = (pos: number, bias: 1 | -1): number => {
     const mapped = tr.mapping.map(pos, bias);
-    return carryEnd(tr, pos, mapped, mapped) ?? mapped;
+    return carryEnd(tr, pos, bias === 1 ? 'start' : 'end', mapped, mapped);
   };
   const from = carry(range.from, 1);
   const to = carry(range.to, -1);
@@ -414,12 +450,34 @@ export function mapDraftRange(
 }
 
 /**
+ * Whether a transaction is a change that came in through Yjs.
+ * @param tr - The transaction.
+ * @returns True for a peer's edit, an undo, or anything else the binding
+ *   writes into the body.
+ */
+function fromYjs(tr: Transaction): boolean {
+  const sync = tr.getMeta(ySyncPluginKey) as
+    | { isChangeOrigin?: boolean }
+    | undefined;
+  return sync?.isChangeOrigin === true;
+}
+
+/**
+ * Whether a transaction changes the body's text.
+ * @param tr - The transaction.
+ * @returns False for a selection change, and for the binding re-rendering the
+ *   same content (a mount).
+ */
+function changesText(tr: Transaction): boolean {
+  return tr.docChanged && !tr.doc.eq(tr.before);
+}
+
+/**
  * Carries the open draft across one transaction.
  * @param tr - The transaction.
  * @param current - The draft before it.
  * @param before - The state it applies to, whose sync binding is the live one.
- * @param held - The range as Yjs named it right before the Yjs transaction
- *   this may come from, or null outside one.
+ * @param tracked - The range as Yjs names it, or null when it is not named.
  * @returns The draft after it: the same object when nothing moved, dropped
  *   once the text it covered is gone.
  */
@@ -427,23 +485,19 @@ function carryDraft(
   tr: Transaction,
   current: Draft & { kind: 'aimed' },
   before: EditorState,
-  held: HeldAcrossYjs | null,
+  tracked: TrackedDraft | null,
 ): Draft {
-  // The binding re-rendering the same content (a mount) changes no text.
-  if (!tr.docChanged || tr.doc.eq(tr.before)) return current;
-  const sync = tr.getMeta(ySyncPluginKey) as
-    | { isChangeOrigin?: boolean }
-    | undefined;
   const bound = syncBindingOf(before);
   // The binding has rebuilt its index to the new nodes before it dispatches
   // (`_typeChanged`), so the relative positions resolve against this change.
   const carried =
-    sync?.isChangeOrigin === true &&
-    held?.opening === current.opening &&
-    bound !== null
-      ? carryAcrossYjs(tr, bound, held, current)
+    fromYjs(tr) && tracked?.opening === current.opening && bound !== null
+      ? carryAcrossYjs(tr, bound, tracked.link, current)
       : mapDraftRange(current, tr);
-  const moved = carried === null ? null : letterBounds(tr.doc, carried);
+  const moved =
+    carried === null || carried.to <= carried.from
+      ? null
+      : letterBounds(tr.doc, carried);
   if (moved === null) {
     return { kind: 'dropped', why: 'targetGone', opening: current.opening };
   }
@@ -510,8 +564,12 @@ export const onDraftChange: (listener: () => void) => () => void =
  * @returns The extension, for the assembly to register.
  */
 export const documentCommentDraftRange = createExtension(() => {
-  // What `beforeAllTransactions` took, cleared once the Yjs batch is over.
-  let held: HeldAcrossYjs | null = null;
+  // The open draft's range as Yjs names it.
+  let tracked: TrackedDraft | null = null;
+  // Set when the range is placed afresh — an entry pressed, or one of the
+  // reader's own edits — so the view's update names it again once the
+  // binding has written the body into Yjs.
+  let retrack = false;
   return {
     key: 'document-comment-draft-range',
     prosemirrorPlugins: [
@@ -557,13 +615,15 @@ export const documentCommentDraftRange = createExtension(() => {
                 opening = { serial: openings };
               }
               entries += 1;
+              retrack = true;
               return { kind: 'aimed', ...aim, opening, entry: entries };
             }
-            if (current?.kind !== 'aimed') return current;
             // A selection change carries no steps and the range comes back
             // unchanged — which is what a reader clicking elsewhere before
             // typing their comment needs.
-            return carryDraft(tr, current, before, held);
+            if (current?.kind !== 'aimed' || !changesText(tr)) return current;
+            if (!fromYjs(tr)) retrack = true;
+            return carryDraft(tr, current, before, tracked);
           },
         },
 
@@ -572,38 +632,32 @@ export const documentCommentDraftRange = createExtension(() => {
         },
 
         /**
-         * Broadcasts the draft, and takes its range in Yjs terms right before
-         * every Yjs transaction, the way y-prosemirror takes the selection.
+         * Broadcasts the draft, and names its range in Yjs terms after it was
+         * placed afresh. The sync plugin's view writes the reader's edit into
+         * Yjs before this one runs, so the names are taken against the body
+         * as it now stands — which is when y-prosemirror's cursor plugin takes
+         * the reader's cursor.
          * @param view - The editor view.
          * @returns The view's update and teardown.
          */
         view: (view) => {
           const watching = watch.view(view);
-          const doc = (
-            ySyncPluginKey.getState(view.state) as { doc?: Y.Doc } | undefined
-          )?.doc;
-          /** Takes the open draft's range as Yjs names it now. */
-          const beforeAll = (): void => {
-            if (held !== null || doc === undefined) return;
-            const range = draftRangeIn(view.state);
-            const bound = syncBindingOf(view.state);
-            if (range === null || bound === null) return;
-            held = {
-              opening: range.opening,
-              tracked: trackDraft(bound, range),
-            };
-          };
-          /** Forgets it once the Yjs batch is over. */
-          const afterAll = (): void => {
-            held = null;
-          };
-          doc?.on('beforeAllTransactions', beforeAll);
-          doc?.on('afterAllTransactions', afterAll);
           return {
-            update: watching.update,
+            update: (next, prev): void => {
+              const range = draftRangeIn(next.state);
+              const bound = syncBindingOf(next.state);
+              if (range === null) {
+                tracked = null;
+              } else if (
+                bound !== null &&
+                (retrack || tracked?.opening !== range.opening)
+              ) {
+                tracked = { opening: range.opening, link: trackDraft(bound, range) };
+              }
+              retrack = false;
+              watching.update?.(next, prev);
+            },
             destroy: (): void => {
-              doc?.off('beforeAllTransactions', beforeAll);
-              doc?.off('afterAllTransactions', afterAll);
               watching.destroy?.();
             },
           };
