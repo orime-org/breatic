@@ -1291,6 +1291,89 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('charlie');
     });
 
+    it('keeps the part left on an untouched line when a peer retypes the other line away', async () => {
+      // The first line is written again with none of the words in it; the
+      // letter on the second line is still where the reader chose it.
+      show('editor', ['alpha bravo', 'charlie delta']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second! + 1);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.updateBlock(peer.editor.document[0]!, {
+          type: 'heading',
+          content: 'alpha zzzzz',
+        } as never);
+      });
+
+      expect(lines()).toEqual(['alpha zzzzz', 'charlie delta']);
+      expect(aimedWords()).toBe('c');
+    });
+
+    it('leaves out the letters a peer writes in place of more than half of its first ones', async () => {
+      // Too much is changed for the words to be found again; what the peer
+      // wrote against the start edge is left out, like words typed there.
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      peerEdits((line) => {
+        line.delete(6, 3);
+        line.insert(6, 'XYZ');
+      });
+
+      expect(lines()).toEqual(['alpha XYZvo charlie']);
+      expect(aimedWords()).toBe('vo');
+    });
+
+    it('keeps the line in the middle of it when a peer retypes both edge lines away', async () => {
+      // Too much is changed for the words to be found again; the untouched
+      // line between is what stayed, and the retyped letters around it are
+      // the peer's.
+      show('editor', ['alpha bravo', 'cd', 'echo foxtrot']);
+      const [first, , third] = lineStarts();
+      aimAt(first! + 6, third! + 4);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      // One update carrying both, as a peer coming back online sends it.
+      act(() => {
+        peer.editor.transact(() => {
+          peer.editor.updateBlock(peer.editor.document[0]!, {
+            type: 'heading',
+            content: 'x',
+          } as never);
+          peer.editor.updateBlock(peer.editor.document[2]!, {
+            type: 'heading',
+            content: 'y',
+          } as never);
+        });
+      });
+
+      expect(lines()).toEqual(['x', 'cd', 'y']);
+      expect(aimedWords()).toBe('cd');
+    });
+
+    it('says so when a peer retypes its line with none of its words left', async () => {
+      show('editor', ['one two', 'alpha bravo charlie', 'echo foxtrot']);
+      const second = lineStarts()[1]!;
+      aimAt(second + 6, second + 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.updateBlock(peer.editor.document[1]!, {
+          type: 'heading',
+          content: 'alpha zzzzz charlie',
+        } as never);
+      });
+
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
+    });
+
     it('keeps its words when a peer retypes their line and corrects a letter in them at once', async () => {
       // One update carrying both, as a peer coming back online sends it.
       show('editor', ['one two', 'alpha bravo charlie', 'echo foxtrot']);
