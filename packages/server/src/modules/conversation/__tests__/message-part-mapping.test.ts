@@ -21,7 +21,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
-import { NOTHING_SAID_WHY } from "@breatic/shared";
+import { ATTACHMENT_DATA_PART, NOTHING_SAID_WHY } from "@breatic/shared";
 import type { MessagePart } from "@breatic/shared";
 import {
   toStoredParts,
@@ -254,6 +254,22 @@ describe("what a conversation hands back when it is opened", () => {
   it("carries a failed turn back the same way", () => {
     const ui = toUiParts([{ type: "failed" }]);
     expect(ui[0]).toMatchObject({ type: "data-failed" });
+  });
+
+  it("hands an attached item back whole, ahead of the words", () => {
+    const chip = {
+      id: "a1",
+      type: "image" as const,
+      name: "cover.png",
+      data_snapshot: { url: "https://cdn.example/cover.png" },
+    };
+
+    const ui = toUiParts([{ type: "attachment", chip }, { type: "text", text: "look" }]);
+
+    expect(ui).toEqual([
+      { type: ATTACHMENT_DATA_PART, data: chip },
+      { type: "text", text: "look" },
+    ]);
   });
 });
 

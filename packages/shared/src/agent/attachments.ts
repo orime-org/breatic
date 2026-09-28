@@ -4,6 +4,15 @@
 import type { ChatAttachedChip } from "@shared/schemas/api.js";
 
 /**
+ * The name an attached item travels under on the chat wire.
+ *
+ * A data part, the one channel the SDK's protocol leaves open for what it does
+ * not define. The browser writes it on the message it sends and reads it back
+ * from history; the server hands stored attachments out under it.
+ */
+export const ATTACHMENT_DATA_PART = "data-attachment";
+
+/**
  * The attached items, laid out the way the model reads them.
  *
  * Shared because the browser and the server measure this same text against
