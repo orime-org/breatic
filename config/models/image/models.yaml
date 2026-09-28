@@ -371,7 +371,7 @@ models:
 
   - name: "muse-image-edit"
     display_name: "Muse Image Edit"
-    mode: "edit"
+    mode: ["i2i", "edit"]
     takes_prompt: true
     tier: "optional"
     description: "A different house look, 10 refs"
@@ -408,7 +408,7 @@ models:
 
   - name: "nano-banana-pro-edit-ultra"
     display_name: "Nano Banana Pro Edit Ultra"
-    mode: "edit"
+    mode: ["i2i", "edit"]
     takes_prompt: true
     tier: "optional"
     description: "Only path above 4K — reaches 8K"
