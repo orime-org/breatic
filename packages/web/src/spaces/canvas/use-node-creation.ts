@@ -35,7 +35,7 @@ import {
   createGroupNode,
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
-import { GROUP_BACKGROUND_OPTIONS } from '@web/spaces/canvas/group-background';
+import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import {
   EMPTY_NODE_SIZE,
   groupRectForMembers,
@@ -103,17 +103,6 @@ export interface PlacedProposal {
   /** The group they landed in, when there were two or more of them. */
   groupId?: string;
 }
-
-/**
- * The ground a placed flow sits on.
- *
- * Blue of the seven the group picker offers: red, orange and green carry a
- * meaning on this canvas (something went wrong, something finished, something
- * wants attention), and the remaining three read as a reader's own way of
- * sorting their work. Blue says nothing except "these belong together", which
- * is the whole of what this group means.
- */
-const FLOW_GROUND = GROUP_BACKGROUND_OPTIONS.find((o) => o.key === 'blue')?.value;
 
 /**
  * What is wired into one node of a proposal, as nodes now on the canvas.
@@ -277,7 +266,7 @@ export function useNodeCreation(
             })),
           );
           if (proposal.groupName) setNodeName(projectId, spaceId, id, proposal.groupName);
-          setGroupBackground(projectId, spaceId, id, FLOW_GROUND);
+          setGroupBackground(projectId, spaceId, id, groupBackgroundFor(Math.random()));
           groupId = id;
         }
         proposal.edges.forEach((edge) => {

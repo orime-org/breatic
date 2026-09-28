@@ -65,6 +65,9 @@ const flow = (
   rationale: '',
 });
 
+/** The two lines the card prints under a generation, as the caller passes them in. */
+const LINES = { prompt: 'PROMPT READY', settings: 'SETTINGS READY' };
+
 /** A catalog with one model charging per call and one charging by usage. */
 const CATALOG = {
   image: [
@@ -141,9 +144,9 @@ describe('what is left for the reader', () => {
       generates('On white', 'flat-model', ['Pick a ratio']),
     ]);
 
-    expect(todosOf(proposal)).toEqual([
+    expect(todosOf(proposal, LINES)).toEqual([
       { nodes: ['Your copy'], notes: ['Put your own brand in'] },
-      { nodes: ['On white'], notes: ['Pick a ratio'] },
+      { nodes: ['On white'], notes: ['Pick a ratio', 'PROMPT READY'] },
     ]);
   });
 
@@ -166,8 +169,8 @@ describe('what is left for the reader', () => {
       [[0, 1]],
     );
 
-    expect(todosOf(proposal)).toEqual([
-      { nodes: ['On white'], notes: ['Drop your photo in'] },
+    expect(todosOf(proposal, LINES)).toEqual([
+      { nodes: ['On white'], notes: ['Drop your photo in', 'PROMPT READY'] },
     ]);
   });
 
@@ -190,8 +193,8 @@ describe('what is left for the reader', () => {
       [],
     );
 
-    expect(todosOf(proposal)).toEqual([
-      { nodes: ['The clip'], notes: ['Pick it in the first slot'] },
+    expect(todosOf(proposal, LINES)).toEqual([
+      { nodes: ['The clip'], notes: ['Pick it in the first slot', 'PROMPT READY'] },
     ]);
   });
 
@@ -207,8 +210,8 @@ describe('what is left for the reader', () => {
       },
     ]);
 
-    expect(todosOf(proposal)).toEqual([
-      { nodes: ['The tween'], notes: ['Pick a frame', 'Pick a frame'] },
+    expect(todosOf(proposal, LINES)).toEqual([
+      { nodes: ['The tween'], notes: ['Pick a frame', 'Pick a frame', 'PROMPT READY'] },
     ]);
   });
 
@@ -229,8 +232,9 @@ describe('what is left for the reader', () => {
       ],
     );
 
-    expect(todosOf(proposal)).toEqual([
+    expect(todosOf(proposal, LINES)).toEqual([
       { nodes: ['Your photo'], notes: ['Drop your photo in'] },
+      { nodes: ['Front', 'At 45', 'Overhead'], notes: ['PROMPT READY'] },
     ]);
   });
 
@@ -267,9 +271,10 @@ describe('what is left for the reader', () => {
       ],
     );
 
-    expect(todosOf(proposal)).toEqual([
+    expect(todosOf(proposal, LINES)).toEqual([
       { nodes: ['Your photo'], notes: ['Drop the photo in'] },
       { nodes: ['Your logo'], notes: ['Drop the logo in'] },
+      { nodes: ['The banner', 'The square'], notes: ['PROMPT READY'] },
     ]);
   });
 
@@ -280,12 +285,12 @@ describe('what is left for the reader', () => {
       generates(name, 'flat-model', ['Pick a ratio']);
     const proposal = flow([angle('Front'), angle('At 45'), angle('Overhead')]);
 
-    expect(todosOf(proposal)).toEqual([
-      { nodes: ['Front', 'At 45', 'Overhead'], notes: ['Pick a ratio'] },
+    expect(todosOf(proposal, LINES)).toEqual([
+      { nodes: ['Front', 'At 45', 'Overhead'], notes: ['Pick a ratio', 'PROMPT READY'] },
     ]);
   });
 
-  it('leaves a mark pointing upstream out: it asks the reader for nothing', () => {
+  it('leaves a mark pointing upstream out of the to-dos: it asks the reader for nothing', () => {
     // It names the node this sentence means, which is already true the moment
     // the flow lands. A line under "what is left" would be a job with nothing
     // in it.
@@ -298,13 +303,55 @@ describe('what is left for the reader', () => {
     };
     const proposal = flow([generates('Front'), points], [[0, 1]]);
 
-    expect(todosOf(proposal)).toEqual([]);
+    expect(todosOf(proposal, LINES)).toEqual([
+      { nodes: ['Front', 'At 45'], notes: ['PROMPT READY'] },
+    ]);
   });
 
-  it('leaves out a node whose prompt asks for nothing', () => {
+  it('gives words already written no line of their own', () => {
     const proposal = flow([written('Your copy'), generates('On white')]);
 
-    expect(todosOf(proposal)).toEqual([]);
+    expect(todosOf(proposal, LINES)).toEqual([{ nodes: ['On white'], notes: ['PROMPT READY'] }]);
+  });
+});
+
+describe('where each generation\'s prompt is found (#289)', () => {
+  // The prompt the agent wrote lives in the generation panel, and a reader
+  // new to the canvas does not know a right-click opens it. Every generation
+  // says so under its own name, last, after whatever the agent asked of them.
+  it('tells the reader a written prompt is waiting in the panel', () => {
+    const proposal = flow([empty('Your photo'), generates('On white')], [[0, 1]]);
+
+    expect(todosOf(proposal, LINES)).toEqual([{ nodes: ['On white'], notes: ['PROMPT READY'] }]);
+  });
+
+  it('says the settings are ready where the model draws no prompt box', () => {
+    // A talking-head model takes a portrait and a recording, no prompt: the
+    // panel draws no box, so "the prompt is written" would send the reader
+    // looking for something that is not there.
+    const proposal = flow([{ ...generates('Talking head'), takesPrompt: false }]);
+
+    expect(todosOf(proposal, LINES)).toEqual([
+      { nodes: ['Talking head'], notes: ['SETTINGS READY'] },
+    ]);
+  });
+
+  it('says the settings are ready when the generation carries no prompt', () => {
+    const proposal = flow([{ ...generates('On white'), prompt: [] }]);
+
+    expect(todosOf(proposal, LINES)).toEqual([{ nodes: ['On white'], notes: ['SETTINGS READY'] }]);
+  });
+
+  it('puts the line after the agent\'s own to-dos for that node', () => {
+    const proposal = flow([generates('On white', 'flat-model', ['Pick a ratio'])]);
+
+    expect(todosOf(proposal, LINES)[0]?.notes.at(-1)).toBe('PROMPT READY');
+  });
+
+  it('gives an empty node and written words no such line', () => {
+    const proposal = flow([empty('Your photo'), written('Your copy')]);
+
+    expect(todosOf(proposal, LINES)).toEqual([]);
   });
 });
 

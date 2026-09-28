@@ -14,6 +14,9 @@
  * The turn is real, so the model decides whether to propose. A run where it
  * answers in prose instead is reported as such rather than passed.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { expect, test, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
@@ -110,6 +113,23 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
     await chips.count(),
     'an image-to-image proposal is a pair: the empty node and the one that generates',
   ).toBe(2);
+
+  // Where the prompt the agent wrote is found: a reader new to the canvas does
+  // not know a right-click opens the panel (#289). Matched in any of the five
+  // languages, because the account's language is not this file's to choose.
+  const promptReady = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'].map(
+    (locale) =>
+      (
+        JSON.parse(
+          readFileSync(join(__dirname, '../../../../locales', `${locale}.json`), 'utf8'),
+        ) as { chat: { proposal: { promptReady: string } } }
+      ).chat.proposal.promptReady,
+  );
+  const cardText = (await card.textContent()) ?? '';
+  expect(
+    promptReady.some((line) => cardText.includes(line)),
+    `the card says where the prompt is found. Read: "${cardText}"`,
+  ).toBe(true);
 
   const before = await page.locator('.react-flow__node').count();
   await card.getByTestId('proposal-use').click();
