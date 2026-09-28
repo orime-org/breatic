@@ -175,4 +175,15 @@ describe('a piece of the canvas handed to the agent', () => {
   it('names a note by its own words, having no name', () => {
     expect(itemForPick(GRAPH, ['a1'], readers)).toMatchObject({ name: 'Check the colours here' });
   });
+
+  it('places a group member where it sits on the canvas, keeping its group', () => {
+    const group = { ...node('g2', { kind: 'group', name: 'Scene' }), position: { x: 1000, y: 1000 } };
+    const member = { ...node('i2', { kind: 'image', name: 'Shot' }, 'g2'), position: { x: 24, y: 40 } };
+    const loose = { ...node('i3', { kind: 'image', name: 'Loose' }), position: { x: 1030, y: 1050 } };
+    const item = itemForPick({ nodes: [group, member, loose], edges: [] }, ['i2', 'i3'], readers);
+    const nodes = (item?.chip?.data_snapshot as { nodes: Array<Record<string, unknown>> }).nodes;
+
+    expect(nodes[0]).toMatchObject({ id: 'i2', position: { x: 1024, y: 1040 }, parentId: 'g2' });
+    expect(nodes[1]).toMatchObject({ id: 'i3', position: { x: 1030, y: 1050 } });
+  });
 });

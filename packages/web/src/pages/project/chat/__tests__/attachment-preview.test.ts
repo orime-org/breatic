@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 
 import type { ChatAttachedChip } from '@breatic/shared';
+import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { PREVIEW_ROWS, previewOf } from '@web/pages/project/chat/attachment-preview';
+import { itemForPick } from '@web/spaces/canvas/attach-nodes';
 
 const file = (type: ChatAttachedChip['type'], snapshot: Record<string, unknown>): ChatAttachedChip => ({
   id: `f-${type}`,
@@ -58,7 +61,7 @@ describe('previewOf', () => {
       kind: 'audio',
       src: 'https://a/a.mp3',
     });
-    expect(previewOf(canvas([node('t', 'text', { content: 'script' })]))).toEqual({ kind: 'text', text: 'script' });
+    expect(previewOf(canvas([node('t', 'text', { body: 'script' })]))).toEqual({ kind: 'text', text: 'script' });
   });
 
   it('lists several nodes as rows with a thumbnail where one exists', () => {
@@ -67,7 +70,7 @@ describe('previewOf', () => {
         node('g', 'group'),
         node('a', 'image', { content: 'https://a/i.png' }),
         node('v', 'video', { content: 'https://a/v.mp4', coverUrl: 'https://a/c.jpg' }),
-        node('t', 'text', { content: 'script' }),
+        node('t', 'text', { body: 'script' }),
       ]),
     );
     expect(preview).toEqual({
@@ -120,5 +123,45 @@ describe('previewOf', () => {
       ],
       more: 0,
     });
+  });
+});
+
+describe('what the card of a picked piece of the canvas previews', () => {
+  const view = (id: string, data: Record<string, unknown>): CanvasNodeView => ({
+    id,
+    type: data.kind as CanvasNodeView['type'],
+    position: { x: 0, y: 0 },
+    data: data as unknown as CanvasNodeView['data'],
+  });
+  const doc = new Y.Doc();
+  const body = doc.getXmlFragment('t1.body');
+  const line = (text: string): Y.XmlElement => {
+    const block = new Y.XmlElement('paragraph');
+    block.insert(0, [new Y.XmlText(text)]);
+    return block;
+  };
+  body.insert(0, [line('Line one'), line('Line two')]);
+  const graph = {
+    nodes: [
+      view('t1', { kind: 'text', name: 'Script' }),
+      view('a1', { kind: 'annotation', content: 'Check the colours here', replies: [] }),
+      view('i1', { kind: 'image', name: 'Cover', content: 'https://cdn.example/c.png' }),
+    ],
+    edges: [],
+  };
+  const readers = { fragmentsOf: (id: string) => (id === 't1' ? { body } : {}) };
+  const pick = (ids: string[]) => previewOf(itemForPick(graph, ids, readers)?.chip);
+
+  it('shows a text node its words', () => {
+    expect(pick(['t1'])).toEqual({ kind: 'text', text: 'Line one\nLine two' });
+  });
+
+  it('shows a single image node its picture', () => {
+    expect(pick(['i1'])).toEqual({ kind: 'image', src: 'https://cdn.example/c.png' });
+  });
+
+  it('lists a note under the name its card shows', () => {
+    const preview = pick(['a1', 'i1']);
+    expect(preview?.kind === 'nodes' && preview.rows.map((r) => r.name)).toEqual(['Check the colours here', 'Cover']);
   });
 });
