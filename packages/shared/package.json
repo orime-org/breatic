@@ -12,11 +12,15 @@
     "./canvas/text-body": {
       "import": "./dist/canvas/text-body.js",
       "types": "./src/canvas/text-body.ts"
+    },
+    "./pricing": {
+      "import": "./dist/pricing/upstream-price.js",
+      "types": "./src/pricing/upstream-price.ts"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/canvas/text-body.ts --format esm --clean",
-    "dev": "tsup src/index.ts src/canvas/text-body.ts --format esm --watch",
+    "build": "tsup src/index.ts src/canvas/text-body.ts src/pricing/upstream-price.ts --format esm --clean",
+    "dev": "tsup src/index.ts src/canvas/text-body.ts src/pricing/upstream-price.ts --format esm --watch",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -26,6 +30,7 @@
   "dependencies": {
     "file-type": "^22",
     "intl-messageformat": "^11.2.13",
+    "jsonata": "2.2.2",
     "uuid": "^11.1.1",
     "yaml": "catalog:",
     "yjs": "catalog:",

@@ -43,6 +43,19 @@ describe("upstreamPriceUsd", () => {
     expect(usd).toBeCloseTo(2.0, 10);
   });
 
+  it("caps the summed clips at the total of get_duration", async () => {
+    const usd = await upstreamPriceUsd(
+      {
+        basePrice: 1_000_000,
+        formula: '{"total_price": base_price * get_duration(clips, min=1, max=10, total=12)}',
+        discountRate: 100,
+      },
+      { clips: ["a", "b"] },
+      { clips: [10, 10] },
+    );
+    expect(usd).toBeCloseTo(12, 10);
+  });
+
   it("raises a short clip to the min of get_duration", async () => {
     const usd = await upstreamPriceUsd(
       { basePrice: 700_000, formula: H3_R2V, discountRate: 100 },
