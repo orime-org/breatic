@@ -36,7 +36,7 @@ import { attachmentSection, t } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
 
 /**
- * Refuse a message whose words or attachments are past their limit.
+ * Refuse a message whose words or attachments are past their limits.
  *
  * Two limits, measured apart: the words on what the user typed, the
  * attachments on the section the model is sent them in. A long question does
@@ -48,16 +48,23 @@ import type { ChatAttachedChip } from "@breatic/shared";
  * did not ask.
  * @param message - What the user typed.
  * @param chips - What the user attached.
- * @throws {AppError} With 422 when either is over its limit.
+ * @throws {AppError} With 422 when the words, the number of attached items or
+ *   the attachments' length is over its limit.
  */
 function assertSayable(message: string, chips: readonly ChatAttachedChip[]): void {
-  const { user_message_max_chars, attachment_max_chars } = getAgentConfig();
+  const { user_message_max_chars, attachment_max_chars, attachment_max_items } =
+    getAgentConfig();
   if (message.length > user_message_max_chars) {
     throw new ValidationError(
       t("server.chat.message_too_long", {
         limit: user_message_max_chars,
         actual: message.length,
       }),
+    );
+  }
+  if (chips.length > attachment_max_items) {
+    throw new ValidationError(
+      t("server.chat.attachments_too_many", { limit: attachment_max_items, actual: chips.length }),
     );
   }
   const attached = attachmentSection(chips).length;
@@ -438,9 +445,9 @@ chat.delete(
 /**
  * `GET /chat/stream-config` — the chat knobs a browser needs, from
  * `config/agent.yaml`: how often a stream says it is alive, and how long the
- * attachments on one message may be. The browser checks attachments against
- * that second number before sending, so it measures against the same limit
- * the server enforces.
+ * attachments on one message may be and how many there may be. The browser
+ * checks attachments against those before sending, so it measures against
+ * the same limits the server enforces.
  *
  * How often this server says a stream is alive is the same fact as how long a
  * browser waits before deciding it is not, so it has one home and the browser
@@ -462,6 +469,7 @@ chat.get("/stream-config", (c) => {
     data: {
       heartbeatIntervalMs: config.sse_heartbeat_interval_ms,
       attachmentMaxChars: config.attachment_max_chars,
+      attachmentMaxItems: config.attachment_max_items,
     },
   });
 });

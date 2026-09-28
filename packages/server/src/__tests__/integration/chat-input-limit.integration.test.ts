@@ -234,6 +234,25 @@ describe("what one turn may send", () => {
     expect(res.status).toBe(200);
   });
 
+  it("refuses more attached items than one message may carry", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+    const max = getAgentConfig().attachment_max_items;
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: "have a look at these",
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: Array.from({ length: max + 1 }, (_, i) => chip(i, 1)),
+      },
+      cookie,
+    );
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+  });
+
   it("refuses attachments past their limit", async () => {
     const { projectId, conversationId, cookie } = await seedOwner();
 

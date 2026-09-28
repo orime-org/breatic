@@ -156,7 +156,8 @@
     },
     "chat": {
       "message_too_long": "이 메시지는 너무 깁니다. 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다.",
-      "attachments_too_long": "첨부한 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다."
+      "attachments_too_long": "첨부한 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다.",
+      "attachments_too_many": "첨부가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다."
     }
   },
   "chat": {

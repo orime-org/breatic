@@ -30,6 +30,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
       ...(base.getAgentConfig as () => Record<string, unknown>)(),
       sse_heartbeat_interval_ms: 7000,
       attachment_max_chars: 123456,
+      attachment_max_items: 7,
     }),
   };
 });
@@ -72,12 +73,17 @@ describe("GET /chat/stream-config", () => {
   it("不把「几次算死」交出去", async () => {
     const { data } = await askForStreamConfig();
 
-    expect(Object.keys(data).sort()).toEqual(["attachmentMaxChars", "heartbeatIntervalMs"]);
+    expect(Object.keys(data).sort()).toEqual([
+      "attachmentMaxChars",
+      "attachmentMaxItems",
+      "heartbeatIntervalMs",
+    ]);
   });
 
-  it("answers the attachment limit from config, which the browser checks before sending", async () => {
+  it("answers the attachment limits from config, which the browser checks before sending", async () => {
     const { data } = await askForStreamConfig();
 
     expect(data.attachmentMaxChars).toBe(123456);
+    expect(data.attachmentMaxItems).toBe(7);
   });
 });

@@ -156,7 +156,8 @@
     },
     "chat": {
       "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
-      "attachments_too_long": "附带的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。"
+      "attachments_too_long": "附带的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
+      "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。"
     }
   },
   "chat": {

@@ -78,6 +78,10 @@ user_message_max_chars: 15000
 # the same section before sending.
 attachment_max_chars: 200000
 
+# How many items may be attached to one message: uploaded files and canvas
+# nodes together. The browser checks the same number before sending.
+attachment_max_items: 10
+
 # How long an assembled request may be before a consolidation runs, in
 # characters. Measured against everything about to go to the model: system
 # prompt, skill bodies, memory, tool definitions, history and this turn's

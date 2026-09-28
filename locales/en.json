@@ -156,7 +156,8 @@
     },
     "chat": {
       "message_too_long": "This message is too long. It may hold at most {limit, number} characters; this one holds {actual, number}.",
-      "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}."
+      "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
+      "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}."
     }
   },
   "chat": {
