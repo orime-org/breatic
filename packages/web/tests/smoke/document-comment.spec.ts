@@ -1242,6 +1242,113 @@ test.describe('a column crowded with comments', () => {
     expect(await cardTops(page)).toEqual(before);
   });
 
+  test('keeps the card being read in place when Tab reaches a card scrolled away', async ({
+    page,
+  }) => {
+    // A card out of sight because the body was scrolled is not one the card
+    // being read pushed up: the browser brings it into view, and the column
+    // stays as it is.
+    await openFreshDocument(page);
+    await page.keyboard.type('top words here\n');
+    for (let i = 0; i < 30; i += 1) await page.keyboard.type(`filler ${String(i)}\n`);
+    await page.keyboard.type(CROWDED_LINE);
+    const crowded = page.locator(`${EDITOR} p`).nth(31);
+    await expect(crowded).toHaveText(CROWDED_LINE);
+    await selectChars(page, 0, 3, 0);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-draft-input').fill('far top');
+    await page.getByTestId('doc-comment-draft-save').click();
+    for (let i = 0; i < 6; i += 1) {
+      await selectChars(page, i, i + 1, 31);
+      await page.getByTestId('doc-bubble-tool-comment').click();
+      await page.getByTestId('doc-comment-draft-input').fill(`note ${String(i)}`);
+      await page.getByTestId('doc-comment-draft-save').click();
+      await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+    }
+    await crowded.scrollIntoViewIfNeeded();
+    // The seventh highlight: the far one comes first.
+    await page.locator(`${EDITOR} [data-bn-thread-id]`).nth(6).click();
+    await expect(
+      page.getByTestId('doc-comment-card').filter({ hasText: 'note 5' }),
+    ).toHaveAttribute('data-selected', 'true');
+    await page.waitForTimeout(400);
+    const offset = async (): Promise<number> =>
+      (await cardTops(page))['note 5']! - (await crowded.boundingBox())!.y;
+    const before = await offset();
+
+    await page.getByTestId('doc-comment-rail-close').focus();
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(400);
+
+    expect(
+      await page.evaluate(() => document.activeElement?.textContent ?? ''),
+    ).toContain('far top');
+    expect(Math.abs((await offset()) - before)).toBeLessThan(2);
+  });
+
+  test('keeps the control the keyboard reaches inside a card below the header', async ({
+    page,
+  }) => {
+    // The margin every card keeps is kept by what is inside it too: a reply's
+    // delete button under the header is brought out from under it.
+    await openFreshDocument(page);
+    for (let i = 0; i < 12; i += 1) await page.keyboard.type(`line ${String(i)}\n`);
+    await page.keyboard.type('the commented line');
+    for (let i = 0; i < 40; i += 1) await page.keyboard.type(`\nafter ${String(i)}`);
+    await expect(page.locator(`${EDITOR} p`).nth(12)).toHaveText('the commented line');
+    await selectChars(page, 0, 3, 12);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-draft-input').fill('first');
+    await page.getByTestId('doc-comment-draft-save').click();
+    await page.locator(`${EDITOR} [data-bn-thread-id]`).first().click();
+    for (let i = 0; i < 4; i += 1) {
+      await page.getByTestId('doc-comment-reply-input').fill(`reply ${String(i)}`);
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('doc-comment-reply-input')).toHaveValue('');
+    }
+    const header = (await page.getByTestId('doc-comment-rail-header').boundingBox())!;
+    const edge = header.y + header.height;
+    const reply = page.getByTestId('doc-comment-reply-input');
+    // The body scrolled until the reply box sits just below the header, with
+    // the replies above it out of sight under it.
+    const box = (await reply.boundingBox())!;
+    await page.mouse.move(box.x - 400, box.y);
+    await page.mouse.wheel(0, box.y - edge - 10);
+    await page.waitForTimeout(300);
+    await reply.focus();
+
+    for (let i = 0; i < 4; i += 1) {
+      await page.keyboard.press('Shift+Tab');
+      await page.waitForTimeout(250);
+      const top = await page.evaluate(
+        () => (document.activeElement as HTMLElement).getBoundingClientRect().top,
+      );
+      expect(top).toBeGreaterThanOrEqual(edge - 1);
+    }
+  });
+
+  test('walks the keyboard down the column through the card being written', async ({
+    page,
+  }) => {
+    await crowdOneLine(page);
+    await selectChars(page, 0, 4, 2);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
+    await page.waitForTimeout(400);
+
+    await page.getByTestId('doc-comment-rail-close').focus();
+    await page.keyboard.press('Tab');
+
+    expect(
+      await page.evaluate(
+        () =>
+          document
+            .querySelector('[data-testid="doc-comment-draft-card"]')
+            ?.contains(document.activeElement) ?? false,
+      ),
+    ).toBe(true);
+  });
+
   test('starts the column over when another card is read', async ({ page }) => {
     await crowdOneLine(page);
     await readNote(page, 5);

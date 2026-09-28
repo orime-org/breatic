@@ -298,6 +298,37 @@ describe('how far the cards above the one being read were pushed', () => {
   });
 });
 
+describe('which cards the one being read pushed up', () => {
+  it('names the cards above it that sit above their words', () => {
+    const placed = layOutCards(
+      [
+        { id: 'far', anchor: -500, height: 100 },
+        { id: 'a', anchor: 0, height: 100 },
+        { id: 'b', anchor: 10, height: 100 },
+        { id: 'c', anchor: 40, height: 100 },
+      ],
+      'c',
+      GAP,
+      MIN_TOP,
+    );
+    // b at -68 and a at -176 were pushed; far had room at its own words.
+    expect([...placed.pushed].sort()).toEqual(['a', 'b']);
+  });
+
+  it('names none when no card is being read', () => {
+    const placed = layOutCards(
+      [
+        { id: 'a', anchor: 0, height: 100 },
+        { id: 'b', anchor: 40, height: 100 },
+      ],
+      null,
+      GAP,
+      MIN_TOP,
+    );
+    expect(placed.pushed.size).toBe(0);
+  });
+});
+
 describe('the order the cards are written in', () => {
   it('follows the column rather than the panel\'s two groups', () => {
     // The panel reads every unresolved thread before every settled one,

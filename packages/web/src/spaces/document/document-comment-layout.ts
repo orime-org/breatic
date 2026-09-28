@@ -70,6 +70,12 @@ export interface Placement {
    * words, or 0 when none was pushed. The most the panel lifts its column by.
    */
   readonly raised: number;
+  /**
+   * The cards the one being read pushed up above their words. Only these
+   * are brought back by lifting the column; a card out of sight because the
+   * body was scrolled is the browser's to bring into view.
+   */
+  readonly pushed: ReadonlySet<string>;
 }
 
 /**
@@ -104,6 +110,7 @@ export function layOutCards(
       height: next,
       order: adrift.map((card) => card.id),
       raised: 0,
+      pushed: new Set(),
     };
   }
 
@@ -132,10 +139,12 @@ export function layOutCards(
   // how far.
   let above = pivotTop;
   let raised = 0;
+  const pushed = new Set<string>();
   for (let i = from - 1; i >= 0; i -= 1) {
     const card = inOrder[i]!;
     const top = Math.min(card.anchor, above - gap - card.height);
     placed.set(card.id, top);
+    if (top < card.anchor) pushed.add(card.id);
     raised = Math.max(raised, card.anchor - top);
     above = top;
   }
@@ -158,6 +167,7 @@ export function layOutCards(
     height: floor,
     order: down.map((card) => card.id),
     raised,
+    pushed,
   };
 }
 
