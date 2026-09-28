@@ -98,7 +98,6 @@ export {
 
 export { paramValues } from "@shared/types/param-values.js";
 export {
-  REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
 } from "@shared/types/generate-panel.js";
 export type { ControlGate } from "@shared/types/generate-panel.js";

@@ -36,7 +36,7 @@ import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   PANEL_EDITOR_PARAM,
-  REFERENCE_POOL_PARAM,
+  REFERENCE_KINDS,
 } from '@breatic/shared';
 import type { GenerationNodeType, ModelEntry } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
@@ -368,13 +368,28 @@ describe('what the catalog declares', () => {
     ).toEqual([]);
   });
 
-  it('spells every pool-filled param the way the reference pool is read', () => {
+  it('gives every pool-filled param a kind the pool carries, one param per kind', () => {
+    /**
+     * Whether two params' mode lists can meet — absent means every mode.
+     * @param a - One param's modes.
+     * @param b - The other's.
+     * @returns True when some mode has both.
+     */
+    const meet = (a: unknown, b: unknown): boolean =>
+      !Array.isArray(a) || !Array.isArray(b) || a.some((mode) => b.includes(mode));
     expect(
-      objections('pool', (_model, param) =>
-        param === REFERENCE_POOL_PARAM
-          ? null
-          : `declares fill: pool while the pool travels as '${REFERENCE_POOL_PARAM}', so the references a reader adds reach the run under a name this model never declared`,
-      ),
+      objections('pool', (model, param, spec) => {
+        if (!REFERENCE_KINDS.some((kind) => kind === spec.accepts)) {
+          return `declares fill: pool accepting '${String(spec.accepts)}', which the pool does not carry, so no reference a reader adds reaches it`;
+        }
+        const twin = Object.entries(model.params).find(
+          ([other, o]) =>
+            other !== param && o?.fill === 'pool' && o.accepts === spec.accepts && meet(spec.modes, o.modes),
+        );
+        return twin
+          ? `shares its kind with '${twin[0]}' in some mode, so a mentioned ${String(spec.accepts)} has two params to travel under`
+          : null;
+      }),
     ).toEqual([]);
   });
 
@@ -438,9 +453,6 @@ describe('what the catalog declares', () => {
       }
       if (offeredModes(model).some((mode) => claimsFor(model, mode).controls.has(param))) {
         return 'declares fill: none while the panel draws a control under that name, so a value a reader sets is dropped';
-      }
-      if (param === REFERENCE_POOL_PARAM && nodesOffering(model).length > 0) {
-        return 'declares fill: none under the reference pool\'s own name, so references a reader adds are dropped';
       }
       return null;
     });

@@ -252,7 +252,9 @@ export function nameableFeeders(
     return { sources: [], upstream: [] };
   }
   const held = feedersOf(proposal, index);
-  const ctx = { takesReferences: path === "pool", takesPrompt: at.takesPrompt };
+  // A proposal records only that the node draws on its pool, not which kinds
+  // the model's pool takes, so it can name picture feeders alone.
+  const ctx = { referenceKinds: path === "pool" ? (["image"] as const) : [], takesPrompt: at.takesPrompt };
   /**
    * Whether the panel would take an `@`-mention of one feeder.
    * @param i - The feeder's index in the proposal.

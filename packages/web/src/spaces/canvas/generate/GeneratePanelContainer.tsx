@@ -30,7 +30,6 @@ import {
   evaluateExecute,
   extractPromptText,
   refusalToastKey,
-  REFERENCE_POOL_PARAM,
 } from '@breatic/shared';
 import {
   CatalogGatedFrame,
@@ -72,6 +71,8 @@ import {
   PromptEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
+import { poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
+import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import { useCanvasStore } from '@web/stores';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
@@ -356,8 +357,7 @@ function GeneratePanelBody({
       promptRequired: vm.promptRequired,
       maxInputChars: vm.maxInputChars,
       missing: vm.missing,
-      poolCount: vm.referenceUrls.length,
-      poolCap: vm.maxReferences,
+      pools: poolCounts(vm.pool, vm.referenceUrls),
     })?.refusal ?? null;
 
   const onSelectModel = React.useCallback(
@@ -623,8 +623,7 @@ function GeneratePanelBody({
       promptRequired: fresh.promptRequired,
       maxInputChars,
       missing: fresh.missing,
-      poolCount: fresh.referenceUrls.length,
-      poolCap: fresh.maxReferences,
+      pools: poolCounts(fresh.pool, fresh.referenceUrls),
     });
     if (verdict != null) {
       // Both keys are written out here so the check that every id reaches a
@@ -634,7 +633,7 @@ function GeneratePanelBody({
         return;
       }
       const key =
-        verdict.slot === REFERENCE_POOL_PARAM
+        poolKindOf(fresh.pool, verdict.slot) !== undefined
           ? 'canvas.generatePanel.errorNoSourceImage'
           : refusalToastKey(verdict.refusal);
       // `max` comes from the same value the gate judged by, so the sentence
@@ -655,7 +654,7 @@ function GeneratePanelBody({
         model: fresh.model,
         params: fresh.params,
         promptText: freshPrompt,
-        referenceUrls: fresh.referenceUrls,
+        poolParams: poolParams(fresh.pool, fresh.referenceUrls),
         // Capability gate (#1664): the style copy rides the payload ONLY when
         // the active model declares style_images — a stale copy under a
         // non-style model must not be sent (the server would reject or the
@@ -725,9 +724,9 @@ function GeneratePanelBody({
   const promptPlaceholder = t('canvas.generatePanel.promptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
   const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
-  // Text-to-image generates from scratch and ignores source images, so an
-  // image `@` chip contributes nothing and the editor greys it (§2.4 C).
-  const imageRefsOff = !imageModeTakesReferences(vm.mode);
+  // The model's pool says which `@` chips it uses; text-to-image models take
+  // none, so there every media chip contributes nothing and greys (§2.4 C).
+  const referenceKinds = useReferenceKinds(vm.pool);
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
@@ -740,7 +739,7 @@ function GeneratePanelBody({
           onTextChange={onPromptChange}
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
-          imageRefsDisabled={imageRefsOff}
+          referenceKinds={referenceKinds}
           mentionEmptyLabel={mentionEmptyLabel}
           mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
@@ -755,7 +754,7 @@ function GeneratePanelBody({
       onPromptChange,
       handleAtMentionsChange,
       stableReferences,
-      imageRefsOff,
+      referenceKinds,
       caretProvider,
       promptEditorRef,
     ],
@@ -770,6 +769,7 @@ function GeneratePanelBody({
       promptRequired={vm.promptRequired}
       params={stableParams}
       references={stableReferences}
+      referenceKinds={referenceKinds}
       creditText={creditText}
       executeRefusal={executeRefusal}
       promptSlot={promptSlot}

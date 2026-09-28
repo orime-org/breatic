@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry } from '@breatic/shared';
+import type { ModelEntry, ReferenceKind } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -31,10 +31,7 @@ import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import {
-  imageModeTakesReferences,
-  type ImageGenMode,
-} from '@web/spaces/canvas/generate/image-mode-selection';
+import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 
 interface GeneratePanelProps {
   /** Catalog image models (already narrowed to the active mode). */
@@ -57,7 +54,7 @@ interface GeneratePanelProps {
    * In the rail it refuses INSERT on every row — nothing can be inserted into
    * a prompt that is not sent — and so dims every row's CONTENT, text included.
    * The ✕ is untouched: it removes in every state (#1952). A media row's
-   * content is dimmed by `modeTakesReferences` as well, because that is the
+   * content is dimmed by `referenceKinds` as well, because that is the
    * question whose answer points at a mode where the row actually works.
    */
   promptRequired: boolean;
@@ -65,6 +62,8 @@ interface GeneratePanelProps {
   params: { aspect_ratio?: string; resolution?: string } & CameraValue & Readonly<Record<string, unknown>>;
   /** The node's derived reference rows. */
   references: ReferenceRailItem[];
+  /** The kinds the active model's pool takes in this mode (#2156). */
+  referenceKinds: readonly ReferenceKind[];
   /** The run's estimate as printed beside the star; undefined until it resolves. */
   creditText: string | undefined;
   /**
@@ -152,6 +151,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   promptRequired,
   params,
   references,
+  referenceKinds,
   creditText,
   executeRefusal,
   promptSlot,
@@ -184,8 +184,8 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   // reference rows and refuses their insert (#1952 — their ✕ stays live), and
   // the @-picker hides them. Every refusal therefore sits on the row, which
   // can say why this mode has no use for it; an entry that goes dark can only
-  // swallow the click (#1986, user 2026-08-19). i2i uses the full pool.
-  const imageSourcesOff = !imageModeTakesReferences(mode);
+  // swallow the click (#1986, user 2026-08-19). The model's pool says which
+  // kinds it uses (#2156).
   // shrink-0 keeps the fixed-size footer icons from being squeezed when the
   // pickers' labels run long (the footer row has no flex-wrap by design).
   const placeholderClass =
@@ -249,7 +249,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         // mode is `upscale` and therefore not in `IMAGE_MODE_OPTIONS`).
         // Image-to-image is the mode that lights the rest back up; this panel
         // has exactly those two (`ImageGenMode`).
-        modeTakesReferences={!imageSourcesOff}
+        referenceKinds={referenceKinds}
         modelTakesPrompt={promptRequired}
         pendingFocus={pendingFocus}
       />

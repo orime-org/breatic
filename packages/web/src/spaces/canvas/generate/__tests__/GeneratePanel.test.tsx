@@ -49,6 +49,7 @@ function setup(
       models={[MODEL]}
       model='nano_banana_pro'
       mode='t2i'
+      referenceKinds={[]}
       promptRequired
       modeOptions={IMAGE_MODE_OPTIONS}
       params={{ aspect_ratio: '16:9', resolution: '2K' }}
@@ -161,7 +162,7 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
   });
 
   it('enables the reference add-button in i2i', () => {
-    setup({ mode: 'i2i' });
+    setup({ mode: 'i2i', referenceKinds: ['image'] });
     expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
   });
 
@@ -177,7 +178,7 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
   });
 
   it('enables Focus in i2i (#1782)', () => {
-    setup({ mode: 'i2i' });
+    setup({ mode: 'i2i', referenceKinds: ['image'] });
     expect(screen.getByTestId('generate-tool-focus')).not.toBeDisabled();
   });
 

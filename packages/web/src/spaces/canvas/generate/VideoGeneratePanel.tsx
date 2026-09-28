@@ -4,7 +4,7 @@
 import { ArrowUp, Loader2, Star, X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry } from '@breatic/shared';
+import type { ModelEntry, ReferenceKind } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -56,17 +56,17 @@ interface VideoGeneratePanelProps {
    * In the rail it refuses INSERT on every row — nothing can be inserted into
    * a prompt that is not sent — and so dims every row's CONTENT, text included.
    * The ✕ is untouched: it removes in every state (#1952). A media row's
-   * content is dimmed by `modeTakesReferences` as well, because that is the
+   * content is dimmed by `referenceKinds` as well, because that is the
    * question whose answer points at a mode where the row actually works.
    */
   promptRequired: boolean;
   /**
-   * Whether the model draws on the reference pool in this mode.
+   * The kinds the model's reference pool takes in this mode (#2156).
    *
    * The model declares it, so a mode two models serve differently is drawn
    * differently for each — which no table keyed by mode alone can do.
    */
-  takesReferences: boolean;
+  referenceKinds: readonly ReferenceKind[];
   /** Rail rows: this node's incoming edges, then its focus crops (#1978). */
   references: ReferenceRailItem[];
   /**
@@ -151,7 +151,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   onToggleMode,
   modeOptions,
   promptRequired,
-  takesReferences,
+  referenceKinds,
   references,
   pendingFocus,
   onAddReference,
@@ -217,7 +217,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         // prompt material, so this question leaves it alone — the one below is
         // the one that reaches it, and in talking head (the only mode whose
         // model sends no prompt) it dims there too (#1966).
-        modeTakesReferences={takesReferences}
+        referenceKinds={referenceKinds}
         modelTakesPrompt={promptRequired}
       />
 

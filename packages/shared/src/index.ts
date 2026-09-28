@@ -206,7 +206,6 @@ export {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   paramValues,
-  REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
   feedersOf,
   insertRefusal,
@@ -628,3 +627,11 @@ export {
 // How many references a model takes, read the same way by the panels that
 // draw the pool, the gate that refuses a submit over it, and the tool.
 export { positiveCap, referenceCapExceeded } from "@shared/reference-cap.js";
+export {
+  REFERENCE_KINDS,
+  referenceKinds,
+  referencePool,
+  type PoolPlace,
+  type ReferenceKind,
+  type ReferencePool,
+} from "@shared/reference-pool.js";

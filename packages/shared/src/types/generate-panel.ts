@@ -26,18 +26,6 @@ export type ControlGate =
 
 
 /**
- * The source parameter a reader fills by naming it in the prompt.
- *
- * Two gestures reach a source and they are not interchangeable. A slot is
- * picked: click the slot, click a node, done. The reference list is two steps
- * — an incoming edge puts an image in the pool, and an `@`-mention in the
- * prompt picks which of the pool this run uses. Told only to point a node at
- * this one, a reader wires an edge, presses Generate, and the run goes out
- * with no source at all.
- */
-export const REFERENCE_POOL_PARAM = "images";
-
-/**
  * The parameter the panel keeps in a text box of its own, beside the prompt.
  *
  * The words to sing are collaborative text like the prompt is, so the node

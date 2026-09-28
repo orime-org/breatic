@@ -15,18 +15,15 @@
  * modality could connect to an IMAGE node — the image panel's question, where
  * `audio → image` really is a pre-rules legacy edge, while on a video node
  * `audio → video` is a currently legal connection. The right question is not
- * about connections at all: what the rail feeds is `params.images`, a list of
- * image URLs, so a reference row is usable when it is an image.
+ * about connections at all: what the rail feeds is the model's pool, one list
+ * of URLs per kind it takes (#2156), so a reference row is usable when its
+ * kind is one the pool takes.
  *
- * That list has TWO producers, and neither has anything to take from a
- * non-image row. A node row goes through `mentionedImageUrls`, whose
- * `imageUrlOf` resolves `kind === 'image'` and nothing else. A focus crop
- * never reaches that function — its pool id is `focus:<id>`, which matches no
- * canvas node — and is appended by the crop branch of
- * `mentionedReferenceUrls`, from a crop that is an image by construction (the
- * branch both panels share since #1978). So this predicate is
- * not re-evaluating one expression the payload also evaluates; it asks for
- * the one property both producers require.
+ * Those lists are filled by `mentionedReferenceUrls`, which sorts each
+ * mentioned row by its node's kind and appends focus crops — images by
+ * construction — to the image list. So this predicate is not re-evaluating
+ * one expression the payload also evaluates; it asks for the one property the
+ * producer requires.
  *
  * A third question joined them in #1966: does the active model consume the
  * prompt at all (`ModelEntry.takes_prompt`)? That every mode sends a prompt
@@ -53,16 +50,16 @@
  * | Row kind | asks, in order |
  * |---|---|
  * | text | Is there a prompt |
- * | image / audio / video / … | Does this mode use references; is there a prompt; is this row an image |
+ * | image / audio / video / … | Does this mode use references; is there a prompt; does the pool take this kind |
  *
  * The two MODE-shaped reasons name a state the user can leave and arrive
  * somewhere the row works: a media row becomes usable in a mode that takes
  * references, a text row in a mode that sends a prompt. Asking a media row
  * about the prompt first would have sent its user to t2v / i2v / first_last /
  * animate — all of which send a prompt and still refuse it. The third,
- * `source-type-unused`, names no such state: what the rail feeds is a list of
- * image URLs, so an audio / video / 3d / web row is refused in every mode and
- * the way out is a different row, not a different mode.
+ * `source-type-unused`, names no mode to switch to: the pool takes the kinds
+ * its model takes, so a row of any other kind is refused whichever mode is on,
+ * and the way out is a different row or a model that takes that kind.
  *
  * A media row is asked two further things: is there a destination to insert
  * INTO, and can the pool carry this row.
@@ -105,20 +102,21 @@ export type ReferenceRefusal =
  */
 export interface ReferenceUsabilityContext {
   /**
-   * Does this mode consume the `@`-picked pool at all (`modeTakesReferences`
-   * on the video panel, `!imageSourcesOff` on the image one)? This is the
-   * row-level dimension: false dims every REFERENCE MATERIAL row's content and
-   * refuses its insert. Text rows are outside it — see the module docstring.
-   * The ✕ is outside it too, and outside everything else here (#1952).
+   * Which node kinds the active model's `@`-picked pool takes under this mode
+   * (#2156) — an image pool, and on some models a video and an audio one
+   * beside it. Empty means the mode consumes no pool at all: every REFERENCE
+   * MATERIAL row's content dims and its insert is refused. Text rows are
+   * outside it — see the module docstring. The ✕ is outside it too, and
+   * outside everything else here (#1952).
    */
-  takesReferences: boolean;
+  referenceKinds: readonly NodeType[];
   /**
    * Does the ACTIVE MODEL consume the prompt (`ModelEntry.takes_prompt`,
    * #1966)? False refuses INSERT on every row — there is no editor to insert
    * into — including TEXT rows, which are prompt material and have nothing to
    * be material FOR under such a mode (user 2026-08-16).
    *
-   * A plain boolean the caller passes in, exactly like `takesReferences`: the
+   * A plain boolean the caller passes in, exactly like `referenceKinds`: the
    * value comes from the model catalog, but this module still reads nothing
    * asynchronous itself — the thing the module docstring keeps out of here.
    */
@@ -126,7 +124,7 @@ export interface ReferenceUsabilityContext {
 }
 
 /**
- * Whether a row is REFERENCE MATERIAL — what `takesReferences` reads on.
+ * Whether a row is REFERENCE MATERIAL — what `referenceKinds` reads on.
  *
  * A named predicate rather than a check spelled out at each site: the refusal
  * and the empty hint both ask this one question, and when they were spelled
@@ -168,14 +166,15 @@ export function insertRefusal(
   // names a state the user can leave and reach a mode where the row WORKS.
   // Leading with "there is no prompt box" sends them to t2v / i2v /
   // first_last / animate, which all send a prompt and still refuse this row.
-  if (!ctx.takesReferences) return "mode-takes-no-references";
+  if (ctx.referenceKinds.length === 0) return "mode-takes-no-references";
   // The mode does use references, so now the destination matters: with no
   // prompt there is no box to put the `@` chip in. Unreachable in today's
   // catalog — the one mode that takes references also sends a prompt — but the
   // order has to be total.
   if (!ctx.takesPrompt) return "model-takes-no-prompt";
-  // The pool is the image pool — see the module docstring. Everything else is
-  // a legitimate connection (an edge carries creative intent as well as data
+  // The pool carries the kinds this model takes (#2156): images always, and
+  // videos and audio for the models that take those. Anything else is a
+  // legitimate connection (an edge carries creative intent as well as data
   // use, user 2026-08-13) that this pool has no way to carry.
-  return sourceNodeType === "image" ? null : "source-type-unused";
+  return ctx.referenceKinds.includes(sourceNodeType) ? null : "source-type-unused";
 }

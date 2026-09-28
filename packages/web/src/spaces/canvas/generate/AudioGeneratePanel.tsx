@@ -26,6 +26,7 @@ import { ModeToggle, type ModeOption } from '@web/spaces/canvas/generate/ModeTog
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import { VoicePicker } from '@web/spaces/canvas/generate/VoicePicker';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
+import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
 
 /**
  * The panel's outer surface: width, corners, border, fill, padding, spacing.
@@ -290,8 +291,9 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         // No audio model declares a reference pool, so the rail turns away
         // every media row here and a text row is the only one that lands —
         // and a text row is prompt material, outside the
-        // `modeTakesReferences` question entirely. What it answers to is the
+        // `referenceKinds` question entirely. What it answers to is the
         // model's own `takes_prompt`, resolved once by the view model.
+        referenceKinds={NO_REFERENCE_KINDS}
         modelTakesPrompt={modelTakesPrompt}
       />
 

@@ -442,7 +442,7 @@ describe('PromptEditor — where each box starts', () => {
         onTextChange={() => {}}
         onAtMentionsChange={() => {}}
         references={[]}
-        imageRefsDisabled
+        referenceKinds={[]}
         mentionEmptyLabel='e'
         mentionNoMatchLabel='n'
       />,

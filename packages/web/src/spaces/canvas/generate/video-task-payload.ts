@@ -14,7 +14,6 @@
  * belongs to all but one.
  */
 
-import { REFERENCE_POOL_PARAM } from '@breatic/shared';
 import type { TaskCreateInput } from '@breatic/shared';
 
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
@@ -45,18 +44,11 @@ export interface VideoTaskInput {
   /** URLs picked into slots, by slot. */
   slotUrls: VideoSlotUrls;
   /**
-   * The reference image URLs the prompt `@`-mentions, snapshotted at execute
-   * time. Written into the payload only under a mode that collects references
-   * (#1927); under the rest this value contributes nothing.
+   * The `@`-mentioned references under the params the model reads them from,
+   * as `poolParams` builds them (#1927, #2156) — empty under a mode whose
+   * model takes no pool, or when nothing is mentioned.
    */
-  referenceUrls?: readonly string[];
-  /**
-   * Whether the model draws on the reference pool in this mode.
-   *
-   * The model declares it, and the caller has the entry: this builder is
-   * handed the model's NAME, which says nothing about its parameters.
-   */
-  takesReferences: boolean;
+  poolParams: Readonly<Record<string, readonly string[]>>;
 }
 
 /**
@@ -65,8 +57,8 @@ export interface VideoTaskInput {
  * Built FROM the drawn slots rather than collected and then guarded: a slot
  * the toolbar does not draw has no way in and needs no check to keep it out
  * (user 2026-08-10). Each URL travels as its own param,
- * never folded into the reference array — that array is the `@`-picked pool
- * and means something else to the model. An empty slot adds no key here,
+ * never folded into the pool — the pool is the `@`-picked references and
+ * means something else to the model. An empty slot adds no key here,
  * because the upstream provider reads a source field's presence, not its
  * value.
  *
@@ -78,15 +70,13 @@ export interface VideoTaskInput {
  * them to vendor names.
  * @param slots - The slots the toolbar draws.
  * @param slotUrls - What is currently picked, by slot.
- * @param referenceUrls - The `@`-mentioned reference images.
- * @param takesReferences - Whether the model draws on the pool in this mode.
+ * @param pool - The `@`-mentioned references, under the params the model reads.
  * @returns The source params, ready to merge into the payload.
  */
 export function sourceParams(
   slots: readonly VideoSlot[],
   slotUrls: VideoSlotUrls,
-  referenceUrls: readonly string[],
-  takesReferences: boolean,
+  pool: Readonly<Record<string, readonly string[]>>,
 ): Record<string, unknown> {
   const params: Record<string, unknown> = {};
   for (const slot of slots) {
@@ -99,9 +89,7 @@ export function sourceParams(
   // a source field's presence, so an empty list would be a claim rather than a
   // silence. Execute refuses that submit anyway, and whatever the model's own
   // declared default left in `params` stays as it was.
-  if (takesReferences && referenceUrls.length > 0) {
-    params[REFERENCE_POOL_PARAM] = [...referenceUrls];
-  }
+  for (const [param, urls] of Object.entries(pool)) params[param] = [...urls];
   return params;
 }
 
@@ -126,8 +114,7 @@ export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
       ...sourceParams(
         input.slots,
         input.slotUrls,
-        input.referenceUrls ?? [],
-        input.takesReferences,
+        input.poolParams,
       ),
     },
   });

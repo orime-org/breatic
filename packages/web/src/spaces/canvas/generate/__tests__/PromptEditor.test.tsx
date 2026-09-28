@@ -33,6 +33,7 @@ import {
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceKind } from '@breatic/shared';
 
 /** Reads the empty paragraph's data-placeholder (what the Placeholder ext renders). */
 function currentPlaceholder(): string | null {
@@ -55,7 +56,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
         onTextChange={onTextChange}
         onAtMentionsChange={onAtMentionsChange}
         references={[]}
-        imageRefsDisabled
+        referenceKinds={[]}
         mentionEmptyLabel='No references'
         mentionNoMatchLabel='No matches'
       />,
@@ -78,7 +79,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       onTextChange: vi.fn(),
       onAtMentionsChange: vi.fn(),
       references: [],
-      imageRefsDisabled: true,
+      referenceKinds: [],
       mentionEmptyLabel: 'No references',
       mentionNoMatchLabel: 'No matches',
     };
@@ -112,7 +113,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
         onTextChange={vi.fn()}
         onAtMentionsChange={vi.fn()}
         references={[]}
-        imageRefsDisabled
+        referenceKinds={[]}
         mentionEmptyLabel='No references'
         mentionNoMatchLabel='No matches'
       />,
@@ -152,7 +153,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       placeholder: 'Describe',
       onTextChange,
       onAtMentionsChange: vi.fn(),
-      imageRefsDisabled: false,
+      referenceKinds: ['image'] as const,
       mentionEmptyLabel: 'No references',
       mentionNoMatchLabel: 'No matches',
     };
@@ -196,7 +197,7 @@ describe('PromptEditor — collaborative plain-text prompt (slice 1)', () => {
       placeholder: 'Describe',
       onTextChange,
       onAtMentionsChange: vi.fn(),
-      imageRefsDisabled: false,
+      referenceKinds: ['image'] as const,
       mentionEmptyLabel: 'No references',
       mentionNoMatchLabel: 'No matches',
     };
@@ -258,7 +259,7 @@ describe('PromptEditor — collaborator carets (awareness)', () => {
           onTextChange={vi.fn()}
           onAtMentionsChange={vi.fn()}
           references={[]}
-          imageRefsDisabled
+          referenceKinds={[]}
           mentionEmptyLabel='none'
           mentionNoMatchLabel='No matches'
           caretProvider={withProvider ? { awareness } : null}
@@ -573,7 +574,7 @@ describe('PromptEditor — effects after the editor is rebuilt', () => {
         onTextChange={vi.fn()}
         onAtMentionsChange={vi.fn()}
         references={[]}
-        imageRefsDisabled
+        referenceKinds={[]}
         mentionEmptyLabel={mentionEmptyLabel}
         mentionNoMatchLabel='No matches'
       />
@@ -629,7 +630,7 @@ describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952�
    */
   async function typeMention(opts: {
     references: ReferenceRailItem[];
-    imageRefsDisabled: boolean;
+    referenceKinds: readonly ReferenceKind[];
     query?: string;
   }): Promise<void> {
     const doc = new Y.Doc();
@@ -640,7 +641,7 @@ describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952�
         onTextChange={vi.fn()}
         onAtMentionsChange={vi.fn()}
         references={opts.references}
-        imageRefsDisabled={opts.imageRefsDisabled}
+        referenceKinds={opts.referenceKinds}
         mentionEmptyLabel={EMPTY}
         mentionNoMatchLabel={NO_MATCH}
       />,
@@ -661,7 +662,7 @@ describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952�
   }
 
   it('池子空：屏幕上看得见「没有可引用的内容」那句', async () => {
-    await typeMention({ references: [], imageRefsDisabled: false });
+    await typeMention({ references: [], referenceKinds: ['image'] });
     expect(screen.getByText(EMPTY)).toBeVisible();
     expect(screen.queryByText(NO_MATCH)).toBeNull();
   });
@@ -669,7 +670,7 @@ describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952�
   it('池子非空但被模式滤光：说的还是同一句，而且它可见', async () => {
     await typeMention({
       references: [picture('Alpha')],
-      imageRefsDisabled: true,
+      referenceKinds: [],
     });
     expect(screen.getByText(EMPTY)).toBeVisible();
     expect(screen.queryByText(NO_MATCH)).toBeNull();
@@ -678,7 +679,7 @@ describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952�
   it('这一档有货、只是打的字没匹配上：说的是另一句，而且它可见', async () => {
     await typeMention({
       references: [picture('Alpha')],
-      imageRefsDisabled: false,
+      referenceKinds: ['image'],
       query: 'zzz',
     });
     expect(screen.getByText(NO_MATCH)).toBeVisible();
@@ -688,7 +689,7 @@ describe('PromptEditor — `@` 弹层的两句空态真的到达屏幕（#1952�
   it('有匹配时两句都不出场', async () => {
     await typeMention({
       references: [picture('Alpha')],
-      imageRefsDisabled: false,
+      referenceKinds: ['image'],
       query: 'alp',
     });
     expect(screen.queryByText(EMPTY)).toBeNull();

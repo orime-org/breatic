@@ -1307,30 +1307,15 @@ describe('VideoGeneratePanelContainer', () => {
       await waitFor(() => expect(execute).not.toBeDisabled());
     }
 
-    it('offers the reference clip and no other slot — the images come from the rail', async () => {
-      // The images this mode generates from arrive through the rail, so none
-      // of the image slots belong here. The clip is the one thing the rail
-      // cannot carry (#1928): it is motion guidance, not a reference image.
+    it('offers no slot — every source comes from the rail', async () => {
       await openRefPanel(['ref-a']);
-      expect(
-        screen.getByTestId('generate-video-tool-reference-video'),
-      ).toBeVisible();
       expect(screen.queryByTestId('generate-video-tool-first-frame')).toBeNull();
       expect(screen.queryByTestId('generate-video-tool-end-frame')).toBeNull();
       expect(
         screen.queryByTestId('generate-video-tool-character-image'),
       ).toBeNull();
       expect(screen.queryByTestId('generate-video-tool-driving-video')).toBeNull();
-    });
-
-    it('starts the clip pick while the images are within the cap it would bring', async () => {
-      await openRefPanel(['ref-a']);
-      fireEvent.click(screen.getByTestId('generate-video-tool-reference-video'));
-      expect(useCanvasStore.getState().pickSession).toEqual({
-        nodeId: 'target',
-        purpose: 'referenceVideo',
-      });
-      expect(toast.warning).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('generate-video-tool-source-video')).toBeNull();
     });
 
     it('sends only the @-mentioned image, not everything connected', async () => {
@@ -1750,7 +1735,7 @@ describe('VideoGeneratePanelContainer', () => {
 
     it('参考轨道对图片引用行的既有拒绝语没被这一片改掉', async () => {
       // 这一条钉的是既有行为、不是这一片新加的：口播档在档位表里
-      // `takesReferences: false`（video-mode-options.ts），参考轨道自己就在
+      // `referenceKinds: []`（video-mode-options.ts），参考轨道自己就在
       // `refuseInsert`（ReferenceRail.tsx:118）拦下并弹了拒绝语，压根走不到
       // 容器那句会静默吞掉的 `promptEditorRef.current?.insertReference`。
       // 留着它是因为编辑器在这一档不挂载了，那句吞掉的代码从此没有别的

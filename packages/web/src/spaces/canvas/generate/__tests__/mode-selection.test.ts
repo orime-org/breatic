@@ -263,16 +263,16 @@ describe('filterAvailableModes（#1951 档要先有模型才出现）', () => {
   });
 
   it('留下的是原来那个对象，额外字段一个不丢', () => {
-    // 视频档带着 slots / takesReferences，容器还要拿它们查槽位；
+    // 视频档带着 slots / referenceKinds，容器还要拿它们查槽位；
     // 过滤要是重建对象，那些字段就没了。
     const withExtras = [
-      { value: 't2v', label: 'Text to Video', testId: 'x-t2v', slots: [], takesReferences: false },
-      { value: 'ref', label: 'Reference', testId: 'x-ref', slots: ['a'], takesReferences: true },
+      { value: 't2v', label: 'Text to Video', testId: 'x-t2v', slots: [], referenceKinds: [] },
+      { value: 'ref', label: 'Reference', testId: 'x-ref', slots: ['a'], referenceKinds: ['image'] },
     ] as const;
     const kept = filterAvailableModes(withExtras, [t2v]);
     expect(kept).toHaveLength(1);
     expect(kept[0]).toBe(withExtras[0]);
-    expect(kept[0]?.takesReferences).toBe(false);
+    expect(kept[0]?.referenceKinds).toEqual([]);
   });
 });
 

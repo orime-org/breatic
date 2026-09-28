@@ -11,7 +11,6 @@
  * (the reference / image-to-image inputs); it never reads the live node.
  */
 
-import { REFERENCE_POOL_PARAM } from '@breatic/shared';
 import type { TaskCreateInput } from '@breatic/shared';
 
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
@@ -32,15 +31,18 @@ export interface GenerateTaskInput {
   params: Record<string, unknown>;
   /** Plain-text prompt (extracted from the rich-text prompt). */
   promptText: string;
-  /** Reference source image URLs, snapshotted from the reference rail. */
-  referenceUrls: string[];
+  /**
+   * The mentioned references under the params the model reads them from, as
+   * `poolParams` builds them (#2156) — empty when none are mentioned.
+   */
+  poolParams: Readonly<Record<string, readonly string[]>>;
   /**
    * Style-reference image URL (image-node style slice #1664) — the node's
    * pick-time copy, included by the caller ONLY when the active model supports
    * style references (capability gate). Sent as `params.style_images` (a
    * one-element list — the wire param is list-typed; the product caps it at
    * one). Absent → the key is omitted. Rides every mode (style survives t2i),
-   * distinct from `params.images` (the i2i source).
+   * distinct from the pool (the i2i source).
    */
   styleImageUrl?: string;
 }
@@ -65,9 +67,7 @@ export function buildGenerateTaskPayload(
     params: {
       ...input.params,
       prompt: input.promptText,
-      ...(input.referenceUrls.length > 0
-        ? { [REFERENCE_POOL_PARAM]: input.referenceUrls }
-        : {}),
+      ...input.poolParams,
       ...(input.styleImageUrl
         ? { [IMAGE_SLOTS.style.param]: [input.styleImageUrl] }
         : {}),

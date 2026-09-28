@@ -31,7 +31,6 @@ import {
   MAX_NODE_NAME_LEN,
   missingSources,
   PANEL_EDITOR_PARAM,
-  REFERENCE_POOL_PARAM,
   type CanvasProposal,
   type GenerationNodeType,
   type ProposalNode,
@@ -115,9 +114,9 @@ function reachableModes(): Reachable[] {
             .filter(([name, p]) => theirsToFill(name, p))
             .map(([name]) => name),
           ...(model.maxInputChars === undefined ? {} : { maxInputChars: model.maxInputChars }),
-          ...(model.params[REFERENCE_POOL_PARAM]?.maxItems === undefined
+          ...(model.params.images?.maxItems === undefined
             ? {}
-            : { poolCap: model.params[REFERENCE_POOL_PARAM].maxItems }),
+            : { poolCap: model.params.images.maxItems }),
           params: model.params,
         });
       }

@@ -13,7 +13,7 @@
  * param value reader all serve both.
  */
 
-import { VIDEO_GENERATION_MODES } from '@breatic/shared';
+import { referenceKinds, referencePool, VIDEO_GENERATION_MODES, type ReferencePool } from '@breatic/shared';
 import type { FocusImage, ModelEntry } from '@breatic/shared';
 
 import { validFocusImages } from '@web/data/focus-images';
@@ -28,17 +28,16 @@ import {
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import { modelReferenceCap } from '@web/spaces/canvas/generate/model-reference-cap';
-import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
+import {
+  mentionedReferenceUrls,
+  NO_REFERENCE_URLS,
+  type ReferenceUrls,
+} from '@web/spaces/canvas/generate/reference-urls';
 import {
   readSlotThumbnails,
   readSlotUrls,
 } from '@web/spaces/canvas/generate/slots';
-import {
-  modelTakesReferences,
-  VIDEO_SLOTS,
-  videoSlotsForModel,
-} from '@web/spaces/canvas/generate/video-slots';
+import { VIDEO_SLOTS, videoSlotsForModel } from '@web/spaces/canvas/generate/video-slots';
 import type {
   VideoSlot,
   VideoSlotUrls,
@@ -110,18 +109,19 @@ export interface VideoPanelViewModel {
    */
   focusImages: FocusImage[];
   /**
-   * The reference image URLs this submit sends (#1927) — the `@`-mentioned
-   * ones only, in rail order, and only under a mode that takes references.
-   * What the PAYLOAD carries, which is a smaller thing than what the rail
-   * shows: connecting an image offers it, mentioning it uses it.
+   * The reference URLs this submit sends (#1927), by kind — the
+   * `@`-mentioned ones only, in rail order, and only the kinds the model's
+   * pool takes in this mode. What the PAYLOAD carries, which is a smaller
+   * thing than what the rail shows: connecting a node offers it, mentioning
+   * it uses it.
    */
-  referenceUrls: string[];
+  referenceUrls: ReferenceUrls;
   /**
-   * How many reference images the active model takes, or undefined when it is
-   * uncapped. Read off the wire so the panel, the server rule and the worker
-   * all count against the same figure.
+   * Where the active model's pool takes each kind in this mode, and how many
+   * (#2156). Read off the wire so the panel, the server rule and the worker
+   * all count against the same figures.
    */
-  maxReferences: number | undefined;
+  pool: ReferencePool;
   /**
    * The resolved catalog entry, for the declarations the panel reads off it.
    *
@@ -303,9 +303,10 @@ export function buildVideoPanelViewModel(input: {
   // for reference-to-video would ride into a first-last-frame task.
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
   const focusImages = validFocusImages(content?.focusImages);
-  const referenceUrls = modelTakesReferences(current, mode)
-    ? mentionedReferenceUrls({ references, focusImages, atMentioned, nodes })
-    : [];
+  const pool = referencePool(current, mode);
+  const referenceUrls = referenceKinds(pool).length === 0
+    ? NO_REFERENCE_URLS
+    : mentionedReferenceUrls({ references, focusImages, atMentioned, nodes });
 
   return {
     model,
@@ -327,9 +328,9 @@ export function buildVideoPanelViewModel(input: {
     // as an entry (#1978).
     focusImages,
     referenceUrls,
-    // Through the shared rule, so this number and the one the server
+    // Through the shared rule, so these caps and the ones the server
     // re-checks before enqueue are the same arithmetic (#1928).
-    maxReferences: modelReferenceCap(current),
+    pool,
     modelEntry: current,
 
     // The model states it (#1966). This used to be inferred from a `prompt`

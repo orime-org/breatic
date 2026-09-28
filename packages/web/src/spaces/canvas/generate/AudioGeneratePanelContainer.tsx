@@ -41,6 +41,7 @@ import {
   AUDIO_SLOTS,
 } from '@web/spaces/canvas/generate/audio-slots';
 import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
+import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
 import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import {
   AUDIO_MODE_OPTIONS,
@@ -587,10 +588,9 @@ function AudioGeneratePanelBody({
           onAtMentionsChange={noop}
           onFocus={onPromptFocus}
           references={references}
-          // An image `@` chip is a model input on the other two panels; here
-          // there is no path for one to travel, and an audio node takes no
-          // image edge to make one from.
-          imageRefsDisabled
+          // A media `@` chip is a model input on the other two panels; here
+          // no audio model declares a pool for one to travel in.
+          referenceKinds={NO_REFERENCE_KINDS}
           mentionEmptyLabel={mentionEmptyLabel}
           mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
@@ -633,7 +633,7 @@ function AudioGeneratePanelBody({
           // already written in a text node on the canvas, and `@` is how they
           // get in (user 2026-09-06).
           references={references}
-          imageRefsDisabled
+          referenceKinds={NO_REFERENCE_KINDS}
           mentionEmptyLabel={mentionEmptyLabel}
           mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}

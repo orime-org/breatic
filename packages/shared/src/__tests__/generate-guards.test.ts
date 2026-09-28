@@ -468,18 +468,32 @@ describe('evaluateExecute — the lyrics box', () => {
 });
 
 describe('evaluateExecute — more references than the model takes', () => {
-  const pooled = { ...ok, poolCount: 8, poolCap: 7 };
+  const pooled = { ...ok, pools: [{ kind: 'image' as const, count: 8, cap: 7 }] };
 
   it('names the limit, which is the only way to find it without guessing', () => {
     expect(evaluateExecute(pooled)).toEqual({
       refusal: 'too-many-references',
-      over: { limit: 7 },
+      over: { limit: 7, kind: 'image' },
+    });
+  });
+
+  it('names the kind that is over, each kind against its own cap', () => {
+    const mixed = {
+      ...ok,
+      pools: [
+        { kind: 'image' as const, count: 9, cap: 30 },
+        { kind: 'video' as const, count: 4, cap: 3 },
+      ],
+    };
+    expect(evaluateExecute(mixed)).toEqual({
+      refusal: 'too-many-references',
+      over: { limit: 3, kind: 'video' },
     });
   });
 
   it('passes at the cap and where the model states none', () => {
-    expect(refusalOf({ ...pooled, poolCount: 7 })).toBeNull();
-    expect(refusalOf({ ...pooled, poolCap: undefined })).toBeNull();
+    expect(refusalOf({ ...ok, pools: [{ kind: 'image', count: 7, cap: 7 }] })).toBeNull();
+    expect(refusalOf({ ...ok, pools: [{ kind: 'image', count: 8, cap: undefined }] })).toBeNull();
   });
 
   it('asks for the missing material first, the panel order', () => {

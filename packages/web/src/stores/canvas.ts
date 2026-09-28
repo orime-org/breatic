@@ -135,7 +135,6 @@ export type PickPurpose =
   | 'endFrame'
   | 'characterImage'
   | 'drivingVideo'
-  | 'referenceVideo'
   | 'drivingAudio'
   | 'sourceVideo'
   | 'leftAudio'
@@ -377,8 +376,6 @@ interface CanvasState {
   startCharacterImagePick: (nodeId: string) => void;
   /** Enter the driving-video pick for a video node (#1918). */
   startDrivingVideoPick: (nodeId: string) => void;
-  /** Enter the reference-video pick for a video node (#1928). */
-  startReferenceVideoPick: (nodeId: string) => void;
   /** Enter the driving-audio pick for a video node (#1935). */
   startDrivingAudioPick: (nodeId: string) => void;
   /** Enter the source-video pick for a video node (#2156). */
@@ -672,7 +669,6 @@ export const useCanvasStore = create<CanvasState>()(
     startEndFramePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'endFrame' })),
     startCharacterImagePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'characterImage' })),
     startDrivingVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'drivingVideo' })),
-    startReferenceVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'referenceVideo' })),
     startDrivingAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'drivingAudio' })),
     startSourceVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'sourceVideo' })),
     startLeftAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'leftAudio' })),

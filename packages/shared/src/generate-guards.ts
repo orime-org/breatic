@@ -7,6 +7,7 @@
 
 import { extractPromptText } from "@shared/agent/extract-prompt.js";
 import { referenceCapExceeded } from "@shared/reference-cap.js";
+import type { ReferenceKind } from "@shared/reference-pool.js";
 import type { MissingSource } from "@shared/missing-sources.js";
 
 /** Everything the execute gate must weigh before a task may be submitted. */
@@ -70,16 +71,15 @@ export interface ExecuteGateInput {
    * text-to-image and every mode that collects nothing.
    */
   missing?: readonly MissingSource[];
-  /** How many references the pool holds, for the cap below. */
-  poolCount?: number;
   /**
-   * The most the model takes at once, when it caps the pool.
+   * How many references of each kind the pool holds, against the most the
+   * model takes of that kind (#2156) — `cap` undefined means uncapped.
    *
-   * Absent means uncapped. The server re-checks before enqueue; refusing here
-   * is what turns that into something the user can act on, since the worker
-   * would otherwise truncate the extras without saying so.
+   * The server re-checks before enqueue; refusing here is what turns that
+   * into something the user can act on, since the worker would otherwise
+   * truncate the extras without saying so.
    */
-  poolCap?: number;
+  pools?: ReadonlyArray<{ kind: ReferenceKind; count: number; cap: number | undefined }>;
   /**
    * Whether the active mode insists on lyrics (#1960).
    *
@@ -145,8 +145,8 @@ export interface ExecuteVerdict {
   readonly refusal: ExecuteRefusal;
   /** Which place is empty, when one of them is. */
   readonly slot?: string;
-  /** What the too-many sentence interpolates. */
-  readonly over?: { limit: number };
+  /** What the too-many sentence interpolates: the cap, and of which kind. */
+  readonly over?: { limit: number; kind: ReferenceKind };
 }
 
 /**
@@ -235,8 +235,10 @@ export function evaluateExecute(
   // The other end of the same question: more than the model takes. Naming the
   // limit is the point -- otherwise the only way to find it is to remove one
   // and try again.
-  const over = referenceCapExceeded(input.poolCount ?? 0, input.poolCap);
-  if (over) return { refusal: 'too-many-references', over };
+  for (const pool of input.pools ?? []) {
+    const over = referenceCapExceeded(pool.count, pool.cap);
+    if (over) return { refusal: 'too-many-references', over: { ...over, kind: pool.kind } };
+  }
   return null;
 }
 

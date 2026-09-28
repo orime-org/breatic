@@ -7,17 +7,20 @@
  * It began as two copies, character for character down to the sanitiser and
  * its reason, and moved here when the video panel's copy was found (#1927).
  * Tested on its own because it is now the only place either panel decides
- * what reaches the provider.
+ * what reaches the provider. Since #2156 each mentioned row travels in the
+ * list of its own kind, under the param the model reads that kind from.
  */
 
+import type { ReferencePool } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/data/yjs/node-view';
 import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
 import {
-  mentionedImageUrls,
   mentionedReferenceUrls,
+  poolCounts,
+  poolParams,
 } from '@web/spaces/canvas/generate/reference-urls';
 
 /**
@@ -34,6 +37,10 @@ function node(id: string, data: NodeView): Pick<CanvasNodeView, 'id' | 'data'> {
 const IMAGE_A = node('a', { kind: 'image', status: 'idle', content: 'https://cdn/a.png' });
 /** A second image node, so order is observable. */
 const IMAGE_B = node('b', { kind: 'image', status: 'idle', content: 'https://cdn/b.png' });
+/** A video node. */
+const CLIP = node('v', { kind: 'video', status: 'idle', content: 'https://cdn/v.mp4' });
+/** An audio node. */
+const TRACK = node('s', { kind: 'audio', status: 'idle', content: 'https://cdn/s.mp3' });
 
 /**
  * Rail rows for the given source ids, in rail order.
@@ -44,113 +51,131 @@ function rows(...ids: string[]): { sourceNodeId: string }[] {
   return ids.map((sourceNodeId) => ({ sourceNodeId }));
 }
 
-describe('mentionedImageUrls', () => {
+/**
+ * The URLs a set of mentioned rows sends, with no crops.
+ * @param ids - The rows, in rail order.
+ * @param mentioned - The ids the prompt mentions.
+ * @param nodes - The canvas nodes.
+ * @returns The URLs, by kind.
+ */
+function mentioned(
+  ids: string[],
+  mentioned: string[],
+  nodes: Array<Pick<CanvasNodeView, 'id' | 'data'>>,
+): ReturnType<typeof mentionedReferenceUrls> {
+  return mentionedReferenceUrls({
+    references: rows(...ids),
+    focusImages: [],
+    atMentioned: new Set(mentioned),
+    nodes,
+  });
+}
+
+describe('mentionedReferenceUrls — rows', () => {
   it('sends the mentioned rows, and only those', () => {
     // Connecting an image offers it; mentioning it uses it. A connected image
     // nobody mentioned must not be paid for in every generation.
-    expect(
-      mentionedImageUrls(rows('a', 'b'), new Set(['b']), [IMAGE_A, IMAGE_B]),
-    ).toEqual(['https://cdn/b.png']);
+    expect(mentioned(['a', 'b'], ['b'], [IMAGE_A, IMAGE_B]).image).toEqual(['https://cdn/b.png']);
   });
 
   it('keeps rail order, not mention order', () => {
-    // The payload should read the way the panel does.
-    expect(
-      mentionedImageUrls(rows('a', 'b'), new Set(['b', 'a']), [IMAGE_A, IMAGE_B]),
-    ).toEqual(['https://cdn/a.png', 'https://cdn/b.png']);
+    expect(mentioned(['a', 'b'], ['b', 'a'], [IMAGE_A, IMAGE_B]).image).toEqual([
+      'https://cdn/a.png',
+      'https://cdn/b.png',
+    ]);
   });
 
-  it('sends nothing when nothing is mentioned', () => {
-    expect(mentionedImageUrls(rows('a', 'b'), new Set(), [IMAGE_A, IMAGE_B])).toEqual([]);
+  it('sorts each row into the list of its own kind', () => {
+    expect(mentioned(['a', 'v', 's'], ['a', 'v', 's'], [IMAGE_A, CLIP, TRACK])).toEqual({
+      image: ['https://cdn/a.png'],
+      video: ['https://cdn/v.mp4'],
+      audio: ['https://cdn/s.mp3'],
+    });
   });
 
-  it('drops a mentioned row whose source is not an image', () => {
-    // The rail carries text, audio and video rows too, and a text node's body
-    // is not a URL — sending it would put a sentence where the upstream wants
-    // a picture.
+  it('sends nothing for a text row, an empty one, a malformed one or a missing one', () => {
     const text = node('t', { kind: 'text', status: 'idle' });
-    expect(mentionedImageUrls(rows('t'), new Set(['t']), [text])).toEqual([]);
-  });
-
-  it('drops a mentioned row whose source has no content yet', () => {
-    // An image node that has not been generated or uploaded carries no URL.
-    // It reaching the payload as undefined would be worse than dropping it.
-    // Dropping it silently was once filed as a defect (#1932); user 2026-08-18
-    // ruled it is not one — a reference is a LIVE projection, so a row whose
-    // source is still empty is a row the user connected on purpose and will
-    // fill in. That task is closed.
-    const empty = node('e', { kind: 'image', status: 'idle' });
-    expect(mentionedImageUrls(rows('e'), new Set(['e']), [empty])).toEqual([]);
-  });
-
-  it('drops a source whose content is not a string', () => {
-    // Node content is collaborative Yjs data — untrusted, and outside the
-    // catalog boundary. A malformed object is truthy, so a Boolean check
-    // would let a non-URL through.
+    const empty = node('e', { kind: 'image', status: 'idle', content: '' });
     const malformed = node('m', {
       kind: 'image',
       status: 'idle',
-      content: { url: 'https://cdn/x.png' },
-    } as unknown as NodeView);
-    expect(mentionedImageUrls(rows('m'), new Set(['m']), [malformed])).toEqual([]);
-  });
-
-  it('drops a row whose source is gone from the board', () => {
-    // A collaborator can delete the source between a mention and a click.
-    expect(mentionedImageUrls(rows('ghost'), new Set(['ghost']), [IMAGE_A])).toEqual([]);
+      content: { url: 'x' } as unknown as string,
+    });
+    expect(
+      mentioned(['t', 'e', 'm', 'ghost'], ['t', 'e', 'm', 'ghost'], [text, empty, malformed]),
+    ).toEqual({ image: [], video: [], audio: [] });
   });
 });
 
-describe('mentionedReferenceUrls', () => {
+describe('mentionedReferenceUrls — crops', () => {
   /** A crop stored on the panel's own node. */
   const CROP = { id: 'c1', url: 'https://cdn/crop-1.png' };
   /** A second crop, so crop order is observable too. */
   const CROP_2 = { id: 'c2', url: 'https://cdn/crop-2.png' };
 
-  it('裁剪排在节点参考之后 —— 载荷顺序跟着轨道顺序', () => {
-    // 两个来源都提到了，才看得出谁在前。这条正是把两半合到一个函数里的理由：
-    // 顺序是这个函数的契约，散在两个面板里各写一遍就没人钉着它。
+  it('puts crops after node rows, in rail order', () => {
     expect(
       mentionedReferenceUrls({
         references: rows('a', 'b'),
         focusImages: [CROP],
         atMentioned: new Set(['a', 'b', focusRefId(CROP.id)]),
         nodes: [IMAGE_A, IMAGE_B],
-      }),
+      }).image,
     ).toEqual(['https://cdn/a.png', 'https://cdn/b.png', CROP.url]);
   });
 
-  it('裁剪之间保持它们在节点上的顺序', () => {
-    expect(
-      mentionedReferenceUrls({
-        references: [],
-        focusImages: [CROP, CROP_2],
-        atMentioned: new Set([focusRefId(CROP.id), focusRefId(CROP_2.id)]),
-        nodes: [],
-      }),
-    ).toEqual([CROP.url, CROP_2.url]);
-  });
-
-  it('没提到的裁剪不上路 —— 在池子里不等于用了它', () => {
+  it('keeps crops in the order the node stores them, and only the mentioned ones', () => {
     expect(
       mentionedReferenceUrls({
         references: [],
         focusImages: [CROP, CROP_2],
         atMentioned: new Set([focusRefId(CROP_2.id)]),
         nodes: [],
-      }),
+      }).image,
     ).toEqual([CROP_2.url]);
   });
 
-  it('裁剪的池子 id 带命名空间，跟同名的节点 id 分得开', () => {
-    // 一个 id 恰好等于某条裁剪 id 的节点被提到时，不该把那条裁剪也带上路。
+  it('keeps a crop apart from a node whose id happens to equal its own', () => {
     expect(
       mentionedReferenceUrls({
         references: rows('c1'),
         focusImages: [CROP],
         atMentioned: new Set(['c1']),
         nodes: [node('c1', { kind: 'image', status: 'idle', content: 'https://cdn/node-c1.png' })],
-      }),
+      }).image,
     ).toEqual(['https://cdn/node-c1.png']);
+  });
+});
+
+describe('the pool in a task', () => {
+  const urls = { image: ['https://cdn/a.png'], video: ['https://cdn/v.mp4'], audio: [] };
+  const seedance: ReferencePool = {
+    image: { param: 'images', cap: 30 },
+    video: { param: 'videos', cap: 10 },
+    audio: { param: 'audios', cap: 10 },
+  };
+
+  it('sends each kind under the param the model reads it from, and no empty list', () => {
+    expect(poolParams(seedance, urls)).toEqual({
+      images: ['https://cdn/a.png'],
+      videos: ['https://cdn/v.mp4'],
+    });
+    expect(poolParams({ image: { param: 'elements', cap: 3 } }, urls)).toEqual({
+      elements: ['https://cdn/a.png'],
+    });
+  });
+
+  it('leaves behind a kind the model takes nothing of', () => {
+    expect(poolParams({ image: { param: 'images', cap: undefined } }, urls)).toEqual({
+      images: ['https://cdn/a.png'],
+    });
+  });
+
+  it('counts each kind against its own cap', () => {
+    expect(poolCounts(seedance, urls)).toEqual([
+      { kind: 'image', count: 1, cap: 30 },
+      { kind: 'video', count: 1, cap: 10 },
+      { kind: 'audio', count: 0, cap: 10 },
+    ]);
   });
 });

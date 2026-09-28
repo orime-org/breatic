@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The reference clip on the reference-to-video panel, end to end (#1928).
+ * A reference clip on the reference-to-video panel, end to end (#1928, #2156).
  *
- * What no jsdom test reaches: the slot appears on a real toolbar under a mode
- * a real menu switched to, the pick lands on a real canvas node through the
- * canvas's own click routing, and the submit is built from a prompt the
- * collaborative editor serialized rather than a string a test handed it.
+ * What no jsdom test reaches: a mode a real menu switched to, a model a real
+ * picker chose, a clip and a picture wired in as real canvas edges and named
+ * with `@` in a prompt the collaborative editor serialized rather than a
+ * string a test handed it.
  *
  * The submit is intercepted rather than let through. What is under test is the
- * request this client builds — that the clip reaches `video` and the mentioned
- * image reaches `images`; whether the vendor then follows the clip's motion is
- * read off two real generations by eye, not asserted here.
+ * request this client builds — that the mentioned clip reaches `videos` and the
+ * mentioned image reaches `images`; whether the vendor then follows the clip is
+ * read off real generations by eye, not asserted here.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
@@ -25,7 +25,7 @@ import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace } from '../helpers/space';
 
 // Taller than Desktop Chrome's 720. This panel is the tallest of the three —
-// a reference rail, a prompt editor and a slot row — and it hangs BELOW its
+// a reference rail, a prompt editor and a toolbar — and it hangs BELOW its
 // node, so at 720 the mode menu opens past the window bottom and no click can
 // reach it. Canvas popovers here are deliberately clipped rather than flipped
 // (`avoidCollisions={false}`, so following the canvas cannot fight a flip),
@@ -218,16 +218,14 @@ test.afterEach(async () => {
 
 // One node, one panel, one session — the steps of a single use, and the state
 // each leaves is what the next one reads.
-test('picks a clip into the slot and sends it as the mode\'s motion guidance', async () => {
+test('sends a mentioned clip and a mentioned picture under their own params', async () => {
   const targetId = crypto.randomUUID();
   const clipId = crypto.randomUUID();
   const imageId = crypto.randomUUID();
   // Placed by SCREEN position, converted through the live viewport: a fixed
   // flow coordinate would land wherever this project's viewport happens to be
-  // and the canvas would never mount the node (measured: the transform this
-  // account carries puts flow 0 at screen 1035, so a node at -60 sits off the
-  // right edge). The row sits near the top so the panel, which hangs BELOW its
-  // node, has the rest of the pane to itself.
+  // and the canvas would never mount the node. The row sits near the top so
+  // the panel, which hangs BELOW its node, has the rest of the pane to itself.
   const { tx, ty } = await viewportOrigin(page);
   const at = (screenX: number): number => Math.round(screenX - tx);
   const row = Math.round(60 - ty);
@@ -235,31 +233,24 @@ test('picks a clip into the slot and sends it as the mode\'s motion guidance', a
   await seedNode(page, clipId, 'video', CLIP, at(340), row);
   await seedNode(page, targetId, 'video', undefined, at(620), row);
   await wire(page, imageId, targetId);
+  await wire(page, clipId, targetId);
 
   await openGenerate(page, targetId);
   await page.getByTestId('generate-video-mode-trigger').click();
   await page.getByTestId('generate-video-mode-ref').click();
+  // A model whose pool takes clips as well as pictures.
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-wan-3.0-reference-to-video').click();
 
-  // The slot is this mode's, and none of the five image slots come with it:
-  // the images arrive through the rail.
-  const slot = page.getByTestId('generate-video-tool-reference-video');
-  await expect(slot).toBeVisible({ timeout: 15_000 });
+  // Every source of this mode comes from the rail: no slot is drawn.
   await expect(page.getByTestId('generate-video-tool-first-frame')).toHaveCount(0);
   await expect(page.getByTestId('generate-video-tool-driving-video')).toHaveCount(0);
 
-  await slot.click();
-  await page.locator(`.react-flow__node[data-id="${clipId}"]`).click();
-  // The clear badge, not a thumbnail: a seeded clip carries no poster, so the
-  // toolbar covers the button with the video icon. The badge is what says the
-  // slot is holding something whatever the pick looks like.
-  await expect(
-    page.getByTestId('generate-video-reference-video-clear'),
-  ).toBeVisible({ timeout: 10_000 });
-
   await page.getByTestId('generate-prompt-editor').click();
   await page.keyboard.type('follow the motion in ');
-  // The `@` mention is what makes a connected image a model input (#1927), so
-  // the request below carries an `images` list only because of this.
+  await page.keyboard.type('@');
+  await page.getByTestId(`reference-mention-option-${clipId}`).click();
+  await page.keyboard.type(' with ');
   await page.keyboard.type('@');
   await page.getByTestId(`reference-mention-option-${imageId}`).click();
 
@@ -280,6 +271,6 @@ test('picks a clip into the slot and sends it as the mode\'s motion guidance', a
   await expect.poll(() => body, { timeout: 20_000 }).toBeDefined();
 
   const params = (body as { params: Record<string, unknown> }).params;
-  expect(params.video).toBe(CLIP);
+  expect(params.videos).toEqual([CLIP]);
   expect(params.images).toEqual([PIXEL]);
 });

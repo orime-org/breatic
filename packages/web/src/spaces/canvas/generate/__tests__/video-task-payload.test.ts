@@ -15,9 +15,8 @@ const BASE = {
   promptText: 'a drone shot over a canyon at dawn',
   slots: slotsForMode('t2v'),
   slotUrls: {},
-  // The model answers this; the default here is every mode that takes its
-  // material through slots.
-  takesReferences: false,
+  // Nothing mentioned, or a model that takes no pool: no pool params.
+  poolParams: {},
 };
 
 describe('buildVideoTaskPayload', () => {
@@ -212,66 +211,41 @@ describe('buildVideoTaskPayload', () => {
 });
 
 /**
- * #1927 — the reference images travel as `params.images`, and only for the
- * mode that asked for them.
- *
- * Same rule the slots follow: the field set is built FROM the mode, so a mode
- * that does not take references has no way to put an `images` key on the
- * payload and needs no check to keep it out. That matters more here than it
- * did for the slots — a reference stays connected across a mode switch, so
- * without this an image someone connected for reference-to-video would ride
- * along into a first-last-frame task.
+ * #1927, #2156 — the `@`-mentioned references travel under the params the
+ * model reads each kind from. Which kinds a mode's model takes is decided
+ * before the builder (the view model's pool); the builder writes what it is
+ * handed, so a reference connected for another mode has no way in.
  */
-describe('buildVideoTaskPayload — reference images (#1927)', () => {
+describe('buildVideoTaskPayload — the reference pool', () => {
   const REFS = ['https://cdn/a.png', 'https://cdn/b.png'];
+  const CLIP = 'https://cdn/clip.mp4';
 
-  it('sends reference-to-video the @-picked images, in order', () => {
+  it('sends each kind under the param the model reads it from, in order', () => {
     const out = buildVideoTaskPayload({
       ...BASE,
       slots: slotsForMode('ref'),
-      takesReferences: true,
-      referenceUrls: REFS,
+      poolParams: { images: REFS, videos: [CLIP] },
     });
-    expect(out.params).toMatchObject({ images: REFS });
+    expect(out.params).toMatchObject({ images: REFS, videos: [CLIP] });
   });
 
-  it('leaves no `images` key on a mode that does not take references', () => {
-    for (const mode of ['t2v', 'i2v', 'first_last', 'animate']) {
-      const out = buildVideoTaskPayload({
-        ...BASE,
-        slots: slotsForMode(mode),
-        slotUrls: {
-          firstFrame: 'https://cdn/first.png',
-          endFrame: 'https://cdn/last.png',
-          characterImage: 'https://cdn/character.png',
-          drivingVideo: 'https://cdn/driving.mp4',
-        },
-        referenceUrls: REFS,
-      });
-      expect(out.params, mode).not.toHaveProperty('images');
-    }
-  });
-
-  it('leaves no `images` key when nothing is @-picked', () => {
-    // The execute gate refuses this submit, so the builder never sees it in
-    // practice; an empty key would still be wrong — upstream reads a source
-    // field's presence, so an empty list is a claim of its own.
-    const out = buildVideoTaskPayload({ ...BASE, slots: slotsForMode('ref'), referenceUrls: [] });
+  it('leaves no pool key when nothing is mentioned', () => {
+    // An empty list would still be wrong — upstream reads a source field's
+    // presence, so an empty list is a claim of its own.
+    const out = buildVideoTaskPayload({ ...BASE, slots: slotsForMode('ref') });
     expect(out.params).not.toHaveProperty('images');
   });
 
-  it('never folds a slot URL into the reference array', () => {
-    // The two are different things to the model, and a mode takes one kind or
-    // the other — never both.
+  it('never folds a slot URL into the pool', () => {
+    // Kling O3 takes a first frame through its slot and its elements through
+    // the pool: two different things to the model.
     const out = buildVideoTaskPayload({
       ...BASE,
-      slots: slotsForMode('ref'),
-      takesReferences: true,
+      slots: slotsForMode('i2v'),
       slotUrls: { firstFrame: 'https://cdn/first.png' },
-      referenceUrls: REFS,
+      poolParams: { elements: REFS },
     });
-    expect(out.params).toMatchObject({ images: REFS });
-    expect(out.params).not.toHaveProperty('image');
+    expect(out.params).toMatchObject({ image: 'https://cdn/first.png', elements: REFS });
   });
 });
 
@@ -280,10 +254,8 @@ describe('buildVideoTaskPayload — reference images (#1927)', () => {
  *
  * The source-param builder adds no key — but it is not the only writer. The
  * model's own declared params arrive first (`resolveParamsForModel` fills a
- * value for every param the model declares, and `kling-o3-pro-ref` declares
- * `images` with a null default), so the payload can carry the key without the
- * builder ever touching it. Pinned here because the cases above cannot see it:
- * their `BASE.params` never carries the key production always carries.
+ * value for every param the model declares), so the payload can carry the key
+ * without the builder ever touching it.
  */
 describe('buildVideoTaskPayload — the model brings its own `images` key', () => {
   const WITH_DECLARED = {
@@ -295,8 +267,7 @@ describe('buildVideoTaskPayload — the model brings its own `images` key', () =
     const out = buildVideoTaskPayload({
       ...WITH_DECLARED,
       slots: slotsForMode('ref'),
-      takesReferences: true,
-      referenceUrls: ['https://cdn/a.png'],
+      poolParams: { images: ['https://cdn/a.png'] },
     });
     expect(out.params).toMatchObject({ images: ['https://cdn/a.png'] });
   });
@@ -304,85 +275,8 @@ describe('buildVideoTaskPayload — the model brings its own `images` key', () =
   it('leaves the declared null alone when nothing is @-picked', () => {
     // Not "no key": the key is the model's, and stripping it here would be a
     // special case for one param among many that arrive the same way (`seed`,
-    // `generate_audio`). Upstream is unbothered — the worker drops null values
-    // before mapping and the server's source gate wants a non-empty array.
-    const out = buildVideoTaskPayload({ ...WITH_DECLARED, slots: slotsForMode('ref'), referenceUrls: [] });
+    // `generate_audio`). The worker drops null values before mapping.
+    const out = buildVideoTaskPayload({ ...WITH_DECLARED, slots: slotsForMode('ref') });
     expect(out.params.images).toBeNull();
-  });
-
-  it('leaves it alone under a mode that does not take references', () => {
-    const out = buildVideoTaskPayload({
-      ...WITH_DECLARED,
-      slots: slotsForMode('t2v'),
-      referenceUrls: ['https://cdn/a.png'],
-    });
-    expect(out.params.images).toBeNull();
-  });
-});
-
-/**
- * The reference video that rides alongside the `@`-picked images (#1928).
- *
- * This mode is the first to take both kinds at once: the images arrive through
- * the rail, the one video the vendor reads for motion guidance through a slot.
- * The slot is optional, so both shapes — with and without — reach the builder
- * in practice, and the payload has to say the right thing about each.
- */
-describe('buildVideoTaskPayload — reference-to-video and its motion clip', () => {
-  const CLIP = 'https://cdn/clip.mp4';
-
-  it('sends the picked clip as the `video` param', () => {
-    const out = buildVideoTaskPayload({
-      ...BASE,
-      slots: slotsForMode('ref'),
-      takesReferences: true,
-      slotUrls: { referenceVideo: CLIP },
-      referenceUrls: ['https://cdn/a.png'],
-    });
-    expect(out.params).toMatchObject({ video: CLIP, images: ['https://cdn/a.png'] });
-  });
-
-  it('sends no clip URL when the slot is empty', () => {
-    // Not "no key": `kling-o3-pro-ref` declares `video` with a null default,
-    // so the key arrives with the model's own params the way `seed` and
-    // `images` do; the worker drops nulls before mapping to vendor names.
-    // What A4 needs is that no URL is claimed, which is what this asserts.
-    const out = buildVideoTaskPayload({
-      ...BASE,
-      params: { ...BASE.params, video: null },
-      slots: slotsForMode('ref'),
-      takesReferences: true,
-      slotUrls: {},
-      referenceUrls: ['https://cdn/a.png'],
-    });
-    expect(out.params.video).toBeNull();
-  });
-
-  it('leaves the clip out of every other mode', () => {
-    // A stale pick sits on the node across a mode switch by design, so the
-    // guard is the mode's own slot list rather than the stored value.
-    for (const mode of ['t2v', 'i2v', 'first_last', 'animate', 'talking_head']) {
-      const out = buildVideoTaskPayload({
-        ...BASE,
-        slots: slotsForMode(mode),
-        slotUrls: { referenceVideo: CLIP },
-      });
-      expect(out.params.video, `${mode} sends no reference clip`).toBeUndefined();
-    }
-  });
-
-  it('keeps the clip apart from the driving video image animation takes', () => {
-    const out = buildVideoTaskPayload({
-      ...BASE,
-      slots: slotsForMode('animate'),
-      slotUrls: {
-        characterImage: 'https://cdn/who.png',
-        drivingVideo: 'https://cdn/drive.mp4',
-        referenceVideo: CLIP,
-      },
-    });
-    // Both slots name the same upstream param, and only the one this mode
-    // collects may reach the payload.
-    expect(out.params.video).toBe('https://cdn/drive.mp4');
   });
 });

@@ -18,13 +18,14 @@
  * fourth was not. A slot is one entry here plus the mode options that name it.
  */
 
-import { REFERENCE_POOL_PARAM, missingSources } from '@breatic/shared';
+import { missingSources, referenceKinds, referencePool } from '@breatic/shared';
 import type { MissingSource, ModelEntry } from '@breatic/shared';
 import { AudioLines, Image, UserRound, Video } from 'lucide-react';
 
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { filledFromCanvas } from '@web/spaces/canvas/generate/canvas-filled';
 import { slotsForMode } from '@web/spaces/canvas/generate/video-mode-options';
+import { poolParams, type ReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 
 /** The source slots the video panel knows how to offer. */
 export type VideoSlot =
@@ -33,7 +34,6 @@ export type VideoSlot =
   | 'characterImage'
   | 'drivingVideo'
   | 'drivingAudio'
-  | 'referenceVideo'
   | 'sourceVideo'
   | 'leftAudio'
   | 'rightAudio';
@@ -129,24 +129,7 @@ export const VIDEO_SLOTS = {
     clearLabelKey: 'canvas.generatePanel.removeDrivingAudio',
     errorKey: 'canvas.generatePanel.errorNoDrivingAudio',
   },
-  referenceVideo: {
-    field: 'referenceVideo',
-    // Whether a run can go without this one is the model's to say, and the
-    // gate reads it there — so it carries an `errorKey` like every other
-    // slot, for the model that does demand it.
-    storesCover: true,
-    param: 'video',
-    purpose: 'referenceVideo',
-    accepts: 'video',
-    Icon: Video,
-    testId: 'generate-video-tool-reference-video',
-    thumbnailTestId: 'generate-video-reference-video-thumbnail',
-    clearTestId: 'generate-video-reference-video-clear',
-    labelKey: 'canvas.generatePanel.referenceVideo',
-    tipKey: 'canvas.generatePanel.referenceVideoTip',
-    clearLabelKey: 'canvas.generatePanel.removeReferenceVideo',
-    errorKey: 'canvas.generatePanel.errorNoReferenceVideo',
-  },
+
   // The talking-head sources beyond a portrait and one track (#2156). The
   // lipsync models take a clip instead of a portrait and redo its lips; the
   // two-speaker model takes one track per side of the frame.
@@ -219,7 +202,7 @@ export type VideoSlotUrls = Partial<Record<VideoSlot, string>>;
  * @param mode - The mode it is set to.
  * @param slots - The slots this panel draws for that mode, in display order.
  * @param slotUrls - What those slots hold.
- * @param references - The references the prompt names.
+ * @param references - The references the prompt names, by kind.
  * @returns Each unmet requirement, in toolbar order; empty when the run has
  *   what it needs or no model resolves.
  */
@@ -228,12 +211,16 @@ export function videoMissing(
   mode: string,
   slots: readonly VideoSlot[],
   slotUrls: VideoSlotUrls,
-  references: readonly string[],
+  references: ReferenceUrls,
 ): MissingSource[] {
   if (model === undefined) return [];
-  const params: Record<string, unknown> = { [REFERENCE_POOL_PARAM]: references };
+  const pool = referencePool(model, mode);
+  const params: Record<string, unknown> = poolParams(pool, references);
   for (const slot of slots) params[VIDEO_SLOTS[slot].param] = slotUrls[slot];
-  const order = [...slots.map((slot) => VIDEO_SLOTS[slot].param), REFERENCE_POOL_PARAM];
+  const order = [
+    ...slots.map((slot) => VIDEO_SLOTS[slot].param),
+    ...referenceKinds(pool).map((kind) => pool[kind]!.param),
+  ];
   /**
    * Where a requirement's first param sits on the toolbar.
    * @param need - One unmet requirement.
@@ -244,20 +231,6 @@ export function videoMissing(
     return at === -1 ? order.length : at;
   };
   return [...missingSources(model, mode, params)].sort((a, b) => rank(a) - rank(b));
-}
-
-/**
- * Whether this mode draws on the reference pool at all.
- *
- * The rail dims its rows and the payload carries the picked URLs only for a
- * mode that does, and the model declares it by giving the pool param a `pool`
- * fill in that mode.
- * @param model - The model the run names.
- * @param mode - The mode it is set to.
- * @returns True when the pool feeds this run.
- */
-export function modelTakesReferences(model: ModelEntry | undefined, mode: string): boolean {
-  return filledFromCanvas(model?.params?.[REFERENCE_POOL_PARAM], mode)?.fill === 'pool';
 }
 
 /**

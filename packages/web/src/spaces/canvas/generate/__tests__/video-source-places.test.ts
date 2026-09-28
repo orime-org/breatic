@@ -13,11 +13,18 @@
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 
-import {
-  modelTakesReferences,
-  videoMissing,
-  videoSlotsForModel,
-} from '@web/spaces/canvas/generate/video-slots';
+import type { ReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
+import { videoMissing, videoSlotsForModel } from '@web/spaces/canvas/generate/video-slots';
+
+/**
+ * What the prompt mentions, by kind.
+ * @param image - Mentioned pictures.
+ * @param video - Mentioned clips.
+ * @returns The references.
+ */
+function refs(image: string[] = [], video: string[] = []): ReferenceUrls {
+  return { image, video, audio: [] };
+}
 
 /**
  * A video model declaring the given params.
@@ -55,29 +62,11 @@ const POOL: ParamDescriptor = {
 };
 
 describe('what a video run still needs', () => {
-  it('asks for a slot the model does not mark optional', () => {
-    const strict = model({
-      images: POOL,
-      video: { description: '', default: null, fill: 'canvas', accepts: 'video', modes: ['ref'] },
-    });
+  it('asks for a pool the model does not mark optional', () => {
+    const strict = model({ images: POOL });
 
-    expect(videoMissing(strict, 'ref', ['referenceVideo'], {}, ['https://a'])).toEqual([['video']]);
-  });
-
-  it('leaves out a slot the model does mark optional', () => {
-    const lenient = model({
-      images: POOL,
-      video: {
-        description: '',
-        default: null,
-        fill: 'canvas',
-        accepts: 'video',
-        optional: true,
-        modes: ['ref'],
-      },
-    });
-
-    expect(videoMissing(lenient, 'ref', ['referenceVideo'], {}, [])).toEqual([['images']]);
+    expect(videoMissing(strict, 'ref', [], {}, refs())).toEqual([['images']]);
+    expect(videoMissing(strict, 'ref', [], {}, refs(['https://a']))).toEqual([]);
   });
 
   it('leaves out a slot this mode does not fill', () => {
@@ -85,8 +74,8 @@ describe('what a video run still needs', () => {
       image: { description: '', default: null, fill: 'canvas', accepts: 'image', modes: ['i2v'] },
     });
 
-    expect(videoMissing(framed, 'ref', ['firstFrame'], {}, [])).toEqual([]);
-    expect(videoMissing(framed, 'i2v', ['firstFrame'], {}, [])).toEqual([['image']]);
+    expect(videoMissing(framed, 'ref', ['firstFrame'], {}, refs())).toEqual([]);
+    expect(videoMissing(framed, 'i2v', ['firstFrame'], {}, refs())).toEqual([['image']]);
   });
 
   it('counts a filled slot as filled', () => {
@@ -94,7 +83,7 @@ describe('what a video run still needs', () => {
       image: { description: '', default: null, fill: 'canvas', accepts: 'image' },
     });
 
-    expect(videoMissing(framed, 'i2v', ['firstFrame'], { firstFrame: 'https://a.png' }, []))
+    expect(videoMissing(framed, 'i2v', ['firstFrame'], { firstFrame: 'https://a.png' }, refs()))
       .toEqual([]);
   });
 
@@ -106,30 +95,31 @@ describe('what a video run still needs', () => {
       image: { description: '', default: null, fill: 'canvas', accepts: 'image' },
     });
 
-    expect(videoMissing(frames, 'first_last', ['firstFrame', 'endFrame'], {}, []))
+    expect(videoMissing(frames, 'first_last', ['firstFrame', 'endFrame'], {}, refs()))
       .toEqual([['image'], ['end_image']]);
   });
 
-  it('asks for any one of a group the model declares for the mode', () => {
+  it('asks for any one of a group, met by a clip as well as a picture (#2156)', () => {
     const grouped = model(
-      { images: { ...POOL, optional: true } },
+      {
+        images: { ...POOL, optional: true },
+        videos: { ...POOL, accepts: 'video', optional: true },
+      },
       [{ mode: 'ref', any_of: ['images', 'videos'] }],
     );
 
-    expect(videoMissing(grouped, 'ref', [], {}, [])).toEqual([['images', 'videos']]);
-    expect(videoMissing(grouped, 'ref', [], {}, ['https://a'])).toEqual([]);
+    expect(videoMissing(grouped, 'ref', [], {}, refs())).toEqual([['images', 'videos']]);
+    expect(videoMissing(grouped, 'ref', [], {}, refs([], ['https://v.mp4']))).toEqual([]);
+  });
+
+  it('reads the pool only in the modes the model gives it', () => {
+    const pooled = model({ images: POOL });
+
+    expect(videoMissing(pooled, 'i2v', [], {}, refs())).toEqual([]);
   });
 
   it('needs nothing when no model resolves', () => {
-    expect(videoMissing(undefined, 'ref', ['referenceVideo'], {}, [])).toEqual([]);
-  });
-
-  it('says the pool feeds only the modes the model gives it', () => {
-    const pooled = model({ images: POOL });
-
-    expect(modelTakesReferences(pooled, 'ref')).toBe(true);
-    expect(modelTakesReferences(pooled, 'i2v')).toBe(false);
-    expect(modelTakesReferences(undefined, 'ref')).toBe(false);
+    expect(videoMissing(undefined, 'ref', [], {}, refs())).toEqual([]);
   });
 });
 
