@@ -6,6 +6,7 @@ import { Bell } from 'lucide-react';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { expiresInLabel } from '@web/lib/expires-in';
+import { formatRelativeTime } from '@web/lib/format-relative-time';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { Button } from '@web/components/ui/button';
@@ -32,21 +33,6 @@ import { useCurrentUserStore } from '@web/stores/current-user';
  */
 function initialsFromString(s: string): string {
   return s.slice(0, 2).toUpperCase();
-}
-
-/**
- * Formats a creation timestamp as a coarse "Xm/Xh/Xd ago" label.
- * @param createdAt - ISO timestamp of when the notification was created.
- * @returns the relative-age label.
- */
-function timeAgoLabel(createdAt: string): string {
-  const diffMs = Date.now() - new Date(createdAt).getTime();
-  const minutes = Math.max(1, Math.round(diffMs / 60_000));
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
 }
 
 /**
@@ -258,7 +244,7 @@ function NotificationItem({
         <span className='text-2xs text-muted-foreground'>
           {isDecidable && notification.expiresAt
             ? expiresInLabel(notification.expiresAt, t)
-            : timeAgoLabel(notification.createdAt)}
+            : formatRelativeTime(notification.createdAt, t)}
         </span>
         {isDecidable ? (
           // Every waiting request is answered on the shared landing page now.

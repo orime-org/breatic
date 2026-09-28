@@ -26,6 +26,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { toast } from '@web/lib/toast';
 import { expiresInLabel } from '@web/lib/expires-in';
+import { formatLocalDay } from '@web/lib/format-day';
 import type { DecisionAction, DecisionGrantRole, DecisionView } from '@breatic/shared';
 import { decisionsApi } from '@web/data/api/decisions';
 import { ApiException } from '@web/data/api/types';
@@ -288,44 +289,76 @@ export default function DecisionLandingPage(): React.JSX.Element {
     );
   }
 
+  const isJoin = view.kind === 'project_join';
   return (
     <AuthCardShell title={t('decision.title', vars)}>
       <div className='flex flex-col gap-4'>
-        <p className='text-sm text-muted-foreground'>{t('decision.body', vars)}</p>
-        {view.message !== null && view.message !== '' && (
-          <p className='text-sm text-muted-foreground'>
-            {t('decision.reason', { message: view.message })}
-          </p>
+        {isJoin ? (
+          <dl className='grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm'>
+            <dt className='text-muted-foreground'>{t('decision.field.requester')}</dt>
+            <dd className='text-foreground'>
+              {view.actorHandle === null
+                ? view.actorName
+                : t('decision.actorWithHandle', { name: view.actorName, handle: view.actorHandle })}
+            </dd>
+            <dt className='text-muted-foreground'>{t('decision.field.project')}</dt>
+            <dd className='text-foreground'>{view.entityName}</dd>
+            {view.message !== null && view.message !== '' && (
+              <>
+                <dt className='text-muted-foreground'>{t('decision.field.message')}</dt>
+                <dd className='whitespace-pre-wrap break-words text-foreground'>{view.message}</dd>
+              </>
+            )}
+            {view.expiresAt !== null && (
+              <>
+                <dt className='text-muted-foreground'>{t('decision.field.expires')}</dt>
+                <dd className='text-foreground'>
+                  {t('decision.expiresBefore', { date: formatLocalDay(view.expiresAt) })}
+                </dd>
+              </>
+            )}
+          </dl>
+        ) : (
+          <>
+            <p className='text-sm text-muted-foreground'>{t('decision.body', vars)}</p>
+            {view.message !== null && view.message !== '' && (
+              <p className='text-sm text-muted-foreground'>
+                {t('decision.reason', { message: view.message })}
+              </p>
+            )}
+            {/* The bell's own formatter, so the two surfaces can never disagree
+                about how long is left on the same request. The static "within N
+                days" line lives on the expired card, where it answers WHY. */}
+            {view.expiresAt !== null && (
+              <p className='text-xs text-muted-foreground'>
+                {expiresInLabel(view.expiresAt, t)}
+              </p>
+            )}
+          </>
         )}
-        {/* The bell's own formatter, so the two surfaces can never disagree
-            about how long is left on the same request. The static "within N
-            days" line lives on the expired card, where it answers WHY. */}
-        {view.expiresAt !== null && (
-          <p className='text-xs text-muted-foreground'>
-            {expiresInLabel(view.expiresAt, t)}
-          </p>
-        )}
-        {view.kind === 'project_join' && (
-          <div className='flex items-center gap-2'>
-            <Label htmlFor='decision-grant-role'>{t('decision.grantRole')}</Label>
-            <Select value={grantRole} onValueChange={onGrantRoleChange} disabled={submitting}>
-              <SelectTrigger id='decision-grant-role' className='w-[120px]'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='viewer'>{t('role.viewer')}</SelectItem>
-                <SelectItem value='editor'>{t('role.editor')}</SelectItem>
-              </SelectContent>
-            </Select>
+        <div className={isJoin ? 'flex items-center justify-between gap-2' : 'flex justify-end'}>
+          {isJoin && (
+            <div className='flex items-center gap-2'>
+              <Label htmlFor='decision-grant-role'>{t('decision.grantRole')}</Label>
+              <Select value={grantRole} onValueChange={onGrantRoleChange} disabled={submitting}>
+                <SelectTrigger id='decision-grant-role' className='w-[120px]'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='viewer'>{t('role.viewer')}</SelectItem>
+                  <SelectItem value='editor'>{t('role.editor')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className='flex gap-2'>
+            <Button variant='outline' onClick={onDecline} disabled={submitting}>
+              {t('decision.decline', vars)}
+            </Button>
+            <Button onClick={onConfirm} disabled={submitting}>
+              {t('decision.confirm', vars)}
+            </Button>
           </div>
-        )}
-        <div className='flex gap-2'>
-          <Button onClick={onConfirm} disabled={submitting}>
-            {t('decision.confirm', vars)}
-          </Button>
-          <Button variant='outline' onClick={onDecline} disabled={submitting}>
-            {t('decision.decline', vars)}
-          </Button>
         </div>
       </div>
     </AuthCardShell>

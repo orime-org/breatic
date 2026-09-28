@@ -1455,12 +1455,20 @@
   "decision": {
     "loadingTitle": "正在打开这个请求…",
     "loadingBody": "稍等，正在查找。",
-    "title": "{kind, select, studio_invite {有人邀请你加入一个 Studio} project_invite {有人邀请你加入一个 Project} role_upgrade {有人申请更高的角色} project_join {有人申请加入一个 Project} project_transfer {有人要把一个 Project 交给你} studio_transfer {有人要把一个 Studio 交给你} other {有件事等你答复}}",
+    "title": "{kind, select, studio_invite {有人邀请你加入一个 Studio} project_invite {有人邀请你加入一个 Project} role_upgrade {有人申请更高的角色} project_join {加入申请} project_transfer {有人要把一个 Project 交给你} studio_transfer {有人要把一个 Studio 交给你} other {有件事等你答复}}",
     "body": "{kind, select, studio_invite {{actor} 邀请你以{role, select, maintainer {Maintainer} guest {Guest} other {Member}}身份加入 {entity}。} project_invite {{actor} 邀请你以{role, select, editor {Editor} viewer {Viewer} other {Member}}身份参与 {entity}。} role_upgrade {{actor} 申请在 {entity} 中成为 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}。} project_join {{actor} 申请加入 {entity}。} project_transfer {{actor} 想把 {entity} 的所有权交给你。} studio_transfer {{actor} 想让你成为 {entity} 的 Admin。} other {{actor} 在等你对 {entity} 的答复。}}",
     "reason": "附言：{message}",
     "confirm": "{kind, select, role_upgrade {批准} project_join {通过} other {接受}}",
     "decline": "{kind, select, role_upgrade {拒绝} project_join {拒绝} other {拒绝}}",
     "grantRole": "角色",
+    "field": {
+      "requester": "申请人",
+      "project": "Project",
+      "message": "留言",
+      "expires": "有效期"
+    },
+    "expiresBefore": "{date} 前",
+    "actorWithHandle": "{name}（@{handle}）",
     "windowNote": "这个请求当时可在 {days} 天内答复。",
     "acceptedTitle": "你已经接受过了",
     "acceptedBody": "这里没有别的事要做了。",

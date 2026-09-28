@@ -38,7 +38,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore } from "@breatic/core";
+import { db, initCore } from "@breatic/core";
 
 initCore(process.env);
 
@@ -48,6 +48,7 @@ import * as projectInvitationsRepo from "@server/modules/project-invite/projectI
 import * as roleUpgradeRequestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import * as projectTransfersRepo from "@server/modules/project/projectTransfers.repo.js";
 import * as studioTransfersRepo from "@server/modules/studio/studioTransfers.repo.js";
+import * as projectJoinRequestsRepo from "@server/modules/project-join-request/projectJoinRequests.repo.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -69,6 +70,7 @@ interface Scene {
   ownerId: string;
   ownerName: string;
   memberId: string;
+  memberHandle: string;
   studioId: string;
   studioName: string;
   projectId: string;
@@ -120,6 +122,7 @@ async function seedScene(): Promise<Scene> {
     ownerId: owner.id,
     ownerName,
     memberId: member.id,
+    memberHandle: `${tag}-mh`,
     studioId: studio.id,
     studioName,
     projectId: project.id,
@@ -259,6 +262,30 @@ describe("the view names the right thing, in every flow", () => {
     expect(serialized).not.toContain(s.projectId);
     expect(serialized).not.toContain(s.ownerId);
     expect(serialized).not.toContain(s.memberId);
+  });
+});
+
+describe("who asked, by handle", () => {
+  it("a join request shows its requester's handle to the owner answering it, and to nobody else", async () => {
+    const s = await seedScene();
+    const { id } = await db.transaction((tx) =>
+      projectJoinRequestsRepo.createPending({
+        projectId: s.projectId,
+        requesterUserId: s.memberId,
+        message: "I cut the trailer",
+        expiresAt: IN_A_WEEK(),
+        tx,
+      }),
+    );
+    const token = await tokenOf("project_join_requests", id);
+
+    const asOwner = await decisionService.viewByToken(token, s.ownerId);
+    expect(asOwner!.kind).toBe("project_join");
+    expect(asOwner!.actorHandle).toBe(s.memberHandle);
+
+    const asSomeoneElse = await decisionService.viewByToken(token, s.memberId);
+    expect(asSomeoneElse!.isRecipient).toBe(false);
+    expect(asSomeoneElse!.actorHandle).toBeNull();
   });
 });
 

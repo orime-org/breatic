@@ -287,6 +287,19 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     expect(screen.queryByText('?')).toBeNull();
   });
 
+  it('says how long ago a row arrived in the reader\'s language', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-8', 'studio.transfer_approved', { studioId: N1 })],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    expect(await screen.findByText('5 minutes ago')).toBeInTheDocument();
+    expect(screen.queryByText('5m ago')).toBeNull();
+  });
+
   it('informational rows still mark read rather than offering an answer', async () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification('n-9', 'studio.transfer_approved', { studioId: N1 })],

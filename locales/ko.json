@@ -1455,12 +1455,20 @@
   "decision": {
     "loadingTitle": "요청을 여는 중…",
     "loadingBody": "잠시만 기다려 주세요.",
-    "title": "{kind, select, studio_invite {Studio 초대를 받았습니다} project_invite {Project 초대를 받았습니다} role_upgrade {누군가 더 높은 역할을 요청했습니다} project_join {Project 참여 요청이 있습니다} project_transfer {Project를 넘겨받도록 요청받았습니다} studio_transfer {Studio를 넘겨받도록 요청받았습니다} other {답변이 필요한 일이 있습니다}}",
+    "title": "{kind, select, studio_invite {Studio 초대를 받았습니다} project_invite {Project 초대를 받았습니다} role_upgrade {누군가 더 높은 역할을 요청했습니다} project_join {참여 요청} project_transfer {Project를 넘겨받도록 요청받았습니다} studio_transfer {Studio를 넘겨받도록 요청받았습니다} other {답변이 필요한 일이 있습니다}}",
     "body": "{kind, select, studio_invite {{actor} 님이 {entity}에 {role, select, maintainer {Maintainer} guest {Guest} other {Member}}(으)로 초대했습니다.} project_invite {{actor} 님이 {entity}에 {role, select, editor {Editor} viewer {Viewer} other {Member}}(으)로 초대했습니다.} role_upgrade {{actor} 님이 {entity}에서 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}(이)가 되기를 요청했습니다.} project_join {{actor}님이 {entity} 참여를 요청했습니다.} project_transfer {{actor} 님이 {entity}의 Owner를 넘기려고 합니다.} studio_transfer {{actor} 님이 {entity}의 Admin을 맡기려고 합니다.} other {{actor} 님이 {entity}에 대한 답변을 기다리고 있습니다.}}",
     "reason": "남긴 말: {message}",
     "confirm": "{kind, select, role_upgrade {승인} project_join {승인} other {수락}}",
     "decline": "{kind, select, role_upgrade {거절} project_join {거절} other {거절}}",
     "grantRole": "역할",
+    "field": {
+      "requester": "요청자",
+      "project": "Project",
+      "message": "메시지",
+      "expires": "유효 기간"
+    },
+    "expiresBefore": "{date}까지",
+    "actorWithHandle": "{name} (@{handle})",
     "windowNote": "이 요청은 {days}일 이내에 답변할 수 있었습니다.",
     "acceptedTitle": "이미 수락했습니다",
     "acceptedBody": "여기서 더 할 일은 없습니다.",

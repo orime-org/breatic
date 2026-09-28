@@ -137,9 +137,9 @@ export async function viewByToken(
   // four REQUIRE a member (a transfer's recipient, the owner answering an
   // upgrade or a join request), so
   // asking would burn a DB roundtrip on an answer nothing reads.
-  const [containerName, actorName, recipientAlreadyIn] = await Promise.all([
+  const [containerName, actor, recipientAlreadyIn] = await Promise.all([
     readContainerName(detail.container),
-    readDisplayName(detail.actorUserId),
+    readActor(detail.actorUserId),
     INVITE_KINDS.has(found.kind)
       ? alreadyHasOffer(detail.container, detail.recipientUserId, detail.role)
       : Promise.resolve(false),
@@ -159,7 +159,8 @@ export async function viewByToken(
     kind: found.kind,
     state,
     entityName: containerName,
-    actorName,
+    actorName: actor.name,
+    actorHandle: isRecipient && actor.handle !== "" ? actor.handle : null,
     role: detail.role,
     message: detail.message,
     // Only the answerable card counts down; every other state either has no
@@ -194,17 +195,18 @@ async function readContainerName(
 }
 
 /**
- * Reads a user's current display name.
+ * Reads a user's current display name and handle.
  *
- * A user's name is their personal studio's name, so this goes through the same
- * resolution the bell uses rather than reading a stored copy.
+ * Both are their personal studio's name and slug, so this goes through the
+ * same resolution the bell uses rather than reading a stored copy.
  * @param userId - Whose name.
- * @returns The name, or an empty string if it cannot be resolved.
+ * @returns The name and handle, each an empty string if it cannot be resolved.
  */
-async function readDisplayName(userId: string): Promise<string> {
-  if (userId === "") return "";
+async function readActor(userId: string): Promise<{ name: string; handle: string }> {
+  if (userId === "") return { name: "", handle: "" };
   const profiles = await studioRepo.getPersonalProfilesByCreators([userId]);
-  return profiles.get(userId)?.name ?? "";
+  const profile = profiles.get(userId);
+  return { name: profile?.name ?? "", handle: profile?.slug ?? "" };
 }
 
 /**

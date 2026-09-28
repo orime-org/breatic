@@ -1455,12 +1455,20 @@
   "decision": {
     "loadingTitle": "Opening this request…",
     "loadingBody": "One moment while we look it up.",
-    "title": "{kind, select, studio_invite {You've been invited to a Studio} project_invite {You've been invited to a Project} role_upgrade {Someone asked for a bigger role} project_join {Someone asked to join a Project} project_transfer {A Project is being handed to you} studio_transfer {A Studio is being handed to you} other {Something needs your answer}}",
+    "title": "{kind, select, studio_invite {You've been invited to a Studio} project_invite {You've been invited to a Project} role_upgrade {Someone asked for a bigger role} project_join {Join request} project_transfer {A Project is being handed to you} studio_transfer {A Studio is being handed to you} other {Something needs your answer}}",
     "body": "{kind, select, studio_invite {{actor} invited you to join {entity} as {role, select, maintainer {a Maintainer} guest {a Guest} other {a Member}}.} project_invite {{actor} invited you to work on {entity} as {role, select, editor {an Editor} viewer {a Viewer} other {a Member}}.} role_upgrade {{actor} asked to become {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}} on {entity}.} project_join {{actor} asked to join {entity}.} project_transfer {{actor} wants to make you the Owner of {entity}.} studio_transfer {{actor} wants to make you the Admin of {entity}.} other {{actor} is waiting on your answer about {entity}.}}",
     "reason": "They said: {message}",
     "confirm": "{kind, select, role_upgrade {Approve} project_join {Approve} other {Accept}}",
     "decline": "{kind, select, role_upgrade {Decline} project_join {Decline} other {Decline}}",
     "grantRole": "Role",
+    "field": {
+      "requester": "Requester",
+      "project": "Project",
+      "message": "Message",
+      "expires": "Expires"
+    },
+    "expiresBefore": "Until {date}",
+    "actorWithHandle": "{name} (@{handle})",
     "windowNote": "This request could be answered within {days, plural, one {# day} other {# days}}.",
     "acceptedTitle": "You already accepted this",
     "acceptedBody": "There is nothing left to do here.",

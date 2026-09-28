@@ -60,6 +60,11 @@ export interface DecisionView {
   entityName: string;
   /** Who set this in motion. */
   actorName: string;
+  /**
+   * That person's handle, for the person being asked only; null for anyone
+   * else.
+   */
+  actorHandle: string | null;
   /** The role at stake; null for transfers, which always mean ownership. */
   role: string | null;
   /** The requester's own words; role upgrades and join requests only. */
