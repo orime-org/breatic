@@ -45,7 +45,7 @@ function renderProject(project: ContainerProject, studioRole: StudioRole) {
 const MORE = { name: 'More actions' };
 
 describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
-  it('renders name + role badge and links to /project/{slug}-{uuid}', () => {
+  it('renders the name and links to /project/{slug}-{uuid}', () => {
     renderProject(SHARED_STUDIO, 'guest');
     expect(screen.getByText('Shared Project')).toBeInTheDocument();
     expect(screen.getByRole('link')).toHaveAttribute(
@@ -77,7 +77,7 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
     expect(screen.getByRole('button', MORE)).toBeInTheDocument();
   });
 
-  it('shows no role badge and no link for a project the viewer is not on', () => {
+  it('shows no role and no link for a project the viewer is not on', () => {
     renderProject({ ...SHARED_STUDIO, myRole: null }, 'guest');
     expect(screen.queryByText('Viewer')).toBeNull();
     expect(screen.queryByRole('link')).toBeNull();
