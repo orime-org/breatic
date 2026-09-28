@@ -359,6 +359,55 @@ test.describe('the card a comment is written in', () => {
     }
   });
 
+  test('keeps its words while a peer presses Enter at the start of their line', async ({
+    page,
+  }) => {
+    // The split leaves the line's id on the empty line above, and the words
+    // go on in a row with a new id.
+    await openFreshDocument(page);
+    await page.keyboard.type('one\n');
+    await page.keyboard.type('two carrying three');
+    // A selection set while the last keystrokes are still being taken in is
+    // overwritten by the caret they leave; start once the line has landed.
+    await expect(page.locator(`${EDITOR} p`).nth(1)).toHaveText(
+      'two carrying three',
+    );
+    const home = (await page
+      .locator('[role="tab"][aria-selected="true"]')
+      .getAttribute('data-testid'))!;
+    await page.evaluate((sel) => {
+      const second = document.querySelectorAll(`${sel} p`)[1]!;
+      const range = document.createRange();
+      range.setStart(second.firstChild!, 4);
+      range.setEnd(second.firstChild!, 12);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }, EDITOR);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-draft-input').fill('half a thought');
+
+    const peer = await page.context().newPage();
+    try {
+      await peer.setViewportSize({ width: 1680, height: 950 });
+      await peer.goto(page.url());
+      await peer.getByTestId(home).click();
+      const line = peer.locator(`${EDITOR} p`).nth(1);
+      await expect(line).toContainText('two carrying three', { timeout: 20_000 });
+      await line.click();
+      await peer.keyboard.press('Home');
+      await peer.keyboard.press('Enter');
+
+      await expect(page.locator(`${EDITOR} p`)).toHaveCount(3);
+      await expect(page.getByTestId('doc-comment-draft-dropped')).toHaveCount(0);
+      await expect(
+        page.locator(`${EDITOR} .doc-comment-draft-mark`),
+      ).toHaveText('carrying');
+    } finally {
+      await peer.close();
+    }
+  });
+
   test('keeps both ends on their lines when the reader moves its last line', async ({
     page,
   }) => {
@@ -550,12 +599,20 @@ test.describe('the card a comment is written in', () => {
       'data-selected',
       'true',
     );
+    // Reading the card moves it up and the draft card slides in under the
+    // pointer, and resting on a card deepens its words (A24).
+    await page.mouse.move(rail.x - 200, rail.y + 300);
     const aside = await colours();
     expect(aside.draft).toBe(aside.plain);
     await expect(page.getByTestId('doc-comment-draft-card')).toHaveAttribute(
       'data-selected',
       'false',
     );
+
+    await page.getByTestId('doc-comment-draft-card').hover();
+    const rested = await colours();
+    expect(rested.draft).toBe(rested.deep);
+    await page.mouse.move(rail.x - 200, rail.y + 300);
 
     await page.getByTestId('doc-comment-draft-card').click();
     await expect(page.getByTestId('doc-comment-draft-card')).toHaveAttribute(
@@ -1225,6 +1282,74 @@ test.describe('a comment split around words that are not its own', () => {
     }, EDITOR);
 
     expect(between).toBe('rgba(0, 0, 0, 0)');
+  });
+
+  test('gives rows dragged as a copy ids of their own', async ({ page }) => {
+    // BlockNote renews ids only when the drop reports `effectAllowed ===
+    // "copy"`, and ProseMirror sets `"copyMove"` on every drag it starts, so
+    // copied rows used to share their source's ids.
+    await openFreshDocument(page);
+    await page.keyboard.type('alpha\n');
+    await page.keyboard.type('bravo\n');
+    await page.keyboard.type('charlie');
+    await expect(page.locator(`${EDITOR} p`).nth(2)).toHaveText('charlie');
+
+    const at = await page.evaluate((sel) => {
+      const [first, second, third] = document.querySelectorAll(`${sel} p`);
+      const source = document.createRange();
+      source.setStart(first!.firstChild!, 0);
+      source.setEnd(second!.firstChild!, 5);
+      const landing = document.createRange();
+      landing.setStart(third!.firstChild!, 7);
+      landing.setEnd(third!.firstChild!, 7);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(source);
+      const from = first!.getBoundingClientRect();
+      const to = landing.getBoundingClientRect();
+      return {
+        from: { x: from.x + 10, y: from.y + from.height / 2 },
+        to: { x: to.x, y: to.y + to.height / 2 },
+      };
+    }, EDITOR);
+
+    await page.evaluate(
+      ({ sel, drag }) => {
+        const body = document.querySelector(sel)!;
+        const data = new DataTransfer();
+        const copy = navigator.platform.startsWith('Mac')
+          ? { altKey: true }
+          : { ctrlKey: true };
+        const send = (type: string, x: number, y: number): void => {
+          body.dispatchEvent(
+            new DragEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              dataTransfer: data,
+              clientX: x,
+              clientY: y,
+              ...(type === 'drop' ? copy : {}),
+            }),
+          );
+        };
+        send('dragstart', drag.from.x, drag.from.y);
+        send('dragover', drag.to.x, drag.to.y);
+        send('drop', drag.to.x, drag.to.y);
+        send('dragend', drag.to.x, drag.to.y);
+      },
+      { sel: EDITOR, drag: at },
+    );
+
+    await expect(page.locator(`${EDITOR} p`)).toHaveText([
+      'alpha',
+      'bravo',
+      'charliealpha',
+      'bravo',
+    ]);
+    const ids = await page
+      .locator(`${EDITOR} .bn-block-outer[data-id]`)
+      .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-id')));
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });
 
