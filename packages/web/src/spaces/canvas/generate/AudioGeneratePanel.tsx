@@ -106,11 +106,10 @@ interface AudioGeneratePanelProps {
    */
   lyricsSlot: React.ReactNode;
   /**
-   * Whether the boxes carry their names.
-   *
-   * A music mode asks for two different things and names both.
+   * The name over the prompt box, or undefined on a mode whose box is the
+   * plain prompt. The lyrics box always carries its own.
    */
-  labelBoxes: boolean;
+  promptLabel: string | undefined;
   /** Pick a mode. */
   onToggleMode: (mode: string) => void;
   /** Pick a model. */
@@ -168,7 +167,7 @@ interface AudioGeneratePanelProps {
  * @param root0.executeRefusal - Which execute precondition fails.
  * @param root0.promptSlot - The injected prompt editor, or null.
  * @param root0.lyricsSlot - The injected lyrics editor, or null.
- * @param root0.labelBoxes - Whether the boxes carry their names.
+ * @param root0.promptLabel - The name over the prompt box, if it has one.
  * @param root0.references - The derived reference rows.
  * @param root0.referencePicking - Whether the reference pick is running.
  * @param root0.slots - The slots the active mode collects.
@@ -207,7 +206,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   executeRefusal,
   promptSlot,
   lyricsSlot,
-  labelBoxes,
+  promptLabel,
   references,
   referencePicking = false,
   slots,
@@ -298,9 +297,10 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
       />
 
       {/* Two boxes look alike once the placeholders are typed over, so each
-          carries a word saying which is which. Only on a mode that asks for
-          two things: a single prompt box needs no label to be told apart from
-          nothing.
+          carries a word saying which is which. The prompt box is named on a
+          mode whose box asks for something other than the plain prompt — a
+          music mode's style brief — even under a model that takes no lyrics,
+          so the name does not vanish with the second box.
 
           Both wrappers are here whether or not there is a second box, and the
           labels are holes rather than a second branch: React reconciles by
@@ -316,10 +316,8 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           a control's name. */}
       <div className='flex flex-col gap-2.5'>
         <div className='flex flex-col gap-1.5'>
-          {labelBoxes && (
-            <span className='text-xs font-medium text-muted-foreground'>
-              {t('canvas.generatePanel.musicStyleLabel')}
-            </span>
+          {promptLabel !== undefined && (
+            <span className='text-xs font-medium text-muted-foreground'>{promptLabel}</span>
           )}
           {promptSlot}
         </div>

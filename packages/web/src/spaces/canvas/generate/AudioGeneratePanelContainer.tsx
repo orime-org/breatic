@@ -570,6 +570,8 @@ function AudioGeneratePanelBody({
   // `mode` is only empty when no mode is available, and `CatalogGatedFrame`
   // holds the panel shut in that case (`generate-panel-frame.tsx`).
   const promptPlaceholder = t(modeOption.placeholderKey);
+  const promptLabel =
+    modeOption.promptLabelKey === undefined ? undefined : t(modeOption.promptLabelKey);
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
   const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
   const promptSlot = React.useMemo(
@@ -696,7 +698,7 @@ function AudioGeneratePanelBody({
       })?.refusal ?? null}
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}
-      labelBoxes={lyrics}
+      promptLabel={promptLabel}
       onToggleMode={onToggleMode}
       onSelectModel={onSelectModel}
       onVoiceOpenChange={voices.onOpenChange}

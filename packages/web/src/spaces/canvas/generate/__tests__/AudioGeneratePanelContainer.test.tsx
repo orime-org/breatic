@@ -158,6 +158,14 @@ const T2M: ModelEntry = {
   },
 };
 
+/** Text to music without vocals: a style brief and nothing to sing. */
+const BGM: ModelEntry = {
+  ...T2M,
+  name: 'mureka-v9.5-generate-bgm',
+  display_name: 'Mureka V9.5 BGM',
+  params: {},
+};
+
 /** Reference to music: three audio slots, and lyrics the gateway insists on. */
 const A2M: ModelEntry = {
   ...T2M,
@@ -185,7 +193,7 @@ function catalog(): ModelCatalog {
     video: [],
     // The audio bucket really does hold models outside text to speech today
     // (`config/models/audio/`), and this panel reads both buckets.
-    audio: [SFX, T2M, A2M],
+    audio: [SFX, T2M, BGM, A2M],
     tts: [ELEVEN, FISH, CLONE],
     three_d: [],
     total: 2,
@@ -775,6 +783,19 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
     expect(screen.getByTestId('generate-prompt-editor')).toBeInTheDocument();
     expect(screen.getByTestId('generate-lyrics-editor')).toBeInTheDocument();
+  });
+
+  it('names the style box on a music model that takes no lyrics, as on one that does', async () => {
+    // The box still asks for a style brief; without its name it would read as
+    // the plain prompt every other mode shows (user 2026-09-06).
+    await openPanel({ mode: 't2m', model: 'mureka-v9.5-generate-bgm' });
+    expect(screen.queryByTestId('generate-lyrics-editor')).toBeNull();
+    expect(screen.getByText('Style')).toBeInTheDocument();
+  });
+
+  it('leaves the prompt box unnamed on a mode that asks for no style', async () => {
+    await openPanel({ mode: 'sfx', model: 'sonilo-sfx-v1' });
+    expect(screen.queryByText('Style')).toBeNull();
   });
 
   it('opens one box on a mode that collects no lyrics', async () => {

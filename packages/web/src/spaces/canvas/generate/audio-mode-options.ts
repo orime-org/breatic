@@ -32,6 +32,14 @@ export interface AudioModeOption extends ModeOption {
    */
   placeholderKey: string;
   /**
+   * The i18n key naming the prompt box, on a mode whose box asks for
+   * something other than the plain prompt every mode starts from. It rides on
+   * the mode for the same reason the placeholder does: a music mode asks for
+   * a style brief whichever of its models is picked, including one that takes
+   * no lyrics and so shows no second box (user 2026-09-06).
+   */
+  promptLabelKey?: string;
+  /**
    * Every place a run under this mode can collect a source, in toolbar order.
    * A model draws the ones it declares (#2156, design §6); one param can be a
    * different place in different modes — `audio` is the voice sample here
@@ -72,6 +80,7 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     slots: ['moodImage'],
     // A style brief, not lines to speak — the words go in the lyrics box.
     placeholderKey: 'canvas.generatePanel.musicPromptPlaceholder',
+    promptLabelKey: 'canvas.generatePanel.musicStyleLabel',
   },
   {
     value: 'a2m',
@@ -79,6 +88,7 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     testId: 'generate-audio-mode-a2m',
     slots: ['musicSong', 'coverSong', 'musicMelody', 'musicVocal', 'soundVideo'],
     placeholderKey: 'canvas.generatePanel.musicPromptPlaceholder',
+    promptLabelKey: 'canvas.generatePanel.musicStyleLabel',
   },
 ];
 

@@ -95,7 +95,7 @@ const BASE = {
   promptSlot: <div data-testid='prompt-editor' />,
   // Null on every mode but the two music ones, which is what BASE stands for.
   lyricsSlot: null,
-  labelBoxes: false,
+  promptLabel: undefined,
   references: [],
   params: {},
   referencePicking: false,
@@ -394,7 +394,7 @@ describe('AudioGeneratePanel — the box labels', () => {
     renderPanel(
       <AudioGeneratePanel
         {...BASE}
-        labelBoxes
+        promptLabel={STYLE_LABEL}
         promptSlot={<div data-testid='prompt-editor' />}
         lyricsSlot={<div data-testid='lyrics-editor' />}
       />,
@@ -407,7 +407,7 @@ describe('AudioGeneratePanel — the box labels', () => {
     renderPanel(
       <AudioGeneratePanel
         {...BASE}
-        labelBoxes
+        promptLabel={STYLE_LABEL}
         promptSlot={<div data-testid='prompt-editor' />}
         lyricsSlot={null}
       />,
