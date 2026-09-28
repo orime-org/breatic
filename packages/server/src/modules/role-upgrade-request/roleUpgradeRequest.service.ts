@@ -385,8 +385,14 @@ interface OpenRequest {
 }
 
 /**
- * Lock the request and run the gates every decision shares: it exists, it is
- * still pending, it has not timed out, and the caller owns the project now.
+ * Lock the project, then the request, and run the gates every decision shares:
+ * it exists, it is still pending, it has not timed out, and the caller owns
+ * the project now.
+ *
+ * The project comes first because a decision writes the requester's member
+ * row and a bell entry tied to the project; accepting a transfer and removing
+ * a studio member lock the project before member rows, so taking it second
+ * here would deadlock with them.
  *
  * The lock keys on id alone, so a request settled by a concurrent decision
  * still comes back and can be reported as "already handled" rather than
@@ -403,6 +409,9 @@ async function openForDecision(
   tx: DbTx,
   input: DecisionInput,
 ): Promise<OpenRequest | Refused> {
+  const projectId = await requestsRepo.getProjectIdOf(input.requestId, tx);
+  if (projectId === null) return { refusal: "not_found" };
+  if (!(await projectRepo.lockLiveProject(projectId, tx))) return { refusal: "not_found" };
   const row = await requestsRepo.lockRequest(input.requestId, tx);
   if (!row) return { refusal: "not_found" };
   const req: OpenRequest = {

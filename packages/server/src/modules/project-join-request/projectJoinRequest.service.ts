@@ -17,11 +17,11 @@
  *   - {@link readdressOnOwnerChange} — a project that changed owner moves the
  *     bell entries of its pending requests to the new owner.
  *
- * Every path that touches join requests takes its locks in one order:
- * `studio_members` → `projects` → request rows → `project_members`. The delete
- * cascade takes the project first and sweeps the request tables before the
- * member rows; deciding, transferring a project and removing a studio member
- * follow the same order, so any two of them queue instead of deadlocking.
+ * Every path that writes a project's request rows, member rows or bell
+ * entries takes that project's `projects` row lock first — filing, deciding
+ * and withdrawing here, the delete cascade, accepting a transfer and removing
+ * a studio member alike — so any two of them queue instead of deadlocking.
+ * Deciding also locks the requester's studio membership before the project.
  * {@link readdressOnOwnerChange} relies on its caller already holding the
  * project lock.
  *
@@ -213,6 +213,7 @@ export async function request(input: {
  */
 export async function cancelMine(projectId: string, requesterUserId: string): Promise<void> {
   const cancelled = await db.transaction(async (tx) => {
+    if (!(await projectRepo.lockLiveProject(projectId, tx))) return null;
     const row = await requestsRepo.cancelPendingFor(projectId, requesterUserId, tx);
     if (row?.notificationId) await notificationRepo.retire(row.notificationId, tx);
     return row;

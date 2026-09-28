@@ -194,24 +194,21 @@ export async function attachNotification(
 }
 
 /**
- * Which project an offer is about and who it names, read WITHOUT a lock.
+ * Which project an offer is about, read WITHOUT a lock.
  *
  * Accepting locks the recipient's studio membership and the project before the
- * offer (the order every path touching project-scoped requests shares with the
- * delete cascade), so it needs both ids first. Neither column ever changes.
+ * offer, so it needs the project id first. An offer's `project_id` never
+ * changes.
  * @param id - Transfer id.
  * @param tx - The deciding transaction.
- * @returns The two ids, or null when there is no such live row.
+ * @returns The project id, or null when there is no such live row.
  */
-export async function getDecisionKeys(
-  id: string,
-  tx: DbTx,
-): Promise<{ projectId: string; toUserId: string } | null> {
+export async function getProjectIdOf(id: string, tx: DbTx): Promise<string | null> {
   const rows = await tx
-    .select({ projectId: projectTransfers.projectId, toUserId: projectTransfers.toUserId })
+    .select({ projectId: projectTransfers.projectId })
     .from(projectTransfers)
     .where(and(eq(projectTransfers.id, id), isNull(projectTransfers.deletedAt)));
-  return rows[0] ?? null;
+  return rows[0]?.projectId ?? null;
 }
 
 /**

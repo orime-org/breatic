@@ -249,43 +249,33 @@ export async function confirmProjectTransfer(
   const outcome = await db.transaction<
     Refused | { projectId: string; oldOwnerId: string }
   >(async (tx) => {
-    // The recipient's studio membership, then the project, then the offer:
-    // the order the delete cascade and the join-request paths share, so an
-    // accept that moves pending join requests to the new owner queues behind
-    // a concurrent delete instead of deadlocking with it. `studio_id` never
-    // changes, so the unlocked read names the right studio.
-    const keys = await transfersRepo.getDecisionKeys(transferId, tx);
-    const unlocked = keys ? await projectRepo.getProjectById(keys.projectId, tx) : null;
-    if (keys && unlocked) {
-      await studioMembersRepo.lockMemberRole(unlocked.studioId, receiverUserId, tx);
-      await projectRepo.lockLiveProject(keys.projectId, tx);
-    }
+    // The request-time two-layer eligibility (ADR D3) can go stale within the
+    // TTL — the recipient may have been demoted to studio guest or kicked from
+    // the studio since. Re-verify BOTH layers BEFORE the swap, under row locks;
+    // otherwise materializeOwner (ON CONFLICT DO UPDATE, no setWhere) would
+    // revive a soft-deleted / guest row straight to owner and move the project
+    // out of its studio. Unlocked, a concurrent leave / kick could commit
+    // between the check and materializeOwner, and the upsert would REVIVE the
+    // membership row it had just soft-deleted.
+    //
+    // The locks go in the order every path that writes a project's member or
+    // request rows shares: the recipient's `studio_members` row, the
+    // `projects` row, the offer, then the recipient's `project_members` row.
+    // Leaving locks `studio_members` before `project_members`, and the delete
+    // cascade locks the project before the offer, so both queue with this.
+    // `studio_id` never changes, so the unlocked read names the right studio.
+    const offerProjectId = await transfersRepo.getProjectIdOf(transferId, tx);
+    const project = offerProjectId ? await projectRepo.getProjectById(offerProjectId, tx) : null;
+    const recipientStudioRole = project
+      ? await studioMembersRepo.lockMemberRole(project.studioId, receiverUserId, tx)
+      : null;
+    const live = project ? await projectRepo.lockLiveProject(project.id, tx) : false;
     const opened = await openForDecision(tx, transferId, receiverUserId);
     if (isRefused(opened)) return opened;
     const offer = opened;
     const { projectId, fromUserId } = offer;
 
-    // The request-time two-layer eligibility (ADR D3) can go stale within the
-    // TTL — the recipient may have been demoted to studio guest or kicked from
-    // the studio since. Re-verify BOTH layers BEFORE the swap; otherwise
-    // materializeOwner (ON CONFLICT DO UPDATE, no setWhere) would revive a
-    // soft-deleted / guest row straight to owner and move the project out of
-    // its studio.
-    //
-    // Both re-reads take a ROW LOCK, and the order is load-bearing:
-    //   1. the recipient's `studio_members` row
-    //   2. the recipient's `project_members` row
-    // Re-reading without the lock left a window wide enough to lose the guard
-    // entirely: a concurrent leave / kick could commit between the check and
-    // materializeOwner, and since that upsert clears `deleted_at`, it REVIVED
-    // the membership row the leave had just soft-deleted. The result was a
-    // permanent inconsistency — a non-member owning one of the studio's
-    // projects, still able to open it. Leaving locks `studio_members` first
-    // and then writes `project_members`, so taking the two in the same order
-    // here makes the two transactions queue rather than deadlock.
-    //
-    const project = await projectRepo.getProjectById(projectId, tx);
-    if (!project) {
+    if (!project || !live) {
       // The project was soft-deleted under an outstanding offer. Nothing will
       // ever answer it, so it is settled here rather than left holding the
       // project's only transfer slot — the same treatment the sibling branches
@@ -293,11 +283,6 @@ export async function confirmProjectTransfer(
       await settle(offer, "expired", tx);
       return { refusal: "conflict" };
     }
-    const recipientStudioRole = await studioMembersRepo.lockMemberRole(
-      project.studioId,
-      receiverUserId,
-      tx,
-    );
     if (!recipientStudioRole || recipientStudioRole === "guest") {
       await settle(offer, "expired", tx);
       return { refusal: "conflict" };

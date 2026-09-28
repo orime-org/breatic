@@ -632,9 +632,12 @@ export async function softDeleteAllInProject(
  * `project_members_one_owner_per_project`. There is no correct way to call
  * this outside a transaction, so it does not offer one.
  *
- * `FOR UPDATE OF project_members` locks only the membership rows; the
- * `projects` join is a scope filter, and locking project rows would serialise
- * unrelated work across the studio.
+ * The `projects` rows are locked first, in id order, and the membership rows
+ * second, in a separate statement. Handing a project over moves its pending
+ * join requests to the admin, and every path that writes a project's request
+ * or member rows (the delete cascade included) locks the project row before
+ * them; one statement locking both tables would take the two rows of a pair in
+ * an unspecified order.
  * @param studioId - Studio UUID
  * @param userId - The departing member's user UUID
  * @param tx - The enclosing transaction; the lock is meaningless without one
@@ -645,19 +648,25 @@ export async function lockOwnedProjectsInStudio(
   userId: string,
   tx: DbTx,
 ): Promise<string[]> {
+  const owned = and(
+    eq(projectMembers.userId, userId),
+    eq(projectMembers.role, "owner"),
+    isNull(projectMembers.deletedAt),
+    eq(projects.studioId, studioId),
+    isNull(projects.deletedAt),
+  );
+  await tx
+    .select({ id: projects.id })
+    .from(projects)
+    .innerJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+    .where(owned)
+    .orderBy(projects.id)
+    .for("update", { of: projects });
   const rows = await tx
     .select({ projectId: projectMembers.projectId })
     .from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-    .where(
-      and(
-        eq(projectMembers.userId, userId),
-        eq(projectMembers.role, "owner"),
-        isNull(projectMembers.deletedAt),
-        eq(projects.studioId, studioId),
-        isNull(projects.deletedAt),
-      ),
-    )
+    .where(owned)
     .for("update", { of: projectMembers });
   return rows.map((r) => r.projectId);
 }

@@ -15,7 +15,6 @@
  */
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import * as projectRepo from "@server/modules/project/project.repo.js";
 import { db, projectMembersRepo } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
@@ -87,15 +86,13 @@ export async function leaveStudio(slug: string, userId: string): Promise<void> {
  *      `project_members` — every path takes the two tables in that order, so
  *      reversing it deadlocks whenever the target happens to be a concurrent
  *      transfer's recipient
- *   2. lock the `projects` rows of the projects the target owns before
- *      their `project_members` rows — handing a project over moves its
- *      pending join requests to the admin, and the delete cascade takes the
- *      project row first and sweeps those requests before member rows
- *   3. read the owned-project list BEFORE the soft delete, or the rows are
+ *   2. read the owned-project list BEFORE the soft delete, or the rows are
  *      already gone — and read it UNDER A LOCK, or a project transfer
  *      committing in the gap moves one of them to somebody else and the
- *      handover below collides with the one-owner index
- *   4. soft-delete the target's project rows BEFORE handing them over —
+ *      handover below collides with the one-owner index. The project rows
+ *      are locked before their member rows, the order every path that
+ *      writes a project's request or member rows follows
+ *   3. soft-delete the target's project rows BEFORE handing them over —
  *      `materializeOwner` upserts and clears `deleted_at`, so the one-owner
  *      partial unique index rejects the handover while the leaver still holds
  *      an owner row
@@ -142,7 +139,6 @@ async function detachMember(
       throw new ConflictError(t("server.error.conflict"));
     }
 
-    await projectRepo.lockProjectsOwnedBy(studio.id, targetUserId, tx);
     const owned = await projectMembersRepo.lockOwnedProjectsInStudio(
       studio.id,
       targetUserId,
