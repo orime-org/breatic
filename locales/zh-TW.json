@@ -162,20 +162,21 @@
   },
   "chat": {
     "composer": {
-      "selectMode": {
-        "label": "選取模式 — 在畫布點節點加入引用",
-        "title": "選取模式"
-      },
       "chipsAria": "已選 chips",
-      "placeholder": "描述你想做什麼(用 @ 引用上方 chips)…",
+      "placeholder": "描述你想做什麼…",
       "inputAria": "Chat 輸入",
-      "skill": {
-        "label": "選擇 Skill 限定 agent 行為",
-        "title": "選擇 Skill"
-      },
       "send": "傳送",
       "sending": "傳送中",
-      "atLimit": "已達 {limit, number} 字上限"
+      "atLimit": "已達 {limit, number} 字上限",
+      "attach": "新增檔案",
+      "removeAttachment": "移除 {name}",
+      "attachmentUploading": "上傳中",
+      "attachmentFailed": "{reason, select, upload {上傳失敗} extract {讀取失敗} too_long {太長} other {失敗}}",
+      "attachFull": "最多附帶 {limit, number} 項",
+      "attachTooLong": "附帶的內容太多了，請少掛幾項或換短一點的檔案。",
+      "attachUnsupported": "{filename} 不能附帶",
+      "attachTooLarge": "{filename} 太大，不能附帶",
+      "attachUnavailable": "暫時無法新增，請重試。"
     },
     "empty": {
       "greetingWithName": "嗨,{name}!",
@@ -283,7 +284,10 @@
     },
     "thinking": "思考了一會兒",
     "thinkingNow": "思考中",
-    "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒"
+    "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒",
+    "attachment": {
+      "kind": "{kind, select, image {圖片} video {影片} audio {音訊} text {文字} annotation {標註} other {內容}}"
+    }
   },
   "canvas": {
     "group": {

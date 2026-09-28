@@ -22,7 +22,8 @@ import { Chat } from '@ai-sdk/react';
 import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
 import type { ChatTransport, UIMessageChunk } from 'ai';
-import { SSE_HEARTBEAT_MISSES_ALLOWED, getLocale } from '@breatic/shared';
+import { ATTACHMENT_DATA_PART, SSE_HEARTBEAT_MISSES_ALLOWED, getLocale } from '@breatic/shared';
+import type { ChatAttachedChip } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
@@ -73,8 +74,12 @@ export interface ChatSessionInit {
    * whose first frame lands in that gap would never have its box emptied --
    * while a panel coming back to a turn already streaming would empty it a
    * second time, over whatever the reader has typed since.
+   *
+   * Handed the ids of the items the turn carried, so they leave the list
+   * above the box then too -- and only they: an item attached after the press
+   * waits for the next message.
    */
-  onFirstFrame: () => void;
+  onFirstFrame: (sentAttachmentIds: readonly string[]) => void;
 }
 
 /** The chunk the server names a conversation on. */
@@ -165,6 +170,17 @@ function sayWhenItOpens(
 }
 
 /**
+ * The items a message carries, read off its data parts.
+ * @param message - The message, when there is one.
+ * @returns Its attached items, in order.
+ */
+function attachedOn(message: StoredUiMessage | undefined): ChatAttachedChip[] {
+  return (message?.parts ?? []).flatMap((part) =>
+    part.type === ATTACHMENT_DATA_PART ? [(part as { data: ChatAttachedChip }).data] : [],
+  );
+}
+
+/**
  * Build the transport one conversation's turns go out on.
  *
  * The body is ours, not the protocol's: the server takes one message and the
@@ -179,7 +195,7 @@ function sayWhenItOpens(
 function transportFor(
   projectId: string,
   conversationId: string,
-  onFirstFrame: () => void,
+  onFirstFrame: (sentAttachmentIds: readonly string[]) => void,
 ): ChatTransport<StoredUiMessage> {
   const wire = new DefaultChatTransport<StoredUiMessage>({
     // Built from the one definition of the prefix rather than spelled out.
@@ -213,14 +229,17 @@ function transportFor(
           message: said,
           project_id: projectId,
           conversation_id: conversationId,
-          attached_chips: [],
+          attached_chips: attachedOn(last),
         },
       };
     },
   });
   return {
-    sendMessages: async (options) =>
-      sayWhenItOpens(
+    sendMessages: async (options) => {
+      const carried = attachedOn(options.messages[options.messages.length - 1]).map(
+        (chip) => chip.id,
+      );
+      return sayWhenItOpens(
         await wire.sendMessages(options),
         // On every answering frame, because the fold begins after the turn
         // has already opened: the server writes the conversation's name
@@ -241,9 +260,10 @@ function transportFor(
           const turn = runningTurn.get(conversationId);
           if (turn === undefined) return;
           answeredTurn.set(conversationId, turn);
-          onFirstFrame();
+          onFirstFrame(carried);
         },
-      ),
+      );
+    },
     reconnectToStream: (options) => wire.reconnectToStream(options),
   };
 }
@@ -521,9 +541,14 @@ async function expectAnotherBeat(
  * button, for the same reason the session does.
  * @param conversationId - The conversation to say it in.
  * @param said - What the reader typed, trimmed.
+ * @param attached - What the reader attached, carried ahead of the words.
  * @returns When the turn is over, however it ended.
  */
-export async function sendInSession(conversationId: string, said: string): Promise<void> {
+export async function sendInSession(
+  conversationId: string,
+  said: string,
+  attached: readonly ChatAttachedChip[] = [],
+): Promise<void> {
   const chat = sessions.get(conversationId);
   if (!chat) return;
   const pressedAt = Date.now();
@@ -532,7 +557,12 @@ export async function sendInSession(conversationId: string, said: string): Promi
   runningTurn.set(conversationId, turn);
   void expectAnotherBeat(conversationId, turn, pressedAt);
   try {
-    await chat.sendMessage({ text: said });
+    await chat.sendMessage({
+      parts: [
+        ...attached.map((chip) => ({ type: ATTACHMENT_DATA_PART, data: chip }) as const),
+        { type: 'text', text: said },
+      ],
+    });
   } catch {
     // Already said. `Chat` hands whatever went wrong to its own `onFinish`
     // before it rethrows, and that is where the turn was settled -- so what

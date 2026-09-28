@@ -11,7 +11,7 @@ import type * as ChatApiModule from '@web/data/api/chat';
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000 })),
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10 })),
     openChat: vi.fn(),
     messagesBefore: vi.fn(),
     renameConversation: vi.fn(),
@@ -26,6 +26,17 @@ import { chatApi } from '@web/data/api/chat';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { conversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
+import { chatAttachments, type TrayItem } from '@web/stores/chat-attachments';
+
+const LIMITS = { maxItems: 10, maxChars: 200_000 };
+const READY_NOTE: TrayItem = {
+  id: 'n-1',
+  name: 'note',
+  type: 'text',
+  status: 'ready',
+  chip: { id: 'n-1', type: 'text', name: 'note', data_snapshot: { text: 'hi' } },
+};
+const UPLOADING_FILE: TrayItem = { id: 'f-1', name: 'cover.png', type: 'image', status: 'uploading' };
 import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
 import type { WatchedWire } from '@web/test-utils/chat-wire';
 
@@ -118,7 +129,7 @@ describe('ChatPanel', () => {
     evictAllChatSessions();
     wire = stubChatWire();
     chatOpensWith([]);
-    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000 });
+    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10 });
   });
 
   afterEach(() => {
@@ -178,6 +189,67 @@ describe('ChatPanel', () => {
     // 服务端接下了这句话并且开始答。现在框空了,而值得按的只剩停止。
     await waitFor(() => expect(conversationRuntime.draftOf(CONV)).toBe(''));
     expect(screen.getByTestId('chat-composer-abort')).toBeInTheDocument();
+  });
+
+  it('sends what is attached beside the words, and clears it when the server has it', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    chatAttachments.add(CONV, [READY_NOTE], LIMITS);
+
+    conversationRuntime.setDraft(CONV, 'look at this');
+    await user.click(screen.getByTestId('chat-composer-send'));
+
+    await waitFor(() => {
+      expect(wire.sent()[0]).toMatchObject({ attached_chips: [READY_NOTE.chip] });
+    });
+    // Still above the box until the server has taken the message.
+    expect(chatAttachments.trayOf(CONV)).toHaveLength(1);
+
+    act(() => {
+      theReplyStartsArriving('ok');
+    });
+
+    await waitFor(() => expect(chatAttachments.trayOf(CONV)).toEqual([]));
+  });
+
+  it('keeps what is attached when the message is refused', async () => {
+    const user = userEvent.setup();
+    theTurnIsRefused('{"success":false,"error":"no"}', 422);
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    chatAttachments.add(CONV, [READY_NOTE], LIMITS);
+
+    conversationRuntime.setDraft(CONV, 'look at this');
+    await user.click(screen.getByTestId('chat-composer-send'));
+
+    await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
+    expect(chatAttachments.trayOf(CONV)).toHaveLength(1);
+  });
+
+  it('will not send while an attached file is still uploading', async () => {
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    act(() => {
+      chatAttachments.add(CONV, [UPLOADING_FILE], LIMITS);
+      conversationRuntime.setDraft(CONV, 'look at this');
+    });
+
+    expect(screen.getByTestId('chat-composer-send')).toBeDisabled();
+  });
+
+  it('shows each attached item above the box, and takes one out on its remove button', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    act(() => {
+      chatAttachments.add(CONV, [READY_NOTE], LIMITS);
+    });
+
+    expect(screen.getByTestId('chat-chip-n-1')).toHaveTextContent('note');
+    await user.click(screen.getByRole('button', { name: /note/ }));
+
+    expect(chatAttachments.trayOf(CONV)).toEqual([]);
   });
 
   it('takes nothing into the box while the server has not answered', async () => {

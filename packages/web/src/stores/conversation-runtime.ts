@@ -28,6 +28,7 @@ import {
   prependHistory,
 } from '@web/stores/chat-sessions';
 import { readMishap, tell } from '@web/stores/chat-mishaps';
+import { chatAttachments } from '@web/stores/chat-attachments';
 import { forgetAllConsolidating } from '@web/stores/consolidating';
 import type { StoredUiMessage } from '@web/data/api/chat';
 
@@ -1438,6 +1439,8 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
       listByProject: { ...s.listByProject, [projectId]: remaining },
     };
   });
+  // What was attached there goes with the draft, for the same reason.
+  chatAttachments.forget([conversationId]);
 
   if (!wasOnScreen) return;
 
@@ -1540,6 +1543,8 @@ function leaveProject(projectId: string): void {
   // next visit. The next `ensureLoaded` starts a fresh visit.
   visits.get(projectId)?.abort();
   visits.delete(projectId);
+  // What was attached in them is half a message too, and goes with the drafts.
+  chatAttachments.forget(leaving.map(([id]) => id));
 
   useStore.setState((s) => {
     const kept: Record<string, ConversationRuntime> = {};
@@ -1564,6 +1569,7 @@ function leaveProject(projectId: string): void {
     for (const [id, draft] of Object.entries(s.draftByConversation)) {
       if (s.conversations[id]?.projectId !== projectId) keptDrafts[id] = draft;
     }
+
     return {
       conversations: kept,
       currentByProject,
@@ -1620,6 +1626,7 @@ export function _resetForTests(): void {
   // was passing on exactly that, drawing a message the case before it had
   // left behind.
   evictAllChatSessions();
+  chatAttachments.forget(Object.keys(useStore.getState().conversations));
   opening.clear();
   loadingEarlier.clear();
   visits.clear();

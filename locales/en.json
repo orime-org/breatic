@@ -162,20 +162,21 @@
   },
   "chat": {
     "composer": {
-      "selectMode": {
-        "label": "Select mode — click nodes on the canvas to add references",
-        "title": "Select mode"
-      },
       "chipsAria": "Selected chips",
-      "placeholder": "Describe what you want to do (use @ to reference chips above)…",
+      "placeholder": "Describe what you want to do…",
       "inputAria": "Chat input",
-      "skill": {
-        "label": "Pick a Skill to scope the agent's behavior",
-        "title": "Pick Skill"
-      },
       "send": "Send",
       "sending": "Sending",
-      "atLimit": "At the {limit, number}-character limit"
+      "atLimit": "At the {limit, number}-character limit",
+      "attach": "Attach files",
+      "removeAttachment": "Remove {name}",
+      "attachmentUploading": "Uploading",
+      "attachmentFailed": "{reason, select, upload {Upload failed} extract {Couldn’t read it} too_long {Too long} other {Failed}}",
+      "attachFull": "At most {limit, number} items can be attached",
+      "attachTooLong": "Too much content attached. Attach fewer items or shorter files.",
+      "attachUnsupported": "{filename} can’t be attached",
+      "attachTooLarge": "{filename} is too large to attach",
+      "attachUnavailable": "Couldn’t attach right now. Try again."
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",
@@ -283,7 +284,10 @@
     },
     "thinking": "Thought for a moment",
     "thinkingNow": "Thinking",
-    "thinkingFor": "Thought for {m, plural, =0 {} other {# min }}{s, number} s"
+    "thinkingFor": "Thought for {m, plural, =0 {} other {# min }}{s, number} s",
+    "attachment": {
+      "kind": "{kind, select, image {Image} video {Video} audio {Audio} text {Text} annotation {Note} other {Item}}"
+    }
   },
   "canvas": {
     "group": {

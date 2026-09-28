@@ -162,20 +162,21 @@
   },
   "chat": {
     "composer": {
-      "selectMode": {
-        "label": "選択モード — キャンバスでノードをクリックして参照を追加",
-        "title": "選択モード"
-      },
       "chipsAria": "選択された chips",
-      "placeholder": "やりたいことを入力(@ で上の chips を参照)…",
+      "placeholder": "やりたいことを入力…",
       "inputAria": "Chat 入力",
-      "skill": {
-        "label": "Skill を選んで agent の動作を絞り込む",
-        "title": "Skill を選択"
-      },
       "send": "送信",
       "sending": "送信中",
-      "atLimit": "{limit, number} 文字の上限に達しました"
+      "atLimit": "{limit, number} 文字の上限に達しました",
+      "attach": "ファイルを添付",
+      "removeAttachment": "{name} を外す",
+      "attachmentUploading": "アップロード中",
+      "attachmentFailed": "{reason, select, upload {アップロード失敗} extract {読み取り失敗} too_long {長すぎます} other {失敗}}",
+      "attachFull": "添付できるのは最大 {limit, number} 件です",
+      "attachTooLong": "添付した内容が多すぎます。件数を減らすか、短いファイルにしてください。",
+      "attachUnsupported": "{filename} は添付できません",
+      "attachTooLarge": "{filename} は大きすぎて添付できません",
+      "attachUnavailable": "今は添付できません。もう一度お試しください。"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
@@ -283,7 +284,10 @@
     },
     "thinking": "少し考えました",
     "thinkingNow": "考え中",
-    "thinkingFor": "{m, plural, =0 {} other {# 分}}{s, number} 秒 考えました"
+    "thinkingFor": "{m, plural, =0 {} other {# 分}}{s, number} 秒 考えました",
+    "attachment": {
+      "kind": "{kind, select, image {画像} video {動画} audio {音声} text {テキスト} annotation {注釈} other {項目}}"
+    }
   },
   "canvas": {
     "group": {
