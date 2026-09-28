@@ -68,7 +68,7 @@ describe('ModelParamControls', () => {
       'unchecked',
     );
     expect(screen.getByTestId('generate-param-quality-option-low')).toHaveAttribute(
-      'aria-pressed',
+      'aria-current',
       'true',
     );
     expect(screen.getByTestId('generate-param-quality-option-xhigh')).toHaveTextContent('XHigh');
