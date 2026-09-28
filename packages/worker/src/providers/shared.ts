@@ -12,7 +12,7 @@
  */
 
 import { logger } from "@breatic/core";
-import { effectiveItemCap } from "@breatic/shared";
+import { itemCap } from "@breatic/shared";
 import { getFullModelConfig, resolveActiveProvider } from "@breatic/domain";
 import type { FullModelEntry } from "@breatic/domain";
 
@@ -139,14 +139,13 @@ export function validateParams(
       if (spec.default !== undefined) cleaned[key] = spec.default;
       continue;
     }
-    // The cap a model states may move with another param the submission
-    // carries (#1928), so read it through the one function the panel's picker
-    // gate and the server's pre-enqueue gate read. Judging a different number
-    // here is how a submission the server let through gets quietly cut.
-    const itemCap = effectiveItemCap(spec, provided);
-    if (itemCap !== undefined && Array.isArray(value) && value.length > itemCap) {
-      logger.warn({ model: name, param: key, count: value.length, maxItems: itemCap }, "list_param_truncated");
-      cleaned[key] = value.slice(0, itemCap);
+    // Read through the one function the panel's picker gate and the server's
+    // pre-enqueue gate read. Judging a different number here is how a
+    // submission the server let through gets quietly cut.
+    const cap = itemCap(spec);
+    if (cap !== undefined && Array.isArray(value) && value.length > cap) {
+      logger.warn({ model: name, param: key, count: value.length, maxItems: cap }, "list_param_truncated");
+      cleaned[key] = value.slice(0, cap);
       continue;
     }
     cleaned[key] = value;
