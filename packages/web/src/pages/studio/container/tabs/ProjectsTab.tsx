@@ -5,7 +5,6 @@ import * as React from 'react';
 import { Folder } from 'lucide-react';
 
 import { useTranslation } from '@web/i18n/use-translation';
-import { canRenderItemCard } from '@web/pages/studio/container/access';
 import { ContainerToolbar } from '@web/pages/studio/container/ContainerToolbar';
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
 import { EmptyState } from '@web/pages/studio/shared/EmptyState';
@@ -22,7 +21,7 @@ import type {
 
 interface ProjectsTabProps {
   projects: readonly ContainerProject[];
-  /** The viewer's studio role (`null` = non-member) — drives the visibility filter (invariant 1). */
+  /** The viewer's studio role (`null` = non-member) — decides whether the create entry shows. */
   studioRole: StudioRole | null;
   /** Called when a project is created via the dialog (stub no-op in slice 3). */
   onCreateProject?: (values: NewItemValues) => void;
@@ -38,9 +37,8 @@ const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3';
 
 /**
  * The Projects tab (spec §3.3 / §3.13): a toolbar (title + count + sort/view
- * placeholders + create button) over a card grid of the studio's projects,
- * filtered by the viewer's access (spec §4 invariant 1 — Members never see
- * private projects they are not part of). When there are no visible projects,
+ * placeholders + create button) over a card grid of every project the server
+ * listed for this studio. When there are no projects,
  * the toolbar stays and an empty-state line shows below it (the create button
  * in the toolbar is the entry point — locked mock dropped the in-grid card).
  * @param props the projects, the viewer's studio role and the create callback.
@@ -65,18 +63,15 @@ export function ProjectsTab({
   // it either. The dialog's selector
   // can still target a different studio the viewer may create in.
   const canCreate = canCreateInStudio(studioRole);
-  const visible = projects.filter((project) =>
-    canRenderItemCard(studioRole, project),
-  );
   return (
     <>
       <ContainerToolbar
         title={t('studio.container.tabs.projects')}
-        count={visible.length}
+        count={projects.length}
         createLabel={t('studio.container.projects.new')}
         onCreate={canCreate ? () => setDialogOpen(true) : undefined}
       />
-      {visible.length === 0 ? (
+      {projects.length === 0 ? (
         <EmptyState
           icon={Folder}
           title={t('studio.container.projects.emptyTitle')}
@@ -84,7 +79,7 @@ export function ProjectsTab({
         />
       ) : (
         <div className={GRID}>
-          {visible.map((project) => (
+          {projects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}

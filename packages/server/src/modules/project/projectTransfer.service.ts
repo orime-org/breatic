@@ -67,6 +67,7 @@ import {
   refusalError,
 } from "@server/utils/deferred-decision.js";
 import type { Refused } from "@server/utils/deferred-decision.js";
+import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 
 /**
  * The current owner offers the project to another collaborator.
@@ -318,6 +319,7 @@ export async function confirmProjectTransfer(
       return { refusal: "conflict" };
     }
     await projectMembersRepo.materializeOwner(projectId, receiverUserId, tx);
+    await projectJoinRequestService.readdressOnOwnerChange(projectId, receiverUserId, tx);
     await settle(offer, "accepted", tx);
 
     const accepter = accepterProfiles.get(receiverUserId);

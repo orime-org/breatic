@@ -20,6 +20,7 @@ export type {
   DecisionState,
   DecisionView,
   DecisionAction,
+  DecisionGrantRole,
   DecisionResult,
 } from "@shared/types/decision.js";
 
@@ -44,7 +45,6 @@ export type {
   NotificationRef,
   NotificationListView,
   ProjectEntity,
-  ProjectVisibility,
   ProjectDetail,
   ProjectSummary,
   RecentItem,

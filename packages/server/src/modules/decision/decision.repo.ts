@@ -4,7 +4,7 @@
 /**
  * Finding the one request a share token names.
  *
- * The five flows keep their own tables, and each keeps its own status
+ * The six flows keep their own tables, and each keeps its own status
  * vocabulary and its own foreign keys — nothing here tries to merge them. What
  * this module does is narrower: it answers "which table, which row" so the
  * layers above can stop caring where a request came from.
@@ -21,6 +21,7 @@ import {
   studioInvitations,
   projectInvitations,
   roleUpgradeRequests,
+  projectJoinRequests,
   projectTransfers,
   studioTransfers,
   projectMembersRepo,
@@ -44,7 +45,7 @@ export interface ResolvedRequest {
 /**
  * Every table a token could be in, paired with the kind it means.
  *
- * Kept as data rather than five hand-written branches: a sixth flow is a line
+ * Kept as data rather than six hand-written branches: a seventh flow is a line
  * here, and "did we remember to search that table" stops being a question you
  * answer by reading code.
  */
@@ -52,6 +53,7 @@ const SOURCES = [
   { kind: "studio_invite", table: studioInvitations },
   { kind: "project_invite", table: projectInvitations },
   { kind: "role_upgrade", table: roleUpgradeRequests },
+  { kind: "project_join", table: projectJoinRequests },
   { kind: "project_transfer", table: projectTransfers },
   { kind: "studio_transfer", table: studioTransfers },
 ] as const satisfies ReadonlyArray<{ kind: DecisionKind; table: unknown }>;
@@ -119,7 +121,7 @@ export interface RequestDetail {
  *
  * Each flow names its columns differently — `invitedUserId` here, `toUserId`
  * there, `requesterUserId` in the third — so this is the one place that has to
- * know five shapes. Everything after it works on {@link RequestDetail}.
+ * know six shapes. Everything after it works on {@link RequestDetail}.
  * @param kind - Which flow the request belongs to.
  * @param id - The request row's id.
  * @returns Its detail, or null when the row vanished between two queries.
@@ -189,6 +191,28 @@ export async function readDetail(
         actorUserId: row.requesterUserId,
         recipientUserId: ownerId ?? "",
         role: row.requestedRole,
+        message: row.message,
+      };
+    }
+    case "project_join": {
+      const [row] = await db
+        .select({
+          projectId: projectJoinRequests.projectId,
+          requesterUserId: projectJoinRequests.requesterUserId,
+          message: projectJoinRequests.message,
+        })
+        .from(projectJoinRequests)
+        .where(eq(projectJoinRequests.id, id))
+        .limit(1);
+      if (!row) return null;
+      // Like the role upgrade: the requester is the actor and the person asked
+      // is whoever owns the project now.
+      const ownerId = await projectMembersRepo.getOwner(row.projectId);
+      return {
+        container: { kind: "project", id: row.projectId },
+        actorUserId: row.requesterUserId,
+        recipientUserId: ownerId ?? "",
+        role: null,
         message: row.message,
       };
     }

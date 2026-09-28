@@ -29,10 +29,8 @@ interface ProjectCardProps {
  * container the source-studio label is omitted (only the cross-studio Recent
  * landing shows provenance). The card links to `/project/{slug}-{uuid}`.
  *
- * No visibility badge: projects dropped the concept on 2026-08-07. The row
- * still carries the column and the filters still read it, so a project can
- * still SAY private — the card stays silent either way. CollectionCard does
- * show one, which is why the badge component itself survives.
+ * No visibility badge: projects have no visibility. CollectionCard does show
+ * one, which is why the badge component itself survives.
  * @param props the project and the viewer's studio role.
  * @param props.project the project to render.
  * @param props.studioRole the viewer's studio role.

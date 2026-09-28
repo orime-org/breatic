@@ -259,6 +259,39 @@ export function buildRoleUpgradeRequestMail(
   });
 }
 
+/** Fields for the join-request email, sent to the project's owner. */
+export interface ProjectJoinRequestMailInput {
+  ownerEmail: string;
+  requesterName: string;
+  projectName: string;
+  /** The requester's own words; null when they gave none. */
+  message: string | null;
+  decisionLink: string;
+}
+
+/**
+ * Builds the email telling a project's owner that a studio member asked to join.
+ * @param input - Recipient, names, reason and link.
+ * @returns The mail options to send.
+ */
+export function buildProjectJoinRequestMail(
+  input: ProjectJoinRequestMailInput,
+): SendMailOptions {
+  const reason =
+    input.message === null || input.message.trim() === ""
+      ? ""
+      : ` They said: <em>${escapeHtml(input.message)}</em>`;
+  return renderNotificationMail({
+    to: input.ownerEmail,
+    subject: `${BRAND} - ${input.requesterName} asked to join ${input.projectName}`,
+    leadHtml: `<strong>${escapeHtml(input.requesterName)}</strong> asked to join <strong>${escapeHtml(input.projectName)}</strong>.${reason}`,
+    linkHref: input.decisionLink,
+    linkLabel: "Review this request",
+    linkTrailing: " to approve or decline.",
+    footer: expiryFooter("This request"),
+  });
+}
+
 /** Fields for the membership-ended email. */
 export interface MembershipEndedMailInput {
   /** Where to send it. */

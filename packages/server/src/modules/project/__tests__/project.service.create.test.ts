@@ -105,7 +105,6 @@ describe("project.service.create — studio-scoped, admin/maintainer gate (spec 
       "studio-9",
       "My Cyberpunk Idea",
       "my-cyberpunk-idea",
-      "studio",
       "canvas",
       "a description",
     );
@@ -113,22 +112,21 @@ describe("project.service.create — studio-scoped, admin/maintainer gate (spec 
     // Authorized against the TARGET studio's current role, not the personal one.
     expect(mockLoadStudioRole).toHaveBeenCalledWith("u-1", "studio-9");
     expect(projectRepo.createProject).toHaveBeenCalledTimes(1);
-    // Args: (tx, studioId, creatorUserId, name, slug, visibility, spaceType, description).
+    // Args: (tx, studioId, creatorUserId, name, slug, spaceType, description).
     const args = vi.mocked(projectRepo.createProject).mock.calls[0];
     expect(args?.[1]).toBe("studio-9"); // lands in the chosen studio
     expect(args?.[2]).toBe("u-1");
     expect(args?.[3]).toBe("My Cyberpunk Idea");
     expect(args?.[4]).toBe("my-cyberpunk-idea");
-    expect(args?.[5]).toBe("studio");
-    expect(args?.[6]).toBe("canvas"); // spaceType threaded to the repo
-    expect(args?.[7]).toBe("a description");
+    expect(args?.[5]).toBe("canvas"); // spaceType threaded to the repo
+    expect(args?.[6]).toBe("a description");
     expect(result).toEqual({ id: "p-1", name: "My Cyberpunk Idea" });
   });
 
   it("allows a maintainer to create — the gate admits both studio roles", async () => {
     mockLoadStudioRole.mockResolvedValueOnce("maintainer");
 
-    await create("u-1", "studio-9", "P", "p", "studio", "canvas");
+    await create("u-1", "studio-9", "P", "p", "canvas");
 
     expect(projectRepo.createProject).toHaveBeenCalledTimes(1);
   });
@@ -137,7 +135,7 @@ describe("project.service.create — studio-scoped, admin/maintainer gate (spec 
     mockLoadStudioRole.mockResolvedValueOnce("guest");
 
     await expect(
-      create("u-1", "studio-9", "P", "p", "studio", "canvas"),
+      create("u-1", "studio-9", "P", "p", "canvas"),
     ).rejects.toMatchObject({ name: "ForbiddenError" });
     expect(projectRepo.createProject).not.toHaveBeenCalled();
   });
@@ -146,7 +144,7 @@ describe("project.service.create — studio-scoped, admin/maintainer gate (spec 
     mockLoadStudioRole.mockResolvedValueOnce(null);
 
     await expect(
-      create("u-1", "studio-9", "P", "p", "studio", "canvas"),
+      create("u-1", "studio-9", "P", "p", "canvas"),
     ).rejects.toMatchObject({ name: "ForbiddenError" });
     expect(projectRepo.createProject).not.toHaveBeenCalled();
   });
@@ -160,7 +158,6 @@ describe("project.service.create — studio-scoped, admin/maintainer gate (spec 
       "studio-9",
       "Another Project",
       "another-project",
-      "studio",
       "canvas",
     );
 

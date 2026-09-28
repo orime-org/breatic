@@ -90,8 +90,8 @@ async function seedTwoProjects(): Promise<{
   const made: string[] = [];
   for (const suffix of ["a", "b"]) {
     const [project] = await sql<{ id: string }[]>`
-      INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-      VALUES (${studio!.id}, ${user!.id}, ${`${tag}-${suffix}`}, ${`${tag}-${suffix}`}, 'private')
+      INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+      VALUES (${studio!.id}, ${user!.id}, ${`${tag}-${suffix}`}, ${`${tag}-${suffix}`})
       RETURNING id
     `;
     await sql`

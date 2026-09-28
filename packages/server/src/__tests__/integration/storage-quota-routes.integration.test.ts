@@ -108,8 +108,8 @@ async function fullAccount(filledBytes: number): Promise<{
   `;
   const slug = `sqr-proj-${seq++}`;
   const [p] = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studioId}, ${userId}, ${`P ${slug}`}, ${slug}, 'private')
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioId}, ${userId}, ${`P ${slug}`}, ${slug})
     RETURNING id
   `;
   const projectId = p!.id;

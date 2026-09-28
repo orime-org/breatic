@@ -27,7 +27,7 @@ const RECENT_LIMIT = 12;
  * rejected (and nothing is written) — so a client cannot seed open rows for
  * projects it has no business touching. In the real flow this is always
  * reachable because the project-load path (`GET /projects/:id`) has already
- * admitted (and materialized) the viewer before the page records the open.
+ * admitted the member before the page records the open.
  * @param projectId - The opened project's UUID (untrusted client input)
  * @param userId - The authenticated user's UUID
  * @throws {NotFoundError} when the caller cannot access the project (collapses

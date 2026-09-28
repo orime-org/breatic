@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What one landing page says about any of the five waiting requests.
+ * What one landing page says about any of the six waiting requests.
  *
- * The five flows keep their own tables and their own status words. This module
- * is where they stop being five things: it takes a token, finds the request,
+ * The six flows keep their own tables and their own status words. This module
+ * is where they stop being six things: it takes a token, finds the request,
  * and produces one shape the page can render without knowing which table it
  * came from.
  *
@@ -28,16 +28,18 @@ import { projectMembersRepo } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import type {
   DecisionAction,
+  DecisionGrantRole,
   DecisionKind,
   DecisionResult,
   DecisionState,
   DecisionView,
 } from "@breatic/shared";
-import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@breatic/core";
 import { t, ROLE_RANK, STUDIO_ROLE_RANK } from "@breatic/shared";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
 import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
+import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as decisionRepo from "@server/modules/decision/decision.repo.js";
@@ -81,7 +83,7 @@ const INVITE_KINDS = new Set<DecisionKind>(["studio_invite", "project_invite"]);
  * Then the terminal statuses, then the two expiry checks; already-a-member
  * comes LAST, so it can only ever downgrade a request that would otherwise be
  * answerable — an accepted or expired invite reports its own state, not the
- * membership. And it applies ONLY to invites: the other three flows require
+ * membership. And it applies ONLY to invites: the other four flows require
  * the recipient to be a member already, so asking "are you in?" there would
  * leave them permanently unanswerable.
  * @param input - What is known about the request.
@@ -132,7 +134,8 @@ export async function viewByToken(
   if (!detail) return null;
 
   // The membership question only exists for the two invite flows — the other
-  // three REQUIRE a member (a transfer's recipient, the upgrade's owner), so
+  // four REQUIRE a member (a transfer's recipient, the owner answering an
+  // upgrade or a join request), so
   // asking would burn a DB roundtrip on an answer nothing reads.
   const [containerName, actorName, recipientAlreadyIn] = await Promise.all([
     readContainerName(detail.container),
@@ -244,7 +247,7 @@ async function alreadyHasOffer(
 }
 
 /**
- * The five flows' own settle functions, behind one shape.
+ * The six flows' own settle functions, behind one shape.
  *
  * Each already knows how to do its own write — adding a member, swapping an
  * owner, rewriting a role — and each already re-checks its own preconditions
@@ -253,6 +256,7 @@ async function alreadyHasOffer(
  * @param requestId - The request row.
  * @param deciderUserId - Whoever is answering.
  * @param action - Which way.
+ * @param role - The role a join request's confirmation grants.
  * @returns Nothing; the flow's own service performs the write.
  * @throws {NotFoundError | ForbiddenError | ConflictError} whatever the
  *   underlying flow throws when it refuses.
@@ -262,6 +266,7 @@ async function settle(
   requestId: string,
   deciderUserId: string,
   action: DecisionAction,
+  role: DecisionGrantRole,
 ): Promise<void> {
   const confirming = action === "confirm";
   switch (kind) {
@@ -279,6 +284,11 @@ async function settle(
       await (confirming
         ? roleUpgradeService.approve({ requestId, ownerUserId: deciderUserId })
         : roleUpgradeService.reject({ requestId, ownerUserId: deciderUserId }));
+      return;
+    case "project_join":
+      await (confirming
+        ? projectJoinRequestService.approve({ requestId, ownerUserId: deciderUserId, role })
+        : projectJoinRequestService.reject({ requestId, ownerUserId: deciderUserId }));
       return;
     case "project_transfer":
       await (confirming
@@ -326,18 +336,25 @@ async function redirectFor(
  * @param token - The token from the decision link.
  * @param viewerUserId - Who is answering.
  * @param action - Confirm or decline.
+ * @param role - The role to grant; only a join request's confirmation takes one.
  * @returns The state it settled into, and where to go next.
  * @throws {NotFoundError} when no request answers to that token.
  * @throws {ForbiddenError} when the viewer is not the one being asked.
  * @throws {ConflictError} when the request is no longer answerable.
+ * @throws {ValidationError} when a role is sent for anything but a join
+ *   request's confirmation.
  */
 export async function respond(
   token: string,
   viewerUserId: string,
   action: DecisionAction,
+  role?: DecisionGrantRole,
 ): Promise<DecisionResult> {
   const found = await decisionRepo.resolveByToken(token);
   if (!found) throw new NotFoundError(t("server.error.not_found"));
+  if (role !== undefined && !(found.kind === "project_join" && action === "confirm")) {
+    throw new ValidationError(t("server.error.validation"));
+  }
 
   const detail = await decisionRepo.readDetail(found.kind, found.id);
   if (!detail) throw new NotFoundError(t("server.error.not_found"));
@@ -374,7 +391,7 @@ export async function respond(
     throw new ConflictError(t("server.error.conflict"));
   }
 
-  await settle(found.kind, found.id, viewerUserId, action);
+  await settle(found.kind, found.id, viewerUserId, action, role ?? "viewer");
 
   return {
     state: action === "confirm" ? "accepted" : "declined",

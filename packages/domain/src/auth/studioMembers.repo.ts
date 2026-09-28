@@ -34,14 +34,16 @@ import type { StudioRole } from "@breatic/shared";
  * access outside this repo).
  * @param studioId - Studio UUID
  * @param userId - User UUID
+ * @param tx - Enclosing transaction, when the caller is inside one
  * @returns Role, or null if the studio is missing/deleted or the user
  *   has no active membership
  */
 export async function getRole(
   studioId: string,
   userId: string,
+  tx?: DbTx,
 ): Promise<StudioRole | null> {
-  const rows = await db
+  const rows = await (tx ?? db)
     .select({ role: studioMembers.role })
     .from(studioMembers)
     .innerJoin(studios, eq(studios.id, studioMembers.studioId))
@@ -149,7 +151,7 @@ export async function listByStudio(
  * so the UPDATE is skipped, RETURNING is empty → returns false (caller maps to
  * ConflictError; no silent role overwrite). `role` is expected to be
  * 'maintainer' | 'guest' — admin is granted via transfer, never invite; the
- * caller enforces that. Mirrors `materializeBaselineViewer`'s revive pattern.
+ * caller enforces that. Mirrors `projectMembersRepo.addUnlessActive`'s revive pattern.
  * @param studioId - Studio UUID
  * @param userId - The invitee's user UUID
  * @param role - Granted studio role (maintainer | guest)

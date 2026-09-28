@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The five things in this product that wait for a person to answer, and the
+ * The six things in this product that wait for a person to answer, and the
  * one shape all of them are answered through.
  *
  * Each lives in its own table with its own status vocabulary, but from the
@@ -12,18 +12,19 @@
  * them in from whichever table the token resolved to.
  */
 
-/** Which of the five flows a request belongs to. */
+/** Which of the six flows a request belongs to. */
 export type DecisionKind =
   | "studio_invite"
   | "project_invite"
   | "role_upgrade"
+  | "project_join"
   | "project_transfer"
   | "studio_transfer";
 
 /**
  * What the landing page found behind a token.
  *
- * The five tables spell their terminal statuses three different ways
+ * The six tables spell their terminal statuses three different ways
  * (accepted/approved, declined/rejected, revoked/cancelled), so the server
  * collapses them here: the page renders a state, not a status column.
  *
@@ -44,7 +45,7 @@ export type DecisionState =
   | "gone";
 
 /**
- * Everything the landing page needs, for any of the five kinds.
+ * Everything the landing page needs, for any of the six kinds.
  *
  * Carries no ids and no slugs: this is what an unanswered request looks like to
  * someone who has not decided yet, and the URL it was reached through is meant
@@ -61,7 +62,7 @@ export interface DecisionView {
   actorName: string;
   /** The role at stake; null for transfers, which always mean ownership. */
   role: string | null;
-  /** The requester's own words, role upgrades only. */
+  /** The requester's own words; role upgrades and join requests only. */
   message: string | null;
   /** Only used for the countdown on an answerable request. */
   expiresAt: string | null;
@@ -86,6 +87,12 @@ export interface DecisionView {
 
 /** Which way the recipient answered. */
 export type DecisionAction = "confirm" | "decline";
+
+/**
+ * The role an owner grants when confirming a join request. Only a
+ * `project_join` confirmation carries one; it defaults to viewer.
+ */
+export type DecisionGrantRole = "viewer" | "editor";
 
 /**
  * What the server says after an answer lands.

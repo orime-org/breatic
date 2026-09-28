@@ -746,6 +746,92 @@ export async function createStorageQuotaExceeded(input: {
   );
 }
 
+/** Payload for `project.join_request` — a studio member asks to join a project. */
+export interface ProjectJoinRequestPayload {
+  /** Names the request in `/decision?token=`; the bell builds its link from it. */
+  shareToken: string;
+  /** The `project_join_requests` row this entry announces. */
+  requestId: string;
+  requesterUserId: string;
+  /** Requester's personal-studio display name — shown actor-first in the bell. */
+  requesterName: string;
+  /** The project asked about — resolved to its current name at read time. */
+  projectId: string;
+  projectName: string;
+  message: string | null;
+}
+
+/** Payload for `project.join_approved` / `project.join_rejected`. */
+export interface ProjectJoinDecisionPayload {
+  deciderUserId: string;
+  /** Deciding owner's personal-studio display name. */
+  deciderName: string;
+  projectId: string;
+  projectName: string;
+  /** The role granted; present on approval only. */
+  grantedRole?: "viewer" | "editor";
+}
+
+/**
+ * Ring the project owner's bell about a join request.
+ *
+ * `expiresAt` must be the request row's own deadline, so the entry leaves the
+ * unread list the moment the request stops being answerable.
+ * @param input - Owner inbox, project scope, payload, deadline, optional tx.
+ * @param input.ownerUserId - The project's current owner.
+ * @param input.projectId - The project asked about.
+ * @param input.payload - Request id, token, requester and project names.
+ * @param input.expiresAt - Same instant as the request row's `expires_at`.
+ * @param input.tx - Transaction the request write lives in.
+ * @returns The inserted `project.join_request` notification.
+ */
+export async function createProjectJoinRequest(input: {
+  ownerUserId: string;
+  projectId: string;
+  payload: ProjectJoinRequestPayload;
+  expiresAt: Date;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.ownerUserId,
+      type: "project.join_request",
+      payload: input.payload as unknown as Record<string, unknown>,
+      projectId: input.projectId,
+      expiresAt: input.expiresAt,
+    },
+    input.tx,
+  );
+}
+
+/**
+ * Tell the requester how the owner answered their join request.
+ * @param input - Requester inbox, project scope, outcome, payload, optional tx.
+ * @param input.requesterUserId - The person who asked.
+ * @param input.projectId - The project asked about.
+ * @param input.outcome - Whether they were let in.
+ * @param input.payload - Decider and project names, and the granted role.
+ * @param input.tx - Transaction the decision write lives in.
+ * @returns The inserted `project.join_approved` / `project.join_rejected` notification.
+ */
+export async function createProjectJoinDecision(input: {
+  requesterUserId: string;
+  projectId: string;
+  outcome: "approved" | "rejected";
+  payload: ProjectJoinDecisionPayload;
+  tx?: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.requesterUserId,
+      type: input.outcome === "approved" ? "project.join_approved" : "project.join_rejected",
+      payload: input.payload as unknown as Record<string, unknown>,
+      projectId: input.projectId,
+    },
+    input.tx,
+  );
+}
+
 /**
  * Mark all of a user's unread notifications as read. Idempotent —
  * returns the count of rows updated (0 if nothing was unread).

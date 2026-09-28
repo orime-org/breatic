@@ -14,7 +14,6 @@ const project: ContainerProject = {
   slug: 'cyberpunk-alley',
   name: 'Cyberpunk Alley',
   thumbnailUrl: null,
-  visibility: 'studio',
   myRole: 'owner',
   // Created 30 min ago → en renders a relative "30 minutes ago" label.
   createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),

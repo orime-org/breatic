@@ -3,8 +3,8 @@
 
 /**
  * Pure studio access rules (DD §5.2 / §5.3) — the source of truth for the two
- * critical-path frontend invariants (spec §4): which item cards a viewer may
- * see (visibility filter) and which governance actions they may take. Kept
+ * critical-path frontend invariants (spec §4): which collection cards a viewer
+ * may see (visibility filter) and which governance actions they may take. Kept
  * free of React so they can be exhaustively matrix-tested.
  */
 
@@ -22,8 +22,9 @@ export interface ItemAccess {
 }
 
 /**
- * Whether a project / collection card should render for the viewer
- * (spec §4 invariant 1). Studio-visible items are baseline-visible to every
+ * Whether a collection card should render for the viewer (spec §4
+ * invariant 1). Projects are not filtered here: the server lists every
+ * project to every studio member. Studio-visible items are baseline-visible to every
  * studio member; private items render only for studio Admins or for members
  * who actually have a role on them (owner / invited). A plain Guest never
  * sees a private item they are not part of, and a non-member (`null` studio
