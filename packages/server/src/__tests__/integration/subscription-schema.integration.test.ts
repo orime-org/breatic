@@ -133,9 +133,9 @@ describe("subscriptions (#106 §5.2)", () => {
     const userId = await makeUser();
     try {
       await sql`
-        INSERT INTO subscriptions (user_id, stripe_subscription_id, tier, status)
-        VALUES (${userId}, 'sub_old', 'pro', 'canceled'),
-               (${userId}, 'sub_new', 'team', 'active')
+        INSERT INTO subscriptions (user_id, stripe_subscription_id, tier, period, status)
+        VALUES (${userId}, 'sub_old', 'pro', 'month', 'canceled'),
+               (${userId}, 'sub_new', 'team', 'month', 'active')
       `;
       const rows = await sql<{ count: string }[]>`
         SELECT count(*)::text AS count FROM subscriptions WHERE user_id = ${userId}
@@ -155,13 +155,13 @@ describe("subscriptions (#106 §5.2)", () => {
     const userId = await makeUser();
     try {
       await sql`
-        INSERT INTO subscriptions (user_id, stripe_subscription_id, tier, status)
-        VALUES (${userId}, 'sub_dup', 'pro', 'active')
+        INSERT INTO subscriptions (user_id, stripe_subscription_id, tier, period, status)
+        VALUES (${userId}, 'sub_dup', 'pro', 'month', 'active')
       `;
       await expect(
         sql`
-          INSERT INTO subscriptions (user_id, stripe_subscription_id, tier, status)
-          VALUES (${userId}, 'sub_dup', 'pro', 'active')
+          INSERT INTO subscriptions (user_id, stripe_subscription_id, tier, period, status)
+          VALUES (${userId}, 'sub_dup', 'pro', 'month', 'active')
         `,
       ).rejects.toThrow();
     } finally {
@@ -176,8 +176,8 @@ describe("subscriptions (#106 §5.2)", () => {
       const [row] = await sql<
         { cancel_at_period_end: boolean; has_pending_update: boolean }[]
       >`
-        INSERT INTO subscriptions (user_id, stripe_subscription_id, tier, status)
-        VALUES (${userId}, 'sub_flags', 'pro', 'active')
+        INSERT INTO subscriptions (user_id, stripe_subscription_id, tier, period, status)
+        VALUES (${userId}, 'sub_flags', 'pro', 'month', 'active')
         RETURNING cancel_at_period_end, has_pending_update
       `;
       expect(row?.cancel_at_period_end).toBe(false);
@@ -195,8 +195,8 @@ describe("subscriptions (#106 §5.2)", () => {
     const userId = await makeUser();
     try {
       await sql`
-        INSERT INTO subscriptions (user_id, stripe_subscription_id, tier, status)
-        VALUES (${userId}, 'sub_fk', 'pro', 'active')
+        INSERT INTO subscriptions (user_id, stripe_subscription_id, tier, period, status)
+        VALUES (${userId}, 'sub_fk', 'pro', 'month', 'active')
       `;
       await expect(
         sql`DELETE FROM users WHERE id = ${userId}`,

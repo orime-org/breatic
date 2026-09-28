@@ -177,6 +177,16 @@ payment.post("/webhook", async (c) => {
       type: event.type,
       ...subscriptionOutcome,
     };
+    // What Stripe charges disagrees with this deployment's own price list.
+    // Both figures go in the log, and the answer is a failure: Stripe keeps
+    // redelivering for three days, which is the window somebody has to put
+    // the price right and have the event land by itself. Answering 200 would
+    // drop a paid subscription on the floor over a figure nobody has looked
+    // at yet.
+    if (subscriptionOutcome.status === "priceDisagreement") {
+      logger.error(line, "subscription_price_disagreement");
+      return c.json({ received: false }, 500);
+    }
     if (subscriptionOutcome.status === "noop") {
       logger.warn(line, "subscription_webhook_handled");
     } else {

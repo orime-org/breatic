@@ -128,7 +128,8 @@
       "already_subscribed": "你已有會員。",
       "no_subscription": "你沒有會員。",
       "not_cancelling": "這個會員沒有預約結束。",
-      "downgrade_not_offered": "會員不能降到更低檔位。",
+      "change_not_offered": "這項變更暫不提供。",
+      "change_unconfirmed": "變更已提交到 Stripe，但沒能確認結果。請先聯絡我們，不要重複操作。",
       "same_tier": "你已經在這一檔會員。",
       "payment_overdue": "這個會員有一期款項未付。",
       "unavailable": "會員目前無法使用。"
@@ -1074,7 +1075,8 @@
       "projectInviteRequest": "{actor} 邀請你加入 {project}",
       "projectInviteAccepted": "{actor} 接受了你對 {project} 的邀請",
       "membershipEnded": "{tier} 會員已結束",
-      "membershipUpgradeIncomplete": "升級到 {tier} 未完成",
+      "membershipUpgradeIncomplete": "換到 {tier} {period} 的付款沒有完成",
+      "membershipUpgradeIncompleteNoPeriod": "換到 {tier} 的付款沒有完成",
       "storageQuotaExceeded": "儲存空間已滿"
     },
     "actorFallback": "某人",
@@ -1471,8 +1473,9 @@
     "panelTitle": "會員",
     "close": "關閉",
     "currentTier": "目前會員",
+    "chooseTier": "選擇會員",
     "tier": {
-      "base": "Base",
+      "base": "Starter",
       "pro": "PRO",
       "team": "Team",
       "self_hosted": "自架",
@@ -1501,7 +1504,6 @@
     },
     "enterpriseQuota": "你的額度由單獨協議約定，不在這裡顯示。",
     "compare": "各檔比較",
-    "monthlyFee": "月費",
     "contactEnterprise": "需要更大規模或單獨的商用條款？寄信跟我們談：",
     "contactSelfHosted": "需要商用授權或單獨的支援條款？寄信跟我們談：",
     "contactEnterpriseAccount": "額度有疑問或需要調整？寄信跟我們談：",
@@ -1517,11 +1519,37 @@
     "resume": "恢復會員",
     "notice": {
       "firstPaymentPending": "付款未完成",
-      "upgradePending": "升級付款未完成",
-      "paymentOverdue": "這個月的款項沒有扣款成功"
+      "upgradePending": "這次變更的付款還沒完成",
+      "paymentOverdue": "這次扣款沒有成功"
+    },
+    "checkout": {
+      "done": "{plan} 已生效",
+      "processing": "付款還在處理中",
+      "failed": "會員沒有開通"
     },
     "payNow": "去付款",
-    "actionFailed": "沒有成功，請再試一次。"
+    "actionFailed": "沒有成功，請再試一次。",
+    "period": {
+      "month": "月付",
+      "year": "年付"
+    },
+    "saveTwoMonths": "十二個月，按十個月的價",
+    "yearSaving": "年付約省 {percent}%",
+    "tierWithPeriod": "{tier} · {period}",
+    "priceSuffix": {
+      "month": "{amount} / 月",
+      "year": "{amount} / 年"
+    },
+    "priceOnRequest": "面議",
+    "contactSales": "聯絡我們",
+    "card": {
+      "storage": "{value} 儲存",
+      "teamStudios": "{count, plural, =0 {不含團隊 Studio} other {# 個團隊 Studio}}",
+      "connections": "{count, plural, other {每份文件 # 條連線}}",
+      "enterpriseScale": "容量按協議約定",
+      "enterpriseGovernance": "SSO、稽核、智慧財產保障"
+    },
+    "noCreditsIncluded": "會員不含生成點數，點數單獨購買。"
   },
   "credits": {
     "panelTitle": "點數",

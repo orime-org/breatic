@@ -11,7 +11,6 @@ import {
   DialogContent,
   DialogTitle,
 } from '@web/components/ui/dialog';
-import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { accountApi } from '@web/data/api/account';
 import { MembershipContent } from '@web/features/membership/MembershipContent';
@@ -63,47 +62,42 @@ export function MembershipPanel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* The height cap lives on the scroll area below, which is the panel's
-          only content — repeating it here would be the same number in two
-          places, free to drift apart. */}
-      <DialogContent className='w-[min(880px,calc(100vw-80px))] max-w-none bg-background p-0'>
+      {/* Two rows: the current tier, which stays put, and everything under
+          it, which scrolls. Grid rather than the flex column the primitive
+          ships as, because the ceiling is a `max-height`: a flex column under
+          one leaves its items at `height: auto`, the viewport grows to its
+          content, and the panel clips instead of scrolling. Grid tracks are
+          definite either way (`MembersModal` measured the same trap). */}
+      <DialogContent className='grid max-h-[calc(100vh-80px)] w-[min(880px,calc(100vw-80px))] max-w-none grid-rows-[auto_minmax(0,1fr)] bg-background p-0'>
         {/* The panel's own heading is the tier itself, which is why there is
             no visible title bar; the accessible name still has to exist, and
             Radix requires it. */}
         <DialogTitle className='sr-only'>
           {t('membership.panelTitle')}
         </DialogTitle>
-        {/* `z-10` is load-bearing: the scroll area below is a later sibling
-            that fills the panel, and between two positioned elements with no
-            level of their own the later one wins. Without it this button is
-            drawn but nothing reaches it — the click lands on the viewport. */}
         <DialogClose
           aria-label={t('membership.close')}
-          className='absolute right-4 top-4 z-10 inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className='absolute right-4 top-4 inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-[18px] w-[18px]' />
         </DialogClose>
-        {/* The cap goes on the viewport, which is the element that
-            scrolls. On the Root it clips instead: the Root is
-            `overflow-hidden` with auto height, so the viewport's `h-full`
-            resolves to auto and grows past it. */}
-        <ScrollArea viewportClassName='max-h-[calc(100vh-80px)] p-8'>
-          {query.isPending ? (
+        {query.isPending ? (
+          <div className='p-8'>
             <MembershipSkeleton />
-          ) : query.isError ? (
-            // One line, the way the sibling studio pages report a failed read
-            // (StudioContainerPage / StudioRecentPage). No retry button:
-            // closing and reopening the panel refetches, and this read has
-            // nothing the reader would lose by doing that. Panels that DO
-            // offer one (node history, the decision landing page) are ones
-            // where the reader is mid-task and reopening costs them that.
-            <p role='alert' className='text-sm text-muted-foreground'>
-              {t('membership.loadFailed')}
-            </p>
-          ) : (
-            <MembershipContent membership={query.data} />
-          )}
-        </ScrollArea>
+          </div>
+        ) : query.isError ? (
+          // One line, the way the sibling studio pages report a failed read
+          // (StudioContainerPage / StudioRecentPage). No retry button:
+          // closing and reopening the panel refetches, and this read has
+          // nothing the reader would lose by doing that. Panels that DO
+          // offer one (node history, the decision landing page) are ones
+          // where the reader is mid-task and reopening costs them that.
+          <p role='alert' className='p-8 text-sm text-muted-foreground'>
+            {t('membership.loadFailed')}
+          </p>
+        ) : (
+          <MembershipContent membership={query.data} />
+        )}
       </DialogContent>
     </Dialog>
   );

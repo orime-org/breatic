@@ -45,5 +45,11 @@ export function useCreditOverview(
     queryKey: creditOverviewKey(userId),
     queryFn: () => fetchCreditOverview(),
     enabled: enabled && userId !== null,
+    // Read again every time a screen opens. The default holds an answer for
+    // thirty seconds, which is the right trade for most things and the wrong
+    // one for this: every generation spends credits, so a figure held from
+    // the last open is a number the account had rather than the one it has,
+    // and answering the second question is why this row exists.
+    staleTime: 0,
   });
 }

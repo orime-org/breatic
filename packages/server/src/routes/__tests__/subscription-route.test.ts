@@ -103,8 +103,8 @@ beforeEach(() => {
 
 describe("订阅路由 — 关掉支付时的四个闸门", () => {
   it.each([
-    ["/checkout", { tier: "pro", return_url: "https://app.example/me" }],
-    ["/change", { tier: "team" }],
+    ["/checkout", { tier: "pro", period: "month", return_url: "https://app.example/me" }],
+    ["/change", { tier: "team", period: "year" }],
     ["/cancel", {}],
     ["/resume", {}],
   ])("%s 在不卖东西的部署上答 404", async (path, body) => {
@@ -130,9 +130,10 @@ describe("订阅路由 — 限流", () => {
 });
 
 describe("订阅路由 — 把请求翻译成业务调用", () => {
-  it("结账把档位和回跳地址原样交给服务层", async () => {
+  it("hands the tier, the period and the return address to the service as they came", async () => {
     const res = await post("/checkout", {
       tier: "pro",
+      period: "year",
       return_url: "https://app.example/me",
     });
 
@@ -140,8 +141,29 @@ describe("订阅路由 — 把请求翻译成业务调用", () => {
     expect(service.startCheckout).toHaveBeenCalledWith({
       userId: "u-1",
       tier: "pro",
+      period: "year",
       returnUrl: "https://app.example/me",
     });
+  });
+
+  it("refuses a request that names no period before the service sees it", async () => {
+    // A tier has two prices. Without this half the service would have to
+    // pick one, and neither of them is the one the reader pressed. Stopping
+    // it here is what keeps a default period from existing at all.
+    const res = await post("/checkout", {
+      tier: "pro",
+      return_url: "https://app.example/me",
+    });
+
+    expect(res.status).toBe(422);
+    expect(service.startCheckout).not.toHaveBeenCalled();
+  });
+
+  it("refuses a period that is neither of the two words", async () => {
+    const res = await post("/change", { tier: "team", period: "weekly" });
+
+    expect(res.status).toBe(422);
+    expect(service.changePlan).not.toHaveBeenCalled();
   });
 
   it("档位不在价目表上时不进业务层", async () => {

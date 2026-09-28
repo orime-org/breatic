@@ -128,7 +128,8 @@
       "already_subscribed": "You already have a membership.",
       "no_subscription": "You do not have a membership.",
       "not_cancelling": "This membership is not scheduled to end.",
-      "downgrade_not_offered": "Memberships cannot be moved to a lower tier.",
+      "change_not_offered": "That change is not on offer.",
+      "change_unconfirmed": "Your change reached Stripe, but we could not confirm it. Contact us before trying again.",
       "same_tier": "You are already on this membership.",
       "payment_overdue": "Payment for this membership is overdue.",
       "unavailable": "Memberships are unavailable."
@@ -1074,7 +1075,8 @@
       "projectInviteRequest": "{actor} invited you to join {project}",
       "projectInviteAccepted": "{actor} accepted your invite to {project}",
       "membershipEnded": "Your {tier} membership has ended",
-      "membershipUpgradeIncomplete": "Your upgrade to {tier} was not completed",
+      "membershipUpgradeIncomplete": "Payment for your move to {tier} {period} was not completed",
+      "membershipUpgradeIncompleteNoPeriod": "Payment for your move to {tier} was not completed",
       "storageQuotaExceeded": "Your storage is full"
     },
     "actorFallback": "Someone",
@@ -1471,8 +1473,9 @@
     "panelTitle": "Membership",
     "close": "Close",
     "currentTier": "Current membership",
+    "chooseTier": "Choose a membership",
     "tier": {
-      "base": "Base",
+      "base": "Starter",
       "pro": "PRO",
       "team": "Team",
       "self_hosted": "Self-hosted",
@@ -1501,7 +1504,6 @@
     },
     "enterpriseQuota": "Your allowances are set by a separate agreement and are not shown here.",
     "compare": "Compare tiers",
-    "monthlyFee": "Monthly",
     "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
     "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
     "contactEnterpriseAccount": "Questions about your allowances, or need them changed? Email us:",
@@ -1517,11 +1519,37 @@
     "resume": "Resume membership",
     "notice": {
       "firstPaymentPending": "Payment not completed",
-      "upgradePending": "Upgrade payment not completed",
-      "paymentOverdue": "This month's payment did not go through"
+      "upgradePending": "Payment for the change is not complete",
+      "paymentOverdue": "Payment did not go through"
+    },
+    "checkout": {
+      "done": "{plan} is active",
+      "processing": "Payment is still going through",
+      "failed": "Membership not activated"
     },
     "payNow": "Pay now",
-    "actionFailed": "That did not go through. Try again."
+    "actionFailed": "That did not go through. Try again.",
+    "period": {
+      "month": "Monthly",
+      "year": "Yearly"
+    },
+    "saveTwoMonths": "Twelve months for the price of ten",
+    "yearSaving": "Save about {percent}% with yearly billing",
+    "tierWithPeriod": "{tier} · {period}",
+    "priceSuffix": {
+      "month": "{amount} /mo",
+      "year": "{amount} /yr"
+    },
+    "priceOnRequest": "On request",
+    "contactSales": "Talk to us",
+    "card": {
+      "storage": "{value} storage",
+      "teamStudios": "{count, plural, =0 {No Team Studios} one {# Team Studio} other {# Team Studios}}",
+      "connections": "{count, plural, one {# connection per document} other {# connections per document}}",
+      "enterpriseScale": "Capacity by agreement",
+      "enterpriseGovernance": "SSO, audit, IP indemnity"
+    },
+    "noCreditsIncluded": "Membership includes no generation credits. Credits are bought separately."
   },
   "credits": {
     "panelTitle": "Credits",

@@ -17,7 +17,7 @@ import { toast } from '@web/lib/toast';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   holdsActionableSubscription,
-  type SubscribableMembershipTier,
+  type MembershipOffer,
   type SubscriptionSummary,
 } from '@breatic/shared';
 
@@ -30,8 +30,8 @@ import {
 
 /** What the panel can do about a subscription. */
 export interface SubscriptionActions {
-  /** Take the account to a tier above its own. */
-  choose: (tier: SubscribableMembershipTier) => void;
+  /** Take the account to another offer: a tier, a period, or both. */
+  choose: (offer: MembershipOffer) => void;
   /** Stop the membership renewing at the end of the paid period. */
   cancel: () => void;
   /** Take back a scheduled cancellation. */
@@ -96,10 +96,10 @@ export function useSubscriptionActions(
   );
 
   const choose = React.useCallback(
-    (tier: SubscribableMembershipTier) => {
+    (offer: MembershipOffer) => {
       void run(async () => {
         if (subscription && holdsActionableSubscription(subscription.state)) {
-          const result = await changeSubscriptionPlan(tier);
+          const result = await changeSubscriptionPlan(offer);
           // The difference was not charged, so Stripe is holding the change
           // until it is. Sending them straight to the invoice is the whole of
           // "there is a way to finish paying".
@@ -111,7 +111,7 @@ export function useSubscriptionActions(
           return;
         }
         const start = await startSubscriptionCheckout(
-          tier,
+          offer,
           window.location.href,
         );
         window.location.assign(start.url);

@@ -981,6 +981,13 @@ export const subscriptions = pgTable(
     // so a `check()` beside the column would be a second copy nothing compares
     // against the first.
     tier: varchar("tier", { length: 16 }).notNull(),
+    // How often this subscription is billed. The tier alone no longer says
+    // what somebody pays: PRO monthly and PRO yearly are the same tier at two
+    // prices. CHECK constraint added by hand in 0081, same reason as `tier`'s.
+    //
+    // No default, so a writer that forgets the column fails rather than
+    // landing the account silently on the cheaper period.
+    period: varchar("period", { length: 8 }).notNull(),
     status: varchar("status", { length: 30 }).notNull(),
     // From `items.data[0].current_period_end`. Stripe moved it off the
     // subscription object in the 2025-03-31 release; nullable because a
@@ -995,6 +1002,11 @@ export const subscriptions = pgTable(
     stripeItemId: varchar("stripe_item_id", { length: 255 }),
     hasPendingUpdate: boolean("has_pending_update").default(false).notNull(),
     pendingTier: varchar("pending_tier", { length: 16 }),
+    // The period a waiting change moves to. Null whenever nothing is waiting,
+    // and separate from `period` because a change can move the period without
+    // moving the tier — PRO monthly to PRO yearly is one of the moves the
+    // product sells.
+    pendingPeriod: varchar("pending_period", { length: 8 }),
     payableInvoiceUrl: text("payable_invoice_url"),
     // When the snapshot this row was written from was taken (0058).
     //

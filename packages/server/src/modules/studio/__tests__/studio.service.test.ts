@@ -25,10 +25,18 @@ vi.mock("../studio.repo.js", () => ({
 }));
 
 // db.transaction(cb) runs the callback immediately with a stub tx handle.
+// Whether this deployment sells anything decides whether the trial grant's
+// figure is read at all, so the flag is a knob here rather than whatever the
+// developer's own .env happens to say.
+const { envRef, mockTrialGrantCredits } = vi.hoisted(() => ({
+  envRef: { PAYMENT_ENABLED: true },
+  mockTrialGrantCredits: vi.fn(() => 100),
+}));
 vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => {
   const actual = await importOriginal();
   return {
     ...actual,
+    env: envRef,
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
         cb({ TX: true }),
@@ -36,6 +44,13 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
     },
   };
 });
+
+// The price file is a deployment's own and git does not track it, so a test
+// that opened the real one would pass or fail on whether the machine running
+// it happens to sell anything.
+vi.mock("@server/config/pricing.js", () => ({
+  getTrialGrantCredits: mockTrialGrantCredits,
+}));
 
 // Explicit (no importOriginal) so loading @breatic/domain never pulls the
 // real agent llm and the `ai` SDK behind it.
@@ -58,7 +73,6 @@ vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, u
 }));
 
 import * as studioRepo from "../studio.repo.js";
-import { getTrialGrantCredits } from "@server/config/pricing.js";
 import {
   createPersonalStudio,
   getPersonalStudio,
@@ -97,6 +111,8 @@ const TEAM_STUDIO: Studio = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  envRef.PAYMENT_ENABLED = true;
+  mockTrialGrantCredits.mockReturnValue(100);
 });
 
 describe("createPersonalStudio", () => {
@@ -120,7 +136,24 @@ describe("createPersonalStudio", () => {
     // How much comes from the price file, so it is read from there rather
     // than written here.
     expect(mockGrantTrialCredits).toHaveBeenCalledWith(
-      { userId: "user-1", studioId: "studio-1", credits: getTrialGrantCredits() },
+      { userId: "user-1", studioId: "studio-1", credits: 100 },
+      { TX: true },
+    );
+  });
+
+  it("never opens the price file when this deployment sells nothing", async () => {
+    // The grant discards the figure with payments off, and the file it comes
+    // from belongs to a deployment that charges. Reading it anyway would fail
+    // every registration on a self-hosted install over a number about to be
+    // thrown away.
+    envRef.PAYMENT_ENABLED = false;
+    vi.mocked(studioRepo.createPersonalStudio).mockResolvedValueOnce(STUDIO);
+
+    await createPersonalStudio("user-1", "alice-handle");
+
+    expect(mockTrialGrantCredits).not.toHaveBeenCalled();
+    expect(mockGrantTrialCredits).toHaveBeenCalledWith(
+      { userId: "user-1", studioId: "studio-1", credits: 0 },
       { TX: true },
     );
   });

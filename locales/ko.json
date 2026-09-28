@@ -128,7 +128,8 @@
       "already_subscribed": "이미 멤버십이 있습니다.",
       "no_subscription": "멤버십이 없습니다.",
       "not_cancelling": "이 멤버십은 종료 예정이 아닙니다.",
-      "downgrade_not_offered": "하위 등급으로 변경할 수 없습니다.",
+      "change_not_offered": "해당 변경은 제공되지 않습니다.",
+      "change_unconfirmed": "변경 사항이 Stripe에 전달되었지만 결과를 확인하지 못했습니다. 다시 시도하기 전에 문의해 주세요.",
       "same_tier": "이미 이 멤버십입니다.",
       "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
       "unavailable": "멤버십을 사용할 수 없습니다."
@@ -1074,7 +1075,8 @@
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",
       "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다",
       "membershipEnded": "{tier} 멤버십이 종료되었습니다",
-      "membershipUpgradeIncomplete": "{tier} 업그레이드가 완료되지 않았습니다",
+      "membershipUpgradeIncomplete": "{tier} {period}(으)로 변경하는 결제가 완료되지 않았습니다",
+      "membershipUpgradeIncompleteNoPeriod": "{tier}(으)로 변경하는 결제가 완료되지 않았습니다",
       "storageQuotaExceeded": "저장 공간이 가득 찼습니다"
     },
     "actorFallback": "누군가",
@@ -1471,8 +1473,9 @@
     "panelTitle": "멤버십",
     "close": "닫기",
     "currentTier": "현재 멤버십",
+    "chooseTier": "멤버십 선택",
     "tier": {
-      "base": "Base",
+      "base": "Starter",
       "pro": "PRO",
       "team": "Team",
       "self_hosted": "자체 호스팅",
@@ -1501,7 +1504,6 @@
     },
     "enterpriseQuota": "사용 한도는 별도 계약으로 정해져 있어 여기에 표시되지 않습니다.",
     "compare": "등급 비교",
-    "monthlyFee": "월 요금",
     "contactEnterprise": "더 큰 규모나 별도의 상업 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactSelfHosted": "상업용 라이선스나 별도의 지원 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactEnterpriseAccount": "사용 한도에 대해 궁금하거나 조정이 필요하신가요? 메일로 문의해 주세요:",
@@ -1517,11 +1519,37 @@
     "resume": "멤버십 재개",
     "notice": {
       "firstPaymentPending": "결제가 완료되지 않았습니다",
-      "upgradePending": "업그레이드 결제가 완료되지 않았습니다",
-      "paymentOverdue": "이번 달 결제가 이루어지지 않았습니다"
+      "upgradePending": "변경 건의 결제가 완료되지 않았습니다",
+      "paymentOverdue": "결제가 완료되지 않았습니다"
+    },
+    "checkout": {
+      "done": "{plan} 이(가) 활성화되었습니다",
+      "processing": "결제를 처리하고 있습니다",
+      "failed": "멤버십이 활성화되지 않았습니다"
     },
     "payNow": "결제하기",
-    "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요."
+    "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요.",
+    "period": {
+      "month": "월간",
+      "year": "연간"
+    },
+    "saveTwoMonths": "12개월을 10개월 가격에",
+    "yearSaving": "연간 결제 시 약 {percent}% 절약",
+    "tierWithPeriod": "{tier} · {period}",
+    "priceSuffix": {
+      "month": "{amount} / 월",
+      "year": "{amount} / 년"
+    },
+    "priceOnRequest": "협의",
+    "contactSales": "문의하기",
+    "card": {
+      "storage": "저장 공간 {value}",
+      "teamStudios": "{count, plural, =0 {팀 Studio 없음} other {팀 Studio #개}}",
+      "connections": "{count, plural, other {문서당 연결 #개}}",
+      "enterpriseScale": "용량은 협의로 결정",
+      "enterpriseGovernance": "SSO, 감사, 지식재산 보증"
+    },
+    "noCreditsIncluded": "멤버십에는 생성 크레딧이 포함되지 않습니다. 크레딧은 별도로 구매합니다."
   },
   "credits": {
     "panelTitle": "크레딧",

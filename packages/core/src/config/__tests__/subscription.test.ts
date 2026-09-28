@@ -10,18 +10,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { parse } from "yaml";
-import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@breatic/shared";
-import { env, MONOREPO_ROOT } from "@core/config/env.js";
 import {
   subscriptionConfigSchema,
   resolvePlans,
-  getSubscriptionPlans,
-  getSubscriptionPlan,
-  getSubscriptionStaleAfterDays,
-  findSubscribableTierByPriceId,
+  findOfferByPriceId,
 } from "@core/config/subscription.js";
 
 const validFile = {
@@ -29,14 +21,30 @@ const validFile = {
   stripe_call_timeout_ms: 5000,
   plans: {
     pro: {
-      price_cents: 1200,
       currency: "usd",
-      stripe_price_id: { test: "price_test_pro", live: "price_live_pro" },
+      periods: {
+        month: {
+          price_cents: 1999,
+          stripe_price_id: { test: "price_test_pro", live: "price_live_pro" },
+        },
+        year: {
+          price_cents: 19999,
+          stripe_price_id: { test: "price_test_pro_y", live: "price_live_pro_y" },
+        },
+      },
     },
     team: {
-      price_cents: 3900,
       currency: "usd",
-      stripe_price_id: { test: "price_test_team", live: "price_live_team" },
+      periods: {
+        month: {
+          price_cents: 7999,
+          stripe_price_id: { test: "price_test_team", live: "price_live_team" },
+        },
+        year: {
+          price_cents: 79999,
+          stripe_price_id: { test: "price_test_team_y", live: "price_live_team_y" },
+        },
+      },
     },
   },
 };
@@ -44,13 +52,21 @@ const validFile = {
 describe("subscription config — schema", () => {
   it("accepts a file carrying every subscribable tier", () => {
     const parsed = subscriptionConfigSchema.parse(validFile);
-    expect(parsed.plans.pro?.price_cents).toBe(1200);
+    expect(parsed.plans.pro?.periods.month.price_cents).toBe(1999);
   });
 
   it("rejects a price that is not a positive integer", () => {
     expect(() =>
       subscriptionConfigSchema.parse({
-        plans: { pro: { ...validFile.plans.pro, price_cents: 0 } },
+        plans: {
+          pro: {
+            ...validFile.plans.pro,
+            periods: {
+              ...validFile.plans.pro.periods,
+              month: { ...validFile.plans.pro.periods.month, price_cents: 0 },
+            },
+          },
+        },
       }),
     ).toThrow();
   });
@@ -73,59 +89,66 @@ describe("subscription config — resolving plans", () => {
   });
 
   it("takes the test price id outside production", () => {
-    expect(resolvePlans(validFile, false).pro.stripePriceId).toBe(
+    expect(resolvePlans(validFile, false).pro.month.stripePriceId).toBe(
       "price_test_pro",
     );
   });
 
   it("takes the live price id in production", () => {
-    expect(resolvePlans(validFile, true).team.stripePriceId).toBe(
+    expect(resolvePlans(validFile, true).team.month.stripePriceId).toBe(
       "price_live_team",
     );
   });
 
   it("carries the price and currency through unchanged", () => {
     const plans = resolvePlans(validFile, false);
-    expect(plans.team.priceCents).toBe(3900);
-    expect(plans.team.currency).toBe("usd");
+    expect(plans.team.month.priceCents).toBe(7999);
+    expect(plans.team.month.currency).toBe("usd");
   });
 });
 
-describe("subscription config — reads config/subscription.yaml", () => {
-  it("ships a plan for every subscribable tier", () => {
-    const plans = getSubscriptionPlans();
-    for (const tier of SUBSCRIBABLE_MEMBERSHIP_TIERS) {
-      expect(plans[tier].priceCents).toBeGreaterThan(0);
-      expect(plans[tier].stripePriceId).not.toBe("");
-    }
+describe("findOfferByPriceId", () => {
+  // Every subscription Stripe reports about carries a price id and nothing
+  // else of ours, so this lookup is what turns a webhook into a tier and a
+  // billing period. Asserted against plans passed in: the deployment's own
+  // price file is not in the repository, and a lookup that only works
+  // against it is a lookup nothing can check.
+  const plans = resolvePlans(validFile, false);
+
+  it("answers both the tier and the period a price sells", () => {
+    expect(findOfferByPriceId("price_test_team_y", plans)).toEqual({
+      tier: "team",
+      period: "year",
+    });
   });
 
-  it("carries the ratified monthly prices", () => {
-    // $12 and $39 (marketing decision 2026-07-30). Asserted against the file
-    // rather than against each other, so a swap of the two rows fails here.
-    expect(getSubscriptionPlan("pro").priceCents).toBe(1200);
-    expect(getSubscriptionPlan("team").priceCents).toBe(3900);
+  it("answers null for a price this deployment does not sell", () => {
+    expect(findOfferByPriceId("price_somebody_elses", plans)).toBeNull();
   });
 
-  it("reads the price ids the file really carries, for this environment", () => {
-    const raw = parse(
-      readFileSync(resolve(MONOREPO_ROOT, "config/subscription.yaml"), "utf-8"),
-    ) as typeof validFile;
-    const ids = raw.plans.pro.stripe_price_id;
-    expect(getSubscriptionPlan("pro").stripePriceId).toBe(
-      env.ENV === "prod" ? ids.live : ids.test,
+  it("answers null for an empty id rather than matching an unsold period", () => {
+    // Price ids are pasted in by hand, and a period nobody has created a
+    // price for yet sits in the file as an empty string. Without this an
+    // empty id would match whichever empty slot came first.
+    const withUnsoldYearly = resolvePlans(
+      {
+        ...validFile,
+        plans: {
+          ...validFile.plans,
+          pro: {
+            ...validFile.plans.pro,
+            periods: {
+              ...validFile.plans.pro.periods,
+              year: {
+                ...validFile.plans.pro.periods.year,
+                stripe_price_id: { test: "", live: "" },
+              },
+            },
+          },
+        },
+      },
+      false,
     );
-  });
-
-  it("carries the window a lapsed subscription is honoured for", () => {
-    // Stripe's own Smart Retries default is two weeks; shorter would take the
-    // tier away from somebody whose card is still being retried.
-    expect(getSubscriptionStaleAfterDays()).toBe(14);
-  });
-
-  it("maps a price id back to the tier it sells", () => {
-    const proPriceId = getSubscriptionPlan("pro").stripePriceId;
-    expect(findSubscribableTierByPriceId(proPriceId)).toBe("pro");
-    expect(findSubscribableTierByPriceId("price_nothing")).toBeNull();
+    expect(findOfferByPriceId("", withUnsoldYearly)).toBeNull();
   });
 });
