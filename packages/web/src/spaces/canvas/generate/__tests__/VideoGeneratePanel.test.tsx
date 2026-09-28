@@ -12,10 +12,9 @@ import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePan
 /**
  * Builds a video model for the panel tests.
  * @param name - Model id.
- * @param cost - Credits per call.
  * @returns A model entry.
  */
-function model(name: string, cost = 88): ModelEntry {
+function model(name: string): ModelEntry {
   return {
     name,
     display_name: name.toUpperCase(),
@@ -24,7 +23,6 @@ function model(name: string, cost = 88): ModelEntry {
     description: '',
     guide: '',
     tier: 'recommended',
-    cost_per_call: cost,
     generation_time: 120,
     takes_prompt: true,
     params: {
@@ -32,12 +30,10 @@ function model(name: string, cost = 88): ModelEntry {
       duration: { description: '', values: [4, 8], default: 8 },
     },
     providers: [],
-    sourcesByMode: { t2v: [] },
-    sourceRuleByMode: { t2v: 'all_of' as const },
   };
 }
 
-const MODELS = [model('veo-3.1'), model('veo-3.1-lite', 21)];
+const MODELS = [model('veo-3.1'), model('veo-3.1-lite')];
 
 /**
  * Renders the panel with defaults, overridable per case.
@@ -134,7 +130,7 @@ describe('VideoGeneratePanel', () => {
   it('drops the params picker when no model resolved', () => {
     // An empty catalog leaves nothing to read param options off; the panel
     // still renders so the user sees why they cannot generate.
-    renderPanel({ models: [], model: '', creditEstimate: 0 });
+    renderPanel({ models: [], model: '', creditText: undefined });
     expect(screen.queryByTestId('generate-video-params-trigger')).toBeNull();
     expect(screen.getByTestId('prompt-slot')).toBeInTheDocument();
   });

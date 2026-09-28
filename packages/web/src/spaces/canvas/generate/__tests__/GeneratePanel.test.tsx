@@ -27,7 +27,6 @@ const MODEL: ModelEntry = {
   description: '',
   guide: '',
   tier: 'recommended',
-  cost_per_call: 7,
   generation_time: 30,
   takes_prompt: true,
   params: {
@@ -35,8 +34,6 @@ const MODEL: ModelEntry = {
     resolution: { description: '', values: ['1K', '2K'], default: '1K' },
   },
   providers: [],
-  sourcesByMode: {},
-  sourceRuleByMode: {},
 };
 
 /**

@@ -86,7 +86,6 @@ const T2V: ModelEntry = {
   description: '',
   guide: '',
   tier: 'recommended',
-  cost_per_call: 88,
   generation_time: 120,
   // The panel asks the model this (#1966). It used to infer the same answer
   // from a `prompt` entry under `params`; that entry is gone from the catalog,
@@ -98,8 +97,6 @@ const T2V: ModelEntry = {
     duration: { description: '', values: [4, 8], default: 8 },
   },
   providers: [],
-  sourcesByMode: { t2v: [] },
-  sourceRuleByMode: { t2v: 'all_of' as const },
 };
 
 /** A picture the run starts from, declared the way the real entries do (#269). */
@@ -115,7 +112,6 @@ const T2V_LITE: ModelEntry = {
   ...T2V,
   name: 'veo-3.1-lite',
   display_name: 'VEO 3.1 Lite',
-  cost_per_call: 21,
 };
 
 /**
@@ -129,8 +125,6 @@ const I2V: ModelEntry = {
   // Both modes, as config/models/video/kling.yaml declares them since #1904:
   // the same model runs image-to-video and first-last frame.
   mode: ['i2v', 'first_last'],
-  sourcesByMode: { i2v: ['image'], first_last: ['image'] },
-  sourceRuleByMode: { i2v: 'all_of' as const, first_last: 'all_of' as const },
   params: {
     ...T2V.params,
     image: PICTURE,
@@ -151,8 +145,6 @@ const ANIMATE: ModelEntry = {
   name: 'wan-2.2-animate',
   display_name: 'Wan 2.2 Animate',
   mode: 'animate',
-  sourcesByMode: { animate: ['image', 'video'] },
-  sourceRuleByMode: { animate: 'all_of' as const },
   params: {
     ...T2V.params,
     image: PICTURE,
@@ -167,8 +159,6 @@ const T2I: ModelEntry = {
   display_name: 'Nano Banana',
   modality: 'image',
   mode: 't2i',
-  sourcesByMode: { t2i: [] },
-  sourceRuleByMode: { t2i: 'all_of' as const },
 };
 
 /**
@@ -180,19 +170,13 @@ const REF: ModelEntry = {
   name: 'kling-o3-pro-ref',
   display_name: 'Kling O3 Pro Ref',
   mode: 'ref',
-  sourcesByMode: { ref: ['image'] },
-  sourceRuleByMode: { ref: 'all_of' as const },
   params: {
     ...T2V.params,
-    // Two on its own, one alongside a reference clip — the same SHAPE the
-    // real entry declares (7 and 4), scaled down so a case needs two images
-    // rather than five. The conditional cap is what makes filling the clip
-    // able to put an untouched set of images over the line (#1928).
+    // Two, scaled down from the real cap so a case needs few images.
     images: {
       description: '',
       type: 'list',
       max_items: 2,
-      max_items_when_present: { video: 1 },
       default: null,
       fill: 'pool',
       accepts: 'image',
@@ -206,14 +190,12 @@ const REF: ModelEntry = {
       accepts: 'video',
       optional: true,
     },
-    // Declared the way the real entry does: on by default, so a run carrying
-    // a clip keeps that clip's sound unless the user says otherwise (#1928),
-    // and waiting on the source it describes (#269).
+    // On by default, so a run carrying a clip keeps that clip's sound unless
+    // the user says otherwise (#1928).
     keep_original_sound: {
       description: '',
       values: [true, false],
       default: true,
-      when: { source: 'video' },
     },
   },
 };
@@ -231,8 +213,6 @@ const TALKING_HEAD: ModelEntry = {
   name: 'omnihuman-1.5',
   display_name: 'OmniHuman 1.5',
   mode: 'talking_head',
-  sourcesByMode: { talking_head: ['image', 'audio'] },
-  sourceRuleByMode: { talking_head: 'all_of' as const },
   takes_prompt: false,
   params: {
     image: PICTURE,
@@ -269,6 +249,7 @@ function catalog(): ModelCatalog {
     tts: [],
     three_d: [],
     total: 8,
+    credit_multiplier: 1,
   };
 }
 
@@ -1402,21 +1383,6 @@ describe('VideoGeneratePanelContainer', () => {
       await expect(
         screen.findByTestId('generate-video-keep-original-sound-toggle'),
       ).resolves.toHaveAttribute('data-state', 'unchecked');
-    });
-
-    it('refuses to start the clip pick when it would drop the cap under the picked images', async () => {
-      // A6: the clip lowers the image cap, so reaching for it with two images
-      // already mentioned would put the node over a cap it was within. The
-      // images are the user's work — they stay, and the refusal names the
-      // number to get down to. Refused before the pick starts, so the user is
-      // not walked into a session whose every candidate would be rejected.
-      await openRefPanel(['ref-a', 'ref-b']);
-      fireEvent.click(screen.getByTestId('generate-video-tool-reference-video'));
-      expect(useCanvasStore.getState().pickSession).toBeNull();
-      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
-      expect(vi.mocked(toast.warning).mock.calls[0]![0]).toBe(
-        'A motion clip allows 1 reference images — remove some, then pick the clip.',
-      );
     });
 
     it('sends only the @-mentioned image, not everything connected', async () => {

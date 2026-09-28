@@ -42,10 +42,9 @@ vi.mock('@web/i18n/use-translation', () => ({
 /**
  * Builds a tts model the way the catalog serves one.
  * @param name - Model id.
- * @param rate - What it charges, if it declares a rate.
  * @returns A model entry.
  */
-function ttsModel(name: string, rate?: ModelEntry['rate']): ModelEntry {
+function ttsModel(name: string): ModelEntry {
   return {
     name,
     display_name: name,
@@ -54,27 +53,15 @@ function ttsModel(name: string, rate?: ModelEntry['rate']): ModelEntry {
     description: '',
     guide: '',
     tier: 'recommended',
-    cost_per_call: 0,
     generation_time: 0,
     takes_prompt: true,
     params: {},
     providers: [],
-    sourcesByMode: {},
-    sourceRuleByMode: {},
-    rate,
   };
 }
 
-const ELEVEN = ttsModel('elevenlabs-v3', {
-  credits: 10,
-  per: 1000,
-  unit: 'characters',
-});
-const FISH = ttsModel('fish-s2-pro', {
-  credits: 1.5,
-  per: 1000,
-  unit: 'utf8_bytes',
-});
+const ELEVEN = ttsModel('elevenlabs-v3');
+const FISH = ttsModel('fish-s2-pro');
 
 /**
  * Renders inside the app-level TooltipProvider (App.tsx mounts the real one) —

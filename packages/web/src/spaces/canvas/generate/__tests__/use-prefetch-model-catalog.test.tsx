@@ -37,6 +37,7 @@ function catalog(): ModelCatalog {
     tts: [],
     three_d: [],
     total: 0,
+    credit_multiplier: 1,
   };
 }
 

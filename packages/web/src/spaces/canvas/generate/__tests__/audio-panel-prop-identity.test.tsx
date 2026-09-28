@@ -112,7 +112,6 @@ const ELEVEN: ModelEntry = {
   description: '',
   guide: '',
   tier: 'recommended',
-  cost_per_call: 10,
   generation_time: 30,
   takes_prompt: true,
   params: {
@@ -120,8 +119,6 @@ const ELEVEN: ModelEntry = {
     stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
   },
   providers: [],
-  sourcesByMode: {},
-  sourceRuleByMode: {},
 };
 
 /**
@@ -136,6 +133,7 @@ function catalog(): ModelCatalog {
     tts: [ELEVEN],
     three_d: [],
     total: 1,
+    credit_multiplier: 1,
   };
 }
 

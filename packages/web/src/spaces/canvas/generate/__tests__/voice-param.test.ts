@@ -39,13 +39,10 @@ function modelWith(params: Record<string, ParamDescriptor>): ModelEntry {
     description: '',
     guide: '',
     tier: 'recommended',
-    cost_per_call: 0,
     generation_time: 0,
     takes_prompt: true,
     params,
     providers: [],
-    sourcesByMode: {},
-    sourceRuleByMode: {},
   };
 }
 

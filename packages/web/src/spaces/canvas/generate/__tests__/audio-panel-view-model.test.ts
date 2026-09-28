@@ -23,23 +23,20 @@ function ttsModel(name: string, overrides: Partial<ModelEntry> = {}): ModelEntry
     description: '',
     guide: '',
     tier: 'recommended',
-    cost_per_call: 10,
     generation_time: 30,
     takes_prompt: true,
     params: {},
     providers: [],
-    sourcesByMode: {},
-    sourceRuleByMode: {},
     ...overrides,
   };
 }
 
 const ELEVEN = ttsModel('elevenlabs-v3', {
+  pricing: { base_price: 50000, formula: '', discount_rate: 100 },
   params: {
     voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
     stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
   },
-  rate: { credits: 10, per: 1000, unit: 'characters' },
 });
 const FISH = ttsModel('fish-s2-pro', {
   params: {
@@ -97,12 +94,12 @@ describe('buildAudioPanelViewModel — which model the panel is on', () => {
     expect(vm.model).toBe('elevenlabs-v3');
   });
 
-  it('carries the rate of the model it landed on', () => {
+  it('carries the pricing of the model it landed on', () => {
     const vm = buildAudioPanelViewModel({ ...BASE, nodes: nodes() });
-    expect(vm.modelEntry?.rate).toEqual({
-      credits: 10,
-      per: 1000,
-      unit: 'characters',
+    expect(vm.modelEntry?.pricing).toEqual({
+      base_price: 50000,
+      formula: '',
+      discount_rate: 100,
     });
   });
 

@@ -21,13 +21,10 @@ function model(name: string, modality: ModelEntry['modality']): ModelEntry {
     description: '',
     guide: '',
     tier: 'recommended',
-    cost_per_call: 0,
     generation_time: 0,
     takes_prompt: true,
     params: {},
     providers: [],
-    sourcesByMode: {},
-    sourceRuleByMode: {},
   };
 }
 
