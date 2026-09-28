@@ -133,4 +133,23 @@ describe('SelectionContextMenu — adding to the agent', () => {
 
     expect(screen.getByTestId('selection-menu-add-to-agent')).toHaveAttribute('data-disabled');
   });
+
+  it('sits right above delete, at the foot of the menu', () => {
+    render(
+      <SelectionContextMenu
+        open
+        x={0}
+        y={0}
+        onOpenChange={() => {}}
+        onAddToAgent={() => {}}
+        onGroup={() => {}}
+        onCopy={() => {}}
+        onDelete={() => {}}
+      />,
+    );
+    const items = screen.getAllByRole('menuitem').map((el) => el.getAttribute('data-testid'));
+
+    expect(items.slice(-2)).toEqual(['selection-menu-add-to-agent', 'selection-menu-delete']);
+  });
 });
+
