@@ -1,16 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type * as React from 'react';
+import * as React from 'react';
 import { Link } from 'react-router-dom';
 import { Image as ImageIcon, MoreHorizontal } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
+import { JoinProjectDialog } from '@web/features/project-join/JoinProjectDialog';
 import { useTranslation } from '@web/i18n/use-translation';
-import {
-  canManageItem,
-  effectiveItemRole,
-} from '@web/pages/studio/container/access';
+import { canManageItem } from '@web/pages/studio/container/access';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import { RoleBadge } from '@web/pages/studio/shared/badges';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
@@ -27,7 +25,9 @@ interface ProjectCardProps {
  * thumbnail, the name, a role badge, and a governance (`⋯`) entry shown only
  * to the project Owner or a studio Admin (spec §4 invariant 2). Inside the
  * container the source-studio label is omitted (only the cross-studio Recent
- * landing shows provenance). The card links to `/project/{slug}-{uuid}`.
+ * landing shows provenance). A member's card links to `/project/{slug}-{uuid}`;
+ * for a project the viewer is not on, the card opens the join dialog in place
+ * and shows no role badge.
  *
  * No visibility badge: projects have no visibility. CollectionCard does show
  * one, which is why the badge component itself survives.
@@ -42,39 +42,60 @@ export function ProjectCard({
 }: ProjectCardProps): React.JSX.Element {
   const t = useTranslation();
   const canManage = canManageItem(studioRole, project.myRole === 'owner');
+  const [joinOpen, setJoinOpen] = React.useState(false);
+  const openJoin = React.useCallback(() => setJoinOpen(true), []);
+  const body = (
+    <>
+      <div className='relative flex aspect-[16/9] items-center justify-center bg-muted text-muted-foreground'>
+        {project.thumbnailUrl ? (
+          <img
+            src={project.thumbnailUrl}
+            alt=''
+            className='h-full w-full object-cover'
+          />
+        ) : (
+          <ImageIcon className='h-6 w-6' aria-hidden='true' />
+        )}
+      </div>
+      <div className='p-2.5'>
+        <p className='truncate text-base font-semibold text-foreground'>
+          {project.name}
+        </p>
+        <div className='mt-2 flex items-center gap-2'>
+          <span className='text-xs text-muted-foreground'>
+            {t('studio.container.card.createdAt', {
+              time: formatRelativeTime(project.createdAt, t),
+            })}
+          </span>
+          {project.myRole !== null ? (
+            <span className='ml-auto inline-flex'>
+              <RoleBadge itemRole={project.myRole} />
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
   return (
     <div className='group relative overflow-hidden rounded-chrome border border-border bg-card transition-colors hover:border-foreground-disabled'>
-      <Link
-        to={`/project/${project.slug}-${project.id}`}
-        className='flex flex-col'
-      >
-        <div className='relative flex aspect-[16/9] items-center justify-center bg-muted text-muted-foreground'>
-          {project.thumbnailUrl ? (
-            <img
-              src={project.thumbnailUrl}
-              alt=''
-              className='h-full w-full object-cover'
-            />
-          ) : (
-            <ImageIcon className='h-6 w-6' aria-hidden='true' />
-          )}
-        </div>
-        <div className='p-2.5'>
-          <p className='truncate text-base font-semibold text-foreground'>
-            {project.name}
-          </p>
-          <div className='mt-2 flex items-center gap-2'>
-            <span className='text-xs text-muted-foreground'>
-              {t('studio.container.card.createdAt', {
-                time: formatRelativeTime(project.createdAt, t),
-              })}
-            </span>
-            <span className='ml-auto inline-flex'>
-              <RoleBadge itemRole={effectiveItemRole(project.myRole)} />
-            </span>
-          </div>
-        </div>
-      </Link>
+      {project.myRole !== null ? (
+        <Link to={`/project/${project.slug}-${project.id}`} className='flex flex-col'>
+          {body}
+        </Link>
+      ) : (
+        <>
+          <Button
+            type='button'
+            variant={null}
+            size={null}
+            onClick={openJoin}
+            className='flex w-full flex-col text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          >
+            {body}
+          </Button>
+          <JoinProjectDialog projectId={project.id} open={joinOpen} onOpenChange={setJoinOpen} />
+        </>
+      )}
       {canManage ? (
         <Button
           type='button'

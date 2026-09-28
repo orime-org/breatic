@@ -171,7 +171,7 @@ describe('routes', () => {
 
 it.each([
   ['/project/test/extra/more', '/project/:projectId/*'],
-  ['/project/test/access', '/project/:projectId/access'],
+  ['/project/test/access', '/project/:projectId/*'],
   ['/studio/example/extra/more', ':slug/:tab/*'],
   ['/unknown/route', '*'],
   ['/project', '*'],

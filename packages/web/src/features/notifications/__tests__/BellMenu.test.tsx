@@ -166,6 +166,10 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
       type: 'project.transfer_request',
       payload: { transferId: 't-2', projectId: PID, fromUserId: 'u-other', shareToken: 'e'.repeat(64) },
     },
+    {
+      type: 'project.join_request',
+      payload: { requestId: 'j-1', projectId: PID, requesterUserId: 'u-other', shareToken: 'f'.repeat(64) },
+    },
   ];
 
   it.each(WAITING)('$type shows one answer button and no inline decision', async ({ type, payload }) => {
@@ -256,6 +260,9 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
       'project.invite_accepted',
       'project.transfer_request',
       'project.transfer_approved',
+      'project.join_request',
+      'project.join_approved',
+      'project.join_rejected',
       'membership.ended',
       'membership.upgrade_incomplete',
       'storage.quota_exceeded',

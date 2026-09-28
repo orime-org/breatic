@@ -40,7 +40,7 @@ const NOT_JOINED: ContainerProject = {
 
 describe('ProjectsTab', () => {
   it('shows a guest every project the server listed, including ones they are not on', () => {
-    withRouter(
+    withQuery(
       <ProjectsTab projects={[STUDIO_VISIBLE, NOT_JOINED]} studioRole='guest' />,
     );
     expect(screen.getByText('Open Project')).toBeInTheDocument();

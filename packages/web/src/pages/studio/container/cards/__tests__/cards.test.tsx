@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
 import { CollectionCard } from '@web/pages/studio/container/cards/CollectionCard';
@@ -33,9 +34,11 @@ const SHARED_STUDIO: ContainerProject = {
 
 function renderProject(project: ContainerProject, studioRole: StudioRole) {
   return render(
-    <MemoryRouter>
-      <ProjectCard project={project} studioRole={studioRole} />
-    </MemoryRouter>,
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>
+        <ProjectCard project={project} studioRole={studioRole} />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -74,9 +77,10 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
     expect(screen.getByRole('button', MORE)).toBeInTheDocument();
   });
 
-  it('renders the baseline viewer role when myRole is null', () => {
+  it('shows no role badge and no link for a project the viewer is not on', () => {
     renderProject({ ...SHARED_STUDIO, myRole: null }, 'guest');
-    expect(screen.getByText('Viewer')).toBeInTheDocument();
+    expect(screen.queryByText('Viewer')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('cardmenu overlay matches the neutral mock (chrome radius, 7px inset, 70% black hover)', () => {

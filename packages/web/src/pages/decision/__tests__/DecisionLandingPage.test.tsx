@@ -106,6 +106,7 @@ describe('every kind gets its own words', () => {
     ['studio_invite', /invited you to join Q1 Sprint as a Guest/i, { role: 'guest' }],
     ['project_invite', /invited you to work on Q1 Sprint as an Editor/i, { role: 'editor' }],
     ['role_upgrade', /asked to become Editor on Q1 Sprint/i, { role: 'editor' }],
+    ['project_join', /asked to join Q1 Sprint/i, { role: null }],
     ['project_transfer', /wants to make you the Owner of Q1 Sprint/i, { role: null }],
     ['studio_transfer', /wants to make you the Admin of Q1 Sprint/i, { role: null }],
   ];
@@ -238,6 +239,44 @@ describe('the dead ends each say their own thing', () => {
     expect(
       await screen.findByRole('button', { name: 'Accept' }),
     ).toBeInTheDocument();
+  });
+});
+
+describe('a join request lets the owner pick the role', () => {
+  it('approves as Viewer unless the owner picks otherwise', async () => {
+    const user = userEvent.setup();
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(makeView({ kind: 'project_join', role: null }));
+    vi.mocked(decisionsApi.respond).mockResolvedValueOnce({ state: 'accepted', redirectTo: null });
+    setup();
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(decisionsApi.respond).toHaveBeenCalledWith(TOKEN, 'confirm', 'viewer'));
+  });
+
+  it('approves as Editor when the owner picks it', async () => {
+    const user = userEvent.setup();
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(makeView({ kind: 'project_join', role: null }));
+    vi.mocked(decisionsApi.respond).mockResolvedValueOnce({ state: 'accepted', redirectTo: null });
+    setup();
+    await user.click(await screen.findByRole('combobox', { name: 'Role' }));
+    await user.click(await screen.findByRole('option', { name: 'Editor' }));
+    await user.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(decisionsApi.respond).toHaveBeenCalledWith(TOKEN, 'confirm', 'editor'));
+  });
+
+  it('declines without a role', async () => {
+    const user = userEvent.setup();
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(makeView({ kind: 'project_join', role: null }));
+    vi.mocked(decisionsApi.respond).mockResolvedValueOnce({ state: 'declined', redirectTo: null });
+    setup();
+    await user.click(await screen.findByRole('button', { name: 'Decline' }));
+    await waitFor(() => expect(decisionsApi.respond).toHaveBeenCalledWith(TOKEN, 'decline'));
+  });
+
+  it('offers no role choice on any other kind', async () => {
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(makeView({ kind: 'role_upgrade', role: 'editor' }));
+    setup();
+    await screen.findByRole('button', { name: 'Approve' });
+    expect(screen.queryByRole('combobox')).toBeNull();
   });
 });
 

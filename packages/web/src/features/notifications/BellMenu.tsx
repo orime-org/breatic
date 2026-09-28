@@ -208,8 +208,11 @@ function NotificationItem({
   const t = useTranslation();
   const headline = notificationHeadline(notification, resolved, t);
   const subtitle = subtitleFor(notification, t);
+  // Both ask the owner to let someone in further, and both carry what the
+  // requester typed rather than a role on offer.
   const isUpgradeRequest =
-    notification.type === 'access.role_upgrade_request';
+    notification.type === 'access.role_upgrade_request' ||
+    notification.type === 'project.join_request';
   const isTransferRequest =
     notification.type === 'studio.transfer_request' ||
     notification.type === 'project.transfer_request';
@@ -313,6 +316,12 @@ function iconForType(type: NotificationType): string {
       return initialsFromString('PT');
     case 'project.transfer_approved':
       return '✓';
+    case 'project.join_request':
+      return initialsFromString('JR');
+    case 'project.join_approved':
+      return '✓';
+    case 'project.join_rejected':
+      return '✕';
     case 'studio.invite_request':
       return initialsFromString('IN');
     case 'studio.invite_accepted':
@@ -366,7 +375,7 @@ function subtitleFor(
   t: ReturnType<typeof useTranslation>,
 ): string | null {
   const p = n.payload as Record<string, unknown>;
-  if (n.type === 'access.role_upgrade_request') {
+  if (n.type === 'access.role_upgrade_request' || n.type === 'project.join_request') {
     const msg = typeof p.message === 'string' ? p.message : null;
     return msg && msg.length > 0 ? msg : null;
   }
