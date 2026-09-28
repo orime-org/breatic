@@ -64,7 +64,7 @@ import {
   getUnderstandConfig,
   logger,
 } from "@breatic/core";
-import { t, INGEST_NOT_STARTED } from "@breatic/shared";
+import { t, INGEST_NOT_STARTED, extractPromptText } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
@@ -309,7 +309,15 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
   // the billing source of truth; concurrent passes may drive the balance
   // negative, the accepted trade-off of a soft pre-check. Same shared
   // helper and 402 shape as the /mini-tools routes.
-  await precheckCredits(projectId, user.id, estimateTaskCredits(body.model));
+  await precheckCredits(
+    projectId,
+    user.id,
+    await estimateTaskCredits(
+      body.model,
+      body.params,
+      extractPromptText(body.params.prompt ?? body.params.text),
+    ),
+  );
 
   // #89: storage gate, the other soft pre-check. AFTER credits, because
   // refusing for storage tells the studio's admin about it — and a request
@@ -506,7 +514,7 @@ canvas.post(
         label: model,
       });
 
-      await precheckCredits(body.project_id, user.id, estimateTaskCredits(model));
+      await precheckCredits(body.project_id, user.id, await estimateTaskCredits(model, params));
 
       const job = await tasksQueue.add(
         "execute-task",
