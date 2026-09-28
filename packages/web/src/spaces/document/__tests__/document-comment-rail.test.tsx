@@ -1584,6 +1584,22 @@ describe('the comment panel', () => {
       );
     });
 
+    it('puts the keyboard in the box again when the entry is pressed over other words', async () => {
+      // Pressing the entry is asking to write, however the card got there:
+      // the first time it mounts, the next time it only moves.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+      await clickTheBody();
+
+      aimDraft(12, 19);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-comment-draft-input')).toHaveFocus();
+      });
+    });
+
     it('carries what was written out of a notice when the entry is pressed', async () => {
       show();
       aimDraft(6, 11);
