@@ -44,7 +44,12 @@ export interface StepDeps {
    * not an asset of ours.
    */
   sourceKeyOf: (url: string) => Promise<string | null>;
+  /** One sentence describing an image, and what writing it cost in USD. */
+  describeImage: (url: string) => Promise<{ text: string; costUsd: number }>;
 }
+
+/** Kling caps an element's name at 20 characters and its description at 100. */
+const ELEMENT_DESCRIPTION_MAX = 100;
 
 /** The Mureka upload each upload step makes: which param it reads and its purpose. */
 const UPLOADS = {
@@ -64,6 +69,8 @@ const GONE: Readonly<Partial<Record<CloneKind, RegExp>>> = {
 interface Carried {
   /** Param name -> the upstream id that replaces its source url. */
   ids: Record<string, string>;
+  /** Element ids by the reference image's place in the pool. */
+  elementIds: string[];
   /** The cloned voice the speech is read in. */
   voiceId?: string;
   /** Clones this run took from the cache, by kind, so a refusal can retire them. */
@@ -142,6 +149,7 @@ function outputField(run: PredictionRun, field: string): string {
  * @param ctx - The task.
  * @param kind - What is cloned.
  * @param sourceUrl - The source.
+ * @param keySuffix - Added to the source's hash in the cache key (an element's name).
  * @param clone - Runs the clone upstream and answers the id.
  * @returns The id and whether it came from the cache.
  */
@@ -150,9 +158,11 @@ async function cloneOnce(
   ctx: RunTaskContext,
   kind: CloneKind,
   sourceUrl: string,
+  keySuffix: string,
   clone: () => Promise<string>,
 ): Promise<{ id: string; cached: boolean }> {
-  const key = ctx.studioId === null ? null : await deps.sourceKeyOf(sourceUrl);
+  const sha = ctx.studioId === null ? null : await deps.sourceKeyOf(sourceUrl);
+  const key = sha === null ? null : `${sha}${keySuffix}`;
   if (ctx.studioId !== null && key !== null) {
     const hit = await deps.clones.findClone(ctx.studioId, kind, key);
     if (hit !== null) return { id: hit, cached: true };
@@ -204,7 +214,7 @@ async function runStep(
     }
     case "vocal": {
       let prediction = "";
-      const { id, cached } = await cloneOnce(deps, ctx, "vocal", urlOf(params, "vocal"), async () => {
+      const { id, cached } = await cloneOnce(deps, ctx, "vocal", urlOf(params, "vocal"), "", async () => {
         const run = await predict(deps, resolved, step, { audio: urlOf(params, "vocal") }, ctx.taskId);
         prediction = run.taskId;
         return outputField(run, "vocal_id");
@@ -214,7 +224,7 @@ async function runStep(
     case "voice": {
       let prediction = "";
       const source = urlOf(params, entry.reused_by ?? "");
-      const { id, cached } = await cloneOnce(deps, ctx, "voice", source, async () => {
+      const { id, cached } = await cloneOnce(deps, ctx, "voice", source, "", async () => {
         const voiceId = customVoiceId(ctx.taskId);
         const run = await predict(
           deps,
@@ -235,14 +245,42 @@ async function runStep(
     }
     case "generate": {
       const family = FAMILIES.get(entry.name);
-      const withIds = { ...params, ...carried.ids };
+      const withIds: Record<string, unknown> = { ...params, ...carried.ids };
+      if (carried.elementIds.length > 0) withIds.elements = carried.elementIds.map((id) => ({ element_id: id }));
       const prepared = family ? await family.prepare(prompt, withIds) : { prompt, fields: {} };
       const body = { ...upstreamBody(entry, withIds, prepared.prompt, family?.CONSUMES), ...prepared.fields };
       const run = await predict(deps, resolved, step, body, ctx.taskId);
       return { url: firstUrl(run), prediction: run.taskId };
     }
-    case "element":
-      throw new Error("Element steps are not wired yet");
+    case "element": {
+      const index = step.itemIndex ?? 0;
+      const images = params.elements;
+      const image = Array.isArray(images) ? images[index] : undefined;
+      if (typeof image !== "string" || image === "") throw new Error(`No reference image at place ${index + 1}`);
+      // The prompt names elements by their place in the pool, the same way
+      // the panel writes a mention of that image.
+      const name = `Element ${index + 1}`;
+      let prediction = "";
+      const { id, cached } = await cloneOnce(deps, ctx, "element", image, `:${name}`, async () => {
+        let description = step.output.description;
+        if (typeof description !== "string") {
+          const described = await deps.describeImage(image);
+          description = described.text.slice(0, ELEMENT_DESCRIPTION_MAX);
+          await deps.steps.recordInline(step.id, { description }, described.costUsd);
+          step.inlineCostUsd += described.costUsd;
+        }
+        const run = await predict(
+          deps,
+          resolved,
+          step,
+          { name, description, image, element_refer_list: [image] },
+          ctx.taskId,
+        );
+        prediction = run.taskId;
+        return outputField(run, "element_id");
+      });
+      return { index, elementId: id, cached, prediction };
+    }
   }
 }
 
@@ -269,10 +307,14 @@ function carry(carried: Carried, step: Step, output: Record<string, unknown>): v
   carried.inlineCostUsd += step.inlineCostUsd;
   if (typeof output.param === "string" && typeof output.id === "string") carried.ids[output.param] = output.id;
   if (typeof output.voiceId === "string") carried.voiceId = output.voiceId;
+  if (typeof output.index === "number" && typeof output.elementId === "string") {
+    carried.elementIds[output.index] = output.elementId;
+  }
   if (typeof output.url === "string") carried.url = output.url;
   if (output.cached === true) {
-    const id = (output.id ?? output.voiceId) as string;
-    carried.cached.push({ kind: step.kind === "voice" ? "voice" : "vocal", id });
+    const id = (output.id ?? output.voiceId ?? output.elementId) as string;
+    const kind: CloneKind = step.kind === "voice" ? "voice" : step.kind === "element" ? "element" : "vocal";
+    carried.cached.push({ kind, id });
   }
 }
 
@@ -316,7 +358,7 @@ export async function runCatalogTask(
   const resolved = resolveModel(modality, modelName);
   const entry = entryOf(modality, resolved.modelName);
   const steps = await deps.steps.ensureSteps(ctx.taskId, planSteps(entry, params));
-  const carried: Carried = { ids: {}, cached: [], predictions: [], inlineCostUsd: 0 };
+  const carried: Carried = { ids: {}, elementIds: [], cached: [], predictions: [], inlineCostUsd: 0 };
 
   for (const step of steps) {
     if (step.status === "failed") throw new Error(`Step ${step.kind} of task ${ctx.taskId} failed upstream`);
