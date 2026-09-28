@@ -2,8 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { ChatAttachedChip } from '@breatic/shared';
+import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
+import type * as Y from 'yjs';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
+import {
+  MENTION_KIND_ATTR,
+  MENTION_LABEL_ATTR,
+} from '@web/spaces/canvas/generate/reference-mention';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
 /** The node kinds the chat can be handed. */
@@ -12,12 +19,32 @@ const ATTACHABLE = new Set<string>(['text', 'image', 'audio', 'video', 'annotati
 /** How long a note's own words may run when they stand in for its name. */
 const NOTE_NAME_CHARS = 40;
 
-/** Reads what a node's view does not carry: the words held in its fragments. */
+/** Reads what a node's view carries only as markup: the words in its fragments. */
 export interface NodeTextReaders {
-  /** A text node's body as plain text. */
-  bodyOf: (nodeId: string) => string | undefined;
-  /** A node's prompt as plain text. */
-  promptOf: (nodeId: string) => string | undefined;
+  /** Every fragment in a node's data, by the field it sits under. */
+  fragmentsOf: (nodeId: string) => Record<string, Y.XmlFragment>;
+}
+
+/**
+ * A reference mention read as the name the reader sees on its chip.
+ * @param element - An element inside a prompt.
+ * @returns `@` and the name, or undefined for anything but a mention.
+ */
+function mentionText(element: Y.XmlElement): string | undefined {
+  if (element.nodeName !== REFERENCE_MENTION_NODE) return undefined;
+  const label = element.getAttribute(MENTION_LABEL_ATTR) ?? element.getAttribute(MENTION_KIND_ATTR);
+  return `@${String(label ?? '')}`;
+}
+
+/**
+ * A node's fragments as plain text, by the field each sits under.
+ * @param fragments - The fragments.
+ * @returns Their words.
+ */
+function plainTexts(fragments: Record<string, Y.XmlFragment>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(fragments).map(([key, fragment]) => [key, bodyToPlainText(fragment, mentionText)]),
+  );
 }
 
 /**
@@ -65,8 +92,8 @@ function nameOf(node: CanvasNodeView): string {
 /**
  * The items handed to the chat when nodes are added to the agent.
  *
- * Each goes as a snapshot of its data taken now, with the words held in its
- * fragments added as plain text: the prompt, and a text node's body.
+ * Each goes as a snapshot of its data taken now. A fragment's field in the
+ * view holds its XML markup, so each is replaced by its words as plain text.
  * @param nodes - Every node on the canvas, read fresh.
  * @param picked - The ids that were picked.
  * @param readers - Reads the words the view does not carry.
@@ -83,16 +110,13 @@ export function itemsForNodes(
     if (!node || !ATTACHABLE.has(node.data.kind)) return [];
     const type = node.data.kind as ChatAttachedChip['type'];
     const name = nameOf(node);
-    const prompt = readers.promptOf(id);
-    const text = type === 'text' ? readers.bodyOf(id) : undefined;
     const chip: ChatAttachedChip = {
       id,
       type,
       name,
       data_snapshot: {
         ...(node.data as unknown as Record<string, unknown>),
-        ...(prompt ? { prompt } : {}),
-        ...(text === undefined ? {} : { text }),
+        ...plainTexts(readers.fragmentsOf(id)),
       },
     };
     return [{ id, name, type, status: 'ready', chip }];

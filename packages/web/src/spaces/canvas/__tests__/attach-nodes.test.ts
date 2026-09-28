@@ -8,6 +8,7 @@
  * group goes as its members; kinds that are not canvas features are left out.
  */
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { itemsForNodes } from '@web/spaces/canvas/attach-nodes';
@@ -37,10 +38,58 @@ const MODEL = node('m1', { kind: '3d', name: 'Model' });
 const NOTE = node('a1', { kind: 'annotation', content: 'Check the colours here', replies: [] });
 const ALL = [IMAGE, TEXT, GROUP, IN_GROUP, MODEL, NOTE];
 
-const readers = {
-  bodyOf: (id: string) => (id === 't1' ? 'Line one\nLine two' : undefined),
-  promptOf: (id: string) => (id === 'i1' ? 'a red car at dusk' : undefined),
-};
+/**
+ * A paragraph of text, as the editors write one.
+ * @param text - Its words; none for a blank line.
+ * @returns The block.
+ */
+function paragraph(text?: string): Y.XmlElement {
+  const block = new Y.XmlElement('paragraph');
+  if (text) block.insert(0, [new Y.XmlText(text)]);
+  return block;
+}
+
+/**
+ * A reference mention, as the prompt editor writes one.
+ * @param label - The name of the node it points at.
+ * @returns The element.
+ */
+function mention(label: string): Y.XmlElement {
+  const element = new Y.XmlElement('referenceMention');
+  element.setAttribute('label', label);
+  element.setAttribute('kind', 'image');
+  return element;
+}
+
+/**
+ * The fragments each node holds, attached to one document so they can be read.
+ * @returns A reader by node id.
+ */
+function fragments(): (id: string) => Record<string, Y.XmlFragment> {
+  const doc = new Y.Doc();
+  const byNode: Record<string, Record<string, Y.XmlFragment>> = {};
+  /**
+   * Attach a fragment holding some blocks.
+   * @param id - The node.
+   * @param key - The field it sits under.
+   * @param blocks - What it holds.
+   */
+  const put = (id: string, key: string, blocks: Y.XmlElement[]): void => {
+    const fragment = doc.getXmlFragment(`${id}.${key}`);
+    fragment.insert(0, blocks);
+    byNode[id] = { ...byNode[id], [key]: fragment };
+  };
+  put('i1', 'prompt', [paragraph('a red car at dusk')]);
+  put('t1', 'body', [paragraph('Line one'), paragraph('Line two')]);
+  put('t1', 'prompt', [paragraph()]);
+  const styled = paragraph('Use ');
+  styled.insert(1, [mention('Image 1'), new Y.XmlText(' as the style')]);
+  put('v1', 'prompt', [styled]);
+  put('v1', 'lyrics', [paragraph('La la')]);
+  return (id) => byNode[id] ?? {};
+}
+
+const readers = { fragmentsOf: fragments() };
 
 describe('nodes handed to the agent', () => {
   it('sends a node as a snapshot of its data, its prompt as plain text', () => {
@@ -65,10 +114,28 @@ describe('nodes handed to the agent', () => {
     });
   });
 
-  it('carries a text node its words as plain text', () => {
+  it('carries a text node its words as plain text, once', () => {
     const [item] = itemsForNodes(ALL, ['t1'], readers);
 
-    expect(item?.chip?.data_snapshot).toMatchObject({ text: 'Line one\nLine two' });
+    expect(item?.chip?.data_snapshot).toEqual({
+      kind: 'text',
+      name: 'Script',
+      body: 'Line one\nLine two',
+      prompt: '',
+    });
+  });
+
+  it('turns every fragment a node holds into plain text, markup and all', () => {
+    const withMarkup = node('v1', {
+      kind: 'video',
+      name: 'Opening',
+      prompt: '<paragraph>stale</paragraph>',
+      lyrics: '<paragraph>stale</paragraph>',
+    });
+    const [item] = itemsForNodes([withMarkup], ['v1'], readers);
+
+    expect(item?.chip?.data_snapshot).toMatchObject({ prompt: 'Use @Image 1 as the style', lyrics: 'La la' });
+    expect(JSON.stringify(item?.chip?.data_snapshot)).not.toContain('<paragraph>');
   });
 
   it('hands a group over as its members', () => {

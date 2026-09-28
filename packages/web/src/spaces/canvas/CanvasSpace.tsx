@@ -92,10 +92,8 @@ import {
   type CanvasNodeView,
   readCanvasGraph,
   readTextBodies,
-  getPromptFragment,
-  getTextBody,
+  readNodeFragments,
 } from '@web/data/yjs/canvas-space';
-import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { itemsForNodes } from '@web/spaces/canvas/attach-nodes';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
@@ -3363,15 +3361,7 @@ function CanvasSpaceInner({
   const addToAgent = React.useCallback(
     (ids: readonly string[]): void => {
       const items = itemsForNodes(readCanvasGraph(projectId, spaceId).nodes, ids, {
-        bodyOf: (id) => {
-          const body = getTextBody(projectId, spaceId, id);
-          return body ? bodyToPlainText(body) : undefined;
-        },
-        promptOf: (id) => {
-          const prompt = getPromptFragment(projectId, spaceId, id);
-          const text = prompt ? bodyToPlainText(prompt) : '';
-          return text || undefined;
-        },
+        fragmentsOf: (id) => readNodeFragments(projectId, spaceId, id),
       });
       void attachToChat(projectId, items);
     },

@@ -179,6 +179,34 @@ describe('text body conversion (#1774 section 9.2)', () => {
     });
   });
 
+  describe('elements that carry their words in attributes', () => {
+    /**
+     * A body holding one line with a mention in the middle of it.
+     * @returns The attached body.
+     */
+    function withMention(): Y.XmlFragment {
+      const body = new Y.Doc().getXmlFragment('body');
+      const line = new Y.XmlElement('paragraph');
+      const mention = new Y.XmlElement('mention');
+      mention.setAttribute('label', 'Image 1');
+      line.insert(0, [new Y.XmlText('Use '), mention, new Y.XmlText(' here')]);
+      body.insert(0, [line]);
+      return body;
+    }
+
+    it('reads them as nothing by default', () => {
+      expect(bodyToPlainText(withMention())).toBe('Use  here');
+    });
+
+    it('reads them as the caller says', () => {
+      const read = bodyToPlainText(withMention(), (element) =>
+        element.nodeName === 'mention' ? `@${String(element.getAttribute('label'))}` : undefined,
+      );
+
+      expect(read).toBe('Use @Image 1 here');
+    });
+  });
+
   describe('what two clients see', () => {
     it('merges rather than picks a winner, which is why the mutual exclusion lives a layer up', () => {
       const docA = new Y.Doc();
