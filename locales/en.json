@@ -936,7 +936,7 @@
       },
       "comment": {
         "placeholder": "Write a comment…",
-        "targetGone": "The text is gone.",
+        "targetGone": "The text was changed or deleted.",
         "cannotWrite": "You can no longer write here.",
         "railTitle": "Comments",
         "filterOpen": "Unresolved",

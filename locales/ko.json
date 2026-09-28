@@ -936,7 +936,7 @@
       },
       "comment": {
         "placeholder": "댓글 작성",
-        "targetGone": "원문이 삭제되었습니다.",
+        "targetGone": "원문이 변경되었거나 삭제되었습니다.",
         "cannotWrite": "여기에는 더 이상 쓸 수 없습니다.",
         "railTitle": "댓글",
         "filterOpen": "미해결",

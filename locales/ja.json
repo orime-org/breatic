@@ -936,7 +936,7 @@
       },
       "comment": {
         "placeholder": "コメントを書く",
-        "targetGone": "対象の文章は削除されました。",
+        "targetGone": "対象の文章は変更または削除されました。",
         "cannotWrite": "ここには書き込めなくなりました。",
         "railTitle": "コメント",
         "filterOpen": "未解決",

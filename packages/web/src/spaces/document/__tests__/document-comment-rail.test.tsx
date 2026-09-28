@@ -1260,11 +1260,11 @@ describe('the comment panel', () => {
         },
       ],
     ])(
-      'never lands on other words when a peer %s',
+      'says so when a peer %s',
       async (_what, change) => {
-        // How the peer's editor writes such a change back into Yjs decides
-        // whether the letters the ends name survive it. Either they do and the
-        // draft is still on its words, or they do not and it says so.
+        // The peer's editor writes each of these back into Yjs by deleting the
+        // line's letters and writing them again, so the letters the ends name
+        // are gone.
         show('editor', ['alpha bravo charlie', 'delta echo foxtrot', 'golf']);
         const second = lineStarts()[1]!;
         aimAt(second + 6, second + 10);
@@ -1273,9 +1273,10 @@ describe('the comment panel', () => {
 
         await change(peer);
 
-        const dropped = screen.queryByTestId('doc-comment-draft-dropped');
-        expect(dropped !== null || aimedWords() === 'echo').toBe(true);
-        expect(dropped === null || draftRangeIn(handle.editor.prosemirrorState) === null).toBe(true);
+        expect(
+          await screen.findByTestId('doc-comment-draft-dropped'),
+        ).toBeInTheDocument();
+        expect(draftRangeIn(handle.editor.prosemirrorState)).toBeNull();
       },
     );
 
