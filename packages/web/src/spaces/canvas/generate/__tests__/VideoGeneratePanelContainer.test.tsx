@@ -231,35 +231,13 @@ const TALKING_HEAD_WITH_PROMPT: ModelEntry = {
 };
 
 /**
- * A text-to-video model with a storyboard (#2156), shaped like Kling 3.0 4K:
- * up to six shots of 1–5 seconds each here, 3–10 seconds in all.
- */
-const KLING: ModelEntry = {
-  ...T2V,
-  name: 'kling-v3.0-4k-text-to-video',
-  display_name: 'Kling 3.0 4K',
-  params: {
-    duration: { description: '', values: [3, 4, 5, 6, 7, 8, 9, 10], default: 5, fill: 'panel' },
-    multi_prompt: {
-      description: '',
-      label: 'Storyboard',
-      type: 'items',
-      max_items: 6,
-      default: null,
-      fill: 'panel',
-      fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5], default: 5 } },
-    },
-  },
-};
-
-/**
  * A catalog carrying both buckets.
  * @returns The catalog payload `modelsApi.list()` resolves to.
  */
 function catalog(): ModelCatalog {
   return {
     image: [T2I],
-    video: [T2V, T2V_LITE, I2V, ANIMATE, REF, TALKING_HEAD, TALKING_HEAD_WITH_PROMPT, KLING],
+    video: [T2V, T2V_LITE, I2V, ANIMATE, REF, TALKING_HEAD, TALKING_HEAD_WITH_PROMPT],
     audio: [],
     tts: [],
     three_d: [],
@@ -2187,100 +2165,5 @@ describe('a model that states how much text it takes', () => {
     expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toContain('20');
     expect(createTask).not.toHaveBeenCalled();
     createTask.mockRestore();
-  });
-
-  describe('the storyboard (#2156)', () => {
-    beforeEach(() => {
-      vi.mocked(toast.warning).mockClear();
-    });
-
-    const SHOTS = [
-      { prompt: 'a wide of the night market', duration: 3 },
-      { prompt: 'close on the hands', duration: 2 },
-    ];
-
-    it('draws the shots where the prompt box was, and the switch pressed', async () => {
-      await openPanelInMode('t2v', KLING.name, {
-        storyboard: true,
-        paramsByModel: { [KLING.name]: { multi_prompt: SHOTS } },
-      });
-      expect(screen.getByTestId('generate-video-storyboard')).toHaveAttribute('aria-pressed', 'true');
-      expect(screen.getByTestId('generate-param-multi_prompt-0-prompt')).toHaveValue(SHOTS[0].prompt);
-      expect(screen.getByTestId('generate-param-multi_prompt-count')).toHaveTextContent('2 / 6');
-      expect(screen.queryByTestId('generate-prompt-not-used')).toBeNull();
-      expect(document.querySelector('.ProseMirror')).toBeNull();
-    });
-
-    it('sends the shots and their total, and no prompt', async () => {
-      await openPanelInMode('t2v', KLING.name, {
-        storyboard: true,
-        paramsByModel: { [KLING.name]: { duration: 10, multi_prompt: SHOTS } },
-      });
-      typePrompt('words typed before the storyboard went on');
-      const createTask = vi
-        .spyOn(canvasApi, 'createTask')
-        .mockResolvedValue({ taskId: 't1' } as never);
-      fireEvent.click(screen.getByTestId('generate-video-execute'));
-      await waitFor(() => expect(createTask).toHaveBeenCalled());
-      expect(createTask.mock.calls[0]?.[0]?.params).toMatchObject({
-        prompt: '',
-        duration: 5,
-        multi_prompt: SHOTS,
-      });
-      createTask.mockRestore();
-    });
-
-    it('refuses shots that add up to less than the model takes, and names the range', async () => {
-      await openPanelInMode('t2v', KLING.name, {
-        storyboard: true,
-        paramsByModel: { [KLING.name]: { multi_prompt: [{ prompt: 'one beat', duration: 2 }] } },
-      });
-      const createTask = vi.spyOn(canvasApi, 'createTask');
-      fireEvent.click(screen.getByTestId('generate-video-execute'));
-      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
-      expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toBe('Shots must add up to 3–10s');
-      expect(createTask).not.toHaveBeenCalled();
-      createTask.mockRestore();
-    });
-
-    it('refuses a shot left empty', async () => {
-      await openPanelInMode('t2v', KLING.name, {
-        storyboard: true,
-        paramsByModel: { [KLING.name]: { multi_prompt: [...SHOTS, { prompt: '', duration: 2 }] } },
-      });
-      fireEvent.click(screen.getByTestId('generate-video-execute'));
-      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
-      expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toBe('Every shot needs a description');
-    });
-
-    it('sends the prompt and no shots once it is off, keeping them on the node', async () => {
-      await openPanelInMode('t2v', KLING.name, {
-        paramsByModel: { [KLING.name]: { duration: 8, multi_prompt: SHOTS } },
-      });
-      expect(screen.getByTestId('generate-video-storyboard')).toHaveAttribute('aria-pressed', 'false');
-      typePrompt('a single long take');
-      const createTask = vi
-        .spyOn(canvasApi, 'createTask')
-        .mockResolvedValue({ taskId: 't1' } as never);
-      fireEvent.click(screen.getByTestId('generate-video-execute'));
-      await waitFor(() => expect(createTask).toHaveBeenCalled());
-      const params = createTask.mock.calls[0]?.[0]?.params;
-      expect(params).toMatchObject({ prompt: 'a single long take', duration: 8 });
-      expect(params).not.toHaveProperty('multi_prompt');
-      createTask.mockRestore();
-    });
-
-    it('flips the switch on the node', async () => {
-      await openPanelInMode('t2v', KLING.name);
-      fireEvent.click(screen.getByTestId('generate-video-storyboard'));
-      expect(readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data).toMatchObject({
-        storyboard: true,
-      });
-    });
-
-    it('draws no switch for a model without a storyboard', async () => {
-      await openPanelInMode('t2v', T2V.name);
-      expect(screen.queryByTestId('generate-video-storyboard')).toBeNull();
-    });
   });
 });

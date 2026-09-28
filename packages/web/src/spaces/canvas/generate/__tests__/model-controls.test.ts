@@ -142,7 +142,6 @@ describe('modelControls', () => {
 
   it('keeps a storyboard out of the popover and names it on its own', () => {
     const storyboard = model({
-      duration: { description: '', values: [3, 4, 5], default: 5, fill: 'panel' },
       multi_prompt: {
         description: '',
         label: 'Storyboard',
@@ -158,39 +157,10 @@ describe('modelControls', () => {
       name: 'multi_prompt',
       label: 'Storyboard',
       max: 6,
-      fields: [
-        { name: 'prompt', kind: 'text' },
-        {
-          name: 'duration',
-          kind: 'choice',
-          initial: 2,
-          options: [
-            { value: 1, label: '1' },
-            { value: 2, label: '2' },
-            { value: 3, label: '3' },
-          ],
-        },
-      ],
-      // The totals the run takes: the model's own `duration`.
-      lengths: [3, 4, 5],
+      durations: [1, 2, 3],
+      defaultDuration: 2,
     });
     expect(storyboardControl(model({}))).toBeUndefined();
-  });
-
-  it('starts a new entry at the value the field declares, when it declares one of its own', () => {
-    const [control] = modelControls(
-      model({
-        speakers: {
-          description: '',
-          label: 'Speakers',
-          type: 'items',
-          default: null,
-          fill: 'panel',
-          fields: { voice: { values: ['Kore', 'Puck'], default: 'Puck' } },
-        },
-      }),
-    );
-    expect(control).toMatchObject({ fields: [{ name: 'voice', initial: 'Puck' }] });
   });
 
   it('leaves out the shared controls and anything not the panel\'s to fill', () => {

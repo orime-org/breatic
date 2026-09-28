@@ -14,7 +14,6 @@ import {
   setNodeMode,
   setNodeModel,
   setNodeParams,
-  setNodeStoryboard,
   type CanvasEdge,
   type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
@@ -84,9 +83,6 @@ import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-que
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
-import { ItemsEditor } from '@web/spaces/canvas/generate/ItemsEditor';
-import type { ItemFieldControl } from '@web/spaces/canvas/generate/model-controls';
-import type { Storyboard } from '@web/spaces/canvas/generate/storyboard';
 
 /**
  * For the reference derivation that deliberately wants no body text. Shared so
@@ -402,13 +398,6 @@ function VideoGeneratePanelBody({
     [projectId, spaceId, nodeId, freshVm, freshContent],
   );
 
-  // Read fresh at click time: a collaborator may have flipped it since this
-  // render, and the click means "the other state from the one I see now" only
-  // if what I see is current.
-  const onToggleStoryboard = React.useCallback(() => {
-    setNodeStoryboard(projectId, spaceId, nodeId, freshContent()?.storyboard !== true);
-  }, [projectId, spaceId, nodeId, freshContent]);
-
   // Reference and first frame are TOGGLES: start the pick when this node is not
   // already in it, else leave. Both flags are read reactively so a button
   // un-highlights when a collaborator, a mode switch or Exit ends the pick —
@@ -612,13 +601,8 @@ function VideoGeneratePanelBody({
         fresh.referenceUrls,
       ),
       pools: poolCounts(fresh.pool, fresh.referenceUrls),
-      storyboard: storyboardGate(fresh.storyboard),
     });
     if (verdict != null) {
-      if (verdict.refusal === 'storyboard-length') {
-        toast.warning(t('canvas.generatePanel.refuseExecuteShotLength', verdict.length));
-        return;
-      }
       // The limit is written out here so the check that every id reaches a
       // real message in all five catalogs can see it.
       if (verdict.refusal === 'too-many-references') {
@@ -734,44 +718,9 @@ function VideoGeneratePanelBody({
   // there is nothing to type into it here, and a mounted collaborative editor
   // costs a TipTap instance plus its bindings. The cost is the prompt's undo
   // history, which lives on the editor instance and dies with it (#1961).
-  // The storyboard's shots stand where the prompt box was (#2156). Their
-  // fields come off the model, worded here: a length reads in seconds and an
-  // empty shot says what goes in it.
-  const board = vm.storyboard;
-  // Content-stable rather than memoized: the labels are localized strings, and
-  // keying on their content re-words them on a locale switch (see the note on
-  // localized strings below) without listing each one.
-  const shotFields: ItemFieldControl[] = useContentStable(
-    (board?.control.fields ?? []).map((f) =>
-      f.kind === 'text'
-        ? { ...f, placeholder: t('canvas.generatePanel.shotPlaceholder') }
-        : {
-          ...f,
-          options: f.options.map((o) => ({
-            ...o,
-            label: t('canvas.generatePanel.durationSeconds', { n: o.value }),
-          })),
-        },
-    ),
-  );
-  const heldShots = useContentStable(board?.shots ?? EMPTY_SHOTS);
-  const storyboardOn = board?.on === true;
-  const storyboardName = board?.control.name;
-  const storyboardLabel = board?.control.label;
-  const storyboardMax = board?.control.max;
-
   const promptSlot = React.useMemo(
     () =>
-      storyboardOn && storyboardName !== undefined && storyboardLabel !== undefined ? (
-        <ItemsEditor
-          name={storyboardName}
-          label={storyboardLabel}
-          max={storyboardMax}
-          fields={shotFields}
-          held={heldShots}
-          onChange={onChangeParams}
-        />
-      ) : !vm.promptRequired ? (
+      !vm.promptRequired ? (
         <PromptNotUsedNotice />
       ) : fragment ? (
         <PromptEditor
@@ -792,13 +741,6 @@ function VideoGeneratePanelBody({
         />
       ) : null,
     [
-      storyboardOn,
-      storyboardName,
-      storyboardLabel,
-      storyboardMax,
-      shotFields,
-      heldShots,
-      onChangeParams,
       vm.promptRequired,
       fragment,
       promptPlaceholder,
@@ -860,31 +802,15 @@ function VideoGeneratePanelBody({
             vm.referenceUrls,
           ),
           pools: poolCounts(vm.pool, vm.referenceUrls),
-          storyboard: storyboardGate(vm.storyboard),
         })?.refusal ?? null
       }
       promptSlot={promptSlot}
       onExit={closeActivePanel}
       onSelectModel={onSelectModel}
       onChangeParams={onChangeParams}
-      storyboardLabel={vm.storyboard?.control.label}
-      storyboardOn={vm.storyboard?.on === true}
-      onToggleStoryboard={onToggleStoryboard}
       onExecute={onExecute}
     />
   );
-}
-
-/**
- * What the execute gate weighs of a storyboard: its shots while it is on,
- * nothing while it is off or absent.
- * @param board - The node's storyboard.
- * @returns The gate's storyboard input.
- */
-function storyboardGate(
-  board: Storyboard | undefined,
-): { shots: Storyboard['shots']; lengths: readonly number[] } | undefined {
-  return board?.on ? { shots: board.shots, lengths: board.control.lengths } : undefined;
 }
 
 /**
@@ -910,9 +836,6 @@ function videoRefusalKey(
   }
   return slotRefusalKey(VIDEO_SLOTS, slots, verdict);
 }
-
-/** No shots, one identity for every render that has none. */
-const EMPTY_SHOTS: Storyboard['shots'] = [];
 
 /**
  * The video Generate panel's canvas integration point. Rendered once inside

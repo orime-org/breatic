@@ -47,14 +47,13 @@ function entriesOf(held: unknown): Entry[] {
 }
 
 /**
- * A new entry: text fields empty, choices at the value the field declares,
- * else their first option.
+ * A new entry: text fields empty, choices at their first option.
  * @param fields - The entry's fields.
  * @returns The entry.
  */
 function blankEntry(fields: readonly ItemFieldControl[]): Entry {
   return Object.fromEntries(
-    fields.map((f) => [f.name, f.kind === 'choice' ? (f.initial ?? f.options[0]?.value ?? '') : '']),
+    fields.map((f) => [f.name, f.kind === 'choice' ? (f.options[0]?.value ?? '') : '']),
   );
 }
 
@@ -193,7 +192,7 @@ function FieldCell({ testId, field, value, onCommit }: FieldCellProps): React.JS
   return (
     <Input
       data-testid={testId}
-      placeholder={field.placeholder ?? field.name.charAt(0).toUpperCase() + field.name.slice(1)}
+      placeholder={field.name.charAt(0).toUpperCase() + field.name.slice(1)}
       value={draft ?? held}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}

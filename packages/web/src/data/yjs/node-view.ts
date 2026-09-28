@@ -191,8 +191,6 @@ interface ContentNodeViewBase extends NodeViewCommon {
   soundVideo?: { url: string; cover?: string };
   /** The picture music takes its mood from (#2156, wire `data.moodImageUrl`) — sent as `params.image`. */
   moodImageUrl?: string;
-  /** Whether the storyboard is on (#2156, wire `data.storyboard`); the shots stand in for the prompt. */
-  storyboard?: boolean;
   /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
@@ -429,7 +427,6 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     musicVocal: data.musicVocal,
     soundVideo: data.soundVideo,
     moodImageUrl: data.moodImageUrl,
-    storyboard: data.storyboard,
     focusImages: data.focusImages,
   };
   switch (type) {

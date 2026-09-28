@@ -7,7 +7,6 @@ import * as React from 'react';
 import type { ModelEntry, ReferenceKind } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   isExecuteButtonDisabled,
@@ -122,15 +121,6 @@ interface VideoGeneratePanelProps {
   /** Change one parameter. */
   onChangeParams: (partial: object) => void;
   /**
-   * The model's storyboard label (#2156), English from its yaml; undefined
-   * when the model offers no storyboard, and then no switch is drawn.
-   */
-  storyboardLabel?: string;
-  /** Whether the storyboard is on: its shots stand where the prompt box was. */
-  storyboardOn: boolean;
-  /** Turn the storyboard on or off. */
-  onToggleStoryboard: () => void;
-  /**
    * Execute: submit the task (the panel closes on success). The node does NOT
    * enter handling here — the server publishes handling only after it accepts
    * and locks the node, so a rejected submit leaves the node untouched and the
@@ -181,9 +171,6 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   onExit,
   onSelectModel,
   onChangeParams,
-  storyboardLabel,
-  storyboardOn,
-  onToggleStoryboard,
   onExecute,
 }: VideoGeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
@@ -248,25 +235,8 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           <VideoParamsPicker
             model={currentModel}
             params={params}
-            durationLocked={storyboardOn}
             onChange={onChangeParams}
           />
-        ) : null}
-        {storyboardLabel !== undefined ? (
-          <Button
-            type='button'
-            variant={null}
-            size={null}
-            data-testid='generate-video-storyboard'
-            aria-pressed={storyboardOn}
-            onClick={onToggleStoryboard}
-            className={cn(
-              'flex h-8 shrink-0 items-center whitespace-nowrap rounded-full border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-              storyboardOn ? 'border-active-border' : 'border-border',
-            )}
-          >
-            {storyboardLabel}
-          </Button>
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>

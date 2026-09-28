@@ -28,8 +28,6 @@ import {
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import { storyboardControl } from '@web/spaces/canvas/generate/model-controls';
-import { readShots, storyboardParams, type Storyboard } from '@web/spaces/canvas/generate/storyboard';
 import {
   mentionedReferenceUrls,
   NO_REFERENCE_URLS,
@@ -169,15 +167,6 @@ export interface VideoPanelViewModel {
    * the panel claiming a model needs no prompt when there is no model.
    */
   promptRequired: boolean;
-  /**
-   * The model's storyboard on this node (#2156), when the model offers one.
-   *
-   * While it is on, the shots stand in for the prompt box: `params` carries
-   * them and their total as the run's length, `promptRequired` is false, and
-   * the pool is empty — a reference is used by `@`-mentioning it in the
-   * prompt, and there is no prompt box to mention it in.
-   */
-  storyboard: Storyboard | undefined;
 }
 
 /** Shared empty set for a prompt that mentions nothing (avoids a per-call allocation). */
@@ -314,13 +303,7 @@ export function buildVideoPanelViewModel(input: {
   // for reference-to-video would ride into a first-last-frame task.
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
   const focusImages = validFocusImages(content?.focusImages);
-  const resolved = current ? resolveModelSwitch(content, current).params : {};
-  const control = storyboardControl(current);
-  const storyboard = control
-    ? { control, on: content?.storyboard === true, shots: readShots(resolved[control.name], control) }
-    : undefined;
-  const boarded = storyboard?.on === true;
-  const pool = boarded ? {} : referencePool(current, mode);
+  const pool = referencePool(current, mode);
   const referenceUrls = referenceKinds(pool).length === 0
     ? NO_REFERENCE_URLS
     : mentionedReferenceUrls({ references, focusImages, atMentioned, nodes });
@@ -333,7 +316,7 @@ export function buildVideoPanelViewModel(input: {
     // the outgoing model's params against that fallback is the very leak this
     // slice closes. The records this returns are dropped — rendering reads,
     // it does not persist.
-    params: storyboardParams(resolved, storyboard),
+    params: current ? resolveModelSwitch(content, current).params : {},
     nodeStatus: content?.status,
     mode,
     slots: videoSlotsForModel(current, mode),
@@ -360,7 +343,6 @@ export function buildVideoPanelViewModel(input: {
     // catalog. The fallback still applies
     // when no model resolves: an unrecognised model is not a licence to skip a
     // requirement every other mode has.
-    promptRequired: (current?.takes_prompt ?? true) && !boarded,
-    storyboard,
+    promptRequired: current?.takes_prompt ?? true,
   };
 }

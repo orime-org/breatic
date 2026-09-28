@@ -529,10 +529,7 @@
       "refuseExecuteNoReference": "전체 곡, 멜로디, 보컬 중 하나를 고르세요",
       "creditsPerThousandChars": "{credits} / 1000자",
       "itemsAdd": "추가",
-      "itemsRemove": "삭제",
-      "refuseExecuteNoShot": "모든 샷에 내용을 입력하세요",
-      "refuseExecuteShotLength": "샷 길이의 합은 {min}~{max}초여야 합니다",
-      "shotPlaceholder": "이 샷의 내용"
+      "itemsRemove": "삭제"
     },
     "nodeMenu": {
       "generate": "생성",

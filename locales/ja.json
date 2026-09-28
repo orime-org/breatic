@@ -529,10 +529,7 @@
       "refuseExecuteNoReference": "楽曲・メロディ・ボーカルのいずれかを選んでください",
       "creditsPerThousandChars": "{credits} / 1000文字",
       "itemsAdd": "追加",
-      "itemsRemove": "削除",
-      "refuseExecuteNoShot": "すべてのショットに内容を入力してください",
-      "refuseExecuteShotLength": "ショットの合計は {min}〜{max} 秒にしてください",
-      "shotPlaceholder": "このショットの内容"
+      "itemsRemove": "削除"
     },
     "nodeMenu": {
       "generate": "生成",
