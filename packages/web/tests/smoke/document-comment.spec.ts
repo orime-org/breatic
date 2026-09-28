@@ -141,6 +141,28 @@ test.describe('the card a comment is written in', () => {
     );
   });
 
+  test('puts the caret after what was written when the entry is pressed again', async ({
+    page,
+  }) => {
+    // Pressing the entry is asking to go on writing: the words written so far
+    // stay, and the caret waits after them.
+    await openFreshDocument(page);
+    await page.keyboard.type('alpha bravo charlie');
+    await expect(page.locator(`${EDITOR} p`).first()).toHaveText('alpha bravo charlie');
+    await selectChars(page, 0, 5);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    const box = page.getByTestId('doc-comment-draft-input');
+    await expect(box).toBeFocused();
+    await page.keyboard.type('Please check');
+
+    await selectChars(page, 12, 19);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await expect(box).toBeFocused();
+    await page.keyboard.type(' this');
+
+    await expect(box).toHaveValue('Please check this');
+  });
+
   test('sits level with the words it was aimed at', async ({ page }) => {
     // A28 again, the half that makes it a card of the same kind: a reader
     // looks across from the words to the card about them.

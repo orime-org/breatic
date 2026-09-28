@@ -1732,6 +1732,22 @@ describe('the comment panel', () => {
       expect([box.selectionStart, box.selectionEnd]).toEqual([4, 4]);
     });
 
+    it('leaves the caret where the reader puts it while they write', async () => {
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      const box = screen.getByTestId<HTMLTextAreaElement>('doc-comment-draft-input');
+      await userEvent.type(box, 'half');
+
+      box.setSelectionRange(1, 1);
+      await userEvent.type(box, 'xy', {
+        initialSelectionStart: 1,
+        initialSelectionEnd: 1,
+      });
+
+      expect(box).toHaveValue('hxyalf');
+    });
+
     it('leaves the keyboard in the box while a peer edit moves its words', async () => {
       show();
       aimDraft(6, 11);
