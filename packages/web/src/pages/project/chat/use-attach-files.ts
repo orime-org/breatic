@@ -6,19 +6,14 @@ import * as React from 'react';
 import { newId } from '@breatic/shared';
 
 import { assetsApi } from '@web/data/api';
-import { chatApi } from '@web/data/api/chat';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import { hashFile } from '@web/data/upload/hash';
 import { useTranslation } from '@web/i18n/use-translation';
-import {
-  attachAccept,
-  attachFiles,
-  type AttachDeps,
-  type AttachNotice,
-} from '@web/pages/project/chat/attach-files';
+import { attachAccept, attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
 import { runMediaUpload } from '@web/spaces/canvas/canvas-upload';
-import { chatAttachments, useChatAttachments } from '@web/stores/chat-attachments';
 import { extractText } from '@web/spaces/canvas/text-extract';
+import { openTray } from '@web/stores/attach-to-chat';
+import { useChatAttachments } from '@web/stores/chat-attachments';
 
 /**
  * Upload one file for a chat message.
@@ -50,10 +45,7 @@ function uploadForChat(file: File, projectId: string): Promise<string | undefine
 
 /** The real dependencies. */
 const LIVE: AttachDeps = {
-  limits: async () => {
-    const config = await chatApi.streamConfig();
-    return { maxItems: config.attachmentMaxItems, maxChars: config.attachmentMaxChars };
-  },
+  tray: openTray,
   maxUploadBytes: async () => (await assetsApi.fetchUploadConfig()).maxUploadBytes,
   upload: uploadForChat,
   extract: (file) => extractText(file),
@@ -71,9 +63,9 @@ export interface AttachFiles {
 }
 
 /**
- * The composer's attach button, bound to one conversation.
+ * The composer's attach button.
  * @param projectId - The project the chat is in.
- * @param conversationId - The conversation on screen, if one is.
+ * @param conversationId - The conversation on screen, whose notice is shown.
  * @returns What the composer needs.
  */
 export function useAttachFiles(projectId: string, conversationId: string | undefined): AttachFiles {
@@ -84,21 +76,9 @@ export function useAttachFiles(projectId: string, conversationId: string | undef
 
   const attach = React.useCallback(
     (files: File[]): void => {
-      if (conversationId === undefined) return;
-      chatAttachments.say(conversationId, null);
-      /**
-       * Say something above this conversation's box.
-       * @param notice - What to say.
-       */
-      const say = (notice: AttachNotice): void => {
-        chatAttachments.say(conversationId, notice);
-      };
-      // The limits could not be read, so nothing was attached.
-      void attachFiles(files, { conversationId, projectId }, LIVE, say).catch(() =>
-        say({ key: 'unavailable' }),
-      );
+      void attachFiles(files, projectId, LIVE);
     },
-    [conversationId, projectId],
+    [projectId],
   );
 
   const accept = React.useMemo(() => attachAccept(), []);

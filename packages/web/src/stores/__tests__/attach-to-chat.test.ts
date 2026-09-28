@@ -28,8 +28,10 @@ vi.mock('@web/stores/conversation-runtime', () => ({
   },
 }));
 
-const { attachToChat } = await import('@web/stores/attach-to-chat');
-const { chatAttachments } = await import('@web/stores/chat-attachments');
+const { attachToChat, openTray } = await import('@web/stores/attach-to-chat');
+const { chatAttachments, useChatAttachments } = await import('@web/stores/chat-attachments');
+const { conversationRuntime } = await import('@web/stores/conversation-runtime');
+const { chatApi } = await import('@web/data/api/chat');
 const { useUIStore } = await import('@web/stores/ui');
 import type { TrayItem } from '@web/stores/chat-attachments';
 
@@ -48,7 +50,16 @@ function node(id: string): TrayItem {
   };
 }
 
+/**
+ * What is said above the box.
+ * @returns The notice, or null.
+ */
+function notice(): unknown {
+  return useChatAttachments.getState().noticeByConversation.c1 ?? null;
+}
+
 beforeEach(() => {
+  vi.clearAllMocks();
   chatAttachments.forget(['c1']);
   runtime.conversation = 'c1';
   useUIStore.getState().setChatPanelCollapsed(true);
@@ -71,7 +82,7 @@ describe('adding canvas nodes to the agent', () => {
     await attachToChat('p1', [node('a'), node('b'), node('c')]);
 
     expect(chatAttachments.trayOf('c1')).toEqual([]);
-    expect(chatAttachments.noticeOf('c1')).toEqual({ key: 'full', limit: 2 });
+    expect(notice()).toEqual({ key: 'full', limit: 2 });
   });
 
   it('adds nothing when no conversation could be opened', async () => {
@@ -82,10 +93,40 @@ describe('adding canvas nodes to the agent', () => {
     expect(chatAttachments.trayOf('c1')).toEqual([]);
   });
 
-  it('adds nothing when there is nothing attachable', async () => {
+  it('does nothing at all when there is nothing attachable', async () => {
     await attachToChat('p1', []);
 
-    expect(chatAttachments.trayOf('c1')).toEqual([]);
-    expect(chatAttachments.noticeOf('c1')).toBeNull();
+    expect(useUIStore.getState().chatPanelCollapsed).toBe(true);
+    expect(conversationRuntime.conversationForSending).not.toHaveBeenCalled();
+  });
+});
+
+describe('opening the list above the box for an attempt', () => {
+  it('opens the conversation and answers the limits', async () => {
+    expect(await openTray('p1')).toEqual({
+      conversationId: 'c1',
+      limits: { maxItems: 2, maxChars: 200_000 },
+    });
+  });
+
+  it('clears what was said about the last attempt', async () => {
+    chatAttachments.say('c1', { key: 'tooLong' });
+
+    await openTray('p1');
+
+    expect(notice()).toBeNull();
+  });
+
+  it('says so when the limits cannot be read', async () => {
+    vi.mocked(chatApi.streamConfig).mockRejectedValueOnce(new Error('offline'));
+
+    expect(await openTray('p1')).toBeUndefined();
+    expect(notice()).toEqual({ key: 'unavailable' });
+  });
+
+  it('answers nothing when no conversation could be opened', async () => {
+    runtime.conversation = undefined;
+
+    expect(await openTray('p1')).toBeUndefined();
   });
 });

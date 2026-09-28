@@ -10,8 +10,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { attachFiles, type AttachDeps, type AttachNotice } from '@web/pages/project/chat/attach-files';
-import { chatAttachments } from '@web/stores/chat-attachments';
+import { attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
+import { chatAttachments, useChatAttachments } from '@web/stores/chat-attachments';
 
 const CONV = 'c1';
 
@@ -27,7 +27,24 @@ function file(name: string, type: string, size = 10): File {
 }
 
 let ids = 0;
-let notices: AttachNotice[] = [];
+
+/**
+ * What is said above the box.
+ * @returns The notice, or null.
+ */
+function notice(): unknown {
+  return useChatAttachments.getState().noticeByConversation[CONV] ?? null;
+}
+
+/**
+ * The list above the box, held to some limits.
+ * @param maxItems - How many items it takes.
+ * @param maxChars - How long its section may be.
+ * @returns The tray opener.
+ */
+function trayWith(maxItems = 10, maxChars = 200_000): AttachDeps['tray'] {
+  return async () => ({ conversationId: CONV, limits: { maxItems, maxChars } });
+}
 
 /**
  * Dependencies that succeed unless told otherwise.
@@ -36,7 +53,7 @@ let notices: AttachNotice[] = [];
  */
 function deps(over: Partial<AttachDeps> = {}): AttachDeps {
   return {
-    limits: async () => ({ maxItems: 10, maxChars: 200_000 }),
+    tray: trayWith(),
     maxUploadBytes: async () => 1_000_000,
     upload: async (f) => `https://cdn.example/${f.name}`,
     extract: async () => 'the document text',
@@ -46,18 +63,17 @@ function deps(over: Partial<AttachDeps> = {}): AttachDeps {
 }
 
 /**
- * Attach, collecting what was said.
+ * Attach picked files in project p1.
  * @param files - What was picked.
  * @param d - The dependencies.
  */
 async function pick(files: File[], d: AttachDeps = deps()): Promise<void> {
-  await attachFiles(files, { conversationId: CONV, projectId: 'p1' }, d, (n) => notices.push(n));
+  await attachFiles(files, 'p1', d);
 }
 
 beforeEach(() => {
   chatAttachments.forget([CONV]);
   ids = 0;
-  notices = [];
 });
 
 describe('attaching picked files', () => {
@@ -140,35 +156,63 @@ describe('attaching picked files', () => {
   it('marks a document too long to send, and says so', async () => {
     await pick(
       [file('report.pdf', 'application/pdf')],
-      deps({ limits: async () => ({ maxItems: 10, maxChars: 100 }), extract: async () => 'x'.repeat(500) }),
+      deps({ tray: trayWith(10, 100), extract: async () => 'x'.repeat(500) }),
     );
 
     expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'too_long' });
-    expect(notices).toContainEqual({ key: 'tooLong' });
+    expect(notice()).toEqual({ key: 'tooLong' });
+  });
+
+  it('turns away a text file too big to fit without reading it, and says so', async () => {
+    const extract = vi.fn(async () => 'never read');
+
+    await pick([file('log.txt', 'text/plain', 3001)], deps({ tray: trayWith(10, 1000), extract }));
+
+    expect(extract).not.toHaveBeenCalled();
+    expect(chatAttachments.trayOf(CONV)).toEqual([]);
+    expect(notice()).toEqual({ key: 'tooLong' });
+  });
+
+  it('reads a text file whose size could still fit', async () => {
+    await pick(
+      [file('notes.txt', 'text/plain', 3000)],
+      deps({ tray: trayWith(10, 1000), extract: async () => 'short' }),
+    );
+
+    expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'ready' });
+  });
+
+  it('attaches nothing when there is nowhere to attach', async () => {
+    const extract = vi.fn(async () => 'text');
+
+    await pick([file('notes.txt', 'text/plain')], deps({ tray: async () => undefined, extract }));
+
+    expect(extract).not.toHaveBeenCalled();
+    expect(chatAttachments.trayOf(CONV)).toEqual([]);
   });
 
   it('turns away a file of a kind it cannot take, and names it', async () => {
     await pick([file('model.glb', 'model/gltf-binary')]);
 
     expect(chatAttachments.trayOf(CONV)).toEqual([]);
-    expect(notices).toEqual([{ key: 'unsupported', filename: 'model.glb' }]);
+    expect(notice()).toEqual({ key: 'unsupported', filename: 'model.glb' });
   });
 
   it('turns away a file larger than may be uploaded, and names it', async () => {
     await pick([file('film.mp4', 'video/mp4', 2_000_000)]);
 
     expect(chatAttachments.trayOf(CONV)).toEqual([]);
-    expect(notices).toEqual([{ key: 'tooLarge', filename: 'film.mp4' }]);
+    expect(notice()).toEqual({ key: 'tooLarge', filename: 'film.mp4' });
   });
 
   it('attaches none of a batch that would pass the item limit, and says so', async () => {
     await pick(
       [file('a.png', 'image/png'), file('b.png', 'image/png'), file('c.png', 'image/png')],
-      deps({ limits: async () => ({ maxItems: 2, maxChars: 200_000 }) }),
+      deps({ tray: trayWith(2) }),
     );
 
     expect(chatAttachments.trayOf(CONV)).toEqual([]);
-    expect(notices).toEqual([{ key: 'full', limit: 2 }]);
+    expect(notice()).toEqual({ key: 'full', limit: 2 });
   });
 
   it('uploads media into the project it is attached in', async () => {

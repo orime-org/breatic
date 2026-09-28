@@ -105,10 +105,11 @@ function trayOf(conversationId: string): TrayItem[] {
 /**
  * Attach a batch, whole or not at all.
  *
- * An item already in the list is skipped, so attaching the same node twice
- * does not take up two places. The rest go in together only if the list then
- * still fits both limits: a batch that partly went in would leave the reader
- * to work out which part.
+ * An item already in the list keeps its place and takes the new snapshot:
+ * attaching a node again after editing it sends what it says now. The rest go
+ * in together only if the list then still fits both limits; a batch that
+ * partly went in would leave the reader to work out which part. A refused
+ * batch is said so above the box.
  * @param conversationId - The conversation it is attached in.
  * @param batch - The items, in order.
  * @param limits - The limits the list is held to.
@@ -116,11 +117,18 @@ function trayOf(conversationId: string): TrayItem[] {
  */
 function add(conversationId: string, batch: readonly TrayItem[], limits: AttachmentLimits): AddOutcome {
   const current = trayOf(conversationId);
+  const incoming = new Map(batch.map((item) => [item.id, item]));
+  const kept = current.map((item) => incoming.get(item.id) ?? item);
   const present = new Set(current.map((item) => item.id));
-  const fresh = batch.filter((item) => !present.has(item.id));
-  const next = [...current, ...fresh];
-  if (next.length > limits.maxItems) return 'full';
-  if (!fits(next, limits)) return 'too_long';
+  const next = [...kept, ...batch.filter((item) => !present.has(item.id))];
+  if (next.length > limits.maxItems) {
+    say(conversationId, { key: 'full', limit: limits.maxItems });
+    return 'full';
+  }
+  if (!fits(next, limits)) {
+    say(conversationId, { key: 'tooLong' });
+    return 'too_long';
+  }
   write(conversationId, next);
   return 'added';
 }
@@ -149,8 +157,7 @@ function update(conversationId: string, id: string, change: (item: TrayItem) => 
  * An upload or extraction has what it was waiting for.
  *
  * Its length is known only now, so the list is measured again: past the
- * limit, the item fails as too long rather than holding a send the server
- * would refuse.
+ * limit, the item fails as too long and that is said above the box.
  * @param conversationId - The conversation.
  * @param id - The item.
  * @param chip - What is sent for it.
@@ -169,9 +176,11 @@ function settle(
       ? 'ready'
       : 'gone';
   }
-  return update(conversationId, id, (item) => ({ ...item, status: 'failed', failure: 'too_long' }))
-    ? 'too_long'
-    : 'gone';
+  if (!update(conversationId, id, (item) => ({ ...item, status: 'failed', failure: 'too_long' }))) {
+    return 'gone';
+  }
+  say(conversationId, { key: 'tooLong' });
+  return 'too_long';
 }
 
 /**
@@ -197,6 +206,8 @@ function remove(conversationId: string, id: string): void {
  * Take out the items a turn carried, once it has opened.
  *
  * By id, so an item attached after the press stays for the next message.
+ * What was said about the last attempt goes too: the list it was about has
+ * changed.
  * @param conversationId - The conversation.
  * @param ids - The items that went with the turn.
  */
@@ -208,6 +219,7 @@ function removeSent(conversationId: string, ids: readonly string[]): void {
     conversationId,
     current.filter((item) => !gone.has(item.id)),
   );
+  say(conversationId, null);
 }
 
 /**
@@ -241,15 +253,6 @@ function say(conversationId: string, notice: TrayNotice | null): void {
 }
 
 /**
- * What is said above the box in one conversation.
- * @param conversationId - The conversation.
- * @returns The notice, or null when there is none.
- */
-function noticeOf(conversationId: string): TrayNotice | null {
-  return useStore.getState().noticeByConversation[conversationId] ?? null;
-}
-
-/**
  * What a message sent now would carry.
  * @param conversationId - The conversation.
  * @returns The chips in order, or null while any item is uploading or failed.
@@ -272,5 +275,4 @@ export const chatAttachments = {
   forget,
   sendable,
   say,
-  noticeOf,
 };

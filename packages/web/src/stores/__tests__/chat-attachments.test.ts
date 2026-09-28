@@ -15,9 +15,19 @@ import type { ChatAttachedChip } from '@breatic/shared';
 
 import {
   chatAttachments,
+  useChatAttachments,
   type AttachmentLimits,
   type TrayItem,
 } from '@web/stores/chat-attachments';
+
+/**
+ * What is said above one conversation's box.
+ * @param conversationId - The conversation.
+ * @returns The notice, or null.
+ */
+function noticeIn(conversationId: string): unknown {
+  return useChatAttachments.getState().noticeByConversation[conversationId] ?? null;
+}
 
 const LIMITS: AttachmentLimits = { maxItems: 3, maxChars: 10_000 };
 
@@ -56,10 +66,22 @@ describe('adding a batch', () => {
     expect(chatAttachments.trayOf('c2')).toEqual([]);
   });
 
-  it('skips an item that is already there', () => {
-    chatAttachments.add('c1', [node('a')], LIMITS);
-    expect(chatAttachments.add('c1', [node('a'), node('b')], LIMITS)).toBe('added');
+  it('takes the new snapshot of an item already there, in its place', () => {
+    chatAttachments.add('c1', [node('a', 'before'), node('b')], LIMITS);
+    expect(chatAttachments.add('c1', [node('a', 'after')], LIMITS)).toBe('added');
+
     expect(chatAttachments.trayOf('c1').map((i) => i.id)).toEqual(['a', 'b']);
+    expect(chatAttachments.trayOf('c1')[0]?.chip?.data_snapshot).toEqual({ text: 'after' });
+  });
+
+  it('says so when a batch would pass the item limit', () => {
+    chatAttachments.add('c1', [node('a'), node('b'), node('c'), node('d')], LIMITS);
+    expect(noticeIn('c1')).toEqual({ key: 'full', limit: LIMITS.maxItems });
+  });
+
+  it('says so when a batch would pass the length limit', () => {
+    chatAttachments.add('c1', [node('big', 'y'.repeat(LIMITS.maxChars))], LIMITS);
+    expect(noticeIn('c1')).toEqual({ key: 'tooLong' });
   });
 
   it('refuses the whole batch when it would pass the item limit', () => {
@@ -109,6 +131,7 @@ describe('an upload coming back', () => {
       status: 'failed',
       failure: 'too_long',
     });
+    expect(noticeIn('c1')).toEqual({ key: 'tooLong' });
   });
 
   it('is dropped when the item was removed while it was on its way', () => {
@@ -167,5 +190,25 @@ describe('after a turn opens', () => {
     chatAttachments.removeSent('c1', ['a', 'b']);
 
     expect(chatAttachments.trayOf('c1').map((i) => i.id)).toEqual(['c']);
+  });
+});
+
+describe('what was said about the last attempt', () => {
+  it('goes when an item is taken out', () => {
+    chatAttachments.add('c1', [node('a')], LIMITS);
+    chatAttachments.say('c1', { key: 'full', limit: 3 });
+
+    chatAttachments.remove('c1', 'a');
+
+    expect(noticeIn('c1')).toBeNull();
+  });
+
+  it('goes when the items a turn carried are taken out', () => {
+    chatAttachments.add('c1', [node('a')], LIMITS);
+    chatAttachments.say('c1', { key: 'full', limit: 3 });
+
+    chatAttachments.removeSent('c1', ['a']);
+
+    expect(noticeIn('c1')).toBeNull();
   });
 });
