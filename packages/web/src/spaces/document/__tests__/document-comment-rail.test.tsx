@@ -55,6 +55,8 @@ import {
   asCommentBody,
 } from '@web/spaces/document/document-comment-extension';
 import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
+import { moveRowTo } from '@web/spaces/document/document-drag-move';
+import { rowById } from '@web/spaces/document/document-row-by-id';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
@@ -1457,6 +1459,104 @@ describe('the comment panel', () => {
       expect(lines()).toEqual(['alpha bravo', 'november', 'charlie delta', 'mike']);
       expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
       expect(aimedWords()).toBe('bravonovembercharlie');
+    });
+
+    it.each([
+      // [which line the reader moves, which arrow, the words it covers after]
+      ['its last line down past another', 2, 'ArrowDown', 'bravoechocharlie'],
+      ['its first line up past another', 1, 'ArrowUp', 'bravozerocharlie'],
+    ] as const)(
+      'keeps each end on its own line when the reader moves %s',
+      async (_what, row, key, words) => {
+        // A move takes the line out and puts the same line back; each end
+        // follows its own line, and whatever lies between them is the range.
+        show('editor', ['zero', 'alpha bravo', 'charlie delta', 'echo']);
+        const starts = lineStarts();
+        aimAt(starts[1]! + 6, starts[2]! + 7);
+        await screen.findByTestId('doc-comment-draft-card');
+
+        act(() => {
+          const view = handle.editor.prosemirrorView!;
+          handle.editor.setTextCursorPosition(handle.editor.document[row]!);
+          view.someProp('handleKeyDown', (handler) =>
+            handler(
+              view,
+              new KeyboardEvent('keydown', { key, ctrlKey: true, shiftKey: true }),
+            ),
+          );
+        });
+
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe(words);
+      },
+    );
+
+    it('says so when the reader moves its last line above its first', async () => {
+      show('editor', ['alpha bravo', 'charlie delta']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second! + 7);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      act(() => {
+        const view = handle.editor.prosemirrorView!;
+        handle.editor.setTextCursorPosition(handle.editor.document[1]!);
+        view.someProp('handleKeyDown', (handler) =>
+          handler(
+            view,
+            new KeyboardEvent('keydown', {
+              key: 'ArrowUp',
+              ctrlKey: true,
+              shiftKey: true,
+            }),
+          ),
+        );
+      });
+
+      expect(lines()).toEqual(['charlie delta', 'alpha bravo']);
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps each end on its own line when the reader drags its last line down', async () => {
+      show('editor', ['alpha bravo', 'charlie delta', 'echo']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second! + 7);
+      await screen.findByTestId('doc-comment-draft-card');
+      const [, charlie, echo] = handle.editor.document;
+
+      act(() => {
+        const view = handle.editor.prosemirrorView!;
+        moveRowTo(view, charlie!.id, rowById(view.state.doc, echo!.id)!.to);
+      });
+
+      expect(lines()).toEqual(['alpha bravo', 'echo', 'charlie delta']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('bravoechocharlie');
+    });
+
+    it('keeps each end on its own when a peer moves its last line and edits its first elsewhere', async () => {
+      // Each end is judged on what happened to it: the first line changed
+      // outside the range, its start letter is still there.
+      show('editor', ['alpha bravo', 'charlie delta', 'echo']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second! + 7);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      const at = lineStarts(peer.editor.prosemirrorState)[0]!;
+      const charlie = peer.editor.document[1]!;
+      act(() => {
+        peer.editor.transact((tr) => {
+          tr.insertText('!', at);
+          peer.editor.setTextCursorPosition(charlie);
+          peer.editor.moveBlocksDown();
+        });
+      });
+
+      expect(lines()).toEqual(['!alpha bravo', 'echo', 'charlie delta']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('bravoechocharlie');
     });
 
     it('stays on its words when the reader moves the line they are on', async () => {
