@@ -1103,6 +1103,9 @@ test.describe('a column crowded with comments', () => {
   /** The line the comments crowd, below enough lines to be clear of the header. */
   const LINE = 6;
 
+  /** What that line says; its first eight letters each carry a comment. */
+  const CROWDED_LINE = 'abcdefgh and more words after them';
+
   /**
    * Puts one comment on each of the first eight characters of one line.
    * @param p - The page.
@@ -1110,9 +1113,13 @@ test.describe('a column crowded with comments', () => {
   async function crowdOneLine(p: Page): Promise<void> {
     await openFreshDocument(p);
     for (let i = 0; i < LINE; i += 1) await p.keyboard.type(`line ${String(i)}\n`);
-    await p.keyboard.type('abcdefgh and more words after them');
+    await p.keyboard.type(CROWDED_LINE);
+    // A selection set while the last keystrokes are still being taken in is
+    // overwritten by the caret they leave; start once the line has landed.
+    await expect(p.locator(`${EDITOR} p`).nth(LINE)).toHaveText(CROWDED_LINE);
     for (let i = 0; i < 8; i += 1) {
       await selectChars(p, i, i + 1, LINE);
+      await expect(p.getByTestId('doc-bubble-tool-comment')).toBeVisible();
       await p.getByTestId('doc-bubble-tool-comment').click();
       await p.getByTestId('doc-comment-draft-input').fill(`note ${String(i)}`);
       await p.getByTestId('doc-comment-draft-save').click();
