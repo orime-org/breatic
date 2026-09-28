@@ -129,7 +129,7 @@
       "no_subscription": "你沒有會員。",
       "not_cancelling": "這個會員沒有預約結束。",
       "change_not_offered": "這項變更暫不提供。",
-      "change_unconfirmed": "Stripe 收下了這次變更，但回來的內容跟我們的價目表對不上。你的會員沒有變動，請稍後再試。",
+      "change_unconfirmed": "變更已提交到 Stripe，但沒能確認結果。請先聯絡我們，不要重複操作。",
       "same_tier": "你已經在這一檔會員。",
       "payment_overdue": "這個會員有一期款項未付。",
       "unavailable": "會員目前無法使用。"
@@ -1543,7 +1543,7 @@
     "card": {
       "storage": "{value} 儲存",
       "teamStudios": "{count, plural, =0 {不含團隊 Studio} other {# 個團隊 Studio}}",
-      "connections": "{count, plural, other {每份文件 # 個連線}}",
+      "connections": "{count, plural, other {每份文件 # 條連線}}",
       "enterpriseScale": "容量按協議約定",
       "enterpriseGovernance": "SSO、稽核、智慧財產保障"
     },

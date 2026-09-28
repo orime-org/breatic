@@ -129,7 +129,7 @@
       "no_subscription": "You do not have a membership.",
       "not_cancelling": "This membership is not scheduled to end.",
       "change_not_offered": "That change is not on offer.",
-      "change_unconfirmed": "Stripe took the change, and what it sent back does not match our price list. Your plan has not been updated. Try again in a moment.",
+      "change_unconfirmed": "Your change reached Stripe, but we could not confirm it. Contact us before trying again.",
       "same_tier": "You are already on this membership.",
       "payment_overdue": "Payment for this membership is overdue.",
       "unavailable": "Memberships are unavailable."
