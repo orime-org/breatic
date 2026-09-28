@@ -1324,6 +1324,85 @@ describe('the comment panel', () => {
       },
     );
 
+    describe('after a peer rewrites its line, which takes the line\'s old letters out of the document', () => {
+      /**
+       * Opens a draft on "bravo" and has a peer turn its line into a heading,
+       * which deletes the line's old element; Yjs collects its letters at the
+       * end of that change.
+       * @returns The peer's editor.
+       */
+      async function afterPeerRewrite(): Promise<DocumentEditorHandle> {
+        show('editor', ['one', 'alpha bravo charlie', 'three']);
+        const second = lineStarts()[1]!;
+        aimAt(second + 6, second + 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        const peer = await peerEditor();
+        act(() => {
+          peer.editor.updateBlock(peer.editor.document[1]!, {
+            type: 'heading',
+            props: { level: 2 },
+          } as never);
+        });
+        return peer;
+      }
+
+      it('shows the peer\'s next edit and stays on its words', async () => {
+        const peer = await afterPeerRewrite();
+
+        act(() => {
+          const view = peer.editor.prosemirrorView!;
+          const at = lineStarts(peer.editor.prosemirrorState)[0]!;
+          view.dispatch(view.state.tr.insertText('ZZ', at));
+        });
+
+        expect(lines()).toEqual(['ZZone', 'alpha bravo charlie', 'three']);
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe('bravo');
+      });
+
+      it('keeps what is left of its words when the peer then deletes its first letter', async () => {
+        const peer = await afterPeerRewrite();
+
+        act(() => {
+          const view = peer.editor.prosemirrorView!;
+          const at = lineStarts(peer.editor.prosemirrorState)[1]! + 6;
+          view.dispatch(view.state.tr.delete(at, at + 1));
+        });
+
+        expect(lines()).toEqual(['one', 'alpha ravo charlie', 'three']);
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe('ravo');
+      });
+
+      it('takes the reader\'s own undo and stays on its words', async () => {
+        show('editor', ['one', 'alpha bravo charlie', 'three']);
+        handle.undoManager.stopCapturing();
+        act(() => {
+          const view = handle.editor.prosemirrorView!;
+          view.dispatch(view.state.tr.insertText('Q', lineStarts()[2]!));
+        });
+        handle.undoManager.stopCapturing();
+        const second = lineStarts()[1]!;
+        aimAt(second + 6, second + 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        const peer = await peerEditor();
+        act(() => {
+          peer.editor.updateBlock(peer.editor.document[1]!, {
+            type: 'heading',
+            props: { level: 2 },
+          } as never);
+        });
+
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        expect(lines()).toEqual(['one', 'alpha bravo charlie', 'three']);
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe('bravo');
+      });
+    });
+
     it('stays on its words when a peer moves up a line that starts with the same letter', async () => {
       // Rewriting "two…" into "three" keeps their shared first letter, so the
       // letter the start names survives, but in the other line.
