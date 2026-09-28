@@ -300,4 +300,44 @@ describe('the drop the plugin reads the modifier from', () => {
     // drag makes a copy, and the snapshot taken at dragstart still says move.
     expect(landAfterDrop(true)).toEqual([]);
   });
+
+  /**
+   * Drops a whole row with the copy modifier as the argument says.
+   * @param copying - Whether the modifier was down at the drop.
+   * @returns The id the landed row carries.
+   */
+  const rowIdAfterDrop = (copying: boolean): unknown => {
+    const props = commentPastePlugin().props as unknown as {
+      handleDOMEvents: {
+        drop: (view: unknown, event: MouseEvent) => boolean;
+      };
+      transformPasted: (slice: Slice, view: unknown) => Slice;
+    };
+    props.handleDOMEvents.drop(null, {
+      altKey: copying,
+      ctrlKey: copying,
+    } as MouseEvent);
+    const row = new Slice(
+      Fragment.from(
+        schema.nodes.blockContainer.create({ id: 'row-1' }, [
+          schema.nodes.paragraph.create(null, [schema.text('run')]),
+        ]),
+      ),
+      0,
+      0,
+    );
+    const view = { state: { schema }, dragging: {} };
+    return props.transformPasted(row, view).content.child(0).attrs['id'];
+  };
+
+  it('takes the row ids off rows dragged as a copy, so the editor gives them new ones', () => {
+    // BlockNote only renews ids when the drop reports `effectAllowed ===
+    // "copy"`, and ProseMirror sets `"copyMove"` on every drag it starts,
+    // so a copied row would otherwise share its source's id.
+    expect(rowIdAfterDrop(true)).toBeNull();
+  });
+
+  it('keeps the row ids on rows dragged to a new place', () => {
+    expect(rowIdAfterDrop(false)).toBe('row-1');
+  });
 });

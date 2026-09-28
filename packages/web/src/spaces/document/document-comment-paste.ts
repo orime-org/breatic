@@ -46,6 +46,14 @@
  * (`:3850`), five lines after handing over the slice. A modifier pressed or
  * released mid-drag moves the two apart, and the one that decides whether the
  * source survives is the second.
+ *
+ * ROWS DRAGGED AS A COPY ARRIVE WITHOUT THEIR IDS, so the editor gives them
+ * new ones. BlockNote means to do this itself — "only create new ids for
+ * dropped content while holding `alt`" (`UniqueID.ts`) — but it asks whether
+ * the drop's `effectAllowed` is `"copy"`, and ProseMirror sets `"copyMove"`
+ * on every drag it starts (`prosemirror-view/dist/index.js:3815`), so the
+ * copied rows kept their source's ids. A row id names one row: moving rows,
+ * and finding a comment's line again, look rows up by it.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -122,6 +130,33 @@ export function commentsArrivingWith(
 }
 
 /**
+ * Rebuilds a slice with no row ids. The editor fills an id that is null with
+ * a new one (BlockNote's `UniqueID`, `appendTransaction`).
+ * @param slice - The slice about to be inserted.
+ * @returns The same content and open depths, every row's id null.
+ */
+export function withoutRowIds(slice: Slice): Slice {
+  /**
+   * Rebuilds one fragment, clearing ids at every depth.
+   * @param fragment - The fragment to rebuild.
+   * @returns The fragment with no ids.
+   */
+  const rebuild = (fragment: Fragment): Fragment => {
+    const out: PMNode[] = [];
+    fragment.forEach((child) => {
+      if (child.isText) {
+        out.push(child);
+        return;
+      }
+      const attrs = 'id' in child.attrs ? { ...child.attrs, id: null } : child.attrs;
+      out.push(child.type.create(attrs, rebuild(child.content), child.marks));
+    });
+    return Fragment.fromArray(out);
+  };
+  return new Slice(rebuild(slice.content), slice.openStart, slice.openEnd);
+}
+
+/**
  * Whether this drop leaves the source where it is.
  *
  * The same key ProseMirror reads: `dragCopyModifier` is `altKey` on a Mac and
@@ -169,13 +204,18 @@ export function commentPastePlugin(): Plugin {
         },
       },
       /**
-       * Decides whether the comments come with this content.
+       * Decides whether the comments, and the row ids, come with this
+       * content.
        * @param slice - The parsed clipboard or drop content.
        * @param view - The view it is landing in.
        * @returns The content as it should land.
        */
-      transformPasted: (slice, view): Slice =>
-        commentsArrivingWith(slice, view, dropCopies),
+      transformPasted: (slice, view): Slice => {
+        const landed = commentsArrivingWith(slice, view, dropCopies);
+        return view.dragging !== null && dropCopies
+          ? withoutRowIds(landed)
+          : landed;
+      },
     },
   });
 }
