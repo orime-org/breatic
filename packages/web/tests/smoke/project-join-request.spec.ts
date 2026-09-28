@@ -134,6 +134,20 @@ test('B asks to join from the card; A approves as Editor; B walks in', async ({ 
 
   const detail = await dataOf<{ myRole: string }>(await b.request.get(`/api/v1/projects/${target.id}`), 'B opens');
   expect(detail.myRole).toBe('editor');
+
+  // B's bell says they were let in, and its project name opens the project.
+  await pageB.goto(`/studio/${studioSlug}/projects`);
+  await pageB.getByTestId('bell-trigger').click();
+  const approved = pageB.locator('[data-testid^="bell-notification-headline-"]', { hasText: target.name }).first();
+  await expect(approved).toBeVisible({ timeout: 15_000 });
+  const [opened] = await Promise.all([
+    b.waitForEvent('page'),
+    approved.getByRole('link', { name: target.name }).click(),
+  ]);
+  await opened.waitForURL(new RegExp(`/project/${target.slug}-${target.id}`), { timeout: 20_000 });
+  await expect(opened.getByTestId('project-page')).toBeVisible({ timeout: 30_000 });
+  await opened.close();
+  await pageB.keyboard.press('Escape');
   await pageB.goto(`/studio/${studioSlug}/projects`);
   const link = pageB.getByRole('link', { name: new RegExp(target.name) });
   await expect(link).toBeVisible({ timeout: 20_000 });

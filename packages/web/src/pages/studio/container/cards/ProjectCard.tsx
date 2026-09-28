@@ -77,9 +77,12 @@ export function ProjectCard({
     </>
   );
   return (
-    <div className='group relative overflow-hidden rounded-chrome border border-border bg-card transition-colors hover:border-foreground-disabled'>
+    <div className='group relative overflow-hidden rounded-chrome border border-border bg-card transition-colors hover:border-foreground-disabled has-[>:first-child:focus-visible]:ring-1 has-[>:first-child:focus-visible]:ring-ring'>
       {project.myRole !== null ? (
-        <Link to={`/project/${project.slug}-${project.id}`} className='flex flex-col'>
+        <Link
+          to={`/project/${project.slug}-${project.id}`}
+          className='flex flex-col focus-visible:outline-none'
+        >
           {body}
         </Link>
       ) : (
@@ -89,7 +92,7 @@ export function ProjectCard({
             variant={null}
             size={null}
             onClick={openJoin}
-            className='flex w-full flex-col items-stretch justify-start whitespace-normal rounded-none text-left text-base font-normal'
+            className='flex w-full flex-col items-stretch justify-start whitespace-normal rounded-none text-left text-base font-normal focus-visible:ring-0'
           >
             {body}
           </Button>

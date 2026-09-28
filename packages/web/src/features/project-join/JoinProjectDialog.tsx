@@ -123,6 +123,10 @@ export function JoinProjectDialog({
   const close = React.useCallback(() => handleOpenChange(false), [handleOpenChange]);
   const onSend = React.useCallback(() => sendRequest(), [sendRequest]);
   const onWithdraw = React.useCallback(() => withdrawRequest(), [withdrawRequest]);
+  const onMessageChange = React.useCallback(
+    (event: React.ChangeEvent<HTMLTextAreaElement>) => setMessage(event.target.value),
+    [],
+  );
 
   const data = view.data;
   const projectName = data?.project.name ?? '';
@@ -194,7 +198,7 @@ export function JoinProjectDialog({
                 value={message}
                 maxLength={500}
                 placeholder={t('projectJoin.messagePlaceholder')}
-                onChange={(event) => setMessage(event.target.value)}
+                onChange={onMessageChange}
                 disabled={sending}
               />
             </>

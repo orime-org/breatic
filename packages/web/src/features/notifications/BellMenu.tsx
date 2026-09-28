@@ -66,9 +66,9 @@ function shareTokenOf(payload: Record<string, unknown>): string | null {
  * Bell notification menu — the per-user inbox shared by the project chrome and
  * the studio chrome.
  *
- * Rows come in two kinds. Five of them stand for a request somebody is waiting
- * on an answer to — the two invites, the two transfers, the role upgrade — and
- * each carries a token to the page they are all answered on. The rest are news
+ * Rows come in two kinds. Some stand for a request somebody is waiting on an
+ * answer to — the two invites, the two transfers, the role upgrade, the join
+ * request — and each carries a token to the page they are all answered on. The rest are news
  * (`*_accepted`, `*_approved`, `*_rejected`) and mark themselves read.
  *
  * Deciding used to happen HERE, differently per flow: the studio invite and
