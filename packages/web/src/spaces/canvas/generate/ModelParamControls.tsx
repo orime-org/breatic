@@ -6,6 +6,7 @@ import * as React from 'react';
 import type { ModelEntry } from '@breatic/shared';
 
 import { Input } from '@web/components/ui/input';
+import { ItemsEditor } from '@web/spaces/canvas/generate/ItemsEditor';
 import { cn } from '@web/lib/utils';
 import { modelControls, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
@@ -120,6 +121,17 @@ function ModelControlRow({ control, shown, onChange }: ModelControlRowProps): Re
           onChange={onChange}
           testIdPrefix='generate-param'
           className={undefined}
+        />
+      );
+    case 'items':
+      return (
+        <ItemsEditor
+          name={control.name}
+          label={control.label}
+          max={control.max}
+          fields={control.fields}
+          held={shown}
+          onChange={onChange}
         />
       );
     case 'text':

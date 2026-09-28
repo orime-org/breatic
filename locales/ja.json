@@ -527,7 +527,9 @@
       "lyricsMissing": "歌詞を書いてください",
       "refuseExecuteNoStyle": "スタイルを書いてください",
       "refuseExecuteNoReference": "楽曲・メロディ・ボーカルのいずれかを選んでください",
-      "creditsPerThousandChars": "{credits} / 1000文字"
+      "creditsPerThousandChars": "{credits} / 1000文字",
+      "itemsAdd": "追加",
+      "itemsRemove": "削除"
     },
     "nodeMenu": {
       "generate": "生成",

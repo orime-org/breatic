@@ -539,7 +539,9 @@
       "lyricsMissing": "Write the lyrics first",
       "refuseExecuteNoStyle": "Write the style first",
       "refuseExecuteNoReference": "Pick a song, melody or vocals",
-      "creditsPerThousandChars": "{credits} / 1K chars"
+      "creditsPerThousandChars": "{credits} / 1K chars",
+      "itemsAdd": "Add",
+      "itemsRemove": "Remove"
     },
     "edge": {
       "delete": "Delete connection"

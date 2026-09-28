@@ -99,6 +99,68 @@ describe('ModelParamControls', () => {
     expect(onChange).toHaveBeenCalledWith({ negative_prompt: 'blur, text' });
   });
 
+  describe('a list of entries', () => {
+    const SPEAKERS = model({
+      speakers: {
+        description: '',
+        label: 'Speakers',
+        type: 'items',
+        max_items: 2,
+        default: null,
+        fill: 'panel',
+        fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+      },
+    });
+    const ONE = { speakers: [{ speaker: 'Ana', voice: 'Kore' }] };
+
+    it('draws each entry, and how many of the most it holds', () => {
+      render(<ModelParamControls model={SPEAKERS} value={ONE} onChange={() => {}} />);
+
+      expect(screen.getByText('Speakers')).toBeInTheDocument();
+      expect(screen.getByTestId('generate-param-speakers-count')).toHaveTextContent('1 / 2');
+      expect(screen.getByTestId('generate-param-speakers-0-speaker')).toHaveValue('Ana');
+      expect(screen.getByTestId('generate-param-speakers-0-voice')).toHaveTextContent('Kore');
+    });
+
+    it('adds an entry starting at each field\'s first value, and stops at the most', () => {
+      const onChange = vi.fn();
+      const { rerender } = render(
+        <ModelParamControls model={SPEAKERS} value={ONE} onChange={onChange} />,
+      );
+
+      fireEvent.click(screen.getByTestId('generate-param-speakers-add'));
+      expect(onChange).toHaveBeenCalledWith({
+        speakers: [
+          { speaker: 'Ana', voice: 'Kore' },
+          { speaker: '', voice: 'Kore' },
+        ],
+      });
+
+      rerender(
+        <ModelParamControls
+          model={SPEAKERS}
+          value={{ speakers: [ONE.speakers[0], { speaker: 'Ben', voice: 'Puck' }] }}
+          onChange={onChange}
+        />,
+      );
+      expect(screen.getByTestId('generate-param-speakers-add')).toBeDisabled();
+    });
+
+    it('writes an edited field when the reader leaves the box, and removes an entry', () => {
+      const onChange = vi.fn();
+      render(<ModelParamControls model={SPEAKERS} value={ONE} onChange={onChange} />);
+      const box = screen.getByTestId('generate-param-speakers-0-speaker');
+
+      fireEvent.change(box, { target: { value: 'Ann' } });
+      expect(onChange).not.toHaveBeenCalled();
+      fireEvent.blur(box);
+      expect(onChange).toHaveBeenCalledWith({ speakers: [{ speaker: 'Ann', voice: 'Kore' }] });
+
+      fireEvent.click(screen.getByTestId('generate-param-speakers-0-remove'));
+      expect(onChange).toHaveBeenCalledWith({ speakers: [] });
+    });
+  });
+
   it('draws nothing for a model with no controls of its own', () => {
     const { container } = render(
       <ModelParamControls model={model({})} value={{}} onChange={() => {}} />,

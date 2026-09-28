@@ -527,7 +527,9 @@
       "lyricsMissing": "先寫下歌詞",
       "refuseExecuteNoStyle": "先寫下風格",
       "refuseExecuteNoReference": "挑一段整曲、旋律或人聲",
-      "creditsPerThousandChars": "{credits} / 千字"
+      "creditsPerThousandChars": "{credits} / 千字",
+      "itemsAdd": "新增",
+      "itemsRemove": "移除"
     },
     "nodeMenu": {
       "generate": "生成",

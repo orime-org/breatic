@@ -9,20 +9,39 @@
  * carries an English `label` in its yaml instead, and its shape comes from the
  * declaration: `values` is a row of options (a true/false pair is a switch),
  * `min`/`max` is a slider, `type: text` is a text box. The `label` is what
- * marks a param as one of these; a list (`type: items`) has an editor of its
- * own and is not drawn here.
+ * marks a param as one of these. A list of entries (`type: items`) is a list
+ * editor whose rows follow the entry's `fields`; a list whose entries carry a
+ * `prompt` and a `duration` is a storyboard, which stands in for the prompt
+ * box rather than sitting in the popover.
  */
 
-import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
+import type { ItemField, ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import type { ParamOption } from '@web/spaces/canvas/generate/ParamOptionGroup';
+
+/** One field of a list editor's row. */
+export type ItemFieldControl =
+  | { name: string; kind: 'text' }
+  | { name: string; kind: 'choice'; options: ParamOption[] };
 
 /** One control a model's own param calls for. */
 export type ModelControl =
   | { kind: 'toggle'; name: string; label: string }
   | { kind: 'choice'; name: string; label: string; options: ParamOption[] }
   | { kind: 'range'; name: string; label: string; min: number; max: number; step: number }
-  | { kind: 'text'; name: string; label: string };
+  | { kind: 'text'; name: string; label: string }
+  | { kind: 'items'; name: string; label: string; max: number | undefined; fields: ItemFieldControl[] };
+
+/** A storyboard: shots, each with its own prompt and length (#2156). */
+export interface StoryboardControl {
+  name: string;
+  label: string;
+  max: number | undefined;
+  /** The lengths one shot may take, in seconds. */
+  durations: number[];
+  /** The length a new shot starts at. */
+  defaultDuration: number;
+}
 
 /**
  * How one value of a choice reads on screen.
@@ -30,7 +49,7 @@ export type ModelControl =
  * @param value - One of its values.
  * @returns The declared label, else the value with a capital first letter.
  */
-function optionLabel(spec: ParamDescriptor, value: string | number): string {
+function optionLabel(spec: Pick<ParamDescriptor, 'value_labels'>, value: string | number): string {
   const raw = String(value);
   return spec.value_labels?.[raw] ?? raw.charAt(0).toUpperCase() + raw.slice(1);
 }
@@ -47,7 +66,11 @@ function controlFor(
   label: string,
   spec: ParamDescriptor,
 ): ModelControl | undefined {
-  if (spec.type === 'items') return undefined;
+  if (spec.type === 'items') {
+    if (isStoryboard(spec)) return undefined;
+    const fields = Object.entries(spec.fields ?? {}).map(([field, declared]) => fieldControl(field, declared));
+    return { kind: 'items', name, label, max: spec.max_items, fields };
+  }
   if (spec.type === 'text') return { kind: 'text', name, label };
   const values = spec.values;
   if (values && values.length > 0) {
@@ -59,6 +82,49 @@ function controlFor(
   }
   if (typeof spec.min === 'number' && typeof spec.max === 'number') {
     return { kind: 'range', name, label, min: spec.min, max: spec.max, step: spec.step ?? 1 };
+  }
+  return undefined;
+}
+
+/**
+ * The control one field of a list entry calls for.
+ * @param name - The field name.
+ * @param field - Its declaration.
+ * @returns A choice when it states values, else a text box.
+ */
+function fieldControl(name: string, field: ItemField): ItemFieldControl {
+  const values = (field.values ?? []).filter((v): v is string | number => typeof v !== 'boolean');
+  return values.length > 0
+    ? { name, kind: 'choice', options: values.map((v) => ({ value: v, label: optionLabel({}, v) })) }
+    : { name, kind: 'text' };
+}
+
+/**
+ * Whether a list's entries are shots: a prompt and a length each.
+ * @param spec - The list's declaration.
+ * @returns True for a storyboard.
+ */
+function isStoryboard(spec: ParamDescriptor): boolean {
+  return spec.fields?.prompt?.type === 'text' && (spec.fields.duration?.values?.length ?? 0) > 0;
+}
+
+/**
+ * The storyboard this model offers, if any.
+ * @param model - The active model.
+ * @returns Its storyboard param, or undefined.
+ */
+export function storyboardControl(model: ModelEntry | undefined): StoryboardControl | undefined {
+  for (const [name, spec] of Object.entries(model?.params ?? {})) {
+    if (spec.fill !== 'panel' || spec.type !== 'items' || !isStoryboard(spec)) continue;
+    const durations = (spec.fields?.duration?.values ?? []).filter((v): v is number => typeof v === 'number');
+    const declared = spec.fields?.duration?.default;
+    return {
+      name,
+      label: spec.label ?? name,
+      max: spec.max_items,
+      durations,
+      defaultDuration: typeof declared === 'number' ? declared : (durations[0] ?? 1),
+    };
   }
   return undefined;
 }

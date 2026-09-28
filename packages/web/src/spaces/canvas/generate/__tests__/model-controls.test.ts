@@ -10,7 +10,7 @@
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 
-import { modelControls } from '@web/spaces/canvas/generate/model-controls';
+import { modelControls, storyboardControl } from '@web/spaces/canvas/generate/model-controls';
 
 /**
  * A model declaring the given params.
@@ -105,18 +105,69 @@ describe('modelControls', () => {
     ]);
   });
 
-  it('leaves out the shared controls, lists, and anything not the panel\'s to fill', () => {
+  it('draws a list editor for a list of entries, each field by its own shape', () => {
+    const controls = modelControls(
+      model({
+        speakers: {
+          description: '',
+          label: 'Speakers',
+          type: 'items',
+          max_items: 2,
+          default: null,
+          fill: 'panel',
+          fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+        },
+      }),
+    );
+    expect(controls).toEqual([
+      {
+        kind: 'items',
+        name: 'speakers',
+        label: 'Speakers',
+        max: 2,
+        fields: [
+          { name: 'speaker', kind: 'text' },
+          {
+            name: 'voice',
+            kind: 'choice',
+            options: [
+              { value: 'Kore', label: 'Kore' },
+              { value: 'Puck', label: 'Puck' },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('keeps a storyboard out of the popover and names it on its own', () => {
+    const storyboard = model({
+      multi_prompt: {
+        description: '',
+        label: 'Storyboard',
+        type: 'items',
+        max_items: 6,
+        default: null,
+        fill: 'panel',
+        fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3], default: 2 } },
+      },
+    });
+    expect(modelControls(storyboard)).toEqual([]);
+    expect(storyboardControl(storyboard)).toEqual({
+      name: 'multi_prompt',
+      label: 'Storyboard',
+      max: 6,
+      durations: [1, 2, 3],
+      defaultDuration: 2,
+    });
+    expect(storyboardControl(model({}))).toBeUndefined();
+  });
+
+  it('leaves out the shared controls and anything not the panel\'s to fill', () => {
     const controls = modelControls(
       model({
         // A shared control carries no label: its panel draws it by name.
         aspect_ratio: { description: '', values: ['1:1'], default: '1:1', fill: 'panel' },
-        multi_prompt: {
-          description: '',
-          label: 'Storyboard',
-          type: 'items',
-          default: null,
-          fill: 'panel',
-        },
         seed: { description: '', label: 'Seed', min: 0, max: 9, default: 0, fill: 'none' },
       }),
     );
