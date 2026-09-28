@@ -529,7 +529,10 @@
       "refuseExecuteNoReference": "挑一段整曲、旋律或人聲",
       "creditsPerThousandChars": "{credits} / 千字",
       "itemsAdd": "新增",
-      "itemsRemove": "移除"
+      "itemsRemove": "移除",
+      "refuseExecuteNoShot": "每一段分鏡都要寫內容",
+      "refuseExecuteShotLength": "分鏡總時長要在 {min}–{max} 秒之間",
+      "shotPlaceholder": "這一段的畫面"
     },
     "nodeMenu": {
       "generate": "生成",

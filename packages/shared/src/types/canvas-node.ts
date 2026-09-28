@@ -550,6 +550,13 @@ export interface CanvasNodeFields {
      */
     moodImageUrl?: string;
     /**
+     * Whether the reader turned the storyboard on (#2156, wire
+     * `data.storyboard`). While on, the shots stand in for the prompt; the
+     * shots themselves live under the model's params, so turning it off keeps
+     * them for next time.
+     */
+    storyboard?: boolean;
+    /**
      * The words to sing, on an audio node (#1960, wire `data.lyrics`) — a
      * `Y.XmlFragment` beside `prompt`, since two people may write lyrics at
      * once the way they may write a prompt at once.

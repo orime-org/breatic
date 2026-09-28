@@ -57,6 +57,8 @@ function renderPanel(over: Partial<React.ComponentProps<typeof VideoGeneratePane
         creditText='88'
         mode='t2v'
         onToggleMode={() => {}}
+        storyboardOn={false}
+        onToggleStoryboard={() => {}}
         modeOptions={VIDEO_MODE_OPTIONS}
         promptRequired
         referenceKinds={[]}
@@ -246,5 +248,18 @@ describe('VideoGeneratePanel', () => {
       ],
     });
     expect(screen.getByTestId('generate-ref-e1')).toBeInTheDocument();
+  });
+
+  it('draws the storyboard switch only for a model that offers one', () => {
+    renderPanel();
+    expect(screen.queryByTestId('generate-video-storyboard')).toBeNull();
+    cleanup();
+    const onToggleStoryboard = vi.fn();
+    renderPanel({ storyboardLabel: 'Storyboard', storyboardOn: true, onToggleStoryboard });
+    const toggle = screen.getByTestId('generate-video-storyboard');
+    expect(toggle).toHaveTextContent('Storyboard');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(toggle);
+    expect(onToggleStoryboard).toHaveBeenCalledTimes(1);
   });
 });

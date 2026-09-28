@@ -870,6 +870,31 @@ export function setNodeParams(
 }
 
 /**
+ * Turn a video node's storyboard on or off (#2156). Only the switch: the shots
+ * stay under the model's params either way, so turning it back on finds them.
+ * Scalar last-write-wins like `model`; off deletes the key, its absent state.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node.
+ * @param on - Whether the shots stand in for the prompt.
+ */
+export function setNodeStoryboard(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  on: boolean,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const node = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId);
+  const data = node?.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => {
+    if (on) data.set('storyboard', true);
+    else data.delete('storyboard');
+  }, CANVAS_UNDO);
+}
+
+/**
  * Set a content node's style-reference image URL (image-node style slice
  * #1664) — a pick-time COPY of the chosen image's asset URL (one style image
  * max; no relationship to the upstream node). Scalar last-write-wins like

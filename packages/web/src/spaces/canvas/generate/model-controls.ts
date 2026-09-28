@@ -21,8 +21,8 @@ import type { ParamOption } from '@web/spaces/canvas/generate/ParamOptionGroup';
 
 /** One field of a list editor's row. */
 export type ItemFieldControl =
-  | { name: string; kind: 'text' }
-  | { name: string; kind: 'choice'; options: ParamOption[] };
+  | { name: string; kind: 'text'; placeholder?: string }
+  | { name: string; kind: 'choice'; options: ParamOption[]; initial?: string | number };
 
 /** One control a model's own param calls for. */
 export type ModelControl =
@@ -37,10 +37,10 @@ export interface StoryboardControl {
   name: string;
   label: string;
   max: number | undefined;
-  /** The lengths one shot may take, in seconds. */
-  durations: number[];
-  /** The length a new shot starts at. */
-  defaultDuration: number;
+  /** One shot's fields, drawn by the same editor as any other list. */
+  fields: ItemFieldControl[];
+  /** The totals the run takes, in seconds: the model's own `duration` values. */
+  lengths: number[];
 }
 
 /**
@@ -94,9 +94,10 @@ function controlFor(
  */
 function fieldControl(name: string, field: ItemField): ItemFieldControl {
   const values = (field.values ?? []).filter((v): v is string | number => typeof v !== 'boolean');
-  return values.length > 0
-    ? { name, kind: 'choice', options: values.map((v) => ({ value: v, label: optionLabel({}, v) })) }
-    : { name, kind: 'text' };
+  if (values.length === 0) return { name, kind: 'text' };
+  const options = values.map((v) => ({ value: v, label: optionLabel({}, v) }));
+  const initial = values.find((v) => v === field.default);
+  return initial === undefined ? { name, kind: 'choice', options } : { name, kind: 'choice', options, initial };
 }
 
 /**
@@ -116,14 +117,12 @@ function isStoryboard(spec: ParamDescriptor): boolean {
 export function storyboardControl(model: ModelEntry | undefined): StoryboardControl | undefined {
   for (const [name, spec] of Object.entries(model?.params ?? {})) {
     if (spec.fill !== 'panel' || spec.type !== 'items' || !isStoryboard(spec)) continue;
-    const durations = (spec.fields?.duration?.values ?? []).filter((v): v is number => typeof v === 'number');
-    const declared = spec.fields?.duration?.default;
     return {
       name,
       label: spec.label ?? name,
       max: spec.max_items,
-      durations,
-      defaultDuration: typeof declared === 'number' ? declared : (durations[0] ?? 1),
+      fields: Object.entries(spec.fields ?? {}).map(([field, declared]) => fieldControl(field, declared)),
+      lengths: (model?.params.duration?.values ?? []).filter((v): v is number => typeof v === 'number'),
     };
   }
   return undefined;

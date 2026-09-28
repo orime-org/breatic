@@ -210,5 +210,15 @@ describe('VideoParamsPicker', () => {
     fireEvent.click(screen.getByTestId('generate-video-audio-toggle'));
     expect(onChange).toHaveBeenCalledWith({ generate_audio: false });
   });
+
+  it('states the length a storyboard sets but offers no way to change it', () => {
+    render(
+      <VideoParamsPicker model={FULL} params={{ duration: 6 }} durationLocked onChange={() => {}} />,
+    );
+    expect(screen.getByTestId('generate-video-params-trigger')).toHaveTextContent('6');
+    fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(screen.queryByTestId('generate-video-duration-option-6')).toBeNull();
+    expect(screen.getByTestId('generate-video-ratio-option-9:16')).toBeVisible();
+  });
 });
 

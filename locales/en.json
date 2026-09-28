@@ -541,7 +541,10 @@
       "refuseExecuteNoReference": "Pick a song, melody or vocals",
       "creditsPerThousandChars": "{credits} / 1K chars",
       "itemsAdd": "Add",
-      "itemsRemove": "Remove"
+      "itemsRemove": "Remove",
+      "refuseExecuteNoShot": "Every shot needs a description",
+      "refuseExecuteShotLength": "Shots must add up to {min}–{max}s",
+      "shotPlaceholder": "Describe this shot"
     },
     "edge": {
       "delete": "Delete connection"

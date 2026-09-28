@@ -41,6 +41,8 @@ interface VideoParamsPickerProps {
    * record, so the model's own controls read their values out of it too.
    */
   params: Readonly<Record<string, unknown>>;
+  /** Whether the length is set elsewhere — by a storyboard's shots — and so offered read-only. */
+  durationLocked?: boolean;
   /** Called with the changed field only. */
   onChange: (partial: object) => void;
 }
@@ -155,12 +157,14 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
  * @param root0 - Component props.
  * @param root0.model - The current model.
  * @param root0.params - The node's params for this model.
+ * @param root0.durationLocked - Whether the length is set by a storyboard.
  * @param root0.onChange - Called with the changed field.
  * @returns The video params picker.
  */
 export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   model,
   params,
+  durationLocked = false,
   onChange,
 }: VideoParamsPickerProps): React.JSX.Element {
   const t = useTranslation();
@@ -186,6 +190,9 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
       .map((v) => ({ value: v, label: t('canvas.generatePanel.durationSeconds', { n: v }) }))
     : [];
   const audioSupported = offers(model, 'generate_audio');
+  // While a storyboard is on its shots set the length, so the trigger still
+  // states it and the popover offers no way to change it.
+  const durationChoices = durationLocked ? [] : durations;
 
   // Every gap in this popover is the preceding block's `mb-3`, carried only
   // while something follows. A group renders nothing when the model declares
@@ -208,7 +215,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
     .filter(Boolean)
     .join(' · ') || t('canvas.generatePanel.videoParams');
   const sharedShown =
-    ratios.length + resolutions.length + durations.length > 0 || audioSupported;
+    ratios.length + resolutions.length + durationChoices.length > 0 || audioSupported;
 
   const onSelectRatio = React.useCallback(
     (v: string | number) => onChange({ aspect_ratio: String(v) }),
@@ -258,7 +265,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           onSelect={onSelectRatio}
           testIdPrefix='generate-video-ratio-option'
           className={
-            resolutions.length > 0 || durations.length > 0 || audioSupported
+            resolutions.length > 0 || durationChoices.length > 0 || audioSupported
               ? 'mb-3'
               : undefined
           }
@@ -269,11 +276,11 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           value={value.resolution}
           onSelect={onSelectResolution}
           testIdPrefix='generate-video-resolution-option'
-          className={durations.length > 0 || audioSupported ? 'mb-3' : undefined}
+          className={durationChoices.length > 0 || audioSupported ? 'mb-3' : undefined}
         />
         <ParamOptionGroup
           label={t('canvas.generatePanel.duration')}
-          options={durations}
+          options={durationChoices}
           value={value.duration}
           onSelect={onSelectDuration}
           testIdPrefix='generate-video-duration-option'

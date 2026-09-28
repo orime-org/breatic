@@ -106,6 +106,17 @@ export interface ExecuteGateInput {
    * one is true.
    */
   voiceChosen?: boolean;
+  /**
+   * The shots, when the reader turned the storyboard on (#2156).
+   *
+   * They stand in for the prompt box, so the caller passes `promptRequired:
+   * false` alongside them. `lengths` are the totals the model's own `duration`
+   * takes: the shots' lengths add up to the run's, and nothing else sets it.
+   */
+  storyboard?: {
+    shots: ReadonlyArray<{ prompt: string; duration: number }>;
+    lengths: readonly number[];
+  };
 }
 
 /**
@@ -130,7 +141,9 @@ export type ExecuteRefusal =
   | 'source-missing'
   | 'sources-missing'
   | 'too-many-references'
-  | 'lyrics-missing';
+  | 'lyrics-missing'
+  | 'shot-missing'
+  | 'storyboard-length';
 
 /**
  * Why Generate cannot run, and the detail a sentence about it needs.
@@ -147,6 +160,8 @@ export interface ExecuteVerdict {
   readonly slot?: string;
   /** What the too-many sentence interpolates: the cap, and of which kind. */
   readonly over?: { limit: number; kind: ReferenceKind };
+  /** What the storyboard-length sentence interpolates: the total, and the range it must fall in. */
+  readonly length?: { total: number; min: number; max: number };
 }
 
 /**
@@ -216,6 +231,21 @@ export function evaluateExecute(
   // `invalid params` the refusal exists to spare the user.
   if (input.lyricsRequired && extractPromptText(input.lyricsText).length === 0) {
     return { refusal: 'lyrics-missing' };
+  }
+  // The shots are where the prompt box was, so they are judged where it is:
+  // an empty one on the text the vendor receives, then their total length.
+  const board = input.storyboard;
+  if (board) {
+    if (board.shots.length === 0 || board.shots.some((s) => extractPromptText(s.prompt).length === 0)) {
+      return { refusal: 'shot-missing' };
+    }
+    const total = board.shots.reduce((sum, s) => sum + s.duration, 0);
+    if (!board.lengths.includes(total)) {
+      return {
+        refusal: 'storyboard-length',
+        length: { total, min: Math.min(...board.lengths), max: Math.max(...board.lengths) },
+      };
+    }
   }
   // The remaining refusals name a control the user has to go and fill. Only
   // one can be live at a time: `voiceRequired` says the model picks from a
@@ -319,6 +349,8 @@ export const REFUSAL_TOAST_KEY: Record<ExecuteRefusal, string | null> = {
   'sources-missing': 'canvas.generatePanel.refuseExecuteNoReference',
   'too-many-references': 'canvas.generatePanel.errorTooManyReferences',
   'lyrics-missing': 'canvas.generatePanel.lyricsMissing',
+  'shot-missing': 'canvas.generatePanel.refuseExecuteNoShot',
+  'storyboard-length': 'canvas.generatePanel.refuseExecuteShotLength',
 };
 
 /**

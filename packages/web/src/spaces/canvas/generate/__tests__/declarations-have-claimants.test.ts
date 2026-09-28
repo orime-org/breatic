@@ -51,7 +51,7 @@ import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
-import { modelControls } from '@web/spaces/canvas/generate/model-controls';
+import { modelControls, storyboardControl } from '@web/spaces/canvas/generate/model-controls';
 import { RATIO_RESOLUTION_PARAMS } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import {
   slotsForMode,
@@ -243,6 +243,9 @@ function claimsFor(
     for (const control of modelControls({ params: model.params } as unknown as ModelEntry)) {
       controls.add(control.name);
     }
+    // The video panel also draws a storyboard, in place of the prompt box.
+    const board = storyboardControl({ params: model.params } as unknown as ModelEntry);
+    if (node === 'video' && board) controls.add(board.name);
   }
   return { slots, controls };
 }
