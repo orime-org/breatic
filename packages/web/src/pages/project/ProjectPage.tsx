@@ -725,7 +725,7 @@ function ProjectWorkspace({
   // on the same frame. They were not, and only the banner half showed on a
   // dropped connection.
   //
-  // Cover it with a full-area `bg-black/80` overlay that
+  // Cover it with a full-area `bg-overlay` overlay that
   // (a) matches the LoadingOverlay / Dialog backdrop dim pattern used
   //     elsewhere in the app (single visual vocabulary for "blocked"),
   // (b) is unmistakable at a glance, which is the entire job: once the user can
@@ -1046,7 +1046,7 @@ function ProjectWorkspace({
             through either. */}
             {workspaceDisabled ? (
               <div
-                className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
+                className='absolute inset-0 z-40 cursor-not-allowed bg-overlay'
                 data-testid='workspace-disabled-overlay'
               />
             ) : null}

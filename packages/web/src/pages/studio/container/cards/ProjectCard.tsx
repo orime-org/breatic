@@ -61,7 +61,9 @@ export function ProjectCard({
         <p className='truncate text-base font-semibold text-foreground'>
           {project.name}
         </p>
-        <div className='mt-2 flex items-center gap-2'>
+        {/* As tall as the role badge, so a card without one keeps its date on
+            the same line as the member cards beside it. */}
+        <div className='mt-2 flex min-h-[22px] items-center gap-2'>
           <span className='text-xs text-muted-foreground'>
             {t('studio.container.card.createdAt', {
               time: formatRelativeTime(project.createdAt, t),
@@ -105,7 +107,7 @@ export function ProjectCard({
           aria-label={t('studio.container.card.more')}
           variant={null}
           size={null}
-          className='absolute right-[7px] top-[7px] z-10 flex h-[22px] w-[22px] items-center justify-center rounded-chrome bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
+          className='absolute right-[7px] top-[7px] z-10 flex h-[var(--btn-compact)] w-[var(--btn-compact)] items-center justify-center rounded-chrome bg-black/45 text-white opacity-0 transition-opacity hover:bg-black/70 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100'
         >
           <MoreHorizontal className='h-3.5 w-3.5' />
         </Button>

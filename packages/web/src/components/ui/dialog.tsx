@@ -50,7 +50,7 @@ const DialogClose = DialogPrimitive.Close;
  * shorter one here cuts the content's exit short.
  */
 const OVERLAY_CLASS =
-  'fixed inset-0 z-50 bg-black/80 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0';
+  'fixed inset-0 z-50 bg-overlay duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0';
 
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
@@ -184,7 +184,7 @@ const DialogHeader = ({
 }: DialogHeaderProps) => (
   <header
     className={cn(
-      'flex items-start justify-between gap-4 border-b border-border px-4 py-3',
+      'flex items-start justify-between gap-4 px-4 py-3',
       className,
     )}
     {...props}
@@ -214,7 +214,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      'flex flex-col-reverse gap-2 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-end',
+      'flex flex-col-reverse gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-end',
       className,
     )}
     {...props}
