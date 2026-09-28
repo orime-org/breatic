@@ -65,8 +65,7 @@ memory_conversation_max_size: 8192
 # a turn can make many calls and each of them is bounded by this.
 max_output_tokens: 16384
 
-# How long the words of one turn's question may be, in characters. A skill
-# command is measured on its name and input.
+# How long the words of one turn's question may be, in characters.
 #
 # The browser draws a lower line (10,000) and says so as the reader types;
 # this one is where a client cannot skip it.

@@ -148,24 +148,21 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 
 // ── Chat ─────────────────────────────────────────────────────────────
 
-/**
- * Chat-attached chip — a snapshot of a canvas node the user picked
- * from a Space and attached to this message (spec/07-chat-agent.md
- * §10.18.2 v13). The `dataSnapshot` is a deep copy taken at attach
- * time; subsequent Space-side edits / deletions of the source node
- * do NOT mutate the chip (C1 full-snapshot model — same philosophy as
- * spec §6.2 Studio→Space copies).
- */
 /** Longer than any node or file id; the id is stored with the message. */
 const ATTACHED_CHIP_ID_MAX = 128;
 
+/**
+ * One item attached to a chat message: a canvas node the reader added to the
+ * agent, or a file picked with the attach button. The snapshot is taken when
+ * it is attached; later edits to the node do not reach it.
+ */
 export const chatAttachedChipSchema = z.object({
-  /** Source node id (audit only — not a live reference). */
+  /** The canvas node's id, or one made up for a picked file. */
   id: z.string().max(ATTACHED_CHIP_ID_MAX),
   type: z.enum(["image", "video", "audio", "text", "annotation"]),
   /** Display name for the chip; LLM context renders this as the section title. */
   name: z.string(),
-  /** Deep copy of the source node's `data` at attach time. */
+  /** The node's data with its words as plain text, or a file's `{ url }` or `{ text }`. */
   data_snapshot: z.record(z.string(), z.unknown()),
 });
 export type ChatAttachedChip = z.infer<typeof chatAttachedChipSchema>;
