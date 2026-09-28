@@ -833,6 +833,29 @@ test.describe('a card whose words were deleted', () => {
   });
 });
 
+test.describe('a row moved from the keyboard', () => {
+  test('keeps its comment on its words', async ({ page }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type('the line that moves with its comment');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('the line it moves past');
+    await commentOnParagraph(page, 0, 'this stays on the moved line');
+
+    await page.locator(`${EDITOR} p`).first().click();
+    await page.keyboard.press('ControlOrMeta+Shift+ArrowDown');
+
+    const paragraphs = page.locator(`${EDITOR} p`);
+    await expect(paragraphs.nth(1)).toHaveText(
+      'the line that moves with its comment',
+    );
+    await expect(paragraphs.nth(1).locator('.bn-thread-mark')).toHaveCount(1);
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+    await expect(page.getByTestId('doc-comment-card')).toHaveCount(1);
+    await expect(page.getByTestId('doc-comment-card-orphaned')).toHaveCount(0);
+  });
+});
+
 test.describe('a reply box that grows', () => {
   test('pushes the card below it down instead of covering it', async ({
     page,
