@@ -10,6 +10,7 @@
  */
 
 import type { ToolFailure } from "@shared/agent/tool-failure.js";
+import type { ChatAttachedChip } from "@shared/schemas/api.js";
 import type { CreditSourceKind } from "@shared/types/credit.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
@@ -88,6 +89,15 @@ export type StoredMessageMetadata = {
 
 export type MessagePart =
   | { type: "text"; text: string }
+  /**
+   * One item the user attached to their message: an uploaded file or a canvas
+   * node, as it was when attached.
+   *
+   * Kept apart from the text so the bubble shows the words the user typed and
+   * the conversation is titled after them; the two are joined only when the
+   * message is sent to the model.
+   */
+  | { type: "attachment"; chip: ChatAttachedChip }
   | { type: "reasoning"; text: string }
   /**
    * How long this turn spent thinking, in milliseconds.
