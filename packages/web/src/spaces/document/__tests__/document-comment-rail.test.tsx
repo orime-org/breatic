@@ -1311,6 +1311,65 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('c');
     });
 
+    it.each([
+      // [what the peer does, the line after it, the words the draft keeps]
+      ['types over its last two letters', 9, 2, 'n', 'alpha bran charlie', 'bra'],
+      ['types over its first two letters', 6, 2, 'XY', 'alpha XYavo charlie', 'avo'],
+      ['types over its first letter', 6, 1, 'X', 'alpha Xravo charlie', 'ravo'],
+    ])(
+      'leaves out what a peer %s in place',
+      async (_what, at, length, typed, after, kept) => {
+        // Letters written in place against an edge are not the reader's
+        // (§9.4), however few of the words they replace.
+        show();
+        aimDraft(6, 11);
+        await screen.findByTestId('doc-comment-draft-card');
+
+        peerEdits((line) => {
+          line.delete(at, length);
+          line.insert(at, typed);
+        });
+
+        expect(lines()).toEqual([after]);
+        expect(aimedWords()).toBe(kept);
+      },
+    );
+
+    it('finds a corrected copy of its words again although the same words stand elsewhere', async () => {
+      show('editor', ['one two', 'alpha bravo charlie', 'echo bravo']);
+      const second = lineStarts()[1]!;
+      aimAt(second + 6, second + 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.updateBlock(peer.editor.document[1]!, {
+          type: 'heading',
+          content: 'alpha brave charlie',
+        } as never);
+      });
+
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('brave');
+      expect(draftRangeIn(handle.editor.prosemirrorState)!.from).toBe(
+        lineStarts()[1]! + 6,
+      );
+    });
+
+    it('keeps its words across two lines when a peer splits the line inside them', async () => {
+      show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
+      const second = lineStarts()[1]!;
+      aimAt(second + 6, second + 10);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 8, 'Enter');
+
+      expect(lines()).toEqual(['alpha bravo charlie', 'delta ec', 'ho foxtrot']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('echo');
+    });
+
     it('leaves out the letters a peer writes in place of more than half of its first ones', async () => {
       // Too much is changed for the words to be found again; what the peer
       // wrote against the start edge is left out, like words typed there.
