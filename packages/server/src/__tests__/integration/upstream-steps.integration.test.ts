@@ -28,7 +28,7 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
-import { upstreamCloneRepo, upstreamStepRepo } from "@breatic/domain";
+import { assetRepo, upstreamCloneRepo, upstreamStepRepo } from "@breatic/domain";
 
 try {
   initCore(process.env);
@@ -139,6 +139,22 @@ describe("studio_upstream_clones", () => {
     expect(await columnsOf("studio_upstream_clones")).toEqual(
       expect.arrayContaining(["created_at", "updated_at", "deleted_at"]),
     );
+  });
+});
+
+describe("the cache key of a clone source", () => {
+  it("is the hash of the studio's asset stored under the source's key, and nothing for another studio", async () => {
+    const a = await seedStudio();
+    const b = await seedStudio();
+    const key = `audio/2026-09-28/${crypto.randomUUID()}.mp3`;
+    await sql`
+      INSERT INTO studio_assets
+        (studio_id, produced_by_user_id, content_hash, storage_key, file_url, mime_type, kind, source, size_bytes)
+      VALUES (${a.studioId}, ${a.userId}, 'sha-vocal', ${key}, ${`https://example.test/${key}`}, 'audio/mpeg', 'audio', 'upload', 10)
+    `;
+
+    expect(await assetRepo.findHashByStorageKey(a.studioId, key)).toBe("sha-vocal");
+    expect(await assetRepo.findHashByStorageKey(b.studioId, key)).toBeNull();
   });
 });
 

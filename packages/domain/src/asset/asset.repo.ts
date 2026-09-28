@@ -92,6 +92,27 @@ export async function findByStudioAndHash(
 }
 
 /**
+ * The content hash of a studio's live asset stored under a key.
+ * @param studioId - Owner studio.
+ * @param storageKey - The object's storage key.
+ * @returns The sha256 hex, or null when the studio holds no asset under it.
+ */
+export async function findHashByStorageKey(studioId: string, storageKey: string): Promise<string | null> {
+  const [row] = await db
+    .select({ contentHash: studioAssets.contentHash })
+    .from(studioAssets)
+    .where(
+      and(
+        eq(studioAssets.studioId, studioId),
+        eq(studioAssets.storageKey, storageKey),
+        isNull(studioAssets.deletedAt),
+      ),
+    )
+    .limit(1);
+  return row?.contentHash ?? null;
+}
+
+/**
  * Register a physical asset with WITHIN-STUDIO dedup. If the studio
  * already has a live asset with this content hash, nothing new is stored
  * and the existing row is returned (`deduped: true`); otherwise the new
