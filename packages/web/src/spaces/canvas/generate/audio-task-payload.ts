@@ -76,11 +76,7 @@ export interface AudioTaskInput {
    * The words to sing, on a mode that collects them (#1960).
    *
    * Absent means this mode has no lyrics box at all, and the field is then
-   * left out of the request entirely rather than sent empty. An empty STRING
-   * is a different statement: the track was marked instrumental, which is the
-   * one case the gateway accepts without words (measured 2026-09-05 — with
-   * `is_instrumental: true` it completes, and both music models refuse an
-   * empty lyrics on any vocal run).
+   * left out of the request entirely rather than sent empty.
    */
   lyricsText?: string;
 }

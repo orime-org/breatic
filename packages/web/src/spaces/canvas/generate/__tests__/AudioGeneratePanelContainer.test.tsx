@@ -94,6 +94,12 @@ const ELEVEN: ModelEntry = {
     stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
   },
   providers: [],
+  prompt_upstream: 'text',
+  pricing: {
+    base_price: 50000,
+    formula: '{"total_price": $ceil(base_price * $length(text) / 1000)}',
+    discount_rate: 100,
+  },
 };
 
 const FISH: ModelEntry = {
@@ -131,6 +137,12 @@ const SFX: ModelEntry = {
       default: 5,
     },
     audio_format: { description: '', default: 'mp3' },
+  },
+  // As the catalog prices it: $0.002 a second, three seconds at least.
+  pricing: {
+    base_price: 2000,
+    formula: '{"total_price": base_price * $max([3, $min([duration, 180])])}',
+    discount_rate: 100,
   },
 };
 
@@ -482,7 +494,9 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
       model: 'sonilo-sfx-v1',
       paramsByModel: { 'sonilo-sfx-v1': { duration: 5 } },
     });
-    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('1');
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('1'),
+    );
     unmount();
 
     await openPanel({
@@ -490,15 +504,22 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
       model: 'sonilo-sfx-v1',
       paramsByModel: { 'sonilo-sfx-v1': { duration: 30 } },
     });
-    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('6');
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('6'),
+    );
   });
 
-  it('costs nothing on a panel whose prompt is still empty', async () => {
-    // The figure follows the prompt, so a panel just opened on an empty one
-    // reads zero. What it does as text arrives is `estimateAudioCredits`, and
-    // its own tests cover the two vendors' units.
+  it('states the price per thousand characters while the prompt is still empty', async () => {
+    // A model priced by its text has no figure for a run with no text, so the
+    // panel states the rate instead: $0.05 per thousand characters is five
+    // credits. What it does as text arrives is `estimateCredits`, and its own
+    // tests cover the pricing formulas.
     await openPanel({ model: 'fish-s2-pro' });
-    expect(screen.getByTestId('generate-audio-rate').textContent).toBe('0');
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent(
+        '5 / 1K chars',
+      ),
+    );
   });
 });
 

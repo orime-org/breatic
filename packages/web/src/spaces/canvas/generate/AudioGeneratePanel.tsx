@@ -99,8 +99,7 @@ interface AudioGeneratePanelProps {
    */
   promptSlot: React.ReactNode;
   /**
-   * The injected lyrics editor, or null on a mode that collects none (#1960)
-   * and on an instrumental track, which has no words to write.
+   * The injected lyrics editor, or null on a mode that collects none (#1960).
    *
    * Its own slot rather than a flag: the editor is a live collaborative view
    * of a Yjs fragment, and the container is the layer that owns those.
@@ -109,10 +108,7 @@ interface AudioGeneratePanelProps {
   /**
    * Whether the boxes carry their names.
    *
-   * A music mode asks for two different things and names both, and it keeps
-   * naming the style box after the lyrics box goes away with the instrumental
-   * switch — otherwise the one remaining box loses its name at the moment the
-   * switch changes what the panel is asking for.
+   * A music mode asks for two different things and names both.
    */
   labelBoxes: boolean;
   /** Pick a mode. */

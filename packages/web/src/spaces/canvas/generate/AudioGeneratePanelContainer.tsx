@@ -35,9 +35,8 @@ import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import {
-  audioRequiredSlots,
+  audioMissing,
   audioSlotsForModel,
-  lyricsSilencedBy,
   modelTakesLyrics,
   AUDIO_SLOTS,
 } from '@web/spaces/canvas/generate/audio-slots';
@@ -47,9 +46,6 @@ import {
   AUDIO_MODE_OPTIONS,
   audioModeOption,
 } from '@web/spaces/canvas/generate/audio-mode-options';
-import {
-  audioFlagValue,
-} from '@web/spaces/canvas/generate/audio-params';
 import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
@@ -309,18 +305,6 @@ function AudioGeneratePanelBody({
   const stableSlotUrls = useContentStable(vm.slotUrls);
   const stableSlotThumbnails = useContentStable(vm.slotThumbnails);
 
-  /**
-   * Whether the track is marked vocal-free, so nothing is asked of the lyrics.
-   *
-   * One read for the two things that answer to it — the gate below and the
-   * lyrics box's own state — so the button and the box can never disagree
-   * about whether words are wanted.
-   */
-  const silencer = lyricsSilencedBy(vm.modelEntry);
-  const instrumental =
-    silencer !== undefined &&
-    audioFlagValue(vm.modelEntry, silencer, params[silencer]);
-
   // Every write re-derives from live Yjs at click time: the render closure goes
   // stale the moment a collaborator edits the node, and writing off it would
   // clobber their edit.
@@ -477,19 +461,8 @@ function AudioGeneratePanelBody({
     const freshPrompt = fresh.promptRequired
       ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
       : '';
-    const freshSilencer = lyricsSilencedBy(fresh.modelEntry);
-    const freshInstrumental =
-      freshSilencer !== undefined &&
-      audioFlagValue(fresh.modelEntry, freshSilencer, fresh.params[freshSilencer]);
-    // Empty on a track the user marked vocal-free: the box is off screen for
-    // that setting, so the request says what the panel says. That pair is also
-    // the one combination measured to complete without words (2026-09-05).
-    // What is written stays on the node, so turning the switch back off
-    // returns it.
     const freshLyrics = lyrics
-      ? freshInstrumental
-        ? ''
-        : (lyricsEditorRef.current?.serializePrompt() ?? lyricsTextRef.current)
+      ? (lyricsEditorRef.current?.serializePrompt() ?? lyricsTextRef.current)
       : undefined;
     const maxInputChars = fresh.modelEntry?.max_input_chars;
     const verdict = evaluateExecute({
@@ -503,14 +476,9 @@ function AudioGeneratePanelBody({
       maxInputChars,
       voiceRequired: fresh.voiceRequired,
       voiceChosen: fresh.voiceChosen,
-      requiredSlots: audioRequiredSlots(fresh.modelEntry, mode),
-      filledSlots: slots.filter((slot) => fresh.slotUrls[slot] !== undefined),
-      // Off the catalog: reference-to-music offers three places and takes any
-      // one of them, and nothing about the slots themselves says so.
-      sourceRule: fresh.modelEntry?.sourceRuleByMode[mode] ?? 'all_of',
+      missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls),
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
-      instrumental: freshInstrumental,
     });
     if (verdict != null) {
       const key = refusalToastKey(verdict.refusal);
@@ -600,9 +568,7 @@ function AudioGeneratePanelBody({
         <PromptEditor
           ref={promptEditorRef}
           // Half height on a music mode: a style brief is a line or two, and
-          // the box grows with whatever is typed into it either way. Keyed on
-          // the mode rather than on the lyrics box being up, so marking a
-          // track instrumental does not resize the box that stays.
+          // the box grows with whatever is typed into it either way.
           startingHeight={lyrics ? 'half' : 'full'}
           fragment={fragment}
           placeholder={promptPlaceholder}
@@ -638,14 +604,7 @@ function AudioGeneratePanelBody({
   const lyricsPlaceholder = t('canvas.generatePanel.musicLyricsPlaceholder');
   const lyricsSlot = React.useMemo(
     () =>
-      // An instrumental track has no words to write, so the box is not there
-      // to write them in (user 2026-09-06). A box left standing has to say why
-      // it refuses typing, and the whole of that explanation is a sentence the
-      // reader has to go and read; nothing on the screen is a shorter way to
-      // say "not this run" than the box being gone. What was typed stays on the
-      // node — the fragment is untouched — and comes back with the box when the
-      // switch goes off.
-      lyrics && lyricsFragment && !instrumental ? (
+      lyrics && lyricsFragment ? (
         <PromptEditor
           ref={lyricsEditorRef}
           testId='generate-lyrics-editor'
@@ -682,7 +641,6 @@ function AudioGeneratePanelBody({
       mentionNoMatchLabel,
       caretProvider,
       lyricsEditorRef,
-      instrumental,
     ],
   );
 
@@ -723,17 +681,12 @@ function AudioGeneratePanelBody({
         maxInputChars: vm.modelEntry?.max_input_chars,
         voiceRequired: vm.voiceRequired,
         voiceChosen: vm.voiceChosen,
-        requiredSlots: audioRequiredSlots(vm.modelEntry, mode),
-        filledSlots: slots.filter((slot) => vm.slotUrls[slot] !== undefined),
-        sourceRule: vm.modelEntry?.sourceRuleByMode[mode] ?? 'all_of',
+        missing: audioMissing(vm.modelEntry, mode, vm.slotUrls),
         lyricsRequired: lyrics,
         lyricsText,
-        instrumental,
       })?.refusal ?? null}
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}
-      // The mode, not the lyrics box: a music mode goes on calling its first
-      // box the style after the instrumental switch takes the second one away.
       labelBoxes={lyrics}
       onToggleMode={onToggleMode}
       onSelectModel={onSelectModel}

@@ -203,11 +203,9 @@ export const PromptEditor = React.forwardRef<
   // a separator would tear down the collaborative binding.
   const blockSeparatorRef = React.useRef(blockSeparator);
   blockSeparatorRef.current = blockSeparator;
-  // Live for the same reason, and for one more: what this box asks for is a
-  // property of the state it is in, not of the box. The lyrics box wants words
-  // on a vocal track and wants nothing on an instrumental one, and a string
-  // baked in at creation would go on asking for words after the switch says
-  // they are not used.
+  // Live for the same reason: what this box asks for is a property of the
+  // state it is in, not of the box, and a string baked in at creation would go
+  // on asking for what the panel no longer wants.
   const placeholderRef = React.useRef(placeholder);
   placeholderRef.current = placeholder;
   // The open `@` popup registers a refresh() here (collaboration residual 2): a

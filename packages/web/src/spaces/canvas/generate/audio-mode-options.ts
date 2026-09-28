@@ -66,8 +66,6 @@ export const AUDIO_MODE_OPTIONS: ReadonlyArray<AudioModeOption> = [
     label: 'Reference to Music',
     testId: 'generate-audio-mode-a2m',
     placeholderKey: 'canvas.generatePanel.musicPromptPlaceholder',
-    // No instrumental switch lifts it here: minimax/music-01 declares no such
-    // param, so every run it takes is a vocal one.
   },
 ];
 

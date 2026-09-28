@@ -18,8 +18,8 @@
  * is an edge between two nodes, a slot is a value copied onto this one.
  */
 
-import { PANEL_EDITOR_PARAM } from '@breatic/shared';
-import type { ModelEntry } from '@breatic/shared';
+import { PANEL_EDITOR_PARAM, missingSources } from '@breatic/shared';
+import type { MissingSource, ModelEntry } from '@breatic/shared';
 import { AudioLines, Disc3, Mic, Music4 } from 'lucide-react';
 
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
@@ -137,23 +137,27 @@ export function audioSlotsForModel(
 }
 
 /**
- * The slots a run through this model in this mode cannot go without.
+ * What an audio run still needs, in the order the toolbar offers it.
  *
- * A place the model marks optional is drawn and may be left empty, so the
- * gate is told about the others: told about all of them, it refuses a
- * submission the model says is complete.
+ * Which of its places a run cannot go without is the model's to say, through
+ * `missingSources` — the rule the server re-checks before enqueue.
  * @param model - The model the run names.
  * @param mode - The mode it is set to.
- * @returns Those slots, in the order the toolbar shows them.
+ * @param slotUrls - What the node's slots hold.
+ * @returns Each unmet requirement; empty when the run has what it needs or no
+ *   model resolves.
  */
-export function audioRequiredSlots(
+export function audioMissing(
   model: ModelEntry | undefined,
   mode: string,
-): AudioSlot[] {
-  const params = model?.params ?? {};
-  return audioSlotsForModel(model, mode).filter(
-    (slot) => filledFromCanvas(params[AUDIO_SLOTS[slot].param], mode)?.optional === false,
-  );
+  slotUrls: AudioSlotUrls,
+): MissingSource[] {
+  if (model === undefined) return [];
+  const params: Record<string, unknown> = {};
+  for (const slot of audioSlotsForModel(model, mode)) {
+    params[AUDIO_SLOTS[slot].param] = slotUrls[slot];
+  }
+  return missingSources(model, mode, params);
 }
 
 /**
@@ -169,17 +173,4 @@ export function modelTakesLyrics(model: ModelEntry | undefined, mode: string): b
   const spec = model?.params?.[PANEL_EDITOR_PARAM];
   if (spec?.fill !== 'editor') return false;
   return spec.modes === undefined || spec.modes.includes(mode);
-}
-
-/**
- * The switch that takes the lyrics box away, when the model has one.
- *
- * A model marking a track vocal-free asks for no words, and it names the
- * switch on the box itself. Read here rather than written down, so a vendor
- * spelling it differently takes the box away all the same.
- * @param model - The selected model, or undefined before one is picked.
- * @returns The param name to read, or undefined when nothing silences the box.
- */
-export function lyricsSilencedBy(model: ModelEntry | undefined): string | undefined {
-  return model?.params?.[PANEL_EDITOR_PARAM]?.when?.flag_off;
 }

@@ -93,19 +93,6 @@ export interface ExecuteGateInput {
   /** What the lyrics box holds. Read only when `lyricsRequired`. */
   lyricsText?: string;
   /**
-   * Whether the track is marked instrumental — no vocals at all (#1960).
-   *
-   * It lifts the lyrics requirement, because the gateway lifts it: measured
-   * 2026-09-05, `lyrics: ""` with `is_instrumental: true` is accepted and
-   * completes. Demanding words to sing for a track the user marked vocal-free
-   * is a rule we would be inventing.
-   *
-   * Only text-to-music can answer yes — it is the one model declaring the
-   * switch. Reference-to-music declares none, so nothing lifts its own
-   * requirement.
-   */
-  instrumental?: boolean;
-  /**
    * Whether the stored voice is one this deployment's provider accepts.
    *
    * Not "is the value non-null": one model defaults to null while the other
@@ -227,11 +214,7 @@ export function evaluateExecute(
   // it does shortens. A box holding a zero-width space or an HTML comment
   // survives `.trim()` and reaches the gateway empty, which is the
   // `invalid params` the refusal exists to spare the user.
-  if (
-    input.lyricsRequired &&
-    input.instrumental !== true &&
-    extractPromptText(input.lyricsText).length === 0
-  ) {
+  if (input.lyricsRequired && extractPromptText(input.lyricsText).length === 0) {
     return { refusal: 'lyrics-missing' };
   }
   // The remaining refusals name a control the user has to go and fill. Only
