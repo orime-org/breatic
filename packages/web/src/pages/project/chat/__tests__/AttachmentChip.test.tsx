@@ -96,4 +96,14 @@ describe('AttachmentChip hover preview', () => {
     expect(screen.getByRole('button')).toBe(button);
     expect(document.activeElement).toBe(button);
   });
+
+  it('opens its preview above the card, clear of the box below it', () => {
+    vi.useFakeTimers();
+    const chip: ChatAttachedChip = { id: 'f', type: 'image', name: 'a.png', data_snapshot: { url: 'https://a/i.png' } };
+    render(<AttachmentChip id='f' type='image' name='a.png' chip={chip} testId='card' />);
+    hover(screen.getByTestId('card'));
+
+    expect(screen.getByTestId('hover-preview-content')).toHaveAttribute('data-side', 'top');
+  });
 });
+
