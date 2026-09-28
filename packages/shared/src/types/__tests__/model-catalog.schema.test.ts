@@ -464,6 +464,22 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(params?.negative_prompt?.type).toBe("text");
   });
 
+  it("keeps how each value of a choice reads, and drops a malformed map", () => {
+    const labels = { meanwhile: "Together", left_right: "Left first" };
+    const raw = catalog([
+      entry("talk", {
+        params: {
+          order: { description: "", values: ["meanwhile", "left_right"], value_labels: labels, default: "left_right" },
+          motion: { description: "", values: ["low"], value_labels: "Low", default: "low" },
+        },
+      }),
+    ]);
+    const params = sanitizeModelCatalog(raw).image[0]?.params;
+    expect(params?.order?.value_labels).toEqual(labels);
+    expect(params?.motion?.value_labels).toBeUndefined();
+    expect(params?.motion?.values).toEqual(["low"]);
+  });
+
   it("drops a non-numeric step but keeps the descriptor", () => {
     const raw = catalog([
       entry("flux", {
