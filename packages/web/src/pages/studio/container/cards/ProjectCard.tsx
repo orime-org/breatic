@@ -89,7 +89,7 @@ export function ProjectCard({
             variant={null}
             size={null}
             onClick={openJoin}
-            className='flex w-full flex-col text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            className='flex w-full flex-col items-stretch justify-start whitespace-normal rounded-none text-left text-base font-normal'
           >
             {body}
           </Button>
