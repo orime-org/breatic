@@ -320,6 +320,45 @@ test.describe('the card a comment is written in', () => {
     }
   });
 
+  test('keeps its words while a peer moves another line across them', async ({
+    page,
+  }) => {
+    // The peer's editor rewrites the lines between where the moved line left
+    // and where it lands; the draft's words are still there word for word.
+    await openFreshDocument(page);
+    await page.keyboard.type('one\n');
+    await page.keyboard.type('two carrying the comment\n');
+    await page.keyboard.type('three');
+    const home = (await page
+      .locator('[role="tab"][aria-selected="true"]')
+      .getAttribute('data-testid'))!;
+    await selectParagraph(page, 1);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-draft-input').fill('half a thought');
+
+    const peer = await page.context().newPage();
+    try {
+      await peer.setViewportSize({ width: 1680, height: 950 });
+      await peer.goto(page.url());
+      await peer.getByTestId(home).click();
+      const last = peer.locator(`${EDITOR} p`).nth(2);
+      await expect(last).toHaveText('three', { timeout: 20_000 });
+      await last.click();
+      await peer.keyboard.press('ControlOrMeta+Shift+ArrowUp');
+
+      await expect(page.locator(`${EDITOR} p`).nth(1)).toContainText('three');
+      await expect(page.getByTestId('doc-comment-draft-dropped')).toHaveCount(0);
+      await expect(page.getByTestId('doc-comment-draft-input')).toHaveValue(
+        'half a thought',
+      );
+      await expect(
+        page.locator(`${EDITOR} .doc-comment-draft-mark`),
+      ).toHaveText('two carrying the comment');
+    } finally {
+      await peer.close();
+    }
+  });
+
   test('leaves no card being read once it is saved', async ({ page }) => {
     // user 2026-09-24: saving is the comment being finished.
     await openFreshDocument(page);
