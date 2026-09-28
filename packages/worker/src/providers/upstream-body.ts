@@ -14,7 +14,7 @@ import type { FullModelEntry } from "@breatic/domain";
  * @param value - A param's value after validation.
  * @returns False for nothing, an empty string and an empty list.
  */
-function carries(value: unknown): boolean {
+export function carries(value: unknown): boolean {
   if (value === undefined || value === null || value === "") return false;
   return !Array.isArray(value) || value.length > 0;
 }
