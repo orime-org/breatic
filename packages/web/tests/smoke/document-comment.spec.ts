@@ -1349,6 +1349,63 @@ test.describe('a column crowded with comments', () => {
     ).toBe(true);
   });
 
+  test('lifts the column to a draft card Tab reaches under the header, leaving the body still', async ({
+    page,
+  }) => {
+    // The draft is a card in the column like the rest: reaching it by Tab
+    // while it is pushed up under the header brings the column down to it,
+    // and the body stays where the reader left it.
+    await openFreshDocument(page);
+    for (let i = 0; i < 30; i += 1) await page.keyboard.type(`filler ${String(i)}\n`);
+    await page.keyboard.type('draft line here\n');
+    await page.keyboard.type(CROWDED_LINE);
+    for (let i = 0; i < 30; i += 1) await page.keyboard.type(`\nafter ${String(i)}`);
+    const crowded = page.locator(`${EDITOR} p`).nth(31);
+    await expect(crowded).toHaveText(CROWDED_LINE);
+    for (let i = 0; i < 5; i += 1) {
+      await selectChars(page, i, i + 1, 31);
+      await page.getByTestId('doc-bubble-tool-comment').click();
+      await page.getByTestId('doc-comment-draft-input').fill(`note ${String(i)}`);
+      await page.getByTestId('doc-comment-draft-save').click();
+      await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+    }
+    await selectChars(page, 0, 5, 30);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-draft-input').fill('my words');
+    await page.locator(`${EDITOR} [data-bn-thread-id]`).nth(4).click();
+    await page.waitForTimeout(500);
+    // The body scrolled until the crowded line sits near the top, so the
+    // cards above the one being read are pushed up under the header.
+    const line = (await crowded.boundingBox())!;
+    await page.mouse.move(line.x + 50, line.y);
+    await page.mouse.wheel(0, line.y - 250);
+    await page.waitForTimeout(500);
+    const header = (await page.getByTestId('doc-comment-rail-header').boundingBox())!;
+    const edge = header.y + header.height;
+    expect(
+      (await page.getByTestId('doc-comment-draft-card').boundingBox())!.y,
+    ).toBeLessThan(edge);
+    const bodyBefore = (await crowded.boundingBox())!.y;
+
+    await page.getByTestId('doc-comment-rail-close').focus();
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(600);
+
+    expect(
+      await page.evaluate(
+        () =>
+          document
+            .querySelector('[data-testid="doc-comment-draft-card"]')
+            ?.contains(document.activeElement) ?? false,
+      ),
+    ).toBe(true);
+    expect(Math.abs((await crowded.boundingBox())!.y - bodyBefore)).toBeLessThan(2);
+    const focused = await page.evaluate(
+      () => (document.activeElement as HTMLElement).getBoundingClientRect().top,
+    );
+    expect(focused).toBeGreaterThanOrEqual(edge - 1);
+  });
+
   test('starts the column over when another card is read', async ({ page }) => {
     await crowdOneLine(page);
     await readNote(page, 5);
