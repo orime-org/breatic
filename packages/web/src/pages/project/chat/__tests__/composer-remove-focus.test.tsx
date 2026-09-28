@@ -76,4 +76,16 @@ describe('taking an attached item out', () => {
 
     expect(document.activeElement).toBe(screen.getByTestId('chat-composer-textarea'));
   });
+
+  it('leaves the keyboard where it is when another item is taken out', () => {
+    render(<Tray ids={['a', 'b', 'c']} />);
+    const onC = screen.getByTestId('chat-chip-c').querySelector('button');
+    onC?.focus();
+    // A mouse press that does not move focus, as Safari does for buttons.
+    const onA = screen.getByTestId('chat-chip-a').querySelector('button');
+    if (onA) fireEvent.click(onA);
+
+    expect(document.activeElement).toBe(screen.getByTestId('chat-chip-c').querySelector('button'));
+  });
 });
+
