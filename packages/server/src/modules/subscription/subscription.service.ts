@@ -330,7 +330,8 @@ function subscriptionGoneAtStripe(err: unknown): boolean {
  * @returns Whether the new tier is in force, and where to pay if not.
  * @throws {ConflictError} if nothing is live, the tier is already held, or
  *   payment is overdue.
- * @throws {ValidationError} if the target tier is lower than the one held.
+ * @throws {ValidationError} if the target is a lower tier or a shorter period
+ *   than the one held.
  */
 export async function changePlan(input: {
   userId: string;
