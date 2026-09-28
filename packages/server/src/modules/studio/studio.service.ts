@@ -309,8 +309,8 @@ export async function getPersonalStudioProfilesByUserIds(
  *
  * A thin lookup used by callers that need the studio id behind a slug param
  * without the extra member-count / role joins `getStudioDetail` carries (e.g.
- * `project.service.listByStudioSlug`, which then applies its own
- * visibility-aware project filter).
+ * `project.service.listByStudioSlug`, which then lists the studio's projects
+ * for the viewer).
  * @param slug - The studio's URL handle
  * @returns The studio, or `null` when no active studio has that slug
  */

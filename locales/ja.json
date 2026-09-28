@@ -59,6 +59,8 @@
       "avatar_unsupported_type": "このファイルは画像として読み取れませんでした。別の画像をお試しください。"
     },
     "project": {
+      "join_already_member": "すでにこの Project のメンバーです。",
+      "join_already_pending": "この Project への参加はリクエスト済みです。Owner の承認待ちです。",
       "email_not_registered": "そのメールアドレスは登録されていません。",
       "already_member": "そのユーザーはすでにアクセス権を持っています。",
       "already_invited": "そのユーザーには保留中の招待があります。",
@@ -1072,6 +1074,9 @@
       "studioTransferApproved": "{actor} さんが {studio} の Admin 委譲を承認しました",
       "projectTransferRequest": "{actor} さんが {project} の引き継ぎを依頼しました",
       "projectTransferApproved": "{actor} さんが {project} の所有権移譲を承認しました",
+      "projectJoinRequest": "{actor} さんが {project} への参加をリクエストしました",
+      "projectJoinApproved": "{actor} さんが {project} への参加を承認しました",
+      "projectJoinRejected": "{actor} さんが {project} への参加リクエストを承認しませんでした",
       "studioInviteRequest": "{actor} さんが {studio} への参加に招待しました",
       "studioInviteAccepted": "{actor} さんが {studio} への招待を承認しました",
       "projectInviteRequest": "{actor} さんが {project} への参加に招待しました",
@@ -1390,10 +1395,22 @@
       "theme": "テーマ：{theme}"
     }
   },
-  "noAccess": {
-    "title": "この Project へのアクセス権がありません",
-    "description": "Project Owner に連絡してアクセスを依頼してください。メールで招待してもらえます。",
-    "backToStudio": "Studio に戻る"
+  "projectJoin": {
+    "title": "この Project のメンバーではありません",
+    "body": "{project} を開くには Owner の承認が必要です。",
+    "messageLabel": "Owner へのメッセージ（任意）",
+    "messagePlaceholder": "参加したい理由",
+    "cancel": "キャンセル",
+    "request": "参加をリクエスト",
+    "sentTitle": "リクエストを送信しました",
+    "sentBody": "Owner が承認すると通知が届きます。",
+    "ok": "OK",
+    "pendingTitle": "承認待ち",
+    "pendingBody": "{date} に {project} への参加をリクエストしました。Owner はまだ対応していません。",
+    "withdraw": "リクエストを取り消す",
+    "requestFailed": "リクエストを送信できませんでした。もう一度お試しください。",
+    "withdrawFailed": "取り消せませんでした。もう一度お試しください。",
+    "loadFailed": "この Project を開けませんでした。もう一度お試しください。"
   },
   "activity": {
     "description": "アップロード、生成、Space とメンバーの変更",
@@ -1442,11 +1459,20 @@
   "decision": {
     "loadingTitle": "リクエストを開いています…",
     "loadingBody": "少々お待ちください。",
-    "title": "{kind, select, studio_invite {Studio に招待されています} project_invite {Project に招待されています} role_upgrade {権限の変更を求められています} project_transfer {Project を引き継ぐよう求められています} studio_transfer {Studio を引き継ぐよう求められています} other {回答が必要です}}",
-    "body": "{kind, select, studio_invite {{actor} さんが {entity} に {role, select, maintainer {Maintainer} guest {Guest} other {Member}} として招待しています。} project_invite {{actor} さんが {entity} に {role, select, editor {Editor} viewer {Viewer} other {Member}} として招待しています。} role_upgrade {{actor} さんが {entity} で {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}} になることを申請しています。} project_transfer {{actor} さんが {entity} の Owner をあなたに引き継ごうとしています。} studio_transfer {{actor} さんが {entity} の Admin をあなたに引き継ごうとしています。} other {{actor} さんが {entity} についてあなたの回答を待っています。}}",
+    "title": "{kind, select, studio_invite {Studio に招待されています} project_invite {Project に招待されています} role_upgrade {権限の変更を求められています} project_join {参加リクエスト} project_transfer {Project を引き継ぐよう求められています} studio_transfer {Studio を引き継ぐよう求められています} other {回答が必要です}}",
+    "body": "{kind, select, studio_invite {{actor} さんが {entity} に {role, select, maintainer {Maintainer} guest {Guest} other {Member}} として招待しています。} project_invite {{actor} さんが {entity} に {role, select, editor {Editor} viewer {Viewer} other {Member}} として招待しています。} role_upgrade {{actor} さんが {entity} で {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}} になることを申請しています。} project_join {{actor} さんが {entity} への参加をリクエストしています。} project_transfer {{actor} さんが {entity} の Owner をあなたに引き継ごうとしています。} studio_transfer {{actor} さんが {entity} の Admin をあなたに引き継ごうとしています。} other {{actor} さんが {entity} についてあなたの回答を待っています。}}",
     "reason": "コメント：{message}",
-    "confirm": "{kind, select, role_upgrade {承認} other {承諾する}}",
-    "decline": "{kind, select, role_upgrade {却下} other {辞退する}}",
+    "confirm": "{kind, select, role_upgrade {承認} project_join {承認} other {承諾する}}",
+    "decline": "{kind, select, role_upgrade {却下} project_join {拒否} other {辞退する}}",
+    "grantRole": "ロール",
+    "field": {
+      "requester": "申請者",
+      "project": "Project",
+      "message": "メッセージ",
+      "expires": "有効期限"
+    },
+    "expiresBefore": "{date} まで",
+    "actorWithHandle": "{name}（@{handle}）",
     "windowNote": "このリクエストは {days} 日以内に回答できました。",
     "acceptedTitle": "すでに承諾済みです",
     "acceptedBody": "ここで行うことはもうありません。",

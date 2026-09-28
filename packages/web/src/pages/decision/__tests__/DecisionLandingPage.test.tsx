@@ -52,6 +52,7 @@ function makeView(o: Partial<DecisionView> = {}): DecisionView {
     state: 'answerable',
     entityName: 'Q1 Sprint',
     actorName: 'Ana',
+    actorHandle: 'ana',
     role: 'guest',
     message: null,
     expiresAt: null,
@@ -238,6 +239,74 @@ describe('the dead ends each say their own thing', () => {
     expect(
       await screen.findByRole('button', { name: 'Accept' }),
     ).toBeInTheDocument();
+  });
+});
+
+describe('a join request lets the owner pick the role', () => {
+  it('approves as Viewer unless the owner picks otherwise', async () => {
+    const user = userEvent.setup();
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(makeView({ kind: 'project_join', role: null }));
+    vi.mocked(decisionsApi.respond).mockResolvedValueOnce({ state: 'accepted', redirectTo: null });
+    setup();
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(decisionsApi.respond).toHaveBeenCalledWith(TOKEN, 'confirm', 'viewer'));
+  });
+
+  it('approves as Editor when the owner picks it', async () => {
+    const user = userEvent.setup();
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(makeView({ kind: 'project_join', role: null }));
+    vi.mocked(decisionsApi.respond).mockResolvedValueOnce({ state: 'accepted', redirectTo: null });
+    setup();
+    await user.click(await screen.findByRole('combobox', { name: 'Role' }));
+    await user.click(await screen.findByRole('option', { name: 'Editor' }));
+    await user.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(decisionsApi.respond).toHaveBeenCalledWith(TOKEN, 'confirm', 'editor'));
+  });
+
+  it('declines without a role', async () => {
+    const user = userEvent.setup();
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(makeView({ kind: 'project_join', role: null }));
+    vi.mocked(decisionsApi.respond).mockResolvedValueOnce({ state: 'declined', redirectTo: null });
+    setup();
+    await user.click(await screen.findByRole('button', { name: 'Decline' }));
+    await waitFor(() => expect(decisionsApi.respond).toHaveBeenCalledWith(TOKEN, 'decline'));
+  });
+
+  it('lists who asked, the project, their message and the deadline', async () => {
+    const deadline = new Date(2026, 9, 5, 10, 0, 0);
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(
+      makeView({
+        kind: 'project_join',
+        role: null,
+        message: 'I cut the trailer',
+        expiresAt: deadline.toISOString(),
+      }),
+    );
+    setup();
+    expect(await screen.findByRole('heading', { name: 'Join request' })).toBeInTheDocument();
+    const value = (term: string): string | null =>
+      screen.getByText(term, { selector: 'dt' }).nextElementSibling?.textContent ?? null;
+    expect(value('Requester')).toBe('Ana (@ana)');
+    expect(value('Project')).toBe('Q1 Sprint');
+    expect(value('Message')).toBe('I cut the trailer');
+    expect(value('Expires')).toBe('Until 2026-10-05');
+  });
+
+  it('offers no role choice on any other kind', async () => {
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(makeView({ kind: 'role_upgrade', role: 'editor' }));
+    setup();
+    await screen.findByRole('button', { name: 'Approve' });
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+});
+
+describe('the two buttons', () => {
+  it.each(['studio_invite', 'project_join'] as const)('%s puts decline first and the main action last', async (kind) => {
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(makeView({ kind, role: kind === 'project_join' ? null : 'guest' }));
+    setup();
+    const decline = await screen.findByRole('button', { name: 'Decline' });
+    const confirm = screen.getByRole('button', { name: kind === 'project_join' ? 'Approve' : 'Accept' });
+    expect(decline.compareDocumentPosition(confirm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 

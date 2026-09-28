@@ -53,7 +53,6 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
     slug: p.slug,
     name: p.name,
     thumbnailUrl: p.thumbnailUrl,
-    visibility: p.visibility,
     myRole: p.myRole,
     createdAt: new Date(p.createdAt).toISOString(),
   };

@@ -80,8 +80,8 @@ async function seedConversation(
     VALUES (${user!.id}, ${`${tag}-studio`}, 'personal', ${tag}) RETURNING id
   `;
   const [project] = await tx<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}, 'studio') RETURNING id
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}) RETURNING id
   `;
   const [conversation] = await tx<{ id: string }[]>`
     INSERT INTO conversations (user_id, project_id, title)

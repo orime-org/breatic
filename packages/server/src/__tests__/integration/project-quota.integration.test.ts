@@ -147,7 +147,6 @@ async function createProject(userId: string, studioId: string): Promise<string> 
     studioId,
     "Project",
     `pq-c-${seq++}`,
-    "studio",
     "canvas",
   );
   return p.id;

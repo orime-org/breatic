@@ -2,20 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * project.service open-baseline access — `loadForViewer` +
- * `listByStudioForViewer` / `listByStudioSlug` unit tests (mock).
+ * project.service access — `loadForViewer` + `listByStudioForViewer` /
+ * `listByStudioSlug` unit tests (mock).
  *
- * The SQL-level truth (visibility matrix, materialize
- * idempotency / concurrency / soft-delete revive, one-owner) is verified
- * against real Postgres in
- * `__tests__/integration/project-visibility-materialize.integration.test.ts`.
- * This file locks the SERVICE-layer branching that a mocked query builder
- * can express:
- *   - who is granted access on the project-load path, and exactly when a
- *     viewer row is materialized (and when it is NOT — `get()`'s other
- *     callers must never materialize as a side effect);
- *   - the list short-circuits: non-member → [], member → repo(isAdmin=false),
- *     admin → repo(isAdmin=true).
+ * The SQL-level truth is verified against real Postgres in
+ * `__tests__/integration/project-join-requests.integration.test.ts`. This file
+ * locks the service-layer branching:
+ *   - the project-load path: a member gets their role, a studio member who is
+ *     not on the project gets 403, anyone else gets 404;
+ *   - the list short-circuits: non-member → [], member → every project.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -42,7 +37,6 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
   return {
     ...actual,
     projectAuthService: { loadProjectRole: vi.fn() },
-    projectMembersRepo: { materializeBaselineViewer: vi.fn() },
   };
 });
 
@@ -52,7 +46,7 @@ vi.mock("@breatic/domain", () => ({
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
-import { projectAuthService, projectMembersRepo, NotFoundError } from "@breatic/core";
+import { projectAuthService, ForbiddenError, NotFoundError } from "@breatic/core";
 import { studioAuthService } from "@breatic/domain";
 import {
   loadForViewer,
@@ -61,7 +55,7 @@ import {
 } from "@server/modules/project/project.service.js";
 import type { ProjectEntity } from "@breatic/shared";
 
-/** Build a project fixture with overridable visibility / studio. */
+/** Build a project fixture with an overridable studio. */
 function makeProject(over: Partial<ProjectEntity> = {}): ProjectEntity {
   return {
     id: "p-1",
@@ -71,7 +65,6 @@ function makeProject(over: Partial<ProjectEntity> = {}): ProjectEntity {
     description: null,
     thumbnailUrl: null,
     slug: "project",
-    visibility: "studio",
     createdAt: new Date("2026-06-07T00:00:00Z"),
     updatedAt: new Date("2026-06-07T00:00:00Z"),
     deletedAt: null,
@@ -81,7 +74,6 @@ function makeProject(over: Partial<ProjectEntity> = {}): ProjectEntity {
 
 const loadProjectRole = vi.mocked(projectAuthService.loadProjectRole);
 const loadStudioRole = vi.mocked(studioAuthService.loadStudioRole);
-const materialize = vi.mocked(projectMembersRepo.materializeBaselineViewer);
 const getProjectById = vi.mocked(projectRepo.getProjectById);
 const listRepo = vi.mocked(projectRepo.listProjectsByStudioForViewer);
 const getStudioBySlug = vi.mocked(studioService.getStudioBySlug);
@@ -90,8 +82,8 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("project.service.loadForViewer — open-baseline access + materialize", () => {
-  it("returns an existing member's role unchanged and never materializes", async () => {
+describe("project.service.loadForViewer — members enter, studio members are refused", () => {
+  it("returns an existing member's role unchanged", async () => {
     loadProjectRole.mockResolvedValue("editor");
     getProjectById.mockResolvedValue(makeProject());
 
@@ -99,51 +91,32 @@ describe("project.service.loadForViewer — open-baseline access + materialize",
 
     expect(result.myRole).toBe("editor");
     expect(result.project.id).toBe("p-1");
-    // Existing member → first branch; studio role + materialize untouched.
     expect(loadStudioRole).not.toHaveBeenCalled();
-    expect(materialize).not.toHaveBeenCalled();
   });
 
-  it("grants + materializes a viewer row for a studio member on a studio-visible project", async () => {
+  it("refuses a studio member who is not on the project with 403", async () => {
     loadProjectRole.mockResolvedValue(null);
-    getProjectById.mockResolvedValue(makeProject({ visibility: "studio", studioId: "s-9" }));
+    getProjectById.mockResolvedValue(makeProject({ studioId: "s-9" }));
     loadStudioRole.mockResolvedValue("guest");
 
-    const result = await loadForViewer("p-1", "u-1");
-
-    expect(result.myRole).toBe("viewer");
+    await expect(loadForViewer("p-1", "u-1")).rejects.toBeInstanceOf(ForbiddenError);
     expect(loadStudioRole).toHaveBeenCalledWith("u-1", "s-9");
-    expect(materialize).toHaveBeenCalledWith("p-1", "u-1");
   });
 
-  it("grants + materializes a viewer row for a studio ADMIN too (project role starts at viewer)", async () => {
+  it("refuses a studio admin who is not on the project with 403 too", async () => {
     loadProjectRole.mockResolvedValue(null);
-    getProjectById.mockResolvedValue(makeProject({ visibility: "studio" }));
+    getProjectById.mockResolvedValue(makeProject());
     loadStudioRole.mockResolvedValue("admin");
 
-    const result = await loadForViewer("p-1", "u-1");
-
-    expect(result.myRole).toBe("viewer");
-    expect(materialize).toHaveBeenCalledWith("p-1", "u-1");
+    await expect(loadForViewer("p-1", "u-1")).rejects.toBeInstanceOf(ForbiddenError);
   });
 
-  it("hides a private project (404) from a studio member with no explicit row — never checks studio role", async () => {
+  it("hides the project (404) from someone outside the studio", async () => {
     loadProjectRole.mockResolvedValue(null);
-    getProjectById.mockResolvedValue(makeProject({ visibility: "private" }));
-
-    await expect(loadForViewer("p-1", "u-1")).rejects.toBeInstanceOf(NotFoundError);
-    // Private projects never consult studio membership — only explicit members.
-    expect(loadStudioRole).not.toHaveBeenCalled();
-    expect(materialize).not.toHaveBeenCalled();
-  });
-
-  it("hides a studio-visible project (404) from a non-studio-member", async () => {
-    loadProjectRole.mockResolvedValue(null);
-    getProjectById.mockResolvedValue(makeProject({ visibility: "studio" }));
+    getProjectById.mockResolvedValue(makeProject());
     loadStudioRole.mockResolvedValue(null);
 
     await expect(loadForViewer("p-1", "u-1")).rejects.toBeInstanceOf(NotFoundError);
-    expect(materialize).not.toHaveBeenCalled();
   });
 
   it("throws NotFound for a missing / soft-deleted project", async () => {
@@ -151,11 +124,11 @@ describe("project.service.loadForViewer — open-baseline access + materialize",
     getProjectById.mockResolvedValue(null);
 
     await expect(loadForViewer("p-1", "u-1")).rejects.toBeInstanceOf(NotFoundError);
-    expect(materialize).not.toHaveBeenCalled();
+    expect(loadStudioRole).not.toHaveBeenCalled();
   });
 });
 
-describe("project.service.listByStudioForViewer — visibility short-circuits", () => {
+describe("project.service.listByStudioForViewer — studio members see every project", () => {
   it("returns [] for a non-studio-member without touching the repo", async () => {
     loadStudioRole.mockResolvedValue(null);
 
@@ -165,22 +138,13 @@ describe("project.service.listByStudioForViewer — visibility short-circuits", 
     expect(listRepo).not.toHaveBeenCalled();
   });
 
-  it("queries with isStudioAdmin=false for a studio member", async () => {
+  it("lists for any studio member", async () => {
     loadStudioRole.mockResolvedValue("guest");
     listRepo.mockResolvedValue([]);
 
     await listByStudioForViewer("s-1", "u-1");
 
-    expect(listRepo).toHaveBeenCalledWith("s-1", "u-1", false);
-  });
-
-  it("queries with isStudioAdmin=true for a studio admin (sees all)", async () => {
-    loadStudioRole.mockResolvedValue("admin");
-    listRepo.mockResolvedValue([]);
-
-    await listByStudioForViewer("s-1", "u-1");
-
-    expect(listRepo).toHaveBeenCalledWith("s-1", "u-1", true);
+    expect(listRepo).toHaveBeenCalledWith("s-1", "u-1");
   });
 });
 
@@ -193,7 +157,7 @@ describe("project.service.listByStudioSlug — slug resolution", () => {
     await listByStudioSlug("acme", "u-1");
 
     expect(getStudioBySlug).toHaveBeenCalledWith("acme");
-    expect(listRepo).toHaveBeenCalledWith("s-7", "u-1", false);
+    expect(listRepo).toHaveBeenCalledWith("s-7", "u-1");
   });
 
   it("throws NotFound for an unknown slug", async () => {

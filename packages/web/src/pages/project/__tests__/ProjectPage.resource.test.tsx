@@ -14,6 +14,17 @@ vi.mock('@web/data/api', async original => {
   const real = await original<typeof import('@web/data/api')>();
   return { ...real, projectsApi: { ...real.projectsApi, get: vi.fn() } };
 });
+vi.mock('@web/data/api/project-join-requests', () => ({
+  projectJoinRequestsApi: {
+    mine: () =>
+      Promise.resolve({
+        project: { id: '11111111-1111-4111-8111-111111111111', name: 'Resource test', studioSlug: 'acme' },
+        pendingRequest: null,
+      }),
+    request: vi.fn(),
+    cancelMine: vi.fn(),
+  },
+}));
 // An editor/collab sentinel: reaching this means the resource gate opened.
 vi.mock('@web/data/yjs/collab-socket', async original => ({
   ...await original<typeof import('@web/data/yjs/collab-socket')>(),
@@ -28,7 +39,7 @@ function Location() { return <p data-testid='address'>{useLocation().pathname}</
 function setup(suffix = '') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryDelay: 0 } } });
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/project/example-${id}${suffix}`]}>
-    <Routes><Route path='/project/:projectId/*' element={<ProjectPage />} /><Route path='/project/:projectId/access' element={<p>Access required</p>} /></Routes>
+    <Routes><Route path='/project/:projectId/*' element={<ProjectPage />} /><Route path='/studio/:slug/:tab' element={<p>Studio tab</p>} /></Routes>
     <Location />
   </MemoryRouter></QueryClientProvider>);
   return client;
@@ -53,13 +64,18 @@ describe('Project resource entry', () => {
     expect(projectsApi.get).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('address').textContent).toBe(`/project/example-${id}`);
   });
-  it('keeps forbidden responses on the existing access page', async () => {
+  it('offers to join in place on 403, keeping the address, and cancel goes back to the studio', async () => {
     vi.mocked(projectsApi.get).mockRejectedValue(new ApiException({ status: 403, message: 'forbidden' }));
     setup();
-    expect(await screen.findByText('Access required')).toBeVisible();
+    expect(await screen.findByTestId('join-project-dialog')).toBeVisible();
     expect(screen.queryByTestId('not-found-page')).toBeNull();
     expect(screen.queryByTestId('editor')).toBeNull();
     expect(projectsApi.get).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('address').textContent).toBe(`/project/example-${id}`);
+
+    await screen.findByText(/Resource test/);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.getByTestId('address').textContent).toBe('/studio/acme/projects'));
   });
   it.each([0, 500])('keeps status %s separate from 404 and supports retry', async status => {
     vi.mocked(projectsApi.get).mockRejectedValue(new ApiException({ status, message: 'failed' }));

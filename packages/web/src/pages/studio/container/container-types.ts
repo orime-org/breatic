@@ -28,8 +28,7 @@ export interface ContainerProject {
   slug: string;
   name: string;
   thumbnailUrl: string | null;
-  visibility: ItemVisibility;
-  /** The viewer's role on this project, or `null` for studio baseline-only access (DD §5.3). Owner is derived as `myRole === 'owner'`; no redundant `isOwner` field. */
+  /** The viewer's role on this project, or `null` when they are not a member of it. Owner is derived as `myRole === 'owner'`; no redundant `isOwner` field. */
   myRole: ItemRole | null;
   /**
    * ISO-8601 creation timestamp, shown as the card's "created {time}" label.

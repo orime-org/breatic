@@ -5,8 +5,8 @@
  * Studio authorization primitive — `loadStudioRole`.
  *
  * Mirrors `loadProjectRole`: the shared "what studio-level role does this
- * user have" resolver, used by server (studio detail / governance + the
- * project-visibility filter that needs to know whether a viewer is a
+ * user have" resolver, used by server (studio detail / governance, and the
+ * project list and project entry that need to know whether a viewer is a
  * studio member) and worker (billing_source). It delegates to
  * `studioMembersRepo.getRole`, which folds the studio-active guard and
  * the membership lookup into one inner-join and collapses both "studio

@@ -50,7 +50,7 @@ const DialogClose = DialogPrimitive.Close;
  * shorter one here cuts the content's exit short.
  */
 const OVERLAY_CLASS =
-  'fixed inset-0 z-50 bg-black/80 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0';
+  'fixed inset-0 z-50 bg-overlay duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0';
 
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
@@ -129,10 +129,22 @@ const DialogContent = React.forwardRef<
           // the grid says.
           className={cn(
             OVERLAY_CONTENT_CLASS,
-            'flex max-w-[520px] flex-col rounded-overlay p-0',
+            'flex max-w-[520px] flex-col rounded-overlay p-0 focus:outline-none',
             className,
           )}
           {...props}
+          // Opening puts focus on the dialog itself, which draws no ring. Its
+          // first control is the header's close button, and focus handed to it
+          // by script shows a ring only when the previous focus did, so it
+          // came and went with how the dialog was opened. Tab reaches the
+          // first control; a field that should take focus says `autoFocus`,
+          // which Radix leaves in place.
+          onOpenAutoFocus={(e) => {
+            props.onOpenAutoFocus?.(e);
+            if (e.defaultPrevented) return;
+            e.preventDefault();
+            (e.currentTarget as HTMLElement | null)?.focus();
+          }}
           // The overlay's scrollbar rail sits outside the content and so
           // counts as "outside" — but it is the dialog's own bar. The middle
           // and secondary buttons both arrive here and are both vetoed;
@@ -184,7 +196,7 @@ const DialogHeader = ({
 }: DialogHeaderProps) => (
   <header
     className={cn(
-      'flex items-start justify-between gap-4 border-b border-border px-4 py-3',
+      'flex items-start justify-between gap-4 px-4 py-3',
       className,
     )}
     {...props}
@@ -214,7 +226,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      'flex flex-col-reverse gap-2 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-end',
+      'flex flex-col-reverse gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-end',
       className,
     )}
     {...props}

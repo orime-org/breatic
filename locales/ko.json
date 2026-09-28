@@ -59,6 +59,8 @@
       "avatar_unsupported_type": "이 파일은 이미지로 읽을 수 없습니다. 다른 사진을 사용해 보세요."
     },
     "project": {
+      "join_already_member": "이미 이 Project의 멤버입니다.",
+      "join_already_pending": "이 Project에 이미 참여를 요청했습니다. Owner의 승인을 기다리는 중입니다.",
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
       "already_member": "해당 사용자는 이미 접근 권한을 가지고 있습니다.",
       "already_invited": "해당 사용자에게 이미 대기 중인 초대가 있습니다.",
@@ -1072,6 +1074,9 @@
       "studioTransferApproved": "{actor}님이 {studio}의 Admin 이전을 수락했습니다",
       "projectTransferRequest": "{actor}님이 {project} 인수를 요청했습니다",
       "projectTransferApproved": "{actor}님이 {project}의 소유권 이전을 수락했습니다",
+      "projectJoinRequest": "{actor}님이 {project} 참여를 요청했습니다",
+      "projectJoinApproved": "{actor}님이 {project} 참여를 승인했습니다",
+      "projectJoinRejected": "{actor}님이 {project} 참여 요청을 승인하지 않았습니다",
       "studioInviteRequest": "{actor}님이 {studio}에 초대했습니다",
       "studioInviteAccepted": "{actor}님이 {studio} 초대를 수락했습니다",
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",
@@ -1390,10 +1395,22 @@
       "theme": "테마: {theme}"
     }
   },
-  "noAccess": {
-    "title": "이 Project에 대한 접근 권한이 없습니다",
-    "description": "Project Owner에게 연락하여 접근을 요청해 주세요. 이메일로 초대해 줄 수 있습니다.",
-    "backToStudio": "Studio로 돌아가기"
+  "projectJoin": {
+    "title": "이 Project의 멤버가 아닙니다",
+    "body": "{project}에 들어가려면 Owner의 승인이 필요합니다.",
+    "messageLabel": "Owner에게 메시지 (선택)",
+    "messagePlaceholder": "참여하려는 이유",
+    "cancel": "취소",
+    "request": "참여 요청",
+    "sentTitle": "요청을 보냈습니다",
+    "sentBody": "Owner가 승인하면 알림을 받습니다.",
+    "ok": "확인",
+    "pendingTitle": "승인 대기 중",
+    "pendingBody": "{date}에 {project} 참여를 요청했습니다. Owner가 아직 처리하지 않았습니다.",
+    "withdraw": "요청 철회",
+    "requestFailed": "요청을 보내지 못했습니다. 다시 시도하세요.",
+    "withdrawFailed": "철회하지 못했습니다. 다시 시도하세요.",
+    "loadFailed": "이 Project를 열지 못했습니다. 다시 시도하세요."
   },
   "activity": {
     "description": "업로드, 생성, Space 및 멤버 변경",
@@ -1442,11 +1459,20 @@
   "decision": {
     "loadingTitle": "요청을 여는 중…",
     "loadingBody": "잠시만 기다려 주세요.",
-    "title": "{kind, select, studio_invite {Studio 초대를 받았습니다} project_invite {Project 초대를 받았습니다} role_upgrade {누군가 더 높은 역할을 요청했습니다} project_transfer {Project를 넘겨받도록 요청받았습니다} studio_transfer {Studio를 넘겨받도록 요청받았습니다} other {답변이 필요한 일이 있습니다}}",
-    "body": "{kind, select, studio_invite {{actor} 님이 {entity}에 {role, select, maintainer {Maintainer} guest {Guest} other {Member}}(으)로 초대했습니다.} project_invite {{actor} 님이 {entity}에 {role, select, editor {Editor} viewer {Viewer} other {Member}}(으)로 초대했습니다.} role_upgrade {{actor} 님이 {entity}에서 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}(이)가 되기를 요청했습니다.} project_transfer {{actor} 님이 {entity}의 Owner를 넘기려고 합니다.} studio_transfer {{actor} 님이 {entity}의 Admin을 맡기려고 합니다.} other {{actor} 님이 {entity}에 대한 답변을 기다리고 있습니다.}}",
+    "title": "{kind, select, studio_invite {Studio 초대를 받았습니다} project_invite {Project 초대를 받았습니다} role_upgrade {누군가 더 높은 역할을 요청했습니다} project_join {참여 요청} project_transfer {Project를 넘겨받도록 요청받았습니다} studio_transfer {Studio를 넘겨받도록 요청받았습니다} other {답변이 필요한 일이 있습니다}}",
+    "body": "{kind, select, studio_invite {{actor} 님이 {entity}에 {role, select, maintainer {Maintainer} guest {Guest} other {Member}}(으)로 초대했습니다.} project_invite {{actor} 님이 {entity}에 {role, select, editor {Editor} viewer {Viewer} other {Member}}(으)로 초대했습니다.} role_upgrade {{actor} 님이 {entity}에서 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}(이)가 되기를 요청했습니다.} project_join {{actor}님이 {entity} 참여를 요청했습니다.} project_transfer {{actor} 님이 {entity}의 Owner를 넘기려고 합니다.} studio_transfer {{actor} 님이 {entity}의 Admin을 맡기려고 합니다.} other {{actor} 님이 {entity}에 대한 답변을 기다리고 있습니다.}}",
     "reason": "남긴 말: {message}",
-    "confirm": "{kind, select, role_upgrade {승인} other {수락}}",
-    "decline": "{kind, select, role_upgrade {거절} other {거절}}",
+    "confirm": "{kind, select, role_upgrade {승인} project_join {승인} other {수락}}",
+    "decline": "{kind, select, role_upgrade {거절} project_join {거절} other {거절}}",
+    "grantRole": "역할",
+    "field": {
+      "requester": "요청자",
+      "project": "Project",
+      "message": "메시지",
+      "expires": "유효 기간"
+    },
+    "expiresBefore": "{date}까지",
+    "actorWithHandle": "{name} (@{handle})",
     "windowNote": "이 요청은 {days}일 이내에 답변할 수 있었습니다.",
     "acceptedTitle": "이미 수락했습니다",
     "acceptedBody": "여기서 더 할 일은 없습니다.",

@@ -71,8 +71,8 @@ async function seedProject(): Promise<{ userId: string; projectId: string }> {
   `;
   const slug = `nt-proj-${seq++}`;
   const projects = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studioId}, ${uid}, ${`P ${slug}`}, ${slug}, 'private')
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioId}, ${uid}, ${`P ${slug}`}, ${slug})
     RETURNING id
   `;
   const pid = projects[0]!.id;

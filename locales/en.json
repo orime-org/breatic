@@ -59,6 +59,8 @@
       "avatar_unsupported_type": "That file could not be read as an image. Try a different picture."
     },
     "project": {
+      "join_already_member": "You're already a member of this project.",
+      "join_already_pending": "You've already asked to join this project. The owner hasn't answered yet.",
       "email_not_registered": "No account is registered with that email.",
       "already_member": "That user already has access.",
       "already_invited": "That user already has a pending invitation.",
@@ -1072,6 +1074,9 @@
       "studioTransferApproved": "{actor} accepted your admin transfer for {studio}",
       "projectTransferRequest": "{actor} asked you to take over {project}",
       "projectTransferApproved": "{actor} accepted your ownership transfer for {project}",
+      "projectJoinRequest": "{actor} asked to join {project}",
+      "projectJoinApproved": "{actor} let you into {project}",
+      "projectJoinRejected": "{actor} declined your request to join {project}",
       "studioInviteRequest": "{actor} invited you to join {studio}",
       "studioInviteAccepted": "{actor} accepted your invite to {studio}",
       "projectInviteRequest": "{actor} invited you to join {project}",
@@ -1390,10 +1395,22 @@
       "theme": "Theme: {theme}"
     }
   },
-  "noAccess": {
-    "title": "You don't have access to this project",
-    "description": "Please contact the project owner to request access. They can invite you by email.",
-    "backToStudio": "Back to Studio"
+  "projectJoin": {
+    "title": "You're not a member of this project",
+    "body": "The owner needs to approve before you can open {project}.",
+    "messageLabel": "Message to the owner (optional)",
+    "messagePlaceholder": "Why you'd like to join",
+    "cancel": "Cancel",
+    "request": "Request to join",
+    "sentTitle": "Request sent",
+    "sentBody": "You'll get a notification when the owner approves.",
+    "ok": "OK",
+    "pendingTitle": "Request pending",
+    "pendingBody": "You asked to join {project} on {date}. The owner hasn't answered yet.",
+    "withdraw": "Withdraw request",
+    "requestFailed": "Couldn't send the request. Try again.",
+    "withdrawFailed": "Couldn't withdraw the request. Try again.",
+    "loadFailed": "Couldn't open this project. Try again."
   },
   "activity": {
     "description": "Uploads, generations, and Space / member changes",
@@ -1442,11 +1459,20 @@
   "decision": {
     "loadingTitle": "Opening this request…",
     "loadingBody": "One moment while we look it up.",
-    "title": "{kind, select, studio_invite {You've been invited to a Studio} project_invite {You've been invited to a Project} role_upgrade {Someone asked for a bigger role} project_transfer {A Project is being handed to you} studio_transfer {A Studio is being handed to you} other {Something needs your answer}}",
-    "body": "{kind, select, studio_invite {{actor} invited you to join {entity} as {role, select, maintainer {a Maintainer} guest {a Guest} other {a Member}}.} project_invite {{actor} invited you to work on {entity} as {role, select, editor {an Editor} viewer {a Viewer} other {a Member}}.} role_upgrade {{actor} asked to become {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}} on {entity}.} project_transfer {{actor} wants to make you the Owner of {entity}.} studio_transfer {{actor} wants to make you the Admin of {entity}.} other {{actor} is waiting on your answer about {entity}.}}",
+    "title": "{kind, select, studio_invite {You've been invited to a Studio} project_invite {You've been invited to a Project} role_upgrade {Someone asked for a bigger role} project_join {Join request} project_transfer {A Project is being handed to you} studio_transfer {A Studio is being handed to you} other {Something needs your answer}}",
+    "body": "{kind, select, studio_invite {{actor} invited you to join {entity} as {role, select, maintainer {a Maintainer} guest {a Guest} other {a Member}}.} project_invite {{actor} invited you to work on {entity} as {role, select, editor {an Editor} viewer {a Viewer} other {a Member}}.} role_upgrade {{actor} asked to become {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}} on {entity}.} project_join {{actor} asked to join {entity}.} project_transfer {{actor} wants to make you the Owner of {entity}.} studio_transfer {{actor} wants to make you the Admin of {entity}.} other {{actor} is waiting on your answer about {entity}.}}",
     "reason": "They said: {message}",
-    "confirm": "{kind, select, role_upgrade {Approve} other {Accept}}",
-    "decline": "{kind, select, role_upgrade {Decline} other {Decline}}",
+    "confirm": "{kind, select, role_upgrade {Approve} project_join {Approve} other {Accept}}",
+    "decline": "{kind, select, role_upgrade {Decline} project_join {Decline} other {Decline}}",
+    "grantRole": "Role",
+    "field": {
+      "requester": "Requester",
+      "project": "Project",
+      "message": "Message",
+      "expires": "Expires"
+    },
+    "expiresBefore": "Until {date}",
+    "actorWithHandle": "{name} (@{handle})",
     "windowNote": "This request could be answered within {days, plural, one {# day} other {# days}}.",
     "acceptedTitle": "You already accepted this",
     "acceptedBody": "There is nothing left to do here.",

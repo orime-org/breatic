@@ -141,7 +141,6 @@ describe('route table', () => {
         '/forgot-password',
         '/login',
         '/project/:projectId/*',
-        '/project/:projectId/access',
         '/recovery-code',
         '/register',
         '/reset-password',

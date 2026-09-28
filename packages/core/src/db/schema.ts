@@ -252,9 +252,6 @@ export const projects = pgTable(
     // URL slug for /project/{slug}-{uuid}. Format-validated app-side, NOT
     // unique (same-name projects disambiguate by uuid; URL design §5.7).
     slug: varchar("slug", { length: 120 }).notNull(),
-    // 'studio' = visible to every studio member (open baseline); 'private'
-    // = only users with an explicit project_members row (slice 2 §2.3).
-    visibility: varchar("visibility", { length: 16 }).default("studio").notNull(),
     // Initial Space type seeded on first open (B.2). varchar with NO check
     // constraint — same pattern as studio_members.role, so adding 3d/plan
     // later is a zero-migration change. Canvas is the only editable type
@@ -1536,6 +1533,9 @@ export const notifications = pgTable(
      * - 'project.invite_accepted' - invitee accepted; the inviting owner is notified
      * - 'project.transfer_request' - owner asks the user to take the project (TTL) (0039)
      * - 'project.transfer_approved' - user accepted; the old owner is notified (0039)
+     * - 'project.join_request' - a studio member asks the owner to join a project (TTL) (0082)
+     * - 'project.join_approved' - the owner let the requester in (0082)
+     * - 'project.join_rejected' - the owner turned the request down (0082)
      * - 'membership.ended' - the account fell back to the free tier (0056)
      * - 'membership.upgrade_incomplete' - an upgrade's invoice went unpaid (0056)
      * - 'storage.quota_exceeded' - a write was refused because the admin's
@@ -1810,6 +1810,60 @@ export const roleUpgradeRequests = pgTable(
     ),
     // One LIVE pending request per (project, requester) is enforced by a partial
     // unique index (`role_upgrade_requests_one_pending`) in the migration.
+  ],
+);
+
+/**
+ * A studio member who is not on a project asks its owner to let them in (#96).
+ *
+ * Mirrors `role_upgrade_requests`. The requester asks for membership, not for
+ * a role: the owner picks viewer or editor when approving, and that choice is
+ * `granted_role`, set exactly when `status = 'approved'` (CHECK in 0082). One
+ * live pending request per (project, requester) is the partial unique index
+ * `project_join_requests_one_pending` in the migration.
+ */
+export const projectJoinRequests = pgTable(
+  "project_join_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    requesterUserId: uuid("requester_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Optional note the requester wrote for the owner. */
+    message: text("message"),
+    /** Lifecycle: 'pending' | 'approved' | 'rejected' | 'expired' | 'cancelled'. */
+    status: varchar("status", { length: 16 }).notNull(),
+    /** The role the owner granted: 'viewer' | 'editor'; non-null iff approved. */
+    grantedRole: varchar("granted_role", { length: 16 }),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /**
+     * The owner's bell entry for this request. It follows the owner: an owner
+     * change retires it and points this column at the new owner's entry.
+     */
+    notificationId: uuid("notification_id").references(() => notifications.id, {
+      onDelete: "set null",
+    }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** Names this request in the `/decision?token=` link; never rotated. */
+    shareToken: varchar("share_token", { length: 64 }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("project_join_requests_share_token_key").on(table.shareToken),
+    index("project_join_requests_project_id_idx").on(
+      table.projectId,
+      table.deletedAt,
+    ),
+    index("project_join_requests_requester_user_id_idx").on(
+      table.requesterUserId,
+    ),
   ],
 );
 

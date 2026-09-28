@@ -22,7 +22,7 @@ export type {
 export type ItemRole = 'owner' | 'editor' | 'viewer';
 
 /**
- * Project / collection visibility (DD §5.3): `studio` = baseline-visible to all
- * studio members, `private` = only invited people (Admin can still enter).
+ * Collection visibility (DD §5.3): `studio` = visible to all studio members,
+ * `private` = only invited people (Admin can still enter).
  */
 export type ItemVisibility = 'studio' | 'private';

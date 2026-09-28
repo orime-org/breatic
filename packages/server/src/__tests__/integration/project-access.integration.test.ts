@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Slice 2 open-baseline access critical-path invariants —
- * `projectService.loadForViewer` + `projectService.listByStudioForViewer`
- * + `projectMembersRepo.materializeBaselineViewer` against a real Postgres.
+ * Project access critical-path invariants — `projectService.create`,
+ * `projectService.listByStudioForViewer` and `projectService.loadForViewer`
+ * against a real Postgres.
  *
- * Open-baseline access is a CLAUDE.md critical path (鉴权 + 数据完整性). The
- * guarantees are SQL-level and a mocked query builder cannot prove them — the
- * visibility WHERE clause, the `ON CONFLICT ... WHERE deleted_at IS NOT NULL`
- * revive semantics, the composite-PK concurrency tie-break, and the partial
- * unique "one owner per project" index only behave correctly against real
- * Postgres. Design doc §4 invariants 1–4 + 3b.
+ * Access is a CLAUDE.md critical path (鉴权 + 数据完整性): every studio member
+ * sees every project, only a project member may enter one, and opening a
+ * project never writes a member row.
  *
  * Seeding uses a narrow raw `postgres` client; the assertions call the real
  * service (core's env-bound `db`, pointed at the testcontainer via the
@@ -35,7 +32,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore, NotFoundError, projectMembersRepo } from "@breatic/core";
+import { ForbiddenError, initCore, NotFoundError, projectMembersRepo } from "@breatic/core";
 import * as projectService from "@server/modules/project/project.service.js";
 
 try {
@@ -44,7 +41,7 @@ try {
   // already initialised by a sibling suite in this worker — fine.
 }
 
-const PG_DRIVER_LOCAL = "project-visibility-test-driver";
+const PG_DRIVER_LOCAL = "project-access-test-driver";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -103,12 +100,11 @@ let projSeq = 0;
 async function insertProject(
   studioId: string,
   ownerUserId: string,
-  visibility: "studio" | "private",
 ): Promise<string> {
   const slug = `pv-project-${projSeq++}`;
   const rows = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studioId}, ${ownerUserId}, ${`Project ${slug}`}, ${slug}, ${visibility})
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioId}, ${ownerUserId}, ${`Project ${slug}`}, ${slug})
     RETURNING id
   `;
   const projectId = rows[0]!.id;
@@ -151,22 +147,18 @@ async function ownerCount(projectId: string): Promise<number> {
 }
 
 /**
- * Read back what `create` actually wrote for the two columns it carries
- * through untouched: the first space's type (B.2) and the visibility.
+ * Read back the first space's type (B.2) that `create` carried through.
  * @param projectId - The project to read.
- * @returns The persisted values.
+ * @returns The persisted value.
  * @throws {Error} if the project row is gone.
  */
-async function storedProject(
-  projectId: string,
-): Promise<{ spaceType: string; visibility: string }> {
-  const rows = await sql<{ space_type: string; visibility: string }[]>`
-    SELECT initial_space_type AS space_type, visibility
-    FROM projects WHERE id = ${projectId}
+async function storedProject(projectId: string): Promise<{ spaceType: string }> {
+  const rows = await sql<{ space_type: string }[]>`
+    SELECT initial_space_type AS space_type FROM projects WHERE id = ${projectId}
   `;
   const row = rows[0];
   if (row === undefined) throw new Error(`no project ${projectId}`);
-  return { spaceType: row.space_type, visibility: row.visibility };
+  return { spaceType: row.space_type };
 }
 
 describe("projectService.create — studio admin/maintainer gate (critical path 鉴权 + §0.2)", () => {
@@ -180,7 +172,6 @@ describe("projectService.create — studio admin/maintainer gate (critical path 
       studioId,
       "Admin Project",
       "admin-gate-project",
-      "studio",
       "canvas",
     );
 
@@ -190,13 +181,6 @@ describe("projectService.create — studio admin/maintainer gate (critical path 
     expect(await activeMemberCount(project.id, admin)).toBe(1);
     const stored = await storedProject(project.id);
     expect(stored.spaceType).toBe("canvas");
-    // The last leg of the wire that decides what a new project gets. Since
-    // 2026-08-07 the client sends no visibility and the request schema
-    // defaults it to 'studio'; the schema and route ends are pinned in
-    // shared/schemas/__tests__/api.test.ts and __tests__/routes/projects.test.ts.
-    // This is the end that proves the value survives service → repo → INSERT
-    // rather than being rewritten on the way down.
-    expect(stored.visibility).toBe("studio");
   });
 
   it("a maintainer may create (admin + maintainer can spend shared studio credits)", async () => {
@@ -211,7 +195,6 @@ describe("projectService.create — studio admin/maintainer gate (critical path 
       studioId,
       "Creator Project",
       "creator-gate-project",
-      "studio",
       "document",
     );
 
@@ -230,7 +213,7 @@ describe("projectService.create — studio admin/maintainer gate (critical path 
     await insertStudioMember(studioId, member, "guest");
 
     await expect(
-      projectService.create(member, studioId, "Member Project", "member-gate-project", "studio", "canvas"),
+      projectService.create(member, studioId, "Member Project", "member-gate-project", "canvas"),
     ).rejects.toMatchObject({ name: "ForbiddenError" });
   });
 
@@ -241,13 +224,13 @@ describe("projectService.create — studio admin/maintainer gate (critical path 
     await insertStudioMember(studioId, admin, "admin");
 
     await expect(
-      projectService.create(stranger, studioId, "Stranger Project", "stranger-gate-project", "studio", "canvas"),
+      projectService.create(stranger, studioId, "Stranger Project", "stranger-gate-project", "canvas"),
     ).rejects.toMatchObject({ name: "ForbiddenError" });
   });
 });
 
-describe("listByStudioForViewer — visibility matrix (invariant #1)", () => {
-  it("member sees studio-visible + own-role private; NOT others' private; admin sees all", async () => {
+describe("listByStudioForViewer — every studio member sees every project (A1)", () => {
+  it("a guest sees projects they are not on, with a null role; a non-member sees none", async () => {
     const admin = await insertUser();
     const member = await insertUser();
     const stranger = await insertUser();
@@ -255,41 +238,27 @@ describe("listByStudioForViewer — visibility matrix (invariant #1)", () => {
     await insertStudioMember(studioId, admin, "admin");
     await insertStudioMember(studioId, member, "guest");
 
-    const pStudio = await insertProject(studioId, admin, "studio");
-    const pPrivateMember = await insertProject(studioId, member, "private");
-    const pPrivateAdmin = await insertProject(studioId, admin, "private");
+    const pAdmin = await insertProject(studioId, admin);
+    const pMember = await insertProject(studioId, member);
 
-    // Member: studio-visible (no role yet) + own private; NOT admin's private.
     const asMember = await projectService.listByStudioForViewer(studioId, member);
-    const memberIds = new Set(asMember.map((p) => p.id));
-    expect(memberIds.has(pStudio)).toBe(true);
-    expect(memberIds.has(pPrivateMember)).toBe(true);
-    expect(memberIds.has(pPrivateAdmin)).toBe(false);
-    // studio-visible project the member has not entered → myRole null.
-    expect(asMember.find((p) => p.id === pStudio)!.myRole).toBeNull();
-    expect(asMember.find((p) => p.id === pPrivateMember)!.myRole).toBe("owner");
+    expect(asMember.find((p) => p.id === pAdmin)!.myRole).toBeNull();
+    expect(asMember.find((p) => p.id === pMember)!.myRole).toBe("owner");
 
-    // Admin: sees ALL, including the member's private (myRole null there).
     const asAdmin = await projectService.listByStudioForViewer(studioId, admin);
-    const adminIds = new Set(asAdmin.map((p) => p.id));
-    expect(adminIds.has(pStudio)).toBe(true);
-    expect(adminIds.has(pPrivateMember)).toBe(true);
-    expect(adminIds.has(pPrivateAdmin)).toBe(true);
-    expect(asAdmin.find((p) => p.id === pPrivateMember)!.myRole).toBeNull();
+    expect(asAdmin.find((p) => p.id === pMember)!.myRole).toBeNull();
 
-    // Non-member: no projects (non-member shell).
     expect(await projectService.listByStudioForViewer(studioId, stranger)).toEqual([]);
   });
 
-  it("carries slug + visibility on each summary row", async () => {
+  it("carries slug and studio on each summary row", async () => {
     const owner = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    const pid = await insertProject(studioId, owner, "studio");
+    const pid = await insertProject(studioId, owner);
 
     const list = await projectService.listByStudioForViewer(studioId, owner);
     const row = list.find((p) => p.id === pid)!;
-    expect(row.visibility).toBe("studio");
     expect(row.slug).toMatch(/^pv-project-/);
     expect(row.studioId).toBe(studioId);
   });
@@ -298,9 +267,9 @@ describe("listByStudioForViewer — visibility matrix (invariant #1)", () => {
     const owner = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    const pOld = await insertProject(studioId, owner, "studio");
-    const pMid = await insertProject(studioId, owner, "studio");
-    const pNew = await insertProject(studioId, owner, "studio");
+    const pOld = await insertProject(studioId, owner);
+    const pMid = await insertProject(studioId, owner);
+    const pNew = await insertProject(studioId, owner);
     // Insert defaults created_at to now() (not orderable across fast inserts);
     // stamp explicit creation times so the DESC order is deterministic.
     await sql`UPDATE projects SET created_at = '2026-01-01T00:00:00Z' WHERE id = ${pOld}`;
@@ -315,105 +284,48 @@ describe("listByStudioForViewer — visibility matrix (invariant #1)", () => {
   });
 });
 
-describe("loadForViewer — open-baseline materialize (invariants #2 #3 #3b #4)", () => {
-  it("materializes a viewer row on first entry; idempotent on re-entry (#2 #3)", async () => {
+describe("loadForViewer — only members enter, and opening writes nothing (A4 A11)", () => {
+  it("a studio member who is not on the project gets 403 and no member row, even on repeated tries", async () => {
     const owner = await insertUser();
     const member = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
     await insertStudioMember(studioId, member, "guest");
-    const pid = await insertProject(studioId, owner, "studio");
-
-    // #2 — not a project member before entry.
-    expect(await projectMembersRepo.getRole(pid, member)).toBeNull();
-
-    const first = await projectService.loadForViewer(pid, member);
-    expect(first.myRole).toBe("viewer");
-    expect(await projectMembersRepo.getRole(pid, member)).toBe("viewer");
-
-    // #3 — re-entry is a no-op (still exactly one active viewer row).
-    const second = await projectService.loadForViewer(pid, member);
-    expect(second.myRole).toBe("viewer");
-    expect(await activeMemberCount(pid, member)).toBe(1);
-
-    // #4 — materialize never forged a second owner.
-    expect(await ownerCount(pid)).toBe(1);
-  });
-
-  it("converges to a single row under concurrent first entries (#3)", async () => {
-    const owner = await insertUser();
-    const member = await insertUser();
-    const studioId = await insertStudio(owner);
-    await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, member, "guest");
-    const pid = await insertProject(studioId, owner, "studio");
+    const pid = await insertProject(studioId, owner);
 
     const results = await Promise.allSettled([
       projectService.loadForViewer(pid, member),
       projectService.loadForViewer(pid, member),
-      projectService.loadForViewer(pid, member),
     ]);
-    expect(results.every((r) => r.status === "fulfilled")).toBe(true);
-    expect(await activeMemberCount(pid, member)).toBe(1);
-    expect(await projectMembersRepo.getRole(pid, member)).toBe("viewer");
+    for (const r of results) {
+      expect(r.status).toBe("rejected");
+      expect((r as PromiseRejectedResult).reason).toBeInstanceOf(ForbiddenError);
+    }
+    expect(await activeMemberCount(pid, member)).toBe(0);
+    expect(await ownerCount(pid)).toBe(1);
   });
 
-  it("revives a soft-deleted (previously-removed) member on baseline re-entry (#3b)", async () => {
+  it("a removed member stays out: their soft-deleted row is not revived by opening", async () => {
     const owner = await insertUser();
     const member = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
     await insertStudioMember(studioId, member, "guest");
-    const pid = await insertProject(studioId, owner, "studio");
-    // Member was invited then removed → a soft-deleted row exists.
+    const pid = await insertProject(studioId, owner);
     await insertProjectMember(pid, member, "viewer", true);
-    expect(await projectMembersRepo.getRole(pid, member)).toBeNull();
-
-    const result = await projectService.loadForViewer(pid, member);
-    expect(result.myRole).toBe("viewer");
-    // Revived to an ACTIVE viewer (so collab's loadProjectRole accepts the WS).
-    expect(await projectMembersRepo.getRole(pid, member)).toBe("viewer");
-    expect(await activeMemberCount(pid, member)).toBe(1);
-  });
-});
-
-describe("materializeBaselineViewer — never downgrades an active member", () => {
-  it("is a no-op against an active editor (no downgrade to viewer)", async () => {
-    const owner = await insertUser();
-    const editor = await insertUser();
-    const studioId = await insertStudio(owner);
-    await insertStudioMember(studioId, owner, "admin");
-    const pid = await insertProject(studioId, owner, "studio");
-    await insertProjectMember(pid, editor, "editor");
-
-    await projectMembersRepo.materializeBaselineViewer(pid, editor);
-
-    expect(await projectMembersRepo.getRole(pid, editor)).toBe("editor");
-    expect(await activeMemberCount(pid, editor)).toBe(1);
-  });
-});
-
-describe("loadForViewer — access denial hides existence (404)", () => {
-  it("rejects a studio member on a private project they are not a member of", async () => {
-    const owner = await insertUser();
-    const member = await insertUser();
-    const studioId = await insertStudio(owner);
-    await insertStudioMember(studioId, owner, "admin");
-    await insertStudioMember(studioId, member, "guest");
-    const pid = await insertProject(studioId, owner, "private");
 
     await expect(projectService.loadForViewer(pid, member)).rejects.toBeInstanceOf(
-      NotFoundError,
+      ForbiddenError,
     );
     expect(await projectMembersRepo.getRole(pid, member)).toBeNull();
   });
 
-  it("rejects a non-studio-member on a studio-visible project", async () => {
+  it("someone outside the studio gets 404, so existence is not leaked", async () => {
     const owner = await insertUser();
     const stranger = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    const pid = await insertProject(studioId, owner, "studio");
+    const pid = await insertProject(studioId, owner);
 
     await expect(projectService.loadForViewer(pid, stranger)).rejects.toBeInstanceOf(
       NotFoundError,

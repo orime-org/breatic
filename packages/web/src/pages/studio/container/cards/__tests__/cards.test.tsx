@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
 import { CollectionCard } from '@web/pages/studio/container/cards/CollectionCard';
@@ -13,12 +14,11 @@ import type {
 } from '@web/pages/studio/container/container-types';
 import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
-const OWNED_PRIVATE: ContainerProject = {
+const OWNED: ContainerProject = {
   id: 'p1',
   slug: 'secret',
   name: 'Secret Project',
   thumbnailUrl: null,
-  visibility: 'private',
   myRole: 'owner',
   createdAt: '2026-06-01T00:00:00.000Z',
 };
@@ -28,16 +28,17 @@ const SHARED_STUDIO: ContainerProject = {
   slug: 'shared',
   name: 'Shared Project',
   thumbnailUrl: null,
-  visibility: 'studio',
   myRole: 'editor',
   createdAt: '2026-06-01T00:00:00.000Z',
 };
 
 function renderProject(project: ContainerProject, studioRole: StudioRole) {
   return render(
-    <MemoryRouter>
-      <ProjectCard project={project} studioRole={studioRole} />
-    </MemoryRouter>,
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>
+        <ProjectCard project={project} studioRole={studioRole} />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -53,22 +54,16 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
     );
   });
 
-  it('carries no visibility badge, whatever the row says', () => {
-    // The concept left the product on 2026-08-07. The column survives and the
-    // filter still reads it, so a project row can still SAY private — the card
-    // must stay silent either way. CollectionCard keeps its badge, which is
+  it('carries no visibility badge', () => {
+    // Projects have no visibility; CollectionCard keeps its badge, which is
     // why the assertion is scoped to this card.
     renderProject(SHARED_STUDIO, 'guest');
-    expect(screen.queryByText('Studio-visible')).toBeNull();
-    expect(screen.queryByText('Private')).toBeNull();
-    cleanup();
-    renderProject(OWNED_PRIVATE, 'guest');
     expect(screen.queryByText('Studio-visible')).toBeNull();
     expect(screen.queryByText('Private')).toBeNull();
   });
 
   it('shows the governance menu to the project owner', () => {
-    renderProject(OWNED_PRIVATE, 'guest');
+    renderProject(OWNED, 'guest');
     expect(screen.getByRole('button', MORE)).toBeInTheDocument();
   });
 
@@ -82,13 +77,14 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
     expect(screen.getByRole('button', MORE)).toBeInTheDocument();
   });
 
-  it('renders the baseline viewer role when myRole is null', () => {
+  it('shows no role badge and no link for a project the viewer is not on', () => {
     renderProject({ ...SHARED_STUDIO, myRole: null }, 'guest');
-    expect(screen.getByText('Viewer')).toBeInTheDocument();
+    expect(screen.queryByText('Viewer')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('cardmenu overlay matches the neutral mock (chrome radius, 7px inset, 70% black hover)', () => {
-    renderProject(OWNED_PRIVATE, 'guest');
+    renderProject(OWNED, 'guest');
     const menu = screen.getByRole('button', MORE);
     // Neutral mock `.cardmenu` was 2px; the design-system rebuild's unified
     // radius scale conforms all chrome affordances to --radius-chrome (6px) via

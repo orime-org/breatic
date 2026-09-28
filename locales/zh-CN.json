@@ -62,6 +62,8 @@
       "avatar_unsupported_type": "这个文件无法作为图片读取，换一张试试。"
     },
     "project": {
+      "join_already_member": "你已经是这个 Project 的成员。",
+      "join_already_pending": "你已经申请加入这个 Project，正在等 Owner 审核。",
       "email_not_registered": "该邮箱未注册。",
       "already_member": "该用户已有访问权限。",
       "already_invited": "该用户已有一个待确认的邀请。",
@@ -1072,6 +1074,9 @@
       "studioTransferApproved": "{actor} 接受了你对 {studio} 的 Admin 转让",
       "projectTransferRequest": "{actor} 邀请你接管 {project}",
       "projectTransferApproved": "{actor} 接受了你对 {project} 的所有权转让",
+      "projectJoinRequest": "{actor} 申请加入 {project}",
+      "projectJoinApproved": "{actor} 同意你加入 {project}",
+      "projectJoinRejected": "{actor} 没有通过你加入 {project} 的申请",
       "studioInviteRequest": "{actor} 邀请你加入 {studio}",
       "studioInviteAccepted": "{actor} 接受了你对 {studio} 的邀请",
       "projectInviteRequest": "{actor} 邀请你加入 {project}",
@@ -1390,10 +1395,22 @@
       "theme": "主题：{theme}"
     }
   },
-  "noAccess": {
-    "title": "你没有访问该 Project 的权限",
-    "description": "请联系 Project Owner 申请访问,他们可以通过邮箱邀请你。",
-    "backToStudio": "返回 Studio"
+  "projectJoin": {
+    "title": "你还不是这个 Project 的成员",
+    "body": "「{project}」需要 Owner 同意后才能进入。",
+    "messageLabel": "给 Owner 留言（可选）",
+    "messagePlaceholder": "说说你为什么想加入",
+    "cancel": "取消",
+    "request": "申请加入",
+    "sentTitle": "申请已发送",
+    "sentBody": "Owner 通过后你会收到通知。",
+    "ok": "好的",
+    "pendingTitle": "申请审核中",
+    "pendingBody": "你在 {date} 申请加入「{project}」，Owner 还没有处理。",
+    "withdraw": "撤回申请",
+    "requestFailed": "申请没有发出去，请重试。",
+    "withdrawFailed": "撤回没有成功，请重试。",
+    "loadFailed": "没能打开这个 Project，请重试。"
   },
   "activity": {
     "description": "上传、生成、Space 与成员变更",
@@ -1442,11 +1459,20 @@
   "decision": {
     "loadingTitle": "正在打开这个请求…",
     "loadingBody": "稍等，正在查找。",
-    "title": "{kind, select, studio_invite {有人邀请你加入一个 Studio} project_invite {有人邀请你加入一个 Project} role_upgrade {有人申请更高的角色} project_transfer {有人要把一个 Project 交给你} studio_transfer {有人要把一个 Studio 交给你} other {有件事等你答复}}",
-    "body": "{kind, select, studio_invite {{actor} 邀请你以{role, select, maintainer {Maintainer} guest {Guest} other {Member}}身份加入 {entity}。} project_invite {{actor} 邀请你以{role, select, editor {Editor} viewer {Viewer} other {Member}}身份参与 {entity}。} role_upgrade {{actor} 申请在 {entity} 中成为 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}。} project_transfer {{actor} 想把 {entity} 的所有权交给你。} studio_transfer {{actor} 想让你成为 {entity} 的 Admin。} other {{actor} 在等你对 {entity} 的答复。}}",
+    "title": "{kind, select, studio_invite {有人邀请你加入一个 Studio} project_invite {有人邀请你加入一个 Project} role_upgrade {有人申请更高的角色} project_join {加入申请} project_transfer {有人要把一个 Project 交给你} studio_transfer {有人要把一个 Studio 交给你} other {有件事等你答复}}",
+    "body": "{kind, select, studio_invite {{actor} 邀请你以{role, select, maintainer {Maintainer} guest {Guest} other {Member}}身份加入 {entity}。} project_invite {{actor} 邀请你以{role, select, editor {Editor} viewer {Viewer} other {Member}}身份参与 {entity}。} role_upgrade {{actor} 申请在 {entity} 中成为 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}。} project_join {{actor} 申请加入 {entity}。} project_transfer {{actor} 想把 {entity} 的所有权交给你。} studio_transfer {{actor} 想让你成为 {entity} 的 Admin。} other {{actor} 在等你对 {entity} 的答复。}}",
     "reason": "附言：{message}",
-    "confirm": "{kind, select, role_upgrade {批准} other {接受}}",
-    "decline": "{kind, select, role_upgrade {拒绝} other {拒绝}}",
+    "confirm": "{kind, select, role_upgrade {批准} project_join {通过} other {接受}}",
+    "decline": "{kind, select, role_upgrade {拒绝} project_join {拒绝} other {拒绝}}",
+    "grantRole": "角色",
+    "field": {
+      "requester": "申请人",
+      "project": "Project",
+      "message": "留言",
+      "expires": "有效期"
+    },
+    "expiresBefore": "{date} 截止",
+    "actorWithHandle": "{name}（@{handle}）",
     "windowNote": "这个请求当时可在 {days} 天内答复。",
     "acceptedTitle": "你已经接受过了",
     "acceptedBody": "这里没有别的事要做了。",
