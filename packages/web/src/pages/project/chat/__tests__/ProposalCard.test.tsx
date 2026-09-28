@@ -170,7 +170,7 @@ describe('what the card says before it is pressed', () => {
     renderCard();
 
     expect(
-      screen.getByText('Prompt ready. Right-click the node and choose Generate to see it.'),
+      screen.getByText('Prompt ready. Right-click the node and choose Generate to open the generation panel and see it.'),
     ).toBeTruthy();
   });
 
@@ -182,7 +182,7 @@ describe('what the card says before it is pressed', () => {
     });
 
     expect(
-      screen.getByText('Settings ready. Right-click the node and choose Generate to see them.'),
+      screen.getByText('Settings ready. Right-click the node and choose Generate to open the generation panel and see them.'),
     ).toBeTruthy();
   });
 

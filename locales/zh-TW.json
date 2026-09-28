@@ -275,8 +275,8 @@
       "failed": "沒建成，可以再試一次。",
       "eachRun": "{s, number} 秒 × {n, number}",
       "needCanvas": "先開啟一個畫布。",
-      "promptReady": "提示詞已寫好，右鍵節點選「生成」查看",
-      "settingsReady": "設定已配好，右鍵節點選「生成」查看"
+      "promptReady": "提示詞已寫好，右鍵節點選「生成」，在開啟的生成面板裡查看",
+      "settingsReady": "設定已配好，右鍵節點選「生成」，在開啟的生成面板裡查看"
     },
     "thinking": "思考了一會兒",
     "thinkingNow": "思考中",
