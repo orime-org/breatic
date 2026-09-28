@@ -1350,10 +1350,13 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
+      // One transaction: in two, the line would first land between them.
       act(() => {
-        peer.editor.setTextCursorPosition(peer.editor.document[2]!);
-        peer.editor.moveBlocksUp();
-        peer.editor.moveBlocksUp();
+        peer.editor.transact(() => {
+          peer.editor.setTextCursorPosition(peer.editor.document[2]!);
+          peer.editor.moveBlocksUp();
+          peer.editor.moveBlocksUp();
+        });
       });
 
       expect(lines()).toEqual(['echo', 'alpha bravo', 'charlie delta']);
@@ -1374,6 +1377,45 @@ describe('the comment panel', () => {
       });
 
       expect(lines()).toEqual(['alpha bravo', 'echo', 'charlie delta']);
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
+    });
+
+    it('says so when a peer swaps its middle line for another and rewrites its last', async () => {
+      // Its last line is rewritten, so the lines are asked; the same number of
+      // lines lies between its ends, but not the lines it ran across.
+      show('editor', ['alpha bravo', 'mike', 'charlie delta', 'november']);
+      const [first, , third] = lineStarts();
+      aimAt(first! + 6, third! + 7);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        const view = peer.editor.prosemirrorView!;
+        const [, mike, , november] = peer.editor.document;
+        const rows = new Map<string, { from: number; to: number; node: never }>();
+        view.state.doc.descendants((node, pos) => {
+          const id: unknown = node.attrs['id'];
+          if (typeof id === 'string' && (id === mike!.id || id === november!.id)) {
+            rows.set(id, { from: pos, to: pos + node.nodeSize, node: node as never });
+            return false;
+          }
+          return true;
+        });
+        const m = rows.get(mike!.id)!;
+        const n = rows.get(november!.id)!;
+        const charlie = peer.editor.document[2]!;
+        peer.editor.transact((tr) => {
+          tr.replaceWith(n.from, n.to, m.node).replaceWith(m.from, m.to, n.node);
+          peer.editor.updateBlock(charlie, {
+            type: 'heading',
+            props: { level: 2 },
+          } as never);
+        });
+      });
+
+      expect(lines()).toEqual(['alpha bravo', 'november', 'charlie delta', 'mike']);
       expect(
         await screen.findByTestId('doc-comment-draft-dropped'),
       ).toBeInTheDocument();

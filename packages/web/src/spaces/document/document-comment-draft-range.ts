@@ -25,26 +25,30 @@
  *
  * The start names the first letter covered and the end the last one, with its
  * association to the left (`assoc = -1`, which Yjs resolves to "after this
- * letter" and, once the letter is deleted, to where it was — `yjs.cjs:2566`).
- * Text written against either edge stays outside, whichever way it arrives.
+ * letter"). Text written against either edge stays outside, whichever way it
+ * arrives.
  *
- * A peer's editor writes some changes by deleting text and writing it again:
- * splitting a line, joining two, changing a block's type, moving a block —
- * and which text it keeps is not settled by anything it promises. A Yjs
- * position on a deleted letter resolves to where that letter was, so once an
- * end's letter is deleted the range no longer names the words. The draft is
- * dropped then, keeping what the reader wrote, rather than guessed onto text
- * that may not be theirs; they choose the words again and carry on.
+ * A peer's editor writes some changes by deleting a line's letters and
+ * writing them again: moving a line, and every line between where it left and
+ * where it lands; undoing or redoing such a move; changing a line's type;
+ * splitting or joining lines. Once an end's letter is deleted its Yjs position
+ * no longer names the words. The lines are asked instead: every line keeps
+ * its id through such a rewrite, so when the lines the range ran across are
+ * all still there, still next to each other in order and word for word the
+ * same, the range stays at the same place in them ({@link linesStill}). The
+ * reader's own edits get the same question when mapping them leaves no
+ * letters, which is what moving the draft's own line does.
  *
  * Both ends always sit against a letter: the first one covered and just past
  * the last. A range that reaches into the next line, or past non-text at an
  * edge, is drawn in to its letters wherever a range is written.
  *
- * It is GONE once a Yjs change deletes the letter either end names, or once
- * the reader's own edit leaves it covering no letters. Posting then would put
- * the reader's words in a thread pointing at nothing, or at other words,
- * which is what A21 is about — the draft card keeps its place in the panel
- * and says so instead.
+ * It is GONE once neither way finds it: an end's letter was deleted, or the
+ * reader's own edit left no letters, and the lines it ran across are no longer
+ * all there as they were. Nothing is guessed about where changed words went.
+ * Posting then would put the reader's words in a thread pointing at nothing,
+ * or at other words, which is what A21 is about — the draft card keeps its
+ * place in the panel and says so instead, keeping what the reader wrote.
  *
  * ## One draft, one place
  *
@@ -98,6 +102,10 @@ import {
   type TrackedLink,
 } from '@web/spaces/document/document-link-tracking';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
+import {
+  contentRangeOf,
+  rowById,
+} from '@web/spaces/document/document-row-by-id';
 
 /**
  * The draft's name wherever a comment is named by id: the panel's column and
@@ -166,6 +174,87 @@ function letterBounds(
     return false;
   });
   return from === null ? null : { from, to };
+}
+
+/** Stands in for a non-text node inside a line, one position wide. */
+const LEAF = '\ufffc';
+
+/** One line a range ran across, as it stood. */
+interface Line {
+  /** The id of the row the line belongs to. */
+  readonly id: string;
+  /** Its words, one character per position. */
+  readonly words: string;
+}
+
+/** The lines a range runs across, and where it starts and ends in them. */
+interface Lines {
+  readonly lines: readonly Line[];
+  /** Where the range starts in the first line. */
+  readonly start: number;
+  /** Where it ends in the last line. */
+  readonly end: number;
+}
+
+/**
+ * The words of one line, a non-text node counted as one character so that
+ * an offset into them is an offset into the line.
+ * @param line - The line.
+ * @returns Its words.
+ */
+function wordsOf(line: ProseMirrorNode): string {
+  return line.textBetween(0, line.content.size, '', LEAF);
+}
+
+/**
+ * The lines a range runs across.
+ * @param doc - The body.
+ * @param range - The range, against its letters.
+ * @returns Them, in order.
+ */
+function linesOf(doc: ProseMirrorNode, range: DraftRange): Lines {
+  const lines: Line[] = [];
+  let start = 0;
+  let end = 0;
+  doc.nodesBetween(range.from, range.to, (node, pos, parent) => {
+    if (!node.isTextblock) return true;
+    const id: unknown = parent?.attrs['id'];
+    if (typeof id !== 'string') return false;
+    if (lines.length === 0) start = range.from - (pos + 1);
+    end = range.to - (pos + 1);
+    lines.push({ id, words: wordsOf(node) });
+    return false;
+  });
+  return { lines, start, end };
+}
+
+/**
+ * Where a range is after a change that rewrote the lines it ran across
+ * without changing them: each line found again by its row's id, all still
+ * there, still next to each other in order, and word for word the same.
+ * @param doc - The body after the change.
+ * @param held - The lines as they were.
+ * @returns The range at the same place in them, or null when any of that no
+ *   longer holds.
+ */
+function linesStill(doc: ProseMirrorNode, held: Lines): DraftRange | null {
+  const first = held.lines[0];
+  const last = held.lines[held.lines.length - 1];
+  if (first === undefined || last === undefined) return null;
+  const same = held.lines.every((line) => {
+    const row = rowById(doc, line.id);
+    const content = row?.node.firstChild;
+    return content != null && wordsOf(content) === line.words;
+  });
+  if (!same) return null;
+  const from = contentRangeOf(rowById(doc, first.id)!)!.from + held.start;
+  const to = contentRangeOf(rowById(doc, last.id)!)!.from + held.end;
+  if (to <= from) return null;
+  const now = linesOf(doc, { from, to });
+  return now.lines.length === held.lines.length &&
+    now.lines.every((line, i) => line.id === held.lines[i]!.id)
+    ? { from, to }
+    : null;
 }
 
 /**
@@ -323,7 +412,9 @@ function carryDraft(
     bound !== null
       ? carryAcrossYjs(bound, held)
       : mapDraftRange(current, tr.mapping);
-  const moved = carried === null ? null : letterBounds(tr.doc, carried);
+  const moved =
+    (carried === null ? null : letterBounds(tr.doc, carried)) ??
+    linesStill(tr.doc, linesOf(tr.before, current));
   if (moved === null) {
     return { kind: 'dropped', why: 'targetGone', opening: current.opening };
   }
