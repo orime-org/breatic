@@ -4,12 +4,13 @@
 /**
  * Lock order of every path that touches join requests — real Postgres.
  *
- * The order is `studio_members` → `projects` → request rows → `project_members`.
- * `deleteProject` takes the project row first and sweeps the request tables
- * before `project_members`; deciding, transferring and removing a member each
- * take the row they share with it in the same order, so any two of them queue
- * instead of deadlocking, and a decision never acts on a studio membership that
- * a concurrent removal is taking away.
+ * Every path that writes a project's request rows, member rows or bell entries
+ * takes that project's `projects` row lock first — `deleteProject` does, and so
+ * do deciding a join request or a role upgrade, withdrawing a join request,
+ * accepting a transfer and removing a studio member — so any two of them queue
+ * instead of deadlocking. Deciding a join request also locks the requester's
+ * studio membership before the project, so it never acts on a membership that a
+ * concurrent removal is taking away.
  *
  * Each case parks one side at a chosen statement with a lock held from a
  * separate connection, then runs the other side, so the interleaving under test
@@ -33,11 +34,12 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore } from "@breatic/core";
+import { ConflictError, initCore, NotFoundError } from "@breatic/core";
 import * as joinService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import * as decisionService from "@server/modules/decision/decision.service.js";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
+import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 
 try {
@@ -275,7 +277,8 @@ describe("deciding a request against removing the requester from the studio", ()
     } finally {
       await gate.end({ timeout: 5 });
     }
-    await Promise.allSettled([approving!, removing!]);
+    const [approved] = await Promise.allSettled([approving!, removing!]);
+    expect(approved.status).toBe("fulfilled");
 
     const [seat] = await sql<{ n: number }[]>`
       SELECT count(*)::int AS n FROM project_members
@@ -287,6 +290,154 @@ describe("deciding a request against removing the requester from the studio", ()
     `;
     expect(inStudio!.n).toBe(0);
     expect(seat!.n).toBe(0);
+  });
+});
+
+describe("removing the requester before the approval reaches them", () => {
+  it("the approval waits for the removal and refuses", async () => {
+    const s = await scene();
+    await joinService.request({ projectId: s.projectId, requesterUserId: s.requesterId });
+    const [pending] = await sql<{ share_token: string }[]>`
+      SELECT share_token FROM project_join_requests
+      WHERE project_id = ${s.projectId} AND requester_user_id = ${s.requesterId}
+    `;
+    // The requester is also a viewer on a second project; holding that member
+    // row parks the removal on its member sweep, after it has locked the
+    // studio's membership.
+    const [other] = await sql<{ id: string }[]>`
+      INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+      VALUES (${s.studioId}, ${s.ownerId}, 'Other', ${`pjlo-q-${seq++}-${Date.now()}`}) RETURNING id
+    `;
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role, added_by) VALUES
+        (${other!.id}, ${s.ownerId}, 'owner', null),
+        (${other!.id}, ${s.requesterId}, 'viewer', ${s.ownerId})
+    `;
+
+    const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+    let removing: Promise<unknown> | undefined;
+    let approving: Promise<unknown> | undefined;
+    try {
+      await gate
+        .begin(async (g) => {
+          await g`
+            SELECT user_id FROM project_members
+            WHERE project_id = ${other!.id} AND user_id = ${s.requesterId} FOR UPDATE
+          `;
+          removing = studioMemberService.removeMember(s.studioSlug, s.requesterId);
+          await waitUntilBlockedOn(sql, ["update", "project_members"], 1);
+          approving = decisionService.respond(pending!.share_token, s.ownerId, "confirm");
+          await settledOrParked(approving, ["studio_members", "for update"]);
+          throw new RollBack();
+        })
+        .catch((err: unknown) => {
+          if (!(err instanceof RollBack)) throw err;
+        });
+    } finally {
+      await gate.end({ timeout: 5 });
+    }
+    const [removed, approved] = await Promise.allSettled([removing!, approving!]);
+    expect(removed.status).toBe("fulfilled");
+    expect(approved.status === "rejected" ? approved.reason : null).toBeInstanceOf(ConflictError);
+
+    const [seat] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM project_members
+      WHERE project_id = ${s.projectId} AND user_id = ${s.requesterId} AND deleted_at IS NULL
+    `;
+    expect(seat!.n).toBe(0);
+  });
+});
+
+describe("a role upgrade decision against an owner change", () => {
+  it("approving an upgrade while its requester accepts the project does not deadlock", async () => {
+    const s = await scene();
+    const viewerId = s.requesterId;
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${s.projectId}, ${viewerId}, 'viewer', ${s.ownerId})
+    `;
+    const { requestId } = await roleUpgradeService.request({
+      ownerUserId: s.ownerId,
+      requesterUserId: viewerId,
+      projectId: s.projectId,
+      projectName: "Project",
+    });
+    await projectTransferService.requestProjectTransfer(s.projectId, s.ownerId, viewerId);
+    const [offer] = await sql<{ id: string }[]>`
+      SELECT id FROM project_transfers WHERE project_id = ${s.projectId} AND status = 'pending'
+    `;
+
+    // Holding the project row lines both up behind it, the accept first.
+    const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+    let accepting: Promise<unknown> | undefined;
+    let approving: Promise<unknown> | undefined;
+    try {
+      await gate.begin(async (g) => {
+        await g`SELECT id FROM projects WHERE id = ${s.projectId} FOR UPDATE`;
+        accepting = projectTransferService.confirmProjectTransfer(offer!.id, viewerId);
+        await waitUntilBlockedOn(sql, ["projects", "for update"], 1);
+        approving = roleUpgradeService.approve({ requestId, ownerUserId: s.ownerId });
+        await waitUntilBlockedOn(sql, [], 2);
+      });
+    } finally {
+      await gate.end({ timeout: 5 });
+    }
+    const [accepted, approved] = await Promise.allSettled([accepting!, approving!]);
+
+    expect(accepted.status).toBe("fulfilled");
+    expect(sqlStateOf(approved.status === "rejected" ? approved.reason : null)).not.toBe(DEADLOCK);
+    const [owner] = await sql<{ user_id: string }[]>`
+      SELECT user_id FROM project_members
+      WHERE project_id = ${s.projectId} AND role = 'owner' AND deleted_at IS NULL
+    `;
+    expect(owner!.user_id).toBe(viewerId);
+  });
+});
+
+describe("withdrawing a request against an owner change", () => {
+  it("does not deadlock and leaves no bell entry for a withdrawn request", async () => {
+    const s = await scene();
+    await joinService.request({ projectId: s.projectId, requesterUserId: s.requesterId });
+    const [pending] = await sql<{ notification_id: string }[]>`
+      SELECT notification_id FROM project_join_requests
+      WHERE project_id = ${s.projectId} AND requester_user_id = ${s.requesterId}
+    `;
+    await projectTransferService.requestProjectTransfer(s.projectId, s.ownerId, s.heirId);
+    const [offer] = await sql<{ id: string }[]>`
+      SELECT id FROM project_transfers WHERE project_id = ${s.projectId} AND status = 'pending'
+    `;
+
+    // Holding the owner's bell entry parks the accept where it moves the
+    // request to the new owner, with the project already locked.
+    const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+    let accepting: Promise<unknown> | undefined;
+    let withdrawing: Promise<unknown> | undefined;
+    try {
+      await gate.begin(async (g) => {
+        await g`SELECT id FROM notifications WHERE id = ${pending!.notification_id} FOR UPDATE`;
+        accepting = projectTransferService.confirmProjectTransfer(offer!.id, s.heirId);
+        await waitUntilBlockedOn(sql, ["update", "notifications"], 1);
+        withdrawing = joinService.cancelMine(s.projectId, s.requesterId);
+        await waitUntilBlockedOn(sql, [], 2);
+      });
+    } finally {
+      await gate.end({ timeout: 5 });
+    }
+    const [accepted, withdrawn] = await Promise.allSettled([accepting!, withdrawing!]);
+
+    expect(accepted.status).toBe("fulfilled");
+    expect(withdrawn.status).toBe("fulfilled");
+    expect(await requestOf(s.projectId, s.requesterId)).toMatchObject({
+      status: "cancelled",
+      bell_user: s.heirId,
+      bell_read: true,
+    });
+    const [open] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM notifications
+      WHERE project_id = ${s.projectId} AND type = 'project.join_request'
+        AND read_at IS NULL AND deleted_at IS NULL
+    `;
+    expect(open!.n).toBe(0);
   });
 });
 
@@ -312,6 +463,8 @@ describe("an owner change against a project delete", () => {
     expect(sqlStateOf(sweepError)).not.toBe(DEADLOCK);
     expect(sqlStateOf(otherError)).not.toBe(DEADLOCK);
     expect(sweepError).toBeNull();
+    // The offer went with the project, so the accept finds nothing to answer.
+    expect(otherError).toBeInstanceOf(NotFoundError);
   });
 
   it("removing the owner from the studio while the project is being deleted does not deadlock", async () => {
