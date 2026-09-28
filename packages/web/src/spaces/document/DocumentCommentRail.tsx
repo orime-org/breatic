@@ -321,7 +321,11 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // and only some of those mean the thread went with it.
   React.useEffect(() => {
     const hovered = hoveredThreadIn(editor.prosemirrorState);
-    if (hovered !== null && !ids.includes(hovered)) {
+    if (
+      hovered !== null &&
+      !ids.includes(hovered) &&
+      !(hovered === DRAFT_THREAD_ID && draftShowing)
+    ) {
       hoverThread(editor, null);
     }
     const reading = selectedThreadsIn(editor.prosemirrorState);
@@ -602,6 +606,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
                   top={placed.get(entry.id) ?? 0}
                   take={take}
                   giveBack={giveBack}
+                  onHover={onHover}
                   onRead={readDraft}
                 >
                   <DocumentCommentDraftCard
@@ -647,6 +652,8 @@ interface PlacedDraftProps {
   take: (node: HTMLDivElement, id: string) => void;
   /** Gives back everything the panel held under this card's id. */
   giveBack: (node: HTMLDivElement, id: string) => void;
+  /** Says the pointer is resting on this card, or on none. */
+  onHover: (threadId: string | null) => void;
   /** Makes the draft the card being read. */
   onRead: () => void;
   /** The draft card. */
@@ -658,11 +665,12 @@ interface PlacedDraftProps {
  *
  * The same box a thread's card sits in, and the same press: pressing it, or
  * putting the focus into it, makes it the card being read. Resting on it
- * does nothing — its words are painted whether or not it is being read.
+ * deepens its words, the way resting on a thread's card does (A24).
  * @param root0 - Where it goes and how the panel measures it.
  * @param root0.top - How far down the column it sits.
  * @param root0.take - Takes its element into the measurements.
  * @param root0.giveBack - Gives back what was held under its id.
+ * @param root0.onHover - Says the pointer is resting on it, or on none.
  * @param root0.onRead - Makes the draft the card being read.
  * @param root0.children - The draft card.
  * @returns The positioned box.
@@ -671,6 +679,7 @@ function PlacedDraft({
   top,
   take,
   giveBack,
+  onHover,
   onRead,
   children,
 }: PlacedDraftProps): React.JSX.Element {
@@ -691,6 +700,12 @@ function PlacedDraft({
       // The draft is what the reader is working in, so it comes to the front
       // whenever a settling card would otherwise overlap it.
       style={{ top: `${String(top)}px`, zIndex: 1 }}
+      onMouseEnter={() => {
+        onHover(DRAFT_THREAD_ID);
+      }}
+      onMouseLeave={() => {
+        onHover(null);
+      }}
       // The main button only, as a thread's card asks it.
       onPointerDown={(event) => {
         if (event.button !== 0) return;

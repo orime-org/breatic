@@ -2081,6 +2081,35 @@ describe('the comment panel', () => {
       expect(paint?.classList.contains('doc-comment-mark-reading')).toBe(false);
     });
 
+    it('deepens its words while the pointer rests on its card, as a thread card does (A24)', async () => {
+      show();
+      await comment(6, 11, 'about bravo');
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(
+        screen.getByTestId('doc-comment-draft-input'),
+        'half a thought',
+      );
+      await userEvent.click(screen.getByTestId('doc-comment-card'));
+      await waitFor(() => {
+        expect(
+          draftPaint()?.classList.contains('doc-comment-mark-reading'),
+        ).toBe(false);
+      });
+
+      await userEvent.hover(screen.getByTestId('doc-comment-draft-card'));
+
+      expect(
+        draftPaint()?.classList.contains('doc-comment-mark-reading'),
+      ).toBe(true);
+
+      await userEvent.unhover(screen.getByTestId('doc-comment-draft-card'));
+
+      expect(
+        draftPaint()?.classList.contains('doc-comment-mark-reading'),
+      ).toBe(false);
+    });
+
     it('takes the column back when the draft card is pressed again', async () => {
       show();
       await comment(6, 11, 'about bravo');

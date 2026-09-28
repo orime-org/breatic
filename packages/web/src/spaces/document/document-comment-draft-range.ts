@@ -76,7 +76,8 @@
  * saved yet, not to a selection. The deep colour of a comment being read goes
  * on top while the draft is the card being read — which is its placeholder id
  * standing in the selection plugin's `ids`, where every card's turn at being
- * read is kept (design §9.4.1).
+ * read is kept (design §9.4.1) — and while the pointer rests on its card, the
+ * way it does for a thread's card (A24).
  */
 
 import { createExtension } from '@blocknote/core';
@@ -98,6 +99,7 @@ import * as Y from 'yjs';
 
 import {
   READING_CLASS,
+  hoveredThreadIn,
   selectedThreadsIn,
 } from '@web/spaces/document/document-comment-selection';
 import {
@@ -534,12 +536,15 @@ export function draftRangeIn(state: EditorState): DraftAim | null {
  * The paint over the words the open draft is aimed at.
  * @param state - The editor state.
  * @returns One inline decoration over the range, deep while the draft is the
- *   card being read; nothing while no draft is open.
+ *   card being read or its card is under the pointer; nothing while no draft
+ *   is open.
  */
 function paintDraft(state: EditorState): DecorationSet {
   const range = draftRangeIn(state);
   if (range === null) return DecorationSet.empty;
-  const reading = selectedThreadsIn(state).includes(DRAFT_THREAD_ID);
+  const reading =
+    selectedThreadsIn(state).includes(DRAFT_THREAD_ID) ||
+    hoveredThreadIn(state) === DRAFT_THREAD_ID;
   return DecorationSet.create(state.doc, [
     Decoration.inline(range.from, range.to, {
       class: reading ? `${DRAFT_MARK_CLASS} ${READING_CLASS}` : DRAFT_MARK_CLASS,
