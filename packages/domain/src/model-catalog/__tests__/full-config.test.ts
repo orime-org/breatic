@@ -14,6 +14,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { initCore } from "@breatic/core";
 import {
+  MODALITIES,
   getFullModelConfig,
   getModelCatalog,
   resetModelCatalog,
@@ -77,5 +78,30 @@ describe("getFullModelConfig (#1672)", () => {
     const after = getFullModelConfig("image");
     expect(after).not.toBe(before);
     expect(after.models.length).toBe(before.models.length);
+  });
+
+  it("says of every extra upstream call whether it runs before or after the model's own (#2156)", () => {
+    const undeclared = MODALITIES.flatMap((modality) =>
+      getFullModelConfig(modality).models.flatMap((m) =>
+        (m.extra_steps ?? [])
+          .filter((step) => step.at !== "before" && step.at !== "after")
+          .map((step) => `${m.name} -> ${step.endpoint}`),
+      ),
+    );
+    expect(undeclared).toEqual([]);
+  });
+
+  it("runs Voice Cloning's speech after the clone, and every other extra call first", () => {
+    const at = (modality: string, name: string): string[] =>
+      (getFullModelConfig(modality).models.find((m) => m.name === name)?.extra_steps ?? []).map(
+        (step) => `${step.endpoint}@${String(step.at)}`,
+      );
+    expect(at("tts", "minimax-voice-clone")).toEqual(["minimax/speech-2.8-hd@after"]);
+    expect(at("video", "kling-video-o3-4k-image-to-video")).toEqual(["kwaivgi/kling-elements@before"]);
+    expect(at("audio", "mureka-v9.5-generate-song")).toEqual([
+      "mureka-ai/create-upload-id@before",
+      "mureka-ai/create-upload-id@before",
+      "mureka-ai/vocal-clone@before",
+    ]);
   });
 });
