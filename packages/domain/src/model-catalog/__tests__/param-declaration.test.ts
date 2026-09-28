@@ -192,6 +192,36 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*image/s);
   });
 
+  it("lets a choice name how each of its values reads", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({
+          order: {
+            fill: "panel",
+            values: ["meanwhile", "left_right"],
+            value_labels: { meanwhile: "Together", left_right: "Left first" },
+          },
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("is refused when it names how a value reads that it does not offer", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({
+          order: {
+            fill: "panel",
+            values: ["meanwhile"],
+            value_labels: { right_left: "Right first" },
+          },
+        }),
+      ),
+    ).toThrow(/a-model.*order.*value_labels.*right_left/s);
+  });
+
   it("lets the reference pool carry as many as the model says", () => {
     expect(() =>
       assertParamDeclarations(
