@@ -36,6 +36,19 @@ const DRIVEN: FullModelEntry = {
   params: { image: { fill: "canvas", default: null } },
 };
 
+const DIALOGUE: FullModelEntry = {
+  name: "dialogue",
+  takes_prompt: true,
+  params: {
+    speakers: {
+      fill: "panel",
+      type: "items",
+      default: null,
+      fields: { speaker: { type: "text" }, voice: { values: ["Kore", "Puck"] } },
+    },
+  },
+};
+
 describe("upstreamBody", () => {
   it("sends each param under the name the model declares upstream", () => {
     expect(
@@ -84,5 +97,24 @@ describe("upstreamBody", () => {
     expect(
       upstreamBody(camera, { enable_camera: true, camera: "A" }, "p", new Set(["enable_camera", "camera"])),
     ).toEqual({ prompt: "p" });
+  });
+
+  it("sends only the list entries with every field filled, and no list when none is", () => {
+    // The editor adds a row with the name empty; a row left that way names
+    // nobody, and the vendor reads a speaker with no name as a bad request.
+    const rows = [
+      { speaker: "Ada", voice: "Kore" },
+      { speaker: "  ", voice: "Puck" },
+      { speaker: "Bo", voice: "Nobody" },
+      { speaker: "Cy" },
+      "Dee",
+    ];
+    expect(upstreamBody(DIALOGUE, { speakers: rows }, "hi")).toEqual({
+      speakers: [{ speaker: "Ada", voice: "Kore" }],
+      prompt: "hi",
+    });
+    expect(upstreamBody(DIALOGUE, { speakers: [{ speaker: "", voice: "Kore" }] }, "hi")).toEqual({
+      prompt: "hi",
+    });
   });
 });
