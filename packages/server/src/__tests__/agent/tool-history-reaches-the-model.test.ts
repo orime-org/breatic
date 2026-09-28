@@ -2,17 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Both ways into a chat turn convert their history the same way.
+ * A chat turn converts a stored tool result into what the model accepts.
  *
  * A conversation that had used a tool used to fail on its next turn: the
  * stored tool result went to the model as a string, which the SDK rejects
  * outright, and the whole turn died with it (task #75).
- *
- * There are two entry points, `chat()` and `handleSkillCommand()`, and the
- * line that assembled history was written out twice. Fixing the one that was
- * easy to find would have left the other failing exactly as before, with
- * nothing in the suite to say so — which is why each gets its own test here
- * rather than one test standing in for both.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -182,14 +176,8 @@ describe("a conversation that has used a tool", () => {
     addMessage.mockClear();
   });
 
-  it("reaches the model in protocol form through the message entry point", async () => {
+  it("reaches the model in protocol form", async () => {
     await turn((agent) => agent.chat("and now what?"));
-
-    expect(toolResultSentToModel()).toEqual({ type: "text", value: "three links" });
-  });
-
-  it("reaches the model in protocol form through the skill entry point", async () => {
-    await turn((agent) => agent.handleSkillCommand("brainstorm", "and now what?"));
 
     expect(toolResultSentToModel()).toEqual({ type: "text", value: "three links" });
   });

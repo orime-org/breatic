@@ -89,9 +89,6 @@ vi.mock("@server/agent/main-agent.js", () => {
       chat(): AsyncGenerator<unknown> {
         return slowToStart();
       }
-      handleSkillCommand(): AsyncGenerator<unknown> {
-        return slowToStart();
-      }
     },
   };
 });
@@ -107,16 +104,6 @@ const ENTRANCES = [
     name: "POST /chat/message",
     path: "/api/v1/chat/message",
     body: { message: "hi", project_id: PROJECT_ID, conversation_id: CONVERSATION_ID },
-  },
-  {
-    name: "POST /chat/skill",
-    path: "/api/v1/chat/skill",
-    body: {
-      skill_name: "creative_research",
-      input: "hi",
-      project_id: PROJECT_ID,
-      conversation_id: CONVERSATION_ID,
-    },
   },
 ];
 

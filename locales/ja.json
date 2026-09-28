@@ -228,6 +228,7 @@
       "proposingNodes": "提案をまとめています",
       "checkingModels": "利用できるモデルを確認中",
       "understanding": "メディアを確認中",
+      "judging": "検討中",
       "running": "{tool} を実行中"
     },
     "loadEarlier": "以前のメッセージを読み込む",
@@ -273,6 +274,7 @@
       "use": "使う",
       "building": "作成中…",
       "failed": "作成できませんでした。",
+      "eachRun": "{s, number}秒 × {n, number}",
       "needCanvas": "先にキャンバスを開いてください。"
     },
     "thinking": "少し考えました",

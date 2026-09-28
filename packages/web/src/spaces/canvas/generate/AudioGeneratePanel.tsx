@@ -300,10 +300,11 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        // An audio node collects only text rows, and a text row is prompt
-        // material — outside the `modeTakesReferences` question entirely. What
-        // it answers to is the model's own `takes_prompt`, resolved once by the
-        // view model.
+        // No audio model declares a reference pool, so the rail turns away
+        // every media row here and a text row is the only one that lands —
+        // and a text row is prompt material, outside the
+        // `modeTakesReferences` question entirely. What it answers to is the
+        // model's own `takes_prompt`, resolved once by the view model.
         modelTakesPrompt={modelTakesPrompt}
       />
 

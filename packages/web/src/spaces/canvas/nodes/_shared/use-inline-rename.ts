@@ -6,9 +6,6 @@ import * as React from 'react';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { useCanvasStore } from '@web/stores';
 
-/** Node name length cap — over-long names are clipped on commit + ellipsised. */
-export const MAX_NODE_NAME_LEN = 30;
-
 /** The inline-rename controller returned by {@link useInlineRename}. */
 export interface InlineRename {
   /** Whether the inline editor is currently open. */

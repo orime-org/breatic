@@ -23,10 +23,7 @@ import {
 
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
-import {
-  insertRefusal,
-  type ReferenceUsabilityContext,
-} from '@web/spaces/canvas/generate/reference-usability';
+import { insertRefusal, type ReferenceUsabilityContext } from '@breatic/shared';
 import { wasLastChangeLocalUserInput } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import {
   ReferenceMentionList,

@@ -11,6 +11,7 @@
  * quote its own price.
  */
 
+import { layersOf, nameableFeeders } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 /** What one node contributes to the little shape drawn on the card. */
@@ -18,42 +19,96 @@ export interface ShapeChip {
   label: string;
   /** True for a node the reader still has to fill in, drawn as an outline. */
   empty: boolean;
-  /**
-   * True when an earlier node in the group is wired into this one.
-   *
-   * What the arrow before the chip means, so it is drawn only where there is
-   * wiring. Material picked in a toolbar slot reaches the generation without
-   * an edge, and an arrow there tells the reader to connect something the
-   * canvas offers no way to connect.
-   */
-  fed: boolean;
+}
+
+/**
+ * One step of a flow: the nodes that are ready at the same moment.
+ *
+ * Drawn side by side, with an arrow between one layer and the next. Nodes of
+ * one layer never feed each other -- three angles off one photo are three
+ * things the reader gets, not a chain of three.
+ */
+export type ShapeLayer = ShapeChip[];
+
+/**
+ * One run of the flow, from what it starts with to what it makes.
+ *
+ * Groups are drawn apart, with no arrow between them: a written note wired to
+ * nothing is its own run, and an arrow into the picture beside it would say
+ * the copy was the prompt for it -- which is the one thing the proposal
+ * deliberately did not say.
+ */
+export type ShapeGroup = ShapeLayer[];
+
+/**
+ * What some nodes still ask of the reader, under their own names.
+ *
+ * More than one name when several nodes ask for the same thing in the same
+ * words: three angles each wanting a ratio picked is one line of instruction,
+ * and written per node it reads as three separate jobs.
+ */
+export interface NodeTodos {
+  nodes: string[];
+  notes: string[];
 }
 
 /** What the card costs and how long it takes, when the catalog knows. */
 export interface ProposalPrice {
   /**
-   * What one generation costs, when the model charges the same for every one.
+   * What the whole press costs, when every model charges the same per run.
    *
-   * Absent on a model that charges by what the reader gives it: until they
+   * Absent when any of them charges by what the reader gives it: until they
    * set the duration or write the script there is no per-call price, and the
    * field that looks like one is the balance gate's floor.
    */
   credits?: number;
+  /** The longest of the runs. */
   seconds: number;
+  /** How many generations the placed group will run. */
+  runs: number;
+  /**
+   * Whether every run takes the same time, which is what "each" needs.
+   *
+   * A picture at 25 seconds beside a video at 180 drawn as "180 s x 2" says
+   * the picture takes three minutes. Where the runs differ there is no per-run
+   * number to multiply, and the card draws the longest on its own.
+   */
+  sameLength: boolean;
 }
 
 /**
- * The node that generates, which is the one the card is about.
+ * The nodes already holding their words, in the order they were proposed.
  *
- * A proposal without one is refused before a card is ever drawn; reading
- * defensively anyway, because what arrives here was stored on a message and a
- * card built from a bad row must not take the conversation down with it.
+ * The card draws them out in full. The words are in hand before anything is
+ * placed, and a reader who wants another version says so in the chat -- with a
+ * title alone they would have to place the node, read it, and then undo
+ * something they never wanted.
+ *
+ * A generation has no counterpart here: what it makes does not exist yet, so
+ * there is nothing to draw. The difference is not a preference about cards.
  * @param proposal - The proposal the card draws.
- * @returns The first generation node, or undefined.
+ * @returns Every node carrying finished words.
  * @throws {never} Never.
  */
-export function generateNodeOf(proposal: CanvasProposal): ProposalNode | undefined {
-  return proposal.nodes.find((n) => n.role === 'generate');
+export function writtenOf(proposal: CanvasProposal): ProposalNode[] {
+  return proposal.nodes.filter((n) => n.role === 'written');
+}
+
+/**
+ * The one model this flow runs on, when it runs on one.
+ *
+ * The note beside the name is a single top-level field describing a single
+ * model (`inputSchema`). Three generations on three models leave it saying
+ * something about no one of them, so the line is not drawn at all.
+ * @param proposal - The proposal the card draws.
+ * @returns The model every generation uses, or undefined when they differ.
+ * @throws {never} Never.
+ */
+export function modelOf(proposal: CanvasProposal): string | undefined {
+  const models = new Set(
+    proposal.nodes.flatMap((n) => (n.role === 'generate' && n.model ? [n.model] : [])),
+  );
+  return models.size === 1 ? [...models][0] : undefined;
 }
 
 /**
@@ -62,12 +117,49 @@ export function generateNodeOf(proposal: CanvasProposal): ProposalNode | undefin
  * @returns One chip per node.
  * @throws {never} Never.
  */
-export function shapeOf(proposal: CanvasProposal): ShapeChip[] {
-  return proposal.nodes.map((node, at) => ({
-    label: node.name,
-    empty: node.role === 'source',
-    fed: proposal.edges.some((edge) => edge.toIndex === at && edge.fromIndex < at),
-  }));
+export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
+  const layer = layersOf(proposal);
+  const run = runsOf(proposal);
+  const groups = new Map<number, Map<number, ShapeChip[]>>();
+  proposal.nodes.forEach((node, at) => {
+    const chip = { label: node.name, empty: node.role === 'source' };
+    const depth = layer[at] ?? 0;
+    const home = groups.get(run[at] ?? at) ?? new Map<number, ShapeChip[]>();
+    home.set(depth, [...(home.get(depth) ?? []), chip]);
+    groups.set(run[at] ?? at, home);
+  });
+  return [...groups.values()].map((layers) =>
+    [...layers.keys()].sort((a, b) => a - b).map((depth) => layers.get(depth) ?? []),
+  );
+}
+
+/**
+ * Which run of the flow each node belongs to.
+ *
+ * Every node an edge touches is in the same run as the node at its other end,
+ * whichever way the edge points: what matters for drawing is that they are one
+ * piece of work, not which of them came first.
+ * @param proposal - The proposal the card draws.
+ * @returns One run number per node, in the proposal's own order.
+ * @throws {never} Never.
+ */
+function runsOf(proposal: CanvasProposal): number[] {
+  const run = proposal.nodes.map((_, at) => at);
+  for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
+    let moved = false;
+    for (const edge of proposal.edges) {
+      const a = run[edge.fromIndex];
+      const b = run[edge.toIndex];
+      if (a === undefined || b === undefined || a === b) continue;
+      const kept = Math.min(a, b);
+      run.forEach((held, at) => {
+        if (held === a || held === b) run[at] = kept;
+      });
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return run;
 }
 
 /**
@@ -75,16 +167,84 @@ export function shapeOf(proposal: CanvasProposal): ShapeChip[] {
  *
  * One per marked spot, which is what makes them line up with the marks in the
  * prompt itself: the mark says what goes in that place, the line here says
- * what to do about it before pressing.
+ * what to do about it before pressing. Filed under the node they are about,
+ * and nodes asking for the same things in the same words share one group.
  * @param proposal - The proposal the card draws.
- * @returns The notes, in the order they appear in the prompt.
+ * @returns One group per node that asks for anything, in the proposal's order.
  * @throws {never} Never.
  */
-export function todosOf(proposal: CanvasProposal): string[] {
-  const prompt = generateNodeOf(proposal)?.prompt ?? [];
-  return prompt.flatMap((segment) =>
-    segment.slot && segment.slot.note !== '' ? [segment.slot.note] : [],
-  );
+export function todosOf(proposal: CanvasProposal): NodeTodos[] {
+  // A mark asking for material is about the empty node it points at, and
+  // several generations may point at the same one. Named under that node, it
+  // is said once; named under each generation, the reader reads three photos
+  // to find where there is one.
+  const notes = new Map<number, string[]>();
+  /**
+   * Add one note under the node it belongs to.
+   *
+   * The same words arriving about one empty node from several generations is
+   * one job, and said three times it reads as three photos to find. Two marks
+   * in one prompt are two places even when they read the same, so a note
+   * filed under the node whose prompt it came from is kept as written.
+   * @param at - The node the note is about.
+   * @param from - The node whose prompt marked it.
+   * @param note - The line the card draws.
+   */
+  const add = (at: number, from: number, note: string): void => {
+    const held = notes.get(at) ?? [];
+    if (at !== from && held.includes(note)) return;
+    notes.set(at, [...held, note]);
+  };
+  // The same reading the canvas writes its mentions from, so a to-do names
+  // the node the bracket beside it will point at -- and where no mention is
+  // written, the to-do falls under the generation whose panel it is done in.
+  const empties = proposal.nodes.map((_, at) => nameableFeeders(proposal, at).sources);
+  // How many generations would point at each empty node. Read once here
+  // because it decides where the note goes: under the generation while it is
+  // the only one reading that node, which is where the demo draws it and
+  // where the reader is standing when they do it.
+  const readers = new Map<number, number>();
+  for (const list of empties) {
+    for (const i of list) {
+      if (i !== null) readers.set(i, (readers.get(i) ?? 0) + 1);
+    }
+  }
+  proposal.nodes.forEach((node, at) => {
+    let assetsSeen = 0;
+    const mine = empties[at] ?? [];
+    for (const segment of node.prompt ?? []) {
+      const slot = segment.slot;
+      if (!slot) continue;
+      if (slot.kind === 'ref') continue;
+      if (slot.kind === 'tweak') {
+        add(at, at, slot.note);
+        continue;
+      }
+      const empty = mine[assetsSeen];
+      assetsSeen += 1;
+      // Shared, the note belongs to the node itself: said under each of three
+      // generations it reads as three photos to find. Read by this one alone,
+      // it belongs here, beside the button the reader presses after doing it.
+      add(
+        empty !== undefined && empty !== null && (readers.get(empty) ?? 0) > 1 ? empty : at,
+        at,
+        slot.note,
+      );
+    }
+  });
+  const groups: NodeTodos[] = [];
+  proposal.nodes.forEach((node, at) => {
+    const held = notes.get(at);
+    if (held === undefined) return;
+    const same = groups.find(
+      (group) =>
+        group.notes.length === held.length &&
+        group.notes.every((note, i) => note === held[i]),
+    );
+    if (same) same.nodes.push(node.name);
+    else groups.push({ nodes: [node.name], notes: held });
+  });
+  return groups;
 }
 
 /**
@@ -95,19 +255,32 @@ export function todosOf(proposal: CanvasProposal): string[] {
  * carry gives nothing rather than a zero, and the card simply omits the line
  * -- a price of 0 reads as free.
  * @param catalog - The model catalog, or undefined while it is being fetched.
- * @param model - The model the proposal chose.
- * @returns The price and the wait, or undefined when the catalog has neither.
+ * @param proposal - The proposal the card draws.
+ * @returns The price and the wait, or undefined when the catalog cannot say.
  * @throws {never} Never.
  */
-export function priceOf(
+export function costOf(
   catalog: ModelCatalog | undefined,
-  model: string | undefined,
+  proposal: CanvasProposal,
 ): ProposalPrice | undefined {
-  const entry = entryOf(catalog, model);
-  if (!entry) return undefined;
+  const rows = proposal.nodes
+    .filter((node) => node.role === 'generate')
+    .map((node) => entryOf(catalog, node.model));
+  if (rows.length === 0 || rows.some((row) => row === undefined)) return undefined;
+  const known = rows.filter((row) => row !== undefined);
+  // A model charging by what it is given has no per-call price at all, so a
+  // total carrying it would be a number nobody can arrive at. The wait is the
+  // longest of them: the runs that can start together do, and a run waiting on
+  // the one before it is waiting on a press the reader has not made yet.
+  const metered = known.some((row) => row.rate !== undefined);
+  const times = known.map((row) => row.generation_time);
   return {
-    ...(entry.rate === undefined ? { credits: entry.cost_per_call } : {}),
-    seconds: entry.generation_time,
+    ...(metered
+      ? {}
+      : { credits: known.reduce((sum, row) => sum + row.cost_per_call, 0) }),
+    seconds: Math.max(...times),
+    runs: known.length,
+    sameLength: new Set(times).size === 1,
   };
 }
 

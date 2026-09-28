@@ -108,6 +108,15 @@ export interface ParamInfo {
    */
   filledBySource?: boolean;
   /**
+   * The kind of node this place takes, for a place material goes.
+   *
+   * The catalog requires it of every such place (`assertParamDeclarations`),
+   * and it is what says a talking head's two places are a portrait and a
+   * voice rather than two of either. Carried because the modes table speaks
+   * in kinds and says nothing about how many places hold each.
+   */
+  accepts?: string;
+  /**
    * Whether that source is the reference pool, which takes a second gesture.
    *
    * An edge makes an image available; an `@`-mention in the prompt picks it
@@ -224,6 +233,7 @@ export function materialNeeded(
   }
   return 0;
 }
+
 
 /**
  * The modes a picker offers that the catalog can currently back.
@@ -418,6 +428,7 @@ function projectParam(
       : {}),
     ...(spec.remote_source !== undefined ? { valuesFrom: spec.remote_source } : {}),
     ...(by === "canvas" ? { filledBySource: true as const } : {}),
+    ...(by === "canvas" && spec.accepts !== undefined ? { accepts: spec.accepts } : {}),
     // Both fills reach the answer as "canvas", because both are material off
     // the canvas; the two gestures that put it there differ, and that is what
     // this says. It comes off `fill` rather than the name the pool travels

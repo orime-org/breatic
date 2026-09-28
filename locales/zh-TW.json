@@ -228,6 +228,7 @@
       "proposingNodes": "正在擬一份提議",
       "checkingModels": "正在查可用的模型",
       "understanding": "正在檢視媒體",
+      "judging": "正在權衡",
       "running": "正在呼叫 {tool}"
     },
     "loadEarlier": "載入更早的訊息",
@@ -273,6 +274,7 @@
       "use": "使用",
       "building": "正在建…",
       "failed": "沒建成，可以再試一次。",
+      "eachRun": "{s, number} 秒 × {n, number}",
       "needCanvas": "先開啟一個畫布。"
     },
     "thinking": "思考了一會兒",

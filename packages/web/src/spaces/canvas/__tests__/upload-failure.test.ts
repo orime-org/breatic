@@ -4,13 +4,12 @@
 /**
  * What the browser does with an upload that ended badly (#186 §3.7.3).
  *
- * The dividing line is whether the ticket was granted. Past it the server
- * holds a task row and a timer that will judge it, so the row is going to get
- * an ending without the browser saying anything — all the browser owes is the
- * person who tried: tell them, and keep their File so the row's own Retry can
- * use it. Before it, nothing on the server ever heard of this upload, so
- * nobody is coming to end it and the empty node this drop created has no
- * future at all.
+ * One plan reports and the rest only speak. A transfer that ended without our
+ * server hearing anything — the bytes never got out, or the edge turned them
+ * down — leaves a row nobody else will end, so it is reported;
+ * every other failure is said in a toast, and keeps the File only where a
+ * Retry can end differently. The node stays in all of them — a node that
+ * exists is the reader's to remove, and only theirs (#2177).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -41,16 +40,17 @@ describe('resolveUploadFailure', () => {
     const plan = resolveUploadFailure({ reason: 'upload', taskId: 't-1' });
 
     expect(plan).toEqual({
-      kind: 'serverKnows',
-      taskId: 't-1',
+      kind: 'toastOnly',
       keepFileFor: 't-1',
       toastKey: 'canvas.upload.failed',
       severity: 'error',
     });
   });
 
-  // Bytes that never reached the edge leave a row nobody else will end (#237):
-  // the finish was never asked for, so the server was never told. This is the
+  // A transfer half that ended without our server hearing anything leaves a
+  // row nobody else will end (#237): the finish was never asked for, so the
+  // server was never told. Both ways that half can end are in here — the bytes
+  // never got out, and the edge turned them down (`canvas-upload.ts:190`). This is the
   // one plan that reports, and it carries no sentence — what the reader sees is
   // the row itself, in the failed count, where it survives them looking away.
   it('reports a transfer that never landed, and keeps its File', () => {
@@ -60,11 +60,11 @@ describe('resolveUploadFailure', () => {
     });
   });
 
-  it('says nobody knows when the ticket was never granted', () => {
+  it('keeps no File when the ticket was never granted', () => {
     const plan = resolveUploadFailure({ reason: 'upload' });
 
     expect(plan).toEqual({
-      kind: 'nobodyKnows',
+      kind: 'toastOnly',
       toastKey: 'canvas.upload.failed',
       severity: 'error',
     });
@@ -77,8 +77,7 @@ describe('resolveUploadFailure', () => {
     expect(
       resolveUploadFailure({ reason: 'unsupportedType', taskId: 't-1' }),
     ).toEqual({
-      kind: 'serverKnows',
-      taskId: 't-1',
+      kind: 'toastOnly',
       toastKey: 'canvas.upload.unsupportedType',
       severity: 'warning',
     });
@@ -88,7 +87,7 @@ describe('resolveUploadFailure', () => {
     // Nobody frees room in the seconds a retry takes, so the sentence has to
     // be the one about the account rather than the one about trying again.
     expect(resolveUploadFailure({ reason: 'storage' })).toEqual({
-      kind: 'nobodyKnows',
+      kind: 'toastOnly',
       toastKey: 'canvas.upload.storageFull',
       severity: 'error',
     });
@@ -98,7 +97,7 @@ describe('resolveUploadFailure', () => {
     // The hashing worker is what broke, so no retry on this page can succeed
     // and the remedy is a reload.
     expect(resolveUploadFailure({ reason: 'hash' })).toEqual({
-      kind: 'nobodyKnows',
+      kind: 'toastOnly',
       toastKey: 'canvas.upload.hashUnavailable',
       severity: 'error',
     });

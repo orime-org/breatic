@@ -228,6 +228,7 @@
       "proposingNodes": "Drafting a proposal",
       "checkingModels": "Looking up the models",
       "understanding": "Looking at the media",
+      "judging": "Weighing it up",
       "running": "Calling {tool}"
     },
     "loadEarlier": "Load earlier messages",
@@ -273,6 +274,7 @@
       "use": "Use",
       "building": "Creating…",
       "failed": "Could not create these nodes.",
+      "eachRun": "{s, number}s × {n, number}",
       "needCanvas": "Open a canvas first."
     },
     "thinking": "Thought for a moment",

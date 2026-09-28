@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import {
-  GROUP_BACKGROUND_OPTIONS,
+  GROUP_BACKGROUND_TINTS,
   groupBackgroundStyle,
   normalizeGroupBackground,
 } from '@web/spaces/canvas/group-background';
@@ -19,9 +19,7 @@ const NEUTRAL_FILL = 'var(--color-muted)';
  * minimap validates against the ratified option set instead of trusting
  * the stored string (adversarial finding, 2026-07-03).
  */
-const KNOWN_GROUP_TINTS: ReadonlySet<string> = new Set(
-  GROUP_BACKGROUND_OPTIONS.flatMap((o) => (o.value ? [o.value] : [])),
-);
+const KNOWN_GROUP_TINTS: ReadonlySet<string> = new Set(GROUP_BACKGROUND_TINTS);
 
 /**
  * The MiniMap fill color for a canvas node — the node's palette identity by

@@ -114,9 +114,13 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   const before = await page.locator('.react-flow__node').count();
   await card.getByTestId('proposal-use').click();
 
-  // Two nodes and the wire between them. Counted rather than matched by id:
-  // the ids are minted by the canvas as it places them.
-  await expect(page.locator('.react-flow__node')).toHaveCount(before + 2, {
+  // Two nodes, the group the canvas puts two or more of them into, and the
+  // wire between them. Counted rather than matched by id: the ids are minted
+  // by the canvas as it places them.
+  await expect(page.locator('.react-flow__node')).toHaveCount(before + 3, {
+    timeout: 20_000,
+  });
+  await expect(page.locator('.react-flow__node-group')).toHaveCount(1, {
     timeout: 20_000,
   });
   await expect(page.locator('.react-flow__edge')).toHaveCount(1, { timeout: 20_000 });

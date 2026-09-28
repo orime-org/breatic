@@ -78,6 +78,71 @@ export function canGenerate(type: NodeType): boolean {
 }
 
 /**
+ * Node-type connection rules (user-ratified 2026-07-10, batch spec §9.1).
+ *
+ * "A connection IS a reference" — so what may wire into a node's input is a
+ * PRODUCT rule, not a graph nicety. Sources that can't feed a target's
+ * generation are rejected at the wire level (drag preview, drop commit, and
+ * pick-mode click all consult this), instead of being accepted and then
+ * silently dropped at execute time — the contradictory dead-end the
+ * adversarial pass surfaced. User-ratified whitelists:
+ *
+ *   image input ← image (i2i source) + text (prompt content)
+ *   video input ← text + video + audio + image (all content modalities)
+ *   text  input ← text + video + audio + image
+ *   audio input ← text + audio (user 2026-09-22: an edge says one piece of
+ *                 audio is what the next one is made from, and that reading
+ *                 stands whether or not the pool can carry a mention of it)
+ *
+ * 3d / web have no ratified input rule yet and keep the current
+ * anything-connects behavior (extend INPUT_WHITELIST when theirs land).
+ *
+ * It lives here rather than beside the canvas because the agent proposes
+ * edges too (#263), and the tool that judges a proposal sits in a library
+ * package that cannot reach into the frontend. Two copies of a ratified
+ * product rule drift apart the first time the whitelist changes.
+ */
+const INPUT_WHITELIST: Partial<Record<NodeType, ReadonlySet<string>>> = {
+  image: new Set<string>(['image', 'text']),
+  video: new Set<string>(['text', 'video', 'audio', 'image']),
+  text: new Set<string>(['text', 'video', 'audio', 'image']),
+  audio: new Set<string>(['text', 'audio']),
+};
+
+/**
+ * Decides whether a source node's output may wire into a target node's input.
+ *
+ * Kinds are read from Yjs-synced node data, so both arguments are treated as
+ * untrusted strings: an unknown source kind fails CLOSED against a whitelisted
+ * target (it is not on the list) and open against an unrestricted one.
+ * @param sourceKind - The source (upstream) node's modality.
+ * @param targetKind - The target (downstream) node's modality.
+ * @returns Whether the connection is allowed.
+ * @throws {never} Never.
+ */
+export function canConnect(
+  sourceKind: NodeType | string,
+  targetKind: NodeType | string,
+): boolean {
+  const whitelist = Object.hasOwn(INPUT_WHITELIST, targetKind)
+    ? INPUT_WHITELIST[targetKind as NodeType]
+    : undefined;
+  return whitelist === undefined || whitelist.has(sourceKind);
+}
+
+/**
+ * How long a node's name may be, in characters.
+ *
+ * The rename input stops at this and the commit clips to it, so it is also
+ * the longest name a reader can give a node by hand. It lives here beside the
+ * connection rule for the same reason that one does: the agent proposes names
+ * too (#263), and the tool judging a proposal sits in a library package that
+ * cannot reach into the frontend. A name past this is one nobody could have
+ * typed, and the first rename shortens it without saying so.
+ */
+export const MAX_NODE_NAME_LEN = 30;
+
+/**
  * Attachment reference stored in a node's `attachments` array — a plain
  * array value on the data Y.Map (node data holds plain values only, see
  * the web `buildDataMap`).

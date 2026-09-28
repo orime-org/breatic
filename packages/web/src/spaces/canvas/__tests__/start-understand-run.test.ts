@@ -147,7 +147,7 @@ describe('one press of Understand', () => {
     // group, and this node is top-level.
     expect(onBuilt).toHaveBeenCalledWith({
       id: (node as { id: string }).id,
-      position: { x: RUN.source.position.x + 312, y: RUN.source.position.y },
+      position: { x: RUN.source.position.x + 346, y: RUN.source.position.y },
     });
   });
 

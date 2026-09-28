@@ -265,12 +265,9 @@ describe("carrying a turn that used a tool back to the model", () => {
   // What a tool returned is stored as a string, because that is what a tool
   // returns. The protocol wants it as a typed value, and handing over the
   // bare string fails the whole turn before it leaves — which is what made a
-  // conversation unusable from its first tool onward (task #75). One entry
-  // point is not enough to check: `/chat/message` and `/chat/skill` both put
-  // history in front of the model, and a fix applied to one of them leaves
-  // the other failing with nothing to say so.
+  // conversation unusable from its first tool onward (task #75).
 
-  it("hands /chat/message a typed tool result, not the stored string", async () => {
+  it("hands the model a typed tool result, not the stored string", async () => {
     stream.parts = usesATool('tc-75a', 'which era of noir?', 'Found some.');
     const { projectId, cookie } = await seedProject();
     const conversationId = await openConversation(projectId, cookie);
@@ -285,37 +282,7 @@ describe("carrying a turn that used a tool back to the model", () => {
     expect(result).toMatchObject({
       type: 'tool-result',
       toolCallId: 'tc-75a',
-      // 有类型的值，不是那个存下来的字符串。裸字符串递过去，整轮在出发前
-      // 就失败 —— 一条会话从它第一次用工具起就不能用了（task #75）。
-      output: { type: 'json', value: { sourceQuery: 'which era of noir?' } },
-    });
-  });
-
-  it("hands /chat/skill the same typed tool result", async () => {
-    stream.parts = usesATool('tc-75b', 'which era of noir?', 'Found some.');
-    const { projectId, cookie } = await seedProject();
-    const conversationId = await openConversation(projectId, cookie);
-    await sendAndDrain(conversationId, projectId, cookie, 'find me noir references');
-
-    stream.parts = saying('Sure.');
-    handedToModel.calls.length = 0;
-    const res = await app.request('/api/v1/chat/skill', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: cookie },
-      body: JSON.stringify({
-        skill_name: 'brainstorm',
-        input: 'give me three angles',
-        project_id: projectId,
-        conversation_id: conversationId,
-      }),
-    });
-    expect(res.status).toBe(200);
-    await res.text();
-
-    const result = partsToModel().find((p) => p.type === 'tool-result');
-    expect(result).toMatchObject({
-      type: 'tool-result',
-      toolCallId: 'tc-75b',
+      // The typed value, not the stored string.
       output: { type: 'json', value: { sourceQuery: 'which era of noir?' } },
     });
   });

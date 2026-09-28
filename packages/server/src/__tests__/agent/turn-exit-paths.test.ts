@@ -157,22 +157,6 @@ async function runTurn(parts: ModelStreamPart[]): Promise<void> {
 const sent: Array<{ type: string }> = [];
 
 /**
- * Run one skill command to the end of its stream.
- * @param skillName - Which skill was asked for.
- */
-async function runSkillTurn(skillName: string): Promise<void> {
-  const { MainAgent } = await import("@server/agent/main-agent.js");
-  const { runWithContext } = await import("@breatic/core");
-  thisCase.parts = saidAndSpent("hi", 100);
-  thisCase.endsOnItsOwn = true;
-  await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-    for await (const _chunk of await new MainAgent().handleSkillCommand(skillName, "go")) {
-      // drained
-    }
-  });
-}
-
-/**
  * Run one turn and stop it from outside, part way through.
  *
  * The model is left with more to say, which is the situation being recorded:
@@ -255,34 +239,24 @@ describe("what a plain chat turn hands the model", () => {
   });
 });
 
-describe("what a skill command hands the model", () => {
-  // The other of the two entry points, and the one with nothing watching it:
-  // deleting `skillName` from its factory call left every test and typecheck
-  // green, because `skillName` is optional and the route tests stop at
-  // 403/404.
-  // The factory itself is stubbed for these two: the real one would look the
-  // fixture skill up in a registry that has no skills under the test root.
+describe("what a turn hands the model", () => {
   const stubConfig = { modelId: "m", instructions: "s", tools: {} };
 
-  it("names the skill it was asked for", async () => {
-    buildAgentConfig.mockReturnValueOnce(stubConfig);
-    await runSkillTurn("creative_research");
-    expect(buildAgentConfig.mock.calls[0]?.[0]).toMatchObject({
-      skillName: "creative_research",
-    });
-  });
-
   it("marks it interactive and passes the caller's prompt and memory", async () => {
-    // All four arguments, so dropping any one of them goes red here. The
-    // skill path used to assemble its own instructions and drifted from chat
-    // on every value; passing them is what stopped that.
+    // Every argument, so dropping any one of them goes red here.
     buildAgentConfig.mockReturnValueOnce(stubConfig);
-    await runSkillTurn("creative_research");
+    await runTurn(saidAndSpent("hi", 100));
     expect(buildAgentConfig.mock.calls[0]?.[0]).toMatchObject({
-      skillName: "creative_research",
       interactive: true,
       basePrompt: "system",
     });
+  });
+
+  it("names no skill", async () => {
+    // A chat turn reaches no skill at all, so the factory is never told one.
+    buildAgentConfig.mockReturnValueOnce(stubConfig);
+    await runTurn(saidAndSpent("hi", 100));
+    expect(buildAgentConfig.mock.calls[0]?.[0]).not.toHaveProperty("skillName");
   });
 });
 

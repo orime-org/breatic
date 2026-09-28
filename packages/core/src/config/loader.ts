@@ -115,14 +115,14 @@ const agentConfigSchema = z.object({
    * agrees on — Anthropic's `clear_tool_uses_20250919` keeps three.
    */
   tool_result_keep: z.number().int().positive().default(3),
-  memory_project_max_size: z.number().int().positive().default(3072),
+  memory_project_max_size: z.number().int().positive().default(8192),
   /**
    * How much of a conversation's own memory reaches the system prompt.
    *
    * Consolidation rewrites this layer whole every time it runs, so it is the
    * one segment that grows from its own output.
    */
-  memory_conversation_max_size: z.number().int().positive().default(3072),
+  memory_conversation_max_size: z.number().int().positive().default(8192),
   /**
    * The ceiling on one model call's answer, in tokens.
    *
@@ -263,6 +263,16 @@ const agentConfigSchema = z.object({
    * bytes once base64'd) at about 60. This leaves room for a slower link.
    */
   understand_media_call_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(180_000),
+  /**
+   * How long the WHOLE judgement call may take, in milliseconds.
+   *
+   * Every delivery and every backoff between them, not one delivery: a
+   * signal spanning the call is what holds the wait to this. Declining
+   * replay settles only the deliveries the caller owns, and a 429 or a 408
+   * is replayed whatever the caller declared. Measured 2026-09-23: 285-395 ms once connected,
+   * 1181 ms on the first call of a process.
+   */
+  judge_likelihood_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(10_000),
   /**
    * How much the model may write about one piece of media, in tokens.
    *

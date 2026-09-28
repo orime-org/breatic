@@ -115,14 +115,14 @@ async function seedOwner(): Promise<Seeded> {
 }
 
 /**
- * Post to one of the two chat entrances.
- * @param path - Which entrance.
+ * Post to the chat entrance.
+ * @param path - The entrance.
  * @param body - The request body.
  * @param cookie - The session cookie.
  * @returns The raw response.
  */
 async function post(
-  path: "/api/v1/chat/message" | "/api/v1/chat/skill",
+  path: "/api/v1/chat/message",
   body: Record<string, unknown>,
   cookie: string,
 ): Promise<Response> {
@@ -205,45 +205,6 @@ describe("what one turn may send", () => {
     expect(res.status).toBeLessThan(500);
   });
 
-  it("refuses a skill command past the limit", async () => {
-    const { projectId, conversationId, cookie } = await seedOwner();
-
-    const res = await post(
-      "/api/v1/chat/skill",
-      {
-        skill_name: "brainstorm",
-        input: "y".repeat(20_000),
-        project_id: projectId,
-        conversation_id: conversationId,
-      },
-      cookie,
-    );
-
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.status).toBeLessThan(500);
-  });
-
-  it("counts the command the skill route writes around the input", async () => {
-    // What goes to the model on this path is `/skill <name> ` and then the
-    // input, so an input measured on its own passes the ceiling and the turn
-    // sends more than it. The limit is on what one turn may carry, and the
-    // command is part of what it carries.
-    const { projectId, conversationId, cookie } = await seedOwner();
-
-    const res = await post(
-      "/api/v1/chat/skill",
-      {
-        skill_name: "brainstorm",
-        input: "y".repeat(getAgentConfig().user_message_max_chars),
-        project_id: projectId,
-        conversation_id: conversationId,
-      },
-      cookie,
-    );
-
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.status).toBeLessThan(500);
-  });
 
   it("admits a message that lands exactly on the limit", async () => {
     // The rule is "past the limit", so the line itself goes through. Without

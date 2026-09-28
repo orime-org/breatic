@@ -61,7 +61,8 @@ import {
   type FocusCropConfirm,
 } from '@web/spaces/canvas/focus/FocusCropOverlay';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
-import { dropPositionAt } from '@web/spaces/canvas/drop-layout';
+import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
+import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { frameBuiltNode } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
@@ -99,6 +100,7 @@ import {
   type CanvasActions,
 } from '@web/spaces/canvas/canvas-actions';
 import { matchDuplicateShortcut } from '@web/spaces/canvas/canvas-duplicate-shortcut';
+import { whatToFocus } from '@web/spaces/canvas/lib/after-placing';
 import { FIT_VIEW_OPTIONS } from '@web/spaces/canvas/viewport-config';
 import {
   matchGroupShortcut,
@@ -138,7 +140,10 @@ import type {
   DisplayStatus,
   Modality,
 } from '@web/data/yjs/node-view';
-import { planGroupCreation } from '@web/spaces/canvas/group-creation';
+import {
+  planGroupCreation,
+  type GroupCreationPlan,
+} from '@web/spaces/canvas/group-creation';
 import {
   EMPTY_NODE_SIZE,
   GROUP_MIN_SIZE,
@@ -410,7 +415,7 @@ const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
  *
  * This is the chrome button's path, which creates one node per press: the
  * offset only has to keep the one before it visible underneath. A drop of
- * several files at once is laid out by `dropPositionAt` instead, which steps
+ * several files at once is laid out by `batchCentresAt` instead, which steps
  * by a whole node so none of them is buried.
  */
 const STAGGER_STEP_PX = 24;
@@ -565,6 +570,39 @@ function planDuplicateGroupGrowth(
     });
   }
   return planGroupGrowth(inputs);
+}
+
+/**
+ * Write a planned Group and bind its members to it.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to write into.
+ * @param plan - The Group's stored rect and each member's relative position.
+ * @param createdBy - Whoever is making it.
+ * @param backgroundColor - Tint token to open with; absent leaves it untinted.
+ * @param name - The name to open with; absent takes the default.
+ */
+function writeGroup(
+  projectId: string,
+  spaceId: string,
+  plan: GroupCreationPlan,
+  createdBy: string,
+  backgroundColor?: string,
+  name?: string,
+): void {
+  createGroup(
+    projectId,
+    spaceId,
+    createGroupNode(
+      plan.groupId,
+      plan.position,
+      plan.width,
+      plan.height,
+      createdBy,
+      backgroundColor,
+      name,
+    ),
+    plan.members,
+  );
 }
 
 /**
@@ -2407,6 +2445,10 @@ function CanvasSpaceInner({
     [spaceId],
   );
 
+  // Whoever is at this browser: stamped on everything created here, which is
+  // both the nodes a drop makes and the Group it wraps them in.
+  const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
+
   // Where a failed upload ONTO A NODE is presented, for every entry that has
   // one: dropping onto the canvas, filling an existing node (double-click /
   // Upload menu / Retry / reset-to-empty), and the video-with-cover path. Each
@@ -2433,12 +2475,7 @@ function CanvasSpaceInner({
   // nobody frees any in the seconds a retry takes. Both remedies can only be
   // said in a localized toast.
   const failUploadNode = React.useCallback(
-    (
-      outcome: UploadFailure,
-      nodeId: string,
-      file: File,
-      opts: { droppedHere: boolean },
-    ): void => {
+    (outcome: UploadFailure, file: File): void => {
       const plan = resolveUploadFailure(outcome);
       if (plan.kind === 'reportToServer') {
         // Nobody else can end this row: the bytes never reached the edge, so
@@ -2466,20 +2503,14 @@ function CanvasSpaceInner({
       toast[plan.severity](
         t(plan.toastKey, { filename: file.name, ...refusedFormatParams(file) }),
       );
-      if (plan.kind === 'serverKnows') {
-        // The row takes this to an end on its own, judged against the budget
-        // it carries. All that is left here is the File its Retry re-sends —
-        // and only where re-sending it can end differently, which a refusal
-        // read off the bytes cannot.
-        if (plan.keepFileFor !== undefined) {
-          stashRetryFile(projectId, spaceId, plan.keepFileFor, file);
-        }
-        return;
+      // Where a row exists it takes this to an end on its own, judged against
+      // the budget it carries; all that is left here is the File its Retry
+      // re-sends, and only where re-sending can end differently. The node stays
+      // either way — a node that exists is the reader's to remove, and only
+      // theirs (#2177).
+      if (plan.keepFileFor !== undefined) {
+        stashRetryFile(projectId, spaceId, plan.keepFileFor, file);
       }
-      // No ticket, so no row and no grant: nothing on the server can end this.
-      // A node this drop created has never held anything and never will, so it
-      // goes; one that was already there stays as it was.
-      if (opts.droppedHere) removeNode(projectId, spaceId, nodeId);
     },
     [projectId, spaceId, t],
   );
@@ -2504,7 +2535,10 @@ function CanvasSpaceInner({
         } catch {
           // Server-side 413 remains the authoritative gate.
         }
-        const admitted: File[] = [];
+        // What a file becomes is read once, here, and travels with it: the
+        // node is made in one pass and the bytes are sent in another, and both
+        // need the same answer.
+        const admitted: { file: File; spec: UploadNodeSpec }[] = [];
         for (const file of files) {
           const rejection = checkFileAdmission(file, maxBytes);
           if (rejection !== null) {
@@ -2515,18 +2549,66 @@ function CanvasSpaceInner({
               }),
             );
           } else {
-            admitted.push(file);
+            admitted.push({ file, spec: fileToNodeSpec(file) });
           }
         }
-        const created: string[] = [];
-        for (let i = 0; i < admitted.length; i += 1) {
-          const file = admitted[i];
-          const spec = fileToNodeSpec(file);
-          const nodeId = createUploadNodeAt(
-            spec.nodeType,
-            dropPositionAt(origin, i),
+        // Each admitted file, what it becomes, and the node it got. The node
+        // carries the flow shape the Group planner reads — no size, because
+        // none is measured yet and `planGroupCreation` falls back to the empty
+        // footprint the placement stepped by.
+        const jobs: { file: File; spec: UploadNodeSpec; node: Node }[] = [];
+        // One drop is one thing to take back, so every node it makes and the
+        // Group around them go down as a single undo step.
+        let selectAfter: string[] = [];
+        runCanvasUndoBatch(projectId, spaceId, () => {
+          const centres = batchCentresAt(origin, admitted.length);
+          admitted.forEach(({ file, spec }, i) => {
+            const { id, position } = createUploadNodeAt(
+              spec.nodeType,
+              centres[i],
+            );
+            jobs.push({
+              file,
+              spec,
+              node: { id, type: spec.nodeType, position, data: {} },
+            });
+          });
+          const created = jobs.map((job) => job.node);
+          // Files handed over together arrive as one thing, so a Group says so:
+          // the reader can see which ones came in together and take the batch
+          // anywhere as one. Whatever Groups already sit under the point they
+          // came in at is not our business — joining one of those would assert
+          // a relationship the reader never asked for.
+          const plan = planGroupCreation(
+            created,
+            created.map((node) => node.id),
+            newId(),
           );
-          created.push(nodeId);
+          if (plan === null) {
+            // One file makes no Group, so what appeared is the node itself.
+            selectAfter = created.map((node) => node.id);
+            return;
+          }
+          // A colour and a name, so a Group made at a point another Group is
+          // already on is not a box drawn twice. The name says how many files
+          // this batch holds.
+          writeGroup(
+            projectId,
+            spaceId,
+            plan,
+            userId,
+            groupBackgroundFor(Math.random()),
+            `${String(created.length)} files`,
+          );
+          // The Group is what the reader acts on next. Its members were never
+          // selected, so there is nothing to clear first: `selectAfterCreate`
+          // deselects everything else when the Group mirrors back.
+          selectAfter = [plan.groupId];
+        });
+        if (selectAfter.length > 0) setSelectAfterCreate(selectAfter);
+        // The bytes travel once the canvas holds the nodes they belong to.
+        for (const { file, spec, node } of jobs) {
+          const nodeId = node.id;
           if (spec.needsUpload) {
             trackOperation(
               nodeId,
@@ -2547,9 +2629,8 @@ function CanvasSpaceInner({
                   // holding the file for a Retry that is no longer offered.
                   onSuccess: () => undefined,
                   // Outcome and all — `failUploadNode` above owns what each
-                  // one means for the Retry stash, the toast and this node.
-                  onFailure: (outcome) =>
-                    failUploadNode(outcome, nodeId, file, { droppedHere: true }),
+                  // one means for the Retry stash and the toast.
+                  onFailure: (outcome) => failUploadNode(outcome, file),
                 },
               ),
             );
@@ -2571,7 +2652,6 @@ function CanvasSpaceInner({
             );
           }
         }
-        if (created.length > 0) setSelectAfterCreate(created);
       })();
       trackOperation(UPLOAD_BATCH_OP, batchWork);
     },
@@ -2579,6 +2659,7 @@ function CanvasSpaceInner({
       readOnly,
       projectId,
       spaceId,
+      userId,
       failUploadNode,
       createUploadNodeAt,
       t,
@@ -2667,23 +2748,14 @@ function CanvasSpaceInner({
     });
     if (isProposalIntent(intent)) {
       try {
-        const ids = placeProposalAt(intent.proposal, center);
-        // Bring the whole row into view. A group is placed around the centre,
-        // so a long one runs past both edges at any zoom the reader happens to
-        // be at -- and the empty nodes they are being asked to fill are the
-        // ones that run off.
-        fitView({ ...FIT_VIEW_OPTIONS, nodes: ids.map((id) => ({ id })) });
-        // Select what generates, not what the reader has to fill in: that is
-        // the node whose panel they are meant to read the filled-in prompt off.
-        const at = intent.proposal.nodes.findIndex((n) => n.role === 'generate');
-        const chosen = at >= 0 ? ids[at] : undefined;
-        if (chosen) {
-          setSelectAfterCreate([chosen]);
-          // And open its panel. Selecting alone leaves the prompt that was
-          // just written where the reader cannot see it, and reading it is
-          // the whole reason the marks are in it.
-          openGeneratePanel(chosen, intent.proposal.nodes[at]?.type ?? 'image');
-        }
+        const placed = placeProposalAt(intent.proposal, center);
+        // The camera is not touched. The flow lands near the middle of what
+        // the reader was already looking at, and if it runs past an edge at
+        // their zoom, that is a canvas they can drag -- where they are looking
+        // and how far in they are zoomed is theirs to set (#263 A17).
+        const focus = whatToFocus(intent.proposal, placed);
+        if (focus.select.length > 0) setSelectAfterCreate(focus.select);
+        if (focus.panel) openGeneratePanel(focus.panel.nodeId, focus.panel.type);
         reportProposalOutcome('placed');
       } catch {
         // The whole group is one transaction, so nothing half-placed is left
@@ -2704,7 +2776,6 @@ function CanvasSpaceInner({
     placeProposalAt,
     reportProposalOutcome,
     openGeneratePanel,
-    fitView,
   ]);
 
   // Whoever posts a proposal is outside the canvas and cannot see whether one
@@ -2935,7 +3006,6 @@ function CanvasSpaceInner({
   }, [readOnly, captureClipboardWithText, buffer]);
 
   // ---- Grouping (selection → group / ungroup) ----
-  const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
   // Stable references (#1647 step 4): the Yjs mirror hands a fresh `flowNodes`
   // every doc change, so these re-derive a new array each render; `useStableList`
   // collapses identical results to the previous reference so `groupOffer` (and
@@ -3097,14 +3167,7 @@ function CanvasSpaceInner({
     // selected, minus whatever a remote gesture is holding.
     const plan = planGroupCreation(buffer.settled(), groupableIds, groupId);
     if (!plan) return;
-    const group = createGroupNode(
-      groupId,
-      plan.position,
-      plan.width,
-      plan.height,
-      userId,
-    );
-    createGroup(projectId, spaceId, group, plan.members);
+    writeGroup(projectId, spaceId, plan, userId);
     // #1477: clear the marquee members' selection NOW so the mirror round-trip
     // window holds no stale multi-selection — otherwise ReactFlow routes a
     // right-click to the SELECTION menu instead of the Group menu. The Group
@@ -3550,8 +3613,7 @@ function CanvasSpaceInner({
             setNodeExtractionError(projectId, spaceId, id, message),
           // The same outcome as the drop path, reason for reason: one place
           // decides the stash and says the remedy in the reader's language.
-          onUploadFailure: (outcome, id, f) =>
-            failUploadNode(outcome, id, f, { droppedHere: false }),
+          onUploadFailure: (outcome, f) => failUploadNode(outcome, f),
         });
       })();
       trackOperation(nodeId, work);

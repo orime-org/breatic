@@ -52,13 +52,14 @@ sse_heartbeat_interval_ms: 5000
 # context. Three is the figure Anthropic's clear_tool_uses_20250919 keeps.
 tool_result_keep: 3
 
-# Maximum character length for project memory injected into AI calls.
-memory_project_max_size: 3072
+# Maximum character length for project memory injected into AI calls. The
+# conversation layer below carries the same ceiling.
+memory_project_max_size: 8192
 
 # Maximum character length for conversation memory injected into AI calls.
 # Consolidation rewrites this layer whole every time it runs, so it is the one
 # segment that grows from its own output.
-memory_conversation_max_size: 3072
+memory_conversation_max_size: 8192
 
 # The ceiling on one model call's answer, in tokens. Per call, not per turn:
 # a turn can make many calls and each of them is bounded by this.
@@ -142,6 +143,12 @@ understand_media_read_floor_ms: 5000
 # How long ONE DELIVERY of the model call may take, in milliseconds.
 # The whole clip goes up inside it: measured, 26 MiB of base64 took 61 seconds.
 understand_media_call_timeout_ms: 180000
+
+# How long the WHOLE judgement call may take, in milliseconds -- every
+# delivery of it and every backoff between them, because a signal spanning the
+# call is what holds the wait to this figure. Measured, the endpoint answers in
+# 285-395 ms once connected, and 1181 ms on the first call of a process.
+judge_likelihood_timeout_ms: 10000
 
 # How much the model may write about one piece of media, in tokens.
 # The same figure web_search takes, for the same measured reason: 2048 returns

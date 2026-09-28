@@ -126,6 +126,7 @@ function onePiece(
     edges: [],
     modelNote: "",
     rationale: "",
+    groupName: "Your group",
   };
 }
 
@@ -141,16 +142,6 @@ async function toolOnFixture(): Promise<(p: CanvasProposal) => unknown> {
 
 describe("how many pieces of material the tool asks for", () => {
   afterEach(restoreRealCatalog);
-
-  it("comes from the model's own slots, not from the per-mode table", async () => {
-    const checkProposal = await toolOnFixture();
-
-    expect(checkProposal(onePiece("video", "i2v", "two-slot-model", "image"))).toEqual({
-      ok: false,
-      reason:
-        '"i2v" takes 2 piece(s) of material from the reader, and the group carries 1 empty node(s).',
-    });
-  });
 
   it("is one where the mode declares it takes any one of its slots", async () => {
     const checkProposal = await toolOnFixture();

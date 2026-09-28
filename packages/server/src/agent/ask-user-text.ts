@@ -58,8 +58,9 @@ import type { AskUserPayload } from "@breatic/domain";
  *
  * One marker reaches the reader that neither of these covers: a `[1]` is drawn
  * as a citation chip by the panel's own plugin, which runs after parsing and
- * so cannot be escaped from here. That is what the prompt asks the model to
- * write, so it is the same behaviour as anywhere else in a reply.
+ * so cannot be escaped from here. That is what the search tool's description
+ * asks the model to write, so it is the same behaviour as anywhere else in a
+ * reply.
  */
 const PANEL_GRAMMAR = [gfmToMarkdown(), mathToMarkdown({ singleDollarTextMath: false })];
 

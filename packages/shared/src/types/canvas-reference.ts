@@ -34,6 +34,14 @@
  * and the answer used to live in the video container, which refused the insert
  * itself. It moved in here so that "can this row act" has ONE home (#1962).
  *
+ * It lives in this package rather than beside the panel because the agent
+ * proposes prompts too (#263), and the tool that judges a proposal sits in a
+ * library package that cannot reach into the frontend: it has to know which of
+ * a proposed node's feeders the prompt may name, and that is this question
+ * asked of a row the reader has not seen yet. Two copies of it drift apart the
+ * first time either side changes — the check carried one for three rounds and
+ * it was missing the prompt question the whole time.
+ *
  * Only ONE control asks anything now (#1952): the ✕ removes a row in every
  * state, so there is nothing left for it to refuse. What the user can no
  * longer USE and what they can no longer GET RID OF stopped being the same
@@ -74,7 +82,7 @@
  * through an async, model-indexed channel.
  */
 
-import type { NodeKind } from '@web/data/yjs/node-view';
+import type { NodeType } from "@shared/types/canvas-node.js";
 
 /**
  * Why a rail control refuses to act. Three reasons, each with its own remedy:
@@ -85,9 +93,9 @@ import type { NodeKind } from '@web/data/yjs/node-view';
  * modality through ICU rather than through a second key.
  */
 export type ReferenceRefusal =
-  | 'mode-takes-no-references'
-  | 'source-type-unused'
-  | 'model-takes-no-prompt';
+  | "mode-takes-no-references"
+  | "source-type-unused"
+  | "model-takes-no-prompt";
 
 /**
  * What the rail needs to know to answer for a row: one fact about the active
@@ -129,9 +137,10 @@ export interface ReferenceUsabilityContext {
  * prompt material: its content substitutes into the prompt string.
  * @param kind - The upstream node's modality.
  * @returns True for everything except text.
+ * @throws {never} Never.
  */
-export function isReferenceMaterial(kind: NodeKind): boolean {
-  return kind !== 'text';
+export function isReferenceMaterial(kind: NodeType): boolean {
+  return kind !== "text";
 }
 
 /**
@@ -141,9 +150,10 @@ export function isReferenceMaterial(kind: NodeKind): boolean {
  * @param sourceNodeType - The upstream node's modality.
  * @param ctx - What the active mode does with references, and whether its model takes a prompt.
  * @returns The refusal reason, or null when the row can be inserted.
+ * @throws {never} Never.
  */
 export function insertRefusal(
-  sourceNodeType: NodeKind,
+  sourceNodeType: NodeType,
   ctx: ReferenceUsabilityContext,
 ): ReferenceRefusal | null {
   // A text row lives in the prompt and nowhere else, so the prompt question is
@@ -151,21 +161,21 @@ export function insertRefusal(
   // reading the same `promptRequired` its editor mounts on; that second home is
   // what #1962 removed.
   if (!isReferenceMaterial(sourceNodeType)) {
-    return ctx.takesPrompt ? null : 'model-takes-no-prompt';
+    return ctx.takesPrompt ? null : "model-takes-no-prompt";
   }
   // For a media row the reference question comes first, and it comes first for
   // the reason the whole module exists: of the two refusals, only this one
   // names a state the user can leave and reach a mode where the row WORKS.
   // Leading with "there is no prompt box" sends them to t2v / i2v /
   // first_last / animate, which all send a prompt and still refuse this row.
-  if (!ctx.takesReferences) return 'mode-takes-no-references';
+  if (!ctx.takesReferences) return "mode-takes-no-references";
   // The mode does use references, so now the destination matters: with no
   // prompt there is no box to put the `@` chip in. Unreachable in today's
   // catalog — the one mode that takes references also sends a prompt — but the
   // order has to be total.
-  if (!ctx.takesPrompt) return 'model-takes-no-prompt';
+  if (!ctx.takesPrompt) return "model-takes-no-prompt";
   // The pool is the image pool — see the module docstring. Everything else is
   // a legitimate connection (an edge carries creative intent as well as data
   // use, user 2026-08-13) that this pool has no way to carry.
-  return sourceNodeType === 'image' ? null : 'source-type-unused';
+  return sourceNodeType === "image" ? null : "source-type-unused";
 }
