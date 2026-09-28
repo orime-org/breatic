@@ -136,6 +136,15 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     expect(toggle).not.toHaveAttribute('aria-controls');
   });
 
+  it('keeps the chevron in a 24px box of its own inside the heading', () => {
+    renderGroup();
+    const toggle = screen.getByRole('button', { name: 'My Studios' });
+    const slot = toggle.querySelector('svg')?.parentElement;
+    // --btn-compact, the smallest step on the chrome ladder.
+    expect(slot?.className).toMatch(/(^|\s)h-6(\s|$)/);
+    expect(slot?.className).toMatch(/(^|\s)w-6(\s|$)/);
+  });
+
   it('lights its words under the pointer without filling the row', () => {
     renderGroup();
     const toggle = screen.getByRole('button', { name: 'My Studios' });
