@@ -262,5 +262,4 @@ describe('moving a row from the keyboard', () => {
       expect(marked).toBe(true);
     },
   );
-
 });

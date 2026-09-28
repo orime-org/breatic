@@ -39,6 +39,7 @@ import type * as Y from 'yjs';
 
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
+import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
@@ -124,6 +125,7 @@ export function buildDocumentEditor(
       documentEnterExtension(),
       documentSafariImeExtension(),
       documentTabExtension(),
+      documentKeyboardMoveExtension(),
       documentTrailingPressExtension(),
       documentQuoteInputExtension(),
       documentLinkEditMarkExtension(),
