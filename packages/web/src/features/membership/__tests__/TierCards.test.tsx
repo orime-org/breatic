@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   BILLING_PERIODS,
@@ -190,6 +190,7 @@ function renderGrid(
       sellsSubscriptions
       move={position.move}
       busy={false}
+      choosing={null}
       onChoose={onChoose}
     />,
   );
@@ -227,6 +228,7 @@ describe('TierCards — four cards, two periods, seven situations', () => {
         sellsSubscriptions={false}
         move='offered'
         busy={false}
+        choosing={null}
         onChoose={vi.fn()}
       />,
     );
@@ -252,6 +254,7 @@ describe('TierCards — four cards, two periods, seven situations', () => {
         sellsSubscriptions={false}
         move='offered'
         busy={false}
+        choosing={null}
         onChoose={vi.fn()}
       />,
     );
@@ -284,11 +287,53 @@ describe('TierCards — four cards, two periods, seven situations', () => {
         sellsSubscriptions
         move='offered'
         busy
+        choosing={null}
         onChoose={vi.fn()}
       />,
     );
 
     expect(screen.getByTestId('membership-choose-pro')).toBeDisabled();
+  });
+
+  it('spins only the card whose tier and period are the ones being moved to', () => {
+    const { rerender } = render(
+      <TierCards
+        offers={CATALOG}
+        currentTier='base'
+        selectedPeriod='month'
+        situation='none'
+        heldPeriod={null}
+        sellsSubscriptions
+        move='offered'
+        busy
+        choosing={{ tier: 'pro', period: 'month' }}
+        onChoose={vi.fn()}
+      />,
+    );
+    const pro = screen.getByTestId('membership-choose-pro');
+    expect(within(pro).getByTestId('membership-choose-pending')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('membership-choose-team')).queryByTestId(
+        'membership-choose-pending',
+      ),
+    ).toBeNull();
+
+    // The same tier on the other period is a different offer.
+    rerender(
+      <TierCards
+        offers={CATALOG}
+        currentTier='base'
+        selectedPeriod='year'
+        situation='none'
+        heldPeriod={null}
+        sellsSubscriptions
+        move='offered'
+        busy
+        choosing={{ tier: 'pro', period: 'month' }}
+        onChoose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('membership-choose-pending')).toBeNull();
   });
 });
 
@@ -409,6 +454,7 @@ describe('TierCards — an yearly price that saves nothing', () => {
         sellsSubscriptions
         move='offered'
         busy={false}
+        choosing={null}
         onChoose={vi.fn()}
       />,
     );
