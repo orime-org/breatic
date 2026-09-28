@@ -1364,7 +1364,29 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('bravocharlie');
     });
 
-    it('says so when a peer moves one of its two lines away from the other', async () => {
+    it('takes in a line a peer adds between its two lines', async () => {
+      show('editor', ['alpha bravo', 'charlie delta']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second! + 7);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.insertBlocks(
+          [{ type: 'paragraph', content: 'echo' }] as never,
+          peer.editor.document[0]!,
+          'after',
+        );
+      });
+
+      expect(lines()).toEqual(['alpha bravo', 'echo', 'charlie delta']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('bravoechocharlie');
+    });
+
+    it('takes in a line a peer moves between its two lines', async () => {
+      // Whatever lies between its ends is its range, the way a comment range
+      // is everywhere; here the peer's move puts "echo" there.
       show('editor', ['alpha bravo', 'charlie delta', 'echo']);
       const [first, second] = lineStarts();
       aimAt(first! + 6, second! + 7);
@@ -1377,14 +1399,13 @@ describe('the comment panel', () => {
       });
 
       expect(lines()).toEqual(['alpha bravo', 'echo', 'charlie delta']);
-      expect(
-        await screen.findByTestId('doc-comment-draft-dropped'),
-      ).toBeInTheDocument();
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('bravoechocharlie');
     });
 
-    it('says so when a peer swaps its middle line for another and rewrites its last', async () => {
-      // Its last line is rewritten, so the lines are asked; the same number of
-      // lines lies between its ends, but not the lines it ran across.
+    it('takes in the line a peer swaps into its middle while rewriting its last', async () => {
+      // Its last line is rewritten, so its end lines are asked. What lies
+      // between them is its range, whichever line that now is.
       show('editor', ['alpha bravo', 'mike', 'charlie delta', 'november']);
       const [first, , third] = lineStarts();
       aimAt(first! + 6, third! + 7);
@@ -1416,9 +1437,8 @@ describe('the comment panel', () => {
       });
 
       expect(lines()).toEqual(['alpha bravo', 'november', 'charlie delta', 'mike']);
-      expect(
-        await screen.findByTestId('doc-comment-draft-dropped'),
-      ).toBeInTheDocument();
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('bravonovembercharlie');
     });
 
     it('stays on its words when the reader moves the line they are on', async () => {
