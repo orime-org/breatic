@@ -148,6 +148,7 @@ models:
         accepts: "audio"
         optional: true
         fill: "pool"
+        mention: "@audio{n}"
       images:
         upstream: "reference_images"
         description: "Reference images"
@@ -157,6 +158,7 @@ models:
         accepts: "image"
         optional: true
         fill: "pool"
+        mention: "@image{n}"
       videos:
         upstream: "reference_videos"
         description: "Reference videos"
@@ -166,6 +168,7 @@ models:
         accepts: "video"
         optional: true
         fill: "pool"
+        mention: "@video{n}"
       resolution:
         description: "Output resolution"
         default: "720p"
@@ -429,6 +432,7 @@ models:
         accepts: "image"
         optional: true
         fill: "pool"
+        mention: "Element {n}"
       image:
         description: "Source image"
         default: null
@@ -601,6 +605,7 @@ models:
         accepts: "audio"
         optional: true
         fill: "pool"
+        mention: "<Audio {n}>"
       images:
         upstream: "reference_images"
         description: "Reference images"
@@ -610,6 +615,7 @@ models:
         accepts: "image"
         optional: true
         fill: "pool"
+        mention: "<Picture {n}>"
       videos:
         upstream: "reference_videos"
         description: "Reference videos"
@@ -619,6 +625,7 @@ models:
         accepts: "video"
         optional: true
         fill: "pool"
+        mention: "<Video {n}>"
       resolution:
         description: "Output resolution"
         default: "768p"
@@ -663,6 +670,7 @@ models:
         accepts: "image"
         optional: true
         fill: "pool"
+        mention: "<IMAGE_REF_{i}>"
       videos:
         upstream: "reference_videos"
         description: "Reference videos"
@@ -672,6 +680,7 @@ models:
         accepts: "video"
         optional: true
         fill: "pool"
+        mention: "the reference video {n}"
       resolution:
         description: "Output resolution"
         default: "720p"
@@ -724,6 +733,7 @@ models:
         accepts: "audio"
         optional: true
         fill: "pool"
+        mention: "Audio {n}"
       images:
         upstream: "reference_images"
         description: "Reference images"
@@ -733,6 +743,7 @@ models:
         accepts: "image"
         optional: true
         fill: "pool"
+        mention: "Image {n}"
       videos:
         upstream: "reference_videos"
         description: "Reference videos"
@@ -742,6 +753,7 @@ models:
         accepts: "video"
         optional: true
         fill: "pool"
+        mention: "Video {n}"
       resolution:
         description: "Output resolution"
         default: "720p"
@@ -783,6 +795,7 @@ models:
         max_items: 9
         accepts: "image"
         fill: "pool"
+        mention: "[Image {n}]"
       resolution:
         description: "Output resolution"
         default: "720p"

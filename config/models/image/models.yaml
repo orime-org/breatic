@@ -353,6 +353,7 @@ models:
         max_items: 16
         accepts: "image"
         fill: "pool"
+        mention: "image {n}"
       quality:
         description: "Rendering quality"
         label: "Quality"
@@ -396,6 +397,7 @@ models:
         max_items: 10
         accepts: "image"
         fill: "pool"
+        mention: "image {n}"
       output_format:
         description: "Output file format"
         default: "png"
@@ -433,6 +435,7 @@ models:
         max_items: 14
         accepts: "image"
         fill: "pool"
+        mention: "image {n}"
       resolution:
         description: "Output resolution"
         default: "4k"
@@ -480,6 +483,7 @@ models:
         max_items: 3
         accepts: "image"
         fill: "pool"
+        mention: "image {n}"
       output_format:
         description: "Output file format"
         default: "png"
