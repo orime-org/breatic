@@ -1349,12 +1349,12 @@ test.describe('a column crowded with comments', () => {
     ).toBe(true);
   });
 
-  test('lifts the column to a draft card Tab reaches under the header, leaving the body still', async ({
+  test('brings a draft card Tab reaches from under the header into view', async ({
     page,
   }) => {
-    // The draft is a card in the column like the rest: reaching it by Tab
-    // while it is pushed up under the header brings the column down to it,
-    // and the body stays where the reader left it.
+    // The browser brings the element Tab reaches into view before any focus
+    // event runs, scrolling the body when the card is above it; the card then
+    // becomes the one being read and sits level with its words.
     await openFreshDocument(page);
     for (let i = 0; i < 30; i += 1) await page.keyboard.type(`filler ${String(i)}\n`);
     await page.keyboard.type('draft line here\n');
@@ -1385,7 +1385,6 @@ test.describe('a column crowded with comments', () => {
     expect(
       (await page.getByTestId('doc-comment-draft-card').boundingBox())!.y,
     ).toBeLessThan(edge);
-    const bodyBefore = (await crowded.boundingBox())!.y;
 
     await page.getByTestId('doc-comment-rail-close').focus();
     await page.keyboard.press('Tab');
@@ -1399,7 +1398,9 @@ test.describe('a column crowded with comments', () => {
             ?.contains(document.activeElement) ?? false,
       ),
     ).toBe(true);
-    expect(Math.abs((await crowded.boundingBox())!.y - bodyBefore)).toBeLessThan(2);
+    const draftLine = (await page.locator(`${EDITOR} p`).nth(30).boundingBox())!.y;
+    const draftTop = (await page.getByTestId('doc-comment-draft-card').boundingBox())!.y;
+    expect(Math.abs(draftTop - draftLine)).toBeLessThan(12);
     const focused = await page.evaluate(
       () => (document.activeElement as HTMLElement).getBoundingClientRect().top,
     );
