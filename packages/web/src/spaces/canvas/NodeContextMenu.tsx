@@ -382,32 +382,37 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
             ? t(isGroup ? 'canvas.group.unlock' : 'canvas.nodeMenu.unlock')
             : t(isGroup ? 'canvas.group.lock' : 'canvas.nodeMenu.lock')}
         </DropdownMenuItem>
-        {onAddToAgent || onDelete ? <DropdownMenuSeparator /> : null}
         {onAddToAgent ? (
-          <DropdownMenuItem
-            data-testid='node-menu-add-to-agent'
-            disabled={addToAgentDisabled}
-            onSelect={onAddToAgent}
-          >
-            <MessageSquarePlus className='mr-2 h-4 w-4' aria-hidden='true' />
-            {t('canvas.contextMenu.addToAgent')}
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              data-testid='node-menu-add-to-agent'
+              disabled={addToAgentDisabled}
+              onSelect={onAddToAgent}
+            >
+              <MessageSquarePlus className='mr-2 h-4 w-4' aria-hidden='true' />
+              {t('canvas.contextMenu.addToAgent')}
+            </DropdownMenuItem>
+          </>
         ) : null}
         {onDelete ? (
-          <DropdownMenuItem
-            data-testid='node-menu-delete'
-            onSelect={onDelete}
-          >
-            <Trash2 className='mr-2 h-4 w-4' aria-hidden='true' />
-            {t(
-              isGroup
-                ? 'canvas.contextMenu.deleteGroup'
-                : 'canvas.contextMenu.deleteNode',
-            )}
-            <DropdownMenuShortcut>
-              {formatShortcut({ key: 'Delete' })}
-            </DropdownMenuShortcut>
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              data-testid='node-menu-delete'
+              onSelect={onDelete}
+            >
+              <Trash2 className='mr-2 h-4 w-4' aria-hidden='true' />
+              {t(
+                isGroup
+                  ? 'canvas.contextMenu.deleteGroup'
+                  : 'canvas.contextMenu.deleteNode',
+              )}
+              <DropdownMenuShortcut>
+                {formatShortcut({ key: 'Delete' })}
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
