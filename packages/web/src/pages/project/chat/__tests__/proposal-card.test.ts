@@ -16,7 +16,7 @@ import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared
 
 import { nameableFeeders } from '@breatic/shared';
 
-import { costOf, shapeOf, todosOf } from '@web/pages/project/chat/proposal-card';
+import { costOf, creditsOf, shapeOf, todosOf } from '@web/pages/project/chat/proposal-card';
 
 /** An empty node waiting for the reader's material. */
 const empty = (name: string): ProposalNode => ({ role: 'source', type: 'image', name });
@@ -65,16 +65,24 @@ const flow = (
   rationale: '',
 });
 
-/** A catalog with one model charging per call and one charging by usage. */
+/** 4 credits a call, whatever the run. */
+const FLAT = { base_price: 40_000, formula: '', discount_rate: 100 };
+
+/** A catalog with two per-call models and one priced by its source's length. */
 const CATALOG = {
   image: [
-    { name: 'flat-model', display_name: 'Flat', cost_per_call: 4, generation_time: 12 },
-    { name: 'slow-model', display_name: 'Slow', cost_per_call: 4, generation_time: 30 },
+    { name: 'flat-model', display_name: 'Flat', takes_prompt: true, params: {}, pricing: FLAT, generation_time: 12 },
+    { name: 'slow-model', display_name: 'Slow', takes_prompt: true, params: {}, pricing: FLAT, generation_time: 30 },
     {
       name: 'metered-model',
       display_name: 'Metered',
-      cost_per_call: 1,
-      rate: { unit: 'second', credits: 2 },
+      takes_prompt: true,
+      params: { video: { description: '', default: null, fill: 'canvas', accepts: 'video' } },
+      pricing: {
+        base_price: 20_000,
+        formula: '{"total_price": base_price * $ceil(get_duration(video))}',
+        discount_rate: 100,
+      },
       generation_time: 30,
     },
   ],
@@ -83,7 +91,8 @@ const CATALOG = {
   tts: [],
   three_d: [],
   understand: [],
-  total: 2,
+  total: 3,
+  credit_multiplier: 1,
 } as unknown as ModelCatalog;
 
 describe('the little diagram of what gets built', () => {
@@ -309,15 +318,11 @@ describe('what is left for the reader', () => {
 });
 
 describe('what one press costs', () => {
-  it('adds up every generation the placed group will run', () => {
+  it('adds up every generation the placed group will run', async () => {
     const proposal = flow([generates('Front'), generates('At 45'), generates('Overhead')]);
 
-    expect(costOf(CATALOG, proposal)).toEqual({
-      credits: 12,
-      seconds: 12,
-      runs: 3,
-      sameLength: true,
-    });
+    expect(costOf(CATALOG, proposal)).toEqual({ seconds: 12, runs: 3, sameLength: true });
+    expect(await creditsOf(CATALOG, proposal)).toEqual({ credits: 12, bound: 'exact' });
   });
 
   it('says the runs are not the same length when the models differ', () => {
@@ -325,44 +330,37 @@ describe('what one press costs', () => {
     // thirty. The card draws the multiplied form only where an "each" exists.
     const proposal = flow([generates('Front'), generates('The clip', 'slow-model')]);
 
-    expect(costOf(CATALOG, proposal)).toEqual({
-      credits: 8,
-      seconds: 30,
-      runs: 2,
-      sameLength: false,
-    });
-  });
-
-  it('gives the wait alone when a model charges by what it is given', () => {
-    // A metered model has no per-call price at all, so a total including it
-    // would be a number nobody can arrive at.
-    const proposal = flow([generates('Front'), generates('Long one', 'metered-model')]);
-
     expect(costOf(CATALOG, proposal)).toEqual({ seconds: 30, runs: 2, sameLength: false });
   });
 
-  it('counts only what generates, not the words placed beside it', () => {
-    const proposal = flow([written('Your copy'), generates('Front'), generates('At 45')]);
+  it('gives a lower bound when a run is priced by a source not yet picked', async () => {
+    // The empty node's clip has no length yet, so its run prices at the least
+    // it can cost.
+    const proposal = flow([generates('Front'), generates('Long one', 'metered-model')]);
 
-    expect(costOf(CATALOG, proposal)).toEqual({
-      credits: 8,
-      seconds: 12,
-      runs: 2,
-      sameLength: true,
-    });
+    expect(await creditsOf(CATALOG, proposal)).toEqual({ credits: 4, bound: 'at_least' });
   });
 
-  it('says nothing at all about a model the catalog does not carry', () => {
+  it('counts only what generates, not the words placed beside it', async () => {
+    const proposal = flow([written('Your copy'), generates('Front'), generates('At 45')]);
+
+    expect(costOf(CATALOG, proposal)).toEqual({ seconds: 12, runs: 2, sameLength: true });
+    expect(await creditsOf(CATALOG, proposal)).toEqual({ credits: 8, bound: 'exact' });
+  });
+
+  it('says nothing at all about a model the catalog does not carry', async () => {
     const proposal = flow([generates('Front'), generates('Mystery', 'no-such-model')]);
 
     expect(costOf(CATALOG, proposal)).toBeUndefined();
+    expect(await creditsOf(CATALOG, proposal)).toBeUndefined();
   });
 
-  it('says nothing about a flow with nothing that generates', () => {
+  it('says nothing about a flow with nothing that generates', async () => {
     // The check turns that shape away, so the card never draws one. Held here
     // because the card does not re-check what it is handed, and a total of
     // zero credits would read as free.
     expect(costOf(CATALOG, flow([written('Your copy')]))).toBeUndefined();
+    expect(await creditsOf(CATALOG, flow([written('Your copy')]))).toBeUndefined();
   });
 });
 
