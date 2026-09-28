@@ -32,6 +32,8 @@ export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 // ── Task (+ markCompletedAndBill: task·credit cross-table atomic) ─
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
+export * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
+export * as upstreamCloneRepo from "@domain/task/upstreamClone.repo.js";
 
 // ── Node history (per-node content timeline, append-only) ────────
 export * as nodeHistoryService from "@domain/node-history/node-history.service.js";
