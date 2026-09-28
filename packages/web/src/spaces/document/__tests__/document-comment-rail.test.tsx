@@ -42,8 +42,10 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
+  draftIn,
   draftRangeIn,
 } from '@web/spaces/document/document-comment-draft-range';
+import { draftWordsOf } from '@web/spaces/document/document-comment-unsent';
 import {
   selectThreads,
   selectedThreadsIn,
@@ -1131,27 +1133,6 @@ describe('the comment panel', () => {
       expect(draftPaint()?.textContent).toBe('brav');
     });
 
-    it('keeps its words when a peer turns their line into a heading', async () => {
-      // The peer's editor rebuilds the block's text under a new type, so no
-      // Yjs position from before survives; the words are still there.
-      show();
-      aimDraft(6, 11);
-      await screen.findByTestId('doc-comment-draft-card');
-      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
-      const peer = await peerEditor();
-
-      act(() => {
-        peer.editor.updateBlock(peer.editor.document[0]!, {
-          type: 'heading',
-          props: { level: 2 },
-        } as never);
-      });
-
-      expect(handle.editor.document[0]?.type).toBe('heading');
-      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
-      expect(aimedWords()).toBe('bravo');
-    });
-
     it('keeps to its words when it ends where the next line starts', async () => {
       // A drag to the start of the next line ends the range there; the words
       // it covers are still only the ones on the first line.
@@ -1166,56 +1147,6 @@ describe('the comment panel', () => {
 
       expect(aimedWords()).toBe('bravo charlie');
     });
-
-    it('keeps its words when a peer splits their line ahead of them', async () => {
-      show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
-      const second = lineStarts()[1]!;
-      aimAt(second + 6, second + 10);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 5, 'Enter');
-
-      expect(lines()).toEqual(['alpha bravo charlie', 'delta', ' echo foxtrot']);
-      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
-      expect(aimedWords()).toBe('echo');
-    });
-
-    it('keeps its words when a peer joins their line onto the one above', async () => {
-      show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
-      const second = lineStarts()[1]!;
-      aimAt(second + 6, second + 10);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
-
-      expect(lines()).toEqual(['alpha bravo charliedelta echo foxtrot']);
-      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
-      expect(aimedWords()).toBe('echo');
-    });
-
-    it.each([0, 1])(
-      'keeps both lines of its words when a peer changes line %i\'s type',
-      async (changed) => {
-        // Only one end's text is rebuilt; the other end still stands.
-        show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
-        const [first, second] = lineStarts();
-        aimAt(first! + 6, second! + 4);
-        await screen.findByTestId('doc-comment-draft-card');
-        const peer = await peerEditor();
-
-        act(() => {
-          peer.editor.updateBlock(peer.editor.document[changed]!, {
-            type: 'heading',
-            props: { level: 2 },
-          } as never);
-        });
-
-        expect(handle.editor.document[changed]?.type).toBe('heading');
-        expect(aimedWords()).toBe('bravo charliedelt');
-      },
-    );
 
     it('keeps to its words when the reader empties the second line of it and a peer edits', async () => {
       // The reader's own deletion leaves the end at the start of the next
@@ -1236,264 +1167,6 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('bravo charlie');
     });
 
-    it('keeps its other end where it stands when a peer retypes one line with its words twice', async () => {
-      // The words written again appear twice on the retyped line; only one of
-      // them runs on into the line that was not touched.
-      show('editor', ['charlie', 'delta']);
-      const [first, second] = lineStarts();
-      aimAt(first!, second! + 4);
-      await screen.findByTestId('doc-comment-draft-card');
-
-      peerEdits((line) => {
-        line.delete(0, line.length);
-        line.insert(0, 'charliedeltX charlie');
-      });
-
-      const at = draftRangeIn(handle.editor.prosemirrorState)!;
-      expect(aimedWords()).toBe('charliedelt');
-      expect(at.to).toBe(lineStarts()[1]! + 4);
-    });
-
-    it('stays on the same copy of repeated words when a peer retypes their line', async () => {
-      // The line is written again as a whole; which copy the reader chose is
-      // told apart by where it stood and the words around it.
-      show('editor', ['bravo one bravo two bravo']);
-      aimDraft(10, 15);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      act(() => {
-        peer.editor.updateBlock(peer.editor.document[0]!, {
-          type: 'heading',
-          props: { level: 2 },
-        } as never);
-      });
-
-      expect(draftRangeIn(handle.editor.prosemirrorState)!.from).toBe(
-        lineStarts()[0]! + 10,
-      );
-    });
-
-    it('keeps the part of its words left in place when a peer moves the other part away', async () => {
-      show('editor', ['alpha bravo', 'charlie delta', 'echo foxtrot']);
-      const [first, second] = lineStarts();
-      aimAt(first! + 6, second! + 7);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      act(() => {
-        peer.editor.setTextCursorPosition(peer.editor.document[0]!);
-        peer.editor.moveBlocksDown();
-        peer.editor.moveBlocksDown();
-      });
-
-      expect(lines()).toEqual(['charlie delta', 'echo foxtrot', 'alpha bravo']);
-      expect(aimedWords()).toBe('charlie');
-    });
-
-    it('keeps the part left on an untouched line when a peer retypes the other line away', async () => {
-      // The first line is written again with none of the words in it; the
-      // letter on the second line is still where the reader chose it.
-      show('editor', ['alpha bravo', 'charlie delta']);
-      const [first, second] = lineStarts();
-      aimAt(first! + 6, second! + 1);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      act(() => {
-        peer.editor.updateBlock(peer.editor.document[0]!, {
-          type: 'heading',
-          content: 'alpha zzzzz',
-        } as never);
-      });
-
-      expect(lines()).toEqual(['alpha zzzzz', 'charlie delta']);
-      expect(aimedWords()).toBe('c');
-    });
-
-    it.each([
-      // [what the peer does, the line after it, the words the draft keeps]
-      ['types over its last two letters', 9, 2, 'n', 'alpha bran charlie', 'bra'],
-      ['types over its first two letters', 6, 2, 'XY', 'alpha XYavo charlie', 'avo'],
-      ['types over its first letter', 6, 1, 'X', 'alpha Xravo charlie', 'ravo'],
-    ])(
-      'leaves out what a peer %s in place',
-      async (_what, at, length, typed, after, kept) => {
-        // Letters written in place against an edge are not the reader's
-        // (§9.4), however few of the words they replace.
-        show();
-        aimDraft(6, 11);
-        await screen.findByTestId('doc-comment-draft-card');
-
-        peerEdits((line) => {
-          line.delete(at, length);
-          line.insert(at, typed);
-        });
-
-        expect(lines()).toEqual([after]);
-        expect(aimedWords()).toBe(kept);
-      },
-    );
-
-    it('finds a corrected copy of its words again although the same words stand elsewhere', async () => {
-      show('editor', ['one two', 'alpha bravo charlie', 'echo bravo']);
-      const second = lineStarts()[1]!;
-      aimAt(second + 6, second + 11);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      act(() => {
-        peer.editor.updateBlock(peer.editor.document[1]!, {
-          type: 'heading',
-          content: 'alpha brave charlie',
-        } as never);
-      });
-
-      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
-      expect(aimedWords()).toBe('brave');
-      expect(draftRangeIn(handle.editor.prosemirrorState)!.from).toBe(
-        lineStarts()[1]! + 6,
-      );
-    });
-
-    it('keeps its words across two lines when a peer splits the line inside them', async () => {
-      show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
-      const second = lineStarts()[1]!;
-      aimAt(second + 6, second + 10);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 8, 'Enter');
-
-      expect(lines()).toEqual(['alpha bravo charlie', 'delta ec', 'ho foxtrot']);
-      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
-      expect(aimedWords()).toBe('echo');
-    });
-
-    it('leaves out the letters a peer writes in place of more than half of its first ones', async () => {
-      // Too much is changed for the words to be found again; what the peer
-      // wrote against the start edge is left out, like words typed there.
-      show();
-      aimDraft(6, 11);
-      await screen.findByTestId('doc-comment-draft-card');
-
-      peerEdits((line) => {
-        line.delete(6, 3);
-        line.insert(6, 'XYZ');
-      });
-
-      expect(lines()).toEqual(['alpha XYZvo charlie']);
-      expect(aimedWords()).toBe('vo');
-    });
-
-    it('keeps the line in the middle of it when a peer retypes both edge lines away', async () => {
-      // Too much is changed for the words to be found again; the untouched
-      // line between is what stayed, and the retyped letters around it are
-      // the peer's.
-      show('editor', ['alpha bravo', 'cd', 'echo foxtrot']);
-      const [first, , third] = lineStarts();
-      aimAt(first! + 6, third! + 4);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      // One update carrying both, as a peer coming back online sends it.
-      act(() => {
-        peer.editor.transact(() => {
-          peer.editor.updateBlock(peer.editor.document[0]!, {
-            type: 'heading',
-            content: 'x',
-          } as never);
-          peer.editor.updateBlock(peer.editor.document[2]!, {
-            type: 'heading',
-            content: 'y',
-          } as never);
-        });
-      });
-
-      expect(lines()).toEqual(['x', 'cd', 'y']);
-      expect(aimedWords()).toBe('cd');
-    });
-
-    it('says so when a peer retypes its line with none of its words left', async () => {
-      show('editor', ['one two', 'alpha bravo charlie', 'echo foxtrot']);
-      const second = lineStarts()[1]!;
-      aimAt(second + 6, second + 11);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      act(() => {
-        peer.editor.updateBlock(peer.editor.document[1]!, {
-          type: 'heading',
-          content: 'alpha zzzzz charlie',
-        } as never);
-      });
-
-      expect(
-        await screen.findByTestId('doc-comment-draft-dropped'),
-      ).toBeInTheDocument();
-    });
-
-    it('keeps its words when a peer retypes their line and corrects a letter in them at once', async () => {
-      // One update carrying both, as a peer coming back online sends it.
-      show('editor', ['one two', 'alpha bravo charlie', 'echo foxtrot']);
-      const second = lineStarts()[1]!;
-      aimAt(second + 6, second + 11);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      act(() => {
-        peer.editor.updateBlock(peer.editor.document[1]!, {
-          type: 'heading',
-          content: 'alpha brave charlie',
-        } as never);
-      });
-
-      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
-      expect(aimedWords()).toBe('brave');
-    });
-
-    it('keeps its end on the untouched line when a better-placed copy ends elsewhere', async () => {
-      // The retyped first line holds a copy whose surroundings match better,
-      // but it ends inside that line; the end that stood is where it stays.
-      show('editor', ['zz charlie', 'delta']);
-      const [first, second] = lineStarts();
-      aimAt(first! + 3, second! + 4);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      act(() => {
-        peer.editor.updateBlock(peer.editor.document[0]!, {
-          type: 'heading',
-          content: 'zz charliedelta charlie',
-        } as never);
-      });
-
-      expect(draftRangeIn(handle.editor.prosemirrorState)!.to).toBe(
-        lineStarts()[1]! + 4,
-      );
-      expect(aimedWords()).toBe('charliedelt');
-    });
-
-    it('keeps its start on the untouched line when a better-placed copy starts elsewhere', async () => {
-      show('editor', ['alpha bravo', 'charlie zz']);
-      const [first, second] = lineStarts();
-      aimAt(first! + 6, second! + 7);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      act(() => {
-        peer.editor.updateBlock(peer.editor.document[1]!, {
-          type: 'heading',
-          content: 'charlie alpha bravocharlie zz',
-        } as never);
-      });
-
-      expect(draftRangeIn(handle.editor.prosemirrorState)!.from).toBe(
-        lineStarts()[0]! + 6,
-      );
-      expect(aimedWords()).toBe('bravocharlie');
-    });
-
     it('says so rather than moving to the same word elsewhere when its words are deleted', async () => {
       show('editor', ['alpha bravo', 'bravo charlie']);
       aimDraft(6, 11);
@@ -1508,19 +1181,118 @@ describe('the comment panel', () => {
       ).toBeInTheDocument();
     });
 
-    it('shrinks rather than moving to the same word elsewhere when a peer deletes its first letters', async () => {
-      show('editor', ['alpha bravo', 'bravo charlie']);
+    it('shrinks when a peer deletes letters inside its words and both ends stand', async () => {
+      show();
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
 
       peerEdits((line) => {
-        line.delete(6, 2);
+        line.delete(8, 1);
       });
 
-      expect(aimedWords()).toBe('avo');
-      expect(draftRangeIn(handle.editor.prosemirrorState)!.from).toBeLessThan(
-        lineStarts()[1]!,
-      );
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('brvo');
+    });
+
+    it.each([
+      // [what the peer does, the edit, the line after it]
+      ['deletes its first letters', 6, 2, '', 'alpha avo charlie'],
+      ['deletes its last letters', 9, 2, '', 'alpha bra charlie'],
+      ['types over its first letter', 6, 1, 'X', 'alpha Xravo charlie'],
+      ['types over its last two letters', 9, 2, 'n', 'alpha bran charlie'],
+    ])(
+      'says so and keeps what was written when a peer %s',
+      async (_what, at, length, typed, after) => {
+        // The letter an end names is gone; where the words are now is not
+        // known, so the draft stops rather than pointing at other text.
+        show();
+        aimDraft(6, 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+
+        peerEdits((line) => {
+          line.delete(at, length);
+          if (typed !== '') line.insert(at, typed);
+        });
+
+        expect(lines()).toEqual([after]);
+        expect(
+          await screen.findByTestId('doc-comment-draft-dropped'),
+        ).toBeInTheDocument();
+        expect(draftRangeIn(handle.editor.prosemirrorState)).toBeNull();
+        expect(
+          draftWordsOf(draftIn(handle.editor.prosemirrorState)!.opening),
+        ).toBe('half');
+      },
+    );
+
+    it.each([
+      [
+        'turns their line into a heading',
+        async (peer: DocumentEditorHandle): Promise<void> => {
+          act(() => {
+            peer.editor.updateBlock(peer.editor.document[1]!, {
+              type: 'heading',
+              props: { level: 2 },
+            } as never);
+          });
+        },
+      ],
+      [
+        'splits the line inside them',
+        async (peer: DocumentEditorHandle): Promise<void> => {
+          await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 8, 'Enter');
+        },
+      ],
+      [
+        'joins their line onto the one above',
+        async (peer: DocumentEditorHandle): Promise<void> => {
+          await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
+        },
+      ],
+      [
+        'moves their line to the end',
+        async (peer: DocumentEditorHandle): Promise<void> => {
+          act(() => {
+            peer.editor.setTextCursorPosition(peer.editor.document[1]!);
+            peer.editor.moveBlocksDown();
+          });
+        },
+      ],
+    ])(
+      'never lands on other words when a peer %s',
+      async (_what, change) => {
+        // How the peer's editor writes such a change back into Yjs decides
+        // whether the letters the ends name survive it. Either they do and the
+        // draft is still on its words, or they do not and it says so.
+        show('editor', ['alpha bravo charlie', 'delta echo foxtrot', 'golf']);
+        const second = lineStarts()[1]!;
+        aimAt(second + 6, second + 10);
+        await screen.findByTestId('doc-comment-draft-card');
+        const peer = await peerEditor();
+
+        await change(peer);
+
+        const dropped = screen.queryByTestId('doc-comment-draft-dropped');
+        expect(dropped !== null || aimedWords() === 'echo').toBe(true);
+        expect(dropped === null || draftRangeIn(handle.editor.prosemirrorState) === null).toBe(true);
+      },
+    );
+
+    it('says so when the reader moves the line its words are on', async () => {
+      show('editor', ['alpha bravo', 'charlie delta']);
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+
+      act(() => {
+        handle.editor.setTextCursorPosition(handle.editor.document[0]!);
+        handle.editor.moveBlocksDown();
+      });
+
+      expect(lines()).toEqual(['charlie delta', 'alpha bravo']);
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
     });
 
     it('says so when a peer deletes the words it is on', async () => {
