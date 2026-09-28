@@ -427,12 +427,18 @@ export const documentCommentDraftRange = createExtension(() => {
               // caller is wrong, and holding it would let a comment be written
               // with no words under it.
               if (asked === null || asked.to <= asked.from) return null;
-              openings += 1;
+              // An open draft is moved, not replaced: it ends only on cancel
+              // or save, and its words are kept against its opening.
+              let opening = current?.opening;
+              if (opening === undefined) {
+                openings += 1;
+                opening = { serial: openings };
+              }
               return {
                 kind: 'aimed',
                 from: asked.from,
                 to: asked.to,
-                opening: { serial: openings },
+                opening,
               };
             }
             if (current?.kind !== 'aimed') return current;

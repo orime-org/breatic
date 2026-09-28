@@ -13,7 +13,7 @@ import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
-  draftRangeIn,
+  draftIn,
   onDraftChange,
 } from '@web/spaces/document/document-comment-draft-range';
 import { clearReplies } from '@web/spaces/document/document-comment-unsent';
@@ -89,16 +89,17 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   React.useEffect(() => {
     if (pressed.length > 0) setRailOpen(true);
   }, [pressed]);
-  // A comment being written is written in the panel, so aiming a draft opens
-  // it (A1 · A2). The entries dispatch the range and nothing else; this is
-  // the one place that turns it into the panel being up, the same shape the
-  // press on a highlight above takes.
-  const draftAt = React.useSyncExternalStore(onDraftChange, () =>
-    draftRangeIn(handle.editor.prosemirrorState),
+  // A comment being written is written in the panel, so the panel is up
+  // whenever a draft is open, aimed or dropped (A1 · A2, design §9.6). The
+  // entries dispatch the range and nothing else; this is the one place that
+  // turns it into the panel being up, the same shape the press on a
+  // highlight above takes.
+  const draft = React.useSyncExternalStore(onDraftChange, () =>
+    draftIn(handle.editor.prosemirrorState),
   );
   React.useEffect(() => {
-    if (draftAt !== null) setRailOpen(true);
-  }, [draftAt]);
+    if (draft !== null) setRailOpen(true);
+  }, [draft]);
   // Closing it ends both the reading and the pointer, because the panel is
   // the only thing that releases either and it is about to be gone. The
   // reading, left standing, makes the next press on the same highlight read
