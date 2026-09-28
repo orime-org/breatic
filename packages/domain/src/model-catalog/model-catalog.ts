@@ -30,13 +30,16 @@ import {
 import { assertParamDeclarations } from "@domain/model-catalog/param-declaration.js";
 import { assertTakesPromptDeclared } from "@domain/model-catalog/takes-prompt.js";
 import type {
+  ExtraStep,
   ModelCatalog,
   ModelEntry,
-  ModelRate,
   ModelTier,
   ParamDescriptor,
+  PricingContract,
   RemoteParamSource,
+  SourceGroup,
 } from "@breatic/shared";
+import { estimateCredits, type CreditEstimate, type EstimateInput } from "@breatic/shared/pricing";
 
 /** Root directory for model YAML configs. */
 const MODELS_DIR = resolve(MONOREPO_ROOT, "config/models");
@@ -86,6 +89,8 @@ export interface FullProviderEndpoint {
   credit_price?: number;
   extra_params?: Record<string, unknown>;
   litellm_model?: string;
+  /** The endpoint's WaveSpeed pricing contract. */
+  pricing?: PricingContract;
   [extra: string]: unknown;
 }
 
@@ -97,7 +102,6 @@ export interface FullModelEntry {
   tier?: string;
   description?: string;
   guide?: string;
-  cost_per_call?: number;
   generation_time?: number;
   icon?: string;
   /**
@@ -107,11 +111,14 @@ export interface FullModelEntry {
    * error, so the wire type (`ModelEntry.takes_prompt`) can be non-optional.
    */
   takes_prompt?: boolean;
-  /**
-   * What this model charges per unit of input (#1960), stated to the user
-   * before generating. Optional: models that bill per call declare none.
-   */
-  rate?: ModelRate;
+  /** The upstream field the prompt is sent as, when it is not `prompt`. */
+  prompt_upstream?: string;
+  /** Upstream calls a run makes besides the model's own. */
+  extra_steps?: ExtraStep[];
+  /** The param whose source, once sent, lets later runs skip the model's own call. */
+  reused_by?: string;
+  /** Per mode, params of which at least one has to carry material. */
+  source_groups?: SourceGroup[];
   /**
    * How much input text this model accepts in one request (#1960). Optional:
    * absent when the upstream publishes no cap.
@@ -282,7 +289,6 @@ function projectModelEntry(
     description: m.description ?? "",
     guide: m.guide ?? "",
     tier: (m.tier as ModelTier) ?? "optional",
-    cost_per_call: m.cost_per_call ?? 0,
     generation_time: m.generation_time ?? 60,
     // Same blind cast as the yaml guidelines promise (every param has
     // description + default); FullParamSpec keeps them optional because it
@@ -299,9 +305,13 @@ function projectModelEntry(
     // already refused any modality where a model omits it, so the wire
     // field is a plain boolean the panels can read without a fallback.
     takes_prompt: m.takes_prompt as boolean,
-    // #1960: what the model charges per unit of input, for the panel to state
-    // before generating. Absent on per-call models.
-    rate: m.rate,
+    // Every run is estimated off the endpoint's own pricing contract and the
+    // upstream calls it adds, by the same function on both sides.
+    pricing: m.providers?.find((p) => p.pricing !== undefined)?.pricing,
+    prompt_upstream: m.prompt_upstream,
+    extra_steps: m.extra_steps,
+    reused_by: m.reused_by,
+    source_groups: m.source_groups,
     // #1960: how much text this model takes, so the panel can say so before
     // sending text the upstream will reject. Absent on models whose upstream
     // publishes no cap.
@@ -368,8 +378,9 @@ export function getModelCatalog(): ModelCatalog {
 
   const total = MODALITIES.reduce((sum, m) => sum + catalog[m].length, 0);
 
-  _cache = { ...catalog, total };
-  return _cache;
+  const built: ModelCatalog = { ...catalog, total, credit_multiplier: env.CREDIT_MULTIPLIER };
+  _cache = built;
+  return built;
 }
 
 /**
@@ -443,22 +454,58 @@ export const MIN_TASK_CREDIT_COST = 5;
  * concurrently may drive the balance negative, an accepted trade-off of
  * a soft pre-check).
  *
- * Looks the model up across every modality and returns its
- * `cost_per_call`; unknown / unspecified models fall back to
- * {@link MIN_TASK_CREDIT_COST} (the pre-check's job is refusing broke
- * requests, not exact pricing).
+ * Prices the run the request describes by the model's pricing contract. The
+ * server does not know how long a source is, so a formula billed by source
+ * length prices it at zero: the answer is a lower bound, which is what a gate
+ * refusing broke requests needs. Unknown / unspecified models and models with
+ * no contract fall back to {@link MIN_TASK_CREDIT_COST}, which is also the
+ * floor.
  * @param model - Model name from the request body, if any.
+ * @param params - The task params, keyed by the catalog's param names.
+ * @param prompt - The prompt text, for models priced by it.
  * @returns The credits the caller must at least hold to enqueue.
+ * @throws {Error} When a pricing formula does not produce a finite price.
  */
-export function estimateTaskCredits(model?: string): number {
-  if (model) {
-    const catalog = getModelCatalog();
-    for (const modality of MODALITIES) {
-      const entry = catalog[modality].find((m) => m.name === model);
-      if (entry && entry.cost_per_call > 0) return entry.cost_per_call;
-    }
+export async function estimateTaskCredits(
+  model: string | undefined,
+  params: Readonly<Record<string, unknown>>,
+  prompt?: string,
+): Promise<number> {
+  const estimate = model
+    ? await estimateModelCredits(model, { params, ...(prompt !== undefined ? { prompt } : {}) })
+    : undefined;
+  return Math.max(estimate?.credits ?? 0, MIN_TASK_CREDIT_COST);
+}
+
+/**
+ * One run of a served model, priced by its contract the way the panels price it.
+ * @param model - Model name.
+ * @param input - The run as set up so far; `{ params: {} }` prices the defaults.
+ * @returns The credits and how they bound the charge, or undefined for a model
+ *   this deployment does not serve or does not price.
+ * @throws {Error} When a pricing formula does not produce a finite price.
+ */
+export async function estimateModelCredits(
+  model: string,
+  input: EstimateInput,
+): Promise<CreditEstimate | undefined> {
+  const entry = findCatalogEntry(model);
+  if (!entry?.pricing) return undefined;
+  return estimateCredits({ ...entry, pricing: entry.pricing }, input, env.CREDIT_MULTIPLIER);
+}
+
+/**
+ * The catalog entry of a model this deployment serves.
+ * @param model - Model name.
+ * @returns The entry, or undefined when no modality carries it.
+ */
+function findCatalogEntry(model: string): ModelEntry | undefined {
+  const catalog = getModelCatalog();
+  for (const modality of MODALITIES) {
+    const entry = catalog[modality].find((m) => m.name === model);
+    if (entry) return entry;
   }
-  return MIN_TASK_CREDIT_COST;
+  return undefined;
 }
 
 /**

@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { initCore } from "@breatic/core";
 import {
+  estimateModelCredits,
   estimateTaskCredits,
   getModelCatalog,
   MIN_TASK_CREDIT_COST,
@@ -72,6 +73,21 @@ describe("estimateTaskCredits", () => {
 
   it("carries the multiplier on the catalog the panels estimate with", () => {
     expect(getModelCatalog().credit_multiplier).toBeGreaterThan(0);
+  });
+
+  it("estimates a model at its defaults with how the number bounds the charge", async () => {
+    // wan-3.0 text-to-video defaults: 720p, 5 seconds.
+    expect(await estimateModelCredits("wan-3.0-text-to-video", { params: {} })).toEqual({
+      credits: expect.closeTo(47.5, 6) as number,
+      bound: "exact",
+    });
+    expect(await estimateModelCredits("minimax-speech-2.8-hd", { params: {} })).toMatchObject({
+      bound: "per_thousand_chars",
+    });
+  });
+
+  it("answers nothing for a model the catalog does not serve", async () => {
+    expect(await estimateModelCredits("no-such-model-xyz", { params: {} })).toBeUndefined();
   });
 
   it("MIN_TASK_CREDIT_COST is a positive integer floor", () => {
