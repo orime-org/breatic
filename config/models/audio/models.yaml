@@ -17,6 +17,9 @@
 #   model.source_groups  — per mode, params of which at least one has to carry
 #                          material, for inputs the upstream schema leaves
 #                          optional one by one but refuses all empty.
+#   model.extra_steps    — upstream calls a run makes besides the model's own
+#                          endpoint, each priced by its own WaveSpeed contract;
+#                          `at` says whether it runs before or after that call.
 #   param.upstream       — the upstream field this param is sent as, when the
 #                          names differ. The one mapping the request builder,
 #                          the price estimate and the source check all read.
@@ -77,18 +80,21 @@ models:
         fill: "canvas"
     extra_steps:
       - endpoint: "mureka-ai/create-upload-id"
+        at: "before"
         for_param: "song"
         pricing:
           base_price: 10000
           formula: ""
           discount_rate: 100
       - endpoint: "mureka-ai/create-upload-id"
+        at: "before"
         for_param: "melody"
         pricing:
           base_price: 10000
           formula: ""
           discount_rate: 100
       - endpoint: "mureka-ai/vocal-clone"
+        at: "before"
         for_param: "vocal"
         reused: true
         pricing:

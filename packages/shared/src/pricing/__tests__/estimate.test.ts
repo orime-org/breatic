@@ -74,11 +74,13 @@ const MUREKA_SONG: PricedModel = {
   extra_steps: [
     {
       endpoint: "mureka-ai/create-upload-id",
+      at: "before",
       for_param: "song",
       pricing: { base_price: 10_000, formula: "", discount_rate: 100 },
     },
     {
       endpoint: "mureka-ai/vocal-clone",
+      at: "before",
       for_param: "vocal",
       reused: true,
       pricing: { base_price: 7_500_000, formula: "", discount_rate: 100 },
@@ -96,6 +98,7 @@ const O3_I2V: PricedModel = {
   extra_steps: [
     {
       endpoint: "kwaivgi/kling-elements",
+      at: "before",
       for_param: "elements",
       per_item: true,
       reused: true,
@@ -110,7 +113,7 @@ const VOICE_CLONE: PricedModel = {
   params: { audio: { fill: "canvas", default: null } },
   pricing: { base_price: 1_600_000, formula: "", discount_rate: 100 },
   reused_by: "audio",
-  extra_steps: [{ endpoint: "minimax/speech-2.8-hd", pricing: SPEECH_PRICING }],
+  extra_steps: [{ endpoint: "minimax/speech-2.8-hd", at: "after", pricing: SPEECH_PRICING }],
 };
 
 describe("estimateCredits", () => {

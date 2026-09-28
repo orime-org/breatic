@@ -60,6 +60,8 @@ export interface PricingContract {
 /** An upstream call a run of this model makes besides the model's own. */
 export interface ExtraStep {
   readonly endpoint: string;
+  /** Whether the call runs before or after the model's own endpoint. */
+  readonly at: "before" | "after";
   readonly pricing: PricingContract;
   /** The param whose value makes the run take this step; absent means every run does. */
   readonly for_param?: string;
@@ -481,6 +483,7 @@ const modelEntrySchema = z.object({
     .array(
       z.object({
         endpoint: z.string(),
+        at: z.enum(["before", "after"]),
         pricing: pricingContractSchema,
         for_param: z.string().optional(),
         per_item: z.boolean().optional(),

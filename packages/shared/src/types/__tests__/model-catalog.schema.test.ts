@@ -310,6 +310,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     const steps = [
       {
         endpoint: "mureka-ai/vocal-clone",
+        at: "before",
         for_param: "vocal",
         reused: true,
         pricing: { base_price: 7_500_000, formula: "", discount_rate: 100 },
