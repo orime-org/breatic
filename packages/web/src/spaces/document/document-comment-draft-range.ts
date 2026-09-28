@@ -33,9 +33,10 @@
  * where it lands; undoing or redoing such a move; changing a line's type;
  * splitting or joining lines. Once an end's letter is deleted its Yjs position
  * no longer names the words. The lines are asked instead: every line keeps
- * its id through such a rewrite, so when the lines the range ran across are
- * all still there, still next to each other in order and word for word the
- * same, the range stays at the same place in them ({@link linesStill}). The
+ * its id through such a rewrite, so when the lines the range starts and ends
+ * in are still there word for word, the first still before the last, the
+ * range stays at the same place in them and takes in whatever lies between
+ * ({@link endLinesStill}). The
  * reader's own edits get the same question when mapping them leaves no
  * letters, which is what moving the draft's own line does.
  *
@@ -44,8 +45,8 @@
  * edge, is drawn in to its letters wherever a range is written.
  *
  * It is GONE once neither way finds it: an end's letter was deleted, or the
- * reader's own edit left no letters, and the lines it ran across are no longer
- * all there as they were. Nothing is guessed about where changed words went.
+ * reader's own edit left no letters, and the lines it starts and ends in are
+ * no longer both there as they were. Nothing is guessed about where changed words went.
  * Posting then would put the reader's words in a thread pointing at nothing,
  * or at other words, which is what A21 is about — the draft card keeps its
  * place in the panel and says so instead, keeping what the reader wrote.
@@ -179,7 +180,7 @@ function letterBounds(
 /** Stands in for a non-text node inside a line, one position wide. */
 const LEAF = '\ufffc';
 
-/** One line a range ran across, as it stood. */
+/** A line a range starts or ends in, as it stood. */
 interface Line {
   /** The id of the row the line belongs to. */
   readonly id: string;
@@ -187,9 +188,10 @@ interface Line {
   readonly words: string;
 }
 
-/** The lines a range runs across, and where it starts and ends in them. */
-interface Lines {
-  readonly lines: readonly Line[];
+/** The lines a range starts and ends in, and where in them. */
+interface EndLines {
+  readonly first: Line;
+  readonly last: Line;
   /** Where the range starts in the first line. */
   readonly start: number;
   /** Where it ends in the last line. */
@@ -207,54 +209,66 @@ function wordsOf(line: ProseMirrorNode): string {
 }
 
 /**
- * The lines a range runs across.
+ * The lines a range starts and ends in.
  * @param doc - The body.
  * @param range - The range, against its letters.
- * @returns Them, in order.
+ * @returns Them, or null when either end is not in a row's line.
  */
-function linesOf(doc: ProseMirrorNode, range: DraftRange): Lines {
-  const lines: Line[] = [];
-  let start = 0;
-  let end = 0;
-  doc.nodesBetween(range.from, range.to, (node, pos, parent) => {
-    if (!node.isTextblock) return true;
-    const id: unknown = parent?.attrs['id'];
-    if (typeof id !== 'string') return false;
-    if (lines.length === 0) start = range.from - (pos + 1);
-    end = range.to - (pos + 1);
-    lines.push({ id, words: wordsOf(node) });
-    return false;
-  });
-  return { lines, start, end };
+function endLinesOf(doc: ProseMirrorNode, range: DraftRange): EndLines | null {
+  /**
+   * The line a position sits in.
+   * @param pos - The position.
+   * @returns The line and where the position is in it, or null outside one.
+   */
+  const lineAt = (pos: number): { line: Line; offset: number } | null => {
+    const at = doc.resolve(pos);
+    const id: unknown = at.node(at.depth - 1).attrs['id'];
+    return at.parent.isTextblock && typeof id === 'string'
+      ? { line: { id, words: wordsOf(at.parent) }, offset: at.parentOffset }
+      : null;
+  };
+  const first = lineAt(range.from);
+  const last = lineAt(range.to);
+  return first === null || last === null
+    ? null
+    : { first: first.line, last: last.line, start: first.offset, end: last.offset };
 }
 
 /**
- * Where a range is after a change that rewrote the lines it ran across
- * without changing them: each line found again by its row's id, all still
- * there, still next to each other in order, and word for word the same.
+ * Where a range is after a change that rewrote the lines it starts and ends
+ * in without changing them: both found again by their row's id, word for word
+ * the same, the first still before the last. Whatever lies between them is
+ * the range, the way it is for a range whose ends Yjs still names.
  * @param doc - The body after the change.
- * @param held - The lines as they were.
- * @returns The range at the same place in them, or null when any of that no
- *   longer holds.
+ * @param held - The end lines as they were.
+ * @returns The range at the same place in them, or null when either line is
+ *   gone or changed, or they are out of order.
  */
-function linesStill(doc: ProseMirrorNode, held: Lines): DraftRange | null {
-  const first = held.lines[0];
-  const last = held.lines[held.lines.length - 1];
-  if (first === undefined || last === undefined) return null;
-  const same = held.lines.every((line) => {
+function endLinesStill(
+  doc: ProseMirrorNode,
+  held: EndLines | null,
+): DraftRange | null {
+  if (held === null) return null;
+  /**
+   * Where a line's words start now, if it is there word for word.
+   * @param line - The line as it was.
+   * @returns The position before its first character, or null.
+   */
+  const startOf = (line: Line): number | null => {
     const row = rowById(doc, line.id);
     const content = row?.node.firstChild;
-    return content != null && wordsOf(content) === line.words;
-  });
-  if (!same) return null;
-  const from = contentRangeOf(rowById(doc, first.id)!)!.from + held.start;
-  const to = contentRangeOf(rowById(doc, last.id)!)!.from + held.end;
-  if (to <= from) return null;
-  const now = linesOf(doc, { from, to });
-  return now.lines.length === held.lines.length &&
-    now.lines.every((line, i) => line.id === held.lines[i]!.id)
-    ? { from, to }
-    : null;
+    return row !== undefined &&
+      content != null &&
+      wordsOf(content) === line.words
+      ? contentRangeOf(row)!.from
+      : null;
+  };
+  const first = startOf(held.first);
+  const last = startOf(held.last);
+  if (first === null || last === null) return null;
+  const from = first + held.start;
+  const to = last + held.end;
+  return to > from ? { from, to } : null;
 }
 
 /**
@@ -414,7 +428,7 @@ function carryDraft(
       : mapDraftRange(current, tr.mapping);
   const moved =
     (carried === null ? null : letterBounds(tr.doc, carried)) ??
-    linesStill(tr.doc, linesOf(tr.before, current));
+    endLinesStill(tr.doc, endLinesOf(tr.before, current));
   if (moved === null) {
     return { kind: 'dropped', why: 'targetGone', opening: current.opening };
   }

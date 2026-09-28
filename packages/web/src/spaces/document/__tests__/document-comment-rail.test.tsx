@@ -1364,6 +1364,24 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('bravocharlie');
     });
 
+    it('says so when a peer moves its last line above its first', async () => {
+      show('editor', ['alpha bravo', 'charlie delta']);
+      const [first, second] = lineStarts();
+      aimAt(first! + 6, second! + 7);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        peer.editor.setTextCursorPosition(peer.editor.document[1]!);
+        peer.editor.moveBlocksUp();
+      });
+
+      expect(lines()).toEqual(['charlie delta', 'alpha bravo']);
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
+    });
+
     it('takes in a line a peer adds between its two lines', async () => {
       show('editor', ['alpha bravo', 'charlie delta']);
       const [first, second] = lineStarts();
