@@ -222,6 +222,27 @@ export function readSlotDurations<K extends string>(
 }
 
 /**
+ * The lengths a price by the second reads for the drawn slots, each under the
+ * param its file travels as (#2156, design §14).
+ * @param registry - The panel's slot registry.
+ * @param slots - The slots the toolbar draws for this model and mode.
+ * @param known - Each slot's length, as {@link readSlotDurations} reads it.
+ * @returns Seconds per param, for the drawn slots that know their length.
+ */
+export function slotSourceDurations<K extends string>(
+  registry: Readonly<Record<K, SlotSpec>>,
+  slots: readonly K[],
+  known: Partial<Record<K, number>>,
+): Record<string, number[]> {
+  const durations: Record<string, number[]> = {};
+  for (const slot of slots) {
+    const seconds = known[slot];
+    if (seconds !== undefined) durations[registry[slot].param] = [seconds];
+  }
+  return durations;
+}
+
+/**
  * The i18n key a refusal speaks with, in the words of the slot it names.
  *
  * The gate names only the param that is empty; the toolbar slot drawn for it

@@ -837,6 +837,29 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     expect(vm.mentionTokens).toEqual({ 'src-a': 'Image 1', 'src-v': 'Video 1' });
   });
 
+  it('knows how long each mentioned clip runs, for a price by the second (#2156)', () => {
+    const wan = [
+      makeModel('wan-3.0-reference-to-video', {
+        mode: 'ref',
+        params: {
+          videos: { description: '', type: 'list', default: null, fill: 'pool', accepts: 'video' },
+        },
+      }),
+    ];
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node('n1', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
+        node('src-v', { kind: 'video', status: 'idle', content: 'https://cdn/v.mp4', duration: 8 }),
+      ],
+      edges: [{ id: 'e-v', source: 'src-v', target: 'n1' }],
+      models: wan,
+      mode: 'ref',
+      atMentionedSourceIds: new Set(['src-v']),
+    });
+    expect(vm.sourceDurations).toEqual({ videos: [8] });
+  });
+
   it('hands the prompt no words under a mode that sends no references', () => {
     const { nodes, edges } = twoConnectedImages();
     const vm = buildVm({

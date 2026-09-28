@@ -29,6 +29,7 @@ import {
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import {
+  mentionDurations,
   mentionTokens,
   mentionedReferenceUrls,
   NO_MENTION_TOKENS,
@@ -37,8 +38,10 @@ import {
   type ReferenceUrls,
 } from '@web/spaces/canvas/generate/reference-urls';
 import {
+  readSlotDurations,
   readSlotThumbnails,
   readSlotUrls,
+  slotSourceDurations,
 } from '@web/spaces/canvas/generate/slots';
 import { VIDEO_SLOTS, videoSlotsForModel } from '@web/spaces/canvas/generate/video-slots';
 import type {
@@ -125,6 +128,11 @@ export interface VideoPanelViewModel {
    * `referenceUrls` sends.
    */
   mentionTokens: MentionTokens;
+  /**
+   * How long the run's clips and tracks run, per param, where known (#2156,
+   * design §14): the drawn slots' picks and the mentioned references.
+   */
+  sourceDurations: Record<string, number[]>;
   /**
    * Where the active model's pool takes each kind in this mode, and how many
    * (#2156). Read off the wire so the panel, the server rule and the worker
@@ -314,6 +322,7 @@ export function buildVideoPanelViewModel(input: {
   const focusImages = validFocusImages(content?.focusImages);
   const pool = referencePool(current, mode);
   const sendsReferences = referenceKinds(pool).length > 0;
+  const slots = videoSlotsForModel(current, mode);
   const referenceUrls = sendsReferences
     ? mentionedReferenceUrls({ references, focusImages, atMentioned, nodes })
     : NO_REFERENCE_URLS;
@@ -332,7 +341,7 @@ export function buildVideoPanelViewModel(input: {
     params: current ? resolveModelSwitch(content, current).params : {},
     nodeStatus: content?.status,
     mode,
-    slots: videoSlotsForModel(current, mode),
+    slots,
     slotUrls,
     slotThumbnails: readSlotThumbnails(VIDEO_SLOTS, content),
     references,
@@ -342,6 +351,12 @@ export function buildVideoPanelViewModel(input: {
     focusImages,
     referenceUrls,
     mentionTokens: mentionTokenMap,
+    sourceDurations: {
+      ...slotSourceDurations(VIDEO_SLOTS, slots, readSlotDurations(VIDEO_SLOTS, content)),
+      ...(sendsReferences
+        ? mentionDurations(pool, { references, focusImages, atMentioned, nodes })
+        : {}),
+    },
     // Through the shared rule, so these caps and the ones the server
     // re-checks before enqueue are the same arithmetic (#1928).
     pool,

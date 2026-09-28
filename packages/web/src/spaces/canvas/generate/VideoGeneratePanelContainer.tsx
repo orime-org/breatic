@@ -70,7 +70,7 @@ import {
 } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
-import { buildVideoTaskPayload } from '@web/spaces/canvas/generate/video-task-payload';
+import { buildVideoTaskPayload, videoEstimateInput } from '@web/spaces/canvas/generate/video-task-payload';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
@@ -224,7 +224,7 @@ function VideoGeneratePanelBody({
   );
   const creditText = useCreditText(
     vm.modelEntry,
-    { params: vm.params, prompt: extractPromptText(promptText) },
+    videoEstimateInput(vm, extractPromptText(promptText)),
     catalog?.credit_multiplier ?? 1,
   );
 

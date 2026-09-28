@@ -4,7 +4,8 @@
 import { describe, it, expect } from 'vitest';
 
 import { slotsForMode } from '@web/spaces/canvas/generate/video-mode-options';
-import { buildVideoTaskPayload } from '@web/spaces/canvas/generate/video-task-payload';
+import { buildVideoTaskPayload, videoEstimateInput } from '@web/spaces/canvas/generate/video-task-payload';
+import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 
 const BASE = {
   nodeId: 'node-1',
@@ -278,5 +279,30 @@ describe('buildVideoTaskPayload — the model brings its own `images` key', () =
     // `generate_audio`). The worker drops null values before mapping.
     const out = buildVideoTaskPayload({ ...WITH_DECLARED, slots: slotsForMode('ref') });
     expect(out.params.images).toBeNull();
+  });
+});
+
+describe('videoEstimateInput — the run the price is quoted for', () => {
+  it('carries the picked and mentioned sources with their lengths, as the submit sends them', () => {
+    const input = videoEstimateInput(
+      {
+        params: { resolution: '720p' },
+        slots: ['sourceVideo'],
+        slotUrls: { sourceVideo: 'https://cdn/s.mp4' },
+        pool: { video: { param: 'videos', cap: undefined } },
+        referenceUrls: { image: [], video: ['https://cdn/r.mp4'], audio: [] },
+        sourceDurations: { [VIDEO_SLOTS.sourceVideo.param]: [5], videos: [8] },
+      },
+      'a pan',
+    );
+    expect(input).toEqual({
+      params: {
+        resolution: '720p',
+        [VIDEO_SLOTS.sourceVideo.param]: 'https://cdn/s.mp4',
+        videos: ['https://cdn/r.mp4'],
+      },
+      prompt: 'a pan',
+      durations: { [VIDEO_SLOTS.sourceVideo.param]: [5], videos: [8] },
+    });
   });
 });

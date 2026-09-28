@@ -12,7 +12,7 @@ import * as Y from 'yjs';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { addNode } from '@web/data/yjs/canvas-space';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
-import { readSlotDurations } from '@web/spaces/canvas/generate/slots';
+import { readSlotDurations, slotSourceDurations } from '@web/spaces/canvas/generate/slots';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 
 const PID = 'p1';
@@ -56,5 +56,17 @@ describe('a slot keeps its source length', () => {
       expect(genData()[VIDEO_SLOTS.drivingVideo.field]).toEqual({ url: 'https://cdn/c.mp4' });
       expect(readSlotDurations(VIDEO_SLOTS, genData())).toEqual({});
     }
+  });
+});
+
+describe('slotSourceDurations — the lengths a price reads, under each slot\'s param', () => {
+  it('lists each drawn slot\'s length under the param it travels as', () => {
+    const content = {
+      [VIDEO_SLOTS.drivingVideo.field]: { url: 'https://cdn/c.mp4', duration: 6 },
+      [VIDEO_SLOTS.sourceVideo.field]: { url: 'https://cdn/s.mp4', duration: 3 },
+    };
+    expect(slotSourceDurations(VIDEO_SLOTS, ['drivingVideo'], readSlotDurations(VIDEO_SLOTS, content))).toEqual({
+      [VIDEO_SLOTS.drivingVideo.param]: [6],
+    });
   });
 });

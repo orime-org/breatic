@@ -14,9 +14,11 @@
  * belongs to all but one.
  */
 
-import type { TaskCreateInput } from '@breatic/shared';
+import type { ReferencePool, TaskCreateInput } from '@breatic/shared';
+import type { EstimateInput } from '@breatic/shared/pricing';
 
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
+import { poolParams, type ReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot, VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 
@@ -118,4 +120,29 @@ export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
       ),
     },
   });
+}
+
+/** What the price reads off the video panel's view model. */
+interface VideoEstimateSource {
+  params: Readonly<Record<string, unknown>>;
+  slots: readonly VideoSlot[];
+  slotUrls: VideoSlotUrls;
+  pool: ReferencePool;
+  referenceUrls: ReferenceUrls;
+  sourceDurations: Readonly<Record<string, readonly number[]>>;
+}
+
+/**
+ * The run the panel quotes a price for (#2156, design §14): the params with
+ * the same source fields the submit sends, and how long those sources run.
+ * @param vm - The panel's view model.
+ * @param prompt - The prompt as the model reads it.
+ * @returns The estimate input.
+ */
+export function videoEstimateInput(vm: VideoEstimateSource, prompt: string): EstimateInput {
+  return {
+    params: { ...vm.params, ...sourceParams(vm.slots, vm.slotUrls, poolParams(vm.pool, vm.referenceUrls)) },
+    prompt,
+    durations: vm.sourceDurations,
+  };
 }

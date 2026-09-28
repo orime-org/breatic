@@ -21,13 +21,14 @@ import type { ModelEntry } from '@breatic/shared';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
-import type { AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
+import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
 import {
   filterModelsByMode,
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import {
   readSlotThumbnails,
+  readSlotDurations,
   readSlotUrls,
 } from '@web/spaces/canvas/generate/slots';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
@@ -67,6 +68,8 @@ export interface AudioPanelViewModel {
    * {@link AudioPanelViewModel.slotUrls}, never this.
    */
   slotThumbnails: AudioSlotUrls;
+  /** How long each slot's track runs, where its pick recorded it (#2156). */
+  slotDurations: Partial<Record<AudioSlot, number>>;
 }
 
 /**
@@ -119,5 +122,6 @@ export function buildAudioPanelViewModel(input: {
       : null,
     slotUrls: readSlotUrls(AUDIO_SLOTS, content),
     slotThumbnails: readSlotThumbnails(AUDIO_SLOTS, content),
+    slotDurations: readSlotDurations(AUDIO_SLOTS, content),
   };
 }

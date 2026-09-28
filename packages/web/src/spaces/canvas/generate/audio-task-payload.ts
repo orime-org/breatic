@@ -17,10 +17,12 @@
  */
 
 import type { ModelEntry, TaskCreateInput } from '@breatic/shared';
+import type { EstimateInput } from '@breatic/shared/pricing';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
+import { slotSourceDurations } from '@web/spaces/canvas/generate/slots';
 
 /**
  * The picked source assets, under the param names their vendors read.
@@ -107,4 +109,31 @@ export function buildAudioTaskPayload(input: AudioTaskInput): TaskCreateInput {
       ...sourceParams(input.slots ?? [], input.slotUrls ?? {}),
     },
   });
+}
+
+/** What the price reads off the audio panel's view model. */
+interface AudioEstimateSource {
+  params: Readonly<Record<string, unknown>>;
+  slotUrls: AudioSlotUrls;
+  slotDurations: Partial<Record<AudioSlot, number>>;
+}
+
+/**
+ * The run the panel quotes a price for (#2156, design §14): the params with
+ * the same source fields the submit sends, and how long those tracks run.
+ * @param vm - The panel's view model.
+ * @param slots - The slots the active mode collects.
+ * @param prompt - The prompt as the model reads it.
+ * @returns The estimate input.
+ */
+export function audioEstimateInput(
+  vm: AudioEstimateSource,
+  slots: readonly AudioSlot[],
+  prompt: string,
+): EstimateInput {
+  return {
+    params: { ...vm.params, ...sourceParams(slots, vm.slotUrls) },
+    prompt,
+    durations: slotSourceDurations(AUDIO_SLOTS, slots, vm.slotDurations),
+  };
 }

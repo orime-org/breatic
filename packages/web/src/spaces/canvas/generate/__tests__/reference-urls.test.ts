@@ -18,6 +18,7 @@ import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import type { NodeView } from '@web/data/yjs/node-view';
 import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
 import {
+  mentionDurations,
   mentionTokens,
   mentionedReferenceUrls,
   poolCounts,
@@ -240,5 +241,38 @@ describe('mentionTokens — how each mentioned chip is written into the prompt',
       nodes,
     });
     expect(tokens).toEqual({ b: 'image 1' });
+  });
+});
+
+describe('mentionDurations — how long the mentioned clips and tracks run', () => {
+  const pool: ReferencePool = {
+    image: { param: 'images', cap: undefined },
+    video: { param: 'videos', cap: undefined },
+    audio: { param: 'audios', cap: undefined },
+  };
+  const clip = (id: string, duration?: number): Pick<CanvasNodeView, 'id' | 'data'> =>
+    node(id, { kind: 'video', status: 'idle', content: `https://cdn/${id}.mp4`, duration });
+  const track = (id: string, duration?: number): Pick<CanvasNodeView, 'id' | 'data'> =>
+    node(id, { kind: 'audio', status: 'idle', content: `https://cdn/${id}.mp3`, duration });
+
+  it('lists each kind\'s lengths in the order its files are sent, under its param', () => {
+    const durations = mentionDurations(pool, {
+      references: rows('v2', 'a', 'v1', 's'),
+      focusImages: [],
+      atMentioned: new Set(['v1', 'v2', 'a', 's']),
+      nodes: [clip('v1', 4), clip('v2', 9.5), IMAGE_A, track('s', 12)],
+    });
+    expect(durations).toEqual({ videos: [9.5, 4], audios: [12] });
+  });
+
+  it('leaves out a kind while any of its files has no known length', () => {
+    // A partial list would be priced as if the unknown clip were free.
+    const durations = mentionDurations(pool, {
+      references: rows('v1', 'v2'),
+      focusImages: [],
+      atMentioned: new Set(['v1', 'v2']),
+      nodes: [clip('v1', 4), clip('v2')],
+    });
+    expect(durations).toEqual({});
   });
 });

@@ -4,7 +4,8 @@
 import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
-import { buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
+import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
+import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 
 /**
  * A model in the given bucket.
@@ -253,5 +254,24 @@ describe('buildAudioTaskPayload — the music models (#1960)', () => {
       slotUrls: { refAudio: 'https://cdn/sample.mp3', coverSong: 'https://cdn/song.mp3' },
     });
     expect(payload.params).toMatchObject({ audio: 'https://cdn/song.mp3' });
+  });
+});
+
+describe('audioEstimateInput — the run the price is quoted for', () => {
+  it('carries the drawn slots\' picks and lengths, and nothing from a slot this mode does not draw', () => {
+    const input = audioEstimateInput(
+      {
+        params: { model_version: 'v9' },
+        slotUrls: { musicSong: 'https://cdn/song.mp3', refAudio: 'https://cdn/ref.mp3' },
+        slotDurations: { musicSong: 42, refAudio: 9 },
+      },
+      ['musicSong'],
+      'a ballad',
+    );
+    expect(input).toEqual({
+      params: { model_version: 'v9', [AUDIO_SLOTS.musicSong.param]: 'https://cdn/song.mp3' },
+      prompt: 'a ballad',
+      durations: { [AUDIO_SLOTS.musicSong.param]: [42] },
+    });
   });
 });

@@ -49,7 +49,7 @@ import {
 } from '@web/spaces/canvas/generate/audio-mode-options';
 import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
-import { buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
+import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
@@ -655,7 +655,7 @@ function AudioGeneratePanelBody({
 
   const creditText = useCreditText(
     vm.modelEntry,
-    { params, prompt: extractPromptText(promptText) },
+    audioEstimateInput({ ...vm, params }, slots, extractPromptText(promptText)),
     catalog?.credit_multiplier ?? 1,
   );
 

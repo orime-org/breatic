@@ -24,6 +24,7 @@ import { referenceKinds, type ReferenceKind, type ReferencePool } from '@breatic
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
 import type { NodeView } from '@web/data/yjs/node-view';
+import { usableDuration } from '@web/spaces/canvas/generate/slot-pick';
 
 /** The part of a rail row this needs: which node it points at. */
 interface MentionableRow {
@@ -57,14 +58,18 @@ export const NO_REFERENCE_URLS: ReferenceUrls = { image: [], video: [], audio: [
  * @param data - The source node view.
  * @returns The kind and URL, or undefined when the source lends nothing.
  */
-function assetOf(data: NodeView | undefined): { kind: ReferenceKind; url: string } | undefined {
+function assetOf(
+  data: NodeView | undefined,
+): { kind: ReferenceKind; url: string; duration?: number } | undefined {
   if (data?.kind !== 'image' && data?.kind !== 'video' && data?.kind !== 'audio') return undefined;
   // The source node's content is collaborative Yjs data — untrusted, and NOT
   // covered by the catalog boundary. `typeof`, not Boolean: a malformed
   // source whose content is a non-string object is truthy and would slip a
   // non-URL into the task payload.
   const url: unknown = data.content;
-  return typeof url === 'string' && url.length > 0 ? { kind: data.kind, url } : undefined;
+  if (typeof url !== 'string' || url.length === 0) return undefined;
+  const duration = data.kind === 'image' ? undefined : usableDuration(data.duration);
+  return duration === undefined ? { kind: data.kind, url } : { kind: data.kind, url, duration };
 }
 
 /** The part of a focus crop this needs: its id and the asset it points at. */
@@ -93,6 +98,8 @@ interface SentReference {
   id: string;
   kind: ReferenceKind;
   url: string;
+  /** How long it runs, when its node knows. */
+  duration?: number;
 }
 
 /**
@@ -152,6 +159,29 @@ export function mentionTokens(pool: ReferencePool, input: MentionInput): Mention
     tokens[ref.id] = mention.replace('{n}', String(index + 1)).replace('{i}', String(index));
   }
   return tokens;
+}
+
+/**
+ * How long each kind's sent clips or tracks run, in the order they are sent
+ * (#2156, design §14) — what a price by the second reads. A kind is left out
+ * while any of its files has no known length: a partial list would price the
+ * unknown one as free.
+ * @param pool - The model's pool in this mode.
+ * @param input - The two row sources plus what the prompt mentions.
+ * @returns Seconds per file under each pool param whose lengths are all known.
+ */
+export function mentionDurations(
+  pool: ReferencePool,
+  input: MentionInput,
+): Record<string, number[]> {
+  const byKind: Record<ReferenceKind, Array<number | undefined>> = { image: [], video: [], audio: [] };
+  for (const ref of sentReferences(input)) byKind[ref.kind].push(ref.duration);
+  const durations: Record<string, number[]> = {};
+  for (const kind of referenceKinds(pool)) {
+    const known = byKind[kind].filter((d): d is number => d !== undefined);
+    if (known.length > 0 && known.length === byKind[kind].length) durations[pool[kind]!.param] = known;
+  }
+  return durations;
 }
 
 /**
