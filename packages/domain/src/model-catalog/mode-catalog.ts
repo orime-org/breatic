@@ -11,7 +11,6 @@ import {
   type ControlGate,
   type GenerationNodeType,
   type ModelEntry,
-  type ModelRate,
   type ParamDescriptor,
 } from "@breatic/shared";
 
@@ -83,15 +82,6 @@ export interface ParamInfo {
   /** How many entries it takes, for a field that takes a list. */
   maxItems?: number;
   /**
-   * How much tighter that cap gets when another field is filled.
-   *
-   * The reference list takes fewer images once a reference video is picked,
-   * and the panel and the submit gate both enforce the tighter number. Stated
-   * as its own clause because the answer describes a slot rather than one
-   * submission, so there is no single number to give.
-   */
-  maxItemsWhen?: Readonly<Record<string, number>>;
-  /**
    * Where its values come from, for a field whose domain lives upstream.
    *
    * The two voice params are the case: their values are served by
@@ -161,18 +151,6 @@ export interface ModelInfo {
   displayName: string;
   /** What it is good at, on one line. */
   what: string;
-  /** What one call costs, for a model that bills per call. */
-  credits: number;
-  /**
-   * What it charges per unit of what its vendor counts, when it bills that
-   * way rather than per call.
-   *
-   * `cost_per_call` on such a model is the pre-enqueue balance floor, not the
-   * price: sonilo states 5 as the floor and prices its longest preset at 36.
-   * Reporting the floor as the price contradicts the number the panel shows
-   * the user before they generate.
-   */
-  rate?: ModelRate;
   /** Roughly how long one call takes. */
   seconds: number;
   /**
@@ -204,8 +182,8 @@ export interface ModelInfo {
 }
 
 /** What one node can do in one mode: the models, or why there are none. */
-export type ModelsForMode =
-  | { available: true; models: ModelInfo[] }
+export type ModelsForMode<M extends ModelInfo = ModelInfo> =
+  | { available: true; models: M[] }
   | { available: false; offered: string[] };
 
 /**
@@ -342,13 +320,11 @@ export function entriesForNode(nodeType: GenerationNodeType): ModelEntry[] {
  * draws nothing for it. A carrier field belonging to some other mode of the
  * same model is reached by nobody here, which is why the caller drops it.
  * @param spec - What the catalog declares about it.
- * @param entry - The model declaring it, for the parameters its gates name.
  * @param mode - The mode it is asking about.
  * @returns What fills it, or "elsewhere" when this mode does not use it.
  */
 function reachedBy(
   spec: ParamDescriptor,
-  entry: ModelEntry,
   mode: string,
 ): "canvas" | "panel" | "nothing" | "elsewhere" {
   // `modes` says which of the model's modes this parameter applies to; absent
@@ -360,27 +336,9 @@ function reachedBy(
     return here ? "canvas" : "elsewhere";
   }
   if (!here) return "nothing";
-  if (spec.fill === "panel" || spec.fill === "remote" || spec.fill === "editor") {
-    // A control mounted on a slot this mode has no slot for is never drawn.
-    // A switch is on the panel either way, so a flag gate leaves it reachable.
-    const on = spec.when?.source;
-    if (on === undefined) return "panel";
-    const carrier = entry.params[on];
-    return carrierIn(carrier, mode) ? "panel" : "nothing";
-  }
+  // A switch is on the panel either way, so a flag gate leaves it reachable.
+  if (spec.fill === "panel" || spec.fill === "remote" || spec.fill === "editor") return "panel";
   return "nothing";
-}
-
-/**
- * Whether a parameter is a slot this mode fills off the canvas.
- * @param spec - The gating parameter's declaration, if the model has it.
- * @param mode - The mode being asked about.
- * @returns True when that parameter is a canvas slot here.
- */
-function carrierIn(spec: ParamDescriptor | undefined, mode: string): boolean {
-  if (spec === undefined) return false;
-  if (spec.fill !== "canvas" && spec.fill !== "pool") return false;
-  return spec.modes === undefined || spec.modes.includes(mode);
 }
 
 /**
@@ -389,10 +347,7 @@ function carrierIn(spec: ParamDescriptor | undefined, mode: string): boolean {
  * @returns The gate it declares, or undefined when it declares none.
  */
 function gateOf(spec: ParamDescriptor): ControlGate | undefined {
-  if (spec.when?.source !== undefined) return { kind: "source", param: spec.when.source };
-  if (spec.when?.flag_on !== undefined) return { kind: "flagOn", param: spec.when.flag_on };
-  if (spec.when?.flag_off !== undefined) return { kind: "flagOff", param: spec.when.flag_off };
-  return undefined;
+  return spec.when?.flag_on === undefined ? undefined : { kind: "flagOn", param: spec.when.flag_on };
 }
 
 /**
@@ -423,9 +378,6 @@ function projectParam(
     ...(spec.max !== undefined ? { max: spec.max } : {}),
     ...(spec.step !== undefined ? { step: spec.step } : {}),
     ...(spec.max_items !== undefined ? { maxItems: spec.max_items } : {}),
-    ...(spec.max_items_when_present !== undefined
-      ? { maxItemsWhen: spec.max_items_when_present }
-      : {}),
     ...(spec.remote_source !== undefined ? { valuesFrom: spec.remote_source } : {}),
     ...(by === "canvas" ? { filledBySource: true as const } : {}),
     ...(by === "canvas" && spec.accepts !== undefined ? { accepts: spec.accepts } : {}),
@@ -469,7 +421,7 @@ export function modelsForMode(
         (other) => other !== mode && panelModes.includes(other),
       );
       const reached = Object.entries(entry.params).map(
-        ([name, spec]) => [name, spec, reachedBy(spec, entry, mode)] as const,
+        ([name, spec]) => [name, spec, reachedBy(spec, mode)] as const,
       );
       return {
       name: entry.name,
@@ -478,8 +430,6 @@ export function modelsForMode(
       // good at; the description is written for a person and says what it is.
       // Either answers "should I propose this one", so take whichever exists.
       what: oneLine(entry.guide || entry.description || ""),
-      credits: entry.cost_per_call,
-      ...(entry.rate !== undefined ? { rate: entry.rate } : {}),
       seconds: entry.generation_time,
       ...(entry.max_input_chars !== undefined
         ? { maxInputChars: entry.max_input_chars }

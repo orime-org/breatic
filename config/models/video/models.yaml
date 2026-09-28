@@ -446,6 +446,15 @@ models:
         default: false
         values: [true, false]
         fill: "panel"
+    extra_steps:
+      - endpoint: "kwaivgi/kling-elements"
+        for_param: "elements"
+        per_item: true
+        reused: true
+        pricing:
+          base_price: 10000
+          formula: ""
+          discount_rate: 100
     providers:
       - name: "wavespeed"
         model_id: "kwaivgi/kling-video-o3-4k/image-to-video"

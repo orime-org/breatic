@@ -75,6 +75,26 @@ models:
         optional: true
         modes: ["a2m"]
         fill: "canvas"
+    extra_steps:
+      - endpoint: "mureka-ai/create-upload-id"
+        for_param: "song"
+        pricing:
+          base_price: 10000
+          formula: ""
+          discount_rate: 100
+      - endpoint: "mureka-ai/create-upload-id"
+        for_param: "melody"
+        pricing:
+          base_price: 10000
+          formula: ""
+          discount_rate: 100
+      - endpoint: "mureka-ai/vocal-clone"
+        for_param: "vocal"
+        reused: true
+        pricing:
+          base_price: 7500000
+          formula: ""
+          discount_rate: 100
     providers:
       - name: "wavespeed"
         model_id: "mureka-ai/mureka-v9.5/generate-song"

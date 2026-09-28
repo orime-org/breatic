@@ -8,12 +8,20 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 import { GENERATION_NODE_MODES, type GenerationNodeType } from "@breatic/shared";
+import type { CreditEstimate } from "@breatic/shared/pricing";
 
 import {
   modelsForMode,
   type ModelInfo,
   type ModelsForMode,
 } from "@domain/model-catalog/mode-catalog.js";
+import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+
+/** One model with what a run at its defaults costs, when the catalog prices it. */
+export type PricedModelInfo = ModelInfo & { price?: CreditEstimate };
+
+/** The tool's answer: the mode's models, each priced at its defaults. */
+export type PricedModelsForMode = ModelsForMode<PricedModelInfo>;
 
 const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
   GenerationNodeType,
@@ -33,16 +41,31 @@ const inputSchema = z
   .strict();
 
 /**
+ * A run's estimate in the words the panel shows it in.
+ * @param price - The estimate at the model's defaults.
+ * @returns The credits, with how they bound the charge.
+ */
+function renderPrice(price: CreditEstimate): string {
+  const credits = Math.ceil(price.credits);
+  switch (price.bound) {
+    case "exact":
+      return `${credits} credits at its defaults`;
+    case "at_least":
+      return `at least ${credits} credits at its defaults, more for longer sources`;
+    case "at_most":
+      return `up to ${credits} credits at its defaults, less when a source was used before`;
+    case "per_thousand_chars":
+      return `${credits} credits per 1000 characters of prompt`;
+  }
+}
+
+/**
  * One model rendered for the model to read.
  * @param model - The model to describe.
  * @returns Its name, what it is for, what it costs, and its parameters.
  */
-function renderModel(model: ModelInfo): string {
-  // A model that bills by usage states the flat number as its balance floor,
-  // so quoting that as the price contradicts what the panel shows the user.
-  const price = model.rate
-    ? `${model.rate.credits} credits per ${model.rate.per} ${model.rate.unit}`
-    : `${model.credits} credits`;
+function renderModel(model: PricedModelInfo): string {
+  const price = model.price ? `${renderPrice(model.price)}, ` : "";
   const prompt = model.takesPrompt ? "" : " Takes no prompt: its words come from its sources.";
   const cap =
     model.maxInputChars !== undefined
@@ -67,7 +90,7 @@ function renderModel(model: ModelInfo): string {
     model.alsoServes && model.alsoServes.length > 0
       ? ` Also serves ${model.alsoServes.join(", ")} on this node, which is what parts of the line above describe.`
       : "";
-  const head = `- ${model.displayName} (${model.name}) (${price}, up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}`;
+  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}`;
   const params = Object.entries(model.params).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are
@@ -75,11 +98,8 @@ function renderModel(model: ModelInfo): string {
     // that declares a type today is a slot, so stating it only for a settable
     // field would state it nowhere.
     const shape = spec.type !== undefined ? ` a ${spec.type};` : "";
-    const tighter = Object.entries(spec.maxItemsWhen ?? {})
-      .map(([field, cap]) => `, ${cap} when ${field} is set`)
-      .join("");
     const howMany =
-      spec.maxItems !== undefined ? ` at most ${spec.maxItems}${tighter};` : "";
+      spec.maxItems !== undefined ? ` at most ${spec.maxItems};` : "";
     // Two gestures reach a source: a slot is picked by clicking the slot and
     // then a node, and the reference list is the node's incoming edges. Named
     // for neither, because the reader does neither -- it is the person at the
@@ -113,15 +133,7 @@ function renderModel(model: ModelInfo): string {
           : shape;
     // The control exists but does not count yet, which asks something of the
     // reader that "no control" does not: satisfy the gate and setting it works.
-    const gate = spec.gate;
-    const waits =
-      gate === undefined
-        ? ""
-        : gate.kind === "source"
-          ? ` the panel offers it once ${gate.param} is filled;`
-          : gate.kind === "flagOn"
-            ? ` it applies only while ${gate.param} is on;`
-            : ` the panel drops it while ${gate.param} is on;`;
+    const waits = spec.gate === undefined ? "" : ` it applies only while ${spec.gate.param} is on;`;
     // A field served from upstream has no default a run ever takes: the panel
     // refuses the submit until one is picked, so whatever the catalog declares
     // for it is a value nothing reaches.
@@ -142,7 +154,7 @@ function renderModel(model: ModelInfo): string {
  * @param answer - The tool's answer.
  * @returns The models and their parameters, or what to ask for instead.
  */
-export function renderGenerationModelsForModel(answer: ModelsForMode): string {
+export function renderGenerationModelsForModel(answer: PricedModelsForMode): string {
   if (!answer.available) {
     return answer.offered.length > 0
       ? `That node cannot be set to that mode. It offers: ${answer.offered.join(", ")}.`
@@ -151,7 +163,7 @@ export function renderGenerationModelsForModel(answer: ModelsForMode): string {
   return answer.models.map(renderModel).join("\n");
 }
 
-export const generationModels: Tool<z.infer<typeof inputSchema>, ModelsForMode> = tool({
+export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsForMode> = tool({
   description:
     "List the models behind one mode of one generation node, with what each " +
     "is good at, what a call costs, how long it takes, and every parameter " +
@@ -169,8 +181,18 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, ModelsForMode> 
   }),
   execute: async (
     { nodeType, mode }: z.infer<typeof inputSchema>,
-    // Unused: reads a cached catalog and returns, so there is nothing to
-    // abandon. Declared so every tool has the same shape.
+    // Unused: reads a cached catalog and prices it locally, so there is
+    // nothing to abandon. Declared so every tool has the same shape.
     _options: { abortSignal?: AbortSignal },
-  ): Promise<ModelsForMode> => modelsForMode(nodeType, mode),
+  ): Promise<PricedModelsForMode> => {
+    const answer = modelsForMode(nodeType, mode);
+    if (!answer.available) return answer;
+    const models = await Promise.all(
+      answer.models.map(async (model): Promise<PricedModelInfo> => {
+        const price = await estimateModelCredits(model.name, { params: {} });
+        return price === undefined ? model : { ...model, price };
+      }),
+    );
+    return { available: true, models };
+  },
 });

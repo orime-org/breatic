@@ -1640,6 +1640,13 @@ models:
         default: true
         fill: "none"
         note: "our default: cleaner clone"
+    extra_steps:
+      - endpoint: "minimax/speech-2.8-hd"
+        pricing:
+          base_price: 100000
+          formula: "{\"total_price\":base_price * $length(text) / 1000}"
+          discount_rate: 100
+    reused_by: "audio"
     providers:
       - name: "wavespeed"
         model_id: "minimax/voice-clone"

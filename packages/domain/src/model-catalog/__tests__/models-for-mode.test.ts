@@ -35,7 +35,6 @@ describe("modelsForMode", () => {
       expect(model.name.length, "model name").toBeGreaterThan(0);
       expect(model.what.length, `${model.name} says what it is good at`).toBeGreaterThan(0);
       expect(model.what, `${model.name} description is one line`).not.toContain("\n");
-      expect(typeof model.credits, `${model.name} credits`).toBe("number");
     }
   });
 
@@ -280,30 +279,19 @@ describe("facts the catalog carries that change what to propose", () => {
 
 describe("the gate a parameter reports", () => {
   it("names something that mode or that model has", () => {
-    // A gate tells the reader to go and do one more thing first. A source
-    // gate names a slot the mode offers; a flag gate names another parameter
-    // of the same model. Naming anything else sends them after a control that
-    // is not on their screen, and the two tools then answer differently about
-    // the same mode -- the capability answer says a mode has no such switch
-    // while this one says the switch takes a field away.
+    // A gate tells the reader to turn a switch on first, and names another
+    // parameter of the same model. Naming anything else sends them after a
+    // control that is not on their screen.
     let seen = 0;
     for (const nodeType of Object.keys(GENERATION_NODE_MODES) as GenerationNodeType[]) {
       for (const mode of GENERATION_NODE_MODES[nodeType]) {
         const answer = modelsForMode(nodeType, mode);
         if (!answer.available) continue;
         for (const model of answer.models) {
-          // The slots this mode offers, read off the same answer: a parameter
-          // the canvas fills is one the reader has a place to point at.
-          const sources = Object.entries(model.params)
-            .filter(([, spec]) => spec.filledBySource === true)
-            .map(([name]) => name);
           for (const [name, spec] of Object.entries(model.params)) {
             if (spec.gate === undefined) continue;
             seen += 1;
-            const reachable =
-              spec.gate.kind === "source"
-                ? sources.includes(spec.gate.param)
-                : spec.gate.param in model.params;
+            const reachable = spec.gate.param in model.params;
             expect(
               reachable,
               `${nodeType}/${mode} ${model.name}.${name} waits on ${spec.gate.param}`,
