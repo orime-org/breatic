@@ -167,10 +167,9 @@ export function moveRowsFromKeyboard(
   const moved = rows as NonNullable<(typeof rows)[number]>[];
 
   const tr = view.state.tr;
-  // Last first, so each row is looked for in the document as the earlier
-  // removals left it, and a group emptied by the last of its rows leaving
-  // goes with that row.
-  for (const block of [...blocks].reverse()) {
+  // Each row is looked up again after the removals before it, so a group
+  // emptied by the last of its rows leaving goes with that row.
+  for (const block of blocks) {
     const row = rowById(tr.doc, block.id);
     if (row === undefined) return;
     const leaving = rangeToLift(tr.doc, row);

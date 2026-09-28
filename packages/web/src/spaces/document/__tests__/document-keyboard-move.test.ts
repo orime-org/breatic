@@ -159,6 +159,28 @@ const D = { id: 'd', text: 'delta' };
 const A1 = { id: 'a1', text: 'alpha one' };
 const B1 = { id: 'b1', text: 'bravo one' };
 
+/** Rows at three depths: a selection from `x2` to `x8` takes rows from each. */
+const DEEP = [
+  {
+    id: 'x0',
+    text: 'x zero',
+    children: [
+      {
+        id: 'x1',
+        text: 'x one',
+        children: [
+          { id: 'x2', text: 'x two' },
+          { id: 'x3', text: 'x three' },
+        ],
+      },
+      { id: 'x4', text: 'x four' },
+    ],
+  },
+  { id: 'x7', text: 'x seven' },
+  { id: 'x8', text: 'x eight' },
+  { id: 'x9', text: 'x nine' },
+];
+
 describe('moving a row from the keyboard', () => {
   it.each([
     // [case, rows, where the selection is, which arrow]
@@ -208,6 +230,20 @@ describe('moving a row from the keyboard', () => {
       ['c', 3],
       'ArrowUp',
     ],
+    [
+      'rows selected across three depths down',
+      DEEP,
+      ['x2', 1],
+      ['x8', 3],
+      'ArrowDown',
+    ],
+    [
+      'rows selected across three depths up',
+      DEEP,
+      ['x2', 1],
+      ['x8', 3],
+      'ArrowUp',
+    ],
   ] as const)(
     'puts %s where BlockNote puts it',
     (_case, rows, from, to, key) => {
@@ -221,6 +257,12 @@ describe('moving a row from the keyboard', () => {
       else theirs.moveBlocksDown();
 
       expect(rowsOf(ours)).toEqual(rowsOf(theirs));
+      expect(ours.prosemirrorState.selection.anchor).toBe(
+        theirs.prosemirrorState.selection.anchor,
+      );
+      expect(ours.prosemirrorState.selection.head).toBe(
+        theirs.prosemirrorState.selection.head,
+      );
     },
   );
 
