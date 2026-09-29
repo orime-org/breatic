@@ -5,11 +5,9 @@
  * Which generation parameters the audio panel offers, and what each one looks
  * like (#1960).
  *
- * A model states its own: ElevenLabs takes stability and similarity, Fish
- * takes speed and volume, and both reach the vendor already
- * (`transports/elevenlabs.ts` sends `voice_settings`, `transports/fish.ts`
- * sends `prosody`). What was missing is only the control. Sonilo takes a clip
- * length, and its upstream refuses a request without one.
+ * A model states its own: ElevenLabs takes stability and similarity, MiniMax
+ * takes speed and volume, and a sound-effect model takes a clip length. The
+ * worker sends each under the name its catalog entry maps it to.
  *
  * The table below is the list of params this panel knows how to SHOW: a
  * parameter needs a human label, and a label has to be written by a human —
@@ -95,14 +93,14 @@ export const PARAMS: Readonly<Record<string, AudioParamSpec>> = {
   },
   volume: {
     labelKey: 'canvas.generatePanel.voiceVolume',
-    // Decibels — a unit symbol, not a word to translate.
-    format: (v) => `${v > 0 ? '+' : ''}${v} dB`,
+    // A gain multiplier, 1 being unchanged (minimax/speech-2.8-hd).
+    format: (v) => `${v.toFixed(2)}x`,
   },
   duration: {
     labelKey: 'canvas.generatePanel.sfxDuration',
     // Seconds is a word in four of the five catalogs, so it goes through the
-    // translator; the `x` above and the `dB` beside it are translated nowhere,
-    // which is what makes those two symbols. The key is this panel's own: a
+    // translator; the `x` above is translated nowhere, which is what makes it a
+    // symbol. The key is this panel's own: a
     // sound effect's length and a video's generated length read alike today
     // and are separate quantities, so wording either later leaves the other
     // alone (user 2026-09-05).

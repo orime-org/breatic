@@ -98,74 +98,54 @@ describe("the speaking params declare what a control needs (#1960 A15)", () => {
   });
 });
 
-describe("the inline voice list carries a sample (#1960 A2)", () => {
-  // These are the voices behind an aggregating gateway, which has no voice
-  // endpoint to ask: the panel shows exactly what this file writes, so a
-  // sample the file omits is a play button the user never gets. The upstream
-  // publishes one per voice
-  // (wavespeed.ai/docs/docs-api/elevenlabs/elevenlabs-voice-id).
-  it("gives every elevenlabs-v3 voice a sample url", () => {
-    const voices = getFullModelConfig("tts").models.find(
-      (m) => m.name === "elevenlabs-v3",
-    )?.voices;
-    expect(voices?.length).toBeGreaterThan(0);
-    for (const voice of voices ?? []) {
-      expect(voice.sample_url, voice.id).toMatch(/^https:\/\/\S+\.mp3$/);
-    }
-  });
-});
+describe("the ElevenLabs voices are the endpoint's presets (#2156 design 9.5)", () => {
+  // WaveSpeed's two ElevenLabs endpoints name their voices by preset name:
+  // elevenlabs/voice-changer takes exactly these as an enum, and
+  // elevenlabs/eleven-v3 offers them as its suggestions
+  // (wavespeed.ai/docs/docs-api/elevenlabs/elevenlabs-voice-id). An id outside
+  // this list is refused by the changer, so both lists are held to it.
+  const PRESETS = [
+    "Adam", "Alice", "Alicia", "Aria", "Baxter", "Bella", "Bill", "Brian", "Caleb",
+    "Callum", "Charlie", "Charlotte", "Chris", "Daniel", "Darian", "Eddie", "Elara",
+    "Eldrin", "Elowen", "Eric", "Finley", "Florence", "George", "Harry", "Jade",
+    "Jessica", "Kaelen", "Laura", "Lawrence", "Liam", "Lily", "Maisie", "Matilda",
+    "River", "Roger", "Sarah", "Sawyer", "Talia", "Warren", "Will", "Wyatt",
+  ];
 
-describe("the inline voice list sends what the vendor accepts (#2086)", () => {
   /**
-   * Reads the elevenlabs-v3 voices straight out of the yaml.
-   * @returns Every inline voice entry the model declares.
+   * Reads one model's yaml entry.
+   * @param name - The model id.
+   * @returns The entry.
    * @throws {Error} When the catalog carries no such tts model.
    */
-  function inlineVoices(): NonNullable<
-    ReturnType<typeof getFullModelConfig>["models"][number]["voices"]
-  > {
-    const entry = getFullModelConfig("tts").models.find(
-      (m) => m.name === "elevenlabs-v3",
-    );
-    if (!entry?.voices) throw new Error("elevenlabs-v3 declares no voices");
-    return entry.voices;
+  function yamlEntry(name: string): ReturnType<typeof getFullModelConfig>["models"][number] {
+    const entry = getFullModelConfig("tts").models.find((m) => m.name === name);
+    if (!entry) throw new Error(`no tts model named ${name}`);
+    return entry;
   }
 
-  // `id` travels to the vendor as `voice_id`, and what the vendor reads there
-  // is an ElevenLabs voice id. Probed 2026-09-04 against wavespeed's
-  // elevenlabs/eleven-v3 with all 52 display names: 44 generated and 8 came
-  // back "A voice with voice_id 'X' was not found" — Domi, Elli, Rachel, Adam,
-  // Antoni, Arnold, Josh, Sam, every one of them a voice ElevenLabs lists as
-  // Legacy. The vendor reroutes a Legacy ID to its replacement and says so
-  // (help.elevenlabs.io, "What are Legacy voices?"); a display name gets no
-  // such reroute. Sending the ids instead made all three retried voices
-  // generate, including two of the eight.
-  //
-  // Each entry's own sample_url carries that id in its path, so the two fields
-  // check each other and this holds without anyone remembering 52 ids.
-  it("gives every voice the id its own sample url carries", () => {
-    for (const voice of inlineVoices()) {
-      const inUrl = /\/voices\/([^/]+)\//.exec(voice.sample_url ?? "")?.[1];
-      expect(inUrl, `${voice.name} has no id in its sample url`).toBeTruthy();
-      expect(voice.id, `${voice.name}`).toBe(inUrl);
-    }
-  });
+  it.each(["elevenlabs-v3", "elevenlabs-voice-changer"])(
+    "lists every preset of %s, by name, each with a sample and nothing else",
+    (model) => {
+      const voices = yamlEntry(model).voices ?? [];
+      expect(voices.map((v) => v.id).sort()).toEqual([...PRESETS].sort());
+      for (const voice of voices) {
+        expect(voice.name, voice.id).toBe(voice.id);
+        expect(voice.sample_url, voice.id).toMatch(/^https:\/\/\S+$/);
+      }
+    },
+  );
 
-  // The id is unreadable now, so the name is the only thing the picker can
-  // show. An entry without one leaves a row the user cannot choose by.
-  it("names every voice", () => {
-    for (const voice of inlineVoices()) {
-      expect(voice.name, voice.id).toMatch(/\S/);
-    }
-  });
+  it.each(["elevenlabs-v3", "elevenlabs-voice-changer"])(
+    "defaults %s to the endpoint's own default voice",
+    (model) => {
+      expect(yamlEntry(model).params?.voice_id?.default).toBe("Alicia");
+    },
+  );
 
-  // The default reaches the vendor whenever a request carries no explicit
-  // choice, so it is a value in the same domain as every other id here.
-  it("defaults the voice param to an id, not a display name", () => {
-    const entry = getFullModelConfig("tts").models.find(
-      (m) => m.name === "elevenlabs-v3",
-    );
-    const fallback = entry?.params?.voice_id?.default;
-    expect(inlineVoices().map((v) => v.id)).toContain(fallback);
+  // The endpoint's default; the design's table of our own defaults has no row
+  // for it.
+  it("defaults eleven-v3's similarity to the endpoint's 1", () => {
+    expect(yamlEntry("elevenlabs-v3").params?.similarity?.default).toBe(1);
   });
 });

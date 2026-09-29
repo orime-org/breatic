@@ -45,9 +45,10 @@ const ELEVENLABS = model({
   stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
   similarity: { description: '', min: 0, max: 1, step: 0.05, default: 0.75 },
 });
-const FISH = model({
+// As minimax-speech-2.8-hd declares them: volume is a gain, 1 unchanged.
+const MINIMAX = model({
   speed: { description: '', min: 0.5, max: 2, step: 0.05, default: 1 },
-  volume: { description: '', min: -20, max: 20, step: 1, default: 0 },
+  volume: { description: '', min: 0.1, max: 10, step: 0.1, default: 1 },
 });
 // No tts model in the catalogue states a param as a list of stops today, and
 // the panel still reads one as a row of options. Written here rather than left
@@ -142,8 +143,8 @@ describe('AudioParamsPicker — the speaking params the active model declares', 
     expect(slider).toHaveAttribute('aria-valuenow', '0.75');
   });
 
-  it('shows Fish\'s pair and neither of ElevenLabs\'', () => {
-    open(FISH, { speed: 1, volume: 0 });
+  it('shows MiniMax\'s pair and neither of ElevenLabs\'', () => {
+    open(MINIMAX, { speed: 1, volume: 1 });
     expect(screen.getByRole('slider', { name: 'Speed' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Volume' })).toBeInTheDocument();
     expect(screen.queryByRole('slider', { name: 'Similarity' })).toBeNull();
@@ -151,9 +152,9 @@ describe('AudioParamsPicker — the speaking params the active model declares', 
   });
 
   it('reads each value in its own unit beside its label', () => {
-    open(FISH, { speed: 1.25, volume: -5 });
+    open(MINIMAX, { speed: 1.25, volume: 0.5 });
     expect(screen.getByTestId('generate-audio-speed-value')).toHaveTextContent('1.25x');
-    expect(screen.getByTestId('generate-audio-volume-value')).toHaveTextContent('-5 dB');
+    expect(screen.getByTestId('generate-audio-volume-value')).toHaveTextContent('0.50x');
   });
 
   it('reads a param stated as stops as a row of options', () => {
@@ -175,7 +176,7 @@ describe('AudioParamsPicker — the speaking params the active model declares', 
   it('moving a slider fires onChange with the stepped value', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    open(FISH, { speed: 1, volume: 0 }, onChange);
+    open(MINIMAX, { speed: 1, volume: 1 }, onChange);
     screen.getByRole('slider', { name: 'Speed' }).focus();
     await user.keyboard('{ArrowRight}');
     expect(onChange).toHaveBeenCalledWith({ speed: 1.05 });
@@ -223,7 +224,7 @@ describe('AudioParamsPicker — when a slider writes', () => {
     // holds 50 entries with no time-based merging — so one drag of a 41-stop
     // param would push out most of what the user could still undo.
     const onChange = vi.fn();
-    open(FISH, { speed: 1, volume: 0 }, onChange);
+    open(MINIMAX, { speed: 1, volume: 1 }, onChange);
     const root = screen.getByTestId('generate-audio-speed-slider');
     makeDraggable(root);
 
@@ -237,7 +238,7 @@ describe('AudioParamsPicker — when a slider writes', () => {
 
   it('writes once, when the drag ends', () => {
     const onChange = vi.fn();
-    open(FISH, { speed: 1, volume: 0 }, onChange);
+    open(MINIMAX, { speed: 1, volume: 1 }, onChange);
     const root = screen.getByTestId('generate-audio-speed-slider');
     makeDraggable(root);
 
@@ -255,7 +256,7 @@ describe('AudioParamsPicker — when a slider writes', () => {
     // end to the other would fill most of a 50-deep undo stack with steps of
     // one gesture. The press is the decision; the repeats are it continuing.
     const onChange = vi.fn();
-    open(FISH, { speed: 1, volume: 0 }, onChange);
+    open(MINIMAX, { speed: 1, volume: 1 }, onChange);
     const thumb = screen.getByRole('slider', { name: 'Speed' });
 
     fireEvent.keyDown(thumb, { key: 'ArrowRight' });
@@ -274,7 +275,7 @@ describe('AudioParamsPicker — when a slider writes', () => {
     // page. The gesture still ended, and what the user dialled in has to
     // reach the node.
     const onChange = vi.fn();
-    open(FISH, { speed: 1, volume: 0 }, onChange);
+    open(MINIMAX, { speed: 1, volume: 1 }, onChange);
     const thumb = screen.getByRole('slider', { name: 'Speed' });
     fireEvent.keyDown(thumb, { key: 'ArrowRight' });
     fireEvent.keyDown(thumb, { key: 'ArrowRight', repeat: true });
@@ -291,7 +292,7 @@ describe('AudioParamsPicker — when a slider writes', () => {
     // elsewhere, it swallows drags the user makes afterwards, and they see
     // the thumb move while the node keeps the old value.
     const onChange = vi.fn();
-    open(FISH, { speed: 1, volume: 0 }, onChange);
+    open(MINIMAX, { speed: 1, volume: 1 }, onChange);
     const thumb = screen.getByRole('slider', { name: 'Speed' });
     fireEvent.keyDown(thumb, { key: 'ArrowRight' });
     fireEvent.keyDown(thumb, { key: 'ArrowRight', repeat: true });
@@ -316,7 +317,7 @@ describe('AudioParamsPicker — when a slider writes', () => {
     // row shows this client's number over anything a collaborator stores.
     const onChange = vi.fn();
     const { rerender } = render(
-      <AudioParamsPicker model={FISH} value={{ speed: 1, volume: 0 }} onChange={onChange} />,
+      <AudioParamsPicker model={MINIMAX} value={{ speed: 1, volume: 1 }} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));
     const thumb = screen.getByRole('slider', { name: 'Speed' });
@@ -324,7 +325,7 @@ describe('AudioParamsPicker — when a slider writes', () => {
     fireEvent.keyUp(thumb, { key: 'ArrowRight' });
 
     rerender(
-      <AudioParamsPicker model={FISH} value={{ speed: 0.8, volume: 0 }} onChange={onChange} />,
+      <AudioParamsPicker model={MINIMAX} value={{ speed: 0.8, volume: 1 }} onChange={onChange} />,
     );
     expect(screen.getByTestId('generate-audio-speed-value')).toHaveTextContent('0.80x');
   });
@@ -346,17 +347,17 @@ describe('AudioParamsPicker trigger carries the values, like the video panel', (
     expect(trigger).toHaveTextContent('0.50 · 0.75');
   });
 
-  it('prints Fish\'s pair in their own units', () => {
+  it('prints MiniMax\'s pair in their own units', () => {
     render(
       <AudioParamsPicker
-        model={FISH}
-        value={{ speed: 1.25, volume: -5 }}
+        model={MINIMAX}
+        value={{ speed: 1.25, volume: 0.5 }}
         onChange={() => {}}
       />,
     );
     const trigger = screen.getByTestId('generate-audio-params-trigger');
     expect(trigger).toHaveTextContent('1.25x');
-    expect(trigger).toHaveTextContent('-5 dB');
+    expect(trigger).toHaveTextContent('0.50x');
   });
 
   it('is filled like the pills beside it, not left as bare chrome', () => {
@@ -364,8 +365,8 @@ describe('AudioParamsPicker trigger carries the values, like the video panel', (
     // that row reads as a switch that is off, and these params are never off.
     render(
       <AudioParamsPicker
-        model={FISH}
-        value={{ speed: 1, volume: 0 }}
+        model={MINIMAX}
+        value={{ speed: 1, volume: 1 }}
         onChange={() => {}}
       />,
     );

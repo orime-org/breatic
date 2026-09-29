@@ -251,8 +251,8 @@ models:
     mode: "sfx"
     takes_prompt: true
     tier: "optional"
-    description: "Up to 3 min, lossless wav or flac"
-    guide: "Text input — one long unbroken bed, delivered lossless."
+    description: "One unbroken bed up to 3 minutes"
+    guide: "Text input — one long unbroken bed, up to three minutes."
     generation_time: 10
     icon: "sonilo"
     params:

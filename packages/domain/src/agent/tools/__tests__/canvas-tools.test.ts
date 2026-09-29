@@ -270,12 +270,12 @@ describe("what the rendered answer tells the model", () => {
 
   it("says a voice has to be picked rather than quoting a default", async () => {
     // The panel refuses the submit until one is chosen, so the yaml default is
-    // never what the run takes -- and it is a vendor id nobody can read.
+    // never what the run takes.
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
     const rendered = renderGenerationModelsForModel(answer);
     expect(rendered).toMatch(/voice_id:[^\n]*pick one in the panel/);
-    expect(rendered, "the raw vendor id says nothing to a reader").not.toContain(
-      "Xb7hH8MSUJpSbSDYk0k2",
+    expect(rendered, "no voice line quotes a yaml default").not.toMatch(
+      /voice_id:[^\n]*(Dennis|Alicia)/,
     );
   });
 

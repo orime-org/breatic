@@ -45,7 +45,7 @@ describe("listVoices", () => {
     // Every row carries the sample the upstream publishes for it, which is the
     // play button in the picker.
     for (const voice of page.voices) {
-      expect(voice.previewUrl, voice.id).toMatch(/^https:\/\/\S+\.mp3$/);
+      expect(voice.previewUrl, voice.id).toMatch(/^https:\/\/\S+$/);
     }
   });
 

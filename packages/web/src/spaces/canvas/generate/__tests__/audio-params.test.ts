@@ -205,10 +205,9 @@ describe('formatAudioParam — a value reads in its own unit', () => {
     expect(formatAudioParam('speed', 1, t)).toBe('1.00x');
   });
 
-  it('marks volume in decibels, signed above zero', () => {
-    expect(formatAudioParam('volume', 0, t)).toBe('0 dB');
-    expect(formatAudioParam('volume', 5, t)).toBe('+5 dB');
-    expect(formatAudioParam('volume', -5, t)).toBe('-5 dB');
+  it('marks volume as a multiplier, the way the model reads it (1 is unchanged)', () => {
+    expect(formatAudioParam('volume', 1, t)).toBe('1.00x');
+    expect(formatAudioParam('volume', 0.5, t)).toBe('0.50x');
   });
 
   it('falls back to the bare number for a param it does not know', () => {
