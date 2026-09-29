@@ -20,7 +20,7 @@
  *   a position across a change. A line the reader moves is taken out and put
  *   back, which mapping reads as a deletion, so an end whose mapped position
  *   left its line is found again at the letter it named in the row with
- *   that line's id, carried across what changed in that line — the way
+ *   that line's id, while that line's words are the same — the way
  *   BlockNote keeps a selection across a block move (`moveBlocks.ts`,
  *   `getBlockSelectionData`).
  * - Everything that comes in through Yjs — a peer's edit, an undo, a thread
@@ -41,17 +41,16 @@
  * letter"). Text written against either edge stays outside, whichever way it
  * arrives. Whatever lies between the two ends is the range.
  *
- * A peer's editor writes a moved line, a line whose type changed, and every
- * line between as new letters, so the letter an end names being deleted says
- * nothing about the reader's words. Such an end is found again by its line,
- * the same way as a mapped one; an end whose letter was itself deleted stands
- * where that letter was. One whose whole row went with its letters follows
- * them into the row before when the reader's own undo joined the row onto it,
- * and otherwise goes to the nearest row still there, as a mapped position
- * inside deleted content goes to the edge of the deletion. Where a peer's edit
- * leaves only the text to guess from, nothing is guessed: a peer editing the
- * same lines at the same time is outside the promise (A21), and a draft whose
- * ends cross says so and keeps what was written.
+ * The binding writes a moved line, a line whose type changed, every line
+ * between, and a line an undo splits or joins as new letters, so the letter an
+ * end names being deleted says nothing about the reader's words. Such an end
+ * is found again by its line while that line's words are the same, the same
+ * way as a mapped one; an end whose letter was itself deleted stands where
+ * that letter was. One whose whole row went with its letters goes to the
+ * nearest row still there, as a mapped position inside deleted content goes
+ * to the edge of the deletion. Where only the text is left to find the words
+ * by, nothing is guessed (A21): the draft whose words cannot be followed says
+ * so and keeps what was written.
  *
  * Both ends always sit against a letter: the first one covered and just past
  * the last. A range that reaches into the next line, or past non-text at an
@@ -104,7 +103,6 @@ import {
   ySyncPluginKey,
   yUndoPluginKey,
 } from 'y-prosemirror';
-import { simpleDiffString } from 'lib0/diff';
 import * as Y from 'yjs';
 
 import {
@@ -246,30 +244,22 @@ function endLineAt(doc: ProseMirrorNode, pos: number, side: Side): EndLine | nul
 
 /**
  * Where an end is after a change, found again by its line: in the row with
- * the line's id, at the letter it named, carried across what changed in that
- * line's words the way the binding finds what changed in a line (the common
- * start and end of the two versions, `simpleDiffString`). The way BlockNote
- * keeps a selection across a block move (`moveBlocks.ts`,
- * `getBlockSelectionData`), each end on its own.
+ * the line's id, at the letter it named, while that line's words are the
+ * same. The way BlockNote keeps a selection across a block move
+ * (`moveBlocks.ts`, `getBlockSelectionData`), each end on its own. A line
+ * whose words changed leaves only the text to say where the letter went, and
+ * nothing is guessed from the text (A21).
  * @param doc - The body after the change.
  * @param line - The line the end sat in before it.
- * @returns The position, or null when the row is gone or the letter is not
- *   in it any more.
+ * @returns The position, or null when the row is gone or its words changed.
  */
 function lineNow(doc: ProseMirrorNode, line: EndLine): number | null {
   const row = rowById(doc, line.id);
   const words = row === undefined ? undefined : contentRangeOf(row);
-  if (words === undefined) return null;
-  const change = simpleDiffString(
-    line.words,
-    wordsBetween(doc, words.from, words.to),
-  );
-  let letter: number;
-  if (line.letter < change.index) letter = line.letter;
-  else if (line.letter >= change.index + change.remove) {
-    letter = line.letter - change.remove + change.insert.length;
-  } else return null;
-  return words.from + letter + (line.side === 'end' ? 1 : 0);
+  if (words === undefined || wordsBetween(doc, words.from, words.to) !== line.words) {
+    return null;
+  }
+  return words.from + line.letter + (line.side === 'end' ? 1 : 0);
 }
 
 /**
@@ -366,35 +356,6 @@ function rowIdsIn(doc: ProseMirrorNode): string[] {
 }
 
 /**
- * Where an end goes when the reader's own undo or redo joined its row onto
- * the row before it: that row held its old words followed by the gone row's
- * words, less what else the same undo step takes back — Yjs folds edits made
- * within its capture timeout into one step, so typing right after a split
- * goes with it. The end is found there the way `lineNow` finds an end in a
- * line whose words changed, the result ProseMirror maps when the reader joins
- * the two rows themselves. A peer's join is not followed: a peer editing the
- * same lines at the same time is outside the promise (A21).
- * @param tr - The change.
- * @param line - The line the end sat in before it.
- * @returns Where the end is now, or null when its letter is not there.
- */
-function joinedInto(tr: Transaction, line: EndLine): number | null {
-  const ids = rowIdsIn(tr.before);
-  const previous = ids[ids.indexOf(line.id) - 1];
-  if (previous === undefined) return null;
-  const was = rowById(tr.before, previous);
-  const wasWords = was === undefined ? undefined : contentRangeOf(was);
-  if (wasWords === undefined) return null;
-  const before = wordsBetween(tr.before, wasWords.from, wasWords.to);
-  return lineNow(tr.doc, {
-    id: previous,
-    words: before + line.words,
-    letter: before.length + line.letter,
-    side: line.side,
-  });
-}
-
-/**
  * Where an end goes once the whole row it sat in is gone with its letters: to the start of the
  * first row after it that is still there, or the end of the last row before
  * it, the way ProseMirror maps a position inside deleted content to the edge
@@ -426,16 +387,14 @@ function besideGoneRow(tr: Transaction, id: string, side: Side): number | null {
  * leaves. Otherwise a peer's editor writes a moved line, a line whose type
  * changed, and every line between as new letters, so a letter the end names
  * being gone says nothing about the reader's words: the end is found again by
- * its line when the line is still there. When the line is gone and the letter
- * with it, the end follows its words into the line the reader's own undo
- * joined it onto, or else goes to the edge of the nearest surviving line;
- * otherwise it stands where the letter is.
+ * its line when the line is still there with the same words. When the line is
+ * gone and the letter with it, the end goes to the edge of the nearest
+ * surviving line; otherwise it stands where the letter is.
  * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param end - The end as Yjs names it before this change.
  * @param handed - On the reader's undo or redo, the end as named before the
  *   edit it takes back; null otherwise.
- * @param undo - Whether the change is the reader's own undo or redo.
  * @param was - The end before the change.
  * @param side - Which end it is.
  * @returns Where the end is now, or null once it is lost.
@@ -445,7 +404,6 @@ function endAcrossYjs(
   bound: Binding,
   end: Y.RelativePosition,
   handed: Y.RelativePosition | null,
-  undo: boolean,
   was: number,
   side: Side,
 ): number | null {
@@ -470,7 +428,7 @@ function endAcrossYjs(
     rowById(tr.doc, line.id) === undefined &&
     !letterAlive(bound.doc.store, end)
   ) {
-    return (undo ? joinedInto(tr, line) : null) ?? besideGoneRow(tr, line.id, side);
+    return besideGoneRow(tr, line.id, side);
   }
   return carryEnd(tr, line, at);
 }
@@ -480,7 +438,6 @@ function endAcrossYjs(
  * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param link - The range as Yjs names it.
- * @param undo - Whether the change is the reader's own undo or redo.
  * @param handed - On the reader's undo or redo, the range as named before the
  *   edit it takes back, when that edit kept one; null otherwise.
  * @param range - The range before the change.
@@ -490,15 +447,14 @@ function carryAcrossYjs(
   tr: Transaction,
   bound: Binding,
   link: TrackedLink,
-  undo: boolean,
   handed: TrackedLink | null,
   range: DraftRange,
 ): DraftRange | null {
   const from = endAcrossYjs(
-    tr, bound, link.start, handed?.start ?? null, undo, range.from, 'start',
+    tr, bound, link.start, handed?.start ?? null, range.from, 'start',
   );
   const to = endAcrossYjs(
-    tr, bound, link.end, handed?.end ?? null, undo, range.to, 'end',
+    tr, bound, link.end, handed?.end ?? null, range.to, 'end',
   );
   return from !== null && to !== null ? { from, to } : null;
 }
@@ -637,7 +593,6 @@ function carryDraft(
         tr,
         bound,
         tracked,
-        undoRedo(tr),
         undoRedo(tr) ? handed : null,
         current,
       )

@@ -1221,37 +1221,31 @@ describe('the comment panel', () => {
       },
     );
 
-    it.each([
-      [
-        'moves their line and retypes it at once',
-        async (peer: DocumentEditorHandle): Promise<void> => {
-          act(() => {
-            peer.editor.transact(() => {
-              peer.editor.setTextCursorPosition(peer.editor.document[1]!);
-              peer.editor.moveBlocksDown();
-              peer.editor.updateBlock(peer.editor.document[2]!, {
-                content: 'delta ekko foxtrot',
-              } as never);
-            });
-          });
-        },
-        'ekko',
-      ],
-    ])(
-      'follows its words when a peer %s',
-      async (_what, change, words) => {
-        show('editor', ['alpha bravo charlie', 'delta echo foxtrot', 'golf']);
-        const second = lineStarts()[1]!;
-        aimAt(second + 6, second + 10);
-        await screen.findByTestId('doc-comment-draft-card');
-        const peer = await peerEditor();
+    it('says so and keeps what was written when a peer moves its line and retypes it at once', async () => {
+      // Only the text is left to find the words by, and nothing is guessed
+      // from the text (A21).
+      show('editor', ['alpha bravo charlie', 'delta echo foxtrot', 'golf']);
+      const second = lineStarts()[1]!;
+      aimAt(second + 6, second + 10);
+      await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+      const peer = await peerEditor();
 
-        await change(peer);
+      act(() => {
+        peer.editor.transact(() => {
+          peer.editor.setTextCursorPosition(peer.editor.document[1]!);
+          peer.editor.moveBlocksDown();
+          peer.editor.updateBlock(peer.editor.document[2]!, {
+            content: 'delta ekko foxtrot',
+          } as never);
+        });
+      });
 
-        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
-        expect(aimedWords()).toBe(words);
-      },
-    );
+      expect(screen.getByTestId('doc-comment-draft-dropped')).toBeInTheDocument();
+      const again = lineStarts()[0]!;
+      aimAt(again, again + 3);
+      expect(await screen.findByTestId('doc-comment-draft-input')).toHaveValue('half');
+    });
 
     it.each([
       [
@@ -1625,46 +1619,64 @@ describe('the comment panel', () => {
         expect(aimedWords()).toBe('charlie');
       });
 
-      it('stays on words it was aimed at after a split, when the reader undoes the split', async () => {
-        show();
-        handle.undoManager.stopCapturing();
-        await pressIn(handle, firstRun().from + 6, 'Enter');
-        handle.undoManager.stopCapturing();
-        const second = lineStarts()[1]!;
-        aimAt(second, second + 5);
-        await screen.findByTestId('doc-comment-draft-card');
-
-        act(() => {
-          handle.undoManager.undo();
-        });
-
-        expect(lines()).toEqual(['alpha bravo charlie']);
-        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
-        expect(aimedWords()).toBe('bravo');
-      });
-
-      it('stays on words it was aimed at after a split and typing undone as one step', async () => {
+      it.each([
+        ['the split', false],
         // Yjs folds edits made within its capture timeout into one undo step,
         // so the undo takes back the split and what was typed with it.
+        ['the split and the typing made with it', true],
+      ])(
+        'says so and keeps what was written when the reader undoes %s it was aimed after',
+        async (_what, typing) => {
+          // The undo writes the joined line as new letters, which leaves only
+          // the text to find the words by (A21).
+          show();
+          handle.undoManager.stopCapturing();
+          await pressIn(handle, firstRun().from + 6, 'Enter');
+          if (typing) {
+            act(() => {
+              const view = handle.editor.prosemirrorView!;
+              view.dispatch(view.state.tr.insertText('b', lineStarts()[1]!));
+            });
+          }
+          handle.undoManager.stopCapturing();
+          const second = lineStarts()[1]!;
+          aimAt(second + (typing ? 1 : 0), second + (typing ? 6 : 5));
+          await screen.findByTestId('doc-comment-draft-card');
+          await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
+
+          act(() => {
+            handle.undoManager.undo();
+          });
+
+          expect(lines()).toEqual(['alpha bravo charlie']);
+          expect(screen.getByTestId('doc-comment-draft-dropped')).toBeInTheDocument();
+          const again = lineStarts()[0]!;
+          aimAt(again, again + 3);
+          expect(await screen.findByTestId('doc-comment-draft-input')).toHaveValue('half');
+        },
+      );
+
+      it('says so and keeps what was written when the reader redoes a split it was aimed before', async () => {
         show();
         handle.undoManager.stopCapturing();
         await pressIn(handle, firstRun().from + 6, 'Enter');
-        act(() => {
-          const view = handle.editor.prosemirrorView!;
-          view.dispatch(view.state.tr.insertText('x', lineStarts()[1]!));
-        });
         handle.undoManager.stopCapturing();
-        const second = lineStarts()[1]!;
-        aimAt(second + 1, second + 6);
-        await screen.findByTestId('doc-comment-draft-card');
-
         act(() => {
           handle.undoManager.undo();
         });
+        aimDraft(6, 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
 
-        expect(lines()).toEqual(['alpha bravo charlie']);
-        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
-        expect(aimedWords()).toBe('bravo');
+        act(() => {
+          handle.undoManager.redo();
+        });
+
+        expect(lines()).toEqual(['alpha ', 'bravo charlie']);
+        expect(screen.getByTestId('doc-comment-draft-dropped')).toBeInTheDocument();
+        const again = lineStarts()[0]!;
+        aimAt(again, again + 3);
+        expect(await screen.findByTestId('doc-comment-draft-input')).toHaveValue('half');
       });
 
       it('stays on words it was aimed at after a move, when the reader undoes the move', async () => {
