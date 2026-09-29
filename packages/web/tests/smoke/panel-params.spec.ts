@@ -93,3 +93,34 @@ test('a param is named in the reader\'s language, its options stay as the vendor
   await expect(page.getByTestId('generate-param-emotion-option-happy')).toHaveText('Happy');
   await page.evaluate(() => localStorage.removeItem('breatic.locale'));
 });
+
+test('the image panel draws Style only for a model that takes one, and no unbuilt buttons', async ({ page }) => {
+  // User 2026-09-29: presets, translate and web search were placeholders; a
+  // model that cannot take a style image shows no Style slot at all.
+  const nodeId = crypto.randomUUID();
+  await seedNode(nodeId, 'image', undefined, -350);
+  await openGenerate(nodeId, 'generate-execute');
+  for (const gone of ['generate-presets', 'generate-translate', 'generate-online']) {
+    await expect(page.getByTestId(gone)).toHaveCount(0);
+  }
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-gpt-image-2.5-sunburst-text-to-image').click();
+  await expect(page.getByTestId('generate-tool-style')).toHaveCount(0);
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-midjourney').click();
+  await expect(page.getByTestId('generate-tool-style')).toBeVisible();
+});
+
+test('a video model that generates audio says so on its pill', async ({ page }) => {
+  const nodeId = crypto.randomUUID();
+  await seedNode(nodeId, 'video', undefined, -350);
+  await openGenerate(nodeId, 'generate-video-execute');
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-wan-3.0-text-to-video').click();
+  const pill = page.getByTestId('generate-video-params-trigger');
+  await pill.click();
+  await expect(page.locator('#generate-video-audio-toggle')).toHaveAttribute('data-state', 'checked');
+  await expect(pill).toContainText('Generate audio');
+  await page.locator('#generate-video-audio-toggle').click();
+  await expect(pill).not.toContainText('Generate audio');
+});
