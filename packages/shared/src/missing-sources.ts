@@ -30,6 +30,20 @@ export interface SourcedModel {
 export type MissingSource = readonly string[];
 
 /**
+ * Whether a value carries anything to send: nothing, an empty string and an
+ * empty list do not; every other value does, `0` and `false` included.
+ *
+ * The one answer to this, read by the price estimate, the worker's request
+ * body and the source check below, so the three cannot part on it.
+ * @param value - A param's value.
+ * @returns False for nothing, an empty string and an empty list.
+ */
+export function holds(value: unknown): boolean {
+  if (value === undefined || value === null || value === "") return false;
+  return !Array.isArray(value) || value.length > 0;
+}
+
+/**
  * Whether a param holds a source the run can send.
  *
  * The params arrive untyped on the wire, so the shape is checked against the
@@ -40,6 +54,7 @@ export type MissingSource = readonly string[];
  * @returns True when it carries something usable.
  */
 function holdsSource(slot: SourceSlot, value: unknown): boolean {
+  if (!holds(value)) return false;
   if (slot.type === "items") return Array.isArray(value) && value.length > 0;
   if (slot.type === "list") {
     return Array.isArray(value) && value.some((entry) => typeof entry === "string" && entry.length > 0);

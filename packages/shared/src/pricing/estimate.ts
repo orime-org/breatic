@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { ExtraStep, PricingContract } from "@shared/types/model-catalog";
+import { holds } from "@shared/missing-sources";
 import { upstreamPriceUsd } from "@shared/pricing/upstream-price";
 
 /** What the estimate reads off one declared param. */
@@ -50,16 +51,6 @@ export interface CreditEstimate {
 
 const CENTS_PER_USD = 100;
 const SAMPLE_TEXT = "x".repeat(1000);
-
-/**
- * Whether a param holds anything to send.
- * @param value - The param's value.
- * @returns False for nothing, an empty string and an empty list.
- */
-function holds(value: unknown): boolean {
-  if (value === undefined || value === null || value === "") return false;
-  return !Array.isArray(value) || value.length > 0;
-}
 
 /**
  * How many sources a param carries.

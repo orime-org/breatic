@@ -8,16 +8,7 @@
  */
 
 import type { FullModelEntry } from "@breatic/domain";
-
-/**
- * Whether a value carries something to send.
- * @param value - A param's value after validation.
- * @returns False for nothing, an empty string and an empty list.
- */
-export function carries(value: unknown): boolean {
-  if (value === undefined || value === null || value === "") return false;
-  return !Array.isArray(value) || value.length > 0;
-}
+import { holds } from "@breatic/shared";
 
 /** A list that declares no fields. */
 const NO_FIELDS: Readonly<Record<string, { values?: readonly unknown[] }>> = {};
@@ -67,7 +58,7 @@ export function upstreamBody(
   for (const [name, spec] of Object.entries(entry.params ?? {})) {
     if (consumed.has(name)) continue;
     const value = spec.type === "items" ? completeEntries(params[name], spec.fields ?? NO_FIELDS) : params[name];
-    if (!carries(value)) continue;
+    if (!holds(value)) continue;
     body[spec.upstream ?? name] = value;
   }
   if (entry.takes_prompt === true && prompt !== "") {
