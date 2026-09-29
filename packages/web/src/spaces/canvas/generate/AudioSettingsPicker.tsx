@@ -39,6 +39,12 @@ import { VoiceList } from '@web/spaces/canvas/generate/VoiceList';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 
+/**
+ * How far the second panel reaches beside the first: its `w-72` plus the
+ * `ml-2` / `mr-2` gap, in pixels. Read when deciding which side it opens on.
+ */
+const SECOND_PANEL_SPAN = 288 + 8;
+
 /** What this picker's shared controls edit, by the catalog's own param names. */
 export type AudioParamsValue = Record<string, number>;
 
@@ -167,6 +173,18 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
     [showPanel],
   );
 
+  // The second panel opens to the right (design §16.1); when the pill sits
+  // near the right edge and there is no room there, it opens to the left
+  // instead, rather than being cut off by the window.
+  const firstPanelRef = React.useRef<HTMLDivElement>(null);
+  const [secondOnLeft, setSecondOnLeft] = React.useState(false);
+  React.useLayoutEffect(() => {
+    const el = firstPanelRef.current;
+    if (panel === null || !el) return;
+    const box = el.getBoundingClientRect();
+    setSecondOnLeft(box.right + SECOND_PANEL_SPAN > window.innerWidth && box.left >= SECOND_PANEL_SPAN);
+  }, [panel]);
+
   const labelOf = React.useCallback(
     (control: ModelControl) => t(`canvas.generatePanel.audioParam.${control.name}`),
     [t],
@@ -235,6 +253,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        ref={firstPanelRef}
         side='top'
         align='start'
         // Clip rather than flip at a screen edge: a following popover that
@@ -314,7 +333,11 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
         {openRow !== undefined ? (
           <div
             data-testid='generate-audio-second-panel'
-            className='absolute bottom-0 left-full ml-2 w-72 overflow-hidden rounded-overlay border border-border bg-popover text-popover-foreground shadow-md'
+            data-side={secondOnLeft ? 'left' : 'right'}
+            className={cn(
+              'absolute bottom-0 w-72 overflow-hidden rounded-overlay border border-border bg-popover text-popover-foreground shadow-md',
+              secondOnLeft ? 'right-full mr-2' : 'left-full ml-2',
+            )}
           >
             {openRow.kind === 'voice' ? (
               <VoiceList

@@ -187,10 +187,10 @@ test('text to music: two boxes, and an empty lyrics box refuses the submit', asy
   await page.getByTestId('generate-audio-mode-t2m').click();
 
   // The mode's own model, and its flat price. Mureka V9.5 bills $0.225 a call
-  // whatever the brief says, so the figure holds at 23 while text is typed.
+  // whatever the brief says, so the figure holds at 22.5 while text is typed.
   // The speech models move with the prompt and the sound-effect model moves
   // with the length; this one moves with neither.
-  await expect(page.getByTestId('generate-audio-rate')).toHaveText('23', {
+  await expect(page.getByTestId('generate-audio-rate')).toHaveText('22.5', {
     timeout: 15_000,
   });
 

@@ -241,9 +241,9 @@ test('reference to music: three slots, and any one of them satisfies the gate', 
   await expect(page.getByTestId('generate-audio-tool-music-vocal')).toBeVisible();
   await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
 
-  // $0.225 a call rounds up to 23 credits. Nothing is picked yet, so no
-  // upload or clone step is priced in.
-  await expect(page.getByTestId('generate-audio-rate')).toHaveText('23', {
+  // $0.225 a call is 22.5 credits, part-credits kept (`formatCredits`).
+  // Nothing is picked yet, so no upload or clone step is priced in.
+  await expect(page.getByTestId('generate-audio-rate')).toHaveText('22.5', {
     timeout: 15_000,
   });
 
@@ -286,4 +286,66 @@ test('reference to music: three slots, and any one of them satisfies the gate', 
   await page.getByTestId('generate-audio-mode-trigger').click();
   await page.getByTestId('generate-audio-mode-a2m').click();
   await expect(page.getByTestId('generate-audio-music-melody-clear')).toBeVisible({ timeout: 15_000 });
+});
+
+test('Gemini keeps its reading mode, language and speakers in the settings pill', async ({ page }) => {
+  // Design §16: the pill opens a first panel over it, a row there opens a
+  // second panel to its right, and the rows read reading mode, language, voice.
+  const nodeId = crypto.randomUUID();
+  await seedNode(nodeId, 'audio', undefined, -350);
+  await openGenerate(nodeId);
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-gemini-3.1-flash-text-to-speech').click();
+
+  const pill = page.getByTestId('generate-audio-settings-trigger');
+  await expect(pill).toBeVisible({ timeout: 15_000 });
+  expect(await pill.evaluate((el) => getComputedStyle(el).maxWidth)).toBe('200px');
+  await pill.click();
+
+  const reading = page.getByTestId('generate-audio-reading-single');
+  const language = page.getByTestId('generate-audio-row-language');
+  const voice = page.getByTestId('generate-audio-row-voice_id');
+  await expect(language).toBeVisible();
+  const [r, l, v, p] = await Promise.all([reading, language, voice, pill].map((el) => el.boundingBox()));
+  expect(r!.y).toBeLessThan(l!.y);
+  expect(l!.y).toBeLessThan(v!.y);
+  // The first panel opens over the pill.
+  expect(v!.y + v!.height).toBeLessThanOrEqual(p!.y);
+
+  // Language: a searchable list beside the first panel, one row per language.
+  await language.click();
+  const second = page.getByTestId('generate-audio-second-panel');
+  await expect(second).toBeVisible();
+  // Beside the first panel, on whichever side the window has room for it.
+  const [lb, sb] = await Promise.all([language.boundingBox(), second.boundingBox()]);
+  const width = page.viewportSize()!.width;
+  expect(sb!.x >= lb!.x + lb!.width || sb!.x + sb!.width <= lb!.x).toBe(true);
+  expect(sb!.x).toBeGreaterThanOrEqual(0);
+  expect(sb!.x + sb!.width).toBeLessThanOrEqual(width);
+  const options = page.locator('[data-testid^="generate-audio-option-language-"]:not([data-testid$="-search"])');
+  await expect(options).toHaveCount(24);
+  // Chosen by fill alone, no tick (design §16.1).
+  const chosen = page.locator('[data-testid^="generate-audio-option-language-"][aria-pressed="true"]');
+  await expect(chosen).toHaveCount(1);
+  await expect(chosen.locator('svg')).toHaveCount(0);
+  await options.nth(10).click();
+  await expect(second).toBeHidden();
+
+  // Dialogue: the voice row gives way to two fixed speakers.
+  await page.getByTestId('generate-audio-reading-dialogue').click();
+  await expect(page.getByTestId('generate-audio-row-voice_id')).toHaveCount(0);
+  await page.getByTestId('generate-audio-row-speakers').click();
+  await expect(page.getByTestId('generate-param-speakers-1-speaker')).toBeVisible();
+  await expect(page.getByTestId('generate-param-speakers-2-speaker')).toHaveCount(0);
+  await expect(page.getByTestId('generate-param-speakers-add')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('gemini-speakers.png') });
+
+  // Two speakers left unnamed are refused on submit, naming the speakers.
+  await page.keyboard.press('Escape');
+  await page.getByTestId('generate-prompt-editor').click();
+  await page.keyboard.type('Ada: Hello. Bo: Hi.');
+  await page.getByTestId('generate-audio-execute').click();
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText('Fill in the speakers', {
+    timeout: 10_000,
+  });
 });
