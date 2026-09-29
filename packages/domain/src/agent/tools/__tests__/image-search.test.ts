@@ -62,6 +62,8 @@ vi.stubGlobal("fetch", () => {
 
 import { imageSearch, renderImagesForModel } from "@domain/agent/tools/image-search.js";
 import type { ImageSearchAnswer } from "@domain/agent/tools/image-search.js";
+import { toolOptions, usageSpy } from "@domain/agent/__tests__/helpers/usage-spy.js";
+import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
 
 /**
  * One result in the shape the service really sends.
@@ -117,6 +119,7 @@ function imagesOk(results: Record<string, unknown>[]): Response {
 async function run(
   args: { query: string; count?: number },
   abortSignal?: AbortSignal,
+  usage?: UsageRecorder,
 ): Promise<ImageSearchAnswer> {
   const { execute } = imageSearch;
   if (execute === undefined) throw new Error("search_images has no execute");
@@ -126,11 +129,10 @@ async function run(
   const parsed = (
     imageSearch.inputSchema as unknown as z.ZodType<{ query: string; count: number }>
   ).parse(args);
-  return (await execute(parsed, {
-    toolCallId: "t1",
-    messages: [],
-    ...(abortSignal ? { abortSignal } : {}),
-  } as never)) as ImageSearchAnswer;
+  return (await execute(
+    parsed,
+    toolOptions(abortSignal ? { abortSignal } : {}, usage) as never,
+  )) as ImageSearchAnswer;
 }
 
 /**
@@ -165,6 +167,24 @@ beforeEach(() => {
   httpRequestMock.mockReset();
   apiKey = "test-key";
   timeoutMs = 10_000;
+});
+
+describe("search_images records what Brave billed", () => {
+  it("records one image search for a search Brave answered", async () => {
+    httpRequestMock.mockResolvedValue(imagesOk([]));
+    const spy = usageSpy();
+    await run({ query: "cats" }, undefined, spy.recorder);
+    expect(spy.serviceCalls).toEqual([
+      { source: "tool:search_images", service: "brave_image_search", provider: "brave", requests: 1 },
+    ]);
+  });
+
+  it("records nothing for a search Brave refused", async () => {
+    httpRequestMock.mockResolvedValue(new Response(null, { status: 429 }));
+    const spy = usageSpy();
+    await failureFrom(() => run({ query: "cats" }, undefined, spy.recorder));
+    expect(spy.serviceCalls).toEqual([]);
+  });
 });
 
 describe("search_images: what comes back", () => {

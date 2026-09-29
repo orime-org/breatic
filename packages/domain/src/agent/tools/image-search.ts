@@ -21,6 +21,8 @@ import { env, getAgentConfig } from "@breatic/core";
 import { FAILURE_LINES, reasonOf, toolFailureOf } from "@breatic/shared";
 
 import { braveJson } from "@domain/agent/tools/brave.js";
+import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
+import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import {
   clip,
   isStop,
@@ -236,12 +238,13 @@ export function renderImagesForModel(answer: ImageSearchAnswer): string {
  * the same key `web_search` uses, which the service accepts on this endpoint
  * too (measured 2026-09-11).
  */
-export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> = tool({
+export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, UsageContext> = tool({
   description:
     "Find pictures. One call both searches and returns what it found. Write the query the way " +
     "an image search takes one -- subject, style, lighting, composition. You will be told the " +
     "titles of what came back; you will not see the pictures themselves.",
   inputSchema,
+  contextSchema: usageContextSchema,
   // What the panel reads about a running call. The key is resolved by the web
   // package, which cannot import this one -- the SDK carries this field onto
   // the UI message part, so the name of the line and the tool that shows it
@@ -253,7 +256,7 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> =
   toModelOutput: ({ output }) => ({ type: "text", value: renderImagesForModel(output) }),
   execute: async (
     { query: asked, count },
-    { abortSignal }: { abortSignal?: AbortSignal },
+    { abortSignal, context }: { abortSignal?: AbortSignal; context: UsageContext },
   ): Promise<ImageSearchAnswer> => {
     // The query is the model's to write, and everything printed back to it
     // sits on a line of its own. A query carrying a line terminator would open
@@ -292,6 +295,13 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer> =
         query: shown,
         budgetMs,
         ...(abortSignal ? { abortSignal } : {}),
+        onBilled: () =>
+          context.usage.recordServiceCall({
+            source: "tool:search_images",
+            service: "brave_image_search",
+            provider: "brave",
+            requests: 1,
+          }),
       });
 
       // A search that found nothing answers with `results` present and empty.

@@ -55,6 +55,7 @@ import {
   makeSearchTools,
 } from "@domain/agent/tools/web-search.js";
 import type { SearchAnswer } from "@domain/agent/tools/web-search.js";
+import { toolOptions } from "@domain/agent/__tests__/helpers/usage-spy.js";
 
 /**
  * A body shaped like the LLM context endpoint's.
@@ -82,7 +83,7 @@ async function run(query: string, messages: unknown[] = []): Promise<SearchAnswe
   const parsed = (
     webSearch.inputSchema as unknown as z.ZodType<{ query: string; count: number }>
   ).parse({ query });
-  return (await execute(parsed, { toolCallId: "t1", messages } as never)) as SearchAnswer;
+  return (await execute(parsed, toolOptions({ messages }) as never)) as SearchAnswer;
 }
 
 /**
@@ -100,7 +101,7 @@ async function runWith(
   const parsed = (
     tools.web_search.inputSchema as unknown as z.ZodType<{ query: string; count: number }>
   ).parse({ query });
-  return (await execute(parsed, { toolCallId: "t1", messages: [] } as never)) as SearchAnswer;
+  return (await execute(parsed, toolOptions() as never)) as SearchAnswer;
 }
 
 beforeEach(() => {
