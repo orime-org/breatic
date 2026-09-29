@@ -99,6 +99,31 @@ describe("upstreamBody", () => {
     ).toEqual({ prompt: "p" });
   });
 
+  it("keeps a param off the wire when the one that replaces it is sent", () => {
+    // Gemini ignores its single voice once speakers are given; sending both
+    // says two things about who reads the script.
+    const gemini: FullModelEntry = {
+      name: "gemini",
+      takes_prompt: true,
+      params: {
+        speakers: { ...DIALOGUE.params!.speakers!, replaces: "voice_id" },
+        voice_id: { fill: "remote", upstream: "voice", default: "Kore" },
+      },
+    };
+    const pair = [
+      { speaker: "Ada", voice: "Kore" },
+      { speaker: "Bo", voice: "Puck" },
+    ];
+    expect(upstreamBody(gemini, { speakers: pair, voice_id: "Kore" }, "hi")).toEqual({
+      speakers: pair,
+      prompt: "hi",
+    });
+    expect(upstreamBody(gemini, { speakers: [], voice_id: "Kore" }, "hi")).toEqual({
+      voice: "Kore",
+      prompt: "hi",
+    });
+  });
+
   it("sends only the list entries with every field filled, and no list when none is", () => {
     // The editor adds a row with the name empty; a row left that way names
     // nobody, and the vendor reads a speaker with no name as a bad request.

@@ -54,12 +54,21 @@ export function upstreamBody(
   prompt: string,
   consumed: ReadonlySet<string> = new Set(),
 ): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
+  const sent = new Map<string, unknown>();
   for (const [name, spec] of Object.entries(entry.params ?? {})) {
     if (consumed.has(name)) continue;
     const value = spec.type === "items" ? completeEntries(params[name], spec.fields ?? NO_FIELDS) : params[name];
-    if (!isPresent(value)) continue;
-    body[spec.upstream ?? name] = value;
+    if (isPresent(value)) sent.set(name, value);
+  }
+  // A param that stands in for another says the same thing a second way, and
+  // the endpoint ignores one of them; only the one the reader filled goes.
+  const replaced = new Set(
+    [...sent.keys()].map((name) => entry.params?.[name]?.replaces).filter((name) => typeof name === "string"),
+  );
+  const body: Record<string, unknown> = {};
+  for (const [name, value] of sent) {
+    if (replaced.has(name)) continue;
+    body[entry.params?.[name]?.upstream ?? name] = value;
   }
   if (entry.takes_prompt === true && prompt !== "") {
     body[entry.prompt_upstream ?? "prompt"] = prompt;

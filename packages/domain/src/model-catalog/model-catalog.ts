@@ -64,6 +64,8 @@ export interface FullParamSpec {
   min?: number;
   max?: number;
   max_items?: number;
+  /** Another param this one stands in for; the body sends only one of the two. */
+  replaces?: string;
   /** The upstream field this param is sent as, when it is not the param's name. */
   upstream?: string;
   /** How the param's value reaches the run. */
