@@ -85,6 +85,11 @@ function states(entry: string, term: string): boolean {
 
 /**
  * Every alternative an SPDX expression offers.
+ *
+ * An SPDX identifier holds no whitespace, so words left after the OR and AND
+ * split come from a string that is not SPDX, such as `MIT (<url>)`; each word
+ * is a term of its own, and an entry quoting the string as written states all
+ * of them.
  * @param expression - What the tool reported for a package.
  * @returns The terms, parentheses and AND joins flattened away.
  */
@@ -92,7 +97,7 @@ function terms(expression: string): string[] {
   return expression
     .replace(/[()]/g, " ")
     .split(/\s+(?:OR|AND)\s+/i)
-    .map((term) => term.trim().toLowerCase())
+    .flatMap((term) => term.trim().toLowerCase().split(/\s+/))
     .filter((term) => term.length > 0);
 }
 

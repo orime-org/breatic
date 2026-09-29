@@ -112,6 +112,15 @@ describe("licence-coverage", () => {
     expect(found).toEqual([]);
   });
 
+  it("passes a licence string that carries its URL in parentheses, stated as written", () => {
+    const reported = "MIT (http://example.test/license.txt)";
+    const notice = NOTICE.replace(
+      "## Build and development tools",
+      `| \`slick\` | \`1.12.2\` | Declared as \`${reported}\` |\n\n## Build and development tools`,
+    );
+    expect(licenceCoverage(groups({ [reported]: ["slick"] }), notice)).toEqual([]);
+  });
+
   it("reports a package the notice names under a different licence", () => {
     const found = licenceCoverage(groups({ "MIT-0": [] }), NOTICE).concat(
       licenceCoverage(groups({ "GPL-3.0-only": ["@blocknote/core"] }), NOTICE),
