@@ -54,7 +54,7 @@ describe('evaluateExecute — which precondition is the one that fails', () => {
     const tagged = [...'draw a dog']
       .map((c) => String.fromCodePoint(0xe0000 + c.codePointAt(0)!))
       .join('');
-    for (const promptText of [tagged, '​', '<!-- note -->']) {
+    for (const promptText of [tagged, '\u200B', '<!-- note -->']) {
       expect(refusalOf({ ...ok, promptText })).toBe('prompt-missing');
     }
   });
