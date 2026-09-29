@@ -39,9 +39,9 @@ packages/
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
 │              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
 │              db/(schema.ts 40 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
-├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — asset(资产登记 / studio 内去重 / 回收队列)· auth(studio 级鉴权:studioAuth.service + studioMembers.repo)· credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费)· node-history · agent(skills-loader/agent-config〔模型+指令+工具的唯一装配点〕/skill-gate/skill-availability/turn-finalizer/tools/llm)· model-catalog · node-task(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)· understand(按一个地址取媒体、问模型一句话,worker 的理解那一路调它)
+├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — asset(资产登记 / studio 内去重 / 回收队列)· auth(studio 级鉴权:studioAuth.service + studioMembers.repo)· credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费 + upstreamStep.repo〔`task_upstream_steps`,一个任务的每次上游调用〕+ upstreamClone.repo〔`studio_upstream_clones`,studio 克隆过的音色 / 人声 / 元素〕)· node-history · agent(skills-loader/agent-config〔模型+指令+工具的唯一装配点〕/skill-gate/skill-availability/turn-finalizer/tools/llm)· model-catalog · node-task(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)· understand(按一个地址取媒体、问模型一句话,worker 的理解那一路调它)
 ├── server/   # HTTP 壳 (Hono): routes/(account/auth/chat/canvas/credits/decisions/mini-tools/models/projects/members/project-invitations/project-join-requests/role-upgrade-requests/notifications/skills/studios/subscription/tasks/text-tools/users/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`;`validate(target, schema)` 是路由校验请求的唯一入口——包一层 `@hono/zod-validator` 把它「自己发响应」变成「抛 `ValidationError`」,于是校验失败也走 `errorHandler` 这一个出口;`localeMiddleware` 用 AsyncLocalStorage 钉住这次请求的语言,出口那里还读得到) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:account/activity〔活动流写入 + 读取〕/asset/auth〔含 user.repo + recovery-code〕/conversation/credit/decision/memory/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/project-join-request/recent/role-upgrade-request/skill/studio/subscription/task〔节点任务行的开启与计数发布〕/text-tool,barrel index.ts re-export) + infra/(stripe/mailer) + config/(pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码**)(healthz 走独立 :3001 进程)
-├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + local/{runtime,video} 本地 ffmpeg 执行) + providers/(image/video/audio/tts/three-d) + 根(index 入口 / mini-tool-registry / bootstrap-config)
+├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + step-deps〔多步上游调用读写的两张表 + 素材的缓存键 + 可灵元素的一句描述〕+ local/{runtime,video} 本地 ffmpeg 执行) + providers/(图片 / 视频 / 音频 / 语音同一条路,全部跑在 WaveSpeed:generate / plan-steps / run-steps / upstream-body〔按 yaml 的 `upstream` 声明拼请求体〕/ wavespeed + families/{midjourney,minimax-speech,nano-banana};three-d/ 自成一路) + 根(index 入口 / voice-samples〔一次性部署步骤入口〕/ mini-tool-registry / bootstrap-config)
 ├── collab/   # Hocuspocus 独立进程: hooks/(auth/meta-write-attempt-log/presence/awareness-identity/presence-wiring/unload-gate〔文档离开内存前的最后一次存盘〕) + services/(persistence〔谁可以写库的唯一决定处〕/store-tracker〔有没有没存下的内容 + 一次性 arm〕/store-loop〔10 秒一轮的定时存盘,唯一的重试机制〕/store-alert/rescue-file〔存不进库时内容落本地,永不自动清理〕/event-stream/space-rpc/task-listener/members-sync/lazy-seed/lifecycle-listener/connection-registry/connection-tracking/space-delete-lock/yjs-documents.repo) + infra/(health-checks · connection-gate〔连接准入:升级阶段从原始对端地址裁决,回环豁免、非回环取 nginx 的 x-real-ip 否则 403;裁决本身随请求头传下去〕 · client-identity〔上面那条规则的纯判定〕 · socket-ceilings〔库里几个「超了就关整条 socket」的上限,从一个声明数推导〕) + 根(index/hocuspocus 装配/config)
 ├── web/      # React app — see the [Frontend](#frontend) part
 └── ingest/   # Cloudflare Worker(`wrangler`,不在上面那条依赖链上):浏览器把分片发给它,它转写 R2 的分片上传并边写边算 sha256。**字节也可以不经过任何人的手** —— 交给它一个地址(`POST /fetch`),它自己去拉、边拉边写边算,后端的生成结果和用户提交的外链都走这条。**它也是字节出去的那一端**:`GET|HEAD /download/{key}` 把对象带着 `Content-Disposition: attachment` 答出来,而那个头是浏览器把一个跨域响应收进自己下载列表的唯一途径 —— 桶在它自己的域名上,这个头只能由发字节的人加。
@@ -154,7 +154,7 @@ config/ skills/ locales/ (git-tracked)
 |---|---|---|
 | 1 | BullMQ 投递(第 N 次尝试) | — |
 | 2 | 重入守卫读任务行:`billed_at` 已设 → 上次已完成并扣过费,原样返回;`provider_result_url` 已设而 `billed_at` 未设 → 上次调过厂商但没走到扣费,标失败不再重试 | — |
-| 3 | 调厂商,或跑本地 ffmpeg handler(`downloadToTempDir` 下载输入素材在此) | **抛异常 → BullMQ 重跑整个任务**(次数取 `job_attempts`,默认 3) |
+| 3 | 调厂商,或跑本地 ffmpeg handler(`downloadToTempDir` 下载输入素材在此)。目录模型按 `task_upstream_steps` 逐步走(`run-steps.ts`):先存下 prediction id 再轮询,已完成的步骤复用它的答复 | **抛异常 → BullMQ 重跑整个任务**(次数取 `job_attempts`,默认 3),重跑按那张表续上:已提交的按 id 续轮询、不再提交一次。**上游自己报这次 prediction 失败(`UpstreamTaskFailed`)除外** —— 重跑读到的还是同一个失败,所以当场结算为失败、不再重试 |
 | 4 | **写下「厂商已返回」这个事实 —— 这行是「不归路」** | — |
 | 5 | 转存到永久存储(交给 ingest Worker 拉取厂商产出在此) | **标失败 + 正常返回不抛异常 → BullMQ 不重跑**,且不扣用户积分 |
 | 6 | 标完成 + 锁定计费(`billed_at` 上 CAS,只有第一个到达者赢) | — |
@@ -229,7 +229,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **`propose_canvas_action` —— 把一条完整的流程提议给读者去放**(#229 起,形状自由归 #263)。输入是一组节点、它们之间的接线(索引指向那批节点)、这个模型是干什么的和它多少钱、为什么是这个形状,以及两个节点以上时这一组叫什么。每个节点自报角色:`generate` 带着 agent 挑好的模式和模型,`source` 是空着的位子留给读者放自己的素材,`written` 是 agent 写下的正文。**它自己不放任何东西**:`execute` 跑一遍检查,过了就把**解析过目录事实的那一份**交回并标上 `placed: true`(读者按下「使用」时目录可能还没加载,那一刻再问会猜),没过就只答一句为什么;放节点是画布那边的事(`use-node-creation.ts` 的 `placeProposalAt`),而且要等读者按下那张卡。
 
-**`checkProposal` 是纯函数,规则全部读自目录**(经 `entriesForNode` / `modelsForMode`,不读别的):边的两端要落在这一组里、不许自环、不许成环 · **这一组里至少有一个会生成的节点** · 每条边的终点都要是生成节点(两个空节点之间连一条线,画出来是说读者的两个文件互相喂)· 空节点不带模式、模型、参数和提示词(带了它就是第二次生成)· 提示词里每个指向上游的标记都要指得到一个存在、且带着它要的东西的节点 · **这一组摆的空节点,不能多于这一组的生成节点收得下的位子数**(槽位收一个,引用池收 `maxItems`,每个素材位收哪一种目录里写着)。**读者要补几件素材,是目录两层给的答案**(#269):模型声明哪些参数从画布填、哪些可以空着,模式声明是每个都要有还是有一个就行。
+**`checkProposal` 是纯函数,规则全部读自目录**(经 `entriesForNode` / `modelsForMode`,不读别的):边的两端要落在这一组里、不许自环、不许成环 · **这一组里至少有一个会生成的节点** · 每条边的终点都要是生成节点(两个空节点之间连一条线,画出来是说读者的两个文件互相喂)· 空节点不带模式、模型、参数和提示词(带了它就是第二次生成)· 提示词里每个指向上游的标记都要指得到一个存在、且带着它要的东西的节点 · **这一组摆的空节点,不能多于这一组的生成节点收得下的位子数**(槽位收一个,引用池收 `maxItems`,每个素材位收哪一种目录里写着)。**读者要补几件素材,由模型自己的声明给答案**(#269):哪些参数从画布填、哪些可以空着(`optional`),以及每个模式下「这几个里至少一个要有东西」的 `source_groups` —— 同一个模式下两个模型可以要不同的素材,所以这件事不写在模式上。判定只有一处:shared 的 `missingSources`,面板、server 入队前那道门、这里的提议检查读的都是它。
 
 **卡片走 SDK 的原生 tool part 到前端**,`to-chat-message.ts` 读成 `proposals`、`ProposalCard.tsx` 画成那张卡;**价钱和等多久由卡自己去目录取**(`proposal-card.ts`),模型报的价不算数。**每个生成节点的说明末尾有一行产品固定文案,说它的设置在哪看**(#289):agent 写的提示词在生成面板里,而面板要右键节点选「生成」才打开;节点的 `takesPrompt` 为 `false` 或没有提示词时,那一行说的是「设置已配好」。**模型读回的不是整份提议,而是一句话**(`toModelOutput`):它就是发提议的那一方,把整份重复进后面每一轮等于把整个载荷再付一遍。
 
@@ -237,7 +237,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **能力答复描述的是面板给什么,不是目录允许什么**(MANDATORY)。目录说得出「这个模型声明了 `camera`」,说不出「这个节点的面板画不画得出这个控件、画出来要等什么条件才算数、哪个参数由画布填而不该让人去打字」。这些事实现在由模型自己的 yaml 一词一答:每个参数写一个 `fill`(`canvas` · `pool` · `editor` · `panel` · `remote` · `none`),等什么条件写 `when`,只在哪几个模式下算数写 `modes`;画法留在面板,而两边对不上的时候 `packages/web/src/spaces/canvas/generate/__tests__/declarations-have-claimants.test.ts` 的十二条守卫会点名是哪个模型的哪个参数。判定题:**我正要让答复说一句关于「用户能不能设这个」的话吗?那句话的出处必须是那个参数自己的声明。**
 
-**目录里那两句原样引述的散文,由目录自己证伪**。答复里其余每样都是投影出来的,只有模式的 `description` 和模型的 `guide` 是整句引过去的,而读者正是靠这两句挑模式挑模型。守卫 `packages/domain/src/model-catalog/__tests__/guides-name-what-the-model-takes.test.ts` 按节点 × 模式走遍答得出的每个模型,四条可证伪判据:点名了一个这条目没声明的槽位、卖了一个这个模式没控件的能力、说了一段跟它自己 `duration` 矛盾的秒数、自称最贵最便宜最慢最快而同模式的数字不认。**只查可证伪的** —— 「画质最好」不可证伪,而一条会判红它的规则会判红目录里五分之四的内容。判据同时写在 22 个 yaml 的表头上(21 个模型文件加 `modes.yaml`),连同强制它的那个测试的名字和它走到哪为止。
+**目录里那两句原样引述的散文,由目录自己证伪**。答复里其余每样都是投影出来的,只有模式的 `description` 和模型的 `guide` 是整句引过去的,而读者正是靠这两句挑模式挑模型。守卫 `packages/domain/src/model-catalog/__tests__/guides-name-what-the-model-takes.test.ts` 按节点 × 模式走遍答得出的每个模型,四条可证伪判据:点名了一个这条目没声明的槽位、卖了一个这个模式没控件的能力、说了一段跟它自己 `duration` 矛盾的秒数、自称最贵最便宜最慢最快而同模式的数字不认。**只查可证伪的** —— 「画质最好」不可证伪,而一条会判红它的规则会判红目录里五分之四的内容。判据同时写在每个模型 yaml(四个模态各一份 `models.yaml`,加 3D 的两份)和 `modes.yaml` 的表头上,连同强制它的那个测试的名字和它走到哪为止。
 
 **`web_search` 的两个旋钮走 `config/agent.yaml`**:`web_search_timeout_ms`(10 秒,上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字,管**一条腿**不管整次搜索 —— 三次投递各一次、最后那次之后的正文读再一次,整次的上界是它的四倍加退避)· `web_search_max_tokens`(8192,一次搜索要回多少正文)。后者两端(1024 / 32768)都是服务方自己的边界,写进 schema 是为了让越界在配置加载时就失败、不必等到每次调用都被拒。
 
@@ -263,7 +263,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **一张表答三个问题**:这次调用打给谁 · 积分流水记谁的账 · 怎么跟这家说「要 / 不要思考」。表在 `packages/domain/src/agent/llm.ts`,拆成两个导出:`DIRECT_ROUTES` 四条(`anthropic/` · `google/` · `openai/` · `deepseek/`)带前缀,`FALLBACK_ROUTE` 一条不带 —— 前缀是不是必有,由类型分开而不是由一个可选字段。四个消费方(`getModel` · `resolveProvider` · `reasoningFor` · skill 可用性判定)读的是同一张表。
 
-**判定要前缀和 key 两样都对**:模型 id 带某条的前缀、**且**这个部署配了它那把 key,才走直连;缺任何一样都落兜底。所以一把 OpenRouter key 足够跑起**全部文本模型调用**(聊天 · 记忆归纳 · skill agent · text mini-tool · nano-banana 的提示词扩写),而补上哪家的 key,哪家就自动改走直连 —— 不改代码、不改配置。**图片 / 视频 / 音频 / 3D 生成不在其列**,它们走各自 vendor 的 key(`config/models/*/providers.yaml` 的 `api_key_env`),而且还要文本那条路同时可达(`skill-availability.ts` 的 `checkSkillModelRunnable` 两条都查)。直连时前缀被剥掉(厂商只认自己的 id),走兜底时原样保留(OpenRouter 认带前缀的)。
+**判定要前缀和 key 两样都对**:模型 id 带某条的前缀、**且**这个部署配了它那把 key,才走直连;缺任何一样都落兜底。所以一把 OpenRouter key 足够跑起**全部文本模型调用**(聊天 · 记忆归纳 · skill agent · text mini-tool · nano-banana 的提示词扩写),而补上哪家的 key,哪家就自动改走直连 —— 不改代码、不改配置。**图片 / 视频 / 音频 / 3D 生成不在其列**,它们走 `config/models/*/providers.yaml` 的 `api_key_env` 指的那把 key(今天五个模态都只有 WaveSpeed 一家,即 `WAVESPEED_API_KEY`),而且还要文本那条路同时可达(`skill-availability.ts` 的 `checkSkillModelRunnable` 两条都查)。直连时前缀被剥掉(厂商只认自己的 id),走兜底时原样保留(OpenRouter 认带前缀的)。
 
 **`keyName` 收窄成 schema 自己的键名**(`Extract<keyof CoreConfig, \`${string}_API_KEY\`>`),写一个 schema 里没有的名字是编译错误,而不是一条静默永不打开的路由。**每条路由仍然把 key 名写两遍** —— `keyName` 用来判路由,provider 闭包里那一遍用来建实例,两者之间没有类型把它们绑住;拿测试盯着(`llm.test.ts` 断言每条路由的认证 header 用的是它自己 `keyName` 那把 key)。
 
@@ -295,7 +295,8 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/storage.yaml` | 浏览器上传与头像:上传大小上限、客户端拿票据的重试次数与分片停滞判据、ingest Worker 的分片大小与两个窗口(票据有效期 / 会话令牌 TTL)、边缘容器探测的两个时限、一次「让 Worker 去拉这个地址」的上界、头像大小上限。**加载时就校验两件事**(`assertUploadWindows`):一片的截止时间不超过定时器能持有的上限、会话令牌盖得住分片与收尾两条重试链,填反了当场报错、不等用户传文件才发现。加载器 `packages/core/src/config/storage.ts` |
 | `config/skill-routing.yaml` | 哪个 skill 能在哪用、谁能调起(`surfaces` / `user_invocable` / `model_invocable`)。**缺了它每个 skill 都哪儿都不许用**,两个服务启动时读一次、读不了就 `exit(1)`。加载器 `packages/core/src/config/skill-routing.ts` |
 | `config/limits.yaml` | 分页大小 · 画布参考池上限 · 答复期限等业务旋钮。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)。**成员容量不在这儿** —— studio 成员数和 project 协作者数都按会员档位查 `config/membership.yaml`,键是该 studio 当前 admin 的档位 |
-| `config/models/*.yaml` | AI 模型路由(按模态分目录,model-centric) |
+| `config/models/<模态>/models.yaml` · `providers.yaml` · `config/models/modes.yaml` | AI 模型目录(按模态分目录):`models.yaml` 列这个模态的全部模型,每个带 WaveSpeed 定价契约(`base_price` / 公式 / `discount_rate`)、每个参数发往上游时叫什么(`upstream`)、额外的上游调用(`extra_steps`);`providers.yaml` 是上游的地址、key 名与并发;`modes.yaml` 是模式的名字与说明。字段说明写在各文件表头 |
+| `config/voice-samples.json` | 音色样音每种语言念的那句话,以及个别模型要多带的参数。一次性部署步骤 `packages/worker/src/voice-samples.ts`(docker compose 的 `voice-samples` 服务 / 本地 `pnpm voice-samples`)读它,把 `config/models/tts/models.yaml` 里 `sample_key` 点名、存储桶还没有的样音生成出来 |
 
 **`config/subscription.yaml` 和 `config/pricing.yaml` 两份不随仓库分发** —— 它们写的是某个部署收多少钱、卖的是哪几个 Stripe 对象。仓里跟着的是各自的 `.template`(价格 0、price id 空串),照着填自己的;两份 schema 都要求正整数,所以没改过的模板一读就被拒。**`PAYMENT_ENABLED=true` 时 server 启动预检这两份,读不出来就退出**;之后 `subscription.yaml` 还会在读档位上限时被打开一次(判一条过了付费期的订阅还认不认它的档,读 `stale_after_days`),没有订阅行的部署走不到那一步。
 
