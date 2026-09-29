@@ -218,11 +218,14 @@ describe("estimateCredits", () => {
     expect(estimate.credits).toBeCloseTo(5.4, 6);
   });
 
-  // The clone is skipped when the voice is cached, so a lower bound cannot
-  // count it; with no text yet the speech costs nothing either.
-  it("prices a lower bound without the steps a reused source may skip", async () => {
-    const estimate = await estimateCredits(VOICE_CLONE, { params: { audio: "a" } }, 1);
-    expect(estimate).toEqual({ credits: 0, bound: "at_least" });
+  // The clone is skipped when the voice is cached, so what every run pays is
+  // the speech, and that follows the text entirely.
+  it("prices a thousand characters of what every run pays while the text is empty", async () => {
+    for (const params of [{ audio: "a" }, {}]) {
+      const estimate = await estimateCredits(VOICE_CLONE, { params }, 1);
+      expect(estimate.bound).toBe("per_thousand_chars");
+      expect(estimate.credits).toBeCloseTo(10, 6);
+    }
   });
 
   it("prices a lower bound on an unknown length without a skippable clone", async () => {

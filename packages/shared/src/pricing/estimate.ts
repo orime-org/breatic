@@ -40,8 +40,8 @@ export interface EstimateInput {
  * least that, while something the price reads is not known yet (a source's
  * length, a required source not picked, text not written) -- counting only
  * what every such run pays; at most that, when a call a reused source skips
- * is counted in; or that much per thousand characters, while a model whose
- * whole price follows its text has none.
+ * is counted in; or that much per thousand characters, while the text is
+ * empty and what every run pays follows the text alone.
  */
 export type EstimateBound = "exact" | "at_least" | "at_most" | "per_thousand_chars";
 
@@ -95,8 +95,8 @@ function reads(formulas: readonly string[], field: string): boolean {
  * A required source not picked yet is priced as the one item the run cannot
  * go without, and a prompt not written yet as no text. Where a formula reads
  * what is not known yet the answer is a lower bound, without the calls a
- * reused source skips. Only a model whose whole price follows its text is
- * quoted per thousand characters instead.
+ * reused source skips. While the text is empty and what every run pays
+ * follows the text alone, the run is quoted per thousand characters instead.
  * @param model - The model's catalog entry.
  * @param input - The run as set up so far.
  * @param creditMultiplier - Credits per US cent charged upstream.
@@ -171,7 +171,11 @@ export async function estimateCredits(
   const toCredits = (amount: number): number => amount * CENTS_PER_USD * creditMultiplier;
   const usd = await priceUsd(text, true);
   if (textPriced) {
-    if (usd === 0) return { credits: toCredits(await priceUsd(SAMPLE_TEXT, true)), bound: "per_thousand_chars" };
+    // Quoted per thousand characters when what every run pays follows the
+    // text alone, the same every-run price a lower bound counts.
+    if ((await priceUsd(text, false)) === 0) {
+      return { credits: toCredits(await priceUsd(SAMPLE_TEXT, false)), bound: "per_thousand_chars" };
+    }
     unknown = true;
   }
   // A lower bound counts only what every run of this setup pays.
