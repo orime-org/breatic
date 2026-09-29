@@ -1,8 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { parse } from 'yaml';
 
 import { ModelIcon, MODEL_ICON_NAMES } from '@web/spaces/canvas/generate/ModelIcon';
 
@@ -23,15 +27,61 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
     // model's yaml still declares it draws nothing at all, and nothing else
     // would say so.
     expect([...MODEL_ICON_NAMES].sort()).toEqual([
+      'alibaba',
+      'bria',
+      'clarity',
       'elevenlabs',
-      'fish-audio',
+      'flux',
+      'gemini',
+      'hunyuan',
+      'infinitetalk',
+      'inworld',
+      'kling',
+      'ltx',
+      'meta',
       'midjourney',
       'minimax',
+      'mirelo',
+      'mureka',
       'nano-banana',
+      'omnivoice',
+      'openai',
       'qwen',
+      'recraft',
+      'reve',
+      'rife',
       'seedream',
       'sonilo',
+      'sourceful',
+      'sync',
+      'vocal-isolator',
+      'xai',
     ]);
+  });
+
+  // Read as written: the catalog projection drops a model whose provider key
+  // is unset, so under CI it would have nothing to walk.
+  const root = resolve(process.cwd(), '../../config/models');
+  const declared = readdirSync(root)
+    .map((bucket) => resolve(root, bucket, 'models.yaml'))
+    .filter((file) => existsSync(file))
+    .flatMap((file) => {
+      const doc: unknown = parse(readFileSync(file, 'utf8'));
+      const list = Array.isArray(doc) ? doc : ((doc as { models?: unknown[] } | null)?.models ?? []);
+      return list as Array<{ name?: string; icon?: string }>;
+    });
+
+  it('draws a mark for every model the catalog declares', () => {
+    const unmarked = declared
+      .filter((model) => model.icon === undefined || !MODEL_ICON_NAMES.includes(model.icon))
+      .map((model) => `${model.name ?? '?'} (${model.icon ?? 'no icon'})`);
+    expect(declared.length).toBeGreaterThan(0);
+    expect(unmarked).toEqual([]);
+  });
+
+  it('keeps no mark that no model declares', () => {
+    const used = new Set(declared.map((model) => model.icon));
+    expect(MODEL_ICON_NAMES.filter((name) => !used.has(name))).toEqual([]);
   });
 
   it('renders nothing for an absent icon name (undefined) rather than a fallback', () => {

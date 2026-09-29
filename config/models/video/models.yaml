@@ -49,6 +49,7 @@ models:
     description: "Top-ranked; synced audio up to 4K"
     guide: "The default first reach: the highest-rated model on both independent boards, for a short prompt-only shot that arrives with its own soundtrack."
     generation_time: 600
+    icon: "gemini"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -82,6 +83,7 @@ models:
     description: "30s in one take with native audio"
     guide: "The strongest plain prompt-to-video when there are no assets to feed it: second-best measured model in the world, at up to 30 seconds with audio."
     generation_time: 600
+    icon: "alibaba"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -122,6 +124,7 @@ models:
     description: "Native 4K from 50 reference assets"
     guide: "Bring your own cast, look and soundtrack: the only text-to-video call that takes reference images, videos and audio, and returns 4K."
     generation_time: 600
+    icon: "seedream"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -225,6 +228,7 @@ models:
     description: "4K with a negative prompt"
     guide: "The director's desk: 4K picture you can steer away from what you do not want with a negative prompt."
     generation_time: 600
+    icon: "kling"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -279,6 +283,7 @@ models:
     description: "Native audio, 4K ladder, end frame"
     guide: "The highest-fidelity short shot: 4K picture with synchronized audio in one pass."
     generation_time: 600
+    icon: "gemini"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -365,6 +370,7 @@ models:
     description: "2-30s, audio you can switch off"
     guide: "Long form from a still: anything from a 2-second beat to a 30-second take, with audio you can switch off."
     generation_time: 600
+    icon: "alibaba"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -417,6 +423,7 @@ models:
     description: "Mentioned images held as elements, in 4K"
     guide: "Keeping a character or product consistent: up to three images you mention become elements the model holds throughout the clip."
     generation_time: 600
+    icon: "kling"
     params:
       duration:
         description: "Length in seconds"
@@ -520,6 +527,7 @@ models:
     description: "Driving video, identity holds 120s"
     guide: "Recast one character into a scene you describe, holding their identity across a long clip."
     generation_time: 600
+    icon: "alibaba"
     params:
       image:
         description: "Source image"
@@ -553,6 +561,7 @@ models:
     description: "Non-human and multi-character casts"
     guide: "Casts the strongest model cannot take: creatures, mascots, and several figures in one frame."
     generation_time: 600
+    icon: "seedream"
     params:
       image:
         description: "Source image"
@@ -648,6 +657,7 @@ models:
     description: "10 refs, 4K, lip-synced audio"
     guide: "For a short reference-locked shot that needs the most identity anchors, 4K, and spoken dialogue produced in the same pass."
     generation_time: 600
+    icon: "gemini"
     source_groups:
       - mode: "ref"
         any_of: ["images", "videos"]
@@ -703,6 +713,7 @@ models:
     description: "30s takes from 20 mixed assets"
     guide: "For assembling one long continuous scene out of many supplied assets, including reference audio, rather than locking one subject into a short shot."
     generation_time: 600
+    icon: "alibaba"
     source_groups:
       - mode: "ref"
         any_of: ["images", "videos", "audios"]
@@ -776,6 +787,7 @@ models:
     description: "Holds visual style, not just faces"
     guide: "For carrying a look — art style, palette, scene treatment — into a new shot, not only a face or a prop."
     generation_time: 600
+    icon: "alibaba"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -818,6 +830,7 @@ models:
     description: "End frame enforced, not hinted"
     guide: "For when the end frame must actually be hit rather than merely suggested — the two-frame contract enforced upstream."
     generation_time: 600
+    icon: "flux"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -869,6 +882,7 @@ models:
     description: "Adds 5s at 720p with native audio"
     guide: "Continues any source clip with a segment the prompt directs, with its own audio"
     generation_time: 600
+    icon: "seedream"
     params:
       duration:
         description: "Length in seconds"
@@ -909,6 +923,7 @@ models:
     description: "#1 on two blind-vote leaderboards"
     guide: "The best-judged prompt-driven rewrite of a whole clip — the default choice when a human is going to look at the result"
     generation_time: 600
+    icon: "alibaba"
     params:
       reference_audios:
         description: "Reference audios"
@@ -945,6 +960,7 @@ models:
     description: "Precise transfer, keeps original audio"
     guide: "Short, precise transfer that keeps the driving clip's own soundtrack."
     generation_time: 180
+    icon: "kling"
     params:
       image:
         description: "Source image"
@@ -975,6 +991,7 @@ models:
     description: "Acts the audio, not just the mouth"
     guide: "A still portrait that acts the audio — emotion and reaction, not a mouth stuck on a photo."
     generation_time: 180
+    icon: "seedream"
     params:
       audio:
         description: "Source audio"
@@ -1003,6 +1020,7 @@ models:
     description: "Redubs real footage up to 5 minutes"
     guide: "Re-dubbing — keep the original performance exactly as shot and change only the mouth, for up to five minutes."
     generation_time: 600
+    icon: "sync"
     params:
       audio:
         description: "Source audio"
@@ -1031,6 +1049,7 @@ models:
     description: "Reperforms footage: head and body"
     guide: "Re-performing — drive an existing video's head, expression and posture from new speech."
     generation_time: 600
+    icon: "infinitetalk"
     params:
       audio:
         description: "Source audio"
@@ -1064,6 +1083,7 @@ models:
     description: "Two speakers in one shot, 10 minutes"
     guide: "A two-person conversation rendered in one shot, with each voice on its own track and a speaking order."
     generation_time: 600
+    icon: "infinitetalk"
     params:
       image:
         description: "Source image"
@@ -1109,6 +1129,7 @@ models:
     description: "Pick the emotion: happy, angry, sad"
     guide: "The only one where the user directs the emotional read of the delivery, and chooses how much of the face moves."
     generation_time: 600
+    icon: "sync"
     params:
       audio:
         description: "Source audio"
@@ -1149,6 +1170,7 @@ models:
     description: "1080p, and the speaker is optional"
     guide: "The only 1080p option, and the only one that can invent the speaker instead of being handed one."
     generation_time: 600
+    icon: "ltx"
     params:
       audio:
         description: "Source audio"
@@ -1183,6 +1205,7 @@ models:
     description: "Stays closest to the source frame"
     guide: "For enlarging a clip when nothing in the frame may be reinvented — the faithful reconstructor, and the only kept upscaler that handles long footage at 4K."
     generation_time: 600
+    icon: "seedream"
     params:
       target_resolution:
         description: "Output resolution"
@@ -1213,6 +1236,7 @@ models:
     description: "Smooth slow-mo from choppy footage"
     guide: "For turning an existing clip's own frames into smoother motion or slow-motion — densifying a real frame rate, never inventing new footage."
     generation_time: 30
+    icon: "rife"
     params:
       video:
         description: "Source video"

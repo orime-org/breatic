@@ -49,6 +49,7 @@ models:
     description: "Top-ranked; sings lyrics you write"
     guide: "The full song when you have written the lyrics yourself."
     generation_time: 300
+    icon: "mureka"
     source_groups:
       - mode: "a2m"
         any_of: ["song", "vocal", "melody"]
@@ -121,6 +122,7 @@ models:
     description: "Instrumental beds, no vocals"
     guide: "An instrumental bed when you have no lyrics and do not want vocals."
     generation_time: 300
+    icon: "mureka"
     params: {}
     providers:
       - name: "wavespeed"
@@ -139,6 +141,7 @@ models:
     description: "Mood steered by a reference image"
     guide: "Music whose mood is set by a picture rather than by words."
     generation_time: 300
+    icon: "gemini"
     params:
       image:
         description: "Source image"
@@ -212,6 +215,7 @@ models:
     description: "Foley-grade effects, seamless loops"
     guide: "Text input — one effect per take, with ambience that loops seamlessly."
     generation_time: 300
+    icon: "mirelo"
     params:
       loop:
         upstream: "ambience"
@@ -284,6 +288,7 @@ models:
     description: "48 kHz foley locked to footage"
     guide: "Video input — the model watches the footage and places the foley itself."
     generation_time: 300
+    icon: "hunyuan"
     params:
       video:
         description: "Source video"
@@ -307,6 +312,7 @@ models:
     description: "Voice out, backing track out"
     guide: "A track split into the voice and everything else."
     generation_time: 30
+    icon: "vocal-isolator"
     params:
       audio:
         description: "Source audio"
@@ -331,6 +337,7 @@ models:
     description: "Extends audio with a seamless tail"
     guide: "Extends audio with a seamless tail"
     generation_time: 300
+    icon: "mirelo"
     params:
       ambience:
         description: "Loops seamlessly end to start"

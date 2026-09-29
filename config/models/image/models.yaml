@@ -49,6 +49,7 @@ models:
     description: "Top-ranked fidelity, 4K, 5 quality tiers"
     guide: "The default when the image simply has to be as good as it gets — highest measured fidelity and prompt adherence of anything available."
     generation_time: 120
+    icon: "openai"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -84,6 +85,7 @@ models:
     description: "Highest-ranked non-OpenAI house style"
     guide: "The second general-purpose engine, from a different lab — a different house rendering of the same prompt when Sunburst's look is not the one wanted."
     generation_time: 120
+    icon: "xai"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -112,6 +114,7 @@ models:
     description: "Posters, labels, readable text"
     guide: "The one for images that carry words — posters, labels, ads, anything where the typography and the layout have to come out right."
     generation_time: 120
+    icon: "reve"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -282,6 +285,7 @@ models:
     description: "True editable SVG, crisp at any size"
     guide: "The one that hands back an editable vector file instead of pixels — logos, icons and marks that stay crisp at any size and can be recoloured afterwards."
     generation_time: 120
+    icon: "recraft"
     params:
       aspect_ratio:
         upstream: "image_size"
@@ -306,6 +310,7 @@ models:
     description: "Transparent background at 4K"
     guide: "The one that produces a cut-out asset with no background, ready to drop straight onto another layer of the canvas."
     generation_time: 120
+    icon: "sourceful"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -340,6 +345,7 @@ models:
     description: "16 refs, 4K, fidelity tier to max"
     guide: "The highest-fidelity instruction editor, and the only one that accepts 16 references at once."
     generation_time: 120
+    icon: "openai"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -383,6 +389,7 @@ models:
     description: "A different house look, 10 refs"
     guide: "A second independently top-ranked editing house — different training, different look, ten references."
     generation_time: 120
+    icon: "meta"
     params:
       aspect_ratio:
         description: "Output aspect ratio"
@@ -515,6 +522,7 @@ models:
     description: "Bigger, and still itself"
     guide: "The default upscale: make it bigger and keep it itself."
     generation_time: 120
+    icon: "clarity"
     params:
       creativity:
         description: "How freely detail is invented"
@@ -549,6 +557,7 @@ models:
     description: "Clean hair, fur and soft edges"
     guide: "Automatic whole-subject cutout: the one you reach for without thinking."
     generation_time: 120
+    icon: "bria"
     params:
       image:
         description: "Source image"

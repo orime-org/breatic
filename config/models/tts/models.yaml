@@ -50,6 +50,7 @@ models:
     description: "Most natural single-voice read here"
     guide: "The straight read — one narrator, the most human-sounding output the catalog can reach."
     generation_time: 120
+    icon: "inworld"
     max_input_chars: 2000
     voices:
       - id: "Alex"
@@ -214,6 +215,7 @@ models:
     description: "Two named speakers, one dialogue pass"
     guide: "A scene between named characters, rendered in one pass with a voice per name."
     generation_time: 120
+    icon: "gemini"
     voices:
       - id: "Achernar"
         name: "Achernar"
@@ -1579,6 +1581,7 @@ models:
     description: "Clones into 600+ languages"
     guide: "The only way to clone into a language the commercial models have never heard of."
     generation_time: 120
+    icon: "omnivoice"
     params:
       audio:
         description: "Source audio"
