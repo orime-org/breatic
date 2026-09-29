@@ -24,7 +24,7 @@ import { openGenerate, seedNode, voiceRowCount } from '../helpers/audio-panel';
 // One node, one panel, one continuous session — which is also how a person
 // uses it: open it, look at it, adjust it, submit. Splitting these into a test
 // each would reopen the panel three times and say nothing more.
-test('the panel opens, offers what the model declares, and refuses a voiceless submit', async ({ page }) => {
+test('the panel opens, offers what the model declares, and stands the first voice in for an unpicked one', async ({ page }) => {
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio');
   await openGenerate(nodeId);
@@ -52,17 +52,22 @@ test('the panel opens, offers what the model declares, and refuses a voiceless s
   await expect(page.getByTestId('generate-audio-stability-stop-0')).toBeVisible();
   await expect(page.getByTestId('generate-audio-stability-stop-0.5')).toBeVisible();
   await expect(page.getByTestId('generate-audio-stability-stop-1')).toBeVisible();
+  // Escape closes the top layer first, and a slider's tooltip can be it.
+  const voiceRow = page.getByTestId('generate-audio-row-voice_id');
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await expect(voiceRow).toBeHidden({ timeout: 500 });
+  }).toPass({ timeout: 5_000 });
+
+  // With no voice picked, the first voice of the model's list is the voice
+  // (user 2026-09-29): the pill names it and the list marks it chosen.
+  await page.getByTestId('generate-audio-settings-trigger').click();
+  await voiceRow.click();
+  const first = page.locator('[data-testid^="generate-voice-option-"]').first();
+  await expect(first).toHaveAttribute('aria-pressed', 'true', { timeout: 20_000 });
+  const firstName = (await first.innerText()).split('\n')[0];
   await page.keyboard.press('Escape');
-
-  await page.getByTestId('generate-prompt-editor').click();
-  await page.keyboard.type('Good evening.');
-  await page.getByTestId('generate-audio-execute').click();
-
-  // The refusal speaks: a yaml default is not a choice, so an untouched picker
-  // means no voice rather than whichever one the catalog happens to list first.
-  await expect(page.locator('[data-sonner-toast]').first()).toBeVisible({
-    timeout: 10_000,
-  });
+  await expect(page.getByTestId('generate-audio-settings-trigger')).toContainText(firstName);
 });
 
 test('text past the model’s limit is refused before anything is sent', async ({ page }) => {
@@ -101,9 +106,10 @@ test('the voice list matches the deployment it is served from, and a pick surviv
   expect(rows).toBeGreaterThan(0);
   expect([0, rows]).toContain(samples);
 
-  const chosen = (await options.first().innerText()).split('\n')[0];
+  // The second row: the first is what an untouched node already stands on.
+  const chosen = (await options.nth(1).innerText()).split('\n')[0];
   const saysChosen = new RegExp(chosen.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  await options.first().click();
+  await options.nth(1).click();
   await expect(page.getByTestId('generate-audio-settings-trigger')).toHaveText(saysChosen);
 
   // The pick is a parameter ON THE NODE, not panel state. Going to a second
@@ -382,4 +388,40 @@ test('every voice of the default model plays its sample from the list', async ({
     .locator('[data-radix-scroll-area-viewport]')
     .boundingBox();
   expect(button!.x + button!.width + 3).toBeLessThanOrEqual(viewport!.x + viewport!.width - 8);
+});
+
+test('a sample speaks the language of its voice, or the one picked for a Gemini voice', async ({ page }) => {
+  // User 2026-09-29: a Mandarin voice's sample is in Mandarin; a Gemini voice
+  // speaks whichever language the panel has picked, and so does its sample.
+  const nodeId = crypto.randomUUID();
+  await seedNode(nodeId, 'audio', undefined, -350);
+  await openGenerate(nodeId);
+  const pill = page.getByTestId('generate-audio-settings-trigger');
+
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-minimax-speech-2.8-hd').click();
+  await pill.click();
+  await page.getByTestId('generate-audio-row-voice_id').click();
+  await page.getByTestId('generate-voice-search').fill('Mandarin');
+  const mandarin = page.locator('[data-testid^="generate-voice-sample-Chinese (Mandarin)_"]').first();
+  await expect(mandarin).toBeVisible({ timeout: 20_000 });
+  const heard = page.waitForRequest((r) => r.url().includes('/voice-samples/'));
+  await mandarin.click();
+  expect((await heard).url()).toContain('/minimax-speech-2.8-hd/zh/');
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await expect(pill).toHaveAttribute('aria-expanded', 'false', { timeout: 500 });
+  }).toPass({ timeout: 5_000 });
+
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-gemini-3.1-flash-text-to-speech').click();
+  await pill.click();
+  await page.getByTestId('generate-audio-row-language').click();
+  await page.getByTestId('generate-audio-option-language-Japanese (Japan)').click();
+  await page.getByTestId('generate-audio-row-voice_id').click();
+  const sample = page.locator('[data-testid^="generate-voice-sample-"]').first();
+  await expect(sample).toBeVisible({ timeout: 20_000 });
+  const heardJa = page.waitForRequest((r) => r.url().includes('/voice-samples/'));
+  await sample.click();
+  expect((await heardJa).url()).toContain('/gemini-3.1-flash-text-to-speech/ja/');
 });
