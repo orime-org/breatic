@@ -238,17 +238,15 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        // Text-to-image reads no source images at all, so its reference
-        // material rows go dark. Their ✕ does not — references are shared
-        // across modes, and a row this mode cannot use is exactly a row the
-        // user may want to clear (user 2026-08-19). A text row stays lit under
-        // this question either way: it feeds the prompt string, which both
-        // modes send. What could dim it is the prop below, and no image model
-        // reachable from this panel declares `takes_prompt: false` (verified
-        // 2026-08-19: the only image model that does is `topaz-upscale`, whose
-        // mode is `upscale` and therefore not in `IMAGE_MODE_OPTIONS`).
-        // Image-to-image is the mode that lights the rest back up; this panel
-        // has exactly those two (`ImageGenMode`).
+        // Rows of a kind the selected model's pool does not take go dark: a
+        // text-to-image model reads no source images at all. Their ✕ does
+        // not — references are shared across modes and models, and a row this
+        // model cannot use is exactly a row the user may want to clear (user
+        // 2026-08-19). A text row stays lit either way: it feeds the prompt
+        // string. What could dim it is the prop below, and no model this panel
+        // offers declares `takes_prompt: false` — the image models that do
+        // (`crystal-upscaler`, `bria-remove-background`) serve `upscale` and
+        // `remove_bg`, neither of which is in `IMAGE_MODE_OPTIONS`.
         referenceKinds={referenceKinds}
         modelTakesPrompt={promptRequired}
         pendingFocus={pendingFocus}
