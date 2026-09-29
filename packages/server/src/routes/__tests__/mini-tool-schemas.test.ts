@@ -32,11 +32,24 @@ describe("image mini-tool requests", () => {
     expect(wide).not.toHaveProperty("output_resolution");
     expect(wide).not.toHaveProperty("source_width");
 
-    const square = imageToolSchema.parse({ ...BINDING, tool: "upscale", image: "https://cdn/i.png", output_resolution: "2k" });
+    const square = imageToolSchema.parse({
+      ...BINDING,
+      tool: "upscale",
+      image: "https://cdn/i.png",
+      output_resolution: "2k",
+      source_width: 800,
+      source_height: 800,
+    });
     expect(square).toMatchObject({ target_megapixels: (2048 * 2048) / 1_000_000 });
 
     const plain = imageToolSchema.parse({ ...BINDING, tool: "upscale", image: "https://cdn/i.png" });
     expect(plain).not.toHaveProperty("target_megapixels");
+  });
+
+  it("refuses a target resolution without the source's size, since the price follows its shape", () => {
+    const upscale = { ...BINDING, tool: "upscale", image: "https://cdn/i.png", output_resolution: "4k" };
+    expect(() => imageToolSchema.parse(upscale)).toThrow();
+    expect(() => imageToolSchema.parse({ ...upscale, source_width: 2000 })).toThrow();
   });
 });
 

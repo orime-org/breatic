@@ -64,20 +64,15 @@ const UPSCALE_LONG_EDGE = { "2k": 2048, "4k": 4096, "8k": 8192 } as const;
 
 /**
  * The megapixels the upscaler reads (#2156, design §7): the target's long
- * edge, with the short edge following the source's ratio, or square when the
- * source's size is not given.
+ * edge, with the short edge following the source's ratio.
  * @param resolution - The target resolution.
- * @param width - The source's width in pixels, if known.
- * @param height - The source's height in pixels, if known.
+ * @param width - The source's width in pixels.
+ * @param height - The source's height in pixels.
  * @returns Megapixels of the output.
  */
-function upscaleMegapixels(
-  resolution: keyof typeof UPSCALE_LONG_EDGE,
-  width: number | undefined,
-  height: number | undefined,
-): number {
+function upscaleMegapixels(resolution: keyof typeof UPSCALE_LONG_EDGE, width: number, height: number): number {
   const long = UPSCALE_LONG_EDGE[resolution];
-  const ratio = width && height ? Math.min(width, height) / Math.max(width, height) : 1;
+  const ratio = Math.min(width, height) / Math.max(width, height);
   return (long * Math.round(long * ratio)) / 1_000_000;
 }
 
@@ -102,10 +97,16 @@ export const imageToolSchema = z.discriminatedUnion("tool", [
   // / `manual-adjust` belong in the browser (see
   // `feedback_frontend_backend_boundary` memory) and ship as Category A
   // — same rationale that motivated `adjust` moving to Category A.
-]).transform((request) => {
+]).superRefine((request, ctx) => {
+  // The upscaler bills by output megapixels, which follow the source's shape.
+  if (request.tool !== "upscale" || request.output_resolution === undefined) return;
+  if (request.source_width === undefined || request.source_height === undefined) {
+    ctx.addIssue({ code: "custom", path: ["source_width"], message: "source_width and source_height are required with output_resolution" });
+  }
+}).transform((request) => {
   if (request.tool !== "upscale") return request;
   const { output_resolution, source_width, source_height, ...rest } = request;
-  return output_resolution === undefined
+  return output_resolution === undefined || source_width === undefined || source_height === undefined
     ? rest
     : { ...rest, target_megapixels: upscaleMegapixels(output_resolution, source_width, source_height) };
 });
