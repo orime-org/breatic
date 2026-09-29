@@ -653,12 +653,22 @@ describe('AudioGeneratePanelContainer — what the trigger says', () => {
 });
 
 describe('AudioGeneratePanelContainer — submitting', () => {
-  it('refuses when no voice has been chosen, and says which', async () => {
-    // The catalog's default voice is not a value every deployment accepts, so
-    // an untouched picker means no voice — and the submit says so rather than
-    // sending one the user never saw.
+  it('sends the list\'s first voice when none has been chosen', async () => {
+    // User 2026-09-29: with no voice chosen, the voice is the first one.
     const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openPanel({ model: 'elevenlabs-v3' });
+    await waitFor(() => expect(listVoices).toHaveBeenCalled());
+    typePrompt('Good evening.');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.voice_id).toBe('Alice');
+  });
+
+  it('refuses when no voice is chosen and the list has none, and says which', async () => {
+    listVoices.mockResolvedValue(voicePage([]));
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({ model: 'elevenlabs-v3' });
+    await waitFor(() => expect(listVoices).toHaveBeenCalled());
     typePrompt('Good evening.');
     fireEvent.click(screen.getByTestId('generate-audio-execute'));
     // The sentence, not just that one appeared: both refusals a click can

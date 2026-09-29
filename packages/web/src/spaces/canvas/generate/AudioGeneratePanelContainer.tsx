@@ -47,7 +47,10 @@ import {
   AUDIO_MODE_OPTIONS,
   audioModeOption,
 } from '@web/spaces/canvas/generate/audio-mode-options';
-import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
+import {
+  buildAudioPanelViewModel,
+  withListDefaultVoice,
+} from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
@@ -227,9 +230,25 @@ function AudioGeneratePanelBody({
     [nodeId, nodes, edges, textById],
   );
 
-  const vm = React.useMemo(
+  const nodeVm = React.useMemo(
     () => buildAudioPanelViewModel({ nodeId, nodes, models, mode }),
     [nodeId, nodes, models, mode],
+  );
+  // With no voice held, the first voice of the model's list is the voice
+  // (user 2026-09-29). Asked for only while it would be used; the row it
+  // brings back also seeds the by-id cache the pill reads its name from.
+  const { data: firstVoice } = useQuery({
+    queryKey: firstVoiceKey(nodeVm.model),
+    queryFn: async () => {
+      const first = (await voicesApi.list(nodeVm.model, { query: '' })).voices[0] ?? null;
+      if (first) queryClient.setQueryData(['voice', nodeVm.model, first.id], first);
+      return first;
+    },
+    enabled: nodeVm.model !== '' && nodeVm.voiceRequired && !nodeVm.voiceChosen,
+  });
+  const vm = React.useMemo(
+    () => withListDefaultVoice(nodeVm, firstVoice),
+    [nodeVm, firstVoice],
   );
 
   // Read during render for the same reason the prompt fragment is: a
@@ -320,8 +339,13 @@ function AudioGeneratePanelBody({
   }, [projectId, spaceId, nodeId]);
   const freshVm = React.useCallback(() => {
     const graph = readCanvasGraph(projectId, spaceId);
-    return buildAudioPanelViewModel({ nodeId, nodes: graph.nodes, models, mode });
-  }, [projectId, spaceId, nodeId, models, mode]);
+    const built = buildAudioPanelViewModel({ nodeId, nodes: graph.nodes, models, mode });
+    // The same default the render applied, read off the cache at click time.
+    return withListDefaultVoice(
+      built,
+      queryClient.getQueryData<Voice | null>(firstVoiceKey(built.model)),
+    );
+  }, [projectId, spaceId, nodeId, models, mode, queryClient]);
 
   const voices = useVoiceList(vm.model);
   // The stored voice is an id; the trigger shows a name. One fetch per stored
@@ -721,6 +745,15 @@ function AudioGeneratePanelBody({
  */
 function noop(): void {
   // Intentionally empty.
+}
+
+/**
+ * Where a model's first listed voice is cached.
+ * @param model - The model id.
+ * @returns The query key.
+ */
+function firstVoiceKey(model: string): readonly [string, string] {
+  return ['voice-default', model] as const;
 }
 
 /**

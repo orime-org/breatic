@@ -14,7 +14,8 @@
  * The second reads the record rather than the resolved value on purpose —
  * resolving falls back to the yaml default, and neither vendor's default is a
  * value every deployment accepts, so a resolved read would call a voice chosen
- * that the user never saw.
+ * that the user never saw. The voice that stands in for an unpicked one is the
+ * first of the model's own list instead, applied by {@link withListDefaultVoice}.
  */
 
 import type { ModelEntry } from '@breatic/shared';
@@ -137,5 +138,34 @@ export function buildAudioPanelViewModel(input: {
     slotUrls: readSlotUrls(AUDIO_SLOTS, content),
     slotThumbnails: readSlotThumbnails(AUDIO_SLOTS, content),
     slotDurations: readSlotDurations(AUDIO_SLOTS, content),
+  };
+}
+
+/**
+ * The view model with the voice list's first entry standing in for a voice
+ * nobody picked (user 2026-09-29: with no voice chosen, the voice is the first
+ * one). The panel, the pill, the gate and the payload all read the result, so
+ * the voice the reader sees marked is the voice that is sent.
+ *
+ * Read, not written: the node's record keeps holding only what the reader
+ * chose, so a later reorder of the list moves the default with it rather than
+ * leaving a stale id behind.
+ * @param vm - The view model as the node alone gives it.
+ * @param first - The first voice of the model's unfiltered list; undefined
+ *   while it is being asked for, null when the list came back empty.
+ * @returns The view model with the default applied, or `vm` itself when there
+ *   is nothing to apply.
+ */
+export function withListDefaultVoice(
+  vm: AudioPanelViewModel,
+  first: { id: string } | null | undefined,
+): AudioPanelViewModel {
+  const name = voiceParamName(vm.modelEntry);
+  if (!first || name === null || !vm.voiceRequired || vm.voiceChosen) return vm;
+  return {
+    ...vm,
+    voiceChosen: true,
+    voiceSelectedId: first.id,
+    params: { ...vm.params, [name]: first.id },
   };
 }

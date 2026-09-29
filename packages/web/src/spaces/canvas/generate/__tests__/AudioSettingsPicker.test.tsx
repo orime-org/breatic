@@ -487,7 +487,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     expect(screen.queryByTestId('generate-param-speakers-0-remove')).toBeNull();
   });
 
-  it('caps the pill at 200px and prints the language beside the voice', () => {
+  it('caps the pill at 100px and prints the language beside the voice', () => {
     render(
       <AudioSettingsPicker
         voice={{ ...NO_VOICE, selectedId: 'Kore', selectedName: 'Kore' }}
@@ -497,7 +497,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
       />,
     );
     const trigger = screen.getByTestId('generate-audio-settings-trigger');
-    expect(trigger.className).toContain('max-w-[200px]');
+    expect(trigger.className).toContain('max-w-[100px]');
     expect(trigger).toHaveTextContent(`Kore Â· ${nameOf('en-US')}`);
   });
 });

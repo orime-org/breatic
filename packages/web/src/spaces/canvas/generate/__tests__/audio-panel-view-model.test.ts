@@ -4,7 +4,10 @@
 import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
-import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
+import {
+  buildAudioPanelViewModel,
+  withListDefaultVoice,
+} from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 
@@ -210,6 +213,50 @@ describe('buildAudioPanelViewModel — whether a voice has been chosen', () => {
     });
     expect(vm.voiceRequired).toBe(false);
     expect(vm.voiceSelectedId).toBeNull();
+  });
+});
+
+describe('withListDefaultVoice — the first voice stands in when none is held', () => {
+  const FIRST = { id: 'first-id', name: 'First' };
+
+  it('takes the list\'s first voice when the record holds none', () => {
+    const vm = withListDefaultVoice(buildAudioPanelViewModel({ ...BASE, nodes: nodes() }), FIRST);
+    expect(vm.voiceChosen).toBe(true);
+    expect(vm.voiceSelectedId).toBe('first-id');
+    expect(vm.params.voice_id).toBe('first-id');
+  });
+
+  it('writes it under the model\'s own voice param', () => {
+    const vm = withListDefaultVoice(
+      buildAudioPanelViewModel({ ...BASE, nodes: nodes({ model: 'fish-s2-pro' }) }),
+      FIRST,
+    );
+    expect(vm.params.reference_id).toBe('first-id');
+  });
+
+  it('leaves a held voice alone', () => {
+    const held = buildAudioPanelViewModel({
+      ...BASE,
+      nodes: nodes({ model: 'elevenlabs-v3', paramsByModel: { 'elevenlabs-v3': { voice_id: 'Aria' } } }),
+    });
+    const vm = withListDefaultVoice(held, FIRST);
+    expect(vm.voiceSelectedId).toBe('Aria');
+    expect(vm.params.voice_id).toBe('Aria');
+  });
+
+  it('stays unchosen while the list has not answered, or answered empty', () => {
+    const bare = buildAudioPanelViewModel({ ...BASE, nodes: nodes() });
+    expect(withListDefaultVoice(bare, undefined).voiceChosen).toBe(false);
+    expect(withListDefaultVoice(bare, null).voiceChosen).toBe(false);
+  });
+
+  it('adds nothing to a model that takes no voice', () => {
+    const vm = withListDefaultVoice(
+      buildAudioPanelViewModel({ ...BASE, models: [ttsModel('no-voice')], nodes: nodes() }),
+      FIRST,
+    );
+    expect(vm.voiceSelectedId).toBeNull();
+    expect(vm.params).toEqual({});
   });
 });
 

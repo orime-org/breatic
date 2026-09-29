@@ -299,7 +299,7 @@ test('Gemini keeps its reading mode, language and speakers in the settings pill'
 
   const pill = page.getByTestId('generate-audio-settings-trigger');
   await expect(pill).toBeVisible({ timeout: 15_000 });
-  expect(await pill.evaluate((el) => getComputedStyle(el).maxWidth)).toBe('200px');
+  expect(await pill.evaluate((el) => getComputedStyle(el).maxWidth)).toBe('100px');
   await pill.click();
 
   const reading = page.getByTestId('generate-audio-reading-single');

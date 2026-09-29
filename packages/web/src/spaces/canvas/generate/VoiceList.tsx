@@ -183,7 +183,10 @@ export const VoiceList = React.memo(function VoiceList({
         )}
         {(list.status === 'ready' || list.status === 'idle') && (
           <ScrollArea viewportRef={setScroller} className='h-full'>
-            <div className='flex flex-col gap-0.5'>
+            {/* The rows stop short of the rail: the scrollbar overlays the
+                viewport's last 8px, and a row running under it put the
+                sample button and its playing ring beneath the thumb. */}
+            <div className='flex flex-col gap-0.5 pr-2.5'>
               {list.voices.map((voice) => {
                 const chosen = voice.id === selectedId;
                 return (

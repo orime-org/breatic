@@ -243,7 +243,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
           size={null}
           data-testid='generate-audio-settings-trigger'
           aria-label={t('canvas.generatePanel.audioSettings')}
-          className='flex h-8 min-w-0 max-w-[200px] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className='flex h-8 min-w-0 max-w-[100px] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           {hasVoice ? <Volume2 className='h-4 w-4 shrink-0' aria-hidden='true' /> : null}
           {/* Truncated past 200px: the first words name the voice well enough
