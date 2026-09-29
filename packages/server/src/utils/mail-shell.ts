@@ -67,11 +67,19 @@ export interface MailSpec {
    * language that separates sentences with a space carries it in the catalog.
    */
   body: MailMessage[];
+  /**
+   * A block the mail composes itself, such as a purchase's line items and the
+   * wording the buyer agreed to, shown under the body.
+   */
+  details?: { html: string; text: string };
   /** The button; absent on a notice with nothing to do. */
   action?: { label: MailMessage; href: string };
-  /** The gray line under the button. */
-  note: MailMessage;
+  /** The gray line under the button; absent when there is nothing to add. */
+  note?: MailMessage;
 }
+
+/** A laid-out mail: every product mail carries a plain-text part. */
+export type RenderedMail = SendMailOptions & { text: string };
 
 /** The pieces of one mail, rendered in its recipient's language. */
 interface RenderedPieces {
@@ -161,8 +169,8 @@ function renderPieces(locale: string, spec: MailSpec): RenderedPieces {
     bodyText: spec.body.map(toText).join(""),
     actionLabelHtml: spec.action ? toHtml(spec.action.label) : "",
     actionLabelText: spec.action ? toText(spec.action.label) : "",
-    noteHtml: toHtml(spec.note),
-    noteText: toText(spec.note),
+    noteHtml: spec.note ? toHtml(spec.note) : "",
+    noteText: spec.note ? toText(spec.note) : "",
     helpHtml: tRich("server.mail.help", { email: escapeHtml(contactEmail) }, {
       manual: (chunks) => footerLink(chunks.join(""), manualUrl),
       contact: (chunks) => footerLink(chunks.join(""), `mailto:${contactEmail}`),
@@ -223,7 +231,7 @@ function layoutSource(withAction: boolean): string {
     <mj-section background-color="#ffffff" border="1px solid rgba(30,30,30,0.12)" border-radius="12px" padding="36px 32px">
       <mj-column>
         <mj-text padding="0 0 16px" font-size="20px" font-weight="600" line-height="1.35">%%HEADING%%</mj-text>
-        <mj-text padding="0 0 24px" font-size="15px" line-height="1.6">%%BODY%%</mj-text>
+        <mj-text padding="0 0 24px" font-size="15px" line-height="1.6">%%BODY%%%%DETAILS%%</mj-text>
         ${button}
         <mj-text font-size="13px" line-height="1.6" color="${MUTED}">%%NOTE%%</mj-text>
       </mj-column>
@@ -278,19 +286,26 @@ function fillLayout(layout: string, values: Record<string, string>): string {
 /**
  * Write the plain-text part: the same pieces, in the same order.
  * @param pieces - The rendered pieces.
+ * @param details - The mail's own block, when it has one.
  * @param href - The button's link, when there is one.
  * @param year - The copyright year.
  * @returns The text part.
  */
-function plainText(pieces: RenderedPieces, href: string | undefined, year: number): string {
+function plainText(
+  pieces: RenderedPieces,
+  details: string | undefined,
+  href: string | undefined,
+  year: number,
+): string {
   const links = [...getMailLayout().social.map(({ label, url }) => ({ word: label, url })), ...pieces.legal]
     .map(({ word, url }) => `${word}: ${url}`)
     .join("\n");
   return [
     pieces.heading,
     pieces.bodyText,
+    details ?? null,
     href === undefined ? null : `${pieces.actionLabelText}\n${href}`,
-    pieces.noteText,
+    pieces.noteText === "" ? null : pieces.noteText,
     `--\n${pieces.helpText}`,
     links,
     `${pieces.notice}\n© ${year} ${COMPANY}`,
@@ -306,7 +321,7 @@ function plainText(pieces: RenderedPieces, href: string | undefined, year: numbe
  * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
  * @throws {Error} When the layout does not compile.
  */
-export async function renderMail(locale: string, spec: MailSpec): Promise<SendMailOptions> {
+export async function renderMail(locale: string, spec: MailSpec): Promise<RenderedMail> {
   const pieces = runWithLocale(locale, () => renderPieces(locale, spec));
   const href = spec.action?.href;
   const year = new Date().getUTCFullYear();
@@ -322,11 +337,12 @@ export async function renderMail(locale: string, spec: MailSpec): Promise<SendMa
       ACTION_URL: escapeHtml(href ?? ""),
       ACTION_LABEL: pieces.actionLabelHtml,
       NOTE: pieces.noteHtml,
+      DETAILS: spec.details?.html ?? "",
       HELP: pieces.helpHtml,
       LEGAL: dotted(pieces.legal.map(({ word, url }) => footerLink(escapeHtml(word), url))),
       NOTICE: escapeHtml(pieces.notice),
       YEAR: String(year),
     }),
-    text: plainText(pieces, href, year),
+    text: plainText(pieces, spec.details?.text, href, year),
   };
 }

@@ -413,7 +413,7 @@ export async function fulfillPayment(
 async function sendConfirmationFor(paymentId: string): Promise<boolean> {
   const view = await paymentRepo.getConfirmationView(paymentId);
   if (!view) return false;
-  const letter = renderPurchaseConfirmation(
+  const letter = await renderPurchaseConfirmation(
     view,
     view.timeZone,
     env.SUPPORT_EMAIL,

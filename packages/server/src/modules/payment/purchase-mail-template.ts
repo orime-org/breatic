@@ -36,6 +36,7 @@
 
 import { refundWindowCloses, t } from "@breatic/shared";
 import { runWithLocale } from "@breatic/core";
+import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
 import type { ConfirmationView } from "@server/modules/payment/payment.repo.js";
 import {
   consentTextAt,
@@ -107,27 +108,26 @@ function bothZones(at: Date, timeZone: string, locale: string): string {
   return `${local} (${timeZone}) · ${utc} (UTC)`;
 }
 
-/** The subject and both bodies of one confirmation. */
-export interface RenderedMail {
-  subject: string;
-  html: string;
-  text: string;
-}
+const SECTION_HEADING =
+  "margin:24px 0 8px;font-size:15px;font-weight:600;line-height:1.4;";
+const LIST = "margin:12px 0 0;padding-left:20px;font-size:14px;line-height:1.7;";
+const PARAGRAPH = "margin:0;font-size:14px;line-height:1.6;";
 
 /**
- * Render one purchase's confirmation email.
+ * Render one purchase's confirmation email, in the branded layout every
+ * product mail wears.
  * @param view - What this purchase is, as read from our own rows.
  * @param timeZone - The buyer's IANA zone, stored at checkout.
  * @param supportEmail - Where a buyer writes back. A deployment that has not
  *   named one gets no such line rather than an empty invitation to write to
  *   nobody.
- * @returns The subject and both bodies.
+ * @returns The laid-out mail (to / subject / html / text) for the outbox send.
  */
 export function renderPurchaseConfirmation(
   view: ConfirmationView,
   timeZone = "UTC",
   supportEmail = "",
-): RenderedMail {
+): Promise<RenderedMail> {
   const locale = view.locale;
   const paidAt = view.grantedAt ?? new Date();
   const refundBy = refundWindowCloses(paidAt);
@@ -142,7 +142,7 @@ export function renderPurchaseConfirmation(
     locale,
   );
 
-  return runWithLocale(locale, () => {
+  const details = runWithLocale(locale, () => {
     const facts = [
       t("server.purchase_mail.credits", {
         credits: String(view.creditsGranted),
@@ -167,17 +167,10 @@ export function renderPurchaseConfirmation(
       }),
       t("server.purchase_mail.order_ref", { ref: view.paymentId }),
     ];
-
     const consentHeading = t("server.purchase_mail.consent_heading");
     const refundHeading = t("server.purchase_mail.refund_heading");
-    const support =
-      supportEmail === ""
-        ? null
-        : t("server.purchase_mail.support", { email: supportEmail });
 
     const text = [
-      t("server.purchase_mail.intro"),
-      "",
       ...facts,
       "",
       consentHeading,
@@ -185,23 +178,30 @@ export function renderPurchaseConfirmation(
       "",
       refundHeading,
       ...refundLines.map(asPlainText),
-      ...(support === null ? [] : ["", support]),
     ].join("\n");
 
     const html = [
-      `<p>${t("server.purchase_mail.intro")}</p>`,
-      "<ul>",
+      `<ul style="${LIST}">`,
       ...facts.map((line) => `<li>${line}</li>`),
       "</ul>",
-      `<h3>${consentHeading}</h3>`,
-      `<p>${asHtml(consent)}</p>`,
-      `<h3>${refundHeading}</h3>`,
-      "<ul>",
+      `<div style="${SECTION_HEADING}">${consentHeading}</div>`,
+      `<p style="${PARAGRAPH}">${asHtml(consent)}</p>`,
+      `<div style="${SECTION_HEADING}">${refundHeading}</div>`,
+      `<ul style="${LIST}">`,
       ...refundLines.map((line) => `<li>${asHtml(line)}</li>`),
       "</ul>",
-      ...(support === null ? [] : [`<p>${support}</p>`]),
     ].join("\n");
 
-    return { subject: t("server.purchase_mail.subject"), html, text };
+    return { html, text };
+  });
+
+  return renderMail(locale, {
+    to: view.email,
+    subject: { key: "server.purchase_mail.subject" },
+    body: [{ key: "server.purchase_mail.intro" }],
+    details,
+    ...(supportEmail === ""
+      ? {}
+      : { note: { key: "server.purchase_mail.support", params: { email: supportEmail } } }),
   });
 }
