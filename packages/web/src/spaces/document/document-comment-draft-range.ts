@@ -30,9 +30,10 @@
  *   way y-prosemirror's cursor plugin places a cursor (`cursor-plugin.js`):
  *   taken again after every change to the body, so each one names the body
  *   as the change before it left it. An undo or redo of the reader's own is
- *   resolved from the names taken before the edit it takes back, kept on that
- *   edit's undo stack item the way y-prosemirror's undo plugin keeps the
- *   selection, so letters the undo writes back are followed.
+ *   resolved by Yjs alone from the names taken before the edit it takes back
+ *   (y-prosemirror's `restoreRelativeSelection`), kept on that edit's undo
+ *   stack item the way y-prosemirror's undo plugin keeps the selection, so
+ *   letters the undo writes back are followed.
  *
  * The start names the first letter covered and the end the last one, with its
  * association to the left (`assoc = -1`, which Yjs resolves to "after this
@@ -43,7 +44,8 @@
  * line between as new letters, so the letter an end names being deleted says
  * nothing about the reader's words. Such an end is found again by its line,
  * the same way as a mapped one; an end whose letter was itself deleted stands
- * where that letter was, and one whose whole row went with its letters goes
+ * where that letter was. One whose whole row went with its letters follows
+ * them into the row before when the row was joined onto it, and otherwise goes
  * to the nearest row still there, as a mapped position inside deleted content
  * goes to the edge of the deletion.
  *
@@ -112,6 +114,10 @@ import {
 } from '@web/spaces/document/document-link-tracking';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import {
+  keepOnUndoStack,
+  type UndoManagerLike,
+} from '@web/spaces/document/document-undo-selection';
+import {
   contentRangeOf,
   rowById,
 } from '@web/spaces/document/document-row-by-id';
@@ -154,18 +160,6 @@ let entries = 0;
 interface NamedBeforeEdit {
   readonly entry: number;
   readonly link: TrackedLink;
-}
-
-/** The undo manager's parts this reads. */
-interface UndoStack {
-  readonly currStackItem: { readonly meta: Map<unknown, unknown> } | null;
-  on(event: 'stack-item-added', listener: (event: StackItemEvent) => void): void;
-  off(event: 'stack-item-added', listener: (event: StackItemEvent) => void): void;
-}
-
-/** What `stack-item-added` hands its listeners. */
-interface StackItemEvent {
-  readonly stackItem: { readonly meta: Map<unknown, unknown> };
 }
 
 /** The sync binding, as a position conversion takes it. */
@@ -294,18 +288,15 @@ function inLine(doc: ProseMirrorNode, pos: number, line: EndLine): boolean {
  * into the gap it left, and a peer's editor that rewrites a line into another
  * line's words keeps the letters the two share.
  * @param tr - The change.
- * @param was - The end before it.
- * @param side - Which end it is.
+ * @param line - The line the end sat in before it, or null when it sat in none.
  * @param at - Where its path puts it, or null when the path cannot say.
  * @returns Where the end is now, or null once it is lost.
  */
 function carryEnd(
   tr: Transaction,
-  was: number,
-  side: Side,
+  line: EndLine | null,
   at: number | null,
 ): number | null {
-  const line = endLineAt(tr.before, was, side);
   if (line === null || (at !== null && inLine(tr.doc, at, line))) return at;
   return lineNow(tr.doc, line) ?? at;
 }
@@ -348,6 +339,46 @@ function letterGone(store: Y.Doc['store'], end: Y.RelativePosition): boolean {
 }
 
 /**
+ * Every row's id, in document order.
+ * @param doc - The body.
+ * @returns The ids.
+ */
+function rowIdsIn(doc: ProseMirrorNode): string[] {
+  const ids: string[] = [];
+  doc.descendants((node) => {
+    const rowId: unknown = node.attrs['id'];
+    if (typeof rowId === 'string') ids.push(rowId);
+    return true;
+  });
+  return ids;
+}
+
+/**
+ * Where an end goes when its row was joined onto the row before it: that row
+ * now holds its old words followed by the gone row's words, and the end keeps
+ * its letter there — the result the reader gets joining the two rows
+ * themselves, which ProseMirror maps.
+ * @param tr - The change.
+ * @param line - The line the end sat in before it.
+ * @returns Where the end is now, or null when the row was not joined.
+ */
+function joinedInto(tr: Transaction, line: EndLine): number | null {
+  const ids = rowIdsIn(tr.before);
+  const previous = ids[ids.indexOf(line.id) - 1];
+  if (previous === undefined) return null;
+  const was = rowById(tr.before, previous);
+  const now = rowById(tr.doc, previous);
+  const wasWords = was === undefined ? undefined : contentRangeOf(was);
+  const nowWords = now === undefined ? undefined : contentRangeOf(now);
+  if (wasWords === undefined || nowWords === undefined) return null;
+  const before = wordsBetween(tr.before, wasWords.from, wasWords.to);
+  if (wordsBetween(tr.doc, nowWords.from, nowWords.to) !== before + line.words) {
+    return null;
+  }
+  return nowWords.from + before.length + line.letter + (line.side === 'end' ? 1 : 0);
+}
+
+/**
  * Where an end goes once the whole row it sat in is gone with its letters: to the start of the
  * first row after it that is still there, or the end of the last row before
  * it, the way ProseMirror maps a position inside deleted content to the edge
@@ -359,12 +390,7 @@ function letterGone(store: Y.Doc['store'], end: Y.RelativePosition): boolean {
  * @returns Where the end is now, or null when no row on that side is left.
  */
 function besideGoneRow(tr: Transaction, id: string, side: Side): number | null {
-  const ids: string[] = [];
-  tr.before.descendants((node) => {
-    const rowId: unknown = node.attrs['id'];
-    if (typeof rowId === 'string') ids.push(rowId);
-    return true;
-  });
+  const ids = rowIdsIn(tr.before);
   const at = ids.indexOf(id);
   const beside = side === 'start' ? ids.slice(at + 1) : ids.slice(0, at).reverse();
   for (const other of beside) {
@@ -380,7 +406,9 @@ function besideGoneRow(tr: Transaction, id: string, side: Side): number | null {
  * writes a moved line, a line whose type changed, and every line between as
  * new letters, so a letter the end names being gone says nothing about the
  * reader's words: the end is found again by its line when the line is still
- * there, and stands where the letter was otherwise.
+ * there. When the line is gone and the letter with it, the end follows the
+ * line's words into the line it was joined onto, or else goes to the edge of
+ * the nearest surviving line; otherwise it stands where the letter is.
  * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param end - The end as Yjs names it.
@@ -407,9 +435,29 @@ function endAcrossYjs(
     rowById(tr.doc, line.id) === undefined &&
     letterGone(bound.doc.store, end)
   ) {
-    return besideGoneRow(tr, line.id, side);
+    return joinedInto(tr, line) ?? besideGoneRow(tr, line.id, side);
   }
-  return carryEnd(tr, was, side, at);
+  return carryEnd(tr, line, at);
+}
+
+/**
+ * Resolves both ends from their Yjs names alone, the way y-prosemirror puts
+ * the selection back on an undo (`restoreRelativeSelection`): the names were
+ * taken before the edit being taken back, and Yjs follows a letter the undo
+ * writes back to where it is now.
+ * @param bound - The sync binding, rebuilt to the body after the change.
+ * @param link - The range as Yjs named it before the edit.
+ * @returns Where the range is now, or null when a name resolves to nothing.
+ */
+function resolveNames(bound: Binding, link: TrackedLink): DraftRange | null {
+  const from = relativePositionToAbsolutePosition(
+    bound.doc,
+    bound.type,
+    link.start,
+    bound.mapping,
+  );
+  const to = relativePositionToAbsolutePosition(bound.doc, bound.type, link.end, bound.mapping);
+  return from !== null && to !== null ? { from, to } : null;
 }
 
 /**
@@ -493,7 +541,8 @@ export function mapDraftRange(
    */
   const carry = (pos: number, bias: 1 | -1): number => {
     const mapped = tr.mapping.map(pos, bias);
-    return carryEnd(tr, pos, bias === 1 ? 'start' : 'end', mapped) ?? mapped;
+    const line = endLineAt(tr.before, pos, bias === 1 ? 'start' : 'end');
+    return carryEnd(tr, line, mapped) ?? mapped;
   };
   const from = carry(range.from, 1);
   const to = carry(range.to, -1);
@@ -529,6 +578,7 @@ function changesText(tr: Transaction): boolean {
  * @param current - The draft before it.
  * @param before - The state it applies to, whose sync binding is the live one.
  * @param tracked - The range as Yjs names it, or null when it is not named.
+ * @param undoing - Whether the change is the reader's own undo or redo.
  * @returns The draft after it: the same object when nothing moved, dropped
  *   once the text it covered is gone.
  */
@@ -537,13 +587,15 @@ function carryDraft(
   current: Draft & { kind: 'aimed' },
   before: EditorState,
   tracked: TrackedLink | null,
+  undoing: boolean,
 ): Draft {
   const bound = syncBindingOf(before);
   // The binding has rebuilt its index to the new nodes before it dispatches
   // (`_typeChanged`), so the relative positions resolve against this change.
   const carried =
     fromYjs(tr) && tracked !== null && bound !== null
-      ? carryAcrossYjs(tr, bound, tracked, current)
+      ? ((undoing ? resolveNames(bound, tracked) : null) ??
+        carryAcrossYjs(tr, bound, tracked, current))
       : mapDraftRange(current, tr);
   const moved =
     carried === null || carried.to <= carried.from
@@ -620,6 +672,10 @@ export const onDraftChange: (listener: () => void) => () => void =
 export const documentCommentDraftRange = createExtension(() => {
   // The open draft's range as Yjs names it.
   let tracked: TrackedLink | null = null;
+  // The names as they stood when the current Yjs transaction began.
+  let beforeYjs: TrackedLink | null = null;
+  // Whether the Yjs transaction under way is the reader's undo or redo.
+  let undoing = false;
   return {
     key: 'document-comment-draft-range',
     prosemirrorPlugins: [
@@ -671,7 +727,7 @@ export const documentCommentDraftRange = createExtension(() => {
             // unchanged — which is what a reader clicking elsewhere before
             // typing their comment needs.
             if (current?.kind !== 'aimed' || !changesText(tr)) return current;
-            return carryDraft(tr, current, before, tracked);
+            return carryDraft(tr, current, before, tracked, undoing);
           },
         },
 
@@ -693,44 +749,54 @@ export const documentCommentDraftRange = createExtension(() => {
           const doc = syncBindingOf(view.state)?.doc;
           const undo = (
             yUndoPluginKey.getState(view.state) as
-              | { undoManager?: UndoStack }
+              | { undoManager?: UndoManagerLike }
               | undefined
           )?.undoManager;
-          // This view's own key on the undo stack items.
-          const stackKey = {};
           /**
            * Keeps the range as named before the reader's edit on the stack
-           * item the edit made, the way y-prosemirror's undo plugin keeps the
-           * selection (`undo-plugin.js`, `stack-item-added`). It runs while
-           * the binding writes the edit into Yjs, before this view names the
-           * range again.
-           * @param event - The item just pushed.
+           * item the edit made, and hands an undo or redo back the range as
+           * named before the edit it takes back — the way y-prosemirror's undo
+           * plugin keeps and restores the selection (`undo-plugin.js`), with
+           * the handover moved ahead of the observer for the reason
+           * `document-undo-selection.ts` gives.
            */
-          const onAdded = (event: StackItemEvent): void => {
-            const range = draftRangeIn(view.state);
-            if (tracked === null || range === null) return;
-            const named: NamedBeforeEdit = { entry: range.entry, link: tracked };
-            event.stackItem.meta.set(stackKey, named);
-          };
+          const stopKeeping =
+            doc === undefined || undo === undefined
+              ? undefined
+              : keepOnUndoStack(
+                doc,
+                undo,
+                {},
+                (): NamedBeforeEdit | null => {
+                  const range = draftRangeIn(view.state);
+                  return beforeYjs === null || range === null
+                    ? null
+                    : { entry: range.entry, link: beforeYjs };
+                },
+                (stored) => {
+                  undoing = true;
+                  const named = stored as NamedBeforeEdit | undefined;
+                  if (named !== undefined && named.entry === draftRangeIn(view.state)?.entry) {
+                    tracked = named.link;
+                  }
+                },
+              );
           /**
-           * Hands an undo or redo the range as named before the edit it takes
-           * back, so Yjs follows a letter the undo writes back to where it is
-           * now. `beforeObserverCalls` fires ahead of the observer that
-           * dispatches the change, where `document-undo-selection.ts` hands
-           * over the selection for the same reason.
-           * @param transaction - The Yjs transaction being cleaned up.
+           * Takes the names as they stand before a Yjs transaction, which is
+           * what the stack item it may push has to keep — y-prosemirror takes
+           * the selection it restores at the same moment
+           * (`beforeAllTransactions`). An undo or redo retakes the names in
+           * this view before Yjs pushes the item it makes.
            */
-          const onBeforeObserverCalls = (transaction: Y.Transaction): void => {
-            if (undo === undefined || transaction.origin !== undo) return;
-            const named = undo.currStackItem?.meta.get(stackKey) as
-              | NamedBeforeEdit
-              | undefined;
-            if (named !== undefined && named.entry === draftRangeIn(view.state)?.entry) {
-              tracked = named.link;
-            }
+          const onBeforeAll = (): void => {
+            beforeYjs = tracked;
           };
-          undo?.on('stack-item-added', onAdded);
-          doc?.on('beforeObserverCalls', onBeforeObserverCalls);
+          /** Ends the undo or redo once its transactions are over. */
+          const onAfterAll = (): void => {
+            undoing = false;
+          };
+          doc?.on('beforeAllTransactions', onBeforeAll);
+          doc?.on('afterAllTransactions', onAfterAll);
           return {
             update: (next, prev): void => {
               const range = draftRangeIn(next.state);
@@ -746,8 +812,9 @@ export const documentCommentDraftRange = createExtension(() => {
               watching.update?.(next, prev);
             },
             destroy: (): void => {
-              undo?.off('stack-item-added', onAdded);
-              doc?.off('beforeObserverCalls', onBeforeObserverCalls);
+              stopKeeping?.();
+              doc?.off('beforeAllTransactions', onBeforeAll);
+              doc?.off('afterAllTransactions', onAfterAll);
               watching.destroy?.();
             },
           };

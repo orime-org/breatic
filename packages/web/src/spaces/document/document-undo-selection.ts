@@ -65,29 +65,83 @@
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 
+/** The bound Yjs document, carrying the transaction-lifecycle events. */
+interface YDocLike {
+  on(event: 'beforeObserverCalls', handler: (transaction: YTransactionLike) => void): void;
+  off(event: 'beforeObserverCalls', handler: (transaction: YTransactionLike) => void): void;
+}
+
 /** The sync binding fields this fix touches. */
 interface SyncBinding {
   /** The relative selection the next Yjs→PM restore transaction consumes. */
   beforeTransactionSelection: unknown;
-  /** The bound document, carrying the transaction-lifecycle events. */
-  doc: {
-    on: (event: string, handler: (transaction: YTransactionLike) => void) => void;
-    off: (event: string, handler: (transaction: YTransactionLike) => void) => void;
-  };
+  /** The bound document. */
+  doc: YDocLike;
+}
+
+/** What `stack-item-added` hands its listeners. */
+interface StackItemEvent {
+  /** The item just pushed. */
+  readonly stackItem: { readonly meta: Map<unknown, unknown> };
 }
 
 /** The undo manager fields this fix reads. */
-interface UndoManagerLike {
+export interface UndoManagerLike {
   /** The item being popped, set for the duration of the undo transact. */
-  currStackItem: { meta: Map<unknown, unknown> } | null;
-  on: (event: string, handler: (payload: never) => void) => void;
-  off: (event: string, handler: (payload: never) => void) => void;
+  readonly currStackItem: { readonly meta: Map<unknown, unknown> } | null;
+  on(event: 'stack-item-added', handler: (event: StackItemEvent) => void): void;
+  off(event: 'stack-item-added', handler: (event: StackItemEvent) => void): void;
 }
 
 /** The Yjs transaction field this fix reads. */
 interface YTransactionLike {
   /** Whatever passed the change along; the manager itself on undo and redo. */
   origin: unknown;
+}
+
+/**
+ * Keeps a value on every undo stack item and hands it back when that item is
+ * undone or redone — on `beforeObserverCalls`, ahead of the observer that turns
+ * the change into a ProseMirror transaction, for the reason given at the top of
+ * this file.
+ * @param doc - The bound Yjs document.
+ * @param undoManager - The undo manager.
+ * @param key - The key the value is kept under on each item's meta.
+ * @param capture - Gives the value for an item just pushed, or null to keep none.
+ * @param restore - Takes the value kept on the item being undone or redone, or
+ *   undefined when it has none; called on every undo and redo transaction.
+ * @returns A function that stops keeping and handing back.
+ */
+export function keepOnUndoStack(
+  doc: YDocLike,
+  undoManager: UndoManagerLike,
+  key: unknown,
+  capture: () => unknown,
+  restore: (stored: unknown) => void,
+): () => void {
+  /**
+   * Keeps the captured value on the item just pushed.
+   * @param event - The event payload.
+   * @param event.stackItem - The item just pushed.
+   */
+  const onAdded = ({ stackItem }: StackItemEvent): void => {
+    const value = capture();
+    if (value != null) stackItem.meta.set(key, value);
+  };
+  /**
+   * Hands back the value kept on the item being undone or redone.
+   * @param transaction - The Yjs transaction being cleaned up.
+   */
+  const onBeforeObserverCalls = (transaction: YTransactionLike): void => {
+    if (transaction.origin !== undoManager) return;
+    restore(undoManager.currStackItem?.meta.get(key));
+  };
+  undoManager.on('stack-item-added', onAdded);
+  doc.on('beforeObserverCalls', onBeforeObserverCalls);
+  return (): void => {
+    undoManager.off('stack-item-added', onAdded);
+    doc.off('beforeObserverCalls', onBeforeObserverCalls);
+  };
 }
 
 /** This plugin's own state: the pre-edit selection, kept clean. */
@@ -156,50 +210,18 @@ export function documentUndoSelectionPlugin(): Plugin<PreEditState> {
         return {};
       }
 
-      /**
-       * Hands the popped item's stored selection to the binding while the
-       * transaction is still being cleaned up, ahead of the observer that
-       * builds the restore transaction.
-       * @param transaction - The Yjs transaction being cleaned up.
-       */
-      const onBeforeObserverCalls = (transaction: YTransactionLike): void => {
-        if (transaction.origin !== undoManager) {
-          return;
-        }
-        const stored = undoManager.currStackItem?.meta.get(binding);
-        if (stored != null) {
-          binding.beforeTransactionSelection = stored;
-        }
-      };
-
-      /**
-       * Replaces the selection upstream just stored with the one from before
-       * the user's edit.
-       * @param payload - The event payload.
-       * @param payload.stackItem - The item just pushed.
-       * @param payload.stackItem.meta - Its per-binding meta map.
-       */
-      const onAdded = ({
-        stackItem,
-      }: {
-        stackItem: { meta: Map<unknown, unknown> };
-      }): void => {
-        const { preEditSel } = key.getState(view.state) ?? { preEditSel: null };
-        if (preEditSel != null) {
-          stackItem.meta.set(binding, preEditSel);
-        }
-      };
-
-      binding.doc.on('beforeObserverCalls', onBeforeObserverCalls);
-      undoManager.on('stack-item-added', onAdded as (p: never) => void);
-
-      return {
-        /** Unsubscribes both. */
-        destroy: (): void => {
-          binding.doc.off('beforeObserverCalls', onBeforeObserverCalls);
-          undoManager.off('stack-item-added', onAdded as (p: never) => void);
+      // Keyed by the binding, which is where upstream keeps the selection, so
+      // this overwrites what it stored.
+      const stop = keepOnUndoStack(
+        binding.doc,
+        undoManager,
+        binding,
+        () => key.getState(view.state)?.preEditSel ?? null,
+        (stored) => {
+          if (stored != null) binding.beforeTransactionSelection = stored;
         },
-      };
+      );
+      return { destroy: stop };
     },
   });
 }
