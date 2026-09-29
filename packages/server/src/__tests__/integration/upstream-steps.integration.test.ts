@@ -206,14 +206,16 @@ describe("task_upstream_steps", () => {
     });
   });
 
-  it("marks a step failed", async () => {
+  it("marks a step failed with the upstream's words, keeping what it already learned", async () => {
     const { userId } = await seedStudio();
     const taskId = await seedTask(userId);
     const [step] = await upstreamStepRepo.ensureSteps(taskId, [PLAN[0]]);
+    await upstreamStepRepo.recordInline(step!.id, { description: "a cat" }, 0);
 
-    await upstreamStepRepo.markFailed(step!.id);
+    await upstreamStepRepo.markFailed(step!.id, "audio too short");
 
-    expect((await upstreamStepRepo.listSteps(taskId))[0]?.status).toBe("failed");
+    const [row] = await upstreamStepRepo.listSteps(taskId);
+    expect(row).toMatchObject({ status: "failed", output: { description: "a cat", error: "audio too short" } });
   });
 
   it("refuses a status or a kind the executor does not know", async () => {
