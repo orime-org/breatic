@@ -236,6 +236,69 @@ test.describe('the card a comment is written in', () => {
     }
   });
 
+  test('shows its box below the panel header when the words are under it or above the screen', async ({
+    page,
+  }) => {
+    // The card lands level with its words, which can be under the panel's
+    // header or above the screen; the body is then moved just enough to show
+    // the box the reader is about to type in (design §9.4.0).
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openFreshDocument(page);
+    for (let i = 0; i < 60; i += 1) {
+      await page.keyboard.type(`line ${String(i)} with some words`);
+      await page.keyboard.press('Enter');
+    }
+    await page.keyboard.type('long '.repeat(900));
+    const scroller = page
+      .locator('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      .first();
+    const boxInView = (): Promise<boolean> =>
+      page.evaluate(() => {
+        const box = document.querySelector('[data-testid="doc-comment-draft-input"]')!;
+        const header = document.querySelector('[data-testid="doc-comment-rail-header"]')!;
+        const view = document
+          .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+          .getBoundingClientRect();
+        const r = box.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return (
+          r.top >= header.getBoundingClientRect().bottom &&
+          r.bottom <= view.bottom &&
+          hit === box
+        );
+      });
+
+    // Words in the strip the header covers.
+    await scrollBodyTo(page, 1800);
+    const underHeader = await page.evaluate((sel) => {
+      const top = document
+        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+        .getBoundingClientRect().top;
+      return Array.from(document.querySelectorAll(`${sel} p`)).findIndex((p) => {
+        const at = p.getBoundingClientRect().top - top;
+        return at >= 2 && at <= 30;
+      });
+    }, EDITOR);
+    expect(underHeader).toBeGreaterThan(-1);
+    await page.locator(`${EDITOR} p`).nth(underHeader).click({ clickCount: 3 });
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await expect(page.getByTestId('doc-comment-draft-input')).toBeFocused();
+    await expect.poll(boxInView).toBe(true);
+    await page.getByTestId('doc-comment-draft-input').press('Escape');
+    await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+
+    // A long paragraph whose first line is above the screen.
+    const long = page.locator(`${EDITOR} p`).last();
+    await scroller.evaluate((node) => {
+      node.scrollTo(0, node.scrollHeight);
+    });
+    const at = (await long.boundingBox())!;
+    await long.click({ clickCount: 3, position: { x: 50, y: 400 - at.y } });
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await expect(page.getByTestId('doc-comment-draft-input')).toBeFocused();
+    await expect.poll(boxInView).toBe(true);
+  });
+
   test('lets an empty one go on a press on blank panel space', async ({
     page,
   }) => {
@@ -299,7 +362,15 @@ test.describe('the card a comment is written in', () => {
     // Long enough for the menu to have closed and the focus to have moved.
     await page.waitForTimeout(500);
     await expect(card).toBeVisible();
-    await page.getByTestId('doc-comment-draft-input').fill('from the handle');
+    // The box keeps the focus the entry gave it: the menu closing does not
+    // take it back to the body, so the reader's typing lands in the card.
+    await page.keyboard.type('from the handle');
+    await expect(page.getByTestId('doc-comment-draft-input')).toHaveValue(
+      'from the handle',
+    );
+    await expect(page.locator(`${EDITOR} p`).first()).toHaveText(
+      'a block to comment on',
+    );
     await page.getByTestId('doc-comment-draft-save').click();
     await expect(page.locator(`${EDITOR} .bn-thread-mark`)).not.toHaveCount(0);
   });

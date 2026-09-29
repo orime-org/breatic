@@ -2076,54 +2076,40 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('ec');
     });
 
-    it('stays on its words when a peer joins its line onto the one above', async () => {
-      // The same result as the reader joining the lines themselves.
-      show('editor', ['alpha bravo charlie', 'delta echo foxtrot', 'golf']);
-      const second = lineStarts()[1]!;
-      aimAt(second + 6, second + 10);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
-
-      expect(lines()).toEqual(['alpha bravo charliedelta echo foxtrot', 'golf']);
-      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
-      expect(aimedWords()).toBe('echo');
-    });
-
-    it('keeps its last line\'s words when a peer joins that line onto its first', async () => {
-      show('editor', ['aa0 xx', 'bb1 yy cc', 'zz2']);
-      const [s0, s1] = lineStarts();
-      aimAt(s0! + 4, s1! + 3);
-      await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
-
-      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
-
-      expect(lines()).toEqual(['aa0 xxbb1 yy cc', 'zz2']);
-      expect(aimedWords()).toBe('xxbb1');
-    });
-
+    // A peer joining the draft's line onto the one above writes its words as
+    // new letters there; what the draft covered cannot be told from the text,
+    // so it says so and keeps what was written (A21: a peer editing the same
+    // lines at the same time is outside the promise).
     it.each([
-      ['types over', 'Q', 'aa0 xQ1 yy'],
-      ['deletes', '', 'aa0 x1 yy'],
-    ] as const)('stays on its words when a peer %s a stretch across the break above its line', async (_what, typed, joined) => {
+      ['presses Backspace at its line start', null],
+      ['types over a stretch across the break above its line', 'Q'],
+      ['deletes a stretch across the break above its line', ''],
+    ] as const)('says so and keeps what was written when a peer %s', async (_what, typed) => {
       show('editor', ['aa0 xx', 'bb1 yy', 'zz']);
       const second = lineStarts()[1]!;
       aimAt(second + 4, second + 6);
       await screen.findByTestId('doc-comment-draft-card');
+      await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
       const peer = await peerEditor();
 
-      act(() => {
-        const view = peer.editor.prosemirrorView!;
-        const [first, next] = lineStarts(view.state);
-        view.dispatch(view.state.tr.insertText(typed, first! + 5, next! + 2));
-      });
+      if (typed === null) {
+        await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
+      } else {
+        act(() => {
+          const view = peer.editor.prosemirrorView!;
+          const [first, next] = lineStarts(view.state);
+          view.dispatch(view.state.tr.insertText(typed, first! + 5, next! + 2));
+        });
+      }
 
-      expect(lines()).toEqual([joined, 'zz']);
-      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
-      expect(aimedWords()).toBe('yy');
+      expect(await screen.findByTestId('doc-comment-draft-dropped')).toBeInTheDocument();
+      const again = lineStarts()[0]!;
+      aimAt(again, again + 3);
+      expect(await screen.findByTestId('doc-comment-draft-input')).toHaveValue('half');
     });
+
+
+
 
     it('says so when a peer presses Enter before its words in their line', async () => {
       // The peer's editor writes the second half, words and all, as new
