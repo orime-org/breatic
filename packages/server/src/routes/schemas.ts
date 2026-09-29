@@ -115,9 +115,9 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("upscale"), video: z.string(), target_resolution: z.string().optional(), model: z.string().optional(), ...canvasTaskBinding }),
   z.object({ tool: z.literal("interpolate"), video: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
   z.object({ tool: z.literal("extend"), video: z.string(), prompt: z.string().min(1), model: z.string().optional(), ...canvasTaskBinding }),
-  z.object({ tool: z.literal("edit"), video: z.string(), prompt: z.string(), reference_images: z.array(z.string()).optional(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("edit"), video: z.string(), prompt: z.string().min(1), reference_images: z.array(z.string()).optional(), model: z.string().optional(), ...canvasTaskBinding }),
   z.object({ tool: z.literal("motion"), image: z.string(), video: z.string(), prompt: z.string().default(""), model: z.string().optional(), ...canvasTaskBinding }),
-  z.object({ tool: z.literal("animate"), video: z.string(), image: z.string().optional(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("animate"), video: z.string(), image: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
   z.object({ tool: z.literal("talking-head"), image: z.string(), audio: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
   // Local (Worker-side FFmpeg) mini-tool — first non-vendor video op.
   // `host_node_id` identifies the mixed-editor container when the
@@ -240,9 +240,9 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
 
 // Mini-Tools: Audio
 export const audioToolSchema = z.discriminatedUnion("tool", [
-  z.object({ tool: z.literal("sfx"), prompt: z.string(), duration: z.number().optional(), loop: z.boolean().default(false), model: z.string().optional(), ...canvasTaskBinding }),
-  z.object({ tool: z.literal("tts"), text: z.string(), voice_id: z.string().optional(), model: z.string().optional(), ...canvasTaskBinding }),
-  z.object({ tool: z.literal("voice-clone"), text: z.string(), audio: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("sfx"), prompt: z.string().min(1), duration: z.number().optional(), loop: z.boolean().default(false), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("tts"), text: z.string().min(1), voice_id: z.string().optional(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("voice-clone"), text: z.string().min(1), audio: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
   z.object({ tool: z.literal("separate"), audio: z.string(), mode: z.string().default("vocals"), ...canvasTaskBinding }),
   z.object({ tool: z.literal("extend"), audio: z.string(), prompt: z.string().default(""), model: z.string().optional(), ...canvasTaskBinding }),
 ]);

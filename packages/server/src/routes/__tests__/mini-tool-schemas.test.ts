@@ -57,6 +57,13 @@ describe("video mini-tool requests", () => {
     expect(() => videoToolSchema.parse({ ...BINDING, tool: "motion", image: "https://cdn/i.png" })).toThrow();
   });
 
+  // Each against the endpoint's own `required` list: Wan 3.0 video edit needs
+  // a prompt, Wan 2.2 Animate needs the picture as well as the clip.
+  it("requires what the edit and animate models cannot run without", () => {
+    expect(() => videoToolSchema.parse({ ...BINDING, tool: "edit", video: "https://cdn/v.mp4", prompt: "" })).toThrow();
+    expect(() => videoToolSchema.parse({ ...BINDING, tool: "animate", video: "https://cdn/v.mp4" })).toThrow();
+  });
+
   it("takes the upscale's target resolution and carries no interpolation multiplier", () => {
     const upscale = videoToolSchema.parse({ ...BINDING, tool: "upscale", video: "https://cdn/v.mp4", target_resolution: "4k" });
     expect(upscale).toMatchObject({ target_resolution: "4k" });
@@ -66,6 +73,13 @@ describe("video mini-tool requests", () => {
 });
 
 describe("audio mini-tool requests", () => {
+  // SFX 1.6 needs its text prompt; both speech models need the words to say.
+  it("refuses an empty prompt or text the model cannot run without", () => {
+    expect(() => audioToolSchema.parse({ ...BINDING, tool: "sfx", prompt: "" })).toThrow();
+    expect(() => audioToolSchema.parse({ ...BINDING, tool: "tts", text: "" })).toThrow();
+    expect(() => audioToolSchema.parse({ ...BINDING, tool: "voice-clone", text: "", audio: "https://cdn/a.mp3" })).toThrow();
+  });
+
   it("names the sound effect's length the way the model reads it", () => {
     const sfx = audioToolSchema.parse({ ...BINDING, tool: "sfx", prompt: "rain", duration: 6, loop: true, prompt_influence: 0.5 });
     expect(sfx).toMatchObject({ duration: 6, loop: true });
