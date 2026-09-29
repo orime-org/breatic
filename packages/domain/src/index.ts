@@ -31,6 +31,7 @@ export {
   type UsageFeature,
   type UsageSource,
 } from "@domain/credit/usage-recorder.js";
+export { usageContextFor } from "@domain/agent/tools/usage-context.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──

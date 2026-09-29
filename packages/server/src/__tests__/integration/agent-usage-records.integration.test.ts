@@ -14,6 +14,9 @@ import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 let provider = "deepseek";
 let finishMetadata: { openrouter: { usage: { cost: number } } } | undefined;
+/** When set, the first model call of a turn asks for this search first. */
+let searchFirst: string | undefined;
+let modelCalls = 0;
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
@@ -23,6 +26,18 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     resolveProvider: () => provider,
     getModel: () =>
       modelProducing(() => {
+        modelCalls += 1;
+        if (searchFirst !== undefined && modelCalls === 1) {
+          return [
+            {
+              type: "tool-call",
+              toolCallId: "search-1",
+              toolName: "web_search",
+              input: JSON.stringify({ query: searchFirst }),
+            },
+            finishing("tool-calls", 1),
+          ];
+        }
         const finish = finishing("stop", 1_000_000);
         const reported =
           finish.type === "finish" && finishMetadata !== undefined
@@ -46,6 +61,7 @@ let app: Hono;
 beforeAll(async () => {
   initCore({
     ...process.env,
+    BRAVE_SEARCH_API_KEY: "brave-key-for-this-suite",
     PAYMENT_ENABLED: "true",
     STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
     STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
@@ -54,6 +70,20 @@ beforeAll(async () => {
   sql = postgres(inject("DATABASE_URL"), { max: 4, prepare: false });
   const { createApp } = await import("@server/app.js");
   app = createApp();
+});
+
+// Brave, answered in-process: the only outbound request these turns make.
+vi.stubGlobal("fetch", async (url: string | URL) => {
+  if (!String(url).startsWith("https://api.search.brave.com/")) {
+    throw new Error(`unexpected request to ${String(url)}`);
+  }
+  return new Response(
+    JSON.stringify({
+      grounding: { generic: [{ url: "https://a.example", title: "A", snippets: ["a"] }] },
+      sources: {},
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
 });
 
 afterAll(async () => {
@@ -172,6 +202,32 @@ describe("a chat turn's model calls are recorded and charged at their cost", () 
     expect(row).toMatchObject({ cost_source: "provider" });
     expect(Number(row!.cost_usd)).toBeCloseTo(0.0123, 8);
     expect(Number(row!.credits)).toBeCloseTo(1.23, 6);
+  }, 60_000);
+});
+
+describe("a chat turn's tool calls are recorded under the same turn", () => {
+  it("records the Brave search a turn made beside its model calls", async () => {
+    provider = "deepseek";
+    finishMetadata = undefined;
+    searchFirst = "noir lighting";
+    modelCalls = 0;
+    try {
+      const seeded = await seed(100_000);
+      expect(await send(seeded)).toBe(200);
+
+      const rows = await sql<{ operation_key: string; source: string; model: string; cost_usd: string }[]>`
+        SELECT operation_key, source, model, cost_usd FROM agent_usage_records
+        WHERE actor_user_id = ${seeded.userId} ORDER BY created_at
+      `;
+      const search = rows.filter((row) => row.source === "tool:web_search");
+      expect(search).toHaveLength(1);
+      expect(search[0]).toMatchObject({ model: "brave_web_search" });
+      expect(Number(search[0]!.cost_usd)).toBeCloseTo(0.005, 8);
+      expect(rows.filter((row) => row.source === "model")).toHaveLength(2);
+      expect(new Set(rows.map((row) => row.operation_key)).size).toBe(1);
+    } finally {
+      searchFirst = undefined;
+    }
   }, 60_000);
 });
 

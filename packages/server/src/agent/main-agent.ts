@@ -22,7 +22,7 @@ import type { AskUserPayload } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
-import { creditLotService, createUsageRecorder } from "@breatic/domain";
+import { creditLotService, createUsageRecorder, usageContextFor } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
 import { userTurnForModel } from "@breatic/shared";
@@ -354,6 +354,11 @@ export class MainAgent {
         system: agentConfig.instructions,
         messages,
         tools: agentConfig.tools,
+        // The paying tools record their calls on this turn's recorder. Cast
+        // because the tool set arrives as a plain record, whose context type
+        // the SDK reads as absent; each paying tool's `contextSchema` is what
+        // checks this at run time, before its `execute`.
+        toolsContext: usageContextFor(agentConfig.tools, usage) as never,
         stopWhen: [stepCountIs(agentCfg.max_tool_iterations), stopIfItAsked],
         // Per call, which is the only unit there is: the `stopWhen` above
         // lets one turn make many, and each of them is bounded by this. An

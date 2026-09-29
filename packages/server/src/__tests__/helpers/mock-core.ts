@@ -530,6 +530,9 @@ function usageRecorderDouble(): {
 
 export const domainMock = () => ({
   createUsageRecorder: vi.fn(usageRecorderDouble),
+  // The same shape as the real one: every tool in the set gets the recorder.
+  usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
+    Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
   SMALLEST_CREDIT: 0.000001,
   assetService: mocks.assetService,
   uploadGrantService: mocks.uploadGrantService,
