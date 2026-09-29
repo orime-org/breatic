@@ -531,7 +531,30 @@
       "refuseExecuteNoReference": "전체 곡, 멜로디, 보컬 중 하나를 고르세요",
       "creditsPerThousandChars": "{credits} / 1000자",
       "itemsAdd": "추가",
-      "itemsRemove": "삭제"
+      "itemsRemove": "삭제",
+      "refuseExecuteNoSpeakers": "화자를 입력하세요",
+      "audioSettings": "음성 및 설정",
+      "audioVoice": "음성",
+      "audioReadingMode": "낭독 방식",
+      "audioReadingSingle": "1인",
+      "audioReadingDialogue": "대화 ({count}인)",
+      "audioDialogueSummary": "대화 · {count}인",
+      "audioSpeakersNote": "대사는 \"이름: 대사\"로 적습니다",
+      "audioLanguageSearch": "언어 검색…",
+      "audioOptionEmpty": "일치하는 항목이 없습니다",
+      "audioParam": {
+        "language": "언어",
+        "speakers": "화자",
+        "emotion": "감정",
+        "pronunciation_dict": "발음",
+        "loop": "끊김 없는 반복"
+      },
+      "audioField": {
+        "speaker": "이름",
+        "voice": "음성",
+        "text": "텍스트",
+        "pronunciation": "읽는 법"
+      }
     },
     "nodeMenu": {
       "generate": "생성",

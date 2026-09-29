@@ -531,7 +531,30 @@
       "refuseExecuteNoReference": "挑一段整曲、旋律或人声",
       "creditsPerThousandChars": "{credits} / 千字",
       "itemsAdd": "添加",
-      "itemsRemove": "移除"
+      "itemsRemove": "移除",
+      "refuseExecuteNoSpeakers": "请填好说话人",
+      "audioSettings": "音色与参数",
+      "audioVoice": "音色",
+      "audioReadingMode": "朗读方式",
+      "audioReadingSingle": "单人",
+      "audioReadingDialogue": "对话（{count} 人）",
+      "audioDialogueSummary": "对话 · {count} 人",
+      "audioSpeakersNote": "台词写成「名字：台词」",
+      "audioLanguageSearch": "搜索语言…",
+      "audioOptionEmpty": "没有匹配项",
+      "audioParam": {
+        "language": "语言",
+        "speakers": "说话人",
+        "emotion": "情绪",
+        "pronunciation_dict": "读音",
+        "loop": "无缝循环"
+      },
+      "audioField": {
+        "speaker": "名字",
+        "voice": "音色",
+        "text": "文字",
+        "pronunciation": "读作"
+      }
     },
     "nodeMenu": {
       "generate": "生成",

@@ -90,6 +90,13 @@ describe('evaluateExecute — which precondition is the one that fails', () => {
     ).toBeNull();
   });
 
+  it('names the speakers when a dialogue has fewer complete ones than the model takes', () => {
+    // Gemini takes exactly two; one row left without a name reaches the
+    // upstream as a single speaker and is refused after the run started.
+    expect(refusalOf({ ...ok, speakersShort: true })).toBe('speakers-missing');
+    expect(refusalOf({ ...ok, speakersShort: false })).toBeNull();
+  });
+
   it('ignores the voice for a model that takes none', () => {
     expect(
       refusalOf({ ...ok, voiceRequired: false, voiceChosen: false }),
@@ -379,6 +386,7 @@ describe('evaluateExecute — the sources the run still needs', () => {
       'prompt-missing',
       'prompt-too-long',
       'voice-missing',
+      'speakers-missing',
       'source-missing',
       'sources-missing',
       'lyrics-missing',

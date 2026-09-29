@@ -531,7 +531,30 @@
       "refuseExecuteNoReference": "楽曲・メロディ・ボーカルのいずれかを選んでください",
       "creditsPerThousandChars": "{credits} / 1000文字",
       "itemsAdd": "追加",
-      "itemsRemove": "削除"
+      "itemsRemove": "削除",
+      "refuseExecuteNoSpeakers": "話者を入力してください",
+      "audioSettings": "音声と設定",
+      "audioVoice": "音声",
+      "audioReadingMode": "読み上げ方",
+      "audioReadingSingle": "1 人",
+      "audioReadingDialogue": "対話（{count} 人）",
+      "audioDialogueSummary": "対話 · {count} 人",
+      "audioSpeakersNote": "セリフは「名前：セリフ」と書きます",
+      "audioLanguageSearch": "言語を検索…",
+      "audioOptionEmpty": "一致する項目がありません",
+      "audioParam": {
+        "language": "言語",
+        "speakers": "話者",
+        "emotion": "感情",
+        "pronunciation_dict": "読み方",
+        "loop": "シームレスループ"
+      },
+      "audioField": {
+        "speaker": "名前",
+        "voice": "音声",
+        "text": "テキスト",
+        "pronunciation": "読み"
+      }
     },
     "nodeMenu": {
       "generate": "生成",

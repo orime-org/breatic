@@ -543,7 +543,30 @@
       "refuseExecuteNoReference": "Pick a song, melody or vocals",
       "creditsPerThousandChars": "{credits} / 1K chars",
       "itemsAdd": "Add",
-      "itemsRemove": "Remove"
+      "itemsRemove": "Remove",
+      "refuseExecuteNoSpeakers": "Fill in the speakers",
+      "audioSettings": "Voice and settings",
+      "audioVoice": "Voice",
+      "audioReadingMode": "Reading",
+      "audioReadingSingle": "Single voice",
+      "audioReadingDialogue": "Dialogue ({count})",
+      "audioDialogueSummary": "Dialogue · {count}",
+      "audioSpeakersNote": "Write each line as \"Name: line\"",
+      "audioLanguageSearch": "Search languages…",
+      "audioOptionEmpty": "No matches",
+      "audioParam": {
+        "language": "Language",
+        "speakers": "Speakers",
+        "emotion": "Emotion",
+        "pronunciation_dict": "Pronunciations",
+        "loop": "Seamless loop"
+      },
+      "audioField": {
+        "speaker": "Name",
+        "voice": "Voice",
+        "text": "Text",
+        "pronunciation": "Read as"
+      }
     },
     "edge": {
       "delete": "Delete connection"

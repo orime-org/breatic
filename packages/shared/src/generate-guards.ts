@@ -106,6 +106,13 @@ export interface ExecuteGateInput {
    * one is true.
    */
   voiceChosen?: boolean;
+  /**
+   * Whether a dialogue holds fewer complete speakers than the model takes
+   * (#2156, design §16) — counted with `completeEntries`, the same entries the
+   * worker would send. Optional because only a model reading its script as a
+   * dialogue has speakers.
+   */
+  speakersShort?: boolean;
 }
 
 /**
@@ -127,6 +134,7 @@ export type ExecuteRefusal =
   | 'style-missing'
   | 'prompt-too-long'
   | 'voice-missing'
+  | 'speakers-missing'
   | 'source-missing'
   | 'sources-missing'
   | 'too-many-references'
@@ -223,6 +231,8 @@ export function evaluateExecute(
   // the canvas, and a model answering yes to both would be one whose panel
   // shows a picker and a slot for the same voice.
   if (input.voiceRequired && !input.voiceChosen) return { refusal: 'voice-missing' };
+  // The dialogue's own form of the same question: who reads which line.
+  if (input.speakersShort) return { refusal: 'speakers-missing' };
   // The first unmet requirement is the one named. One param names its place;
   // a group any member of which would do refuses with a sentence about the
   // set, because naming a single member of it would be the wrong sentence.
@@ -313,6 +323,7 @@ export const REFUSAL_TOAST_KEY: Record<ExecuteRefusal, string | null> = {
   'style-missing': 'canvas.generatePanel.refuseExecuteNoStyle',
   'prompt-too-long': 'canvas.generatePanel.refuseExecuteTooLong',
   'voice-missing': 'canvas.generatePanel.refuseExecuteNoVoice',
+  'speakers-missing': 'canvas.generatePanel.refuseExecuteNoSpeakers',
   // The two a panel may word for itself, by naming the place it draws. The
   // sentences here are what it falls back to when it has none of its own.
   'source-missing': 'canvas.generatePanel.errorNoRefAudio',

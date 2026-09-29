@@ -8,37 +8,7 @@
  */
 
 import type { FullModelEntry } from "@breatic/domain";
-import { isPresent } from "@breatic/shared";
-
-/** A list that declares no fields. */
-const NO_FIELDS: Readonly<Record<string, { values?: readonly unknown[] }>> = {};
-
-/**
- * The entries of a list param that fill every field it declares: a text field
- * with something other than spaces, a choice with one of its values. An entry
- * left half-filled in the editor names nothing the vendor can use.
- * @param value - What the run carries for the list; node data, untrusted.
- * @param fields - The fields one entry declares.
- * @returns The complete entries, each holding only its declared fields.
- */
-function completeEntries(value: unknown, fields: Readonly<Record<string, { values?: readonly unknown[] }>>): Record<string, unknown>[] {
-  if (!Array.isArray(value)) return [];
-  const names = Object.keys(fields);
-  const complete: Record<string, unknown>[] = [];
-  for (const entry of value) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
-    const held = entry as Record<string, unknown>;
-    const filled = names.every((field) => {
-      const offered = fields[field]?.values;
-      const v = held[field];
-      return offered !== undefined
-        ? offered.some((option) => option === v)
-        : typeof v === "string" && v.trim() !== "";
-    });
-    if (filled) complete.push(Object.fromEntries(names.map((field) => [field, held[field]])));
-  }
-  return complete;
-}
+import { completeEntries, isPresent } from "@breatic/shared";
 
 /**
  * Builds the upstream request body for one run.
@@ -57,7 +27,7 @@ export function upstreamBody(
   const sent = new Map<string, unknown>();
   for (const [name, spec] of Object.entries(entry.params ?? {})) {
     if (consumed.has(name)) continue;
-    const value = spec.type === "items" ? completeEntries(params[name], spec.fields ?? NO_FIELDS) : params[name];
+    const value = spec.type === "items" ? completeEntries(params[name], spec.fields ?? {}) : params[name];
     if (isPresent(value)) sent.set(name, value);
   }
   // A param that stands in for another says the same thing a second way, and
