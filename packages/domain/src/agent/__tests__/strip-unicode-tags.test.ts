@@ -3,8 +3,9 @@
 
 /**
  * Text that reaches a model is sent without Unicode tag characters
- * (U+E0000–E007F). They render as nothing, yet a model's tokenizer reads them
- * back as ASCII, so a line of them hides an instruction a person cannot see.
+ * (U+E0000–E007F), apart from what the model wrote itself. They render as
+ * nothing, yet U+E0020–E007E mirror printable ASCII and a model can read them
+ * as words, so a line of them hides an instruction a person cannot see.
  * The one legitimate use left for them is the three subdivision flags, which
  * pass through whole.
  */

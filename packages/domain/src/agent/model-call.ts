@@ -13,7 +13,8 @@
  *
  * Being the one way in is also why every prompt is cleaned here: the model is
  * wrapped so each step's prompt loses its Unicode tag characters before it is
- * sent (`strip-unicode-tags.ts`).
+ * sent, except in what the model wrote itself -- its reasoning, text and tool
+ * calls go back unchanged (`strip-unicode-tags.ts`).
  */
 
 import { generateText, streamText, wrapLanguageModel, type LanguageModel } from "ai";

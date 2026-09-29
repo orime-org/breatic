@@ -4,7 +4,7 @@
 /**
  * Every LLM call goes through the model-call wrapper, so the retry budget is
  * decided in one place and every prompt loses its Unicode tag characters
- * before it is sent. No source file may value-import an SDK entry point that
+ * before it is sent, apart from what the model wrote itself. No source file may value-import an SDK entry point that
  * starts a model run — only `model-call.ts` may.
  *
  * The list covers the text and structured-output entry points and the agent
