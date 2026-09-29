@@ -50,6 +50,7 @@ export function stepDepsFor(studioId: string | null): StepDeps {
      */
     describeImage: async (url: string): Promise<{ text: string; costUsd: number }> => {
       const cfg = getUnderstandConfig();
+      let costUsd = 0;
       const answer = await understandMediaAt({
         url,
         question: DESCRIBE_QUESTION,
@@ -63,8 +64,11 @@ export function stepDepsFor(studioId: string | null): StepDeps {
         readFloorMs: cfg.read_floor_ms,
         timeoutMs: cfg.call_timeout_ms,
         maxOutputTokens: cfg.max_output_tokens,
+        onBilled: (billed) => {
+          costUsd = billed ?? 0;
+        },
       });
-      return { text: answer.text.trim(), costUsd: answer.costUsd ?? 0 };
+      return { text: answer.text.trim(), costUsd };
     },
   };
 }
