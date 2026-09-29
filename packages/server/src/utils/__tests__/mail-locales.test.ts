@@ -25,7 +25,7 @@ vi.mock("@server/config/limits.js", () => ({
   getDecisionWindowDays: () => 3,
 }));
 
-import { getMailLayout, loadLocales, MONOREPO_ROOT, type SendMailOptions } from "@breatic/core";
+import { getMailLayout, loadLocales, MONOREPO_ROOT } from "@breatic/core";
 import {
   buildStudioInvitationMail,
   buildProjectInvitationMail,
@@ -36,7 +36,7 @@ import {
   buildMembershipEndedMail,
   buildStorageQuotaExceededMail,
 } from "@server/utils/notification-mail.js";
-import { escapeHtml } from "@server/utils/mail-shell.js";
+import { escapeHtml, type RenderedMail } from "@server/utils/mail-shell.js";
 import { buildTokenLinkMail } from "@server/modules/auth/auth-mail.js";
 
 loadLocales();
@@ -93,7 +93,7 @@ function leafKeys(node: Record<string, unknown>, prefix = ""): string[] {
  * @param locale - The recipient's language.
  * @returns Each mail by kind.
  */
-async function allMails(locale: string): Promise<Record<string, SendMailOptions>> {
+async function allMails(locale: string): Promise<Record<string, RenderedMail>> {
   const mails = {
     studioInvite: buildStudioInvitationMail({
       locale, inviteeEmail: "to@example.test", inviterName: NAME, studioName: NAME,
@@ -147,7 +147,7 @@ describe("mail catalogs", () => {
 });
 
 describe.each(LOCALES)("every mail in %s", (locale) => {
-  let mails: Record<string, SendMailOptions> = {};
+  let mails: Record<string, RenderedMail> = {};
   beforeAll(async () => {
     mails = await allMails(locale);
   });
@@ -155,7 +155,7 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
   it.each(KINDS)("%s renders from the catalog with names escaped once", (kind) => {
     const mail = mails[kind]!;
     expect(mail.to).toBe("to@example.test");
-    for (const text of [mail.subject, mail.html, mail.text ?? ""]) {
+    for (const text of [mail.subject, mail.html, mail.text]) {
       expect(text).not.toContain("server.mail.");
       expect(text).not.toContain("&amp;amp;");
     }
@@ -185,7 +185,7 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
     const mail = mails[kind]!;
     const heading = mail.subject.replace(/^Breatic - /, "");
     expect(mail.html).toContain(`>${escapeHtml(heading)}</`);
-    expect(mail.text!.split("\n")[0]).toBe(heading);
+    expect(mail.text.split("\n")[0]).toBe(heading);
   });
 
   it.each(KINDS)("%s has a button exactly when there is something to do", (kind) => {
@@ -231,7 +231,7 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
   });
 
   it.each(KINDS)("%s has a plain-text part saying the same thing", (kind) => {
-    const text = mails[kind]!.text ?? "";
+    const text = mails[kind]!.text;
     expect(text).not.toMatch(/<\/?(strong|code|em|a|p|table)\b/);
     expect(text).toContain(String(catalogValue(locale, "footer")));
     if (WITH_ACTION.includes(kind)) expect(text).toContain(LINK);
@@ -248,7 +248,7 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
     expect(preview?.index).toBeLessThan(html.indexOf(SLOGAN));
     expect(preview?.[1]).not.toBe("");
     // The body block of the text part opens with the first sentence.
-    expect(escapeHtml(text!.split("\n\n")[1]!).startsWith(preview![1]!)).toBe(true);
+    expect(escapeHtml(text.split("\n\n")[1]!).startsWith(preview![1]!)).toBe(true);
   });
 
   // Aliyun DirectMail refuses a message whose link text is the bare address
@@ -276,7 +276,7 @@ describe("sentences are joined the way each language writes them", () => {
       locale, ownerEmail: "to@example.test", requesterName: "Bob",
       projectName: "Rocket", message: "Please", decisionLink: LINK,
     });
-    return mail.text!.split("\n\n")[1]!;
+    return mail.text.split("\n\n")[1]!;
   };
 
   it.each(["zh-CN", "zh-TW", "ja"])("%s puts no space after the full stop", async (locale) => {

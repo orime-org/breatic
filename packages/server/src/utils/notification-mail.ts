@@ -18,9 +18,8 @@
  * through the best-effort path.
  */
 
-import type { SendMailOptions } from "@breatic/core";
 import { getDecisionWindowDays } from "@server/config/limits.js";
-import { renderMail, type MailMessage } from "@server/utils/mail-shell.js";
+import { renderMail, type MailMessage, type RenderedMail } from "@server/utils/mail-shell.js";
 
 /**
  * Build the closing line of an invitation, transfer or request email.
@@ -63,11 +62,11 @@ export interface StudioInvitationMailInput {
  * the decision page, where they answer (NOT auto-accept). The bell row leads
  * to that same page, so both entrances end in one place.
  * @param input - The invitee's language and email, inviter + studio names, role, and the landing link.
- * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildStudioInvitationMail(
   input: StudioInvitationMailInput,
-): Promise<SendMailOptions> {
+): Promise<RenderedMail> {
   const names = { inviter: input.inviterName, studio: input.studioName };
   return renderMail(input.locale, {
     to: input.inviteeEmail,
@@ -95,11 +94,11 @@ export interface ProjectInvitationMailInput {
  * the decision page, where they answer (NOT auto-accept). The bell row leads
  * to that same page, so both entrances end in one place.
  * @param input - The invitee's language and email, inviter + project names, role, and the landing link.
- * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildProjectInvitationMail(
   input: ProjectInvitationMailInput,
-): Promise<SendMailOptions> {
+): Promise<RenderedMail> {
   const names = { inviter: input.inviterName, project: input.projectName };
   return renderMail(input.locale, {
     to: input.inviteeEmail,
@@ -126,11 +125,11 @@ export interface StudioTransferMailInput {
  * their bell notifications, and its link opens the same `/decision?token=`
  * landing page every waiting request is answered on.
  * @param input - The recipient's language and email, initiator + studio names, and the app link.
- * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildStudioTransferMail(
   input: StudioTransferMailInput,
-): Promise<SendMailOptions> {
+): Promise<RenderedMail> {
   const names = { initiator: input.initiatorName, studio: input.studioName };
   return renderMail(input.locale, {
     to: input.recipientEmail,
@@ -157,11 +156,11 @@ export interface ProjectTransferMailInput {
  * their bell notifications, and its link opens the same `/decision?token=`
  * landing page every waiting request is answered on.
  * @param input - The recipient's language and email, initiator + project names, and the app link.
- * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildProjectTransferMail(
   input: ProjectTransferMailInput,
-): Promise<SendMailOptions> {
+): Promise<RenderedMail> {
   const names = { initiator: input.initiatorName, project: input.projectName };
   return renderMail(input.locale, {
     to: input.recipientEmail,
@@ -195,7 +194,7 @@ export interface RoleUpgradeRequestMailInput {
  */
 export function buildRoleUpgradeRequestMail(
   input: RoleUpgradeRequestMailInput,
-): Promise<SendMailOptions> {
+): Promise<RenderedMail> {
   const names = { requester: input.requesterName, project: input.projectName };
   return renderMail(input.locale, {
     to: input.ownerEmail,
@@ -230,7 +229,7 @@ export interface ProjectJoinRequestMailInput {
  */
 export function buildProjectJoinRequestMail(
   input: ProjectJoinRequestMailInput,
-): Promise<SendMailOptions> {
+): Promise<RenderedMail> {
   const names = { requester: input.requesterName, project: input.projectName };
   return renderMail(input.locale, {
     to: input.ownerEmail,
@@ -261,11 +260,11 @@ export interface MembershipEndedMailInput {
  * action link and no deadline. The bell row beside it is the delivery
  * guarantee; this only leaves when an SMTP backend is configured.
  * @param input - The recipient's language and email, and the tier that ended.
- * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildMembershipEndedMail(
   input: MembershipEndedMailInput,
-): Promise<SendMailOptions> {
+): Promise<RenderedMail> {
   return renderMail(input.locale, {
     to: input.recipientEmail,
     subject: { key: "server.mail.membership_ended.subject", params: { tier: input.tierLabel } },
@@ -297,11 +296,11 @@ interface StorageQuotaExceededMailInput {
  * them would send them to look at whichever studio happened to trigger it,
  * which may hold hardly anything.
  * @param input - The recipient's language and email, and the studio the refused write was aimed at.
- * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildStorageQuotaExceededMail(
   input: StorageQuotaExceededMailInput,
-): Promise<SendMailOptions> {
+): Promise<RenderedMail> {
   return renderMail(input.locale, {
     to: input.recipientEmail,
     subject: { key: "server.mail.storage_full.subject" },

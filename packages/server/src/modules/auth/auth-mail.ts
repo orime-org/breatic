@@ -11,8 +11,7 @@
  * to its caller rather than going through the best-effort path.
  */
 
-import type { SendMailOptions } from "@breatic/core";
-import { renderMail } from "@server/utils/mail-shell.js";
+import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
 
 const SECONDS_PER_HOUR = 3600;
 
@@ -36,12 +35,12 @@ export interface TokenLinkMailInput {
  * ("554 Reject by content spam").
  * @param kind - Password reset or email verification.
  * @param input - The account's language and address, the token link, and its lifetime.
- * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildTokenLinkMail(
   kind: TokenLinkMailKind,
   input: TokenLinkMailInput,
-): Promise<SendMailOptions> {
+): Promise<RenderedMail> {
   const section = `server.mail.${kind}`;
   return renderMail(input.locale, {
     to: input.to,
