@@ -100,7 +100,7 @@ test.afterEach(async () => {
  */
 export async function seedNode(
   nodeId: string,
-  kind: 'audio' | 'video',
+  kind: 'audio' | 'video' | 'image',
   content?: string,
   atX?: number,
   atY = 0,
