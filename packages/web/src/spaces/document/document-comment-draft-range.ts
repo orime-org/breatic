@@ -29,7 +29,10 @@
  *   position to the end. Those are resolved from Yjs relative positions, the
  *   way y-prosemirror's cursor plugin places a cursor (`cursor-plugin.js`):
  *   taken again after every change to the body, so each one names the body
- *   as the change before it left it.
+ *   as the change before it left it. An undo or redo of the reader's own is
+ *   resolved from the names taken before the edit it takes back, kept on that
+ *   edit's undo stack item the way y-prosemirror's undo plugin keeps the
+ *   selection, so letters the undo writes back are followed.
  *
  * The start names the first letter covered and the end the last one, with its
  * association to the left (`assoc = -1`, which Yjs resolves to "after this
@@ -40,7 +43,9 @@
  * line between as new letters, so the letter an end names being deleted says
  * nothing about the reader's words. Such an end is found again by its line,
  * the same way as a mapped one; an end whose letter was itself deleted stands
- * where that letter was.
+ * where that letter was, and one whose whole row went with its letters goes
+ * to the nearest row still there, as a mapped position inside deleted content
+ * goes to the edge of the deletion.
  *
  * Both ends always sit against a letter: the first one covered and just past
  * the last. A range that reaches into the next line, or past non-text at an
@@ -91,6 +96,7 @@ import {
   absolutePositionToRelativePosition,
   relativePositionToAbsolutePosition,
   ySyncPluginKey,
+  yUndoPluginKey,
 } from 'y-prosemirror';
 import { simpleDiffString } from 'lib0/diff';
 import * as Y from 'yjs';
@@ -140,6 +146,27 @@ let openings = 0;
 
 /** How many times a comment entry has been pressed in this page. */
 let entries = 0;
+
+/**
+ * The draft's range as Yjs named it before one of the reader's edits, kept on
+ * that edit's undo stack item, with the press on the entry it belongs to.
+ */
+interface NamedBeforeEdit {
+  readonly entry: number;
+  readonly link: TrackedLink;
+}
+
+/** The undo manager's parts this reads. */
+interface UndoStack {
+  readonly currStackItem: { readonly meta: Map<unknown, unknown> } | null;
+  on(event: 'stack-item-added', listener: (event: StackItemEvent) => void): void;
+  off(event: 'stack-item-added', listener: (event: StackItemEvent) => void): void;
+}
+
+/** What `stack-item-added` hands its listeners. */
+interface StackItemEvent {
+  readonly stackItem: { readonly meta: Map<unknown, unknown> };
+}
 
 /** The sync binding, as a position conversion takes it. */
 type Binding = NonNullable<ReturnType<typeof syncBindingOf>>;
@@ -663,6 +690,47 @@ export const documentCommentDraftRange = createExtension(() => {
          */
         view: (view) => {
           const watching = watch.view(view);
+          const doc = syncBindingOf(view.state)?.doc;
+          const undo = (
+            yUndoPluginKey.getState(view.state) as
+              | { undoManager?: UndoStack }
+              | undefined
+          )?.undoManager;
+          // This view's own key on the undo stack items.
+          const stackKey = {};
+          /**
+           * Keeps the range as named before the reader's edit on the stack
+           * item the edit made, the way y-prosemirror's undo plugin keeps the
+           * selection (`undo-plugin.js`, `stack-item-added`). It runs while
+           * the binding writes the edit into Yjs, before this view names the
+           * range again.
+           * @param event - The item just pushed.
+           */
+          const onAdded = (event: StackItemEvent): void => {
+            const range = draftRangeIn(view.state);
+            if (tracked === null || range === null) return;
+            const named: NamedBeforeEdit = { entry: range.entry, link: tracked };
+            event.stackItem.meta.set(stackKey, named);
+          };
+          /**
+           * Hands an undo or redo the range as named before the edit it takes
+           * back, so Yjs follows a letter the undo writes back to where it is
+           * now. `beforeObserverCalls` fires ahead of the observer that
+           * dispatches the change, where `document-undo-selection.ts` hands
+           * over the selection for the same reason.
+           * @param transaction - The Yjs transaction being cleaned up.
+           */
+          const onBeforeObserverCalls = (transaction: Y.Transaction): void => {
+            if (undo === undefined || transaction.origin !== undo) return;
+            const named = undo.currStackItem?.meta.get(stackKey) as
+              | NamedBeforeEdit
+              | undefined;
+            if (named !== undefined && named.entry === draftRangeIn(view.state)?.entry) {
+              tracked = named.link;
+            }
+          };
+          undo?.on('stack-item-added', onAdded);
+          doc?.on('beforeObserverCalls', onBeforeObserverCalls);
           return {
             update: (next, prev): void => {
               const range = draftRangeIn(next.state);
@@ -678,6 +746,8 @@ export const documentCommentDraftRange = createExtension(() => {
               watching.update?.(next, prev);
             },
             destroy: (): void => {
+              undo?.off('stack-item-added', onAdded);
+              doc?.off('beforeObserverCalls', onBeforeObserverCalls);
               watching.destroy?.();
             },
           };

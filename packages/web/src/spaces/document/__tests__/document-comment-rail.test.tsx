@@ -1473,6 +1473,26 @@ describe('the comment panel', () => {
         expect(aimedWords()).toBe('bravo');
       });
 
+      it('stays on the words the entry was pressed over after the deletion', async () => {
+        show();
+        aimDraft(6, 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        handle.undoManager.stopCapturing();
+        act(() => {
+          const view = handle.editor.prosemirrorView!;
+          view.dispatch(view.state.tr.delete(firstRun().from + 6, firstRun().from + 8));
+        });
+        handle.undoManager.stopCapturing();
+        aimDraft(10, 17);
+
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        expect(lines()).toEqual(['alpha bravo charlie']);
+        expect(aimedWords()).toBe('charlie');
+      });
+
       it('shrinks again when the reader redoes the deletion', async () => {
         show();
         aimDraft(6, 11);
