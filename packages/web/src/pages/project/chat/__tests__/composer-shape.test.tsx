@@ -128,13 +128,18 @@ describe('the box the reader types in', () => {
 });
 
 describe('what is said about an attempt to attach', () => {
-  it('sits between the attach button and send, in the warning colour', () => {
+  it('sits between the attach button and send, marked by a warning icon', () => {
     render(<ChatComposer {...BASICS} attachNotice='At most 10 items' />);
 
     const notice = screen.getByTestId('chat-composer-attach-notice');
     const attach = screen.getByTestId('chat-composer-attach');
     expect(attach.parentElement?.contains(notice)).toBe(true);
-    expect(notice.className).toContain('text-status-warning-foreground');
+    // The words read in the body colour: warning orange on this surface
+    // does not reach 4.5:1 at 12px. The icon carries the warning.
+    expect(notice.className).toContain('text-foreground');
+    expect(notice.className).not.toContain('text-status-warning-foreground');
+    const icon = notice.querySelector('svg');
+    expect(icon?.getAttribute('class')).toContain('text-status-warning-foreground');
   });
 
   it('gives the attach button no hover title', () => {
