@@ -14,7 +14,12 @@ import { describe, it, expect } from "vitest";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 import { mailConfigSchema } from "@core/config/mail.js";
 
-const LOGO = "https://example.test/logo.png";
+const LAYOUT = {
+  logo_url: "https://example.test/logo.png",
+  site_url: "https://example.test",
+  contact_email: "help@example.test",
+  social: [{ label: "GitHub", url: "https://github.com/example" }],
+};
 
 describe("mail config", () => {
   it("parses the shipped config/mail.yaml", () => {
@@ -28,7 +33,7 @@ describe("mail config", () => {
   });
 
   it("falls back to the timeout defaults when the file names none", () => {
-    expect(mailConfigSchema.parse({ layout: { logo_url: LOGO } }).smtp).toEqual({
+    expect(mailConfigSchema.parse({ layout: LAYOUT }).smtp).toEqual({
       dns_timeout_ms: 5000,
       connection_timeout_ms: 5000,
       greeting_timeout_ms: 5000,
@@ -38,23 +43,41 @@ describe("mail config", () => {
 
   it.each([0, -1, 1.5])("rejects a timeout of %s", (value) => {
     expect(() =>
-      mailConfigSchema.parse({ smtp: { socket_timeout_ms: value }, layout: { logo_url: LOGO } }),
+      mailConfigSchema.parse({ smtp: { socket_timeout_ms: value }, layout: LAYOUT }),
     ).toThrow();
   });
 
-  it("reads the logo the layout shows from the shipped file", () => {
+  it("reads the layout from the shipped file", () => {
     const raw = parse(readFileSync(resolve(MONOREPO_ROOT, "config/mail.yaml"), "utf-8"));
-    expect(mailConfigSchema.parse(raw).layout.logo_url).toMatch(/^https:\/\/.+\.png$/);
+    const { layout } = mailConfigSchema.parse(raw);
+    expect(layout.logo_url).toMatch(/^https:\/\/.+\.png$/);
+    expect(layout.site_url).toMatch(/^https:\/\/[^/]+$/);
+    expect(layout.contact_email).toMatch(/^[^@\s]+@[^@\s]+$/);
+    expect(layout.social.map((entry) => entry.label)).toEqual([
+      "GitHub", "Discord", "X", "YouTube", "Instagram",
+    ]);
   });
 
-  it("requires the logo address: a host is written down only in the yaml", () => {
+  it("requires the layout: a host is written down only in the yaml", () => {
     expect(() => mailConfigSchema.parse({})).toThrow();
   });
 
-  it.each(["icon-192.png", "http://example.test/icon.png", "javascript:alert(1)"])(
-    "rejects a logo address of %s",
-    (value) => {
-      expect(() => mailConfigSchema.parse({ layout: { logo_url: value } })).toThrow();
-    },
-  );
+  it.each([
+    ["logo_url", "icon-192.png"],
+    ["logo_url", "http://example.test/icon.png"],
+    ["logo_url", "javascript:alert(1)"],
+    ["site_url", "http://example.test"],
+    ["site_url", "https://example.test/"],
+    ["contact_email", "not an address"],
+  ])("rejects a %s of %s", (key, value) => {
+    expect(() => mailConfigSchema.parse({ layout: { ...LAYOUT, [key]: value } })).toThrow();
+  });
+
+  it("rejects a social link that is not https", () => {
+    expect(() =>
+      mailConfigSchema.parse({
+        layout: { ...LAYOUT, social: [{ label: "X", url: "http://x.example" }] },
+      }),
+    ).toThrow();
+  });
 });

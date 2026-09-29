@@ -25,7 +25,7 @@ vi.mock("@server/config/limits.js", () => ({
   getDecisionWindowDays: () => 3,
 }));
 
-import { getMailLogoUrl, loadLocales, MONOREPO_ROOT, type SendMailOptions } from "@breatic/core";
+import { getMailLayout, loadLocales, MONOREPO_ROOT, type SendMailOptions } from "@breatic/core";
 import {
   buildStudioInvitationMail,
   buildProjectInvitationMail,
@@ -175,7 +175,7 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
   it.each(KINDS)("%s is laid out with the logo, slogan, heading and footer", (kind) => {
     const { html } = mails[kind]!;
     expect(html).toContain(`<html lang="${locale}"`);
-    expect(html).toContain(`src="${getMailLogoUrl()}"`);
+    expect(html).toContain(`src="${getMailLayout().logoUrl}"`);
     expect(html).toContain(SLOGAN);
     expect(html).toContain(String(catalogValue(locale, "footer")));
     expect(html).not.toContain("%%");
@@ -189,8 +189,36 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
   });
 
   it.each(KINDS)("%s has a button exactly when there is something to do", (kind) => {
-    const hrefs = mails[kind]!.html.match(/href="[^"]*"/g) ?? [];
-    expect(hrefs).toEqual(WITH_ACTION.includes(kind) ? [`href="${LINK}"`] : []);
+    const buttons = mails[kind]!.html.split(`href="${LINK}"`).length - 1;
+    expect(buttons).toBe(WITH_ACTION.includes(kind) ? 1 : 0);
+  });
+
+  it.each(KINDS)("%s ends with the help, social, legal and copyright rows", (kind) => {
+    const { html, text } = mails[kind]!;
+    const layout = getMailLayout();
+    const site = `${layout.siteUrl}/${locale}`;
+    const legal = catalogValue(locale, "legal") as Record<string, string>;
+    const year = new Date().getUTCFullYear();
+    for (const [page, word] of [["about", legal.about], ["terms", legal.terms], ["privacy", legal.privacy]]) {
+      expect(html).toContain(`href="${site}/${page}/"`);
+      expect(html).toContain(`>${word}</a>`);
+      expect(text).toContain(`${site}/${page}/`);
+    }
+    expect(html).toContain(`href="${site}/tutorials/"`);
+    expect(html).toContain(`href="mailto:${layout.contactEmail}"`);
+    expect(text).toContain(`${site}/tutorials/`);
+    expect(text).toContain(layout.contactEmail);
+    for (const { label, url } of layout.social) {
+      expect(html).toContain(`href="${url}"`);
+      expect(html).toContain(`>${label}</a>`);
+      expect(text).toContain(url);
+    }
+    expect(html).toContain(`© ${year} Orime, Inc.`);
+    expect(text).toContain(`© ${year} Orime, Inc.`);
+  });
+
+  it.each(KINDS)("%s fills at least one screen with the page colour", (kind) => {
+    expect(mails[kind]!.html).toMatch(/min-height:\s*100vh/);
   });
 
   it.each(KINDS)("%s has a plain-text part saying the same thing", (kind) => {
