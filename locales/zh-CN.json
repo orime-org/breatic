@@ -165,32 +165,32 @@
       "studio_invite": {
         "subject": "{inviter} 邀请你加入 {studio}",
         "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> 身份加入 Studio <b>{studio}</b>。",
-        "action": "<a>打开邀请</a>，接受或拒绝。"
+        "action": "打开邀请"
       },
       "project_invite": {
         "subject": "{inviter} 邀请你参与 {project}",
         "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> 身份参与 Project <b>{project}</b>。",
-        "action": "<a>打开邀请</a>，接受或拒绝。"
+        "action": "打开邀请"
       },
       "studio_transfer": {
         "subject": "{initiator} 想把 {studio} 交给你",
         "lead": "<b>{initiator}</b> 想让你成为 Studio <b>{studio}</b> 的 Admin。",
-        "action": "<a>查看这次转让</a>，接受或拒绝。"
+        "action": "查看这次转让"
       },
       "project_transfer": {
         "subject": "{initiator} 想把 {project} 交给你",
         "lead": "<b>{initiator}</b> 想把 Project <b>{project}</b> 的所有权交给你。",
-        "action": "<a>查看这次转让</a>，接受或拒绝。"
+        "action": "查看这次转让"
       },
       "role_upgrade": {
         "subject": "{requester} 申请在 {project} 中获得更高的角色",
         "lead": "<b>{requester}</b> 申请在 <b>{project}</b> 中成为 <b>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</b>。",
-        "action": "<a>查看这条申请</a>，批准或拒绝。"
+        "action": "查看这条申请"
       },
       "project_join": {
         "subject": "{requester} 申请加入 {project}",
         "lead": "<b>{requester}</b> 申请加入 <b>{project}</b>。",
-        "action": "<a>查看这条申请</a>，批准或拒绝。"
+        "action": "查看这条申请"
       },
       "reason": "附言：<em>{message}</em>",
       "expiry": {
@@ -211,15 +211,16 @@
       "password_reset": {
         "subject": "重置密码",
         "lead": "你申请了重置密码。",
-        "action": "<a>点击这里重置密码</a>",
+        "action": "重置密码",
         "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，请忽略这封邮件。"
       },
       "email_verification": {
         "subject": "验证你的邮箱",
-        "lead": "欢迎来到 Breatic。点击下面的链接验证你的邮箱地址：",
-        "action": "<a>验证邮箱地址</a>",
+        "lead": "欢迎来到 Breatic。点击下面的按钮验证你的邮箱地址。",
+        "action": "验证邮箱地址",
         "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，可以忽略这封邮件。"
-      }
+      },
+      "footer": "这是一封自动发送的邮件，回复不会被阅读。"
     }
   },
   "chat": {

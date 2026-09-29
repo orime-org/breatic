@@ -165,32 +165,32 @@
       "studio_invite": {
         "subject": "{inviter} invited you to {studio}",
         "lead": "<b>{inviter}</b> invited you to join the studio <b>{studio}</b> as <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code>.",
-        "action": "<a>Open the invitation</a> to accept or decline."
+        "action": "Open the invitation"
       },
       "project_invite": {
         "subject": "{inviter} invited you to {project}",
         "lead": "<b>{inviter}</b> invited you to collaborate on the project <b>{project}</b> as <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code>.",
-        "action": "<a>Open the invitation</a> to accept or decline."
+        "action": "Open the invitation"
       },
       "studio_transfer": {
         "subject": "{initiator} wants to transfer {studio} to you",
         "lead": "<b>{initiator}</b> wants to make you the admin of the studio <b>{studio}</b>.",
-        "action": "<a>Review this transfer</a> to accept or decline."
+        "action": "Review this transfer"
       },
       "project_transfer": {
         "subject": "{initiator} wants to transfer {project} to you",
         "lead": "<b>{initiator}</b> wants to make you the owner of the project <b>{project}</b>.",
-        "action": "<a>Review this transfer</a> to accept or decline."
+        "action": "Review this transfer"
       },
       "role_upgrade": {
         "subject": "{requester} asked for a bigger role on {project}",
         "lead": "<b>{requester}</b> asked to become <b>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</b> on <b>{project}</b>.",
-        "action": "<a>Review this request</a> to approve or decline."
+        "action": "Review this request"
       },
       "project_join": {
         "subject": "{requester} asked to join {project}",
         "lead": "<b>{requester}</b> asked to join <b>{project}</b>.",
-        "action": "<a>Review this request</a> to approve or decline."
+        "action": "Review this request"
       },
       "reason": "They said: <em>{message}</em>",
       "expiry": {
@@ -211,15 +211,16 @@
       "password_reset": {
         "subject": "Reset your password",
         "lead": "You requested a password reset.",
-        "action": "<a>Click here to reset your password</a>",
+        "action": "Reset your password",
         "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, ignore this email."
       },
       "email_verification": {
         "subject": "Verify your email",
-        "lead": "Welcome to Breatic. Click below to verify your email address:",
-        "action": "<a>Verify your email address</a>",
+        "lead": "Welcome to Breatic. Click the button below to verify your email address.",
+        "action": "Verify your email address",
         "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, you can ignore this email."
-      }
+      },
+      "footer": "This is an automated message; replies are not read."
     }
   },
   "chat": {

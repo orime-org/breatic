@@ -165,32 +165,32 @@
       "studio_invite": {
         "subject": "{inviter} 邀請你加入 {studio}",
         "lead": "<b>{inviter}</b> 邀請你以 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> 身分加入 Studio <b>{studio}</b>。",
-        "action": "<a>開啟邀請</a>，接受或拒絕。"
+        "action": "開啟邀請"
       },
       "project_invite": {
         "subject": "{inviter} 邀請你參與 {project}",
         "lead": "<b>{inviter}</b> 邀請你以 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> 身分參與 Project <b>{project}</b>。",
-        "action": "<a>開啟邀請</a>，接受或拒絕。"
+        "action": "開啟邀請"
       },
       "studio_transfer": {
         "subject": "{initiator} 想把 {studio} 交給你",
         "lead": "<b>{initiator}</b> 想讓你成為 Studio <b>{studio}</b> 的 Admin。",
-        "action": "<a>查看這次轉讓</a>，接受或拒絕。"
+        "action": "查看這次轉讓"
       },
       "project_transfer": {
         "subject": "{initiator} 想把 {project} 交給你",
         "lead": "<b>{initiator}</b> 想把 Project <b>{project}</b> 的擁有權交給你。",
-        "action": "<a>查看這次轉讓</a>，接受或拒絕。"
+        "action": "查看這次轉讓"
       },
       "role_upgrade": {
         "subject": "{requester} 申請在 {project} 中取得更高的角色",
         "lead": "<b>{requester}</b> 申請在 <b>{project}</b> 中成為 <b>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</b>。",
-        "action": "<a>查看這則申請</a>，核准或拒絕。"
+        "action": "查看這則申請"
       },
       "project_join": {
         "subject": "{requester} 申請加入 {project}",
         "lead": "<b>{requester}</b> 申請加入 <b>{project}</b>。",
-        "action": "<a>查看這則申請</a>，核准或拒絕。"
+        "action": "查看這則申請"
       },
       "reason": "附言：<em>{message}</em>",
       "expiry": {
@@ -211,15 +211,16 @@
       "password_reset": {
         "subject": "重設密碼",
         "lead": "你申請了重設密碼。",
-        "action": "<a>點擊這裡重設密碼</a>",
+        "action": "重設密碼",
         "footer": "連結將在 {hours, plural, other {# 小時}}後失效。如果不是你本人操作，請忽略這封郵件。"
       },
       "email_verification": {
         "subject": "驗證你的電子郵件",
-        "lead": "歡迎來到 Breatic。點擊下方連結驗證你的電子郵件地址：",
-        "action": "<a>驗證電子郵件地址</a>",
+        "lead": "歡迎來到 Breatic。點擊下方按鈕驗證你的電子郵件地址。",
+        "action": "驗證電子郵件地址",
         "footer": "連結將在 {hours, plural, other {# 小時}}後失效。如果不是你本人操作，可以忽略這封郵件。"
-      }
+      },
+      "footer": "這是一封自動發送的郵件，回覆不會被閱讀。"
     }
   },
   "chat": {

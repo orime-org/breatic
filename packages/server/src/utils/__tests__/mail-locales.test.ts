@@ -2,25 +2,30 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Every product email renders in each of the five languages (#286).
+ * Every product email renders in each of the five languages, in the branded
+ * layout (#286).
  *
- * Two things are pinned. Every `server.mail.*` key in `en.json` exists in the
+ * Three things are pinned. Every `server.mail.*` key in `en.json` exists in the
  * other four catalogs — `tRich` falls back to English for a missing key, so a
  * gap would ship an English line inside a translated mail without failing
  * anything else. And every builder renders in every language with hostile
  * names: markup can come only from the catalog, so a name carrying `<b>`,
- * `&`, `*`, `_` or a backtick shows as those characters, escaped once.
+ * `&`, `*`, `_` or a backtick shows as those characters, escaped once. And
+ * every mail carries the same layout: the configured logo, the English
+ * slogan, a heading, a button only when there is something to do, and the
+ * footer — each in the recipient's language except the slogan and the brand —
+ * with a plain-text part saying the same thing.
  */
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, it, expect, vi } from "vitest";
+import { beforeAll, describe, it, expect, vi } from "vitest";
 
 vi.mock("@server/config/limits.js", () => ({
   getDecisionWindowDays: () => 3,
 }));
 
-import { loadLocales, MONOREPO_ROOT, type SendMailOptions } from "@breatic/core";
+import { getMailLogoUrl, loadLocales, MONOREPO_ROOT, type SendMailOptions } from "@breatic/core";
 import {
   buildStudioInvitationMail,
   buildProjectInvitationMail,
@@ -31,6 +36,7 @@ import {
   buildMembershipEndedMail,
   buildStorageQuotaExceededMail,
 } from "@server/utils/notification-mail.js";
+import { escapeHtml } from "@server/utils/mail-shell.js";
 import {
   buildPasswordResetMail,
   buildEmailVerificationMail,
@@ -42,6 +48,11 @@ const LOCALES = ["en", "zh-CN", "zh-TW", "ja", "ko"] as const;
 const NAME = "A<b>&_*`x";
 const ESCAPED = "A&lt;b&gt;&amp;_*`x";
 const LINK = "https://app.test/decision?token=t";
+const SLOGAN = "An AI operating system for content creators";
+const WITH_ACTION = [
+  "studioInvite", "projectInvite", "studioTransfer", "projectTransfer",
+  "roleUpgrade", "projectJoin", "passwordReset", "emailVerification",
+];
 
 /**
  * Reads the `server.mail` subtree of one catalog.
@@ -52,6 +63,16 @@ function mailCatalog(locale: string): Record<string, unknown> {
   const raw = readFileSync(resolve(MONOREPO_ROOT, `locales/${locale}.json`), "utf-8");
   const parsed = JSON.parse(raw) as { server: { mail: Record<string, unknown> } };
   return parsed.server.mail;
+}
+
+/**
+ * Reads one `server.mail` entry of one catalog.
+ * @param locale - The catalog's locale code.
+ * @param key - The entry's key under `server.mail`.
+ * @returns The raw catalog value.
+ */
+function catalogValue(locale: string, key: string): unknown {
+  return mailCatalog(locale)[key];
 }
 
 /**
@@ -75,8 +96,8 @@ function leafKeys(node: Record<string, unknown>, prefix = ""): string[] {
  * @param locale - The recipient's language.
  * @returns Each mail by kind.
  */
-function allMails(locale: string): Record<string, SendMailOptions> {
-  return {
+async function allMails(locale: string): Promise<Record<string, SendMailOptions>> {
+  const mails = {
     studioInvite: buildStudioInvitationMail({
       locale, inviteeEmail: "to@example.test", inviterName: NAME, studioName: NAME,
       role: "maintainer", inviteLink: LINK,
@@ -114,7 +135,11 @@ function allMails(locale: string): Record<string, SendMailOptions> {
       locale, to: "to@example.test", verifyUrl: LINK, expiresInSeconds: 86400,
     }),
   };
+  const built = await Promise.all(Object.values(mails));
+  return Object.fromEntries(Object.keys(mails).map((kind, i) => [kind, built[i]!]));
 }
+
+const KINDS = [...WITH_ACTION, "membershipEnded", "storageFull"];
 
 describe("mail catalogs", () => {
   const english = leafKeys(mailCatalog("en"));
@@ -125,12 +150,15 @@ describe("mail catalogs", () => {
 });
 
 describe.each(LOCALES)("every mail in %s", (locale) => {
-  const mails = allMails(locale);
+  let mails: Record<string, SendMailOptions> = {};
+  beforeAll(async () => {
+    mails = await allMails(locale);
+  });
 
-  it.each(Object.keys(mails))("%s renders from the catalog with names escaped once", (kind) => {
+  it.each(KINDS)("%s renders from the catalog with names escaped once", (kind) => {
     const mail = mails[kind]!;
     expect(mail.to).toBe("to@example.test");
-    for (const text of [mail.subject, mail.html]) {
+    for (const text of [mail.subject, mail.html, mail.text ?? ""]) {
       expect(text).not.toContain("server.mail.");
       expect(text).not.toContain("&amp;amp;");
     }
@@ -141,46 +169,74 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
 
   it("puts the links, bold names and roles where the catalog marks them", () => {
     expect(mails.studioInvite!.html).toContain(`<strong>${ESCAPED}</strong>`);
-    expect(mails.studioInvite!.html).toContain("<code>Maintainer</code>");
-    expect(mails.projectInvite!.html).toContain("<code>Editor</code>");
+    expect(mails.studioInvite!.html).toMatch(/<code[^>]*>Maintainer<\/code>/);
+    expect(mails.projectInvite!.html).toMatch(/<code[^>]*>Editor<\/code>/);
     expect(mails.roleUpgrade!.html).toContain(`<em>${ESCAPED}</em>`);
     expect(mails.roleUpgrade!.html).toContain("<strong>Editor</strong>");
-    for (const kind of ["studioInvite", "projectTransfer", "passwordReset", "emailVerification"]) {
-      expect(mails[kind]!.html).toContain(`<a href="${LINK}">`);
-    }
+  });
+
+  it.each(KINDS)("%s is laid out with the logo, slogan, heading and footer", (kind) => {
+    const { html } = mails[kind]!;
+    expect(html).toContain(`<html lang="${locale}"`);
+    expect(html).toContain(`src="${getMailLogoUrl()}"`);
+    expect(html).toContain(SLOGAN);
+    expect(html).toContain(String(catalogValue(locale, "footer")));
+    expect(html).not.toContain("%%");
+  });
+
+  it.each(KINDS)("%s is headed by its subject line, escaped", (kind) => {
+    const mail = mails[kind]!;
+    const heading = mail.subject.replace(/^Breatic - /, "");
+    expect(mail.html).toContain(`>${escapeHtml(heading)}</`);
+    expect(mail.text!.split("\n")[0]).toBe(heading);
+  });
+
+  it.each(KINDS)("%s has a button exactly when there is something to do", (kind) => {
+    const hrefs = mails[kind]!.html.match(/href="[^"]*"/g) ?? [];
+    expect(hrefs).toEqual(WITH_ACTION.includes(kind) ? [`href="${LINK}"`] : []);
+  });
+
+  it.each(KINDS)("%s has a plain-text part saying the same thing", (kind) => {
+    const text = mails[kind]!.text ?? "";
+    expect(text).not.toMatch(/<\/?(strong|code|em|a|p|table)\b/);
+    expect(text).toContain(String(catalogValue(locale, "footer")));
+    if (WITH_ACTION.includes(kind)) expect(text).toContain(LINK);
+    if (text.includes("A<")) expect(text).toContain(NAME);
   });
 
   // Aliyun DirectMail refuses a message whose link text is the bare address
   // ("554 Reject by content spam"), measured against the verification mail.
-  it.each(Object.keys(mails))("%s labels its link with words, never the address", (kind) => {
+  it.each(KINDS)("%s labels its link with words, never the address", (kind) => {
     expect(mails[kind]!.html).not.toContain(`>${LINK}</a>`);
   });
 });
 
 describe("the language actually changes", () => {
-  it("renders each language's own words, not English", () => {
+  it("renders each language's own words, not English", async () => {
     const words: Record<string, string> = {
       "zh-CN": "邀请", "zh-TW": "邀請", ja: "招待", ko: "초대",
     };
     for (const [locale, word] of Object.entries(words)) {
-      expect(allMails(locale).studioInvite!.html).toContain(word);
-      expect(allMails(locale).studioInvite!.html).not.toContain("invited you");
+      const { studioInvite } = await allMails(locale);
+      expect(studioInvite!.html).toContain(word);
+      expect(studioInvite!.html).not.toContain("invited you");
     }
   });
 
-  it("counts days and hours with the plural rules of the language", () => {
-    const en = allMails("en");
+  it("counts days and hours with the plural rules of the language", async () => {
+    const en = await allMails("en");
     expect(en.studioInvite!.html).toContain("expires in 3 days");
     expect(en.passwordReset!.html).toContain("expires in 1 hour.");
     expect(en.emailVerification!.html).toContain("expires in 24 hours.");
-    expect(allMails("zh-CN").projectJoin!.html).toContain("3 天");
+    expect((await allMails("zh-CN")).projectJoin!.html).toContain("3 天");
   });
 
-  it("leaves the reason out when none was given", () => {
-    const mail = buildProjectJoinRequestMail({
+  it("leaves the reason out when none was given", async () => {
+    const mail = await buildProjectJoinRequestMail({
       locale: "en", ownerEmail: "to@example.test", requesterName: "Bob",
       projectName: "Rocket", message: "   ", decisionLink: LINK,
     });
     expect(mail.html).not.toContain("They said");
+    expect(mail.text).not.toContain("They said");
   });
 });
