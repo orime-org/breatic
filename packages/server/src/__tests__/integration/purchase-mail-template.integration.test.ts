@@ -113,9 +113,6 @@ beforeAll(() => {
 // setup in this package replaces `@breatic/core` wholesale, and a template
 // asserted against a stubbed `t()` would assert nothing.
 
-/** Where a buyer writes back, as a deployment would configure it. */
-const SUPPORT = "help@example.test";
-
 /** One purchase, as the repo reports it. */
 function view(over: Partial<ConfirmationView> = {}): ConfirmationView {
   return {
@@ -138,7 +135,7 @@ function view(over: Partial<ConfirmationView> = {}): ConfirmationView {
 
 describe("the confirmation wears the layout every product mail wears", () => {
   it("has the header, the heading, the footer and a plain-text part", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
     const year = new Date().getUTCFullYear();
     expect(mail.to).toBe(view().email);
     expect(mail.html).toContain("An AI operating system for content creators");
@@ -153,14 +150,14 @@ describe("the confirmation wears the layout every product mail wears", () => {
 
 describe("the confirmation carries all eight things", () => {
   it("shows the price and the tax as two figures, and the total as a third", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
     expect(mail.text).toContain("$20.00");
     expect(mail.text).toContain("$2.40");
     expect(mail.text).toContain("$22.40");
   });
 
   it("gives the purchase time in the buyer's own zone and in UTC", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "Asia/Shanghai", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "Asia/Shanghai");
     expect(mail.text).toContain("Asia/Shanghai");
     expect(mail.text).toContain("UTC");
     // 01:30 UTC is 09:30 the same day in Shanghai. Both readings are printed,
@@ -175,7 +172,7 @@ describe("the confirmation carries all eight things", () => {
   // west of it on the same afternoon — a bare date leaves the buyer without
   // the one thing they need to count from.
   it("gives the refund deadline in the buyer's own zone and in UTC", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "Asia/Shanghai", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "Asia/Shanghai");
     const line = mail.text
       .split("\n")
       .find((row) => row.includes("Refundable until"));
@@ -195,12 +192,10 @@ describe("the confirmation carries all eight things", () => {
     const early = await renderPurchaseConfirmation(
       view({ grantedAt: new Date("2026-08-26T00:05:00.000Z") }),
       "UTC",
-      SUPPORT,
     );
     const late = await renderPurchaseConfirmation(
       view({ grantedAt: new Date("2026-08-26T23:55:00.000Z") }),
       "UTC",
-      SUPPORT,
     );
     const deadline = (mail: { text: string }): string | undefined =>
       mail.text.split("\n").find((row) => row.includes("Refundable until"));
@@ -209,42 +204,39 @@ describe("the confirmation carries all eight things", () => {
   });
 
   it("repeats the consent wording itself, not a summary of it", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
     expect(mail.text).toContain(plainConsent("en"));
   });
 
   it("repeats every refund line", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
     for (const line of refundLines("en")) {
       expect(mail.text).toContain(line);
     }
   });
 
   it("names the order so a refund request has something to quote", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
     expect(mail.text).toContain("9f1c7c2e-0000-4000-8000-000000000001");
   });
 
-  it("says where to write back", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", SUPPORT);
-    expect(mail.text).toContain(SUPPORT);
-  });
-
-  it("leaves the line out when no deployment has named an address", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", "");
-    // An invitation to write to nobody is worse than no invitation.
-    expect(mail.text).not.toContain("Questions about this purchase");
-    expect(mail.html).not.toContain("Questions about this purchase");
+  it("says where to write back: the contact address, as a link like the footer's", async () => {
+    const { contactEmail } = getMailLayout();
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
+    expect(mail.text).toContain(`Questions about this purchase? Write to ${contactEmail}.`);
+    expect(mail.html).toMatch(
+      new RegExp(`Write to <a href="mailto:${contactEmail}" style="[^"]*text-decoration:underline;[^"]*">${contactEmail}</a>\\.`),
+    );
   });
 
   it("gives what landed and what the account now holds", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
     expect(mail.text).toContain("1700");
     expect(mail.text).toContain("4200");
   });
 
   it("prints the refund deadline as the moment it falls, never as a duration", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
     // Thirty UTC calendar days on from 2026-08-26 is 2026-09-25.
     const deadline = mail.text
       .split("\n")
@@ -257,17 +249,64 @@ describe("the confirmation carries all eight things", () => {
   });
 });
 
+describe("the receipt sets the money apart from the reference lines", () => {
+  it("puts credits, price, tax and total in one label and amount table, the total set off", async () => {
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
+    const table = /<table role="presentation"[^>]*>([\s\S]*?)<\/table>/.exec(mail.html.slice(mail.html.indexOf("Thank you")))![1]!;
+    const rows = [...table.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map((r) =>
+      [...r[1]!.matchAll(/<td([^>]*)>([^<]*)<\/td>/g)].map((c) => ({ attrs: c[1]!, text: c[2]! })),
+    );
+    expect(rows.map((r) => r.map((c) => c.text))).toEqual([
+      ["Credits added", "1700"],
+      ["Price", "$20.00"],
+      ["Tax", "$2.40"],
+      ["Total charged", "$22.40"],
+    ]);
+    for (const row of rows) expect(row[1]!.attrs).toContain('align="right"');
+    for (const cell of rows[3]!) {
+      expect(cell.attrs).toContain("font-weight:600");
+      expect(cell.attrs).toContain("border-top:1px solid");
+    }
+  });
+
+  it("lists balance, purchase time, refund deadline and order reference in the muted style below it", async () => {
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
+    const after = mail.html.slice(mail.html.indexOf("Total charged"));
+    const muted = /<div style="[^"]*font-size:13px;[^"]*color:#5f5f5f;[^"]*">([\s\S]*?)<\/div>/.exec(after)![1]!;
+    expect(muted.split("<br>").map((line) => line.split(":")[0])).toEqual([
+      "Balance now", "Purchased", "Refundable until", "Order reference",
+    ]);
+    expect(mail.html).not.toContain("<li>Credits added");
+  });
+
+  it("keeps the plain-text part in the same order, one fact per line", async () => {
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
+    const lines = mail.text.split("\n").filter((line) => /^[A-Z][a-z ]+: /.test(line)).map((line) => line.split(":")[0]);
+    expect(lines.slice(0, 8)).toEqual([
+      "Credits added", "Price", "Tax", "Total charged",
+      "Balance now", "Purchased", "Refundable until", "Order reference",
+    ]);
+  });
+
+  it("writes each language's own label and separator", async () => {
+    const mail = await renderPurchaseConfirmation(view({ locale: "ja" }), "UTC");
+    expect(mail.html).toMatch(/<td[^>]*>お支払い合計<\/td>/);
+    expect(mail.text).toContain("お支払い合計：");
+    expect(mail.text).toContain("今回の追加：1700 クレジット");
+  });
+});
+
 describe("the confirmation is written in the language the purchase was made in", () => {
   it.each(["zh-CN", "zh-TW", "ja", "ko"])(
     "writes a %s purchase in %s, whatever the request that triggered it",
     async (locale) => {
-      const mail = await renderPurchaseConfirmation(view({ locale }), "UTC", SUPPORT);
+      const mail = await renderPurchaseConfirmation(view({ locale }), "UTC");
       expect(mail.text).toContain(plainConsent(locale));
       for (const line of refundLines(locale)) {
         expect(mail.text).toContain(line);
       }
       expect(mail.subject).not.toBe(
-        (await renderPurchaseConfirmation(view({ locale: "en" }), "UTC", SUPPORT)).subject,
+        (await renderPurchaseConfirmation(view({ locale: "en" }), "UTC")).subject,
       );
     },
   );
@@ -275,7 +314,7 @@ describe("the confirmation is written in the language the purchase was made in",
 
 describe("the HTML body says the same things as the text one", () => {
   it("carries the consent wording and every refund line", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
     expect(mail.html).toContain(htmlConsent("en"));
     for (const line of refundLines("en")) {
       expect(mail.html).toContain(line);
@@ -292,13 +331,13 @@ describe("the HTML body says the same things as the text one", () => {
  */
 describe("the emphasis in the consent wording is rendered, not printed", () => {
   it("leaves no asterisks in either body", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
     expect(mail.text).not.toContain("**");
     expect(mail.html).not.toContain("**");
   });
 
   it("keeps the emphasised words themselves", async () => {
-    const mail = await renderPurchaseConfirmation(view(), "UTC", SUPPORT);
+    const mail = await renderPurchaseConfirmation(view(), "UTC");
     // The English wording emphasises the sentence about spending a credit.
     expect(mail.text).toContain(
       "once I use any of them I can no longer get this purchase refunded",
@@ -310,7 +349,7 @@ describe("the emphasis in the consent wording is rendered, not printed", () => {
 
   it("does the same in every language we sell in", async () => {
     for (const locale of ["en", "zh-CN", "zh-TW", "ja", "ko"]) {
-      const mail = await renderPurchaseConfirmation(view({ locale }), "UTC", SUPPORT);
+      const mail = await renderPurchaseConfirmation(view({ locale }), "UTC");
       expect(mail.text).not.toContain("**");
       expect(mail.html).not.toContain("**");
     }
@@ -362,7 +401,6 @@ describe("both versions name wording that exists", () => {
         refundTextVersion: "refund-credits-v99",
       }),
       "UTC",
-      SUPPORT,
     );
 
     expect(mail.text).toContain("server.payment.refund-credits-v99.unused");

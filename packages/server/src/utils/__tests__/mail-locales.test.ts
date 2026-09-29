@@ -169,7 +169,8 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
     expect(mails.studioInvite!.html).toMatch(/<code[^>]*>Maintainer<\/code>/);
     expect(mails.projectInvite!.html).toMatch(/<code[^>]*>Editor<\/code>/);
     expect(mails.roleUpgrade!.html).toContain(`<em>${ESCAPED}</em>`);
-    expect(mails.roleUpgrade!.html).toContain("<strong>Editor</strong>");
+    expect(mails.roleUpgrade!.html).toMatch(/<code[^>]*>Editor<\/code>/);
+    expect(mails.studioTransfer!.html).toMatch(/<code[^>]*>Admin<\/code>/);
   });
 
   it.each(KINDS)("%s is laid out with the logo, slogan, heading and footer", (kind) => {
@@ -224,6 +225,36 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
     }
     expect(html).toContain(`© ${year} Orime, Inc.`);
     expect(text).toContain(`© ${year} Orime, Inc.`);
+  });
+
+  // WCAG 2.2 SC 2.5.8: the social and legal rows are lists of links, so a link
+  // wrapped onto the next line must sit 24px from the one above it, and no
+  // link may split across two lines.
+  it.each(KINDS)("%s wraps footer links whole, on 24px lines", (kind) => {
+    const { html } = mails[kind]!;
+    const footer = html.slice(html.indexOf(`href="mailto:${getMailLayout().contactEmail}"`));
+    const anchors = [...footer.matchAll(/<a href="[^"]*" style="([^"]*)">/g)].map((m) => m[1]!);
+    expect(anchors.length).toBeGreaterThanOrEqual(getMailLayout().social.length + 3);
+    for (const style of anchors) expect(style).toContain("white-space:nowrap");
+    const rows = [...footer.matchAll(/<div\s+style="([^"]*)"\s*><a /g)].map((m) => m[1]!);
+    expect(rows).toHaveLength(2);
+    for (const style of rows) expect(style).toContain("line-height:24px");
+  });
+
+  // Korean separates words with spaces and keeps each word whole across a
+  // line end; Chinese and Japanese break between any two characters.
+  it.each(KINDS)("%s keeps words whole exactly when the language spaces them", (kind) => {
+    const styles = [...mails[kind]!.html.matchAll(/<div\s+style="([^"]*font-size:(?:12|13|15|20)px;[^"]*)"/g)]
+      .map((m) => m[1]!);
+    expect(styles.length).toBeGreaterThanOrEqual(8);
+    for (const style of styles) {
+      if (locale === "ko") {
+        expect(style).toContain("word-break:keep-all");
+        expect(style).toContain("overflow-wrap:break-word");
+      } else {
+        expect(style).not.toContain("keep-all");
+      }
+    }
   });
 
   it.each(KINDS)("%s fills at least one screen with the page colour", (kind) => {
