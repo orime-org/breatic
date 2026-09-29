@@ -411,6 +411,58 @@ describe('what one press costs', () => {
   });
 });
 
+describe('what a wired source does to the price', () => {
+  // Priced like Seedance: a run with a reference clip takes the other branch.
+  const BRANCHING = {
+    ...CATALOG,
+    video: [
+      {
+        name: 'branching-model',
+        display_name: 'Branching',
+        takes_prompt: true,
+        params: {
+          refs: {
+            description: '',
+            upstream: 'reference_videos',
+            default: null,
+            fill: 'pool',
+            type: 'list',
+            accepts: 'video',
+            optional: true,
+          },
+        },
+        pricing: {
+          base_price: 40_000,
+          formula: '{"total_price": $count(reference_videos) > 0 ? 100000 : base_price}',
+          discount_rate: 100,
+        },
+        generation_time: 30,
+      },
+    ],
+  } as unknown as ModelCatalog;
+
+  const clipRun: ProposalNode = {
+    role: 'generate',
+    type: 'video',
+    name: 'The clip',
+    mode: 't2v',
+    model: 'branching-model',
+    poolKinds: ['video'],
+    takesPrompt: true,
+    prompt: [{ text: 'follow it' }],
+  };
+
+  it('prices a run with the clip wired into it, as the run will be sent', async () => {
+    const proposal = flow([{ role: 'source', type: 'video', name: 'Your clip' }, clipRun], [[0, 1]]);
+
+    expect(await creditsOf(BRANCHING, proposal)).toEqual({ credits: 10, bound: 'exact' });
+  });
+
+  it('prices the same run without the wire on the other branch', async () => {
+    expect(await creditsOf(BRANCHING, flow([clipRun]))).toEqual({ credits: 4, bound: 'exact' });
+  });
+});
+
 describe('a proposal stored before the check answered these questions', () => {
   it('names no feeder at all, rather than guessing which way it took', () => {
     // A row stored before the two catalog facts travelled on the node. What

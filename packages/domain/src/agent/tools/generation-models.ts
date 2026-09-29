@@ -46,12 +46,13 @@ const inputSchema = z
  * @returns The credits, with how they bound the charge.
  */
 function renderPrice(price: CreditEstimate): string {
-  const credits = Math.ceil(price.credits);
+  // A run is charged in part-credits; two decimals, as the site shows them.
+  const credits = price.credits.toLocaleString("en-US", { maximumFractionDigits: 2, useGrouping: false });
   switch (price.bound) {
     case "exact":
       return `${credits} credits at its defaults`;
     case "at_least":
-      return `at least ${credits} credits at its defaults, more for longer sources`;
+      return `at least ${credits} credits at its defaults, more with more or longer sources or more text`;
     case "at_most":
       return `up to ${credits} credits at its defaults, less when a source was used before`;
     case "per_thousand_chars":

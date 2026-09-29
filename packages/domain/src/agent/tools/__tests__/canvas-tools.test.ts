@@ -213,6 +213,15 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
+  // GPT Image 2.5 Sunburst Edit: $0.039 for one image to edit at its defaults,
+  // and the run cannot go without one. Part-credits are charged, so they show.
+  it("prices a required source not picked yet at one item, part-credits kept", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /\(gpt-image-2\.5-sunburst-edit\) \(at least 3\.9 credits at its defaults/,
+    );
+  });
+
   it("prices a per-character model per thousand characters while it has no text", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
     expect(renderGenerationModelsForModel(answer)).toMatch(/credits per 1000 characters of prompt/);

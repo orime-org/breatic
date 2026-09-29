@@ -82,8 +82,27 @@ function billsBy(formulas: readonly string[], fn: string, field: string): boolea
   return formulas.some((f) => call.test(f));
 }
 
+/** What a required source not picked yet stands for: the one item the run cannot go without. */
+const UNPICKED = "unpicked";
+
+/**
+ * Whether any of the formulas reads this upstream field at all.
+ * @param formulas - The formulas the run is priced by.
+ * @param field - The upstream field.
+ * @returns True when some formula names the field.
+ */
+function reads(formulas: readonly string[], field: string): boolean {
+  const name = new RegExp(`\\b${field}\\b`);
+  return formulas.some((f) => name.test(f));
+}
+
 /**
  * Estimates one run of a model, in credits.
+ *
+ * A required source not picked yet is priced as the one item the run cannot
+ * go without; a prompt not written yet is priced as no text. Either makes the
+ * answer a lower bound. Only a model whose whole price follows its text is
+ * quoted per thousand characters instead.
  * @param model - The model's catalog entry.
  * @param input - The run as set up so far.
  * @param creditMultiplier - Credits per US cent charged upstream.
@@ -99,41 +118,59 @@ export async function estimateCredits(
   const formulas = [model.pricing.formula, ...steps.map((s) => s.pricing.formula)];
   const promptField = model.prompt_upstream ?? "prompt";
 
+  const params: Record<string, unknown> = { ...input.params };
   const upstream: Record<string, unknown> = {};
   const durations: Record<string, readonly number[]> = {};
-  let lengthUnknown = false;
+  let unknown = false;
   for (const [name, spec] of Object.entries(model.params)) {
     const field = spec.upstream ?? name;
-    const value = input.params[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
+    let value = input.params[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
+    const source = spec.fill === "canvas" || spec.fill === "pool";
+    if (source && !holds(value) && spec.optional !== true) {
+      value = spec.type === "list" ? [UNPICKED] : UNPICKED;
+      params[name] = value;
+      if (reads(formulas, field)) unknown = true;
+    }
     upstream[field] = value;
-    if (spec.fill === "canvas" || spec.fill === "pool") {
+    if (source && holds(value)) {
       const known = input.durations?.[name] ?? [];
-      if (holds(value) && known.length >= itemCount(value)) durations[field] = known;
-      // A source not picked yet is one the run cannot go without unless the
-      // model says so, and its length is as unknown as a picked one's.
-      else if ((holds(value) || spec.optional !== true) && billsBy(formulas, "get_duration", field)) {
-        lengthUnknown = true;
-      }
+      if (known.length >= itemCount(value)) durations[field] = known;
+      else if (billsBy(formulas, "get_duration", field)) unknown = true;
     }
   }
 
   const text = input.prompt ?? "";
-  const sampled = model.takes_prompt && text === "" && billsBy(formulas, "$length", promptField);
-  if (model.takes_prompt) upstream[promptField] = sampled ? SAMPLE_TEXT : text;
+  const textPriced = model.takes_prompt && text === "" && billsBy(formulas, "$length", promptField);
 
-  let usd = await upstreamPriceUsd(toPricing(model.pricing), upstream, durations);
-  let reusedCounted = model.reused_by !== undefined && holds(input.params[model.reused_by]);
-  for (const step of steps) {
-    const source = step.for_param === undefined ? undefined : input.params[step.for_param];
-    if (step.for_param !== undefined && !holds(source)) continue;
-    const calls = step.per_item ? itemCount(source) : 1;
-    usd += calls * (await upstreamPriceUsd(toPricing(step.pricing), upstream, durations));
-    if (step.reused) reusedCounted = true;
+  /**
+   * The run's price in US dollars with the prompt field set to one value.
+   * @param prompt - What the prompt field carries.
+   * @returns The price, with every added upstream call counted.
+   * @throws {Error} When a pricing formula does not produce a finite price.
+   */
+  const priceUsd = async (prompt: string): Promise<number> => {
+    if (model.takes_prompt) upstream[promptField] = prompt;
+    let usd = await upstreamPriceUsd(toPricing(model.pricing), upstream, durations);
+    for (const step of steps) {
+      const source = step.for_param === undefined ? undefined : params[step.for_param];
+      if (step.for_param !== undefined && !holds(source)) continue;
+      const calls = step.per_item ? itemCount(source) : 1;
+      usd += calls * (await upstreamPriceUsd(toPricing(step.pricing), upstream, durations));
+    }
+    return usd;
+  };
+
+  const usd = await priceUsd(text);
+  const toCredits = (amount: number): number => amount * CENTS_PER_USD * creditMultiplier;
+  if (textPriced) {
+    if (usd === 0) return { credits: toCredits(await priceUsd(SAMPLE_TEXT)), bound: "per_thousand_chars" };
+    unknown = true;
   }
-
-  const credits = usd * CENTS_PER_USD * creditMultiplier;
-  if (sampled) return { credits, bound: "per_thousand_chars" };
-  if (lengthUnknown) return { credits, bound: "at_least" };
+  const reusedCounted =
+    (model.reused_by !== undefined && holds(params[model.reused_by])) ||
+    steps.some((step) => step.reused === true && (step.for_param === undefined || holds(params[step.for_param])));
+  const credits = toCredits(usd);
+  if (unknown) return { credits, bound: "at_least" };
   if (reusedCounted) return { credits, bound: "at_most" };
   return { credits, bound: "exact" };
 }

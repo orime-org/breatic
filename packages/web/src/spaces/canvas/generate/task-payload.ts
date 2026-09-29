@@ -11,10 +11,12 @@
  * (the reference / image-to-image inputs); it never reads the live node.
  */
 
-import type { TaskCreateInput } from '@breatic/shared';
+import type { ReferencePool, TaskCreateInput } from '@breatic/shared';
+import type { EstimateInput } from '@breatic/shared/pricing';
 
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
+import { poolParams, type ReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 
 /** Image-node generation task type (AIGC_TASK_TYPES key on the worker). */
 const IMAGE_TASK_TYPE = 'image';
@@ -48,6 +50,23 @@ export interface GenerateTaskInput {
 }
 
 /**
+ * The source params one run sends: the mentioned references and, when the
+ * caller passes one, the style image as a one-element list.
+ * @param pool - The mentioned references, under the params the model reads.
+ * @param styleImageUrl - The style image, only when the model takes one.
+ * @returns The source params, ready to merge into the payload.
+ */
+function imageSourceParams(
+  pool: Readonly<Record<string, readonly string[]>>,
+  styleImageUrl: string | undefined,
+): Record<string, unknown> {
+  return {
+    ...pool,
+    ...(styleImageUrl ? { [IMAGE_SLOTS.style.param]: [styleImageUrl] } : {}),
+  };
+}
+
+/**
  * Builds the overwrite-mode task payload for an image-node Generate.
  * @param input - The node, project/space, model, params, prompt and references.
  * @returns The `POST /canvas/tasks` request body, in overwrite mode.
@@ -67,10 +86,31 @@ export function buildGenerateTaskPayload(
     params: {
       ...input.params,
       prompt: input.promptText,
-      ...input.poolParams,
-      ...(input.styleImageUrl
-        ? { [IMAGE_SLOTS.style.param]: [input.styleImageUrl] }
-        : {}),
+      ...imageSourceParams(input.poolParams, input.styleImageUrl),
     },
   });
+}
+
+/** What the price reads off the image panel's view model. */
+interface ImageEstimateSource {
+  params: Readonly<Record<string, unknown>>;
+  pool: ReferencePool;
+  referenceUrls: ReferenceUrls;
+  styleSupported: boolean;
+  styleImageUrl?: string;
+}
+
+/**
+ * The run the panel quotes a price for (#2156, design §14): the params with
+ * the same source fields the submit sends.
+ * @param vm - The panel's view model.
+ * @param prompt - The prompt as the model reads it.
+ * @returns The estimate input.
+ */
+export function imageEstimateInput(vm: ImageEstimateSource, prompt: string): EstimateInput {
+  const style = vm.styleSupported ? vm.styleImageUrl : undefined;
+  return {
+    params: { ...vm.params, ...imageSourceParams(poolParams(vm.pool, vm.referenceUrls), style) },
+    prompt,
+  };
 }

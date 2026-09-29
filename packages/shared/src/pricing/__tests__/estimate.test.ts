@@ -67,8 +67,8 @@ const SPEECH: PricedModel = {
 const MUREKA_SONG: PricedModel = {
   takes_prompt: true,
   params: {
-    song: { upstream: "reference_id", fill: "canvas", default: null },
-    vocal: { upstream: "vocal_id", fill: "canvas", default: null },
+    song: { upstream: "reference_id", fill: "canvas", default: null, optional: true },
+    vocal: { upstream: "vocal_id", fill: "canvas", default: null, optional: true },
   },
   pricing: { base_price: 225_000, formula: "", discount_rate: 100 },
   extra_steps: [
@@ -114,6 +114,12 @@ const VOICE_CLONE: PricedModel = {
   pricing: { base_price: 1_600_000, formula: "", discount_rate: 100 },
   reused_by: "audio",
   extra_steps: [{ endpoint: "minimax/speech-2.8-hd", at: "after", pricing: SPEECH_PRICING }],
+};
+
+const EDIT_POOL: PricedModel = {
+  takes_prompt: true,
+  params: { images: { fill: "pool", type: "list", default: null } },
+  pricing: { base_price: 0, formula: '{"total_price": 39000 + (($count(images) - 1) * 15000)}', discount_rate: 100 },
 };
 
 describe("estimateCredits", () => {
@@ -199,5 +205,22 @@ describe("estimateCredits", () => {
     );
     expect(estimate.bound).toBe("at_most");
     expect(estimate.credits).toBeCloseTo(170, 6);
+  });
+
+  it("prices a required pool left empty at the one item the run cannot go without", async () => {
+    const estimate = await estimateCredits(EDIT_POOL, { params: {} }, 1);
+    expect(estimate).toEqual({ credits: 3.9, bound: "at_least" });
+  });
+
+  it("prices a filled required pool exactly", async () => {
+    const estimate = await estimateCredits(EDIT_POOL, { params: { images: ["a", "b"] } }, 1);
+    expect(estimate.bound).toBe("exact");
+    expect(estimate.credits).toBeCloseTo(5.4, 6);
+  });
+
+  it("prices a model that bills more than its text at no text, as a lower bound", async () => {
+    const estimate = await estimateCredits(VOICE_CLONE, { params: { audio: "a" } }, 1);
+    expect(estimate.bound).toBe("at_least");
+    expect(estimate.credits).toBeCloseTo(160, 6);
   });
 });

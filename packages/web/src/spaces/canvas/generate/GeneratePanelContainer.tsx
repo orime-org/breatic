@@ -70,7 +70,7 @@ import {
 import {
   PromptEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
-import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
+import { buildGenerateTaskPayload, imageEstimateInput } from '@web/spaces/canvas/generate/task-payload';
 import { poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import { useCanvasStore } from '@web/stores';
@@ -251,7 +251,7 @@ function GeneratePanelBody({
   );
   const creditText = useCreditText(
     vm.modelEntry,
-    { params: vm.params, prompt: extractPromptText(promptText) },
+    imageEstimateInput(vm, extractPromptText(promptText)),
     catalog?.credit_multiplier ?? 1,
   );
   // Stable model-list identity for the memo'd pickers: the vm rebuilds on

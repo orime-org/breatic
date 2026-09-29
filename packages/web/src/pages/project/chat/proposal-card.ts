@@ -11,8 +11,8 @@
  * quote its own price.
  */
 
-import { layersOf, nameableFeeders, promptPlainText } from '@breatic/shared';
-import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
+import { feedersOf, layersOf, nameableFeeders, promptPlainText } from '@breatic/shared';
+import type { CanvasProposal, ModelCatalog, ModelEntry, ProposalNode } from '@breatic/shared';
 import type { CreditEstimate } from '@breatic/shared/pricing';
 
 /** What one node contributes to the little shape drawn on the card. */
@@ -295,6 +295,50 @@ export function costOf(
   };
 }
 
+/** What a wired source stands for in a price: it will be there, its length unknown. */
+const WIRED = 'wired';
+
+/**
+ * The params one proposed run is priced with: its own, plus a stand-in for
+ * each source wired into it, under the param that source will reach. A
+ * mentioned feeder lands in the pool of its kind; one picked by a slot lands in
+ * the first slot of its kind still empty.
+ * @param entry - The run's catalog entry.
+ * @param proposal - The proposal the card draws.
+ * @param index - The run's node.
+ * @returns The params, with the wired sources in place.
+ * @throws {never} Never.
+ */
+function wiredParams(
+  entry: ModelEntry,
+  proposal: CanvasProposal,
+  index: number,
+): Record<string, unknown> {
+  const params: Record<string, unknown> = { ...(proposal.nodes[index]?.params ?? {}) };
+  const held = feedersOf(proposal, index);
+  const named = nameableFeeders(proposal, index);
+  const mentioned = new Set([...named.sources, ...named.upstream].filter((i) => i !== null));
+  const specs = Object.entries(entry.params ?? {});
+  for (const i of [...held.sources, ...held.upstream]) {
+    const kind = proposal.nodes[i]?.type;
+    const byPool = mentioned.has(i);
+    const target = specs.find(
+      ([name, spec]) =>
+        spec.accepts === kind &&
+        (byPool ? spec.fill === 'pool' : spec.fill === 'canvas' && params[name] == null),
+    );
+    if (target === undefined) continue;
+    const [name] = target;
+    if (byPool) {
+      const list = Array.isArray(params[name]) ? (params[name] as unknown[]) : [];
+      params[name] = [...list, WIRED];
+    } else {
+      params[name] = WIRED;
+    }
+  }
+  return params;
+}
+
 /**
  * What one press of this flow costs, priced the way the panels price each run.
  *
@@ -314,16 +358,16 @@ export async function creditsOf(
   proposal: CanvasProposal,
 ): Promise<CreditEstimate | undefined> {
   const runs = proposal.nodes
-    .filter((node) => node.role === 'generate')
-    .map((node) => ({ node, entry: entryOf(catalog, node.model) }));
+    .map((node, index) => ({ node, index, entry: entryOf(catalog, node.model) }))
+    .filter(({ node }) => node.role === 'generate');
   if (!catalog || runs.length === 0) return undefined;
   if (runs.some(({ entry }) => entry?.pricing === undefined)) return undefined;
   const { estimateCredits } = await import('@breatic/shared/pricing');
   const estimates = await Promise.all(
-    runs.map(({ node, entry }) =>
+    runs.map(({ node, entry, index }) =>
       estimateCredits(
         { ...entry!, pricing: entry!.pricing! },
-        { params: node.params ?? {}, prompt: promptPlainText(node.prompt ?? []) },
+        { params: wiredParams(entry!, proposal, index), prompt: promptPlainText(node.prompt ?? []) },
         catalog.credit_multiplier,
       ),
     ),
