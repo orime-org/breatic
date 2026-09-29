@@ -673,10 +673,15 @@ test.describe('the card a comment is written in', () => {
       await peer.keyboard.type('ZZ');
 
       await expect(page.locator(`${EDITOR} p`).first()).toContainText('oneZZ');
-      await expect(page.getByTestId('doc-comment-draft-dropped')).toHaveCount(0);
-      await expect(
-        page.locator(`${EDITOR} .doc-comment-draft-mark`),
-      ).toHaveText('bravo');
+      // The shortcut takes out "## " and rewrites the line as a heading in one
+      // change, which leaves only the text to find the draft's words by: the
+      // card says so and keeps what was written (A21).
+      await expect(page.getByTestId('doc-comment-draft-dropped')).toBeVisible();
+      await selectParagraph(page, 0);
+      await page.getByTestId('doc-bubble-tool-comment').click();
+      await expect(page.getByTestId('doc-comment-draft-input')).toHaveValue(
+        'half a thought',
+      );
     } finally {
       await peer.close();
     }
