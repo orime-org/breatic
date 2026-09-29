@@ -12,6 +12,7 @@ import {
   type GenerationNodeType,
   type ModelEntry,
   type ParamDescriptor,
+  type ReferenceKind,
 } from "@breatic/shared";
 
 import { materialCount } from "@domain/model-catalog/material-count.js";
@@ -399,6 +400,52 @@ function projectParam(
     default: spec.default,
     what: oneLine(spec.description ?? ""),
   };
+}
+
+/**
+ * The parameters a model fills from nodes wired into it, one per kind it
+ * takes that way (#2156: pictures, clips and tracks each have a pool).
+ *
+ * Two gates turn on this answer -- whether an empty node has to be wired in
+ * at all, and what a mark in the prompt lands as once the group is placed --
+ * so it is given once.
+ * @param chosen - The model the proposal picked, as the catalog projects it.
+ * @returns Each pool parameter with the kind it takes; empty when material
+ *   arrives by slot.
+ * @throws {never} Never.
+ */
+export function poolParams(chosen: ModelInfo): Array<{ kind: ReferenceKind; info: ParamInfo }> {
+  return Object.values(chosen.params).flatMap((info) =>
+    info.fromReferencePool === true && isReferenceKind(info.accepts) ? [{ kind: info.accepts, info }] : [],
+  );
+}
+
+/**
+ * Whether a declared `accepts` names a kind a pool carries.
+ * @param accepts - What the param says it takes.
+ * @returns True for a picture, clip or track.
+ * @throws {never} Never.
+ */
+function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind {
+  return accepts === "image" || accepts === "video" || accepts === "audio";
+}
+
+/**
+ * The kinds a model takes by a required slot: one entry per canvas place a
+ * run cannot go without, so a kind with two such places appears twice.
+ *
+ * The agent's catalog text and the proposal's routing both read this, so the
+ * sentence the model is told and the place a node lands agree.
+ * @param chosen - The model, as the catalog projects it.
+ * @returns The slot kinds, in declaration order.
+ * @throws {never} Never.
+ */
+export function requiredSlotKinds(chosen: ModelInfo): ReferenceKind[] {
+  return Object.values(chosen.params).flatMap((info) =>
+    info.filledBySource === true && info.fromReferencePool !== true && info.optional !== true && isReferenceKind(info.accepts)
+      ? [info.accepts]
+      : [],
+  );
 }
 
 /**

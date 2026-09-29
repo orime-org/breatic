@@ -180,7 +180,11 @@ export interface CanvasProposal {
 export interface NameableFeederIndices {
   /** Indices of the empty nodes wired in, null where none can be mentioned. */
   sources: (number | null)[];
-  /** The same for the nodes wired in that carry work of their own. */
+  /**
+   * The same for the nodes wired in that carry work of their own, past the
+   * ones in `slotted`: a ref mark's mention is its whole text, so the slot's
+   * node has no mark to keep a place for.
+   */
   upstream: (number | null)[];
   /**
    * The nodes wired in that fill a required slot, in node order. The reader
@@ -272,13 +276,6 @@ export function nameableFeeders(
     const node = proposal.nodes[i];
     return node !== undefined && insertRefusal(node.type, ctx) === null;
   };
-  /**
-   * One entry per node wired in, the index where it can be mentioned.
-   * @param list - The feeders, in the order the nodes are listed.
-   * @param can - Whether a mention is possible for this run at all.
-   * @returns The same length, null where no mention can be written.
-   * @throws {never} Never.
-   */
   // The required slots still open, by kind. Each node of that kind wired in
   // takes one, in the order the nodes are listed, before any reaches the pool.
   const open = [...(at.slotKinds ?? [])];
@@ -303,7 +300,7 @@ export function nameableFeeders(
     // is what picks the material. Through a slot the reader picks by clicking
     // and the bracket alone names the slot to pick it in.
     sources: keepingPlaces(held.sources, byPool),
-    upstream: keepingPlaces(held.upstream, true),
+    upstream: keepingPlaces(held.upstream.filter((i) => !slotted.includes(i)), true),
     slotted,
   };
 }

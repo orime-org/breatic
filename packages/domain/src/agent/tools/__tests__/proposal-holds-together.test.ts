@@ -1004,6 +1004,43 @@ describe("what the answer tells the canvas", () => {
     expect(verdict.ok ? "" : verdict.reason).toMatch(/slot/);
   });
 
+  it("lets a mark name the generated work wired in past the one that fills the slot", () => {
+    const at = mixed();
+    const first = pick((m) => m.nodeType === "image" && m.needs.length === 0 && m.takesPrompt, "text-to-image mode");
+    const picture = (name: string): ProposalNode => ({
+      role: "generate",
+      type: "image",
+      name,
+      mode: first.mode,
+      model: first.model,
+      params: {},
+      prompt: [{ text: name }],
+    });
+    const proposal: CanvasProposal = {
+      nodes: [
+        picture("Knight"),
+        picture("Castle"),
+        {
+          role: "generate",
+          type: at.nodeType,
+          name: "Clip",
+          mode: at.mode,
+          model: at.model,
+          params: {},
+          prompt: [{ text: "walk to " }, { slot: { kind: "ref", label: "castle", note: "" } }],
+        },
+      ],
+      edges: [
+        { fromIndex: 0, toIndex: 2 },
+        { fromIndex: 1, toIndex: 2 },
+      ],
+      rationale: "",
+      groupName: "Knight clip",
+    };
+
+    expect(checkProposal(proposal)).toEqual({ ok: true });
+  });
+
   it("refuses a proposal that says it itself", () => {
     // The path a model's material takes is the catalog's answer. A proposal
     // carrying one would be a second copy of it, free to disagree.
@@ -1845,11 +1882,9 @@ describe("a mark pointing at an upstream node", () => {
     });
   });
 
-  it("measures a mark landing on an unmentionable feeder as the nothing it writes", () => {
-    // The canvas writes no mention where the feeder cannot carry one, so the
-    // characters it would have carried never reach the box. Read off a list
-    // with that place dropped, the mark would be paired with the node next
-    // along and the check would judge a string the reader never receives.
+  it("pairs a mark with the node past the one the required slot takes", () => {
+    // The reader picks the slot's node in the panel, so the canvas writes no
+    // mention of it and the one mark is about the caption wired in after it.
     const at = pick(
       (m) => !m.byReference && m.takesPrompt && m.needs.length > 0,
       "mode fed by a panel slot that still takes a prompt",
@@ -1869,12 +1904,7 @@ describe("a mark pointing at an upstream node", () => {
       groupName: "Two steps",
     });
 
-    // The one mark lands on the feeder the model's required slot takes, and
-    // it is named.
-    expect(verdict).toEqual({
-      ok: false,
-      reason: expect.stringMatching(/fills the \w+ slot/),
-    });
+    expect(verdict).toEqual({ ok: true });
   });
 
   it("refuses a second mark when only one node is wired in to carry it", () => {

@@ -59,6 +59,8 @@ import {
 
 import {
   modelsForMode,
+  poolParams,
+  requiredSlotKinds,
   type ModelInfo,
   type ParamInfo,
 } from "@domain/model-catalog/mode-catalog.js";
@@ -171,34 +173,6 @@ export const inputSchema = z
   .strict();
 
 /**
- * The parameters a model fills from nodes wired into it, one per kind it
- * takes that way (#2156: pictures, clips and tracks each have a pool).
- *
- * Two gates turn on this answer -- whether an empty node has to be wired in
- * at all, and what a mark in the prompt lands as once the group is placed --
- * so it is given once.
- * @param chosen - The model the proposal picked, as the catalog projects it.
- * @returns Each pool parameter with the kind it takes; empty when material
- *   arrives by slot.
- * @throws {never} Never.
- */
-function poolParams(chosen: ModelInfo): Array<{ kind: ReferenceKind; info: ParamInfo }> {
-  return Object.values(chosen.params).flatMap((info) =>
-    info.fromReferencePool === true && isReferenceKind(info.accepts) ? [{ kind: info.accepts, info }] : [],
-  );
-}
-
-/**
- * Whether a declared `accepts` names a kind a pool carries.
- * @param accepts - What the param says it takes.
- * @returns True for a picture, clip or track.
- * @throws {never} Never.
- */
-function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind {
-  return accepts === "image" || accepts === "video" || accepts === "audio";
-}
-
-/**
  * What the catalog says about one proposed node, for everyone downstream.
  *
  * Answered here because the catalog is the authority and this file is the
@@ -221,14 +195,7 @@ function catalogFactsOf(
   if (!chosen) return undefined;
   return {
     poolKinds: poolParams(chosen).map((pool) => pool.kind),
-    slotKinds: Object.values(chosen.params).flatMap((info) =>
-      info.filledBySource === true &&
-      info.fromReferencePool !== true &&
-      info.optional !== true &&
-      isReferenceKind(info.accepts)
-        ? [info.accepts]
-        : [],
-    ),
+    slotKinds: requiredSlotKinds(chosen),
     takesPrompt: chosen.takesPrompt,
   };
 }
@@ -528,22 +495,22 @@ function checkGenerateNode(
         reason: `"${node.name}" points at something upstream, and what is wired into it is material the reader fills in. Mark it as material, or wire in the work this draws on.`,
       };
     }
-    if (lost >= wired) {
+    // The slot's nodes are picked in the panel, so the marks count the rest.
+    const markable = held.upstream.filter((i) => !canName.slotted.includes(i));
+    if (lost >= markable.length) {
+      const slot = nodesAt(held.upstream.filter((i) => canName.slotted.includes(i)));
+      const filled = slot
+        .map((n) => ` "${n?.name ?? ""}" fills the ${n?.type ?? ""} slot "${model}" cannot run without, which the reader picks in the panel, so no mark is about it.`)
+        .join("");
+      const counted = slot.length > 0 ? "past the slot" : "are wired into it";
       return {
         ok: false,
-        reason: `"${node.name}" points upstream ${String(pointed.length)} time(s) and ${String(wired)} node(s) are wired into it. Each mark is about one of them, in the order they are listed.`,
-      };
-    }
-    const missed = held.upstream[lost];
-    if (missed !== undefined && canName.slotted.includes(missed)) {
-      return {
-        ok: false,
-        reason: `"${proposal.nodes[missed]?.name ?? ""}" fills the ${proposal.nodes[missed]?.type ?? ""} slot "${model}" cannot run without, which the reader picks in the panel. Take the mark off it; a second ${proposal.nodes[missed]?.type ?? ""} wired in after it can be marked.`,
+        reason: `"${node.name}" points upstream ${String(pointed.length)} time(s) and ${String(markable.length)} node(s) ${counted}. Each mark is about one of them, in the order they are listed.${filled}`,
       };
     }
     return {
       ok: false,
-      reason: `"${model}" cannot carry a mention of "${nodesAt(held.upstream)[lost]?.name ?? ""}". Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
+      reason: `"${model}" cannot carry a mention of "${nodesAt(markable)[lost]?.name ?? ""}". Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
     };
   }
   // What the panel's own gate would say about the box this proposal fills in.

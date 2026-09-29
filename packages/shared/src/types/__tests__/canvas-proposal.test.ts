@@ -62,14 +62,14 @@ describe("nameableFeeders", () => {
     const work: ProposalNode = { role: "generate", type: "image", name: "Knight", mode: "t2i", model: "m", poolKinds: [], takesPrompt: true };
     const proposal = into([work, mixedRun]);
 
-    expect(nameableFeeders(proposal, 1)).toEqual({ sources: [], upstream: [null], slotted: [0] });
+    expect(nameableFeeders(proposal, 1)).toEqual({ sources: [], upstream: [], slotted: [0] });
   });
 
   it("gives the slot to whichever node of that kind is listed first", () => {
     const work: ProposalNode = { role: "generate", type: "image", name: "Knight", mode: "t2i", model: "m", poolKinds: [], takesPrompt: true };
     const proposal = into([work, photo("Hero"), mixedRun]);
 
-    expect(nameableFeeders(proposal, 2)).toEqual({ sources: [1], upstream: [null], slotted: [0] });
+    expect(nameableFeeders(proposal, 2)).toEqual({ sources: [1], upstream: [], slotted: [0] });
   });
 });
 
@@ -87,6 +87,17 @@ describe("markTargets", () => {
     const proposal = into([photo("Hero"), photo("Extra"), marked]);
 
     expect(markTargets(proposal, 2)).toEqual([0]);
+  });
+
+  // The slot's node is picked in the panel, so the first ref mark is about the
+  // next node of that kind, the one headed for the pool.
+  it("sends a ref mark past the generated work that fills the slot", () => {
+    const work = (name: string): ProposalNode => ({ role: "generate", type: "image", name, mode: "t2i", model: "m", poolKinds: [], takesPrompt: true });
+    const marked = { ...mixedRun, prompt: [{ text: "walk to " }, { slot: { kind: "ref" as const, label: "castle", note: "" } }] };
+    const proposal = into([work("Knight"), work("Castle"), marked]);
+
+    expect(nameableFeeders(proposal, 2)).toEqual({ sources: [], upstream: [1], slotted: [0] });
+    expect(markTargets(proposal, 2)).toEqual([1]);
   });
 
   it("sends the upstream node a ref mark names", () => {
