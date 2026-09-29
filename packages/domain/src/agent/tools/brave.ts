@@ -37,6 +37,14 @@ export interface BraveRequest {
   budgetMs: number;
   /** The turn's signal, when the tool was given one. */
   abortSignal?: AbortSignal;
+  /**
+   * Called once Brave has answered with a success status, which is the
+   * request it bills: its rate-limiting guide says "Only successful requests
+   * (non-error responses) are counted against your quota and billed". Called
+   * before the body is read, so a body that then fails to arrive or parse is
+   * still recorded.
+   */
+  onBilled: () => void;
 }
 
 /**
@@ -55,7 +63,7 @@ export interface BraveRequest {
  * @throws {Error} Carrying tool failure detail, or the user's stop.
  */
 export async function braveJson(request: BraveRequest): Promise<unknown> {
-  const { url, apiKey, voice, query, budgetMs, abortSignal } = request;
+  const { url, apiKey, voice, query, budgetMs, abortSignal, onBilled } = request;
 
   // Through the shared transport, which owns the retrying. Either search is a
   // read: its only effect is the response, so a delivery that produced none
@@ -103,6 +111,7 @@ export async function braveJson(request: BraveRequest): Promise<unknown> {
     void res.body?.cancel();
     throw toolFailed(refusalReason(voice, query, res.status), FAILURE_LINES.upstream);
   }
+  onBilled();
 
   let text: string;
   try {

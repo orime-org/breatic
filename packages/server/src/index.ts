@@ -31,7 +31,8 @@ import { logger, initLogger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
-import { modelCatalog } from "@breatic/domain";
+import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
+import { textToolModels } from "@server/config/text-tools.js";
 
 // Tag this process's logs as "server" (file dir logs/server/, `name:"server"`).
 // Runs after initCore (bootstrap-config) and before the first log below;
@@ -98,6 +99,17 @@ try {
   getAgentConfig();
 } catch (err) {
   logger.error({ err }, "agent_config_invalid");
+  process.exit(1);
+}
+
+// Every model the agent runs on has to be priceable (#296). One reached
+// directly reports tokens but no cost, and is priced from
+// config/usage-pricing.yaml; lazily, a missing price would surface as the
+// first call that spent money failing to record what it spent.
+try {
+  assertModelsPriced([...agentModelIds(), ...textToolModels()]);
+} catch (err) {
+  logger.error({ err }, "usage_pricing_incomplete");
   process.exit(1);
 }
 

@@ -21,6 +21,8 @@ import { z } from "zod";
 import { getAgentConfig, getRawEnvVar } from "@breatic/core";
 import { FAILURE_LINES } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
+import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
+import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import {
   AUDIO_FORMAT_NAMES,
   IMAGE_FORMAT_NAMES,
@@ -220,7 +222,7 @@ const STOPPED_SHORT: Readonly<Record<string, string>> = {
  * everyone else.
  * @returns The tool.
  */
-export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
+export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string, UsageContext> {
   // Whether this turn already has one of these in the air. The model gets one
   // address per call, so a message carrying several files becomes several
   // calls in one step, and `ai@7.0.68` runs every tool call of a step through
@@ -245,12 +247,27 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
       "question about it. Give one address at a time, and wait for the answer before asking " +
       "about the next one.",
     inputSchema,
+    contextSchema: usageContextSchema,
     // What the panel reads about a running call, resolved by the web package.
     metadata: { runningLine: "chat.tool.understanding" },
     execute: async (
       { url, question },
-      { abortSignal }: { abortSignal?: AbortSignal },
+      { abortSignal, context }: { abortSignal?: AbortSignal; context: UsageContext },
     ): Promise<string> => {
+      /**
+       * Record one billed call.
+       * @param costUsd - What the service said it charged, when it said.
+       */
+      const recordBilled = (costUsd: number | undefined): void => {
+        context.usage.recordServiceCall({
+          source: "tool:understand_media",
+          service: UNDERSTAND_PINS.model,
+          provider: "openrouter",
+          requests: 1,
+          ...(costUsd === undefined ? {} : { costUsd }),
+        });
+      };
+
       const config = getAgentConfig();
       const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
       if (!apiKey) {
@@ -292,6 +309,7 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
           baseUrl: UNDERSTAND_PINS.baseUrl,
           maxOutputTokens: config.understand_media_max_output_tokens,
           ...(abortSignal ? { signal: abortSignal } : {}),
+          onBilled: recordBilled,
         });
       } catch (err) {
         if (isStop(err, abortSignal)) throw stoppedByUser();

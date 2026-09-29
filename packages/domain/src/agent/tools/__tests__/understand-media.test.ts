@@ -22,6 +22,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
 import type * as understandModule from "@domain/understand/index.js";
+import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
 
 const understandMediaAtMock = vi.fn();
 
@@ -51,6 +52,8 @@ const { getAgentConfig } = await import("@breatic/core");
 const { AUDIO_FORMAT_NAMES, IMAGE_FORMAT_NAMES, MediaUnavailable, UnderstandRefused, VIDEO_FORMAT_NAMES } =
   await import("@domain/understand/index.js");
 const { TOOL_MAP, BASELINE_TOOLS, buildToolSet } = await import("@domain/agent/tools/index.js");
+const { UNDERSTAND_PINS } = await import("@domain/understand/index.js");
+const { toolOptions, usageSpy } = await import("@domain/agent/__tests__/helpers/usage-spy.js");
 
 /** What one turn's copy of the tool is called with. */
 type Call = (input: { url: string; question: string }, signal?: AbortSignal) => Promise<unknown>;
@@ -64,17 +67,13 @@ type Call = (input: { url: string; question: string }, signal?: AbortSignal) => 
  * @returns A function that runs that copy.
  * @throws {Error} When the tool is not registered, or has no `execute`.
  */
-function turnCopy(): Call {
+function turnCopy(usage?: UsageRecorder): Call {
   const build = TOOL_MAP.understand_media;
   if (!build) throw new Error("understand_media is not registered");
   const execute = build().execute;
   if (!execute) throw new Error("understand_media has no execute");
   return (input, signal) =>
-    execute(input, {
-      toolCallId: "call-1",
-      messages: [],
-      ...(signal ? { abortSignal: signal } : {}),
-    } as never);
+    execute(input, toolOptions(signal ? { abortSignal: signal } : {}, usage) as never);
 }
 
 /**
@@ -117,6 +116,61 @@ beforeEach(() => {
     text: "A black Labrador retriever.",
     finishReason: "stop",
     kind: "image",
+  });
+});
+
+describe("understand_media — recording what the service billed", () => {
+  const ASKED = { url: "https://example.com/dog.jpg", question: "What is this?" };
+  const RECORDED = {
+    source: "tool:understand_media",
+    service: UNDERSTAND_PINS.model,
+    provider: "openrouter",
+    requests: 1,
+  };
+
+  /**
+   * A capability that reports the call billed, the way the real one does
+   * once the answer shows it, and then answers or fails.
+   * @param costUsd - What it reports the call cost.
+   * @param then - What it does next.
+   */
+  function billedThen(costUsd: number | undefined, then: () => unknown): void {
+    understandMediaAtMock.mockImplementation(
+      async (request: { onBilled: (cost: number | undefined) => void }) => {
+        request.onBilled(costUsd);
+        return then();
+      },
+    );
+  }
+
+  it("records the cost the service reported", async () => {
+    billedThen(0.003, () => ({ text: "A dog.", finishReason: "stop", kind: "image" }));
+    const spy = usageSpy();
+    await turnCopy(spy.recorder)(ASKED);
+    expect(spy.serviceCalls).toEqual([{ ...RECORDED, costUsd: 0.003 }]);
+  });
+
+  it("records a billed call with no figure without one", async () => {
+    billedThen(undefined, () => ({ text: "A dog.", finishReason: "stop", kind: "image" }));
+    const spy = usageSpy();
+    await turnCopy(spy.recorder)(ASKED);
+    expect(spy.serviceCalls).toEqual([RECORDED]);
+  });
+
+  it("keeps the record of a billed call that then failed", async () => {
+    billedThen(0.002, () => {
+      throw new UnderstandRefused(200, "Gemini blocked the request: SAFETY", "content-filter");
+    });
+    const spy = usageSpy();
+    await turnCopy(spy.recorder)(ASKED).catch(() => undefined);
+    expect(spy.serviceCalls).toEqual([{ ...RECORDED, costUsd: 0.002 }]);
+  });
+
+  it("records nothing when the service never billed the call", async () => {
+    understandMediaAtMock.mockRejectedValue(new MediaUnavailable("slow", { detail: "TimeoutError" }));
+    const spy = usageSpy();
+    await turnCopy(spy.recorder)(ASKED).catch(() => undefined);
+    expect(spy.serviceCalls).toEqual([]);
   });
 });
 
@@ -175,6 +229,8 @@ describe("understand_media — a call that worked", () => {
       backend: "google-vertex",
       apiKey: "test-key",
       baseUrl: "https://openrouter.ai/api/v1",
+      // The call is recorded where the service shows it billed.
+      onBilled: expect.any(Function),
     });
   });
 

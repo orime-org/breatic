@@ -231,6 +231,13 @@ export interface UnderstandRequest {
   timeoutMs: number;
   /** Whether anyone still wants the answer. */
   signal?: AbortSignal;
+  /**
+   * Called once when the service has billed the call: with what its body
+   * says the call cost, or with undefined when a success answer carried no
+   * figure or could not be read. Not called for a refusal status whose body
+   * states no cost, nor for a call that never got an answer.
+   */
+  onBilled: (costUsd: number | undefined) => void;
 }
 
 /** What one understanding call answered with. */
@@ -239,14 +246,6 @@ export interface UnderstandAnswer {
   text: string;
   /** Why it stopped writing, in the service's own vocabulary. */
   finishReason: string;
-  /**
-   * What the service charged for the call, in US dollars.
-   *
-   * Undefined when the answer carried no usage figure. That is not zero: a
-   * run charged nothing and a run whose price is unknown want different
-   * things from the caller, and only the caller knows which.
-   */
-  costUsd?: number;
 }
 
 /** What getting one address's media needs to know. */

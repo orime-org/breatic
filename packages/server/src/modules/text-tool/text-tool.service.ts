@@ -6,8 +6,8 @@
  *
  * Unlike AIGC tools (Worker + Yjs), text tools run directly in the
  * API process and stream results via SSE. The user decides whether
- * to accept or reject the result. Credits are deducted after
- * streaming completes (based on actual token usage).
+ * to accept or reject the result. The model call is recorded as its
+ * response arrives, and the run is charged what the record adds up to.
  */
 
 import { stepCountIs } from "ai";
@@ -16,8 +16,9 @@ import { t } from "@breatic/shared";
 import { getModel, resolveProvider } from "@breatic/domain";
 import { getModelForTool, getPromptForTool } from "@server/config/text-tools.js";
 import { env, logger } from "@breatic/core";
-import { creditsForTokens } from "@server/modules/credit/token-pricing.js";
-import { creditLotService } from "@breatic/domain";
+import { creditLotService, createUsageRecorder } from "@breatic/domain";
+import type { UsageRecorder } from "@breatic/domain";
+import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import { getRedis } from "@breatic/core";
 
 /** SSE event yielded during text tool execution. */
@@ -138,17 +139,30 @@ export async function* executeTextTool(
   }
 
   let totalTokens = 0;
-  // Declared out here so both exits reach it. The token count is only read
-  // once the stream has finished, so a run that died before that charges
-  // nothing and the model goes unused; a run that died after it is charged
-  // and carries the same columns as the success path. The second case is
-  // reached when the consumer throws while taking an event: the throw comes
-  // back out of the suspended `yield`, by which point the model has already
-  // billed us.
+  // Declared out here so both exits reach them. The model call is recorded
+  // when its response arrives. A run that died before that is recorded later
+  // when the model routes through OpenRouter (the cut-off call goes to the
+  // generation lookup), and not at all on a direct route; a run that died
+  // after it is charged the same as the success path. The second case is reached when the consumer throws while
+  // taking an event: the throw comes back out of the suspended `yield`, by
+  // which point the model has already billed us.
   let modelString: string | null = null;
+  const usage = createUsageRecorder({
+    operationKey: `texttool:${idempotencyKey}`,
+    feature: "text_tool",
+    actorUserId: userId,
+    // Null because this route never took one (#122); see `chargeRecorded`.
+    projectId: null,
+    onMissingCost: (row) => logger.error({ row, userId, tool }, "agent_usage_cost_missing"),
+  });
+  // Set once the model is known; records the run's model calls.
+  let calls: ModelCallWatch | undefined;
 
   try {
-    modelString = getModelForTool(tool);
+    const model = getModelForTool(tool);
+    modelString = model;
+    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}` });
+    calls = watch;
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);
 
@@ -159,6 +173,11 @@ export async function* executeTextTool(
       stopWhen: stepCountIs(1),
       temperature: 0.7,
       abortSignal: signal,
+      ...watch.streamOptions,
+      onLanguageModelCallEnd: (event) => {
+        totalTokens += event.usage.totalTokens ?? 0;
+        watch.callEnded(event);
+      },
     });
 
     for await (const part of result.fullStream) {
@@ -169,17 +188,13 @@ export async function* executeTextTool(
       }
     }
 
-    // Get final usage
-    const usage = await result.usage;
-    totalTokens = usage?.totalTokens ?? 0;
-
-    // Deduct credits based on token usage
-    const creditsUsed = await recordTokenUsage(
+    const creditsUsed = await chargeRecorded(
       userId,
-      totalTokens,
+      usage,
+      calls,
       tool,
-      idempotencyKey,
       modelString,
+      totalTokens,
     );
 
     if (signal.aborted) {
@@ -190,15 +205,16 @@ export async function* executeTextTool(
     // Caller (server SSE route) logs `text_tool_completed` audit
     // line from the consumed `done` / `aborted` event.
   } catch (err) {
-    // Deduct for consumed tokens even on error. Uses the same
-    // idempotencyKey as the success path so the catch branch can't
+    // Charge what the recorder holds even on error. Charged under the same
+    // operation key as the success path, so the catch branch can't
     // double-charge if somehow both run for the same request.
-    const creditsUsed = await recordTokenUsage(
+    const creditsUsed = await chargeRecorded(
       userId,
-      totalTokens,
+      usage,
+      calls,
       tool,
-      idempotencyKey,
       modelString,
+      totalTokens,
     );
 
     if (signal.aborted) {
@@ -215,44 +231,41 @@ export async function* executeTextTool(
 }
 
 /**
- * Record what a text-tool run used, and charge for it.
- *
- * Uses a simple rate: 1 credit per 1000 tokens (configurable via CREDIT_MULTIPLIER).
+ * Charge a text-tool run what its recorder adds up to.
  *
  * Which pool pays is decided by the project a generation runs in, and this
  * route carries no project id (#122). Until it does, a run records its usage
  * and charges nobody, so the number returned here is zero.
  *
- * The per-request idempotency key makes a retry of the same HTTP request
- * record at most once.
+ * The recorder's operation key carries the per-request idempotency key, so a
+ * retry of the same HTTP request charges at most once.
  * @param userId - Authenticated user ID the usage is recorded against.
- * @param tokens - Total tokens consumed by the run, used to compute the credit amount.
+ * @param usage - The run's recorder.
+ * @param calls - The run's model-call watch, once the model was known.
  * @param tool - Tool name recorded on the ledger row.
- * @param idempotencyKey - Per-request key combined into the `texttool:` ref to guarantee idempotency.
  * @param modelString - The model that produced the text, `null` when the run
  *   failed before one was resolved.
+ * @param tokens - Tokens the run used, for the log line alone.
  * @returns Credits actually charged.
  */
-async function recordTokenUsage(
+async function chargeRecorded(
   userId: string,
-  tokens: number,
+  usage: UsageRecorder,
+  calls: ModelCallWatch | undefined,
   tool: string,
-  idempotencyKey: string,
   modelString: string | null,
+  tokens: number,
 ): Promise<number> {
-  if (tokens === 0) return 0;
-
-  // 1 credit = 1 US cent = ~1000 tokens at typical pricing
-  const credits = creditsForTokens(tokens);
-  if (credits <= 0) return 0;
-
+  // An OpenRouter call whose cost is not in hand is looked up and charged
+  // later, under a key of its own.
+  await calls?.handOff().catch((err: unknown) =>
+    logger.error({ err, userId, tool }, "usage_lookup_enqueue_failed"),
+  );
   try {
-    // `projectId` is null because this route never took one (#122). That is a
-    // gap in the product, not a decision: the pool that pays is chosen by the
-    // project a generation runs in, so until the route carries one, a text
-    // tool records what it used and charges nobody.
+    const credits = await usage.settle();
+    if (credits <= 0) return 0;
     const outcome = await creditLotService.chargeOnceForGeneration(
-      `texttool:${idempotencyKey}`,
+      usage.operation.operationKey,
       {
         projectId: null,
         actorUserId: userId,
@@ -260,7 +273,6 @@ async function recordTokenUsage(
         model: modelString ?? undefined,
         provider: modelString === null ? undefined : resolveProvider(modelString),
         description: `Text tool: ${tool}`,
-        tokensUsed: tokens,
       },
     );
     return outcome?.charged ?? 0;

@@ -31,7 +31,13 @@ import {
   getAgentConfig,
   getSkillRouting,
 } from "@breatic/core";
-import { modelCatalog } from "@breatic/domain";
+import {
+  agentModelIds,
+  assertModelsPriced,
+  modelCatalog,
+  USAGE_LOOKUP_QUEUE,
+  type UsageLookupJob,
+} from "@breatic/domain";
 
 initLogger("worker");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
@@ -81,6 +87,17 @@ try {
   process.exit(1);
 }
 
+// Every model the agent runs on has to be priceable (#296). One reached
+// directly reports tokens but no cost, and is priced from
+// config/usage-pricing.yaml; lazily, a missing price would surface as the
+// first call that spent money failing to record what it spent.
+try {
+  assertModelsPriced(agentModelIds());
+} catch (err) {
+  logger.error({ err }, "usage_pricing_incomplete");
+  process.exit(1);
+}
+
 // Same preflight for config/models/*.yaml (#1966). Every model must declare
 // `takes_prompt`, and the catalog is as lazy as the routing config above —
 // lazy here means a missing declaration surfaces inside whichever job first
@@ -98,6 +115,7 @@ import {
   runUrlIngest,
   type UrlIngestJobData,
 } from "@worker/handlers/url-ingest.js";
+import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
@@ -146,6 +164,22 @@ export function startWorker(): void {
     logger.error(
       { err, jobId: job?.id, key: job?.data.storageKey },
       "url_ingest_job_failed",
+    );
+  });
+
+  // The later lookup of an OpenRouter call whose cost was not in hand (#296). Its retries
+  // are the waiting: the job throws until OpenRouter has the cost.
+  const usageLookup = createWorker<UsageLookupJob>(USAGE_LOOKUP_QUEUE, (job) => runUsageLookup(job));
+
+  usageLookup.on("failed", (job, err) => {
+    logger.warn(
+      {
+        err,
+        generationId: job?.data.generationId,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "usage_lookup_attempt_failed",
     );
   });
 
@@ -200,7 +234,7 @@ export function startWorker(): void {
 
 
   logger.info(
-    { queues: ["tasks", "url-ingest"] },
+    { queues: ["tasks", "url-ingest", USAGE_LOOKUP_QUEUE] },
     "BullMQ workers started",
   );
 
@@ -279,7 +313,7 @@ export function startWorker(): void {
     await health.stop();
     await runGracefulShutdown({
       releaseListenSocket: () => {},
-      drains: [() => worker.close(), () => urlIngest.close()],
+      drains: [() => worker.close(), () => urlIngest.close(), () => usageLookup.close()],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });
     logger.info("worker_shutdown_complete");

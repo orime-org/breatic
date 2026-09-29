@@ -49,8 +49,12 @@ function answered(text: string, finishReason = "stop"): Response {
   );
 }
 
+/** What the call says it was billed, per call. */
+const billed: Array<number | undefined> = [];
+
 /** The inputs every test varies from. */
 const base = {
+  onBilled: (costUsd: number | undefined): void => void billed.push(costUsd),
   question: "What is this?",
   model: "google/gemini-3.8-flash",
   backend: "google-vertex",
@@ -84,6 +88,7 @@ function sentMediaPart(): Record<string, unknown> {
 }
 
 beforeEach(() => {
+  billed.length = 0;
   httpRequestMock.mockReset();
   httpRequestMock.mockResolvedValue(answered("a puppy"));
 });
@@ -277,11 +282,10 @@ describe("understandMedia — what comes back", () => {
     expect(result.finishReason).toBe("content_filter");
   });
 
-  // The run is a task like any other: it is gated on credits before it goes
-  // out and charged after, and what it charges can only be what the service
-  // says it took. The figure is in US dollars, the unit every other
-  // transport in this repo reports and the one the credit conversion reads.
-  it("reports what the service charged for the call", async () => {
+  // The run is charged what the service says it took, in US dollars. The
+  // figure is handed over the moment the body says it, which is also the
+  // moment it is known the call was billed.
+  it("reports what the service charged for an answer", async () => {
     httpRequestMock.mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -292,26 +296,63 @@ describe("understandMedia — what comes back", () => {
       ),
     );
 
-    const result = await understandMedia({
-      ...base,
-      media: { kind: "image", url: "https://example.com/dog.jpg" },
-    });
+    await understandMedia({ ...base, media: { kind: "image", url: "https://example.com/dog.jpg" } });
 
-    expect(result.costUsd).toBe(0.0037);
+    expect(billed).toEqual([0.0037]);
   });
 
-  // A service that answered without saying what it cost is not the same as
-  // one that said zero: charging zero for an unknown is a guess, and the
-  // caller is the one that decides what to do with a figure it does not have.
-  it("says nothing about cost when the answer carried no usage", async () => {
+  // A service that answered without saying what it cost has not said zero:
+  // the call is reported billed with no figure, which records it as missing.
+  it("reports a billed call with no figure when the answer carried no cost", async () => {
     httpRequestMock.mockResolvedValue(answered("A dog."));
 
-    const result = await understandMedia({
-      ...base,
-      media: { kind: "image", url: "https://example.com/dog.jpg" },
-    });
+    await understandMedia({ ...base, media: { kind: "image", url: "https://example.com/dog.jpg" } });
 
-    expect(result.costUsd).toBeUndefined();
+    expect(billed).toEqual([undefined]);
+  });
+
+  // A refusal the service still billed was money spent, so it is reported
+  // before the refusal is thrown.
+  it("reports what the service charged for a refusal it billed", async () => {
+    httpRequestMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { message: "Gemini blocked the request: SAFETY" },
+          usage: { total_tokens: 900, cost: 0.0021 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await expect(
+      understandMedia({ ...base, media: { kind: "audio", bytes: new Uint8Array([1]), format: "mp3" } }),
+    ).rejects.toBeInstanceOf(UnderstandRefused);
+
+    expect(billed).toEqual([0.0021]);
+  });
+
+  it("reports nothing for a refusal status whose body carried no cost", async () => {
+    httpRequestMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "rate limited" } }), { status: 429 }),
+    );
+
+    await expect(
+      understandMedia({ ...base, media: { kind: "image", url: "https://example.com/dog.jpg" } }),
+    ).rejects.toBeInstanceOf(UnderstandRefused);
+
+    expect(billed).toEqual([]);
+  });
+
+  // A success status means the service took the call, whatever became of the
+  // body: it is reported billed with no figure, which records it as missing.
+  it("reports a billed call with no figure when a success answer cannot be read", async () => {
+    httpRequestMock.mockResolvedValue(new Response("not json", { status: 200 }));
+
+    await expect(
+      understandMedia({ ...base, media: { kind: "image", url: "https://example.com/dog.jpg" } }),
+    ).rejects.toBeInstanceOf(UnderstandRefused);
+
+    expect(billed).toEqual([undefined]);
   });
 
   it("throws with the status and the service's own words when the call is refused", async () => {

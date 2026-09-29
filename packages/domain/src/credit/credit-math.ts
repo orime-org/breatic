@@ -24,6 +24,12 @@ const MICRO_PER_CREDIT = 1_000_000;
 const SCALE = 6;
 
 /**
+ * The smallest amount the ledger can hold. A balance at least this large is
+ * a balance above zero.
+ */
+export const SMALLEST_CREDIT = 1 / MICRO_PER_CREDIT;
+
+/**
  * Convert credits to integer micro-credits.
  *
  * Strings arrive from Postgres and are matched against a plain-decimal pattern
