@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { parse } from 'yaml';
+
+import { GENERATION_NODE_BUCKETS } from '@breatic/shared';
 
 import { ModelIcon, MODEL_ICON_NAMES } from '@web/spaces/canvas/generate/ModelIcon';
 
@@ -60,18 +62,24 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
   });
 
   // Read as written: the catalog projection drops a model whose provider key
-  // is unset, so under CI it would have nothing to walk.
+  // is unset, so under CI it would have nothing to walk. The files are the
+  // ones the loader reads, in the buckets a picker offers.
   const root = resolve(process.cwd(), '../../config/models');
-  const declared = readdirSync(root)
-    .map((bucket) => resolve(root, bucket, 'models.yaml'))
-    .filter((file) => existsSync(file))
+  const declared = [...new Set(Object.values(GENERATION_NODE_BUCKETS).flat())]
+    .map((bucket) => resolve(root, bucket))
+    .filter((dir) => existsSync(dir))
+    .flatMap((dir) =>
+      readdirSync(dir)
+        .filter((file) => extname(file) === '.yaml' && file !== 'providers.yaml')
+        .map((file) => resolve(dir, file)),
+    )
     .flatMap((file) => {
       const doc: unknown = parse(readFileSync(file, 'utf8'));
       const list = Array.isArray(doc) ? doc : ((doc as { models?: unknown[] } | null)?.models ?? []);
       return list as Array<{ name?: string; icon?: string }>;
     });
 
-  it('draws a mark for every model the catalog declares', () => {
+  it('draws a mark for every model a picker offers', () => {
     const unmarked = declared
       .filter((model) => model.icon === undefined || !MODEL_ICON_NAMES.includes(model.icon))
       .map((model) => `${model.name ?? '?'} (${model.icon ?? 'no icon'})`);

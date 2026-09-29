@@ -170,16 +170,16 @@ export async function estimateCredits(
    */
   const toCredits = (amount: number): number => amount * CENTS_PER_USD * creditMultiplier;
   const usd = await priceUsd(text, true);
+  // What every run of this setup pays: a lower bound counts only this.
+  const everyRun = await priceUsd(text, false);
   if (textPriced) {
-    // Quoted per thousand characters when what every run pays follows the
-    // text alone, the same every-run price a lower bound counts.
-    if ((await priceUsd(text, false)) === 0) {
+    // Quoted per thousand characters when that follows the text alone.
+    if (everyRun === 0) {
       return { credits: toCredits(await priceUsd(SAMPLE_TEXT, false)), bound: "per_thousand_chars" };
     }
     unknown = true;
   }
-  // A lower bound counts only what every run of this setup pays.
-  if (unknown) return { credits: toCredits(await priceUsd(text, false)), bound: "at_least" };
+  if (unknown) return { credits: toCredits(everyRun), bound: "at_least" };
   if (ownReused || stepReused) return { credits: toCredits(usd), bound: "at_most" };
   return { credits: toCredits(usd), bound: "exact" };
 }
