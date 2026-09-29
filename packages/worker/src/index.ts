@@ -167,7 +167,7 @@ export function startWorker(): void {
     );
   });
 
-  // The later lookup of an interrupted OpenRouter call (#296). Its retries
+  // The later lookup of an OpenRouter call whose cost was not in hand (#296). Its retries
   // are the waiting: the job throws until OpenRouter has the cost.
   const usageLookup = createWorker<UsageLookupJob>(USAGE_LOOKUP_QUEUE, (job) => runUsageLookup(job));
 
@@ -313,7 +313,7 @@ export function startWorker(): void {
     await health.stop();
     await runGracefulShutdown({
       releaseListenSocket: () => {},
-      drains: [() => worker.close(), () => urlIngest.close()],
+      drains: [() => worker.close(), () => urlIngest.close(), () => usageLookup.close()],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });
     logger.info("worker_shutdown_complete");

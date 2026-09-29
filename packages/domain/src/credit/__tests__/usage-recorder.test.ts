@@ -149,6 +149,52 @@ describe("the usage recorder", () => {
     expect(missing).toEqual([rows[0]]);
   });
 
+  it("keeps an OpenRouter model call with no cost for the lookup, and writes no row", async () => {
+    const { recorder, rows, missing } = recorderWithRows();
+    recorder.recordModelCall({
+      source: "model",
+      model: "google/gemini-2.5-flash",
+      provider: "openrouter",
+      usage: USAGE,
+      providerMetadata: undefined,
+      generationId: "gen-1",
+    });
+    expect(await recorder.settle()).toBe(0);
+    expect(rows).toEqual([]);
+    expect(missing).toEqual([]);
+    expect(recorder.awaitingLookup()).toEqual(["gen-1"]);
+  });
+
+  it("records an OpenRouter model call that reported its cost, and keeps nothing for the lookup", async () => {
+    const { recorder, rows } = recorderWithRows();
+    recorder.recordModelCall({
+      source: "model",
+      model: "google/gemini-2.5-flash",
+      provider: "openrouter",
+      usage: USAGE,
+      providerMetadata: { openrouter: { usage: { cost: 0.01 } } },
+      generationId: "gen-1",
+    });
+    await recorder.settle();
+    expect(rows[0]).toMatchObject({ costSource: "provider" });
+    expect(recorder.awaitingLookup()).toEqual([]);
+  });
+
+  it("records a direct model call by the table whatever id it carries", async () => {
+    const { recorder, rows } = recorderWithRows();
+    recorder.recordModelCall({
+      source: "model",
+      model: "deepseek/deepseek-v4-pro",
+      provider: "deepseek",
+      usage: USAGE,
+      providerMetadata: undefined,
+      generationId: "gen-1",
+    });
+    await recorder.settle();
+    expect(rows[0]).toMatchObject({ costSource: "price_table" });
+    expect(recorder.awaitingLookup()).toEqual([]);
+  });
+
   it("does not call a priced row missing", async () => {
     const { recorder, missing } = recorderWithRows();
     recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", provider: "brave", requests: 1 });
@@ -170,6 +216,18 @@ describe("the usage recorder", () => {
     });
     expect(rows[0]!.credits).toBeCloseTo(2, 10);
     expect(missing).toEqual([]);
+  });
+
+  it("records the token buckets OpenRouter answered with the generation", async () => {
+    const { recorder, rows } = recorderWithRows();
+    recorder.recordLookedUpCall({
+      source: "model",
+      model: "google/gemini-2.5-flash",
+      costUsd: 0.01,
+      tokens: { input: 100, cachedInput: 40, output: 20, reasoning: 5 },
+    });
+    await recorder.settle();
+    expect(rows[0]).toMatchObject({ inputTokens: 100, cachedInputTokens: 40, outputTokens: 20, reasoningTokens: 5 });
   });
 
   it("records a lookup that never found the generation as missing", async () => {

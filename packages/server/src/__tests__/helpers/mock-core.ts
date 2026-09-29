@@ -30,6 +30,8 @@ import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/
 // route names it on the row, on the job and against the charge, and a copy
 // here would let all three drift from it while the suite stayed green.
 import { UNDERSTAND_PINS as REAL_UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
+// Real: the tracker is pure, and what a turn hands off depends on it.
+import { trackOpenGeneration as realTrackOpenGeneration } from "../../../../domain/src/credit/open-generation.js";
 
 const mockPipeline = {
   zremrangebyscore: () => mockPipeline,
@@ -69,6 +71,8 @@ export const mockCreateQueue = vi.fn();
 
 /** Mock references — tests can override behavior per-test. */
 export const mocks = {
+  /** The later-lookup hand-off; tests read what a turn handed off. */
+  handOffLookups: vi.fn(async (..._args: unknown[]) => undefined),
   /**
    * core's real AppError, stashed by coreMock.
    *
@@ -523,6 +527,7 @@ function usageRecorderDouble(options: {
   recordModelCall: (call: { usage: { inputTokens?: number; outputTokens?: number } }) => void;
   recordServiceCall: () => void;
   recordLookedUpCall: () => void;
+  awaitingLookup: () => readonly string[];
   settle: () => Promise<number>;
 } {
   let credits = 0;
@@ -534,34 +539,15 @@ function usageRecorderDouble(options: {
     },
     recordServiceCall: () => {},
     recordLookedUpCall: () => {},
+    awaitingLookup: () => [],
     settle: async () => credits,
   };
 }
 
 export const domainMock = () => ({
   createUsageRecorder: vi.fn(usageRecorderDouble),
-  // The same behaviour as the real one: the id of the call that started and
-  // has not ended, where an ended id never opens again.
-  trackOpenGeneration: () => {
-    let open: string | undefined;
-    const closed = new Set<string>();
-    return {
-      seen: (rawValue: unknown) => {
-        const id = (rawValue as { id?: unknown } | undefined)?.id;
-        if (typeof id === "string" && id.startsWith("gen-") && !closed.has(id)) open = id;
-      },
-      ended: (id: string | undefined) => {
-        const done = id ?? open;
-        if (done !== undefined) closed.add(done);
-        open = undefined;
-      },
-      pending: () => open,
-    };
-  },
-  openRouterCost: (metadata: Record<string, unknown> | undefined) => {
-    const cost = (metadata?.openrouter as { usage?: { cost?: unknown } } | undefined)?.usage?.cost;
-    return typeof cost === "number" ? cost : undefined;
-  },
+  trackOpenGeneration: realTrackOpenGeneration,
+  handOffLookups: mocks.handOffLookups,
   // The same shape as the real one: every tool in the set gets the recorder.
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
     Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),

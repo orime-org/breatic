@@ -2,22 +2,29 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The cost of an OpenRouter call that was cut off before it reported one (#296).
+ * The cost of an OpenRouter call whose cost was not in hand (#296).
  *
  * A streamed call reports its cost on its last chunk, which a stopped stream
- * never receives. OpenRouter keeps generating for providers that cannot be
- * cancelled and bills the whole response, so the cost is only settled once
- * the generation is over; its `/generation` endpoint answers it by id.
+ * never receives, and a call can also end without one. OpenRouter keeps
+ * generating for providers that cannot be cancelled and bills the whole
+ * response, so the cost is only settled once the generation is over; its
+ * `/generation` endpoint answers it by id.
  */
 
+import { createQueue, getAgentConfig } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
 
-import type { UsageFeature, UsageSource } from "@domain/credit/usage-recorder.js";
+import type { TokenBuckets } from "@domain/credit/usage-cost.js";
+import type {
+  RecordedOperation,
+  UsageFeature,
+  UsageSource,
+} from "@domain/credit/usage-recorder.js";
 
 /** The queue the later lookup travels on. */
 export const USAGE_LOOKUP_QUEUE = "usage-lookup";
 
-/** One interrupted call, as the worker receives it. */
+/** One call to look up, as the worker receives it. */
 export interface UsageLookupJob {
   generationId: string;
   model: string;
@@ -30,66 +37,33 @@ export interface UsageLookupJob {
   description: string;
 }
 
+/** What OpenRouter answers about a generation. */
+export interface GenerationAnswer {
+  /** In US dollars; undefined when the answer carries none. */
+  costUsd: number | undefined;
+  tokens: TokenBuckets;
+}
+
 /**
- * The generation id on one of OpenRouter's streamed chunks.
- * @param rawValue - The chunk as the provider parsed it.
- * @returns The id, or undefined when the value is not an OpenRouter chunk.
+ * A token count off the answer.
+ * @param value - The field as OpenRouter sent it.
+ * @returns The count, or 0 when it is absent.
  */
-export function generationIdOf(rawValue: unknown): string | undefined {
-  if (typeof rawValue !== "object" || rawValue === null) return undefined;
-  const id = (rawValue as { id?: unknown }).id;
-  return typeof id === "string" && id.startsWith("gen-") ? id : undefined;
-}
-
-/** Which model call of a stream has started and not ended. */
-export interface OpenGeneration {
-  /** Hand it every raw chunk of the stream. */
-  seen(rawValue: unknown): void;
-  /**
-   * Call when a model call ended; its id is closed for good, so a raw chunk
-   * of it that a slow reader receives afterwards does not open it again.
-   */
-  ended(generationId: string | undefined): void;
-  /** The generation still open, if any. */
-  pending(): string | undefined;
+function count(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 /**
- * Track the one model call a stream has open. A stream runs its calls one
- * after another, so there is at most one.
- * @returns The tracker.
- */
-export function trackOpenGeneration(): OpenGeneration {
-  let open: string | undefined;
-  const closed = new Set<string>();
-  return {
-    seen(rawValue) {
-      const id = generationIdOf(rawValue);
-      if (id !== undefined && !closed.has(id)) open = id;
-    },
-    ended(generationId) {
-      const id = generationId ?? open;
-      if (id !== undefined) closed.add(id);
-      open = undefined;
-    },
-    pending() {
-      return open;
-    },
-  };
-}
-
-/**
- * Ask OpenRouter what a generation cost.
+ * Ask OpenRouter what a generation cost and used.
  * @param generationId - The id its chunks carried.
  * @param apiKey - The OpenRouter key.
- * @returns The cost in US dollars, or undefined while the generation is not
- *   there yet.
+ * @returns The answer, or undefined while the generation is not there yet.
  * @throws {Error} When OpenRouter refuses the request for any other reason.
  */
-export async function lookupGenerationCost(
+export async function lookupGeneration(
   generationId: string,
   apiKey: string,
-): Promise<number | undefined> {
+): Promise<GenerationAnswer | undefined> {
   const url = `https://openrouter.ai/api/v1/generation?id=${encodeURIComponent(generationId)}`;
   const res = await httpRequest(
     url,
@@ -104,7 +78,58 @@ export async function lookupGenerationCost(
     void res.body?.cancel();
     throw new Error(`OpenRouter generation lookup answered ${res.status}`);
   }
-  const body = (await res.json()) as { data?: { total_cost?: unknown } };
-  const cost = body.data?.total_cost;
-  return typeof cost === "number" && Number.isFinite(cost) ? cost : undefined;
+  const body = (await res.json()) as { data?: Record<string, unknown> };
+  const data = body.data ?? {};
+  const cost = data.total_cost;
+  return {
+    costUsd: typeof cost === "number" && Number.isFinite(cost) ? cost : undefined,
+    tokens: {
+      input: count(data.native_tokens_prompt),
+      cachedInput: count(data.native_tokens_cached),
+      output: count(data.native_tokens_completion),
+      reasoning: count(data.native_tokens_reasoning),
+    },
+  };
+}
+
+let queue: ReturnType<typeof createQueue> | undefined;
+
+/**
+ * Queue the later lookup of one call.
+ *
+ * Keyed by the generation id, so a second hand-off of the same call is one
+ * job.
+ * @param job - The call and the operation it belongs to.
+ * @returns Nothing once the job is queued.
+ */
+async function enqueueUsageLookup(job: UsageLookupJob): Promise<void> {
+  queue ??= createQueue(USAGE_LOOKUP_QUEUE);
+  const { usage_lookup_delay_ms: delay, usage_lookup_attempts: attempts } = getAgentConfig();
+  await queue.add("lookup", job, {
+    jobId: job.generationId,
+    delay,
+    attempts,
+    backoff: { type: "exponential", delay },
+    removeOnComplete: { age: 3600, count: 1000 },
+    removeOnFail: { age: 86_400, count: 1000 },
+  });
+}
+
+/**
+ * Queue the later lookup of each call an operation could not price.
+ * @param generationIds - The calls, by generation id.
+ * @param operation - The operation they belong to.
+ * @param call - The model they called, and what a ledger row says the charge was for.
+ * @param call.model - The model id.
+ * @param call.description - What the ledger row says the charge was for.
+ * @returns Nothing once every job is queued.
+ */
+export async function handOffLookups(
+  generationIds: readonly string[],
+  operation: RecordedOperation,
+  call: { model: string; description: string },
+): Promise<void> {
+  for (const generationId of generationIds) {
+    await enqueueUsageLookup({ ...operation, generationId, model: call.model, source: "model", description: call.description });
+  }
 }

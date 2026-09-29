@@ -26,6 +26,7 @@ export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 export { SMALLEST_CREDIT } from "@domain/credit/credit-math.js";
 export {
   createUsageRecorder,
+  type RecordedModelCall,
   type RecordedOperation,
   type UsageRecorder,
   type UsageRow,
@@ -33,15 +34,16 @@ export {
   type UsageSource,
 } from "@domain/credit/usage-recorder.js";
 export { usageContextFor } from "@domain/agent/tools/usage-context.js";
-export { creditsForUsd, openRouterCost, type ModelCallUsage } from "@domain/credit/usage-cost.js";
+export { creditsForUsd, type ModelCallUsage } from "@domain/credit/usage-cost.js";
 export { agentModelIds, assertModelsPriced } from "@domain/credit/priced-models.js";
 export {
   USAGE_LOOKUP_QUEUE,
-  lookupGenerationCost,
-  trackOpenGeneration,
-  type OpenGeneration,
+  handOffLookups,
+  lookupGeneration,
+  type GenerationAnswer,
   type UsageLookupJob,
 } from "@domain/credit/generation-lookup.js";
+export { trackOpenGeneration, type OpenGeneration } from "@domain/credit/open-generation.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──

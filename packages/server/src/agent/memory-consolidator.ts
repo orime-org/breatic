@@ -32,6 +32,7 @@ import {
   reasoningFor,
   creditLotService,
   createUsageRecorder,
+  handOffLookups,
   resolveProvider,
 } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
@@ -188,9 +189,17 @@ async function bill(input: ConsolidationBill): Promise<void> {
 
   try {
     const amount = await usage.settle();
+    // An OpenRouter call whose cost is not in hand is looked up and charged
+    // later, under a key of its own.
+    await handOffLookups(usage.awaitingLookup(), usage.operation, {
+      model,
+      description: "Memory consolidation",
+    }).catch((err: unknown) =>
+      logger.error({ err, userId, conversationId, watermarkBefore }, "usage_lookup_enqueue_failed"),
+    );
     if (amount === 0) return;
     const outcome = await creditLotService.chargeOnceForGeneration(
-      consolidationKey(conversationId, watermarkBefore),
+      usage.operation.operationKey,
       {
         projectId,
         actorUserId: userId,
@@ -356,6 +365,7 @@ export async function consolidateWindow(
       provider: resolveProvider(config.consolidation_model),
       usage: result.usage,
       providerMetadata: result.providerMetadata,
+      generationId: result.response.id,
     });
     await bill({
       userId,

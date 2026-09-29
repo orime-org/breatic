@@ -24,7 +24,7 @@ import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
 import { creditLotService, createUsageRecorder, usageContextFor } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
-import { watchModelCalls, type ModelCallWatch } from "@server/agent/interrupted-call.js";
+import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
 import { userTurnForModel } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
@@ -232,9 +232,8 @@ export class MainAgent {
       onMissingCost: (row) =>
         logger.error({ row, userId, conversationId }, "agent_usage_cost_missing"),
     });
-    // Set once the model is known; watches for an OpenRouter call cut off
-    // before it reported its cost.
-    let interrupted: ModelCallWatch | undefined;
+    // Set once the model is known; records the turn's model calls.
+    let calls: ModelCallWatch | undefined;
 
     // The SDK does not throw when the provider fails. It puts an `error`
     // chunk on the stream and closes it normally, so nothing rejects and
@@ -348,7 +347,7 @@ export class MainAgent {
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
       const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat" });
-      interrupted = watch;
+      calls = watch;
 
       const result = streamTextRetry({
         model: getModel(agentConfig.modelId),
@@ -599,9 +598,9 @@ export class MainAgent {
                   }
                 : undefined,
             bill: async () => {
-              // A call cut off before it reported its cost is looked up and
+              // An OpenRouter call whose cost is not in hand is looked up and
               // charged later, under a key of its own.
-              await interrupted?.handOff().catch((err: unknown) =>
+              await calls?.handOff().catch((err: unknown) =>
                 logger.error({ err, userId, conversationId, turnIndex }, "usage_lookup_enqueue_failed"),
               );
               creditsUsed = await usage.settle();

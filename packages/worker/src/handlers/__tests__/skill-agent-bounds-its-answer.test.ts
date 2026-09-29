@@ -16,6 +16,9 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type { UsageRecorder } from "@breatic/domain";
+
+const handOffLookups = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 
 const generateTextRetry = vi.hoisted(() => vi.fn());
 const buildAgentConfig = vi.hoisted(() => vi.fn());
@@ -52,16 +55,15 @@ vi.mock("@breatic/domain", () => ({
   releaseCanvasNodeLock: vi.fn(),
   reacquireCanvasNodeLock: vi.fn(),
   resolveProvider: () => "routed",
+  handOffLookups,
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
     Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
 }));
 
 /** A recorder that keeps the model calls it was told about. */
-function recorder(): {
-  operation: { operationKey: string; feature: "skill_task"; actorUserId: string; projectId: string | null };
+function recorder(): UsageRecorder & {
   recordModelCall: ReturnType<typeof vi.fn>;
-  recordServiceCall: ReturnType<typeof vi.fn>;
-  recordLookedUpCall: ReturnType<typeof vi.fn>;
+  awaitingLookup: ReturnType<typeof vi.fn>;
   settle: ReturnType<typeof vi.fn>;
 } {
   return {
@@ -69,6 +71,7 @@ function recorder(): {
     recordModelCall: vi.fn(),
     recordServiceCall: vi.fn(),
     recordLookedUpCall: vi.fn(),
+    awaitingLookup: vi.fn(() => []),
     settle: vi.fn(async () => 0),
   };
 }

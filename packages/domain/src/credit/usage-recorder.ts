@@ -17,8 +17,10 @@ import { insertUsageRecord } from "@domain/credit/agentUsage.repo.js";
 import {
   costOfModelCall,
   creditsForUsd,
+  openRouterCost,
   type CostSource,
   type ModelCall,
+  type TokenBuckets,
 } from "@domain/credit/usage-cost.js";
 
 /** Which operation a row belongs to. */
@@ -70,12 +72,21 @@ export interface ServiceCall {
   costUsd?: number;
 }
 
-/** An interrupted OpenRouter call, once its generation was looked up. */
+/** A model call as a recorder receives it. */
+export interface RecordedModelCall extends ModelCall {
+  source: UsageSource;
+  /** The OpenRouter generation id, when the caller has one. */
+  generationId?: string;
+}
+
+/** An OpenRouter call whose cost was not in hand, once its generation was looked up. */
 export interface LookedUpCall {
   source: UsageSource;
   model: string;
   /** What OpenRouter answered; undefined when it never found the generation. */
   costUsd: number | undefined;
+  /** The token buckets OpenRouter answered, when it found the generation. */
+  tokens?: TokenBuckets;
 }
 
 /** The operation a recorder writes its rows under. */
@@ -90,9 +101,15 @@ export interface RecordedOperation {
 export interface UsageRecorder {
   /** What its rows are recorded under; charges for them use the same key. */
   readonly operation: RecordedOperation;
-  recordModelCall(call: ModelCall & { source: UsageSource }): void;
+  /**
+   * Record a model call. An OpenRouter call that reported no cost and carries
+   * its generation id writes no row; the id waits in `awaitingLookup`.
+   */
+  recordModelCall(call: RecordedModelCall): void;
   recordServiceCall(call: ServiceCall): void;
   recordLookedUpCall(call: LookedUpCall): void;
+  /** The generation ids of the OpenRouter calls to look up, for the caller to queue. */
+  awaitingLookup(): readonly string[];
   settle(): Promise<number>;
 }
 
@@ -152,6 +169,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
   // surfaces as an unhandled rejection; `settle` throws the first one.
   const failures: unknown[] = [];
   let credits = 0;
+  const lookups = new Set<string>();
 
   const base = {
     operationKey: options.operationKey,
@@ -174,6 +192,14 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
   return {
     operation: base,
     recordModelCall(call) {
+      if (
+        call.provider === "openrouter" &&
+        call.generationId?.startsWith("gen-") === true &&
+        openRouterCost(call.providerMetadata) === undefined
+      ) {
+        lookups.add(call.generationId);
+        return;
+      }
       const cost = costOfModelCall(call, pricing);
       append({
         ...base,
@@ -214,15 +240,18 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         source: call.source,
         model: call.model,
         provider: "openrouter",
-        inputTokens: null,
-        cachedInputTokens: null,
-        outputTokens: null,
-        reasoningTokens: null,
+        inputTokens: call.tokens?.input ?? null,
+        cachedInputTokens: call.tokens?.cachedInput ?? null,
+        outputTokens: call.tokens?.output ?? null,
+        reasoningTokens: call.tokens?.reasoning ?? null,
         requestCount: 1,
         costUsd,
         costSource: call.costUsd === undefined ? "missing" : "generation_lookup",
         credits: creditsForUsd(costUsd, multiplier),
       });
+    },
+    awaitingLookup() {
+      return [...lookups];
     },
     async settle() {
       await Promise.all(pending);

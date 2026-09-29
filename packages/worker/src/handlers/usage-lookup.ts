@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Settle an OpenRouter call that was cut off before it reported its cost (#296).
+ * Settle an OpenRouter call whose cost was not in hand (#296): one cut off
+ * before it reported its cost, or one that ended without it.
  *
  * The job is queued with a delay and retried with backoff: OpenRouter keeps
  * generating for providers that cannot be cancelled, and answers the cost
  * only once the generation is over. The last attempt records what it has,
- * a missing figure included, so every interrupted call leaves a row.
+ * a missing figure included, so every call handed here leaves a row.
  */
 
 import type { Job } from "bullmq";
@@ -15,7 +16,8 @@ import { getRawEnvVar, logger } from "@breatic/core";
 import {
   createUsageRecorder,
   creditLotService,
-  lookupGenerationCost,
+  lookupGeneration,
+  type GenerationAnswer,
   type UsageLookupJob,
 } from "@breatic/domain";
 
@@ -34,13 +36,14 @@ export async function runUsageLookup(
   const data = job.data;
   const lastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
 
-  let costUsd: number | undefined;
+  let answer: GenerationAnswer | undefined;
   try {
-    costUsd = await lookupGenerationCost(data.generationId, getRawEnvVar("OPENROUTER_API_KEY") ?? "");
+    answer = await lookupGeneration(data.generationId, getRawEnvVar("OPENROUTER_API_KEY") ?? "");
   } catch (err) {
     if (!lastAttempt) throw err;
     logger.error({ err, generationId: data.generationId }, "agent_usage_lookup_failed");
   }
+  const costUsd = answer?.costUsd;
   if (costUsd === undefined && !lastAttempt) {
     throw new Error(`OpenRouter has no cost for ${data.generationId} yet`);
   }
@@ -53,7 +56,7 @@ export async function runUsageLookup(
     onMissingCost: (row) =>
       logger.error({ row, generationId: data.generationId }, "agent_usage_cost_missing"),
   });
-  usage.recordLookedUpCall({ source: data.source, model: data.model, costUsd });
+  usage.recordLookedUpCall({ source: data.source, model: data.model, costUsd, tokens: answer?.tokens });
   const amount = await usage.settle();
   if (amount === 0) return;
 

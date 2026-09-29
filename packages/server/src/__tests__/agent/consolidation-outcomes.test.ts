@@ -168,6 +168,7 @@ const GOOD_ANSWER = {
     totalTokens: 400,
   },
   providerMetadata: undefined,
+  response: { id: "gen-5" },
 };
 
 beforeEach(() => {
@@ -352,6 +353,36 @@ describe("a consolidation that works", () => {
     });
   });
 
+  it("records the call under its generation id, and hands what it could not price to the lookup", async () => {
+    const { mocks } = await import("../helpers/mock-core.js");
+    const recordModelCall = vi.fn();
+    const operation = {
+      operationKey: `consolidate:${CONVERSATION}:7`,
+      feature: "memory_consolidation" as const,
+      actorUserId: USER,
+      projectId: PROJECT,
+    };
+    vi.mocked(createUsageRecorder).mockReturnValueOnce({
+      operation,
+      recordModelCall,
+      recordServiceCall: vi.fn(),
+      recordLookedUpCall: vi.fn(),
+      awaitingLookup: () => ["gen-5"],
+      settle: async () => 0,
+    });
+
+    await consolidate();
+
+    expect(recordModelCall).toHaveBeenCalledWith(expect.objectContaining({ generationId: "gen-5" }));
+    expect(mocks.handOffLookups).toHaveBeenCalledWith(
+      ["gen-5"],
+      operation,
+      expect.objectContaining({ description: "Memory consolidation" }),
+    );
+    // A call waiting for its lookup settles to nothing now; it is charged later.
+    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+  });
+
   it("leaves the retrying to the call that already retries", async () => {
     // `generateTextRetry` is handed `llm_max_retries`, so one original and
     // two retries happen inside it. A loop here would make it nine.
@@ -378,6 +409,7 @@ describe("a consolidation that fails", () => {
     generateTextRetry.mockResolvedValue({
       text: "Sure! Here is a summary.",
       usage: GOOD_ANSWER.usage,
+      response: GOOD_ANSWER.response,
     });
 
     const outcome = await consolidate();
@@ -441,7 +473,7 @@ describe("a consolidation that fails", () => {
     // the watermark; the other's model answers with something unreadable and
     // goes to discard turns that are no longer in the history. The write
     // matches no row, and the window it was going to lose is safely folded.
-    generateTextRetry.mockResolvedValue({ text: "not json at all", usage: GOOD_ANSWER.usage });
+    generateTextRetry.mockResolvedValue({ text: "not json at all", usage: GOOD_ANSWER.usage, response: GOOD_ANSWER.response });
     discardConsolidation.mockResolvedValue(false);
 
     const outcome = await consolidate();
@@ -455,7 +487,7 @@ describe("a consolidation that fails", () => {
   });
 
   it("says the window went when nobody else had taken it", async () => {
-    generateTextRetry.mockResolvedValue({ text: "not json at all", usage: GOOD_ANSWER.usage });
+    generateTextRetry.mockResolvedValue({ text: "not json at all", usage: GOOD_ANSWER.usage, response: GOOD_ANSWER.response });
     discardConsolidation.mockResolvedValue(true);
 
     const outcome = await consolidate();

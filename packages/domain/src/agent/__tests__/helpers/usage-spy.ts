@@ -22,6 +22,7 @@ export function usageSpy(): UsageSpy {
     recordModelCall: vi.fn(),
     recordServiceCall: vi.fn((call: ServiceCall) => void serviceCalls.push(call)),
     recordLookedUpCall: vi.fn(),
+    awaitingLookup: () => [],
     settle: vi.fn(async () => 0),
   };
   return { recorder, serviceCalls };

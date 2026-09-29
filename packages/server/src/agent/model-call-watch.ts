@@ -2,26 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Records a stream's model calls, and hands an OpenRouter call whose cost is
- * not in hand to the later lookup (#296).
+ * Records a stream's model calls, and hands the OpenRouter calls whose cost
+ * is not in hand to the later lookup (#296).
  *
- * A call that ends normally is recorded from its end event. An OpenRouter
- * call whose end event carries no cost, or that was cut off before it ended,
- * is looked up by its generation id once the generation is over. The id comes
- * on the provider's raw chunks, which the SDK passes to `onChunk` only when
- * asked for. A model reached directly has no lookup, and its interrupted call
- * is not recorded.
+ * Each call is recorded from its end event under the OpenRouter generation id
+ * it ran as; the recorder keeps the ones that reported no cost for the lookup.
+ * A call cut off before it ended is looked up by the id on its raw chunks,
+ * which the SDK passes to `onChunk` only when asked for.
  */
 
-import {
-  openRouterCost,
-  resolveProvider,
-  trackOpenGeneration,
-  type ModelCallUsage,
-  type UsageRecorder,
-} from "@breatic/domain";
-
-import { enqueueUsageLookup } from "@server/agent/usage-lookup-queue.js";
+import { handOffLookups, resolveProvider, trackOpenGeneration, type ModelCallUsage, type UsageRecorder } from "@breatic/domain";
 
 /** What a model call's end event carries, as far as this reads it. */
 export interface ModelCallEnd {
@@ -37,7 +27,7 @@ export interface ModelCallWatch {
     includeRawChunks: true;
     onChunk: (event: { chunk: { type: string; rawValue?: unknown } }) => void;
   };
-  /** Call from `onLanguageModelCallEnd`; records the call or keeps it for the lookup. */
+  /** Call from `onLanguageModelCallEnd`; records the call. */
   callEnded(event: ModelCallEnd): void;
   /** Call once the stream is over; queues the lookup of every OpenRouter call whose cost is not in hand. */
   handOff(): Promise<void>;
@@ -57,7 +47,6 @@ export function watchModelCalls(
 ): ModelCallWatch {
   const provider = resolveProvider(call.model);
   const open = trackOpenGeneration();
-  const lookups = new Set<string>();
   return {
     streamOptions: {
       includeRawChunks: true,
@@ -66,32 +55,24 @@ export function watchModelCalls(
       },
     },
     callEnded(event) {
+      // A stream whose first chunk is an in-band error never passes the id on
+      // to the SDK, and the end event carries the SDK's own id instead.
+      const generationId = event.responseId.startsWith("gen-") ? event.responseId : open.pending();
       open.ended(event.responseId);
-      if (provider === "openrouter" && openRouterCost(event.providerMetadata) === undefined) {
-        lookups.add(event.responseId);
-        return;
-      }
       usage.recordModelCall({
         source: "model",
         model: call.model,
         provider,
         usage: event.usage,
         providerMetadata: event.providerMetadata,
+        generationId,
       });
     },
     async handOff() {
       if (provider !== "openrouter") return;
-      const pending = open.pending();
-      if (pending !== undefined) lookups.add(pending);
-      for (const generationId of lookups) {
-        await enqueueUsageLookup({
-          generationId,
-          model: call.model,
-          ...usage.operation,
-          source: "model",
-          description: call.description,
-        });
-      }
+      const cutOff = open.pending();
+      const ids = cutOff === undefined ? usage.awaitingLookup() : [...usage.awaitingLookup(), cutOff];
+      await handOffLookups(ids, usage.operation, call);
     },
   };
 }

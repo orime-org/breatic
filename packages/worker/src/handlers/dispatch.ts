@@ -26,7 +26,7 @@ import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { taskService } from "@breatic/domain";
-import { creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
+import { creditLotService, creditsForUsd, handOffLookups, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import {
   createUsageRecorder,
@@ -1618,13 +1618,14 @@ export async function runSkillAgent(
       // them. The key is named for the call rather than for the caller: chat
       // and a skill job bound the same thing.
       maxOutputTokens: getAgentConfig().max_output_tokens,
-      onLanguageModelCallEnd: ({ usage: spent, providerMetadata }) =>
+      onLanguageModelCallEnd: ({ responseId, usage: spent, providerMetadata }) =>
         usage.recordModelCall({
           source: "model",
           model: agentConfig.modelId,
           provider: resolveProvider(agentConfig.modelId),
           usage: spent,
           providerMetadata,
+          generationId: responseId,
         }),
     });
   } catch (err) {
@@ -1633,10 +1634,28 @@ export async function runSkillAgent(
     await usage.settle().catch((recordErr: unknown) =>
       logger.error({ err: recordErr }, "agent_usage_record_failed"),
     );
+    await handOff(usage, agentConfig.modelId, skillName);
     throw err;
   }
 
-  return [result.text || "Task completed.", [skillName], await usage.settle()];
+  const credits = await usage.settle();
+  await handOff(usage, agentConfig.modelId, skillName);
+  return [result.text || "Task completed.", [skillName], credits];
+}
+
+/**
+ * Queue the later lookup of the calls a skill run could not price. A failure
+ * to queue is logged and does not fail the run.
+ * @param usage - The run's recorder.
+ * @param model - The model the run called.
+ * @param skillName - The skill it ran, for the ledger row.
+ * @returns Nothing once the calls are queued or the failure is logged.
+ */
+async function handOff(usage: UsageRecorder, model: string, skillName: string): Promise<void> {
+  await handOffLookups(usage.awaitingLookup(), usage.operation, {
+    model,
+    description: `Skill: ${skillName}`,
+  }).catch((err: unknown) => logger.error({ err, skillName }, "usage_lookup_enqueue_failed"));
 }
 
 

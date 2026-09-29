@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The later lookup of an interrupted OpenRouter call (#296): it retries while
+ * The later lookup of an OpenRouter call whose cost was not in hand (#296): it retries while
  * OpenRouter has no answer, records the call once it does, and charges it
  * under a key of its own.
  */
@@ -13,14 +13,14 @@ import type { Job } from "bullmq";
 import type * as DomainModule from "@breatic/domain";
 import type * as CoreModule from "@breatic/core";
 
-const lookupGenerationCost = vi.hoisted(() => vi.fn());
+const lookupGeneration = vi.hoisted(() => vi.fn());
 const chargeOnceForGeneration = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => null));
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
   return {
     ...actual,
-    lookupGenerationCost: (...args: unknown[]) => lookupGenerationCost(...args),
+    lookupGeneration: (...args: unknown[]) => lookupGeneration(...args),
     creditLotService: { chargeOnceForGeneration },
   };
 });
@@ -48,6 +48,8 @@ const DATA: UsageLookupJob = {
   projectId: "p-1",
   description: "Agent chat",
 };
+
+const TOKENS = { input: 100, cachedInput: 40, output: 20, reasoning: 5 };
 
 let rows: UsageRow[] = [];
 
@@ -81,19 +83,23 @@ beforeEach(() => {
   rows = [];
 });
 
-describe("looking up an interrupted OpenRouter call", () => {
+describe("looking up an OpenRouter call whose cost was not in hand", () => {
   it("records the answered cost under the turn and charges it under a key of its own", async () => {
-    lookupGenerationCost.mockResolvedValue(0.03);
+    lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
 
     await runUsageLookup(jobAt(0), recorderIntoRows);
 
-    expect(lookupGenerationCost).toHaveBeenCalledWith("gen-9", "or-key");
+    expect(lookupGeneration).toHaveBeenCalledWith("gen-9", "or-key");
     expect(rows).toEqual([
       expect.objectContaining({
         operationKey: "turn:c1:4",
         feature: "chat_turn",
         costUsd: 0.03,
         costSource: "generation_lookup",
+        inputTokens: 100,
+        cachedInputTokens: 40,
+        outputTokens: 20,
+        reasoningTokens: 5,
       }),
     ]);
     expect(chargeOnceForGeneration).toHaveBeenCalledWith(
@@ -103,7 +109,7 @@ describe("looking up an interrupted OpenRouter call", () => {
   });
 
   it("asks again later while OpenRouter has no answer yet", async () => {
-    lookupGenerationCost.mockResolvedValue(undefined);
+    lookupGeneration.mockResolvedValue(undefined);
 
     await expect(runUsageLookup(jobAt(0), recorderIntoRows)).rejects.toThrow();
 
@@ -111,8 +117,16 @@ describe("looking up an interrupted OpenRouter call", () => {
     expect(chargeOnceForGeneration).not.toHaveBeenCalled();
   });
 
+  it("asks again later while OpenRouter found the generation but has no cost on it", async () => {
+    lookupGeneration.mockResolvedValue({ costUsd: undefined, tokens: TOKENS });
+
+    await expect(runUsageLookup(jobAt(0), recorderIntoRows)).rejects.toThrow();
+
+    expect(rows).toEqual([]);
+  });
+
   it("records the call as missing on the last attempt and says so", async () => {
-    lookupGenerationCost.mockResolvedValue(undefined);
+    lookupGeneration.mockResolvedValue(undefined);
 
     await runUsageLookup(jobAt(2), recorderIntoRows);
 
@@ -125,7 +139,7 @@ describe("looking up an interrupted OpenRouter call", () => {
   });
 
   it("treats a lookup that failed on the last attempt as missing", async () => {
-    lookupGenerationCost.mockRejectedValue(new Error("OpenRouter generation lookup answered 500"));
+    lookupGeneration.mockRejectedValue(new Error("OpenRouter generation lookup answered 500"));
 
     await runUsageLookup(jobAt(2), recorderIntoRows);
 
@@ -133,7 +147,7 @@ describe("looking up an interrupted OpenRouter call", () => {
   });
 
   it("keeps the row when the charge fails, and says so", async () => {
-    lookupGenerationCost.mockResolvedValue(0.03);
+    lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
     chargeOnceForGeneration.mockRejectedValueOnce(new Error("db down"));
 
     await runUsageLookup(jobAt(0), recorderIntoRows);

@@ -18,7 +18,7 @@ import { getModelForTool, getPromptForTool } from "@server/config/text-tools.js"
 import { env, logger } from "@breatic/core";
 import { creditLotService, createUsageRecorder } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
-import { watchModelCalls, type ModelCallWatch } from "@server/agent/interrupted-call.js";
+import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import { getRedis } from "@breatic/core";
 
 /** SSE event yielded during text tool execution. */
@@ -154,15 +154,14 @@ export async function* executeTextTool(
     projectId: null,
     onMissingCost: (row) => logger.error({ row, userId, tool }, "agent_usage_cost_missing"),
   });
-  // Set once the model is known; watches for an OpenRouter call cut off
-  // before it reported its cost.
-  let interrupted: ModelCallWatch | undefined;
+  // Set once the model is known; records the run's model calls.
+  let calls: ModelCallWatch | undefined;
 
   try {
     const model = getModelForTool(tool);
     modelString = model;
     const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}` });
-    interrupted = watch;
+    calls = watch;
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);
 
@@ -191,7 +190,7 @@ export async function* executeTextTool(
     const creditsUsed = await chargeRecorded(
       userId,
       usage,
-      interrupted,
+      calls,
       tool,
       modelString,
       totalTokens,
@@ -211,7 +210,7 @@ export async function* executeTextTool(
     const creditsUsed = await chargeRecorded(
       userId,
       usage,
-      interrupted,
+      calls,
       tool,
       modelString,
       totalTokens,
@@ -241,8 +240,7 @@ export async function* executeTextTool(
  * retry of the same HTTP request charges at most once.
  * @param userId - Authenticated user ID the usage is recorded against.
  * @param usage - The run's recorder.
- * @param interrupted - The run's watch for a call cut off before it reported
- *   its cost, once the model was known.
+ * @param calls - The run's model-call watch, once the model was known.
  * @param tool - Tool name recorded on the ledger row.
  * @param modelString - The model that produced the text, `null` when the run
  *   failed before one was resolved.
@@ -252,14 +250,14 @@ export async function* executeTextTool(
 async function chargeRecorded(
   userId: string,
   usage: UsageRecorder,
-  interrupted: ModelCallWatch | undefined,
+  calls: ModelCallWatch | undefined,
   tool: string,
   modelString: string | null,
   tokens: number,
 ): Promise<number> {
-  // A call cut off before it reported its cost is looked up and charged
+  // An OpenRouter call whose cost is not in hand is looked up and charged
   // later, under a key of its own.
-  await interrupted?.handOff().catch((err: unknown) =>
+  await calls?.handOff().catch((err: unknown) =>
     logger.error({ err, userId, tool }, "usage_lookup_enqueue_failed"),
   );
   try {

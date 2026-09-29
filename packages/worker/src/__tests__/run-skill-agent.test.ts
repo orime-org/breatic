@@ -16,6 +16,9 @@
  * moving it into `agent.yaml` is only worth anything if this is what reads it.
  */
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type { UsageRecorder } from "@breatic/domain";
+
+const handOffLookups = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 
 /** The AI SDK wrapper the function under test calls, typed loosely so the
  *  assertions below can read the object it was handed. */
@@ -67,16 +70,15 @@ vi.mock("@breatic/domain", () => ({
   estimateTaskCredits: vi.fn(),
   getSkillRegistry: vi.fn(),
   resolveProvider: vi.fn(() => "routed"),
+  handOffLookups,
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
     Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
 }));
 
 /** A recorder that keeps the model calls it was told about. */
-function recorder(): {
-  operation: { operationKey: string; feature: "skill_task"; actorUserId: string; projectId: string | null };
+function recorder(): UsageRecorder & {
   recordModelCall: ReturnType<typeof vi.fn>;
-  recordServiceCall: ReturnType<typeof vi.fn>;
-  recordLookedUpCall: ReturnType<typeof vi.fn>;
+  awaitingLookup: ReturnType<typeof vi.fn>;
   settle: ReturnType<typeof vi.fn>;
 } {
   return {
@@ -84,13 +86,14 @@ function recorder(): {
     recordModelCall: vi.fn(),
     recordServiceCall: vi.fn(),
     recordLookedUpCall: vi.fn(),
+    awaitingLookup: vi.fn(() => []),
     settle: vi.fn(async () => 0),
   };
 }
 
 
 beforeEach(() => {
-  [generateTextRetry, buildAgentConfig, getModel, stepCountIs].forEach((m) =>
+  [generateTextRetry, buildAgentConfig, getModel, stepCountIs, handOffLookups].forEach((m) =>
     m.mockClear(),
   );
 });
@@ -145,8 +148,8 @@ describe("runSkillAgent", () => {
     usage.settle.mockResolvedValue(12.5);
     generateTextRetry.mockImplementationOnce(async (options: Record<string, unknown>) => {
       const onEnd = options.onLanguageModelCallEnd as (event: unknown) => void;
-      onEnd({ usage: { outputTokens: 10 }, providerMetadata: undefined });
-      onEnd({ usage: { outputTokens: 20 }, providerMetadata: undefined });
+      onEnd({ responseId: "gen-1", usage: { outputTokens: 10 }, providerMetadata: undefined });
+      onEnd({ responseId: "gen-2", usage: { outputTokens: 20 }, providerMetadata: undefined });
       return { text: "the agent's answer" };
     });
     const { runSkillAgent } = await import("@worker/handlers/dispatch.js");
@@ -160,8 +163,33 @@ describe("runSkillAgent", () => {
       provider: "routed",
       usage: { outputTokens: 10 },
       providerMetadata: undefined,
+      generationId: "gen-1",
     });
     expect(credits).toBe(12.5);
+  });
+
+  it("hands the calls it could not price to the later lookup", async () => {
+    const usage = recorder();
+    usage.awaitingLookup.mockReturnValue(["gen-3"]);
+    const { runSkillAgent } = await import("@worker/handlers/dispatch.js");
+
+    await runSkillAgent("creative_research", {}, usage);
+
+    expect(handOffLookups).toHaveBeenCalledWith(["gen-3"], usage.operation, {
+      model: "vendor/from-the-factory",
+      description: "Skill: creative_research",
+    });
+  });
+
+  it("hands them off from a run that failed too", async () => {
+    const usage = recorder();
+    usage.awaitingLookup.mockReturnValue(["gen-3"]);
+    generateTextRetry.mockRejectedValueOnce(new Error("provider down"));
+    const { runSkillAgent } = await import("@worker/handlers/dispatch.js");
+
+    await expect(runSkillAgent("creative_research", {}, usage)).rejects.toThrow("provider down");
+
+    expect(handOffLookups).toHaveBeenCalledWith(["gen-3"], usage.operation, expect.anything());
   });
 
   it("hands every tool the task's recorder", async () => {

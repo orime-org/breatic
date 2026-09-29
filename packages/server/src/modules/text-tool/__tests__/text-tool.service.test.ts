@@ -23,8 +23,7 @@ const modelRun = vi.hoisted(() => ({
   provider: "",
 }));
 
-const enqueueUsageLookup = vi.hoisted(() => vi.fn(async () => undefined));
-vi.mock("@server/agent/usage-lookup-queue.js", () => ({ enqueueUsageLookup }));
+const handOffLookups = vi.hoisted(() => vi.fn(async () => undefined));
 
 /** 这一轮扣费成不成功。 */
 const charge = vi.hoisted(() => ({
@@ -45,7 +44,10 @@ vi.mock("@breatic/core", async (importOriginal) => {
 /** What each recorder was opened with, and what it was told. */
 const recorders = vi.hoisted(() => ({ opened: [] as unknown[], calls: [] as unknown[] }));
 
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
+  // Real: the tracker is pure, and what the run hands off depends on it.
+  trackOpenGeneration: (await import("../../../../../domain/src/credit/open-generation.js")).trackOpenGeneration,
+  handOffLookups,
   getModel: () => ({}),
   // The model call reports its usage as its response arrives, the way the SDK
   // calls `onLanguageModelCallEnd`, before the stream is drained.
@@ -95,29 +97,13 @@ vi.mock("@breatic/domain", () => ({
         credits += call.usage.outputTokens;
       },
       recordServiceCall: () => {},
+      awaitingLookup: () => [],
       settle: async () => credits,
     };
   },
   // The real one routes on which API keys the deployment has, so a name
   // derived from the model string would assert the double, not the wiring.
   resolveProvider: (model: string) => modelRun.provider || `routed:${model}`,
-  trackOpenGeneration: () => {
-    let open: string | undefined;
-    const closed = new Set<string>();
-    return {
-      seen: (raw: { id?: string } | undefined) => {
-        if (raw?.id !== undefined && !closed.has(raw.id)) open = raw.id;
-      },
-      ended: (id: string | undefined) => {
-        const done = id ?? open;
-        if (done !== undefined) closed.add(done);
-        open = undefined;
-      },
-      pending: () => open,
-    };
-  },
-  openRouterCost: (metadata: { openrouter?: { usage?: { cost?: number } } } | undefined) =>
-    metadata?.openrouter?.usage?.cost,
   creditLotService: {
     chargeOnceForGeneration: async (...args: unknown[]) => {
       charge.calls.push(args);
@@ -259,16 +245,11 @@ describe("a run cut off before the model reported its cost", () => {
 
     await run();
 
-    expect(enqueueUsageLookup).toHaveBeenCalledWith({
-      generationId: "gen-42",
-      model: "openai/gpt-4o-mini",
-      operationKey: "texttool:key-1",
-      feature: "text_tool",
-      source: "model",
-      actorUserId: "u-1",
-      projectId: null,
-      description: "Text tool: generate",
-    });
+    expect(handOffLookups).toHaveBeenCalledWith(
+      ["gen-42"],
+      { operationKey: "texttool:key-1", feature: "text_tool", actorUserId: "u-1", projectId: null },
+      { model: "openai/gpt-4o-mini", description: "Text tool: generate" },
+    );
   });
 
   it("hands nothing off when the call ended and was recorded", async () => {
@@ -276,7 +257,7 @@ describe("a run cut off before the model reported its cost", () => {
 
     await run();
 
-    expect(enqueueUsageLookup).not.toHaveBeenCalled();
+    expect(handOffLookups).toHaveBeenCalledWith([], expect.anything(), expect.anything());
   });
 });
 

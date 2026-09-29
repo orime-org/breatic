@@ -164,6 +164,7 @@ describe("a turn cut short by the client", () => {
     streamTextRetry.mockImplementation(
       (opts: {
         onLanguageModelCallEnd?: (e: {
+          responseId: string;
           usage: { inputTokens: number; outputTokens: number };
           providerMetadata: undefined;
         }) => void;
@@ -178,6 +179,7 @@ describe("a turn cut short by the client", () => {
               // carries both, and the turn reads it to catch calls the SDK
               // refused before running them.
               opts.onLanguageModelCallEnd?.({
+                responseId: "resp-1",
                 usage: { inputTokens: 0, outputTokens: 900 },
                 providerMetadata: undefined,
               });
