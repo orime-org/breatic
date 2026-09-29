@@ -1473,6 +1473,92 @@ describe('the comment panel', () => {
         expect(aimedWords()).toBe('bravo');
       });
 
+      it('covers them again on an undo that follows a redo', async () => {
+        show();
+        aimDraft(6, 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        handle.undoManager.stopCapturing();
+        act(() => {
+          const view = handle.editor.prosemirrorView!;
+          view.dispatch(view.state.tr.delete(firstRun().from + 6, firstRun().from + 8));
+        });
+        handle.undoManager.stopCapturing();
+        act(() => {
+          handle.undoManager.undo();
+        });
+        act(() => {
+          handle.undoManager.redo();
+        });
+
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        expect(lines()).toEqual(['alpha bravo charlie']);
+        expect(aimedWords()).toBe('bravo');
+      });
+
+      it('takes back what the reader typed over its last letters on a redo', async () => {
+        show();
+        aimDraft(6, 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        handle.undoManager.stopCapturing();
+        act(() => {
+          const view = handle.editor.prosemirrorView!;
+          view.dispatch(view.state.tr.insertText('XYZ', firstRun().from + 9, firstRun().from + 11));
+        });
+        handle.undoManager.stopCapturing();
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        act(() => {
+          handle.undoManager.redo();
+        });
+
+        expect(lines()).toEqual(['alpha braXYZ charlie']);
+        expect(aimedWords()).toBe('braXYZ');
+      });
+
+      it.each([
+        ['before its words', 6],
+        ['inside its words', 8],
+      ] as const)('covers its words again when the reader undoes a split %s', async (_what, at) => {
+        show();
+        aimDraft(6, 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        handle.undoManager.stopCapturing();
+        await peerPresses(handle, firstRun().from + at, 'Enter');
+        handle.undoManager.stopCapturing();
+
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        expect(lines()).toEqual(['alpha bravo charlie']);
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe('bravo');
+      });
+
+      it('covers a whole line again when the reader undoes deleting it', async () => {
+        show('editor', ['aa0 xx', 'bb1 yy', 'cc2 zz']);
+        const [s0, s1] = lineStarts();
+        aimAt(s0! + 4, s1! + 3);
+        await screen.findByTestId('doc-comment-draft-card');
+        handle.undoManager.stopCapturing();
+        act(() => {
+          handle.editor.removeBlocks([handle.editor.document[1]!]);
+        });
+        handle.undoManager.stopCapturing();
+
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        expect(lines()).toEqual(['aa0 xx', 'bb1 yy', 'cc2 zz']);
+        expect(aimedWords()).toBe('xxbb1');
+      });
+
       it('stays on the words the entry was pressed over after the deletion', async () => {
         show();
         aimDraft(6, 11);
@@ -1872,9 +1958,8 @@ describe('the comment panel', () => {
       expect(aimedWords()).toBe('ec');
     });
 
-    it('says so when a peer joins its line onto the one above', async () => {
-      // The row it was in is gone and its letters were written anew into the
-      // row above: neither Yjs nor the row can say where its words are.
+    it('stays on its words when a peer joins its line onto the one above', async () => {
+      // The same result as the reader joining the lines themselves.
       show('editor', ['alpha bravo charlie', 'delta echo foxtrot', 'golf']);
       const second = lineStarts()[1]!;
       aimAt(second + 6, second + 10);
@@ -1884,9 +1969,21 @@ describe('the comment panel', () => {
       await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
 
       expect(lines()).toEqual(['alpha bravo charliedelta echo foxtrot', 'golf']);
-      expect(
-        await screen.findByTestId('doc-comment-draft-dropped'),
-      ).toBeInTheDocument();
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('echo');
+    });
+
+    it('keeps its last line\'s words when a peer joins that line onto its first', async () => {
+      show('editor', ['aa0 xx', 'bb1 yy cc', 'zz2']);
+      const [s0, s1] = lineStarts();
+      aimAt(s0! + 4, s1! + 3);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
+
+      expect(lines()).toEqual(['aa0 xxbb1 yy cc', 'zz2']);
+      expect(aimedWords()).toBe('xxbb1');
     });
 
     it('says so when a peer presses Enter before its words in their line', async () => {
