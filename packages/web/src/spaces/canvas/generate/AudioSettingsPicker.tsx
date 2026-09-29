@@ -210,19 +210,31 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
       .join(', ');
   };
 
-  const voiceRow = layout.rows.find((row) => row.kind === 'voice');
+  /**
+   * What one row says on the pill: a voice or a choice by its value, the
+   * dialogue by its speaker count, any other list by its name while it holds
+   * something.
+   * @param row - The row.
+   * @returns The part, or undefined when the row has nothing to say.
+   */
+  const rowSummary = (row: SettingsRow): string | undefined => {
+    if (row.kind !== 'items') return rowValue(row);
+    if (dialogue && row.name === standIn.name) {
+      return t('canvas.generatePanel.audioDialogueSummary', { count: standIn.min });
+    }
+    const held = value[row.name];
+    return Array.isArray(held) && held.length > 0 ? t(`canvas.generatePanel.param.${row.name}`) : undefined;
+  };
+
+  // The pill reads in the popover's order: the rows, then the shared speaking
+  // controls, then the model's own controls set in place.
   const summary = [
-    dialogue
-      ? t('canvas.generatePanel.audioDialogueSummary', { count: standIn.min })
-      : voiceRow === undefined
-        ? undefined
-        : rowValue(voiceRow),
-    ...layout.rows.filter((row) => row.kind === 'choice').map(rowValue),
-    ...ownControlSummary(model, value, (name) => t(`canvas.generatePanel.param.${name}`), inlineOnly),
+    ...layout.rows.map(rowSummary),
     ...shared.map((control) => {
       const shown = asNumber(value[control.name]);
       return shown === undefined ? undefined : formatAudioParam(control.name, shown, t);
     }),
+    ...ownControlSummary(model, value, (name) => t(`canvas.generatePanel.param.${name}`), inlineOnly),
   ]
     .filter((part): part is string => part !== undefined && part !== '')
     .join(' · ') || t('canvas.generatePanel.audioSettings');

@@ -81,10 +81,11 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
     label: String(v),
   }));
   // A model with none of the shared two still has its own controls to open.
+  // The pill reads in the popover's order, top to bottom.
   const label =
     [
-      value.aspect_ratio === undefined ? undefined : optionLabel({}, value.aspect_ratio),
       value.resolution,
+      value.aspect_ratio === undefined ? undefined : optionLabel({}, value.aspect_ratio),
       ...ownControlSummary(model, value, (name) => t(`canvas.generatePanel.param.${name}`)),
     ]
       .filter(Boolean)

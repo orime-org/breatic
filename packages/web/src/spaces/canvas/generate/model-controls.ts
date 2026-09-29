@@ -121,7 +121,7 @@ export function ownControlValues(
 /**
  * What the model's own controls stand on, as the settings pill shows it: a
  * choice by its option's name, a range by its number, a switch by its name
- * while it is on.
+ * while it is on, a text box or a list by its name while it holds something.
  * @param model - The active model.
  * @param params - What the node holds for it, with the model's defaults resolved in.
  * @param nameOf - A param's name on screen.
@@ -143,6 +143,10 @@ export function ownControlSummary(
     } else if (control.kind === 'range' && typeof shown === 'number') {
       parts.push(String(shown));
     } else if (control.kind === 'toggle' && shown === true) {
+      parts.push(nameOf(control.name));
+    } else if (control.kind === 'text' && typeof shown === 'string' && shown.trim() !== '') {
+      parts.push(nameOf(control.name));
+    } else if (control.kind === 'items' && Array.isArray(shown) && shown.length > 0) {
       parts.push(nameOf(control.name));
     }
   }

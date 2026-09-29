@@ -178,6 +178,15 @@ describe('ownControlSummary', () => {
     expect(ownControlSummary(OWN, resolveParamsForModel(OWN, {}), nameOf)).toEqual(['Low', '20']);
   });
 
+  it('names a text param only while it holds something', () => {
+    expect(ownControlSummary(OWN, { quality: 'low', chaos: 5, negative_prompt: 'blur' }, nameOf)).toEqual([
+      'Low',
+      '5',
+      'name:negative_prompt',
+    ]);
+    expect(ownControlSummary(OWN, { quality: 'low', chaos: 5, negative_prompt: '' }, nameOf)).toEqual(['Low', '5']);
+  });
+
   it('reads what the node holds, and names a switch only while it is on', () => {
     expect(ownControlSummary(OWN, { quality: 'xhigh', chaos: 5, transparency: true }, nameOf)).toEqual([
       'XHigh',

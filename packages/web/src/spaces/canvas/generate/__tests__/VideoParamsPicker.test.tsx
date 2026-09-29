@@ -79,6 +79,31 @@ describe('VideoParamsPicker', () => {
     expect(screen.getByTestId('generate-video-params-trigger')).toHaveTextContent('1:1 · Neutral');
   });
 
+  it('names generated audio while it is on, and a filled text param, after the rest in the popover\'s order', () => {
+    // User 2026-09-29: every param the popover sets shows on the pill.
+    const own = model({
+      ...FULL.params,
+      negative_prompt: { description: '', label: 'Negative prompt', type: 'text', default: null, fill: 'panel' },
+    });
+    const { rerender } = render(
+      <VideoParamsPicker
+        model={own}
+        params={{ aspect_ratio: '16:9', resolution: '720p', duration: 6, generate_audio: true, negative_prompt: 'blur' }}
+        onChange={() => {}}
+      />,
+    );
+    const trigger = screen.getByTestId('generate-video-params-trigger');
+    expect(trigger).toHaveTextContent('16:9 · 720p · 6s · Generate audio · Negative prompt');
+    rerender(
+      <VideoParamsPicker
+        model={own}
+        params={{ aspect_ratio: '16:9', resolution: '720p', duration: 6, generate_audio: false, negative_prompt: '' }}
+        onChange={() => {}}
+      />,
+    );
+    expect(trigger).toHaveTextContent(/^16:9 · 720p · 6s$/);
+  });
+
   it('leaves out the parts the model does not declare', () => {
     // seedance-2.0 declares no resolution, kling-o3-pro no resolution either —
     // the trigger must read as the model's own params, not as a fixed shape

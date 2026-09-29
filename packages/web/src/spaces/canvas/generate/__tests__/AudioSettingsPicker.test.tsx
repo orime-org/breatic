@@ -516,7 +516,27 @@ describe('AudioSettingsPicker — a model that reads a dialogue (#2156, design �
     expect(screen.getByTestId('generate-audio-settings-trigger')).toHaveTextContent('Vera · Happy');
   });
 
-  it('caps the pill at 150px and prints the language beside the voice', () => {
+  it('reads the whole popover on the pill in its order, naming a list while it holds entries', () => {
+    const minimax = model({
+      emotion: { description: '', label: 'Emotion', fill: 'panel', default: 'happy', values: ['happy', 'sad'] },
+      pronunciation_dict: {
+        description: '', label: 'Pronunciations', fill: 'panel', default: null, type: 'items',
+        fields: { text: { type: 'text' }, pronunciation: { type: 'text' } },
+      },
+      speed: { description: '', min: 0.5, max: 2, step: 0.05, default: 1 },
+      voice_id: { description: '', default: null, remote_source: 'voices', fill: 'remote' },
+    });
+    const props = { voice: { ...NO_VOICE, selectedId: 'v', selectedName: 'Vera' }, model: minimax, onChange: () => {} };
+    const { rerender } = render(
+      <AudioSettingsPicker {...props} value={{ ...resolveParamsForModel(minimax, {}), pronunciation_dict: [{ text: 'a', pronunciation: 'b' }] }} />,
+    );
+    const trigger = screen.getByTestId('generate-audio-settings-trigger');
+    expect(trigger).toHaveTextContent('Pronunciations · Vera · 1.00x · Happy');
+    rerender(<AudioSettingsPicker {...props} value={resolveParamsForModel(minimax, {})} />);
+    expect(trigger).toHaveTextContent(/^Vera · 1\.00x · Happy$/);
+  });
+
+  it('caps the pill at 150px and prints the language, then the voice, as the popover lists them', () => {
     render(
       <AudioSettingsPicker
         voice={{ ...NO_VOICE, selectedId: 'Kore', selectedName: 'Kore' }}
@@ -527,6 +547,6 @@ describe('AudioSettingsPicker — a model that reads a dialogue (#2156, design �
     );
     const trigger = screen.getByTestId('generate-audio-settings-trigger');
     expect(trigger.className).toContain('max-w-[150px]');
-    expect(trigger).toHaveTextContent(`Kore · ${nameOf('en-US')}`);
+    expect(trigger).toHaveTextContent(`${nameOf('en-US')} · Kore`);
   });
 });

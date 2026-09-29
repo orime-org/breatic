@@ -194,7 +194,8 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   // the group being written — otherwise the last thing rendered leaves room
   // under itself that the popover's own padding never asked for (#2115).
 
-  // The trigger states only what this model actually has: a fixed
+  // The trigger reads in the popover's order and states only what this model
+  // actually has: a fixed
   // `ratio · resolution · duration` shape would show gaps for the several
   // models that declare no resolution.
   const durationLabel =
@@ -205,6 +206,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
     ratios.length > 0 && value.aspect_ratio !== undefined ? optionLabel({}, value.aspect_ratio) : undefined,
     resolutions.length > 0 ? value.resolution : undefined,
     durations.length > 0 ? durationLabel : undefined,
+    audioSupported && value.generate_audio === true ? t('canvas.generatePanel.generateAudio') : undefined,
     ...ownControlSummary(model, params, (name) => t(`canvas.generatePanel.param.${name}`)),
   ]
     .filter(Boolean)

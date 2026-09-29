@@ -43,7 +43,7 @@ const RESOLUTION: ParamDescriptor = {
 const FULL = model({ aspect_ratio: RATIO, resolution: RESOLUTION });
 
 describe('RatioResolutionPicker — ratio + resolution from the current model params', () => {
-  it('shows the current ratio · resolution on the trigger', () => {
+  it('shows the current resolution · ratio on the trigger, in the popover\'s order', () => {
     render(
       <RatioResolutionPicker
         model={FULL}
@@ -52,7 +52,7 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       />,
     );
     expect(screen.getByTestId('generate-ratio-trigger')).toHaveTextContent(
-      '16:9 · 2K',
+      '2K · 16:9',
     );
   });
 
@@ -64,7 +64,7 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       quality: { description: '', label: 'Quality', values: ['low', 'max'], default: 'max', fill: 'panel' },
     });
     render(<RatioResolutionPicker model={own} value={resolveParamsForModel(own, { aspect_ratio: 'auto', resolution: '1K' })} onChange={() => {}} />);
-    expect(screen.getByTestId('generate-ratio-trigger')).toHaveTextContent('Auto · 1K · Max');
+    expect(screen.getByTestId('generate-ratio-trigger')).toHaveTextContent('1K · Auto · Max');
   });
 
   it('picking a ratio fires onChange with the aspect_ratio', () => {
