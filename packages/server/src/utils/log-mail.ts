@@ -8,10 +8,11 @@
  * logging). This helper centralizes the routing rules across the
  * mail-sending routes (auth, invitations) so the policy is defined once:
  *
+ *   - sent                   : info - one line per mail handed to SMTP, by
+ *     kind and recipient, so a delivery question can be traced to a send
  *   - backend_console        : info - dump full html to dev server log
  *   - skipped + smtp_not_configured : warn - ops sees the misconfig
- *   - sent / backend_disabled : no log (the caller-level audit line
- *     already covers them)
+ *   - backend_disabled       : no log
  */
 
 import type { SendMailResult } from "@breatic/core";
@@ -30,7 +31,9 @@ export interface LogMailCtx {
  * @param ctx - Correlation context (recipient user id and mail subject tag) merged into the log line.
  */
 export function logMailResult(result: SendMailResult, ctx: LogMailCtx): void {
-  if (result.status === "backend_console") {
+  if (result.status === "sent") {
+    logger.info({ ...ctx }, "email_sent");
+  } else if (result.status === "backend_console") {
     logger.info(
       { ...ctx, to: result.to, html: result.html },
       "[console] email",
