@@ -9,8 +9,8 @@
  * notification is the always-delivered path, the email is an optional
  * enhancement that only fires when an SMTP backend is configured. Each renders
  * in the recipient's language, passed in as `locale` (the recipient's
- * `users.locale`), from the `server.mail.*` catalog entries; the HTML shell and
- * escaping live in `mail-shell.ts`.
+ * `users.locale`), from the `server.mail.*` catalog entries; the branded layout
+ * and escaping live in `mail-shell.ts`.
  *
  * Auth emails (password reset / email verification) are built in
  * `modules/auth/auth-mail.ts`: those are the primary delivery channel (no bell
@@ -18,9 +18,9 @@
  * through the best-effort path.
  */
 
-import { runWithLocale, type SendMailOptions } from "@breatic/core";
+import type { SendMailOptions } from "@breatic/core";
 import { getDecisionWindowDays } from "@server/config/limits.js";
-import { mailHtml, mailSubject, renderMail } from "@server/utils/mail-shell.js";
+import { renderMail, type MailMessage } from "@server/utils/mail-shell.js";
 
 /**
  * Build the closing line of an invitation, transfer or request email.
@@ -30,20 +30,20 @@ import { mailHtml, mailSubject, renderMail } from "@server/utils/mail-shell.js";
  * the recipient has no way to check is the worst place to keep a second copy
  * of a number.
  * @param what - Which kind of waiting item expires.
- * @returns The footer sentence, with the configured window in it.
+ * @returns The note, with the configured window in it.
  */
-function expiryFooter(what: "invitation" | "transfer" | "request"): string {
-  return mailHtml(`server.mail.expiry.${what}`, { days: getDecisionWindowDays() });
+function expiryNote(what: "invitation" | "transfer" | "request"): MailMessage {
+  return { key: `server.mail.expiry.${what}`, params: { days: getDecisionWindowDays() } };
 }
 
 /**
- * The requester's own words, as a sentence appended to the lead.
+ * The requester's own words, as a sentence that follows the lead.
  * @param message - What they typed, or null when they gave nothing.
- * @returns The sentence with a leading space, or an empty string.
+ * @returns The sentence, or nothing when they gave none.
  */
-function reasonSentence(message: string | null): string {
-  if (message === null || message.trim() === "") return "";
-  return ` ${mailHtml("server.mail.reason", { message })}`;
+function reasonSentence(message: string | null): MailMessage[] {
+  if (message === null || message.trim() === "") return [];
+  return [{ key: "server.mail.reason", params: { message } }];
 }
 
 /** Fields for the studio invitation email. */
@@ -63,21 +63,19 @@ export interface StudioInvitationMailInput {
  * the decision page, where they answer (NOT auto-accept). The bell row leads
  * to that same page, so both entrances end in one place.
  * @param input - The invitee's language and email, inviter + studio names, role, and the landing link.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
  */
 export function buildStudioInvitationMail(
   input: StudioInvitationMailInput,
-): SendMailOptions {
+): Promise<SendMailOptions> {
   const names = { inviter: input.inviterName, studio: input.studioName };
-  return runWithLocale(input.locale, () =>
-    renderMail({
-      to: input.inviteeEmail,
-      subject: mailSubject("server.mail.studio_invite.subject", names),
-      leadHtml: mailHtml("server.mail.studio_invite.lead", { ...names, role: input.role }),
-      actionHtml: mailHtml("server.mail.studio_invite.action", {}, input.inviteLink),
-      footerHtml: expiryFooter("invitation"),
-    }),
-  );
+  return renderMail(input.locale, {
+    to: input.inviteeEmail,
+    subject: { key: "server.mail.studio_invite.subject", params: names },
+    body: [{ key: "server.mail.studio_invite.lead", params: { ...names, role: input.role } }],
+    action: { label: { key: "server.mail.studio_invite.action" }, href: input.inviteLink },
+    note: expiryNote("invitation"),
+  });
 }
 
 /** Fields for the project invitation email. */
@@ -97,21 +95,19 @@ export interface ProjectInvitationMailInput {
  * the decision page, where they answer (NOT auto-accept). The bell row leads
  * to that same page, so both entrances end in one place.
  * @param input - The invitee's language and email, inviter + project names, role, and the landing link.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
  */
 export function buildProjectInvitationMail(
   input: ProjectInvitationMailInput,
-): SendMailOptions {
+): Promise<SendMailOptions> {
   const names = { inviter: input.inviterName, project: input.projectName };
-  return runWithLocale(input.locale, () =>
-    renderMail({
-      to: input.inviteeEmail,
-      subject: mailSubject("server.mail.project_invite.subject", names),
-      leadHtml: mailHtml("server.mail.project_invite.lead", { ...names, role: input.role }),
-      actionHtml: mailHtml("server.mail.project_invite.action", {}, input.inviteLink),
-      footerHtml: expiryFooter("invitation"),
-    }),
-  );
+  return renderMail(input.locale, {
+    to: input.inviteeEmail,
+    subject: { key: "server.mail.project_invite.subject", params: names },
+    body: [{ key: "server.mail.project_invite.lead", params: { ...names, role: input.role } }],
+    action: { label: { key: "server.mail.project_invite.action" }, href: input.inviteLink },
+    note: expiryNote("invitation"),
+  });
 }
 
 /** Fields for the studio transfer-admin email. */
@@ -130,21 +126,19 @@ export interface StudioTransferMailInput {
  * their bell notifications, and its link opens the same `/decision?token=`
  * landing page every waiting request is answered on.
  * @param input - The recipient's language and email, initiator + studio names, and the app link.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
  */
 export function buildStudioTransferMail(
   input: StudioTransferMailInput,
-): SendMailOptions {
+): Promise<SendMailOptions> {
   const names = { initiator: input.initiatorName, studio: input.studioName };
-  return runWithLocale(input.locale, () =>
-    renderMail({
-      to: input.recipientEmail,
-      subject: mailSubject("server.mail.studio_transfer.subject", names),
-      leadHtml: mailHtml("server.mail.studio_transfer.lead", names),
-      actionHtml: mailHtml("server.mail.studio_transfer.action", {}, input.decisionLink),
-      footerHtml: expiryFooter("transfer"),
-    }),
-  );
+  return renderMail(input.locale, {
+    to: input.recipientEmail,
+    subject: { key: "server.mail.studio_transfer.subject", params: names },
+    body: [{ key: "server.mail.studio_transfer.lead", params: names }],
+    action: { label: { key: "server.mail.studio_transfer.action" }, href: input.decisionLink },
+    note: expiryNote("transfer"),
+  });
 }
 
 /** Fields for the project transfer-owner email. */
@@ -163,21 +157,19 @@ export interface ProjectTransferMailInput {
  * their bell notifications, and its link opens the same `/decision?token=`
  * landing page every waiting request is answered on.
  * @param input - The recipient's language and email, initiator + project names, and the app link.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
  */
 export function buildProjectTransferMail(
   input: ProjectTransferMailInput,
-): SendMailOptions {
+): Promise<SendMailOptions> {
   const names = { initiator: input.initiatorName, project: input.projectName };
-  return runWithLocale(input.locale, () =>
-    renderMail({
-      to: input.recipientEmail,
-      subject: mailSubject("server.mail.project_transfer.subject", names),
-      leadHtml: mailHtml("server.mail.project_transfer.lead", names),
-      actionHtml: mailHtml("server.mail.project_transfer.action", {}, input.decisionLink),
-      footerHtml: expiryFooter("transfer"),
-    }),
-  );
+  return renderMail(input.locale, {
+    to: input.recipientEmail,
+    subject: { key: "server.mail.project_transfer.subject", params: names },
+    body: [{ key: "server.mail.project_transfer.lead", params: names }],
+    action: { label: { key: "server.mail.project_transfer.action" }, href: input.decisionLink },
+    note: expiryNote("transfer"),
+  });
 }
 
 /** Fields for the role-upgrade request email, sent to the project's owner. */
@@ -203,21 +195,20 @@ export interface RoleUpgradeRequestMailInput {
  */
 export function buildRoleUpgradeRequestMail(
   input: RoleUpgradeRequestMailInput,
-): SendMailOptions {
+): Promise<SendMailOptions> {
   const names = { requester: input.requesterName, project: input.projectName };
-  return runWithLocale(input.locale, () =>
-    renderMail({
-      to: input.ownerEmail,
-      subject: mailSubject("server.mail.role_upgrade.subject", names),
-      leadHtml:
-        mailHtml("server.mail.role_upgrade.lead", { ...names, role: input.requestedRole }) +
-        reasonSentence(input.message),
-      actionHtml: mailHtml("server.mail.role_upgrade.action", {}, input.decisionLink),
-      // Not "transfer request": nothing is changing hands, somebody is asking
-      // for a bigger role on something that stays where it is.
-      footerHtml: expiryFooter("request"),
-    }),
-  );
+  return renderMail(input.locale, {
+    to: input.ownerEmail,
+    subject: { key: "server.mail.role_upgrade.subject", params: names },
+    body: [
+      { key: "server.mail.role_upgrade.lead", params: { ...names, role: input.requestedRole } },
+      ...reasonSentence(input.message),
+    ],
+    action: { label: { key: "server.mail.role_upgrade.action" }, href: input.decisionLink },
+    // Not "transfer request": nothing is changing hands, somebody is asking
+    // for a bigger role on something that stays where it is.
+    note: expiryNote("request"),
+  });
 }
 
 /** Fields for the join-request email, sent to the project's owner. */
@@ -239,17 +230,18 @@ export interface ProjectJoinRequestMailInput {
  */
 export function buildProjectJoinRequestMail(
   input: ProjectJoinRequestMailInput,
-): SendMailOptions {
+): Promise<SendMailOptions> {
   const names = { requester: input.requesterName, project: input.projectName };
-  return runWithLocale(input.locale, () =>
-    renderMail({
-      to: input.ownerEmail,
-      subject: mailSubject("server.mail.project_join.subject", names),
-      leadHtml: mailHtml("server.mail.project_join.lead", names) + reasonSentence(input.message),
-      actionHtml: mailHtml("server.mail.project_join.action", {}, input.decisionLink),
-      footerHtml: expiryFooter("request"),
-    }),
-  );
+  return renderMail(input.locale, {
+    to: input.ownerEmail,
+    subject: { key: "server.mail.project_join.subject", params: names },
+    body: [
+      { key: "server.mail.project_join.lead", params: names },
+      ...reasonSentence(input.message),
+    ],
+    action: { label: { key: "server.mail.project_join.action" }, href: input.decisionLink },
+    note: expiryNote("request"),
+  });
 }
 
 /** Fields for the membership-ended email. */
@@ -269,19 +261,17 @@ export interface MembershipEndedMailInput {
  * action link and no deadline. The bell row beside it is the delivery
  * guarantee; this only leaves when an SMTP backend is configured.
  * @param input - The recipient's language and email, and the tier that ended.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
  */
 export function buildMembershipEndedMail(
   input: MembershipEndedMailInput,
-): SendMailOptions {
-  return runWithLocale(input.locale, () =>
-    renderMail({
-      to: input.recipientEmail,
-      subject: mailSubject("server.mail.membership_ended.subject", { tier: input.tierLabel }),
-      leadHtml: mailHtml("server.mail.membership_ended.lead", { tier: input.tierLabel }),
-      footerHtml: mailHtml("server.mail.membership_ended.footer"),
-    }),
-  );
+): Promise<SendMailOptions> {
+  return renderMail(input.locale, {
+    to: input.recipientEmail,
+    subject: { key: "server.mail.membership_ended.subject", params: { tier: input.tierLabel } },
+    body: [{ key: "server.mail.membership_ended.lead", params: { tier: input.tierLabel } }],
+    note: { key: "server.mail.membership_ended.footer" },
+  });
 }
 
 /** What the storage-full email needs. */
@@ -307,17 +297,15 @@ interface StorageQuotaExceededMailInput {
  * them would send them to look at whichever studio happened to trigger it,
  * which may hold hardly anything.
  * @param input - The recipient's language and email, and the studio the refused write was aimed at.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @returns `SendMailOptions` (to / subject / html / text) for `sendMail`.
  */
 export function buildStorageQuotaExceededMail(
   input: StorageQuotaExceededMailInput,
-): SendMailOptions {
-  return runWithLocale(input.locale, () =>
-    renderMail({
-      to: input.recipientEmail,
-      subject: mailSubject("server.mail.storage_full.subject"),
-      leadHtml: mailHtml("server.mail.storage_full.lead", { studio: input.studioName }),
-      footerHtml: mailHtml("server.mail.storage_full.footer"),
-    }),
-  );
+): Promise<SendMailOptions> {
+  return renderMail(input.locale, {
+    to: input.recipientEmail,
+    subject: { key: "server.mail.storage_full.subject" },
+    body: [{ key: "server.mail.storage_full.lead", params: { studio: input.studioName } }],
+    note: { key: "server.mail.storage_full.footer" },
+  });
 }

@@ -37,10 +37,7 @@ import {
   buildStorageQuotaExceededMail,
 } from "@server/utils/notification-mail.js";
 import { escapeHtml } from "@server/utils/mail-shell.js";
-import {
-  buildPasswordResetMail,
-  buildEmailVerificationMail,
-} from "@server/modules/auth/auth-mail.js";
+import { buildTokenLinkMail } from "@server/modules/auth/auth-mail.js";
 
 loadLocales();
 
@@ -128,11 +125,11 @@ async function allMails(locale: string): Promise<Record<string, SendMailOptions>
     storageFull: buildStorageQuotaExceededMail({
       locale, recipientEmail: "to@example.test", studioName: NAME,
     }),
-    passwordReset: buildPasswordResetMail({
-      locale, to: "to@example.test", resetUrl: LINK, expiresInSeconds: 3600,
+    passwordReset: buildTokenLinkMail("password_reset", {
+      locale, to: "to@example.test", url: LINK, expiresInSeconds: 3600,
     }),
-    emailVerification: buildEmailVerificationMail({
-      locale, to: "to@example.test", verifyUrl: LINK, expiresInSeconds: 86400,
+    emailVerification: buildTokenLinkMail("email_verification", {
+      locale, to: "to@example.test", url: LINK, expiresInSeconds: 86400,
     }),
   };
   const built = await Promise.all(Object.values(mails));

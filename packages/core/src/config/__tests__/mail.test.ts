@@ -14,6 +14,8 @@ import { describe, it, expect } from "vitest";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 import { mailConfigSchema } from "@core/config/mail.js";
 
+const LOGO = "https://example.test/logo.png";
+
 describe("mail config", () => {
   it("parses the shipped config/mail.yaml", () => {
     const raw = parse(readFileSync(resolve(MONOREPO_ROOT, "config/mail.yaml"), "utf-8"));
@@ -25,8 +27,8 @@ describe("mail config", () => {
     });
   });
 
-  it("falls back to the key defaults when the file names nothing", () => {
-    expect(mailConfigSchema.parse({}).smtp).toEqual({
+  it("falls back to the timeout defaults when the file names none", () => {
+    expect(mailConfigSchema.parse({ layout: { logo_url: LOGO } }).smtp).toEqual({
       dns_timeout_ms: 5000,
       connection_timeout_ms: 5000,
       greeting_timeout_ms: 5000,
@@ -35,16 +37,21 @@ describe("mail config", () => {
   });
 
   it.each([0, -1, 1.5])("rejects a timeout of %s", (value) => {
-    expect(() => mailConfigSchema.parse({ smtp: { socket_timeout_ms: value } })).toThrow();
+    expect(() =>
+      mailConfigSchema.parse({ smtp: { socket_timeout_ms: value }, layout: { logo_url: LOGO } }),
+    ).toThrow();
   });
 
-  it("reads the logo the layout shows", () => {
+  it("reads the logo the layout shows from the shipped file", () => {
     const raw = parse(readFileSync(resolve(MONOREPO_ROOT, "config/mail.yaml"), "utf-8"));
-    expect(mailConfigSchema.parse(raw).layout.logo_url).toBe("https://breatic.ai/icon-192.png");
-    expect(mailConfigSchema.parse({}).layout.logo_url).toBe("https://breatic.ai/icon-192.png");
+    expect(mailConfigSchema.parse(raw).layout.logo_url).toMatch(/^https:\/\/.+\.png$/);
   });
 
-  it.each(["icon-192.png", "http://breatic.ai/icon-192.png", "javascript:alert(1)"])(
+  it("requires the logo address: a host is written down only in the yaml", () => {
+    expect(() => mailConfigSchema.parse({})).toThrow();
+  });
+
+  it.each(["icon-192.png", "http://example.test/icon.png", "javascript:alert(1)"])(
     "rejects a logo address of %s",
     (value) => {
       expect(() => mailConfigSchema.parse({ layout: { logo_url: value } })).toThrow();

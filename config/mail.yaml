@@ -23,3 +23,9 @@ smtp:
   greeting_timeout_ms: 5000
   # How long the connection may sit idle mid-transfer before it is dropped.
   socket_timeout_ms: 10000
+
+# The branded layout every product email is assembled into.
+layout:
+  # The logo at the top of every mail. Mail clients do not render SVG, so this
+  # is a PNG, and it must be reachable over https from the recipient's client.
+  logo_url: https://breatic.ai/icon-192.png

@@ -17,10 +17,7 @@ import {
   hashRecoveryCode,
   verifyRecoveryCode,
 } from "@server/modules/auth/recovery-code.service.js";
-import {
-  buildEmailVerificationMail,
-  buildPasswordResetMail,
-} from "@server/modules/auth/auth-mail.js";
+import { buildTokenLinkMail } from "@server/modules/auth/auth-mail.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import { env } from "@breatic/core";
@@ -283,10 +280,10 @@ export async function forgotPassword(
   await redis.set(key, user.id, "EX", RESET_TOKEN_TTL);
 
   const mailResult = await sendMail(
-    buildPasswordResetMail({
+    await buildTokenLinkMail("password_reset", {
       locale: user.locale,
       to: email,
-      resetUrl: `${resetBaseUrl}?token=${token}`,
+      url: `${resetBaseUrl}?token=${token}`,
       expiresInSeconds: RESET_TOKEN_TTL,
     }),
   );
@@ -456,10 +453,10 @@ export async function resendVerificationEmail(
 ): Promise<{ mailResult: SendMailResult }> {
   const token = await generateVerifyEmailToken(userId);
   const mailResult = await sendMail(
-    buildEmailVerificationMail({
+    await buildTokenLinkMail("email_verification", {
       locale,
       to: email,
-      verifyUrl: `${verifyBaseUrl}?token=${token}`,
+      url: `${verifyBaseUrl}?token=${token}`,
       expiresInSeconds: EMAIL_VERIFY_TTL,
     }),
   );

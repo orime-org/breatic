@@ -24,6 +24,7 @@
  * mockable and lives in the integration tests.
  */
 
+import type * as CoreModule from "@breatic/core";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import type * as NotificationServiceModule from "../../notification/notification.service.js";
@@ -42,7 +43,7 @@ vi.mock("@server/modules/activity/projectActivity.service.js", () => ({
 // are defined in the factory so the service's `throw` and the test's
 // `toBeInstanceOf` share one constructor.
 vi.mock("@breatic/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@breatic/core")>();
+  const actual = await importOriginal<typeof CoreModule>();
   class NotFoundError extends Error {}
   class ForbiddenError extends Error {}
   class ConflictError extends Error {}
@@ -51,9 +52,10 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // wholesale rather than spreading the real exports, so anything the file
     // imports has to be listed here or it arrives as undefined.
     sendMail: vi.fn(async () => ({ ok: true })),
-    // The email templates render inside the recipient's locale and log a
-    // failed send; both are the real ones.
+    // The email templates render inside the recipient's locale, in the
+    // configured layout, and log a failed send; all three are the real ones.
     runWithLocale: actual.runWithLocale,
+    getMailLogoUrl: actual.getMailLogoUrl,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
@@ -133,7 +135,7 @@ import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 
 // The mocked core above keeps only what this file uses, so the catalogs the
 // email templates read are loaded from the real one.
-const { loadLocales } = await vi.importActual<typeof import("@breatic/core")>("@breatic/core");
+const { loadLocales } = await vi.importActual<typeof CoreModule>("@breatic/core");
 loadLocales();
 
 const OWNER = "u-owner";
@@ -157,6 +159,7 @@ beforeEach(() => {
   vi.mocked(userRepo.getUserById).mockResolvedValue({
     id: OWNER,
     email: "olivia@example.com",
+    locale: "en",
   } as Awaited<ReturnType<typeof userRepo.getUserById>>);
   vi.mocked(projectMembersRepo.getRole).mockImplementation(
     async (_projectId: string, userId: string) =>

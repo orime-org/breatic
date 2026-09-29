@@ -216,6 +216,7 @@ describe("auth.service invariant — forgotPassword anti-enumeration (锁现状�
     mockGetUserByEmail.mockResolvedValue({
       id: "u-1",
       email: "real@example.com",
+      locale: "en",
     });
 
     const { forgotPassword } = await import("../auth.service.js");
