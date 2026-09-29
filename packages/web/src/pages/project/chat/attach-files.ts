@@ -33,8 +33,9 @@ export interface AttachDeps {
 }
 
 /**
- * The most bytes one character of text can take in UTF-8. A text file larger
- * than this many bytes per allowed character cannot fit, whatever it says.
+ * The most UTF-8 bytes one UTF-16 code unit (what `string.length` counts)
+ * can take. A text file larger than this many bytes per allowed character
+ * cannot fit, whatever it says.
  */
 const MAX_BYTES_PER_CHAR = 3;
 

@@ -48,7 +48,7 @@ interface ChatComposerProps {
   attachments?: ReadonlyArray<TrayItem>;
   /** What the file picker offers, as an `accept` value. */
   attachAccept?: string;
-  /** Something to say about the last attempt to attach, on the box's top edge. */
+  /** Something to say about the last attempt to attach, beside the attach button. */
   attachNotice?: string;
   onChange: (next: string) => void;
   onSubmit: () => void;

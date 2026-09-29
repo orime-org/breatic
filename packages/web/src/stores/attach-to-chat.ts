@@ -24,7 +24,7 @@ export interface Tray {
  * cleared, since this one is about to say its own.
  * @param projectId - The project the chat is in.
  * @returns Where to attach, or undefined when no conversation could be opened
- *   or the limits could not be read -- the latter said above the box.
+ *   or the limits could not be read -- the latter said beside the attach button.
  */
 export async function openTray(projectId: string): Promise<Tray | undefined> {
   const conversationId = await conversationRuntime.conversationForSending(projectId);

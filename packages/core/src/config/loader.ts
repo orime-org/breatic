@@ -147,8 +147,8 @@ const agentConfigSchema = z.object({
    */
   attachment_max_chars: z.number().int().positive().default(200000),
   /**
-   * How many items may be attached to one message: uploaded files and canvas
-   * nodes together. The browser checks the same number before sending, and
+   * How many items may be attached to one message: each uploaded file is one,
+   * and each pick added from the canvas is one, however many nodes it holds. The browser checks the same number before sending, and
    * reads it from `GET /chat/stream-config`.
    */
   attachment_max_items: z.number().int().positive().default(10),

@@ -90,8 +90,8 @@ export type StoredMessageMetadata = {
 export type MessagePart =
   | { type: "text"; text: string }
   /**
-   * One item the user attached to their message: an uploaded file or a canvas
-   * node, as it was when attached.
+   * One item the user attached to their message: an uploaded file or a piece
+   * of the canvas (one pick, however many nodes), as it was when attached.
    *
    * Kept apart from the text so the bubble shows the words the user typed and
    * the conversation is titled after them; the two are joined only when the

@@ -14,7 +14,7 @@ export type TrayFailure = 'upload' | 'extract' | 'too_long';
 
 /** One item waiting above the chat box. */
 export interface TrayItem {
-  /** The canvas node's id, or one made up for a file picked from disk. */
+  /** Made from the picked node ids for a piece of the canvas, or fresh for a file picked from disk. */
   id: string;
   /** What the reader sees it called. */
   name: string;
@@ -39,7 +39,7 @@ export interface AttachmentLimits {
 /** What adding a batch came to. */
 export type AddOutcome = 'added' | 'full' | 'too_long';
 
-/** What to say above the box about the last attempt to attach. */
+/** What to say beside the attach button about the last attempt to attach. */
 export type TrayNotice =
   | { key: 'full'; limit: number }
   | { key: 'tooLong' }
@@ -110,7 +110,7 @@ function trayOf(conversationId: string): readonly TrayItem[] {
  * attaching a node again after editing it sends what it says now. The rest go
  * in together only if the list then still fits both limits; a batch that
  * partly went in would leave the reader to work out which part. A refused
- * batch is said so above the box.
+ * batch is said so beside the attach button.
  * @param conversationId - The conversation it is attached in.
  * @param batch - The items, in order.
  * @param limits - The limits the list is held to.
@@ -158,7 +158,7 @@ function update(conversationId: string, id: string, change: (item: TrayItem) => 
  * An upload or extraction has what it was waiting for.
  *
  * Its length is known only now, so the list is measured again: past the
- * limit, the item fails as too long and that is said above the box.
+ * limit, the item fails as too long and that is said beside the attach button.
  * @param conversationId - The conversation.
  * @param id - The item.
  * @param chip - What is sent for it.
@@ -252,7 +252,7 @@ function forget(conversationIds: readonly string[]): void {
 }
 
 /**
- * Say something above the box about the last attempt to attach, or clear it.
+ * Say something beside the attach button about the last attempt to attach, or clear it.
  * @param conversationId - The conversation.
  * @param notice - What to say, or null to say nothing.
  */
@@ -290,7 +290,7 @@ export function useTray(conversationId: string | undefined): readonly TrayItem[]
 }
 
 /**
- * What is said above the box in one conversation, kept current.
+ * What is said beside the attach button in one conversation, kept current.
  * @param conversationId - The conversation on screen, if one is.
  * @returns The notice, or null when there is none.
  */

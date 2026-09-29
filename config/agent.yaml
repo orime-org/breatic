@@ -77,8 +77,8 @@ user_message_max_chars: 15000
 # the same section before sending.
 attachment_max_chars: 200000
 
-# How many items may be attached to one message: uploaded files and canvas
-# nodes together. The browser checks the same number before sending.
+# How many items may be attached to one message: each uploaded file is one,
+# and each pick added from the canvas is one, however many nodes it holds. The browser checks the same number before sending.
 attachment_max_items: 10
 
 # How long an assembled request may be before a consolidation runs, in
