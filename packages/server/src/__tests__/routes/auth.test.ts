@@ -288,9 +288,15 @@ describe("Auth routes", () => {
 
   describe("POST /auth/forgot-password", () => {
     it("answers before any account-dependent work finishes", async () => {
-      // Never settles: if the route awaited the lookup, the send or anything
-      // else that depends on the account, this request would hang.
-      mocks.authService.forgotPassword.mockReturnValue(new Promise(() => {}));
+      // Held open until the reply is in: if the route awaited the lookup, the
+      // send or anything else that depends on the account, this request would
+      // hang.
+      let release!: () => void;
+      mocks.authService.forgotPassword.mockReturnValue(
+        new Promise((resolve) => {
+          release = () => resolve({ status: "unknown_email" });
+        }),
+      );
 
       const app = createApp();
       const res = await app.request("/api/v1/auth/forgot-password", {
@@ -306,6 +312,8 @@ describe("Auth routes", () => {
         "someone@example.com",
         expect.stringMatching(/\/reset-password$/),
       );
+      release();
+      await settleAfterReply();
     });
 
     it("gives the same answer when the background send fails, and logs the failure", async () => {
