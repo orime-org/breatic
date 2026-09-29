@@ -5,7 +5,7 @@
  * Content arriving into the body keeps its comments only when it was moved
  * here from inside the body (#18, A19 · A19.1).
  *
- * PASTED CONTENT ARRIVES AS PLAIN TEXT. The rule is the user's (2026-09-22,
+ * PASTED CONTENT ARRIVES WITHOUT ITS COMMENTS. The rule is the user's (2026-09-22,
  * extended to cutting 2026-09-23): copying text copies the content, not the
  * discussion about it, and a cut is a copy with a delete behind it — the
  * words may never be pasted at all, may be pasted an hour later, may be
@@ -174,7 +174,8 @@ function dropCopiesWith(event: MouseEvent): boolean {
 }
 
 /**
- * The plugin that decides whether comments arrive with content.
+ * The plugin that decides whether comments, and the row ids of copied rows,
+ * arrive with content.
  *
  * One per editor, because the flag it keeps is about the drop happening in
  * that editor right now.
@@ -222,7 +223,8 @@ export function commentPastePlugin(): Plugin {
 }
 
 /**
- * The extension that decides whether comments arrive with content.
+ * The extension that decides whether comments, and the row ids of copied rows,
+ * arrive with content.
  * @returns The extension, for the assembly to register.
  */
 export const documentCommentPasteExtension = createExtension(() => ({
