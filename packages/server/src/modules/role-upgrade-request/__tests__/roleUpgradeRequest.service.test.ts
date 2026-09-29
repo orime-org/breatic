@@ -41,7 +41,8 @@ vi.mock("@server/modules/activity/projectActivity.service.js", () => ({
 // the transactional paths execute without a PG connection. The error classes
 // are defined in the factory so the service's `throw` and the test's
 // `toBeInstanceOf` share one constructor.
-vi.mock("@breatic/core", () => {
+vi.mock("@breatic/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@breatic/core")>();
   class NotFoundError extends Error {}
   class ForbiddenError extends Error {}
   class ConflictError extends Error {}
@@ -50,6 +51,10 @@ vi.mock("@breatic/core", () => {
     // wholesale rather than spreading the real exports, so anything the file
     // imports has to be listed here or it arrives as undefined.
     sendMail: vi.fn(async () => ({ ok: true })),
+    // The email templates render inside the recipient's locale and log a
+    // failed send; both are the real ones.
+    runWithLocale: actual.runWithLocale,
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
         cb({ marker: "fake-tx" }),
@@ -125,6 +130,11 @@ import * as userRepo from "@server/modules/auth/user.repo.js";
 import { projectMembersRepo, sendMail } from "@breatic/core";
 import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
+
+// The mocked core above keeps only what this file uses, so the catalogs the
+// email templates read are loaded from the real one.
+const { loadLocales } = await vi.importActual<typeof import("@breatic/core")>("@breatic/core");
+loadLocales();
 
 const OWNER = "u-owner";
 const VIEWER = "u-viewer";

@@ -173,14 +173,14 @@
         "action": "<a>招待を開く</a>と、承認または辞退できます。"
       },
       "studio_transfer": {
-        "subject": "{initiator} さんが {studio} をあなたに移譲しようとしています",
-        "lead": "<b>{initiator}</b> さんがあなたを Studio <b>{studio}</b> の Admin にしようとしています。",
-        "action": "<a>この移譲を確認する</a>と、承認または辞退できます。"
+        "subject": "{initiator} さんが {studio} をあなたに引き継ごうとしています",
+        "lead": "<b>{initiator}</b> さんが Studio <b>{studio}</b> の Admin をあなたに引き継ごうとしています。",
+        "action": "<a>この引き継ぎを確認する</a>と、承認または辞退できます。"
       },
       "project_transfer": {
-        "subject": "{initiator} さんが {project} をあなたに移譲しようとしています",
-        "lead": "<b>{initiator}</b> さんが Project <b>{project}</b> のオーナー権をあなたに移譲しようとしています。",
-        "action": "<a>この移譲を確認する</a>と、承認または辞退できます。"
+        "subject": "{initiator} さんが {project} をあなたに引き継ごうとしています",
+        "lead": "<b>{initiator}</b> さんが Project <b>{project}</b> の Owner をあなたに引き継ごうとしています。",
+        "action": "<a>この引き継ぎを確認する</a>と、承認または辞退できます。"
       },
       "role_upgrade": {
         "subject": "{requester} さんが {project} でより上位のロールを申請しています",
@@ -195,7 +195,7 @@
       "reason": "メッセージ：<em>{message}</em>",
       "expiry": {
         "invitation": "この招待は {days, plural, other {# 日}}後に期限切れになります。心当たりがない場合は、このメールを無視してください。",
-        "transfer": "この移譲リクエストは {days, plural, other {# 日}}後に期限切れになります。心当たりがない場合は、このメールを無視してください。",
+        "transfer": "この引き継ぎリクエストは {days, plural, other {# 日}}後に期限切れになります。心当たりがない場合は、このメールを無視してください。",
         "request": "この申請は {days, plural, other {# 日}}後に期限切れになります。心当たりがない場合は、このメールを無視してください。"
       },
       "membership_ended": {
