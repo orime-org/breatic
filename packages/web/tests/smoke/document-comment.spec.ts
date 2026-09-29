@@ -337,6 +337,70 @@ test.describe('the card a comment is written in', () => {
     await expect.poll(() => readCardInView(page)).toBe(true);
   });
 
+  test('shows a comment below the panel header when the press opens the panel too', async ({
+    page,
+  }) => {
+    // The panel mounts with the press, before any card's words are measured.
+    await oneCommentOnALongBody(page);
+    await page.getByTestId('doc-comment-rail-close').click();
+    await expect(page.getByTestId('doc-comment-card')).toHaveCount(0);
+
+    await page.evaluate((sel) => {
+      const view = document.querySelector(
+        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+      )! as HTMLElement;
+      const line = document.querySelectorAll(`${sel} p`)[20]!.getBoundingClientRect().top;
+      view.scrollTop += line - view.getBoundingClientRect().top - 6;
+    }, EDITOR);
+    const mark = (await page.locator(`${EDITOR} [data-bn-thread-id]`).first().boundingBox())!;
+    await page.mouse.click(mark.x + 20, mark.y + mark.height / 2);
+    await expect(page.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'true');
+
+    await expect.poll(() => readCardInView(page)).toBe(true);
+  });
+
+  test('shows a comment read by pressing its card while its words are above the screen', async ({
+    page,
+  }) => {
+    // Read, a card goes level with its words; pressed from the panel, those
+    // can be off the top of the body's view.
+    await oneCommentOnALongBody(page);
+    await page.evaluate((sel) => {
+      const view = document.querySelector(
+        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+      )! as HTMLElement;
+      const line = document.querySelectorAll(`${sel} p`)[20]!.getBoundingClientRect().top;
+      view.scrollTop += line - view.getBoundingClientRect().top + 400;
+    }, EDITOR);
+
+    await page.getByTestId('doc-comment-card').click({ position: { x: 20, y: 10 } });
+    await expect(page.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'true');
+
+    await expect.poll(() => readCardInView(page)).toBe(true);
+  });
+
+  test('shows the comment being read once its Space tab is back', async ({ page }) => {
+    await oneCommentOnALongBody(page);
+    await readCommentWith(page, { from: 'top', by: 6 });
+    const home = (await page
+      .locator('[role="tab"][aria-selected="true"]')
+      .getAttribute('data-testid'))!;
+
+    const away = await createSpace(page, 'document', `away-${Date.now()}`);
+    try {
+      await expect(page.getByTestId('doc-comment-card')).toHaveCount(0);
+      await page.getByTestId(home).click();
+
+      await expect(page.getByTestId('doc-comment-card')).toHaveAttribute(
+        'data-selected',
+        'true',
+      );
+      await expect.poll(() => readCardInView(page)).toBe(true);
+    } finally {
+      await deleteSpace(page, away);
+    }
+  });
+
   test('shows the whole of a comment that opens up as it is read near the bottom', async ({
     page,
   }) => {

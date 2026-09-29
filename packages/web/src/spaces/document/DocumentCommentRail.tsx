@@ -420,10 +420,15 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
           ? null
           : `${DRAFT_THREAD_ID}:${String(draftEntry)}`
         : reading;
-  // Only once the card's place is measured for where it is aimed now: a
-  // moved draft's old top stays until the new one is taken.
+  // Only once the card's words are measured, for where it is aimed now: until
+  // then the layout holds it with the cards whose words are gone, at the
+  // bottom of the column — which is also where a panel opened by this very
+  // press has every card on its first commit — and a moved draft's old top
+  // stays until the new one is taken. A card whose words are gone is read
+  // only by pressing it, where it already is.
   const readTop =
     reading === null ||
+    !anchors.has(reading) ||
     (reading === DRAFT_THREAD_ID &&
       (draftAnchor === null || measuredFor !== draftAnchor))
       ? undefined
