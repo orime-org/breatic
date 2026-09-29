@@ -31,9 +31,10 @@
  * one — the panel animates the change, which is what makes giving way read as
  * giving way instead of as the column jumping (user 2026-09-22).
  *
- * A thread whose words were deleted has no anchor to read across from. It
- * goes below every card that has one, in the order the panel handed them
- * over — anywhere else means on top of a card that does have words.
+ * A card with no anchor to read across from — one whose words are not
+ * measured yet, or a draft whose words are gone — goes below every card that
+ * has one, in the order the panel handed them over: anywhere else means on
+ * top of a card that does have words.
  */
 
 /** One card, and where its words are. */
@@ -41,9 +42,8 @@ export interface CardAnchor {
   /** The thread this card is for. */
   readonly id: string;
   /**
-   * Where its words are, in the panel's own coordinates. Null for a thread
-   * whose run was deleted: it has no mark left to measure, and it still has
-   * to be read and answered (A13).
+   * Where its words are, in the panel's own coordinates. Null while they are
+   * not measured yet, and for a draft whose words are gone.
    */
   readonly anchor: number | null;
   /** How tall the card is. */

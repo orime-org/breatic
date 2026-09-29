@@ -11,9 +11,8 @@
  *
  * THE QUOTE IS READ FROM THE BODY, NOT STORED. A comment points at a range,
  * and the range moves and shrinks as the document is edited — a quote copied
- * at posting time would keep naming words that are no longer there. An orphan
- * has no range left and so has no quote; that is what the card says instead
- * (A13).
+ * at posting time would keep naming words that are no longer there. A thread
+ * with no words left has no quote and no card (A13).
  *
  * Names are resolved through the library's own store, which caches, de-dupes
  * and merges concurrent requests. A name it has no entry for reads as null and
@@ -60,7 +59,7 @@ export interface CommentCardView {
   /** Whether it has been settled, which is what the card offers on it. */
   readonly settled: boolean;
   /** The words it is about, or null once they are gone. */
-  readonly quote: string | null;
+  readonly quote: string;
   /** The opening comment and every reply, oldest first. */
   readonly entries: readonly CommentEntryView[];
 }
@@ -127,7 +126,7 @@ function entryOf(
  * @param doc - The body, which the quote is read out of.
  * @param walked - Every thread's stretches, walked once for the whole panel.
  * @param threads - Every thread, built once for the whole panel.
- * @returns The card, or null once the thread itself is gone.
+ * @returns The card, or null once the thread or its words are gone.
  */
 function drawCard(
   card: RailCard,
@@ -137,11 +136,12 @@ function drawCard(
   threads: ReadonlyMap<string, { comments: readonly CommentData[] }>,
 ): CommentCardView | null {
   const thread = threads.get(card.id);
-  if (thread === undefined) return null;
+  const quote = threadQuoteIn(doc, card.id, walked);
+  if (thread === undefined || quote === null) return null;
   return {
     id: card.id,
     settled: card.settled,
-    quote: threadQuoteIn(doc, card.id, walked),
+    quote,
     entries: thread.comments.map((comment) => entryOf(comment, source)),
   };
 }

@@ -54,9 +54,8 @@ const NOTHING: CommentAnchors = { tops: new Map(), measuredFor: null };
  * How far each thread's words sit from the top of the body's content.
  *
  * A draft is measured the same way, from the range it is aimed at: it has no
- * mark to walk to yet, and a card with no anchor is A13's orphan, which the
- * layout puts at the bottom of the column — the one place a draft must not
- * be (A28).
+ * mark to walk to yet, and a card with no anchor is one the layout puts at
+ * the bottom of the column — the one place a draft must not be (A28).
  * @param editor - The document editor.
  * @param threadIds - The threads to measure, in any order.
  * @param column - The element the cards are positioned inside.
@@ -107,8 +106,8 @@ export function useCommentAnchors(
         .filter((id) => id.length > 0)
         .forEach((id) => {
           const at = ranges.get(id)?.[0];
-          // Absent from the ranges is the one thing that means no words
-          // left, and `layOutCards` reads a missing anchor as exactly that.
+          // Absent from the ranges means no words left; such a thread is
+          // not on the panel (A13).
           if (at === undefined) return;
           try {
             next.set(id, view.coordsAtPos(at.from).top - top);
@@ -117,8 +116,8 @@ export function useCommentAnchors(
             // which happens for a moment after a peer's delete arrives. The
             // thread still has its words, and the card still shows the quote
             // it took from them — dropping it here would slide that card to
-            // the bottom of the panel, where A13 puts the ones whose text is
-            // gone, and nothing would bring it back until the reader typed.
+            // the bottom of the panel, where the layout puts a card with no
+            // anchor, and nothing would bring it back until the reader typed.
             stale.push(id);
           }
         });

@@ -95,15 +95,22 @@ describe('what a card lets a reader do', () => {
   /**
    * Mounts the chrome, puts one line in the body, and opens the panel.
    * @param myRole - The role the chrome is drawn for.
+   * @param body - Whether to write that line, or keep the body a mount before
+   *   left, comments and all.
    */
-  async function open(myRole: ProjectRole = 'editor'): Promise<void> {
+  async function open(
+    myRole: ProjectRole = 'editor',
+    body: 'fresh' | 'kept' = 'fresh',
+  ): Promise<void> {
     role = myRole;
     render(<DocumentEditor handle={handle} myRole={myRole} readOnly={myRole === 'viewer'} />);
-    act(() => {
-      handle.editor.replaceBlocks(handle.editor.document, [
-        { type: 'paragraph', content: 'alpha bravo charlie' },
-      ] as never);
-    });
+    if (body === 'fresh') {
+      act(() => {
+        handle.editor.replaceBlocks(handle.editor.document, [
+          { type: 'paragraph', content: 'alpha bravo charlie' },
+        ] as never);
+      });
+    }
     const user = userEvent.setup();
     await user.click(screen.getByTestId('doc-doc-menu-trigger'));
     await user.click(await screen.findByTestId('doc-doc-menu-comments'));
@@ -530,7 +537,7 @@ describe('what a card lets a reader do', () => {
     await screen.findByTestId('doc-comment-card');
 
     cleanup();
-    await open('viewer');
+    await open('viewer', 'kept');
 
     expect(await screen.findByTestId('doc-comment-card')).toBeInTheDocument();
     await read();

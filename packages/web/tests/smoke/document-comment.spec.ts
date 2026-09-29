@@ -1348,7 +1348,11 @@ test.describe('the box a reply is written in', () => {
 });
 
 test.describe('a card whose words were deleted', () => {
-  test('sits below the cards that still have words', async ({ page }) => {
+  test('goes off the panel while its words are gone, and comes back on undo', async ({
+    page,
+  }) => {
+    // A13: with its words gone there is nothing on the card to read, and a
+    // new comment written meanwhile does not bring it back.
     await openFreshDocument(page);
     await page.keyboard.type('the line that will lose its comment');
     await page.keyboard.press('Enter');
@@ -1361,27 +1365,31 @@ test.describe('a card whose words were deleted', () => {
     await commentOnParagraph(page, 9, 'this one keeps them');
     await page.getByTestId('doc-doc-menu-trigger').click();
     await page.getByTestId('doc-doc-menu-comments').click();
-    await page.waitForTimeout(400);
+    await expect(page.getByTestId('doc-comment-card')).toHaveCount(2);
 
     await selectParagraph(page, 0);
     await page.keyboard.press('Backspace');
-    await page.waitForTimeout(700);
 
-    const cards = await page
-      .getByTestId('doc-comment-card')
-      .evaluateAll((nodes) =>
-        nodes.map((node) => ({
-          top: node.getBoundingClientRect().top,
-          orphaned:
-            node.querySelector('[data-testid="doc-comment-card-orphaned"]') !==
-            null,
-        })),
-      );
-    const withWords = cards.filter((c) => !c.orphaned);
-    const adrift = cards.filter((c) => c.orphaned);
-    expect(withWords).toHaveLength(1);
-    expect(adrift).toHaveLength(1);
-    expect(adrift[0]!.top).toBeGreaterThan(withWords[0]!.top);
+    await expect(page.getByTestId('doc-comment-card')).toHaveCount(1);
+    await expect(page.getByTestId('doc-comment-card')).toContainText('this one keeps them');
+
+    await selectParagraph(page, 4);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
+    await expect(page.getByTestId('doc-comment-card')).toHaveCount(1);
+    await page.getByTestId('doc-comment-draft-input').press('Escape');
+    await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+
+    await page.locator(`${EDITOR} p`).first().click();
+    await page.keyboard.press('ControlOrMeta+z');
+
+    await expect(page.locator(`${EDITOR} p`).first()).toHaveText(
+      'the line that will lose its comment',
+    );
+    await expect(page.getByTestId('doc-comment-card')).toHaveCount(2);
+    await expect(page.getByTestId('doc-comment-card').first()).toContainText(
+      'this one loses its words',
+    );
   });
 });
 
@@ -1404,7 +1412,9 @@ test.describe('a row moved from the keyboard', () => {
     await page.getByTestId('doc-doc-menu-trigger').click();
     await page.getByTestId('doc-doc-menu-comments').click();
     await expect(page.getByTestId('doc-comment-card')).toHaveCount(1);
-    await expect(page.getByTestId('doc-comment-card-orphaned')).toHaveCount(0);
+    await expect(page.getByTestId('doc-comment-card-quote')).toHaveText(
+      'the line that moves with its comment',
+    );
   });
 });
 

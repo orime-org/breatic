@@ -578,23 +578,35 @@ describe('the comment panel', () => {
     });
   });
 
-  it('says so on a card whose words were deleted', async () => {
-    // A13: the thread stays and stays readable, with the highlight gone.
+  it('takes a card off the panel while its words are deleted, and back on undo', async () => {
+    // A13: with its words gone there is nothing on the card to read; the
+    // thread stays in the document, which is what the undo brings back.
     show();
     await comment(0, 5, 'about alpha');
+    await comment(6, 11, 'about bravo');
     await pressCommentsRow();
-    await screen.findByTestId('doc-comment-rail');
+    expect(await screen.findAllByTestId('doc-comment-card')).toHaveLength(2);
 
     const run = firstRun();
-    const view = handle.editor.prosemirrorView!;
+    handle.undoManager.stopCapturing();
     act(() => {
+      const view = handle.editor.prosemirrorView!;
       view.dispatch(view.state.tr.delete(run.from, run.from + 5));
     });
 
-    expect(
-      await screen.findByTestId('doc-comment-card-orphaned'),
-    ).toBeInTheDocument();
-    expect(screen.queryByTestId('doc-comment-card-quote')).toBeNull();
+    await waitFor(() => {
+      expect(screen.getAllByTestId('doc-comment-card')).toHaveLength(1);
+    });
+    expect(screen.getByTestId('doc-comment-card')).toHaveTextContent('about bravo');
+
+    act(() => {
+      handle.undoManager.undo();
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('doc-comment-card')).toHaveLength(2);
+    });
+    expect(screen.getAllByTestId('doc-comment-card')[0]).toHaveTextContent('about alpha');
   });
 
   it('opens the comment in the body when a card is pressed', async () => {

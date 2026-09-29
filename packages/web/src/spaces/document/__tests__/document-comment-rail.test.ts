@@ -73,29 +73,17 @@ describe('commentRail', () => {
     expect(ids(rail.resolved)).toEqual(['done']);
   });
 
-  it('keeps a thread whose text was deleted in the unresolved group', () => {
-    const rail = commentRail([thread('orphan', 1)], at());
-    expect(ids(rail.unresolved)).toEqual(['orphan']);
-    expect(rail.unresolved[0]!.settled).toBe(false);
-  });
-
-  it('sends a resolved thread whose text was deleted to the resolved group', () => {
-    const rail = commentRail([thread('both', 1, true)], at());
-    expect(ids(rail.resolved)).toEqual(['both']);
-    expect(rail.resolved[0]!.settled).toBe(true);
-  });
-
-  it('puts the ones with no text left after the ones that have it', () => {
+  it.each([
+    ['an open', false],
+    ['a resolved', true],
+  ])('leaves out %s thread whose text was deleted', (_what, resolved) => {
+    // A13: the words are gone, so there is nothing on the card to read.
     const rail = commentRail(
-      [thread('orphan', 1), thread('placed', 2)],
+      [thread('gone', 1, resolved), thread('placed', 2)],
       at(['placed', 90]),
     );
-    expect(ids(rail.unresolved)).toEqual(['placed', 'orphan']);
-  });
-
-  it('orders the ones with no text left by age', () => {
-    const rail = commentRail([thread('newer', 2), thread('older', 1)], at());
-    expect(ids(rail.unresolved)).toEqual(['older', 'newer']);
+    expect(ids(rail.unresolved)).toEqual(['placed']);
+    expect(ids(rail.resolved)).toEqual([]);
   });
 
   it('empties it when everything is resolved', () => {
@@ -114,13 +102,9 @@ describe('commentRail', () => {
 
   it('orders the resolved group the same way', () => {
     const rail = commentRail(
-      [
-        thread('resolved-orphan', 1, true),
-        thread('late', 2, true),
-        thread('early', 3, true),
-      ],
+      [thread('late', 2, true), thread('early', 3, true)],
       at(['late', 90], ['early', 10]),
     );
-    expect(ids(rail.resolved)).toEqual(['early', 'late', 'resolved-orphan']);
+    expect(ids(rail.resolved)).toEqual(['early', 'late']);
   });
 });

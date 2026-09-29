@@ -145,58 +145,26 @@ describe('useCommentRail', () => {
     expect(result.current.resolved[0]?.settled).toBe(true);
   });
 
-  it('keeps a comment whose words were deleted, as an orphan', async () => {
+  it('leaves out a comment whose words were deleted', async () => {
+    // A13: nothing on the card to read, and nothing left for the button to
+    // count as unresolved.
     const editor = open();
     const run = firstRun(editor);
     const { result } = renderHook(() => useCommentRail(editor));
     await act(async () => {
       await comment(editor, { from: run.from, to: run.from + 5 }, 'first');
     });
-    await waitFor(() => expect(result.current.unresolved.length).toBeGreaterThan(0));
+    await waitFor(() => expect(result.current.unresolved).toHaveLength(1));
 
     const view = editor.prosemirrorView!;
     act(() => {
       view.dispatch(view.state.tr.delete(run.from, run.from + 5));
-    });
-
-    await waitFor(() => {
-      expect(result.current.unresolved).toHaveLength(1);
-    });
-    // Still the reader's to deal with, so the button stays marked (§9.2).
-    expect(result.current.unresolved.length).toBeGreaterThan(0);
-  });
-
-  it('drops an orphan that was deleted, which the body never hears about', async () => {
-    // The one change that reaches the threads without touching the document:
-    // the text is already gone, so the library's mark sync walks a body with
-    // no marks to write and the position table is never recomputed. Read off
-    // the positions alone, the deleted card would stay on the panel.
-    const editor = open();
-    const run = firstRun(editor);
-    const { result } = renderHook(() => useCommentRail(editor));
-    await act(async () => {
-      await comment(editor, { from: run.from, to: run.from + 5 }, 'first');
-    });
-    await waitFor(() => expect(result.current.unresolved.length).toBeGreaterThan(0));
-
-    const threadId = onlyThreadId(editor);
-    const view = editor.prosemirrorView!;
-    act(() => {
-      view.dispatch(view.state.tr.delete(run.from, run.from + 5));
-    });
-    await waitFor(() =>
-      expect(result.current.unresolved).toHaveLength(1),
-    );
-
-    await act(async () => {
-      await editor
-        .getExtension(CommentsExtension)!
-        .threadStore.deleteThread({ threadId });
     });
 
     await waitFor(() => {
       expect(result.current.unresolved).toEqual([]);
     });
+    expect(result.current.resolved).toEqual([]);
   });
 
   it('hands back the same reading while nothing about it changed', async () => {

@@ -360,8 +360,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
         [
           ...shown.map((card) => ({
             id: card.id,
-            // Null for a thread whose run was deleted: nothing to measure, and
-            // the layout puts it below the cards that do have words (A13).
+            // Null until its words are measured: the layout puts it below the
+            // cards that have them.
             anchor: anchors.get(card.id) ?? null,
             height: heights.get(card.id) ?? CARD_HEIGHT_GUESS_PX,
           })),
@@ -421,11 +421,10 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
           : `${DRAFT_THREAD_ID}:${String(draftEntry)}`
         : reading;
   // Only once the card's words are measured, for where it is aimed now: until
-  // then the layout holds it with the cards whose words are gone, at the
-  // bottom of the column — which is also where a panel opened by this very
-  // press has every card on its first commit — and a moved draft's old top
-  // stays until the new one is taken. A card whose words are gone is read
-  // only by pressing it, where it already is.
+  // then the layout holds it at the bottom of the column — which is where a
+  // panel opened by this very press has every card on its first commit — and
+  // a moved draft's old top stays until the new one is taken. A dropped draft
+  // has no words, and is read only by pressing it, where it already is.
   const readTop =
     reading === null ||
     !anchors.has(reading) ||

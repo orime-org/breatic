@@ -945,7 +945,6 @@
         "empty": "這份文件還沒有批註。選取正文裡的文字，或者點行左邊的握把。",
         "nothingUnresolved": "沒有未解決的批註。",
         "writeFailed": "這次改動沒能儲存。",
-        "orphaned": "批註的原文已刪除。",
         "unknownAuthor": "未知",
         "folded": "還有 {count} 則",
         "reply": "回覆…",

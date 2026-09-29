@@ -5,9 +5,8 @@
  * One comment thread, as the panel draws it (#18, A4 · A7 – A13 · A17).
  *
  * The quote comes first, then the opening comment and every reply below it,
- * then what this reader may do about it. A card whose words were deleted says
- * so in the quote's place — the thread stays readable, and stays answerable,
- * which is the whole of A13.
+ * then what this reader may do about it. A thread whose words were deleted
+ * has no card (A13).
  *
  * WHAT IS OFFERED IS `annotationRights`, delivered with canvas annotations
  * (#1881), so a comment and a canvas note answer the same question the same
@@ -272,21 +271,12 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       data-selected={marked}
       className={`${CARD_SURFACE} ${CARD_READING_OUTLINE} data-[settled=true]:opacity-70`}
     >
-      {card.quote === null ? (
-        <p
-          data-testid='doc-comment-card-orphaned'
-          className='mb-2 text-2xs text-muted-foreground'
-        >
-          {t('spaces.document.comment.orphaned')}
-        </p>
-      ) : (
-        <p
-          data-testid='doc-comment-card-quote'
-          className='mb-2 truncate border-l border-note-border pl-1.5 text-2xs text-muted-foreground'
-        >
-          {card.quote}
-        </p>
-      )}
+      <p
+        data-testid='doc-comment-card-quote'
+        className='mb-2 truncate border-l border-note-border pl-1.5 text-2xs text-muted-foreground'
+      >
+        {card.quote}
+      </p>
 
       {drawn.map((entry, index) => (
         <React.Fragment key={entry.id}>
