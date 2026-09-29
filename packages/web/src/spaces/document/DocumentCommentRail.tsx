@@ -381,17 +381,17 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
 
   // The panel's own scroll: how far the column is lifted to bring back the
   // cards the one being read pushed up under the header (design §9.6.1).
-  // `setLifting` is its one writer. A new card being read starts the column
-  // over, in the render that makes it the one being read — the lift is kept
-  // with the card it was set for, so nothing in that commit reads the old
-  // card's lift (React's "adjusting some state when a prop changes"). A
-  // layout that leaves less room holds it to what there is, which is what
-  // everything reading it takes.
-  const [lifting, setLifting] = React.useState<{
-    readonly reading: string | null;
-    readonly by: number;
-  }>({ reading, by: 0 });
-  const lift = lifting.reading === reading ? lifting.by : 0;
+  // `setLift` is its one writer. A new card being read starts the column
+  // over, in the render that makes it the one being read, so nothing in that
+  // commit reads the old card's lift (React's "adjusting some state when a
+  // prop changes"). A layout that leaves less room holds it to what there
+  // is, which is what everything reading it takes.
+  const [lift, setLift] = React.useState(0);
+  const [liftFor, setLiftFor] = React.useState(reading);
+  if (liftFor !== reading) {
+    setLiftFor(reading);
+    setLift(0);
+  }
   const lifted = Math.min(lift, placement.raised);
 
   const aside = React.useRef<HTMLElement>(null);
@@ -458,11 +458,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     },
     [],
   );
-  // Read by the wheel listener, which is attached once.
-  const liftInputs = React.useRef({ lifted, placement, reading });
-  React.useEffect(() => {
-    liftInputs.current = { lifted, placement, reading };
-  }, [lifted, placement, reading]);
+  // Read by the wheel listener, which is attached once; taken at commit, so a
+  // turn right after a new card is read works from that card's layout.
+  const liftInputs = React.useRef({ lifted, placement });
+  React.useLayoutEffect(() => {
+    liftInputs.current = { lifted, placement };
+  }, [lifted, placement]);
   React.useEffect(() => {
     const node = aside.current;
     if (node === null) return;
@@ -484,7 +485,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       const next = nextLift({ lift: now, delta, raised: laid.raised, hidden });
       if (!next.taken) return;
       event.preventDefault();
-      setLifting({ reading: liftInputs.current.reading, by: next.lift });
+      setLift(next.lift);
     };
     // Not React's `onWheel`: that one is passive, and `preventDefault` there
     // would not keep the turn from scrolling the body.
@@ -505,7 +506,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     const hidden = hiddenNow(laid, id, now);
     if (hidden === null) return;
     const next = liftToReveal({ lift: now, raised: laid.raised, hidden });
-    if (next !== now) setLifting({ reading: liftInputs.current.reading, by: next });
+    if (next !== now) setLift(next);
   }, [hiddenNow]);
 
   // How tall the header is, for the scroll margin everything in the column

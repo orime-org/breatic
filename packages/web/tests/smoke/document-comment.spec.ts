@@ -1906,4 +1906,39 @@ test.describe('a column crowded with comments', () => {
     const tops = await cardTops(page);
     expect(Math.abs(tops['note 6']! - line.y)).toBeLessThan(12);
   });
+
+  test('starts the column over when a card read before is read again', async ({ page }) => {
+    /**
+     * Reads a note by pressing its mark. Each mark is one letter wide: pressed
+     * in its middle, the caret lands on the edge it shares with the next one.
+     * @param index - Which note.
+     */
+    const pressMark = async (index: number): Promise<void> => {
+      const box = (await page.locator(`${EDITOR} [data-bn-thread-id]`).nth(index).boundingBox())!;
+      await page.mouse.click(box.x + 1, box.y + box.height / 2);
+      await expect(
+        page.getByTestId('doc-comment-card').filter({ hasText: `note ${String(index)}` }),
+      ).toHaveAttribute('data-selected', 'true');
+      await page.waitForTimeout(400);
+    };
+    await crowdOneLine(page);
+    await pressMark(5);
+    const header = (await page
+      .getByTestId('doc-comment-rail-header')
+      .boundingBox())!;
+    const rail = (await page.getByTestId('doc-comment-rail-column').boundingBox())!;
+    await page.mouse.move(rail.x + rail.width / 2, header.y + header.height + 200);
+    for (let i = 0; i < 5; i += 1) await page.mouse.wheel(0, -100);
+    await pressMark(6);
+
+    await page.getByTestId('doc-comment-card').filter({ hasText: 'note 5' }).click();
+    await expect(
+      page.getByTestId('doc-comment-card').filter({ hasText: 'note 5' }),
+    ).toHaveAttribute('data-selected', 'true');
+    await page.waitForTimeout(400);
+
+    const line = (await page.locator(`${EDITOR} p`).nth(LINE).boundingBox())!;
+    const tops = await cardTops(page);
+    expect(Math.abs(tops['note 5']! - line.y)).toBeLessThan(12);
+  });
 });
