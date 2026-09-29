@@ -128,9 +128,13 @@ export function useCommentAnchors(
           if (last !== undefined) next.set(id, last);
         });
         const tops = sameAnchors(held.tops, next) ? held.tops : next;
-        return tops === held.tops && held.measuredFor === draft
+        // A draft whose place was not laid out kept its old top, which is
+        // still the one for the draft last measured.
+        const measuredFor =
+          draft !== null && stale.includes(draft.id) ? held.measuredFor : draft;
+        return tops === held.tops && held.measuredFor === measuredFor
           ? held
-          : { tops, measuredFor: draft };
+          : { tops, measuredFor };
       });
     };
 
