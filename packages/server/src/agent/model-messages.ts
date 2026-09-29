@@ -19,7 +19,7 @@
 import type { ModelMessage } from "ai";
 import type { ToolResultPart } from "ai";
 
-import { NOTHING_SAID_WHY } from "@breatic/shared";
+import { NOTHING_SAID_WHY, userTurnForModel } from "@breatic/shared";
 import {
   renderCapabilitiesForModel,
   renderGenerationModelsForModel,
@@ -207,7 +207,8 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
 
   for (const message of history) {
     if (message.role === "user") {
-      out.push({ role: "user", content: message.content });
+      const attached = message.parts.flatMap((p) => (p.type === "attachment" ? [p.chip] : []));
+      out.push({ role: "user", content: userTurnForModel(attached, message.content) });
       continue;
     }
 

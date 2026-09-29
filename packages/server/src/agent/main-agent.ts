@@ -24,7 +24,8 @@ import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
-import type { MessagePart, ToolFailure } from "@breatic/shared";
+import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
+import { userTurnForModel } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -69,23 +70,27 @@ export class MainAgent {
    * @param userMessage - The user's text message
    * @param signal - Raised when the user stops the turn or the client goes
    *   away. Absent means this caller has no way to stop the turn.
+   * @param attached - What the user attached to the message, in order.
    * @returns The turn, as the SDK's own message chunks.
    */
   async chat(
     userMessage: string,
     signal?: AbortSignal,
+    attached: readonly ChatAttachedChip[] = [],
   ): Promise<ReadableStream<UIMessageChunk>> {
-    return this.runTurn(userMessage, signal);
+    return this.runTurn(userMessage, attached, signal);
   }
 
   /**
    * Everything a turn does before the model is called.
-   * @param said - What to record and send as the user's turn
+   * @param said - What the user typed
+   * @param attached - What the user attached, stored beside the typed words
    * @param signal - Raised when the user stops the turn or the client leaves
    * @returns The turn, as the SDK's own message chunks.
    */
   private async runTurn(
     said: string,
+    attached: readonly ChatAttachedChip[],
     signal: AbortSignal | undefined,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const { conversationId } = this.ctx;
@@ -97,7 +102,10 @@ export class MainAgent {
     // `chargeOnceForGeneration`.
     const turnIndex = await messageRepo.addMessage(conversationId, {
       role: "user",
-      parts: [{ type: "text", text: said }],
+      parts: [
+        ...attached.map((chip): MessagePart => ({ type: "attachment", chip })),
+        { type: "text", text: said },
+      ],
     });
 
     // A conversation takes its name from the first thing said in it, so this
@@ -113,7 +121,7 @@ export class MainAgent {
     // nothing of the turn could reach the reader until they were done, the
     // first word of the reply included, which is the one thing they were
     // waiting for.
-    return this.runStream(said, turnIndex, title, signal);
+    return this.runStream(userTurnForModel(attached, said), turnIndex, title, signal);
   }
 
   /**
@@ -138,7 +146,8 @@ export class MainAgent {
    * the conversation and its history, then the compression -- is time the
    * reader spends in front of a screen where nothing has happened, and a
    * stream that exists already has somewhere to put the name in the meantime.
-   * @param said - What the user said, put in front of the model on its own.
+   * @param forModel - This turn's user message as the model is sent it: the
+   *   attachments, then the typed words. Put in front of the model on its own.
    * @param turnIndex - The turn this run answers. A parameter and not a
    *   context field: it is known one line before the call, both the reply and
    *   the charge are filed under it, and neither has anything sensible to do
@@ -153,7 +162,7 @@ export class MainAgent {
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
-    said: string,
+    forModel: string,
     turnIndex: number,
     title: string | null,
     signal?: AbortSignal,
@@ -276,7 +285,7 @@ export class MainAgent {
         agentConfig,
         history: compressedHistory,
         watermark,
-        messages: [...toModelMessages(compressedHistory), { role: "user", content: said }],
+        messages: [...toModelMessages(compressedHistory), { role: "user", content: forModel }],
       };
     };
 

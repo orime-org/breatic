@@ -24,7 +24,7 @@ const BEAT_MS = 5000;
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: BEAT_MS })),
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10 })),
   },
 }));
 

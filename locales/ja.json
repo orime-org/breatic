@@ -155,25 +155,28 @@
       "support": "このご購入に関するお問い合わせは {email} までご連絡ください。"
     },
     "chat": {
-      "message_too_long": "このメッセージは長すぎます。添付した内容を含めて最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。"
+      "message_too_long": "このメッセージは長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
+      "attachments_too_long": "添付した内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
+      "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。"
     }
   },
   "chat": {
     "composer": {
-      "selectMode": {
-        "label": "選択モード — キャンバスでノードをクリックして参照を追加",
-        "title": "選択モード"
-      },
       "chipsAria": "選択された chips",
-      "placeholder": "やりたいことを入力(@ で上の chips を参照)…",
+      "placeholder": "質問するか、キャンバス上のものを渡してください…",
       "inputAria": "Chat 入力",
-      "skill": {
-        "label": "Skill を選んで agent の動作を絞り込む",
-        "title": "Skill を選択"
-      },
       "send": "送信",
       "sending": "送信中",
-      "atLimit": "{limit, number} 文字の上限に達しました"
+      "atLimit": "{limit, number} 文字の上限に達しました",
+      "attach": "ファイルを添付",
+      "removeAttachment": "{name} を外す",
+      "attachmentUploading": "アップロード中",
+      "attachmentFailed": "{reason, select, upload {アップロード失敗} extract {読み取り失敗} too_long {長すぎます} other {失敗}}",
+      "attachFull": "添付できるのは最大 {limit, number} 件です",
+      "attachTooLong": "添付した内容が多すぎます。件数を減らすか、短いファイルにしてください。",
+      "attachUnsupported": "{filename} は添付できません",
+      "attachTooLarge": "{filename} は大きすぎて添付できません",
+      "attachUnavailable": "今は添付できません。もう一度お試しください。"
     },
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
@@ -281,7 +284,12 @@
     },
     "thinking": "少し考えました",
     "thinkingNow": "考え中",
-    "thinkingFor": "{m, plural, =0 {} other {# 分}}{s, number} 秒 考えました"
+    "thinkingFor": "{m, plural, =0 {} other {# 分}}{s, number} 秒 考えました",
+    "attachment": {
+      "kind": "{kind, select, canvas {キャンバス} image {画像} video {動画} audio {音声} text {テキスト} other {項目}}",
+      "nodes": "{count} 個のノード",
+      "more": "ほか {count} 件"
+    }
   },
   "canvas": {
     "group": {
@@ -329,7 +337,8 @@
       "deleteNode": "ノードを削除",
       "deleteGroup": "グループを削除",
       "deleteSelection": "選択を削除",
-      "clipboardError": "クリップボードにアクセスできません。キーボードショートカットをお使いください。"
+      "clipboardError": "クリップボードにアクセスできません。キーボードショートカットをお使いください。",
+      "addToAgent": "Agent に追加"
     },
     "gate": {
       "locked": "この項目はロックされています。変更するにはロックを解除してください。",

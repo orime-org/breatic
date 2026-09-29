@@ -155,25 +155,28 @@
       "support": "이번 구매에 대한 문의는 {email} 로 보내주세요."
     },
     "chat": {
-      "message_too_long": "이 메시지는 너무 깁니다. 첨부한 내용을 포함해 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다."
+      "message_too_long": "이 메시지는 너무 깁니다. 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다.",
+      "attachments_too_long": "첨부한 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다.",
+      "attachments_too_many": "첨부가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다."
     }
   },
   "chat": {
     "composer": {
-      "selectMode": {
-        "label": "선택 모드 — 캔버스에서 노드를 클릭하여 참조를 추가하세요",
-        "title": "선택 모드"
-      },
       "chipsAria": "선택된 칩",
-      "placeholder": "원하는 작업을 입력하세요 (@로 위의 칩을 참조)…",
+      "placeholder": "질문하거나 캔버스의 항목을 넘겨주세요…",
       "inputAria": "채팅 입력",
-      "skill": {
-        "label": "스킬을 선택하여 에이전트의 동작 범위를 지정하세요",
-        "title": "스킬 선택"
-      },
       "send": "전송",
       "sending": "보내는 중",
-      "atLimit": "{limit, number}자 제한에 도달했습니다"
+      "atLimit": "{limit, number}자 제한에 도달했습니다",
+      "attach": "파일 첨부",
+      "removeAttachment": "{name} 제거",
+      "attachmentUploading": "업로드 중",
+      "attachmentFailed": "{reason, select, upload {업로드 실패} extract {읽기 실패} too_long {너무 김} other {실패}}",
+      "attachFull": "최대 {limit, number}개까지 첨부할 수 있습니다",
+      "attachTooLong": "첨부한 내용이 너무 많습니다. 항목을 줄이거나 더 짧은 파일을 사용하세요.",
+      "attachUnsupported": "{filename}은(는) 첨부할 수 없습니다",
+      "attachTooLarge": "{filename}은(는) 너무 커서 첨부할 수 없습니다",
+      "attachUnavailable": "지금은 첨부할 수 없습니다. 다시 시도하세요."
     },
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
@@ -281,7 +284,12 @@
     },
     "thinking": "잠시 생각했습니다",
     "thinkingNow": "생각 중",
-    "thinkingFor": "{m, plural, =0 {} other {# 분 }}{s, number}초 동안 생각했습니다"
+    "thinkingFor": "{m, plural, =0 {} other {# 분 }}{s, number}초 동안 생각했습니다",
+    "attachment": {
+      "kind": "{kind, select, canvas {캔버스} image {이미지} video {동영상} audio {오디오} text {텍스트} other {항목}}",
+      "nodes": "노드 {count}개",
+      "more": "외 {count}개"
+    }
   },
   "canvas": {
     "group": {
@@ -329,7 +337,8 @@
       "deleteNode": "노드 삭제",
       "deleteGroup": "그룹 삭제",
       "deleteSelection": "선택 항목 삭제",
-      "clipboardError": "클립보드에 접근할 수 없습니다. 키보드 단축키를 사용하세요."
+      "clipboardError": "클립보드에 접근할 수 없습니다. 키보드 단축키를 사용하세요.",
+      "addToAgent": "Agent에 추가"
     },
     "gate": {
       "locked": "이 항목은 잠겨 있습니다. 변경하려면 잠금을 해제하세요.",

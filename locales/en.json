@@ -155,25 +155,28 @@
       "support": "Questions about this purchase? Write to {email}."
     },
     "chat": {
-      "message_too_long": "This message is too long. It may hold at most {limit, number} characters, attached content included; this one holds {actual, number}."
+      "message_too_long": "This message is too long. It may hold at most {limit, number} characters; this one holds {actual, number}.",
+      "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
+      "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}."
     }
   },
   "chat": {
     "composer": {
-      "selectMode": {
-        "label": "Select mode — click nodes on the canvas to add references",
-        "title": "Select mode"
-      },
       "chipsAria": "Selected chips",
-      "placeholder": "Describe what you want to do (use @ to reference chips above)…",
+      "placeholder": "Ask something, or hand me things from the canvas…",
       "inputAria": "Chat input",
-      "skill": {
-        "label": "Pick a Skill to scope the agent's behavior",
-        "title": "Pick Skill"
-      },
       "send": "Send",
       "sending": "Sending",
-      "atLimit": "At the {limit, number}-character limit"
+      "atLimit": "At the {limit, number}-character limit",
+      "attach": "Attach files",
+      "removeAttachment": "Remove {name}",
+      "attachmentUploading": "Uploading",
+      "attachmentFailed": "{reason, select, upload {Upload failed} extract {Couldn’t read it} too_long {Too long} other {Failed}}",
+      "attachFull": "At most {limit, number} items can be attached",
+      "attachTooLong": "Too much content attached. Attach fewer items or shorter files.",
+      "attachUnsupported": "{filename} can’t be attached",
+      "attachTooLarge": "{filename} is too large to attach",
+      "attachUnavailable": "Couldn’t attach right now. Try again."
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",
@@ -281,7 +284,12 @@
     },
     "thinking": "Thought for a moment",
     "thinkingNow": "Thinking",
-    "thinkingFor": "Thought for {m, plural, =0 {} other {# min }}{s, number} s"
+    "thinkingFor": "Thought for {m, plural, =0 {} other {# min }}{s, number} s",
+    "attachment": {
+      "kind": "{kind, select, canvas {Canvas} image {Image} video {Video} audio {Audio} text {Text} other {Item}}",
+      "nodes": "{count, plural, one {# node} other {# nodes}}",
+      "more": "{count} more"
+    }
   },
   "canvas": {
     "group": {
@@ -329,7 +337,8 @@
       "deleteNode": "Delete node",
       "deleteGroup": "Delete group",
       "deleteSelection": "Delete selection",
-      "clipboardError": "Couldn't reach the clipboard. Use the keyboard shortcut instead."
+      "clipboardError": "Couldn't reach the clipboard. Use the keyboard shortcut instead.",
+      "addToAgent": "Add to Agent"
     },
     "gate": {
       "locked": "This item is locked — unlock it to make changes.",

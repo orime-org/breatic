@@ -1363,6 +1363,30 @@ export function getPromptFragment(
 }
 
 /**
+ * Every collaborative text a node holds, by the field it sits under.
+ *
+ * For readers that need all of a node's words and would otherwise keep a list
+ * of which fields are fragments: the list grows with each node kind.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - Id of the node to read.
+ * @returns Its fragments; empty for a missing node.
+ */
+export function readNodeFragments(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+): Record<string, Y.XmlFragment> {
+  const data = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId);
+  if (!data) return {};
+  const out: Record<string, Y.XmlFragment> = {};
+  data.forEach((value, key) => {
+    if (value instanceof Y.XmlFragment) out[key] = value;
+  });
+  return out;
+}
+
+/**
  * Reads a node's lyrics fragment (#1960), the collaborative text behind the
  * music modes' second editor.
  *

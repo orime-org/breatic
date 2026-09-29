@@ -63,6 +63,26 @@ describe('ProjectCard', () => {
     expect(screen.getByText(/^Created\b/i)).toBeInTheDocument();
   });
 
+  it('uses the same card body as the Recent landing: 13px name, one meta line with the role as text', () => {
+    setup();
+    expect(screen.getByText('Cyberpunk Alley').className).toMatch(
+      /\btext-sm\b.*\bfont-medium\b/,
+    );
+    const meta = screen.getByTestId('item-card-meta');
+    expect(meta).toContainElement(screen.getByText(/^Created\b/));
+    const role = screen.getByText('Owner');
+    expect(meta).toContainElement(role);
+    expect(role.tagName).toBe('SPAN');
+    expect(role.className).not.toMatch(/\bbg-/);
+  });
+
+  it('leaves the cover a plain block when the project has no cover', () => {
+    setup();
+    const cover = screen.getByRole('link').firstElementChild;
+    expect(cover).not.toBeNull();
+    expect(cover?.querySelector('svg')).toBeNull();
+  });
+
   it('opens the join dialog in place for a project the viewer is not on', async () => {
     setup({ ...project, myRole: null });
     expect(screen.queryByRole('link')).toBeNull();

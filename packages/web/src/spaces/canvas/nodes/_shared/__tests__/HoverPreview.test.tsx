@@ -240,3 +240,38 @@ describe('HoverPreview — its shape does not depend on having content', () => {
     expect(document.activeElement).toBe(before);
   });
 });
+
+describe('HoverPreview — a body of the caller\'s own', () => {
+  it('opens on the body it is handed, whatever the kind says', () => {
+    vi.useFakeTimers();
+    render(
+      <HoverPreview kind='image' body={<p data-testid='own-body'>rows</p>}>
+        <span data-testid='trigger'>chip</span>
+      </HoverPreview>,
+    );
+    openCard(screen.getByTestId('trigger'));
+    const content = screen.getByTestId('hover-preview-content');
+    expect(content.querySelector('[data-testid="own-body"]')).not.toBeNull();
+    expect(content.querySelector('img')).toBeNull();
+  });
+});
+
+describe('HoverPreview — one width for every form', () => {
+  const forms: Array<[string, React.JSX.Element]> = [
+    ['image', <HoverPreview key='i' kind='image' src='https://cdn/p.png'><span data-testid='trigger'>x</span></HoverPreview>],
+    ['video', <HoverPreview key='v' kind='video' src='https://cdn/v.mp4'><span data-testid='trigger'>x</span></HoverPreview>],
+    ['audio', <HoverPreview key='a' kind='audio' src='https://cdn/a.mp3'><span data-testid='trigger'>x</span></HoverPreview>],
+    ['short text', <HoverPreview key='t' kind='text' text='Hi.'><span data-testid='trigger'>x</span></HoverPreview>],
+    ['empty hint', <HoverPreview key='e' kind='image' emptyHint='Nothing yet'><span data-testid='trigger'>x</span></HoverPreview>],
+    ['own body', <HoverPreview key='b' kind='image' body={<p>rows</p>}><span data-testid='trigger'>x</span></HoverPreview>],
+  ];
+
+  it.each(forms)('%s opens at the same fixed width', (_name, view) => {
+    vi.useFakeTimers();
+    render(view);
+    openCard(screen.getByTestId('trigger'));
+    const inner = screen.getByTestId('hover-preview-content').firstElementChild;
+    expect(inner?.className.split(' ')).toContain('w-[220px]');
+  });
+});
+

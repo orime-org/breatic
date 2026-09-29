@@ -79,10 +79,14 @@ export interface OpenChatResult {
   };
 }
 
-/** The knobs a browser needs to read a turn's stream. */
+/** The chat knobs a browser needs, from the server's config. */
 export interface StreamConfig {
   /** How often this server says a running stream is alive, in milliseconds. */
   heartbeatIntervalMs: number;
+  /** How long the attachments on one message may be, in characters. */
+  attachmentMaxChars: number;
+  /** How many items one message may carry. */
+  attachmentMaxItems: number;
 }
 
 /**

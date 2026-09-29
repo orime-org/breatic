@@ -106,3 +106,52 @@ describe('SelectionContextMenu', () => {
     expect(screen.queryByTestId('selection-menu-group')).toBeNull();
   });
 });
+
+describe('SelectionContextMenu — adding to the agent', () => {
+  it('hands the selection to the agent when chosen', () => {
+    const onAddToAgent = vi.fn();
+    render(
+      <SelectionContextMenu open x={0} y={0} onOpenChange={() => {}} onAddToAgent={onAddToAgent} />,
+    );
+
+    fireEvent.click(screen.getByTestId('selection-menu-add-to-agent'));
+
+    expect(onAddToAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it('is shown but not available while the chat is changing conversation', () => {
+    render(
+      <SelectionContextMenu
+        open
+        x={0}
+        y={0}
+        onOpenChange={() => {}}
+        onAddToAgent={() => {}}
+        addToAgentDisabled
+      />,
+    );
+
+    expect(screen.getByTestId('selection-menu-add-to-agent')).toHaveAttribute('data-disabled');
+  });
+
+  it('sits right above delete, each in a group of its own', () => {
+    render(
+      <SelectionContextMenu
+        open
+        x={0}
+        y={0}
+        onOpenChange={() => {}}
+        onAddToAgent={() => {}}
+        onGroup={() => {}}
+        onCopy={() => {}}
+        onDelete={() => {}}
+      />,
+    );
+    const items = Array.from(document.querySelectorAll('[role="menuitem"], [role="separator"]')).map((el) =>
+      el.getAttribute('role') === 'separator' ? '---' : el.getAttribute('data-testid'),
+    );
+
+    expect(items.slice(-4)).toEqual(['---', 'selection-menu-add-to-agent', '---', 'selection-menu-delete']);
+  });
+});
+

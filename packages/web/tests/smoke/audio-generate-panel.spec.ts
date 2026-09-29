@@ -72,6 +72,24 @@ test('the panel opens, offers what the model declares, and stands the first voic
   await expect(page.getByTestId('generate-audio-settings-trigger')).toContainText(firstName);
 });
 
+test('a prompt made only of characters the worker strips is refused as empty', async ({ page }) => {
+  const nodeId = crypto.randomUUID();
+  await seedNode(nodeId, 'audio');
+  await openGenerate(nodeId);
+
+  // Unicode tag characters render as nothing and reach the vendor as nothing.
+  const hidden = [...'read this aloud']
+    .map((c) => String.fromCodePoint(0xe0000 + c.codePointAt(0)!))
+    .join('');
+  await page.getByTestId('generate-prompt-editor').click();
+  await page.keyboard.insertText(hidden);
+  await page.getByTestId('generate-audio-execute').click();
+
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText('Write a prompt first', {
+    timeout: 10_000,
+  });
+});
+
 test('text past the model’s limit is refused before anything is sent', async ({ page }) => {
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio');

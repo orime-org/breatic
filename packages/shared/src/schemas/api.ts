@@ -148,21 +148,21 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 
 // ── Chat ─────────────────────────────────────────────────────────────
 
+/** Longer than any node or file id; the id is stored with the message. */
+const ATTACHED_CHIP_ID_MAX = 128;
+
 /**
- * Chat-attached chip — a snapshot of a canvas node the user picked
- * from a Space and attached to this message (spec/07-chat-agent.md
- * §10.18.2 v13). The `dataSnapshot` is a deep copy taken at attach
- * time; subsequent Space-side edits / deletions of the source node
- * do NOT mutate the chip (C1 full-snapshot model — same philosophy as
- * spec §6.2 Studio→Space copies).
+ * One item attached to a chat message: a piece of the canvas the reader added
+ * to the agent, or a file picked with the attach button. The snapshot is taken
+ * when it is attached; later edits to the canvas do not reach it.
  */
 export const chatAttachedChipSchema = z.object({
-  /** Source node id (audit only — not a live reference). */
-  id: z.string(),
-  type: z.enum(["image", "video", "audio", "text", "annotation"]),
+  /** Made up for the item: from the picked node ids, or fresh for a file. */
+  id: z.string().max(ATTACHED_CHIP_ID_MAX),
+  type: z.enum(["canvas", "image", "video", "audio", "text"]),
   /** Display name for the chip; LLM context renders this as the section title. */
   name: z.string(),
-  /** Deep copy of the source node's `data` at attach time. */
+  /** A canvas piece's `{ nodes, edges }`, or a file's `{ url }` or `{ text }`. */
   data_snapshot: z.record(z.string(), z.unknown()),
 });
 export type ChatAttachedChip = z.infer<typeof chatAttachedChipSchema>;
@@ -180,24 +180,21 @@ export const chatMessageSchema = z.object({
    */
   conversation_id: z.string().uuid(),
   /**
-   * V13 (spec §10.18.2): canvas-node snapshots the user attached to
-   * this message via the chips bar. Required field but defaults to
-   * `[]` so legacy callers (skills / SDK that don't surface a chips
-   * bar) keep working. The chat handler injects each chip's
-   * `data_snapshot` into the LLM prompt as a structured context section.
+   * The items in the composer's tray when the message was sent: files
+   * picked with the attach button and pieces of the canvas added to the
+   * agent. Defaults to `[]` for callers with no tray. `userTurnForModel`
+   * puts them in front of the message, one section per item.
    */
   attached_chips: z.array(chatAttachedChipSchema).default([]),
   /**
-   * V13 (spec §10.18.5): user-picked Skill name (resolved against the
-   * registered skills/ directory). Optional — bare chat works without
-   * a skill.
+   * A skill name for this message. The composer has no control that sends
+   * it, and the `/message` handler does not read it.
    */
   skill: z.string().optional(),
   /**
-   * V13: model override. Spec §10.18.5 v13 dropped the in-composer
-   * model picker (model is now decided by the Skill or global
-   * settings), but we keep the wire field so SDK callers and test
-   * cases can override explicitly. Normal chat omits this.
+   * A model override for this message. The composer does not send it, and
+   * the `/message` handler does not read it: the model comes from the
+   * agent config.
    */
   model: z.string().optional(),
 });
