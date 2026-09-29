@@ -142,6 +142,7 @@ interface Completion {
  * @param budgetMs - How long the whole body may take to arrive.
  * @param sentAsAddress - Whether the media went as an address to be fetched.
  * @param signal - The caller's signal, so the read ends when they do.
+ * @param onBilled - Told once, when the answer shows the call was billed.
  * @returns What the model wrote and why it stopped.
  * @throws {UnderstandRefused} when the body carries no answer.
  */
@@ -150,6 +151,7 @@ async function readAnswer(
   budgetMs: number,
   sentAsAddress: boolean,
   signal: AbortSignal | undefined,
+  onBilled: (costUsd: number | undefined) => void,
 ): Promise<UnderstandAnswer> {
   /**
    * A refusal, judged from everything known about it.
@@ -192,6 +194,9 @@ async function readAnswer(
   try {
     text = await readWithin(res, budgetMs, signal);
   } catch (err) {
+    // A success status is the service taking the call, so it was billed
+    // whatever became of the body; the figure is lost with it.
+    if (res.ok) onBilled(undefined);
     // The transport's deadline was spent when it handed this response back, so
     // an upstream that dribbles bytes would otherwise hold the call open with
     // nothing to show for it.
@@ -214,8 +219,14 @@ async function readAnswer(
   try {
     body = JSON.parse(text) as Completion;
   } catch {
+    if (res.ok) onBilled(undefined);
     throw refusal(text.slice(0, 300), { source: "body" });
   }
+  // Reported before any refusal is judged: a refused call can be billed too,
+  // and says so with a cost on its body.
+  const charged = body.usage?.cost;
+  if (typeof charged === "number" && Number.isFinite(charged)) onBilled(charged);
+  else if (res.ok) onBilled(undefined);
 
   if (body.error) throw fromEnvelope(body.error, text.slice(0, 300));
 
@@ -231,11 +242,9 @@ async function readAnswer(
   // than a refusal, and the reason it stopped travels on in `finishReason`.
   if (choice.error && written === "") throw fromEnvelope(choice.error, text.slice(0, 300));
 
-  const charged = body.usage?.cost;
   return {
     text: written,
     finishReason: typeof choice.finish_reason === "string" ? choice.finish_reason : "unknown",
-    ...(typeof charged === "number" && Number.isFinite(charged) ? { costUsd: charged } : {}),
   };
 }
 
@@ -288,5 +297,11 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
     },
   );
 
-  return readAnswer(res, request.timeoutMs, request.media.kind === "image", request.signal);
+  return readAnswer(
+    res,
+    request.timeoutMs,
+    request.media.kind === "image",
+    request.signal,
+    request.onBilled,
+  );
 }

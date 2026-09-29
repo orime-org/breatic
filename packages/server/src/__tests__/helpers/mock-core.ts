@@ -30,6 +30,11 @@ import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/
 // route names it on the row, on the job and against the charge, and a copy
 // here would let all three drift from it while the suite stayed green.
 import { UNDERSTAND_PINS as REAL_UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
+// Real: the tracker is pure, and what a turn hands off depends on it.
+import {
+  isGenerationId as realIsGenerationId,
+  trackOpenGeneration as realTrackOpenGeneration,
+} from "../../../../domain/src/credit/open-generation.js";
 
 const mockPipeline = {
   zremrangebyscore: () => mockPipeline,
@@ -69,6 +74,8 @@ export const mockCreateQueue = vi.fn();
 
 /** Mock references — tests can override behavior per-test. */
 export const mocks = {
+  /** The later-lookup hand-off; tests read what a turn handed off. */
+  handOffLookups: vi.fn(async (..._args: unknown[]) => undefined),
   /**
    * core's real AppError, stashed by coreMock.
    *
@@ -506,7 +513,49 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  * llm and the `ai` SDK behind it. Per-test overrides go through the
  * shared `mocks` refs (creditLotService / taskService / ...).
  */
+/**
+ * A usage recorder for turns built on `domainMock` (#296): it writes nothing
+ * and counts a credit per token a model call reports, so a turn that spent
+ * something settles to a positive amount and one that spent nothing to zero.
+ * What a call really costs is `usage-cost.ts`'s to say and is tested there.
+ * @returns A recorder with the real interface.
+ */
+function usageRecorderDouble(options: {
+  operationKey: string;
+  feature: string;
+  actorUserId: string;
+  projectId: string | null;
+}): {
+  operation: { operationKey: string; feature: string; actorUserId: string; projectId: string | null };
+  recordModelCall: (call: { usage: { inputTokens?: number; outputTokens?: number } }) => void;
+  recordServiceCall: () => void;
+  recordLookedUpCall: () => void;
+  awaitingLookup: () => readonly string[];
+  settle: () => Promise<number>;
+} {
+  let credits = 0;
+  const { operationKey, feature, actorUserId, projectId } = options;
+  return {
+    operation: { operationKey, feature, actorUserId, projectId },
+    recordModelCall: (call) => {
+      credits += (call.usage.inputTokens ?? 0) + (call.usage.outputTokens ?? 0);
+    },
+    recordServiceCall: () => {},
+    recordLookedUpCall: () => {},
+    awaitingLookup: () => [],
+    settle: async () => credits,
+  };
+}
+
 export const domainMock = () => ({
+  createUsageRecorder: vi.fn(usageRecorderDouble),
+  trackOpenGeneration: realTrackOpenGeneration,
+  isGenerationId: realIsGenerationId,
+  handOffLookups: mocks.handOffLookups,
+  // The same shape as the real one: every tool in the set gets the recorder.
+  usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
+    Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
+  SMALLEST_CREDIT: 0.000001,
   assetService: mocks.assetService,
   uploadGrantService: mocks.uploadGrantService,
   uploadGrantRepo: mocks.uploadGrantRepo,

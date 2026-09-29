@@ -14,6 +14,8 @@ import { env, getAgentConfig } from "@breatic/core";
 import { FAILURE_LINES, reasonOf, toolFailureOf } from "@breatic/shared";
 
 import { braveJson } from "@domain/agent/tools/brave.js";
+import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
+import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import {
   isStop,
   keepInside,
@@ -317,7 +319,7 @@ export function makeSearchTools(): {
 } {
   let handedOut = 0;
 
-  const webSearch: Tool<z.infer<typeof inputSchema>, SearchAnswer> = tool({
+  const webSearch: Tool<z.infer<typeof inputSchema>, SearchAnswer, UsageContext> = tool({
     description:
       "Search the web. Returns extracts of the pages that answer the query, drawn from parts " +
       "of each page. Something absent from an extract may still be on the page. `count` asks " +
@@ -329,6 +331,7 @@ export function makeSearchTools(): {
       "number an earlier reply used stands for something else here: write about those " +
       "sources in words. Never write a number no source arrived with in this reply.",
     inputSchema,
+    contextSchema: usageContextSchema,
     // What the panel reads about a running call. The key is resolved by the web
     // package, which cannot import this one -- the SDK carries this field onto
     // the UI message part, so the name of the line and the tool that shows it
@@ -341,7 +344,7 @@ export function makeSearchTools(): {
     toModelOutput: ({ output }) => ({ type: "text", value: renderSearchForModel(output) }),
     execute: async (
       { query: asked, count },
-      { abortSignal }: { abortSignal?: AbortSignal },
+      { abortSignal, context }: { abortSignal?: AbortSignal; context: UsageContext },
     ): Promise<SearchAnswer> => {
       // Two forms, settled here so no site downstream chooses between them. The
       // request carries the words as asked, on one line; every sentence printed
@@ -405,6 +408,13 @@ export function makeSearchTools(): {
           query: shown,
           budgetMs,
           ...(abortSignal ? { abortSignal } : {}),
+          onBilled: () =>
+            context.usage.recordServiceCall({
+              source: "tool:web_search",
+              service: "brave_web_search",
+              provider: "brave",
+              requests: 1,
+            }),
         });
 
         // A search that found nothing has one observed shape: `generic` present

@@ -152,8 +152,9 @@ describe("a turn cut short by the client", () => {
     // `consumeStream()` changed with the v7 upgrade; on 6.0.141 `usage`
     // reached it through `finalStep` and `steps`. The hazard did not.)
     //
-    // Each step announces what it spent in a `finish-step` part, so adding
-    // those up as they arrive gives the same number with none of that.
+    // Each model call reports what it spent as its response is parsed
+    // (`onLanguageModelCallEnd`), so recording those as they arrive gives the
+    // same number with none of that.
     //
     // A stream that keeps producing, so the consumer is what stops the turn
     // rather than the stream running out.
@@ -162,7 +163,12 @@ describe("a turn cut short by the client", () => {
     // standing in for the call can see it being read.
     streamTextRetry.mockImplementation(
       (opts: {
-        onStepFinish?: (e: { usage: { totalTokens: number }; content: unknown[] }) => void;
+        onLanguageModelCallEnd?: (e: {
+          responseId: string;
+          usage: { inputTokens: number; outputTokens: number };
+          providerMetadata: undefined;
+        }) => void;
+        onStepFinish?: (e: { content: unknown[] }) => void;
       }) => ({
         toUIMessageStream: () =>
           new ReadableStream({
@@ -172,7 +178,12 @@ describe("a turn cut short by the client", () => {
               // `content` alongside `usage` because a real step result always
               // carries both, and the turn reads it to catch calls the SDK
               // refused before running them.
-              opts.onStepFinish?.({ usage: { totalTokens: 900 }, content: [] });
+              opts.onLanguageModelCallEnd?.({
+                responseId: "resp-1",
+                usage: { inputTokens: 0, outputTokens: 900 },
+                providerMetadata: undefined,
+              });
+              opts.onStepFinish?.({ content: [] });
               controller.enqueue({ type: "text-delta", id: "t1", delta: "world" });
               controller.enqueue({ type: "text-end", id: "t1" });
               // Left open on purpose: the consumer walking away is what ends
@@ -222,9 +233,10 @@ describe("a turn cut short by the client", () => {
       ),
     ).toBe(true);
     expect(chargeOnceForGeneration).toHaveBeenCalled();
-    // What it billed for is the step the stream actually reported, not the
-    // figure the consuming getter would have produced.
-    expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({ tokensUsed: 900 });
+    // What it billed for is the call the stream actually reported (the
+    // recorder double counts a credit per token), not the figure the
+    // consuming getter would have produced.
+    expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({ amount: 900 });
     expect(usageRead).not.toHaveBeenCalled();
   });
 });

@@ -1,0 +1,26 @@
+# Prices for the agent's paid calls that report no cost of their own, in US
+# dollars. Calls through OpenRouter carry their cost on the response and are
+# not priced here.
+#
+# models: per million tokens. Output includes reasoning tokens.
+# services: per request.
+
+models:
+  # DeepSeek bills this deployment in USD, always at the peak price.
+  # https://api-docs.deepseek.com/quick_start/pricing
+  deepseek/deepseek-v4-pro:
+    input_cache_hit_per_mtok: 0.044
+    input_cache_miss_per_mtok: 1.32
+    output_per_mtok: 3.96
+  # https://ai.google.dev/gemini-api/docs/pricing (paid tier, text input)
+  google/gemini-2.5-flash:
+    input_cache_hit_per_mtok: 0.03
+    input_cache_miss_per_mtok: 0.30
+    output_per_mtok: 2.50
+
+services:
+  # https://api-dashboard.search.brave.com/app/plans ($5 per 1,000 requests)
+  brave_web_search:
+    per_request: 0.005
+  brave_image_search:
+    per_request: 0.005

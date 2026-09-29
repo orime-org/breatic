@@ -76,7 +76,7 @@ function unanswered(): Error {
 const COMPLAINT_READ_MS = 500;
 
 /** Where the decisions endpoint lives, and which model answers there. */
-const JEV_PINS = {
+export const JEV_PINS = {
   url: "https://openrouter.ai/api/alpha/decisions",
   model: "typesafe/jev-1.13",
 } as const;
@@ -96,6 +96,13 @@ interface JevRequest {
   readonly budgetMs: number;
   /** The reader's stop, when the caller has one. */
   readonly abortSignal?: AbortSignal;
+  /**
+   * Called once the endpoint has answered with a success status, with what
+   * the body says the call cost (undefined when it says nothing, or never
+   * finished arriving). Before any judgement of the answer, so an answer
+   * that cannot be read is still recorded.
+   */
+  readonly onBilled: (costUsd: number | undefined) => void;
 }
 
 /** What the tool hands back: the keys that read, and the keys that did not. */
@@ -156,6 +163,25 @@ function sortByReadable(asked: readonly string[], answered: Record<string, unkno
     else unreadable.push(key);
   }
   return { answers, unreadable };
+}
+
+/**
+ * What a response body says the call cost.
+ *
+ * The endpoint puts `usage.cost`, in US dollars, on every answer.
+ * @param text - The body as it arrived.
+ * @returns The cost, or undefined when the body does not state one.
+ */
+function reportedCost(text: string): number | undefined {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (typeof body !== "object" || body === null) return undefined;
+  const cost = (body as { usage?: { cost?: unknown } }).usage?.cost;
+  return typeof cost === "number" && Number.isFinite(cost) ? cost : undefined;
 }
 
 /**
@@ -225,7 +251,7 @@ async function complaintOf(
  * @throws {Error} Carrying tool failure detail, or the reader's stop.
  */
 export async function askJev(request: JevRequest): Promise<JevAnswers> {
-  const { apiKey, budgetMs, abortSignal } = request;
+  const { apiKey, budgetMs, abortSignal, onBilled } = request;
   // Cleaned once: the endpoint answers under the names it was sent, so the
   // answers are read against these same names.
   const { state, questions } = stripUnicodeTagsDeep({
@@ -304,6 +330,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
   try {
     text = await readWithin(res, budgetMs, spanning);
   } catch (err: unknown) {
+    onBilled(undefined);
     // Asked here rather than left to the caller's guard, which never sees
     // this: that guard passes anything carrying failure detail straight
     // through, past the question of whether the user stopped.
@@ -317,6 +344,8 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
       FAILURE_LINES.upstream,
     );
   }
+
+  onBilled(reportedCost(text));
 
   const split = readAnswers(text, Object.keys(questions));
   if (split === null) {

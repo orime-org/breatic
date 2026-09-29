@@ -33,6 +33,7 @@ vi.mock("@domain/understand/understand.js", async (importOriginal) => {
 
 /** Every figure distinct, so a pair swapped between them shows as a wrong number. */
 const request = {
+  onBilled: (): void => undefined,
   url: "https://example.com/clip.mp4",
   question: "What happens?",
   maxBytes: 20_000_000,
