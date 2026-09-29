@@ -426,7 +426,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     voice_id: { description: '', default: 'Kore', remote_source: 'voices', fill: 'remote' },
   });
   const nameOf = (tag: string): string =>
-    new Intl.DisplayNames(['en'], { type: 'language' }).of(tag) ?? tag;
+    new Intl.DisplayNames(['en'], { type: 'language', languageDisplay: 'standard' }).of(tag) ?? tag;
 
   it('reads top to bottom as reading mode, language, voice', () => {
     render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
@@ -440,6 +440,29 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
       expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
     expect(screen.queryByTestId('generate-audio-row-speakers')).toBeNull();
+  });
+
+  it('insets rows and groups 12px like the image and video popovers, labels in one style', () => {
+    // Popover p-2 (8px) + 4px on each block = the p-3 the other two use.
+    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    const row = screen.getByTestId('generate-audio-row-language');
+    expect(row.className).toContain('px-1');
+    expect(row.firstElementChild).toHaveClass('text-xs', 'font-medium');
+    expect(screen.getByTestId('generate-audio-reading-single').closest('.px-1')).not.toBeNull();
+  });
+
+  it('points the open row\'s arrow at the side the second panel opens on', () => {
+    // A first panel near the window's right edge sends the second one left.
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
+      { left: 700, right: 1000, top: 0, bottom: 0, width: 300, height: 0, x: 700, y: 0, toJSON: () => ({}) } as DOMRect,
+    );
+    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-language'));
+    expect(screen.getByTestId('generate-audio-second-panel')).toHaveAttribute('data-side', 'left');
+    expect(screen.getByTestId('generate-audio-row-language').querySelector('.lucide-chevron-left')).not.toBeNull();
+    rect.mockRestore();
   });
 
   it('writes the dialogue switch, and shows the speakers in place of the voice', () => {

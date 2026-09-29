@@ -108,6 +108,13 @@ describe('choiceLabel', () => {
     );
   });
 
+  it('names a regional variant as language and region, like every other entry', () => {
+    // User 2026-09-29: "American English" sat apart from "English (India)".
+    const english = { values: ['English (United States)', 'English (India)'], value_locales: ['en-US', 'en-IN'] };
+    expect(choiceLabel(english, 'English (United States)', 'en')).toBe('English (United States)');
+    expect(choiceLabel(english, 'English (United States)', 'zh-CN')).toBe('英语（美国）');
+  });
+
   it('falls back to the declared spelling without a tag', () => {
     expect(choiceLabel({ values: ['a'], value_labels: { a: 'Alpha' } }, 'a', 'en')).toBe('Alpha');
     expect(choiceLabel({ values: ['a'] }, 'a', 'en')).toBe('A');

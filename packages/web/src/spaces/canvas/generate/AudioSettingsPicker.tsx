@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ChevronDown, ChevronRight, Volume2 } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react';
 import * as React from 'react';
 
 import { getLocale, type ModelEntry, type Voice } from '@breatic/shared';
@@ -288,7 +288,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                 onChange({ [STAND_IN_ON]: next === 'dialogue' });
               }}
               testIdPrefix='generate-audio-reading'
-              className='px-2 pb-2 pt-1'
+              className='px-1 pb-2 pt-1'
             />
           ) : null}
           {layout.rows.map((row) => (
@@ -300,7 +300,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
               aria-expanded={panel === panelKey(row)}
               data-testid={`generate-audio-row-${row.name}`}
               className={cn(
-                'grid grid-cols-[72px_minmax(0,1fr)_16px] items-center gap-2',
+                'grid grid-cols-[72px_minmax(0,1fr)_16px] items-center gap-2 px-1',
                 panel === panelKey(row) && 'bg-accent',
               )}
               onClick={() => showPanel(panel === panelKey(row) ? null : panelKey(row))}
@@ -309,7 +309,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                   theme, under the 4.5:1 floor; that row names itself in full. */}
               <span
                 className={cn(
-                  'truncate text-left',
+                  'truncate text-left text-xs font-medium',
                   panel === panelKey(row) ? 'text-foreground' : 'text-muted-foreground',
                 )}
               >
@@ -318,14 +318,18 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                   : t(`canvas.generatePanel.param.${row.name}`)}
               </span>
               <span className='truncate text-left'>{rowValue(row)}</span>
-              <ChevronRight className='h-3.5 w-3.5 opacity-60' aria-hidden='true' />
+              {secondOnLeft ? (
+                <ChevronLeft className='h-3.5 w-3.5 opacity-60' aria-hidden='true' />
+              ) : (
+                <ChevronRight className='h-3.5 w-3.5 opacity-60' aria-hidden='true' />
+              )}
             </Button>
           ))}
           {(shared.length > 0 || layout.inline.length > 0) && layout.rows.length > 0 ? (
             <div className='mx-1 my-1 h-px bg-border' />
           ) : null}
           {shared.length > 0 || layout.inline.length > 0 ? (
-            <div className='flex flex-col gap-3 px-2 py-1'>
+            <div className='flex flex-col gap-3 px-1 py-1'>
               {shared.map((control) => (
                 <ParamControlRow
                   key={control.name}

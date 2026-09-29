@@ -116,7 +116,7 @@ export function choiceLabel(
  */
 function languageName(tag: string, locale: string): string | undefined {
   try {
-    return new Intl.DisplayNames([locale], { type: 'language' }).of(tag);
+    return new Intl.DisplayNames([locale], { type: 'language', languageDisplay: 'standard' }).of(tag);
   } catch {
     // An unknown tag or a runtime without the data: the declared spelling is
     // what the reader gets instead, which is still the right language.
