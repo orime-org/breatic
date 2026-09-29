@@ -21,14 +21,22 @@ import { generateTextRetry } from "@breatic/domain";
 import { resolveMiniToolEntry } from "@worker/mini-tool-registry.js";
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { runLocalHandler } from "@worker/handlers/local/index.js";
-import { getModel } from "@breatic/domain";
+import { getModel, resolveProvider } from "@breatic/domain";
 import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { settleTaskForNode, understandMediaAt, UNDERSTAND_PINS } from "@breatic/domain";
+import {
+  createUsageRecorder,
+  settleTaskForNode,
+  understandMediaAt,
+  UnderstandRefused,
+  UNDERSTAND_PINS,
+  usageContextFor,
+} from "@breatic/domain";
+import type { UsageRecorder } from "@breatic/domain";
 import {
   AnsweredNothing,
   verdictStands,
@@ -470,6 +478,22 @@ async function runTaskBody(
     );
   }
 
+  /**
+   * A recorder for one of the two agent-run paths (#296). A retried job opens
+   * a fresh one under the same key: each attempt's calls were paid for, and
+   * the task is charged once, by `markCompletedAndBill`.
+   * @param feature - Which path this task runs.
+   * @returns The recorder.
+   */
+  const recorderFor = (feature: "canvas_understand" | "skill_task"): UsageRecorder =>
+    createUsageRecorder({
+      operationKey: `task:${taskId}`,
+      feature,
+      actorUserId: userId,
+      projectId: projectId ?? null,
+      onMissingCost: (row) => logger.error({ row, taskId }, "agent_usage_cost_missing"),
+    });
+
   try {
     if (source === "mini_tool" && toolName) {
       [providerResult, creditsUsed] = await runMiniTool({
@@ -490,12 +514,17 @@ async function runTaskBody(
       if (nodeIds.length === 0) {
         throw new Error("understand: a reading must name the node it writes to");
       }
-      [providerResult, creditsUsed] = await runUnderstand(params);
+      [providerResult, creditsUsed] = await runUnderstand(params, recorderFor("canvas_understand"));
     } else if (taskType in AIGC_TASK_TYPES && !skillName) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, resume);
     } else if (skillName) {
-      const [text, skills] = await runSkillAgent(skillName, params);
+      const [text, skills, credits] = await runSkillAgent(
+        skillName,
+        params,
+        recorderFor("skill_task"),
+      );
       resolvedSkills = skills;
+      creditsUsed = credits;
       try {
         providerResult = JSON.parse(text) as Record<string, unknown>;
       } catch {
@@ -1438,6 +1467,7 @@ export async function runMiniTool(
  * Exported for the same reason {@link runAigcDirect} is: a test that pins
  * what this path sends has to be able to call it.
  * @param params - Task params carrying `source_type`, `source_url` and an optional prompt.
+ * @param usage - The task's recorder; the call is recorded on it.
  * @returns A `[result, credits]` tuple: one output holding the text, and the credits to charge.
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
@@ -1445,52 +1475,69 @@ export async function runMiniTool(
  */
 export async function runUnderstand(
   params: Record<string, unknown>,
+  usage: UsageRecorder,
 ): Promise<[Record<string, unknown>, number]> {
   const sourceType = params.source_type as string;
   const cfg = getUnderstandConfig();
   const question = understandQuestion(params.prompt, sourceType, params.reader_locale);
 
-  const answer = await understandMediaAt({
-    url: params.source_url as string,
-    // The ledger's judgement outranks what storage declares: the browser's
-    // gate let this run start on it, and storage answers with a type guessed
-    // from a file name.
-    ...(typeof params.source_mime_type === "string"
-      ? { ledgerType: params.source_mime_type }
-      : {}),
-    question,
-    model: UNDERSTAND_PINS.model,
-    backend: UNDERSTAND_PINS.backend,
-    apiKey: getRawEnvVar("OPENROUTER_API_KEY") ?? "",
-    baseUrl: UNDERSTAND_PINS.baseUrl,
-    maxBytes: cfg.max_media_bytes,
-    fetchTimeoutMs: cfg.fetch_timeout_ms,
-    minBytesPerSec: cfg.min_bytes_per_sec,
-    readFloorMs: cfg.read_floor_ms,
-    timeoutMs: cfg.call_timeout_ms,
-    maxOutputTokens: cfg.max_output_tokens,
-  });
+  /**
+   * Record the one call this run made.
+   * @param costUsd - What the service said it charged, when it said.
+   */
+  const record = (costUsd: number | undefined): void =>
+    usage.recordServiceCall({
+      source: "model",
+      service: UNDERSTAND_PINS.model,
+      provider: "openrouter",
+      requests: 1,
+      ...(costUsd === undefined ? {} : { costUsd }),
+    });
+
+  let answer: Awaited<ReturnType<typeof understandMediaAt>>;
+  try {
+    answer = await understandMediaAt({
+      url: params.source_url as string,
+      // The ledger's judgement outranks what storage declares: the browser's
+      // gate let this run start on it, and storage answers with a type guessed
+      // from a file name.
+      ...(typeof params.source_mime_type === "string"
+        ? { ledgerType: params.source_mime_type }
+        : {}),
+      question,
+      model: UNDERSTAND_PINS.model,
+      backend: UNDERSTAND_PINS.backend,
+      apiKey: getRawEnvVar("OPENROUTER_API_KEY") ?? "",
+      baseUrl: UNDERSTAND_PINS.baseUrl,
+      maxBytes: cfg.max_media_bytes,
+      fetchTimeoutMs: cfg.fetch_timeout_ms,
+      minBytesPerSec: cfg.min_bytes_per_sec,
+      readFloorMs: cfg.read_floor_ms,
+      timeoutMs: cfg.call_timeout_ms,
+      maxOutputTokens: cfg.max_output_tokens,
+    });
+  } catch (err) {
+    // A refusal that carries a cost came from a body the service billed. The
+    // run fails and is not charged, but the row lands before the failure goes
+    // on; a row that cannot be written is logged rather than let it replace
+    // the failure the run is really ending with.
+    if (err instanceof UnderstandRefused && err.costUsd !== undefined) {
+      record(err.costUsd);
+      await usage.settle().catch((recordErr: unknown) =>
+        logger.error({ err: recordErr }, "agent_usage_record_failed"),
+      );
+    }
+    throw err;
+  }
+  record(answer.costUsd);
+  const credits = await usage.settle();
 
   // A run that answered nothing finished having put nothing on the node.
   // Writing it would replace what the reader had with an empty node while
   // the count says the run succeeded, so it fails instead and the row says
-  // so. The call was still paid for — the media was the prompt — and a run
-  // that fails charges nothing, so the log is where that figure has to land
-  // for reconciliation to find it.
-  if (answer.text === "") {
-    logger.warn(
-      { costUsd: answer.costUsd, finishReason: answer.finishReason },
-      "understand_answered_nothing_uncharged",
-    );
-    throw new AnsweredNothing();
-  }
-
-  // The same conversion every other transport's figure takes: the service
-  // reports dollars, a credit is a cent, and the deployment's multiplier is
-  // where the margin lives. A service that said nothing about cost has not
-  // said zero — this run is recorded uncharged and belongs to reconciliation,
-  // which is what a missing figure means everywhere else here too.
-  const credits = answer.costUsd === undefined ? 0 : creditsFor(answer.costUsd);
+  // so. The call was still paid for — the media was the prompt — and its row
+  // above says what it cost; a run that fails charges nothing.
+  if (answer.text === "") throw new AnsweredNothing();
 
   return [
     { outputs: [{ content: answer.text }], finish_reason: answer.finishReason },
@@ -1550,28 +1597,53 @@ export async function runAigcDirect(
  * is what these assertions are about.
  * @param skillName - The skill to run; the caller has already checked it is set
  * @param params - Task params serialised into the user message for the agent
- * @returns A `[text, resolvedSkills]` tuple: the agent's final text and the skill it ran
+ * @param usage - The task's recorder; every model call and paying tool call
+ *   the run makes is recorded on it
+ * @returns A `[text, resolvedSkills, credits]` tuple: the agent's final text,
+ *   the skill it ran, and the credits its calls add up to
  * @throws {Error} when the registry has no such skill
  */
 export async function runSkillAgent(
   skillName: string,
   params: Record<string, unknown>,
-): Promise<[string, string[]]> {
+  usage: UsageRecorder,
+): Promise<[string, string[], number]> {
   const agentConfig = buildAgentConfig({ skillName });
 
-  const result = await generateTextRetry({
-    model: getModel(agentConfig.modelId),
-    system: agentConfig.instructions,
-    messages: [{ role: "user" as const, content: JSON.stringify(params) }],
-    tools: agentConfig.tools,
-    stopWhen: stepCountIs(getAgentConfig().skill_agent_max_steps),
-    // Per model call, and this job makes up to `skill_agent_max_steps` of
-    // them. The key is named for the call rather than for the caller: chat
-    // and a skill job bound the same thing.
-    maxOutputTokens: getAgentConfig().max_output_tokens,
-  });
+  let result: Awaited<ReturnType<typeof generateTextRetry>>;
+  try {
+    result = await generateTextRetry({
+      model: getModel(agentConfig.modelId),
+      system: agentConfig.instructions,
+      messages: [{ role: "user" as const, content: JSON.stringify(params) }],
+      tools: agentConfig.tools,
+      // Cast for the reason the chat turn gives: the tool set is a plain
+      // record, and each paying tool's `contextSchema` checks this at run time.
+      toolsContext: usageContextFor(agentConfig.tools, usage) as never,
+      stopWhen: stepCountIs(getAgentConfig().skill_agent_max_steps),
+      // Per model call, and this job makes up to `skill_agent_max_steps` of
+      // them. The key is named for the call rather than for the caller: chat
+      // and a skill job bound the same thing.
+      maxOutputTokens: getAgentConfig().max_output_tokens,
+      onLanguageModelCallEnd: ({ usage: spent, providerMetadata }) =>
+        usage.recordModelCall({
+          source: "model",
+          model: agentConfig.modelId,
+          provider: resolveProvider(agentConfig.modelId),
+          usage: spent,
+          providerMetadata,
+        }),
+    });
+  } catch (err) {
+    // The calls that finished before the failure were paid for; their rows
+    // land before the failure goes on. The run fails and is not charged.
+    await usage.settle().catch((recordErr: unknown) =>
+      logger.error({ err: recordErr }, "agent_usage_record_failed"),
+    );
+    throw err;
+  }
 
-  return [result.text || "Task completed.", [skillName]];
+  return [result.text || "Task completed.", [skillName], await usage.settle()];
 }
 
 

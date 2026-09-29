@@ -66,8 +66,24 @@ vi.mock("@breatic/domain", () => ({
   nodeHistoryService: {},
   estimateTaskCredits: vi.fn(),
   getSkillRegistry: vi.fn(),
-  resolveProvider: vi.fn(),
+  resolveProvider: vi.fn(() => "routed"),
+  usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
+    Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
 }));
+
+/** A recorder that keeps the model calls it was told about. */
+function recorder(): {
+  recordModelCall: ReturnType<typeof vi.fn>;
+  recordServiceCall: ReturnType<typeof vi.fn>;
+  settle: ReturnType<typeof vi.fn>;
+} {
+  return {
+    recordModelCall: vi.fn(),
+    recordServiceCall: vi.fn(),
+    settle: vi.fn(async () => 0),
+  };
+}
+
 
 beforeEach(() => {
   [generateTextRetry, buildAgentConfig, getModel, stepCountIs].forEach((m) =>
@@ -78,7 +94,7 @@ beforeEach(() => {
 describe("runSkillAgent", () => {
   it("takes its model, instructions and tools from the one factory", async () => {
     const { runSkillAgent } = await import("@worker/handlers/dispatch.js");
-    await runSkillAgent("creative_research", { prompt: "hello" });
+    await runSkillAgent("creative_research", { prompt: "hello" }, recorder());
 
     expect(buildAgentConfig).toHaveBeenCalledWith({ skillName: "creative_research" });
     const call = generateTextRetry.mock.calls[0]?.[0] as unknown as {
@@ -96,13 +112,13 @@ describe("runSkillAgent", () => {
 
   it("stops at the step count the config gives, not a number written here", async () => {
     const { runSkillAgent } = await import("@worker/handlers/dispatch.js");
-    await runSkillAgent("creative_research", {});
+    await runSkillAgent("creative_research", {}, recorder());
     expect(stepCountIs).toHaveBeenCalledWith(7);
   });
 
   it("passes the task params to the agent as its message", async () => {
     const { runSkillAgent } = await import("@worker/handlers/dispatch.js");
-    await runSkillAgent("creative_research", { prompt: "a cat", count: 2 });
+    await runSkillAgent("creative_research", { prompt: "a cat", count: 2 }, recorder());
     const call = generateTextRetry.mock.calls[0]?.[0] as unknown as {
       messages: Array<{ role: string; content: string }>;
     };
@@ -113,16 +129,57 @@ describe("runSkillAgent", () => {
 
   it("returns the agent's text and the skill that produced it", async () => {
     const { runSkillAgent } = await import("@worker/handlers/dispatch.js");
-    expect(await runSkillAgent("creative_research", {})).toEqual([
+    expect(await runSkillAgent("creative_research", {}, recorder())).toEqual([
       "the agent's answer",
       ["creative_research"],
+      0,
     ]);
+  });
+
+  it("records each model call and returns what they add up to", async () => {
+    const usage = recorder();
+    usage.settle.mockResolvedValue(12.5);
+    generateTextRetry.mockImplementationOnce(async (options: Record<string, unknown>) => {
+      const onEnd = options.onLanguageModelCallEnd as (event: unknown) => void;
+      onEnd({ usage: { outputTokens: 10 }, providerMetadata: undefined });
+      onEnd({ usage: { outputTokens: 20 }, providerMetadata: undefined });
+      return { text: "the agent's answer" };
+    });
+    const { runSkillAgent } = await import("@worker/handlers/dispatch.js");
+
+    const [, , credits] = await runSkillAgent("creative_research", {}, usage);
+
+    expect(usage.recordModelCall).toHaveBeenCalledTimes(2);
+    expect(usage.recordModelCall).toHaveBeenCalledWith({
+      source: "model",
+      model: "vendor/from-the-factory",
+      provider: "routed",
+      usage: { outputTokens: 10 },
+      providerMetadata: undefined,
+    });
+    expect(credits).toBe(12.5);
+  });
+
+  it("hands every tool the task's recorder", async () => {
+    const usage = recorder();
+    const { runSkillAgent } = await import("@worker/handlers/dispatch.js");
+    await runSkillAgent("creative_research", {}, usage);
+    const call = generateTextRetry.mock.calls[0]?.[0] as { toolsContext: unknown };
+    expect(call.toolsContext).toEqual({ web_search: { usage } });
+  });
+
+  it("lands the rows of a run that failed before failing with it", async () => {
+    const usage = recorder();
+    generateTextRetry.mockRejectedValueOnce(new Error("provider down"));
+    const { runSkillAgent } = await import("@worker/handlers/dispatch.js");
+    await expect(runSkillAgent("creative_research", {}, usage)).rejects.toThrow("provider down");
+    expect(usage.settle).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to a placeholder rather than returning empty text", async () => {
     generateTextRetry.mockResolvedValueOnce({ text: "" });
     const { runSkillAgent } = await import("@worker/handlers/dispatch.js");
-    const [text] = await runSkillAgent("creative_research", {});
+    const [text] = await runSkillAgent("creative_research", {}, recorder());
     expect(text).toBe("Task completed.");
   });
 });
