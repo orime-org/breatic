@@ -349,3 +349,30 @@ test('Gemini keeps its reading mode, language and speakers in the settings pill'
     timeout: 10_000,
   });
 });
+
+test('every voice of the default model plays its sample from the list', async ({ page }) => {
+  // Design §16.4: the vendors behind Inworld, Gemini and MiniMax publish no
+  // samples, so each voice has one of ours in this deployment's bucket.
+  const nodeId = crypto.randomUUID();
+  await seedNode(nodeId, 'audio', undefined, -350);
+  await openGenerate(nodeId);
+  await page.getByTestId('generate-audio-settings-trigger').click();
+  await page.getByTestId('generate-audio-row-voice_id').click();
+
+  const rows = page.locator('[data-testid^="generate-voice-option-"]');
+  await expect(rows.first()).toBeVisible({ timeout: 20_000 });
+  const samples = page.locator('[data-testid^="generate-voice-sample-"]');
+  expect(await samples.count()).toBe(await rows.count());
+
+  const answered = page.waitForResponse((r) => r.url().includes('/voice-samples/'));
+  await samples.first().click();
+  // An audio element asks for a byte range, so the bucket answers 206.
+  expect([200, 206]).toContain((await answered).status());
+  await expect(samples.first()).toHaveAttribute('data-playing', 'true');
+  // The play button sits at the right end of its row (design §16.1).
+  const [row, button] = await Promise.all([
+    rows.first().locator('..').boundingBox(),
+    samples.first().boundingBox(),
+  ]);
+  expect(row!.x + row!.width - (button!.x + button!.width)).toBeLessThan(8);
+});
