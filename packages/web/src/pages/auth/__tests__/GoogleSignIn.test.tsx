@@ -7,6 +7,8 @@ import { MemoryRouter } from 'react-router-dom';
 import LoginPage from '../LoginPage';
 import type * as AuthModule from '@web/data/api/auth';
 import { authApi } from '@web/data/api/auth';
+import { getLocale } from '@breatic/shared';
+import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 const sdk = vi.hoisted(() => ({ initialize: vi.fn(), renderButton: vi.fn() }));
@@ -110,5 +112,17 @@ describe('official Google login', () => {
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
     expect(document.querySelector('script[src^="https://accounts.google.com/gsi/client"]')).toBeNull();
     expect(sdk.renderButton).not.toHaveBeenCalled();
+  });
+  it('switches the interface to the account language', async () => {
+    vi.mocked(authApi.google).mockResolvedValue({
+      user: { id: 'g-2', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'zh-TW' },
+    });
+    try {
+      setup();
+      respond();
+      await waitFor(() => expect(getLocale()).toBe('zh-TW'));
+    } finally {
+      changeLocale('en');
+    }
   });
 });
