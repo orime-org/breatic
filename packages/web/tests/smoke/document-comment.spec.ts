@@ -16,6 +16,7 @@ import { test, expect, type Page } from 'playwright/test';
 
 import {
   openFreshDocument,
+  scrollBodyTo,
   selectFirstParagraph,
   selectParagraph,
 } from '../helpers/bubble-bar';
@@ -183,6 +184,38 @@ test.describe('the card a comment is written in', () => {
       .getByTestId('doc-comment-draft-card')
       .boundingBox())!;
     expect(Math.abs(card.y - words.y)).toBeLessThan(40);
+  });
+
+  test('leaves the body where the reader scrolled it when the entry is pressed', async ({
+    page,
+  }) => {
+    // The box takes the focus as the card arrives, before the card is set
+    // level with its words; the body must not be scrolled to where the card
+    // was a moment earlier.
+    await openFreshDocument(page);
+    for (let i = 0; i < 60; i += 1) {
+      await page.keyboard.type(`line ${String(i)} with some words`);
+      await page.keyboard.press('Enter');
+    }
+    await scrollBodyTo(page, 1800);
+    const scroller = page
+      .locator('.doc-body-scroller [data-radix-scroll-area-viewport]')
+      .first();
+    const scrolled = await scroller.evaluate((node) => node.scrollTop);
+    expect(scrolled).toBeGreaterThan(1000);
+    const card = page.getByTestId('doc-comment-draft-card');
+
+    for (const [index, words] of [[45, 'first'], [50, 'moved']] as const) {
+      await selectParagraph(page, index);
+      await page.getByTestId('doc-bubble-tool-comment').click();
+      await expect(page.getByTestId('doc-comment-draft-input')).toBeFocused();
+      await page.keyboard.type(words);
+
+      expect(await scroller.evaluate((node) => node.scrollTop)).toBe(scrolled);
+      const line = (await page.locator(`${EDITOR} p`).nth(index).boundingBox())!;
+      const box = (await card.boundingBox())!;
+      expect(Math.abs(box.y - line.y)).toBeLessThan(40);
+    }
   });
 
   test('lets an empty one go on a press on blank panel space', async ({
