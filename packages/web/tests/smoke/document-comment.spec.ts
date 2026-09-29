@@ -206,9 +206,22 @@ test.describe('the card a comment is written in', () => {
     const card = page.getByTestId('doc-comment-draft-card');
 
     for (const [index, words] of [[45, 'first'], [50, 'moved']] as const) {
+      const arriving = (await card.count()) === 0;
       await selectParagraph(page, index);
       await page.getByTestId('doc-bubble-tool-comment').click();
       await expect(page.getByTestId('doc-comment-draft-input')).toBeFocused();
+      // A card that is not there yet arrives beside its words: its place in
+      // the frames that follow the press is the place it keeps. One that is
+      // there already moves to the new words.
+      const frames = await card.evaluate(async (node) => {
+        const tops: number[] = [];
+        for (let i = 0; i < 6; i += 1) {
+          tops.push(Math.round(node.getBoundingClientRect().top));
+          await new Promise((settle) => requestAnimationFrame(settle));
+        }
+        return tops;
+      });
+      if (arriving) expect(new Set(frames).size, frames.join(',')).toBe(1);
       await page.keyboard.type(words);
 
       expect(await scroller.evaluate((node) => node.scrollTop)).toBe(scrolled);
