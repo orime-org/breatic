@@ -70,10 +70,19 @@ export interface ServiceCall {
   costUsd?: number;
 }
 
+/** An interrupted OpenRouter call, once its generation was looked up. */
+export interface LookedUpCall {
+  source: UsageSource;
+  model: string;
+  /** What OpenRouter answered; undefined when it never found the generation. */
+  costUsd: number | undefined;
+}
+
 /** A recorder for one operation. */
 export interface UsageRecorder {
   recordModelCall(call: ModelCall & { source: UsageSource }): void;
   recordServiceCall(call: ServiceCall): void;
+  recordLookedUpCall(call: LookedUpCall): void;
   settle(): Promise<number>;
 }
 
@@ -182,6 +191,23 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         costUsd: cost.costUsd,
         costSource: cost.costSource,
         credits: creditsForUsd(cost.costUsd, multiplier),
+      });
+    },
+    recordLookedUpCall(call) {
+      const costUsd = call.costUsd ?? 0;
+      append({
+        ...base,
+        source: call.source,
+        model: call.model,
+        provider: "openrouter",
+        inputTokens: null,
+        cachedInputTokens: null,
+        outputTokens: null,
+        reasoningTokens: null,
+        requestCount: 1,
+        costUsd,
+        costSource: call.costUsd === undefined ? "missing" : "generation_lookup",
+        credits: creditsForUsd(costUsd, multiplier),
       });
     },
     async settle() {

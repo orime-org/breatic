@@ -75,11 +75,13 @@ vi.mock("@breatic/domain", () => ({
 function recorder(): {
   recordModelCall: ReturnType<typeof vi.fn>;
   recordServiceCall: ReturnType<typeof vi.fn>;
+  recordLookedUpCall: ReturnType<typeof vi.fn>;
   settle: ReturnType<typeof vi.fn>;
 } {
   return {
     recordModelCall: vi.fn(),
     recordServiceCall: vi.fn(),
+    recordLookedUpCall: vi.fn(),
     settle: vi.fn(async () => 0),
   };
 }

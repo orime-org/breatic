@@ -33,6 +33,13 @@ export {
 } from "@domain/credit/usage-recorder.js";
 export { usageContextFor } from "@domain/agent/tools/usage-context.js";
 export { agentModelIds, assertModelsPriced } from "@domain/credit/priced-models.js";
+export {
+  USAGE_LOOKUP_QUEUE,
+  lookupGenerationCost,
+  trackOpenGeneration,
+  type OpenGeneration,
+  type UsageLookupJob,
+} from "@domain/credit/generation-lookup.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──

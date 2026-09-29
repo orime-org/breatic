@@ -20,6 +20,7 @@ export function usageSpy(): UsageSpy {
   const recorder: UsageRecorder = {
     recordModelCall: vi.fn(),
     recordServiceCall: vi.fn((call: ServiceCall) => void serviceCalls.push(call)),
+    recordLookedUpCall: vi.fn(),
     settle: vi.fn(async () => 0),
   };
   return { recorder, serviceCalls };

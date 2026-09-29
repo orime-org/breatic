@@ -146,6 +146,30 @@ describe("the usage recorder", () => {
     expect(missing).toEqual([]);
   });
 
+  it("records a looked-up generation at the cost OpenRouter answered", async () => {
+    const { recorder, rows, missing } = recorderWithRows();
+    recorder.recordLookedUpCall({ source: "model", model: "google/gemini-2.5-flash", costUsd: 0.01 });
+    await recorder.settle();
+    expect(rows[0]).toMatchObject({
+      source: "model",
+      provider: "openrouter",
+      requestCount: 1,
+      costUsd: 0.01,
+      costSource: "generation_lookup",
+      inputTokens: null,
+    });
+    expect(rows[0]!.credits).toBeCloseTo(2, 10);
+    expect(missing).toEqual([]);
+  });
+
+  it("records a lookup that never found the generation as missing", async () => {
+    const { recorder, rows, missing } = recorderWithRows();
+    recorder.recordLookedUpCall({ source: "model", model: "google/gemini-2.5-flash", costUsd: undefined });
+    await recorder.settle();
+    expect(rows[0]).toMatchObject({ costSource: "missing", costUsd: 0, credits: 0 });
+    expect(missing).toEqual([rows[0]]);
+  });
+
   it("settles to the credits of its own rows, after every write has landed", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));

@@ -516,6 +516,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
 function usageRecorderDouble(): {
   recordModelCall: (call: { usage: { inputTokens?: number; outputTokens?: number } }) => void;
   recordServiceCall: () => void;
+  recordLookedUpCall: () => void;
   settle: () => Promise<number>;
 } {
   let credits = 0;
@@ -524,6 +525,7 @@ function usageRecorderDouble(): {
       credits += (call.usage.inputTokens ?? 0) + (call.usage.outputTokens ?? 0);
     },
     recordServiceCall: () => {},
+    recordLookedUpCall: () => {},
     settle: async () => credits,
   };
 }
