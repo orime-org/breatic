@@ -258,7 +258,7 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
        * Record one billed call.
        * @param costUsd - What the service said it charged, when it said.
        */
-      const recordBilled = (costUsd: number | undefined): void =>
+      const recordBilled = (costUsd: number | undefined): void => {
         context.usage.recordServiceCall({
           source: "tool:understand_media",
           service: UNDERSTAND_PINS.model,
@@ -266,6 +266,7 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
           requests: 1,
           ...(costUsd === undefined ? {} : { costUsd }),
         });
+      };
 
       const config = getAgentConfig();
       const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";

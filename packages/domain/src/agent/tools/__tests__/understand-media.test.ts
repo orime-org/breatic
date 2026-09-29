@@ -22,6 +22,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
 import type * as coreModule from "@breatic/core";
 import type * as understandModule from "@domain/understand/index.js";
+import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
 
 const understandMediaAtMock = vi.fn();
 
@@ -53,7 +54,6 @@ const { AUDIO_FORMAT_NAMES, IMAGE_FORMAT_NAMES, MediaUnavailable, UnderstandRefu
 const { TOOL_MAP, BASELINE_TOOLS, buildToolSet } = await import("@domain/agent/tools/index.js");
 const { UNDERSTAND_PINS } = await import("@domain/understand/index.js");
 const { toolOptions, usageSpy } = await import("@domain/agent/__tests__/helpers/usage-spy.js");
-type UsageRecorder = import("@domain/credit/usage-recorder.js").UsageRecorder;
 
 /** What one turn's copy of the tool is called with. */
 type Call = (input: { url: string; question: string }, signal?: AbortSignal) => Promise<unknown>;

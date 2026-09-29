@@ -6,11 +6,10 @@
  * once the generation is over (#296).
  */
 
-import type { Queue } from "bullmq";
 import { createQueue, getAgentConfig } from "@breatic/core";
 import { USAGE_LOOKUP_QUEUE, type UsageLookupJob } from "@breatic/domain";
 
-let queue: Queue | undefined;
+let queue: ReturnType<typeof createQueue> | undefined;
 
 /**
  * Queue the later lookup of one interrupted call.

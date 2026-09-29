@@ -196,7 +196,7 @@ async function readAnswer(
   // What the body says the call cost, once there is a body to read it from.
   // Read before any refusal is judged, so a refused call that was billed
   // carries its figure too.
-  let charged: number | undefined;
+  let charged: number | undefined = undefined;
 
   let text: string;
   try {

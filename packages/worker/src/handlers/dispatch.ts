@@ -1485,7 +1485,7 @@ export async function runUnderstand(
    * Record the one call this run made.
    * @param costUsd - What the service said it charged, when it said.
    */
-  const record = (costUsd: number | undefined): void =>
+  const record = (costUsd: number | undefined): void => {
     usage.recordServiceCall({
       source: "model",
       service: UNDERSTAND_PINS.model,
@@ -1493,6 +1493,7 @@ export async function runUnderstand(
       requests: 1,
       ...(costUsd === undefined ? {} : { costUsd }),
     });
+  };
 
   let answer: Awaited<ReturnType<typeof understandMediaAt>>;
   try {
