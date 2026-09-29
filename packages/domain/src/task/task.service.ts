@@ -9,7 +9,6 @@
  */
 
 import * as taskRepo from "@domain/task/task.repo.js";
-import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
@@ -132,14 +131,12 @@ export async function markCompleted(
 }
 
 /**
- * Mark a task as failed with an error message, and fail the upstream steps it
- * leaves pending or submitted: none of them will run again.
+ * Mark a task as failed with an error message.
  * @param taskId - Task UUID
  * @param error - Error description
  */
 export async function markFailed(taskId: string, error: string): Promise<void> {
   await taskRepo.updateTaskStatus(taskId, "failed", { error });
-  await upstreamStepRepo.failOpenSteps(taskId, error);
 }
 
 /**

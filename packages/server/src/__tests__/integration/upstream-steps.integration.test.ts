@@ -223,19 +223,34 @@ describe("task_upstream_steps", () => {
   // Design 15.1: a task that fails for good -- retries run out, the whole task
   // timed out -- leaves no step pending or submitted. The task's verdict is
   // written once, and the steps follow it there.
-  it("fails the steps a failed task leaves open, and keeps the ones that finished", async () => {
+  it("fails the steps a finished run leaves open, and keeps the ones that finished", async () => {
     const { userId } = await seedStudio();
     const taskId = await seedTask(userId);
     const [done, submitted, pending] = await upstreamStepRepo.ensureSteps(taskId, PLAN);
     await upstreamStepRepo.markDone(done!.id, { reference_id: "163346078760961" });
     await upstreamStepRepo.markSubmitted(submitted!.id, "pred-2");
 
-    await taskService.markFailed(taskId, "task did not complete within 7200000ms");
+    await upstreamStepRepo.failOpenSteps(taskId, "upstream refused");
 
     const rows = await upstreamStepRepo.listSteps(taskId);
     expect(rows.map((r) => r.status)).toEqual(["done", "failed", "failed"]);
-    expect(rows[2]?.output).toMatchObject({ error: "task did not complete within 7200000ms" });
+    expect(rows[1]).toMatchObject({ predictionId: "pred-2", output: { error: "upstream refused" } });
+    expect(rows[2]?.output).toMatchObject({ error: "upstream refused" });
     expect(pending?.status).toBe("pending");
+  });
+
+  // A failed attempt with a retry still to come marks the task row; the retry
+  // resumes from the steps, so they keep their state.
+  it("leaves the steps alone when only the task row is marked failed", async () => {
+    const { userId } = await seedStudio();
+    const taskId = await seedTask(userId);
+    const [, submitted] = await upstreamStepRepo.ensureSteps(taskId, PLAN);
+    await upstreamStepRepo.markSubmitted(submitted!.id, "pred-2");
+
+    await taskService.markFailed(taskId, "poll timed out");
+
+    const rows = await upstreamStepRepo.listSteps(taskId);
+    expect(rows.map((r) => r.status)).toEqual(["pending", "submitted", "pending"]);
   });
 
   it("refuses a status or a kind the executor does not know", async () => {

@@ -25,7 +25,7 @@ import { getModel } from "@breatic/domain";
 import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
-import { taskService } from "@breatic/domain";
+import { taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditLotService, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { assetService, settleTaskForNode, understandMediaAt, UNDERSTAND_PINS } from "@breatic/domain";
@@ -1024,13 +1024,15 @@ export interface FailedRunEnd {
 /**
  * End a run that produced nothing, on every surface that was told it started.
  *
- * Four things, and every exit that ends a run does all four through here.
+ * Five things, and every exit that ends a run does all five through here.
  * Two of them record the ATTEMPT — the task row is marked failed and each
  * target node gets a history entry — and happen however many attempts are
- * left. Two record the OUTCOME — the node's row is settled so its count stops
- * saying a run is happening, and the project feed gets the result — and wait
- * for `settles`, because a row settled while a retry is on its way reads as
- * failed to anyone looking and leaves the retry nothing running to finish.
+ * left. Three record the OUTCOME — the upstream steps still pending or
+ * submitted are failed, the node's row is settled so its count stops saying a
+ * run is happening, and the project feed gets the result — and wait for
+ * `settles`, because a retry resumes from those steps and a row settled while
+ * it is on its way reads as failed to anyone looking and leaves the retry
+ * nothing running to finish.
  *
  * The feed row names the node when the run had exactly one, which is what
  * lets a reader open it from the feed.
@@ -1043,6 +1045,8 @@ export interface FailedRunEnd {
  */
 export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
   await taskService.markFailed(end.taskId, end.errorMessage);
+  // A retry resumes from the steps; once the run is over, none will run again.
+  if (end.settles) await upstreamStepRepo.failOpenSteps(end.taskId, end.errorMessage);
   await recordFailureHistory(
     end.taskId,
     end.projectId,

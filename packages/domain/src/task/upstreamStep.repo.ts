@@ -9,7 +9,7 @@
  * pending -> submitted -> done | failed.
  */
 
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db, taskUpstreamSteps } from "@breatic/core";
 
 /** What a step does; decides what the executor reads off its answer. */
@@ -145,6 +145,19 @@ export async function markDone(stepId: string, output: Record<string, unknown>):
 }
 
 /**
+ * The columns a failed step is written with: its status, and the reason
+ * beside whatever it already learned.
+ * @param reason - Why it failed.
+ * @returns The update's set clause.
+ */
+function failedWith(reason: string): { status: "failed"; output: SQL } {
+  return {
+    status: "failed",
+    output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${JSON.stringify({ error: reason })}::jsonb`,
+  };
+}
+
+/**
  * Record that the upstream failed a step, and its own words for why: a
  * redelivered task answers with them rather than retrying the step.
  * @param stepId - The step.
@@ -154,10 +167,7 @@ export async function markDone(stepId: string, output: Record<string, unknown>):
 export async function markFailed(stepId: string, reason: string): Promise<void> {
   await db
     .update(taskUpstreamSteps)
-    .set({
-      status: "failed",
-      output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${JSON.stringify({ error: reason })}::jsonb`,
-    })
+    .set(failedWith(reason))
     .where(eq(taskUpstreamSteps.id, stepId));
 }
 
@@ -171,9 +181,6 @@ export async function markFailed(stepId: string, reason: string): Promise<void> 
 export async function failOpenSteps(taskId: string, reason: string): Promise<void> {
   await db
     .update(taskUpstreamSteps)
-    .set({
-      status: "failed",
-      output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${JSON.stringify({ error: reason })}::jsonb`,
-    })
+    .set(failedWith(reason))
     .where(and(eq(taskUpstreamSteps.taskId, taskId), inArray(taskUpstreamSteps.status, ["pending", "submitted"])));
 }
