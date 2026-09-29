@@ -308,6 +308,65 @@ describe("an OpenRouter call cut off before it reported its cost", () => {
   }, 60_000);
 });
 
+describe("what a turn's charge does to the studio's credits", () => {
+  it("takes a balance smaller than the turn's cost below zero", async () => {
+    provider = "deepseek";
+    finishMetadata = undefined;
+    const seeded = await seed(10);
+    expect(await send(seeded)).toBe(200);
+
+    const [row] = await sql<{ operation_key: string; credits: string }[]>`
+      SELECT operation_key, credits FROM agent_usage_records WHERE actor_user_id = ${seeded.userId}
+    `;
+    const entries = await sql<{ entry_type: string; amount: string }[]>`
+      SELECT entry_type, amount FROM credit_ledger WHERE reference_id = ${row!.operation_key}
+    `;
+    const total = (type: string): number =>
+      entries.filter((entry) => entry.entry_type === type).reduce((sum, entry) => sum + Number(entry.amount), 0);
+    expect(total("spend")).toBeCloseTo(-10, 4);
+    expect(total("debt_incurred")).toBeCloseTo(-(Number(row!.credits) - 10), 4);
+
+    const [debt] = await sql<{ amount: string }[]>`
+      SELECT d.amount FROM studio_credit_debts d JOIN projects p ON p.studio_id = d.studio_id
+      WHERE p.id = ${seeded.projectId}
+    `;
+    expect(Number(debt!.amount)).toBeCloseTo(Number(row!.credits) - 10, 4);
+  }, 60_000);
+
+  it("records the turn and draws on no purchase while payments are off", async () => {
+    provider = "deepseek";
+    finishMetadata = undefined;
+    const seeded = await seed(100);
+    initCore({ ...process.env, BRAVE_SEARCH_API_KEY: "brave-key-for-this-suite", PAYMENT_ENABLED: "false" });
+    try {
+      expect(await send(seeded)).toBe(200);
+    } finally {
+      initCore({
+        ...process.env,
+        BRAVE_SEARCH_API_KEY: "brave-key-for-this-suite",
+        PAYMENT_ENABLED: "true",
+        STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+        STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+      });
+    }
+
+    const [row] = await sql<{ operation_key: string; credits: string }[]>`
+      SELECT operation_key, credits FROM agent_usage_records WHERE actor_user_id = ${seeded.userId}
+    `;
+    expect(Number(row!.credits)).toBeGreaterThan(0);
+    const entries = await sql<{ lot_id: string | null; amount: string }[]>`
+      SELECT lot_id, amount FROM credit_ledger WHERE reference_id = ${row!.operation_key}
+    `;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ lot_id: null });
+    expect(Number(entries[0]!.amount)).toBeCloseTo(-Number(row!.credits), 4);
+    const [lot] = await sql<{ remaining_credits: string }[]>`
+      SELECT remaining_credits FROM credit_lots WHERE user_id = ${seeded.userId}
+    `;
+    expect(Number(lot!.remaining_credits)).toBe(100);
+  }, 60_000);
+});
+
 describe("a chat turn needs a positive balance", () => {
   it("refuses the turn with 402 when the studio has nothing to spend", async () => {
     provider = "deepseek";

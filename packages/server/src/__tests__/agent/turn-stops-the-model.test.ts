@@ -43,6 +43,8 @@ let providerParts: () => readonly Record<string, unknown>[];
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const foldIfOverBudget = vi.fn(async () => false);
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
+/** The usage rows the turn wrote. */
+const usageRows: { operationKey: string; model: string; outputTokens: number }[] = [];
 /** The tools the turn is given, set per test. */
 let turnTools: Record<string, unknown> = {};
 
@@ -106,6 +108,19 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       tools: turnTools,
     }),
     creditLotService: { chargeOnceForGeneration },
+    // Real, writing into `usageRows` at a price for the test model.
+    createUsageRecorder: (options: Parameters<typeof actual.createUsageRecorder>[0]) =>
+      actual.createUsageRecorder({
+        ...options,
+        pricing: {
+          models: {
+            "test/model": { input_cache_hit_per_mtok: 1, input_cache_miss_per_mtok: 1, output_per_mtok: 1 },
+          },
+          services: { brave_web_search: { per_request: 0.005 }, brave_image_search: { per_request: 0.005 } },
+        } as never,
+        multiplier: 1,
+        write: async (row) => void usageRows.push(row),
+      }),
   };
 });
 
@@ -180,6 +195,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
   [addMessage, foldIfOverBudget, chargeOnceForGeneration].forEach((m) => m.mockClear());
+  usageRows.length = 0;
 });
 
 afterEach(() => {
@@ -216,6 +232,10 @@ describe("a stopped turn stops the model", () => {
     await timeTurn(stopped.signal);
 
     expect(providerCalls).toBe(1);
+    // The step that finished before the stop is on the account.
+    expect(usageRows).toEqual([
+      expect.objectContaining({ operationKey: "turn:c1:1", source: "model", model: "test/model" }),
+    ]);
     // Five seconds, which is past the four the tool would have run for had
     // nothing stopped it: a turn that merely looked stopped would have taken
     // its second step by now.
