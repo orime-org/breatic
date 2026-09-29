@@ -1643,6 +1643,30 @@ describe('the comment panel', () => {
         expect(aimedWords()).toBe('bravo');
       });
 
+      it('stays on words it was aimed at after a split and typing undone as one step', async () => {
+        // Yjs folds edits made within its capture timeout into one undo step,
+        // so the undo takes back the split and what was typed with it.
+        show();
+        handle.undoManager.stopCapturing();
+        await pressIn(handle, firstRun().from + 6, 'Enter');
+        act(() => {
+          const view = handle.editor.prosemirrorView!;
+          view.dispatch(view.state.tr.insertText('x', lineStarts()[1]!));
+        });
+        handle.undoManager.stopCapturing();
+        const second = lineStarts()[1]!;
+        aimAt(second + 1, second + 6);
+        await screen.findByTestId('doc-comment-draft-card');
+
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        expect(lines()).toEqual(['alpha bravo charlie']);
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe('bravo');
+      });
+
       it('stays on words it was aimed at after a move, when the reader undoes the move', async () => {
         show('editor', ['w', 'bravo charlie', 'z']);
         handle.undoManager.stopCapturing();
@@ -2107,7 +2131,6 @@ describe('the comment panel', () => {
       aimAt(again, again + 3);
       expect(await screen.findByTestId('doc-comment-draft-input')).toHaveValue('half');
     });
-
 
     it('says so when a peer presses Enter before its words in their line', async () => {
       // The peer's editor writes the second half, words and all, as new

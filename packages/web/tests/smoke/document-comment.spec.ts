@@ -299,6 +299,56 @@ test.describe('the card a comment is written in', () => {
     await expect.poll(boxInView).toBe(true);
   });
 
+  test('shows its box beside the new words when an open draft is moved down the body', async ({
+    page,
+  }) => {
+    // Pressing the entry again moves the open draft; the box is shown where
+    // the card is going, not where it was (design §9.4.0).
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openFreshDocument(page);
+    for (let i = 0; i < 80; i += 1) {
+      await page.keyboard.type(`line ${String(i)} with some words`);
+      await page.keyboard.press('Enter');
+    }
+    await scrollBodyTo(page, 0);
+    await selectParagraph(page, 2);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.keyboard.type('kept words');
+
+    await scrollBodyTo(page, 1500);
+    const target = await page.evaluate((sel) => {
+      const view = document
+        .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+        .getBoundingClientRect();
+      return Array.from(document.querySelectorAll(`${sel} p`)).findIndex((p) => {
+        const at = p.getBoundingClientRect().top;
+        return at > view.top + 300 && at < view.top + 500;
+      });
+    }, EDITOR);
+    expect(target).toBeGreaterThan(20);
+    await selectParagraph(page, target);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+
+    const box = page.getByTestId('doc-comment-draft-input');
+    await expect(box).toBeFocused();
+    await expect(box).toHaveValue('kept words');
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const input = document.querySelector('[data-testid="doc-comment-draft-input"]')!;
+          const view = document
+            .querySelector('.doc-body-scroller [data-radix-scroll-area-viewport]')!
+            .getBoundingClientRect();
+          const r = input.getBoundingClientRect();
+          const body = document.querySelector(
+            '.doc-body-scroller [data-radix-scroll-area-viewport]',
+          )!;
+          return body.scrollTop > 1000 && r.top >= view.top && r.bottom <= view.bottom;
+        }),
+      )
+      .toBe(true);
+  });
+
   test('lets an empty one go on a press on blank panel space', async ({
     page,
   }) => {
