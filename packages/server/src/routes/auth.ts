@@ -439,6 +439,7 @@ auth.post(
     const { mailResult } = await authService.resendVerificationEmail(
       user.id,
       user.email,
+      user.locale,
       verifyBaseUrl,
     );
     // Audit log moved from auth.service.ts (17B mandate).

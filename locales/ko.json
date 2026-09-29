@@ -160,6 +160,65 @@
       "message_too_long": "이 메시지는 너무 깁니다. 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다.",
       "attachments_too_long": "첨부한 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다.",
       "attachments_too_many": "첨부가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다."
+    },
+    "mail": {
+      "studio_invite": {
+        "subject": "{inviter} 님이 {studio}에 초대했습니다",
+        "lead": "<b>{inviter}</b> 님이 Studio <b>{studio}</b>에 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code>(으)로 초대했습니다.",
+        "action": "<a>초대 열기</a>에서 수락하거나 거절할 수 있습니다."
+      },
+      "project_invite": {
+        "subject": "{inviter} 님이 {project}에 초대했습니다",
+        "lead": "<b>{inviter}</b> 님이 Project <b>{project}</b>에 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code>(으)로 초대했습니다.",
+        "action": "<a>초대 열기</a>에서 수락하거나 거절할 수 있습니다."
+      },
+      "studio_transfer": {
+        "subject": "{initiator} 님이 {studio}을(를) 넘기려고 합니다",
+        "lead": "<b>{initiator}</b> 님이 회원님을 Studio <b>{studio}</b>의 Admin으로 지정하려고 합니다.",
+        "action": "<a>이 이전 요청 보기</a>에서 수락하거나 거절할 수 있습니다."
+      },
+      "project_transfer": {
+        "subject": "{initiator} 님이 {project}을(를) 넘기려고 합니다",
+        "lead": "<b>{initiator}</b> 님이 Project <b>{project}</b>의 소유권을 회원님에게 넘기려고 합니다.",
+        "action": "<a>이 이전 요청 보기</a>에서 수락하거나 거절할 수 있습니다."
+      },
+      "role_upgrade": {
+        "subject": "{requester} 님이 {project}에서 더 높은 역할을 요청했습니다",
+        "lead": "<b>{requester}</b> 님이 <b>{project}</b>에서 <b>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</b>(이)가 되기를 요청했습니다.",
+        "action": "<a>이 요청 보기</a>에서 승인하거나 거절할 수 있습니다."
+      },
+      "project_join": {
+        "subject": "{requester} 님이 {project} 참여를 요청했습니다",
+        "lead": "<b>{requester}</b> 님이 <b>{project}</b> 참여를 요청했습니다.",
+        "action": "<a>이 요청 보기</a>에서 승인하거나 거절할 수 있습니다."
+      },
+      "reason": "메시지: <em>{message}</em>",
+      "expiry": {
+        "invitation": "이 초대는 {days, plural, other {#일}} 후에 만료됩니다. 예상하지 못한 메일이라면 무시하셔도 됩니다.",
+        "transfer": "이 이전 요청은 {days, plural, other {#일}} 후에 만료됩니다. 예상하지 못한 메일이라면 무시하셔도 됩니다.",
+        "request": "이 요청은 {days, plural, other {#일}} 후에 만료됩니다. 예상하지 못한 메일이라면 무시하셔도 됩니다."
+      },
+      "membership_ended": {
+        "subject": "{tier} 멤버십이 종료되었습니다",
+        "lead": "<b>{tier}</b> 멤버십이 종료되었습니다. 계정은 무료 플랜으로 전환되었습니다.",
+        "footer": "멤버십 패널에서 언제든지 다시 구독할 수 있습니다."
+      },
+      "storage_full": {
+        "subject": "저장 공간이 가득 찼습니다",
+        "lead": "저장 공간이 가득 차서 <b>{studio}</b>에서 업로드와 생성이 거부되었습니다. 저장 공간은 이 Studio뿐 아니라 회원님이 관리하는 모든 Studio를 합산해 계산됩니다.",
+        "footer": "멤버십을 업그레이드하면 더 많은 공간을 사용할 수 있습니다."
+      },
+      "password_reset": {
+        "subject": "비밀번호 재설정",
+        "lead": "비밀번호 재설정을 요청하셨습니다.",
+        "action": "<a>여기를 눌러 비밀번호 재설정</a>",
+        "footer": "이 링크는 {hours, plural, other {#시간}} 후에 만료됩니다. 본인이 요청하지 않았다면 이 메일을 무시하세요."
+      },
+      "email_verification": {
+        "subject": "이메일 확인",
+        "lead": "Breatic에 오신 것을 환영합니다. 아래 링크를 눌러 이메일 주소를 확인하세요:",
+        "footer": "이 링크는 {hours, plural, other {#시간}} 후에 만료됩니다. 본인이 요청하지 않았다면 이 메일을 무시해도 됩니다."
+      }
     }
   },
   "chat": {

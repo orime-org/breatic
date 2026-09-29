@@ -160,6 +160,65 @@
       "message_too_long": "This message is too long. It may hold at most {limit, number} characters; this one holds {actual, number}.",
       "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
       "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}."
+    },
+    "mail": {
+      "studio_invite": {
+        "subject": "{inviter} invited you to {studio}",
+        "lead": "<b>{inviter}</b> invited you to join the studio <b>{studio}</b> as <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code>.",
+        "action": "<a>Open the invitation</a> to accept or decline."
+      },
+      "project_invite": {
+        "subject": "{inviter} invited you to {project}",
+        "lead": "<b>{inviter}</b> invited you to collaborate on the project <b>{project}</b> as <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code>.",
+        "action": "<a>Open the invitation</a> to accept or decline."
+      },
+      "studio_transfer": {
+        "subject": "{initiator} wants to transfer {studio} to you",
+        "lead": "<b>{initiator}</b> wants to make you the admin of the studio <b>{studio}</b>.",
+        "action": "<a>Review this transfer</a> to accept or decline."
+      },
+      "project_transfer": {
+        "subject": "{initiator} wants to transfer {project} to you",
+        "lead": "<b>{initiator}</b> wants to make you the owner of the project <b>{project}</b>.",
+        "action": "<a>Review this transfer</a> to accept or decline."
+      },
+      "role_upgrade": {
+        "subject": "{requester} asked for a bigger role on {project}",
+        "lead": "<b>{requester}</b> asked to become <b>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</b> on <b>{project}</b>.",
+        "action": "<a>Review this request</a> to approve or decline."
+      },
+      "project_join": {
+        "subject": "{requester} asked to join {project}",
+        "lead": "<b>{requester}</b> asked to join <b>{project}</b>.",
+        "action": "<a>Review this request</a> to approve or decline."
+      },
+      "reason": "They said: <em>{message}</em>",
+      "expiry": {
+        "invitation": "This invitation expires in {days, plural, one {# day} other {# days}}. If you didn't expect it, you can ignore this email.",
+        "transfer": "This transfer request expires in {days, plural, one {# day} other {# days}}. If you didn't expect it, you can ignore this email.",
+        "request": "This request expires in {days, plural, one {# day} other {# days}}. If you didn't expect it, you can ignore this email."
+      },
+      "membership_ended": {
+        "subject": "Your {tier} membership has ended",
+        "lead": "Your <b>{tier}</b> membership has ended. Your account is on the free plan.",
+        "footer": "Subscribe again at any time from the membership panel."
+      },
+      "storage_full": {
+        "subject": "Your storage is full",
+        "lead": "Your storage is full, so uploads and generations were refused in <b>{studio}</b>. Storage is counted across every studio you administer, not just this one.",
+        "footer": "Raise your membership to get more room."
+      },
+      "password_reset": {
+        "subject": "Reset your password",
+        "lead": "You requested a password reset.",
+        "action": "<a>Click here to reset your password</a>",
+        "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, ignore this email."
+      },
+      "email_verification": {
+        "subject": "Verify your email",
+        "lead": "Welcome to Breatic. Click below to verify your email address:",
+        "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, you can ignore this email."
+      }
     }
   },
   "chat": {

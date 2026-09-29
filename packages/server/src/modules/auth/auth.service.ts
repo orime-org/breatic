@@ -17,6 +17,10 @@ import {
   hashRecoveryCode,
   verifyRecoveryCode,
 } from "@server/modules/auth/recovery-code.service.js";
+import {
+  buildEmailVerificationMail,
+  buildPasswordResetMail,
+} from "@server/modules/auth/auth-mail.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import { env } from "@breatic/core";
@@ -239,7 +243,7 @@ export async function logoutAll(userId: string): Promise<void> {
   await deleteAllSessions(redis, userId);
 }
 
-const RESET_TOKEN_TTL = 3600; // 1 hour
+const RESET_TOKEN_TTL = 3600;
 
 /**
  * Discriminated outcome of {@link forgotPassword}. Per CLAUDE.md
@@ -278,16 +282,14 @@ export async function forgotPassword(
   const key = `${env.ENV}:password-reset:${token}`;
   await redis.set(key, user.id, "EX", RESET_TOKEN_TTL);
 
-  const resetUrl = `${resetBaseUrl}?token=${token}`;
-  const mailResult = await sendMail({
-    to: email,
-    subject: "Breatic - Reset your password",
-    html: `
-      <p>You requested a password reset.</p>
-      <p><a href="${resetUrl}">Click here to reset your password</a></p>
-      <p>This link expires in 1 hour. If you didn't request this, ignore this email.</p>
-    `,
-  });
+  const mailResult = await sendMail(
+    buildPasswordResetMail({
+      locale: user.locale,
+      to: email,
+      resetUrl: `${resetBaseUrl}?token=${token}`,
+      expiresInSeconds: RESET_TOKEN_TTL,
+    }),
+  );
 
   return { status: "reset_email_sent", userId: user.id, mailResult };
 }
@@ -442,25 +444,25 @@ export async function verifyEmail(token: string): Promise<{ userId: string }> {
  * stored) but `sendMail` will no-op + return false in disabled mode.
  * @param userId - User the fresh verification token is issued for
  * @param email - Destination address for the verification email
+ * @param locale - The account's language, which the email is written in
  * @param verifyBaseUrl - Base URL the verify token is appended to in the email link
  * @returns `{ mailResult }` reporting whether the mailer dispatched the email
  */
 export async function resendVerificationEmail(
   userId: string,
   email: string,
+  locale: string,
   verifyBaseUrl: string,
 ): Promise<{ mailResult: SendMailResult }> {
   const token = await generateVerifyEmailToken(userId);
-  const verifyUrl = `${verifyBaseUrl}?token=${token}`;
-  const mailResult = await sendMail({
-    to: email,
-    subject: "Breatic - Verify your email",
-    html: `
-      <p>Welcome to Breatic. Click below to verify your email address:</p>
-      <p><a href="${verifyUrl}">${verifyUrl}</a></p>
-      <p>This link expires in 24 hours. If you didn't request this, you can ignore this email.</p>
-    `,
-  });
+  const mailResult = await sendMail(
+    buildEmailVerificationMail({
+      locale,
+      to: email,
+      verifyUrl: `${verifyBaseUrl}?token=${token}`,
+      expiresInSeconds: EMAIL_VERIFY_TTL,
+    }),
+  );
   // Caller logs `verification_email_sent` + mail result audit line.
   return { mailResult };
 }

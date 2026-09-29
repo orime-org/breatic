@@ -156,6 +156,7 @@ export async function request(
           const owner = await userRepo.getUserById(input.ownerUserId);
           if (!owner) return null;
           return buildRoleUpgradeRequestMail({
+            locale: owner.locale,
             ownerEmail: owner.email,
             requesterName: requester.name,
             projectName: input.projectName,

@@ -160,6 +160,65 @@
       "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
       "attachments_too_long": "附带的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
       "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。"
+    },
+    "mail": {
+      "studio_invite": {
+        "subject": "{inviter} 邀请你加入 {studio}",
+        "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> 身份加入 Studio <b>{studio}</b>。",
+        "action": "<a>打开邀请</a>，接受或拒绝。"
+      },
+      "project_invite": {
+        "subject": "{inviter} 邀请你参与 {project}",
+        "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> 身份参与 Project <b>{project}</b>。",
+        "action": "<a>打开邀请</a>，接受或拒绝。"
+      },
+      "studio_transfer": {
+        "subject": "{initiator} 想把 {studio} 交给你",
+        "lead": "<b>{initiator}</b> 想让你成为 Studio <b>{studio}</b> 的 Admin。",
+        "action": "<a>查看这次转让</a>，接受或拒绝。"
+      },
+      "project_transfer": {
+        "subject": "{initiator} 想把 {project} 交给你",
+        "lead": "<b>{initiator}</b> 想把 Project <b>{project}</b> 的所有权交给你。",
+        "action": "<a>查看这次转让</a>，接受或拒绝。"
+      },
+      "role_upgrade": {
+        "subject": "{requester} 申请在 {project} 中获得更高的角色",
+        "lead": "<b>{requester}</b> 申请在 <b>{project}</b> 中成为 <b>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</b>。",
+        "action": "<a>查看这条申请</a>，批准或拒绝。"
+      },
+      "project_join": {
+        "subject": "{requester} 申请加入 {project}",
+        "lead": "<b>{requester}</b> 申请加入 <b>{project}</b>。",
+        "action": "<a>查看这条申请</a>，批准或拒绝。"
+      },
+      "reason": "附言：<em>{message}</em>",
+      "expiry": {
+        "invitation": "这条邀请将在 {days, plural, other {# 天}}后过期。如果你没有预期收到它，可以忽略这封邮件。",
+        "transfer": "这条转让请求将在 {days, plural, other {# 天}}后过期。如果你没有预期收到它，可以忽略这封邮件。",
+        "request": "这条申请将在 {days, plural, other {# 天}}后过期。如果你没有预期收到它，可以忽略这封邮件。"
+      },
+      "membership_ended": {
+        "subject": "你的 {tier} 会员已结束",
+        "lead": "你的 <b>{tier}</b> 会员已结束，账号已回到免费方案。",
+        "footer": "随时可以在会员面板重新订阅。"
+      },
+      "storage_full": {
+        "subject": "你的存储空间已满",
+        "lead": "你的存储空间已满，<b>{studio}</b> 中的上传和生成被拒绝了。存储按你管理的所有 Studio 合计，不只是这一个。",
+        "footer": "升级会员可以获得更多空间。"
+      },
+      "password_reset": {
+        "subject": "重置密码",
+        "lead": "你申请了重置密码。",
+        "action": "<a>点击这里重置密码</a>",
+        "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，请忽略这封邮件。"
+      },
+      "email_verification": {
+        "subject": "验证你的邮箱",
+        "lead": "欢迎来到 Breatic。点击下面的链接验证你的邮箱地址：",
+        "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，可以忽略这封邮件。"
+      }
     }
   },
   "chat": {
