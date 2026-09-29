@@ -152,6 +152,11 @@ export async function estimateCredits(
   };
 
   const usd = await priceUsd(text);
+  /**
+   * A price in US dollars, in credits.
+   * @param amount - The price.
+   * @returns The credits it comes to.
+   */
   const toCredits = (amount: number): number => amount * CENTS_PER_USD * creditMultiplier;
   if (textPriced) {
     if (usd === 0) return { credits: toCredits(await priceUsd(SAMPLE_TEXT)), bound: "per_thousand_chars" };
