@@ -27,12 +27,9 @@
  *   being settled — lands as ONE replacement of the whole body
  *   (`ySyncPluginKey` meta `isChangeOrigin`), and that mapping sends every
  *   position to the end. Those are resolved from Yjs relative positions, the
- *   way y-prosemirror's cursor plugin places a cursor (`cursor-plugin.js`).
- *   They are taken again after the reader's own edits, once the binding has
- *   written them into Yjs, and whenever they stop resolving; otherwise the
- *   same positions are kept across Yjs changes, so a letter a peer deletes
- *   and then brings back with undo is followed to where it came back
- *   (`followUndoneDeletions`).
+ *   way y-prosemirror's cursor plugin places a cursor (`cursor-plugin.js`):
+ *   taken again after every change to the body, so each one names the body
+ *   as the change before it left it.
  *
  * The start names the first letter covered and the end the last one, with its
  * association to the left (`assoc = -1`, which Yjs resolves to "after this
@@ -321,64 +318,15 @@ function trackDraft(bound: Binding, range: DraftRange): TrackedLink {
 }
 
 /**
- * The letter a name points to now. An undo brings a deleted letter back as a
- * new one, which the deleted one points to (`redone`), and Yjs resolves the
- * name to the new one. A letter whose line element was deleted is collected
- * into a struct that is not an item and has no `redone`; Yjs's own walk stops
- * there too (`followRedone`, `yjs/src/structs/Item.js`).
- * @param store - The document's store.
- * @param id - The letter the name was taken on.
- * @returns The letter, or null once it was collected.
- */
-function letterNow(store: Y.Doc['store'], id: Y.ID): Y.Item | null {
-  let item = Y.getItem(store, id);
-  while (item instanceof Y.Item && item.redone !== null) {
-    item = Y.getItem(store, item.redone);
-  }
-  return item instanceof Y.Item ? item : null;
-}
-
-/**
- * Whether the letter a position names is deleted and not brought back.
+ * Whether the letter a position names is deleted. A letter whose line element
+ * was deleted is collected into a struct that is not an item.
  * @param store - The document's store.
  * @param id - The letter.
- * @returns True once it is gone for good.
+ * @returns True once it is gone.
  */
 function letterGone(store: Y.Doc['store'], id: Y.ID): boolean {
-  return letterNow(store, id)?.deleted ?? true;
-}
-
-/**
- * Whether a name still has a line to live in: the element holding the letter
- * it names is not deleted. A peer changing that line's type, or moving it,
- * deletes the element and writes a new one, and Yjs collects the old one's
- * letters when that change ends — after which the name resolves to nothing.
- * @param store - The document's store.
- * @param end - The name.
- * @returns True while its element stands.
- */
-function lineElementStands(
-  store: Y.Doc['store'],
-  end: Y.RelativePosition,
-): boolean {
-  if (end.item === null) return true;
-  const element = (
-    letterNow(store, end.item)?.parent as Y.AbstractType<unknown> | undefined
-  )?._item;
-  return element !== undefined && (element === null || !element.deleted);
-}
-
-/**
- * Whether both ends of a range, as Yjs names them, can go on naming it.
- * @param bound - The sync binding.
- * @param link - The range as Yjs names it.
- * @returns True while both ends' elements stand.
- */
-function stillNamed(bound: Binding, link: TrackedLink): boolean {
-  return (
-    lineElementStands(bound.doc.store, link.start) &&
-    lineElementStands(bound.doc.store, link.end)
-  );
+  const item = Y.getItem(store, id);
+  return !(item instanceof Y.Item) || item.deleted;
 }
 
 /**
@@ -619,10 +567,6 @@ export const onDraftChange: (listener: () => void) => () => void =
 export const documentCommentDraftRange = createExtension(() => {
   // The open draft's range as Yjs names it.
   let tracked: TrackedDraft | null = null;
-  // Set when the range is placed afresh — an entry pressed, or one of the
-  // reader's own edits — so the view's update names it again once the
-  // binding has written the body into Yjs.
-  let retrack = false;
   return {
     key: 'document-comment-draft-range',
     prosemirrorPlugins: [
@@ -668,14 +612,12 @@ export const documentCommentDraftRange = createExtension(() => {
                 opening = { serial: openings };
               }
               entries += 1;
-              retrack = true;
               return { kind: 'aimed', ...aim, opening, entry: entries };
             }
             // A selection change carries no steps and the range comes back
             // unchanged — which is what a reader clicking elsewhere before
             // typing their comment needs.
             if (current?.kind !== 'aimed' || !changesText(tr)) return current;
-            if (!fromYjs(tr)) retrack = true;
             return carryDraft(tr, current, before, tracked);
           },
         },
@@ -685,12 +627,11 @@ export const documentCommentDraftRange = createExtension(() => {
         },
 
         /**
-         * Broadcasts the draft, and names its range in Yjs terms again when it
-         * was placed afresh, or when the names it has no longer resolve. The
-         * sync plugin's view writes the reader's edit into Yjs before this
-         * one runs, so the names are taken against the body as it now stands
-         * — which is when y-prosemirror's cursor plugin takes the reader's
-         * cursor.
+         * Broadcasts the draft, and names its range in Yjs terms again after
+         * every change to the body or to the range. The sync plugin's view
+         * writes the reader's edit into Yjs before this one runs, so the names
+         * are taken against the body as it now stands — which is when
+         * y-prosemirror's cursor plugin takes the reader's cursor.
          * @param view - The editor view.
          * @returns The view's update and teardown.
          */
@@ -704,13 +645,12 @@ export const documentCommentDraftRange = createExtension(() => {
                 tracked = null;
               } else if (
                 bound !== null &&
-                (retrack ||
-                  tracked?.opening !== range.opening ||
-                  !stillNamed(bound, tracked.link))
+                (next.state.doc !== prev.doc ||
+                  draftRangeIn(prev) !== range ||
+                  tracked === null)
               ) {
                 tracked = { opening: range.opening, link: trackDraft(bound, range) };
               }
-              retrack = false;
               watching.update?.(next, prev);
             },
             destroy: (): void => {
