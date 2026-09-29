@@ -475,6 +475,18 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     expect(screen.getByTestId('generate-audio-row-language')).toBeInTheDocument();
   });
 
+  it('draws the open row\'s name in full foreground, since the row sits on the accent fill', () => {
+    // Muted text on the accent fill measures 4.46:1 in the dark theme, under
+    // the 4.5:1 floor for 13px text; the rows that are not open keep it muted.
+    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-language'));
+    const nameIn = (row: string): HTMLElement => screen.getByTestId(`generate-audio-row-${row}`).firstElementChild as HTMLElement;
+    expect(nameIn('language')).toHaveClass('text-foreground');
+    expect(nameIn('language')).not.toHaveClass('text-muted-foreground');
+    expect(nameIn('voice_id')).toHaveClass('text-muted-foreground');
+  });
+
   it('edits exactly two speakers, with nothing to add or remove', () => {
     render(
       <AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{ _stand_in_on: true }} onChange={() => {}} />,

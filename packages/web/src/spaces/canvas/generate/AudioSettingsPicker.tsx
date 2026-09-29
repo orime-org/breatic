@@ -292,7 +292,14 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
               )}
               onClick={() => showPanel(panel === panelKey(row) ? null : panelKey(row))}
             >
-              <span className='truncate text-left text-muted-foreground'>
+              {/* Muted text on the open row's accent fill is 4.46:1 in the dark
+                  theme, under the 4.5:1 floor; that row names itself in full. */}
+              <span
+                className={cn(
+                  'truncate text-left',
+                  panel === panelKey(row) ? 'text-foreground' : 'text-muted-foreground',
+                )}
+              >
                 {row.kind === 'voice'
                   ? t('canvas.generatePanel.audioVoice')
                   : t(`canvas.generatePanel.param.${row.name}`)}
