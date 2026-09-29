@@ -12,11 +12,12 @@
 
 import { describe, it, expect, afterAll, vi } from "vitest";
 import { initCore } from "@breatic/core";
+import type * as Core from "@breatic/core";
 
 // The storage adapter needs R2 settings this suite does not have; what is
 // under test is that a sample key becomes this deployment's public url.
 vi.mock("@breatic/core", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@breatic/core")>()),
+  ...(await importOriginal<typeof Core>()),
   getStorageAdapter: async () => ({ publicUrl: (key: string) => `https://cdn.test/${key}` }),
 }));
 
