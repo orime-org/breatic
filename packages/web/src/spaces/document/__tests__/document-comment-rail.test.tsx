@@ -265,19 +265,19 @@ describe('the comment panel', () => {
   });
 
   /**
-   * Presses a key in the peer's editor with the caret at a position.
-   * @param peer - The peer's editor.
+   * Presses a key in the given editor with the caret at a position.
+   * @param editor - The editor, the reader's or a peer's.
    * @param at - Where the caret is.
    * @param key - The key.
    */
-  async function peerPresses(
-    peer: DocumentEditorHandle,
+  async function pressIn(
+    editor: DocumentEditorHandle,
     at: number,
     key: string,
   ): Promise<void> {
     const { TextSelection } = await import('@tiptap/pm/state');
     act(() => {
-      const view = peer.editor.prosemirrorView!;
+      const view = editor.editor.prosemirrorView!;
       view.dispatch(
         view.state.tr.setSelection(TextSelection.create(view.state.doc, at)),
       );
@@ -1528,7 +1528,7 @@ describe('the comment panel', () => {
         aimDraft(6, 11);
         await screen.findByTestId('doc-comment-draft-card');
         handle.undoManager.stopCapturing();
-        await peerPresses(handle, firstRun().from + at, 'Enter');
+        await pressIn(handle, firstRun().from + at, 'Enter');
         handle.undoManager.stopCapturing();
 
         act(() => {
@@ -1599,6 +1599,100 @@ describe('the comment panel', () => {
 
         expect(lines()).toEqual(['alpha avo charlie']);
         expect(aimedWords()).toBe('avo');
+      });
+
+      it('stays on words it was aimed at after a split, when the reader undoes the split', async () => {
+        show();
+        handle.undoManager.stopCapturing();
+        await pressIn(handle, firstRun().from + 6, 'Enter');
+        handle.undoManager.stopCapturing();
+        const second = lineStarts()[1]!;
+        aimAt(second, second + 5);
+        await screen.findByTestId('doc-comment-draft-card');
+
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        expect(lines()).toEqual(['alpha bravo charlie']);
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe('bravo');
+      });
+
+      it('stays on words it was aimed at after a move, when the reader undoes the move', async () => {
+        show('editor', ['w', 'bravo charlie', 'z']);
+        handle.undoManager.stopCapturing();
+        act(() => {
+          handle.editor.setTextCursorPosition(handle.editor.document[1]!);
+          handle.editor.moveBlocksUp();
+        });
+        handle.undoManager.stopCapturing();
+        const first = lineStarts()[0]!;
+        aimAt(first, first + 5);
+        await screen.findByTestId('doc-comment-draft-card');
+
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        expect(lines()).toEqual(['w', 'bravo charlie', 'z']);
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe('bravo');
+      });
+
+      it('stays on its words when a peer moved its line between the reader\'s edit and the undo', async () => {
+        show('editor', ['w', 'alpha bravo', 'z']);
+        const second = lineStarts()[1]!;
+        aimAt(second + 6, second + 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        const peer = await peerEditor();
+        handle.undoManager.stopCapturing();
+        act(() => {
+          const view = handle.editor.prosemirrorView!;
+          view.dispatch(view.state.tr.insertText('Q', lineStarts()[2]!));
+        });
+        handle.undoManager.stopCapturing();
+        act(() => {
+          peer.editor.setTextCursorPosition(peer.editor.document[1]!);
+          peer.editor.moveBlocksUp();
+        });
+
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        expect(lines()).toEqual(['alpha bravo', 'w', 'z']);
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe('bravo');
+      });
+
+      it('stays on its two lines when a peer moved another line across them between the reader\'s edit and the undo', async () => {
+        show('editor', ['alpha bravo', 'charlie delta', 'echo', 'z']);
+        const [first, second] = lineStarts();
+        aimAt(first! + 6, second! + 7);
+        await screen.findByTestId('doc-comment-draft-card');
+        const peer = await peerEditor();
+        handle.undoManager.stopCapturing();
+        act(() => {
+          const view = handle.editor.prosemirrorView!;
+          view.dispatch(view.state.tr.insertText('Q', lineStarts()[3]!));
+        });
+        handle.undoManager.stopCapturing();
+        act(() => {
+          peer.editor.transact(() => {
+            peer.editor.setTextCursorPosition(peer.editor.document[2]!);
+            peer.editor.moveBlocksUp();
+            peer.editor.moveBlocksUp();
+          });
+        });
+
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        expect(lines()).toEqual(['echo', 'alpha bravo', 'charlie delta', 'z']);
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe('bravocharlie');
       });
     });
 
@@ -1886,7 +1980,7 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
-      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Enter');
+      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Enter');
 
       expect(lines()).toEqual(['one', '', 'two carrying three']);
       expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
@@ -1899,7 +1993,7 @@ describe('the comment panel', () => {
       aimAt(second + 4, second + 12);
       await screen.findByTestId('doc-comment-draft-card');
       handle.undoManager.stopCapturing();
-      await peerPresses(handle, second, 'Enter');
+      await pressIn(handle, second, 'Enter');
       handle.undoManager.stopCapturing();
 
       act(() => {
@@ -1951,7 +2045,7 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
-      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 8, 'Enter');
+      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 8, 'Enter');
 
       expect(lines()).toEqual(['alpha bravo charlie', 'delta ec', 'ho foxtrot', 'golf']);
       expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
@@ -1966,7 +2060,7 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
-      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
+      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
 
       expect(lines()).toEqual(['alpha bravo charliedelta echo foxtrot', 'golf']);
       expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
@@ -1980,10 +2074,31 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
-      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
+      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
 
       expect(lines()).toEqual(['aa0 xxbb1 yy cc', 'zz2']);
       expect(aimedWords()).toBe('xxbb1');
+    });
+
+    it.each([
+      ['types over', 'Q', 'aa0 xQ1 yy'],
+      ['deletes', '', 'aa0 x1 yy'],
+    ] as const)('stays on its words when a peer %s a stretch across the break above its line', async (_what, typed, joined) => {
+      show('editor', ['aa0 xx', 'bb1 yy', 'zz']);
+      const second = lineStarts()[1]!;
+      aimAt(second + 4, second + 6);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      act(() => {
+        const view = peer.editor.prosemirrorView!;
+        const [first, next] = lineStarts(view.state);
+        view.dispatch(view.state.tr.insertText(typed, first! + 5, next! + 2));
+      });
+
+      expect(lines()).toEqual([joined, 'zz']);
+      expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+      expect(aimedWords()).toBe('yy');
     });
 
     it('says so when a peer presses Enter before its words in their line', async () => {
@@ -1996,7 +2111,7 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
-      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 3, 'Enter');
+      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 3, 'Enter');
 
       expect(lines()).toEqual(['one', 'alp', 'ha bravo charlie', 'three']);
       expect(
