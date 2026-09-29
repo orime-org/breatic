@@ -262,7 +262,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     () => (draftFrom === null ? null : { id: DRAFT_THREAD_ID, from: draftFrom }),
     [draftFrom],
   );
-  const anchors = useCommentAnchors(editor, ids, column, draftAnchor);
+  const { tops: anchors, measuredFor } = useCommentAnchors(
+    editor,
+    ids,
+    column,
+    draftAnchor,
+  );
 
   // A card's own height, once it has been on screen. How far the card below
   // has to give way depends on how tall the one above turned out to be.
@@ -376,13 +381,17 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
 
   // The panel's own scroll: how far the column is lifted to bring back the
   // cards the one being read pushed up under the header (design §9.6.1).
-  // `setLift` is its one writer. A new card being read starts the column
-  // over; a layout that leaves less room holds it to what there is, which is
-  // what everything reading it takes.
-  const [lift, setLift] = React.useState(0);
-  React.useEffect(() => {
-    setLift(0);
-  }, [reading]);
+  // `setLifting` is its one writer. A new card being read starts the column
+  // over, in the render that makes it the one being read — the lift is kept
+  // with the card it was set for, so nothing in that commit reads the old
+  // card's lift (React's "adjusting some state when a prop changes"). A
+  // layout that leaves less room holds it to what there is, which is what
+  // everything reading it takes.
+  const [lifting, setLifting] = React.useState<{
+    readonly reading: string | null;
+    readonly by: number;
+  }>({ reading, by: 0 });
+  const lift = lifting.reading === reading ? lifting.by : 0;
   const lifted = Math.min(lift, placement.raised);
 
   const aside = React.useRef<HTMLElement>(null);
@@ -396,9 +405,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // §9.4.0). Computed from the two rectangles, as `scrollTabToEdge` does.
   const revealed = React.useRef<number | null>(null);
   const draftEntry = draft?.kind === 'aimed' ? draft.entry : null;
-  const draftTop = anchors.has(DRAFT_THREAD_ID)
-    ? placed.get(DRAFT_THREAD_ID)
-    : undefined;
+  // Only once the draft's place is measured for where it is aimed now: a
+  // moved draft's old top stays until the new one is taken.
+  const draftTop =
+    draftAnchor !== null && measuredFor === draftAnchor
+      ? placed.get(DRAFT_THREAD_ID)
+      : undefined;
   const draftHeight = heights.get(DRAFT_THREAD_ID);
   const draftRead = reading === DRAFT_THREAD_ID;
   React.useLayoutEffect(() => {
@@ -447,10 +459,10 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     [],
   );
   // Read by the wheel listener, which is attached once.
-  const liftInputs = React.useRef({ lifted, placement });
+  const liftInputs = React.useRef({ lifted, placement, reading });
   React.useEffect(() => {
-    liftInputs.current = { lifted, placement };
-  }, [lifted, placement]);
+    liftInputs.current = { lifted, placement, reading };
+  }, [lifted, placement, reading]);
   React.useEffect(() => {
     const node = aside.current;
     if (node === null) return;
@@ -472,7 +484,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       const next = nextLift({ lift: now, delta, raised: laid.raised, hidden });
       if (!next.taken) return;
       event.preventDefault();
-      setLift(next.lift);
+      setLifting({ reading: liftInputs.current.reading, by: next.lift });
     };
     // Not React's `onWheel`: that one is passive, and `preventDefault` there
     // would not keep the turn from scrolling the body.
@@ -493,7 +505,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     const hidden = hiddenNow(laid, id, now);
     if (hidden === null) return;
     const next = liftToReveal({ lift: now, raised: laid.raised, hidden });
-    if (next !== now) setLift(next);
+    if (next !== now) setLifting({ reading: liftInputs.current.reading, by: next });
   }, [hiddenNow]);
 
   // How tall the header is, for the scroll margin everything in the column

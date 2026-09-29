@@ -29,8 +29,26 @@ import { threadRangesByThread } from '@web/spaces/document/document-comment-rang
 import { domElementOf } from '@web/spaces/document/document-editor-view';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
+/** The draft card's id and where it is aimed. */
+export interface DraftAnchor {
+  readonly id: string;
+  readonly from: number;
+}
+
+/** What the hook measured, and for which draft. */
+export interface CommentAnchors {
+  /** Each thread's top, by id; absent for one with no words left. */
+  readonly tops: ReadonlyMap<string, number>;
+  /**
+   * The draft the tops were measured for. A moved draft keeps its id, so its
+   * old top stays in `tops` until the new place is measured; this says which
+   * place the number is for.
+   */
+  readonly measuredFor: DraftAnchor | null;
+}
+
 /** Nothing measured, one object for every such answer. */
-const NOTHING: ReadonlyMap<string, number> = new Map();
+const NOTHING: CommentAnchors = { tops: new Map(), measuredFor: null };
 
 /**
  * How far each thread's words sit from the top of the body's content.
@@ -45,14 +63,14 @@ const NOTHING: ReadonlyMap<string, number> = new Map();
  * @param draft - The draft card's id and where it is aimed, while one is
  *   open. Held steady by the caller: this re-measures whenever it changes,
  *   and a fresh object per render would do that on every keystroke.
- * @returns Each thread's top, by id; absent for one with no words left.
+ * @returns Each thread's top, and the draft they were measured for.
  */
 export function useCommentAnchors(
   editor: ToolEditor,
   threadIds: readonly string[],
   column: React.RefObject<HTMLElement | null>,
-  draft: { readonly id: string; readonly from: number } | null = null,
-): ReadonlyMap<string, number> {
+  draft: DraftAnchor | null = null,
+): CommentAnchors {
   const [anchors, setAnchors] = React.useState(NOTHING);
   // The ids as one string, so an effect can depend on WHICH threads rather
   // than on the identity of the array holding them.
@@ -106,10 +124,13 @@ export function useCommentAnchors(
         });
       setAnchors((held) => {
         stale.forEach((id) => {
-          const last = held.get(id);
+          const last = held.tops.get(id);
           if (last !== undefined) next.set(id, last);
         });
-        return sameAnchors(held, next) ? held : next;
+        const tops = sameAnchors(held.tops, next) ? held.tops : next;
+        return tops === held.tops && held.measuredFor === draft
+          ? held
+          : { tops, measuredFor: draft };
       });
     };
 
