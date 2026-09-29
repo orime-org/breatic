@@ -33,6 +33,7 @@ const USAGE = {
  */
 function recorderWithRows(write?: (row: UsageRow) => Promise<void>) {
   const rows: UsageRow[] = [];
+  const missing: UsageRow[] = [];
   const recorder = createUsageRecorder({
     operationKey: "turn:c1:3",
     feature: "chat_turn",
@@ -41,8 +42,9 @@ function recorderWithRows(write?: (row: UsageRow) => Promise<void>) {
     pricing: PRICING,
     multiplier: 2,
     write: write ?? (async (row) => void rows.push(row)),
+    onMissingCost: (row) => void missing.push(row),
   });
-  return { recorder, rows };
+  return { recorder, rows, missing };
 }
 
 describe("the usage recorder", () => {
@@ -78,7 +80,12 @@ describe("the usage recorder", () => {
 
   it("prices a Brave search per request", async () => {
     const { recorder, rows } = recorderWithRows();
-    recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", requests: 1 });
+    recorder.recordServiceCall({
+      source: "tool:web_search",
+      service: "brave_web_search",
+      provider: "brave",
+      requests: 1,
+    });
     await recorder.settle();
     expect(rows[0]).toMatchObject({
       source: "tool:web_search",
@@ -105,6 +112,40 @@ describe("the usage recorder", () => {
     expect(rows[0]!.costUsd).toBe(0.0004);
   });
 
+  it("records an OpenRouter service call with no reported cost as missing, and says so", async () => {
+    const { recorder, rows, missing } = recorderWithRows();
+    recorder.recordServiceCall({
+      source: "tool:understand_media",
+      service: "google/gemini-3.8-flash",
+      provider: "openrouter",
+      requests: 1,
+    });
+    await recorder.settle();
+    expect(rows[0]).toMatchObject({ costSource: "missing", costUsd: 0, credits: 0 });
+    expect(missing).toEqual([rows[0]]);
+  });
+
+  it("says so when an OpenRouter model call reported no cost", async () => {
+    const { recorder, rows, missing } = recorderWithRows();
+    recorder.recordModelCall({
+      source: "model",
+      model: "google/gemini-2.5-flash",
+      provider: "openrouter",
+      usage: USAGE,
+      providerMetadata: undefined,
+    });
+    await recorder.settle();
+    expect(rows[0]).toMatchObject({ costSource: "missing" });
+    expect(missing).toEqual([rows[0]]);
+  });
+
+  it("does not call a priced row missing", async () => {
+    const { recorder, missing } = recorderWithRows();
+    recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", provider: "brave", requests: 1 });
+    await recorder.settle();
+    expect(missing).toEqual([]);
+  });
+
   it("settles to the credits of its own rows, after every write has landed", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
@@ -113,8 +154,8 @@ describe("the usage recorder", () => {
       await gate;
       landed.push(row);
     });
-    recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", requests: 1 });
-    recorder.recordServiceCall({ source: "tool:search_images", service: "brave_image_search", requests: 2 });
+    recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", provider: "brave", requests: 1 });
+    recorder.recordServiceCall({ source: "tool:search_images", service: "brave_image_search", provider: "brave", requests: 2 });
     const settled = recorder.settle();
     release();
     await expect(settled).resolves.toBeCloseTo((0.005 + 0.01) * 100 * 2, 10);
@@ -125,7 +166,7 @@ describe("the usage recorder", () => {
     const { recorder } = recorderWithRows(async () => {
       throw new Error("db down");
     });
-    recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", requests: 1 });
+    recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", provider: "brave", requests: 1 });
     await expect(recorder.settle()).rejects.toThrow("db down");
   });
 });

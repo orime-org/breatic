@@ -64,7 +64,7 @@ export interface ServiceCall {
   source: UsageSource;
   /** A priced service, or the model id the service reported a cost for. */
   service: string;
-  provider?: string;
+  provider: string;
   requests: number;
   /** The cost the service reported; absent means price it from the table. */
   costUsd?: number;
@@ -89,6 +89,12 @@ export interface UsageRecorderOptions {
   multiplier?: number;
   /** Defaults to appending to `agent_usage_records`. */
   write?: (row: UsageRow) => Promise<void>;
+  /**
+   * Called for a row whose cost the service should have reported and did not.
+   * The row is still written, at zero; this is how the caller, which can log,
+   * hears that it undercharged.
+   */
+  onMissingCost: (row: UsageRow) => void;
 }
 
 /**
@@ -103,6 +109,9 @@ function serviceCost(
   pricing: UsagePricing,
 ): { costUsd: number; costSource: CostSource } {
   if (call.costUsd !== undefined) return { costUsd: call.costUsd, costSource: "provider" };
+  // OpenRouter reports what it charged on every answer and has no table of
+  // ours to fall back on, the same rule `costOfModelCall` applies.
+  if (call.provider === "openrouter") return { costUsd: 0, costSource: "missing" };
   const price = pricing.services[call.service as PricedService];
   if (!price) {
     throw new Error(`No price for service ${call.service} in config/usage-pricing.yaml`);
@@ -137,6 +146,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
   const append = (row: UsageRow): void => {
     credits += row.credits;
     pending.push(write(row));
+    if (row.costSource === "missing") options.onMissingCost(row);
   };
 
   return {
@@ -163,7 +173,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         ...base,
         source: call.source,
         model: call.service,
-        provider: call.provider ?? "brave",
+        provider: call.provider,
         inputTokens: null,
         cachedInputTokens: null,
         outputTokens: null,

@@ -228,6 +228,8 @@ export class MainAgent {
       feature: "chat_turn",
       actorUserId: userId,
       projectId,
+      onMissingCost: (row) =>
+        logger.error({ row, userId, conversationId }, "agent_usage_cost_missing"),
     });
 
     // The SDK does not throw when the provider fails. It puts an `error`
