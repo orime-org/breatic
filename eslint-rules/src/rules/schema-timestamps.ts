@@ -27,6 +27,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "append-only credit ledger (0061): a lot's remaining balance IS this table summed over that lot, so deleting a row would silently change a balance that has already been spent against, and deleting a topup row would make that payment grantable again",
   ],
   [
+    "agentUsageRecords",
+    "append-only record of what each paid agent call cost us (0083, #296): a row says money already left, so deleting one would make an operation's cost look smaller than what was paid for it. The same carve-out as creditLedger",
+  ],
+  [
     "studioCreditDebts",
     "what a studio owes (0063): soft-deleting the row is the debt vanishing, and preventing exactly that is the only reason this table exists. What becomes of a debt when its studio is deleted is a business decision — transfer it, write it off — not a hidden row",
   ],

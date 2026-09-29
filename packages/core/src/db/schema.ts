@@ -1259,6 +1259,56 @@ export const creditLedger = pgTable(
 );
 
 /**
+ * One paid call the agent made (#296): a model call, a search, a media read,
+ * a decision query. Written where the call happens, one row each, so every
+ * dollar spent can be traced to the call that spent it.
+ *
+ * `operation_key` groups a turn, a consolidation, a text-tool run or a task;
+ * it is the same key handed to the credit engine, so what was charged for an
+ * operation is the `credit_ledger` row whose `reference_id` equals it. This
+ * table records cost; it does not record whether a charge was made.
+ *
+ * `created_at` only, and no `deleted_at`: an append-only usage record, the
+ * same carve-out as `credit_ledger`.
+ */
+export const agentUsageRecords = pgTable(
+  "agent_usage_records",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    operationKey: varchar("operation_key", { length: 255 }).notNull(),
+    // `chat_turn` / `memory_consolidation` / `text_tool` / `canvas_understand`
+    // / `skill_task`.
+    feature: varchar("feature", { length: 40 }).notNull(),
+    // `model`, or `tool:<name>` for a paid call a tool made.
+    source: varchar("source", { length: 40 }).notNull(),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "restrict",
+    }),
+    model: varchar("model", { length: 100 }).notNull(),
+    provider: varchar("provider", { length: 50 }).notNull(),
+    inputTokens: integer("input_tokens"),
+    cachedInputTokens: integer("cached_input_tokens"),
+    // Reasoning tokens are part of output.
+    outputTokens: integer("output_tokens"),
+    reasoningTokens: integer("reasoning_tokens"),
+    requestCount: integer("request_count"),
+    costUsd: numeric("cost_usd", { precision: 20, scale: 8 }).notNull(),
+    // `provider` / `price_table` / `generation_lookup` / `missing`.
+    costSource: varchar("cost_source", { length: 20 }).notNull(),
+    credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("agent_usage_records_operation_key_idx").on(table.operationKey),
+  ],
+);
+
+/**
  * What a studio owes (0063, task #11) — one row per studio, at most.
  *
  * The precheck reads what is spendable and freezes nothing, and what it asks
