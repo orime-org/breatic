@@ -314,6 +314,44 @@ describe("understandMedia — what comes back", () => {
     expect(result.costUsd).toBeUndefined();
   });
 
+  // A refusal the service still billed is money we paid: the caller records it
+  // whether or not the call succeeded, so the refusal has to carry the figure.
+  it("carries what the service charged on a refusal that reported a cost", async () => {
+    httpRequestMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { message: "Gemini blocked the request: SAFETY" },
+          usage: { total_tokens: 900, cost: 0.0021 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const call = understandMedia({
+      ...base,
+      media: { kind: "audio", bytes: new Uint8Array([1]), format: "mp3" },
+    });
+
+    await expect(call).rejects.toMatchObject({ name: "UnderstandRefused", costUsd: 0.0021 });
+  });
+
+  it("carries no cost on a refusal whose body reported none", async () => {
+    httpRequestMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "Gemini blocked the request: SAFETY" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const refused = await understandMedia({
+      ...base,
+      media: { kind: "audio", bytes: new Uint8Array([1]), format: "mp3" },
+    }).catch((err: unknown) => err);
+
+    expect(refused).toBeInstanceOf(UnderstandRefused);
+    expect((refused as UnderstandRefused).costUsd).toBeUndefined();
+  });
+
   it("throws with the status and the service's own words when the call is refused", async () => {
     httpRequestMock.mockResolvedValue(
       new Response(

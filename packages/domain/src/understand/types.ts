@@ -195,19 +195,27 @@ export class UnderstandRefused extends Error {
   readonly detail: string;
   /** What the refusal is about. */
   readonly kind: RefusalKind;
+  /**
+   * What the service charged for the refused call, in US dollars, when its
+   * body said. A refusal can still be billed, and whoever records the spend
+   * needs the figure either way.
+   */
+  readonly costUsd: number | undefined;
 
   /**
    * Build one.
    * @param status - The status this refusal was judged by.
    * @param detail - The words it is stated in, the service's or ours.
    * @param kind - What the refusal is about.
+   * @param costUsd - What the service charged, when its body said.
    */
-  constructor(status: number, detail: string, kind: RefusalKind) {
+  constructor(status: number, detail: string, kind: RefusalKind, costUsd?: number) {
     super(`understand refused (${status}, ${kind}): ${detail}`);
     this.name = "UnderstandRefused";
     this.status = status;
     this.detail = detail;
     this.kind = kind;
+    this.costUsd = costUsd;
   }
 }
 

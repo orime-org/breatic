@@ -169,7 +169,12 @@ async function readAnswer(
     about: { source: RefusalFacts["source"]; code?: number },
   ): UnderstandRefused => {
     const code = about.code ?? res.status;
-    return new UnderstandRefused(code, detail, refusalKind({ ...about, code, sentAsAddress }));
+    return new UnderstandRefused(
+      code,
+      detail,
+      refusalKind({ ...about, code, sentAsAddress }),
+      charged,
+    );
   };
 
   /**
@@ -187,6 +192,11 @@ async function readAnswer(
       source: "envelope",
       ...(typeof error.code === "number" ? { code: error.code } : {}),
     });
+
+  // What the body says the call cost, once there is a body to read it from.
+  // Read before any refusal is judged, so a refused call that was billed
+  // carries its figure too.
+  let charged: number | undefined;
 
   let text: string;
   try {
@@ -216,6 +226,8 @@ async function readAnswer(
   } catch {
     throw refusal(text.slice(0, 300), { source: "body" });
   }
+  const reported = body.usage?.cost;
+  charged = typeof reported === "number" && Number.isFinite(reported) ? reported : undefined;
 
   if (body.error) throw fromEnvelope(body.error, text.slice(0, 300));
 
@@ -231,11 +243,10 @@ async function readAnswer(
   // than a refusal, and the reason it stopped travels on in `finishReason`.
   if (choice.error && written === "") throw fromEnvelope(choice.error, text.slice(0, 300));
 
-  const charged = body.usage?.cost;
   return {
     text: written,
     finishReason: typeof choice.finish_reason === "string" ? choice.finish_reason : "unknown",
-    ...(typeof charged === "number" && Number.isFinite(charged) ? { costUsd: charged } : {}),
+    ...(charged === undefined ? {} : { costUsd: charged }),
   };
 }
 
