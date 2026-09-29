@@ -1403,6 +1403,99 @@ describe('the comment panel', () => {
       });
     });
 
+    describe('when a peer deletes a whole line it covers', () => {
+      it.each([
+        // [which line the peer deletes, what the draft covers after]
+        ['its first line', 0, 'l1 bbl2'],
+        ['its last line', 2, 'aal1 bb'],
+      ] as const)('keeps what is left of its words when that is %s', async (_what, row, words) => {
+        // Where a line's content goes, the ends inside it go to where it was,
+        // as ProseMirror maps a deletion and CKEditor 5's live ranges shrink.
+        show('editor', ['l0 aa', 'l1 bb', 'l2 cc', 'l3 dd']);
+        const [s0, , s2] = lineStarts();
+        aimAt(s0! + 3, s2! + 2);
+        await screen.findByTestId('doc-comment-draft-card');
+        const peer = await peerEditor();
+
+        act(() => {
+          peer.editor.removeBlocks([peer.editor.document[row]!]);
+        });
+
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe(words);
+      });
+
+      it('keeps what is left of its words when that line is nested', async () => {
+        show('editor', ['p0 zz', 'p1', 'p2 cc']);
+        act(() => {
+          handle.editor.updateBlock(handle.editor.document[1]!, {
+            children: [
+              { type: 'paragraph', content: 'c0 aa' },
+              { type: 'paragraph', content: 'c1 bb' },
+            ],
+          } as never);
+        });
+        const starts = lineStarts();
+        aimAt(starts[2]!, starts[4]! + 2);
+        await screen.findByTestId('doc-comment-draft-card');
+        const peer = await peerEditor();
+        const c0 = peer.editor.document[1]!.children[0]!;
+
+        act(() => {
+          peer.editor.removeBlocks([c0]);
+        });
+
+        expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
+        expect(aimedWords()).toBe('c1 bbp2');
+      });
+    });
+
+    describe('when the reader undoes a deletion at its edge', () => {
+      it.each([
+        ['its first letters', 6, 8],
+        ['its last letters', 9, 11],
+      ] as const)('covers %s again', async (_what, from, to) => {
+        show();
+        aimDraft(6, 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        handle.undoManager.stopCapturing();
+        act(() => {
+          const view = handle.editor.prosemirrorView!;
+          view.dispatch(view.state.tr.delete(firstRun().from + from, firstRun().from + to));
+        });
+        handle.undoManager.stopCapturing();
+
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        expect(lines()).toEqual(['alpha bravo charlie']);
+        expect(aimedWords()).toBe('bravo');
+      });
+
+      it('shrinks again when the reader redoes the deletion', async () => {
+        show();
+        aimDraft(6, 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        handle.undoManager.stopCapturing();
+        act(() => {
+          const view = handle.editor.prosemirrorView!;
+          view.dispatch(view.state.tr.delete(firstRun().from + 6, firstRun().from + 8));
+        });
+        handle.undoManager.stopCapturing();
+        act(() => {
+          handle.undoManager.undo();
+        });
+
+        act(() => {
+          handle.undoManager.redo();
+        });
+
+        expect(lines()).toEqual(['alpha avo charlie']);
+        expect(aimedWords()).toBe('avo');
+      });
+    });
+
     it('stays on its words when a peer moves up a line that starts with the same letter', async () => {
       // Rewriting "two…" into "three" keeps their shared first letter, so the
       // letter the start names survives, but in the other line.
