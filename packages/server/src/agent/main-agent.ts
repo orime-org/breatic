@@ -22,14 +22,13 @@ import type { AskUserPayload } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
-import { creditLotService } from "@breatic/domain";
+import { creditLotService, createUsageRecorder } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
 import { userTurnForModel } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
-import { creditsForTokens } from "@server/modules/credit/token-pricing.js";
 import { foldIfOverBudget } from "@server/agent/turn-budget.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
@@ -218,15 +217,18 @@ export class MainAgent {
       return asked;
     };
 
-    // Counted off each step as it finishes, never from `result.usage`. That
-    // getter is not a passive read: it returns `totalUsage`, which calls
-    // `consumeStream()`. On the exit that matters most -- the reader closing
-    // the page while the model loop is still mid-flight -- reading it would
-    // drive the rest of that loop after everyone has gone, running real
-    // provider calls and real tool calls nobody asked for, then bill for
-    // them. Every step says what it spent as it finishes, which gives the
-    // same figure with none of that, on every exit alike.
-    let tokensUsed = 0;
+    // Every paid call this turn makes is recorded where it happens, one row
+    // each (#296); the turn is charged what those rows add up to. Model calls
+    // are recorded as each one's response arrives, never from `result.usage`:
+    // that getter calls `consumeStream()`, and on the exit that matters most --
+    // the reader leaving mid-loop -- reading it would drive the rest of the
+    // loop after everyone has gone.
+    const usage = createUsageRecorder({
+      operationKey: `turn:${conversationId}:${turnIndex}`,
+      feature: "chat_turn",
+      actorUserId: userId,
+      projectId,
+    });
 
     // The SDK does not throw when the provider fails. It puts an `error`
     // chunk on the stream and closes it normally, so nothing rejects and
@@ -374,8 +376,19 @@ export class MainAgent {
             thinkingOpenedAt = undefined;
           }
         },
-        onStepFinish: ({ usage, content }) => {
-          tokensUsed += usage?.totalTokens ?? 0;
+        // Fires when a model response is parsed, before the tools it asked
+        // for run: a turn stopped while a tool is running has still paid for
+        // the call that asked for it.
+        onLanguageModelCallEnd: ({ usage: spent, providerMetadata }) => {
+          usage.recordModelCall({
+            source: "model",
+            model: agentConfig.modelId,
+            provider: resolveProvider(agentConfig.modelId),
+            usage: spent,
+            providerMetadata,
+          });
+        },
+        onStepFinish: ({ content }) => {
           for (const part of content) {
             // A call whose arguments the model shaped wrongly is refused at the
             // door: the SDK never runs it, so `onToolExecutionEnd` never fires
@@ -579,9 +592,9 @@ export class MainAgent {
                   }
                 : undefined,
             bill: async () => {
-              if (tokensUsed === 0) return;
+              creditsUsed = await usage.settle();
+              if (creditsUsed === 0) return;
 
-              creditsUsed = creditsForTokens(tokensUsed);
               // The turn-scoped refKey makes this idempotent: a reconnect or
               // a re-entry on the same turn will not double-charge.
               const outcome = await creditLotService.chargeOnceForGeneration(
@@ -591,7 +604,6 @@ export class MainAgent {
                   actorUserId: userId,
                   amount: creditsUsed,
                   description: "Agent chat",
-                  tokensUsed,
                   model: modelId,
                   provider: resolveProvider(modelId),
                 },

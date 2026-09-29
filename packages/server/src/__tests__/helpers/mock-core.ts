@@ -506,7 +506,31 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  * llm and the `ai` SDK behind it. Per-test overrides go through the
  * shared `mocks` refs (creditLotService / taskService / ...).
  */
+/**
+ * A usage recorder for turns built on `domainMock` (#296): it writes nothing
+ * and counts a credit per token a model call reports, so a turn that spent
+ * something settles to a positive amount and one that spent nothing to zero.
+ * What a call really costs is `usage-cost.ts`'s to say and is tested there.
+ * @returns A recorder with the real interface.
+ */
+function usageRecorderDouble(): {
+  recordModelCall: (call: { usage: { inputTokens?: number; outputTokens?: number } }) => void;
+  recordServiceCall: () => void;
+  settle: () => Promise<number>;
+} {
+  let credits = 0;
+  return {
+    recordModelCall: (call) => {
+      credits += (call.usage.inputTokens ?? 0) + (call.usage.outputTokens ?? 0);
+    },
+    recordServiceCall: () => {},
+    settle: async () => credits,
+  };
+}
+
 export const domainMock = () => ({
+  createUsageRecorder: vi.fn(usageRecorderDouble),
+  SMALLEST_CREDIT: 0.000001,
   assetService: mocks.assetService,
   uploadGrantService: mocks.uploadGrantService,
   uploadGrantRepo: mocks.uploadGrantRepo,

@@ -13,7 +13,7 @@
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 let provider = "deepseek";
-let finishMetadata: Record<string, unknown> | undefined;
+let finishMetadata: { openrouter: { usage: { cost: number } } } | undefined;
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
@@ -24,10 +24,11 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     getModel: () =>
       modelProducing(() => {
         const finish = finishing("stop", 1_000_000);
-        return [
-          ...saying("hi").filter((part) => part.type !== "finish"),
-          finishMetadata === undefined ? finish : { ...finish, providerMetadata: finishMetadata },
-        ];
+        const reported =
+          finish.type === "finish" && finishMetadata !== undefined
+            ? { ...finish, providerMetadata: finishMetadata }
+            : finish;
+        return [...saying("hi").filter((part) => part.type !== "finish"), reported];
       }),
   };
 });

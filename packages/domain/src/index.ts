@@ -23,6 +23,14 @@
 export * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
+export { SMALLEST_CREDIT } from "@domain/credit/credit-math.js";
+export {
+  createUsageRecorder,
+  type UsageRecorder,
+  type UsageRow,
+  type UsageFeature,
+  type UsageSource,
+} from "@domain/credit/usage-recorder.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
