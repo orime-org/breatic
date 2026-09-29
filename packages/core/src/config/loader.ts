@@ -292,6 +292,17 @@ const agentConfigSchema = z.object({
    * cut off at the length limit reaches the reader as a half sentence.
    */
   understand_media_max_output_tokens: z.number().int().min(1024).max(32768).default(8192),
+  /**
+   * How long after an interrupted OpenRouter call its cost is first looked
+   * up, in milliseconds (#296). OpenRouter keeps generating for providers
+   * that cannot be cancelled, so the cost is settled only once it is done.
+   */
+  usage_lookup_delay_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(30_000),
+  /**
+   * How many times that lookup is made before the call is recorded as
+   * missing. Retries back off exponentially from the delay above.
+   */
+  usage_lookup_attempts: z.number().int().min(1).max(20).default(6),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
 }).superRefine((config, ctx) => {

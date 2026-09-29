@@ -157,6 +157,17 @@ understand_media_call_timeout_ms: 180000
 # 285-395 ms once connected, and 1181 ms on the first call of a process.
 judge_likelihood_timeout_ms: 10000
 
+# How long after an interrupted OpenRouter call its cost is first looked up,
+# in milliseconds. OpenRouter keeps generating for providers that cannot be
+# cancelled and bills the whole response, so the cost is settled only once
+# the generation is over. Retries back off exponentially from this figure.
+usage_lookup_delay_ms: 30000
+
+# How many lookups are made before the call is recorded as missing. With the
+# delay above, six attempts span about sixteen minutes (30 s, then waits of
+# 30, 60, 120, 240 and 480 s).
+usage_lookup_attempts: 6
+
 # How much the model may write about one piece of media, in tokens.
 # The same figure web_search takes, for the same measured reason: 2048 returns
 # about a third of the text 8192 does, and the difference in time is 19ms.

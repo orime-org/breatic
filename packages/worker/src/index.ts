@@ -31,7 +31,13 @@ import {
   getAgentConfig,
   getSkillRouting,
 } from "@breatic/core";
-import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
+import {
+  agentModelIds,
+  assertModelsPriced,
+  modelCatalog,
+  USAGE_LOOKUP_QUEUE,
+  type UsageLookupJob,
+} from "@breatic/domain";
 
 initLogger("worker");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
@@ -109,6 +115,7 @@ import {
   runUrlIngest,
   type UrlIngestJobData,
 } from "@worker/handlers/url-ingest.js";
+import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
@@ -157,6 +164,22 @@ export function startWorker(): void {
     logger.error(
       { err, jobId: job?.id, key: job?.data.storageKey },
       "url_ingest_job_failed",
+    );
+  });
+
+  // The later lookup of an interrupted OpenRouter call (#296). Its retries
+  // are the waiting: the job throws until OpenRouter has the cost.
+  const usageLookup = createWorker<UsageLookupJob>(USAGE_LOOKUP_QUEUE, (job) => runUsageLookup(job));
+
+  usageLookup.on("failed", (job, err) => {
+    logger.warn(
+      {
+        err,
+        generationId: job?.data.generationId,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "usage_lookup_attempt_failed",
     );
   });
 
@@ -211,7 +234,7 @@ export function startWorker(): void {
 
 
   logger.info(
-    { queues: ["tasks", "url-ingest"] },
+    { queues: ["tasks", "url-ingest", USAGE_LOOKUP_QUEUE] },
     "BullMQ workers started",
   );
 
