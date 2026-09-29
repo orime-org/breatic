@@ -244,10 +244,11 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
 
   it.each(KINDS)("%s previews its first sentence in the inbox list, ahead of the header", (kind) => {
     const { html, text } = mails[kind]!;
-    const firstSentence = text!.split("\n\n")[1]!;
-    const preview = html.indexOf(escapeHtml(firstSentence));
-    expect(preview).toBeGreaterThan(-1);
-    expect(preview).toBeLessThan(html.indexOf(SLOGAN));
+    const preview = /<div style="display:none;[^"]*">([^<]*)<\/div>/.exec(html);
+    expect(preview?.index).toBeLessThan(html.indexOf(SLOGAN));
+    expect(preview?.[1]).not.toBe("");
+    // The body block of the text part opens with the first sentence.
+    expect(escapeHtml(text!.split("\n\n")[1]!).startsWith(preview![1]!)).toBe(true);
   });
 
   // Aliyun DirectMail refuses a message whose link text is the bare address

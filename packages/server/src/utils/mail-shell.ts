@@ -87,6 +87,7 @@ interface RenderedPieces {
   heading: string;
   bodyHtml: string;
   bodyText: string;
+  previewText: string;
   actionLabelHtml: string;
   actionLabelText: string;
   noteHtml: string;
@@ -167,6 +168,7 @@ function renderPieces(locale: string, spec: MailSpec): RenderedPieces {
     heading,
     bodyHtml: spec.body.map(toHtml).join(""),
     bodyText: spec.body.map(toText).join(""),
+    previewText: spec.body[0] ? toText(spec.body[0]) : "",
     actionLabelHtml: spec.action ? toHtml(spec.action.label) : "",
     actionLabelText: spec.action ? toText(spec.action.label) : "",
     noteHtml: spec.note ? toHtml(spec.note) : "",
@@ -332,7 +334,7 @@ export async function renderMail(locale: string, spec: MailSpec): Promise<Render
     html: fillLayout(layout, {
       LANG: escapeHtml(locale),
       HEADING: escapeHtml(pieces.heading),
-      PREVIEW: escapeHtml(pieces.bodyText),
+      PREVIEW: escapeHtml(pieces.previewText),
       BODY: pieces.bodyHtml,
       ACTION_URL: escapeHtml(href ?? ""),
       ACTION_LABEL: pieces.actionLabelHtml,
