@@ -186,6 +186,29 @@ describe("the usage recorder", () => {
     expect(landed).toHaveLength(2);
   });
 
+  it("holds a write that failed before settle, and fails settle with it", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => void unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const { recorder } = recorderWithRows(async () => {
+        throw new Error("db down");
+      });
+      recorder.recordServiceCall({
+        source: "tool:web_search",
+        service: "brave_web_search",
+        provider: "brave",
+        requests: 1,
+      });
+      // Let the rejection surface before anyone awaits it.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(unhandled).toEqual([]);
+      await expect(recorder.settle()).rejects.toThrow("db down");
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("fails to settle when a write failed", async () => {
     const { recorder } = recorderWithRows(async () => {
       throw new Error("db down");

@@ -138,6 +138,9 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
   const multiplier = options.multiplier ?? env.CREDIT_MULTIPLIER;
   const write = options.write ?? insertUsageRecord;
   const pending: Promise<void>[] = [];
+  // A write that fails before `settle` is awaited is held here, so it never
+  // surfaces as an unhandled rejection; `settle` throws the first one.
+  const failures: unknown[] = [];
   let credits = 0;
 
   const base = {
@@ -154,7 +157,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
    */
   const append = (row: UsageRow): void => {
     credits += row.credits;
-    pending.push(write(row));
+    pending.push(write(row).catch((err: unknown) => void failures.push(err)));
     if (row.costSource === "missing") options.onMissingCost(row);
   };
 
@@ -212,6 +215,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
     },
     async settle() {
       await Promise.all(pending);
+      if (failures.length > 0) throw failures[0];
       return credits;
     },
   };
