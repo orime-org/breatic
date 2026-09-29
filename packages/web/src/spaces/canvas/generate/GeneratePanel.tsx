@@ -1,15 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import {
-  ArrowUp,
-  Globe,
-  Languages,
-  Loader2,
-  Sparkles,
-  Star,
-  X,
-} from 'lucide-react';
+import { ArrowUp, Loader2, Star, X } from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry, ReferenceKind } from '@breatic/shared';
@@ -121,22 +113,10 @@ interface GeneratePanelProps {
   onExecute: () => void;
 }
 
-// Placeholder buttons not yet wired (slice-1 decision B — shown disabled).
-// presets + translate live in the header's top-right (user 2026-07-18); camera
-// + online stay in the footer (left / right clusters respectively).
-const HEADER_PLACEHOLDERS = [
-  { key: 'presets', testId: 'generate-presets', Icon: Sparkles },
-  { key: 'translate', testId: 'generate-translate', Icon: Languages },
-] as const;
-// camera is now the functional CameraPicker (#1788); online stays a placeholder.
-const FOOTER_PLACEHOLDERS = [
-  { key: 'online', testId: 'generate-online', Icon: Globe },
-] as const;
-
 /**
  * The image-node Generate panel (slice 1). Composes the tool row, reference
  * rail, the injected collaborative prompt editor, and a footer (model +
- * ratio/resolution pickers, disabled placeholders for the unbuilt controls, the
+ * ratio/resolution pickers, the
  * credit estimate, and the execute button). Presentational: all node data +
  * Yjs writes are threaded in by the container. Count is fixed to 1 (no count
  * control). The exit button only closes; execute is the separate action.
@@ -186,11 +166,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   // can say why this mode has no use for it; an entry that goes dark can only
   // swallow the click (#1986, user 2026-08-19). The model's pool says which
   // kinds it uses (#2156).
-  // shrink-0 keeps the fixed-size footer icons from being squeezed when the
-  // pickers' labels run long (the footer row has no flex-wrap by design).
-  const placeholderClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border ' +
-    'text-muted-foreground opacity-50 cursor-not-allowed';
   return (
     <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
       <div className='flex items-start justify-between'>
@@ -201,25 +176,11 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           styleActive={stylePicking}
           styleThumbnail={styleImageUrl}
           onClearStyle={onClearStyle}
-          styleDisabled={!styleSupported}
+          styleSupported={styleSupported}
           onFocus={onFocus}
           focusActive={focusPicking}
         />
         <div className='flex items-center gap-1.5'>
-          {HEADER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
-            <Button
-              key={key}
-              type='button'
-              variant={null}
-              size={null}
-              data-testid={testId}
-              disabled
-              aria-label={t(`canvas.generatePanel.${key}`)}
-              className={placeholderClass}
-            >
-              <Icon className='h-4 w-4' aria-hidden='true' />
-            </Button>
-          ))}
           <Button
             type='button'
             variant={null}
@@ -277,20 +238,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {FOOTER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
-            <Button
-              key={key}
-              type='button'
-              variant={null}
-              size={null}
-              data-testid={testId}
-              disabled
-              aria-label={t(`canvas.generatePanel.${key}`)}
-              className={placeholderClass}
-            >
-              <Icon className='h-4 w-4' aria-hidden='true' />
-            </Button>
-          ))}
           {creditText !== undefined && (
             <span
               data-testid='generate-credit'

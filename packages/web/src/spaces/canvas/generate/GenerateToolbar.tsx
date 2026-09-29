@@ -29,10 +29,11 @@ interface GenerateToolbarProps {
   /** Clear the picked style image (the Style slot's ✕ badge). */
   onClearStyle: () => void;
   /**
-   * Disable style PICKING — the active model declares no `style_images`
-   * capability. A stale thumbnail still renders and its ✕ stays active.
+   * Whether the active model takes a style image (`style_images`). Without it
+   * the Style slot is not drawn; a copy picked under another model stays on the
+   * node and is not sent.
    */
-  styleDisabled?: boolean;
+  styleSupported?: boolean;
   /** Toggle the focus crop mode (#1782, marquee → focusImages append). */
   onFocus: () => void;
   /** Whether the focus pick is running — highlights the Focus button. */
@@ -60,7 +61,7 @@ interface GenerateToolbarProps {
  * @param root0.styleActive - Whether the style pick is running.
  * @param root0.styleThumbnail - The picked style image URL, if any.
  * @param root0.onClearStyle - Clear the picked style image.
- * @param root0.styleDisabled - Disable style picking (model capability gate).
+ * @param root0.styleSupported - Whether the model takes a style image.
  * @param root0.onFocus - Enter / exit the focus crop pick.
  * @param root0.focusActive - Whether the focus pick is running.
  * @returns The tool row.
@@ -72,7 +73,7 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
   styleActive = false,
   styleThumbnail,
   onClearStyle,
-  styleDisabled = false,
+  styleSupported = true,
   onFocus,
   focusActive = false,
 }: GenerateToolbarProps): React.JSX.Element {
@@ -95,29 +96,29 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         onClick={onFocus}
         active={focusActive}
       />
-      {/* Unconditional here: this row's one slot renders in both modes, going
-          dark rather than away when the model cannot take a style image. */}
-      <ToolRowDivider testId='generate-tool-sep' />
-      <SlotTool
-        testId={IMAGE_SLOTS.style.testId}
-        thumbnailTestId={IMAGE_SLOTS.style.thumbnailTestId}
-        clearTestId={IMAGE_SLOTS.style.clearTestId}
-        Icon={IMAGE_SLOTS.style.Icon}
-        onPick={onStyle}
-        active={styleActive}
-        // The style slot holds an image, so its pick IS its picture — asset
-        // and thumbnail are the same URL, and it can never be full without one.
-        pick={
-          styleThumbnail === undefined
-            ? undefined
-            : { kind: 'image', url: styleThumbnail, thumbnail: styleThumbnail }
-        }
-        onClear={onClearStyle}
-        disabled={styleDisabled}
-        clearLabel={t(IMAGE_SLOTS.style.clearLabelKey)}
-        label={t(IMAGE_SLOTS.style.labelKey)}
-        tip={t(IMAGE_SLOTS.style.tipKey)}
-      />
+      {styleSupported && <ToolRowDivider testId='generate-tool-sep' />}
+      {styleSupported && (
+        <SlotTool
+          testId={IMAGE_SLOTS.style.testId}
+          thumbnailTestId={IMAGE_SLOTS.style.thumbnailTestId}
+          clearTestId={IMAGE_SLOTS.style.clearTestId}
+          Icon={IMAGE_SLOTS.style.Icon}
+          onPick={onStyle}
+          active={styleActive}
+          // The style slot holds an image, so its pick IS its picture — asset
+          // and thumbnail are the same URL, and it can never be full without one.
+          pick={
+            styleThumbnail === undefined
+              ? undefined
+              : { kind: 'image', url: styleThumbnail, thumbnail: styleThumbnail }
+          }
+          onClear={onClearStyle}
+          disabled={false}
+          clearLabel={t(IMAGE_SLOTS.style.clearLabelKey)}
+          label={t(IMAGE_SLOTS.style.labelKey)}
+          tip={t(IMAGE_SLOTS.style.tipKey)}
+        />
+      )}
     </div>
   );
 });

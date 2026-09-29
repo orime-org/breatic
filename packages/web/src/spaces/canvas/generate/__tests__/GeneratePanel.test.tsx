@@ -86,9 +86,6 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(
       (container.firstChild as HTMLElement).className,
     ).toContain('w-[min(600px,92vw)]');
-    expect(screen.getByTestId('generate-presets').className).toContain(
-      'shrink-0',
-    );
     expect(screen.getByTestId('generate-execute').className).toContain(
       'shrink-0',
     );
@@ -104,11 +101,11 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.getByTestId('generate-credit')).toHaveTextContent('7');
   });
 
-  it('renders the unbuilt footer controls as disabled placeholders (岔路二 B)', () => {
+  it('draws no presets, translate or web-search control (user 2026-09-29)', () => {
     setup();
-    expect(screen.getByTestId('generate-presets')).toBeDisabled();
-    expect(screen.getByTestId('generate-online')).toBeDisabled();
-    expect(screen.getByTestId('generate-translate')).toBeDisabled();
+    expect(screen.queryByTestId('generate-presets')).toBeNull();
+    expect(screen.queryByTestId('generate-translate')).toBeNull();
+    expect(screen.queryByTestId('generate-online')).toBeNull();
   });
 
   it('hides the Camera control when the model omits the cluster (#1788 — unsupported → hidden, not greyed)', () => {
