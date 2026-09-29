@@ -44,7 +44,9 @@ vi.mock("@breatic/core", () => ({
   NotFoundError: class NotFoundError extends Error {},
 }));
 
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
+  // Real: how a run's dollars become credits is not this file's to restate.
+  creditsForUsd: (await import("../../../../domain/src/credit/usage-cost.js")).creditsForUsd,
   taskService: {},
   nodeHistoryService: {},
   assetService: { resolveOwnerStudioId: async (): Promise<string> => "studio-1" },

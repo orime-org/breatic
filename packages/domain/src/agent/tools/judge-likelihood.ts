@@ -22,7 +22,9 @@ import type { Tool } from "ai";
 import { z } from "zod";
 
 import { toolFailed } from "@domain/agent/tools/failure.js";
-import { askJev } from "@domain/agent/tools/jev.js";
+import { askJev, JEV_PINS } from "@domain/agent/tools/jev.js";
+import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
+import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import type { JevAnswers } from "@domain/agent/tools/jev.js";
 
 /**
@@ -126,14 +128,15 @@ const DESCRIPTION = [
  * The tool, ready to be registered.
  * @throws {Error} Carrying tool failure detail, or the reader's stop.
  */
-export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers> = tool({
+export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers, UsageContext> = tool({
   description: DESCRIPTION,
   inputSchema,
+  contextSchema: usageContextSchema,
   // What the panel reads about a running call, resolved by the web package.
   metadata: { runningLine: "chat.tool.judging" },
   execute: async (
     { state, questions },
-    { abortSignal }: { abortSignal?: AbortSignal },
+    { abortSignal, context }: { abortSignal?: AbortSignal; context: UsageContext },
   ): Promise<JevAnswers> => {
     const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
     if (!apiKey) {
@@ -152,6 +155,14 @@ export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers> = to
       questions,
       budgetMs: getAgentConfig().judge_likelihood_timeout_ms,
       ...(abortSignal ? { abortSignal } : {}),
+      onBilled: (costUsd) =>
+        context.usage.recordServiceCall({
+          source: "tool:judge_likelihood",
+          service: JEV_PINS.model,
+          provider: "openrouter",
+          requests: 1,
+          ...(costUsd === undefined ? {} : { costUsd }),
+        }),
     });
   },
 });

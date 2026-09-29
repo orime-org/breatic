@@ -338,10 +338,11 @@ describe("会话载荷", () => {
 
 describe("Idempotency-Key", () => {
   it("形状不合法时当场答 422，不等到模型跑完才发现", async () => {
-    // 这个 header 一路走到 `chargeOnceForGeneration` 的 refKey，而那里有
-    // `REFKEY_PATTERN` 拦它。拦得太晚：到那一步模型已经调过了、token 已经
-    // 烧掉了，而扣费抛出来的异常被 `recordTokenUsage` 的 catch 吞掉，用户
-    // 拿到一个看着成功的响应。校验属于入口。
+    // This header travels all the way to `chargeOnceForGeneration`'s refKey,
+    // where `REFKEY_PATTERN` rejects it. That is too late: by then the model
+    // has been called and paid for, and the error the charge throws is
+    // swallowed by the catch in `chargeRecorded`, so the user gets a
+    // response that looks like a success. Validation belongs at the entry.
     const fx = await seedFixture();
     const token = crypto.randomBytes(24).toString("hex");
     await setSession(getRedis(), token, fx.userId);

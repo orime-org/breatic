@@ -69,6 +69,8 @@ import { renderSearchForModel, makeSearchTools } from "@domain/agent/tools/web-s
 /** 只读形状的断言用它：schema 和描述跟这一轮的编号无关。 */
 const webSearch = makeSearchTools().web_search;
 import type { SearchAnswer } from "@domain/agent/tools/web-search.js";
+import { toolOptions, usageSpy } from "@domain/agent/__tests__/helpers/usage-spy.js";
+import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
 
 /**
  * Invoke the tool and read what the model would be handed.
@@ -85,6 +87,7 @@ import type { SearchAnswer } from "@domain/agent/tools/web-search.js";
 async function run(
   args: { query: string; count?: number },
   abortSignal?: AbortSignal,
+  usage?: UsageRecorder,
 ): Promise<string> {
   // 一轮一份：编号是每轮从头起的，一个文件里的用例各是各的一轮。
   const execute = makeSearchTools().web_search.execute;
@@ -95,11 +98,10 @@ async function run(
   const parsed = (
     webSearch.inputSchema as unknown as z.ZodType<{ query: string; count: number }>
   ).parse(args);
-  const answer = (await execute(parsed, {
-    ...(abortSignal ? { abortSignal } : {}),
-    toolCallId: "t1",
-    messages: [],
-  } as never)) as SearchAnswer;
+  const answer = (await execute(
+    parsed,
+    toolOptions(abortSignal ? { abortSignal } : {}, usage) as never,
+  )) as SearchAnswer;
   return renderSearchForModel(answer);
 }
 
@@ -195,6 +197,33 @@ describe("web_search hands the request to the shared transport", () => {
 
     expect(failure.kind).toBe("tool_failed");
     expect(httpRequestMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("web_search records what Brave billed", () => {
+  it("records one web search for a search Brave answered", async () => {
+    const spy = usageSpy();
+    await run({ query: "breatic" }, undefined, spy.recorder);
+    expect(spy.serviceCalls).toEqual([
+      { source: "tool:web_search", service: "brave_web_search", provider: "brave", requests: 1 },
+    ]);
+  });
+
+  // Brave bills successful requests only ("Only successful requests
+  // (non-error responses) are counted against your quota and billed", its
+  // rate-limiting guide).
+  it("records nothing for a search Brave refused", async () => {
+    httpRequestMock.mockImplementation(async () => new Response(null, { status: 429 }));
+    const spy = usageSpy();
+    await failureFrom(() => run({ query: "breatic" }, undefined, spy.recorder));
+    expect(spy.serviceCalls).toEqual([]);
+  });
+
+  it("records the search even when its body cannot be read as an answer", async () => {
+    httpRequestMock.mockImplementation(async () => new Response("not json", { status: 200 }));
+    const spy = usageSpy();
+    await failureFrom(() => run({ query: "breatic" }, undefined, spy.recorder));
+    expect(spy.serviceCalls).toHaveLength(1);
   });
 });
 

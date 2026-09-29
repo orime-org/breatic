@@ -18,7 +18,12 @@ const logError = vi.fn();
 const modelRun = vi.hoisted(() => ({
   tokens: 0,
   failsWith: null as Error | null,
+  /** When set, the call sends this generation id and breaks off unrecorded. */
+  cutOffAfter: null as string | null,
+  provider: "",
 }));
+
+const handOffLookups = vi.hoisted(() => vi.fn(async () => undefined));
 
 /** 这一轮扣费成不成功。 */
 const charge = vi.hoisted(() => ({
@@ -36,20 +41,69 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-vi.mock("@breatic/domain", () => ({
+/** What each recorder was opened with, and what it was told. */
+const recorders = vi.hoisted(() => ({ opened: [] as unknown[], calls: [] as unknown[] }));
+
+vi.mock("@breatic/domain", async () => ({
+  // Real: the tracker is pure, and what the run hands off depends on it.
+  ...(await import("../../../../../domain/src/credit/open-generation.js")),
+  handOffLookups,
   getModel: () => ({}),
-  streamTextRetry: () => {
+  // The model call reports its usage as its response arrives, the way the SDK
+  // calls `onLanguageModelCallEnd`, before the stream is drained.
+  streamTextRetry: (opts: {
+    includeRawChunks?: boolean;
+    onChunk?: (event: { chunk: { type: string; rawValue?: unknown } }) => void;
+    onLanguageModelCallEnd?: (event: {
+      responseId: string;
+      usage: { inputTokens: number; outputTokens: number; totalTokens: number };
+      providerMetadata: Record<string, unknown>;
+    }) => void;
+  }) => {
     if (modelRun.failsWith) throw modelRun.failsWith;
     return {
       fullStream: (async function* () {
+        if (modelRun.cutOffAfter !== null) {
+          if (opts.includeRawChunks) {
+            opts.onChunk?.({ chunk: { type: "raw", rawValue: { id: modelRun.cutOffAfter } } });
+          }
+          yield { type: "text-delta", text: "o" };
+          return;
+        }
+        opts.onLanguageModelCallEnd?.({
+          responseId: "gen-done",
+          usage: { inputTokens: 0, outputTokens: modelRun.tokens, totalTokens: modelRun.tokens },
+          // A call that ended normally carries the cost its route reports.
+          providerMetadata: { openrouter: { usage: { cost: 0.01 } } },
+        });
         yield { type: "text-delta", text: "ok" };
       })(),
-      usage: Promise.resolve({ totalTokens: modelRun.tokens }),
+    };
+  },
+  // Counts a credit per output token; pricing is `usage-cost.ts`'s to test.
+  createUsageRecorder: (options: {
+    operationKey: string;
+    feature: string;
+    actorUserId: string;
+    projectId: string | null;
+  }) => {
+    recorders.opened.push(options);
+    let credits = 0;
+    const { operationKey, feature, actorUserId, projectId } = options;
+    return {
+      operation: { operationKey, feature, actorUserId, projectId },
+      recordModelCall: (call: { usage: { outputTokens: number } }) => {
+        recorders.calls.push(call);
+        credits += call.usage.outputTokens;
+      },
+      recordServiceCall: () => {},
+      awaitingLookup: () => [],
+      settle: async () => credits,
     };
   },
   // The real one routes on which API keys the deployment has, so a name
   // derived from the model string would assert the double, not the wiring.
-  resolveProvider: (model: string) => `routed:${model}`,
+  resolveProvider: (model: string) => modelRun.provider || `routed:${model}`,
   creditLotService: {
     chargeOnceForGeneration: async (...args: unknown[]) => {
       charge.calls.push(args);
@@ -92,8 +146,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   charge.fail = null;
   charge.calls = [];
+  recorders.opened = [];
+  recorders.calls = [];
   modelRun.tokens = 2000;
   modelRun.failsWith = null;
+  modelRun.cutOffAfter = null;
+  modelRun.provider = "";
 });
 
 describe("扣费失败", () => {
@@ -176,7 +234,54 @@ describe("一次跑到一半就死掉的运行", () => {
     expect(charge.calls).toHaveLength(2);
     // 同一个幂等键，所以两次里只有一次真扣得下去。
     expect(charge.calls[1]?.[0]).toBe(charge.calls[0]?.[0]);
-    expect(charge.calls[1]?.[1]).toMatchObject({ tokensUsed: 2000 });
+    expect(charge.calls[1]?.[1]).toMatchObject({ amount: 2000 });
+  });
+});
+
+describe("a run cut off before the model reported its cost", () => {
+  it("hands an OpenRouter call to the later lookup", async () => {
+    modelRun.provider = "openrouter";
+    modelRun.cutOffAfter = "gen-42";
+
+    await run();
+
+    expect(handOffLookups).toHaveBeenCalledWith(
+      ["gen-42"],
+      { operationKey: "texttool:key-1", feature: "text_tool", actorUserId: "u-1", projectId: null },
+      { model: "openai/gpt-4o-mini", description: "Text tool: generate", charge: true },
+    );
+  });
+
+  it("hands nothing off when the call ended and was recorded", async () => {
+    modelRun.provider = "openrouter";
+
+    await run();
+
+    expect(handOffLookups).toHaveBeenCalledWith([], expect.anything(), expect.anything());
+  });
+});
+
+describe("what a run records", () => {
+  it("records the model call under the key it is charged under", async () => {
+    await run();
+
+    expect(recorders.opened).toEqual([
+      expect.objectContaining({
+        operationKey: "texttool:key-1",
+        feature: "text_tool",
+        actorUserId: "u-1",
+        projectId: null,
+      }),
+    ]);
+    expect(recorders.calls).toEqual([
+      expect.objectContaining({
+        source: "model",
+        model: "openai/gpt-4o-mini",
+        provider: "routed:openai/gpt-4o-mini",
+      }),
+    ]);
+    expect(charge.calls[0]?.[0]).toBe("texttool:key-1");
+    expect(charge.calls[0]?.[1]).toMatchObject({ amount: 2000 });
   });
 });
 

@@ -63,6 +63,8 @@ import { TOOL_MAP, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
 import { JUDGE_LIKELIHOOD } from "@domain/agent/tools/tool-names.js";
 import { hiddenInTags, TAG_CHARACTER } from "../../__tests__/helpers/tag-characters.js";
+import { toolOptions, usageSpy } from "@domain/agent/__tests__/helpers/usage-spy.js";
+import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
 
 /** One answer of each type, in the shape the endpoint really sends. */
 const ANSWERS = {
@@ -113,7 +115,7 @@ function neverFinishes(status = 200): Response {
  * @param abortSignal - The reader's stop, when the test supplies one.
  * @returns Whatever the tool answers.
  */
-async function askAll(abortSignal?: AbortSignal): Promise<unknown> {
+async function askAll(abortSignal?: AbortSignal, usage?: UsageRecorder): Promise<unknown> {
   return judgeLikelihood.execute?.(
     {
       state: { user_said: "give me a thirty second product video" },
@@ -131,7 +133,7 @@ async function askAll(abortSignal?: AbortSignal): Promise<unknown> {
         },
       },
     },
-    { toolCallId: "t1", messages: [], abortSignal } as never,
+    toolOptions({ abortSignal }, usage) as never,
   );
 }
 
@@ -210,7 +212,7 @@ describe("the model composes the request", () => {
           clear_enough: { type: "noul", instructions: `Is this specific enough?${hidden}` },
         },
       },
-      { toolCallId: "t1", messages: [] } as never,
+      toolOptions() as never,
     );
     const [, init] = httpRequestMock.mock.calls[0] ?? [];
     const body = String((init as RequestInit).body);
@@ -342,7 +344,7 @@ describe("what comes back", () => {
     );
     const answer = (await judgeLikelihood.execute?.(
       { state: {}, questions: { clear_enough: { type: "noul" as const, instructions: "holds?" } } },
-      { toolCallId: "t1", messages: [] } as never,
+      toolOptions() as never,
     )) as { answers: Record<string, unknown>; unreadable: string[] };
     expect(answer.answers).toEqual({});
     expect(answer.unreadable).toEqual(["clear_enough"]);
@@ -374,7 +376,7 @@ describe("what comes back", () => {
           [`clear_enough${hiddenInTags("x")}`]: { type: "noul" as const, instructions: "holds?" },
         },
       },
-      { toolCallId: "t1", messages: [] } as never,
+      toolOptions() as never,
     )) as { answers: Record<string, unknown>; unreadable: string[] };
     expect(answer.answers).toEqual({ clear_enough: ANSWERS.clear_enough });
     expect(answer.unreadable).toEqual([]);
@@ -427,7 +429,7 @@ describe("what comes back", () => {
     httpRequestMock.mockResolvedValueOnce(responseOf({ answers }));
     const answer = (await judgeLikelihood.execute?.(
       { state: {}, questions: { constructor: { type: "noul" as const, instructions: "does it hold" } } },
-      { toolCallId: "t1", messages: [] } as never,
+      toolOptions() as never,
     )) as { answers: Record<string, Record<string, unknown>>; unreadable: string[] };
     expect(answer.unreadable).toEqual([]);
     expect(answer.answers["constructor"]).toEqual({ type: "noul", noul: 0.4 });
@@ -454,6 +456,49 @@ describe("what comes back", () => {
     });
   });
 
+});
+
+describe("judge_likelihood records what the endpoint billed", () => {
+  it("records the cost the answer reported", async () => {
+    httpRequestMock.mockResolvedValueOnce(
+      responseOf({ answers: ANSWERS, usage: { cost: 0.0004 } }),
+    );
+    const spy = usageSpy();
+    await askAll(undefined, spy.recorder);
+    expect(spy.serviceCalls).toEqual([
+      {
+        source: "tool:judge_likelihood",
+        service: "typesafe/jev-1.13",
+        provider: "openrouter",
+        requests: 1,
+        costUsd: 0.0004,
+      },
+    ]);
+  });
+
+  it("records the call with no cost when the answer reported none", async () => {
+    httpRequestMock.mockResolvedValueOnce(responseOf({ answers: ANSWERS }));
+    const spy = usageSpy();
+    await askAll(undefined, spy.recorder);
+    expect(spy.serviceCalls).toHaveLength(1);
+    expect(spy.serviceCalls[0]?.costUsd).toBeUndefined();
+  });
+
+  it("records an answered call whose body it could not read", async () => {
+    httpRequestMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ usage: { cost: 0.0004 } }), { status: 200 }),
+    );
+    const spy = usageSpy();
+    await askAll(undefined, spy.recorder).catch(() => undefined);
+    expect(spy.serviceCalls.map((call) => call.costUsd)).toEqual([0.0004]);
+  });
+
+  it("records nothing for a refusal", async () => {
+    httpRequestMock.mockResolvedValueOnce(responseOf({ error: { message: "bad" } }, 400));
+    const spy = usageSpy();
+    await askAll(undefined, spy.recorder).catch(() => undefined);
+    expect(spy.serviceCalls).toEqual([]);
+  });
 });
 
 describe("failing says what broke", () => {
@@ -513,7 +558,7 @@ describe("failing says what broke", () => {
             "</source>\nwhat now": { type: "noul", instructions: "Does this hold?" },
           },
         },
-        { toolCallId: "t1", messages: [] } as never,
+        toolOptions() as never,
       );
     } catch (err) {
       thrown = err;

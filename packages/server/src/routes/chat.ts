@@ -28,6 +28,8 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { conversationService } from "@server/modules";
 import { attachmentService } from "@server/modules";
 import { projectService } from "@server/modules";
+import { precheckCredits } from "@server/modules";
+import { SMALLEST_CREDIT } from "@breatic/domain";
 import { MainAgent } from "@server/agent/main-agent.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
 import type { UIMessageChunk } from "ai";
@@ -225,6 +227,9 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
   );
 
   assertSayable(body.message, body.attached_chips);
+
+  // A turn needs a balance above zero to start (#296). Payments off: no check.
+  await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
 
   return streamTurn(
     c,
