@@ -414,7 +414,7 @@ models:
     mode: "i2v"
     takes_prompt: true
     tier: "optional"
-    description: "Six scene cuts in one 4K take"
+    description: "Mentioned images held as elements, in 4K"
     guide: "Keeping a character or product consistent: up to three images you mention become elements the model holds throughout the clip."
     generation_time: 600
     params:
@@ -866,8 +866,8 @@ models:
     mode: "extend"
     takes_prompt: true
     tier: "internal"
-    description: "4K, adds up to 30s, native audio"
-    guide: "Open-ended continuation at the highest ceiling — longest added segment at the highest resolution, on any source clip"
+    description: "Adds 5s at 720p with native audio"
+    guide: "Continues any source clip with a segment the prompt directs, with its own audio"
     generation_time: 600
     params:
       duration:
@@ -943,7 +943,7 @@ models:
     takes_prompt: true
     tier: "internal"
     description: "Precise transfer, keeps original audio"
-    guide: "Short, precise transfer that keeps the driving clip's own soundtrack and binds up to 3 named elements."
+    guide: "Short, precise transfer that keeps the driving clip's own soundtrack."
     generation_time: 180
     params:
       image:
@@ -1028,8 +1028,8 @@ models:
     mode: "talking_head"
     takes_prompt: true
     tier: "optional"
-    description: "Reperforms footage: head, body, mask"
-    guide: "Re-performing — drive an existing video's head, expression and posture from new speech, with a mask saying which regions may move."
+    description: "Reperforms footage: head and body"
+    guide: "Re-performing — drive an existing video's head, expression and posture from new speech."
     generation_time: 600
     params:
       audio:

@@ -512,8 +512,8 @@ models:
     mode: "upscale"
     takes_prompt: false
     tier: "internal"
-    description: "Faithful by default, dial in detail"
-    guide: "The default upscale: make it bigger and keep it itself, with one dial if you want invented detail."
+    description: "Bigger, and still itself"
+    guide: "The default upscale: make it bigger and keep it itself."
     generation_time: 120
     params:
       creativity:

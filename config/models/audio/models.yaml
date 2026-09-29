@@ -210,7 +210,7 @@ models:
     prompt_upstream: "text_prompt"
     tier: "recommended"
     description: "Foley-grade effects, seamless loops"
-    guide: "Text input — auditioning several takes of one effect and looping ambience seamlessly."
+    guide: "Text input — one effect per take, with ambience that loops seamlessly."
     generation_time: 300
     params:
       loop:
