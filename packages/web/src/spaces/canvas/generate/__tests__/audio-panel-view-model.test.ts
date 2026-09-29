@@ -236,3 +236,37 @@ describe('buildAudioPanelViewModel — what execute needs to know', () => {
     expect(vm.promptRequired).toBe(false);
   });
 });
+
+describe('buildAudioPanelViewModel — a model that reads a dialogue (#2156)', () => {
+  const GEMINI = ttsModel('gemini', {
+    params: {
+      speakers: {
+        description: '',
+        default: null,
+        type: 'items',
+        min_items: 2,
+        max_items: 2,
+        replaces: 'voice_id',
+        fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+      },
+      voice_id: { description: '', default: 'Kore', remote_source: 'voices' },
+    },
+  });
+  const models = { ...BASE, models: [GEMINI] };
+
+  it('asks for a voice when reading alone', () => {
+    const vm = buildAudioPanelViewModel({ ...models, nodes: nodes() });
+    expect(vm.voiceRequired).toBe(true);
+    expect(vm.speakersShort).toBe(false);
+  });
+
+  it('asks for the speakers instead of a voice in a dialogue', () => {
+    const record = { speakers: [{ speaker: 'Ada', voice: 'Kore' }], _stand_in_on: true };
+    const vm = buildAudioPanelViewModel({
+      ...models,
+      nodes: nodes({ model: 'gemini', paramsByModel: { gemini: record } }),
+    });
+    expect(vm.voiceRequired).toBe(false);
+    expect(vm.speakersShort).toBe(true);
+  });
+});

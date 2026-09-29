@@ -261,6 +261,7 @@ describe('audioEstimateInput — the run the price is quoted for', () => {
   it('carries the drawn slots\' picks and lengths, and nothing from a slot this mode does not draw', () => {
     const input = audioEstimateInput(
       {
+        modelEntry: undefined,
         params: { model_version: 'v9' },
         slotUrls: { musicSong: 'https://cdn/song.mp3', refAudio: 'https://cdn/ref.mp3' },
         slotDurations: { musicSong: 42, refAudio: 9 },
@@ -273,5 +274,46 @@ describe('audioEstimateInput — the run the price is quoted for', () => {
       prompt: 'a ballad',
       durations: { [AUDIO_SLOTS.musicSong.param]: [42] },
     });
+  });
+});
+
+describe('buildAudioTaskPayload — a model that reads a dialogue (#2156)', () => {
+  const gemini: ModelEntry = {
+    ...model('gemini', 'tts'),
+    params: {
+      speakers: { description: '', default: null, type: 'items', replaces: 'voice_id', min_items: 2 },
+      voice_id: { description: '', default: 'Kore', remote_source: 'voices' },
+    },
+  };
+  const pair = [
+    { speaker: 'Ada', voice: 'Kore' },
+    { speaker: 'Bo', voice: 'Puck' },
+  ];
+
+  it('sends the speakers and no voice in a dialogue, and never the switch', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: gemini,
+      params: { voice_id: 'Kore', speakers: pair, _stand_in_on: true },
+    });
+    expect(payload.params).toEqual({ speakers: pair, prompt: 'Good evening.' });
+  });
+
+  it('sends the voice and not the kept speakers when reading alone', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: gemini,
+      params: { voice_id: 'Kore', speakers: pair },
+    });
+    expect(payload.params).toEqual({ voice_id: 'Kore', prompt: 'Good evening.' });
+  });
+
+  it('prices what is sent', () => {
+    const input = audioEstimateInput(
+      { modelEntry: gemini, params: { voice_id: 'Kore', speakers: pair, _stand_in_on: true }, slotUrls: {}, slotDurations: {} },
+      [],
+      'hi',
+    );
+    expect(input.params).toEqual({ speakers: pair });
   });
 });

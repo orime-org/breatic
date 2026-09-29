@@ -23,6 +23,7 @@ import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
 import { slotSourceDurations } from '@web/spaces/canvas/generate/slots';
+import { wireParams } from '@web/spaces/canvas/generate/stand-in';
 
 /**
  * The picked source assets, under the param names their vendors read.
@@ -98,7 +99,7 @@ export function buildAudioTaskPayload(input: AudioTaskInput): TaskCreateInput {
     // Model params spread FIRST so what the user typed always wins over a
     // same-named key a malformed catalog might carry.
     params: {
-      ...input.params,
+      ...wireParams(input.model, input.params),
       prompt: input.promptText,
       // Only when the mode collects them; see `lyricsText`. After the params
       // spread for the same reason the prompt is: what the user wrote wins
@@ -113,6 +114,8 @@ export function buildAudioTaskPayload(input: AudioTaskInput): TaskCreateInput {
 
 /** What the price reads off the audio panel's view model. */
 interface AudioEstimateSource {
+  /** The model the params belong to; it decides which side of a stand-in is priced. */
+  modelEntry: ModelEntry | undefined;
   params: Readonly<Record<string, unknown>>;
   slotUrls: AudioSlotUrls;
   slotDurations: Partial<Record<AudioSlot, number>>;
@@ -132,7 +135,10 @@ export function audioEstimateInput(
   prompt: string,
 ): EstimateInput {
   return {
-    params: { ...vm.params, ...sourceParams(slots, vm.slotUrls) },
+    params: {
+      ...(vm.modelEntry ? wireParams(vm.modelEntry, vm.params) : vm.params),
+      ...sourceParams(slots, vm.slotUrls),
+    },
     prompt,
     durations: slotSourceDurations(AUDIO_SLOTS, slots, vm.slotDurations),
   };
