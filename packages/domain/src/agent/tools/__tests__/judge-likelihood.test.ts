@@ -362,6 +362,24 @@ describe("what comes back", () => {
     expect(answer.unreadable).toEqual(["how_to_build"]);
   });
 
+  it("reads the answer to a question whose name carried tag characters", async () => {
+    // The endpoint is sent the cleaned name and answers under it.
+    httpRequestMock.mockResolvedValueOnce(
+      responseOf({ answers: { clear_enough: ANSWERS.clear_enough } }),
+    );
+    const answer = (await judgeLikelihood.execute?.(
+      {
+        state: {},
+        questions: {
+          [`clear_enough${hiddenInTags("x")}`]: { type: "noul" as const, instructions: "holds?" },
+        },
+      },
+      { toolCallId: "t1", messages: [] } as never,
+    )) as { answers: Record<string, unknown>; unreadable: string[] };
+    expect(answer.answers).toEqual({ clear_enough: ANSWERS.clear_enough });
+    expect(answer.unreadable).toEqual([]);
+  });
+
   it("names a key whose probability falls outside zero to one", async () => {
     httpRequestMock.mockResolvedValueOnce(
       responseOf({ answers: { ...ANSWERS, clear_enough: { type: "noul", noul: 1.4 } } }),
