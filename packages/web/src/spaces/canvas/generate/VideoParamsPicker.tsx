@@ -17,6 +17,7 @@ import {
   ParamOptionGroup,
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import { PARAMS_PILL_CLASS } from '@web/spaces/canvas/generate/generate-tools';
 import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
 import { paramValues } from '@breatic/shared';
 import { modelControls } from '@web/spaces/canvas/generate/model-controls';
@@ -235,11 +236,11 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
           variant={null}
           size={null}
           data-testid='generate-video-params-trigger'
-          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className={PARAMS_PILL_CLASS}
         >
           {/* truncate: catalog values carry no length cap at the sanitize
               boundary — unbounded, a verbose value would stretch the footer. */}
-          <span className='max-w-[12rem] truncate'>{label}</span>
+          <span className='truncate'>{label}</span>
           <ChevronDown
             className='h-3.5 w-3.5 shrink-0 opacity-60'
             aria-hidden='true'

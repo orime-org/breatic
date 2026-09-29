@@ -57,6 +57,11 @@ const FULL = model({
 });
 
 describe('VideoParamsPicker', () => {
+  it('caps the pill at 150px, like the image and audio params pills', () => {
+    render(<VideoParamsPicker model={FULL} params={{ aspect_ratio: '16:9' }} onChange={() => {}} />);
+    expect(screen.getByTestId('generate-video-params-trigger').className).toContain('max-w-[150px]');
+  });
+
   it('shows ratio, resolution and duration on the trigger', () => {
     render(
       <VideoParamsPicker

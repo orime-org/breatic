@@ -67,6 +67,11 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
     expect(screen.getByTestId('generate-ratio-trigger')).toHaveTextContent('1K · Auto · Max');
   });
 
+  it('caps the pill at 150px, like the video and audio params pills', () => {
+    render(<RatioResolutionPicker model={FULL} value={{ aspect_ratio: '16:9', resolution: '2K' }} onChange={() => {}} />);
+    expect(screen.getByTestId('generate-ratio-trigger').className).toContain('max-w-[150px]');
+  });
+
   it('picking a ratio fires onChange with the aspect_ratio', () => {
     const onChange = vi.fn();
     render(

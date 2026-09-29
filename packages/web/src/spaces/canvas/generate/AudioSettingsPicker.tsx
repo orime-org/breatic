@@ -25,6 +25,7 @@ import {
   settingsLayout,
   type SettingsRow,
 } from '@web/spaces/canvas/generate/audio-settings';
+import { PARAMS_PILL_CLASS } from '@web/spaces/canvas/generate/generate-tools';
 import { ItemsEditor } from '@web/spaces/canvas/generate/ItemsEditor';
 import { modelControls, ownControlSummary, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
@@ -251,7 +252,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
           size={null}
           data-testid='generate-audio-settings-trigger'
           aria-label={t('canvas.generatePanel.audioSettings')}
-          className='flex h-8 min-w-0 max-w-[150px] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className={PARAMS_PILL_CLASS}
         >
           {hasVoice ? <Volume2 className='h-4 w-4 shrink-0' aria-hidden='true' /> : null}
           {/* Truncated past 150px: the first words name the voice well enough

@@ -18,6 +18,7 @@ import {
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { paramValues } from '@breatic/shared';
+import { PARAMS_PILL_CLASS } from '@web/spaces/canvas/generate/generate-tools';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { optionLabel, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
@@ -106,13 +107,13 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
           variant={null}
           size={null}
           data-testid='generate-ratio-trigger'
-          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className={PARAMS_PILL_CLASS}
         >
           {/* truncate: catalog aspect_ratio/resolution values carry no length
               cap at the sanitize boundary — unbounded, a verbose value would
               stretch the panel footer row (same class as the ModelPicker
               display_name fix). */}
-          <span className='max-w-[10rem] truncate'>{label}</span>
+          <span className='truncate'>{label}</span>
           <ChevronDown
             className='h-3.5 w-3.5 shrink-0 opacity-60'
             aria-hidden='true'
