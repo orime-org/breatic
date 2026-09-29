@@ -180,24 +180,21 @@ export const chatMessageSchema = z.object({
    */
   conversation_id: z.string().uuid(),
   /**
-   * V13 (spec §10.18.2): canvas-node snapshots the user attached to
-   * this message via the chips bar. Required field but defaults to
-   * `[]` so legacy callers (skills / SDK that don't surface a chips
-   * bar) keep working. The chat handler injects each chip's
-   * `data_snapshot` into the LLM prompt as a structured context section.
+   * The items in the composer's tray when the message was sent: files
+   * picked with the attach button and pieces of the canvas added to the
+   * agent. Defaults to `[]` for callers with no tray. `userTurnForModel`
+   * puts them in front of the message, one section per item.
    */
   attached_chips: z.array(chatAttachedChipSchema).default([]),
   /**
-   * V13 (spec §10.18.5): user-picked Skill name (resolved against the
-   * registered skills/ directory). Optional — bare chat works without
-   * a skill.
+   * A skill name for this message. The composer has no control that sends
+   * it, and the `/message` handler does not read it.
    */
   skill: z.string().optional(),
   /**
-   * V13: model override. Spec §10.18.5 v13 dropped the in-composer
-   * model picker (model is now decided by the Skill or global
-   * settings), but we keep the wire field so SDK callers and test
-   * cases can override explicitly. Normal chat omits this.
+   * A model override for this message. The composer does not send it, and
+   * the `/message` handler does not read it: the model comes from the
+   * agent config.
    */
   model: z.string().optional(),
 });
