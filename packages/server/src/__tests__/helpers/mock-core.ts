@@ -532,6 +532,21 @@ function usageRecorderDouble(): {
 
 export const domainMock = () => ({
   createUsageRecorder: vi.fn(usageRecorderDouble),
+  // The same behaviour as the real one: the id of the call that started and
+  // has not ended.
+  trackOpenGeneration: () => {
+    let open: string | undefined;
+    return {
+      seen: (rawValue: unknown) => {
+        const id = (rawValue as { id?: unknown } | undefined)?.id;
+        if (typeof id === "string" && id.startsWith("gen-")) open = id;
+      },
+      ended: () => {
+        open = undefined;
+      },
+      pending: () => open,
+    };
+  },
   // The same shape as the real one: every tool in the set gets the recorder.
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
     Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),

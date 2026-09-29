@@ -18,6 +18,7 @@ import { getModelForTool, getPromptForTool } from "@server/config/text-tools.js"
 import { env, logger } from "@breatic/core";
 import { creditLotService, createUsageRecorder } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
+import { watchInterruptedCall, type InterruptedCallWatch } from "@server/agent/interrupted-call.js";
 import { getRedis } from "@breatic/core";
 
 /** SSE event yielded during text tool execution. */
@@ -153,10 +154,22 @@ export async function* executeTextTool(
     projectId: null,
     onMissingCost: (row) => logger.error({ row, userId, tool }, "agent_usage_cost_missing"),
   });
+  // Set once the model is known; watches for an OpenRouter call cut off
+  // before it reported its cost.
+  let interrupted: InterruptedCallWatch | undefined;
 
   try {
     const model = getModelForTool(tool);
     modelString = model;
+    const watch = watchInterruptedCall({
+      model,
+      operationKey: `texttool:${idempotencyKey}`,
+      feature: "text_tool",
+      actorUserId: userId,
+      projectId: null,
+      description: `Text tool: ${tool}`,
+    });
+    interrupted = watch;
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);
 
@@ -167,7 +180,9 @@ export async function* executeTextTool(
       stopWhen: stepCountIs(1),
       temperature: 0.7,
       abortSignal: signal,
+      ...watch.streamOptions,
       onLanguageModelCallEnd: ({ usage: spent, providerMetadata }) => {
+        watch.ended();
         totalTokens += spent.totalTokens ?? 0;
         usage.recordModelCall({
           source: "model",
@@ -190,6 +205,7 @@ export async function* executeTextTool(
     const creditsUsed = await chargeRecorded(
       userId,
       usage,
+      interrupted,
       tool,
       idempotencyKey,
       modelString,
@@ -210,6 +226,7 @@ export async function* executeTextTool(
     const creditsUsed = await chargeRecorded(
       userId,
       usage,
+      interrupted,
       tool,
       idempotencyKey,
       modelString,
@@ -240,6 +257,8 @@ export async function* executeTextTool(
  * charge at most once.
  * @param userId - Authenticated user ID the usage is recorded against.
  * @param usage - The run's recorder.
+ * @param interrupted - The run's watch for a call cut off before it reported
+ *   its cost, once the model was known.
  * @param tool - Tool name recorded on the ledger row.
  * @param idempotencyKey - Per-request key combined into the `texttool:` ref to guarantee idempotency.
  * @param modelString - The model that produced the text, `null` when the run
@@ -250,11 +269,17 @@ export async function* executeTextTool(
 async function chargeRecorded(
   userId: string,
   usage: UsageRecorder,
+  interrupted: InterruptedCallWatch | undefined,
   tool: string,
   idempotencyKey: string,
   modelString: string | null,
   tokens: number,
 ): Promise<number> {
+  // A call cut off before it reported its cost is looked up and charged
+  // later, under a key of its own.
+  await interrupted?.handOff().catch((err: unknown) =>
+    logger.error({ err, userId, tool }, "usage_lookup_enqueue_failed"),
+  );
   try {
     const credits = await usage.settle();
     if (credits <= 0) return 0;

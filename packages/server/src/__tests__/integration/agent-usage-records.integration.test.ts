@@ -16,6 +16,10 @@ let provider = "deepseek";
 let finishMetadata: { openrouter: { usage: { cost: number } } } | undefined;
 /** When set, the first model call of a turn asks for this search first. */
 let searchFirst: string | undefined;
+/** When set, the model call sends this generation id and then breaks off. */
+let cutOffAfter: string | undefined;
+/** When set, a call that ends normally still carries this generation id. */
+let rawId: string | undefined;
 let modelCalls = 0;
 
 vi.mock("@breatic/domain", async (importOriginal) => {
@@ -27,6 +31,12 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     getModel: () =>
       modelProducing(() => {
         modelCalls += 1;
+        if (cutOffAfter !== undefined) {
+          return [
+            { type: "raw", rawValue: { id: cutOffAfter, choices: [] } },
+            { type: "error", error: new Error("upstream connection reset") },
+          ];
+        }
         if (searchFirst !== undefined && modelCalls === 1) {
           return [
             {
@@ -43,7 +53,11 @@ vi.mock("@breatic/domain", async (importOriginal) => {
           finish.type === "finish" && finishMetadata !== undefined
             ? { ...finish, providerMetadata: finishMetadata }
             : finish;
-        return [...saying("hi").filter((part) => part.type !== "finish"), reported];
+        return [
+          ...(rawId === undefined ? [] : [{ type: "raw" as const, rawValue: { id: rawId } }]),
+          ...saying("hi").filter((part) => part.type !== "finish"),
+          reported,
+        ];
       }),
   };
 });
@@ -51,7 +65,14 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { initCore, getRedis, setSession, sessionCookieName, loadLocales } from "@breatic/core";
+import {
+  initCore,
+  getRedis,
+  setSession,
+  sessionCookieName,
+  loadLocales,
+  createQueue,
+} from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import type { Hono } from "hono";
 
@@ -190,11 +211,19 @@ describe("a chat turn's model calls are recorded and charged at their cost", () 
     expect(Number(spent!.total)).toBeCloseTo(-Number(rows[0]!.credits), 4);
   }, 60_000);
 
-  it("takes the cost OpenRouter reports", async () => {
+  it("takes the cost OpenRouter reports, and hands nothing to the later lookup", async () => {
     provider = "openrouter";
     finishMetadata = { openrouter: { usage: { cost: 0.0123 } } };
+    rawId = `gen-${crypto.randomBytes(6).toString("hex")}`;
+    const queue = createQueue("usage-lookup");
     const seeded = await seed(100_000);
-    expect(await send(seeded)).toBe(200);
+    try {
+      expect(await send(seeded)).toBe(200);
+      expect(await queue.getJob(rawId)).toBeUndefined();
+    } finally {
+      rawId = undefined;
+      await queue.close();
+    }
 
     const [row] = await sql<{ cost_usd: string; cost_source: string; credits: string }[]>`
       SELECT * FROM agent_usage_records WHERE actor_user_id = ${seeded.userId}
@@ -227,6 +256,54 @@ describe("a chat turn's tool calls are recorded under the same turn", () => {
       expect(new Set(rows.map((row) => row.operation_key)).size).toBe(1);
     } finally {
       searchFirst = undefined;
+    }
+  }, 60_000);
+});
+
+describe("an OpenRouter call cut off before it reported its cost", () => {
+  it("is handed to the later lookup under its generation id", async () => {
+    provider = "openrouter";
+    finishMetadata = undefined;
+    const generationId = `gen-${crypto.randomBytes(6).toString("hex")}`;
+    cutOffAfter = generationId;
+    const queue = createQueue("usage-lookup");
+    try {
+      const seeded = await seed(100_000);
+      await send(seeded);
+
+      const job = await queue.getJob(generationId);
+      expect(job?.data).toMatchObject({
+        generationId,
+        feature: "chat_turn",
+        source: "model",
+        actorUserId: seeded.userId,
+        projectId: seeded.projectId,
+      });
+      expect(job?.data.operationKey).toMatch(new RegExp(`^turn:${seeded.conversationId}:\\d+$`));
+      expect(job?.opts.delay).toBeGreaterThan(0);
+
+      const rows = await sql`SELECT 1 FROM agent_usage_records WHERE actor_user_id = ${seeded.userId}`;
+      expect(rows).toHaveLength(0);
+      await job?.remove();
+    } finally {
+      cutOffAfter = undefined;
+      await queue.close();
+    }
+  }, 60_000);
+
+  it("is not handed off for a model reached directly", async () => {
+    provider = "deepseek";
+    finishMetadata = undefined;
+    const generationId = `gen-${crypto.randomBytes(6).toString("hex")}`;
+    cutOffAfter = generationId;
+    const queue = createQueue("usage-lookup");
+    try {
+      const seeded = await seed(100_000);
+      await send(seeded);
+      expect(await queue.getJob(generationId)).toBeUndefined();
+    } finally {
+      cutOffAfter = undefined;
+      await queue.close();
     }
   }, 60_000);
 });

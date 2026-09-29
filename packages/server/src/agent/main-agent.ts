@@ -24,6 +24,7 @@ import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
 import { creditLotService, createUsageRecorder, usageContextFor } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
+import { watchInterruptedCall, type InterruptedCallWatch } from "@server/agent/interrupted-call.js";
 import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
 import { userTurnForModel } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
@@ -231,6 +232,9 @@ export class MainAgent {
       onMissingCost: (row) =>
         logger.error({ row, userId, conversationId }, "agent_usage_cost_missing"),
     });
+    // Set once the model is known; watches for an OpenRouter call cut off
+    // before it reported its cost.
+    let interrupted: InterruptedCallWatch | undefined;
 
     // The SDK does not throw when the provider fails. It puts an `error`
     // chunk on the stream and closes it normally, so nothing rejects and
@@ -343,6 +347,15 @@ export class MainAgent {
 
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
+      const watch = watchInterruptedCall({
+        model: agentConfig.modelId,
+        operationKey: `turn:${conversationId}:${turnIndex}`,
+        feature: "chat_turn",
+        actorUserId: userId,
+        projectId,
+        description: "Agent chat",
+      });
+      interrupted = watch;
 
       const result = streamTextRetry({
         model: getModel(agentConfig.modelId),
@@ -376,7 +389,9 @@ export class MainAgent {
         // measured rather than inferred from what came after it -- the gap
         // between a stretch ending and the next part starting is a tool call
         // and a round trip, which is not thinking.
+        includeRawChunks: watch.streamOptions.includeRawChunks,
         onChunk: ({ chunk }) => {
+          watch.streamOptions.onChunk({ chunk });
           if (chunk.type === "reasoning-start") thinkingOpenedAt = Date.now();
           else if (chunk.type === "reasoning-end" && thinkingOpenedAt !== undefined) {
             thoughtForMs += Date.now() - thinkingOpenedAt;
@@ -387,6 +402,7 @@ export class MainAgent {
         // for run: a turn stopped while a tool is running has still paid for
         // the call that asked for it.
         onLanguageModelCallEnd: ({ usage: spent, providerMetadata }) => {
+          watch.ended();
           usage.recordModelCall({
             source: "model",
             model: agentConfig.modelId,
@@ -599,6 +615,11 @@ export class MainAgent {
                   }
                 : undefined,
             bill: async () => {
+              // A call cut off before it reported its cost is looked up and
+              // charged later, under a key of its own.
+              await interrupted?.handOff().catch((err: unknown) =>
+                logger.error({ err, userId, conversationId, turnIndex }, "usage_lookup_enqueue_failed"),
+              );
               creditsUsed = await usage.settle();
               if (creditsUsed === 0) return;
 

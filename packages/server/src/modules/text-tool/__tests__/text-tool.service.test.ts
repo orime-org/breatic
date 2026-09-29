@@ -18,7 +18,13 @@ const logError = vi.fn();
 const modelRun = vi.hoisted(() => ({
   tokens: 0,
   failsWith: null as Error | null,
+  /** When set, the call sends this generation id and breaks off unrecorded. */
+  cutOffAfter: null as string | null,
+  provider: "",
 }));
+
+const enqueueUsageLookup = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("@server/agent/usage-lookup-queue.js", () => ({ enqueueUsageLookup }));
 
 /** 这一轮扣费成不成功。 */
 const charge = vi.hoisted(() => ({
@@ -44,6 +50,8 @@ vi.mock("@breatic/domain", () => ({
   // The model call reports its usage as its response arrives, the way the SDK
   // calls `onLanguageModelCallEnd`, before the stream is drained.
   streamTextRetry: (opts: {
+    includeRawChunks?: boolean;
+    onChunk?: (event: { chunk: { type: string; rawValue?: unknown } }) => void;
     onLanguageModelCallEnd?: (event: {
       usage: { inputTokens: number; outputTokens: number; totalTokens: number };
       providerMetadata: undefined;
@@ -52,6 +60,13 @@ vi.mock("@breatic/domain", () => ({
     if (modelRun.failsWith) throw modelRun.failsWith;
     return {
       fullStream: (async function* () {
+        if (modelRun.cutOffAfter !== null) {
+          if (opts.includeRawChunks) {
+            opts.onChunk?.({ chunk: { type: "raw", rawValue: { id: modelRun.cutOffAfter } } });
+          }
+          yield { type: "text-delta", text: "o" };
+          return;
+        }
         opts.onLanguageModelCallEnd?.({
           usage: { inputTokens: 0, outputTokens: modelRun.tokens, totalTokens: modelRun.tokens },
           providerMetadata: undefined,
@@ -75,7 +90,19 @@ vi.mock("@breatic/domain", () => ({
   },
   // The real one routes on which API keys the deployment has, so a name
   // derived from the model string would assert the double, not the wiring.
-  resolveProvider: (model: string) => `routed:${model}`,
+  resolveProvider: (model: string) => modelRun.provider || `routed:${model}`,
+  trackOpenGeneration: () => {
+    let open: string | undefined;
+    return {
+      seen: (raw: { id?: string } | undefined) => {
+        open = raw?.id ?? open;
+      },
+      ended: () => {
+        open = undefined;
+      },
+      pending: () => open,
+    };
+  },
   creditLotService: {
     chargeOnceForGeneration: async (...args: unknown[]) => {
       charge.calls.push(args);
@@ -122,6 +149,8 @@ beforeEach(() => {
   recorders.calls = [];
   modelRun.tokens = 2000;
   modelRun.failsWith = null;
+  modelRun.cutOffAfter = null;
+  modelRun.provider = "";
 });
 
 describe("扣费失败", () => {
@@ -205,6 +234,34 @@ describe("一次跑到一半就死掉的运行", () => {
     // 同一个幂等键，所以两次里只有一次真扣得下去。
     expect(charge.calls[1]?.[0]).toBe(charge.calls[0]?.[0]);
     expect(charge.calls[1]?.[1]).toMatchObject({ amount: 2000 });
+  });
+});
+
+describe("a run cut off before the model reported its cost", () => {
+  it("hands an OpenRouter call to the later lookup", async () => {
+    modelRun.provider = "openrouter";
+    modelRun.cutOffAfter = "gen-42";
+
+    await run();
+
+    expect(enqueueUsageLookup).toHaveBeenCalledWith({
+      generationId: "gen-42",
+      model: "openai/gpt-4o-mini",
+      operationKey: "texttool:key-1",
+      feature: "text_tool",
+      source: "model",
+      actorUserId: "u-1",
+      projectId: null,
+      description: "Text tool: generate",
+    });
+  });
+
+  it("hands nothing off when the call ended and was recorded", async () => {
+    modelRun.provider = "openrouter";
+
+    await run();
+
+    expect(enqueueUsageLookup).not.toHaveBeenCalled();
   });
 });
 
