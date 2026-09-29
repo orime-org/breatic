@@ -74,3 +74,20 @@ test('a video model names its own params and cuts none of their options', async 
   }
   await expect(page.getByText('Emotion', { exact: true })).toBeVisible();
 });
+
+test('a param is named in the reader\'s language, its options stay as the vendor spells them', async ({ page }) => {
+  await page.evaluate(() => localStorage.setItem('breatic.locale', 'zh-CN'));
+  await page.reload();
+  const nodeId = crypto.randomUUID();
+  await seedNode(nodeId, 'video', undefined, -350);
+  await openGenerate(nodeId, 'generate-video-execute');
+
+  await page.getByTestId('generate-video-mode-trigger').click();
+  await page.getByTestId('generate-video-mode-talking-head').click();
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-sync-react-1').click();
+  await page.getByTestId('generate-video-params-trigger').click();
+  await expect(page.getByText('情绪', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('generate-param-emotion-option-happy')).toHaveText('Happy');
+  await page.evaluate(() => localStorage.removeItem('breatic.locale'));
+});
