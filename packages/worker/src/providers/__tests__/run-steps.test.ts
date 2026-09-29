@@ -272,6 +272,38 @@ describe("runCatalogTask", () => {
     expect(retired).toEqual(["voice:BreaticGone1"]);
   });
 
+  // The text Kling answered on 2026-09-29 for an element id it never issued.
+  it("forgets a cached element the upstream no longer knows", async () => {
+    const { deps, clones, retired } = stores();
+    clones.set("element:sha-of-https://a/cat.png:Element 1", "el-gone");
+    runPredictionMock.mockRejectedValueOnce(new UpstreamTaskFailed("wavespeed", "Element id not found: el-gone"));
+
+    await expect(
+      runCatalogTask(deps, CTX, "video", "Element 1 waves", "kling-video-o3-4k-image-to-video", {
+        image: "https://a/first.png",
+        elements: ["https://a/cat.png"],
+        duration: 5,
+      }),
+    ).rejects.toThrow(/Element id not found/);
+    expect(retired).toEqual(["element:el-gone"]);
+  });
+
+  // Mureka answers an unknown vocal id with the same words it uses for any
+  // refused input, so a refusal says nothing about the cached vocal.
+  it("keeps a cached vocal through Mureka's general refusal", async () => {
+    const { deps, clones, retired } = stores();
+    clones.set("vocal:sha-of-https://a/voice.mp3", "163346152292353");
+    runPredictionMock.mockRejectedValueOnce(
+      new UpstreamTaskFailed("wavespeed", "The provider rejected the request. Please check your inputs and try again."),
+    );
+
+    await expect(
+      runCatalogTask(deps, CTX, "audio", "a song", "mureka-v9.5-generate-song", { vocal: "https://a/voice.mp3" }),
+    ).rejects.toThrow(/provider rejected/);
+    expect(call(0)).toMatchObject({ endpoint: "mureka-ai/mureka-v9.5/generate-song", body: { vocal_id: "163346152292353" } });
+    expect(retired).toEqual([]);
+  });
+
   it("makes one element per reference image, named by its place, and sends their ids with the video", async () => {
     const { deps, clones, steps } = stores();
     answers([{ element_id: "el-1" }], [{ element_id: "el-2" }], ["https://cdn/video.mp4"]);

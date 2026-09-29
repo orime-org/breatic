@@ -59,11 +59,14 @@ const UPLOADS = {
 
 /**
  * How the upstream says a cloned id it once gave is gone, by clone kind —
- * the error text a call with an unknown voice id returned when probed on
- * 2026-09-28.
+ * the error text a call with an unknown id returned when probed (voice
+ * 2026-09-28, element 2026-09-29). Vocal has no entry: Mureka answers an
+ * unknown vocal id with the same words it uses for any refused input, so a
+ * refusal cannot tell a gone vocal from a bad lyric.
  */
 const GONE: Readonly<Partial<Record<CloneKind, RegExp>>> = {
   voice: /Voice ID does not exist/,
+  element: /Element id not found/,
 };
 
 /** What the earlier steps of a run answered, for the ones after them. */
