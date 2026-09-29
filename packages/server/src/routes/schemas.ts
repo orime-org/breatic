@@ -97,18 +97,16 @@ export const imageToolSchema = z.discriminatedUnion("tool", [
   // / `manual-adjust` belong in the browser (see
   // `feedback_frontend_backend_boundary` memory) and ship as Category A
   // — same rationale that motivated `adjust` moving to Category A.
-]).superRefine((request, ctx) => {
-  // The upscaler bills by output megapixels, which follow the source's shape.
-  if (request.tool !== "upscale" || request.output_resolution === undefined) return;
-  if (request.source_width === undefined || request.source_height === undefined) {
-    ctx.addIssue({ code: "custom", path: ["source_width"], message: "source_width and source_height are required with output_resolution" });
-  }
-}).transform((request) => {
+]).transform((request, ctx) => {
   if (request.tool !== "upscale") return request;
   const { output_resolution, source_width, source_height, ...rest } = request;
-  return output_resolution === undefined || source_width === undefined || source_height === undefined
-    ? rest
-    : { ...rest, target_megapixels: upscaleMegapixels(output_resolution, source_width, source_height) };
+  if (output_resolution === undefined) return rest;
+  // The upscaler bills by output megapixels, which follow the source's shape.
+  if (source_width === undefined || source_height === undefined) {
+    ctx.addIssue({ code: "custom", path: ["source_width"], message: "source_width and source_height are required with output_resolution" });
+    return z.NEVER;
+  }
+  return { ...rest, target_megapixels: upscaleMegapixels(output_resolution, source_width, source_height) };
 });
 
 // Mini-Tools: Video
