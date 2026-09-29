@@ -13,7 +13,8 @@
  * `&`, `*`, `_` or a backtick shows as those characters, escaped once. And
  * every mail carries the same layout: the configured logo, the English
  * slogan, a heading, a button only when there is something to do, and the
- * footer — each in the recipient's language except the slogan and the brand —
+ * footer — each in the recipient's language except the slogan, the product's
+ * own names and the social links —
  * with a plain-text part saying the same thing.
  */
 

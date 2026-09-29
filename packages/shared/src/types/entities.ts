@@ -34,7 +34,7 @@ export interface UserEntity {
   membershipTier: MembershipTier;
   /**
    * The account's language. Emails to this account are rendered in it, and
-   * after sign-in the interface switches to it.
+   * the interface switches to it at sign-in and on a cold load.
    */
   locale: string;
   createdAt: Date;

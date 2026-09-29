@@ -36,7 +36,7 @@ export interface AuthVariables {
     membershipTier: MembershipTier;
     /**
      * The account's language. `/auth/me` hands it to the client, which
-     * switches the interface to it after sign-in.
+     * switches the interface to it when a page loads with a session.
      */
     locale: string;
   };

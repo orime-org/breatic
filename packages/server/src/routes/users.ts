@@ -83,8 +83,8 @@ const localeSchema = z.object({ locale: z.enum(SUPPORTED) });
  * `PATCH /api/v1/users/me/locale` — record the account's language.
  *
  * Sent when the user switches the interface language. Every later email to
- * this account is rendered in it, and the interface switches to it after the
- * next sign-in. A language the product does not ship is refused with 422.
+ * this account is rendered in it, and the interface switches to it at the next
+ * sign-in or page load. A language the product does not ship is refused with 422.
  * @returns `200` with `{ data: { locale } }`
  */
 users.patch("/me/locale", validate("json", localeSchema), async (c) => {

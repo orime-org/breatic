@@ -9,8 +9,9 @@
  * rendered in the recipient's language. Markup comes only from the catalog:
  * `<b>`, `<code>`, `<em>` and `<mailto>` are tags there, and every parameter is escaped
  * before it is inserted into the HTML part, so a name carrying `<b>` or `&`
- * shows as those characters. The slogan and the brand name are the only words
- * that stay English.
+ * shows as those characters. The slogan, the product's own names (Breatic,
+ * Studio, Project and the role names) and proper names (the social networks,
+ * the company) stay English.
  *
  * The layout is written once in MJML and compiled to client-safe HTML the
  * first time a mail of its shape is sent; each mail then fills in its pieces.

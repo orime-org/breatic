@@ -34,7 +34,8 @@ layout:
   # except the language the site serves at its root, which has no <locale>.
   site_url: https://breatic.ai
   site_root_locale: en
-  # Where the footer's help line sends people.
+  # Where the footer's help line sends people, and the address a purchase
+  # receipt gives the buyer for questions about that purchase.
   contact_email: contact@breatic.ai
   # The footer's social row, in this order. Same links as the marketing
   # site's footer.
