@@ -149,6 +149,12 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
       expect(mails[kind]!.html).toContain(`<a href="${LINK}">`);
     }
   });
+
+  // Aliyun DirectMail refuses a message whose link text is the bare address
+  // ("554 Reject by content spam"), measured against the verification mail.
+  it.each(Object.keys(mails))("%s labels its link with words, never the address", (kind) => {
+    expect(mails[kind]!.html).not.toContain(`>${LINK}</a>`);
+  });
 });
 
 describe("the language actually changes", () => {
