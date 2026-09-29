@@ -7,7 +7,7 @@
  *
  * Every sentence comes from `server.mail.*` in the locale catalogs and is
  * rendered in the recipient's language. Markup comes only from the catalog:
- * `<b>`, `<code>` and `<em>` are tags there, and every parameter is escaped
+ * `<b>`, `<code>`, `<em>` and `<mailto>` are tags there, and every parameter is escaped
  * before it is inserted into the HTML part, so a name carrying `<b>` or `&`
  * shows as those characters. The slogan and the brand name are the only words
  * that stay English.
@@ -33,6 +33,15 @@ const FONT =
 const INK = "#1e1e1e";
 const MUTED = "#5f5f5f";
 const PAGE = "#f0f0f0";
+/** Links under the card, and addresses in it; `nowrap` wraps a link whole. */
+const LINK_STYLE = `color:${MUTED};text-decoration:underline;white-space:nowrap;`;
+/**
+ * Languages that separate words with spaces and keep each word whole at a
+ * line end. Chinese and Japanese break between any two characters.
+ */
+const WORD_SPACED_LOCALES: ReadonlySet<string> = new Set(["ko"]);
+/** The class every text block carries, so a rule can reach them and nothing else. */
+const TEXT_CLASS = "mail-text";
 
 /**
  * Escape HTML-significant chars in user-supplied strings (XSS-safe email body).
@@ -115,6 +124,7 @@ function toHtml(message: MailMessage): string {
     code: (chunks) =>
       `<code style="font-family:ui-monospace,Menlo,monospace;font-size:13px;background:${PAGE};border-radius:4px;padding:2px 6px;">${chunks.join("")}</code>`,
     em: (chunks) => `<em>${chunks.join("")}</em>`,
+    mailto: (chunks) => `<a href="mailto:${chunks.join("")}" style="${LINK_STYLE}">${chunks.join("")}</a>`,
   });
 }
 
@@ -130,7 +140,7 @@ function toText(message: MailMessage): string {
    * @returns The content as plain text.
    */
   const plain = (chunks: string[]): string => chunks.join("");
-  return tRich(message.key, message.params ?? {}, { b: plain, code: plain, em: plain });
+  return tRich(message.key, message.params ?? {}, { b: plain, code: plain, em: plain, mailto: plain });
 }
 
 /**
@@ -140,7 +150,7 @@ function toText(message: MailMessage): string {
  * @returns The anchor.
  */
 function footerLink(label: string, href: string): string {
-  return `<a href="${escapeHtml(href)}" style="color:${MUTED};text-decoration:underline;">${label}</a>`;
+  return `<a href="${escapeHtml(href)}" style="${LINK_STYLE}">${label}</a>`;
 }
 
 /**
@@ -193,9 +203,10 @@ function renderPieces(locale: string, spec: MailSpec): RenderedPieces {
  * Write the MJML source of the layout, with `%%NAME%%` where each mail's
  * pieces go.
  * @param withAction - Whether the card carries a button.
+ * @param keepWords - Whether a word stays whole at a line end.
  * @returns The MJML source.
  */
-function layoutSource(withAction: boolean): string {
+function layoutSource(withAction: boolean, keepWords: boolean): string {
   const button = withAction
     ? `<mj-button href="%%ACTION_URL%%" align="center" padding="0 0 24px" inner-padding="11px 20px"
          background-color="${INK}" color="#ffffff" border-radius="8px" font-size="14px" font-weight="600" line-height="1">%%ACTION_LABEL%%</mj-button>`
@@ -205,17 +216,25 @@ function layoutSource(withAction: boolean): string {
    * One centred footer line.
    * @param content - The line's HTML or placeholder.
    * @param top - Space above it, in pixels.
+   * @param lineHeight - A row of links wraps onto 24px lines, so a wrapped
+   *   link sits the WCAG 2.5.8 target spacing from the one above it.
    * @returns The MJML text element.
    */
-  const footerRow = (content: string, top: number): string =>
-    `<mj-text align="center" padding="${top}px 24px 0" font-size="12px" line-height="1.6" color="${MUTED}">${content}</mj-text>`;
+  const footerRow = (content: string, top: number, lineHeight = "1.6"): string =>
+    `<mj-text align="center" padding="${top}px 24px 0" font-size="12px" line-height="${lineHeight}" color="${MUTED}">${content}</mj-text>`;
+  // word-break is inherited, so on each text block it reaches the lists and
+  // paragraphs a mail's own block brings.
+  const wordBreak = keepWords
+    ? `<mj-style inline="inline">.${TEXT_CLASS} div { word-break: keep-all; overflow-wrap: break-word; }</mj-style>`
+    : "";
   return `<mjml lang="%%LANG%%">
   <mj-head>
     <mj-attributes>
       <mj-all font-family="${FONT}" />
-      <mj-text padding="0" color="${INK}" />
+      <mj-text padding="0" color="${INK}" css-class="${TEXT_CLASS}" />
     </mj-attributes>
     <mj-style>body { min-height: 100vh; }</mj-style>
+    ${wordBreak}
     <mj-preview>%%PREVIEW%%</mj-preview>
   </mj-head>
   <mj-body background-color="${PAGE}" width="600px">
@@ -241,8 +260,8 @@ function layoutSource(withAction: boolean): string {
     <mj-section padding="8px 0 56px">
       <mj-column>
         ${footerRow("%%HELP%%", 24)}
-        ${footerRow(social, 12)}
-        ${footerRow("%%LEGAL%%", 12)}
+        ${footerRow(social, 12, "24px")}
+        ${footerRow("%%LEGAL%%", 12, "24px")}
         ${footerRow("%%NOTICE%%", 16)}
         ${footerRow(`© %%YEAR%% ${COMPANY}`, 4)}
       </mj-column>
@@ -251,21 +270,24 @@ function layoutSource(withAction: boolean): string {
 </mjml>`;
 }
 
-const compiled = new Map<boolean, Promise<string>>();
+const compiled = new Map<string, Promise<string>>();
 
 /**
- * Compile the layout once per shape (with or without a button).
+ * Compile the layout once per shape: with or without a button, and with or
+ * without words kept whole.
  * @param withAction - Whether the card carries a button.
+ * @param keepWords - Whether a word stays whole at a line end.
  * @returns The layout's HTML, with `%%NAME%%` placeholders left in it.
  * @throws {Error} When the MJML source does not validate.
  */
-function layoutHtml(withAction: boolean): Promise<string> {
-  let html = compiled.get(withAction);
+function layoutHtml(withAction: boolean, keepWords: boolean): Promise<string> {
+  const shape = `${withAction}:${keepWords}`;
+  let html = compiled.get(shape);
   if (!html) {
-    html = mjml2html(layoutSource(withAction), { validationLevel: "strict" }).then(
+    html = mjml2html(layoutSource(withAction, keepWords), { validationLevel: "strict" }).then(
       (result) => result.html,
     );
-    compiled.set(withAction, html);
+    compiled.set(shape, html);
   }
   return html;
 }
@@ -327,7 +349,7 @@ export async function renderMail(locale: string, spec: MailSpec): Promise<Render
   const pieces = runWithLocale(locale, () => renderPieces(locale, spec));
   const href = spec.action?.href;
   const year = new Date().getUTCFullYear();
-  const layout = await layoutHtml(href !== undefined);
+  const layout = await layoutHtml(href !== undefined, WORD_SPACED_LOCALES.has(locale));
   return {
     to: spec.to,
     subject: pieces.subject,

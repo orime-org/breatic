@@ -35,7 +35,6 @@ import {
 } from "@breatic/core";
 import {
   db,
-  env,
   logger,
   decodeActivityCursor,
 } from "@breatic/core";
@@ -413,11 +412,7 @@ export async function fulfillPayment(
 async function sendConfirmationFor(paymentId: string): Promise<boolean> {
   const view = await paymentRepo.getConfirmationView(paymentId);
   if (!view) return false;
-  const letter = await renderPurchaseConfirmation(
-    view,
-    view.timeZone,
-    env.SUPPORT_EMAIL,
-  );
+  const letter = await renderPurchaseConfirmation(view, view.timeZone);
   return sendPurchaseConfirmation({
     paymentId,
     to: view.email,

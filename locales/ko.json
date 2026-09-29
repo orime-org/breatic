@@ -144,17 +144,21 @@
     "purchase_mail": {
       "subject": "크레딧이 충전되었습니다",
       "intro": "구매해 주셔서 감사합니다. 아래는 이번 구매 내역이니 보관해 주세요.",
-      "credits": "이번 충전: {credits} 크레딧",
-      "balance": "현재 잔액: {credits} 크레딧",
-      "subtotal": "가격: {amount}",
-      "tax": "세액: {amount}",
-      "total": "결제 합계: {amount}",
-      "purchased_at": "구매 시각: {when}",
-      "refund_by": "환불 가능 기한: {when}",
-      "order_ref": "주문 번호: {ref}",
+      "label": {
+        "credits": "이번 충전",
+        "balance": "현재 잔액",
+        "subtotal": "가격",
+        "tax": "세액",
+        "total": "결제 합계",
+        "purchased_at": "구매 시각",
+        "refund_by": "환불 가능 기한",
+        "order_ref": "주문 번호"
+      },
+      "credits_amount": "{credits} 크레딧",
+      "fact_line": "{label}: {value}",
       "consent_heading": "구매 시 동의하신 내용",
       "refund_heading": "크레딧 패키지 환불 규정",
-      "support": "이번 구매에 대한 문의는 {email} 로 보내주세요."
+      "support": "이번 구매에 대한 문의는 <mailto>{email}</mailto> 로 보내주세요."
     },
     "chat": {
       "message_too_long": "이 메시지는 너무 깁니다. 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다.",
@@ -174,7 +178,7 @@
       },
       "studio_transfer": {
         "subject": "{initiator} 님이 {studio}을(를) 넘기려고 합니다",
-        "lead": "<b>{initiator}</b> 님이 회원님을 Studio <b>{studio}</b>의 Admin으로 지정하려고 합니다.",
+        "lead": "<b>{initiator}</b> 님이 회원님을 Studio <b>{studio}</b>의 <code>Admin</code>으로 지정하려고 합니다.",
         "action": "이 이전 요청 보기"
       },
       "project_transfer": {
@@ -184,7 +188,7 @@
       },
       "role_upgrade": {
         "subject": "{requester} 님이 {project}에서 더 높은 역할을 요청했습니다",
-        "lead": "<b>{requester}</b> 님이 <b>{project}</b>에서 <b>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</b>(이)가 되기를 요청했습니다.",
+        "lead": "<b>{requester}</b> 님이 <b>{project}</b>에서 <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code>(이)가 되기를 요청했습니다.",
         "action": "이 요청 보기"
       },
       "project_join": {

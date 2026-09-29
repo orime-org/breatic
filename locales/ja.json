@@ -144,17 +144,21 @@
     "purchase_mail": {
       "subject": "クレジットを追加しました",
       "intro": "ご購入ありがとうございます。内容は以下のとおりです。控えとして保管してください。",
-      "credits": "今回の追加：{credits} クレジット",
-      "balance": "現在の残高：{credits} クレジット",
-      "subtotal": "価格：{amount}",
-      "tax": "税額：{amount}",
-      "total": "お支払い合計：{amount}",
-      "purchased_at": "購入日時：{when}",
-      "refund_by": "返金可能期限：{when}",
-      "order_ref": "注文番号：{ref}",
+      "label": {
+        "credits": "今回の追加",
+        "balance": "現在の残高",
+        "subtotal": "価格",
+        "tax": "税額",
+        "total": "お支払い合計",
+        "purchased_at": "購入日時",
+        "refund_by": "返金可能期限",
+        "order_ref": "注文番号"
+      },
+      "credits_amount": "{credits} クレジット",
+      "fact_line": "{label}：{value}",
       "consent_heading": "ご購入時に同意いただいた内容",
       "refund_heading": "クレジットパックの返金規定",
-      "support": "このご購入に関するお問い合わせは {email} までご連絡ください。"
+      "support": "このご購入に関するお問い合わせは <mailto>{email}</mailto> までご連絡ください。"
     },
     "chat": {
       "message_too_long": "このメッセージは長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
@@ -174,17 +178,17 @@
       },
       "studio_transfer": {
         "subject": "{initiator} さんが {studio} をあなたに引き継ごうとしています",
-        "lead": "<b>{initiator}</b> さんが Studio <b>{studio}</b> の Admin をあなたに引き継ごうとしています。",
+        "lead": "<b>{initiator}</b> さんが Studio <b>{studio}</b> の <code>Admin</code> をあなたに引き継ごうとしています。",
         "action": "この引き継ぎを確認する"
       },
       "project_transfer": {
         "subject": "{initiator} さんが {project} をあなたに引き継ごうとしています",
-        "lead": "<b>{initiator}</b> さんが Project <b>{project}</b> の Owner をあなたに引き継ごうとしています。",
+        "lead": "<b>{initiator}</b> さんが Project <b>{project}</b> の <code>Owner</code> をあなたに引き継ごうとしています。",
         "action": "この引き継ぎを確認する"
       },
       "role_upgrade": {
         "subject": "{requester} さんが {project} でより上位のロールを申請しています",
-        "lead": "<b>{requester}</b> さんが <b>{project}</b> で <b>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</b> になることを申請しています。",
+        "lead": "<b>{requester}</b> さんが <b>{project}</b> で <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code> になることを申請しています。",
         "action": "この申請を確認する"
       },
       "project_join": {

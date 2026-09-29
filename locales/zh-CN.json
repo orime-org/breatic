@@ -144,17 +144,21 @@
     "purchase_mail": {
       "subject": "积分已到账",
       "intro": "感谢购买。以下是这笔购买的内容，请留存。",
-      "credits": "本次到账：{credits} 积分",
-      "balance": "当前余额：{credits} 积分",
-      "subtotal": "价格：{amount}",
-      "tax": "税额：{amount}",
-      "total": "实付合计：{amount}",
-      "purchased_at": "购买时间：{when}",
-      "refund_by": "可退款截止：{when}",
-      "order_ref": "订单号：{ref}",
+      "label": {
+        "credits": "本次到账",
+        "balance": "当前余额",
+        "subtotal": "价格",
+        "tax": "税额",
+        "total": "实付合计",
+        "purchased_at": "购买时间",
+        "refund_by": "可退款截止",
+        "order_ref": "订单号"
+      },
+      "credits_amount": "{credits} 积分",
+      "fact_line": "{label}：{value}",
       "consent_heading": "你在购买时同意的内容",
       "refund_heading": "积分包退款规则",
-      "support": "对这笔购买有疑问，请写信到 {email}。"
+      "support": "对这笔购买有疑问，请写信到 <mailto>{email}</mailto>。"
     },
     "chat": {
       "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
@@ -174,7 +178,7 @@
       },
       "studio_transfer": {
         "subject": "{initiator} 想把 {studio} 交给你",
-        "lead": "<b>{initiator}</b> 想让你成为 Studio <b>{studio}</b> 的 Admin。",
+        "lead": "<b>{initiator}</b> 想让你成为 Studio <b>{studio}</b> 的 <code>Admin</code>。",
         "action": "查看这次转让"
       },
       "project_transfer": {
@@ -184,7 +188,7 @@
       },
       "role_upgrade": {
         "subject": "{requester} 申请在 {project} 中获得更高的角色",
-        "lead": "<b>{requester}</b> 申请在 <b>{project}</b> 中成为 <b>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</b>。",
+        "lead": "<b>{requester}</b> 申请在 <b>{project}</b> 中成为 <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code>。",
         "action": "查看这条申请"
       },
       "project_join": {

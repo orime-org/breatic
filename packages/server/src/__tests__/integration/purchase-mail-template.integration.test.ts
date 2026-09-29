@@ -252,7 +252,9 @@ describe("the confirmation carries all eight things", () => {
 describe("the receipt sets the money apart from the reference lines", () => {
   it("puts credits, price, tax and total in one label and amount table, the total set off", async () => {
     const mail = await renderPurchaseConfirmation(view(), "UTC");
-    const table = /<table role="presentation"[^>]*>([\s\S]*?)<\/table>/.exec(mail.html.slice(mail.html.indexOf("Thank you")))![1]!;
+    const first = mail.html.indexOf(">Credits added<");
+    const start = mail.html.lastIndexOf("<table", first);
+    const table = mail.html.slice(start, mail.html.indexOf("</table>", first));
     const rows = [...table.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map((r) =>
       [...r[1]!.matchAll(/<td([^>]*)>([^<]*)<\/td>/g)].map((c) => ({ attrs: c[1]!, text: c[2]! })),
     );

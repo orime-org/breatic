@@ -236,7 +236,7 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
     const anchors = [...footer.matchAll(/<a href="[^"]*" style="([^"]*)">/g)].map((m) => m[1]!);
     expect(anchors.length).toBeGreaterThanOrEqual(getMailLayout().social.length + 3);
     for (const style of anchors) expect(style).toContain("white-space:nowrap");
-    const rows = [...footer.matchAll(/<div\s+style="([^"]*)"\s*><a /g)].map((m) => m[1]!);
+    const rows = [...footer.matchAll(/<div\s+style="([^"]*)"\s*><a /g)].map((m) => m[1]!.replace(/\s/g, ""));
     expect(rows).toHaveLength(2);
     for (const style of rows) expect(style).toContain("line-height:24px");
   });
@@ -244,8 +244,9 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
   // Korean separates words with spaces and keeps each word whole across a
   // line end; Chinese and Japanese break between any two characters.
   it.each(KINDS)("%s keeps words whole exactly when the language spaces them", (kind) => {
-    const styles = [...mails[kind]!.html.matchAll(/<div\s+style="([^"]*font-size:(?:12|13|15|20)px;[^"]*)"/g)]
-      .map((m) => m[1]!);
+    const styles = [...mails[kind]!.html.matchAll(/<div\s+style="([^"]*)"/g)]
+      .map((m) => m[1]!.replace(/\s/g, ""))
+      .filter((style) => /font-size:(12|13|15|20)px;/.test(style));
     expect(styles.length).toBeGreaterThanOrEqual(8);
     for (const style of styles) {
       if (locale === "ko") {

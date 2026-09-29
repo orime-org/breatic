@@ -88,7 +88,7 @@ describe("buildStudioTransferMail", () => {
     expect(mail.html).toContain("Alice &lt;b&gt;");
     expect(mail.html).toContain("Team &amp; Co");
     expect(mail.html).not.toContain("Alice <b>");
-    expect(mail.html).toContain("make you the admin of the studio");
+    expect(mail.html).toMatch(/make you <code[^>]*>Admin<\/code> of the studio/);
     expect(mail.html).toContain("https://app.test/studio/team-co");
     expect(mail.html).toContain("Review this transfer");
     expect(mail.html.toLowerCase()).toContain("this transfer request expires in 3 days");
@@ -110,7 +110,7 @@ describe("buildProjectTransferMail", () => {
     expect(mail.html).toContain("Bob &lt;i&gt;");
     expect(mail.html).toContain("Launch &amp; Grow");
     expect(mail.html).not.toContain("Bob <i>");
-    expect(mail.html).toContain("make you the owner of the project");
+    expect(mail.html).toMatch(/make you <code[^>]*>Owner<\/code> of the project/);
     expect(mail.html).toContain("https://app.test/project/launch-grow-123");
     expect(mail.html).toContain("Review this transfer");
     expect(mail.html.toLowerCase()).toContain("this transfer request expires in 3 days");

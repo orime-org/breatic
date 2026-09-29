@@ -35,7 +35,7 @@
  */
 
 import { refundWindowCloses, t } from "@breatic/shared";
-import { runWithLocale } from "@breatic/core";
+import { getMailLayout, runWithLocale } from "@breatic/core";
 import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
 import type { ConfirmationView } from "@server/modules/payment/payment.repo.js";
 import {
@@ -80,7 +80,7 @@ function asHtml(text: string): string {
  * @param locale - The buyer's locale.
  * @returns The formatted amount.
  */
-function money(cents: number, currency: string, locale: string): string {
+function formatMoney(cents: number, currency: string, locale: string): string {
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: currency.toUpperCase(),
@@ -112,21 +112,46 @@ const SECTION_HEADING =
   "margin:24px 0 8px;font-size:15px;font-weight:600;line-height:1.4;";
 const LIST = "margin:12px 0 0;padding-left:20px;font-size:14px;line-height:1.7;";
 const PARAGRAPH = "margin:0;font-size:14px;line-height:1.6;";
+const MONEY_TABLE = "width:100%;margin:16px 0 0;border-collapse:collapse;font-size:14px;line-height:1.6;";
+const MONEY_CELL = "padding:4px 0;";
+const TOTAL_CELL = "padding:10px 0 4px;border-top:1px solid rgba(30,30,30,0.12);font-weight:600;";
+const REFERENCE = "margin:16px 0 0;font-size:13px;line-height:1.7;color:#5f5f5f;";
+
+/** One fact of the receipt: its label and its value, both in the buyer's language. */
+interface Fact {
+  label: string;
+  value: string;
+}
+
+/**
+ * One row of the money table; the amount sits at the right edge.
+ * @param fact - The label and the amount.
+ * @param cell - The row's cell style.
+ * @returns The table row.
+ */
+function moneyRow(fact: Fact, cell: string): string {
+  return `<tr><td style="${cell}">${fact.label}</td><td align="right" style="${cell}white-space:nowrap;">${fact.value}</td></tr>`;
+}
+
+/**
+ * One fact as a plain-text line, with the language's own separator.
+ * @param fact - The label and the value.
+ * @returns The line.
+ */
+function factLine(fact: Fact): string {
+  return t("server.purchase_mail.fact_line", { label: fact.label, value: fact.value });
+}
 
 /**
  * Render one purchase's confirmation email, in the branded layout every
  * product mail wears.
  * @param view - What this purchase is, as read from our own rows.
  * @param timeZone - The buyer's IANA zone, stored at checkout.
- * @param supportEmail - Where a buyer writes back. A deployment that has not
- *   named one gets no such line rather than an empty invitation to write to
- *   nobody.
  * @returns The laid-out mail (to / subject / html / text) for the outbox send.
  */
 export function renderPurchaseConfirmation(
   view: ConfirmationView,
   timeZone = "UTC",
-  supportEmail = "",
 ): Promise<RenderedMail> {
   const locale = view.locale;
   const paidAt = view.grantedAt ?? new Date();
@@ -143,35 +168,33 @@ export function renderPurchaseConfirmation(
   );
 
   const details = runWithLocale(locale, () => {
-    const facts = [
-      t("server.purchase_mail.credits", {
-        credits: String(view.creditsGranted),
-      }),
-      t("server.purchase_mail.balance", {
-        credits: String(view.balanceCredits),
-      }),
-      t("server.purchase_mail.subtotal", {
-        amount: money(view.amountCents, view.currency, locale),
-      }),
-      t("server.purchase_mail.tax", {
-        amount: money(view.taxCents ?? 0, view.currency, locale),
-      }),
-      t("server.purchase_mail.total", {
-        amount: money(charged, view.currency, locale),
-      }),
-      t("server.purchase_mail.purchased_at", {
-        when: bothZones(paidAt, timeZone, locale),
-      }),
-      t("server.purchase_mail.refund_by", {
-        when: bothZones(refundBy, timeZone, locale),
-      }),
-      t("server.purchase_mail.order_ref", { ref: view.paymentId }),
+    /**
+     * A fact with its catalog label.
+     * @param name - The label's key under `server.purchase_mail.label`.
+     * @param value - The value, already formatted.
+     * @returns The fact.
+     */
+    const fact = (name: string, value: string): Fact => ({
+      label: t(`server.purchase_mail.label.${name}`),
+      value,
+    });
+    const money = [
+      fact("credits", t("server.purchase_mail.credits_amount", { credits: String(view.creditsGranted) })),
+      fact("subtotal", formatMoney(view.amountCents, view.currency, locale)),
+      fact("tax", formatMoney(view.taxCents ?? 0, view.currency, locale)),
+    ];
+    const total = fact("total", formatMoney(charged, view.currency, locale));
+    const reference = [
+      fact("balance", t("server.purchase_mail.credits_amount", { credits: String(view.balanceCredits) })),
+      fact("purchased_at", bothZones(paidAt, timeZone, locale)),
+      fact("refund_by", bothZones(refundBy, timeZone, locale)),
+      fact("order_ref", view.paymentId),
     ];
     const consentHeading = t("server.purchase_mail.consent_heading");
     const refundHeading = t("server.purchase_mail.refund_heading");
 
     const text = [
-      ...facts,
+      ...[...money, total, ...reference].map(factLine),
       "",
       consentHeading,
       asPlainText(consent),
@@ -181,9 +204,11 @@ export function renderPurchaseConfirmation(
     ].join("\n");
 
     const html = [
-      `<ul style="${LIST}">`,
-      ...facts.map((line) => `<li>${line}</li>`),
-      "</ul>",
+      `<table role="presentation" style="${MONEY_TABLE}">`,
+      ...money.map((row) => moneyRow(row, MONEY_CELL)),
+      moneyRow(total, TOTAL_CELL),
+      "</table>",
+      `<div style="${REFERENCE}">${reference.map(factLine).join("<br>")}</div>`,
       `<div style="${SECTION_HEADING}">${consentHeading}</div>`,
       `<p style="${PARAGRAPH}">${asHtml(consent)}</p>`,
       `<div style="${SECTION_HEADING}">${refundHeading}</div>`,
@@ -200,8 +225,6 @@ export function renderPurchaseConfirmation(
     subject: { key: "server.purchase_mail.subject" },
     body: [{ key: "server.purchase_mail.intro" }],
     details,
-    ...(supportEmail === ""
-      ? {}
-      : { note: { key: "server.purchase_mail.support", params: { email: supportEmail } } }),
+    note: { key: "server.purchase_mail.support", params: { email: getMailLayout().contactEmail } },
   });
 }

@@ -144,17 +144,21 @@
     "purchase_mail": {
       "subject": "Your credits are in",
       "intro": "Thank you for your purchase. Here is what it was, kept for your records.",
-      "credits": "Credits added: {credits}",
-      "balance": "Balance now: {credits}",
-      "subtotal": "Price: {amount}",
-      "tax": "Tax: {amount}",
-      "total": "Total charged: {amount}",
-      "purchased_at": "Purchased: {when}",
-      "refund_by": "Refundable until: {when}",
-      "order_ref": "Order reference: {ref}",
+      "label": {
+        "credits": "Credits added",
+        "balance": "Balance now",
+        "subtotal": "Price",
+        "tax": "Tax",
+        "total": "Total charged",
+        "purchased_at": "Purchased",
+        "refund_by": "Refundable until",
+        "order_ref": "Order reference"
+      },
+      "credits_amount": "{credits}",
+      "fact_line": "{label}: {value}",
       "consent_heading": "What you agreed to when you bought",
       "refund_heading": "Refund rules for credit packs",
-      "support": "Questions about this purchase? Write to {email}."
+      "support": "Questions about this purchase? Write to <mailto>{email}</mailto>."
     },
     "chat": {
       "message_too_long": "This message is too long. It may hold at most {limit, number} characters; this one holds {actual, number}.",
@@ -174,17 +178,17 @@
       },
       "studio_transfer": {
         "subject": "{initiator} wants to transfer {studio} to you",
-        "lead": "<b>{initiator}</b> wants to make you the admin of the studio <b>{studio}</b>.",
+        "lead": "<b>{initiator}</b> wants to make you <code>Admin</code> of the studio <b>{studio}</b>.",
         "action": "Review this transfer"
       },
       "project_transfer": {
         "subject": "{initiator} wants to transfer {project} to you",
-        "lead": "<b>{initiator}</b> wants to make you the owner of the project <b>{project}</b>.",
+        "lead": "<b>{initiator}</b> wants to make you <code>Owner</code> of the project <b>{project}</b>.",
         "action": "Review this transfer"
       },
       "role_upgrade": {
         "subject": "{requester} asked for a bigger role on {project}",
-        "lead": "<b>{requester}</b> asked to become <b>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</b> on <b>{project}</b>.",
+        "lead": "<b>{requester}</b> asked to become <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code> on <b>{project}</b>.",
         "action": "Review this request"
       },
       "project_join": {
