@@ -5,7 +5,7 @@
  * One generation for any catalog model (#2156). Every image, video, audio
  * and speech model runs on WaveSpeed, and each declares in its yaml the
  * upstream name of every field it sends — so the request is built from that
- * declaration, not from per-vendor code. The two models whose request needs
+ * declaration, not from per-vendor code. The three models whose request needs
  * more than a field mapping have a family in `families/`.
  *
  * A run itself goes through `run-steps.ts`; this module holds what it reads

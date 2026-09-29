@@ -298,7 +298,7 @@ test('reference to music: three slots, and any one of them satisfies the gate', 
 
 test('Gemini keeps its reading mode, language and speakers in the settings pill', async ({ page }) => {
   // Design §16: the pill opens a first panel over it, a row there opens a
-  // second panel to its right, and the rows read reading mode, language, voice.
+  // second panel beside it, and the rows read reading mode, language, voice.
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio', undefined, -350);
   await openGenerate(nodeId);
@@ -359,8 +359,10 @@ test('Gemini keeps its reading mode, language and speakers in the settings pill'
 });
 
 test('every voice of the default model plays its sample from the list', async ({ page }) => {
-  // Design §16.4: the vendors behind Inworld, Gemini and MiniMax publish no
-  // samples, so each voice has one of ours in this deployment's bucket.
+  // Design §16.4: none of Inworld, Gemini and MiniMax gives a sample we can
+  // serve as-is (Inworld's preview needs its key, Gemini's clips carry no clear
+  // licence, MiniMax has none), so each voice has one of ours in this
+  // deployment's bucket.
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio', undefined, -350);
   await openGenerate(nodeId);

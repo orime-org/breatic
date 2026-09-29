@@ -8,7 +8,7 @@
  * declares HOW it runs, not just which model it calls:
  *
  *   - `kind: 'provider'` → AIGC vendor API via `provider.generateAsync`
- *     (Topaz / Kling / ElevenLabs / ...).
+ *     (Bria / Kling / Inworld / MiniMax / ...).
  *   - `kind: 'local'` → Worker-local execution via `runLocalHandler`,
  *     which dispatches by `handler` path to a function that internally
  *     chooses FFmpeg / Sharp / ImageMagick / anything else. The

@@ -1037,8 +1037,10 @@ export interface FailedRunEnd {
  * The feed row names the node when the run had exactly one, which is what
  * lets a reader open it from the feed.
  *
- * Best-effort throughout: each surface logs its own failure and the next one
- * is still written. The exception is the zombie fence in {@link runTask},
+ * The history, settle and feed surfaces are best-effort: each logs its own
+ * failure and the next one is still written. Marking the task failed and
+ * failing its open upstream steps are not; a throw there ends the function.
+ * The exception is the zombie fence in {@link runTask},
  * which calls none of this on purpose — a handler that has lost its job lock
  * must write nothing at all, or it clobbers the live attempt that replaced it.
  * @param end - The run, and what to say about it.

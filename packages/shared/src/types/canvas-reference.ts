@@ -69,14 +69,10 @@
  * (user 2026-08-13) — and dark under a model that sends no prompt, where it has
  * nothing to be material for (#1966).
  *
- * The verdict reads nothing asynchronous, and that is deliberate. An
- * earlier version took the consumable types from `ModelEntry.sourcesByMode`,
- * which made both answers depend on whether the model catalog had loaded.
- * Three rounds of adversarial review produced three different wrong answers to
- * "what should the rail do meanwhile" — refuse everything with a false reason,
- * refuse nothing at all, then promise a wait that two of its three causes never
- * end. The question was the defect: a mode-level constant was being read
- * through an async, model-indexed channel.
+ * The verdict itself reads nothing asynchronous: the caller hands in
+ * `referenceKinds`, the kinds the active model's pool takes under this mode
+ * (#2156). That list comes from the model catalog, and the panels render only
+ * once the catalog has loaded (`CatalogGatedFrame`).
  */
 
 import type { NodeType } from "@shared/types/canvas-node.js";

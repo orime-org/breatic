@@ -9,8 +9,10 @@
  * that speaks whichever language the reader picks). A key names its language
  * by the path segment after the model — `voice-samples/<model>/<lang>/<voice>.mp3`
  * — and a key with no segment is English. The sentence each language says,
- * and anything a model takes beyond its text and voice, come from
- * `config/voice-samples.json`.
+ * and the extra fields a model takes (`extra_body`), come from
+ * `config/voice-samples.json`; a many-language voice is also sent its
+ * language under the model's own language param, taken from the key it has
+ * in `sample_keys`.
  */
 
 import type { FullModelEntry } from "@breatic/domain";

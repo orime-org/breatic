@@ -34,8 +34,8 @@ function usableCap(value: unknown): value is number {
 }
 
 /**
- * Whether a param carries a value: for the presence condition, the price
- * estimate and the worker's request body alike.
+ * Whether a param carries a value: for the price estimate and the worker's
+ * request body alike.
  *
  * Presence, never the value itself: a slot writes a URL and clears by
  * deleting the key, while a model's own declared default puts the key there

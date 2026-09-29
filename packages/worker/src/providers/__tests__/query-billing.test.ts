@@ -10,10 +10,11 @@
  * `billing_type`. This endpoint has no public documentation — that observation
  * is the whole specification, which is why it is written down as cases.
  *
- * Every path where the lookup goes wrong says so in the log, so the one quiet
- * zero left — lines the vendor priced at zero — reads as the vendor calling
- * the generation free. The number this returns is what a charge is taken on,
- * so those two have to stay tellable apart.
+ * Every path where the lookup goes wrong says so in the log. The quiet zeros
+ * left are lines the vendor priced at zero (the generation was free) and a
+ * deduction the vendor refunded in full (a prediction that failed upstream).
+ * The number this returns is what a charge is taken on, so a lookup gone
+ * wrong has to stay tellable apart from those two.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

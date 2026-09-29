@@ -75,9 +75,10 @@ const declarationSchema = z.object({
   // panel can show a language in the reader's own words (#2156, design §16).
   value_locales: z.array(z.string()).optional(),
   // One spelling each, because readers compare against these exact strings:
-  // the source gate takes anything that is not `list` as a single URL, while
-  // the cap check and the transport iterate it; `items` is a list editor whose
-  // entries carry `fields`; `text` is a free text control.
+  // the source gate takes a `list` or `items` param as a list and anything
+  // else as a single URL, while the cap check and the transport iterate lists;
+  // `items` is a list editor whose entries carry `fields`; `text` is a free
+  // text control.
   type: z.enum(["list", "items", "text"]).optional(),
   // Positive integers. A zero or a minus sign is read by every reader as no
   // cap at all, so it widens the limit the yaml meant to state; a fraction is

@@ -264,10 +264,11 @@ interface BillingLine {
  * add, refunds take back, and any other line type is left out.
  *
  * Every zero that comes from a lookup going wrong is logged — a refused
- * request, no deducting line, a line carrying no price. What is left, a zero
- * summed from lines the vendor priced at zero, is the vendor saying the
- * generation was free, and it answers quietly. A charge is taken on this
- * number, so the two have to stay tellable apart.
+ * request, no deducting line, a line carrying no price. What is left answers
+ * quietly: a zero summed from lines the vendor priced at zero (the generation
+ * was free), or from a deduction the vendor refunded in full (a prediction
+ * that failed upstream). A charge is taken on this number, so a lookup gone
+ * wrong has to stay tellable apart from those two.
  * @param resolved - Resolved provider endpoint.
  * @param taskId - The vendor's prediction uuid.
  * @returns What the prediction cost in USD, or 0 when the vendor did not say.

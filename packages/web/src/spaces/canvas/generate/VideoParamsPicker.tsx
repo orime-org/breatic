@@ -146,10 +146,11 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
 }
 
 /**
- * The video panel's parameter picker: a pill showing the current
- * `ratio · resolution · duration` that opens a popover with those three as
- * identically-shaped option rows, followed by the sound switch and the
- * controls only this model has.
+ * The video panel's parameter picker: a pill that states, in the popover's
+ * order, the current ratio, resolution and duration, the sound switch while
+ * it is on, and the model's own controls; it opens a popover with the first
+ * three as identically-shaped option rows, followed by the sound switch and
+ * the controls only this model has.
  *
  * A group appears only when the active model declares its param, so a model
  * that does not simply has no group for it — several video models declare no

@@ -560,7 +560,7 @@ export const tasks = pgTable(
  * and advanced only by its step executor, so a redelivered job resumes from
  * the first step that is not done and never submits a step twice.
  *
- * The kind and status CHECKs live in migration 0082 only, as 0061 does for
+ * The kind and status CHECKs live in migration 0083 only, as 0061 does for
  * its tables.
  */
 export const taskUpstreamSteps = pgTable(

@@ -52,8 +52,8 @@ interface ParamSliderRowProps {
  * A drag crosses every step between where it starts and where it ends, and
  * Radix reports each one. Each report written straight through is one canvas
  * undo entry — that stack holds 50 and merges nothing by time — so a single
- * drag of `volume` (41 stops) would push out nearly everything the user could
- * still undo. `onValueCommit` fires once when a gesture ends and once per key
+ * drag across `volume` (100 positions on minimax-speech-2.8-hd) could push out
+ * everything the user could still undo. `onValueCommit` fires once when a gesture ends and once per key
  * press, which is the granularity a person would name as one change.
  * @param root0 - Props.
  * @param root0.name - The param name.
