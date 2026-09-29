@@ -375,4 +375,11 @@ test('every voice of the default model plays its sample from the list', async ({
     samples.first().boundingBox(),
   ]);
   expect(row!.x + row!.width - (button!.x + button!.width)).toBeLessThan(8);
+  // Its playing ring, drawn 3px outside the button, stays clear of the 8px
+  // scrollbar rail the list overlays on its right edge.
+  const viewport = await page
+    .getByTestId('generate-voice-list-body')
+    .locator('[data-radix-scroll-area-viewport]')
+    .boundingBox();
+  expect(button!.x + button!.width + 3).toBeLessThanOrEqual(viewport!.x + viewport!.width - 8);
 });
