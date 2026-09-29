@@ -235,13 +235,43 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
     expect(text).not.toMatch(/<\/?(strong|code|em|a|p|table)\b/);
     expect(text).toContain(String(catalogValue(locale, "footer")));
     if (WITH_ACTION.includes(kind)) expect(text).toContain(LINK);
-    if (text.includes("A<")) expect(text).toContain(NAME);
+    expect(text).not.toMatch(/&(lt|gt|amp|quot|#39);/);
+  });
+
+  it("puts the names in the plain-text part as typed", () => {
+    expect(mails.storageFull!.text).toContain(NAME);
+  });
+
+  it.each(KINDS)("%s previews its first sentence in the inbox list, ahead of the header", (kind) => {
+    const { html, text } = mails[kind]!;
+    const firstSentence = text!.split("\n\n")[1]!;
+    const preview = html.indexOf(escapeHtml(firstSentence));
+    expect(preview).toBeGreaterThan(-1);
+    expect(preview).toBeLessThan(html.indexOf(SLOGAN));
   });
 
   // Aliyun DirectMail refuses a message whose link text is the bare address
   // ("554 Reject by content spam"), measured against the verification mail.
   it.each(KINDS)("%s labels its link with words, never the address", (kind) => {
     expect(mails[kind]!.html).not.toContain(`>${LINK}</a>`);
+  });
+});
+
+describe("sentences are joined the way each language writes them", () => {
+  const joined = async (locale: string): Promise<string> => {
+    const mail = await buildProjectJoinRequestMail({
+      locale, ownerEmail: "to@example.test", requesterName: "Bob",
+      projectName: "Rocket", message: "Please", decisionLink: LINK,
+    });
+    return mail.text!.split("\n\n")[1]!;
+  };
+
+  it.each(["zh-CN", "zh-TW", "ja"])("%s puts no space after the full stop", async (locale) => {
+    expect(await joined(locale)).not.toMatch(/。\s/);
+  });
+
+  it.each(["en", "ko"])("%s puts one space between the sentences", async (locale) => {
+    expect(await joined(locale)).toMatch(/\. \S/);
   });
 });
 
