@@ -16,10 +16,9 @@
  * already on disk before it is sent — and its failure mode is nobody being
  * told, not anything being lost. What it must not do is hold the caller: the
  * gate awaits it inside `beforeUnloadDocument`, and the transport's own
- * timeouts (`config/mail.yaml`) still allow one send roughly fifteen seconds
- * before the greeting, with host resolution not fully bounded. An unreachable
- * SMTP host during a database outage would hold every unloading document in
- * memory for that long each.
+ * timeouts are not bound enough (`store_alert_timeout_ms` in
+ * `config/collab.yaml` says why). An unreachable SMTP host during a database
+ * outage would hold every unloading document in memory for that long each.
  *
  * WHAT IT DOES NOT DO. It does not cancel anything. Giving up here makes THIS
  * caller stop waiting and nothing else; the send may still complete afterwards.

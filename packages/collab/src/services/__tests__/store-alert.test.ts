@@ -154,11 +154,11 @@ describe("createStoreAlerter", () => {
 
 describe("an alert the mail server never answers", () => {
   // Gate 2 round 2 finding 4. The gate awaits the alert inside
-  // `beforeUnloadDocument`, and the transport's own timeouts
-  // (`config/mail.yaml`) still allow one send roughly fifteen seconds before
-  // the greeting. An unreachable SMTP host during a database outage would
-  // hold every unloading document in memory for that long each, which is the
-  // failure this whole design exists to prevent, arriving by a different door.
+  // `beforeUnloadDocument`, and the transport's own timeouts are not bound
+  // enough (`store_alert_timeout_ms` in `config/collab.yaml` says why). An
+  // unreachable SMTP host during a database outage would hold every unloading
+  // document in memory, which is the failure this whole design exists to
+  // prevent, arriving by a different door.
 
   it("gives up and says so rather than holding the caller", async () => {
     const { alerter } = harness({

@@ -44,12 +44,10 @@ export interface StoreAlerterDeps {
   /**
    * How long the transport gets before the alert is written off.
    *
-   * Not optional. The gate awaits this inside `beforeUnloadDocument`, and the
-   * mail transport's own timeouts (`config/mail.yaml`) bound one send at
-   * roughly fifteen seconds before the greeting — five per resolved address,
-   * plus five for the greeting — with host resolution not fully bounded. An
-   * unreachable SMTP host during a database outage would hold every unloading
-   * document in memory for that long each — filling memory with documents,
+   * Not optional: the gate awaits this inside `beforeUnloadDocument`.
+   * `store_alert_timeout_ms` in `config/collab.yaml` says why the transport's
+   * own timeouts are not bound enough. Without it an unreachable SMTP host
+   * during a database outage would fill memory with unloading documents,
    * which is the failure the rest of this design exists to prevent, arriving
    * by a different door.
    */
