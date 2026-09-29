@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 import { getFullModelConfig } from "@breatic/domain";
 
 import { planVoiceSamples } from "@worker/voice-samples/plan.js";
-import { loadVoiceSampleConfig, syncVoiceSamples } from "@worker/voice-samples/sync.js";
+import { loadVoiceSampleConfig, servedFromHead, syncVoiceSamples } from "@worker/voice-samples/sync.js";
 
 const JOBS = [
   { model: "m", key: "voice-samples/m/a.mp3", body: {} },
@@ -44,6 +44,19 @@ describe("syncVoiceSamples", () => {
   });
 });
 
+describe("servedFromHead", () => {
+  it("reads a success as served and a 404 as missing", () => {
+    expect(servedFromHead("k.mp3", 200)).toBe(true);
+    expect(servedFromHead("k.mp3", 404)).toBe(false);
+  });
+
+  it("stops on any other answer, which says nothing about whether the sample is there", () => {
+    for (const status of [403, 429, 500, 503]) {
+      expect(() => servedFromHead("k.mp3", status)).toThrow(`k.mp3: HEAD answered ${status}`);
+    }
+  });
+});
+
 describe("the catalog's voice samples", () => {
   it("each have a sentence in the language their key names", async () => {
     const models = getFullModelConfig("tts").models;
@@ -53,8 +66,9 @@ describe("the catalog's voice samples", () => {
         ...Object.values(v.sample_keys ?? {}),
       ]),
     );
-    const jobs = planVoiceSamples(models, await loadVoiceSampleConfig());
-    expect(jobs.map((job) => job.key)).toEqual(keys);
+    const jobs = planVoiceSamples(models, await loadVoiceSampleConfig()).map((job) => job.key);
+    expect(new Set(jobs)).toEqual(new Set(keys));
+    expect(jobs).toHaveLength(new Set(jobs).size);
     expect(keys.length).toBeGreaterThan(0);
   });
 });

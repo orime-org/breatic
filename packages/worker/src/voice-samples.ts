@@ -21,7 +21,7 @@ import { httpRequest } from "@breatic/shared";
 import { acquireSemaphore, resolveModel } from "@worker/providers/shared.js";
 import { runPrediction } from "@worker/providers/wavespeed.js";
 import { planVoiceSamples, type VoiceSampleJob } from "@worker/voice-samples/plan.js";
-import { loadVoiceSampleConfig, syncVoiceSamples } from "@worker/voice-samples/sync.js";
+import { loadVoiceSampleConfig, servedFromHead, syncVoiceSamples } from "@worker/voice-samples/sync.js";
 
 /** Passes a failing sample gets; upstream rate limits clear between them. */
 const ATTEMPTS = 3;
@@ -55,7 +55,8 @@ async function main(): Promise<void> {
   const storage = await getStorageAdapter();
   const jobs = planVoiceSamples(getFullModelConfig("tts").models, await loadVoiceSampleConfig());
   const report = await syncVoiceSamples(jobs, {
-    exists: async (key) => (await httpRequest(storage.publicUrl(key), { method: "HEAD" }, { replaySafe: true })).ok,
+    exists: async (key) =>
+      servedFromHead(key, (await httpRequest(storage.publicUrl(key), { method: "HEAD" }, { replaySafe: true })).status),
     generate,
     upload: async (key, bytes) => {
       await storage.upload(key, bytes, "audio/mpeg");

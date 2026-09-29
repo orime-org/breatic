@@ -65,7 +65,7 @@ function fieldOf(
  * Every sample the catalog's voices name, and the body that makes each one.
  * @param models - The tts models.
  * @param config - The sentences and per-model extras.
- * @returns One job per sample key, in catalog order.
+ * @returns One job per distinct sample key, in catalog order.
  * @throws {Error} When a key names a language with no sentence, or a model
  *   with samples declares no voice param.
  */
@@ -110,10 +110,12 @@ export function planVoiceSamples(models: readonly FullModelEntry[], config: Voic
     };
 
     for (const voice of voices) {
-      if (voice.sample_key !== undefined) jobs.push(jobFor(voice.id, voice.sample_key));
-      for (const [language, key] of Object.entries(voice.sample_keys ?? {})) {
-        jobs.push(jobFor(voice.id, key, language));
+      const named = Object.entries(voice.sample_keys ?? {});
+      // A key named both ways is one file: it is made once, in the language it names.
+      if (voice.sample_key !== undefined && !named.some(([, key]) => key === voice.sample_key)) {
+        jobs.push(jobFor(voice.id, voice.sample_key));
       }
+      for (const [language, key] of named) jobs.push(jobFor(voice.id, key, language));
     }
   }
   return jobs;

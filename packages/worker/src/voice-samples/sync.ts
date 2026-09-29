@@ -43,6 +43,23 @@ export async function loadVoiceSampleConfig(): Promise<VoiceSampleConfig> {
   return { languages, extra_body: extraBody } as VoiceSampleConfig;
 }
 
+/**
+ * What a HEAD on a sample's public address says about it.
+ *
+ * Only a 404 means the sample is not there. Any other failure (a bucket that
+ * is not public, a rate limit, an outage) leaves that unknown, and making the
+ * sample again would be paid for without making it playable.
+ * @param key - The sample key, for the error.
+ * @param status - The HEAD's status.
+ * @returns True when served, false when missing.
+ * @throws {Error} When the status answers neither.
+ */
+export function servedFromHead(key: string, status: number): boolean {
+  if (status >= 200 && status < 300) return true;
+  if (status === 404) return false;
+  throw new Error(`${key}: HEAD answered ${status}`);
+}
+
 /** What a sync needs from the outside. */
 export interface SyncDeps {
   /** Whether the bucket already serves this key. */

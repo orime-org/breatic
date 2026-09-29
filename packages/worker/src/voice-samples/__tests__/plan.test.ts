@@ -71,6 +71,27 @@ describe("planVoiceSamples", () => {
     ]);
   });
 
+  it("makes a key the voice names twice once, speaking the language it names", () => {
+    const shared = {
+      ...GEMINI,
+      voices: [
+        {
+          id: "Kore",
+          name: "Kore",
+          sample_key: "voice-samples/gemini/Kore.mp3",
+          sample_keys: { "English (United States)": "voice-samples/gemini/Kore.mp3" },
+        },
+      ],
+    } as unknown as FullModelEntry;
+    expect(planVoiceSamples([shared], CONFIG)).toEqual([
+      {
+        model: "gemini",
+        key: "voice-samples/gemini/Kore.mp3",
+        body: { text: "Hello.", voice: "Kore", language: "English (United States)" },
+      },
+    ]);
+  });
+
   it("refuses a key whose language has no sentence", () => {
     const stray = {
       ...MINIMAX,
