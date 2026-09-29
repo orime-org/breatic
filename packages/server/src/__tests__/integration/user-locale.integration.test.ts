@@ -186,7 +186,7 @@ describe("users.locale", () => {
 
     for (const bad of ["fr", "zh", "", 5, null]) {
       const res = await patchLocale(userId, bad);
-      expect(res.status, `locale ${JSON.stringify(bad)}`).toBe(400);
+      expect(res.status, `locale ${JSON.stringify(bad)}`).toBe(422);
     }
     expect(await storedLocale(userId)).toBe("ja");
   });

@@ -137,7 +137,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     await register("noname@example.com", "validPassword123");
 
     expect(captured).toBeDefined();
-    expect(Object.keys(captured!).sort()).toEqual(["email", "hashedPassword"]);
+    expect(Object.keys(captured!).sort()).toEqual(["email", "hashedPassword", "locale"]);
     expect(captured).not.toHaveProperty("username");
   });
 
@@ -280,6 +280,7 @@ describe("auth.service invariant — Google OAuth is pure auth (#1808, INV-4)", 
       emailVerified: true,
       googleId: "g-1",
       membershipTier: "base" as const,
+      locale: "en",
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,
@@ -377,7 +378,7 @@ describe('Google identity session success boundaries', () => {
     vi.mocked(repo.createUser).mockResolvedValue({ id: 'new', email: 'new@example.com', googleId: 'subject', emailVerified: false } as never);
     const { loginOrCreateGoogle } = await import('../auth.service.js');
     const result = await loginOrCreateGoogle('subject', 'new@example.com', false);
-    expect(repo.createUser).toHaveBeenCalledWith({ email: 'new@example.com', googleId: 'subject' });
+    expect(repo.createUser).toHaveBeenCalledWith({ email: 'new@example.com', googleId: 'subject', locale: 'en' });
     expect(repo.updateUser).not.toHaveBeenCalled();
     expect(result.user.emailVerified).toBe(false);
   });

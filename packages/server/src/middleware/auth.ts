@@ -34,13 +34,18 @@ export interface AuthVariables {
      * where the avatar menu shows it in every studio's top bar.
      */
     membershipTier: MembershipTier;
+    /**
+     * The account's language. `/auth/me` hands it to the client, which
+     * switches the interface to it after sign-in.
+     */
+    locale: string;
   };
 }
 
 /**
  * Require authentication — returns 401 if the session cookie is
  * missing or invalid.
- * @param c - The Hono request context; the resolved user (id, email, membershipTier) is set on it.
+ * @param c - The Hono request context; the resolved user (id, email, membershipTier, locale) is set on it.
  * @param next - The downstream handler, invoked only when authentication succeeds.
  * @returns A 401 JSON response when the session cookie is missing or expired; otherwise nothing (control passes to `next`).
  */
@@ -63,6 +68,7 @@ export const requireAuth: MiddlewareHandler<{
     id: user.id,
     email: user.email,
     membershipTier: user.membershipTier,
+    locale: user.locale,
   });
   await next();
 };

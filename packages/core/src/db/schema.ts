@@ -114,6 +114,11 @@ export const users = pgTable(
     // and creating one per registration would make a Stripe object per signup.
     // One customer per account, reused across every subscription it ever has.
     stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+    // The account's language (0083, #286): every email to this account is
+    // rendered in it. Written at sign-up from the language the request was
+    // negotiated in, and changed only when the user switches the interface
+    // language.
+    locale: varchar("locale", { length: 10 }).default("en").notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

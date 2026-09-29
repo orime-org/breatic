@@ -32,6 +32,11 @@ export interface UserEntity {
    * and those stay behind the endpoint that reads them.
    */
   membershipTier: MembershipTier;
+  /**
+   * The account's language. Emails to this account are rendered in it, and
+   * after sign-in the interface switches to it.
+   */
+  locale: string;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;

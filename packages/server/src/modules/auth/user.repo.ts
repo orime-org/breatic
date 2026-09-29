@@ -29,6 +29,7 @@ function toEntity(row: typeof users.$inferSelect): UserEntity {
     // says which account holds what, so every read of this column goes
     // through it.
     membershipTier: asKnownTier(row.membershipTier, { accountId: row.id }),
+    locale: row.locale,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -126,6 +127,7 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
  * @param data.email - Email address (unique per active user)
  * @param data.hashedPassword - Optional bcrypt password hash (absent for OAuth-only sign-ups)
  * @param data.googleId - Optional linked Google account identifier
+ * @param data.locale - The account's language: the one the sign-up request was negotiated in
  * @returns The created UserEntity
  * @throws {z.ZodError} if `config/membership.yaml` is malformed — the file is
  *   read on first use and on a fresh server this is often that first use, so
@@ -135,6 +137,7 @@ export async function createUser(data: {
   email: string;
   hashedPassword?: string;
   googleId?: string;
+  locale: string;
 }): Promise<UserEntity> {
   const rows = await db
     .insert(users)
@@ -142,6 +145,7 @@ export async function createUser(data: {
       email: data.email,
       hashedPassword: data.hashedPassword,
       googleId: data.googleId,
+      locale: data.locale,
       membershipTier: getDefaultMembershipTier(),
     })
     .returning();
@@ -151,12 +155,12 @@ export async function createUser(data: {
 /**
  * Update user profile fields.
  * @param userId - User UUID to update
- * @param data - Partial set of profile fields to overwrite (emailVerified / googleId)
+ * @param data - Partial set of profile fields to overwrite (emailVerified / googleId / locale)
  * @returns The updated user entity, or null if no row matched
  */
 export async function updateUser(
   userId: string,
-  data: Partial<Pick<typeof users.$inferInsert, "emailVerified" | "googleId">>,
+  data: Partial<Pick<typeof users.$inferInsert, "emailVerified" | "googleId" | "locale">>,
 ): Promise<UserEntity | null> {
   const rows = await db
     .update(users)

@@ -30,7 +30,7 @@ import {
   ConflictError,
   UnauthorizedError,
 } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { getActiveLocale, t } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
@@ -66,7 +66,7 @@ export async function register(
   }
 
   const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  const user = await userRepo.createUser({ email, hashedPassword });
+  const user = await userRepo.createUser({ email, hashedPassword, locale: getActiveLocale() });
 
   // Generate + store recovery code. Done after createUser so we have
   // a user.id to attach to. Failures here bubble up; the user row will
@@ -154,7 +154,7 @@ export async function loginOrCreateGoogle(
       if (!linked) throw new UnauthorizedError(t("server.auth.google_link_requires_email_login"));
       user = linked;
     } else {
-      user = await userRepo.createUser({ email, googleId });
+      user = await userRepo.createUser({ email, googleId, locale: getActiveLocale() });
     }
   }
 
@@ -181,6 +181,18 @@ export async function loginOrCreateGoogle(
  */
 export async function getUserById(userId: string): Promise<UserEntity | null> {
   return userRepo.getUserById(userId);
+}
+
+/**
+ * Record the account's language, which every later email to it is rendered in.
+ *
+ * Called when the user switches the interface language; the caller has
+ * already checked the value against the languages the product ships.
+ * @param userId - The account
+ * @param locale - One of the shipped locale codes
+ */
+export async function setLocale(userId: string, locale: string): Promise<void> {
+  await userRepo.updateUser(userId, { locale });
 }
 
 /**

@@ -28,7 +28,7 @@ import type { MiddlewareHandler } from "hono";
 import { runWithLocale } from "@breatic/core";
 
 /** Locales for which the server has translation files in `locales/`. */
-const SUPPORTED: ReadonlyArray<string> = ["en", "zh-CN", "zh-TW", "ja", "ko"];
+export const SUPPORTED = ["en", "zh-CN", "zh-TW", "ja", "ko"] as const;
 const DEFAULT_LOCALE = "en";
 
 /**
@@ -49,7 +49,7 @@ function negotiateLocale(header: string | undefined): string {
     .map((s) => s.split(";")[0]?.trim())
     .filter((s): s is string => Boolean(s));
   for (const r of requested) {
-    if (SUPPORTED.includes(r)) return r;
+    if ((SUPPORTED as ReadonlyArray<string>).includes(r)) return r;
     const prefix = r.split("-")[0];
     if (!prefix) continue;
     const prefixMatch = SUPPORTED.find((s) => s.startsWith(prefix + "-") || s === prefix);
