@@ -7,7 +7,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { GENERATION_NODE_MODES, type GenerationNodeType } from "@breatic/shared";
+import { formatCredits, GENERATION_NODE_MODES, type GenerationNodeType } from "@breatic/shared";
 import type { CreditEstimate } from "@breatic/shared/pricing";
 
 import {
@@ -46,8 +46,7 @@ const inputSchema = z
  * @returns The credits, with how they bound the charge.
  */
 function renderPrice(price: CreditEstimate): string {
-  // A run is charged in part-credits; two decimals, as the site shows them.
-  const credits = price.credits.toLocaleString("en-US", { maximumFractionDigits: 2, useGrouping: false });
+  const credits = formatCredits(price.credits, "en-US");
   switch (price.bound) {
     case "exact":
       return `${credits} credits at its defaults`;

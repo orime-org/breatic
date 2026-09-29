@@ -37,9 +37,11 @@ export interface EstimateInput {
 
 /**
  * How the credits relate to what the run will be charged: exactly that; at
- * least that, while a source's length is unknown; at most that, when a step
- * a reused source skips is counted in; or that much per thousand characters,
- * while a model priced by its text has none.
+ * least that, while something the price reads is not known yet (a source's
+ * length, a required source not picked, text not written) -- counting only
+ * what every such run pays; at most that, when a call a reused source skips
+ * is counted in; or that much per thousand characters, while a model whose
+ * whole price follows its text has none.
  */
 export type EstimateBound = "exact" | "at_least" | "at_most" | "per_thousand_chars";
 
@@ -91,8 +93,9 @@ function reads(formulas: readonly string[], field: string): boolean {
  * Estimates one run of a model, in credits.
  *
  * A required source not picked yet is priced as the one item the run cannot
- * go without; a prompt not written yet is priced as no text. Either makes the
- * answer a lower bound. Only a model whose whole price follows its text is
+ * go without, and a prompt not written yet as no text. Where a formula reads
+ * what is not known yet the answer is a lower bound, without the calls a
+ * reused source skips. Only a model whose whole price follows its text is
  * quoted per thousand characters instead.
  * @param model - The model's catalog entry.
  * @param input - The run as set up so far.
@@ -133,16 +136,25 @@ export async function estimateCredits(
   const text = input.prompt ?? "";
   const textPriced = model.takes_prompt && text === "" && billsBy(formulas, "$length", promptField);
 
+  // The model's own call is skipped when its source was used before, and so is
+  // every step marked reused whose source is sent.
+  const ownReused = model.reused_by !== undefined && holds(params[model.reused_by]);
+  const stepReused = steps.some(
+    (step) => step.reused === true && (step.for_param === undefined || holds(params[step.for_param])),
+  );
+
   /**
    * The run's price in US dollars with the prompt field set to one value.
    * @param prompt - What the prompt field carries.
+   * @param skippable - Whether to count the calls a reused source skips.
    * @returns The price, with every added upstream call counted.
    * @throws {Error} When a pricing formula does not produce a finite price.
    */
-  const priceUsd = async (prompt: string): Promise<number> => {
+  const priceUsd = async (prompt: string, skippable: boolean): Promise<number> => {
     if (model.takes_prompt) upstream[promptField] = prompt;
-    let usd = await upstreamPriceUsd(toPricing(model.pricing), upstream, durations);
+    let usd = skippable || !ownReused ? await upstreamPriceUsd(toPricing(model.pricing), upstream, durations) : 0;
     for (const step of steps) {
+      if (!skippable && step.reused === true) continue;
       const source = step.for_param === undefined ? undefined : params[step.for_param];
       if (step.for_param !== undefined && !holds(source)) continue;
       const calls = step.per_item ? itemCount(source) : 1;
@@ -151,24 +163,21 @@ export async function estimateCredits(
     return usd;
   };
 
-  const usd = await priceUsd(text);
   /**
    * A price in US dollars, in credits.
    * @param amount - The price.
    * @returns The credits it comes to.
    */
   const toCredits = (amount: number): number => amount * CENTS_PER_USD * creditMultiplier;
+  const usd = await priceUsd(text, true);
   if (textPriced) {
-    if (usd === 0) return { credits: toCredits(await priceUsd(SAMPLE_TEXT)), bound: "per_thousand_chars" };
+    if (usd === 0) return { credits: toCredits(await priceUsd(SAMPLE_TEXT, true)), bound: "per_thousand_chars" };
     unknown = true;
   }
-  const reusedCounted =
-    (model.reused_by !== undefined && holds(params[model.reused_by])) ||
-    steps.some((step) => step.reused === true && (step.for_param === undefined || holds(params[step.for_param])));
-  const credits = toCredits(usd);
-  if (unknown) return { credits, bound: "at_least" };
-  if (reusedCounted) return { credits, bound: "at_most" };
-  return { credits, bound: "exact" };
+  // A lower bound counts only what every run of this setup pays.
+  if (unknown) return { credits: toCredits(await priceUsd(text, false)), bound: "at_least" };
+  if (ownReused || stepReused) return { credits: toCredits(usd), bound: "at_most" };
+  return { credits: toCredits(usd), bound: "exact" };
 }
 
 /**

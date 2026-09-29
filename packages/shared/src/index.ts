@@ -374,6 +374,7 @@ export { newId, deriveId } from "@shared/ids.js";
 export { itemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 export { holds, missingSources, fitsSomeMode } from "@shared/missing-sources.js";
+export { formatCredits } from "@shared/format-credits.js";
 export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";
 
 // The tab bar belongs to one browser; these are the pure ordering rules the

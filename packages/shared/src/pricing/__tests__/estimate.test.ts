@@ -218,9 +218,32 @@ describe("estimateCredits", () => {
     expect(estimate.credits).toBeCloseTo(5.4, 6);
   });
 
-  it("prices a model that bills more than its text at no text, as a lower bound", async () => {
+  // The clone is skipped when the voice is cached, so a lower bound cannot
+  // count it; with no text yet the speech costs nothing either.
+  it("prices a lower bound without the steps a reused source may skip", async () => {
     const estimate = await estimateCredits(VOICE_CLONE, { params: { audio: "a" } }, 1);
-    expect(estimate.bound).toBe("at_least");
-    expect(estimate.credits).toBeCloseTo(160, 6);
+    expect(estimate).toEqual({ credits: 0, bound: "at_least" });
+  });
+
+  it("prices a lower bound on an unknown length without a skippable clone", async () => {
+    const METERED_CLONE: PricedModel = {
+      takes_prompt: false,
+      params: { vocal: { fill: "canvas", default: null } },
+      pricing: { base_price: 20_000, formula: '{"total_price": $ceil(get_duration(vocal)) * base_price}', discount_rate: 100 },
+      extra_steps: [
+        { endpoint: "clone", at: "before", for_param: "vocal", reused: true, pricing: { base_price: 7_500_000, formula: "", discount_rate: 100 } },
+      ],
+    };
+    const estimate = await estimateCredits(METERED_CLONE, { params: { vocal: "v" } }, 1);
+    expect(estimate).toEqual({ credits: 0, bound: "at_least" });
+  });
+
+  it("prices a required source its formula never reads exactly, left empty or not", async () => {
+    const FLAT_SLOT: PricedModel = {
+      takes_prompt: false,
+      params: { image: { fill: "canvas", default: null } },
+      pricing: { base_price: 40_000, formula: "", discount_rate: 100 },
+    };
+    expect(await estimateCredits(FLAT_SLOT, { params: {} }, 1)).toEqual({ credits: 4, bound: "exact" });
   });
 });
