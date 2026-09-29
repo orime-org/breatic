@@ -30,7 +30,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { documentCommentDraftRange, draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
+import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
 import {
   commentTool,
   openCommentDraft,
@@ -59,7 +59,6 @@ interface Seen {
 function open(): Editor {
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
-    extensions: [documentCommentDraftRange()],
   });
   const root = document.createElement('div');
   document.body.appendChild(root);

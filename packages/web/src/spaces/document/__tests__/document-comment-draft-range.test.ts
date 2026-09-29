@@ -4,17 +4,10 @@
 /**
  * Where an unposted comment is going to land (#18, A21, design §9.4).
  *
- * Between pressing the entry and posting, the range carries no mark — the
- * mark is what posting writes — so nothing in the body moves it while the
- * body keeps being edited: the reader typing elsewhere, a peer inserting a
- * paragraph above, somebody pressing undo.
- *
- * So it rides `tr.mapping`, which is what ProseMirror maps positions across
- * a change with, and it is GONE when both ends map to the same point: every
- * character it covered was deleted. Posting into a gone range would write the
- * reader's words into a thread pointing at nothing, which A21 is about.
- *
- * TDD: red because neither export exists yet.
+ * These pin the plugin's own states — open, move, close, and the range carried
+ * across the reader's own edits by ProseMirror mapping. How the range follows
+ * changes that come in through Yjs is pinned in `document-comment-rail.test.tsx`,
+ * with a second editor as the peer.
  */
 
 import { TextSelection } from '@tiptap/pm/state';
@@ -26,7 +19,6 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
-  documentCommentDraftRange,
   draftRangeIn,
   mapDraftRange,
   onDraftChange,
@@ -43,13 +35,12 @@ afterEach(() => {
 });
 
 /**
- * Opens an editor holding one paragraph, with the draft range plugin on.
+ * Opens an editor holding one paragraph.
  * @returns The editor, mounted.
  */
 function open(): Editor {
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
-    extensions: [documentCommentDraftRange()],
   });
   const root = document.createElement('div');
   document.body.appendChild(root);

@@ -28,7 +28,6 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
-  documentCommentDraftRange,
 } from '@web/spaces/document/document-comment-draft-range';
 import { postComment } from '@web/spaces/document/document-comment-post';
 import { useCommentRail } from '@web/spaces/document/use-comment-rail';
@@ -53,7 +52,6 @@ function open(): Editor {
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
     comments: { doc, readWho: () => ({ role: 'editor', viewerId: 'u1' }) },
-    extensions: [documentCommentDraftRange()],
   });
   const root = document.createElement('div');
   document.body.appendChild(root);
