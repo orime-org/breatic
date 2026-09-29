@@ -31,7 +31,7 @@ import {
   getAgentConfig,
   getSkillRouting,
 } from "@breatic/core";
-import { modelCatalog } from "@breatic/domain";
+import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
 
 initLogger("worker");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
@@ -78,6 +78,17 @@ try {
   getAgentConfig();
 } catch (err) {
   logger.error({ err }, "agent_config_invalid");
+  process.exit(1);
+}
+
+// Every model the agent runs on has to be priceable (#296). One reached
+// directly reports tokens but no cost, and is priced from
+// config/usage-pricing.yaml; lazily, a missing price would surface as the
+// first call that spent money failing to record what it spent.
+try {
+  assertModelsPriced(agentModelIds());
+} catch (err) {
+  logger.error({ err }, "usage_pricing_incomplete");
   process.exit(1);
 }
 
