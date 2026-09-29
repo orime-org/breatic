@@ -257,7 +257,7 @@ export function buildGeneratePanelViewModel(input: {
     // Capability gate (#1788): the model declares the `camera` cluster on the
     // wire → it can take camera/lens/focal/aperture simulation. Edit variants
     // omit it, so `params.camera` is undefined and the Camera control is hidden
-    // (rendered only when supported, unlike the greyed-disabled Style button).
+    // (rendered only when supported, like the Style slot).
     cameraSupported: current ? current.params.camera != null : false,
     modelEntry: current,
     nodeStatus: content?.status,

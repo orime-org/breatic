@@ -51,7 +51,7 @@ interface GenerateToolbarProps {
  * #1797, and the focus one never did — its candidate rule asks only for a
  * non-empty idle image node. So what a t2i node cannot use is refused on the
  * reference ROW, which dims and says why this mode has no use for it
- * (#1952 / #1986). Style is the one that can go dark here, and on a different
+ * (#1952 / #1986). Style is the one that can be left out here, and on a different
  * axis — the active MODEL's `style_images` capability, never the mode
  * (#1664). Focus crops a region into a standalone reference (#1782).
  * @param root0 - Component props.

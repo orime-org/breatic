@@ -513,8 +513,9 @@ function GeneratePanelBody({
   }, [vm.mode, nodeId, endPick, t, getLastWriteWasLocal]);
   // Same zombie guard for the STYLE pick (adversarial 2026-07-16): switching to
   // a model without style capability (locally or via a collaborator's
-  // setNodeModel) DISABLES the Style trigger, so a running style pick would
-  // strand its banner + keyboard focus exactly like the t2i reference case.
+  // setNodeModel) takes the Style slot off the toolbar, so a running style
+  // pick would strand its banner + keyboard focus exactly like the t2i
+  // reference case.
   React.useEffect(() => {
     const session = useCanvasStore.getState().pickSession;
     if (
