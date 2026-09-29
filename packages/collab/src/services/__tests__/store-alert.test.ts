@@ -153,13 +153,12 @@ describe("createStoreAlerter", () => {
 });
 
 describe("an alert the mail server never answers", () => {
-  // Gate 2 round 2 finding 4. This was the one step on the way out with no
-  // deadline. nodemailer's transport is built without timeout options
-  // (`core/src/infra/mailer.ts`), so it inherits a two-minute connection
-  // timeout — and the gate awaits the alert inside `beforeUnloadDocument`.
-  // An unreachable SMTP host during a database outage therefore held every
-  // unloading document in memory for two minutes each, which is the failure
-  // this whole design exists to prevent, arriving by a different door.
+  // Gate 2 round 2 finding 4. The gate awaits the alert inside
+  // `beforeUnloadDocument`, and the transport's own timeouts
+  // (`config/mail.yaml`) still allow one send roughly fifteen seconds before
+  // the greeting. An unreachable SMTP host during a database outage would
+  // hold every unloading document in memory for that long each, which is the
+  // failure this whole design exists to prevent, arriving by a different door.
 
   it("gives up and says so rather than holding the caller", async () => {
     const { alerter } = harness({

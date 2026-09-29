@@ -45,11 +45,13 @@ export interface StoreAlerterDeps {
    * How long the transport gets before the alert is written off.
    *
    * Not optional. The gate awaits this inside `beforeUnloadDocument`, and the
-   * mail transport is built without timeout options, so it inherits
-   * nodemailer's two-minute connection timeout. An unreachable SMTP host
-   * during a database outage would hold every unloading document in memory for
-   * two minutes each — filling memory with documents, which is the failure the
-   * rest of this design exists to prevent, arriving by a different door.
+   * mail transport's own timeouts (`config/mail.yaml`) bound one send at
+   * roughly fifteen seconds before the greeting — five per resolved address,
+   * plus five for the greeting — with host resolution not fully bounded. An
+   * unreachable SMTP host during a database outage would hold every unloading
+   * document in memory for that long each — filling memory with documents,
+   * which is the failure the rest of this design exists to prevent, arriving
+   * by a different door.
    */
   timeoutMs: number;
   /** Which collab instance this is — the rescue file only exists here. */

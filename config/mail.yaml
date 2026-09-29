@@ -1,0 +1,25 @@
+# Outgoing mail (#286).
+#
+# SMTP timeouts, in milliseconds. nodemailer's own defaults are two minutes to
+# connect and ten minutes of idle socket, so without these a send stuck on an
+# unresponsive server holds its connection and its promise for that long.
+#
+# nodemailer times the stages one after another: resolving the host, opening
+# the connection (TCP and TLS), then waiting for the server's greeting. When
+# opening times out it tries the next address the host resolved to, so the
+# bound up to the greeting is (addresses x connection) + greeting. After the
+# greeting every stage (AUTH, MAIL, DATA) is bounded only by the idle socket
+# timeout.
+#
+# Resolving is not fully bounded by dns_timeout_ms: when both the IPv4 and IPv6
+# lookups fail nodemailer falls back to the system resolver, which takes no
+# timeout.
+smtp:
+  # Resolving the SMTP host name.
+  dns_timeout_ms: 5000
+  # Opening the connection, TCP and TLS, per resolved address.
+  connection_timeout_ms: 5000
+  # Waiting for the server's greeting once connected.
+  greeting_timeout_ms: 5000
+  # How long the connection may sit idle mid-transfer before it is dropped.
+  socket_timeout_ms: 10000
