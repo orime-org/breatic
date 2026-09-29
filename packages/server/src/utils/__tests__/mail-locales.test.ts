@@ -257,6 +257,18 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
   });
 });
 
+describe("the inbox preview is the first sentence alone", () => {
+  it.each(LOCALES)("%s keeps a requester's message out of the preview", async (locale) => {
+    const mail = await buildRoleUpgradeRequestMail({
+      locale, ownerEmail: "to@example.test", requesterName: "Bob", projectName: "Rocket",
+      requestedRole: "editor", message: "PREVIEW-PROBE", decisionLink: LINK,
+    });
+    const beforeHeader = mail.html.slice(0, mail.html.indexOf(SLOGAN));
+    expect(beforeHeader).not.toContain("PREVIEW-PROBE");
+    expect(mail.text).toContain("PREVIEW-PROBE");
+  });
+});
+
 describe("sentences are joined the way each language writes them", () => {
   const joined = async (locale: string): Promise<string> => {
     const mail = await buildProjectJoinRequestMail({
