@@ -17,6 +17,7 @@ import { mailConfigSchema } from "@core/config/mail.js";
 const LAYOUT = {
   logo_url: "https://example.test/logo.png",
   site_url: "https://example.test",
+  site_root_locale: "en",
   contact_email: "help@example.test",
   social: [{ label: "GitHub", url: "https://github.com/example" }],
 };

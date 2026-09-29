@@ -41,6 +41,7 @@ export const mailConfigSchema = z.object({
     site_url: httpsUrl.refine((url) => new URL(url).pathname === "/" && !url.endsWith("/"), {
       message: "site_url is an origin without a trailing slash",
     }),
+    site_root_locale: z.string().min(1),
     contact_email: z.email(),
     social: z.array(z.object({ label: z.string().min(1), url: httpsUrl })).min(1),
   }),
@@ -91,6 +92,8 @@ export interface MailLayout {
   readonly logoUrl: string;
   /** The marketing site's origin, without a trailing slash. */
   readonly siteUrl: string;
+  /** The language the marketing site serves at its root, without a path prefix. */
+  readonly siteRootLocale: string;
   /** Where the help line sends people. */
   readonly contactEmail: string;
   /** The social row, in order. */
@@ -107,6 +110,7 @@ export function getMailLayout(): MailLayout {
   return {
     logoUrl: layout.logo_url,
     siteUrl: layout.site_url,
+    siteRootLocale: layout.site_root_locale,
     contactEmail: layout.contact_email,
     social: layout.social,
   };

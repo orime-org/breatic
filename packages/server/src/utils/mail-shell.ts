@@ -142,13 +142,13 @@ function dotted(links: string[]): string {
 
 /**
  * Render every piece of a mail in its recipient's language.
- * @param locale - The recipient's language; also the marketing site's path segment.
+ * @param locale - The recipient's language; also picks the marketing site's pages.
  * @param spec - What the mail says.
  * @returns The rendered pieces.
  */
 function renderPieces(locale: string, spec: MailSpec): RenderedPieces {
-  const { siteUrl, contactEmail } = getMailLayout();
-  const site = `${siteUrl}/${locale}`;
+  const { siteUrl, siteRootLocale, contactEmail } = getMailLayout();
+  const site = locale === siteRootLocale ? siteUrl : `${siteUrl}/${locale}`;
   const manualUrl = `${site}/tutorials/`;
   const heading = t(spec.subject.key, spec.subject.params);
   return {
@@ -184,7 +184,7 @@ function renderPieces(locale: string, spec: MailSpec): RenderedPieces {
  */
 function layoutSource(withAction: boolean): string {
   const button = withAction
-    ? `<mj-button href="%%ACTION_URL%%" align="left" padding="0 0 24px" inner-padding="11px 20px"
+    ? `<mj-button href="%%ACTION_URL%%" align="center" padding="0 0 24px" inner-padding="11px 20px"
          background-color="${INK}" color="#ffffff" border-radius="8px" font-size="14px" font-weight="600" line-height="1">%%ACTION_LABEL%%</mj-button>`
     : "";
   const social = dotted(getMailLayout().social.map(({ label, url }) => footerLink(escapeHtml(label), url)));
