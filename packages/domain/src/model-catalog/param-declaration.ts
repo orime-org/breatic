@@ -64,6 +64,9 @@ const declarationSchema = z.object({
   // How a value reads on screen, when its own spelling is not that sentence
   // (`left_right` reads "Left first"). English, like `label`.
   value_labels: z.record(z.string(), z.string()).optional(),
+  // The BCP-47 tag each value is, in the order `values` lists them, so the
+  // panel can show a language in the reader's own words (#2156, design §16).
+  value_locales: z.array(z.string()).optional(),
   // One spelling each, because readers compare against these exact strings:
   // the source gate takes anything that is not `list` as a single URL, while
   // the cap check and the transport iterate it; `items` is a list editor whose
@@ -73,6 +76,11 @@ const declarationSchema = z.object({
   // cap at all, so it widens the limit the yaml meant to state; a fraction is
   // read as a cap and enforced, and there is no half a piece of material.
   max_items: z.number().int().positive().optional(),
+  // The fewest entries a run takes; the panel keeps adding rows up to it.
+  min_items: z.number().int().positive().optional(),
+  // Another param this one stands in for: when this one is sent, that one is
+  // not (Gemini's speakers make its single voice meaningless).
+  replaces: z.string().optional(),
   // How a chip picked from this pool is written into the prompt the model
   // reads (#2156, design §13.2): `{n}` counts the sent list of this kind from
   // 1, `{i}` from 0.
@@ -96,6 +104,8 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "note",
   "type",
   "max_items",
+  "min_items",
+  "replaces",
   "description",
   "default",
   "values",
@@ -106,6 +116,7 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "upstream",
   "label",
   "value_labels",
+  "value_locales",
   "fields",
   "mention",
 ]);
@@ -204,6 +215,27 @@ function faultsOn(
   for (const value of Object.keys(declared.value_labels ?? {})) {
     if (!offered.has(value)) {
       faults.push(`value_labels names "${value}", which values does not offer`);
+    }
+  }
+
+  // One tag per value: the panel pairs them by position, so a short list
+  // names the wrong language for every value past the gap.
+  if (declared.value_locales !== undefined && declared.value_locales.length !== offered.size) {
+    faults.push("value_locales has to name one locale per value, in the order values lists them");
+  }
+
+  // The payload drops the replaced param by name, so a name the model does
+  // not declare drops nothing and both reach the upstream.
+  if (declared.replaces !== undefined && !names.has(declared.replaces)) {
+    faults.push(`replaces "${declared.replaces}", which this model does not declare`);
+  }
+
+  if (declared.min_items !== undefined) {
+    if (declared.type !== "list" && declared.type !== "items") {
+      faults.push("min_items counts entries, so this has to declare type: list or items");
+    }
+    if (declared.max_items !== undefined && declared.min_items > declared.max_items) {
+      faults.push("min_items sits above max_items, so no run can satisfy both");
     }
   }
 

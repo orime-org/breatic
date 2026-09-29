@@ -283,13 +283,20 @@ models:
         label: "Language"
         default: "English (United States)"
         values: ["Arabic (Egypt)", "Bangla (Bangladesh)", "Dutch (Netherlands)", "English (India)", "English (United States)", "French (France)", "German (Germany)", "Hindi (India)", "Indonesian (Indonesia)", "Italian (Italy)", "Japanese (Japan)", "Korean (South Korea)", "Marathi (India)", "Polish (Poland)", "Portuguese (Brazil)", "Romanian (Romania)", "Russian (Russia)", "Spanish (Spain)", "Tamil (India)", "Telugu (India)", "Thai (Thailand)", "Turkish (Turkey)", "Ukrainian (Ukraine)", "Vietnamese (Vietnam)"]
+        # The BCP-47 tag of each value above, same order: the panel names the
+        # language in the reader's own words from it.
+        value_locales: ["ar-EG", "bn-BD", "nl-NL", "en-IN", "en-US", "fr-FR", "de-DE", "hi-IN", "id-ID", "it-IT", "ja-JP", "ko-KR", "mr-IN", "pl-PL", "pt-BR", "ro-RO", "ru-RU", "es-ES", "ta-IN", "te-IN", "th-TH", "tr-TR", "uk-UA", "vi-VN"]
         fill: "panel"
       speakers:
         description: "Named speakers and their voices"
         label: "Speakers"
         default: null
         type: "items"
+        # The upstream takes exactly two, and ignores the single voice once
+        # they are given.
+        min_items: 2
         max_items: 2
+        replaces: "voice_id"
         fields:
           speaker:
             type: "text"

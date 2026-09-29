@@ -141,6 +141,10 @@ export interface ParamDescriptor {
    */
   type?: "list" | "items" | "text";
   max_items?: number;
+  /** The fewest entries a run takes; the panel keeps rows up to it. */
+  min_items?: number;
+  /** Another param this one stands in for: when this one is sent, that one is not. */
+  replaces?: string;
   /** The fields of one entry of an `items` list. */
   fields?: Readonly<Record<string, ItemField>>;
   /** The upstream field this param is sent as, when the names differ. */
@@ -149,6 +153,8 @@ export interface ParamDescriptor {
   label?: string;
   /** How a value of `values` reads on screen, when its spelling is not that; English. */
   value_labels?: Readonly<Record<string, string>>;
+  /** The BCP-47 tag each value of `values` is, by position, so the panel names it in the reader's language. */
+  value_locales?: readonly string[];
   /**
    * Names the picker that fills this param, for params whose value domain
    * lives upstream instead of in `values` (#1960). Two models spell the same
@@ -397,10 +403,13 @@ const paramDescriptorSchema = z
     step: z.number().optional().catch(undefined),
     type: z.enum(["list", "items", "text"]).optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
+    min_items: z.number().optional().catch(undefined),
+    replaces: z.string().optional().catch(undefined),
     fields: z.record(z.string(), itemFieldSchema).optional().catch(undefined),
     upstream: z.string().optional().catch(undefined),
     label: z.string().optional().catch(undefined),
     value_labels: z.record(z.string(), z.string()).optional().catch(undefined),
+    value_locales: z.array(z.string()).optional().catch(undefined),
     // An unrecognised name would send the panel looking for a picker that does
     // not exist, so it degrades to an ordinary param rather than to a guess.
     remote_source: z.enum(["voices"]).optional().catch(undefined),

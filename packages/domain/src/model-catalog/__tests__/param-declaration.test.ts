@@ -222,6 +222,46 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*image/s);
   });
 
+  it("lets a list editor state a floor and name the param it stands in for", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "tts",
+        modelWith({
+          voice_id: { fill: "remote", remote_source: "voices" },
+          speakers: { fill: "panel", type: "items", min_items: 2, max_items: 2, replaces: "voice_id" },
+        }, "tts"),
+      ),
+    ).not.toThrow();
+  });
+
+  it("is refused when it stands in for a param the model does not declare", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "tts",
+        modelWith({ speakers: { fill: "panel", type: "items", replaces: "voice" } }, "tts"),
+      ),
+    ).toThrow(/a-model\.speakers.*replaces "voice"/s);
+  });
+
+  it("is refused when its floor sits above its cap", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "tts",
+        modelWith({ speakers: { fill: "panel", type: "items", min_items: 3, max_items: 2 } }, "tts"),
+      ),
+    ).toThrow(/a-model\.speakers.*min_items/s);
+  });
+
+  it("lets a choice name the language each of its values is, one for one", () => {
+    const language = { fill: "panel", values: ["English (United States)", "Japanese (Japan)"] };
+    expect(() =>
+      assertParamDeclarations("tts", modelWith({ language: { ...language, value_locales: ["en-US", "ja-JP"] } }, "tts")),
+    ).not.toThrow();
+    expect(() =>
+      assertParamDeclarations("tts", modelWith({ language: { ...language, value_locales: ["en-US"] } }, "tts")),
+    ).toThrow(/a-model\.language.*value_locales/s);
+  });
+
   it("lets a choice name how each of its values reads", () => {
     expect(() =>
       assertParamDeclarations(
