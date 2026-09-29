@@ -31,11 +31,12 @@ import {
   getModel,
   reasoningFor,
   creditLotService,
+  createUsageRecorder,
   resolveProvider,
 } from "@breatic/domain";
+import type { UsageRecorder } from "@breatic/domain";
 import { getAgentConfig, logger } from "@breatic/core";
 import { memoryService } from "@server/modules";
-import { creditsForTokens } from "@server/modules/credit/token-pricing.js";
 
 const CONSOLIDATION_PROMPT = `\
 You are a memory consolidator for an AI creative assistant. Your job is to analyze conversation messages and extract key information into a structured memory update.
@@ -156,10 +157,22 @@ interface ConsolidationBill {
   projectId: string;
   /** Where the watermark stood; half of the idempotency key. */
   watermarkBefore: number;
-  /** What the call spent. */
-  tokensUsed: number;
+  /** The recorder the call was recorded on; what it settles to is charged. */
+  usage: UsageRecorder;
   /** Which model spent it. */
   model: string;
+}
+
+/**
+ * The key one window's consolidation is recorded and charged under. Two tabs
+ * that took the same window derive the same key from the watermark they
+ * started at, and the second charge is refused.
+ * @param conversationId - The conversation it folded.
+ * @param watermarkBefore - Where the watermark stood.
+ * @returns The key.
+ */
+function consolidationKey(conversationId: string, watermarkBefore: number): string {
+  return `consolidate:${conversationId}:${watermarkBefore}`;
 }
 
 /**
@@ -171,18 +184,18 @@ interface ConsolidationBill {
  * @param input - Who ran it, over which window, and what it cost.
  */
 async function bill(input: ConsolidationBill): Promise<void> {
-  const { userId, conversationId, projectId, watermarkBefore, tokensUsed, model } = input;
-  if (tokensUsed === 0) return;
+  const { userId, conversationId, projectId, watermarkBefore, usage, model } = input;
 
   try {
+    const amount = await usage.settle();
+    if (amount === 0) return;
     const outcome = await creditLotService.chargeOnceForGeneration(
-      `consolidate:${conversationId}:${watermarkBefore}`,
+      consolidationKey(conversationId, watermarkBefore),
       {
         projectId,
         actorUserId: userId,
-        amount: creditsForTokens(tokensUsed),
+        amount,
         description: "Memory consolidation",
-        tokensUsed,
         model,
         provider: resolveProvider(model),
       },
@@ -330,12 +343,26 @@ export async function consolidateWindow(
     // and the studio owes the same under every one of them. Two tabs that
     // took the same window derive the same key from the watermark they
     // started at, and the second charge is refused.
+    const usage = createUsageRecorder({
+      operationKey: consolidationKey(conversationId, watermarkBefore),
+      feature: "memory_consolidation",
+      actorUserId: userId,
+      projectId,
+      onMissingCost: (row) => logger.error({ row, ...where }, "agent_usage_cost_missing"),
+    });
+    usage.recordModelCall({
+      source: "model",
+      model: config.consolidation_model,
+      provider: resolveProvider(config.consolidation_model),
+      usage: result.usage,
+      providerMetadata: result.providerMetadata,
+    });
     await bill({
       userId,
       conversationId,
       projectId,
       watermarkBefore,
-      tokensUsed: result.usage?.totalTokens ?? 0,
+      usage,
       model: config.consolidation_model,
     });
 
