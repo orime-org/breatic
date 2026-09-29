@@ -4,8 +4,8 @@
 /**
  * Extract safe plain text from a rich-text prompt field.
  *
- * Strips HTML tags, invisible characters, HTML comments, and
- * normalizes whitespace. This is the sanctioned way to clean
+ * Strips HTML tags, HTML comments, zero-width characters and Unicode tag
+ * characters (`stripUnicodeTags`), and normalizes whitespace. This is the sanctioned way to clean
  * a canvas node prompt before passing it to an AIGC provider.
  *
  * NOTE: This reduces the HTML injection attack surface but does
@@ -13,9 +13,11 @@
  * (system prompt design, output filtering) are separate concerns.
  */
 
+import { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
+
 /**
  * Reduce a raw prompt value to clean plain text for an AIGC provider —
- * strips HTML tags, comments, and invisible characters.
+ * strips HTML tags, comments, zero-width and Unicode tag characters.
  * @param prompt - Raw prompt value (string, HTML, or unknown)
  * @returns Clean plain text suitable for AIGC provider input
  */
@@ -43,8 +45,9 @@ export function extractPromptText(prompt: unknown): string {
     .replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, " ");
 
-  // Remove zero-width and invisible characters
-  text = text.replace(/[\u200B-\u200D\uFEFF\u2060]/g, "");
+  // Remove zero-width characters, and the tag characters a hidden instruction
+  // is spelled in
+  text = stripUnicodeTags(text.replace(/[\u200B-\u200D\uFEFF\u2060]/g, ""));
 
   // Normalize horizontal whitespace, keep the line structure. A line break a
   // user typed is their own content — in a voiceover script it is where the

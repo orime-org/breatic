@@ -217,7 +217,10 @@ export function evaluateExecute(
   // a lyrics box under it and labels the pair Style and Lyrics, where a
   // sentence saying "write a prompt" names neither of the two things on
   // screen.
-  if (input.promptRequired && input.promptText.trim().length === 0) {
+  //
+  // Judged on the text the worker sends (`prompt-params.ts`): a box holding
+  // only characters that function removes reaches the vendor empty.
+  if (input.promptRequired && extractPromptText(input.promptText).length === 0) {
     return { refusal: input.lyricsRequired ? 'style-missing' : 'prompt-missing' };
   }
   // Counted on the text the vendor will actually receive. The worker cleans

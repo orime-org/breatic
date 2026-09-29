@@ -48,6 +48,17 @@ describe('evaluateExecute — which precondition is the one that fails', () => {
     );
   });
 
+  // The worker sends `extractPromptText(prompt)`, so a box holding only
+  // characters it removes reaches the vendor empty.
+  it('names the prompt for one the worker would send empty', () => {
+    const tagged = [...'draw a dog']
+      .map((c) => String.fromCodePoint(0xe0000 + c.codePointAt(0)!))
+      .join('');
+    for (const promptText of [tagged, '\u200B', '<!-- note -->']) {
+      expect(refusalOf({ ...ok, promptText })).toBe('prompt-missing');
+    }
+  });
+
   it('lets an empty prompt through when the model consumes none (#1935)', () => {
     // The talking-head model declares `takes_prompt: false`, so demanding one
     // would be a requirement we invented: the caller asks the selected model
