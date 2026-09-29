@@ -640,6 +640,30 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   );
 });
 
+/** How a card's box moves once it has arrived. */
+const MOVES = 'transition-[top] duration-200 ease-out motion-reduce:transition-none';
+
+/**
+ * Whether a card's box may animate its `top` yet: from the frame after it
+ * first appears. A card arrives before its words are measured, and measuring
+ * them makes the browser compute its style at the place it was first put —
+ * with the transition on, it then slides from the top of the column to its
+ * words. It arrives where it belongs instead, and moves smoothly after that.
+ * @returns False until the frame after the box first appears.
+ */
+function useArrived(): boolean {
+  const [arrived, setArrived] = React.useState(false);
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setArrived(true);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+  return arrived;
+}
+
 /** One thing standing in the column: a thread's card or the draft. */
 type InColumn =
   | { readonly id: string; readonly card: CommentCardView }
@@ -684,6 +708,7 @@ function PlacedDraft({
   children,
 }: PlacedDraftProps): React.JSX.Element {
   const box = React.useRef<HTMLDivElement>(null);
+  const arrived = useArrived();
   React.useLayoutEffect(() => {
     const node = box.current;
     if (node === null) return undefined;
@@ -696,7 +721,7 @@ function PlacedDraft({
   return (
     <div
       ref={box}
-      className='absolute inset-x-0 rounded-sm transition-[top] duration-200 ease-out motion-reduce:transition-none'
+      className={cn('absolute inset-x-0 rounded-sm', arrived && MOVES)}
       // The draft is what the reader is working in, so it comes to the front
       // whenever a settling card would otherwise overlap it.
       style={{ top: `${String(top)}px`, zIndex: 1 }}
@@ -781,6 +806,7 @@ function PlacedCard({
   handling,
 }: PlacedCardProps): React.JSX.Element {
   const box = React.useRef<HTMLDivElement>(null);
+  const arrived = useArrived();
   // Layout rather than passive: the height read here is what places every
   // card below this one, and a frame with it missing draws them overlapping.
   React.useLayoutEffect(() => {
@@ -804,7 +830,10 @@ function PlacedCard({
       // The move is animated: a card giving way to the one being read should
       // read as giving way rather than as the column jumping under the
       // reader (user 2026-09-22).
-      className='absolute inset-x-0 rounded-sm transition-[top] duration-200 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-active-border motion-reduce:transition-none'
+      className={cn(
+        'absolute inset-x-0 rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-active-border',
+        arrived && MOVES,
+      )}
       // The card being read comes to the front. Cards give way to each other
       // by moving, and while one is settling — a reply box opening, a height
       // not measured yet — they can still overlap; the one the reader is on

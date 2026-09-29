@@ -85,10 +85,14 @@ export function DocumentCommentWriteBox({
   // writing in, so the caret goes after what is already there. Mounting
   // writes the words without moving the caret, which leaves it at the start.
   // On arrival only: later, the caret is wherever the reader put it.
+  // The focus does not scroll: the box arrives before its card is set level
+  // with its words, and scrolling to it then carries the body away from the
+  // words the reader is looking at. The card lands beside those words.
   const focusedOnArrival = React.useRef(autoFocus);
   React.useLayoutEffect(() => {
     const node = box.current;
     if (!focusedOnArrival.current || node === null) return;
+    node.focus({ preventScroll: true });
     node.setSelectionRange(node.value.length, node.value.length);
   }, []);
 
@@ -116,8 +120,6 @@ export function DocumentCommentWriteBox({
         <Textarea
           ref={box}
           rows={1}
-          // eslint-disable-next-line jsx-a11y/no-autofocus -- a draft card the reader just asked for; they press the entry expecting to type immediately
-          autoFocus={autoFocus}
           maxLength={NOTE_MAX_CHARS}
           data-testid={`doc-comment-${name}-input`}
           className='min-h-0 resize-none overflow-hidden rounded-none border-0 bg-transparent px-2 py-1 text-sm focus-visible:border-0 md:text-sm'

@@ -225,9 +225,14 @@ test.describe('the card a comment is written in', () => {
       await page.keyboard.type(words);
 
       expect(await scroller.evaluate((node) => node.scrollTop)).toBe(scrolled);
-      const line = (await page.locator(`${EDITOR} p`).nth(index).boundingBox())!;
-      const box = (await card.boundingBox())!;
-      expect(Math.abs(box.y - line.y)).toBeLessThan(40);
+      // A card that moved to new words slides there.
+      await expect
+        .poll(async () => {
+          const line = (await page.locator(`${EDITOR} p`).nth(index).boundingBox())!;
+          const box = (await card.boundingBox())!;
+          return Math.abs(box.y - line.y);
+        })
+        .toBeLessThan(40);
     }
   });
 
