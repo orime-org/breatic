@@ -144,11 +144,6 @@ let entries = 0;
 /** The sync binding, as a position conversion takes it. */
 type Binding = NonNullable<ReturnType<typeof syncBindingOf>>;
 
-/** The open draft's range as Yjs names it, with the opening it names. */
-interface TrackedDraft {
-  readonly opening: DraftOpening;
-  readonly link: TrackedLink;
-}
 
 /**
  * Draws a range in to the letters it covers.
@@ -274,23 +269,18 @@ function inLine(doc: ProseMirrorNode, pos: number, line: EndLine): boolean {
  * @param tr - The change.
  * @param was - The end before it.
  * @param side - Which end it is.
- * @param trusted - Where its path puts it, or null when that answer is
- *   known to be stale.
- * @param fallback - Where its path puts it when neither holds.
- * @returns Where the end is now.
+ * @param at - Where its path puts it, or null when the path cannot say.
+ * @returns Where the end is now, or null once it is lost.
  */
-function carryEnd<Fallback extends number | null>(
+function carryEnd(
   tr: Transaction,
   was: number,
   side: Side,
-  trusted: number | null,
-  fallback: Fallback,
-): number | Fallback {
+  at: number | null,
+): number | null {
   const line = endLineAt(tr.before, was, side);
-  if (trusted !== null && (line === null || inLine(tr.doc, trusted, line))) {
-    return trusted;
-  }
-  return (line === null ? null : lineNow(tr.doc, line)) ?? fallback;
+  if (line === null || (at !== null && inLine(tr.doc, at, line))) return at;
+  return lineNow(tr.doc, line) ?? at;
 }
 
 /**
@@ -318,15 +308,44 @@ function trackDraft(bound: Binding, range: DraftRange): TrackedLink {
 }
 
 /**
- * Whether the letter a position names is deleted. A letter whose line element
- * was deleted is collected into a struct that is not an item.
+ * Whether the letter a name was taken on is deleted. A letter whose line
+ * element was deleted is collected into a struct that is not an item.
  * @param store - The document's store.
- * @param id - The letter.
- * @returns True once it is gone.
+ * @param end - The name.
+ * @returns True once its letter is gone.
  */
-function letterGone(store: Y.Doc['store'], id: Y.ID): boolean {
-  const item = Y.getItem(store, id);
+function letterGone(store: Y.Doc['store'], end: Y.RelativePosition): boolean {
+  if (end.item === null) return false;
+  const item = Y.getItem(store, end.item);
   return !(item instanceof Y.Item) || item.deleted;
+}
+
+/**
+ * Where an end goes once the whole row it sat in is gone with its letters: to the start of the
+ * first row after it that is still there, or the end of the last row before
+ * it, the way ProseMirror maps a position inside deleted content to the edge
+ * of the deletion. Its letters were deleted with the row, and Yjs resolves a
+ * name whose line element is deleted to a place it cannot vouch for.
+ * @param tr - The change.
+ * @param id - The row the end sat in.
+ * @param side - Which end it is.
+ * @returns Where the end is now, or null when no row on that side is left.
+ */
+function besideGoneRow(tr: Transaction, id: string, side: Side): number | null {
+  const ids: string[] = [];
+  tr.before.descendants((node) => {
+    const rowId: unknown = node.attrs['id'];
+    if (typeof rowId === 'string') ids.push(rowId);
+    return true;
+  });
+  const at = ids.indexOf(id);
+  const beside = side === 'start' ? ids.slice(at + 1) : ids.slice(0, at).reverse();
+  for (const other of beside) {
+    const row = rowById(tr.doc, other);
+    const words = row === undefined ? undefined : contentRangeOf(row);
+    if (words !== undefined) return side === 'start' ? words.from : words.to;
+  }
+  return null;
 }
 
 /**
@@ -355,8 +374,15 @@ function endAcrossYjs(
     end,
     bound.mapping,
   );
-  const gone = end.item !== null && letterGone(bound.doc.store, end.item);
-  return carryEnd(tr, was, side, gone ? null : at, at);
+  const line = endLineAt(tr.before, was, side);
+  if (
+    line !== null &&
+    rowById(tr.doc, line.id) === undefined &&
+    letterGone(bound.doc.store, end)
+  ) {
+    return besideGoneRow(tr, line.id, side);
+  }
+  return carryEnd(tr, was, side, at);
 }
 
 /**
@@ -440,7 +466,7 @@ export function mapDraftRange(
    */
   const carry = (pos: number, bias: 1 | -1): number => {
     const mapped = tr.mapping.map(pos, bias);
-    return carryEnd(tr, pos, bias === 1 ? 'start' : 'end', mapped, mapped);
+    return carryEnd(tr, pos, bias === 1 ? 'start' : 'end', mapped) ?? mapped;
   };
   const from = carry(range.from, 1);
   const to = carry(range.to, -1);
@@ -483,14 +509,14 @@ function carryDraft(
   tr: Transaction,
   current: Draft & { kind: 'aimed' },
   before: EditorState,
-  tracked: TrackedDraft | null,
+  tracked: TrackedLink | null,
 ): Draft {
   const bound = syncBindingOf(before);
   // The binding has rebuilt its index to the new nodes before it dispatches
   // (`_typeChanged`), so the relative positions resolve against this change.
   const carried =
-    fromYjs(tr) && tracked?.opening === current.opening && bound !== null
-      ? carryAcrossYjs(tr, bound, tracked.link, current)
+    fromYjs(tr) && tracked !== null && bound !== null
+      ? carryAcrossYjs(tr, bound, tracked, current)
       : mapDraftRange(current, tr);
   const moved =
     carried === null || carried.to <= carried.from
@@ -566,7 +592,7 @@ export const onDraftChange: (listener: () => void) => () => void =
  */
 export const documentCommentDraftRange = createExtension(() => {
   // The open draft's range as Yjs names it.
-  let tracked: TrackedDraft | null = null;
+  let tracked: TrackedLink | null = null;
   return {
     key: 'document-comment-draft-range',
     prosemirrorPlugins: [
@@ -645,11 +671,9 @@ export const documentCommentDraftRange = createExtension(() => {
                 tracked = null;
               } else if (
                 bound !== null &&
-                (next.state.doc !== prev.doc ||
-                  draftRangeIn(prev) !== range ||
-                  tracked === null)
+                (next.state.doc !== prev.doc || draftRangeIn(prev) !== range)
               ) {
-                tracked = { opening: range.opening, link: trackDraft(bound, range) };
+                tracked = trackDraft(bound, range);
               }
               watching.update?.(next, prev);
             },
