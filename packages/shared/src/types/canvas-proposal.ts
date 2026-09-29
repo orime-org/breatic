@@ -182,6 +182,11 @@ export interface NameableFeederIndices {
   sources: (number | null)[];
   /** The same for the nodes wired in that carry work of their own. */
   upstream: (number | null)[];
+  /**
+   * The nodes wired in that fill a required slot, in node order. The reader
+   * picks each into its slot in the panel, so none of them is mentioned.
+   */
+  slotted: number[];
 }
 
 /** Which nodes feed one node of a proposal, split by what they carry. */
@@ -252,7 +257,7 @@ export function nameableFeeders(
   const at = proposal.nodes[index];
   const poolKinds = at?.poolKinds;
   if (poolKinds === undefined || at?.takesPrompt === undefined) {
-    return { sources: [], upstream: [] };
+    return { sources: [], upstream: [], slotted: [] };
   }
   const byPool = poolKinds.length > 0;
   const held = feedersOf(proposal, index);
@@ -274,30 +279,56 @@ export function nameableFeeders(
    * @returns The same length, null where no mention can be written.
    * @throws {never} Never.
    */
-  const keepingPlaces = (list: readonly number[], can: boolean): (number | null)[] =>
-    list.map((i) => (can && mentionable(i) ? i : null));
-  // The required slots still open, by kind; each empty node of that kind
-  // takes one before any reaches the pool.
+  // The required slots still open, by kind. Each node of that kind wired in
+  // takes one, in the order the nodes are listed, before any reaches the pool.
   const open = [...(at.slotKinds ?? [])];
+  const slotted: number[] = [];
+  for (const i of [...held.sources, ...held.upstream].sort((a, b) => a - b)) {
+    const slot = open.indexOf(proposal.nodes[i]?.type as ReferenceKind);
+    if (slot === -1) continue;
+    open.splice(slot, 1);
+    slotted.push(i);
+  }
   /**
-   * Whether an empty node goes into a required slot rather than the pool.
-   * @param i - The empty node's index in the proposal.
-   * @returns True when a slot of its kind was still open, and takes it.
+   * One entry per node wired in, the index where it can be mentioned.
+   * @param list - The feeders, in the order the nodes are listed.
+   * @param can - Whether a mention is possible for this run at all.
+   * @returns The same length, null where no mention can be written.
    * @throws {never} Never.
    */
-  const takesSlot = (i: number): boolean => {
-    const slot = open.indexOf(proposal.nodes[i]?.type as ReferenceKind);
-    if (slot === -1) return false;
-    open.splice(slot, 1);
-    return true;
-  };
+  const keepingPlaces = (list: readonly number[], can: boolean): (number | null)[] =>
+    list.map((i) => (can && !slotted.includes(i) && mentionable(i) ? i : null));
   return {
     // An asset mark mentions the empty node it names only where that mention
     // is what picks the material. Through a slot the reader picks by clicking
     // and the bracket alone names the slot to pick it in.
-    sources: held.sources.map((i) => (!takesSlot(i) && byPool && mentionable(i) ? i : null)),
+    sources: keepingPlaces(held.sources, byPool),
     upstream: keepingPlaces(held.upstream, true),
+    slotted,
   };
+}
+
+/**
+ * The feeders one node's prompt actually sends: the k-th asset mark sends the
+ * k-th entry of {@link nameableFeeders}' sources, the k-th ref mark the k-th
+ * upstream entry, the way the canvas writes its mentions. A node wired in and
+ * never marked is not sent.
+ * @param proposal - The proposal being read.
+ * @param index - The node being fed.
+ * @returns The indices the marks send, in the order the marks appear.
+ * @throws {never} Never.
+ */
+export function markTargets(proposal: CanvasProposal, index: number): number[] {
+  const named = nameableFeeders(proposal, index);
+  const sent: number[] = [];
+  let assets = 0;
+  let refs = 0;
+  for (const segment of proposal.nodes[index]?.prompt ?? []) {
+    const kind = segment.slot?.kind;
+    const target = kind === "asset" ? named.sources[assets++] : kind === "ref" ? named.upstream[refs++] : undefined;
+    if (target !== undefined && target !== null) sent.push(target);
+  }
+  return sent;
 }
 
 /**

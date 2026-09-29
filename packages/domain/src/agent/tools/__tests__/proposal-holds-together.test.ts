@@ -934,11 +934,13 @@ describe("what the answer tells the canvas", () => {
     expect(answered(propose(slot)).map((n) => n.poolKinds)).toEqual([undefined, []]);
   });
 
-  it("names the slots a run cannot go without, apart from its pool", () => {
-    // A model taking one kind both ways: a required slot and a pool. The
-    // reader's material fills the slot first, so the canvas and the card must
-    // know the slot is there even though the pool takes the same kind.
-    const mixed = pick(
+  /**
+   * The mode whose model takes one kind both ways: a required slot and a pool.
+   * @returns That mode.
+   * @throws {Error} When the catalog offers none.
+   */
+  const mixed = (): Reachable =>
+    pick(
       (at) =>
         at.byReference &&
         Object.values(at.params).some(
@@ -946,13 +948,60 @@ describe("what the answer tells the canvas", () => {
         ),
       "mode with a required slot beside its pool",
     );
-    const slots = Object.values(mixed.params)
-      .filter((p) => p.filledBySource === true && p.fromReferencePool !== true && p.optional !== true)
-      .map((p) => p.accepts);
 
-    const nodes = answered(propose(mixed));
-    expect(nodes[nodes.length - 1]?.slotKinds).toEqual(slots);
-    expect(answered(propose(pooled())).at(-1)?.slotKinds).toBeDefined();
+  it("names the slots a run cannot go without, apart from its pool", () => {
+    // The reader's material fills the slot first, so the canvas and the card
+    // must know the slot is there even though the pool takes the same kind.
+    const nodes = answered(propose(mixed()));
+    expect(nodes[nodes.length - 1]?.slotKinds).toEqual(["image"]);
+  });
+
+  it("names no slot for material the model can go without", () => {
+    // Every canvas place here is optional, so none of them is a slot a run
+    // cannot go without.
+    const optionalOnly = pick(
+      (at) =>
+        Object.values(at.params).some((p) => p.filledBySource === true && p.fromReferencePool !== true) &&
+        Object.values(at.params).every(
+          (p) => p.filledBySource !== true || p.fromReferencePool === true || p.optional === true,
+        ),
+      "mode whose canvas places are all optional",
+    );
+    expect(answered(propose(optionalOnly, { sources: [] })).at(-1)?.slotKinds).toEqual([]);
+  });
+
+  it("counts the pool's cap without the picture the required slot takes", () => {
+    const at = mixed();
+    const cap = Object.values(at.params).find((p) => p.fromReferencePool === true)?.maxItems ?? 0;
+    const sources = Array.from({ length: cap + 1 }, () => "image" as const);
+
+    expect(checkProposal(propose(at, { sources, marks: sources.length })).ok).toBe(true);
+  });
+
+  it("refuses a mark naming generated work that fills the required slot", () => {
+    const at = mixed();
+    const first = pick((m) => m.nodeType === "image" && m.needs.length === 0 && m.takesPrompt, "text-to-image mode");
+    const proposal: CanvasProposal = {
+      nodes: [
+        { role: "generate", type: "image", name: "Knight", mode: first.mode, model: first.model, params: {}, prompt: [{ text: "a knight" }] },
+        {
+          role: "generate",
+          type: at.nodeType,
+          name: "Clip",
+          mode: at.mode,
+          model: at.model,
+          params: {},
+          prompt: [{ slot: { kind: "ref", label: "knight", note: "" } }, { text: " walks forward" }],
+        },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "",
+      groupName: "Knight clip",
+    };
+
+    const verdict = checkProposal(proposal);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok ? "" : verdict.reason).toMatch(/slot/);
   });
 
   it("refuses a proposal that says it itself", () => {
@@ -1820,10 +1869,11 @@ describe("a mark pointing at an upstream node", () => {
       groupName: "Two steps",
     });
 
-    // The one mark lands on the unmentionable feeder, and it is named.
+    // The one mark lands on the feeder the model's required slot takes, and
+    // it is named.
     expect(verdict).toEqual({
       ok: false,
-      reason: expect.stringContaining("cannot carry a mention of"),
+      reason: expect.stringMatching(/fills the \w+ slot/),
     });
   });
 
@@ -1929,9 +1979,11 @@ describe("a mark pointing at an upstream node", () => {
       groupName: "Two steps",
     });
 
+    // Generated work of the kind the model's slot takes fills that slot, and
+    // a slot is picked in the panel, never mentioned.
     expect(verdict).toEqual({
       ok: false,
-      reason: expect.stringContaining("cannot carry a mention of"),
+      reason: expect.stringMatching(/fills the \w+ slot/),
     });
   });
 });

@@ -452,10 +452,20 @@ describe('what a wired source does to the price', () => {
     prompt: [{ text: 'follow it' }],
   };
 
-  it('prices a run with the clip wired into it, as the run will be sent', async () => {
-    const proposal = flow([{ role: 'source', type: 'video', name: 'Your clip' }, clipRun], [[0, 1]]);
+  it('prices a run with the clip its prompt marks, as the run will be sent', async () => {
+    const marked: ProposalNode = {
+      ...clipRun,
+      prompt: [{ text: 'follow ' }, { slot: { kind: 'asset', label: 'your clip', note: 'Drop it in' } }],
+    };
+    const proposal = flow([{ role: 'source', type: 'video', name: 'Your clip' }, marked], [[0, 1]]);
 
     expect(await creditsOf(BRANCHING, proposal)).toEqual({ credits: 10, bound: 'exact' });
+  });
+
+  it('prices a clip wired in but never marked as not sent', async () => {
+    const proposal = flow([{ role: 'source', type: 'video', name: 'Your clip' }, clipRun], [[0, 1]]);
+
+    expect(await creditsOf(BRANCHING, proposal)).toEqual({ credits: 4, bound: 'exact' });
   });
 
   it('prices the same run without the wire on the other branch', async () => {
@@ -476,7 +486,7 @@ describe('a proposal stored before the check answered these questions', () => {
       [[0, 1]],
     );
 
-    expect(nameableFeeders(proposal, 1)).toEqual({ sources: [], upstream: [] });
+    expect(nameableFeeders(proposal, 1)).toEqual({ sources: [], upstream: [], slotted: [] });
   });
 
   it('holds the place of a feeder the panel cannot mention', () => {
@@ -492,6 +502,6 @@ describe('a proposal stored before the check answered these questions', () => {
       [[0, 2], [1, 2]],
     );
 
-    expect(nameableFeeders(proposal, 2)).toEqual({ sources: [null, 1], upstream: [] });
+    expect(nameableFeeders(proposal, 2)).toEqual({ sources: [null, 1], upstream: [], slotted: [] });
   });
 });

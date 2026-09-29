@@ -534,6 +534,13 @@ function checkGenerateNode(
         reason: `"${node.name}" points upstream ${String(pointed.length)} time(s) and ${String(wired)} node(s) are wired into it. Each mark is about one of them, in the order they are listed.`,
       };
     }
+    const missed = held.upstream[lost];
+    if (missed !== undefined && canName.slotted.includes(missed)) {
+      return {
+        ok: false,
+        reason: `"${proposal.nodes[missed]?.name ?? ""}" fills the ${proposal.nodes[missed]?.type ?? ""} slot "${model}" cannot run without, which the reader picks in the panel. Take the mark off it; a second ${proposal.nodes[missed]?.type ?? ""} wired in after it can be marked.`,
+      };
+    }
     return {
       ok: false,
       reason: `"${model}" cannot carry a mention of "${nodesAt(held.upstream)[lost]?.name ?? ""}". Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
@@ -584,12 +591,14 @@ function checkGenerateNode(
   // panel by name, so a group placed over it is filled by the reader and then
   // turned away.
   //
-  // Counted per kind over the nodes of that kind wired in, which is the most
+  // Counted per kind over the nodes of that kind wired in and not taken by a
+  // required slot, which is the most
   // the prompt's marks can put in that pool: the panel sends each mentioned
   // row in the list of its own kind (`mentionedReferenceUrls`), and the words
   // upstream are never one of them. A wired node the prompt never marks is
   // counted here, and reaches the pool only once the reader mentions it.
-  const wired = nodesAt([...held.sources, ...held.upstream]);
+  // A node the model's required slot takes is picked there, not in the pool.
+  const wired = nodesAt([...held.sources, ...held.upstream].filter((i) => !canName.slotted.includes(i)));
   for (const { kind, info } of pools) {
     const pooled = wired.filter((n) => n.type === kind).length;
     const over = referenceCapExceeded(pooled, info.maxItems);

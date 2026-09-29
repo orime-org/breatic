@@ -222,6 +222,16 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
+  // Kling O3 image-to-video takes pictures two ways: its first frame in a slot
+  // and elements from the pool. Which wired picture goes where is decided by
+  // the order the nodes are listed, so the answer says so.
+  it("says which wired node fills a slot the pool shares a kind with", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /\(kling-video-o3-4k-image-to-video\)[^\n]*The first image node wired in fills its image slot; later ones go to its pool\./,
+    );
+  });
+
   it("prices a per-character model per thousand characters while it has no text", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
     expect(renderGenerationModelsForModel(answer)).toMatch(/credits per 1000 characters of prompt/);

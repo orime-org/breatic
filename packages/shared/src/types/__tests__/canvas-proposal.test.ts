@@ -8,7 +8,7 @@
  * the reader fills belongs in the slot first: a run without it cannot go.
  */
 import { describe, expect, it } from "vitest";
-import { nameableFeeders, type CanvasProposal, type ProposalNode } from "@shared/types/canvas-proposal";
+import { markTargets, nameableFeeders, type CanvasProposal, type ProposalNode } from "@shared/types/canvas-proposal";
 
 const photo = (name: string): ProposalNode => ({ role: "source", type: "image", name });
 
@@ -56,5 +56,43 @@ describe("nameableFeeders", () => {
     const proposal = into([photo("A"), photo("B"), { ...mixedRun, slotKinds: [] }]);
 
     expect(nameableFeeders(proposal, 2).sources).toEqual([0, 1]);
+  });
+
+  it("sends generated work to the required slot before the pool too", () => {
+    const work: ProposalNode = { role: "generate", type: "image", name: "Knight", mode: "t2i", model: "m", poolKinds: [], takesPrompt: true };
+    const proposal = into([work, mixedRun]);
+
+    expect(nameableFeeders(proposal, 1)).toEqual({ sources: [], upstream: [null], slotted: [0] });
+  });
+
+  it("gives the slot to whichever node of that kind is listed first", () => {
+    const work: ProposalNode = { role: "generate", type: "image", name: "Knight", mode: "t2i", model: "m", poolKinds: [], takesPrompt: true };
+    const proposal = into([work, photo("Hero"), mixedRun]);
+
+    expect(nameableFeeders(proposal, 2)).toEqual({ sources: [1], upstream: [null], slotted: [0] });
+  });
+});
+
+describe("markTargets", () => {
+  const pooled = { ...mixedRun, slotKinds: [] };
+
+  it("sends the node each mark names and leaves an unmarked one out", () => {
+    const marked = {
+      ...pooled,
+      prompt: [
+        { text: "walk with " },
+        { slot: { kind: "asset" as const, label: "hero", note: "Drop the hero in" } },
+      ],
+    };
+    const proposal = into([photo("Hero"), photo("Extra"), marked]);
+
+    expect(markTargets(proposal, 2)).toEqual([0]);
+  });
+
+  it("sends the upstream node a ref mark names", () => {
+    const work: ProposalNode = { role: "generate", type: "image", name: "Knight", mode: "t2i", model: "m", poolKinds: [], takesPrompt: true };
+    const marked = { ...pooled, prompt: [{ slot: { kind: "ref" as const, label: "knight", note: "" } }, { text: " walks" }] };
+
+    expect(markTargets(into([work, marked]), 1)).toEqual([0]);
   });
 });

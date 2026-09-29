@@ -11,7 +11,7 @@
  * quote its own price.
  */
 
-import { feedersOf, layersOf, nameableFeeders, promptPlainText } from '@breatic/shared';
+import { layersOf, markTargets, nameableFeeders, promptPlainText } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ModelEntry, ProposalNode } from '@breatic/shared';
 import type { CreditEstimate } from '@breatic/shared/pricing';
 
@@ -295,18 +295,18 @@ export function costOf(
   };
 }
 
-/** What a wired source stands for in a price: it will be there, its length unknown. */
+/** What a sent source stands for in a price: it will be there, its length unknown. */
 const WIRED = 'wired';
 
 /**
- * The params one proposed run is priced with: its own, plus a stand-in for
- * each source wired into it, under the param that source will reach. A
- * mentioned feeder lands in the pool of its kind; one picked by a slot lands in
- * the first slot of its kind still empty.
+ * The params one proposed run is priced with: its own, plus a stand-in in the
+ * pool for each node a mark names, the way the canvas writes its mentions. A
+ * node wired in and never marked is not sent; a required slot the reader
+ * picks into is priced by the estimate as the one item the run needs.
  * @param entry - The run's catalog entry.
  * @param proposal - The proposal the card draws.
  * @param index - The run's node.
- * @returns The params, with the wired sources in place.
+ * @returns The params, with the sent sources in place.
  * @throws {never} Never.
  */
 function wiredParams(
@@ -315,26 +315,13 @@ function wiredParams(
   index: number,
 ): Record<string, unknown> {
   const params: Record<string, unknown> = { ...(proposal.nodes[index]?.params ?? {}) };
-  const held = feedersOf(proposal, index);
-  const named = nameableFeeders(proposal, index);
-  const mentioned = new Set([...named.sources, ...named.upstream].filter((i) => i !== null));
   const specs = Object.entries(entry.params ?? {});
-  for (const i of [...held.sources, ...held.upstream]) {
+  for (const i of markTargets(proposal, index)) {
     const kind = proposal.nodes[i]?.type;
-    const byPool = mentioned.has(i);
-    const target = specs.find(
-      ([name, spec]) =>
-        spec.accepts === kind &&
-        (byPool ? spec.fill === 'pool' : spec.fill === 'canvas' && params[name] == null),
-    );
-    if (target === undefined) continue;
-    const [name] = target;
-    if (byPool) {
-      const list = Array.isArray(params[name]) ? (params[name] as unknown[]) : [];
-      params[name] = [...list, WIRED];
-    } else {
-      params[name] = WIRED;
-    }
+    const pool = specs.find(([, spec]) => spec.fill === 'pool' && spec.accepts === kind);
+    if (!pool) continue;
+    const list = Array.isArray(params[pool[0]]) ? (params[pool[0]] as unknown[]) : [];
+    params[pool[0]] = [...list, WIRED];
   }
   return params;
 }
