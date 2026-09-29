@@ -113,12 +113,11 @@ let projSeq = 0;
 async function insertProject(
   studioId: string,
   ownerUserId: string,
-  visibility: "studio" | "private",
 ): Promise<string> {
   const slug = `rr-project-${projSeq++}`;
   const rows = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studioId}, ${ownerUserId}, ${`Project ${slug}`}, ${slug}, ${visibility})
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioId}, ${ownerUserId}, ${`Project ${slug}`}, ${slug})
     RETURNING id
   `;
   const projectId = rows[0]!.id;
@@ -150,7 +149,7 @@ describe("POST /api/v1/projects/:id/opened — record open (real PG + Redis)", (
     const owner = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    const pid = await insertProject(studioId, owner, "studio");
+    const pid = await insertProject(studioId, owner);
 
     const res = await app.request(`/api/v1/projects/${pid}/opened`, {
       method: "POST",
@@ -166,7 +165,7 @@ describe("POST /api/v1/projects/:id/opened — record open (real PG + Redis)", (
     const stranger = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    const pid = await insertProject(studioId, owner, "private");
+    const pid = await insertProject(studioId, owner);
 
     const res = await app.request(`/api/v1/projects/${pid}/opened`, {
       method: "POST",
@@ -181,7 +180,7 @@ describe("POST /api/v1/projects/:id/opened — record open (real PG + Redis)", (
     const owner = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    const pid = await insertProject(studioId, owner, "studio");
+    const pid = await insertProject(studioId, owner);
 
     const res = await app.request(`/api/v1/projects/${pid}/opened`, {
       method: "POST",
@@ -199,12 +198,8 @@ describe("GET /api/v1/studios/recent — landing feed (real PG + Redis)", () => 
     await insertStudioMember(studioId, owner, "admin");
     await insertStudioMember(studioId, user, "guest");
 
-    // The user opens a studio-visible project through the real endpoint.
-    const pVisible = await insertProject(studioId, owner, "studio");
-    // A studio-visible open-baseline project materializes a viewer row on read;
-    // here the user already qualifies via studio membership, so POST opened is
-    // access-gated through to a 200 (assertAccess admits the materialized/owner
-    // path). Seed a viewer row so the access gate passes deterministically.
+    // The user, a viewer on the project, opens it through the real endpoint.
+    const pVisible = await insertProject(studioId, owner);
     await sql`
       INSERT INTO project_members (project_id, user_id, role, added_by)
       VALUES (${pVisible}, ${user}, 'viewer', null)
@@ -216,9 +211,9 @@ describe("GET /api/v1/studios/recent — landing feed (real PG + Redis)", () => 
     });
     expect(openRes.status).toBe(200);
 
-    // The user ALSO has a stale open row for someone else's private project
-    // they can no longer access — it must NOT come back over the wire.
-    const pOthersPrivate = await insertProject(studioId, owner, "private");
+    // The user ALSO has a stale open row for a project they are not a member
+    // of — it must NOT come back over the wire.
+    const pOthersPrivate = await insertProject(studioId, owner);
     await sql`
       INSERT INTO project_last_opened (user_id, project_id, last_opened_at)
       VALUES (${user}, ${pOthersPrivate}, now())

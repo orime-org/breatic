@@ -28,7 +28,7 @@ interface LoadingOverlayProps {
  *   - 50-200ms typical (per server route note); 10-second timeout
  *     guards against a wedged collab or wedged WS.
  *
- * Visual: scrim matches Radix `DialogOverlay` exactly (`bg-black/80`, no
+ * Visual: scrim matches Radix `DialogOverlay` exactly (`bg-overlay`, no
  * backdrop blur) so a LoadingOverlay opened from inside / right after a
  * Dialog reads as the same surface and doesn't visibly tint-shift. Sits
  * at z-index 50 so it covers chrome layers. Inner card uses
@@ -48,7 +48,7 @@ export function LoadingOverlay({
       data-testid={testId}
       role='status'
       aria-live='polite'
-      className='fixed inset-0 z-50 flex items-center justify-center bg-black/80'
+      className='fixed inset-0 z-50 flex items-center justify-center bg-overlay'
     >
       <div className='flex flex-col items-center gap-3 rounded-md border border-border bg-card px-6 py-4 shadow'>
         <Loader2 className='h-6 w-6 animate-spin text-foreground' />

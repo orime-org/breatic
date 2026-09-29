@@ -39,6 +39,9 @@ export type NotificationType =
   | "project.invite_accepted"
   | "project.transfer_request"
   | "project.transfer_approved"
+  | "project.join_request"
+  | "project.join_approved"
+  | "project.join_rejected"
   | "membership.ended"
   | "membership.upgrade_incomplete"
   | "storage.quota_exceeded";

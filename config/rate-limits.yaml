@@ -105,3 +105,9 @@ credits-refund: { max: 20, window_seconds: 60 }
 # past anything the panel asks for -- while an unthrottled caller here spends
 # our Stripe rate limit, and Stripe's limit is shared by every account we have.
 subscription-write: { max: 10, window_seconds: 60 }
+
+# Asking a project's owner to let you in (#96, post-auth, user-keyed). The
+# one-pending index stops repeats on one project; this caps one account ringing
+# the owners of many projects. Each call writes a request row, a bell entry
+# and an email.
+project-join-request: { max: 20, window_seconds: 3600 }

@@ -12,8 +12,8 @@
  * every unit test. Five integration tests do call `deleteProject`, which is
  * how the gap hid: calling a function is not testing what it writes.
  *
- * Creation is covered elsewhere (`project-visibility-materialize`, which the
- * same experiment turned red), so it is not repeated here. Duplication and
+ * Creation is covered in `project-access.integration.test.ts`, so it is not
+ * repeated here. Duplication and
  * deletion are the two that were unguarded, and they are guarded here.
  *
  * Both go through the repo directly rather than the service: the subject is
@@ -106,8 +106,8 @@ async function insertProject(
 ): Promise<string> {
   const slug = `pmw-project-${seq++}`;
   const rows = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studioId}, ${ownerUserId}, ${`Project ${slug}`}, ${slug}, 'studio')
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioId}, ${ownerUserId}, ${`Project ${slug}`}, ${slug})
     RETURNING id
   `;
   const projectId = rows[0]!.id;

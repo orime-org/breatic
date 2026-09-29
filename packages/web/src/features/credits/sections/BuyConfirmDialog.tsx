@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { Loader2 } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import { Checkbox } from '@web/components/ui/checkbox';
@@ -204,6 +205,13 @@ export function BuyConfirmDialog({
             disabled={!consented || starting}
             onClick={confirm}
           >
+            {starting ? (
+              <Loader2
+                data-testid='confirm-pay-pending'
+                aria-hidden='true'
+                className='mr-2 h-3.5 w-3.5 animate-spin'
+              />
+            ) : null}
             {t('credits.buy.pay')}
           </Button>
         </DialogFooter>

@@ -8,9 +8,7 @@
  * Every path that files a project-scoped REQUEST row (invite, transfer offer,
  * role-upgrade request) takes the `projects` row lock, and `deleteProject`
  * takes it FIRST and only then sweeps those tables (`project.repo.ts`, the
- * comment there says "Taken FIRST"). Membership rows are not in that set:
- * `materializeBaselineViewer` writes one with no lock and no transaction at
- * all, and racing the cascade there is a separate, pre-existing gap. Any path
+ * comment there says "Taken FIRST"). Any path
  * that takes these two the other way round closes an AB/BA cycle: Postgres notices
  * after `deadlock_timeout` and aborts one side with 40P01, which is neither an
  * `AppError` nor an `HTTPException` and therefore surfaces as a 500 to whoever

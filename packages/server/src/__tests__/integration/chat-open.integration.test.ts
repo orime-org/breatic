@@ -110,8 +110,8 @@ async function seedProject(): Promise<{
     INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')
   `;
   const [project] = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}, 'private') RETURNING id
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}) RETURNING id
   `;
   await sql`
     INSERT INTO project_members (project_id, user_id, role, added_by)
@@ -321,8 +321,8 @@ describe("POST /chat/open — what comes back", () => {
     // dropping the project condition from listConversations left every case in
     // this file green, because no caller had a conversation anywhere else.
     const [elsewhere] = await sql<{ id: string }[]>`
-      INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-      VALUES (${studioId}, ${userId}, 'elsewhere', ${`elsewhere-${seq++}`}, 'private') RETURNING id
+      INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+      VALUES (${studioId}, ${userId}, 'elsewhere', ${`elsewhere-${seq++}`}) RETURNING id
     `;
     await sql`
       INSERT INTO project_members (project_id, user_id, role, added_by)

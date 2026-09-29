@@ -29,7 +29,6 @@ const ProjectPage = lazyRoute(routeImports.projectPage, {
   editingSurface: true,
 });
 const DecisionLandingPage = lazyRoute(routeImports.decisionLandingPage);
-const NoAccessPage = lazyRoute(routeImports.noAccessPage);
 const LoginPage = lazyRoute(routeImports.loginPage);
 const RegisterPage = lazyRoute(routeImports.registerPage);
 const RecoveryCodePage = lazyRoute(routeImports.recoveryCodePage);
@@ -117,18 +116,6 @@ export const baseRoutes: RouteObject[] = [
     element: (
       <ProtectedRoute>
         <ProjectPage />
-      </ProtectedRoute>
-    ),
-  },
-  {
-    // NOT_MEMBER landing — 2026-05-28 spec § 2.1: direct project URL
-    // without permission shows a "contact the owner" page. Joining a
-    // project goes through the invite-confirm handshake (the owner sends a
-    // pending invite from ShareDialog); ProjectPage redirects here on 403.
-    path: '/project/:projectId/access',
-    element: (
-      <ProtectedRoute>
-        <NoAccessPage />
       </ProtectedRoute>
     ),
   },

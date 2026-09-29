@@ -189,6 +189,23 @@ export async function attachNotification(
 }
 
 /**
+ * Which project a request is about, read WITHOUT a lock.
+ *
+ * A decision locks the project before the request, so it needs the project id
+ * first. A request's `project_id` never changes.
+ * @param id - Request id.
+ * @param tx - The deciding transaction.
+ * @returns The project id, or null when there is no such live row.
+ */
+export async function getProjectIdOf(id: string, tx: DbTx): Promise<string | null> {
+  const rows = await tx
+    .select({ projectId: roleUpgradeRequests.projectId })
+    .from(roleUpgradeRequests)
+    .where(and(eq(roleUpgradeRequests.id, id), isNull(roleUpgradeRequests.deletedAt)));
+  return rows[0]?.projectId ?? null;
+}
+
+/**
  * Take the row lock the decision path serialises on, and report what it found.
  *
  * Locks by id alone — see this module's header for why adding `status` to the

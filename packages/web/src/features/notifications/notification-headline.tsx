@@ -143,6 +143,21 @@ const PROJECT_ROWS: Partial<
     nameField: 'accepterName',
     actorIdField: 'accepterUserId',
   },
+  'project.join_request': {
+    key: 'projectJoinRequest',
+    nameField: 'requesterName',
+    actorIdField: 'requesterUserId',
+  },
+  'project.join_approved': {
+    key: 'projectJoinApproved',
+    nameField: 'deciderName',
+    actorIdField: 'deciderUserId',
+  },
+  'project.join_rejected': {
+    key: 'projectJoinRejected',
+    nameField: 'deciderName',
+    actorIdField: 'deciderUserId',
+  },
 };
 
 /** Per-type config for a notification whose entity is a studio. */

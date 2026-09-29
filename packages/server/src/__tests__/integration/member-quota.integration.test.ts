@@ -402,25 +402,35 @@ describe("project collaborator cap — invite time (the early hint)", () => {
     ).resolves.toBeTruthy();
   });
 
-  it("counts neither the owner nor auto-materialised baseline viewers", async () => {
-    // Both carry `added_by IS NULL`. Counting them would fill any project in a
-    // large studio the moment people opened it.
+  it("does not count the owner", async () => {
     const admin = await insertUser("base");
     const studio = await insertStudio(admin.id);
     const project = await insertProject(studio.id, admin.id);
-    for (let i = 0; i < 3; i++) {
-      const lurker = await insertUser("base");
-      await sql`
-        INSERT INTO project_members (project_id, user_id, role)
-        VALUES (${project}, ${lurker.id}, 'viewer')
-      `;
-    }
     await seedProjectMembers(project, admin.id, projectCeiling("base") - 1);
     const invitee = await insertUser("base");
 
     await expect(
       inviteToProject(project, admin.id, invitee.email),
     ).resolves.toBeTruthy();
+  });
+
+  it("counts a member with no inviter on record like any other", async () => {
+    // Rows with `added_by IS NULL` other than the owner are members who joined
+    // before membership needed the owner's approval. They hold a seat.
+    const admin = await insertUser("base");
+    const studio = await insertStudio(admin.id);
+    const project = await insertProject(studio.id, admin.id);
+    const earlier = await insertUser("base");
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role)
+      VALUES (${project}, ${earlier.id}, 'viewer')
+    `;
+    await seedProjectMembers(project, admin.id, projectCeiling("base") - 1);
+    const invitee = await insertUser("base");
+
+    await expect(
+      inviteToProject(project, admin.id, invitee.email),
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it("names this tier's number without claiming it is the reader's plan", async () => {

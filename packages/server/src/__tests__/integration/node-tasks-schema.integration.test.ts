@@ -196,8 +196,8 @@ describe("nothing in the schema caps how many tasks a node may run", () => {
     `;
     const slug = `nts-${crypto.randomUUID()}`;
     const projects = await sql<{ id: string }[]>`
-      INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-      VALUES (${studios[0]!.id}, ${userId}, ${slug}, ${slug}, 'private')
+      INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+      VALUES (${studios[0]!.id}, ${userId}, ${slug}, ${slug})
       RETURNING id
     `;
     const projectId = projects[0]!.id;

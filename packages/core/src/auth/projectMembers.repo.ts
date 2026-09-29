@@ -14,11 +14,11 @@
  * partial unique index treats `deleted_at IS NOT NULL` rows as gone).
  */
 
-import { and, eq, isNull, isNotNull, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import type { DbTx } from "@core/db/client.js";
 import { projectMembers, projects, studioMembers } from "@core/db/schema.js";
-import type { ProjectMember, ProjectRole } from "@breatic/shared";
+import type { DecisionGrantRole, ProjectMember, ProjectRole } from "@breatic/shared";
 
 /**
  * Map a raw `project_members` drizzle row to the shared domain entity.
@@ -100,7 +100,7 @@ export async function getRole(
  * unlocked read is acting on a snapshot taken outside its own transaction,
  * and every write in this repo that follows such a decision is an upsert
  * clearing `deleted_at` ({@link materializeOwner},
- * {@link materializeBaselineViewer}) — so a membership revocation committing
+ * {@link addUnlessActive}) — so a membership revocation committing
  * in that window is not merely missed, it is UNDONE. Locking the row makes
  * the concurrent writer queue instead of interleaving.
  *
@@ -146,12 +146,13 @@ export async function lockMemberRole(
  * Owner uniqueness is enforced by the partial unique index
  * `project_members_one_owner_per_project`; at most one row matches.
  * @param projectId - Project UUID
+ * @param tx - Enclosing transaction, when the caller is inside one
  * @returns Owner's user UUID, or null if the project has no active
  *   owner (should not happen — every project has an owner row in
  *   the same tx as project creation)
  */
-export async function getOwner(projectId: string): Promise<string | null> {
-  const rows = await db
+export async function getOwner(projectId: string, tx?: DbTx): Promise<string | null> {
+  const rows = await (tx ?? db)
     .select({ userId: projectMembers.userId })
     .from(projectMembers)
     .where(
@@ -231,12 +232,11 @@ export async function listTransferCandidates(
 }
 
 /**
- * Count a project's EXPLICITLY invited members (`added_by IS NOT NULL`):
- * editors / viewers added via an invite. The creator-owner row and the
- * auto-materialized baseline viewers (open baseline) BOTH have
- * `added_by = null` and are intentionally EXCLUDED — the project
- * collaborator cap bounds the explicit invite roster only, and must never
- * block open-baseline viewing access.
+ * Count a project's collaborators: every active member except the owner.
+ *
+ * This is the number the collaborator ceiling bounds. It reads the role, not
+ * how the row got there, so a member whose role later changes stays counted
+ * exactly once.
  *
  * A caller inside a transaction MUST pass the handle. Not for correctness —
  * the gate holds the `projects` row by then, so no other confirm can have an
@@ -247,9 +247,9 @@ export async function listTransferCandidates(
  * the lock, so everybody queued behind it waits too.
  * @param projectId - Project UUID
  * @param tx - Enclosing transaction, when the caller is inside one
- * @returns Count of active explicitly-invited members.
+ * @returns Count of active non-owner members.
  */
-export async function countExplicitMembers(
+export async function countCollaborators(
   projectId: string,
   tx?: DbTx,
 ): Promise<number> {
@@ -260,7 +260,7 @@ export async function countExplicitMembers(
       and(
         eq(projectMembers.projectId, projectId),
         isNull(projectMembers.deletedAt),
-        isNotNull(projectMembers.addedBy),
+        ne(projectMembers.role, "owner"),
       ),
     );
   return rows[0]?.count ?? 0;
@@ -334,61 +334,40 @@ export async function upsertMember(
 }
 
 /**
- * Materialize an open-baseline viewer row on first project entry (slice 2).
+ * Give a user a seat on a project unless they already hold an active one.
  *
- * Called by `project.service.loadForViewer` the moment a studio member opens
- * a studio-visible project they have no `project_members` row for yet. The
- * write happens on the server's project-load path, BEFORE the client opens
- * its collab WebSocket, so collab's `loadProjectRole` always reads an already
- * persisted row — collab itself never materializes and never recomputes the
- * studio role.
- *
- * Conflict semantics (`ON CONFLICT (project_id, user_id) DO UPDATE ... WHERE
- * deleted_at IS NOT NULL`) cover three states of the existing row:
- *   - no row        → INSERT an active `viewer` row.
- *   - soft-deleted  → REVIVE it to an active `viewer` (a previously-removed
- *     member who again qualifies for baseline access must regain an ACTIVE
- *     row; a bare `DO NOTHING` would leave the row soft-deleted, so the
- *     server would grant access while collab's `loadProjectRole` still read
- *     `null` and refused the WebSocket — a split-brain "server grants /
- *     collab rejects" state).
- *   - active        → NO-OP (the `setWhere` predicate fails). This is the
- *     concurrency tie-break (two racing first-entries → one INSERT wins, the
- *     loser conflicts on the composite PK and no-ops) AND the guarantee that
- *     an existing `editor` / `owner` is NEVER downgraded to `viewer`.
- *
- * Because `loadForViewer` only calls this when `loadProjectRole` already
- * returned `null` (no active row), the active-row branch is only reachable
- * via a race (a concurrent invite or a sibling tab) — and in every such race
- * the existing active row wins.
- * @param projectId - Project UUID being entered
- * @param userId - The entering user's UUID (becomes a baseline viewer)
- * @param tx - Optional drizzle transaction handle
+ * The approval of a join request writes the requester's row through here.
+ * `project_members` is keyed by (project_id, user_id) and removal only
+ * soft-deletes, so a removed member who asks again still occupies the key:
+ *   - no row        → INSERT an active row with the given role.
+ *   - soft-deleted  → REVIVE it with the given role.
+ *   - active        → NO-OP (the `setWhere` predicate fails), so an existing
+ *     member is never overwritten.
+ * @param projectId - Project UUID
+ * @param userId - The user taking the seat
+ * @param role - The role to grant
+ * @param addedBy - Who granted it
+ * @param tx - Enclosing transaction
+ * @returns True when a row was inserted or revived; false when the user was
+ *   already an active member.
  */
-export async function materializeBaselineViewer(
+export async function addUnlessActive(
   projectId: string,
   userId: string,
-  tx?: DbTx,
-): Promise<void> {
-  const handle = tx ?? db;
-  await handle
+  role: DecisionGrantRole,
+  addedBy: string,
+  tx: DbTx,
+): Promise<boolean> {
+  const rows = await tx
     .insert(projectMembers)
-    .values({
-      projectId,
-      userId,
-      role: "viewer",
-      addedBy: null,
-    })
+    .values({ projectId, userId, role, addedBy })
     .onConflictDoUpdate({
       target: [projectMembers.projectId, projectMembers.userId],
-      set: {
-        role: "viewer",
-        addedBy: null,
-        addedAt: sql`now()`,
-        deletedAt: null,
-      },
+      set: { role, addedBy, addedAt: sql`now()`, deletedAt: null },
       setWhere: sql`${projectMembers.deletedAt} IS NOT NULL`,
-    });
+    })
+    .returning({ userId: projectMembers.userId });
+  return rows.length > 0;
 }
 
 /**
@@ -653,9 +632,12 @@ export async function softDeleteAllInProject(
  * `project_members_one_owner_per_project`. There is no correct way to call
  * this outside a transaction, so it does not offer one.
  *
- * `FOR UPDATE OF project_members` locks only the membership rows; the
- * `projects` join is a scope filter, and locking project rows would serialise
- * unrelated work across the studio.
+ * The `projects` rows are locked first, in id order, and the membership rows
+ * second, in a separate statement. Handing a project over moves its pending
+ * join requests to the admin, and the delete cascade and the request decisions
+ * lock the project row before its request and member rows; one statement
+ * locking both tables would take the two rows of a pair in an unspecified
+ * order.
  * @param studioId - Studio UUID
  * @param userId - The departing member's user UUID
  * @param tx - The enclosing transaction; the lock is meaningless without one
@@ -666,19 +648,25 @@ export async function lockOwnedProjectsInStudio(
   userId: string,
   tx: DbTx,
 ): Promise<string[]> {
+  const owned = and(
+    eq(projectMembers.userId, userId),
+    eq(projectMembers.role, "owner"),
+    isNull(projectMembers.deletedAt),
+    eq(projects.studioId, studioId),
+    isNull(projects.deletedAt),
+  );
+  await tx
+    .select({ id: projects.id })
+    .from(projects)
+    .innerJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+    .where(owned)
+    .orderBy(projects.id)
+    .for("update", { of: projects });
   const rows = await tx
     .select({ projectId: projectMembers.projectId })
     .from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-    .where(
-      and(
-        eq(projectMembers.userId, userId),
-        eq(projectMembers.role, "owner"),
-        isNull(projectMembers.deletedAt),
-        eq(projects.studioId, studioId),
-        isNull(projects.deletedAt),
-      ),
-    )
+    .where(owned)
     .for("update", { of: projectMembers });
   return rows.map((r) => r.projectId);
 }

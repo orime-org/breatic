@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { Loader2 } from 'lucide-react';
 import { cardAction, getLocale } from '@breatic/shared';
 import type {
   BillingPeriod,
   CardAction,
   ComparableMembershipTier,
+  MembershipOffer,
   MoveOffer,
   SubscriptionSituation,
   TierOffer,
@@ -37,6 +39,8 @@ interface TierCardsProps {
   move: MoveOffer;
   /** Whether one action is already running, so the buttons wait. */
   busy: boolean;
+  /** The offer being moved to right now, whose card shows it is working. */
+  choosing: MembershipOffer | null;
   /** Take the account to a tier over a period. */
   onChoose: (chosen: {
     tier: ComparableMembershipTier;
@@ -146,6 +150,7 @@ export const TierCards = React.memo(function TierCards({
   sellsSubscriptions,
   move,
   busy,
+  choosing,
   onChoose,
 }: TierCardsProps): React.JSX.Element {
   const t = useTranslation();
@@ -204,6 +209,9 @@ export const TierCards = React.memo(function TierCards({
               <TierCardAction
                 action={action}
                 busy={busy}
+                working={
+                  choosing?.tier === offer.tier && choosing.period === selectedPeriod
+                }
                 tier={offer.tier}
                 label={t('membership.action.choose', {
                   tier: t(`membership.tier.${offer.tier}`),
@@ -246,6 +254,7 @@ export const TierCards = React.memo(function TierCards({
               move,
             })}
             busy={busy}
+            working={false}
             tier={null}
             label=''
             inProgressLabel=''
@@ -350,6 +359,8 @@ interface TierCardActionProps {
   action: CardAction;
   /** Whether an action is already running. */
   busy: boolean;
+  /** Whether the running action is this card's own. */
+  working: boolean;
   /** Which tier this card sells, null on the card that sells none. */
   tier: ComparableMembershipTier | null;
   /** Which period the switcher is on. */
@@ -379,6 +390,7 @@ interface TierCardActionProps {
  * @param props - What this card offers and how to take it.
  * @param props.action - What this card offers, decided by the shared rule.
  * @param props.busy - Whether an action is already running.
+ * @param props.working - Whether the running action is this card's own.
  * @param props.tier - Which tier this card sells.
  * @param props.period - Which period the switcher is on.
  * @param props.label - The button's words.
@@ -391,6 +403,7 @@ interface TierCardActionProps {
 function TierCardAction({
   action,
   busy,
+  working,
   tier,
   period,
   label,
@@ -437,6 +450,13 @@ function TierCardAction({
       data-testid={`membership-choose-${tier}`}
       onClick={handleClick}
     >
+      {working ? (
+        <Loader2
+          data-testid='membership-choose-pending'
+          aria-hidden='true'
+          className='mr-2 h-3.5 w-3.5 animate-spin'
+        />
+      ) : null}
       {action === 'inProgress' ? inProgressLabel : label}
     </Button>
   );

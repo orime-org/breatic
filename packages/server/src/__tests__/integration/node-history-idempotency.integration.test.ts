@@ -83,8 +83,8 @@ async function insertProject(ownerUserId: string): Promise<string> {
   `;
   const pslug = `nh-proj-${seq++}`;
   const projects = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studios[0]!.id}, ${ownerUserId}, ${`P ${pslug}`}, ${pslug}, 'private')
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studios[0]!.id}, ${ownerUserId}, ${`P ${pslug}`}, ${pslug})
     RETURNING id
   `;
   return projects[0]!.id;

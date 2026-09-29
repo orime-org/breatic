@@ -6,6 +6,7 @@ import { Bell } from 'lucide-react';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { expiresInLabel } from '@web/lib/expires-in';
+import { formatRelativeTime } from '@web/lib/format-relative-time';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { Button } from '@web/components/ui/button';
@@ -35,21 +36,6 @@ function initialsFromString(s: string): string {
 }
 
 /**
- * Formats a creation timestamp as a coarse "Xm/Xh/Xd ago" label.
- * @param createdAt - ISO timestamp of when the notification was created.
- * @returns the relative-age label.
- */
-function timeAgoLabel(createdAt: string): string {
-  const diffMs = Date.now() - new Date(createdAt).getTime();
-  const minutes = Math.max(1, Math.round(diffMs / 60_000));
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
-
-/**
  * Reads the token naming the request a bell row stands for.
  *
  * A row never holds the request — it points at one, and this is the pointer.
@@ -66,9 +52,9 @@ function shareTokenOf(payload: Record<string, unknown>): string | null {
  * Bell notification menu — the per-user inbox shared by the project chrome and
  * the studio chrome.
  *
- * Rows come in two kinds. Five of them stand for a request somebody is waiting
- * on an answer to — the two invites, the two transfers, the role upgrade — and
- * each carries a token to the page they are all answered on. The rest are news
+ * Rows come in two kinds. Some stand for a request somebody is waiting on an
+ * answer to — the two invites, the two transfers, the role upgrade, the join
+ * request — and each carries a token to the page they are all answered on. The rest are news
  * (`*_accepted`, `*_approved`, `*_rejected`) and mark themselves read.
  *
  * Deciding used to happen HERE, differently per flow: the studio invite and
@@ -208,8 +194,11 @@ function NotificationItem({
   const t = useTranslation();
   const headline = notificationHeadline(notification, resolved, t);
   const subtitle = subtitleFor(notification, t);
+  // Both ask the owner to let someone in further, and both carry what the
+  // requester typed rather than a role on offer.
   const isUpgradeRequest =
-    notification.type === 'access.role_upgrade_request';
+    notification.type === 'access.role_upgrade_request' ||
+    notification.type === 'project.join_request';
   const isTransferRequest =
     notification.type === 'studio.transfer_request' ||
     notification.type === 'project.transfer_request';
@@ -255,7 +244,7 @@ function NotificationItem({
         <span className='text-2xs text-muted-foreground'>
           {isDecidable && notification.expiresAt
             ? expiresInLabel(notification.expiresAt, t)
-            : timeAgoLabel(notification.createdAt)}
+            : formatRelativeTime(notification.createdAt, t)}
         </span>
         {isDecidable ? (
           // Every waiting request is answered on the shared landing page now.
@@ -313,6 +302,12 @@ function iconForType(type: NotificationType): string {
       return initialsFromString('PT');
     case 'project.transfer_approved':
       return '✓';
+    case 'project.join_request':
+      return initialsFromString('JR');
+    case 'project.join_approved':
+      return '✓';
+    case 'project.join_rejected':
+      return '✕';
     case 'studio.invite_request':
       return initialsFromString('IN');
     case 'studio.invite_accepted':
@@ -366,7 +361,7 @@ function subtitleFor(
   t: ReturnType<typeof useTranslation>,
 ): string | null {
   const p = n.payload as Record<string, unknown>;
-  if (n.type === 'access.role_upgrade_request') {
+  if (n.type === 'access.role_upgrade_request' || n.type === 'project.join_request') {
     const msg = typeof p.message === 'string' ? p.message : null;
     return msg && msg.length > 0 ? msg : null;
   }

@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { fetchProjectCredits } from '@web/data/api/credits';
 import * as React from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
 import { newId, type SpaceRpcResponse } from '@breatic/shared';
@@ -37,6 +37,7 @@ import {
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
+import { ProjectJoinGate } from '@web/pages/project/ProjectJoinGate';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import type { SpaceType } from '@breatic/shared';
 
@@ -138,9 +139,9 @@ export default function ProjectPage(): React.JSX.Element {
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => projectsApi.get(projectId),
-    // 403 = caller is NOT_MEMBER of this project - bail to the
-    // access request page instead of looping a useless retry. The
-    // 404 path also short-circuits (project may have been deleted).
+    // 403 = a studio member who is not on this project: offer to join
+    // instead of looping a useless retry. The 404 path also
+    // short-circuits (project may have been deleted).
     retry: (failureCount, err) => {
       if (err instanceof Error && 'status' in err) {
         const status = (err as { status?: number }).status;
@@ -154,7 +155,7 @@ export default function ProjectPage(): React.JSX.Element {
   const retry = React.useCallback(() => { void refetch(); }, [refetch]);
   if (projectQuery.error instanceof ApiException && projectQuery.error.status === 404) return <main><NotFoundScreen /></main>;
   if (projectQuery.error instanceof ApiException && projectQuery.error.status === 403) {
-    return <Navigate to={`/project/${routeParam}/access`} replace />;
+    return <ProjectJoinGate projectId={projectId} />;
   }
   if (projectQuery.isError && !projectQuery.data) return <main><ResourceLoadError onRetry={retry} /></main>;
   if (!projectQuery.data) return <LoadingScreen />;
@@ -724,7 +725,7 @@ function ProjectWorkspace({
   // on the same frame. They were not, and only the banner half showed on a
   // dropped connection.
   //
-  // Cover it with a full-area `bg-black/80` overlay that
+  // Cover it with a full-area `bg-overlay` overlay that
   // (a) matches the LoadingOverlay / Dialog backdrop dim pattern used
   //     elsewhere in the app (single visual vocabulary for "blocked"),
   // (b) is unmistakable at a glance, which is the entire job: once the user can
@@ -1045,7 +1046,7 @@ function ProjectWorkspace({
             through either. */}
             {workspaceDisabled ? (
               <div
-                className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
+                className='absolute inset-0 z-40 cursor-not-allowed bg-overlay'
                 data-testid='workspace-disabled-overlay'
               />
             ) : null}

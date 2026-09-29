@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Finding the one request a token names, across five tables.
+ * Finding the one request a token names, across every request table.
  *
  * Everything the landing page does starts here: it is handed a token and has to
- * work out which of the five flows it belongs to before it can say anything at
+ * work out which flow it belongs to before it can say anything at
  * all. Three properties matter, and all three are the kind that only a real
  * database can settle:
  *
- *   1. Each of the five kinds resolves, and resolves to the right kind. A
- *      lookup that searched four tables would look perfectly healthy until
- *      somebody used the fifth.
+ *   1. Each kind resolves, and resolves to the right kind. A lookup that
+ *      skipped one table would look perfectly healthy until somebody used
+ *      that flow.
  *   2. A token nobody issued resolves to nothing — that, and only that, is what
  *      the page may call an invalid link.
  *   3. A SOFT-DELETED request still resolves. Its project was deleted and the
@@ -37,7 +37,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { initCore } from "@breatic/core";
+import { db, initCore } from "@breatic/core";
 
 initCore(process.env);
 
@@ -47,6 +47,7 @@ import * as projectInvitationsRepo from "@server/modules/project-invite/projectI
 import * as roleUpgradeRequestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import * as projectTransfersRepo from "@server/modules/project/projectTransfers.repo.js";
 import * as studioTransfersRepo from "@server/modules/studio/studioTransfers.repo.js";
+import * as projectJoinRequestsRepo from "@server/modules/project-join-request/projectJoinRequests.repo.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -122,7 +123,7 @@ async function tokenOf(table: string, id: string): Promise<string> {
 }
 
 describe("a token resolves to exactly one request, whichever flow it is", () => {
-  it("resolves all five kinds, each to its own kind and row", async () => {
+  it("resolves every kind, each to its own kind and row", async () => {
     const scene = await seedScene();
 
     const { id: studioInviteId } = await studioInvitationsRepo.createPending({
@@ -158,12 +159,23 @@ describe("a token resolves to exactly one request, whichever flow it is", () => 
       expiresAt: IN_A_WEEK(),
     });
 
+    const { id: projectJoinId } = await db.transaction((tx) =>
+      projectJoinRequestsRepo.createPending({
+        projectId: scene.projectId,
+        requesterUserId: scene.memberId,
+        message: null,
+        expiresAt: IN_A_WEEK(),
+        tx,
+      }),
+    );
+
     const cases = [
       { table: "studio_invitations", id: studioInviteId, kind: "studio_invite" },
       { table: "project_invitations", id: projectInviteId, kind: "project_invite" },
       { table: "role_upgrade_requests", id: roleUpgradeId, kind: "role_upgrade" },
       { table: "project_transfers", id: projectTransferId, kind: "project_transfer" },
       { table: "studio_transfers", id: studioTransferId, kind: "studio_transfer" },
+      { table: "project_join_requests", id: projectJoinId, kind: "project_join" },
     ] as const;
 
     for (const c of cases) {

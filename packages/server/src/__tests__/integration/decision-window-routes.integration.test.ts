@@ -139,8 +139,8 @@ async function seedProject(): Promise<{
     RETURNING id
   `;
   const projectRows = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studioRows[0]!.id}, ${ownerId}, 'Demo', ${`dwr-proj-${seq++}`}, 'private')
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioRows[0]!.id}, ${ownerId}, 'Demo', ${`dwr-proj-${seq++}`})
     RETURNING id
   `;
   const projectId = projectRows[0]!.id;

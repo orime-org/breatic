@@ -5,13 +5,14 @@
  * The one client for answering any waiting request.
  *
  * Replaces the two invite-specific clients: a studio invite, a project invite,
- * either transfer and a role upgrade are all read and answered the same way,
+ * either transfer, a role upgrade and a join request are all read and answered the same way,
  * and the caller never has to know which it is holding.
  */
 
 import { apiGet, apiPost } from '@web/data/api/request';
 import type {
   DecisionAction,
+  DecisionGrantRole,
   DecisionResult,
   DecisionView,
 } from '@breatic/shared';
@@ -33,9 +34,18 @@ export const decisionsApi = {
    * it is the part worth keeping out of logs and referrers.
    * @param token - The token from the link.
    * @param action - Confirm or decline.
+   * @param role - The role a join request's confirmation grants; omitted for
+   *   every other answer, which the server refuses to take one.
    * @returns What it settled into, and where to go next.
    */
-  respond(token: string, action: DecisionAction): Promise<DecisionResult> {
-    return apiPost<DecisionResult>('/decisions/respond', { token, action });
+  respond(
+    token: string,
+    action: DecisionAction,
+    role?: DecisionGrantRole,
+  ): Promise<DecisionResult> {
+    return apiPost<DecisionResult>(
+      '/decisions/respond',
+      role === undefined ? { token, action } : { token, action, role },
+    );
   },
 };
