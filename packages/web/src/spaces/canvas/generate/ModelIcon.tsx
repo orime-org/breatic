@@ -113,9 +113,9 @@ const MARKS: Readonly<Record<string, React.JSX.Element>> = {
   mirelo: (
     <><circle cx='12' cy='12' r='3' /><g stroke='currentColor' strokeWidth='2.2' strokeLinecap='round'><path d='M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3M5.4 5.4l2.1 2.1M16.5 16.5l2.1 2.1M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1' /></g></>
   ),
-  // A two-part circle, evoking Tencent Hunyuan.
+  // A two-part circle with a dot in each half, evoking Tencent Hunyuan.
   hunyuan: (
-    <><path fillRule='evenodd' d='M12 2.5a9.5 9.5 0 1 1 0 19 9.5 9.5 0 0 1 0-19Zm0 1.9a7.6 7.6 0 0 0 0 15.2 3.8 3.8 0 0 1 0-7.6 3.8 3.8 0 0 0 0-7.6Z' /><circle cx='12' cy='8.2' r='1.3' /></>
+    <><path fillRule='evenodd' d='M12 2.5a9.5 9.5 0 1 1 0 19 9.5 9.5 0 0 1 0-19Zm0 1.9a7.6 7.6 0 0 0 0 15.2 3.8 3.8 0 0 1 0-7.6 3.8 3.8 0 0 0 0-7.6Zm0 10.1a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6Z' /><circle cx='12' cy='8.2' r='1.3' /></>
   ),
   // A speech bubble, for Inworld's voices.
   inworld: (
