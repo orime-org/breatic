@@ -1265,7 +1265,9 @@ export const creditLedger = pgTable(
  *
  * `operation_key` groups a turn, a consolidation, a text-tool run or a task;
  * it is the same key handed to the credit engine, so what was charged for an
- * operation is the `credit_ledger` row whose `reference_id` equals it. This
+ * operation is the `credit_ledger` rows whose `reference_id` equals it, plus
+ * one row per later-looked-up OpenRouter call under
+ * `<operation_key>:gen:<generation id>`. This
  * table records cost; it does not record whether a charge was made.
  *
  * `created_at` only, and no `deleted_at`: an append-only usage record, the

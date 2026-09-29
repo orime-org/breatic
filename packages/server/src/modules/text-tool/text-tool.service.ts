@@ -140,9 +140,10 @@ export async function* executeTextTool(
 
   let totalTokens = 0;
   // Declared out here so both exits reach them. The model call is recorded
-  // when its response arrives, so a run that died before that records and
-  // charges nothing; a run that died after it is charged the same as the
-  // success path. The second case is reached when the consumer throws while
+  // when its response arrives. A run that died before that is recorded later
+  // when the model routes through OpenRouter (the cut-off call goes to the
+  // generation lookup), and not at all on a direct route; a run that died
+  // after it is charged the same as the success path. The second case is reached when the consumer throws while
   // taking an event: the throw comes back out of the suspended `yield`, by
   // which point the model has already billed us.
   let modelString: string | null = null;
@@ -204,8 +205,8 @@ export async function* executeTextTool(
     // Caller (server SSE route) logs `text_tool_completed` audit
     // line from the consumed `done` / `aborted` event.
   } catch (err) {
-    // Deduct for consumed tokens even on error. Uses the same
-    // idempotencyKey as the success path so the catch branch can't
+    // Charge what the recorder holds even on error. Charged under the same
+    // operation key as the success path, so the catch branch can't
     // double-charge if somehow both run for the same request.
     const creditsUsed = await chargeRecorded(
       userId,
