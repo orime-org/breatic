@@ -6,6 +6,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import { VideoParamsPicker } from '@web/spaces/canvas/generate/VideoParamsPicker';
+import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 
 /**
  * Builds a video model carrying the given params.
@@ -74,7 +75,7 @@ describe('VideoParamsPicker', () => {
       aspect_ratio: RATIO,
       emotion: { description: '', label: 'Emotion', values: ['happy', 'neutral'], default: 'neutral', fill: 'panel' },
     });
-    render(<VideoParamsPicker model={own} params={{ aspect_ratio: '1:1' }} onChange={() => {}} />);
+    render(<VideoParamsPicker model={own} params={resolveParamsForModel(own, { aspect_ratio: '1:1' })} onChange={() => {}} />);
     expect(screen.getByTestId('generate-video-params-trigger')).toHaveTextContent('1:1 · Neutral');
   });
 

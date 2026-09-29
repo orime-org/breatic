@@ -149,7 +149,7 @@ export interface ParamDescriptor {
   fields?: Readonly<Record<string, ItemField>>;
   /** The upstream field this param is sent as, when the names differ. */
   upstream?: string;
-  /** English label for a control only this model has. */
+  /** Marks a control only this model has; its name on screen comes from the locales. */
   label?: string;
   /** How a value of `values` reads on screen, when its spelling is not that; English. */
   value_labels?: Readonly<Record<string, string>>;

@@ -18,6 +18,7 @@ vi.mock('@web/components/ui/tooltip', () => ({
 }));
 
 import { AudioSettingsPicker } from '@web/spaces/canvas/generate/AudioSettingsPicker';
+import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import { initialVoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 
 /** A voice source nobody reads; these cases are about the params. */
@@ -81,7 +82,9 @@ function open(
   value: Record<string, number>,
   onChange: (partial: object) => void = () => {},
 ): void {
-  render(<AudioSettingsPicker model={entry} value={value} onChange={onChange} voice={NO_VOICE} />);
+  render(
+    <AudioSettingsPicker model={entry} value={resolveParamsForModel(entry, value)} onChange={onChange} voice={NO_VOICE} />,
+  );
   fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
 }
 
@@ -194,9 +197,7 @@ describe('AudioSettingsPicker â€” the speaking params the active model declares'
     expect(onChange).toHaveBeenCalledWith({ speed: 1.05 });
   });
 
-  it('falls back to the model default when the node holds no value yet', () => {
-    // A node generated before this control existed has nothing stored; the
-    // control must show what the model would use, not an empty slider.
+  it('shows the model default a node that holds nothing resolves to', () => {
     open(ELEVENLABS, {});
     expect(screen.getByRole('slider', { name: 'Similarity' })).toHaveAttribute(
       'aria-valuenow',
@@ -428,7 +429,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     new Intl.DisplayNames(['en'], { type: 'language' }).of(tag) ?? tag;
 
   it('reads top to bottom as reading mode, language, voice', () => {
-    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{}} onChange={() => {}} />);
+    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     const order = [
       screen.getByTestId('generate-audio-reading-single'),
@@ -444,7 +445,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
   it('writes the dialogue switch, and shows the speakers in place of the voice', () => {
     const onChange = vi.fn();
     const { rerender } = render(
-      <AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{}} onChange={onChange} />,
+      <AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-reading-dialogue'));
@@ -458,7 +459,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
 
   it('names each language in the reader\'s language and picks one from a searchable list beside', () => {
     const onChange = vi.fn();
-    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{}} onChange={onChange} />);
+    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     expect(screen.getByTestId('generate-audio-row-language')).toHaveTextContent(nameOf('en-US'));
     fireEvent.click(screen.getByTestId('generate-audio-row-language'));
@@ -496,7 +497,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
       <AudioSettingsPicker
         voice={{ ...NO_VOICE, selectedId: 'v', selectedName: 'Vera' }}
         model={emotional}
-        value={{}}
+        value={resolveParamsForModel(emotional, {})}
         onChange={() => {}}
       />,
     );
@@ -508,7 +509,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
       <AudioSettingsPicker
         voice={{ ...NO_VOICE, selectedId: 'Kore', selectedName: 'Kore' }}
         model={GEMINI}
-        value={{}}
+        value={resolveParamsForModel(GEMINI, {})}
         onChange={() => {}}
       />,
     );

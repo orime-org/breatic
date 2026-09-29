@@ -86,7 +86,6 @@ describe('settingsLayout', () => {
       { kind: 'voice', name: 'voice_id' },
     ]);
     expect(layout.inline.map((c) => c.name)).toEqual(['emotion']);
-    expect(layout.hasSharedControls).toBe(true);
   });
 });
 
@@ -111,6 +110,6 @@ describe('choiceLabel', () => {
 
   it('falls back to the declared spelling without a tag', () => {
     expect(choiceLabel({ values: ['a'], value_labels: { a: 'Alpha' } }, 'a', 'en')).toBe('Alpha');
-    expect(choiceLabel({ values: ['a'] }, 'a', 'en')).toBe('a');
+    expect(choiceLabel({ values: ['a'] }, 'a', 'en')).toBe('A');
   });
 });

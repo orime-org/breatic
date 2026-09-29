@@ -79,28 +79,21 @@ interface AudioSettingsPickerProps {
 }
 
 /**
- * The value a control shows: what the node holds, or what the model would use.
- * @param model - The active model.
- * @param name - The param name.
- * @param held - What the node holds for it, if anything.
- * @returns The number to show, or undefined when neither is a number.
+ * A held value a slider can show.
+ * @param held - What the node holds.
+ * @returns The number, or undefined when it is not one.
  */
-function shownNumber(model: ModelEntry, name: string, held: unknown): number | undefined {
-  if (typeof held === 'number') return held;
-  const fallback = model.params[name]?.default;
-  return typeof fallback === 'number' ? fallback : undefined;
+function asNumber(held: unknown): number | undefined {
+  return typeof held === 'number' ? held : undefined;
 }
 
 /**
- * The value a choice shows: what the node holds, or the declared default.
- * @param model - The active model.
- * @param name - The param name.
- * @param held - What the node holds for it.
- * @returns The value, or undefined when neither is a string or number.
+ * A held value an option list can show.
+ * @param held - What the node holds.
+ * @returns The value, or undefined when it is neither a string nor a number.
  */
-function shownChoice(model: ModelEntry, name: string, held: unknown): string | number | undefined {
-  const value = held ?? model.params[name]?.default;
-  return typeof value === 'string' || typeof value === 'number' ? value : undefined;
+function asChoice(held: unknown): string | number | undefined {
+  return typeof held === 'string' || typeof held === 'number' ? held : undefined;
 }
 
 /**
@@ -149,7 +142,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
   // The language the reader picked, for a voice that has a sample in each: the
   // model's param whose values name languages.
   const languageParam = Object.keys(model.params).find((name) => model.params[name]?.value_locales !== undefined);
-  const language = languageParam === undefined ? undefined : shownChoice(model, languageParam, value[languageParam]);
+  const language = languageParam === undefined ? undefined : asChoice(value[languageParam]);
   const dialogue = standIn !== null && isStandInOn(value);
   const shared = React.useMemo(() => audioParamControls(model), [model]);
 
@@ -207,7 +200,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
       return voice.selectedName ?? voice.selectedId ?? t('canvas.generatePanel.voicePlaceholder');
     }
     if (row.kind === 'choice') {
-      const shown = shownChoice(model, row.name, value[row.name]);
+      const shown = asChoice(value[row.name]);
       return shown === undefined ? '' : choiceLabel(model.params[row.name] ?? {}, shown, locale);
     }
     const entries = Array.isArray(value[row.name]) ? (value[row.name] as Record<string, unknown>[]) : [];
@@ -217,16 +210,17 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
       .join(', ');
   };
 
+  const voiceRow = layout.rows.find((row) => row.kind === 'voice');
   const summary = [
     dialogue
       ? t('canvas.generatePanel.audioDialogueSummary', { count: standIn.min })
-      : layout.rows.some((row) => row.kind === 'voice')
-        ? rowValue(layout.rows.find((row) => row.kind === 'voice') as SettingsRow)
-        : undefined,
+      : voiceRow === undefined
+        ? undefined
+        : rowValue(voiceRow),
     ...layout.rows.filter((row) => row.kind === 'choice').map(rowValue),
     ...ownControlSummary(model, value, (name) => t(`canvas.generatePanel.param.${name}`), inlineOnly),
     ...shared.map((control) => {
-      const shown = shownNumber(model, control.name, value[control.name]);
+      const shown = asNumber(value[control.name]);
       return shown === undefined ? undefined : formatAudioParam(control.name, shown, t);
     }),
   ]
@@ -248,7 +242,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
           className='flex h-8 min-w-0 max-w-[100px] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           {hasVoice ? <Volume2 className='h-4 w-4 shrink-0' aria-hidden='true' /> : null}
-          {/* Truncated past 200px: the first words name the voice well enough
+          {/* Truncated past 100px: the first words name the voice well enough
               to recognise, and the rest is one click away (design §16.1). */}
           <span className='truncate'>{summary}</span>
           <ChevronDown className='h-3.5 w-3.5 shrink-0 opacity-60' aria-hidden='true' />
@@ -317,7 +311,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                   key={control.name}
                   control={control}
                   label={t(control.labelKey)}
-                  value={shownNumber(model, control.name, value[control.name])}
+                  value={asNumber(value[control.name])}
                   onChange={onChange}
                 />
               ))}
@@ -359,7 +353,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                 options={(model.params[openRow.name]?.values ?? [])
                   .filter((v): v is string | number => typeof v !== 'boolean')
                   .map((v) => ({ value: v, label: choiceLabel(model.params[openRow.name] ?? {}, v, locale) }))}
-                value={shownChoice(model, openRow.name, value[openRow.name])}
+                value={asChoice(value[openRow.name])}
                 onPick={(picked) => {
                   onChange({ [openRow.name]: picked });
                   showPanel(null);

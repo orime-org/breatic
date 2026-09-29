@@ -34,11 +34,9 @@ export function voiceParamName(model: ModelEntry | undefined): string | null {
 /**
  * Whether the user has picked a voice for this model.
  *
- * Reads the RECORD, not the resolved value: resolution falls back to the yaml
- * default, and a default is not a choice. Fish declares `null`, which
- * `transports/fish.ts` guards away so no voice is sent at all; ElevenLabs
- * declares one of its ids, which would generate — in someone else's voice,
- * picked by nobody. Both must read as "not chosen" so the panel can say so.
+ * Reads the RECORD, not the resolved value: the yaml default may not be in
+ * this deployment's list. A voice nobody picked is stood in for by the first
+ * of the model's own list (`withListDefaultVoice`).
  * @param record - This model's param record off the node, if it has one.
  * @param paramName - The name {@link voiceParamName} answered.
  * @returns True when the record holds a usable id for that param.

@@ -28,21 +28,6 @@ interface ModelParamControlsProps {
 }
 
 /**
- * What a control shows: what the node holds, else what the model would send.
- * @param model - The active model.
- * @param name - The param name.
- * @param value - What the node holds.
- * @returns The held value, else the declared default.
- */
-function shownOf(
-  model: ModelEntry,
-  name: string,
-  value: Readonly<Record<string, unknown>>,
-): unknown {
-  return value[name] ?? model.params[name]?.default;
-}
-
-/**
  * The controls only this model has, drawn in a params popover after the ones
  * the panel shares (#2156, design §12). Each is named from the locales by its
  * param name; which shape each takes comes from its declaration.
@@ -72,8 +57,9 @@ export const ModelParamControls = React.memo(function ModelParamControls({
       {controls.map((control) => (
         <ModelControlRow
           key={control.name}
-          control={{ ...control, label: t(`canvas.generatePanel.param.${control.name}`) }}
-          shown={shownOf(model, control.name, value)}
+          control={control}
+          label={t(`canvas.generatePanel.param.${control.name}`)}
+          shown={value[control.name]}
           onChange={onChange}
         />
       ))}
@@ -83,6 +69,7 @@ export const ModelParamControls = React.memo(function ModelParamControls({
 
 interface ModelControlRowProps {
   control: ModelControl;
+  label: string;
   shown: unknown;
   onChange: (partial: Record<string, unknown>) => void;
 }
@@ -91,11 +78,12 @@ interface ModelControlRowProps {
  * One of a model's own params, in the shape its declaration calls for.
  * @param root0 - Props.
  * @param root0.control - The control this param calls for.
+ * @param root0.label - Its name on screen.
  * @param root0.shown - What it is set to.
  * @param root0.onChange - Called with the changed param.
  * @returns The row.
  */
-function ModelControlRow({ control, shown, onChange }: ModelControlRowProps): React.JSX.Element {
+function ModelControlRow({ control, label, shown, onChange }: ModelControlRowProps): React.JSX.Element {
   const t = useTranslation();
   const prefix = `generate-param-${control.name}`;
   switch (control.kind) {
@@ -103,7 +91,7 @@ function ModelControlRow({ control, shown, onChange }: ModelControlRowProps): Re
       return (
         <ParamToggleRow
           id={`${prefix}-toggle`}
-          label={control.label}
+          label={label}
           checked={shown === true}
           onCheckedChange={(next) => onChange({ [control.name]: next })}
         />
@@ -111,7 +99,7 @@ function ModelControlRow({ control, shown, onChange }: ModelControlRowProps): Re
     case 'choice':
       return (
         <ParamOptionGroup
-          label={control.label}
+          label={label}
           options={control.options}
           value={typeof shown === 'string' || typeof shown === 'number' ? shown : undefined}
           onSelect={(next) => onChange({ [control.name]: next })}
@@ -122,7 +110,7 @@ function ModelControlRow({ control, shown, onChange }: ModelControlRowProps): Re
       return (
         <ParamSliderRow
           name={control.name}
-          label={control.label}
+          label={label}
           min={control.min}
           max={control.max}
           step={control.step}
@@ -137,7 +125,7 @@ function ModelControlRow({ control, shown, onChange }: ModelControlRowProps): Re
       return (
         <ItemsEditor
           name={control.name}
-          label={control.label}
+          label={label}
           max={control.max}
           fields={control.fields}
           fieldLabel={(field) => t(`canvas.generatePanel.paramField.${field}`)}
@@ -149,7 +137,7 @@ function ModelControlRow({ control, shown, onChange }: ModelControlRowProps): Re
       return (
         <TextControl
           name={control.name}
-          label={control.label}
+          label={label}
           held={typeof shown === 'string' ? shown : ''}
           onChange={onChange}
         />

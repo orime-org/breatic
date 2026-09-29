@@ -66,7 +66,7 @@ export interface AudioPanelViewModel {
   voiceRequired: boolean;
   /** Whether a dialogue holds fewer complete speakers than the model takes. */
   speakersShort: boolean;
-  /** Whether the node's record for this model holds one. */
+  /** Whether a voice will be sent: the node's record holds one, or the list's first stands in ({@link withListDefaultVoice}). */
   voiceChosen: boolean;
   /** The held voice id, or null when none is held (or none is taken). */
   voiceSelectedId: string | null;

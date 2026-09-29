@@ -15,6 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 
 import { modelControls, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
+import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 
 /**
  * A model declaring the given params.
@@ -51,7 +52,7 @@ describe('modelControls', () => {
       }),
     );
     expect(controls).toEqual([
-      { kind: 'toggle', name: 'transparency', label: 'Transparent background' },
+      { kind: 'toggle', name: 'transparency' },
     ]);
   });
 
@@ -72,7 +73,6 @@ describe('modelControls', () => {
       {
         kind: 'choice',
         name: 'quality',
-        label: 'Quality',
         options: [
           { value: 'low', label: 'Low' },
           { value: 'xhigh', label: 'XHigh' },
@@ -88,7 +88,7 @@ describe('modelControls', () => {
       }),
     );
     expect(controls).toEqual([
-      { kind: 'range', name: 'chaos', label: 'Chaos', min: 0, max: 100, step: 1 },
+      { kind: 'range', name: 'chaos', min: 0, max: 100, step: 1 },
     ]);
   });
 
@@ -105,7 +105,7 @@ describe('modelControls', () => {
       }),
     );
     expect(controls).toEqual([
-      { kind: 'text', name: 'negative_prompt', label: 'Negative prompt' },
+      { kind: 'text', name: 'negative_prompt' },
     ]);
   });
 
@@ -127,7 +127,6 @@ describe('modelControls', () => {
       {
         kind: 'items',
         name: 'speakers',
-        label: 'Speakers',
         max: 2,
         fields: [
           { name: 'speaker', kind: 'text' },
@@ -175,8 +174,8 @@ describe('ownControlSummary', () => {
   });
   const nameOf = (name: string): string => `name:${name}`;
 
-  it('says what each choice and range stands on, the default when the node holds nothing', () => {
-    expect(ownControlSummary(OWN, {}, nameOf)).toEqual(['Low', '20']);
+  it('says what each choice and range stands on in a freshly resolved record', () => {
+    expect(ownControlSummary(OWN, resolveParamsForModel(OWN, {}), nameOf)).toEqual(['Low', '20']);
   });
 
   it('reads what the node holds, and names a switch only while it is on', () => {

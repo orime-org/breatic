@@ -25,11 +25,11 @@ export type ItemFieldControl =
 
 /** One control a model's own param calls for. */
 export type ModelControl =
-  | { kind: 'toggle'; name: string; label: string }
-  | { kind: 'choice'; name: string; label: string; options: ParamOption[] }
-  | { kind: 'range'; name: string; label: string; min: number; max: number; step: number }
-  | { kind: 'text'; name: string; label: string }
-  | { kind: 'items'; name: string; label: string; max: number | undefined; fields: ItemFieldControl[] };
+  | { kind: 'toggle'; name: string }
+  | { kind: 'choice'; name: string; options: ParamOption[] }
+  | { kind: 'range'; name: string; min: number; max: number; step: number }
+  | { kind: 'text'; name: string }
+  | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] };
 
 /**
  * How one value of a choice reads on screen.
@@ -45,30 +45,25 @@ export function optionLabel(spec: Pick<ParamDescriptor, 'value_labels'>, value: 
 /**
  * The control one labelled panel param calls for.
  * @param name - The param name.
- * @param label - Its English label.
  * @param spec - Its declaration.
  * @returns The control, or undefined for a shape nothing here draws.
  */
-function controlFor(
-  name: string,
-  label: string,
-  spec: ParamDescriptor,
-): ModelControl | undefined {
+function controlFor(name: string, spec: ParamDescriptor): ModelControl | undefined {
   if (spec.type === 'items') {
     const fields = Object.entries(spec.fields ?? {}).map(([field, declared]) => fieldControl(field, declared));
-    return { kind: 'items', name, label, max: spec.max_items, fields };
+    return { kind: 'items', name, max: spec.max_items, fields };
   }
-  if (spec.type === 'text') return { kind: 'text', name, label };
+  if (spec.type === 'text') return { kind: 'text', name };
   const values = spec.values;
   if (values && values.length > 0) {
-    if (values.every((v) => typeof v === 'boolean')) return { kind: 'toggle', name, label };
+    if (values.every((v) => typeof v === 'boolean')) return { kind: 'toggle', name };
     const options = values
       .filter((v): v is string | number => typeof v !== 'boolean')
       .map((v) => ({ value: v, label: optionLabel(spec, v) }));
-    return { kind: 'choice', name, label, options };
+    return { kind: 'choice', name, options };
   }
   if (typeof spec.min === 'number' && typeof spec.max === 'number') {
-    return { kind: 'range', name, label, min: spec.min, max: spec.max, step: spec.step ?? 1 };
+    return { kind: 'range', name, min: spec.min, max: spec.max, step: spec.step ?? 1 };
   }
   return undefined;
 }
@@ -95,7 +90,7 @@ export function modelControls(model: ModelEntry): ModelControl[] {
   const controls: ModelControl[] = [];
   for (const [name, spec] of Object.entries(model.params)) {
     if (spec.fill !== 'panel' || typeof spec.label !== 'string') continue;
-    const control = controlFor(name, spec.label, spec);
+    const control = controlFor(name, spec);
     if (control) controls.push(control);
   }
   return controls;
@@ -126,9 +121,9 @@ export function ownControlValues(
 /**
  * What the model's own controls stand on, as the settings pill shows it: a
  * choice by its option's name, a range by its number, a switch by its name
- * while it is on. The node's value, else the declared default.
+ * while it is on.
  * @param model - The active model.
- * @param params - What the node holds for it.
+ * @param params - What the node holds for it, with the model's defaults resolved in.
  * @param nameOf - A param's name on screen.
  * @param include - Which controls to summarise; all of them when absent.
  * @returns One part per control that has something to show, in declared order.
@@ -142,7 +137,7 @@ export function ownControlSummary(
   const parts: string[] = [];
   for (const control of modelControls(model)) {
     if (include && !include(control)) continue;
-    const shown = params[control.name] ?? model.params[control.name]?.default;
+    const shown = params[control.name];
     if (control.kind === 'choice' && (typeof shown === 'string' || typeof shown === 'number')) {
       parts.push(optionLabel(model.params[control.name] ?? {}, shown));
     } else if (control.kind === 'range' && typeof shown === 'number') {

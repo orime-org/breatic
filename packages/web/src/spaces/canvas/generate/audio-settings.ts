@@ -14,7 +14,7 @@
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import { audioParamControls } from '@web/spaces/canvas/generate/audio-params';
-import { modelControls, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
+import { modelControls, optionLabel, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { isStandInOn, standInOf, type StandIn } from '@web/spaces/canvas/generate/stand-in';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 
@@ -39,8 +39,6 @@ export interface SettingsLayout {
   readonly rows: readonly SettingsRow[];
   /** The model's own controls set in place. */
   readonly inline: readonly ModelControl[];
-  /** Whether the panel's shared speaking controls (speed, stability…) appear. */
-  readonly hasSharedControls: boolean;
 }
 
 /**
@@ -76,7 +74,6 @@ export function settingsLayout(
     standIn,
     rows,
     inline: own.filter((control) => !opensSecondPanel(control)),
-    hasSharedControls: audioParamControls(model).length > 0,
   };
 }
 
@@ -91,7 +88,7 @@ export function hasSettings(model: ModelEntry): boolean {
 
 /**
  * How one value of a choice reads in the reader's language: a language named
- * through its BCP-47 tag, anything else as the declaration spells it.
+ * through its BCP-47 tag, anything else as {@link optionLabel} reads it.
  * @param spec - The param's declaration.
  * @param value - One of its values.
  * @param locale - The interface language.
@@ -108,8 +105,7 @@ export function choiceLabel(
     const named = languageName(tag, locale);
     if (named !== undefined) return named;
   }
-  const raw = String(value);
-  return spec.value_labels?.[raw] ?? raw;
+  return optionLabel(spec, value);
 }
 
 /**

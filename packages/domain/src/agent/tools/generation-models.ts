@@ -144,11 +144,10 @@ function renderModel(model: PricedModelInfo): string {
     // The control exists but does not count yet, which asks something of the
     // reader that "no control" does not: satisfy the gate and setting it works.
     const waits = spec.gate === undefined ? "" : ` it applies only while ${spec.gate.param} is on;`;
-    // A field served from upstream has no default a run ever takes: the panel
-    // refuses the submit until one is picked, so whatever the catalog declares
-    // for it is a value nothing reaches.
+    // A field served from upstream stands on the first entry of that list
+    // until the reader picks one in the panel.
     const tail = spec.valuesFrom
-      ? " pick one in the panel before generating."
+      ? " defaults to the first entry of that list."
       : ` defaults to ${JSON.stringify(spec.default)}.`;
     return `    ${name}:${domain}${howMany}${waits}${tail} ${spec.what}`;
   });

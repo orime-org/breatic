@@ -6,6 +6,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
+import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import { expectAriaCurrentChosenFill } from '@web/test-utils/selection-fill';
 
 /**
@@ -56,14 +57,13 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
   });
 
   it('says on the trigger what each of the model\'s own controls stands on', () => {
-    // User 2026-09-29: the pill shows every value the reader would send, the
-    // declared default where the node holds nothing.
+    // User 2026-09-29: the pill shows every value the reader would send.
     const own = model({
       aspect_ratio: { ...RATIO, values: ['auto', '1:1'], default: 'auto' },
       resolution: RESOLUTION,
       quality: { description: '', label: 'Quality', values: ['low', 'max'], default: 'max', fill: 'panel' },
     });
-    render(<RatioResolutionPicker model={own} value={{ aspect_ratio: 'auto', resolution: '1K' }} onChange={() => {}} />);
+    render(<RatioResolutionPicker model={own} value={resolveParamsForModel(own, { aspect_ratio: 'auto', resolution: '1K' })} onChange={() => {}} />);
     expect(screen.getByTestId('generate-ratio-trigger')).toHaveTextContent('Auto · 1K · Max');
   });
 

@@ -22,7 +22,7 @@ type Entry = Readonly<Record<string, unknown>>;
 interface ItemsEditorProps {
   /** The param name, for the change and the test ids. */
   name: string;
-  /** Its English label. */
+  /** Its name on screen. */
   label: string;
   /** The most entries the model takes, if it caps them. */
   max: number | undefined;
@@ -85,7 +85,7 @@ function padTo(entries: Entry[], size: number, fields: readonly ItemFieldControl
  * field, a remove button per row and an add button under them.
  * @param root0 - Props.
  * @param root0.name - The param name.
- * @param root0.label - Its English label.
+ * @param root0.label - Its name on screen.
  * @param root0.max - The most entries the model takes.
  * @param root0.min - The fewest it takes.
  * @param root0.fieldLabel - How a field is named in its empty box.

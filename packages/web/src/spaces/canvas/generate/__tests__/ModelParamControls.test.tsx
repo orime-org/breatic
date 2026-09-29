@@ -10,6 +10,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
+import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 
 /**
  * A model declaring the given params.
@@ -59,8 +60,8 @@ const MIXED = model({
 });
 
 describe('ModelParamControls', () => {
-  it('names each control from the locales, reading the model default when the node holds nothing', () => {
-    render(<ModelParamControls model={MIXED} value={{}} onChange={() => {}} />);
+  it('names each control from the locales and shows the defaults a fresh node resolves to', () => {
+    render(<ModelParamControls model={MIXED} value={resolveParamsForModel(MIXED, {})} onChange={() => {}} />);
 
     expect(screen.getByText('Transparent background')).toBeInTheDocument();
     expect(screen.getByTestId('generate-param-transparency-toggle')).toHaveAttribute(
