@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { itemCap } from "@shared/item-cap.js";
+import { isPresent, itemCap } from "@shared/item-cap.js";
 
 describe("the cap on a capped list param", () => {
   it("reads max_items", () => {
@@ -29,5 +29,17 @@ describe("the cap on a capped list param", () => {
     for (const max_items of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(itemCap({ max_items })).toBeUndefined();
     }
+  });
+});
+
+// One answer to "is there anything here to send", read by the presence
+// condition, the price estimate and the worker's request body alike.
+describe("isPresent", () => {
+  it("is false for nothing, an empty string and an empty list", () => {
+    expect([undefined, null, "", []].map(isPresent)).toEqual([false, false, false, false]);
+  });
+
+  it("is true for any other value, falsy ones included", () => {
+    expect([0, false, "a", ["a"], {}].map(isPresent)).toEqual([true, true, true, true, true]);
   });
 });

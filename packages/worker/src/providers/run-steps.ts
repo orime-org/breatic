@@ -64,9 +64,11 @@ const UPLOADS = {
  * unknown vocal id with the same words it uses for any refused input, so a
  * refusal cannot tell a gone vocal from a bad lyric.
  */
-const GONE: Readonly<Partial<Record<CloneKind, RegExp>>> = {
-  voice: /Voice ID does not exist/,
-  element: /Element id not found/,
+const GONE: Readonly<Partial<Record<CloneKind, (message: string, id: string) => boolean>>> = {
+  // A run reads one voice, and the message does not name it.
+  voice: (message) => /Voice ID does not exist/.test(message),
+  // A run reads several elements, and the message names the one refused.
+  element: (message, id) => /Element id not found: (\S+)/.exec(message)?.[1] === id,
 };
 
 /** What the earlier steps of a run answered, for the ones after them. */
@@ -334,7 +336,7 @@ function carry(carried: Carried, step: Step, output: Record<string, unknown>): v
 async function retireGone(deps: StepDeps, ctx: RunTaskContext, carried: Carried, err: unknown): Promise<void> {
   if (!(err instanceof UpstreamTaskFailed) || ctx.studioId === null) return;
   for (const { kind, id } of carried.cached) {
-    if (GONE[kind]?.test(err.upstreamError)) {
+    if (GONE[kind]?.(err.upstreamError, id) === true) {
       await deps.clones.retireClone(ctx.studioId, kind, id);
       logger.warn({ taskId: ctx.taskId, kind, upstreamId: id }, "upstream_clone_retired");
     }

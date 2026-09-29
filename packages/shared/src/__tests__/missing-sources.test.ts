@@ -7,7 +7,7 @@
  * declares per mode. The panel, the server and the agent all ask this.
  */
 import { describe, expect, it } from "vitest";
-import { fitsSomeMode, holds, missingSources, type SourcedModel } from "@shared/missing-sources";
+import { fitsSomeMode, missingSources, type SourcedModel } from "@shared/missing-sources";
 
 const I2V_AND_FIRST_LAST: SourcedModel = {
   params: {
@@ -86,14 +86,3 @@ describe("fitsSomeMode", () => {
   });
 });
 
-// One answer to "is there anything here to send", read by the estimate, the
-// worker's request body and this check alike.
-describe("holds", () => {
-  it("is false for nothing, an empty string and an empty list", () => {
-    expect([undefined, null, "", []].map(holds)).toEqual([false, false, false, false]);
-  });
-
-  it("is true for any other value, falsy ones included", () => {
-    expect([0, false, "a", ["a"], {}].map(holds)).toEqual([true, true, true, true, true]);
-  });
-});

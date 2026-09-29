@@ -8,7 +8,7 @@
  */
 
 import type { FullModelEntry } from "@breatic/domain";
-import { holds } from "@breatic/shared";
+import { isPresent } from "@breatic/shared";
 
 /** A list that declares no fields. */
 const NO_FIELDS: Readonly<Record<string, { values?: readonly unknown[] }>> = {};
@@ -58,7 +58,7 @@ export function upstreamBody(
   for (const [name, spec] of Object.entries(entry.params ?? {})) {
     if (consumed.has(name)) continue;
     const value = spec.type === "items" ? completeEntries(params[name], spec.fields ?? NO_FIELDS) : params[name];
-    if (!holds(value)) continue;
+    if (!isPresent(value)) continue;
     body[spec.upstream ?? name] = value;
   }
   if (entry.takes_prompt === true && prompt !== "") {

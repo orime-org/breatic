@@ -33,14 +33,15 @@ export function stepDepsFor(studioId: string | null): StepDeps {
     steps: upstreamStepRepo,
     clones: upstreamCloneRepo,
     /**
-     * The asset's sha256 behind one of our storage urls.
+     * The asset's sha256 behind one of our storage urls, whichever studio
+     * registered it: a node pasted from another studio keeps the url.
      * @param url - A source url.
-     * @returns The hash, or null for a url that is not one of this studio's assets.
+     * @returns The hash, or null for a url that is not one of our assets.
      */
     sourceKeyOf: async (url: string): Promise<string | null> => {
       if (studioId === null) return null;
       const key = (await getStorageAdapter()).keyFromUrl(url);
-      return key === null ? null : assetRepo.findHashByStorageKey(studioId, key);
+      return key === null ? null : assetRepo.findHashByStorageKey(key);
     },
     /**
      * One sentence about an image, from the understand model.

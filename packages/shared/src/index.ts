@@ -373,7 +373,7 @@ export { newId, deriveId } from "@shared/ids.js";
 // so a submission the panel allowed is never the one the worker truncates.
 export { itemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
-export { holds, missingSources, fitsSomeMode } from "@shared/missing-sources.js";
+export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
 export { formatCredits } from "@shared/format-credits.js";
 export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";
 

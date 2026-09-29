@@ -92,22 +92,17 @@ export async function findByStudioAndHash(
 }
 
 /**
- * The content hash of a studio's live asset stored under a key.
- * @param studioId - Owner studio.
+ * The content hash of the bytes stored under a key, from any studio's live
+ * asset row. Storage keys are tenant-neutral, so every row under one key holds
+ * the same hash.
  * @param storageKey - The object's storage key.
- * @returns The sha256 hex, or null when the studio holds no asset under it.
+ * @returns The sha256 hex, or null when no live asset is stored under it.
  */
-export async function findHashByStorageKey(studioId: string, storageKey: string): Promise<string | null> {
+export async function findHashByStorageKey(storageKey: string): Promise<string | null> {
   const [row] = await db
     .select({ contentHash: studioAssets.contentHash })
     .from(studioAssets)
-    .where(
-      and(
-        eq(studioAssets.studioId, studioId),
-        eq(studioAssets.storageKey, storageKey),
-        isNull(studioAssets.deletedAt),
-      ),
-    )
+    .where(and(eq(studioAssets.storageKey, storageKey), isNull(studioAssets.deletedAt)))
     .limit(1);
   return row?.contentHash ?? null;
 }

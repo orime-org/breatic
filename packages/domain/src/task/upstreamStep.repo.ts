@@ -9,7 +9,7 @@
  * pending -> submitted -> done | failed.
  */
 
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db, taskUpstreamSteps } from "@breatic/core";
 
 /** What a step does; decides what the executor reads off its answer. */
@@ -159,4 +159,21 @@ export async function markFailed(stepId: string, reason: string): Promise<void> 
       output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${JSON.stringify({ error: reason })}::jsonb`,
     })
     .where(eq(taskUpstreamSteps.id, stepId));
+}
+
+/**
+ * Fail every step of a task still pending or submitted, with the task's own
+ * reason: the task has failed for good and none of them will run again.
+ * @param taskId - The task.
+ * @param reason - Why the task failed.
+ * @returns Nothing.
+ */
+export async function failOpenSteps(taskId: string, reason: string): Promise<void> {
+  await db
+    .update(taskUpstreamSteps)
+    .set({
+      status: "failed",
+      output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${JSON.stringify({ error: reason })}::jsonb`,
+    })
+    .where(and(eq(taskUpstreamSteps.taskId, taskId), inArray(taskUpstreamSteps.status, ["pending", "submitted"])));
 }

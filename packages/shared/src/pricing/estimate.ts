@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { ExtraStep, PricingContract } from "@shared/types/model-catalog";
-import { holds } from "@shared/missing-sources";
+import { isPresent } from "@shared/item-cap";
 import { upstreamPriceUsd } from "@shared/pricing/upstream-price";
 
 /** What the estimate reads off one declared param. */
@@ -120,13 +120,13 @@ export async function estimateCredits(
     const field = spec.upstream ?? name;
     let value = input.params[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
     const source = spec.fill === "canvas" || spec.fill === "pool";
-    if (source && !holds(value) && spec.optional !== true) {
+    if (source && !isPresent(value) && spec.optional !== true) {
       value = spec.type === "list" ? [UNPICKED] : UNPICKED;
       params[name] = value;
       if (reads(formulas, field)) unknown = true;
     }
     upstream[field] = value;
-    if (source && holds(value)) {
+    if (source && isPresent(value)) {
       const known = input.durations?.[name] ?? [];
       if (known.length >= itemCount(value)) durations[field] = known;
       else if (billsBy(formulas, "get_duration", field)) unknown = true;
@@ -138,9 +138,9 @@ export async function estimateCredits(
 
   // The model's own call is skipped when its source was used before, and so is
   // every step marked reused whose source is sent.
-  const ownReused = model.reused_by !== undefined && holds(params[model.reused_by]);
+  const ownReused = model.reused_by !== undefined && isPresent(params[model.reused_by]);
   const stepReused = steps.some(
-    (step) => step.reused === true && (step.for_param === undefined || holds(params[step.for_param])),
+    (step) => step.reused === true && (step.for_param === undefined || isPresent(params[step.for_param])),
   );
 
   /**
@@ -156,7 +156,7 @@ export async function estimateCredits(
     for (const step of steps) {
       if (!skippable && step.reused === true) continue;
       const source = step.for_param === undefined ? undefined : params[step.for_param];
-      if (step.for_param !== undefined && !holds(source)) continue;
+      if (step.for_param !== undefined && !isPresent(source)) continue;
       const calls = step.per_item ? itemCount(source) : 1;
       usd += calls * (await upstreamPriceUsd(toPricing(step.pricing), upstream, durations));
     }

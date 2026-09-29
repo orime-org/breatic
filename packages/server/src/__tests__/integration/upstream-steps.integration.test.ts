@@ -28,7 +28,7 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
-import { assetRepo, upstreamCloneRepo, upstreamStepRepo } from "@breatic/domain";
+import { assetRepo, taskService, upstreamCloneRepo, upstreamStepRepo } from "@breatic/domain";
 
 try {
   initCore(process.env);
@@ -143,9 +143,11 @@ describe("studio_upstream_clones", () => {
 });
 
 describe("the cache key of a clone source", () => {
-  it("is the hash of the studio's asset stored under the source's key, and nothing for another studio", async () => {
+  // Storage keys are tenant-neutral: a node pasted from another studio keeps
+  // the url, and the bytes under it are the same bytes, so the key still
+  // finds their hash. The clone row the hash keys stays per studio.
+  it("is the hash of the asset stored under the source's key, whichever studio registered it", async () => {
     const a = await seedStudio();
-    const b = await seedStudio();
     const key = `audio/2026-09-28/${crypto.randomUUID()}.mp3`;
     await sql`
       INSERT INTO studio_assets
@@ -153,8 +155,8 @@ describe("the cache key of a clone source", () => {
       VALUES (${a.studioId}, ${a.userId}, 'sha-vocal', ${key}, ${`https://example.test/${key}`}, 'audio/mpeg', 'audio', 'upload', 10)
     `;
 
-    expect(await assetRepo.findHashByStorageKey(a.studioId, key)).toBe("sha-vocal");
-    expect(await assetRepo.findHashByStorageKey(b.studioId, key)).toBeNull();
+    expect(await assetRepo.findHashByStorageKey(key)).toBe("sha-vocal");
+    expect(await assetRepo.findHashByStorageKey(`audio/2026-09-28/${crypto.randomUUID()}.mp3`)).toBeNull();
   });
 });
 
@@ -216,6 +218,24 @@ describe("task_upstream_steps", () => {
 
     const [row] = await upstreamStepRepo.listSteps(taskId);
     expect(row).toMatchObject({ status: "failed", output: { description: "a cat", error: "audio too short" } });
+  });
+
+  // Design 15.1: a task that fails for good -- retries run out, the whole task
+  // timed out -- leaves no step pending or submitted. The task's verdict is
+  // written once, and the steps follow it there.
+  it("fails the steps a failed task leaves open, and keeps the ones that finished", async () => {
+    const { userId } = await seedStudio();
+    const taskId = await seedTask(userId);
+    const [done, submitted, pending] = await upstreamStepRepo.ensureSteps(taskId, PLAN);
+    await upstreamStepRepo.markDone(done!.id, { reference_id: "163346078760961" });
+    await upstreamStepRepo.markSubmitted(submitted!.id, "pred-2");
+
+    await taskService.markFailed(taskId, "task did not complete within 7200000ms");
+
+    const rows = await upstreamStepRepo.listSteps(taskId);
+    expect(rows.map((r) => r.status)).toEqual(["done", "failed", "failed"]);
+    expect(rows[2]?.output).toMatchObject({ error: "task did not complete within 7200000ms" });
+    expect(pending?.status).toBe("pending");
   });
 
   it("refuses a status or a kind the executor does not know", async () => {

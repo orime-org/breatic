@@ -288,6 +288,22 @@ describe("runCatalogTask", () => {
     expect(retired).toEqual(["element:el-gone"]);
   });
 
+  it("forgets only the cached element the upstream names", async () => {
+    const { deps, clones, retired } = stores();
+    clones.set("element:sha-of-https://a/cat.png:Element 1", "el-kept");
+    clones.set("element:sha-of-https://a/dog.png:Element 2", "el-gone");
+    runPredictionMock.mockRejectedValueOnce(new UpstreamTaskFailed("wavespeed", "Element id not found: el-gone"));
+
+    await expect(
+      runCatalogTask(deps, CTX, "video", "Element 1 meets Element 2", "kling-video-o3-4k-image-to-video", {
+        image: "https://a/first.png",
+        elements: ["https://a/cat.png", "https://a/dog.png"],
+        duration: 5,
+      }),
+    ).rejects.toThrow(/Element id not found/);
+    expect(retired).toEqual(["element:el-gone"]);
+  });
+
   // Mureka answers an unknown vocal id with the same words it uses for any
   // refused input, so a refusal says nothing about the cached vocal.
   it("keeps a cached vocal through Mureka's general refusal", async () => {

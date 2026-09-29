@@ -9,7 +9,7 @@
  */
 
 import type { FullModelEntry, upstreamStepRepo } from "@breatic/domain";
-import { holds, type ExtraStep } from "@breatic/shared";
+import { isPresent, type ExtraStep } from "@breatic/shared";
 
 
 type PlannedStep = upstreamStepRepo.PlannedStep;
@@ -44,7 +44,7 @@ function expand(step: ExtraStep, params: Readonly<Record<string, unknown>>): Pla
   const kind = kindOf(step);
   if (step.for_param === undefined) return [{ kind, endpoint: step.endpoint, itemIndex: null }];
   const value = params[step.for_param];
-  if (!holds(value)) return [];
+  if (!isPresent(value)) return [];
   if (step.per_item === true && Array.isArray(value)) {
     return value.map((_item, itemIndex) => ({ kind, endpoint: step.endpoint, itemIndex }));
   }
