@@ -29,3 +29,21 @@ layout:
   # The logo at the top of every mail. Mail clients do not render SVG, so this
   # is a PNG, and it must be reachable over https from the recipient's client.
   logo_url: https://breatic.ai/icon-192.png
+  # The marketing site. The footer links to its user manual, about, terms and
+  # privacy pages in the recipient's language: <site_url>/<locale>/<page>/.
+  site_url: https://breatic.ai
+  # Where the footer's help line sends people.
+  contact_email: contact@breatic.ai
+  # The footer's social row, in this order. Same links as the marketing
+  # site's footer.
+  social:
+    - label: GitHub
+      url: https://github.com/orime-org/breatic
+    - label: Discord
+      url: https://discord.gg/Yeu6A4aejN
+    - label: X
+      url: https://x.com/breatic_ai
+    - label: YouTube
+      url: https://www.youtube.com/@breatic_ai
+    - label: Instagram
+      url: https://www.instagram.com/breatic_ai

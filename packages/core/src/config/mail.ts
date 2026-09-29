@@ -5,7 +5,7 @@
  * Mail configuration loader (#286).
  *
  * Reads `config/mail.yaml`: the SMTP timeouts `mailer.ts` hands to nodemailer,
- * and the logo the branded layout shows. Lives in core because the mailer
+ * and the addresses the branded layout links to. Lives in core because the mailer
  * does, and both server and collab send through it.
  */
 
@@ -16,15 +16,16 @@ import { z } from "zod";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const timeoutMs = z.number().int().positive();
+const httpsUrl = z.url({ protocol: /^https$/ });
 
 /**
  * The shape `config/mail.yaml` is parsed against. The SMTP section uses
  * `prefault({})` so an absent section still flows through the key defaults;
- * the logo address has no default, because it names a deployed host and the
- * yaml is the one place a host is written down.
+ * the layout has no defaults, because it names deployed hosts and the yaml is
+ * the one place a host is written down.
  *
  * Exported for tests only; application code reads {@link getSmtpTimeouts} and
- * {@link getMailLogoUrl}.
+ * {@link getMailLayout}.
  */
 export const mailConfigSchema = z.object({
   smtp: z
@@ -36,7 +37,12 @@ export const mailConfigSchema = z.object({
     })
     .prefault({}),
   layout: z.object({
-    logo_url: z.url({ protocol: /^https$/ }),
+    logo_url: httpsUrl,
+    site_url: httpsUrl.refine((url) => new URL(url).pathname === "/" && !url.endsWith("/"), {
+      message: "site_url is an origin without a trailing slash",
+    }),
+    contact_email: z.email(),
+    social: z.array(z.object({ label: z.string().min(1), url: httpsUrl })).min(1),
   }),
 });
 
@@ -79,11 +85,29 @@ export function getSmtpTimeouts(): SmtpTimeouts {
   };
 }
 
+/** What the branded mail layout links to. */
+export interface MailLayout {
+  /** The logo at the top, an https PNG. */
+  readonly logoUrl: string;
+  /** The marketing site's origin, without a trailing slash. */
+  readonly siteUrl: string;
+  /** Where the help line sends people. */
+  readonly contactEmail: string;
+  /** The social row, in order. */
+  readonly social: readonly { readonly label: string; readonly url: string }[];
+}
+
 /**
- * Reads the address of the logo the branded mail layout shows.
- * @returns An https URL of a PNG.
+ * Reads what the branded mail layout links to.
+ * @returns The logo, site, contact address and social links.
  * @throws {Error} When the file is missing or malformed.
  */
-export function getMailLogoUrl(): string {
-  return loadMailConfig().layout.logo_url;
+export function getMailLayout(): MailLayout {
+  const { layout } = loadMailConfig();
+  return {
+    logoUrl: layout.logo_url,
+    siteUrl: layout.site_url,
+    contactEmail: layout.contact_email,
+    social: layout.social,
+  };
 }

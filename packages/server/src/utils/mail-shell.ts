@@ -14,14 +14,19 @@
  *
  * The layout is written once in MJML and compiled to client-safe HTML the
  * first time a mail of its shape is sent; each mail then fills in its pieces.
+ * Under the card sits the footer the marketing site also carries: a help line,
+ * the social links, the about / terms / privacy pages in the recipient's
+ * language, the automated-message notice and the copyright.
  */
 
 import mjml2html from "mjml";
-import { getMailLogoUrl, runWithLocale, type SendMailOptions } from "@breatic/core";
+import { getMailLayout, runWithLocale, type SendMailOptions } from "@breatic/core";
 import { t, tRich } from "@breatic/shared";
 
 const BRAND = "Breatic";
 const SLOGAN = "An AI operating system for content creators";
+const COMPANY = "Orime, Inc.";
+const LEGAL_PAGES = ["about", "terms", "privacy"] as const;
 
 const FONT =
   "-apple-system,'Segoe UI','PingFang SC','Hiragino Sans','Microsoft YaHei','Apple SD Gothic Neo',Helvetica,Arial,sans-serif";
@@ -75,7 +80,10 @@ interface RenderedPieces {
   actionLabelText: string;
   noteHtml: string;
   noteText: string;
-  footer: string;
+  helpHtml: string;
+  helpText: string;
+  legal: { word: string; url: string }[];
+  notice: string;
 }
 
 /**
@@ -114,11 +122,34 @@ function toText(message: MailMessage): string {
 }
 
 /**
+ * Render a link in the footer's muted style.
+ * @param label - The link's words, already HTML.
+ * @param href - Where it goes.
+ * @returns The anchor.
+ */
+function footerLink(label: string, href: string): string {
+  return `<a href="${escapeHtml(href)}" style="color:${MUTED};text-decoration:underline;">${label}</a>`;
+}
+
+/**
+ * Join footer links with a spaced middle dot.
+ * @param links - The anchors, in order.
+ * @returns One row of HTML.
+ */
+function dotted(links: string[]): string {
+  return links.join(`<span style="padding:0 6px;">·</span>`);
+}
+
+/**
  * Render every piece of a mail in its recipient's language.
+ * @param locale - The recipient's language; also the marketing site's path segment.
  * @param spec - What the mail says.
  * @returns The rendered pieces.
  */
-function renderPieces(spec: MailSpec): RenderedPieces {
+function renderPieces(locale: string, spec: MailSpec): RenderedPieces {
+  const { siteUrl, contactEmail } = getMailLayout();
+  const site = `${siteUrl}/${locale}`;
+  const manualUrl = `${site}/tutorials/`;
   const heading = t(spec.subject.key, spec.subject.params);
   return {
     subject: `${BRAND} - ${heading}`,
@@ -129,7 +160,19 @@ function renderPieces(spec: MailSpec): RenderedPieces {
     actionLabelText: spec.action ? toText(spec.action.label) : "",
     noteHtml: toHtml(spec.note),
     noteText: toText(spec.note),
-    footer: t("server.mail.footer"),
+    helpHtml: tRich("server.mail.help", { email: escapeHtml(contactEmail) }, {
+      manual: (chunks) => footerLink(chunks.join(""), manualUrl),
+      contact: (chunks) => footerLink(chunks.join(""), `mailto:${contactEmail}`),
+    }),
+    helpText: tRich("server.mail.help", { email: contactEmail }, {
+      manual: (chunks) => `${chunks.join("")} (${manualUrl})`,
+      contact: (chunks) => chunks.join(""),
+    }),
+    legal: LEGAL_PAGES.map((page) => ({
+      word: t(`server.mail.legal.${page}`),
+      url: `${site}/${page}/`,
+    })),
+    notice: t("server.mail.footer"),
   };
 }
 
@@ -144,19 +187,29 @@ function layoutSource(withAction: boolean): string {
     ? `<mj-button href="%%ACTION_URL%%" align="left" padding="0 0 24px" inner-padding="11px 20px"
          background-color="${INK}" color="#ffffff" border-radius="8px" font-size="14px" font-weight="600" line-height="1">%%ACTION_LABEL%%</mj-button>`
     : "";
+  const social = dotted(getMailLayout().social.map(({ label, url }) => footerLink(escapeHtml(label), url)));
+  /**
+   * One centred footer line.
+   * @param content - The line's HTML or placeholder.
+   * @param top - Space above it, in pixels.
+   * @returns The MJML text element.
+   */
+  const footerRow = (content: string, top: number): string =>
+    `<mj-text align="center" padding="${top}px 24px 0" font-size="12px" line-height="1.6" color="${MUTED}">${content}</mj-text>`;
   return `<mjml lang="%%LANG%%">
   <mj-head>
     <mj-attributes>
       <mj-all font-family="${FONT}" />
       <mj-text padding="0" color="${INK}" />
     </mj-attributes>
+    <mj-style>body { min-height: 100vh; }</mj-style>
   </mj-head>
   <mj-body background-color="${PAGE}" width="600px">
-    <mj-section padding="32px 0 20px">
+    <mj-section padding="48px 0 24px">
       <mj-column>
         <mj-text padding="0 24px">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-            <td style="vertical-align:middle;width:28px;"><img src="${escapeHtml(getMailLogoUrl())}" width="28" height="28" alt="${BRAND}" style="display:block;border-radius:6px;"></td>
+            <td style="vertical-align:middle;width:28px;"><img src="${escapeHtml(getMailLayout().logoUrl)}" width="28" height="28" alt="${BRAND}" style="display:block;border-radius:6px;"></td>
             <td style="vertical-align:middle;padding-left:10px;font-size:17px;font-weight:600;line-height:1;color:${INK};white-space:nowrap;">${BRAND}</td>
             <td align="right" style="vertical-align:middle;padding-left:16px;font-size:13px;line-height:1.4;color:${MUTED};">${SLOGAN}</td>
           </tr></table>
@@ -171,9 +224,13 @@ function layoutSource(withAction: boolean): string {
         <mj-text font-size="13px" line-height="1.6" color="${MUTED}">%%NOTE%%</mj-text>
       </mj-column>
     </mj-section>
-    <mj-section padding="20px 0 32px">
+    <mj-section padding="8px 0 56px">
       <mj-column>
-        <mj-text padding="0 24px" font-size="12px" line-height="1.6" color="${MUTED}">${BRAND} · %%FOOTER%%</mj-text>
+        ${footerRow("%%HELP%%", 24)}
+        ${footerRow(social, 12)}
+        ${footerRow("%%LEGAL%%", 12)}
+        ${footerRow("%%NOTICE%%", 16)}
+        ${footerRow(`© %%YEAR%% ${COMPANY}`, 4)}
       </mj-column>
     </mj-section>
   </mj-body>
@@ -218,15 +275,21 @@ function fillLayout(layout: string, values: Record<string, string>): string {
  * Write the plain-text part: the same pieces, in the same order.
  * @param pieces - The rendered pieces.
  * @param href - The button's link, when there is one.
+ * @param year - The copyright year.
  * @returns The text part.
  */
-function plainText(pieces: RenderedPieces, href: string | undefined): string {
+function plainText(pieces: RenderedPieces, href: string | undefined, year: number): string {
+  const links = [...getMailLayout().social.map(({ label, url }) => ({ word: label, url })), ...pieces.legal]
+    .map(({ word, url }) => `${word}: ${url}`)
+    .join("\n");
   return [
     pieces.heading,
     pieces.bodyText,
     href === undefined ? null : `${pieces.actionLabelText}\n${href}`,
     pieces.noteText,
-    `--\n${BRAND} · ${pieces.footer}`,
+    `--\n${pieces.helpText}`,
+    links,
+    `${pieces.notice}\n© ${year} ${COMPANY}`,
   ]
     .filter((block): block is string => block !== null)
     .join("\n\n");
@@ -240,8 +303,9 @@ function plainText(pieces: RenderedPieces, href: string | undefined): string {
  * @throws {Error} When the layout does not compile.
  */
 export async function renderMail(locale: string, spec: MailSpec): Promise<SendMailOptions> {
-  const pieces = runWithLocale(locale, () => renderPieces(spec));
+  const pieces = runWithLocale(locale, () => renderPieces(locale, spec));
   const href = spec.action?.href;
+  const year = new Date().getUTCFullYear();
   const layout = await layoutHtml(href !== undefined);
   return {
     to: spec.to,
@@ -253,8 +317,11 @@ export async function renderMail(locale: string, spec: MailSpec): Promise<SendMa
       ACTION_URL: escapeHtml(href ?? ""),
       ACTION_LABEL: pieces.actionLabelHtml,
       NOTE: pieces.noteHtml,
-      FOOTER: escapeHtml(pieces.footer),
+      HELP: pieces.helpHtml,
+      LEGAL: dotted(pieces.legal.map(({ word, url }) => footerLink(escapeHtml(word), url))),
+      NOTICE: escapeHtml(pieces.notice),
+      YEAR: String(year),
     }),
-    text: plainText(pieces, href),
+    text: plainText(pieces, href, year),
   };
 }

@@ -220,7 +220,13 @@
         "action": "Verify your email address",
         "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, you can ignore this email."
       },
-      "footer": "This is an automated message; replies are not read."
+      "footer": "This is an automated message; replies are not read.",
+      "help": "Need help? Read the <manual>User manual</manual> or write to <contact>{email}</contact>.",
+      "legal": {
+        "about": "About",
+        "terms": "Terms",
+        "privacy": "Privacy"
+      }
     }
   },
   "chat": {

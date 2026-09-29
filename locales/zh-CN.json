@@ -220,7 +220,13 @@
         "action": "验证邮箱地址",
         "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，可以忽略这封邮件。"
       },
-      "footer": "这是一封自动发送的邮件，回复不会被阅读。"
+      "footer": "这是一封自动发送的邮件，回复不会被阅读。",
+      "help": "需要帮助？查看<manual>用户手册</manual>，或发邮件到 <contact>{email}</contact>。",
+      "legal": {
+        "about": "关于我们",
+        "terms": "使用条款",
+        "privacy": "隐私政策"
+      }
     }
   },
   "chat": {

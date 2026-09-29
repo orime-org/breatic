@@ -55,7 +55,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // The email templates render inside the recipient's locale, in the
     // configured layout, and log a failed send; all three are the real ones.
     runWithLocale: actual.runWithLocale,
-    getMailLogoUrl: actual.getMailLogoUrl,
+    getMailLayout: actual.getMailLayout,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
