@@ -1601,6 +1601,30 @@ describe('the comment panel', () => {
         expect(aimedWords()).toBe('avo');
       });
 
+      it('stays on the words it was moved to when a peer writes after the undo', async () => {
+        show();
+        aimDraft(6, 11);
+        await screen.findByTestId('doc-comment-draft-card');
+        const peer = await peerEditor();
+        handle.undoManager.stopCapturing();
+        act(() => {
+          const view = handle.editor.prosemirrorView!;
+          view.dispatch(view.state.tr.delete(firstRun().from + 6, firstRun().from + 8));
+        });
+        handle.undoManager.stopCapturing();
+        act(() => {
+          handle.undoManager.undo();
+        });
+        aimDraft(12, 19);
+
+        act(() => {
+          const view = peer.editor.prosemirrorView!;
+          view.dispatch(view.state.tr.insertText('Q', lineStarts(view.state)[0]!));
+        });
+
+        expect(aimedWords()).toBe('charlie');
+      });
+
       it('stays on words it was aimed at after a split, when the reader undoes the split', async () => {
         show();
         handle.undoManager.stopCapturing();

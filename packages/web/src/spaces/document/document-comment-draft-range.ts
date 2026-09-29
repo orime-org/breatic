@@ -29,11 +29,12 @@
  *   position to the end. Those are resolved from Yjs relative positions, the
  *   way y-prosemirror's cursor plugin places a cursor (`cursor-plugin.js`):
  *   taken again after every change to the body, so each one names the body
- *   as the change before it left it. An undo or redo of the reader's own is
- *   resolved by Yjs alone from the names taken before the edit it takes back
+ *   as the change before it left it. On an undo or redo of the reader's own,
+ *   each end is resolved from the name taken before the edit it takes back
  *   (y-prosemirror's `restoreRelativeSelection`), kept on that edit's undo
  *   stack item the way y-prosemirror's undo plugin keeps the selection, so
- *   letters the undo writes back are followed.
+ *   letters the undo writes back are followed — while the letter that name
+ *   holds is there; otherwise the end is carried like any change through Yjs.
  *
  * The start names the first letter covered and the end the last one, with its
  * association to the left (`assoc = -1`, which Yjs resolves to "after this
@@ -355,27 +356,29 @@ function rowIdsIn(doc: ProseMirrorNode): string[] {
 
 /**
  * Where an end goes when its row was joined onto the row before it: that row
- * now holds its old words followed by the gone row's words, and the end keeps
- * its letter there — the result the reader gets joining the two rows
- * themselves, which ProseMirror maps.
+ * held its old words followed by the gone row's words at the moment of the
+ * join — the result the reader gets joining the two rows themselves, which
+ * ProseMirror maps — and the end is found in it the way `lineNow` finds an
+ * end in a line whose words changed, so words typed or deleted in the same
+ * change do not lose it. Following a join this way is our own inference.
  * @param tr - The change.
  * @param line - The line the end sat in before it.
- * @returns Where the end is now, or null when the row was not joined.
+ * @returns Where the end is now, or null when its letter is not there.
  */
 function joinedInto(tr: Transaction, line: EndLine): number | null {
   const ids = rowIdsIn(tr.before);
   const previous = ids[ids.indexOf(line.id) - 1];
   if (previous === undefined) return null;
   const was = rowById(tr.before, previous);
-  const now = rowById(tr.doc, previous);
   const wasWords = was === undefined ? undefined : contentRangeOf(was);
-  const nowWords = now === undefined ? undefined : contentRangeOf(now);
-  if (wasWords === undefined || nowWords === undefined) return null;
+  if (wasWords === undefined) return null;
   const before = wordsBetween(tr.before, wasWords.from, wasWords.to);
-  if (wordsBetween(tr.doc, nowWords.from, nowWords.to) !== before + line.words) {
-    return null;
-  }
-  return nowWords.from + before.length + line.letter + (line.side === 'end' ? 1 : 0);
+  return lineNow(tr.doc, {
+    id: previous,
+    words: before + line.words,
+    letter: before.length + line.letter,
+    side: line.side,
+  });
 }
 
 /**
@@ -441,23 +444,58 @@ function endAcrossYjs(
 }
 
 /**
- * Resolves both ends from their Yjs names alone, the way y-prosemirror puts
- * the selection back on an undo (`restoreRelativeSelection`): the names were
- * taken before the edit being taken back, and Yjs follows a letter the undo
- * writes back to where it is now.
- * @param bound - The sync binding, rebuilt to the body after the change.
- * @param link - The range as Yjs named it before the edit.
- * @returns Where the range is now, or null when a name resolves to nothing.
+ * Whether the letter a name holds is in the body, following it to the copy an
+ * undo wrote back when it was deleted — the way Yjs itself resolves a name
+ * (`followRedone`). A name whose letter is gone resolves to the gap it left.
+ * @param store - The document's struct store.
+ * @param end - The end as Yjs names it.
+ * @returns True when the letter, or the copy an undo wrote back, is there.
  */
-function resolveNames(bound: Binding, link: TrackedLink): DraftRange | null {
-  const from = relativePositionToAbsolutePosition(
-    bound.doc,
-    bound.type,
-    link.start,
-    bound.mapping,
-  );
-  const to = relativePositionToAbsolutePosition(bound.doc, bound.type, link.end, bound.mapping);
-  return from !== null && to !== null ? { from, to } : null;
+function letterAlive(store: Y.Doc['store'], end: Y.RelativePosition): boolean {
+  if (end.item === null) return true;
+  let id = end.item;
+  for (;;) {
+    const item = Y.getItem(store, id);
+    if (!(item instanceof Y.Item)) return false;
+    if (!item.deleted) return true;
+    if (item.redone === null) return false;
+    id = Y.createID(item.redone.client, item.redone.clock + id.clock - item.id.clock);
+  }
+}
+
+/**
+ * Carries one end across the reader's own undo or redo from the name it had
+ * before the edit being taken back, the way y-prosemirror puts the selection
+ * back (`restoreRelativeSelection`): Yjs follows the letter to where the undo
+ * wrote it. Trusted only while that letter is there — a range, unlike a caret,
+ * collapses or lands on other words in the gap a gone letter leaves.
+ * Otherwise the end is carried as any change through Yjs carries it.
+ * @param tr - The transaction the change arrived in.
+ * @param bound - The sync binding, rebuilt to the body after the change.
+ * @param handed - The end as named before the edit being taken back.
+ * @param end - The end as named before this change.
+ * @param was - The end before the change.
+ * @param side - Which end it is.
+ * @returns Where the end is now, or null once it is lost.
+ */
+function endAcrossUndo(
+  tr: Transaction,
+  bound: Binding,
+  handed: Y.RelativePosition,
+  end: Y.RelativePosition,
+  was: number,
+  side: Side,
+): number | null {
+  if (letterAlive(bound.doc.store, handed)) {
+    const at = relativePositionToAbsolutePosition(
+      bound.doc,
+      bound.type,
+      handed,
+      bound.mapping,
+    );
+    if (at !== null) return at;
+  }
+  return endAcrossYjs(tr, bound, end, was, side);
 }
 
 /**
@@ -465,6 +503,8 @@ function resolveNames(bound: Binding, link: TrackedLink): DraftRange | null {
  * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param link - The range as Yjs names it.
+ * @param handed - On the reader's undo or redo, the range as named before the
+ *   edit it takes back; null otherwise.
  * @param range - The range before the change.
  * @returns Where the range is now, or null once an end is lost.
  */
@@ -472,10 +512,17 @@ function carryAcrossYjs(
   tr: Transaction,
   bound: Binding,
   link: TrackedLink,
+  handed: TrackedLink | null,
   range: DraftRange,
 ): DraftRange | null {
-  const from = endAcrossYjs(tr, bound, link.start, range.from, 'start');
-  const to = endAcrossYjs(tr, bound, link.end, range.to, 'end');
+  const from =
+    handed === null
+      ? endAcrossYjs(tr, bound, link.start, range.from, 'start')
+      : endAcrossUndo(tr, bound, handed.start, link.start, range.from, 'start');
+  const to =
+    handed === null
+      ? endAcrossYjs(tr, bound, link.end, range.to, 'end')
+      : endAcrossUndo(tr, bound, handed.end, link.end, range.to, 'end');
   return from !== null && to !== null ? { from, to } : null;
 }
 
@@ -563,6 +610,19 @@ function fromYjs(tr: Transaction): boolean {
 }
 
 /**
+ * Whether a change is the reader's own undo or redo, as the sync plugin marks
+ * the change it builds from one.
+ * @param tr - The transaction.
+ * @returns True for the reader's undo or redo.
+ */
+function undoRedo(tr: Transaction): boolean {
+  const sync = tr.getMeta(ySyncPluginKey) as
+    | { isUndoRedoOperation?: boolean }
+    | undefined;
+  return sync?.isUndoRedoOperation === true;
+}
+
+/**
  * Whether a transaction changes the body's text.
  * @param tr - The transaction.
  * @returns False for a selection change, and for the binding re-rendering the
@@ -578,7 +638,9 @@ function changesText(tr: Transaction): boolean {
  * @param current - The draft before it.
  * @param before - The state it applies to, whose sync binding is the live one.
  * @param tracked - The range as Yjs names it, or null when it is not named.
- * @param undoing - Whether the change is the reader's own undo or redo.
+ * @param handed - The range as named before the edit an undo or redo takes
+ *   back, or null when that edit kept none for this draft; read only on the
+ *   reader's own undo or redo.
  * @returns The draft after it: the same object when nothing moved, dropped
  *   once the text it covered is gone.
  */
@@ -587,15 +649,14 @@ function carryDraft(
   current: Draft & { kind: 'aimed' },
   before: EditorState,
   tracked: TrackedLink | null,
-  undoing: boolean,
+  handed: TrackedLink | null,
 ): Draft {
   const bound = syncBindingOf(before);
   // The binding has rebuilt its index to the new nodes before it dispatches
   // (`_typeChanged`), so the relative positions resolve against this change.
   const carried =
     fromYjs(tr) && tracked !== null && bound !== null
-      ? ((undoing ? resolveNames(bound, tracked) : null) ??
-        carryAcrossYjs(tr, bound, tracked, current))
+      ? carryAcrossYjs(tr, bound, tracked, undoRedo(tr) ? handed : null, current)
       : mapDraftRange(current, tr);
   const moved =
     carried === null || carried.to <= carried.from
@@ -674,8 +735,8 @@ export const documentCommentDraftRange = createExtension(() => {
   let tracked: TrackedLink | null = null;
   // The names as they stood when the current Yjs transaction began.
   let beforeYjs: TrackedLink | null = null;
-  // Whether the Yjs transaction under way is the reader's undo or redo.
-  let undoing = false;
+  // The names the last undo or redo handed back for this draft, if any.
+  let handed: TrackedLink | null = null;
   return {
     key: 'document-comment-draft-range',
     prosemirrorPlugins: [
@@ -727,7 +788,7 @@ export const documentCommentDraftRange = createExtension(() => {
             // unchanged — which is what a reader clicking elsewhere before
             // typing their comment needs.
             if (current?.kind !== 'aimed' || !changesText(tr)) return current;
-            return carryDraft(tr, current, before, tracked, undoing);
+            return carryDraft(tr, current, before, tracked, handed);
           },
         },
 
@@ -774,11 +835,11 @@ export const documentCommentDraftRange = createExtension(() => {
                     : { entry: range.entry, link: beforeYjs };
                 },
                 (stored) => {
-                  undoing = true;
                   const named = stored as NamedBeforeEdit | undefined;
-                  if (named !== undefined && named.entry === draftRangeIn(view.state)?.entry) {
-                    tracked = named.link;
-                  }
+                  handed =
+                    named !== undefined && named.entry === draftRangeIn(view.state)?.entry
+                      ? named.link
+                      : null;
                 },
               );
           /**
@@ -791,12 +852,7 @@ export const documentCommentDraftRange = createExtension(() => {
           const onBeforeAll = (): void => {
             beforeYjs = tracked;
           };
-          /** Ends the undo or redo once its transactions are over. */
-          const onAfterAll = (): void => {
-            undoing = false;
-          };
           doc?.on('beforeAllTransactions', onBeforeAll);
-          doc?.on('afterAllTransactions', onAfterAll);
           return {
             update: (next, prev): void => {
               const range = draftRangeIn(next.state);
@@ -814,7 +870,6 @@ export const documentCommentDraftRange = createExtension(() => {
             destroy: (): void => {
               stopKeeping?.();
               doc?.off('beforeAllTransactions', onBeforeAll);
-              doc?.off('afterAllTransactions', onAfterAll);
               watching.destroy?.();
             },
           };
