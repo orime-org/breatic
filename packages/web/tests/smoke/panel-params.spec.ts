@@ -43,14 +43,14 @@ test('an image model shows every param it stands on, named from the locales', as
   await expect(page.getByText('Quality', { exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
 
-  // Muse Image Edit: the ratio an edit starts on is the first one it offers.
+  // Muse Image Edit: an edit starts on Auto, the shape of the image it edits.
   await page.getByTestId('generate-mode-trigger').click();
   await page.getByTestId('generate-mode-i2i').click();
   await page.getByTestId('generate-model-trigger').click();
   await page.getByTestId('generate-model-option-muse-image-edit').click();
+  await expect(pill).toContainText('Auto');
   await pill.click();
-  await expect(page.locator('[data-testid^="generate-ratio-option-"][aria-current="true"]')).toHaveCount(1);
-  await expect(pill).not.toHaveText(/^\s*(Params|参数)\s*$/);
+  await expect(page.getByTestId('generate-ratio-option-auto')).toHaveAttribute('aria-current', 'true');
 });
 
 test('a video model names its own params and cuts none of their options', async ({ page }) => {

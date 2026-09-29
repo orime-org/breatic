@@ -394,8 +394,9 @@ models:
     params:
       aspect_ratio:
         description: "Output aspect ratio"
-        default: "21:9"
-        values: ["21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "9:21"]
+        default: "auto"
+        absent_value: "auto"
+        values: ["auto", "21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "9:21"]
         fill: "panel"
       images:
         upstream: "image_urls"
@@ -433,8 +434,9 @@ models:
     params:
       aspect_ratio:
         description: "Output aspect ratio"
-        default: "1:1"
-        values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]
+        default: "auto"
+        absent_value: "auto"
+        values: ["auto", "1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]
         fill: "panel"
       images:
         description: "Images to edit"
