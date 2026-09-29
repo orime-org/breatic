@@ -16,7 +16,7 @@
  * later — decides those where it already knows them.
  */
 
-import { EmptyBody, httpRequest, readWithin } from "@breatic/shared";
+import { EmptyBody, httpRequest, readWithin, stripUnicodeTags } from "@breatic/shared";
 import { UnderstandRefused } from "@domain/understand/types.js";
 import type {
   Media,
@@ -257,7 +257,7 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
     messages: [
       {
         role: "user",
-        content: [{ type: "text", text: request.question }, mediaPart(request.media)],
+        content: [{ type: "text", text: stripUnicodeTags(request.question) }, mediaPart(request.media)],
       },
     ],
   };

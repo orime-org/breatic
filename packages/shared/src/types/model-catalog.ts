@@ -504,8 +504,8 @@ const modelEntrySchema = z.object({
   // model ignores — the user types something that goes nowhere.
   //
   // `false` is the expensive direction, and not for the reason it looks: the
-  // execute gate reads `!promptRequired || promptText.trim()`, so a false here
-  // does not block anything — it REMOVES the demand. The panel would hide the
+  // execute gate reads `!promptRequired || extractPromptText(promptText)`, so
+  // a false here does not block anything — it REMOVES the demand. The panel would hide the
   // editor and then happily submit a paid generation with an empty prompt from
   // a model that actually wanted one.
   takes_prompt: z.boolean().catch(true),

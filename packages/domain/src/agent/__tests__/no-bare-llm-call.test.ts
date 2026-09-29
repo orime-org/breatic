@@ -3,8 +3,9 @@
 
 /**
  * Every LLM call goes through the model-call wrapper, so the retry budget is
- * decided in one place. No source file may value-import an SDK entry point
- * that starts a model run — only `model-call.ts` may.
+ * decided in one place and every prompt loses its Unicode tag characters
+ * before it is sent, apart from what the model wrote itself. No source file may value-import an SDK entry point that
+ * starts a model run — only `model-call.ts` may.
  *
  * The list covers the text and structured-output entry points and the agent
  * class, not just the two we use today. That is deliberate: PR-2 considered
@@ -16,8 +17,8 @@
  *
  * It is not every export that reaches a provider: `embed`, `generateImage`,
  * `generateSpeech`, `transcribe` and `rerank` are outside it, because the
- * wrapper this guard protects is about the retry budget for a model run and
- * those go through their own paths. Adding one here would mean wrapping it
+ * wrapper this guard protects is about a text model run -- its retry budget
+ * and the cleaning of its prompt -- and those go through their own paths. Adding one here would mean wrapping it
  * first.
  *
  * Two blind spots the earlier version had, both closed here:
