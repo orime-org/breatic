@@ -63,8 +63,8 @@ function stores(preset: Step[] = []): {
         const step = find(id);
         Object.assign(step, { status: "done", output: { ...step.output, ...output } });
       },
-      markFailed: async (id) => {
-        find(id).status = "failed";
+      markFailed: async (id, reason) => {
+        Object.assign(find(id), { status: "failed", output: { ...find(id).output, error: reason } });
       },
       recordInline: async (id, output, cost) => {
         const step = find(id);
@@ -223,15 +223,40 @@ describe("runCatalogTask", () => {
     expect(refused.steps[0]!.status).toBe("pending");
   });
 
-  it("does not run a task whose step has already failed", async () => {
-    const { deps } = stores([
-      { id: "s0", position: 0, kind: "generate", endpoint: "minimax/speech-2.8-hd", itemIndex: null, status: "failed", predictionId: "p", output: {}, inlineCostUsd: 0 },
-    ]);
+  it("keeps the upstream's words on a step it failed", async () => {
+    const { deps, steps } = stores();
+    runPredictionMock.mockRejectedValueOnce(new UpstreamTaskFailed("wavespeed", "prompt refused"));
 
     await expect(
       runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }),
-    ).rejects.toThrow(/failed/);
+    ).rejects.toThrow(UpstreamTaskFailed);
+    expect(steps[0]).toMatchObject({ status: "failed", output: { error: "prompt refused" } });
+  });
+
+  it("answers a task whose step already failed with the upstream's own words", async () => {
+    const { deps } = stores([
+      { id: "s0", position: 0, kind: "generate", endpoint: "minimax/speech-2.8-hd", itemIndex: null, status: "failed", predictionId: "p", output: { error: "prompt refused" }, inlineCostUsd: 0 },
+    ]);
+
+    const run = runCatalogTask(deps, CTX, "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" });
+    await expect(run).rejects.toBeInstanceOf(UpstreamTaskFailed);
+    await expect(run).rejects.toThrow("prompt refused");
     expect(runPredictionMock).not.toHaveBeenCalled();
+  });
+
+  it("resumes a submitted clone step by its own prediction, not the cache, and bills it", async () => {
+    const { deps, clones } = stores([
+      { id: "s0", position: 0, kind: "voice", endpoint: "minimax/voice-clone", itemIndex: null, status: "submitted", predictionId: "pred-clone", output: {}, inlineCostUsd: 0 },
+      { id: "s1", position: 1, kind: "speak", endpoint: "minimax/speech-2.8-hd", itemIndex: null, status: "pending", predictionId: null, output: {}, inlineCostUsd: 0 },
+    ]);
+    clones.set("voice:sha-of-https://a/me.mp3", "BreaticOther");
+    answers([], ["https://cdn/said.mp3"]);
+
+    const result = await runCatalogTask(deps, CTX, "tts", "read this", "minimax-voice-clone", { audio: "https://a/me.mp3" });
+
+    expect((runPredictionMock.mock.calls[0]![3] as { storedTaskId: unknown }).storedTaskId).toBe("pred-clone");
+    expect(call(1).body).toMatchObject({ voice_id: `Breatic${CTX.taskId.replace(/-/g, "")}` });
+    expect(result.cost).toBeCloseTo(0.02, 10);
   });
 
   it("forgets a cached voice the upstream no longer knows", async () => {

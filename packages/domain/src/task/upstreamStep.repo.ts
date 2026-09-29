@@ -145,10 +145,18 @@ export async function markDone(stepId: string, output: Record<string, unknown>):
 }
 
 /**
- * Record that a step failed.
+ * Record that the upstream failed a step, and its own words for why: a
+ * redelivered task answers with them rather than retrying the step.
  * @param stepId - The step.
+ * @param reason - The upstream's reason.
  * @returns Nothing.
  */
-export async function markFailed(stepId: string): Promise<void> {
-  await db.update(taskUpstreamSteps).set({ status: "failed" }).where(eq(taskUpstreamSteps.id, stepId));
+export async function markFailed(stepId: string, reason: string): Promise<void> {
+  await db
+    .update(taskUpstreamSteps)
+    .set({
+      status: "failed",
+      output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${JSON.stringify({ error: reason })}::jsonb`,
+    })
+    .where(eq(taskUpstreamSteps.id, stepId));
 }

@@ -122,7 +122,7 @@ async function predict(
       externalTaskId: `breatic-${taskId}-${step.position}`,
     });
   } catch (err) {
-    if (err instanceof UpstreamTaskFailed) await deps.steps.markFailed(step.id);
+    if (err instanceof UpstreamTaskFailed) await deps.steps.markFailed(step.id, err.upstreamError);
     throw err;
   } finally {
     release();
@@ -151,6 +151,7 @@ function outputField(run: PredictionRun, field: string): string {
  * @param kind - What is cloned.
  * @param sourceUrl - The source.
  * @param keySuffix - Added to the source's hash in the cache key (an element's name).
+ * @param step - The clone step; one already submitted resumes its own prediction.
  * @param clone - Runs the clone upstream and answers the id.
  * @returns The id and whether it came from the cache.
  */
@@ -160,11 +161,12 @@ async function cloneOnce(
   kind: CloneKind,
   sourceUrl: string,
   keySuffix: string,
+  step: Step,
   clone: () => Promise<string>,
 ): Promise<{ id: string; cached: boolean }> {
   const sha = ctx.studioId === null ? null : await deps.sourceKeyOf(sourceUrl);
   const key = sha === null ? null : `${sha}${keySuffix}`;
-  if (ctx.studioId !== null && key !== null) {
+  if (step.status === "pending" && ctx.studioId !== null && key !== null) {
     const hit = await deps.clones.findClone(ctx.studioId, kind, key);
     if (hit !== null) return { id: hit, cached: true };
   }
@@ -215,7 +217,7 @@ async function runStep(
     }
     case "vocal": {
       let prediction = "";
-      const { id, cached } = await cloneOnce(deps, ctx, "vocal", urlOf(params, "vocal"), "", async () => {
+      const { id, cached } = await cloneOnce(deps, ctx, "vocal", urlOf(params, "vocal"), "", step, async () => {
         const run = await predict(deps, resolved, step, { audio: urlOf(params, "vocal") }, ctx.taskId);
         prediction = run.taskId;
         return outputField(run, "vocal_id");
@@ -225,7 +227,7 @@ async function runStep(
     case "voice": {
       let prediction = "";
       const source = urlOf(params, entry.reused_by ?? "");
-      const { id, cached } = await cloneOnce(deps, ctx, "voice", source, "", async () => {
+      const { id, cached } = await cloneOnce(deps, ctx, "voice", source, "", step, async () => {
         const voiceId = customVoiceId(ctx.taskId);
         const run = await predict(
           deps,
@@ -262,7 +264,7 @@ async function runStep(
       // the panel writes a mention of that image.
       const name = `Element ${index + 1}`;
       let prediction = "";
-      const { id, cached } = await cloneOnce(deps, ctx, "element", image, `:${name}`, async () => {
+      const { id, cached } = await cloneOnce(deps, ctx, "element", image, `:${name}`, step, async () => {
         let description = step.output.description;
         if (typeof description !== "string") {
           const described = await deps.describeImage(image);
@@ -362,7 +364,10 @@ export async function runCatalogTask(
   const carried: Carried = { ids: {}, elementIds: [], cached: [], predictions: [], inlineCostUsd: 0 };
 
   for (const step of steps) {
-    if (step.status === "failed") throw new Error(`Step ${step.kind} of task ${ctx.taskId} failed upstream`);
+    if (step.status === "failed") {
+      const reason = step.output.error;
+      throw new UpstreamTaskFailed(resolved.providerName, typeof reason === "string" ? reason : `step ${step.kind} failed`);
+    }
     let output = step.output;
     if (step.status !== "done") {
       try {
