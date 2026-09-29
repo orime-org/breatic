@@ -302,6 +302,7 @@ export type {
 
 export {
   t,
+  tRich,
   setLocale,
   getLocale,
   getActiveLocale,
