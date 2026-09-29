@@ -55,10 +55,10 @@ models.get(
   "/:modelName/voices",
   requireAuth,
   validate("query", voiceListQuerySchema),
-  (c) => {
+  async (c) => {
     const modelName = c.req.param("modelName");
     const { query, cursor } = c.req.valid("query");
-    const page = listVoices(modelName, {
+    const page = await listVoices(modelName, {
       ...(query ? { query } : {}),
       ...(cursor ? { cursor } : {}),
     });
@@ -81,11 +81,11 @@ models.get(
 models.get(
   "/:modelName/voices/:voiceId",
   requireAuth,
-  (c) => {
+  async (c) => {
     const modelName = c.req.param("modelName");
     const voiceId = c.req.param("voiceId");
 
-    const voice = getVoice(modelName, voiceId);
+    const voice = await getVoice(modelName, voiceId);
     if (!voice) {
       return c.json(
         { error: { code: 404, message: t("server.canvas.voices_model_not_found") } },

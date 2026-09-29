@@ -10,8 +10,15 @@
  * and travels back out on the next generation.
  */
 
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, vi } from "vitest";
 import { initCore } from "@breatic/core";
+
+// The storage adapter needs R2 settings this suite does not have; what is
+// under test is that a sample key becomes this deployment's public url.
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@breatic/core")>()),
+  getStorageAdapter: async () => ({ publicUrl: (key: string) => `https://cdn.test/${key}` }),
+}));
 
 const { listVoices, getVoice } = await import("../voice-catalog.js");
 const { getFullModelConfig, resetModelCatalog } = await import("../model-catalog.js");
@@ -35,8 +42,8 @@ function declaredIds(model: string): string[] {
 }
 
 describe("listVoices", () => {
-  it("serves the model's own table", () => {
-    const page = listVoices("elevenlabs-v3", {});
+  it("serves the model's own table", async () => {
+    const page = await listVoices("elevenlabs-v3", {});
     expect(page.hasMore).toBe(false);
     // Against the yaml rather than against zero: this table IS the product
     // surface, so serving one of its rows and serving all of them have to be
@@ -49,44 +56,58 @@ describe("listVoices", () => {
     }
   });
 
-  it("serves the system voices a model lists as ids", () => {
-    const page = listVoices("minimax-speech-2.8-hd", {});
+  it("serves the system voices a model lists as ids", async () => {
+    const page = await listVoices("minimax-speech-2.8-hd", {});
     expect(page.voices.map((v) => v.id)).toEqual(declaredIds("minimax-speech-2.8-hd"));
     expect(page.voices.map((v) => v.id)).toContain("Wise_Woman");
   });
 
   // By name, which is the only part of a row a person reads. Searching the
   // ids too would answer "a" with every voice whose opaque id contains one.
-  it("filters that table by the search term", () => {
-    const page = listVoices("elevenlabs-v3", { query: "ali" });
+  // Three vendors publish no sample, so ours is generated once per voice and
+  // kept in this deployment's bucket (#2156, design §16.4): the yaml names the
+  // key, and the url is built from where this deployment serves it.
+  it("gives every voice of the models without a vendor sample one of ours", async () => {
+    for (const model of ["realtime-tts-2", "gemini-3.1-flash-text-to-speech", "minimax-speech-2.8-hd"]) {
+      const page = await listVoices(model, {});
+      for (const voice of page.voices) {
+        expect(voice.previewUrl, `${model}/${voice.id}`).toMatch(
+          new RegExp(`^https://cdn\\.test/voice-samples/${model}/[A-Za-z0-9_-]+\\.mp3$`),
+        );
+      }
+    }
+  });
+
+  it("filters that table by the search term", async () => {
+    const page = await listVoices("elevenlabs-v3", { query: "ali" });
     expect(page.voices.map((v) => v.name)).toContain("Alice");
     expect(page.voices.every((v) => v.name.toLowerCase().includes("ali"))).toBe(true);
   });
 });
 
 describe("getVoice", () => {
-  it("reads a single voice out of the same table", () => {
-    const alice = listVoices("elevenlabs-v3", { query: "Alice" }).voices[0];
+  it("reads a single voice out of the same table", async () => {
+    const alice = (await listVoices("elevenlabs-v3", { query: "Alice" })).voices[0];
     expect(alice).toBeDefined();
-    expect(getVoice("elevenlabs-v3", alice!.id)?.name).toBe("Alice");
+    expect((await getVoice("elevenlabs-v3", alice!.id))?.name).toBe("Alice");
   });
 
-  it("answers null for an id that table does not carry", () => {
-    expect(getVoice("elevenlabs-v3", "NoSuchVoiceIdAtAll")).toBeNull();
+  it("answers null for an id that table does not carry", async () => {
+    expect(await getVoice("elevenlabs-v3", "NoSuchVoiceIdAtAll")).toBeNull();
   });
 });
 
 // Every refusal carries the status the client should see, so the route hands
 // it straight to the error handler rather than re-deriving one from a message.
 describe("when there are no voices to answer with", () => {
-  it("answers 404 for a model the catalog does not have", () => {
-    expect(() => listVoices("no-such-model", {})).toThrow(
+  it("answers 404 for a model the catalog does not have", async () => {
+    await expect(listVoices("no-such-model", {})).rejects.toThrow(
       expect.objectContaining({ statusCode: 404 }),
     );
   });
 
-  it("answers 404 for a model whose params declare no voice source", () => {
-    expect(() => listVoices("midjourney", {})).toThrow(
+  it("answers 404 for a model whose params declare no voice source", async () => {
+    await expect(listVoices("midjourney", {})).rejects.toThrow(
       expect.objectContaining({ statusCode: 404 }),
     );
   });

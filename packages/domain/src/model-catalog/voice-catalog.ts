@@ -10,7 +10,7 @@
  * node and what the next generation sends back out.
  */
 
-import { AppError } from "@breatic/core";
+import { AppError, getStorageAdapter } from "@breatic/core";
 import { t, type Voice, type VoicePage } from "@breatic/shared";
 
 import {
@@ -36,6 +36,7 @@ interface InlineVoice {
   name?: unknown;
   description?: unknown;
   sample_url?: unknown;
+  sample_key?: unknown;
 }
 
 /**
@@ -72,11 +73,21 @@ function assertOffersVoices(entry: FullModelEntry): void {
  * the readable name in separate fields, and an entry missing either is
  * dropped: the id is the only thing the vendor accepts, and the name is the
  * only thing a person can choose by (#2086).
+ *
+ * A sample is either the vendor's own (`sample_url`, served from its CDN) or
+ * one we generated (`sample_key`, an object in this deployment's bucket, #2156
+ * design §16.4). The key is resolved here rather than written as a url in the
+ * yaml because every deployment serves its bucket from its own address.
  * @param entry - The model's yaml entry.
  * @returns Every inline voice, in the order the file lists them.
+ * @throws {Error} When a voice names a sample key and the storage settings are missing.
  */
-function inlineVoices(entry: FullModelEntry): Voice[] {
+async function inlineVoices(entry: FullModelEntry): Promise<Voice[]> {
   const declared = Array.isArray(entry.voices) ? entry.voices : [];
+  const keyed = declared.some((raw) => typeof (raw as InlineVoice).sample_key === "string");
+  // Only asked for when a key needs it: the adapter needs the storage
+  // settings, and a model whose samples are all the vendor's needs none.
+  const storage = keyed ? await getStorageAdapter() : null;
   const voices: Voice[] = [];
   for (const raw of declared) {
     const voice = raw as InlineVoice;
@@ -90,7 +101,9 @@ function inlineVoices(entry: FullModelEntry): Voice[] {
         : {}),
       ...(typeof voice.sample_url === "string" && voice.sample_url
         ? { previewUrl: voice.sample_url }
-        : {}),
+        : storage && typeof voice.sample_key === "string" && voice.sample_key
+          ? { previewUrl: storage.publicUrl(voice.sample_key) }
+          : {}),
     });
   }
   return voices;
@@ -102,15 +115,16 @@ function inlineVoices(entry: FullModelEntry): Voice[] {
  * @param options - Search term; the cursor is accepted and ignored, the whole list is one page.
  * @returns One page holding every matching voice.
  * @throws {AppError} 404 when the model is unknown or offers no voices.
+ * @throws {Error} When a voice names a sample key and the storage settings are missing.
  */
-export function listVoices(modelName: string, options: VoiceQuery): VoicePage {
+export async function listVoices(modelName: string, options: VoiceQuery): Promise<VoicePage> {
   const entry = findModel(modelName);
   assertOffersVoices(entry);
   // By name alone: the ids here are the vendor's opaque strings, and matching
   // them would answer a one-letter search with every voice whose id happens to
   // contain that letter.
   const term = options.query?.toLowerCase();
-  const voices = inlineVoices(entry).filter(
+  const voices = (await inlineVoices(entry)).filter(
     (v) => !term || v.name.toLowerCase().includes(term),
   );
   return { voices, hasMore: false };
@@ -122,9 +136,10 @@ export function listVoices(modelName: string, options: VoiceQuery): VoicePage {
  * @param voiceId - The value stored in the node's params.
  * @returns The voice, or null when the model's list no longer carries that id.
  * @throws {AppError} 404 when the model is unknown or offers no voices.
+ * @throws {Error} When a voice names a sample key and the storage settings are missing.
  */
-export function getVoice(modelName: string, voiceId: string): Voice | null {
+export async function getVoice(modelName: string, voiceId: string): Promise<Voice | null> {
   const entry = findModel(modelName);
   assertOffersVoices(entry);
-  return inlineVoices(entry).find((v) => v.id === voiceId) ?? null;
+  return (await inlineVoices(entry)).find((v) => v.id === voiceId) ?? null;
 }

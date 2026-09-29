@@ -135,6 +135,8 @@ export interface FullModelEntry {
     gender?: string;
     description?: string;
     sample_url?: string | null;
+    /** A sample we generated, as a key in this deployment's bucket (#2156). */
+    sample_key?: string;
   }>;
   [extra: string]: unknown;
 }
