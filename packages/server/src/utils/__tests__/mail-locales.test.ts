@@ -193,10 +193,19 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
     expect(buttons).toBe(WITH_ACTION.includes(kind) ? 1 : 0);
   });
 
+  it.each(WITH_ACTION)("%s centres its button", (kind) => {
+    const html = mails[kind]!.html;
+    const button = html.indexOf(`href="${LINK}"`);
+    const cell = html.lastIndexOf("<td", html.lastIndexOf("<table", button));
+    expect(html.slice(cell, html.indexOf(">", cell))).toContain('align="center"');
+  });
+
   it.each(KINDS)("%s ends with the help, social, legal and copyright rows", (kind) => {
     const { html, text } = mails[kind]!;
     const layout = getMailLayout();
-    const site = `${layout.siteUrl}/${locale}`;
+    // The marketing site serves English at its root and every other language
+    // under /<locale>/ (checked against https://breatic.ai, 2026-09-29).
+    const site = locale === "en" ? layout.siteUrl : `${layout.siteUrl}/${locale}`;
     const legal = catalogValue(locale, "legal") as Record<string, string>;
     const year = new Date().getUTCFullYear();
     for (const [page, word] of [["about", legal.about], ["terms", legal.terms], ["privacy", legal.privacy]]) {
