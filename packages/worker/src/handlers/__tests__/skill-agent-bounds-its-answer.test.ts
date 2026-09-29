@@ -58,12 +58,14 @@ vi.mock("@breatic/domain", () => ({
 
 /** A recorder that keeps the model calls it was told about. */
 function recorder(): {
+  operation: { operationKey: string; feature: "skill_task"; actorUserId: string; projectId: string | null };
   recordModelCall: ReturnType<typeof vi.fn>;
   recordServiceCall: ReturnType<typeof vi.fn>;
   recordLookedUpCall: ReturnType<typeof vi.fn>;
   settle: ReturnType<typeof vi.fn>;
 } {
   return {
+    operation: { operationKey: "task:t-1", feature: "skill_task", actorUserId: "u-1", projectId: "p-1" },
     recordModelCall: vi.fn(),
     recordServiceCall: vi.fn(),
     recordLookedUpCall: vi.fn(),

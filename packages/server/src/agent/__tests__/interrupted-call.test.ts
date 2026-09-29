@@ -13,12 +13,35 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return { ...actual, resolveProvider: () => provider.name };
 });
 
-import { watchInterruptedCall } from "@server/agent/interrupted-call.js";
+import type { UsageRecorder } from "@breatic/domain";
+import { watchModelCalls } from "@server/agent/interrupted-call.js";
 
-const OPERATION = {
+const USAGE = {
+  inputTokens: 10,
+  inputTokenDetails: { noCacheTokens: 10, cacheReadTokens: 0 },
+  outputTokens: 5,
+  outputTokenDetails: { reasoningTokens: 0 },
+};
+
+/**
+ * A recorder that keeps the model calls it was told about.
+ * @returns The recorder.
+ */
+function recorder(): UsageRecorder & { recordModelCall: ReturnType<typeof vi.fn> } {
+  return {
+    operation: { operationKey: "turn:c1:2", feature: "chat_turn", actorUserId: "u-1", projectId: "p-1" },
+    recordModelCall: vi.fn(),
+    recordServiceCall: vi.fn(),
+    recordLookedUpCall: vi.fn(),
+    settle: vi.fn(async () => 0),
+  };
+}
+
+const HANDED_OFF = {
   model: "google/gemini-2.5-flash",
   operationKey: "turn:c1:2",
-  feature: "chat_turn" as const,
+  feature: "chat_turn",
+  source: "model",
   actorUserId: "u-1",
   projectId: "p-1",
   description: "Agent chat",
@@ -29,51 +52,70 @@ beforeEach(() => {
   provider.name = "openrouter";
 });
 
-describe("an OpenRouter call cut off before it reported its cost", () => {
+describe("watching a stream's model calls", () => {
   it("asks the stream for raw chunks", () => {
-    expect(watchInterruptedCall(OPERATION).streamOptions.includeRawChunks).toBe(true);
+    const watch = watchModelCalls(recorder(), { model: "google/gemini-2.5-flash", description: "Agent chat" });
+    expect(watch.streamOptions.includeRawChunks).toBe(true);
   });
 
-  it("hands the open generation to the later lookup", async () => {
-    const watch = watchInterruptedCall(OPERATION);
+  it("records a call that ended with its cost, and hands nothing off", async () => {
+    const usage = recorder();
+    const watch = watchModelCalls(usage, { model: "google/gemini-2.5-flash", description: "Agent chat" });
+    watch.streamOptions.onChunk({ chunk: { type: "raw", rawValue: { id: "gen-7" } } });
+    const metadata = { openrouter: { usage: { cost: 0.01 } } };
+    watch.callEnded({ responseId: "gen-7", usage: USAGE, providerMetadata: metadata });
+    // A slow reader receives the call's last raw chunk after it ended.
     watch.streamOptions.onChunk({ chunk: { type: "raw", rawValue: { id: "gen-7" } } });
 
     await watch.handOff();
 
-    expect(enqueueUsageLookup).toHaveBeenCalledWith({
-      generationId: "gen-7",
-      model: "google/gemini-2.5-flash",
-      operationKey: "turn:c1:2",
-      feature: "chat_turn",
+    expect(usage.recordModelCall).toHaveBeenCalledWith({
       source: "model",
-      actorUserId: "u-1",
-      projectId: "p-1",
-      description: "Agent chat",
+      model: "google/gemini-2.5-flash",
+      provider: "openrouter",
+      usage: USAGE,
+      providerMetadata: metadata,
     });
-  });
-
-  it("hands nothing off once the call ended and was recorded", async () => {
-    const watch = watchInterruptedCall(OPERATION);
-    watch.streamOptions.onChunk({ chunk: { type: "raw", rawValue: { id: "gen-7" } } });
-    watch.ended();
-
-    await watch.handOff();
-
     expect(enqueueUsageLookup).not.toHaveBeenCalled();
   });
 
-  it("hands nothing off for a model reached directly", async () => {
-    provider.name = "deepseek";
-    const watch = watchInterruptedCall({ ...OPERATION, model: "deepseek/deepseek-v4-pro" });
-    watch.streamOptions.onChunk({ chunk: { type: "raw", rawValue: { id: "gen-7" } } });
+  it("hands an OpenRouter call that ended without a cost to the lookup", async () => {
+    const usage = recorder();
+    const watch = watchModelCalls(usage, { model: "google/gemini-2.5-flash", description: "Agent chat" });
+    watch.callEnded({ responseId: "gen-8", usage: USAGE, providerMetadata: undefined });
 
     await watch.handOff();
 
+    expect(usage.recordModelCall).not.toHaveBeenCalled();
+    expect(enqueueUsageLookup).toHaveBeenCalledWith({ ...HANDED_OFF, generationId: "gen-8" });
+  });
+
+  it("hands a call cut off before it ended to the lookup", async () => {
+    const watch = watchModelCalls(recorder(), { model: "google/gemini-2.5-flash", description: "Agent chat" });
+    watch.streamOptions.onChunk({ chunk: { type: "raw", rawValue: { id: "gen-9" } } });
+
+    await watch.handOff();
+
+    expect(enqueueUsageLookup).toHaveBeenCalledWith({ ...HANDED_OFF, generationId: "gen-9" });
+  });
+
+  it("records a model reached directly at the price table, and hands nothing off", async () => {
+    provider.name = "deepseek";
+    const usage = recorder();
+    const watch = watchModelCalls(usage, { model: "deepseek/deepseek-v4-pro", description: "Agent chat" });
+    watch.streamOptions.onChunk({ chunk: { type: "raw", rawValue: { id: "gen-7" } } });
+    watch.callEnded({ responseId: "r-1", usage: USAGE, providerMetadata: undefined });
+
+    await watch.handOff();
+
+    expect(usage.recordModelCall).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "deepseek/deepseek-v4-pro", provider: "deepseek" }),
+    );
     expect(enqueueUsageLookup).not.toHaveBeenCalled();
   });
 
   it("ignores chunks that are not raw", async () => {
-    const watch = watchInterruptedCall(OPERATION);
+    const watch = watchModelCalls(recorder(), { model: "google/gemini-2.5-flash", description: "Agent chat" });
     watch.streamOptions.onChunk({ chunk: { type: "text-delta" } });
 
     await watch.handOff();

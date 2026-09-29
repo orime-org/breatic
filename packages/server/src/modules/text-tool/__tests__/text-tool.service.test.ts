@@ -53,8 +53,9 @@ vi.mock("@breatic/domain", () => ({
     includeRawChunks?: boolean;
     onChunk?: (event: { chunk: { type: string; rawValue?: unknown } }) => void;
     onLanguageModelCallEnd?: (event: {
+      responseId: string;
       usage: { inputTokens: number; outputTokens: number; totalTokens: number };
-      providerMetadata: undefined;
+      providerMetadata: Record<string, unknown>;
     }) => void;
   }) => {
     if (modelRun.failsWith) throw modelRun.failsWith;
@@ -68,18 +69,27 @@ vi.mock("@breatic/domain", () => ({
           return;
         }
         opts.onLanguageModelCallEnd?.({
+          responseId: "gen-done",
           usage: { inputTokens: 0, outputTokens: modelRun.tokens, totalTokens: modelRun.tokens },
-          providerMetadata: undefined,
+          // A call that ended normally carries the cost its route reports.
+          providerMetadata: { openrouter: { usage: { cost: 0.01 } } },
         });
         yield { type: "text-delta", text: "ok" };
       })(),
     };
   },
   // Counts a credit per output token; pricing is `usage-cost.ts`'s to test.
-  createUsageRecorder: (options: unknown) => {
+  createUsageRecorder: (options: {
+    operationKey: string;
+    feature: string;
+    actorUserId: string;
+    projectId: string | null;
+  }) => {
     recorders.opened.push(options);
     let credits = 0;
+    const { operationKey, feature, actorUserId, projectId } = options;
     return {
+      operation: { operationKey, feature, actorUserId, projectId },
       recordModelCall: (call: { usage: { outputTokens: number } }) => {
         recorders.calls.push(call);
         credits += call.usage.outputTokens;
@@ -93,16 +103,21 @@ vi.mock("@breatic/domain", () => ({
   resolveProvider: (model: string) => modelRun.provider || `routed:${model}`,
   trackOpenGeneration: () => {
     let open: string | undefined;
+    const closed = new Set<string>();
     return {
       seen: (raw: { id?: string } | undefined) => {
-        open = raw?.id ?? open;
+        if (raw?.id !== undefined && !closed.has(raw.id)) open = raw.id;
       },
-      ended: () => {
+      ended: (id: string | undefined) => {
+        const done = id ?? open;
+        if (done !== undefined) closed.add(done);
         open = undefined;
       },
       pending: () => open,
     };
   },
+  openRouterCost: (metadata: { openrouter?: { usage?: { cost?: number } } } | undefined) =>
+    metadata?.openrouter?.usage?.cost,
   creditLotService: {
     chargeOnceForGeneration: async (...args: unknown[]) => {
       charge.calls.push(args);

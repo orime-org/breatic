@@ -26,12 +26,14 @@ export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 export { SMALLEST_CREDIT } from "@domain/credit/credit-math.js";
 export {
   createUsageRecorder,
+  type RecordedOperation,
   type UsageRecorder,
   type UsageRow,
   type UsageFeature,
   type UsageSource,
 } from "@domain/credit/usage-recorder.js";
 export { usageContextFor } from "@domain/agent/tools/usage-context.js";
+export { openRouterCost, type ModelCallUsage } from "@domain/credit/usage-cost.js";
 export { agentModelIds, assertModelsPriced } from "@domain/credit/priced-models.js";
 export {
   USAGE_LOOKUP_QUEUE,

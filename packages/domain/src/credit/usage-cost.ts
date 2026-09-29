@@ -50,7 +50,7 @@ export interface ModelCallCost {
  * @param metadata - The call's provider metadata.
  * @returns The cost in US dollars, or undefined when none was reported.
  */
-function openRouterCost(metadata: Record<string, unknown> | undefined): number | undefined {
+export function openRouterCost(metadata: Record<string, unknown> | undefined): number | undefined {
   const usage = (metadata?.openrouter as { usage?: { cost?: unknown } } | undefined)?.usage;
   return typeof usage?.cost === "number" ? usage.cost : undefined;
 }

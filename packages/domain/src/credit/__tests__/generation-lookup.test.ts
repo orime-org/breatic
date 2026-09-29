@@ -45,14 +45,24 @@ describe("tracking the model call that has not ended", () => {
   it("lets go of a call once it ended", () => {
     const open = trackOpenGeneration();
     open.seen({ id: "gen-1" });
-    open.ended();
+    open.ended("gen-1");
+    expect(open.pending()).toBeUndefined();
+  });
+
+  // A slow reader of the stream receives the call's last raw chunk after the
+  // call ended; that chunk must not open the call again.
+  it("does not reopen a call whose last chunk arrives after it ended", () => {
+    const open = trackOpenGeneration();
+    open.seen({ id: "gen-1" });
+    open.ended("gen-1");
+    open.seen({ id: "gen-1" });
     expect(open.pending()).toBeUndefined();
   });
 
   it("holds the later call when an earlier one ended first", () => {
     const open = trackOpenGeneration();
     open.seen({ id: "gen-1" });
-    open.ended();
+    open.ended("gen-1");
     open.seen({ id: "gen-2" });
     expect(open.pending()).toBe("gen-2");
   });

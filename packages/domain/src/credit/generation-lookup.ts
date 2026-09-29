@@ -45,8 +45,11 @@ export function generationIdOf(rawValue: unknown): string | undefined {
 export interface OpenGeneration {
   /** Hand it every raw chunk of the stream. */
   seen(rawValue: unknown): void;
-  /** Call when a model call ended and was recorded. */
-  ended(): void;
+  /**
+   * Call when a model call ended; its id is closed for good, so a raw chunk
+   * of it that a slow reader receives afterwards does not open it again.
+   */
+  ended(generationId: string | undefined): void;
   /** The generation still open, if any. */
   pending(): string | undefined;
 }
@@ -58,11 +61,15 @@ export interface OpenGeneration {
  */
 export function trackOpenGeneration(): OpenGeneration {
   let open: string | undefined;
+  const closed = new Set<string>();
   return {
     seen(rawValue) {
-      open = generationIdOf(rawValue) ?? open;
+      const id = generationIdOf(rawValue);
+      if (id !== undefined && !closed.has(id)) open = id;
     },
-    ended() {
+    ended(generationId) {
+      const id = generationId ?? open;
+      if (id !== undefined) closed.add(id);
       open = undefined;
     },
     pending() {

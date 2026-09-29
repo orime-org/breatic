@@ -78,8 +78,18 @@ export interface LookedUpCall {
   costUsd: number | undefined;
 }
 
+/** The operation a recorder writes its rows under. */
+export interface RecordedOperation {
+  operationKey: string;
+  feature: UsageFeature;
+  actorUserId: string;
+  projectId: string | null;
+}
+
 /** A recorder for one operation. */
 export interface UsageRecorder {
+  /** What its rows are recorded under; charges for them use the same key. */
+  readonly operation: RecordedOperation;
   recordModelCall(call: ModelCall & { source: UsageSource }): void;
   recordServiceCall(call: ServiceCall): void;
   recordLookedUpCall(call: LookedUpCall): void;
@@ -162,6 +172,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
   };
 
   return {
+    operation: base,
     recordModelCall(call) {
       const cost = costOfModelCall(call, pricing);
       append({

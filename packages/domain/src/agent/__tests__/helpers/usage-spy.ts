@@ -18,6 +18,7 @@ export interface UsageSpy {
 export function usageSpy(): UsageSpy {
   const serviceCalls: ServiceCall[] = [];
   const recorder: UsageRecorder = {
+    operation: { operationKey: "turn:c1:1", feature: "chat_turn", actorUserId: "u-1", projectId: "p-1" },
     recordModelCall: vi.fn(),
     recordServiceCall: vi.fn((call: ServiceCall) => void serviceCalls.push(call)),
     recordLookedUpCall: vi.fn(),

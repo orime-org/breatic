@@ -78,6 +78,16 @@ describe("the usage recorder", () => {
     expect(rows[0]!.credits).toBeCloseTo(264, 10);
   });
 
+  it("says which operation it records", () => {
+    const { recorder } = recorderWithRows();
+    expect(recorder.operation).toEqual({
+      operationKey: "turn:c1:3",
+      feature: "chat_turn",
+      actorUserId: "u1",
+      projectId: "p1",
+    });
+  });
+
   it("prices a Brave search per request", async () => {
     const { recorder, rows } = recorderWithRows();
     recorder.recordServiceCall({

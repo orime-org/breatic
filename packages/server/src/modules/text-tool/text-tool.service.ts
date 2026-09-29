@@ -18,7 +18,7 @@ import { getModelForTool, getPromptForTool } from "@server/config/text-tools.js"
 import { env, logger } from "@breatic/core";
 import { creditLotService, createUsageRecorder } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
-import { watchInterruptedCall, type InterruptedCallWatch } from "@server/agent/interrupted-call.js";
+import { watchModelCalls, type ModelCallWatch } from "@server/agent/interrupted-call.js";
 import { getRedis } from "@breatic/core";
 
 /** SSE event yielded during text tool execution. */
@@ -156,19 +156,12 @@ export async function* executeTextTool(
   });
   // Set once the model is known; watches for an OpenRouter call cut off
   // before it reported its cost.
-  let interrupted: InterruptedCallWatch | undefined;
+  let interrupted: ModelCallWatch | undefined;
 
   try {
     const model = getModelForTool(tool);
     modelString = model;
-    const watch = watchInterruptedCall({
-      model,
-      operationKey: `texttool:${idempotencyKey}`,
-      feature: "text_tool",
-      actorUserId: userId,
-      projectId: null,
-      description: `Text tool: ${tool}`,
-    });
+    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}` });
     interrupted = watch;
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);
@@ -181,16 +174,9 @@ export async function* executeTextTool(
       temperature: 0.7,
       abortSignal: signal,
       ...watch.streamOptions,
-      onLanguageModelCallEnd: ({ usage: spent, providerMetadata }) => {
-        watch.ended();
-        totalTokens += spent.totalTokens ?? 0;
-        usage.recordModelCall({
-          source: "model",
-          model,
-          provider: resolveProvider(model),
-          usage: spent,
-          providerMetadata,
-        });
+      onLanguageModelCallEnd: (event) => {
+        totalTokens += event.usage.totalTokens ?? 0;
+        watch.callEnded(event);
       },
     });
 
@@ -207,7 +193,6 @@ export async function* executeTextTool(
       usage,
       interrupted,
       tool,
-      idempotencyKey,
       modelString,
       totalTokens,
     );
@@ -228,7 +213,6 @@ export async function* executeTextTool(
       usage,
       interrupted,
       tool,
-      idempotencyKey,
       modelString,
       totalTokens,
     );
@@ -253,14 +237,13 @@ export async function* executeTextTool(
  * route carries no project id (#122). Until it does, a run records its usage
  * and charges nobody, so the number returned here is zero.
  *
- * The per-request idempotency key makes a retry of the same HTTP request
- * charge at most once.
+ * The recorder's operation key carries the per-request idempotency key, so a
+ * retry of the same HTTP request charges at most once.
  * @param userId - Authenticated user ID the usage is recorded against.
  * @param usage - The run's recorder.
  * @param interrupted - The run's watch for a call cut off before it reported
  *   its cost, once the model was known.
  * @param tool - Tool name recorded on the ledger row.
- * @param idempotencyKey - Per-request key combined into the `texttool:` ref to guarantee idempotency.
  * @param modelString - The model that produced the text, `null` when the run
  *   failed before one was resolved.
  * @param tokens - Tokens the run used, for the log line alone.
@@ -269,9 +252,8 @@ export async function* executeTextTool(
 async function chargeRecorded(
   userId: string,
   usage: UsageRecorder,
-  interrupted: InterruptedCallWatch | undefined,
+  interrupted: ModelCallWatch | undefined,
   tool: string,
-  idempotencyKey: string,
   modelString: string | null,
   tokens: number,
 ): Promise<number> {
@@ -284,7 +266,7 @@ async function chargeRecorded(
     const credits = await usage.settle();
     if (credits <= 0) return 0;
     const outcome = await creditLotService.chargeOnceForGeneration(
-      `texttool:${idempotencyKey}`,
+      usage.operation.operationKey,
       {
         projectId: null,
         actorUserId: userId,

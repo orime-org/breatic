@@ -513,14 +513,22 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  * What a call really costs is `usage-cost.ts`'s to say and is tested there.
  * @returns A recorder with the real interface.
  */
-function usageRecorderDouble(): {
+function usageRecorderDouble(options: {
+  operationKey: string;
+  feature: string;
+  actorUserId: string;
+  projectId: string | null;
+}): {
+  operation: { operationKey: string; feature: string; actorUserId: string; projectId: string | null };
   recordModelCall: (call: { usage: { inputTokens?: number; outputTokens?: number } }) => void;
   recordServiceCall: () => void;
   recordLookedUpCall: () => void;
   settle: () => Promise<number>;
 } {
   let credits = 0;
+  const { operationKey, feature, actorUserId, projectId } = options;
   return {
+    operation: { operationKey, feature, actorUserId, projectId },
     recordModelCall: (call) => {
       credits += (call.usage.inputTokens ?? 0) + (call.usage.outputTokens ?? 0);
     },
@@ -533,19 +541,26 @@ function usageRecorderDouble(): {
 export const domainMock = () => ({
   createUsageRecorder: vi.fn(usageRecorderDouble),
   // The same behaviour as the real one: the id of the call that started and
-  // has not ended.
+  // has not ended, where an ended id never opens again.
   trackOpenGeneration: () => {
     let open: string | undefined;
+    const closed = new Set<string>();
     return {
       seen: (rawValue: unknown) => {
         const id = (rawValue as { id?: unknown } | undefined)?.id;
-        if (typeof id === "string" && id.startsWith("gen-")) open = id;
+        if (typeof id === "string" && id.startsWith("gen-") && !closed.has(id)) open = id;
       },
-      ended: () => {
+      ended: (id: string | undefined) => {
+        const done = id ?? open;
+        if (done !== undefined) closed.add(done);
         open = undefined;
       },
       pending: () => open,
     };
+  },
+  openRouterCost: (metadata: Record<string, unknown> | undefined) => {
+    const cost = (metadata?.openrouter as { usage?: { cost?: unknown } } | undefined)?.usage?.cost;
+    return typeof cost === "number" ? cost : undefined;
   },
   // The same shape as the real one: every tool in the set gets the recorder.
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>

@@ -24,7 +24,7 @@ import { buildSystemPrompt } from "@server/agent/context.js";
 import { getAgentConfig } from "@breatic/core";
 import { creditLotService, createUsageRecorder, usageContextFor } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
-import { watchInterruptedCall, type InterruptedCallWatch } from "@server/agent/interrupted-call.js";
+import { watchModelCalls, type ModelCallWatch } from "@server/agent/interrupted-call.js";
 import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
 import { userTurnForModel } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
@@ -234,7 +234,7 @@ export class MainAgent {
     });
     // Set once the model is known; watches for an OpenRouter call cut off
     // before it reported its cost.
-    let interrupted: InterruptedCallWatch | undefined;
+    let interrupted: ModelCallWatch | undefined;
 
     // The SDK does not throw when the provider fails. It puts an `error`
     // chunk on the stream and closes it normally, so nothing rejects and
@@ -347,14 +347,7 @@ export class MainAgent {
 
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
-      const watch = watchInterruptedCall({
-        model: agentConfig.modelId,
-        operationKey: `turn:${conversationId}:${turnIndex}`,
-        feature: "chat_turn",
-        actorUserId: userId,
-        projectId,
-        description: "Agent chat",
-      });
+      const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat" });
       interrupted = watch;
 
       const result = streamTextRetry({
@@ -401,16 +394,7 @@ export class MainAgent {
         // Fires when a model response is parsed, before the tools it asked
         // for run: a turn stopped while a tool is running has still paid for
         // the call that asked for it.
-        onLanguageModelCallEnd: ({ usage: spent, providerMetadata }) => {
-          watch.ended();
-          usage.recordModelCall({
-            source: "model",
-            model: agentConfig.modelId,
-            provider: resolveProvider(agentConfig.modelId),
-            usage: spent,
-            providerMetadata,
-          });
-        },
+        onLanguageModelCallEnd: (event) => watch.callEnded(event),
         onStepFinish: ({ content }) => {
           for (const part of content) {
             // A call whose arguments the model shaped wrongly is refused at the
@@ -626,7 +610,7 @@ export class MainAgent {
               // The turn-scoped refKey makes this idempotent: a reconnect or
               // a re-entry on the same turn will not double-charge.
               const outcome = await creditLotService.chargeOnceForGeneration(
-                `turn:${conversationId}:${turnIndex}`,
+                usage.operation.operationKey,
                 {
                   projectId,
                   actorUserId: userId,
