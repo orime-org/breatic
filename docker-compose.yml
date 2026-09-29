@@ -75,6 +75,17 @@ services:
       postgres:
         condition: service_healthy
 
+  # ── Voice samples (runs once, then exits) ──
+  # Makes the voice samples the catalog names that this deployment's bucket
+  # does not serve yet; a bucket that has them all is only asked. Nothing waits
+  # on it: a missing sample plays nothing until the next run makes it, and a
+  # run that left some missing exits non-zero so `docker compose ps` shows it.
+  voice-samples:
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
+    command: ["node", "packages/worker/dist/voice-samples.js"]
+    env_file: .env
+    restart: "no"
+
   # ── Application ────────────────────────────────
   # Each application service exposes `GET /healthz` on a dedicated
   # health port (`main port + 1` convention) — server 3001 / collab 1235 /

@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsup src/index.ts --format esm --clean",
+    "build": "tsup src/index.ts src/voice-samples.ts --format esm --clean",
     "start": "node dist/index.js",
     "test": "vitest run",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "voice-samples": "tsx src/voice-samples.ts"
   },
   "dependencies": {
     "@breatic/core": "workspace:*",
