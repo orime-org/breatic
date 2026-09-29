@@ -225,7 +225,13 @@ async function complaintOf(
  * @throws {Error} Carrying tool failure detail, or the reader's stop.
  */
 export async function askJev(request: JevRequest): Promise<JevAnswers> {
-  const { apiKey, state, questions, budgetMs, abortSignal } = request;
+  const { apiKey, budgetMs, abortSignal } = request;
+  // Cleaned once: the endpoint answers under the names it was sent, so the
+  // answers are read against these same names.
+  const { state, questions } = stripUnicodeTagsDeep({
+    state: request.state,
+    questions: request.questions,
+  });
   // The keys are the model's own words, and every sentence below is stored on
   // the call and read again by every later turn -- the same treatment the
   // search tools give a query before it reaches one.
@@ -251,9 +257,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
       {
         method: "POST",
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-        body: JSON.stringify(
-          stripUnicodeTagsDeep({ model: JEV_PINS.model, state, questions }),
-        ),
+        body: JSON.stringify({ model: JEV_PINS.model, state, questions }),
       },
       { replaySafe: false, timeoutMs: budgetMs, signal: spanning },
     );
