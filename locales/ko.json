@@ -217,6 +217,7 @@
       "email_verification": {
         "subject": "이메일 확인",
         "lead": "Breatic에 오신 것을 환영합니다. 아래 링크를 눌러 이메일 주소를 확인하세요:",
+        "action": "<a>이메일 주소 확인</a>",
         "footer": "이 링크는 {hours, plural, other {#시간}} 후에 만료됩니다. 본인이 요청하지 않았다면 이 메일을 무시해도 됩니다."
       }
     }

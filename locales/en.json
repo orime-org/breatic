@@ -217,6 +217,7 @@
       "email_verification": {
         "subject": "Verify your email",
         "lead": "Welcome to Breatic. Click below to verify your email address:",
+        "action": "<a>Verify your email address</a>",
         "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, you can ignore this email."
       }
     }

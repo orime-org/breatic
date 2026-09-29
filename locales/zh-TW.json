@@ -217,6 +217,7 @@
       "email_verification": {
         "subject": "驗證你的電子郵件",
         "lead": "歡迎來到 Breatic。點擊下方連結驗證你的電子郵件地址：",
+        "action": "<a>驗證電子郵件地址</a>",
         "footer": "連結將在 {hours, plural, other {# 小時}}後失效。如果不是你本人操作，可以忽略這封郵件。"
       }
     }

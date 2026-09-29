@@ -11,7 +11,7 @@
  */
 
 import { runWithLocale, type SendMailOptions } from "@breatic/core";
-import { escapeHtml, mailHtml, mailSubject, renderMail } from "@server/utils/mail-shell.js";
+import { mailHtml, mailSubject, renderMail } from "@server/utils/mail-shell.js";
 
 const SECONDS_PER_HOUR = 3600;
 
@@ -57,19 +57,19 @@ export interface EmailVerificationMailInput {
 }
 
 /**
- * Build the email-verification email. The link is shown as its own address so
- * a reader whose client strips links can still copy it.
+ * Build the email-verification email. The link is labelled with words: Aliyun
+ * DirectMail refuses a message whose link text is the bare address
+ * ("554 Reject by content spam").
  * @param input - The account's language and address, the verification link, and its lifetime.
  * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
  */
 export function buildEmailVerificationMail(input: EmailVerificationMailInput): SendMailOptions {
-  const url = escapeHtml(input.verifyUrl);
   return runWithLocale(input.locale, () =>
     renderMail({
       to: input.to,
       subject: mailSubject("server.mail.email_verification.subject"),
       leadHtml: mailHtml("server.mail.email_verification.lead"),
-      actionHtml: `<a href="${url}">${url}</a>`,
+      actionHtml: mailHtml("server.mail.email_verification.action", {}, input.verifyUrl),
       footerHtml: mailHtml("server.mail.email_verification.footer", {
         hours: Math.round(input.expiresInSeconds / SECONDS_PER_HOUR),
       }),
