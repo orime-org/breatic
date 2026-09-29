@@ -36,15 +36,41 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
+/** What each recorder was opened with, and what it was told. */
+const recorders = vi.hoisted(() => ({ opened: [] as unknown[], calls: [] as unknown[] }));
+
 vi.mock("@breatic/domain", () => ({
   getModel: () => ({}),
-  streamTextRetry: () => {
+  // The model call reports its usage as its response arrives, the way the SDK
+  // calls `onLanguageModelCallEnd`, before the stream is drained.
+  streamTextRetry: (opts: {
+    onLanguageModelCallEnd?: (event: {
+      usage: { inputTokens: number; outputTokens: number; totalTokens: number };
+      providerMetadata: undefined;
+    }) => void;
+  }) => {
     if (modelRun.failsWith) throw modelRun.failsWith;
     return {
       fullStream: (async function* () {
+        opts.onLanguageModelCallEnd?.({
+          usage: { inputTokens: 0, outputTokens: modelRun.tokens, totalTokens: modelRun.tokens },
+          providerMetadata: undefined,
+        });
         yield { type: "text-delta", text: "ok" };
       })(),
-      usage: Promise.resolve({ totalTokens: modelRun.tokens }),
+    };
+  },
+  // Counts a credit per output token; pricing is `usage-cost.ts`'s to test.
+  createUsageRecorder: (options: unknown) => {
+    recorders.opened.push(options);
+    let credits = 0;
+    return {
+      recordModelCall: (call: { usage: { outputTokens: number } }) => {
+        recorders.calls.push(call);
+        credits += call.usage.outputTokens;
+      },
+      recordServiceCall: () => {},
+      settle: async () => credits,
     };
   },
   // The real one routes on which API keys the deployment has, so a name
@@ -92,6 +118,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   charge.fail = null;
   charge.calls = [];
+  recorders.opened = [];
+  recorders.calls = [];
   modelRun.tokens = 2000;
   modelRun.failsWith = null;
 });
@@ -176,7 +204,31 @@ describe("一次跑到一半就死掉的运行", () => {
     expect(charge.calls).toHaveLength(2);
     // 同一个幂等键，所以两次里只有一次真扣得下去。
     expect(charge.calls[1]?.[0]).toBe(charge.calls[0]?.[0]);
-    expect(charge.calls[1]?.[1]).toMatchObject({ tokensUsed: 2000 });
+    expect(charge.calls[1]?.[1]).toMatchObject({ amount: 2000 });
+  });
+});
+
+describe("what a run records", () => {
+  it("records the model call under the key it is charged under", async () => {
+    await run();
+
+    expect(recorders.opened).toEqual([
+      expect.objectContaining({
+        operationKey: "texttool:key-1",
+        feature: "text_tool",
+        actorUserId: "u-1",
+        projectId: null,
+      }),
+    ]);
+    expect(recorders.calls).toEqual([
+      expect.objectContaining({
+        source: "model",
+        model: "openai/gpt-4o-mini",
+        provider: "routed:openai/gpt-4o-mini",
+      }),
+    ]);
+    expect(charge.calls[0]?.[0]).toBe("texttool:key-1");
+    expect(charge.calls[0]?.[1]).toMatchObject({ amount: 2000 });
   });
 });
 
