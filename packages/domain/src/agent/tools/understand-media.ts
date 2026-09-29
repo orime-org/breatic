@@ -309,13 +309,9 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
           baseUrl: UNDERSTAND_PINS.baseUrl,
           maxOutputTokens: config.understand_media_max_output_tokens,
           ...(abortSignal ? { signal: abortSignal } : {}),
+          onBilled: recordBilled,
         });
       } catch (err) {
-        // A refusal that carries a cost came from a body the service billed.
-        // One without a cost never got that far, and nothing was charged.
-        if (err instanceof UnderstandRefused && err.costUsd !== undefined) {
-          recordBilled(err.costUsd);
-        }
         if (isStop(err, abortSignal)) throw stoppedByUser();
         if (err instanceof MediaUnavailable) throw unavailableFailure(err);
         if (err instanceof UnderstandRefused) throw refusedFailure(err);
@@ -324,8 +320,6 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
       } finally {
         running = false;
       }
-      // Recorded before the answer is judged: an empty one was billed too.
-      recordBilled(answer.costUsd);
 
       if (answer.text.trim() === "") {
         // The length limit reached before the first word of the description is

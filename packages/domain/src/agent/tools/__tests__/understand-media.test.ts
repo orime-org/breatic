@@ -128,53 +128,45 @@ describe("understand_media — recording what the service billed", () => {
     requests: 1,
   };
 
-  it("records the cost an answer reported", async () => {
-    understandMediaAtMock.mockResolvedValue({
-      text: "A dog.",
-      finishReason: "stop",
-      kind: "image",
-      costUsd: 0.003,
-    });
+  /**
+   * A capability that reports the call billed, the way the real one does
+   * once the answer shows it, and then answers or fails.
+   * @param costUsd - What it reports the call cost.
+   * @param then - What it does next.
+   */
+  function billedThen(costUsd: number | undefined, then: () => unknown): void {
+    understandMediaAtMock.mockImplementation(
+      async (request: { onBilled: (cost: number | undefined) => void }) => {
+        request.onBilled(costUsd);
+        return then();
+      },
+    );
+  }
+
+  it("records the cost the service reported", async () => {
+    billedThen(0.003, () => ({ text: "A dog.", finishReason: "stop", kind: "image" }));
     const spy = usageSpy();
     await turnCopy(spy.recorder)(ASKED);
     expect(spy.serviceCalls).toEqual([{ ...RECORDED, costUsd: 0.003 }]);
   });
 
-  it("records an answer that reported no cost, without a figure", async () => {
+  it("records a billed call with no figure without one", async () => {
+    billedThen(undefined, () => ({ text: "A dog.", finishReason: "stop", kind: "image" }));
     const spy = usageSpy();
     await turnCopy(spy.recorder)(ASKED);
     expect(spy.serviceCalls).toEqual([RECORDED]);
   });
 
-  it("records an empty answer too, which was still billed", async () => {
-    understandMediaAtMock.mockResolvedValue({
-      text: "",
-      finishReason: "length",
-      kind: "image",
-      costUsd: 0.001,
+  it("keeps the record of a billed call that then failed", async () => {
+    billedThen(0.002, () => {
+      throw new UnderstandRefused(200, "Gemini blocked the request: SAFETY", "content-filter");
     });
-    const spy = usageSpy();
-    await turnCopy(spy.recorder)(ASKED).catch(() => undefined);
-    expect(spy.serviceCalls).toEqual([{ ...RECORDED, costUsd: 0.001 }]);
-  });
-
-  it("records a refusal the service billed", async () => {
-    understandMediaAtMock.mockRejectedValue(
-      new UnderstandRefused(200, "Gemini blocked the request: SAFETY", "content-filter", 0.002),
-    );
     const spy = usageSpy();
     await turnCopy(spy.recorder)(ASKED).catch(() => undefined);
     expect(spy.serviceCalls).toEqual([{ ...RECORDED, costUsd: 0.002 }]);
   });
 
-  it("records nothing for a refusal that carried no cost", async () => {
-    understandMediaAtMock.mockRejectedValue(new UnderstandRefused(503, "down", "transient"));
-    const spy = usageSpy();
-    await turnCopy(spy.recorder)(ASKED).catch(() => undefined);
-    expect(spy.serviceCalls).toEqual([]);
-  });
-
-  it("records nothing when the media never reached the service", async () => {
+  it("records nothing when the service never billed the call", async () => {
     understandMediaAtMock.mockRejectedValue(new MediaUnavailable("slow", { detail: "TimeoutError" }));
     const spy = usageSpy();
     await turnCopy(spy.recorder)(ASKED).catch(() => undefined);
@@ -237,6 +229,8 @@ describe("understand_media — a call that worked", () => {
       backend: "google-vertex",
       apiKey: "test-key",
       baseUrl: "https://openrouter.ai/api/v1",
+      // The call is recorded where the service shows it billed.
+      onBilled: expect.any(Function),
     });
   });
 

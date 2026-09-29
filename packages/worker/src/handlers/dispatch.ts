@@ -32,7 +32,6 @@ import {
   createUsageRecorder,
   settleTaskForNode,
   understandMediaAt,
-  UnderstandRefused,
   UNDERSTAND_PINS,
   usageContextFor,
 } from "@breatic/domain";
@@ -1516,21 +1515,17 @@ export async function runUnderstand(
       readFloorMs: cfg.read_floor_ms,
       timeoutMs: cfg.call_timeout_ms,
       maxOutputTokens: cfg.max_output_tokens,
+      onBilled: record,
     });
   } catch (err) {
-    // A refusal that carries a cost came from a body the service billed. The
-    // run fails and is not charged, but the row lands before the failure goes
-    // on; a row that cannot be written is logged rather than let it replace
-    // the failure the run is really ending with.
-    if (err instanceof UnderstandRefused && err.costUsd !== undefined) {
-      record(err.costUsd);
-      await usage.settle().catch((recordErr: unknown) =>
-        logger.error({ err: recordErr }, "agent_usage_record_failed"),
-      );
-    }
+    // A call the service billed before failing was recorded; its row lands
+    // before the failure goes on, and a row that cannot be written is logged
+    // rather than let it replace the failure the run is really ending with.
+    await usage.settle().catch((recordErr: unknown) =>
+      logger.error({ err: recordErr }, "agent_usage_record_failed"),
+    );
     throw err;
   }
-  record(answer.costUsd);
   const credits = await usage.settle();
 
   // A run that answered nothing finished having put nothing on the node.

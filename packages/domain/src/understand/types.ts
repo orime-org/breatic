@@ -195,27 +195,19 @@ export class UnderstandRefused extends Error {
   readonly detail: string;
   /** What the refusal is about. */
   readonly kind: RefusalKind;
-  /**
-   * What the service charged for the refused call, in US dollars, when its
-   * body said. A refusal can still be billed, and whoever records the spend
-   * needs the figure either way.
-   */
-  readonly costUsd: number | undefined;
 
   /**
    * Build one.
    * @param status - The status this refusal was judged by.
    * @param detail - The words it is stated in, the service's or ours.
    * @param kind - What the refusal is about.
-   * @param costUsd - What the service charged, when its body said.
    */
-  constructor(status: number, detail: string, kind: RefusalKind, costUsd?: number) {
+  constructor(status: number, detail: string, kind: RefusalKind) {
     super(`understand refused (${status}, ${kind}): ${detail}`);
     this.name = "UnderstandRefused";
     this.status = status;
     this.detail = detail;
     this.kind = kind;
-    this.costUsd = costUsd;
   }
 }
 
@@ -239,6 +231,13 @@ export interface UnderstandRequest {
   timeoutMs: number;
   /** Whether anyone still wants the answer. */
   signal?: AbortSignal;
+  /**
+   * Called once when the service has billed the call: with what its body
+   * says the call cost, or with undefined when a success answer carried no
+   * figure or could not be read. Not called for a refusal status whose body
+   * states no cost, nor for a call that never got an answer.
+   */
+  onBilled: (costUsd: number | undefined) => void;
 }
 
 /** What one understanding call answered with. */
@@ -247,14 +246,6 @@ export interface UnderstandAnswer {
   text: string;
   /** Why it stopped writing, in the service's own vocabulary. */
   finishReason: string;
-  /**
-   * What the service charged for the call, in US dollars.
-   *
-   * Undefined when the answer carried no usage figure. That is not zero: a
-   * run charged nothing and a run whose price is unknown want different
-   * things from the caller, and only the caller knows which.
-   */
-  costUsd?: number;
 }
 
 /** What getting one address's media needs to know. */

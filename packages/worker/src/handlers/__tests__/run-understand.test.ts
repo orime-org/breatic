@@ -86,6 +86,21 @@ function recorder(): UsageRecorder {
   });
 }
 
+/**
+ * A capability that reports the call billed, the way the real one does once
+ * the answer shows it, and then answers or fails.
+ * @param costUsd - What it reports the call cost.
+ * @param then - What it does next.
+ */
+function billedThen(costUsd: number | undefined, then: () => unknown): void {
+  vi.mocked(understandMediaAt).mockImplementation((async (request: {
+    onBilled: (cost: number | undefined) => void;
+  }) => {
+    request.onBilled(costUsd);
+    return then();
+  }) as never);
+}
+
 describe("running one understand task", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -163,12 +178,7 @@ describe("running one understand task", () => {
   // The media was the prompt, so a call that wrote nothing was still paid
   // for. The run fails and charges nothing, and the row says what it cost.
   it("records what an empty answer cost before failing", async () => {
-    vi.mocked(understandMediaAt).mockResolvedValue({
-      text: "",
-      finishReason: "content_filter",
-      kind: "image",
-      costUsd: 0.0041,
-    });
+    billedThen(0.0041, () => ({ text: "", finishReason: "content_filter", kind: "image" }));
 
     await expect(runUnderstand(PARAMS, recorder())).rejects.toThrow();
 
@@ -181,12 +191,7 @@ describe("running one understand task", () => {
   // one way every other transport's cost is: dollars to cents, times the
   // deployment's multiplier.
   it("charges what the service said the call cost", async () => {
-    vi.mocked(understandMediaAt).mockResolvedValue({
-      text: "A red bicycle.",
-      finishReason: "stop",
-      kind: "image",
-      costUsd: 0.0037,
-    });
+    billedThen(0.0037, () => ({ text: "A red bicycle.", finishReason: "stop", kind: "image" }));
 
     const [, credits] = await runUnderstand(PARAMS, recorder());
 
@@ -197,6 +202,7 @@ describe("running one understand task", () => {
   // Charging zero would be this path inventing a figure; the run is recorded
   // uncharged and reconciliation is where an unpriced run belongs.
   it("charges nothing when the service did not say what it cost", async () => {
+    billedThen(undefined, () => ({ text: "A red bicycle.", finishReason: "stop", kind: "image" }));
     const [, credits] = await runUnderstand(PARAMS, recorder());
 
     expect(credits).toBe(0);
@@ -206,12 +212,7 @@ describe("running one understand task", () => {
   });
 
   it("records the call it charged for", async () => {
-    vi.mocked(understandMediaAt).mockResolvedValue({
-      text: "A red bicycle.",
-      finishReason: "stop",
-      kind: "image",
-      costUsd: 0.0037,
-    });
+    billedThen(0.0037, () => ({ text: "A red bicycle.", finishReason: "stop", kind: "image" }));
 
     await runUnderstand(PARAMS, recorder());
 
@@ -231,9 +232,9 @@ describe("running one understand task", () => {
   // A refusal the service still billed was money spent. The run fails and
   // charges nothing, but the row is written before the failure goes on.
   it("records a refusal the service billed, then fails with it", async () => {
-    vi.mocked(understandMediaAt).mockRejectedValue(
-      new UnderstandRefused(200, "blocked", "content-filter", 0.002),
-    );
+    billedThen(0.002, () => {
+      throw new UnderstandRefused(200, "blocked", "content-filter");
+    });
 
     await expect(runUnderstand(PARAMS, recorder())).rejects.toBeInstanceOf(UnderstandRefused);
 
