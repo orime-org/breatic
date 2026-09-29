@@ -542,14 +542,28 @@
       "audioSpeakersNote": "台词写成「名字：台词」",
       "audioLanguageSearch": "搜索语言…",
       "audioOptionEmpty": "没有匹配项",
-      "audioParam": {
+      "param": {
         "language": "语言",
         "speakers": "说话人",
         "emotion": "情绪",
         "pronunciation_dict": "读音",
-        "loop": "无缝循环"
+        "loop": "无缝循环",
+        "quality": "质量",
+        "enable_image_search": "图片搜索",
+        "enable_web_search": "网络搜索",
+        "chaos": "混沌度",
+        "stylize": "风格化",
+        "weird": "怪异度",
+        "transparency": "透明背景",
+        "distance": "距离",
+        "horizontal_angle": "水平角度",
+        "vertical_angle": "垂直角度",
+        "negative_prompt": "反向提示词",
+        "motion": "运动幅度",
+        "order": "顺序",
+        "model_mode": "区域"
       },
-      "audioField": {
+      "paramField": {
         "speaker": "名字",
         "voice": "音色",
         "text": "文字",

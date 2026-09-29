@@ -4,9 +4,10 @@
 /**
  * The controls only one model has (#2156, design §12).
  *
- * A panel draws its shared controls by name — ratio, resolution, duration —
- * and those carry their labels in the locales. A control only one model has
- * carries an English `label` in its yaml instead, and its shape comes from the
+ * A panel draws its shared controls by name — ratio, resolution, duration.
+ * A control only one model has is marked by a `label` in its yaml, and is
+ * named on screen from the locales by its param name
+ * (`canvas.generatePanel.param.<name>`); its shape comes from the
  * declaration: `values` is a row of options (a true/false pair is a switch),
  * `min`/`max` is a slider, `type: text` is a text box. The `label` is what
  * marks a param as one of these. A list of entries (`type: items`) is a list
@@ -36,7 +37,7 @@ export type ModelControl =
  * @param value - One of its values.
  * @returns The declared label, else the value with a capital first letter.
  */
-function optionLabel(spec: Pick<ParamDescriptor, 'value_labels'>, value: string | number): string {
+export function optionLabel(spec: Pick<ParamDescriptor, 'value_labels'>, value: string | number): string {
   const raw = String(value);
   return spec.value_labels?.[raw] ?? raw.charAt(0).toUpperCase() + raw.slice(1);
 }
@@ -120,4 +121,35 @@ export function ownControlValues(
     if (params[control.name] !== undefined) out[control.name] = params[control.name];
   }
   return out;
+}
+
+/**
+ * What the model's own controls stand on, as the settings pill shows it: a
+ * choice by its option's name, a range by its number, a switch by its name
+ * while it is on. The node's value, else the declared default.
+ * @param model - The active model.
+ * @param params - What the node holds for it.
+ * @param nameOf - A param's name on screen.
+ * @param include - Which controls to summarise; all of them when absent.
+ * @returns One part per control that has something to show, in declared order.
+ */
+export function ownControlSummary(
+  model: ModelEntry,
+  params: Readonly<Record<string, unknown>>,
+  nameOf: (name: string) => string,
+  include?: (control: ModelControl) => boolean,
+): string[] {
+  const parts: string[] = [];
+  for (const control of modelControls(model)) {
+    if (include && !include(control)) continue;
+    const shown = params[control.name] ?? model.params[control.name]?.default;
+    if (control.kind === 'choice' && (typeof shown === 'string' || typeof shown === 'number')) {
+      parts.push(optionLabel(model.params[control.name] ?? {}, shown));
+    } else if (control.kind === 'range' && typeof shown === 'number') {
+      parts.push(String(shown));
+    } else if (control.kind === 'toggle' && shown === true) {
+      parts.push(nameOf(control.name));
+    }
+  }
+  return parts;
 }

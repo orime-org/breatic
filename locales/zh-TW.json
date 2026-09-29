@@ -542,14 +542,28 @@
       "audioSpeakersNote": "台詞寫成「名字：台詞」",
       "audioLanguageSearch": "搜尋語言…",
       "audioOptionEmpty": "沒有符合項目",
-      "audioParam": {
+      "param": {
         "language": "語言",
         "speakers": "說話人",
         "emotion": "情緒",
         "pronunciation_dict": "讀音",
-        "loop": "無縫循環"
+        "loop": "無縫循環",
+        "quality": "品質",
+        "enable_image_search": "圖片搜尋",
+        "enable_web_search": "網路搜尋",
+        "chaos": "混沌度",
+        "stylize": "風格化",
+        "weird": "怪異度",
+        "transparency": "透明背景",
+        "distance": "距離",
+        "horizontal_angle": "水平角度",
+        "vertical_angle": "垂直角度",
+        "negative_prompt": "反向提示詞",
+        "motion": "運動幅度",
+        "order": "順序",
+        "model_mode": "區域"
       },
-      "audioField": {
+      "paramField": {
         "speaker": "名字",
         "voice": "音色",
         "text": "文字",

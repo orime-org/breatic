@@ -26,7 +26,7 @@ import {
   type SettingsRow,
 } from '@web/spaces/canvas/generate/audio-settings';
 import { ItemsEditor } from '@web/spaces/canvas/generate/ItemsEditor';
-import { modelControls, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
+import { modelControls, ownControlSummary, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { OptionList } from '@web/spaces/canvas/generate/OptionList';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
@@ -190,10 +190,6 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
     setSecondOnLeft(box.right + SECOND_PANEL_SPAN > window.innerWidth && box.left >= SECOND_PANEL_SPAN);
   }, [panel]);
 
-  const labelOf = React.useCallback(
-    (control: ModelControl) => t(`canvas.generatePanel.audioParam.${control.name}`),
-    [t],
-  );
   const inlineOnly = React.useCallback(
     (control: ModelControl) => layout.inline.some((c) => c.name === control.name),
     [layout],
@@ -228,6 +224,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
         ? rowValue(layout.rows.find((row) => row.kind === 'voice') as SettingsRow)
         : undefined,
     ...layout.rows.filter((row) => row.kind === 'choice').map(rowValue),
+    ...ownControlSummary(model, value, (name) => t(`canvas.generatePanel.param.${name}`), inlineOnly),
     ...shared.map((control) => {
       const shown = shownNumber(model, control.name, value[control.name]);
       return shown === undefined ? undefined : formatAudioParam(control.name, shown, t);
@@ -304,7 +301,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
               <span className='truncate text-left text-muted-foreground'>
                 {row.kind === 'voice'
                   ? t('canvas.generatePanel.audioVoice')
-                  : t(`canvas.generatePanel.audioParam.${row.name}`)}
+                  : t(`canvas.generatePanel.param.${row.name}`)}
               </span>
               <span className='truncate text-left'>{rowValue(row)}</span>
               <ChevronRight className='h-3.5 w-3.5 opacity-60' aria-hidden='true' />
@@ -329,7 +326,6 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                 value={value}
                 onChange={onChange}
                 include={inlineOnly}
-                labelOf={labelOf}
               />
             </div>
           ) : null}
@@ -432,11 +428,11 @@ function ItemsPanel({ model, name, held, note, voices, player, language, onChang
     <div className='flex flex-col gap-2 p-3'>
       <ItemsEditor
         name={name}
-        label={t(`canvas.generatePanel.audioParam.${name}`)}
+        label={t(`canvas.generatePanel.param.${name}`)}
         max={control.max}
         min={spec?.min_items}
         fields={control.fields}
-        fieldLabel={(field) => t(`canvas.generatePanel.audioField.${field}`)}
+        fieldLabel={(field) => t(`canvas.generatePanel.paramField.${field}`)}
         afterChoice={(field, chosen, index) => {
           if (field !== 'voice' || typeof chosen !== 'string') return null;
           const match = voices.find((v) => v.id === chosen || v.name === chosen);

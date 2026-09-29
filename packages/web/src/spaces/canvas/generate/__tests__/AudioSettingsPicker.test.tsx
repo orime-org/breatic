@@ -487,6 +487,22 @@ describe('AudioSettingsPicker — a model that reads a dialogue (#2156, design �
     expect(screen.queryByTestId('generate-param-speakers-0-remove')).toBeNull();
   });
 
+  it('prints a short choice the panel draws in place, the declared default where the node holds none', () => {
+    const emotional = model({
+      voice_id: { description: '', default: null, remote_source: 'voices', fill: 'remote' },
+      emotion: { description: '', label: 'Emotion', fill: 'panel', default: 'happy', values: ['happy', 'sad'] },
+    });
+    render(
+      <AudioSettingsPicker
+        voice={{ ...NO_VOICE, selectedId: 'v', selectedName: 'Vera' }}
+        model={emotional}
+        value={{}}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toHaveTextContent('Vera · Happy');
+  });
+
   it('caps the pill at 100px and prints the language beside the voice', () => {
     render(
       <AudioSettingsPicker

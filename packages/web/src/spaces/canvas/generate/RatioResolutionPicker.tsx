@@ -19,6 +19,7 @@ import {
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { paramValues } from '@breatic/shared';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
+import { optionLabel, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
@@ -73,7 +74,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   const [ratioParam, resolutionParam] = RATIO_RESOLUTION_PARAMS;
   const ratios: ParamOption[] = paramValues(model, ratioParam).map((v) => ({
     value: String(v),
-    label: String(v),
+    label: optionLabel({}, String(v)),
   }));
   const resolutions: ParamOption[] = paramValues(model, resolutionParam).map((v) => ({
     value: String(v),
@@ -81,8 +82,13 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   }));
   // A model with none of the shared two still has its own controls to open.
   const label =
-    [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ') ||
-    t('canvas.generatePanel.imageParams');
+    [
+      value.aspect_ratio === undefined ? undefined : optionLabel({}, value.aspect_ratio),
+      value.resolution,
+      ...ownControlSummary(model, value, (name) => t(`canvas.generatePanel.param.${name}`)),
+    ]
+      .filter(Boolean)
+      .join(' · ') || t('canvas.generatePanel.imageParams');
   const onSelectRatio = React.useCallback(
     (v: string | number) => onChange({ aspect_ratio: String(v) }),
     [onChange],

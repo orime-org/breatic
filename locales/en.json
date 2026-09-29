@@ -554,14 +554,28 @@
       "audioSpeakersNote": "Write each line as \"Name: line\"",
       "audioLanguageSearch": "Search languages…",
       "audioOptionEmpty": "No matches",
-      "audioParam": {
+      "param": {
         "language": "Language",
         "speakers": "Speakers",
         "emotion": "Emotion",
         "pronunciation_dict": "Pronunciations",
-        "loop": "Seamless loop"
+        "loop": "Seamless loop",
+        "quality": "Quality",
+        "enable_image_search": "Image search",
+        "enable_web_search": "Web search",
+        "chaos": "Chaos",
+        "stylize": "Stylize",
+        "weird": "Weird",
+        "transparency": "Transparent background",
+        "distance": "Distance",
+        "horizontal_angle": "Horizontal angle",
+        "vertical_angle": "Vertical angle",
+        "negative_prompt": "Negative prompt",
+        "motion": "Motion",
+        "order": "Order",
+        "model_mode": "Region"
       },
-      "audioField": {
+      "paramField": {
         "speaker": "Name",
         "voice": "Voice",
         "text": "Text",

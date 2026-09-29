@@ -21,6 +21,7 @@ import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
 import { paramValues } from '@breatic/shared';
 import { modelControls } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
+import { optionLabel, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
@@ -175,7 +176,7 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   // and it keeps that type all the way to the payload (a provider given "6"
   // where it expects 6 is a rejected request).
   const ratios: ParamOption[] = offers(model, 'aspect_ratio')
-    ? paramValues(model, 'aspect_ratio').map((v) => ({ value: String(v), label: String(v) }))
+    ? paramValues(model, 'aspect_ratio').map((v) => ({ value: String(v), label: optionLabel({}, String(v)) }))
     : [];
   const resolutions: ParamOption[] = offers(model, 'resolution')
     ? paramValues(model, 'resolution').map((v) => ({ value: String(v), label: String(v) }))
@@ -201,9 +202,10 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
       ? t('canvas.generatePanel.durationSeconds', { n: value.duration })
       : undefined;
   const label = [
-    ratios.length > 0 ? value.aspect_ratio : undefined,
+    ratios.length > 0 && value.aspect_ratio !== undefined ? optionLabel({}, value.aspect_ratio) : undefined,
     resolutions.length > 0 ? value.resolution : undefined,
     durations.length > 0 ? durationLabel : undefined,
+    ...ownControlSummary(model, params, (name) => t(`canvas.generatePanel.param.${name}`)),
   ]
     .filter(Boolean)
     .join(' · ') || t('canvas.generatePanel.videoParams');

@@ -7,6 +7,7 @@ import type { ModelEntry } from '@breatic/shared';
 
 import { Input } from '@web/components/ui/input';
 import { ItemsEditor } from '@web/spaces/canvas/generate/ItemsEditor';
+import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { modelControls, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
@@ -24,8 +25,6 @@ interface ModelParamControlsProps {
   className?: string;
   /** Which of the model's own controls to draw; all of them when absent. */
   include?: (control: ModelControl) => boolean;
-  /** A control's label; the yaml's English `label` when absent. */
-  labelOf?: (control: ModelControl) => string;
 }
 
 /**
@@ -45,15 +44,14 @@ function shownOf(
 
 /**
  * The controls only this model has, drawn in a params popover after the ones
- * the panel shares (#2156, design §12). Their labels are the model's own
- * English `label`s; which shape each takes comes from its declaration.
+ * the panel shares (#2156, design §12). Each is named from the locales by its
+ * param name; which shape each takes comes from its declaration.
  * @param root0 - Component props.
  * @param root0.model - The active model.
  * @param root0.value - What the node holds for it.
  * @param root0.onChange - Called with the changed param.
  * @param root0.className - Spacing above the block.
  * @param root0.include - Which controls to draw.
- * @param root0.labelOf - A control's label.
  * @returns The controls, or null when the model has none of its own.
  */
 export const ModelParamControls = React.memo(function ModelParamControls({
@@ -62,8 +60,8 @@ export const ModelParamControls = React.memo(function ModelParamControls({
   onChange,
   className,
   include,
-  labelOf,
 }: ModelParamControlsProps): React.JSX.Element | null {
+  const t = useTranslation();
   const controls = React.useMemo(
     () => modelControls(model).filter((control) => include?.(control) ?? true),
     [model, include],
@@ -74,7 +72,7 @@ export const ModelParamControls = React.memo(function ModelParamControls({
       {controls.map((control) => (
         <ModelControlRow
           key={control.name}
-          control={labelOf ? { ...control, label: labelOf(control) } : control}
+          control={{ ...control, label: t(`canvas.generatePanel.param.${control.name}`) }}
           shown={shownOf(model, control.name, value)}
           onChange={onChange}
         />
@@ -98,6 +96,7 @@ interface ModelControlRowProps {
  * @returns The row.
  */
 function ModelControlRow({ control, shown, onChange }: ModelControlRowProps): React.JSX.Element {
+  const t = useTranslation();
   const prefix = `generate-param-${control.name}`;
   switch (control.kind) {
     case 'toggle':
@@ -141,6 +140,7 @@ function ModelControlRow({ control, shown, onChange }: ModelControlRowProps): Re
           label={control.label}
           max={control.max}
           fields={control.fields}
+          fieldLabel={(field) => t(`canvas.generatePanel.paramField.${field}`)}
           held={shown}
           onChange={onChange}
         />
@@ -171,7 +171,7 @@ interface TextControlProps {
  * and a word typed a letter at a time would push out everything else.
  * @param root0 - Props.
  * @param root0.name - The param name.
- * @param root0.label - Its English label.
+ * @param root0.label - Its name on screen.
  * @param root0.held - What the node holds.
  * @param root0.onChange - Called with the committed text.
  * @returns The row.

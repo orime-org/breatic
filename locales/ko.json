@@ -542,14 +542,28 @@
       "audioSpeakersNote": "대사는 \"이름: 대사\"로 적습니다",
       "audioLanguageSearch": "언어 검색…",
       "audioOptionEmpty": "일치하는 항목이 없습니다",
-      "audioParam": {
+      "param": {
         "language": "언어",
         "speakers": "화자",
         "emotion": "감정",
         "pronunciation_dict": "발음",
-        "loop": "끊김 없는 반복"
+        "loop": "끊김 없는 반복",
+        "quality": "품질",
+        "enable_image_search": "이미지 검색",
+        "enable_web_search": "웹 검색",
+        "chaos": "카오스",
+        "stylize": "스타일화",
+        "weird": "기묘함",
+        "transparency": "투명 배경",
+        "distance": "거리",
+        "horizontal_angle": "수평 각도",
+        "vertical_angle": "수직 각도",
+        "negative_prompt": "네거티브 프롬프트",
+        "motion": "움직임 정도",
+        "order": "순서",
+        "model_mode": "영역"
       },
-      "audioField": {
+      "paramField": {
         "speaker": "이름",
         "voice": "음성",
         "text": "텍스트",

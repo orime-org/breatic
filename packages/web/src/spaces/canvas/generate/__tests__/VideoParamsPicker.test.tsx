@@ -69,6 +69,15 @@ describe('VideoParamsPicker', () => {
     );
   });
 
+  it('says on the trigger what each of the model\'s own controls stands on', () => {
+    const own = model({
+      aspect_ratio: RATIO,
+      emotion: { description: '', label: 'Emotion', values: ['happy', 'neutral'], default: 'neutral', fill: 'panel' },
+    });
+    render(<VideoParamsPicker model={own} params={{ aspect_ratio: '1:1' }} onChange={() => {}} />);
+    expect(screen.getByTestId('generate-video-params-trigger')).toHaveTextContent('1:1 · Neutral');
+  });
+
   it('leaves out the parts the model does not declare', () => {
     // seedance-2.0 declares no resolution, kling-o3-pro no resolution either —
     // the trigger must read as the model's own params, not as a fixed shape

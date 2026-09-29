@@ -35,23 +35,23 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
 const MIXED = model({
   transparency: {
     description: '',
-    label: 'Transparent background',
+    label: 'yaml label',
     values: [true, false],
     default: false,
     fill: 'panel',
   },
   quality: {
     description: '',
-    label: 'Quality',
+    label: 'yaml label',
     values: ['low', 'xhigh'],
     value_labels: { xhigh: 'XHigh' },
     default: 'low',
     fill: 'panel',
   },
-  chaos: { description: '', label: 'Chaos', min: 0, max: 100, step: 1, default: 20, fill: 'panel' },
+  chaos: { description: '', label: 'yaml label', min: 0, max: 100, step: 1, default: 20, fill: 'panel' },
   negative_prompt: {
     description: '',
-    label: 'Negative prompt',
+    label: 'yaml label',
     type: 'text',
     default: null,
     fill: 'panel',
@@ -59,7 +59,7 @@ const MIXED = model({
 });
 
 describe('ModelParamControls', () => {
-  it('draws each control with its English label, reading the model default when the node holds nothing', () => {
+  it('names each control from the locales, reading the model default when the node holds nothing', () => {
     render(<ModelParamControls model={MIXED} value={{}} onChange={() => {}} />);
 
     expect(screen.getByText('Transparent background')).toBeInTheDocument();
@@ -103,7 +103,7 @@ describe('ModelParamControls', () => {
     const SPEAKERS = model({
       speakers: {
         description: '',
-        label: 'Speakers',
+        label: 'yaml label',
         type: 'items',
         max_items: 2,
         default: null,

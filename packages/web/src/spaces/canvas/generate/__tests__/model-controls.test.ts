@@ -7,10 +7,14 @@
  * slider, text → a text box. Lists are an editor of their own and not here.
  */
 
-import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
-import { describe, it, expect } from 'vitest';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { extname, resolve } from 'node:path';
 
-import { modelControls } from '@web/spaces/canvas/generate/model-controls';
+import { GENERATION_NODE_BUCKETS, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
+import { describe, it, expect } from 'vitest';
+import { parse } from 'yaml';
+
+import { modelControls, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
 
 /**
  * A model declaring the given params.
@@ -159,5 +163,75 @@ describe('modelControls', () => {
       }),
     );
     expect(controls.map((c) => c.name)).toEqual(['weird', 'chaos']);
+  });
+});
+
+describe('ownControlSummary', () => {
+  const OWN = model({
+    quality: { description: '', label: 'Quality', values: ['low', 'xhigh'], value_labels: { xhigh: 'XHigh' }, default: 'low', fill: 'panel' },
+    chaos: { description: '', label: 'Chaos', min: 0, max: 100, step: 1, default: 20, fill: 'panel' },
+    transparency: { description: '', label: 'Transparent', values: [false, true], default: false, fill: 'panel' },
+    negative_prompt: { description: '', label: 'Negative', type: 'text', default: null, fill: 'panel' },
+  });
+  const nameOf = (name: string): string => `name:${name}`;
+
+  it('says what each choice and range stands on, the default when the node holds nothing', () => {
+    expect(ownControlSummary(OWN, {}, nameOf)).toEqual(['Low', '20']);
+  });
+
+  it('reads what the node holds, and names a switch only while it is on', () => {
+    expect(ownControlSummary(OWN, { quality: 'xhigh', chaos: 5, transparency: true }, nameOf)).toEqual([
+      'XHigh',
+      '5',
+      'name:transparency',
+    ]);
+  });
+});
+
+describe('every param a panel names has words in every locale', () => {
+  // Read as written, the way the icon test reads it: the catalog projection
+  // drops a model whose provider key is unset, so under CI it would have
+  // nothing to walk. Every bucket a generate panel reads.
+  const root = resolve(process.cwd(), '../../config/models');
+  const buckets = [...new Set(Object.values(GENERATION_NODE_BUCKETS).flat())];
+  const models = buckets
+    .map((bucket) => resolve(root, bucket))
+    .filter((dir) => existsSync(dir))
+    .flatMap((dir) =>
+      readdirSync(dir)
+        .filter((file) => extname(file) === '.yaml' && file !== 'providers.yaml')
+        .map((file) => resolve(dir, file)),
+    )
+    .flatMap((file) => {
+      const doc: unknown = parse(readFileSync(file, 'utf8'));
+      const list = Array.isArray(doc) ? doc : ((doc as { models?: unknown[] } | null)?.models ?? []);
+      return list as Array<{ name: string; params?: Record<string, ParamDescriptor> }>;
+    });
+  const labelled = models.flatMap((m) =>
+    Object.entries(m.params ?? {})
+      .filter(([, spec]) => spec.fill === 'panel' && typeof spec.label === 'string')
+      .map(([name, spec]) => ({ model: m.name, name, spec })),
+  );
+  const locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'].map((lang) => {
+    const json = JSON.parse(readFileSync(resolve(process.cwd(), `../../locales/${lang}.json`), 'utf8')) as {
+      canvas: { generatePanel: { param?: Record<string, string>; paramField?: Record<string, string> } };
+    };
+    return { lang, panel: json.canvas.generatePanel };
+  });
+
+  it('names each labelled param', () => {
+    expect(labelled.length).toBeGreaterThan(0);
+    const missing = locales.flatMap(({ lang, panel }) =>
+      labelled.filter(({ name }) => !panel.param?.[name]).map(({ model, name }) => `${lang}: ${model}.${name}`),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it('names each field of a list of entries', () => {
+    const fields = [...new Set(labelled.flatMap(({ spec }) => Object.keys(spec.fields ?? {})))];
+    const missing = locales.flatMap(({ lang, panel }) =>
+      fields.filter((field) => !panel.paramField?.[field]).map((field) => `${lang}: ${field}`),
+    );
+    expect(missing).toEqual([]);
   });
 });
