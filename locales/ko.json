@@ -192,7 +192,7 @@
         "lead": "<b>{requester}</b> 님이 <b>{project}</b> 참여를 요청했습니다.",
         "action": "이 요청 보기"
       },
-      "reason": "메시지: <em>{message}</em>",
+      "reason": " 메시지: <em>{message}</em>",
       "expiry": {
         "invitation": "이 초대는 {days, plural, other {#일}} 후에 만료됩니다. 예상하지 못한 메일이라면 무시하셔도 됩니다.",
         "transfer": "이 이전 요청은 {days, plural, other {#일}} 후에 만료됩니다. 예상하지 못한 메일이라면 무시하셔도 됩니다.",

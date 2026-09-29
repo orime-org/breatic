@@ -62,7 +62,10 @@ export interface MailSpec {
   to: string;
   /** The subject line, which is also the heading inside the mail. */
   subject: MailMessage;
-  /** The sentences of the body paragraph, in order. */
+  /**
+   * The sentences of the body paragraph, in order, joined as written: a
+   * language that separates sentences with a space carries it in the catalog.
+   */
   body: MailMessage[];
   /** The button; absent on a notice with nothing to do. */
   action?: { label: MailMessage; href: string };
@@ -154,8 +157,8 @@ function renderPieces(locale: string, spec: MailSpec): RenderedPieces {
   return {
     subject: `${BRAND} - ${heading}`,
     heading,
-    bodyHtml: spec.body.map(toHtml).join(" "),
-    bodyText: spec.body.map(toText).join(" "),
+    bodyHtml: spec.body.map(toHtml).join(""),
+    bodyText: spec.body.map(toText).join(""),
     actionLabelHtml: spec.action ? toHtml(spec.action.label) : "",
     actionLabelText: spec.action ? toText(spec.action.label) : "",
     noteHtml: toHtml(spec.note),
@@ -203,6 +206,7 @@ function layoutSource(withAction: boolean): string {
       <mj-text padding="0" color="${INK}" />
     </mj-attributes>
     <mj-style>body { min-height: 100vh; }</mj-style>
+    <mj-preview>%%PREVIEW%%</mj-preview>
   </mj-head>
   <mj-body background-color="${PAGE}" width="600px">
     <mj-section padding="48px 0 24px">
@@ -313,6 +317,7 @@ export async function renderMail(locale: string, spec: MailSpec): Promise<SendMa
     html: fillLayout(layout, {
       LANG: escapeHtml(locale),
       HEADING: escapeHtml(pieces.heading),
+      PREVIEW: escapeHtml(pieces.bodyText),
       BODY: pieces.bodyHtml,
       ACTION_URL: escapeHtml(href ?? ""),
       ACTION_LABEL: pieces.actionLabelHtml,

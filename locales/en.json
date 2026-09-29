@@ -192,7 +192,7 @@
         "lead": "<b>{requester}</b> asked to join <b>{project}</b>.",
         "action": "Review this request"
       },
-      "reason": "They said: <em>{message}</em>",
+      "reason": " They said: <em>{message}</em>",
       "expiry": {
         "invitation": "This invitation expires in {days, plural, one {# day} other {# days}}. If you didn't expect it, you can ignore this email.",
         "transfer": "This transfer request expires in {days, plural, one {# day} other {# days}}. If you didn't expect it, you can ignore this email.",
