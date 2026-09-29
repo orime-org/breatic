@@ -35,6 +35,11 @@ export interface AuthUser {
    * panel that shows it.
    */
   membershipTier: MembershipTier;
+  /**
+   * The account's language. Applied to the interface at sign-in and on a
+   * cold load; emails to the account are written in it.
+   */
+  locale: string;
 }
 
 /**

@@ -1461,7 +1461,8 @@
       "agentColumnWidth": "에이전트 패널 너비 조정",
       "language": "언어: {name}",
       "theme": "테마: {theme}"
-    }
+    },
+    "languageNotSaved": "언어를 계정에 저장하지 못했습니다"
   },
   "projectJoin": {
     "title": "이 Project의 멤버가 아닙니다",

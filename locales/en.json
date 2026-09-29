@@ -1461,7 +1461,8 @@
       "agentColumnWidth": "Adjust agent panel width",
       "language": "Language: {name}",
       "theme": "Theme: {theme}"
-    }
+    },
+    "languageNotSaved": "Language not saved to your account"
   },
   "projectJoin": {
     "title": "You're not a member of this project",

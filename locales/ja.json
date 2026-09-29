@@ -1461,7 +1461,8 @@
       "agentColumnWidth": "エージェントパネルの幅を調整",
       "language": "言語：{name}",
       "theme": "テーマ：{theme}"
-    }
+    },
+    "languageNotSaved": "言語をアカウントに保存できませんでした"
   },
   "projectJoin": {
     "title": "この Project のメンバーではありません",

@@ -68,7 +68,7 @@ describe('official Google login', () => {
     respond();
     expect(authApi.google).toHaveBeenCalledExactlyOnceWith({ credential: 'signed-google-id-token' });
     expect(screen.getByRole('button', { name: 'Signing in...' })).toBeDisabled();
-    await act(async () => finish({ user: { id: 'g-1', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base' } }));
+    await act(async () => finish({ user: { id: 'g-1', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' } }));
     expect(useCurrentUserStore.getState().user?.id).toBe('g-1');
     expect(useCurrentUserStore.getState().user?.personalStudio).toBeNull();
   });
@@ -103,7 +103,7 @@ describe('official Google login', () => {
     const view = setup();
     respond();
     view.unmount();
-    await act(async () => finish({ user: { id: 'late', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base' } }));
+    await act(async () => finish({ user: { id: 'late', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' } }));
     expect(useCurrentUserStore.getState().user).toBeNull();
   });
 

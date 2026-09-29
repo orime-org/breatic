@@ -54,6 +54,7 @@ describe('AuthBootstrap', () => {
         avatarUrl: 'https://cdn/alice.png',
       },
       membershipTier: 'base',
+      locale: 'en',
     });
     render(
       <AuthBootstrap>
@@ -88,6 +89,7 @@ describe('AuthBootstrap', () => {
       email: 'c@d.com',
       personalStudio: { name: 'Chen', slug: 'chen', avatarUrl: null },
       membershipTier: 'base',
+      locale: 'en',
     });
     render(
       <AuthBootstrap>
@@ -111,6 +113,7 @@ describe('AuthBootstrap', () => {
       email: 'songxiuxing@gmail.com',
       personalStudio: null,
       membershipTier: 'base',
+      locale: 'en',
     });
     render(
       <AuthBootstrap>

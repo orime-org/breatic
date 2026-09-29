@@ -1461,7 +1461,8 @@
       "agentColumnWidth": "调整 Agent 面板宽度",
       "language": "语言：{name}",
       "theme": "主题：{theme}"
-    }
+    },
+    "languageNotSaved": "语言未保存到账号"
   },
   "projectJoin": {
     "title": "你还不是这个 Project 的成员",
