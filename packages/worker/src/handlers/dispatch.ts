@@ -26,7 +26,7 @@ import { buildAgentConfig } from "@breatic/domain";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, getAgentConfig } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { taskService } from "@breatic/domain";
-import { creditLotService, resolveActiveProvider } from "@breatic/domain";
+import { creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import {
   createUsageRecorder,
@@ -57,16 +57,13 @@ import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 import { understandQuestion } from "@worker/handlers/understand-question.js";
 
 /**
- * What a provider's figure is worth in credits.
- *
- * A credit is a cent, and the deployment's multiplier is where the margin
- * lives. Every path that prices a run reads this, so the four of them cannot
- * drift into charging four different amounts for the same dollar.
+ * What a provider's figure is worth in credits, by the same conversion every
+ * other charge uses.
  * @param costUsd - What the service charged, in US dollars.
  * @returns The credits to deduct.
  */
 function creditsFor(costUsd: number): number {
-  return costUsd * 100 * env.CREDIT_MULTIPLIER;
+  return creditsForUsd(costUsd, env.CREDIT_MULTIPLIER);
 }
 
 const AIGC_TASK_TYPES: Record<string, string> = {

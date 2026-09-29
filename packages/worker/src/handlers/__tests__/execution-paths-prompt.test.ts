@@ -55,6 +55,7 @@ vi.mock("@breatic/domain", () => ({
   // part of what this file asserts.
   extractPromptText: (x: unknown) => String(x ?? "").replace(/<[^>]*>/g, ""),
   settleTaskForNode: vi.fn(),
+  creditsForUsd: vi.fn(),
 }));
 
 // Partial: `extractPromptText` lives here, and the stripping case below is
