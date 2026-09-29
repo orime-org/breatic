@@ -13,12 +13,9 @@ describe("logMailResult", () => {
     vi.clearAllMocks();
   });
 
-  it("records a sent mail with its kind and recipient", () => {
+  it("leaves a sent mail to the caller's own line", () => {
     logMailResult({ status: "sent" }, { userId: "u1", subject: "studio_invite" });
-    expect(logger.info).toHaveBeenCalledWith(
-      { userId: "u1", subject: "studio_invite" },
-      "email_sent",
-    );
+    expect(logger.info).not.toHaveBeenCalled();
   });
 
   it("warns when SMTP is not configured", () => {
