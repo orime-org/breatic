@@ -367,29 +367,31 @@ function rowIdsIn(doc: ProseMirrorNode): string[] {
 
 /**
  * Where an end goes when the reader's own undo or redo joined its row onto
- * the row before it: that row now holds exactly its old words followed by the
- * gone row's words, since the undo takes back the reader's own split word for
- * word, and the end keeps its letter there — the result ProseMirror maps when
- * the reader joins the two rows themselves. A peer's join is not followed:
- * what it wrote can only be told apart by guessing from the text (A21).
+ * the row before it: that row held its old words followed by the gone row's
+ * words, less what else the same undo step takes back — Yjs folds edits made
+ * within its capture timeout into one step, so typing right after a split
+ * goes with it. The end is found there the way `lineNow` finds an end in a
+ * line whose words changed, the result ProseMirror maps when the reader joins
+ * the two rows themselves. A peer's join is not followed: a peer editing the
+ * same lines at the same time is outside the promise (A21).
  * @param tr - The change.
  * @param line - The line the end sat in before it.
- * @returns Where the end is now, or null when the row was not joined.
+ * @returns Where the end is now, or null when its letter is not there.
  */
 function joinedInto(tr: Transaction, line: EndLine): number | null {
   const ids = rowIdsIn(tr.before);
   const previous = ids[ids.indexOf(line.id) - 1];
   if (previous === undefined) return null;
   const was = rowById(tr.before, previous);
-  const now = rowById(tr.doc, previous);
   const wasWords = was === undefined ? undefined : contentRangeOf(was);
-  const nowWords = now === undefined ? undefined : contentRangeOf(now);
-  if (wasWords === undefined || nowWords === undefined) return null;
+  if (wasWords === undefined) return null;
   const before = wordsBetween(tr.before, wasWords.from, wasWords.to);
-  if (wordsBetween(tr.doc, nowWords.from, nowWords.to) !== before + line.words) {
-    return null;
-  }
-  return nowWords.from + before.length + line.letter + (line.side === 'end' ? 1 : 0);
+  return lineNow(tr.doc, {
+    id: previous,
+    words: before + line.words,
+    letter: before.length + line.letter,
+    side: line.side,
+  });
 }
 
 /**
@@ -413,12 +415,6 @@ function besideGoneRow(tr: Transaction, id: string, side: Side): number | null {
     if (words !== undefined) return side === 'start' ? words.from : words.to;
   }
   return null;
-}
-
-/** What the reader's own undo or redo hands back for the draft. */
-interface UndoHandover {
-  /** The range as named before the edit being taken back, when it had one. */
-  readonly handed: TrackedLink | null;
 }
 
 /**
@@ -484,8 +480,9 @@ function endAcrossYjs(
  * @param tr - The transaction the change arrived in.
  * @param bound - The sync binding, rebuilt to the body after the change.
  * @param link - The range as Yjs names it.
- * @param undo - On the reader's undo or redo, what it handed back; null
- *   otherwise.
+ * @param undo - Whether the change is the reader's own undo or redo.
+ * @param handed - On the reader's undo or redo, the range as named before the
+ *   edit it takes back, when that edit kept one; null otherwise.
  * @param range - The range before the change.
  * @returns Where the range is now, or null once an end is lost.
  */
@@ -493,15 +490,15 @@ function carryAcrossYjs(
   tr: Transaction,
   bound: Binding,
   link: TrackedLink,
-  undo: UndoHandover | null,
+  undo: boolean,
+  handed: TrackedLink | null,
   range: DraftRange,
 ): DraftRange | null {
-  const handed = undo?.handed ?? null;
   const from = endAcrossYjs(
-    tr, bound, link.start, handed?.start ?? null, undo !== null, range.from, 'start',
+    tr, bound, link.start, handed?.start ?? null, undo, range.from, 'start',
   );
   const to = endAcrossYjs(
-    tr, bound, link.end, handed?.end ?? null, undo !== null, range.to, 'end',
+    tr, bound, link.end, handed?.end ?? null, undo, range.to, 'end',
   );
   return from !== null && to !== null ? { from, to } : null;
 }
@@ -636,7 +633,14 @@ function carryDraft(
   // (`_typeChanged`), so the relative positions resolve against this change.
   const carried =
     fromYjs(tr) && tracked !== null && bound !== null
-      ? carryAcrossYjs(tr, bound, tracked, undoRedo(tr) ? { handed } : null, current)
+      ? carryAcrossYjs(
+        tr,
+        bound,
+        tracked,
+        undoRedo(tr),
+        undoRedo(tr) ? handed : null,
+        current,
+      )
       : mapDraftRange(current, tr);
   const moved =
     carried === null || carried.to <= carried.from
