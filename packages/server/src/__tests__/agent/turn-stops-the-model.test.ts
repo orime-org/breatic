@@ -44,7 +44,7 @@ const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1
 const foldIfOverBudget = vi.fn(async () => false);
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 /** The usage rows the turn wrote. */
-const usageRows: { operationKey: string; model: string; outputTokens: number }[] = [];
+const usageRows: DomainModule.UsageRow[] = [];
 /** The tools the turn is given, set per test. */
 let turnTools: Record<string, unknown> = {};
 
@@ -117,7 +117,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             "test/model": { input_cache_hit_per_mtok: 1, input_cache_miss_per_mtok: 1, output_per_mtok: 1 },
           },
           services: { brave_web_search: { per_request: 0.005 }, brave_image_search: { per_request: 0.005 } },
-        } as never,
+        },
         multiplier: 1,
         write: async (row) => void usageRows.push(row),
       }),
