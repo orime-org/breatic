@@ -133,6 +133,14 @@ export interface ProposalNode {
    */
   poolKinds?: ReferenceKind[];
   /**
+   * One entry per slot the model cannot run without, by the kind it takes,
+   * answered by the check beside {@link ProposalNode.poolKinds}. A model can
+   * take one kind both ways -- Kling O3 wants a first frame in a slot and
+   * builds elements out of mentioned pictures -- and the reader's material
+   * fills the slot first: a run without it cannot go.
+   */
+  slotKinds?: ReferenceKind[];
+  /**
    * Whether the panel will draw a prompt box here, answered by the check.
    *
    * Beside {@link ProposalNode.poolKinds} and carried for the same reason: the
@@ -268,11 +276,26 @@ export function nameableFeeders(
    */
   const keepingPlaces = (list: readonly number[], can: boolean): (number | null)[] =>
     list.map((i) => (can && mentionable(i) ? i : null));
+  // The required slots still open, by kind; each empty node of that kind
+  // takes one before any reaches the pool.
+  const open = [...(at.slotKinds ?? [])];
+  /**
+   * Whether an empty node goes into a required slot rather than the pool.
+   * @param i - The empty node's index in the proposal.
+   * @returns True when a slot of its kind was still open, and takes it.
+   * @throws {never} Never.
+   */
+  const takesSlot = (i: number): boolean => {
+    const slot = open.indexOf(proposal.nodes[i]?.type as ReferenceKind);
+    if (slot === -1) return false;
+    open.splice(slot, 1);
+    return true;
+  };
   return {
     // An asset mark mentions the empty node it names only where that mention
     // is what picks the material. Through a slot the reader picks by clicking
     // and the bracket alone names the slot to pick it in.
-    sources: keepingPlaces(held.sources, byPool),
+    sources: held.sources.map((i) => (!takesSlot(i) && byPool && mentionable(i) ? i : null)),
     upstream: keepingPlaces(held.upstream, true),
   };
 }

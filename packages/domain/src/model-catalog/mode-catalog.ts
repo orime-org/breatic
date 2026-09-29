@@ -115,6 +115,14 @@ export interface ParamInfo {
    */
   fromReferencePool?: true;
   /**
+   * Whether a run can go without this source, for a place material goes.
+   *
+   * A required slot and a pool can take the same kind; the reader's material
+   * fills the slot first, which is only knowable when the slot says it is
+   * required.
+   */
+  optional?: true;
+  /**
    * Whether this node's panel draws no control for it.
    *
    * The panel draws the controls it has, not one per declared parameter. A
@@ -385,6 +393,7 @@ function projectParam(
     // this says. It comes off `fill` rather than the name the pool travels
     // under, so the answer holds for a model spelling its pool differently.
     ...(by === "canvas" && spec.fill === "pool" ? { fromReferencePool: true as const } : {}),
+    ...(by === "canvas" && spec.optional === true ? { optional: true as const } : {}),
     ...(by === "nothing" ? { noControl: true as const } : {}),
     ...(gate !== undefined ? { gate } : {}),
     default: spec.default,

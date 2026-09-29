@@ -934,6 +934,27 @@ describe("what the answer tells the canvas", () => {
     expect(answered(propose(slot)).map((n) => n.poolKinds)).toEqual([undefined, []]);
   });
 
+  it("names the slots a run cannot go without, apart from its pool", () => {
+    // A model taking one kind both ways: a required slot and a pool. The
+    // reader's material fills the slot first, so the canvas and the card must
+    // know the slot is there even though the pool takes the same kind.
+    const mixed = pick(
+      (at) =>
+        at.byReference &&
+        Object.values(at.params).some(
+          (p) => p.filledBySource === true && p.fromReferencePool !== true && p.optional !== true,
+        ),
+      "mode with a required slot beside its pool",
+    );
+    const slots = Object.values(mixed.params)
+      .filter((p) => p.filledBySource === true && p.fromReferencePool !== true && p.optional !== true)
+      .map((p) => p.accepts);
+
+    const nodes = answered(propose(mixed));
+    expect(nodes[nodes.length - 1]?.slotKinds).toEqual(slots);
+    expect(answered(propose(pooled())).at(-1)?.slotKinds).toBeDefined();
+  });
+
   it("refuses a proposal that says it itself", () => {
     // The path a model's material takes is the catalog's answer. A proposal
     // carrying one would be a second copy of it, free to disagree.
@@ -943,6 +964,10 @@ describe("what the answer tells the canvas", () => {
 
     expect(
       inputSchema.safeParse({ ...said, nodes: [...said.nodes.slice(0, -1), { ...generate, poolKinds: ["image"] }] })
+        .success,
+    ).toBe(false);
+    expect(
+      inputSchema.safeParse({ ...said, nodes: [...said.nodes.slice(0, -1), { ...generate, slotKinds: ["image"] }] })
         .success,
     ).toBe(false);
   });

@@ -206,12 +206,12 @@ function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind 
  * model, a model it does not carry -- is left unanswered, and the
  * per-generation check says what is wrong with it in its own words.
  * @param node - The proposed node.
- * @returns Its two facts, or undefined when the node generates nothing.
+ * @returns Its three facts, or undefined when the node generates nothing.
  * @throws {never} Never.
  */
 function catalogFactsOf(
   node: ProposalNode,
-): { poolKinds: ReferenceKind[]; takesPrompt: boolean } | undefined {
+): { poolKinds: ReferenceKind[]; slotKinds: ReferenceKind[]; takesPrompt: boolean } | undefined {
   if (node.role !== "generate" || node.type === "text") return undefined;
   const { mode, model } = node;
   if (!mode || !model) return undefined;
@@ -221,6 +221,14 @@ function catalogFactsOf(
   if (!chosen) return undefined;
   return {
     poolKinds: poolParams(chosen).map((pool) => pool.kind),
+    slotKinds: Object.values(chosen.params).flatMap((info) =>
+      info.filledBySource === true &&
+      info.fromReferencePool !== true &&
+      info.optional !== true &&
+      isReferenceKind(info.accepts)
+        ? [info.accepts]
+        : [],
+    ),
     takesPrompt: chosen.takesPrompt,
   };
 }
@@ -229,7 +237,7 @@ function catalogFactsOf(
  * The same proposal with what the catalog says written onto each node.
  *
  * Done before anything is judged, not after: what a prompt may name is asked
- * of those two facts (`nameableFeeders`), so a check reading them off the node
+ * of those facts (`nameableFeeders`), so a check reading them off the node
  * and a canvas reading them off the same node cannot reach different answers.
  * @param proposal - What the model sent.
  * @returns The proposal as it will be placed.
