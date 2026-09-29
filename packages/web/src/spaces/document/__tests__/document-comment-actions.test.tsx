@@ -502,6 +502,26 @@ describe('what a card lets a reader do', () => {
     expect(screen.queryByTestId('doc-comment-delete-reply')).toBeNull();
   });
 
+  it('takes out only the reply whose delete is pressed (A11)', async () => {
+    await open();
+    await comment('the first');
+    await answer('the second');
+    await answer('the third');
+    await read();
+
+    await userEvent.click(screen.getAllByTestId('doc-comment-delete-reply')[0]!);
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByTestId('doc-comment-entry').map((entry) => entry.textContent),
+      ).toEqual([
+        expect.stringContaining('the first'),
+        expect.stringContaining('the third'),
+      ]);
+    });
+    expect(screen.getAllByTestId('doc-comment-card')).toHaveLength(1);
+  });
+
   it('offers a viewer nothing to write with', async () => {
     // A17: they read the whole panel and may not write in it. The store would
     // refuse anyway; what this holds is that the card does not offer.
