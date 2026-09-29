@@ -79,14 +79,17 @@ import type { Hono } from "hono";
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
 
+/** The suite's environment: payments on, so a charge reaches a lot. */
+const SUITE_ENV = {
+  ...process.env,
+  BRAVE_SEARCH_API_KEY: "brave-key-for-this-suite",
+  PAYMENT_ENABLED: "true",
+  STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+  STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+};
+
 beforeAll(async () => {
-  initCore({
-    ...process.env,
-    BRAVE_SEARCH_API_KEY: "brave-key-for-this-suite",
-    PAYMENT_ENABLED: "true",
-    STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-    STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
-  });
+  initCore(SUITE_ENV);
   loadLocales();
   sql = postgres(inject("DATABASE_URL"), { max: 4, prepare: false });
   const { createApp } = await import("@server/app.js");
@@ -337,17 +340,11 @@ describe("what a turn's charge does to the studio's credits", () => {
     provider = "deepseek";
     finishMetadata = undefined;
     const seeded = await seed(100);
-    initCore({ ...process.env, BRAVE_SEARCH_API_KEY: "brave-key-for-this-suite", PAYMENT_ENABLED: "false" });
+    initCore({ ...SUITE_ENV, PAYMENT_ENABLED: "false" });
     try {
       expect(await send(seeded)).toBe(200);
     } finally {
-      initCore({
-        ...process.env,
-        BRAVE_SEARCH_API_KEY: "brave-key-for-this-suite",
-        PAYMENT_ENABLED: "true",
-        STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-        STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
-      });
+      initCore(SUITE_ENV);
     }
 
     const [row] = await sql<{ operation_key: string; credits: string }[]>`
