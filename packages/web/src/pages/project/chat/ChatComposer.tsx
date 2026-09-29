@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ArrowUp, Loader2, Plus, Square } from 'lucide-react';
+import { ArrowUp, Loader2, Plus, Square, TriangleAlert } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -325,13 +325,16 @@ function ChatComposerInner({
             <Plus className='h-4 w-4' />
           </Button>
           {attachNotice ? (
-            // Beside the button that attaches, in the warning colour: it says
-            // something the reader tried did not go in.
+            // Beside the button that attaches: something the reader tried did
+            // not go in. The icon carries the warning colour; the words stay in
+            // the body colour, as warning orange at 12px does not reach 4.5:1
+            // on this surface in the light theme.
             <p
               data-testid='chat-composer-attach-notice'
-              className='min-w-0 truncate text-xs text-status-warning-foreground'
+              className='flex min-w-0 items-center gap-1.5 text-xs text-foreground'
             >
-              {attachNotice}
+              <TriangleAlert className='size-3.5 shrink-0 text-status-warning-foreground' aria-hidden='true' />
+              <span className='truncate'>{attachNotice}</span>
             </p>
           ) : null}
         </div>
