@@ -297,10 +297,13 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   }
   React.useEffect(() => () => sizes.current?.disconnect(), []);
 
-  // What a card takes as it arrives and gives back as it goes. Two things
-  // each: a place in the observer, and a height in the table above.
+  // Each card's box, for measuring it at the moment it is needed.
+  const boxes = React.useRef(new Map<string, HTMLDivElement>());
+  // What a card takes as it arrives and gives back as it goes: a place in the
+  // observer, a height in the table above, and its box.
   const take = React.useCallback((node: HTMLDivElement, id: string): void => {
     node.dataset.thread = id;
+    boxes.current.set(id, node);
     setHeights((held) =>
       held.get(id) === node.offsetHeight
         ? held
@@ -311,6 +314,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const giveBack = React.useCallback(
     (node: HTMLDivElement, id: string): void => {
       sizes.current?.unobserve(node);
+      if (boxes.current.get(id) === node) boxes.current.delete(id);
       setHeights((have) => {
         if (!have.has(id)) return have;
         const next = new Map(have);
@@ -400,10 +404,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // The body is moved just enough to show the card being read once it is
   // placed: a card lands level with its words, which can sit under the header
   // or above the screen, and a draft's box took the focus without scrolling.
-  // Once per card coming to be read — for the draft, once per press of an
-  // entry — from where the card is going rather than where a move has carried
-  // it so far; after that the scroll is the reader's (design §9.4.0).
-  // Computed from the two rectangles, as `scrollTabToEdge` does.
+  // Once each time a card comes to be read — and for the draft, once per press
+  // of an entry — from where the card is going rather than where a move has
+  // carried it so far; after that the scroll is the reader's (design §9.4.0).
+  // Computed from the two rectangles, as `scrollTabToEdge` does, with the
+  // card's height as it is now: a card read opens up to all of its comments
+  // in the same commit, before the observer reports the new height.
   const revealed = React.useRef<string | null>(null);
   const draftEntry = draft?.kind === 'aimed' ? draft.entry : null;
   const reveal =
@@ -422,12 +428,18 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       (draftAnchor === null || measuredFor !== draftAnchor))
       ? undefined
       : placed.get(reading);
-  const readHeight = reading === null ? undefined : heights.get(reading);
+  // Runs again on `heights` so a card whose box arrives after it came to be
+  // read is shown once it is there.
   React.useLayoutEffect(() => {
+    if (reveal === null) {
+      revealed.current = null;
+      return;
+    }
     const top = column.current;
     const bar = header.current;
+    const readHeight =
+      reading === null ? undefined : boxes.current.get(reading)?.offsetHeight;
     if (
-      reveal === null ||
       revealed.current === reveal ||
       readTop === undefined ||
       readHeight === undefined ||
@@ -448,7 +460,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     if (by !== 0) {
       scroller.scrollTo({ top: scroller.scrollTop + by, behavior: 'instant' });
     }
-  }, [reveal, readTop, readHeight, lifted, scroller]);
+  }, [reveal, reading, readTop, heights, lifted, scroller]);
   /**
    * How far a pushed card, or the most hidden of them, reaches above the
    * header — from the layout, the one reading both the wheel and the focus
