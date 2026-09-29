@@ -16,7 +16,7 @@
  * the request through the path the other params already take.
  */
 
-import type { ModelEntry } from '@breatic/shared';
+import type { ModelEntry, Voice } from '@breatic/shared';
 
 /**
  * The name of this model's voice param, if it has one.
@@ -49,4 +49,19 @@ export function isVoiceChosen(
 ): boolean {
   const value = record?.[paramName];
   return typeof value === 'string' && value.length > 0;
+}
+
+/**
+ * The sample to play for a voice: the one in the language the reader picked,
+ * where the voice has one per language (Gemini's), else its plain sample.
+ * @param voice - The voice.
+ * @param language - The value of the model's language param, if it has one.
+ * @returns The sample's url, or undefined when the voice has none.
+ */
+export function sampleUrlFor(
+  voice: Pick<Voice, 'previewUrl' | 'previewUrls'>,
+  language: unknown,
+): string | undefined {
+  const byLanguage = typeof language === 'string' ? voice.previewUrls?.[language] : undefined;
+  return byLanguage ?? voice.previewUrl;
 }

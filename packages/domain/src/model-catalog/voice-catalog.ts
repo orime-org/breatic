@@ -37,6 +37,7 @@ interface InlineVoice {
   description?: unknown;
   sample_url?: unknown;
   sample_key?: unknown;
+  sample_keys?: unknown;
 }
 
 /**
@@ -67,6 +68,17 @@ function assertOffersVoices(entry: FullModelEntry): void {
 }
 
 /**
+ * Whether a yaml value is a map of language value to sample key.
+ * @param value - The voice's `sample_keys`, as written.
+ * @returns True for a non-empty object whose every value is a key.
+ */
+function isKeyMap(value: unknown): value is Record<string, string> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const keys = Object.values(value);
+  return keys.length > 0 && keys.every((key) => typeof key === "string" && key.length > 0);
+}
+
+/**
  * Read the voices a model writes inline in its yaml entry.
  *
  * The file carries the vendor's id and
@@ -77,14 +89,19 @@ function assertOffersVoices(entry: FullModelEntry): void {
  * A sample is either the vendor's own (`sample_url`, served from its CDN) or
  * one we generated (`sample_key`, an object in this deployment's bucket, #2156
  * design §16.4). The key is resolved here rather than written as a url in the
- * yaml because every deployment serves its bucket from its own address.
+ * yaml because every deployment serves its bucket from its own address. A
+ * voice that speaks whichever language the reader picks carries one key per
+ * language value as well (`sample_keys`), served as `previewUrls`.
  * @param entry - The model's yaml entry.
  * @returns Every inline voice, in the order the file lists them.
  * @throws {Error} When a voice names a sample key and the storage settings are missing.
  */
 async function inlineVoices(entry: FullModelEntry): Promise<Voice[]> {
   const declared = Array.isArray(entry.voices) ? entry.voices : [];
-  const keyed = declared.some((raw) => typeof (raw as InlineVoice).sample_key === "string");
+  const keyed = declared.some((raw) => {
+    const voice = raw as InlineVoice;
+    return typeof voice.sample_key === "string" || isKeyMap(voice.sample_keys);
+  });
   // Only asked for when a key needs it: the adapter needs the storage
   // settings, and a model whose samples are all the vendor's needs none.
   const storage = keyed ? await getStorageAdapter() : null;
@@ -104,6 +121,13 @@ async function inlineVoices(entry: FullModelEntry): Promise<Voice[]> {
         : storage && typeof voice.sample_key === "string" && voice.sample_key
           ? { previewUrl: storage.publicUrl(voice.sample_key) }
           : {}),
+      ...(storage && isKeyMap(voice.sample_keys)
+        ? {
+            previewUrls: Object.fromEntries(
+              Object.entries(voice.sample_keys).map(([value, key]) => [value, storage.publicUrl(key)]),
+            ),
+          }
+        : {}),
     });
   }
   return voices;

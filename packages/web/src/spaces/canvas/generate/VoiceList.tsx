@@ -14,6 +14,7 @@ import { cn } from '@web/lib/utils';
 import { SampleButton } from '@web/spaces/canvas/generate/SampleButton';
 import type { SamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
+import { sampleUrlFor } from '@web/spaces/canvas/generate/voice-param';
 
 /** How close to the bottom asking for the next page starts, in pixels. */
 const PAGE_TRIGGER_DISTANCE = 24;
@@ -63,6 +64,8 @@ interface VoiceListProps {
   onRetry: () => void;
   /** The one player every sample in the settings panel goes through. */
   player: SamplePlayer;
+  /** The language the reader picked, for a voice with a sample in each. */
+  language: unknown;
 }
 
 /**
@@ -85,6 +88,7 @@ interface VoiceListProps {
  * @param root0.onLoadMore - Called when the list reaches its end.
  * @param root0.onRetry - Called to ask for the list again.
  * @param root0.player - Plays the samples.
+ * @param root0.language - The language picked, if the model takes one.
  * @returns The voice list.
  */
 export const VoiceList = React.memo(function VoiceList({
@@ -95,6 +99,7 @@ export const VoiceList = React.memo(function VoiceList({
   onLoadMore,
   onRetry,
   player,
+  language,
 }: VoiceListProps): React.JSX.Element {
   const t = useTranslation();
 
@@ -189,6 +194,7 @@ export const VoiceList = React.memo(function VoiceList({
             <div className='flex flex-col gap-0.5 pr-2.5'>
               {list.voices.map((voice) => {
                 const chosen = voice.id === selectedId;
+                const sample = sampleUrlFor(voice, language);
                 return (
                   // The row carries the fill and the hover, and the two controls
                   // sit inside it as siblings: a sample button nested in the row
@@ -222,12 +228,12 @@ export const VoiceList = React.memo(function VoiceList({
                         )}
                       </span>
                     </Button>
-                    {voice.previewUrl !== undefined && (
+                    {sample !== undefined && (
                       <SampleButton
                         name={voice.name}
                         testId={`generate-voice-sample-${voice.id}`}
                         playing={player.playing === voice.id}
-                        onToggle={() => player.toggle(voice.id, voice.previewUrl ?? '')}
+                        onToggle={() => player.toggle(voice.id, sample)}
                       />
                     )}
                   </div>

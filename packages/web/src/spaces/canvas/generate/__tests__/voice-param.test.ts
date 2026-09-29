@@ -20,6 +20,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  sampleUrlFor,
   voiceParamName,
   isVoiceChosen,
 } from '@web/spaces/canvas/generate/voice-param';
@@ -116,5 +117,27 @@ describe('isVoiceChosen (#1960 A12)', () => {
 
   it('says no for a non-string, whatever put it there', () => {
     expect(isVoiceChosen({ voice_id: 42 }, 'voice_id')).toBe(false);
+  });
+});
+
+describe('sampleUrlFor', () => {
+  const voice = {
+    id: 'Kore',
+    name: 'Kore',
+    previewUrl: 'https://cdn.test/en.mp3',
+    previewUrls: { 'Japanese (Japan)': 'https://cdn.test/ja.mp3' },
+  };
+
+  it('plays the sample in the language the reader picked', () => {
+    expect(sampleUrlFor(voice, 'Japanese (Japan)')).toBe('https://cdn.test/ja.mp3');
+  });
+
+  it('falls back to the plain sample for a language without one, or no language', () => {
+    expect(sampleUrlFor(voice, 'Thai (Thailand)')).toBe('https://cdn.test/en.mp3');
+    expect(sampleUrlFor(voice, undefined)).toBe('https://cdn.test/en.mp3');
+  });
+
+  it('has none for a voice without samples', () => {
+    expect(sampleUrlFor({}, 'Japanese (Japan)')).toBeUndefined();
   });
 });

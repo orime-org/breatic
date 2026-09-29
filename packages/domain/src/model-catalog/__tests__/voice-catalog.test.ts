@@ -73,9 +73,31 @@ describe("listVoices", () => {
       const page = await listVoices(model, {});
       for (const voice of page.voices) {
         expect(voice.previewUrl, `${model}/${voice.id}`).toMatch(
-          new RegExp(`^https://cdn\\.test/voice-samples/${model}/[A-Za-z0-9_-]+\\.mp3$`),
+          new RegExp(`^https://cdn\\.test/voice-samples/${model}/(?:[a-zA-Z-]+/)?[A-Za-z0-9_-]+\\.mp3$`),
         );
       }
+    }
+  });
+
+  it("speaks a one-language voice's sample in that language", async () => {
+    // User 2026-09-29: a Portuguese voice saying its sample in English tells
+    // the reader nothing. A non-English sample sits under its language tag.
+    const minimax = await listVoices("minimax-speech-2.8-hd", {});
+    const mandarin = minimax.voices.filter((v) => v.id.startsWith("Chinese (Mandarin)_"));
+    expect(mandarin.length).toBeGreaterThan(0);
+    for (const voice of mandarin) expect(voice.previewUrl, voice.id).toContain("/zh/");
+    const inworld = await listVoices("realtime-tts-2", {});
+    expect(inworld.voices.find((v) => v.id === "Hyunwoo")?.previewUrl).toContain("/ko/");
+  });
+
+  it("gives every Gemini voice a sample in every language the model declares", async () => {
+    // Gemini's voices speak whichever language the reader picks in the panel.
+    const model = getFullModelConfig("tts").models.find((m) => m.name === "gemini-3.1-flash-text-to-speech");
+    const languages = model?.params?.language?.values ?? [];
+    expect(languages.length).toBeGreaterThan(0);
+    const page = await listVoices("gemini-3.1-flash-text-to-speech", {});
+    for (const voice of page.voices) {
+      expect(Object.keys(voice.previewUrls ?? {}).sort(), voice.id).toEqual([...languages].sort());
     }
   });
 

@@ -35,6 +35,7 @@ import { SampleButton } from '@web/spaces/canvas/generate/SampleButton';
 import { isStandInOn, STAND_IN_ON } from '@web/spaces/canvas/generate/stand-in';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import { useSamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
+import { sampleUrlFor } from '@web/spaces/canvas/generate/voice-param';
 import { VoiceList } from '@web/spaces/canvas/generate/VoiceList';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
@@ -145,6 +146,10 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
 
   const layout = React.useMemo(() => settingsLayout(model, value), [model, value]);
   const standIn = layout.standIn;
+  // The language the reader picked, for a voice that has a sample in each: the
+  // model's param whose values name languages.
+  const languageParam = Object.keys(model.params).find((name) => model.params[name]?.value_locales !== undefined);
+  const language = languageParam === undefined ? undefined : shownChoice(model, languageParam, value[languageParam]);
   const dialogue = standIn !== null && isStandInOn(value);
   const shared = React.useMemo(() => audioParamControls(model), [model]);
 
@@ -351,6 +356,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                 onLoadMore={voice.onLoadMore}
                 onRetry={() => voice.onOpenChange(true)}
                 player={player}
+                language={language}
               />
             ) : openRow.kind === 'choice' ? (
               <OptionList
@@ -377,6 +383,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                 note={openRow.name === standIn?.name ? t('canvas.generatePanel.audioSpeakersNote') : undefined}
                 voices={voice.list.voices}
                 player={player}
+                language={language}
                 onChange={onChange}
               />
             )}
@@ -396,6 +403,8 @@ interface ItemsPanelProps {
   /** The voice list, whose samples a voice field plays. */
   voices: readonly Voice[];
   player: ReturnType<typeof useSamplePlayer>;
+  /** The language the reader picked, for a voice with a sample in each. */
+  language: unknown;
   onChange: (partial: Record<string, unknown>) => void;
 }
 
@@ -410,10 +419,11 @@ interface ItemsPanelProps {
  * @param root0.note - A line under the title.
  * @param root0.voices - The voice list.
  * @param root0.player - Plays the samples.
+ * @param root0.language - The language picked, if the model takes one.
  * @param root0.onChange - Called with the new list.
  * @returns The panel.
  */
-function ItemsPanel({ model, name, held, note, voices, player, onChange }: ItemsPanelProps): React.JSX.Element | null {
+function ItemsPanel({ model, name, held, note, voices, player, language, onChange }: ItemsPanelProps): React.JSX.Element | null {
   const t = useTranslation();
   const control = modelControls(model).find((c) => c.name === name);
   if (control?.kind !== 'items') return null;
@@ -429,7 +439,8 @@ function ItemsPanel({ model, name, held, note, voices, player, onChange }: Items
         fieldLabel={(field) => t(`canvas.generatePanel.audioField.${field}`)}
         afterChoice={(field, chosen, index) => {
           if (field !== 'voice' || typeof chosen !== 'string') return null;
-          const sample = voices.find((v) => v.id === chosen || v.name === chosen)?.previewUrl;
+          const match = voices.find((v) => v.id === chosen || v.name === chosen);
+          const sample = match === undefined ? undefined : sampleUrlFor(match, language);
           if (sample === undefined) return null;
           return (
             <SampleButton

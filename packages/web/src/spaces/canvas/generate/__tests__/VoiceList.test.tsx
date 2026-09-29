@@ -349,6 +349,43 @@ describe('the voice list samples (#1960 A2)', () => {
     expect(screen.queryByTestId('generate-voice-sample-beta')).toBeNull();
   });
 
+  it('plays a voice\'s sample in the language the reader picked', () => {
+    // A Gemini voice speaks whichever language is picked in the same panel,
+    // so its sample is the one in that language (user 2026-09-29).
+    const multilingual: ModelEntry = {
+      ...VOICED,
+      params: {
+        ...VOICED.params,
+        language: {
+          description: '',
+          default: 'English (United States)',
+          values: ['English (United States)', 'Japanese (Japan)'],
+          value_locales: ['en-US', 'ja-JP'],
+          fill: 'panel',
+        },
+      },
+    };
+    const kore: Voice = {
+      id: 'kore',
+      name: 'Kore',
+      previewUrl: 'https://example.test/kore.mp3',
+      previewUrls: { 'Japanese (Japan)': 'https://example.test/ja/kore.mp3' },
+    };
+    const voice = { list: state({ voices: [kore] }), selectedId: null, selectedName: null, ...NOOPS };
+    render(
+      <AudioSettingsPicker
+        model={multilingual}
+        value={{ language: 'Japanese (Japan)' }}
+        onChange={() => {}}
+        voice={voice as never}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
+    fireEvent.click(screen.getByTestId('generate-voice-sample-kore'));
+    expect((play.mock.contexts[0] as HTMLAudioElement).src).toBe('https://example.test/ja/kore.mp3');
+  });
+
   it('plays the sample without choosing that voice', () => {
     const onPick = vi.fn();
     open({ onPick });
