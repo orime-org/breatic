@@ -2109,8 +2109,6 @@ describe('the comment panel', () => {
     });
 
 
-
-
     it('says so when a peer presses Enter before its words in their line', async () => {
       // The peer's editor writes the second half, words and all, as new
       // letters in a new row; the reader's own selection comes back empty
