@@ -14,7 +14,9 @@
  */
 import { test, expect, type Locator } from 'playwright/test';
 
-import { openGenerate, seedNode } from '../helpers/audio-panel';
+import { openGenerate, seedNode, registerCanvasStage } from '../helpers/audio-panel';
+
+registerCanvasStage();
 
 /**
  * Whether a button's text fits inside it.

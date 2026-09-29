@@ -19,7 +19,9 @@
  */
 import { test, expect } from 'playwright/test';
 
-import { openGenerate, seedNode, voiceRowCount } from '../helpers/audio-panel';
+import { openGenerate, seedNode, registerCanvasStage, voiceRowCount } from '../helpers/audio-panel';
+
+registerCanvasStage();
 
 // One node, one panel, one continuous session — which is also how a person
 // uses it: open it, look at it, adjust it, submit. Splitting these into a test

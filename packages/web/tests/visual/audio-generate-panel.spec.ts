@@ -17,7 +17,9 @@
  */
 import { test, expect } from 'playwright/test';
 
-import { openGenerate, panCanvasDown, seedNode, voiceRowCount } from '../helpers/audio-panel';
+import { openGenerate, panCanvasDown, seedNode, registerCanvasStage, voiceRowCount } from '../helpers/audio-panel';
+
+registerCanvasStage();
 
 test('the stability tick labels are a pointer target the standard accepts', async ({ page }) => {
   // WCAG 2.2 SC 2.5.8 (AA) takes 24x24 CSS px, or 24px-diameter circles on
