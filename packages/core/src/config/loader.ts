@@ -131,16 +131,27 @@ const agentConfigSchema = z.object({
    */
   max_output_tokens: z.number().int().positive().default(16384),
   /**
-   * How long one turn's question may be, in characters.
-   *
-   * Measured on what reaches the model: the message with the canvas content
-   * the reader attached folded in front of it. Per field it would admit a
-   * short message carrying chips worth many times the limit.
+   * How long the words of one turn's question may be, in characters.
    *
    * The browser draws a lower line and says so as the reader types; this one
    * is where a client cannot skip it.
    */
   user_message_max_chars: z.number().int().positive().default(15000),
+  /**
+   * How long the items attached to one message may be, in characters,
+   * measured on the attachment section as the model is sent it.
+   *
+   * Its own limit, apart from the words: an extracted document is far longer
+   * than a typed question. The browser checks the same section against this
+   * before sending, and reads the number from `GET /chat/stream-config`.
+   */
+  attachment_max_chars: z.number().int().positive().default(200000),
+  /**
+   * How many items may be attached to one message: each uploaded file is one,
+   * and each pick added from the canvas is one, however many nodes it holds. The browser checks the same number before sending, and
+   * reads it from `GET /chat/stream-config`.
+   */
+  attachment_max_items: z.number().int().positive().default(10),
   /**
    * How long an assembled request may be before a consolidation runs, in
    * characters.

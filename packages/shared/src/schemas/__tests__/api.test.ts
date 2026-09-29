@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { projectCreateSchema, taskCreateSchema } from "@shared/schemas/api.js";
+import { chatAttachedChipSchema, projectCreateSchema, taskCreateSchema } from "@shared/schemas/api.js";
 
 const base = {
   studioId: "11111111-1111-4111-8111-111111111111",
@@ -54,5 +54,17 @@ describe("taskCreateSchema — source", () => {
 
   it("refuses a lane outside the vocabulary", () => {
     expect(() => taskCreateSchema.parse({ ...task, source: "canvas" })).toThrow();
+  });
+});
+
+describe("chatAttachedChipSchema — id", () => {
+  const chip = { type: "image", name: "cover.png", data_snapshot: { url: "https://cdn.example/c.png" } };
+
+  it("refuses an id longer than any node or file id", () => {
+    expect(chatAttachedChipSchema.safeParse({ ...chip, id: "x".repeat(129) }).success).toBe(false);
+  });
+
+  it("takes an id as long as a uuid", () => {
+    expect(chatAttachedChipSchema.safeParse({ ...chip, id: "0".repeat(36) }).success).toBe(true);
   });
 });

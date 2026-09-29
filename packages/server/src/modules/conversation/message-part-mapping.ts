@@ -18,7 +18,7 @@
  */
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
-import { NOTHING_SAID_WHY } from "@breatic/shared";
+import { NOTHING_SAID_WHY, attachmentPart } from "@breatic/shared";
 import type { MessageData, MessagePart, StoredMessageMetadata } from "@breatic/shared";
 
 /** What one message's parts look like on the wire. */
@@ -154,6 +154,7 @@ export function toUiParts(parts: MessagePart[]): UiParts {
     if (part.type === "truncated") return { type: TRUNCATED, data: {} };
     if (part.type === "blocked") return { type: BLOCKED, data: {} };
     if (part.type === "thinking-time") return { type: THINKING_TIME, data: { ms: part.ms } };
+    if (part.type === "attachment") return attachmentPart(part.chip);
 
 
     const base = {

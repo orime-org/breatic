@@ -157,25 +157,28 @@
       "support": "對這筆購買有疑問，請寫信到 {email}。"
     },
     "chat": {
-      "message_too_long": "這則訊息太長了。連同附帶的內容最多 {limit, number} 個字元，這則有 {actual, number} 個。"
+      "message_too_long": "這則訊息太長了。最多 {limit, number} 個字元，這則有 {actual, number} 個。",
+      "attachments_too_long": "附帶的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
+      "attachments_too_many": "附帶的內容太多了。最多 {limit, number} 項，這則有 {actual, number} 項。"
     }
   },
   "chat": {
     "composer": {
-      "selectMode": {
-        "label": "選取模式 — 在畫布點節點加入引用",
-        "title": "選取模式"
-      },
       "chipsAria": "已選 chips",
-      "placeholder": "描述你想做什麼(用 @ 引用上方 chips)…",
+      "placeholder": "問點什麼，或者把畫布上的東西交給我…",
       "inputAria": "Chat 輸入",
-      "skill": {
-        "label": "選擇 Skill 限定 agent 行為",
-        "title": "選擇 Skill"
-      },
       "send": "傳送",
       "sending": "傳送中",
-      "atLimit": "已達 {limit, number} 字上限"
+      "atLimit": "已達 {limit, number} 字上限",
+      "attach": "新增檔案",
+      "removeAttachment": "移除 {name}",
+      "attachmentUploading": "上傳中",
+      "attachmentFailed": "{reason, select, upload {上傳失敗} extract {讀取失敗} too_long {太長} other {失敗}}",
+      "attachFull": "最多附帶 {limit, number} 項",
+      "attachTooLong": "附帶的內容太多了，請少掛幾項或換短一點的檔案。",
+      "attachUnsupported": "{filename} 不能附帶",
+      "attachTooLarge": "{filename} 太大，不能附帶",
+      "attachUnavailable": "暫時無法新增，請重試。"
     },
     "empty": {
       "greetingWithName": "嗨,{name}!",
@@ -283,7 +286,12 @@
     },
     "thinking": "思考了一會兒",
     "thinkingNow": "思考中",
-    "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒"
+    "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒",
+    "attachment": {
+      "kind": "{kind, select, canvas {畫布} image {圖片} video {影片} audio {音訊} text {文字} other {內容}}",
+      "nodes": "{count} 個節點",
+      "more": "還有 {count} 個"
+    }
   },
   "canvas": {
     "group": {
@@ -331,7 +339,8 @@
       "deleteNode": "刪除節點",
       "deleteGroup": "刪除群組",
       "deleteSelection": "刪除選取",
-      "clipboardError": "無法存取剪貼簿，請改用鍵盤快速鍵。"
+      "clipboardError": "無法存取剪貼簿，請改用鍵盤快速鍵。",
+      "addToAgent": "加入 Agent"
     },
     "gate": {
       "locked": "此項目已鎖定，解鎖後才能修改。",

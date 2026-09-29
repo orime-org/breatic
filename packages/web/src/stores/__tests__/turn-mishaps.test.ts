@@ -18,7 +18,7 @@ import type * as ChatApiModule from '@web/data/api/chat';
 
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: { streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000 })) },
+  chatApi: { streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10 })) },
 }));
 
 import { watchChatMishaps } from '@web/stores/chat-mishaps';

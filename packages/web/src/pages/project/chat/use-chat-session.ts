@@ -4,6 +4,8 @@
 import * as React from 'react';
 import { useChat } from '@ai-sdk/react';
 
+import type { ChatAttachedChip } from '@breatic/shared';
+
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import { visibleMessages } from '@web/pages/project/chat/visible-messages';
@@ -12,6 +14,7 @@ import { conversationRuntime, useConversationRuntime } from '@web/stores/convers
 import type { OpenStatus, TurnPhase } from '@web/stores/conversation-runtime';
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
+import { chatAttachments } from '@web/stores/chat-attachments';
 import { chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import type { ConversationOnTheWire } from '@web/data/api/chat';
@@ -203,7 +206,13 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
   // lands in that gap, and empty the box a second time for the turns it comes
   // back to — over whatever the reader has typed since.
   const emptyTheBox = React.useCallback(
-    (id: string) => (): void => conversationRuntime.setDraft(id, ''),
+    (id: string) =>
+      (sent: readonly ChatAttachedChip[]): void => {
+        conversationRuntime.setDraft(id, '');
+        // The items the turn carried leave with the words, and only they: an
+        // item attached after the press is for the next message.
+        chatAttachments.removeSent(id, sent);
+      },
     [],
   );
 
@@ -269,7 +278,12 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
       // turn needs looking after -- the wait for the next beat, and giving up
       // when none comes -- lives with the session, and a send that went round
       // it would be a turn nobody was watching.
-      await sendInSession(opened, said);
+      // What is above the box goes with it, all of it or not at all: an item
+      // still uploading or one that failed holds the send, so what is sent is
+      // what the reader sees there.
+      const attached = chatAttachments.sendable(opened);
+      if (attached === null) return;
+      await sendInSession(opened, said, attached);
     },
     [projectId, noteTitle, emptyTheBox],
   );

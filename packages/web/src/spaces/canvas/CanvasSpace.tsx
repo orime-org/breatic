@@ -92,7 +92,11 @@ import {
   type CanvasNodeView,
   readCanvasGraph,
   readTextBodies,
+  readNodeFragments,
 } from '@web/data/yjs/canvas-space';
+import { itemForPick } from '@web/spaces/canvas/attach-nodes';
+import { attachToChat } from '@web/stores/attach-to-chat';
+import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
 import {
@@ -3344,6 +3348,40 @@ function CanvasSpaceInner({
     writeNodesToClipboard(collectSelectedClipboard());
   }, [writeNodesToClipboard, collectSelectedClipboard]);
 
+  // The chat is on its way to another conversation: what is added now would
+  // land in the one being left, so the item is held still, as the box is.
+  const chatNavigating = useConversationRuntime(
+    (s) => s.navigatingByProject[projectId] === true,
+  );
+
+  /**
+   * Hand the picked piece of the canvas to the agent as one item, read fresh
+   * from the document at the press.
+   * @param ids - The picked node ids; a group brings its members.
+   */
+  const addToAgent = React.useCallback(
+    (ids: readonly string[]): void => {
+      const item = itemForPick(readCanvasGraph(projectId, spaceId), ids, {
+        fragmentsOf: (id) => readNodeFragments(projectId, spaceId, id),
+      });
+      void attachToChat(projectId, item ? [item] : []);
+    },
+    [projectId, spaceId],
+  );
+  const addNodeToAgent = React.useCallback(
+    (): void => addToAgent([nodeMenu.nodeId]),
+    [addToAgent, nodeMenu.nodeId],
+  );
+  const addSelectionToAgent = React.useCallback(
+    (): void =>
+      addToAgent(
+        buffer.settled()
+          .filter((node) => node.selected)
+          .map((node) => node.id),
+      ),
+    [addToAgent, buffer],
+  );
+
   const duplicateSelection = React.useCallback((): void => {
     duplicateTargets(
       buffer.settled()
@@ -4662,6 +4700,8 @@ function CanvasSpaceInner({
           target={nodeMenu.isGroup ? 'group' : 'node'}
           onOpenChange={onNodeMenuOpenChange}
           onToggleLock={onToggleNodeLock}
+          onAddToAgent={addNodeToAgent}
+          addToAgentDisabled={chatNavigating}
           // Upload fills / replaces the node's content (node-only; its presence
           // also gates the Generate / Upload / Tools block). The menu only opens
           // for editors (onNodeContextMenu returns early when read-only), and
@@ -4777,6 +4817,8 @@ function CanvasSpaceInner({
           onCopy={copySelection}
           onDuplicate={duplicateSelection}
           onDelete={deleteSelection}
+          onAddToAgent={addSelectionToAgent}
+          addToAgentDisabled={chatNavigating}
         />
         <EdgeContextMenu
           open={edgeMenu.open}

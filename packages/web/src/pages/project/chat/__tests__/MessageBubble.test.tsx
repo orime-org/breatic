@@ -301,3 +301,33 @@ describe('MessageBubble — the waiting mark is the turn\'s own state (R7)', () 
     }
   });
 });
+
+describe('MessageBubble — what the reader attached', () => {
+  it('shows each attached item above the words, by name', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm1',
+          role: 'user',
+          content: 'look at these',
+          attachments: [
+            { id: 'a1', type: 'image', name: 'cover.png', data_snapshot: { url: 'u' } },
+            { id: 'n1', type: 'text', name: 'Brief', data_snapshot: { text: 'hi' } },
+          ],
+        }}
+      />,
+    );
+
+    const row = screen.getByTestId('message-attachments');
+    expect(row).toHaveTextContent('cover.png');
+    expect(row).toHaveTextContent('Brief');
+    // The words stay the words: nothing of what was attached is in them.
+    expect(screen.getByTestId('message-bubble-content')).toHaveTextContent(/^look at these$/);
+  });
+
+  it('shows no row when nothing was attached', () => {
+    render(<MessageBubble message={{ id: 'm1', role: 'user', content: 'hi' }} />);
+
+    expect(screen.queryByTestId('message-attachments')).not.toBeInTheDocument();
+  });
+});

@@ -47,6 +47,12 @@ import * as Y from 'yjs';
 const BLOCK = 'paragraph';
 
 /**
+ * Reads an element whose words are not in its children -- an editor atom
+ * holding them in an attribute. Answers undefined for any other element.
+ */
+export type AtomReader = (element: Y.XmlElement) => string | undefined;
+
+/**
  * Read one block's text, concatenating the text nodes it is split across.
  *
  * A paragraph the user typed into is frequently more than one text node, since
@@ -55,14 +61,17 @@ const BLOCK = 'paragraph';
  * the text-node editor registers no such node today, but skipping them would
  * make this silently lose content the day one is added.
  * @param block - A block from the body, normally a `paragraph`.
+ * @param atom - Reads elements that keep their words in attributes.
  * @returns The block's text, without any markup.
  */
-function blockText(block: Y.XmlElement | Y.XmlText | Y.XmlHook): string {
+function blockText(block: Y.XmlElement | Y.XmlText | Y.XmlHook, atom?: AtomReader): string {
   if (block instanceof Y.XmlText) return block.toJSON();
   if (block instanceof Y.XmlElement) {
+    const own = atom?.(block);
+    if (own !== undefined) return own;
     return block
       .toArray()
-      .map((child) => blockText(child))
+      .map((child) => blockText(child, atom))
       .join('');
   }
   return '';
@@ -71,13 +80,15 @@ function blockText(block: Y.XmlElement | Y.XmlText | Y.XmlHook): string {
 /**
  * Read a body out as plain text, one line per block.
  * @param body - The body fragment to read.
+ * @param atom - Reads elements that keep their words in attributes, such as
+ *   a prompt's reference mentions; without it they read as nothing.
  * @returns The body's text, blocks separated by a newline; the empty string for
  *   an empty fragment.
  */
-export function bodyToPlainText(body: Y.XmlFragment): string {
+export function bodyToPlainText(body: Y.XmlFragment, atom?: AtomReader): string {
   return body
     .toArray()
-    .map((block) => blockText(block))
+    .map((block) => blockText(block, atom))
     .join('\n');
 }
 

@@ -7,6 +7,7 @@ import {
   conversationRuntime,
   useConversationRuntime,
 } from '@web/stores/conversation-runtime';
+import { chatAttachments, useTray } from '@web/stores/chat-attachments';
 import { useConsolidating } from '@web/stores/consolidating';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -15,6 +16,7 @@ import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import { ChatNotice } from '@web/pages/project/chat/ChatNotice';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
 import { MessageList } from '@web/pages/project/chat/MessageList';
+import { useAttachFiles } from '@web/pages/project/chat/use-attach-files';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 
 /**
@@ -118,6 +120,16 @@ export function ChatPanel({
   // message list needs to know it happened — it is the one thing that should
   // bring the column back to the bottom after they have scrolled up to read.
   const [sentCount, setSentCount] = React.useState(0);
+
+  // What is attached above the box in the conversation on screen.
+  const attachments = useTray(currentId);
+  const removeAttachment = React.useCallback(
+    (id: string): void => {
+      if (currentId) chatAttachments.remove(currentId, id);
+    },
+    [currentId],
+  );
+  const attachFiles = useAttachFiles(projectId, currentId);
 
   /**
    * Send what is in the box.
@@ -285,6 +297,11 @@ export function ChatPanel({
         onChange={setDraft}
         onSubmit={submit}
         onAbort={abort}
+        attachments={attachments}
+        attachAccept={attachFiles.accept}
+        attachNotice={attachFiles.notice}
+        onAttachFiles={attachFiles.attach}
+        onRemoveAttachment={removeAttachment}
       />
       <ConversationHistorySheet
         open={historyOpen}
