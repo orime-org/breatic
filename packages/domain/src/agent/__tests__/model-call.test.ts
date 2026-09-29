@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { getAgentConfig } from "@breatic/core";
+import type * as AiModule from "ai";
 
 /**
  * model-call wrapper (#1625 Slice 3). All LLM calls route through
@@ -18,12 +19,16 @@ const streamTextMock = vi.fn(
   (args: Record<string, unknown>) => ({ streamed: true, args }),
 );
 
-vi.mock("ai", () => ({
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof AiModule>()),
   generateText: (a: Record<string, unknown>) => generateTextMock(a),
   streamText: (a: Record<string, unknown>) => streamTextMock(a),
 }));
 
+import { MockLanguageModelV4 } from "ai/test";
 import { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
+
+const model = new MockLanguageModelV4();
 
 describe("model-call wrapper (#1625 Slice 3)", () => {
   beforeEach(() => {
@@ -35,7 +40,7 @@ describe("model-call wrapper (#1625 Slice 3)", () => {
     // Pin the shipped default so the injection assertions are NOT vacuous
     // (a missing config field would make both sides undefined).
     expect(getAgentConfig().llm_max_retries).toBe(2);
-    await generateTextRetry({ model: "m" as never, prompt: "hi" });
+    await generateTextRetry({ model, prompt: "hi" });
     expect(generateTextMock).toHaveBeenCalledTimes(1);
     expect(generateTextMock.mock.calls[0]![0]).toMatchObject({
       maxRetries: getAgentConfig().llm_max_retries,
@@ -43,12 +48,12 @@ describe("model-call wrapper (#1625 Slice 3)", () => {
   });
 
   it("an explicit maxRetries at the call site overrides the config default", async () => {
-    await generateTextRetry({ model: "m" as never, prompt: "hi", maxRetries: 5 });
+    await generateTextRetry({ model, prompt: "hi", maxRetries: 5 });
     expect(generateTextMock.mock.calls[0]![0]).toMatchObject({ maxRetries: 5 });
   });
 
   it("streamTextRetry injects maxRetries and returns the stream result unchanged", () => {
-    const r = streamTextRetry({ model: "m" as never, prompt: "hi" });
+    const r = streamTextRetry({ model, prompt: "hi" });
     expect(streamTextMock.mock.calls[0]![0]).toMatchObject({
       maxRetries: getAgentConfig().llm_max_retries,
     });

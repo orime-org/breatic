@@ -17,6 +17,7 @@
  */
 
 import { EmptyBody, httpRequest, readWithin } from "@breatic/shared";
+import { stripUnicodeTags } from "@domain/agent/strip-unicode-tags.js";
 import { UnderstandRefused } from "@domain/understand/types.js";
 import type {
   Media,
@@ -257,7 +258,7 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
     messages: [
       {
         role: "user",
-        content: [{ type: "text", text: request.question }, mediaPart(request.media)],
+        content: [{ type: "text", text: stripUnicodeTags(request.question) }, mediaPart(request.media)],
       },
     ],
   };

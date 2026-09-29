@@ -17,6 +17,7 @@
 import { FAILURE_LINES, httpRequest, readWithin, reasonOf } from "@breatic/shared";
 import { z } from "zod";
 
+import { stripUnicodeTagsDeep } from "@domain/agent/strip-unicode-tags.js";
 import type { FailureVoice } from "@domain/agent/tools/failure.js";
 import {
   clip,
@@ -250,7 +251,9 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
       {
         method: "POST",
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-        body: JSON.stringify({ model: JEV_PINS.model, state, questions }),
+        body: JSON.stringify(
+          stripUnicodeTagsDeep({ model: JEV_PINS.model, state, questions }),
+        ),
       },
       { replaySafe: false, timeoutMs: budgetMs, signal: spanning },
     );
