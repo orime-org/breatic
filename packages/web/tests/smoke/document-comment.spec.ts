@@ -236,6 +236,51 @@ test.describe('the card a comment is written in', () => {
     }
   });
 
+  test('shows a comment read from words under the panel header below the header', async ({
+    page,
+  }) => {
+    // A card lands level with its words; words the header covers would leave
+    // the card being read under the header (design §9.4.0).
+    await openFreshDocument(page);
+    for (let i = 0; i < 60; i += 1) {
+      await page.keyboard.type(`line ${String(i)} with some words`);
+      await page.keyboard.press('Enter');
+    }
+    await selectParagraph(page, 20);
+    await page.getByTestId('doc-bubble-tool-comment').click();
+    await page.getByTestId('doc-comment-draft-input').fill('under the header');
+    await page.getByTestId('doc-comment-draft-save').click();
+    await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+    await page.locator(`${EDITOR} p`).nth(40).click();
+    await expect(page.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'false');
+    await page.evaluate((sel) => {
+      const view = document.querySelector(
+        '.doc-body-scroller [data-radix-scroll-area-viewport]',
+      )! as HTMLElement;
+      const line = document.querySelectorAll(`${sel} p`)[20]!.getBoundingClientRect().top;
+      view.scrollTop += line - view.getBoundingClientRect().top - 6;
+    }, EDITOR);
+    const mark = (await page.locator(`${EDITOR} [data-bn-thread-id]`).first().boundingBox())!;
+
+    await page.mouse.click(mark.x + 20, mark.y + mark.height / 2);
+
+    const card = page.getByTestId('doc-comment-card');
+    await expect(card).toHaveAttribute('data-selected', 'true');
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const node = document.querySelector('[data-testid="doc-comment-card"]')!;
+          const header = document.querySelector('[data-testid="doc-comment-rail-header"]')!;
+          const r = node.getBoundingClientRect();
+          return (
+            r.top >= header.getBoundingClientRect().bottom &&
+            node.contains(document.elementFromPoint(r.x + r.width / 2, r.y + 8))
+          );
+        }),
+      )
+      .toBe(true);
+  });
+
   test('shows its box below the panel header when the words are under it or above the screen', async ({
     page,
   }) => {

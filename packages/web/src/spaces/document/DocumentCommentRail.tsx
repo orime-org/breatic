@@ -397,49 +397,58 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const aside = React.useRef<HTMLElement>(null);
   const header = React.useRef<HTMLDivElement>(null);
 
-  // The body is moved just enough to show the draft card once it is placed:
-  // the card lands level with its words, which can sit under the header or
-  // above the screen, and its box took the focus without scrolling. Once per
-  // press of an entry, from where the card is going rather than where a move
-  // has carried it so far; after that the scroll is the reader's (design
-  // §9.4.0). Computed from the two rectangles, as `scrollTabToEdge` does.
-  const revealed = React.useRef<number | null>(null);
+  // The body is moved just enough to show the card being read once it is
+  // placed: a card lands level with its words, which can sit under the header
+  // or above the screen, and a draft's box took the focus without scrolling.
+  // Once per card coming to be read — for the draft, once per press of an
+  // entry — from where the card is going rather than where a move has carried
+  // it so far; after that the scroll is the reader's (design §9.4.0).
+  // Computed from the two rectangles, as `scrollTabToEdge` does.
+  const revealed = React.useRef<string | null>(null);
   const draftEntry = draft?.kind === 'aimed' ? draft.entry : null;
-  // Only once the draft's place is measured for where it is aimed now: a
+  const reveal =
+    reading === null
+      ? null
+      : reading === DRAFT_THREAD_ID
+        ? draftEntry === null
+          ? null
+          : `${DRAFT_THREAD_ID}:${String(draftEntry)}`
+        : reading;
+  // Only once the card's place is measured for where it is aimed now: a
   // moved draft's old top stays until the new one is taken.
-  const draftTop =
-    draftAnchor !== null && measuredFor === draftAnchor
-      ? placed.get(DRAFT_THREAD_ID)
-      : undefined;
-  const draftHeight = heights.get(DRAFT_THREAD_ID);
-  const draftRead = reading === DRAFT_THREAD_ID;
+  const readTop =
+    reading === null ||
+    (reading === DRAFT_THREAD_ID &&
+      (draftAnchor === null || measuredFor !== draftAnchor))
+      ? undefined
+      : placed.get(reading);
+  const readHeight = reading === null ? undefined : heights.get(reading);
   React.useLayoutEffect(() => {
     const top = column.current;
     const bar = header.current;
     if (
-      draftEntry === null ||
-      revealed.current === draftEntry ||
-      !draftRead ||
-      draftTop === undefined ||
-      draftHeight === undefined ||
+      reveal === null ||
+      revealed.current === reveal ||
+      readTop === undefined ||
+      readHeight === undefined ||
       scroller === null ||
       top === null ||
       bar === null
     ) {
       return;
     }
-    revealed.current = draftEntry;
-    const cardTop = top.getBoundingClientRect().top + lifted + draftTop;
+    revealed.current = reveal;
+    const cardTop = top.getBoundingClientRect().top + lifted + readTop;
     const clear = bar.getBoundingClientRect().bottom + CLEARANCE_BELOW_HEADER_PX;
     const floor = scroller.getBoundingClientRect().bottom;
     const by =
       cardTop < clear
         ? cardTop - clear
-        : Math.min(Math.max(cardTop + draftHeight - floor, 0), cardTop - clear);
+        : Math.min(Math.max(cardTop + readHeight - floor, 0), cardTop - clear);
     if (by !== 0) {
       scroller.scrollTo({ top: scroller.scrollTop + by, behavior: 'instant' });
     }
-  }, [draftEntry, draftRead, draftTop, draftHeight, lifted, scroller]);
+  }, [reveal, readTop, readHeight, lifted, scroller]);
   /**
    * How far a pushed card, or the most hidden of them, reaches above the
    * header — from the layout, the one reading both the wheel and the focus
