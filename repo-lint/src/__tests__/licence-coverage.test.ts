@@ -121,6 +121,16 @@ describe("licence-coverage", () => {
     expect(licenceCoverage(groups({ [reported]: ["slick"] }), notice)).toEqual([]);
   });
 
+  it("does not let a WITH expression pass on a prose mention of its words", () => {
+    const reported = "GPL-2.0-only WITH Classpath-exception-2.0";
+    const notice = NOTICE.replace(
+      "## Build and development tools",
+      "| `bar` | `1.0.0` | GPL-2.0-only with a note about the Classpath-exception-2.0 elsewhere |\n\n## Build and development tools",
+    );
+    const found = licenceCoverage(groups({ [reported]: ["bar"] }), notice);
+    expect(found.map((gap) => gap.reason)).toEqual(["licence-mismatch"]);
+  });
+
   it("reports a package the notice names under a different licence", () => {
     const found = licenceCoverage(groups({ "MIT-0": [] }), NOTICE).concat(
       licenceCoverage(groups({ "GPL-3.0-only": ["@blocknote/core"] }), NOTICE),
