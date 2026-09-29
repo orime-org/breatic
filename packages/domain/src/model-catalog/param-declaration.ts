@@ -61,6 +61,13 @@ const declarationSchema = z.object({
   modes: z.array(z.string()).optional(),
   note: z.string().optional(),
   values: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
+  // What a new node stands on until the reader changes it (user 2026-09-29).
+  default: z.unknown().optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  // The value that is sent as nothing: choosing it leaves the param out of the
+  // request, for the upstream's own behaviour when it is absent ("auto").
+  absent_value: z.string().optional(),
   // How a value reads on screen, when its own spelling is not that sentence
   // (`left_right` reads "Left first"). English, like `label`.
   value_labels: z.record(z.string(), z.string()).optional(),
@@ -114,6 +121,7 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "step",
   "remote_source",
   "upstream",
+  "absent_value",
   "label",
   "value_labels",
   "value_locales",
@@ -216,6 +224,28 @@ function faultsOn(
     if (!offered.has(value)) {
       faults.push(`value_labels names "${value}", which values does not offer`);
     }
+  }
+
+  // A control the panel draws always stands on a value, and a new node reads
+  // it here (user 2026-09-29): a choice on one of its values, a range on a
+  // number inside it. Lists and free text start empty by nature.
+  if (declared.fill === "panel" && declared.type === undefined) {
+    const fallback = declared.default;
+    if (declared.values !== undefined && declared.values.length > 0) {
+      if (!declared.values.some((value) => value === fallback)) {
+        faults.push("a panel choice has to default to one of its values");
+      }
+    } else if (declared.min !== undefined && declared.max !== undefined) {
+      if (typeof fallback !== "number" || fallback < declared.min || fallback > declared.max) {
+        faults.push("a panel range has to default to a number between its min and max");
+      }
+    }
+  }
+
+  // The payload leaves the param out when it holds this value, so a value the
+  // choice does not offer is never held and the param is always sent.
+  if (declared.absent_value !== undefined && !offered.has(declared.absent_value)) {
+    faults.push(`absent_value "${declared.absent_value}" is not one of the values offered`);
   }
 
   // One tag per value: the panel pairs them by position, so a short list

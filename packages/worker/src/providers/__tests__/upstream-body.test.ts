@@ -99,6 +99,20 @@ describe("upstreamBody", () => {
     ).toEqual({ prompt: "p" });
   });
 
+  it("leaves a param out when it holds the value declared as sending nothing", () => {
+    // "auto" is the upstream's own behaviour when the ratio is absent: follow
+    // the input image.
+    const edit: FullModelEntry = {
+      name: "edit",
+      takes_prompt: true,
+      params: {
+        aspect_ratio: { fill: "panel", values: ["auto", "1:1"], default: "auto", absent_value: "auto" },
+      },
+    };
+    expect(upstreamBody(edit, { aspect_ratio: "auto" }, "p")).toEqual({ prompt: "p" });
+    expect(upstreamBody(edit, { aspect_ratio: "1:1" }, "p")).toEqual({ aspect_ratio: "1:1", prompt: "p" });
+  });
+
   it("keeps a param off the wire when the one that replaces it is sent", () => {
     // Gemini ignores its single voice once speakers are given; sending both
     // says two things about who reads the script.

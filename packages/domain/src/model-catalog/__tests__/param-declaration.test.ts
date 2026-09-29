@@ -253,7 +253,11 @@ describe("a parameter declaration", () => {
   });
 
   it("lets a choice name the language each of its values is, one for one", () => {
-    const language = { fill: "panel", values: ["English (United States)", "Japanese (Japan)"] };
+    const language = {
+      fill: "panel",
+      values: ["English (United States)", "Japanese (Japan)"],
+      default: "English (United States)",
+    };
     expect(() =>
       assertParamDeclarations("tts", modelWith({ language: { ...language, value_locales: ["en-US", "ja-JP"] } }, "tts")),
     ).not.toThrow();
@@ -270,6 +274,7 @@ describe("a parameter declaration", () => {
           order: {
             fill: "panel",
             values: ["meanwhile", "left_right"],
+            default: "meanwhile",
             value_labels: { meanwhile: "Together", left_right: "Left first" },
           },
         }),
@@ -285,6 +290,7 @@ describe("a parameter declaration", () => {
           order: {
             fill: "panel",
             values: ["meanwhile"],
+            default: "meanwhile",
             value_labels: { right_left: "Right first" },
           },
         }),
@@ -308,6 +314,51 @@ describe("a parameter declaration", () => {
 // The cases above hold up the check itself. These hold up its place in the
 // loading path: take that call out of the loader and every case above stays
 // green, because no declaration in the real yaml breaks one today.
+describe("a panel parameter's default", () => {
+  // User 2026-09-29: a control the panel draws always stands on a value, and
+  // that value is the one the catalog declares, so a new node reads it there.
+  it("passes when a choice defaults to one of its values and a range to a number inside it", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "image",
+        modelWith({
+          quality: { fill: "panel", values: ["low", "high"], default: "low" },
+          chaos: { fill: "panel", min: 0, max: 100, default: 0 },
+          transparency: { fill: "panel", values: [false, true], default: false },
+        }, "t2i"),
+      ),
+    ).not.toThrow();
+  });
+
+  it("is refused when a choice declares no default, or one it does not offer", () => {
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ aspect_ratio: { fill: "panel", values: ["1:1"], default: null } }, "t2i")),
+    ).toThrow(/a-model\.aspect_ratio.*default/s);
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ quality: { fill: "panel", values: ["low"] } }, "t2i")),
+    ).toThrow(/a-model\.quality.*default/s);
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ quality: { fill: "panel", values: ["low"], default: "max" } }, "t2i")),
+    ).toThrow(/a-model\.quality.*default/s);
+  });
+
+  it("is refused when a range defaults outside itself", () => {
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ chaos: { fill: "panel", min: 0, max: 100, default: 101 } }, "t2i")),
+    ).toThrow(/a-model\.chaos.*default/s);
+  });
+
+  it("lets a choice name the value that is sent as nothing, when it offers it", () => {
+    const ratio = { fill: "panel", values: ["auto", "1:1"], default: "auto" };
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ aspect_ratio: { ...ratio, absent_value: "auto" } }, "t2i")),
+    ).not.toThrow();
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ aspect_ratio: { ...ratio, absent_value: "match" } }, "t2i")),
+    ).toThrow(/a-model\.aspect_ratio.*absent_value/s);
+  });
+});
+
 describe("the loader refuses what these checks refuse", () => {
   afterEach(() => {
     vi.doUnmock("node:fs");

@@ -66,6 +66,8 @@ export interface FullParamSpec {
   max_items?: number;
   /** Another param this one stands in for; the body sends only one of the two. */
   replaces?: string;
+  /** The value that is sent as nothing: holding it leaves the param out. */
+  absent_value?: string;
   /** The upstream field this param is sent as, when it is not the param's name. */
   upstream?: string;
   /** How the param's value reaches the run. */

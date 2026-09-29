@@ -28,7 +28,8 @@ export function upstreamBody(
   for (const [name, spec] of Object.entries(entry.params ?? {})) {
     if (consumed.has(name)) continue;
     const value = spec.type === "items" ? completeEntries(params[name], spec.fields ?? {}) : params[name];
-    if (isPresent(value)) sent.set(name, value);
+    // The declared "send nothing" value hands the choice back to the upstream.
+    if (isPresent(value) && value !== spec.absent_value) sent.set(name, value);
   }
   // A param that stands in for another says the same thing a second way, and
   // the endpoint ignores one of them; only the one the reader filled goes.
