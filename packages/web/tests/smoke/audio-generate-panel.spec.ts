@@ -19,7 +19,7 @@
  */
 import { test, expect } from 'playwright/test';
 
-import { openGenerate, seedNode } from '../helpers/audio-panel';
+import { openGenerate, seedNode, voiceRowCount } from '../helpers/audio-panel';
 
 // One node, one panel, one continuous session — which is also how a person
 // uses it: open it, look at it, adjust it, submit. Splitting these into a test
@@ -31,13 +31,13 @@ test('the panel opens, offers what the model declares, and refuses a voiceless s
 
   await expect(page.getByTestId('generate-audio-mode-trigger')).toBeVisible();
   await expect(page.getByTestId('generate-model-trigger')).toBeVisible();
-  await expect(page.getByTestId('generate-voice-trigger')).toBeVisible();
+  await expect(page.getByTestId('generate-audio-settings-trigger')).toBeVisible();
   await expect(page.getByTestId('generate-audio-tool-reference')).toBeVisible();
   // The rate, not a total: the model bills by how much text is sent.
   await expect(page.getByTestId('generate-audio-rate')).toBeVisible();
 
   // The default model declares one range, its speaking speed.
-  await page.getByTestId('generate-audio-params-trigger').click();
+  await page.getByTestId('generate-audio-settings-trigger').click();
   await expect(page.getByRole('slider', { name: /speed/i })).toBeVisible();
   await page.keyboard.press('Escape');
 
@@ -45,7 +45,7 @@ test('the panel opens, offers what the model declares, and refuses a voiceless s
   // stability carries the three positions ElevenLabs names on that scale.
   await page.getByTestId('generate-model-trigger').click();
   await page.getByTestId('generate-model-option-elevenlabs-v3').click();
-  await page.getByTestId('generate-audio-params-trigger').click();
+  await page.getByTestId('generate-audio-settings-trigger').click();
   await expect(page.getByRole('slider', { name: /speed/i })).toHaveCount(0);
   await expect(page.getByRole('slider', { name: /stability/i })).toBeVisible();
   await expect(page.getByRole('slider', { name: /similarity/i })).toBeVisible();
@@ -87,7 +87,8 @@ test('the voice list matches the deployment it is served from, and a pick surviv
   await seedNode(nodeId, 'audio');
   await openGenerate(nodeId);
 
-  await page.getByTestId('generate-voice-trigger').click();
+  await page.getByTestId('generate-audio-settings-trigger').click();
+  await page.getByTestId('generate-audio-row-voice_id').click();
   const options = page.locator('[data-testid^="generate-voice-option-"]');
   await expect(options.first()).toBeVisible({ timeout: 20_000 });
 
@@ -103,7 +104,7 @@ test('the voice list matches the deployment it is served from, and a pick surviv
   const chosen = (await options.first().innerText()).split('\n')[0];
   const saysChosen = new RegExp(chosen.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   await options.first().click();
-  await expect(page.getByTestId('generate-voice-trigger')).toHaveText(saysChosen);
+  await expect(page.getByTestId('generate-audio-settings-trigger')).toHaveText(saysChosen);
 
   // The pick is a parameter ON THE NODE, not panel state. Going to a second
   // audio node and back reads it off the document twice over: the panel that
@@ -112,10 +113,10 @@ test('the voice list matches the deployment it is served from, and a pick surviv
   const otherId = crypto.randomUUID();
   await seedNode(otherId, 'audio');
   await openGenerate(otherId);
-  await expect(page.getByTestId('generate-voice-trigger')).not.toHaveText(saysChosen);
+  await expect(page.getByTestId('generate-audio-settings-trigger')).not.toHaveText(saysChosen);
 
   await openGenerate(nodeId);
-  await expect(page.getByTestId('generate-voice-trigger')).toHaveText(saysChosen);
+  await expect(page.getByTestId('generate-audio-settings-trigger')).toHaveText(saysChosen);
 });
 
 test('an audio node with a produced asset can be picked into the talking-head driving slot', async ({ page }) => {
@@ -163,7 +164,7 @@ test('voice cloning swaps the voice picker for a slot, and refuses a submit with
   await openGenerate(nodeId);
 
   // Text to speech first: the picker is there and the slot is not.
-  await expect(page.getByTestId('generate-voice-trigger')).toBeVisible();
+  expect(await voiceRowCount(page)).toBe(1);
   await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
 
   await page.getByTestId('generate-audio-mode-trigger').click();
@@ -174,7 +175,7 @@ test('voice cloning swaps the voice picker for a slot, and refuses a submit with
   await expect(page.getByTestId('generate-audio-tool-ref-audio')).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByTestId('generate-voice-trigger')).toHaveCount(0);
+  expect(await voiceRowCount(page)).toBe(0);
   // Reference stays in both modes: an audio node's edges take text, and a line
   // already written on the canvas is prompt material whichever model runs.
   await expect(page.getByTestId('generate-audio-tool-reference')).toBeVisible();
@@ -207,9 +208,10 @@ test('voice cloning swaps the voice picker for a slot, and refuses a submit with
   // the picker again rather than a slot holding it.
   await page.getByTestId('generate-audio-mode-trigger').click();
   await page.getByTestId('generate-audio-mode-tts').click();
-  await expect(page.getByTestId('generate-voice-trigger')).toBeVisible({
+  await expect(page.getByTestId('generate-audio-settings-trigger')).toBeVisible({
     timeout: 15_000,
   });
+  expect(await voiceRowCount(page)).toBe(1);
   await page.getByTestId('generate-audio-mode-trigger').click();
   await page.getByTestId('generate-audio-mode-voice-clone').click();
   await expect(page.getByTestId('generate-audio-ref-audio-clear')).toBeVisible({

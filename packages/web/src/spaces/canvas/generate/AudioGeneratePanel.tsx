@@ -14,8 +14,9 @@ import type {
 } from '@web/spaces/canvas/generate/audio-slots';
 import { AudioGenerateToolbar } from '@web/spaces/canvas/generate/AudioGenerateToolbar';
 import {
-  AudioParamsPicker,
-} from '@web/spaces/canvas/generate/AudioParamsPicker';
+  AudioSettingsPicker,
+  type VoiceSource,
+} from '@web/spaces/canvas/generate/AudioSettingsPicker';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
   isExecuteButtonDisabled,
@@ -24,7 +25,6 @@ import {
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
-import { VoicePicker } from '@web/spaces/canvas/generate/VoicePicker';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
 
@@ -59,15 +59,6 @@ interface AudioGeneratePanelProps {
   mode: string;
   /** The modes this panel offers, filtered by what the catalog serves. */
   modeOptions: ReadonlyArray<ModeOption>;
-  /**
-   * Whether the active model picks its voice from a preset catalog — the
-   * voice picker renders only then.
-   *
-   * A voice-cloning model answers no: the voice it speaks in is the recording
-   * picked into the reference slot, not a row in a vendor list, so a picker
-   * here would offer a choice that reaches nothing.
-   */
-  voiceRequired: boolean;
   /** Where the voice list is. */
   voiceList: VoiceListState;
   /** The voice held in this model's param record, or null when none is. */
@@ -144,8 +135,8 @@ interface AudioGeneratePanelProps {
 
 /**
  * The audio-node Generate panel: the injected collaborative editors over a
- * footer carrying the mode picker, the model picker, the voice picker, the
- * model's params, the credit figure and the submit button.
+ * footer carrying the mode picker, the model picker, the voice-and-settings
+ * pill, the credit figure and the submit button.
  *
  * The figure is the run's estimate beside a star, the shape every generate
  * panel uses.
@@ -160,7 +151,6 @@ interface AudioGeneratePanelProps {
  * @param root0.modelTakesPrompt - Whether it consumes the prompt.
  * @param root0.mode - The selected mode.
  * @param root0.modeOptions - The modes to offer.
- * @param root0.voiceRequired - Whether the model picks a voice from a catalog.
  * @param root0.voiceList - Where the voice list is.
  * @param root0.voiceSelectedId - The stored voice id.
  * @param root0.voiceSelectedName - That voice's name, once known.
@@ -199,7 +189,6 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   modelTakesPrompt,
   mode,
   modeOptions,
-  voiceRequired,
   voiceList,
   voiceSelectedId,
   voiceSelectedName,
@@ -230,6 +219,28 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   onExecute,
 }: AudioGeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
+  // One object for the settings pill, rebuilt only when a piece of it moves:
+  // the pill is memoised and a fresh literal every render would defeat it.
+  const voice = React.useMemo<VoiceSource>(
+    () => ({
+      list: voiceList,
+      selectedId: voiceSelectedId,
+      selectedName: voiceSelectedName,
+      onOpenChange: onVoiceOpenChange,
+      onQueryChange: onVoiceQueryChange,
+      onPick: onVoicePick,
+      onLoadMore: onVoiceLoadMore,
+    }),
+    [
+      voiceList,
+      voiceSelectedId,
+      voiceSelectedName,
+      onVoiceOpenChange,
+      onVoiceQueryChange,
+      onVoicePick,
+      onVoiceLoadMore,
+    ],
+  );
 
   const exitButton = (
     <Button
@@ -339,27 +350,13 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           triggerTestId='generate-audio-mode-trigger'
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
-        {voiceRequired ? (
-          // Only for a model that picks its voice from a preset catalog. A
-          // cloning model speaks in the recording picked into the reference
-          // slot, so a picker here would write an id nothing sends.
-          <VoicePicker
-            list={voiceList}
-            selectedId={voiceSelectedId}
-            selectedName={voiceSelectedName}
-            onOpenChange={onVoiceOpenChange}
-            onQueryChange={onVoiceQueryChange}
-            onPick={onVoicePick}
-            onLoadMore={onVoiceLoadMore}
-          />
-        ) : null}
         {currentModel ? (
-          // Renders nothing when this model declares no param it can show, so
-          // there is no second copy here of what it already decides.
-          <AudioParamsPicker
+          // Renders nothing when this model has no voice and no param to show.
+          <AudioSettingsPicker
             model={currentModel}
             value={params}
             onChange={onChangeParams}
+            voice={voice}
           />
         ) : null}
 

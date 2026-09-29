@@ -103,7 +103,7 @@ describe('audioParamControls — each model states its own speaking params', () 
   });
 
   it('leaves out the voice param — another control fills that one', () => {
-    // The voice is picked from a live list, by VoicePicker. It is in the same
+    // The voice is picked from a live list, in its own row. It is in the same
     // `params` map, so leaving it out has to be deliberate.
     const names = audioParamControls(ELEVENLABS).map((c) => c.name);
     expect(names).not.toContain('voice_id');

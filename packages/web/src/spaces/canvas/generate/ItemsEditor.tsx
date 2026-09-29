@@ -26,6 +26,15 @@ interface ItemsEditorProps {
   label: string;
   /** The most entries the model takes, if it caps them. */
   max: number | undefined;
+  /**
+   * The fewest the model takes. When it equals `max` the list is a fixed set
+   * of rows with nothing to add or remove (Gemini's two speakers).
+   */
+  min?: number;
+  /** How a field is named in its empty box; the field's own name when absent. */
+  fieldLabel?: (field: string) => string;
+  /** What to put after a choice field's value, such as a sample of that voice. */
+  afterChoice?: (field: string, value: unknown, index: number) => React.ReactNode;
   /** The fields of one entry, in the order the model declares them. */
   fields: readonly ItemFieldControl[];
   /** What the node holds; anything that is not a list reads as none. */
@@ -58,12 +67,29 @@ function blankEntry(fields: readonly ItemFieldControl[]): Entry {
 }
 
 /**
+ * The entries a fixed-size list shows: what it holds, padded with blank rows
+ * up to its size, so every row it takes is on screen to fill in.
+ * @param entries - What the node holds.
+ * @param size - How many rows the list always has.
+ * @param fields - The entry's fields.
+ * @returns The rows to show.
+ */
+function padTo(entries: Entry[], size: number, fields: readonly ItemFieldControl[]): Entry[] {
+  return entries.length >= size
+    ? entries.slice(0, size)
+    : [...entries, ...Array.from({ length: size - entries.length }, () => blankEntry(fields))];
+}
+
+/**
  * A list param's editor (#2156, design §13): one row per entry, one cell per
  * field, a remove button per row and an add button under them.
  * @param root0 - Props.
  * @param root0.name - The param name.
  * @param root0.label - Its English label.
  * @param root0.max - The most entries the model takes.
+ * @param root0.min - The fewest it takes.
+ * @param root0.fieldLabel - How a field is named in its empty box.
+ * @param root0.afterChoice - What follows a choice field's value.
  * @param root0.fields - The fields of one entry.
  * @param root0.held - What the node holds.
  * @param root0.onChange - Called with the new list.
@@ -73,12 +99,16 @@ export function ItemsEditor({
   name,
   label,
   max,
+  min,
+  fieldLabel,
+  afterChoice,
   fields,
   held,
   onChange,
 }: ItemsEditorProps): React.JSX.Element {
   const t = useTranslation();
-  const entries = entriesOf(held);
+  const fixed = max !== undefined && min === max;
+  const entries = fixed ? padTo(entriesOf(held), max, fields) : entriesOf(held);
   const full = max !== undefined && entries.length >= max;
   /**
    * Writes the list with one entry's field changed.
@@ -93,7 +123,7 @@ export function ItemsEditor({
     <div>
       <div className='mb-1.5 flex items-center justify-between text-xs'>
         <span className='font-medium text-muted-foreground'>{label}</span>
-        {max !== undefined ? (
+        {max !== undefined && !fixed ? (
           <span data-testid={`generate-param-${name}-count`} className='tabular-nums text-muted-foreground'>
             {entries.length} / {max}
           </span>
@@ -103,39 +133,46 @@ export function ItemsEditor({
         {entries.map((entry, index) => (
           <div key={index} className='flex items-center gap-1.5'>
             {fields.map((field) => (
-              <FieldCell
-                key={field.name}
-                testId={`generate-param-${name}-${index}-${field.name}`}
-                field={field}
-                value={entry[field.name]}
-                onCommit={(value) => setField(index, field.name, value)}
-              />
+              <React.Fragment key={field.name}>
+                <FieldCell
+                  testId={`generate-param-${name}-${index}-${field.name}`}
+                  field={field}
+                  placeholder={fieldLabel?.(field.name) ?? field.name.charAt(0).toUpperCase() + field.name.slice(1)}
+                  value={entry[field.name]}
+                  onCommit={(value) => setField(index, field.name, value)}
+                />
+                {field.kind === 'choice' ? afterChoice?.(field.name, entry[field.name], index) : null}
+              </React.Fragment>
             ))}
-            <Button
-              type='button'
-              variant='chrome-ghost'
-              size={null}
-              data-testid={`generate-param-${name}-${index}-remove`}
-              aria-label={t('canvas.generatePanel.itemsRemove')}
-              onClick={() => onChange({ [name]: entries.filter((_, i) => i !== index) })}
-              className='h-8 w-8 shrink-0'
-            >
-              <X className='h-3.5 w-3.5' aria-hidden='true' />
-            </Button>
+            {fixed ? null : (
+              <Button
+                type='button'
+                variant='chrome-ghost'
+                size={null}
+                data-testid={`generate-param-${name}-${index}-remove`}
+                aria-label={t('canvas.generatePanel.itemsRemove')}
+                onClick={() => onChange({ [name]: entries.filter((_, i) => i !== index) })}
+                className='h-8 w-8 shrink-0'
+              >
+                <X className='h-3.5 w-3.5' aria-hidden='true' />
+              </Button>
+            )}
           </div>
         ))}
-        <Button
-          type='button'
-          variant='outline'
-          size={null}
-          data-testid={`generate-param-${name}-add`}
-          disabled={full}
-          onClick={() => onChange({ [name]: [...entries, blankEntry(fields)] })}
-          className='h-8 gap-1 text-xs'
-        >
-          <Plus className='h-3.5 w-3.5' aria-hidden='true' />
-          {t('canvas.generatePanel.itemsAdd')}
-        </Button>
+        {fixed ? null : (
+          <Button
+            type='button'
+            variant='outline'
+            size={null}
+            data-testid={`generate-param-${name}-add`}
+            disabled={full}
+            onClick={() => onChange({ [name]: [...entries, blankEntry(fields)] })}
+            className='h-8 gap-1 text-xs'
+          >
+            <Plus className='h-3.5 w-3.5' aria-hidden='true' />
+            {t('canvas.generatePanel.itemsAdd')}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -144,6 +181,7 @@ export function ItemsEditor({
 interface FieldCellProps {
   testId: string;
   field: ItemFieldControl;
+  placeholder: string;
   value: unknown;
   onCommit: (value: unknown) => void;
 }
@@ -154,11 +192,12 @@ interface FieldCellProps {
  * @param root0 - Props.
  * @param root0.testId - The cell's test id.
  * @param root0.field - The field.
+ * @param root0.placeholder - What the empty text box says.
  * @param root0.value - What the entry holds for it.
  * @param root0.onCommit - Called with the new value.
  * @returns The cell.
  */
-function FieldCell({ testId, field, value, onCommit }: FieldCellProps): React.JSX.Element {
+function FieldCell({ testId, field, placeholder, value, onCommit }: FieldCellProps): React.JSX.Element {
   const [draft, setDraft] = React.useState<string | null>(null);
   if (field.kind === 'choice') {
     const current = field.options.find((o) => o.value === value) ?? field.options[0];
@@ -192,7 +231,7 @@ function FieldCell({ testId, field, value, onCommit }: FieldCellProps): React.JS
   return (
     <Input
       data-testid={testId}
-      placeholder={field.name.charAt(0).toUpperCase() + field.name.slice(1)}
+      placeholder={placeholder}
       value={draft ?? held}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}

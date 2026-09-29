@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #1960 §6.3 — the voice picker.
+ * #1960 §6.3 — the voice list, as the audio settings pill opens it beside
+ * itself (#2156, design §16).
  *
  * The list comes from upstream, so searching happens there too. cmdk filters
  * what it has rendered by default, and the two together lie: a term whose
@@ -20,10 +21,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { VoicePicker } from '@web/spaces/canvas/generate/VoicePicker';
+import { AudioSettingsPicker } from '@web/spaces/canvas/generate/AudioSettingsPicker';
 import { expectChosenFill } from '@web/test-utils/selection-fill';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
-import type { Voice } from '@breatic/shared';
+import type { ModelEntry, Voice } from '@breatic/shared';
 
 vi.mock('@web/i18n/use-translation', () => ({
   useTranslation: () => (key: string): string => key,
@@ -91,81 +92,79 @@ const NOOPS = {
   onLoadMore: (): void => {},
 };
 
+/** A model whose only setting is a voice from the list. */
+const VOICED: ModelEntry = {
+  name: 'voiced',
+  display_name: 'Voiced',
+  modality: 'tts',
+  mode: 'tts',
+  description: '',
+  guide: '',
+  tier: 'recommended',
+  generation_time: 30,
+  takes_prompt: true,
+  params: { voice_id: { description: '', default: null, remote_source: 'voices', fill: 'remote' } },
+  providers: [],
+};
+
 /**
- * Renders the picker with its list open.
- * @param over - Props this case overrides.
+ * Renders the settings pill for a voice-only model.
+ * @param over - Voice source fields this case overrides.
+ * @returns The render result.
+ */
+function renderPill(over: Record<string, unknown> = {}): ReturnType<typeof render> {
+  const voice = { list: state(), selectedId: null, selectedName: null, ...NOOPS, ...over };
+  return render(
+    <AudioSettingsPicker model={VOICED} value={{}} onChange={() => {}} voice={voice as never} />,
+  );
+}
+
+/**
+ * Renders the pill and opens its voice list.
+ * @param over - Voice source fields this case overrides.
  * @returns Nothing; assertions read from the screen.
  */
 function open(over: Record<string, unknown> = {}): void {
-  render(
-    <VoicePicker
-      list={state()}
-      selectedId={null}
-      selectedName={null}
-      {...NOOPS}
-      {...over}
-    />,
-  );
-  fireEvent.click(screen.getByTestId('generate-voice-trigger'));
+  renderPill(over);
+  fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+  fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
 }
 
-describe('VoicePicker trigger (#1960 A2)', () => {
+describe('the settings pill names the voice (#1960 A2)', () => {
   it('shows the chosen voice by name, not by its id', () => {
-    render(
-      <VoicePicker
-        list={state()}
-        selectedId='JBFqnCBsd6RMkjVDRZzb'
-        selectedName='George'
-        {...NOOPS}
-      />,
-    );
-    const trigger = screen.getByTestId('generate-voice-trigger');
+    renderPill({ selectedId: 'JBFqnCBsd6RMkjVDRZzb', selectedName: 'George' });
+    const trigger = screen.getByTestId('generate-audio-settings-trigger');
     expect(trigger).toHaveTextContent('George');
     expect(trigger).not.toHaveTextContent('JBFqnCBsd6RMkjVDRZzb');
   });
 
   it('falls back to the id when the name could not be fetched', () => {
-    render(
-      <VoicePicker
-        list={state()}
-        selectedId='JBFqnCBsd6RMkjVDRZzb'
-        selectedName={null}
-        {...NOOPS}
-      />,
-    );
-    expect(screen.getByTestId('generate-voice-trigger')).toHaveTextContent(
+    renderPill({ selectedId: 'JBFqnCBsd6RMkjVDRZzb' });
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toHaveTextContent(
       'JBFqnCBsd6RMkjVDRZzb',
     );
   });
 
   it('says a voice is still to be picked when none is', () => {
-    render(
-      <VoicePicker list={state()} selectedId={null} selectedName={null} {...NOOPS} />,
-    );
-    expect(screen.getByTestId('generate-voice-trigger')).toHaveTextContent(
+    renderPill();
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toHaveTextContent(
       'canvas.generatePanel.voicePlaceholder',
     );
   });
 
-  it('tells the container when it opens and when it collapses', () => {
+  it('tells the container when the list shows and when it goes', () => {
     const onOpenChange = vi.fn();
-    render(
-      <VoicePicker
-        list={state({ status: 'idle', voices: [] })}
-        selectedId={null}
-        selectedName={null}
-        {...NOOPS}
-        onOpenChange={onOpenChange}
-      />,
-    );
-    fireEvent.click(screen.getByTestId('generate-voice-trigger'));
+    renderPill({ list: state({ status: 'idle', voices: [] }), onOpenChange });
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    expect(onOpenChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
     expect(onOpenChange).toHaveBeenCalledWith(true);
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
 
-describe('VoicePicker list (#1960 A2)', () => {
+describe('the voice list list (#1960 A2)', () => {
   it('lists every voice the container handed it', () => {
     open();
     expect(screen.getByTestId('generate-voice-option-alpha')).toBeInTheDocument();
@@ -243,7 +242,7 @@ describe('VoicePicker list (#1960 A2)', () => {
   });
 });
 
-describe('VoicePicker states (#1960 A6)', () => {
+describe('the voice list states (#1960 A6)', () => {
   it('says nothing matched when the search came back empty', () => {
     open({ list: state({ status: 'empty', voices: [], query: 'zzz' }) });
     expect(screen.getByTestId('generate-voice-empty')).toBeInTheDocument();
@@ -263,7 +262,7 @@ describe('VoicePicker states (#1960 A6)', () => {
   });
 });
 
-describe('VoicePicker paging (#1960 §7.1)', () => {
+describe('the voice list paging (#1960 §7.1)', () => {
   it('asks for the next page when the list is scrolled to the end', () => {
     const onLoadMore = vi.fn();
     open({ list: state({ hasMore: true }), onLoadMore });
@@ -293,7 +292,7 @@ describe('VoicePicker paging (#1960 §7.1)', () => {
   });
 });
 
-describe('VoicePicker keeps one height for every state it can be in', () => {
+describe('the voice list keeps one height for every state it can be in', () => {
   // The popover opens upward over a canvas someone is working on, and a search
   // changes how many rows there are — a box sized to its contents would move
   // under the reader on each keystroke (user 2026-09-03).
@@ -314,7 +313,7 @@ describe('VoicePicker keeps one height for every state it can be in', () => {
   });
 });
 
-describe('VoicePicker samples (#1960 A2)', () => {
+describe('the voice list samples (#1960 A2)', () => {
   let play: ReturnType<typeof vi.fn>;
   let pause: ReturnType<typeof vi.fn>;
 
@@ -361,15 +360,9 @@ describe('VoicePicker samples (#1960 A2)', () => {
   it('stops the sample when the picker goes away', () => {
     // Nothing else holds this audio element, so a sample started here would
     // keep playing over a panel that is no longer on screen.
-    const { unmount } = render(
-      <VoicePicker
-        list={state()}
-        selectedId={null}
-        selectedName={null}
-        {...NOOPS}
-      />,
-    );
-    fireEvent.click(screen.getByTestId('generate-voice-trigger'));
+    const { unmount } = renderPill();
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
     fireEvent.click(screen.getByTestId('generate-voice-sample-alpha'));
     pause.mockClear();
     unmount();
@@ -441,7 +434,7 @@ describe('VoicePicker samples (#1960 A2)', () => {
   });
 });
 
-describe('VoicePicker when a next page fails (#1960 A6)', () => {
+describe('the voice list when a next page fails (#1960 A6)', () => {
   it('says so at the end of the list, with a way to try again', () => {
     // Without a line of its own this renders exactly like reaching the end:
     // the loading row disappears and the list simply stops.
@@ -513,7 +506,7 @@ describe('the voice list answers Enter on its own buttons', () => {
   });
 });
 
-describe('VoicePicker rows are the option shape the rest of the app uses', () => {
+describe('the voice list rows are the option shape the rest of the app uses', () => {
   it('draws each voice as a button, the way the model picker does', () => {
     // LangSwitcher / ThemeToggle / ModelPicker / ModeToggle / ParamOptionGroup
     // are all a column of ghost menu-item Buttons. A row that is a real button
@@ -551,20 +544,13 @@ describe('VoicePicker rows are the option shape the rest of the app uses', () =>
   it('names the voice on the trigger behind a speaker icon', () => {
     // The model picker carries the vendor icon in the same spot; without one
     // the third pill is a bare proper noun beside the model's own.
-    render(
-      <VoicePicker
-        list={state()}
-        selectedId='alpha'
-        selectedName='Alpha'
-        {...NOOPS}
-      />,
-    );
-    const trigger = screen.getByTestId('generate-voice-trigger');
+    renderPill({ selectedId: 'alpha', selectedName: 'Alpha' });
+    const trigger = screen.getByTestId('generate-audio-settings-trigger');
     expect(trigger.querySelectorAll('svg').length).toBeGreaterThan(1);
   });
 });
 
-describe('VoicePicker while the first page is on its way', () => {
+describe('the voice list while the first page is on its way', () => {
   it('says it is loading, spinner and all', () => {
     // Blocks of grey standing in for rows read as movement, and this surface
     // is one someone is working on rather than one they are reading

@@ -417,11 +417,10 @@ beforeEach(() => {
 });
 
 describe('AudioGeneratePanelContainer — what it offers', () => {
-  it('shows the panel with the model, voice and params controls', async () => {
+  it('shows the panel with the model and the voice-and-settings pill', async () => {
     await openPanel({ model: 'elevenlabs-v3' });
     expect(screen.getByTestId('generate-model-trigger')).toBeInTheDocument();
-    expect(screen.getByTestId('generate-voice-trigger')).toBeInTheDocument();
-    expect(screen.getByTestId('generate-audio-params-trigger')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-audio-tool-reference')).toBeInTheDocument();
   });
 
@@ -453,8 +452,7 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
     for (const gone of [
       'generate-audio-execute',
       'generate-model-trigger',
-      'generate-voice-trigger',
-      'generate-audio-params-trigger',
+      'generate-audio-settings-trigger',
       'generate-audio-tool-reference',
       'generate-audio-rate',
     ]) {
@@ -552,7 +550,8 @@ describe('AudioGeneratePanelContainer — the mode comes off the node', () => {
 describe('AudioGeneratePanelContainer — picking writes to the node', () => {
   it('stores a picked voice on the model\'s own record', async () => {
     await openPanel({ model: 'elevenlabs-v3' });
-    fireEvent.click(screen.getByTestId('generate-voice-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
     await screen.findByTestId('generate-voice-option-Aria');
     fireEvent.click(screen.getByTestId('generate-voice-option-Aria'));
 
@@ -580,7 +579,8 @@ describe('AudioGeneratePanelContainer — picking writes to the node', () => {
       useCanvasStore.getState().openGeneratePanel('target', 'audio');
     });
     await screen.findByTestId('generate-audio-execute');
-    fireEvent.click(screen.getByTestId('generate-voice-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
     await screen.findByTestId('generate-voice-option-Aria');
     fireEvent.click(screen.getByTestId('generate-voice-option-Aria'));
 
@@ -597,7 +597,8 @@ describe('AudioGeneratePanelContainer — picking writes to the node', () => {
     // hand belongs to the outgoing model's domain; writing it into the
     // incoming model's record submits a value that vendor never issued.
     await openPanel({ model: 'elevenlabs-v3' });
-    fireEvent.click(screen.getByTestId('generate-voice-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
     await screen.findByTestId('generate-voice-option-Aria');
     nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.set(
       'model',
@@ -619,7 +620,7 @@ describe('AudioGeneratePanelContainer — picking writes to the node', () => {
 
   it('stores a changed param on that same record', async () => {
     await openPanel({ model: 'elevenlabs-v3' });
-    fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-stability-stop-1'));
 
     await waitFor(() => {
@@ -643,7 +644,7 @@ describe('AudioGeneratePanelContainer — what the trigger says', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId('generate-voice-trigger').textContent).toContain(
+      expect(screen.getByTestId('generate-audio-settings-trigger').textContent).toContain(
         'Rachel',
       );
     });

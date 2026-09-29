@@ -17,7 +17,7 @@
  */
 import { test, expect } from 'playwright/test';
 
-import { openGenerate, panCanvasDown, seedNode } from '../helpers/audio-panel';
+import { openGenerate, panCanvasDown, seedNode, voiceRowCount } from '../helpers/audio-panel';
 
 test('the stability tick labels are a pointer target the standard accepts', async ({ page }) => {
   // WCAG 2.2 SC 2.5.8 (AA) takes 24x24 CSS px, or 24px-diameter circles on
@@ -33,7 +33,7 @@ test('the stability tick labels are a pointer target the standard accepts', asyn
   // The ticks are ElevenLabs' three named positions, on its stability scale.
   await page.getByTestId('generate-model-trigger').click();
   await page.getByTestId('generate-model-option-elevenlabs-v3').click();
-  await page.getByTestId('generate-audio-params-trigger').click();
+  await page.getByTestId('generate-audio-settings-trigger').click();
   const ticks = page.locator('[data-testid^="generate-audio-stability-stop-"]');
   await expect(ticks.first()).toBeVisible({ timeout: 10_000 });
 
@@ -59,7 +59,8 @@ test('the voice list stands the five rows it is sized for @needs-tts', async ({ 
   await seedNode(nodeId, 'audio');
   await openGenerate(nodeId);
 
-  await page.getByTestId('generate-voice-trigger').click();
+  await page.getByTestId('generate-audio-settings-trigger').click();
+  await page.getByTestId('generate-audio-row-voice_id').click();
   const body = page.getByTestId('generate-voice-list-body');
   await expect(body).toBeVisible({ timeout: 20_000 });
   const options = page.locator('[data-testid^="generate-voice-option-"]');
@@ -91,7 +92,8 @@ test('the voice playing is marked by a ring drawn outside its button @needs-tts 
   await seedNode(nodeId, 'audio');
   await openGenerate(nodeId);
 
-  await page.getByTestId('generate-voice-trigger').click();
+  await page.getByTestId('generate-audio-settings-trigger').click();
+  await page.getByTestId('generate-audio-row-voice_id').click();
   const samples = page.locator('[data-testid^="generate-voice-sample-"]');
   await expect(page.locator('[data-testid^="generate-voice-option-"]').first()).toBeVisible({
     timeout: 20_000,
@@ -137,10 +139,10 @@ test('sound effects: a length picker, and a credit figure that follows it', asyn
 
   // The speech controls go with the mode: nothing here picks a voice, and
   // nothing here clones one.
-  await expect(page.getByTestId('generate-audio-params-trigger')).toBeVisible({
+  await expect(page.getByTestId('generate-audio-settings-trigger')).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByTestId('generate-voice-trigger')).toHaveCount(0);
+  expect(await voiceRowCount(page)).toBe(0);
   await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
 
   // The box asks for a sound rather than for lines to speak. Tiptap's
@@ -162,7 +164,7 @@ test('sound effects: a length picker, and a credit figure that follows it', asyn
 
   // The longest length the model takes, sixty seconds, costs sixty, and the
   // figure follows the length rather than the prompt — which has not changed.
-  await page.getByTestId('generate-audio-params-trigger').click();
+  await page.getByTestId('generate-audio-settings-trigger').click();
   const length = page.getByTestId('generate-audio-duration-slider').getByRole('slider');
   await length.focus();
   await page.keyboard.press('End');
@@ -225,7 +227,7 @@ test('text to music: two boxes, and an empty lyrics box refuses the submit', asy
 
   // Nothing here picks a voice, clones one, or collects a reference: the mode
   // states its slots and this one states none.
-  await expect(page.getByTestId('generate-voice-trigger')).toHaveCount(0);
+  expect(await voiceRowCount(page)).toBe(0);
   await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
   await expect(page.getByTestId('generate-audio-tool-music-song')).toHaveCount(0);
 

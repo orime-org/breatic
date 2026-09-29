@@ -183,3 +183,19 @@ export async function openGenerate(nodeId: string, settled = 'generate-audio-exe
   await page.getByTestId('node-menu-generate').click();
   await expect(page.getByTestId(settled)).toBeVisible({ timeout: 15_000 });
 }
+
+/**
+ * How many voice rows the settings pill offers: 0 when the model takes no
+ * voice (or has no pill at all), 1 when it does. Opens the pill to look and
+ * closes it again, so the panel is left as it was found.
+ * @param page - A page with the audio panel open.
+ * @returns The number of voice rows.
+ */
+export async function voiceRowCount(page: Page): Promise<number> {
+  const pill = page.getByTestId('generate-audio-settings-trigger');
+  if ((await pill.count()) === 0) return 0;
+  await pill.click();
+  const rows = await page.getByTestId('generate-audio-row-voice_id').count();
+  await page.keyboard.press('Escape');
+  return rows;
+}

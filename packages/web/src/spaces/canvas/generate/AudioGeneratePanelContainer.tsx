@@ -404,7 +404,7 @@ function AudioGeneratePanelBody({
         fresh.model,
       );
       setNodeParams(projectId, spaceId, nodeId, paramsByModel);
-      // Collapsing the picker is the picker's own doing (VoicePicker closes on
+      // Closing the voice list is the settings pill's own doing (it closes on
       // pick), so this callback has no reason to reach for the list handle.
     },
     [projectId, spaceId, nodeId, freshVm, freshContent, vm.model, queryClient, t],
@@ -671,7 +671,6 @@ function AudioGeneratePanelBody({
       modelTakesPrompt={vm.promptRequired}
       mode={mode}
       modeOptions={availableModes}
-      voiceRequired={vm.voiceRequired}
       voiceList={voices.state}
       voiceSelectedId={vm.voiceSelectedId}
       voiceSelectedName={selectedVoice?.name ?? null}

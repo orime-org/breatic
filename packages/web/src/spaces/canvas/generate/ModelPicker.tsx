@@ -109,7 +109,7 @@ export const ModelPicker = React.memo(function ModelPicker({
                 }}
               >
                 <ModelIcon name={m.icon} className='h-4 w-4 shrink-0' />
-                {/* Two lines, the same shape VoicePicker gives its voices: the
+                {/* Two lines, the same shape VoiceList gives its voices: the
                     name, and under it what this model is good at. The catalog's
                     `description` is written for this line — it says what sets a
                     model apart, which is the only thing that tells a reader

@@ -22,6 +22,10 @@ interface ModelParamControlsProps {
   onChange: (partial: Record<string, unknown>) => void;
   /** Spacing from whatever sits above, when anything does. */
   className?: string;
+  /** Which of the model's own controls to draw; all of them when absent. */
+  include?: (control: ModelControl) => boolean;
+  /** A control's label; the yaml's English `label` when absent. */
+  labelOf?: (control: ModelControl) => string;
 }
 
 /**
@@ -48,6 +52,8 @@ function shownOf(
  * @param root0.value - What the node holds for it.
  * @param root0.onChange - Called with the changed param.
  * @param root0.className - Spacing above the block.
+ * @param root0.include - Which controls to draw.
+ * @param root0.labelOf - A control's label.
  * @returns The controls, or null when the model has none of its own.
  */
 export const ModelParamControls = React.memo(function ModelParamControls({
@@ -55,15 +61,20 @@ export const ModelParamControls = React.memo(function ModelParamControls({
   value,
   onChange,
   className,
+  include,
+  labelOf,
 }: ModelParamControlsProps): React.JSX.Element | null {
-  const controls = React.useMemo(() => modelControls(model), [model]);
+  const controls = React.useMemo(
+    () => modelControls(model).filter((control) => include?.(control) ?? true),
+    [model, include],
+  );
   if (controls.length === 0) return null;
   return (
     <div className={cn('flex flex-col gap-3', className)}>
       {controls.map((control) => (
         <ModelControlRow
           key={control.name}
-          control={control}
+          control={labelOf ? { ...control, label: labelOf(control) } : control}
           shown={shownOf(model, control.name, value)}
           onChange={onChange}
         />

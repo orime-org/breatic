@@ -60,7 +60,10 @@ function ttsModel(name: string): ModelEntry {
   };
 }
 
-const ELEVEN = ttsModel('elevenlabs-v3');
+const ELEVEN: ModelEntry = {
+  ...ttsModel('elevenlabs-v3'),
+  params: { voice_id: { description: '', default: null, remote_source: 'voices', fill: 'remote' } },
+};
 const FISH = ttsModel('fish-s2-pro');
 
 /**
@@ -81,7 +84,6 @@ const BASE = {
   modelTakesPrompt: true,
   mode: 'tts',
   modeOptions: AUDIO_MODE_OPTIONS,
-  voiceRequired: true,
   voiceList: initialVoiceListState,
   slots: [],
   slotUrls: {},
@@ -119,19 +121,19 @@ describe('AudioGeneratePanel (#1960 A1)', () => {
     expect(screen.getByTestId('prompt-editor')).toBeInTheDocument();
   });
 
-  it('offers the mode picker, the model picker and the voice picker', () => {
+  it('offers the mode picker, the model picker and the voice-and-settings pill', () => {
     renderPanel(<AudioGeneratePanel {...BASE} />);
     expect(screen.getByTestId('generate-audio-mode-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-model-trigger')).toBeInTheDocument();
-    expect(screen.getByTestId('generate-voice-trigger')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toBeInTheDocument();
   });
 
-  it('drops the voice picker for a model that picks no voice from a catalog', () => {
+  it('drops the pill for a model with no voice and nothing to set', () => {
     // A cloning model speaks in the recording picked into the slot, so a
     // picker here would offer a choice that reaches nothing. Nothing else in
     // the suite notices this branch going away.
-    renderPanel(<AudioGeneratePanel {...BASE} voiceRequired={false} />);
-    expect(screen.queryByTestId('generate-voice-trigger')).toBeNull();
+    renderPanel(<AudioGeneratePanel {...BASE} models={[FISH]} currentModel={FISH} model={FISH.name} />);
+    expect(screen.queryByTestId('generate-audio-settings-trigger')).toBeNull();
     // The rest of the footer stays: the mode and model pickers are how the
     // reader gets back to a text-to-speech model.
     expect(screen.getByTestId('generate-audio-mode-trigger')).toBeInTheDocument();
@@ -265,7 +267,7 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
     },
   };
 
-  it('offers the params picker for a model that declares one', () => {
+  it('offers the pill for a model that declares a param', () => {
     renderPanel(
       <AudioGeneratePanel
         {...BASE}
@@ -274,12 +276,7 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
         model={WITH_PARAMS.name}
       />,
     );
-    expect(screen.getByTestId('generate-audio-params-trigger')).toBeInTheDocument();
-  });
-
-  it('offers none for a model that declares nothing it can show', () => {
-    renderPanel(<AudioGeneratePanel {...BASE} />);
-    expect(screen.queryByTestId('generate-audio-params-trigger')).toBeNull();
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toBeInTheDocument();
   });
 
   it('reports a changed param', () => {
@@ -293,7 +290,7 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
         onChangeParams={onChangeParams}
       />,
     );
-    fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-stability-stop-1'));
     expect(onChangeParams).toHaveBeenCalledWith({ stability: 1 });
   });
@@ -325,8 +322,7 @@ describe('AudioGeneratePanel on a node built before generation (#1960 A13)', () 
       'generate-ref-insert-e1',
       'generate-audio-mode-trigger',
       'generate-model-trigger',
-      'generate-voice-trigger',
-      'generate-audio-params-trigger',
+      'generate-audio-settings-trigger',
       'generate-audio-rate',
       'generate-audio-execute',
     ]) {

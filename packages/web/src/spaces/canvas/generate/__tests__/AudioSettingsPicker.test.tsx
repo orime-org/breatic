@@ -17,7 +17,19 @@ vi.mock('@web/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
-import { AudioParamsPicker } from '@web/spaces/canvas/generate/AudioParamsPicker';
+import { AudioSettingsPicker } from '@web/spaces/canvas/generate/AudioSettingsPicker';
+import { initialVoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
+
+/** A voice source nobody reads; these cases are about the params. */
+const NO_VOICE = {
+  list: initialVoiceListState,
+  selectedId: null,
+  selectedName: null,
+  onOpenChange: (): void => {},
+  onQueryChange: (): void => {},
+  onPick: (): void => {},
+  onLoadMore: (): void => {},
+};
 
 /**
  * A tts model declaring the given params.
@@ -69,11 +81,11 @@ function open(
   value: Record<string, number>,
   onChange: (partial: object) => void = () => {},
 ): void {
-  render(<AudioParamsPicker model={entry} value={value} onChange={onChange} />);
-  fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));
+  render(<AudioSettingsPicker model={entry} value={value} onChange={onChange} voice={NO_VOICE} />);
+  fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
 }
 
-describe('AudioParamsPicker — the speaking params the active model declares', () => {
+describe('AudioSettingsPicker — the speaking params the active model declares', () => {
   it('offers stability as a slider carrying the model\'s own bounds', () => {
     open(ELEVENLABS, { stability: 0.5, similarity: 0.75 });
     const slider = screen.getByRole('slider', { name: 'Stability' });
@@ -192,20 +204,29 @@ describe('AudioParamsPicker — the speaking params the active model declares', 
     );
   });
 
-  it('renders nothing at all for a model declaring no such param', () => {
+  it('renders nothing at all for a model with no voice and no param', () => {
     // No empty pill that opens onto nothing.
+    render(<AudioSettingsPicker voice={NO_VOICE} model={model({})} value={{}} onChange={() => {}} />);
+    expect(screen.queryByTestId('generate-audio-settings-trigger')).toBeNull();
+  });
+
+  it('holds the voice for a model whose only setting is its voice', () => {
+    // The voice is one of the settings now (design §16.1), so a voice-only
+    // model still gets the pill, opening onto the voice row.
     render(
-      <AudioParamsPicker
+      <AudioSettingsPicker
+        voice={NO_VOICE}
         model={model({ voice_id: { description: '', default: null, remote_source: 'voices' } })}
         value={{}}
         onChange={() => {}}
       />,
     );
-    expect(screen.queryByTestId('generate-audio-params-trigger')).toBeNull();
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    expect(screen.getByTestId('generate-audio-row-voice_id')).toBeInTheDocument();
   });
 });
 
-describe('AudioParamsPicker — when a slider writes', () => {
+describe('AudioSettingsPicker — when a slider writes', () => {
   /**
    * Give a slider a real box and stub pointer capture, neither of which jsdom
    * provides, so Radix can turn a pointer position into a value.
@@ -317,45 +338,47 @@ describe('AudioParamsPicker — when a slider writes', () => {
     // row shows this client's number over anything a collaborator stores.
     const onChange = vi.fn();
     const { rerender } = render(
-      <AudioParamsPicker model={MINIMAX} value={{ speed: 1, volume: 1 }} onChange={onChange} />,
+      <AudioSettingsPicker voice={NO_VOICE} model={MINIMAX} value={{ speed: 1, volume: 1 }} onChange={onChange} />,
     );
-    fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     const thumb = screen.getByRole('slider', { name: 'Speed' });
     fireEvent.keyDown(thumb, { key: 'ArrowRight' });
     fireEvent.keyUp(thumb, { key: 'ArrowRight' });
 
     rerender(
-      <AudioParamsPicker model={MINIMAX} value={{ speed: 0.8, volume: 1 }} onChange={onChange} />,
+      <AudioSettingsPicker voice={NO_VOICE} model={MINIMAX} value={{ speed: 0.8, volume: 1 }} onChange={onChange} />,
     );
     expect(screen.getByTestId('generate-audio-speed-value')).toHaveTextContent('0.80x');
   });
 });
 
-describe('AudioParamsPicker trigger carries the values, like the video panel', () => {
+describe('AudioSettingsPicker trigger carries the values, like the video panel', () => {
   it('prints what the params are set to, each in its own unit', () => {
     // VideoParamsPicker joins the declared values with a middot and prints
     // them on the trigger; the row reads as four pills each naming what it
     // holds.
     render(
-      <AudioParamsPicker
+      <AudioSettingsPicker
+        voice={NO_VOICE}
         model={ELEVENLABS}
         value={{ stability: 0.5, similarity: 0.75 }}
         onChange={() => {}}
       />,
     );
-    const trigger = screen.getByTestId('generate-audio-params-trigger');
+    const trigger = screen.getByTestId('generate-audio-settings-trigger');
     expect(trigger).toHaveTextContent('0.50 · 0.75');
   });
 
   it('prints MiniMax\'s pair in their own units', () => {
     render(
-      <AudioParamsPicker
+      <AudioSettingsPicker
+        voice={NO_VOICE}
         model={MINIMAX}
         value={{ speed: 1.25, volume: 0.5 }}
         onChange={() => {}}
       />,
     );
-    const trigger = screen.getByTestId('generate-audio-params-trigger');
+    const trigger = screen.getByTestId('generate-audio-settings-trigger');
     expect(trigger).toHaveTextContent('1.25x');
     expect(trigger).toHaveTextContent('0.50x');
   });
@@ -364,14 +387,117 @@ describe('AudioParamsPicker trigger carries the values, like the video panel', (
     // The three pills to its left carry bg-background. An unfilled control in
     // that row reads as a switch that is off, and these params are never off.
     render(
-      <AudioParamsPicker
+      <AudioSettingsPicker
+        voice={NO_VOICE}
         model={MINIMAX}
         value={{ speed: 1, volume: 1 }}
         onChange={() => {}}
       />,
     );
     expect(
-      screen.getByTestId('generate-audio-params-trigger').className,
+      screen.getByTestId('generate-audio-settings-trigger').className,
     ).toContain('bg-background');
+  });
+});
+
+describe('AudioSettingsPicker — a model that reads a dialogue (#2156, design §16)', () => {
+  const TAGS = ['en-US', 'ja-JP', 'fr-FR', 'de-DE', 'es-ES', 'it-IT', 'ko-KR', 'nl-NL', 'pl-PL'];
+  const GEMINI = model({
+    language: {
+      description: '',
+      label: 'Language',
+      fill: 'panel',
+      default: 'English (United States)',
+      values: TAGS.map((tag) => `lang ${tag}`).map((v, i) => (i === 0 ? 'English (United States)' : v)),
+      value_locales: TAGS,
+    },
+    speakers: {
+      description: '',
+      label: 'Speakers',
+      fill: 'panel',
+      default: null,
+      type: 'items',
+      min_items: 2,
+      max_items: 2,
+      replaces: 'voice_id',
+      fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+    },
+    voice_id: { description: '', default: 'Kore', remote_source: 'voices', fill: 'remote' },
+  });
+  const nameOf = (tag: string): string =>
+    new Intl.DisplayNames(['en'], { type: 'language' }).of(tag) ?? tag;
+
+  it('reads top to bottom as reading mode, language, voice', () => {
+    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{}} onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    const order = [
+      screen.getByTestId('generate-audio-reading-single'),
+      screen.getByTestId('generate-audio-row-language'),
+      screen.getByTestId('generate-audio-row-voice_id'),
+    ];
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(screen.queryByTestId('generate-audio-row-speakers')).toBeNull();
+  });
+
+  it('writes the dialogue switch, and shows the speakers in place of the voice', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{}} onChange={onChange} />,
+    );
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-reading-dialogue'));
+    expect(onChange).toHaveBeenCalledWith({ _stand_in_on: true });
+    rerender(
+      <AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{ _stand_in_on: true }} onChange={onChange} />,
+    );
+    expect(screen.getByTestId('generate-audio-row-speakers')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-audio-row-voice_id')).toBeNull();
+  });
+
+  it('names each language in the reader\'s language and picks one from a searchable list beside', () => {
+    const onChange = vi.fn();
+    render(<AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{}} onChange={onChange} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    expect(screen.getByTestId('generate-audio-row-language')).toHaveTextContent(nameOf('en-US'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-language'));
+    expect(screen.getByTestId('generate-audio-second-panel')).toHaveTextContent(nameOf('ja-JP'));
+    fireEvent.change(screen.getByTestId('generate-audio-option-language-search'), {
+      target: { value: nameOf('ja-JP').slice(0, 4) },
+    });
+    expect(screen.queryByText(nameOf('fr-FR'))).toBeNull();
+    fireEvent.click(screen.getByText(nameOf('ja-JP')));
+    expect(onChange).toHaveBeenCalledWith({ language: 'lang ja-JP' });
+    expect(screen.queryByTestId('generate-audio-second-panel')).toBeNull();
+    // The first panel stays: the reader may have more to set.
+    expect(screen.getByTestId('generate-audio-row-language')).toBeInTheDocument();
+  });
+
+  it('edits exactly two speakers, with nothing to add or remove', () => {
+    render(
+      <AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{ _stand_in_on: true }} onChange={() => {}} />,
+    );
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-speakers'));
+    expect(screen.getByTestId('generate-param-speakers-0-speaker')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-param-speakers-1-speaker')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-param-speakers-2-speaker')).toBeNull();
+    expect(screen.queryByTestId('generate-param-speakers-add')).toBeNull();
+    expect(screen.queryByTestId('generate-param-speakers-0-remove')).toBeNull();
+  });
+
+  it('caps the pill at 200px and prints the language beside the voice', () => {
+    render(
+      <AudioSettingsPicker
+        voice={{ ...NO_VOICE, selectedId: 'Kore', selectedName: 'Kore' }}
+        model={GEMINI}
+        value={{}}
+        onChange={() => {}}
+      />,
+    );
+    const trigger = screen.getByTestId('generate-audio-settings-trigger');
+    expect(trigger.className).toContain('max-w-[200px]');
+    expect(trigger).toHaveTextContent(`Kore · ${nameOf('en-US')}`);
   });
 });
