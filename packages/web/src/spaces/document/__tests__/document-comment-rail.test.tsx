@@ -1776,6 +1776,46 @@ describe('the comment panel', () => {
       ).toBeInTheDocument();
     });
 
+    it('says so when a peer presses Enter before its words in their line', async () => {
+      // The peer's editor writes the second half, words and all, as new
+      // letters in a new row; the reader's own selection comes back empty
+      // from the same change (y-prosemirror #204).
+      show('editor', ['one', 'alpha bravo charlie', 'three']);
+      const second = lineStarts()[1]!;
+      aimAt(second + 6, second + 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+
+      await peerPresses(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 3, 'Enter');
+
+      expect(lines()).toEqual(['one', 'alp', 'ha bravo charlie', 'three']);
+      expect(
+        await screen.findByTestId('doc-comment-draft-dropped'),
+      ).toBeInTheDocument();
+    });
+
+    it('stays on what is left when a peer deletes its last letter and undoes it', async () => {
+      // A peer's undo reaches the reader as new letters; Yjs follows undone
+      // deletions only in the document that did the undo (yjs#638).
+      show();
+      aimDraft(6, 11);
+      await screen.findByTestId('doc-comment-draft-card');
+      const peer = await peerEditor();
+      act(() => {
+        const view = peer.editor.prosemirrorView!;
+        const at = lineStarts(peer.editor.prosemirrorState)[0]! + 10;
+        view.dispatch(view.state.tr.delete(at, at + 1));
+      });
+      peer.undoManager.stopCapturing();
+
+      act(() => {
+        peer.undoManager.undo();
+      });
+
+      expect(lines()).toEqual(['alpha bravo charlie']);
+      expect(aimedWords()).toBe('brav');
+    });
+
     it('keeps a range when a peer deletes the same word before its words', async () => {
       // The peer's editor keeps the first "the " and deletes the second, the
       // one the start names; the start stands where that letter was.
