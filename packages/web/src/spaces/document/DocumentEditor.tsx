@@ -209,6 +209,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                 rail={rail}
                 myRole={myRole}
                 onClose={closeRail}
+                scroller={viewport}
               />
             )}
           </div>

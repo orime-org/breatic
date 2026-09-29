@@ -82,6 +82,8 @@ interface DocumentCommentRailProps {
   myRole: ProjectRole;
   /** Closes the panel, which only the reader ever does. */
   onClose: () => void;
+  /** The body's scroller, which the panel shares; null before it mounts. */
+  scroller: HTMLElement | null;
 }
 
 /** Which threads the panel is showing. */
@@ -115,6 +117,7 @@ type CardHandling = Omit<
  * @param root0.rail - The threads in panel order.
  * @param root0.myRole - This reader's role.
  * @param root0.onClose - Closes the panel.
+ * @param root0.scroller - The body's scroller, moved to show a new draft card.
  * @returns The panel.
  */
 export const DocumentCommentRail = React.memo(function DocumentCommentRail({
@@ -122,6 +125,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   rail,
   myRole,
   onClose,
+  scroller,
 }: DocumentCommentRailProps): React.JSX.Element {
   const t = useTranslation();
   const cards = useCommentCards(editor, rail);
@@ -383,6 +387,47 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
 
   const aside = React.useRef<HTMLElement>(null);
   const header = React.useRef<HTMLDivElement>(null);
+
+  // The body is moved just enough to show the draft card once it is placed:
+  // the card lands level with its words, which can sit under the header or
+  // above the screen, and its box took the focus without scrolling. Once per
+  // press of an entry, from where the card is going rather than where a move
+  // has carried it so far; after that the scroll is the reader's (design
+  // §9.4.0). Computed from the two rectangles, as `scrollTabToEdge` does.
+  const revealed = React.useRef<number | null>(null);
+  const draftEntry = draft?.kind === 'aimed' ? draft.entry : null;
+  const draftTop = anchors.has(DRAFT_THREAD_ID)
+    ? placed.get(DRAFT_THREAD_ID)
+    : undefined;
+  const draftHeight = heights.get(DRAFT_THREAD_ID);
+  const draftRead = reading === DRAFT_THREAD_ID;
+  React.useLayoutEffect(() => {
+    const top = column.current;
+    const bar = header.current;
+    if (
+      draftEntry === null ||
+      revealed.current === draftEntry ||
+      !draftRead ||
+      draftTop === undefined ||
+      draftHeight === undefined ||
+      scroller === null ||
+      top === null ||
+      bar === null
+    ) {
+      return;
+    }
+    revealed.current = draftEntry;
+    const cardTop = top.getBoundingClientRect().top + lifted + draftTop;
+    const clear = bar.getBoundingClientRect().bottom + CLEARANCE_BELOW_HEADER_PX;
+    const floor = scroller.getBoundingClientRect().bottom;
+    const by =
+      cardTop < clear
+        ? cardTop - clear
+        : Math.min(Math.max(cardTop + draftHeight - floor, 0), cardTop - clear);
+    if (by !== 0) {
+      scroller.scrollTo({ top: scroller.scrollTop + by, behavior: 'instant' });
+    }
+  }, [draftEntry, draftRead, draftTop, draftHeight, lifted, scroller]);
   /**
    * How far a pushed card, or the most hidden of them, reaches above the
    * header — from the layout, the one reading both the wheel and the focus
