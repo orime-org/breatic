@@ -170,12 +170,13 @@ export interface CanvasProposal {
 }
 
 /**
- * Which feeders a prompt may name, one entry per node wired in.
+ * Which feeders a prompt may name, in node order.
  *
  * `null` where the panel would not take a mention of that node. The place is
- * kept rather than dropped because the k-th mark is about the k-th node wired
- * in: compacted, every mark after the unmentionable one slides onto the node
- * next along.
+ * kept rather than dropped because the k-th mark is about the k-th entry:
+ * compacted, every mark after the unmentionable one slides onto the node next
+ * along. The upstream list leaves out the nodes that fill a required slot,
+ * which the reader picks in the panel.
  */
 export interface NameableFeederIndices {
   /** Indices of the empty nodes wired in, null where none can be mentioned. */
@@ -287,7 +288,7 @@ export function nameableFeeders(
     slotted.push(i);
   }
   /**
-   * One entry per node wired in, the index where it can be mentioned.
+   * One entry per node in the list, the index where it can be mentioned.
    * @param list - The feeders, in the order the nodes are listed.
    * @param can - Whether a mention is possible for this run at all.
    * @returns The same length, null where no mention can be written.

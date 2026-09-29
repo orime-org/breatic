@@ -454,9 +454,10 @@ function checkGenerateNode(
   const nodesAt = (list: readonly number[]): ProposalNode[] =>
     list.flatMap((i) => proposal.nodes[i] ?? []);
   // What each mark pointing upstream lands on, in the order the marks appear.
-  // The k-th mark is about the k-th node wired in, so the pairing is settled
-  // once here and read the same way by the gate below, the length it is
-  // measured at, and the nodes a refusal names. Asked of the whole list of
+  // The k-th mark is about the k-th node wired in past the ones that fill a
+  // required slot, so the pairing is settled once here and read the same way
+  // by the gate below, the length it is measured at, and the nodes a refusal
+  // names. Asked of the whole list of
   // feeders instead, each of those three answers a different question from
   // the one the canvas will act on.
   //

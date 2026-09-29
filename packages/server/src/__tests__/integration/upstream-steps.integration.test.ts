@@ -220,10 +220,9 @@ describe("task_upstream_steps", () => {
     expect(row).toMatchObject({ status: "failed", output: { description: "a cat", error: "audio too short" } });
   });
 
-  // Design 15.1: a task that fails for good -- retries run out, the whole task
-  // timed out -- leaves no step pending or submitted. The task's verdict is
-  // written once, and the steps follow it there.
-  it("fails the steps a finished run leaves open, and keeps the ones that finished", async () => {
+  // Design 15.1: finishFailedRun calls this once the run settles; a done step
+  // keeps its state and the open ones take the reason.
+  it("fails the open steps with the reason and keeps the finished ones", async () => {
     const { userId } = await seedStudio();
     const taskId = await seedTask(userId);
     const [done, submitted, pending] = await upstreamStepRepo.ensureSteps(taskId, PLAN);

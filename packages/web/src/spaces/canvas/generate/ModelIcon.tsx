@@ -12,8 +12,8 @@ import * as React from 'react';
  * instead (`qwen`, `sonilo`, `omnivoice`, `vocal-isolator`, `infinitetalk`,
  * `rife`). ByteDance's Seed models all carry `seedream`.
  *
- * Every model the catalog declares names one of these, and every one of these
- * is named by a model: there is deliberately NO generic "unknown model"
+ * Every model a picker offers names one of these, and every one of these is
+ * named by such a model: there is deliberately NO generic "unknown model"
  * fallback (user 2026-07-09), and `ModelIcon.test.tsx` walks the yaml both
  * ways.
  */
