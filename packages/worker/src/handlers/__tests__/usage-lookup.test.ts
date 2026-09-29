@@ -47,6 +47,7 @@ const DATA: UsageLookupJob = {
   actorUserId: "u-1",
   projectId: "p-1",
   description: "Agent chat",
+  charge: true,
 };
 
 const TOKENS = { input: 100, cachedInput: 40, output: 20, reasoning: 5 };
@@ -106,6 +107,16 @@ describe("looking up an OpenRouter call whose cost was not in hand", () => {
       "turn:c1:4:gen:gen-9",
       expect.objectContaining({ projectId: "p-1", actorUserId: "u-1", amount: 3 }),
     );
+  });
+
+  it("records a call of a run that is not charged, and charges nothing", async () => {
+    lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
+    const job = { data: { ...DATA, charge: false }, attemptsMade: 0, opts: { attempts: 3 } } as unknown as Job<UsageLookupJob>;
+
+    await runUsageLookup(job, recorderIntoRows);
+
+    expect(rows).toEqual([expect.objectContaining({ costUsd: 0.03, costSource: "generation_lookup" })]);
+    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
   });
 
   it("asks again later while OpenRouter has no answer yet", async () => {

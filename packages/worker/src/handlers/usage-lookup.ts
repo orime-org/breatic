@@ -58,7 +58,7 @@ export async function runUsageLookup(
   });
   usage.recordLookedUpCall({ source: data.source, model: data.model, costUsd, tokens: answer?.tokens });
   const amount = await usage.settle();
-  if (amount === 0) return;
+  if (amount === 0 || !data.charge) return;
 
   // The row is written; a retry would write a second one. A charge that
   // fails is logged for reconciliation, the way a turn's own charge is.

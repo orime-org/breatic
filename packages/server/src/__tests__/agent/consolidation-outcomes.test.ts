@@ -377,7 +377,7 @@ describe("a consolidation that works", () => {
     expect(mocks.handOffLookups).toHaveBeenCalledWith(
       ["gen-5"],
       operation,
-      expect.objectContaining({ description: "Memory consolidation" }),
+      expect.objectContaining({ description: "Memory consolidation", charge: true }),
     );
     // A call waiting for its lookup settles to nothing now; it is charged later.
     expect(chargeOnceForGeneration).not.toHaveBeenCalled();

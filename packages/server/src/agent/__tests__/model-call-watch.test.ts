@@ -24,6 +24,7 @@ const USAGE = {
 
 const OPERATION = { operationKey: "turn:c1:2", feature: "chat_turn" as const, actorUserId: "u-1", projectId: "p-1" };
 const CALL = { model: "google/gemini-2.5-flash", description: "Agent chat" };
+const HANDED_OFF = { ...CALL, charge: true };
 
 /**
  * A recorder that keeps the model calls it was told about.
@@ -86,7 +87,7 @@ describe("watching a stream's model calls", () => {
 
     await watch.handOff();
 
-    expect(handOffLookups).toHaveBeenCalledWith(["gen-8", "gen-9"], OPERATION, CALL);
+    expect(handOffLookups).toHaveBeenCalledWith(["gen-8", "gen-9"], OPERATION, HANDED_OFF);
   });
 
   it("does not hand off a call that ended, when its last chunk arrives afterwards", async () => {
@@ -97,7 +98,7 @@ describe("watching a stream's model calls", () => {
 
     await watch.handOff();
 
-    expect(handOffLookups).toHaveBeenCalledWith([], OPERATION, CALL);
+    expect(handOffLookups).toHaveBeenCalledWith([], OPERATION, HANDED_OFF);
   });
 
   it("hands off nothing for a model reached directly", async () => {
@@ -121,6 +122,6 @@ describe("watching a stream's model calls", () => {
 
     await watch.handOff();
 
-    expect(handOffLookups).toHaveBeenCalledWith([], OPERATION, CALL);
+    expect(handOffLookups).toHaveBeenCalledWith([], OPERATION, HANDED_OFF);
   });
 });

@@ -165,6 +165,22 @@ describe("the usage recorder", () => {
     expect(recorder.awaitingLookup()).toEqual(["gen-1"]);
   });
 
+  it("records an OpenRouter call with no cost and no generation id as missing, and keeps nothing for the lookup", async () => {
+    const { recorder, rows, missing } = recorderWithRows();
+    recorder.recordModelCall({
+      source: "model",
+      model: "google/gemini-2.5-flash",
+      provider: "openrouter",
+      usage: USAGE,
+      providerMetadata: undefined,
+      generationId: "aitxt-1",
+    });
+    await recorder.settle();
+    expect(rows[0]).toMatchObject({ costSource: "missing" });
+    expect(missing).toEqual([rows[0]]);
+    expect(recorder.awaitingLookup()).toEqual([]);
+  });
+
   it("records an OpenRouter model call that reported its cost, and keeps nothing for the lookup", async () => {
     const { recorder, rows } = recorderWithRows();
     recorder.recordModelCall({

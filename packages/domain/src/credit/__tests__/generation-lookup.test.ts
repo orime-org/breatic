@@ -66,17 +66,17 @@ describe("handing calls to the later lookup", () => {
   const operation = { operationKey: "turn:c1:2", feature: "chat_turn" as const, actorUserId: "u-1", projectId: "p-1" };
 
   it("queues one delayed job per generation, keyed by its id", async () => {
-    await handOffLookups(["gen-1", "gen-2"], operation, { model: "google/gemini-2.5-flash", description: "Agent chat" });
+    await handOffLookups(["gen-1", "gen-2"], operation, { model: "google/gemini-2.5-flash", description: "Agent chat", charge: true });
     expect(queueAdd).toHaveBeenCalledTimes(2);
     expect(queueAdd).toHaveBeenCalledWith(
       "lookup",
-      { ...operation, generationId: "gen-1", model: "google/gemini-2.5-flash", source: "model", description: "Agent chat" },
+      { ...operation, generationId: "gen-1", model: "google/gemini-2.5-flash", source: "model", description: "Agent chat", charge: true },
       expect.objectContaining({ jobId: "gen-1", delay: 30_000, attempts: 6 }),
     );
   });
 
   it("queues nothing when there is nothing to look up", async () => {
-    await handOffLookups([], operation, { model: "google/gemini-2.5-flash", description: "Agent chat" });
+    await handOffLookups([], operation, { model: "google/gemini-2.5-flash", description: "Agent chat", charge: true });
     expect(queueAdd).not.toHaveBeenCalled();
   });
 });

@@ -477,7 +477,8 @@ async function runTaskBody(
   /**
    * A recorder for one of the two agent-run paths (#296). A retried job opens
    * a fresh one under the same key: each attempt's calls were paid for, and
-   * the task is charged once, by `markCompletedAndBill`.
+   * the task is charged once, by `markCompletedAndBill`, plus a separate
+   * charge for each call of the successful attempt that is looked up later.
    * @param feature - Which path this task runs.
    * @returns The recorder.
    */
@@ -1634,12 +1635,12 @@ export async function runSkillAgent(
     await usage.settle().catch((recordErr: unknown) =>
       logger.error({ err: recordErr }, "agent_usage_record_failed"),
     );
-    await handOff(usage, agentConfig.modelId, skillName);
+    await handOff(usage, agentConfig.modelId, skillName, false);
     throw err;
   }
 
   const credits = await usage.settle();
-  await handOff(usage, agentConfig.modelId, skillName);
+  await handOff(usage, agentConfig.modelId, skillName, true);
   return [result.text || "Task completed.", [skillName], credits];
 }
 
@@ -1649,12 +1650,14 @@ export async function runSkillAgent(
  * @param usage - The run's recorder.
  * @param model - The model the run called.
  * @param skillName - The skill it ran, for the ledger row.
+ * @param charge - Whether the run is charged; a failed run is recorded only.
  * @returns Nothing once the calls are queued or the failure is logged.
  */
-async function handOff(usage: UsageRecorder, model: string, skillName: string): Promise<void> {
+async function handOff(usage: UsageRecorder, model: string, skillName: string, charge: boolean): Promise<void> {
   await handOffLookups(usage.awaitingLookup(), usage.operation, {
     model,
     description: `Skill: ${skillName}`,
+    charge,
   }).catch((err: unknown) => logger.error({ err, skillName }, "usage_lookup_enqueue_failed"));
 }
 

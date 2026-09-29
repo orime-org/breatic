@@ -16,7 +16,16 @@
 export function generationIdOf(rawValue: unknown): string | undefined {
   if (typeof rawValue !== "object" || rawValue === null) return undefined;
   const id = (rawValue as { id?: unknown }).id;
-  return typeof id === "string" && id.startsWith("gen-") ? id : undefined;
+  return isGenerationId(id) ? id : undefined;
+}
+
+/**
+ * Whether a value is an OpenRouter generation id.
+ * @param id - The value.
+ * @returns True for a `gen-` id.
+ */
+export function isGenerationId(id: unknown): id is string {
+  return typeof id === "string" && id.startsWith("gen-");
 }
 
 /** Which model call of a stream has started and not ended. */

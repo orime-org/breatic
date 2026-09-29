@@ -11,7 +11,14 @@
  * which the SDK passes to `onChunk` only when asked for.
  */
 
-import { handOffLookups, resolveProvider, trackOpenGeneration, type ModelCallUsage, type UsageRecorder } from "@breatic/domain";
+import {
+  handOffLookups,
+  isGenerationId,
+  resolveProvider,
+  trackOpenGeneration,
+  type ModelCallUsage,
+  type UsageRecorder,
+} from "@breatic/domain";
 
 /** What a model call's end event carries, as far as this reads it. */
 export interface ModelCallEnd {
@@ -57,7 +64,7 @@ export function watchModelCalls(
     callEnded(event) {
       // A stream whose first chunk is an in-band error never passes the id on
       // to the SDK, and the end event carries the SDK's own id instead.
-      const generationId = event.responseId.startsWith("gen-") ? event.responseId : open.pending();
+      const generationId = isGenerationId(event.responseId) ? event.responseId : open.pending();
       open.ended(event.responseId);
       usage.recordModelCall({
         source: "model",
@@ -72,7 +79,7 @@ export function watchModelCalls(
       if (provider !== "openrouter") return;
       const cutOff = open.pending();
       const ids = cutOff === undefined ? usage.awaitingLookup() : [...usage.awaitingLookup(), cutOff];
-      await handOffLookups(ids, usage.operation, call);
+      await handOffLookups(ids, usage.operation, { ...call, charge: true });
     },
   };
 }

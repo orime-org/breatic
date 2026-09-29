@@ -31,7 +31,10 @@ import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/
 // here would let all three drift from it while the suite stayed green.
 import { UNDERSTAND_PINS as REAL_UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
 // Real: the tracker is pure, and what a turn hands off depends on it.
-import { trackOpenGeneration as realTrackOpenGeneration } from "../../../../domain/src/credit/open-generation.js";
+import {
+  isGenerationId as realIsGenerationId,
+  trackOpenGeneration as realTrackOpenGeneration,
+} from "../../../../domain/src/credit/open-generation.js";
 
 const mockPipeline = {
   zremrangebyscore: () => mockPipeline,
@@ -547,6 +550,7 @@ function usageRecorderDouble(options: {
 export const domainMock = () => ({
   createUsageRecorder: vi.fn(usageRecorderDouble),
   trackOpenGeneration: realTrackOpenGeneration,
+  isGenerationId: realIsGenerationId,
   handOffLookups: mocks.handOffLookups,
   // The same shape as the real one: every tool in the set gets the recorder.
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>

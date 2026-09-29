@@ -14,6 +14,7 @@
 
 import { env, getUsagePricing, type UsagePricing } from "@breatic/core";
 import { insertUsageRecord } from "@domain/credit/agentUsage.repo.js";
+import { isGenerationId } from "@domain/credit/open-generation.js";
 import {
   costOfModelCall,
   creditsForUsd,
@@ -194,7 +195,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
     recordModelCall(call) {
       if (
         call.provider === "openrouter" &&
-        call.generationId?.startsWith("gen-") === true &&
+        isGenerationId(call.generationId) &&
         openRouterCost(call.providerMetadata) === undefined
       ) {
         lookups.add(call.generationId);

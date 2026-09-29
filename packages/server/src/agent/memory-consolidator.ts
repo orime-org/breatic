@@ -194,6 +194,7 @@ async function bill(input: ConsolidationBill): Promise<void> {
     await handOffLookups(usage.awaitingLookup(), usage.operation, {
       model,
       description: "Memory consolidation",
+      charge: true,
     }).catch((err: unknown) =>
       logger.error({ err, userId, conversationId, watermarkBefore }, "usage_lookup_enqueue_failed"),
     );

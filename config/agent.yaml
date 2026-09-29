@@ -157,8 +157,8 @@ understand_media_call_timeout_ms: 180000
 # 285-395 ms once connected, and 1181 ms on the first call of a process.
 judge_likelihood_timeout_ms: 10000
 
-# How long after an interrupted OpenRouter call its cost is first looked up,
-# in milliseconds. OpenRouter keeps generating for providers that cannot be
+# How long after an OpenRouter call whose cost was not in hand (cut off, or
+# ended without one) its cost is first looked up, in milliseconds. OpenRouter keeps generating for providers that cannot be
 # cancelled and bills the whole response, so the cost is settled only once
 # the generation is over. Retries back off exponentially from this figure.
 usage_lookup_delay_ms: 30000

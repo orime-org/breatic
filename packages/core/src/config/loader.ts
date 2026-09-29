@@ -293,8 +293,8 @@ const agentConfigSchema = z.object({
    */
   understand_media_max_output_tokens: z.number().int().min(1024).max(32768).default(8192),
   /**
-   * How long after an interrupted OpenRouter call its cost is first looked
-   * up, in milliseconds (#296). OpenRouter keeps generating for providers
+   * How long after an OpenRouter call whose cost was not in hand (cut off, or
+   * ended without one) its cost is first looked up, in milliseconds (#296). OpenRouter keeps generating for providers
    * that cannot be cancelled, so the cost is settled only once it is done.
    */
   usage_lookup_delay_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(30_000),

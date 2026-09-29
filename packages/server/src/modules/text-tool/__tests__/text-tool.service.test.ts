@@ -46,7 +46,7 @@ const recorders = vi.hoisted(() => ({ opened: [] as unknown[], calls: [] as unkn
 
 vi.mock("@breatic/domain", async () => ({
   // Real: the tracker is pure, and what the run hands off depends on it.
-  trackOpenGeneration: (await import("../../../../../domain/src/credit/open-generation.js")).trackOpenGeneration,
+  ...(await import("../../../../../domain/src/credit/open-generation.js")),
   handOffLookups,
   getModel: () => ({}),
   // The model call reports its usage as its response arrives, the way the SDK
@@ -248,7 +248,7 @@ describe("a run cut off before the model reported its cost", () => {
     expect(handOffLookups).toHaveBeenCalledWith(
       ["gen-42"],
       { operationKey: "texttool:key-1", feature: "text_tool", actorUserId: "u-1", projectId: null },
-      { model: "openai/gpt-4o-mini", description: "Text tool: generate" },
+      { model: "openai/gpt-4o-mini", description: "Text tool: generate", charge: true },
     );
   });
 

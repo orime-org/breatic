@@ -178,10 +178,12 @@ describe("runSkillAgent", () => {
     expect(handOffLookups).toHaveBeenCalledWith(["gen-3"], usage.operation, {
       model: "vendor/from-the-factory",
       description: "Skill: creative_research",
+      charge: true,
     });
   });
 
-  it("hands them off from a run that failed too", async () => {
+  // A failed task is not charged, so the calls it hands off are recorded only.
+  it("hands them off from a run that failed too, uncharged", async () => {
     const usage = recorder();
     usage.awaitingLookup.mockReturnValue(["gen-3"]);
     generateTextRetry.mockRejectedValueOnce(new Error("provider down"));
@@ -189,7 +191,7 @@ describe("runSkillAgent", () => {
 
     await expect(runSkillAgent("creative_research", {}, usage)).rejects.toThrow("provider down");
 
-    expect(handOffLookups).toHaveBeenCalledWith(["gen-3"], usage.operation, expect.anything());
+    expect(handOffLookups).toHaveBeenCalledWith(["gen-3"], usage.operation, expect.objectContaining({ charge: false }));
   });
 
   it("hands every tool the task's recorder", async () => {

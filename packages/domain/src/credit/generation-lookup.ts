@@ -35,6 +35,8 @@ export interface UsageLookupJob {
   projectId: string | null;
   /** What the ledger row says the charge was for. */
   description: string;
+  /** Whether the operation is charged; a failed worker task is recorded only. */
+  charge: boolean;
 }
 
 /** What OpenRouter answers about a generation. */
@@ -119,17 +121,18 @@ async function enqueueUsageLookup(job: UsageLookupJob): Promise<void> {
  * Queue the later lookup of each call an operation could not price.
  * @param generationIds - The calls, by generation id.
  * @param operation - The operation they belong to.
- * @param call - The model they called, and what a ledger row says the charge was for.
+ * @param call - The model they called, what a ledger row says the charge was for, and whether it is charged.
  * @param call.model - The model id.
  * @param call.description - What the ledger row says the charge was for.
+ * @param call.charge - Whether the operation is charged.
  * @returns Nothing once every job is queued.
  */
 export async function handOffLookups(
   generationIds: readonly string[],
   operation: RecordedOperation,
-  call: { model: string; description: string },
+  call: { model: string; description: string; charge: boolean },
 ): Promise<void> {
   for (const generationId of generationIds) {
-    await enqueueUsageLookup({ ...operation, generationId, model: call.model, source: "model", description: call.description });
+    await enqueueUsageLookup({ ...operation, ...call, generationId, source: "model" });
   }
 }
