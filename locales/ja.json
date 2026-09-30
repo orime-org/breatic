@@ -57,8 +57,7 @@
       "cannot_change_admin_role": "Admin ロールは譲渡によってのみ変更できます。",
       "member_limit_reached": "{limit, plural, =0 {この Studio のプランではメンバーを追加できません。アップグレードすると追加できます。} other {この Studio のプランのメンバーは最大 # 人です。アップグレードするとさらに追加できます。}}",
       "member_limit_reached_for_invitee": "この Studio のメンバー枠は満員です。Admin に空きを作ってもらってください。",
-      "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
-      "avatar_unsupported_type": "このファイルは画像として読み取れませんでした。別の画像をお試しください。"
+      "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。"
     },
     "project": {
       "join_already_member": "すでにこの Project のメンバーです。",

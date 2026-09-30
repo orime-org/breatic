@@ -57,8 +57,7 @@
       "cannot_change_admin_role": "The admin role can only be changed by transferring it.",
       "member_limit_reached": "{limit, plural, =0 {This studio's plan does not allow adding members. Upgrade to add some.} one {This studio's plan allows 1 member. Upgrade to add more.} other {This studio's plan allows up to # members. Upgrade to add more.}}",
       "member_limit_reached_for_invitee": "This studio is full. Ask its Admin to make room.",
-      "leave_last_admin": "Transfer the admin role before leaving this Studio.",
-      "avatar_unsupported_type": "That file could not be read as an image. Try a different picture."
+      "leave_last_admin": "Transfer the admin role before leaving this Studio."
     },
     "project": {
       "join_already_member": "You're already a member of this project.",

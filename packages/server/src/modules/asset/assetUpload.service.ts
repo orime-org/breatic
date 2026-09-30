@@ -23,6 +23,7 @@ import {
   emitNodeTaskCounts,
   nodeHistoryService,
   nodeTaskService,
+  type uploadGrantService,
 } from "@breatic/domain";
 import { getStreamRedis, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
@@ -63,18 +64,23 @@ export interface DedupHit {
  * (content claim not trusted) so the caller falls through to a real upload.
  * @param params - The dedup claim.
  * @param params.projectId - Project the upload targets; it alone decides the
- *   studio whose content is searched.
+ *   studio whose content is searched. Absent when the upload names a studio.
+ * @param params.studioId - Studio searched when there is no project.
  * @param params.contentHash - Client-computed sha256 hex.
  * @param params.sizeBytes - Client-declared file size.
  * @returns The hit to reuse, or null (no row / size mismatch).
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  */
-export async function checkUploadDedup(params: {
-  projectId: string;
-  contentHash: string;
-  sizeBytes: number;
-}): Promise<DedupHit | null> {
-  const studioId = await assetService.resolveOwnerStudioId(params.projectId);
+export async function checkUploadDedup(
+  params: uploadGrantService.UploadTarget & {
+    contentHash: string;
+    sizeBytes: number;
+  },
+): Promise<DedupHit | null> {
+  const studioId =
+    params.projectId !== undefined
+      ? await assetService.resolveOwnerStudioId(params.projectId)
+      : params.studioId;
   const existing = await assetRepo.findByStudioAndHash(
     studioId,
     params.contentHash,

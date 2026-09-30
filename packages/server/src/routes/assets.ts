@@ -29,7 +29,9 @@ import {
 import {
   assetService,
   ingestReportService,
+  studioAuthService,
   uploadTicketService,
+  type uploadGrantService,
 } from "@breatic/domain";
 import { downloadLink } from "@server/modules/asset/download-link.js";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
@@ -40,6 +42,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
   assertStorageAllowance,
+  assertStudioStorageAllowance,
   assetUploadService,
   projectService,
 } from "@server/modules";
@@ -156,7 +159,15 @@ const uploadTicketSchema = z.object({
     .max(100)
     .transform(reduceMediaType)
     .refine(isUploadableMediaType, "content_type is not an uploadable kind"),
-  project_id: z.string().uuid(),
+  /** Where the bytes land: a project, or — for its avatar — a studio. */
+  project_id: z.string().uuid().optional(),
+  studio_id: z.string().uuid().optional(),
+  /**
+   * What the picture is being uploaded to become. Filed as the asset's
+   * source; it grants nothing, since what makes a picture a cover or an avatar
+   * is the call that points at it afterwards.
+   */
+  purpose: z.enum(["project_cover", "studio_avatar"]).optional(),
   /** Declared byte size — the authoritative upload-cap gate input. */
   size: z.coerce.number().int().positive(),
   /**
@@ -177,6 +188,17 @@ const uploadTicketSchema = z.object({
   source: z.enum(["mini_tool"]).optional(),
   tool_name: z.string().max(100).optional(),
   derived: z.boolean().optional(),
+}).superRefine((v, ctx) => {
+  // A project upload, or a studio's avatar — one target, and the avatar is
+  // the only thing a studio uploads on its own account.
+  const ok =
+    v.project_id !== undefined
+      ? v.studio_id === undefined && v.purpose !== "studio_avatar"
+      : v.studio_id !== undefined &&
+        v.purpose === "studio_avatar" &&
+        v.node_id === undefined &&
+        v.space_id === undefined;
+  if (!ok) ctx.addIssue({ code: "custom", message: "invalid upload target" });
 });
 
 /**
@@ -199,8 +221,17 @@ assets.post(
     const user = c.get("user");
     const body = c.req.valid("json");
 
-    // Upload is a write — edit-or-above can ask for a ticket.
-    await projectService.assertAccess(body.project_id, user.id, "editor");
+    // Upload is a write — edit-or-above can ask for a ticket. A studio's own
+    // picture is its admin's to change.
+    const uploadTarget: uploadGrantService.UploadTarget =
+      body.project_id !== undefined
+        ? { projectId: body.project_id }
+        : { studioId: body.studio_id as string };
+    if (uploadTarget.projectId !== undefined) {
+      await projectService.assertAccess(uploadTarget.projectId, user.id, "editor");
+    } else {
+      await studioAuthService.assertStudioRole(user.id, uploadTarget.studioId, "admin");
+    }
 
     const { upload, ingest } = getStorageConfig();
     if (body.size > upload.max_upload_bytes) {
@@ -217,7 +248,7 @@ assets.post(
     // Dedup: the owner studio already holding this content (with a matching
     // size) skips the upload entirely — no key, no grant, no ticket.
     const dedupHit = await assetUploadService.checkUploadDedup({
-      projectId: body.project_id,
+      ...uploadTarget,
       contentHash: body.client_hash,
       sizeBytes: body.size,
     });
@@ -230,22 +261,27 @@ assets.post(
       // before: it gets its history row, and a task row opened and settled in
       // the same pass.
       // The project activity feed gets nothing, because its only shape for
-      // this is `asset:uploaded` and nothing was uploaded.
-      await assetUploadService.settleDedupHit({
-        projectId: body.project_id,
-        hit: dedupHit,
-        userId: user.id,
-        metadata: {
-          filename: body.filename,
-          size: body.size,
-          mimeType: body.content_type,
-        },
-        nodeId: body.node_id,
-        spaceId: body.space_id,
-      });
+      // this is `asset:uploaded` and nothing was uploaded. A studio's avatar
+      // has no project and no node, so there is nothing to settle.
+      if (uploadTarget.projectId !== undefined) {
+        await assetUploadService.settleDedupHit({
+          projectId: uploadTarget.projectId,
+          hit: dedupHit,
+          userId: user.id,
+          metadata: {
+            filename: body.filename,
+            size: body.size,
+            mimeType: body.content_type,
+          },
+          nodeId: body.node_id,
+          spaceId: body.space_id,
+        });
+      }
       return c.json({
         data: {
           alreadyExists: true,
+          // The row a cover or an avatar is then pointed at.
+          assetId: dedupHit.assetId,
           fileUrl: dedupHit.fileUrl,
           kind: dedupHit.kind,
         },
@@ -253,7 +289,11 @@ assets.post(
     }
 
     // Storage gate, after the dedup return: that path consumes nothing.
-    await assertStorageAllowance(body.project_id, "upload");
+    if (uploadTarget.projectId !== undefined) {
+      await assertStorageAllowance(uploadTarget.projectId, "upload");
+    } else {
+      await assertStudioStorageAllowance(uploadTarget.studioId, "upload");
+    }
 
     // Both settings have to be present before a byte is authorised. Without
     // the secret the Worker would reject every ticket we sign; without the
@@ -287,7 +327,7 @@ assets.post(
     // this node's task list is what judges it against the clock.
     const { key, studioId, taskId } = await openUpload(
       {
-        projectId: body.project_id,
+        ...uploadTarget,
         actingUserId: user.id,
         declaredSize: body.size,
         taskType: kind,
@@ -298,8 +338,11 @@ assets.post(
           spaceId: body.space_id ?? null,
           source: body.source ?? null,
           toolName: body.tool_name ?? null,
-          derived: body.derived ?? null,
+          // A cover is a byproduct: in the ledger, and not announced on the
+          // project feed as something uploaded to the canvas.
+          derived: body.purpose === "project_cover" ? true : (body.derived ?? null),
           filename: body.filename,
+          assetSource: body.purpose ?? null,
         },
       },
       {

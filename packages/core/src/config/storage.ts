@@ -4,8 +4,8 @@
 /**
  * Storage YAML configuration loader.
  *
- * Reads `config/storage.yaml`: the browser-side upload knobs, the figures
- * the ingest Worker runs on, and the studio-avatar byte cap.
+ * Reads `config/storage.yaml`: the browser-side upload knobs and the figures
+ * the ingest Worker runs on.
  */
 
 import { readFileSync } from "node:fs";
@@ -29,23 +29,16 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
  * z.object({ … }).default({})  .parse({})  ->  { }
  * ```
  *
- * Repeating the numbers in a section-level `default` is what this replaces,
- * and it had already gone wrong once: `avatar.max_bytes` said 2 MiB at its key
- * and 1 MiB in its section for a while. Nothing failed — the shipped yaml
- * always supplies a value, and no deployment reaches these defaults
- * (`config/storage.yaml` is tracked, the Dockerfile copies the whole `config/`
- * directory, compose mounts nothing over it, and the path is derived from the
- * filesystem with no env override) — so the disagreement simply sat there.
- *
- * The failure mode that repetition invites is worse than disagreement: a
+ * Repeating the numbers in a section-level `default` invites two failures.
+ * The two copies drift apart, and nothing notices, because the shipped yaml
+ * always supplies a value (`config/storage.yaml` is tracked, the Dockerfile
+ * copies the whole `config/` directory, compose mounts nothing over it, and
+ * the path is derived from the filesystem with no env override). Worse, a
  * section-level default that OMITS a key yields `undefined` at runtime for a
- * property typed `number`, because that object is never parsed. For
- * `avatar.max_bytes` that reaches `readBoundedBody(c, undefined)`, whose
- * `length > maxBytes` comparisons are then false for every input — the byte
- * cap disappears while the type still says it is there. `prefault` removes the
- * place that mistake could be made.
+ * property typed `number`, because that object is never parsed. `prefault`
+ * removes the place either mistake could be made.
  *
- * A section written as a bare `avatar:` key is YAML null, which is rejected
+ * A section written as a bare `upload:` key is YAML null, which is rejected
  * rather than defaulted, under either spelling. Commenting a section's body
  * out is a config error here, not a fallback.
  *
@@ -122,21 +115,6 @@ export const storageConfigSchema = z
        * this sits under it and our own timer is the one that fires.
        */
       url_fetch_deadline_ms: z.number().int().positive().default(290_000),
-    })
-    .prefault({}),
-
-  avatar: z
-    .object({
-      /**
-       * Hard cap on an avatar upload, in bytes. Unlike a project asset, an
-       * avatar arrives THROUGH the server (it never goes near the Worker), so
-       * this bound is also the bound on what the process buffers for one
-       * request — and it is the only thing the server measures about the
-       * picture, which is not the same as the only thing it checks: the bytes
-       * are also sniffed to decide the stored extension, and a signature with
-       * no entry in that table is refused.
-       */
-      max_bytes: z.number().int().positive().default(2097152),
     })
     .prefault({}),
   })

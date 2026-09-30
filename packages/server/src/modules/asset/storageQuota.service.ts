@@ -79,6 +79,21 @@ export async function assertStorageAllowance(
   purpose: StorageWritePurpose,
 ): Promise<void> {
   const studioId = await assetService.resolveOwnerStudioId(projectId);
+  await assertStudioStorageAllowance(studioId, purpose);
+}
+
+/**
+ * The same gate for a write that belongs to a studio rather than to one of its
+ * projects — the studio's avatar.
+ * @param studioId - The studio whose pool the bytes land in; its current admin
+ *   is the account judged.
+ * @param purpose - Upload or generate; only picks the wording of the refusal.
+ * @throws {AppError} 507 when the account has no storage left.
+ */
+export async function assertStudioStorageAllowance(
+  studioId: string,
+  purpose: StorageWritePurpose,
+): Promise<void> {
   const { adminUserId, storageBytes } = await getStudioStorageQuota(studioId);
 
   // No ceiling to be over: the enterprise tier's capacity is agreed in a
@@ -94,7 +109,7 @@ export async function assertStorageAllowance(
     // whoever is on call, and silencing it would leave "how often did this
     // gate fire today, and for whom" with no answer after the first hit.
     logger.info(
-      { projectId, studioId, adminUserId, storageBytes, usedBytes, purpose },
+      { studioId, adminUserId, storageBytes, usedBytes, purpose },
       "storage_quota_exceeded",
     );
     await tellTheAdmin(adminUserId, studioId);

@@ -487,6 +487,29 @@ describe("PUT /studio/:slug/avatar", () => {
     expect(rows[0]!.avatar_url).toBeNull();
   });
 
+  it("clears the avatar for the admin and refuses anyone below", async () => {
+    const admin = await seedUser();
+    const maintainer = await seedUser();
+    const { studioId, slug, projectId } = await seedStudio(admin.userId);
+    await addMember(studioId, projectId, maintainer.userId, "maintainer", null);
+    const asset = await seedAsset(studioId, admin.userId);
+    await call(admin.cookie, "PUT", `/studio/${slug}/avatar`, { asset_id: asset.id });
+
+    const refused = await call(maintainer.cookie, "DELETE", `/studio/${slug}/avatar`);
+    const cleared = await call(admin.cookie, "DELETE", `/studio/${slug}/avatar`);
+
+    expect(refused.status).toBe(403);
+    expect(cleared.status).toBe(200);
+    const rows = await sql<{ avatar_url: string | null }[]>`
+      SELECT avatar_url FROM studios WHERE id = ${studioId}
+    `;
+    expect(rows[0]!.avatar_url).toBeNull();
+    const kept = await sql<{ deleted_at: Date | null }[]>`
+      SELECT deleted_at FROM studio_assets WHERE id = ${asset.id}
+    `;
+    expect(kept[0]!.deleted_at).toBeNull();
+  });
+
   it("no longer takes the picture's bytes directly", async () => {
     const admin = await seedUser();
     const { slug } = await seedStudio(admin.userId);
