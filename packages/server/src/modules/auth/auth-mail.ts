@@ -35,14 +35,13 @@ export interface PasswordResetMailInput {
  * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildPasswordResetMail(input: PasswordResetMailInput): Promise<RenderedMail> {
-  const section = "server.mail.password_reset";
   return renderMail(input.locale, {
     to: input.to,
-    subject: { key: `${section}.subject` },
-    body: [{ key: `${section}.lead` }],
-    action: { label: { key: `${section}.action` }, href: input.url },
+    subject: { key: "server.mail.password_reset.subject" },
+    body: [{ key: "server.mail.password_reset.lead" }],
+    action: { label: { key: "server.mail.password_reset.action" }, href: input.url },
     note: {
-      key: `${section}.footer`,
+      key: "server.mail.password_reset.footer",
       params: { hours: Math.round(input.expiresInSeconds / SECONDS_PER_HOUR) },
     },
   });
@@ -73,14 +72,13 @@ export interface SignupCodeMailInput {
  * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildSignupCodeMail(input: SignupCodeMailInput): Promise<RenderedMail> {
-  const section = "server.mail.signup_code";
   return renderMail(input.locale, {
     to: input.to,
-    subject: { key: `${section}.subject` },
-    body: [{ key: `${section}.lead` }],
+    subject: { key: "server.mail.signup_code.subject" },
+    body: [{ key: "server.mail.signup_code.lead" }],
     details: { html: `<div style="${CODE_BLOCK_STYLE}">${input.code}</div>`, text: input.code },
     note: {
-      key: `${section}.footer`,
+      key: "server.mail.signup_code.footer",
       params: { minutes: Math.round(input.expiresInSeconds / SECONDS_PER_MINUTE) },
     },
   });
