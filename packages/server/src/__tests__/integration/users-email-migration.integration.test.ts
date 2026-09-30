@@ -3,8 +3,8 @@
 
 /**
  * Migration 0086 (#288) on existing data: it lower-cases what was stored as
- * typed, and it stops before changing anything when two rows would collapse
- * onto one address. Each case replays the migration inside a transaction that
+ * typed, and the unique index stops it before any row changes when two rows
+ * would collapse onto one address. Each case replays the migration inside a transaction that
  * is rolled back, starting from the table as it was before 0086.
  */
 
@@ -80,11 +80,12 @@ describe("migration 0086 on existing addresses", () => {
       await tx`UPDATE users SET deleted_at = now() WHERE email = ${`Dup-${tag}@X.test`}`;
       const error = await tx
         .savepoint((sp) => sp.unsafe(statements[0]!))
-        .then(() => null, (err: { message: string }) => err.message);
+        .then(() => null, (err: { code?: string; detail?: string }) => err);
       const rows = await tx<{ email: string }[]>`SELECT email FROM users WHERE email ILIKE ${`dup-${tag}@x.test`} ORDER BY email`;
       return { error, rows };
     });
-    expect(outcome.error).toContain(`dup-${tag}@x.test`);
+    expect(outcome.error).toMatchObject({ code: "23505" });
+    expect(outcome.error?.detail).toContain(`dup-${tag}@x.test`);
     expect(outcome.rows.map((r) => r.email)).toEqual([`Dup-${tag}@X.test`, `dup-${tag}@x.test`]);
   });
 });

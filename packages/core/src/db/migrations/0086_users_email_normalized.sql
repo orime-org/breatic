@@ -2,26 +2,15 @@
 -- lower-cased, so `users_email_idx` compares addresses without regard to case,
 -- and the CHECK refuses any write that skipped the normalization.
 --
--- Existing addresses that would collapse onto one another stop the migration
--- before any row changes: those accounts each own studios, projects and
--- credits, so they are resolved by hand, never merged here. The check covers
--- soft-deleted rows too, because the unique index does.
-
-DO $$
-DECLARE
-  clashes text;
-BEGIN
-  SELECT string_agg(normalized, ', ' ORDER BY normalized) INTO clashes
-  FROM (
-    SELECT lower(btrim(email)) AS normalized
-    FROM users
-    GROUP BY 1
-    HAVING count(*) > 1
-  ) AS duplicated;
-  IF clashes IS NOT NULL THEN
-    RAISE EXCEPTION 'users.email holds addresses that differ only in case or surrounding space: %', clashes;
-  END IF;
-END $$;--> statement-breakpoint
+-- Existing addresses that collapse onto one another are refused by
+-- `users_email_idx` itself: the UPDATE fails with a unique violation whose
+-- detail names the address, and the migration's transaction leaves every row
+-- as it was. Those accounts each own studios, projects and credits, so they
+-- are resolved by hand, never merged here. The index covers soft-deleted rows
+-- too. To list every collision at once:
+--
+--   SELECT lower(btrim(email)) AS address, count(*) FROM users
+--   GROUP BY 1 HAVING count(*) > 1 ORDER BY 1;
 
 UPDATE "users" SET "email" = lower(btrim("email")) WHERE "email" <> lower(btrim("email"));--> statement-breakpoint
 
