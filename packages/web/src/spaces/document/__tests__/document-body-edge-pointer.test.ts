@@ -340,6 +340,19 @@ describe('Shift+click past an end of the body', () => {
     expect(view.state.selection).toBeInstanceOf(AllSelection);
   });
 
+  it('keeps an anchor on the edge through a Shift+click in the body, and keeps the browser out', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]).prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'end', textStart(view, 'Middle') + 2)));
+    const at = textStart(view, 'Above');
+    pointAt(view, at);
+
+    const event = press(view, 10, { shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([bodyEdgePos(view.state.doc, 'end'), at]);
+  });
+
   it('leaves a Shift+click in the body to the browser', () => {
     const view = open(ABOVE_DIVIDER).prosemirrorView!;
     const at = textStart(view, 'Above');
