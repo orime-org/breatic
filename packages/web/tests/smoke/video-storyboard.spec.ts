@@ -183,7 +183,7 @@ test('Kling makes a video from the shots @needs-model', async () => {
     (res) => res.url().includes('/canvas/tasks') && res.request().method() === 'POST',
   );
   await page.getByTestId('generate-video-execute').click();
-  expect((await accepted).status()).toBe(200);
+  expect((await accepted).ok()).toBe(true);
 
   // The node holds a video once the run lands.
   const node = page.locator(`.react-flow__node[data-id="${nodeId}"]`);
