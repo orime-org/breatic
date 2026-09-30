@@ -565,7 +565,10 @@ body {
    machinery makes for itself: the one `blockDragStart` puts on a row it
    carries, and the one ProseMirror falls back to when no plugin answers a
    modifier-click in a read-only body. Both framed a block the reader never
-   selected.
+   selected. A divider is the one exception: it has no text, so clicking it or
+   walking onto it with the arrows node-selects it, and that selection IS the
+   reader's. It is painted by `.doc-in-selection` further down, the same band a
+   drag across it gets (#124).
 
    The rule below stays because the library draws a marker of its own over the
    same block — a `#64a0ff` wash with a 4px inset ring, a fixed value that
@@ -1826,6 +1829,25 @@ body {
 /* The words themselves, on the content element BlockNote marks. */
 .doc-body [data-quoted='true'] {
   color: var(--color-muted-foreground);
+}
+
+/* A divider is one hairline in the border colour, the same token a rule in a
+   chat reply uses (`.chat-markdown hr`). BlockNote's own grey is a fixed
+   rgb() that does not follow the theme. */
+.doc-body [data-content-type='divider'] hr {
+  border-top-color: var(--color-border);
+}
+
+/* A block with no text inside the reader's selection, painted with the colour
+   the browser paints selected text with (`document-selection-paint.ts`). One
+   look however it got selected — a click, the arrows, a drag, select-all.
+
+   `content-box` so the band starts where the row's words would: inside a quote
+   the row's start padding is the indent and the space that clears the rule
+   (`[data-quoted-run]` above), and a text selection there starts after both. */
+.doc-body .doc-in-selection {
+  background-color: var(--color-selection);
+  background-clip: content-box;
 }
 
 /* QUOTING CHANGES NOTHING IN THE VERTICAL. A block keeps the distance it had

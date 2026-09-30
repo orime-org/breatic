@@ -1085,6 +1085,7 @@
         "heading3": "見出し 3",
         "codeBlock": "コードブロック",
         "taskList": "タスクリスト",
+        "divider": "区切り線",
         "align": "配置",
         "alignLeft": "左揃え",
         "alignCenter": "中央揃え",

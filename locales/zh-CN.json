@@ -1085,6 +1085,7 @@
         "heading3": "标题 3",
         "codeBlock": "代码块",
         "taskList": "任务列表",
+        "divider": "分割线",
         "align": "对齐",
         "alignLeft": "靠左",
         "alignCenter": "居中",

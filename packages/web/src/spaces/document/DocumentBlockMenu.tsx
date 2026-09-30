@@ -13,6 +13,7 @@
  */
 
 import * as React from 'react';
+import { Minus } from 'lucide-react';
 import type { Selection } from '@tiptap/pm/state';
 
 import {
@@ -70,6 +71,7 @@ import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
 import { insertRowForMenu } from '@web/spaces/document/document-insert-row';
+import { insertDividerForMenu } from '@web/spaces/document/document-divider';
 
 /**
  * How far from the menu's edge its submenus sit.
@@ -431,6 +433,21 @@ export function DocumentBlockMenu({
                     </React.Fragment>
                   );
                 })}
+                {/* Not a block type: a divider holds no text, so it has no
+                    row in the block type menu and sits in a group of its own
+                    here. */}
+                <DropdownMenuSeparator className='my-0' />
+                <DropdownMenuItem
+                  data-testid='doc-block-insert-divider'
+                  onSelect={() => {
+                    const live = rowNow();
+                    if (live !== undefined) insertDividerForMenu(editor, live);
+                    close();
+                  }}
+                >
+                  <Minus />
+                  {t('spaces.document.commands.divider')}
+                </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           );

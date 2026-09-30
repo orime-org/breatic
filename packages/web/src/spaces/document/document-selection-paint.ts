@@ -123,5 +123,5 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
         },
       }),
     ],
-  };
-}) as never;
+  } as never;
+});
