@@ -15,9 +15,11 @@
  * The other end is a text position.
  */
 
+import { createExtension } from '@blocknote/core';
 import type { Node, ResolvedPos } from '@tiptap/pm/model';
-import { AllSelection, Selection } from '@tiptap/pm/state';
+import { AllSelection, Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import type { Mappable } from '@tiptap/pm/transform';
+import type { EditorView } from '@tiptap/pm/view';
 
 /** Which end of the body. */
 export type BodyEdge = 'start' | 'end';
@@ -88,7 +90,11 @@ export function bodyEdgeNeedsTakeover(doc: Node, edge: BodyEdge): boolean {
  * @returns A position in text, or the position itself when there is no text.
  */
 function textNear(doc: Node, pos: number, edge: BodyEdge): number {
-  return Selection.near(doc.resolve(pos), edge === 'end' ? -1 : 1).head;
+  const $pos = doc.resolve(pos);
+  if ($pos.parent.inlineContent) return pos;
+  const inward = edge === 'end' ? -1 : 1;
+  const found = Selection.findFrom($pos, inward, true) ?? Selection.findFrom($pos, -inward, true);
+  return found?.head ?? pos;
 }
 
 /**
@@ -260,3 +266,90 @@ export function extendToBodyEdge(doc: Node, anchor: number, edge: BodyEdge): Sel
   if (anchorEdge !== null && anchorEdge !== edge) return new AllSelection(doc);
   return BodyEdgeSelection.create(doc, anchor, edge);
 }
+
+/**
+ * Whether the head is on the line of text nearest this edge, with the edge
+ * block still outside the selection: the last line of the last text block for
+ * the end, the first line of the first for the start.
+ * @param view - The view.
+ * @param edge - Which edge.
+ * @returns True when an arrow towards that edge has no text left to reach.
+ */
+function atLastLineTowards(view: EditorView, edge: BodyEdge): boolean {
+  const { doc, selection } = view.state;
+  if (!bodyEdgeNeedsTakeover(doc, edge)) return false;
+  const { $head } = selection;
+  if (!$head.parent.isTextblock) return false;
+  const dir = edge === 'end' ? 1 : -1;
+  const beyond = doc.resolve(dir > 0 ? $head.after() : $head.before());
+  if (Selection.findFrom(beyond, dir, true) !== null) return false;
+  return view.endOfTextblock(edge === 'end' ? 'down' : 'up');
+}
+
+/**
+ * The selection a Shift+arrow gives on an edge selection, or on a text
+ * selection that has no text left in that direction.
+ * @param view - The view.
+ * @param key - The arrow.
+ * @returns The new selection, the current one when nothing changes, or null
+ *   when the key is left to ProseMirror and the browser.
+ */
+function arrowOnEdge(view: EditorView, key: string): Selection | null {
+  const { doc, selection } = view.state;
+  const edge: BodyEdge | null =
+    key === 'ArrowDown' ? 'end' : key === 'ArrowUp' ? 'start' : null;
+  if (selection instanceof BodyEdgeSelection) {
+    const headEdge = edgeAt(doc, selection.head);
+    if (headEdge !== null) {
+      const inward = headEdge === 'end' ? ['ArrowUp', 'ArrowLeft'] : ['ArrowDown', 'ArrowRight'];
+      if (!inward.includes(key)) return selection;
+      const head = textNear(doc, edgePos(doc, headEdge), headEdge);
+      return TextSelection.create(doc, selection.anchor, head);
+    }
+    const anchorEdge = edgeAt(doc, selection.anchor) ?? 'end';
+    if (key === 'ArrowLeft' || key === 'ArrowRight') {
+      const target = selection.head + (key === 'ArrowLeft' ? -1 : 1);
+      return BodyEdgeSelection.fromEdge(doc, anchorEdge, target);
+    }
+    return null;
+  }
+  if (edge !== null && atLastLineTowards(view, edge)) {
+    return extendToBodyEdge(doc, selection.anchor, edge);
+  }
+  return null;
+}
+
+/**
+ * Handles Shift+arrows that reach, stay on or leave an edge of the body
+ * (#124, A6). ProseMirror collapses any selection other than a text selection
+ * on Left and Right (prosemirror-view `capturekeys.ts:19-55`), so those are
+ * taken here as well.
+ * @param view - The view.
+ * @param event - The key press.
+ * @returns True when the key was taken.
+ */
+function onKeyDown(view: EditorView, event: KeyboardEvent): boolean {
+  if (!event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false;
+  if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return false;
+  const next = arrowOnEdge(view, event.key);
+  if (next === null) return false;
+  if (!next.eq(view.state.selection)) view.dispatch(view.state.tr.setSelection(next).scrollIntoView());
+  return true;
+}
+
+/**
+ * The extension that lets the reader's selection reach past the first or last
+ * block of the body.
+ * @returns The extension, for the assembly to register.
+ */
+export const documentBodyEdgeExtension = createExtension(() => {
+  return {
+    key: 'document-body-edge',
+    prosemirrorPlugins: [
+      new Plugin({
+        key: new PluginKey('documentBodyEdge'),
+        props: { handleKeyDown: onKeyDown },
+      }),
+    ],
+  } as never;
+});
