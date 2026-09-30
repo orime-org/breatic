@@ -1,0 +1,465 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * A selection that reaches past the first or last block (task #124, A6).
+ *
+ * What jsdom cannot show: a real drag below the last block and above the
+ * first, the browser reading its own range back, the widget under the last
+ * block letting a press through, the body scrolling under a drag that rests
+ * at the bottom edge, and a second tab editing while the selection stands.
+ *
+ * Every press waits for the pointer to settle first: the block handle shows on
+ * hover, and a press in the same instant as the move can land on it.
+ *
+ * Wants dev running:
+ *   pnpm --filter @breatic/web test:smoke
+ */
+import { test, expect, type Page } from 'playwright/test';
+
+import { openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace } from '../helpers/space';
+
+let page: Page;
+
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
+});
+
+const createdSpaceIds: string[] = [];
+
+test.afterEach(async () => {
+  while (createdSpaceIds.length > 0) {
+    await deleteSpace(page, createdSpaceIds.pop() as string);
+  }
+  await page?.close();
+});
+
+const EDITOR = '[data-testid="document-space"] .ProseMirror';
+
+/** How long the pointer rests before a press. */
+const SETTLE_MS = 400;
+
+/** What the editor holds and what the page paints. */
+interface Reading {
+  kind: string;
+  anchor: number;
+  head: number;
+  size: number;
+  text: string;
+  rows: string[];
+  painted: string[];
+  domRects: number;
+}
+
+/**
+ * Open a freshly made Document Space with the caret in the body.
+ * @param p - The page.
+ * @returns The new Space's id.
+ */
+async function openFreshDocument(p: Page): Promise<string> {
+  await openSmokeProject(p);
+  const id = await createSpace(p, 'document', `edge-${Date.now()}`);
+  createdSpaceIds.push(id);
+  const editor = p.locator(EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await expect(editor).toBeFocused();
+  return id;
+}
+
+/** A block to put in the body. */
+interface BlockSpec {
+  type: 'paragraph' | 'divider' | 'bulletListItem';
+  content?: string;
+  children?: BlockSpec[];
+}
+
+/**
+ * Replace the body with these blocks, written straight through the schema.
+ * @param p - The page.
+ * @param blocks - The blocks.
+ */
+async function setBlocks(p: Page, blocks: BlockSpec[]): Promise<void> {
+  await p.evaluate(
+    ([selector, list]) => {
+      type PMNode = unknown;
+      const el = document.querySelector(selector) as unknown as {
+        editor: {
+          state: {
+            schema: { nodes: Record<string, { create: (attrs: null, content?: PMNode | PMNode[]) => PMNode }>; text: (t: string) => PMNode };
+            doc: { content: { size: number } };
+            tr: { replaceWith: (from: number, to: number, nodes: PMNode[]) => unknown };
+          };
+          view: { dispatch: (tr: unknown) => void };
+        };
+      };
+      const { schema } = el.editor.state;
+      const make = (block: BlockSpec): PMNode => {
+        const words = block.content ? schema.text(block.content) : undefined;
+        const head = schema.nodes[block.type]!.create(null, words);
+        const kids = block.children?.length
+          ? [head, schema.nodes.blockGroup!.create(null, block.children.map(make))]
+          : [head];
+        return schema.nodes.blockContainer!.create(null, kids);
+      };
+      const { state } = el.editor;
+      el.editor.view.dispatch(state.tr.replaceWith(1, state.doc.content.size - 1, list.map(make)));
+    },
+    [EDITOR, blocks] as const,
+  );
+  await p.waitForTimeout(300);
+}
+
+/**
+ * Read the selection and the page.
+ * @param p - The page.
+ * @returns The reading.
+ */
+async function read(p: Page): Promise<Reading> {
+  return p.evaluate((selector) => {
+    const el = document.querySelector(selector) as HTMLElement & {
+      editor: { state: { selection: { constructor: { name: string }; anchor: number; head: number; from: number; to: number }; doc: { content: { size: number }; textBetween: (a: number, b: number, s: string, l: string) => string } } };
+    };
+    const { selection, doc } = el.editor.state;
+    const dom = window.getSelection();
+    const rows = [...el.querySelectorAll('.bn-block-content')];
+    return {
+      kind: selection.constructor.name,
+      anchor: selection.anchor,
+      head: selection.head,
+      size: doc.content.size,
+      text: doc.textBetween(selection.from, selection.to, '|', '#'),
+      // Read off the document: a collaborator's caret label sits inside the
+      // paragraph's DOM and would show up in its text.
+      rows: (() => {
+        const out: string[] = [];
+        (doc as unknown as { descendants: (f: (n: { type: { name: string }; textContent: string; isTextblock: boolean; isAtom: boolean; attrs: Record<string, unknown> }) => boolean) => void }).descendants((n) => {
+          if (n.type.name === 'blockContainer' || n.type.name === 'blockGroup') return true;
+          out.push(`${n.type.name}:${n.textContent}`);
+          return false;
+        });
+        return out;
+      })(),
+      painted: rows.filter((r) => r.classList.contains('doc-in-selection')).map((r) => r.getAttribute('data-content-type') ?? '?'),
+      domRects: dom !== null && dom.rangeCount > 0 ? dom.getRangeAt(0).getClientRects().length : 0,
+    };
+  }, EDITOR);
+}
+
+/**
+ * The box of a row, by index.
+ * @param p - The page.
+ * @param index - Which row; negative counts from the end.
+ * @returns Its box.
+ * @throws {Error} When the row has no box.
+ */
+async function rowBox(p: Page, index: number): Promise<{ x: number; y: number; width: number; height: number }> {
+  const all = p.locator(`${EDITOR} > .bn-block-group > .bn-block-outer`);
+  const count = await all.count();
+  const box = await all.nth(index < 0 ? count + index : index).boundingBox();
+  if (box === null) throw new Error(`row ${index} has no box`);
+  return box;
+}
+
+/**
+ * The box of a word in the body.
+ * @param p - The page.
+ * @param word - The word.
+ * @returns Its box.
+ * @throws {Error} When the word has no box.
+ */
+async function wordBox(p: Page, word: string): Promise<{ x: number; y: number; width: number; height: number }> {
+  const box = await p.locator(EDITOR).getByText(word, { exact: true }).boundingBox();
+  if (box === null) throw new Error(`${word} has no box`);
+  return box;
+}
+
+/**
+ * Drag from one point to another, resting before the press.
+ * @param p - The page.
+ * @param from - Where to press.
+ * @param from.x - Across.
+ * @param from.y - Down.
+ * @param path - The points to pass through, the last one where to let go.
+ */
+async function drag(p: Page, from: { x: number; y: number }, path: { x: number; y: number }[]): Promise<void> {
+  await p.mouse.move(from.x, from.y);
+  await p.waitForTimeout(SETTLE_MS);
+  await p.mouse.down();
+  for (const point of path) await p.mouse.move(point.x, point.y, { steps: 10 });
+  await p.mouse.up();
+  await p.waitForTimeout(200);
+}
+
+/**
+ * Click with Shift held, resting before the press.
+ * @param p - The page.
+ * @param x - Across.
+ * @param y - Down.
+ */
+async function shiftClick(p: Page, x: number, y: number): Promise<void> {
+  await p.mouse.move(x, y);
+  await p.waitForTimeout(SETTLE_MS);
+  await p.keyboard.down('Shift');
+  await p.mouse.down();
+  await p.mouse.up();
+  await p.keyboard.up('Shift');
+  await p.waitForTimeout(200);
+}
+
+const WITH_DIVIDER: BlockSpec[] = [{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }];
+const WITH_EMPTY: BlockSpec[] = [{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph' }];
+const WITH_NESTED_EMPTY: BlockSpec[] = [
+  { type: 'paragraph', content: 'Above' },
+  { type: 'bulletListItem', content: 'Middle', children: [{ type: 'paragraph' }] },
+];
+
+for (const [name, blocks] of [
+  ['a divider', WITH_DIVIDER],
+  ['an empty line', WITH_EMPTY],
+  ['an empty line nested under the last row', WITH_NESTED_EMPTY],
+] as const) {
+  test(`dragging below the last block takes in ${name} (A6)`, async () => {
+    await openFreshDocument(page);
+    await setBlocks(page, blocks);
+    const word = await wordBox(page, 'Above');
+    const last = await rowBox(page, -1);
+
+    await drag(page, { x: word.x + 2, y: word.y + word.height / 2 }, [{ x: word.x + 40, y: last.y + last.height + 120 }]);
+
+    const reading = await read(page);
+    expect(reading.kind).toBe('BodyEdgeSelectionClass');
+    expect(reading.head).toBe(reading.size - 2);
+    expect(reading.text.startsWith('Above|Middle')).toBe(true);
+    if (name === 'a divider') expect(reading.painted).toEqual(['divider']);
+    // The empty line is drawn by the browser: the range crosses its line.
+    else expect(reading.domRects).toBeGreaterThanOrEqual(3);
+  });
+}
+
+test('dragging up from below the last block anchors on the end (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_DIVIDER);
+  const word = await wordBox(page, 'Middle');
+  const last = await rowBox(page, -1);
+
+  await drag(page, { x: word.x + 40, y: last.y + last.height + 60 }, [{ x: word.x + 2, y: word.y + word.height / 2 }]);
+
+  const reading = await read(page);
+  expect(reading.kind).toBe('BodyEdgeSelectionClass');
+  expect(reading.anchor).toBe(reading.size - 2);
+  expect(reading.painted).toEqual(['divider']);
+});
+
+test('a drag that rests on the last line and then goes lower takes it in (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_EMPTY);
+  const word = await wordBox(page, 'Above');
+  const last = await rowBox(page, -1);
+
+  await drag(page, { x: word.x + 2, y: word.y + word.height / 2 }, [
+    { x: word.x + 10, y: last.y + last.height / 2 },
+    { x: word.x + 10, y: last.y + last.height + 80 },
+  ]);
+
+  expect((await read(page)).head).toBe((await read(page)).size - 2);
+});
+
+test('a drag that goes below and comes back is a text selection again (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_DIVIDER);
+  const word = await wordBox(page, 'Above');
+  const last = await rowBox(page, -1);
+
+  await drag(page, { x: word.x + 2, y: word.y + word.height / 2 }, [
+    { x: word.x + 40, y: last.y + last.height + 120 },
+    { x: word.x + 25, y: word.y + word.height / 2 },
+  ]);
+
+  const reading = await read(page);
+  expect(reading.kind).toBe('_TextSelection');
+  expect(reading.painted).toEqual([]);
+});
+
+test('Shift+click below the last block and Shift+Down both reach the end (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_DIVIDER);
+  const word = await wordBox(page, 'Middle');
+  const last = await rowBox(page, -1);
+
+  await page.mouse.click(word.x + 2, word.y + word.height / 2);
+  await shiftClick(page, word.x + 40, last.y + last.height + 60);
+  const clicked = await read(page);
+  expect([clicked.kind, clicked.head === clicked.size - 2]).toEqual(['BodyEdgeSelectionClass', true]);
+
+  await page.mouse.click(word.x + 2, word.y + word.height / 2);
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.keyboard.press('Shift+ArrowDown');
+  const keyed = await read(page);
+  expect([keyed.kind, keyed.head === keyed.size - 2]).toEqual(['BodyEdgeSelectionClass', true]);
+  expect(keyed.painted).toEqual(['divider']);
+});
+
+test('after a drag up from below, Shift+click on the text keeps the end anchored (A6)', async () => {
+  await openFreshDocument(page);
+  // A line between: the bubble bar stands over the line above the head.
+  await setBlocks(page, [{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Gap' }, ...WITH_DIVIDER.slice(1)]);
+  const word = await wordBox(page, 'Middle');
+  const above = await wordBox(page, 'Above');
+  const last = await rowBox(page, -1);
+  await drag(page, { x: word.x + 40, y: last.y + last.height + 60 }, [{ x: word.x + 20, y: word.y + word.height / 2 }]);
+
+  await shiftClick(page, above.x + 2, above.y + above.height / 2);
+
+  const reading = await read(page);
+  expect(reading.anchor).toBe(reading.size - 2);
+  expect(reading.text.startsWith('Above|Gap|Middle')).toBe(true);
+});
+
+test('after a drag up from below, Shift+Up moves the head a line and keeps the end anchored (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_DIVIDER);
+  const word = await wordBox(page, 'Middle');
+  const last = await rowBox(page, -1);
+  await drag(page, { x: word.x + 40, y: last.y + last.height + 60 }, [{ x: word.x + 20, y: word.y + word.height / 2 }]);
+  const before = await read(page);
+
+  await page.keyboard.press('Shift+ArrowUp');
+  await page.waitForTimeout(200);
+
+  const reading = await read(page);
+  expect(reading.anchor).toBe(reading.size - 2);
+  expect(reading.head).toBeLessThan(before.head);
+  expect(reading.text.startsWith('bove|Middle') || reading.text.startsWith('Above|Middle') || reading.text.includes('|Middle|#')).toBe(true);
+});
+
+test('a leading divider is reached by dragging above the first block and by Shift+Up (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'divider' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph', content: 'Below' }]);
+  const word = await wordBox(page, 'Below');
+  const first = await rowBox(page, 0);
+
+  await drag(page, { x: word.x + 20, y: word.y + word.height / 2 }, [{ x: word.x + 20, y: first.y - 30 }]);
+  const dragged = await read(page);
+  expect([dragged.kind, dragged.head]).toEqual(['BodyEdgeSelectionClass', 2]);
+  expect(dragged.painted).toEqual(['divider']);
+
+  const middle = await wordBox(page, 'Middle');
+  await page.mouse.click(middle.x + 20, middle.y + middle.height / 2);
+  await page.keyboard.press('Shift+ArrowUp');
+  await page.keyboard.press('Shift+ArrowUp');
+  const keyed = await read(page);
+  expect([keyed.kind, keyed.head]).toEqual(['BodyEdgeSelectionClass', 2]);
+});
+
+test('a drag up from above the first block anchors on the start, and Shift+click keeps it (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'divider' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph', content: 'Below' }]);
+  const middle = await wordBox(page, 'Middle');
+  const below = await wordBox(page, 'Below');
+  const first = await rowBox(page, 0);
+
+  // Inside the surface's own padding above the first block: a press outside
+  // the editable surface starts no editor selection.
+  await drag(page, { x: middle.x + 20, y: first.y - 8 }, [{ x: middle.x + 20, y: middle.y + middle.height / 2 }]);
+  expect((await read(page)).anchor).toBe(2);
+
+  await shiftClick(page, below.x + 20, below.y + below.height / 2);
+  const reading = await read(page);
+  expect(reading.anchor).toBe(2);
+  expect(reading.painted).toEqual(['divider']);
+});
+
+test('with words last, dragging below the body is the plain text selection it always was (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Below' }]);
+  const word = await wordBox(page, 'Above');
+  const last = await rowBox(page, -1);
+
+  await drag(page, { x: word.x + 2, y: word.y + word.height / 2 }, [{ x: word.x + 40, y: last.y + last.height + 120 }]);
+
+  const reading = await read(page);
+  expect(reading.kind).toBe('_TextSelection');
+  expect(reading.text).toBe('Above|Below');
+});
+
+test('a click on the space below a trailing divider opens a line there', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_DIVIDER);
+  const word = await wordBox(page, 'Above');
+  const last = await rowBox(page, -1);
+
+  await page.mouse.move(word.x + 40, last.y + last.height + 60);
+  await page.waitForTimeout(SETTLE_MS);
+  await page.mouse.click(word.x + 40, last.y + last.height + 60);
+  await page.keyboard.type('New');
+
+  await expect.poll(async () => (await read(page)).rows).toEqual(['paragraph:Above', 'paragraph:Middle', 'divider:', 'paragraph:New']);
+});
+
+test('a drag that rests at the bottom of a long body scrolls it and reaches the end (A6)', async () => {
+  await openFreshDocument(page);
+  const lines: BlockSpec[] = Array.from({ length: 60 }, (_, i) => ({ type: 'paragraph', content: `Line ${i}` }));
+  await setBlocks(page, [...lines, { type: 'divider' }]);
+  const word = await wordBox(page, 'Line 0');
+  const viewport = page.viewportSize()!;
+
+  await page.mouse.move(word.x + 2, word.y + word.height / 2);
+  await page.waitForTimeout(SETTLE_MS);
+  await page.mouse.down();
+  await page.mouse.move(word.x + 40, viewport.height - 2, { steps: 10 });
+  await expect.poll(async () => (await read(page)).head, { timeout: 20_000 }).toBe((await read(page)).size - 2);
+  await page.mouse.up();
+
+  expect((await read(page)).painted).toEqual(['divider']);
+});
+
+test('deleting a selection that reaches the end takes the divider, and undo brings both back (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_DIVIDER);
+  await page.waitForTimeout(600);
+  const word = await wordBox(page, 'Middle');
+  const last = await rowBox(page, -1);
+  await drag(page, { x: word.x + 2, y: word.y + word.height / 2 }, [{ x: word.x + 40, y: last.y + last.height + 120 }]);
+
+  await page.keyboard.press('Backspace');
+  await expect.poll(async () => (await read(page)).rows).toEqual(['paragraph:Above', 'paragraph:']);
+
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  await expect.poll(async () => (await read(page)).rows).toEqual(['paragraph:Above', 'paragraph:Middle', 'divider:']);
+  const reading = await read(page);
+  expect(reading.kind).toBe('BodyEdgeSelectionClass');
+  expect(reading.painted).toEqual(['divider']);
+});
+
+test('a second tab typing elsewhere leaves the selection reaching the end (A6)', async ({ browser }) => {
+  const id = await openFreshDocument(page);
+  await setBlocks(page, WITH_DIVIDER);
+  const other = await browser.newPage({ viewport: { width: 1680, height: 950 } });
+  try {
+    await other.goto(page.url());
+    await other.getByTestId(`space-tab-${id}`).click().catch(() => undefined);
+    const otherEditor = other.locator(EDITOR);
+    await expect(otherEditor).toContainText('Middle', { timeout: 15_000 });
+
+    await page.bringToFront();
+    const word = await wordBox(page, 'Middle');
+    const last = await rowBox(page, -1);
+    await drag(page, { x: word.x + 2, y: word.y + word.height / 2 }, [{ x: word.x + 40, y: last.y + last.height + 120 }]);
+
+    await other.bringToFront();
+    await other.locator(EDITOR).getByText('Above', { exact: true }).click();
+    await other.keyboard.press('End');
+    await other.keyboard.type(' more');
+    await page.bringToFront();
+    await expect.poll(async () => (await read(page)).rows[0]).toBe('paragraph:Above more');
+
+    const reading = await read(page);
+    expect(reading.kind).toBe('BodyEdgeSelectionClass');
+    expect(reading.head).toBe(reading.size - 2);
+    expect(reading.painted).toEqual(['divider']);
+  } finally {
+    await other.close();
+  }
+});
