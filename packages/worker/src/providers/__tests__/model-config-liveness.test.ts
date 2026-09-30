@@ -22,20 +22,17 @@ import { join, resolve } from "node:path";
 import { parse } from "yaml";
 import { describe, expect, it, vi } from "vitest";
 
-// nano-banana is the only image family with runtime imports (Vercel AI SDK +
-// domain); stub them so this test only pulls its pure MODELS set.
+// nano-banana rewrites its prompt through an LLM (Vercel AI SDK + domain);
+// stub them so this test only pulls the pure MODELS sets.
 vi.mock("ai", () => ({ stepCountIs: (): undefined => undefined }));
+vi.mock("@breatic/core", () => ({ logger: { warn: (): undefined => undefined } }));
 vi.mock("@breatic/domain", () => ({
   generateTextRetry: (): undefined => undefined,
   getModel: (): undefined => undefined,
 }));
 
-import backgroundRemove from "@worker/providers/image/models/background-remove.js";
-import midjourney from "@worker/providers/image/models/midjourney.js";
-import nanoBanana from "@worker/providers/image/models/nano-banana.js";
-import qwen from "@worker/providers/image/models/qwen.js";
-import seedream from "@worker/providers/image/models/seedream.js";
-import topaz from "@worker/providers/image/models/topaz.js";
+import midjourney from "@worker/providers/families/midjourney.js";
+import nanoBanana from "@worker/providers/families/nano-banana.js";
 
 const CONFIG_MODELS_DIR = resolve(import.meta.dirname, "../../../../../config/models");
 
@@ -99,21 +96,22 @@ describe("model config liveness (#1683)", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps image yaml model names in sync with worker image family MODELS", () => {
-    const yamlNames = loadAllModelEntries()
-      .filter((entry) => entry.file.startsWith("image/"))
-      .map((entry) => entry.model.name)
-      .sort();
-    const familyNames = [
-      backgroundRemove,
-      midjourney,
-      nanoBanana,
-      qwen,
-      seedream,
-      topaz,
-    ]
+  it("runs every catalog model on WaveSpeed, the one upstream the worker speaks (#2156)", () => {
+    const elsewhere = loadAllModelEntries()
+      .filter((entry) => !entry.file.startsWith("three_d/"))
+      .flatMap(({ file, model }) =>
+        (model.providers ?? [])
+          .filter((provider) => provider.name !== "wavespeed")
+          .map((provider) => `${file} -> ${model.name} -> ${provider.name}`),
+      );
+    expect(elsewhere).toEqual([]);
+  });
+
+  it("names only catalog models in the worker's model families", () => {
+    const yamlNames = new Set(loadAllModelEntries().map((entry) => entry.model.name));
+    const orphans = [midjourney, nanoBanana]
       .flatMap((family) => [...family.MODELS])
-      .sort();
-    expect(yamlNames).toEqual(familyNames);
+      .filter((name) => !yamlNames.has(name));
+    expect(orphans).toEqual([]);
   });
 });

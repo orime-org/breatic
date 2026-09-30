@@ -205,7 +205,7 @@ docker compose ps -a
 docker compose logs --tail=100 migrate
 ```
 
-Startup order is infrastructure health, migrations for both databases, application services, then web. A successful `migrate` exit (`Exited (0)`) is expected; it is not a long-running service. Other services should run, with server, collab, worker, postgres and redis healthy.
+Startup order is infrastructure health, migrations for both databases, application services, then web. A successful `migrate` exit (`Exited (0)`) is expected; it is not a long-running service. `voice-samples` is another one-shot service: it makes the voice samples the catalog names that this deployment's storage bucket does not hold yet (`pnpm voice-samples` does the same outside Docker). Nothing waits on it; a non-zero exit means some samples are still missing, and the next deploy makes them. Other services should run, with server, collab, worker, postgres and redis healthy.
 
 Open **http://localhost**, register your own account, save the recovery code and complete your personal Studio setup. Do not bypass a failed migration to start the application.
 

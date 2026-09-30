@@ -1,6 +1,6 @@
 # Mode definitions for AIGC providers.
 # Each modality lists its supported modes with human-readable labels,
-# descriptions, the material each needs, and intent-based selection guidance.
+# descriptions and intent-based selection guidance.
 # This file is the single source of truth — SKILL.md files and
 # skills-loader.ts both read from here via {available_modes} injection.
 # Guidelines:
@@ -26,17 +26,9 @@
 #                         the agent: the skill prompt quotes every mode in its
 #                         bucket. So the rule above is what a person holds it
 #                         to.
-#   modes.*.sources     — the kinds of node this mode needs a reader to point
-#                         at: image, video, audio. Omit it when the mode runs
-#                         from words alone. The pre-enqueue gate reads this,
-#                         for every model in the catalog and not only the ones
-#                         a generation panel reaches, so a mode left blank here
-#                         accepts submissions carrying nothing.
-#   modes.*.source_rule — all_of (the default) when every non-optional slot the
-#                         mode offers has to hold something, any_of when one of
-#                         them is enough. It quantifies over the slots, not over
-#                         `sources`: a2m needs one audio source and offers three
-#                         slots to carry it.
+#   The material a run needs is declared on each model (its canvas and pool
+#   params, and `source_groups`), not here: two models in one mode can take
+#   different sources.
 
 image:
   modes:
@@ -51,26 +43,22 @@ image:
       description: >
         Edit an image using it as the source: inpainting, object add or
         remove, style transfer, background changes.
-      sources: [image]
     edit:
       label: Image Editing
       description: >
         Modify specific content of an existing image — add, remove, or
         replace elements, change text, apply style transfer. The source
         image is preserved with only targeted changes applied.
-      sources: [image]
     upscale:
       label: Image Upscaling
       description: >
         Enlarge an image to higher resolution (2K/4K/8K) while preserving
         detail and sharpness. Standard or creative (prompt-guided) modes.
-      sources: [image]
     remove_bg:
       label: Background Removal
       description: >
         Remove the background from an image, outputting the subject
         on a transparent background with precise alpha matting.
-      sources: [image]
 
   selection_guide: |
     - User wants to create something new (with or without style references) → t2i
@@ -84,63 +72,55 @@ video:
     t2v:
       label: Text to Video
       description: >
-        Generate a new video from a text description. No media input needed.
+        Generate a new video from a text description. Some models also take
+        reference images, reference videos and reference audio to steer the
+        look, motion and sound.
     i2v:
       label: Image to Video
       description: >
         Animate a still image into a video. The image becomes the first frame.
-      sources: [image]
     first_last:
       label: First-Last Frame
       description: >
         Generate a video that starts from one image and ends on another.
         Both frames are required; the model fills the motion between them.
-      sources: [image]
     ref:
       label: Reference to Video
       description: >
-        Generate a video using 1+ reference images for character/style
-        consistency, optionally alongside one reference video whose motion
-        the result follows. Unlike i2v, the references guide style rather
+        Generate a video from reference images for character and style
+        consistency, with reference videos and reference audio on the models
+        that take them. Unlike i2v, the references guide the result rather
         than being the first frame.
-      sources: [image]
     extend:
       label: Video Extension
       description: >
         Continue an existing video with consistent style and motion.
-      sources: [video]
     edit:
       label: Video Editing
       description: >
         Modify the content of an existing video (add/remove/change elements).
-      sources: [video]
     motion:
       label: Motion Control
       description: >
         Drive character movement using a reference image and motion description.
-      sources: [image]
     animate:
       label: Image Animation
       description: >
         Animate a character image with driving motion.
-      sources: [image, video]
     talking_head:
       label: Talking Head
       description: >
         Generate a talking head video from a portrait image and audio.
-      sources: [image, audio]
     upscale:
       label: Video Upscaling
       description: >
         Enhance resolution of an existing video (e.g. 720p to 4K) while
         preserving detail and temporal consistency.
-      sources: [video]
     interpolate:
       label: Frame Interpolation
       description: >
         Increase frame rate by inserting AI-generated intermediate frames
         for smoother motion or slow-motion effects.
-      sources: [video]
 
   selection_guide: |
     - User describes a scene with NO media → **t2v**
@@ -159,32 +139,35 @@ audio:
       label: Text to Music
       description: >
         Generate music from a text description of genre, mood and instruments,
-        plus the lyrics to sing. Lyrics are required unless is_instrumental is
-        set. No reference audio needed.
+        with lyrics on the models that sing them. One model also takes an
+        image whose mood the music follows.
     a2m:
       label: Reference to Music
       description: >
-        Generate new music using a reference audio track for style, voice,
-        or instrumental guidance. The reference shapes the output style.
-        Lyrics are required; this mode has no instrumental switch.
-      sources: [audio]
-      source_rule: any_of
+        Generate new music guided by a reference audio track, a melody, a
+        voice to sing with, or a video to score. The reference shapes the
+        output.
     sfx:
       label: Sound Effects
       description: >
         Generate sound effects or ambient audio from a text description.
         Short-form audio clips for Foley, UI sounds, or environmental audio.
+    extend:
+      label: Music Extension
+      description: >
+        Continue an existing audio track with a seamless tail in the same
+        style.
     separate:
       label: Audio Separation
       description: >
         Separate vocals from instrumental in any audio track. Outputs
         isolated vocal or instrumental stem.
-      sources: [audio]
 
   selection_guide: |
-    - User describes music to create from scratch → **t2m** (send `lyrics`, or `is_instrumental: true` for a track with no vocals)
+    - User describes music to create from scratch → **t2m**
     - User provides a reference song/voice/instrumental to guide generation → **a2m**
     - User wants sound effects, ambient audio, or Foley → **sfx**
+    - User wants an existing track to run longer → **extend**
     - User wants to separate vocals from instrumental → **separate**
 
 tts:
@@ -199,7 +182,6 @@ tts:
       description: >
         Clone a voice from a short reference audio sample, then synthesize
         new speech in that voice. No fine-tuning required.
-      sources: [audio]
 
   selection_guide: |
     - User wants to convert text to speech or generate voiceover → **tts**
@@ -219,7 +201,6 @@ three_d:
         Convert one or more 2D images into a 3D model. Single-image input
         for quick conversion, multi-view input for higher fidelity. Some
         models support mask-based object extraction.
-      sources: [image]
 
   selection_guide: |
     - User describes a 3D object to create from scratch → **t23d**

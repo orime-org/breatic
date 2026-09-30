@@ -16,24 +16,26 @@ import {
  * Builds a minimal image model entry for the picker tests.
  * @param name - The model id.
  * @param displayName - The human-facing name.
+ * @param description - What the model is good at, shown under its name.
  * @returns A model entry.
  */
-function model(name: string, displayName: string): ModelEntry {
+function model(
+  name: string,
+  displayName: string,
+  description = '',
+): ModelEntry {
   return {
     name,
     display_name: displayName,
     modality: 'image',
     mode: 'text-to-image',
-    description: '',
+    description,
     guide: '',
     tier: 'recommended',
-    cost_per_call: 7,
     generation_time: 30,
     takes_prompt: true,
     params: {},
     providers: [],
-    sourcesByMode: {},
-    sourceRuleByMode: {},
   };
 }
 
@@ -176,5 +178,47 @@ describe('ModelPicker — pick the generation model from the catalog', () => {
     const label = option.querySelector('span.truncate');
     expect(label).not.toBeNull();
     expect(label?.textContent).toBe('A'.repeat(300));
+  });
+
+  // When one mode offers several models, the name alone does not tell a
+  // reader which to pick — the catalog's `description` is what says what
+  // each one is good at, so the row has to show it.
+  describe('the capability line under each model name', () => {
+    it('shows what the model is good at under its name', () => {
+      const withBlurbs = [
+        model('nano', 'Nano Banana Pro', 'Flagship quality, 4K, lens control'),
+        model('mj', 'Midjourney', 'Distinct aesthetic, stylised output'),
+      ];
+      render(
+        <ModelPicker models={withBlurbs} value='nano' onChange={() => {}} />,
+      );
+      fireEvent.click(screen.getByTestId('generate-model-trigger'));
+      const option = screen.getByTestId('generate-model-option-nano');
+      expect(option).toHaveTextContent('Nano Banana Pro');
+      expect(option).toHaveTextContent('Flagship quality, 4K, lens control');
+      // Muted and smaller than the name, so the name still leads the row.
+      const blurb = screen.getByText('Flagship quality, 4K, lens control');
+      expect(blurb.className).toContain('text-xs');
+      expect(blurb.className).toContain('text-muted-foreground');
+      // Every model's own line, not just the chosen one's.
+      expect(
+        screen.getByTestId('generate-model-option-mj'),
+      ).toHaveTextContent('Distinct aesthetic, stylised output');
+    });
+
+    it('leaves the row a single line when the catalog says nothing', () => {
+      // `description` is `z.string().catch("")` at the catalog boundary, so an
+      // entry that declares none arrives as an empty string — an empty muted
+      // line would add a blank row of whitespace under the name.
+      render(
+        <ModelPicker models={MODELS} value='nano_banana_pro' onChange={() => {}} />,
+      );
+      fireEvent.click(screen.getByTestId('generate-model-trigger'));
+      const option = screen.getByTestId('generate-model-option-nano_banana_pro');
+      expect(option.textContent).toBe('Nano Banana Pro');
+      expect(
+        option.querySelectorAll('span.text-muted-foreground'),
+      ).toHaveLength(0);
+    });
   });
 });

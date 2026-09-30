@@ -24,11 +24,11 @@ import { toast } from '@web/lib/toast';
 import { useCanvasStore } from '@web/stores';
 import {
   evaluateExecute,
-  refusalToastKey,
-  REFERENCE_POOL_PARAM,
+  extractPromptText,
   type ExecuteVerdict,
+  type ReferencePool,
 } from '@breatic/shared';
-import { slotFillLowersCapBelowPicks } from '@web/spaces/canvas/generate/model-reference-cap';
+import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import {
   CatalogGatedFrame,
@@ -58,21 +58,19 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 import {
-  type VideoParamsValue,
-} from '@web/spaces/canvas/generate/VideoParamsPicker';
-import {
   VIDEO_MODE_OPTIONS,
 } from '@web/spaces/canvas/generate/video-mode-options';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
-import { slotForPurpose, type SlotSpec } from '@web/spaces/canvas/generate/slots';
+import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
+import { poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
+import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import {
-  modelTakesReferences,
-  videoSourcePlaces,
+  videoMissing,
   VIDEO_SLOTS,
 } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
-import { buildVideoTaskPayload } from '@web/spaces/canvas/generate/video-task-payload';
+import { buildVideoTaskPayload, videoEstimateInput } from '@web/spaces/canvas/generate/video-task-payload';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
@@ -224,6 +222,11 @@ function VideoGeneratePanelBody({
       buildVideoPanelViewModel({ nodeId, nodes, edges, models, mode, textById }),
     [nodeId, nodes, edges, models, mode, textById],
   );
+  const creditText = useCreditText(
+    vm.modelEntry,
+    videoEstimateInput(vm, extractPromptText(promptText)),
+    catalog?.credit_multiplier ?? 1,
+  );
 
   // The rail refuses this itself now (#1966): `takesPrompt` is one of the two
   // booleans its context carries, so "can this row be inserted" is answered in
@@ -287,15 +290,7 @@ function VideoGeneratePanelBody({
   );
   // Content-stable because the panel below is memoized and the view model
   // rebuilds on every canvas mutation.
-  //
-  // The pool is not a param the node stores — it is the references the prompt
-  // names, and the payload builder writes them under the pool's name at
-  // submit. Merged here so the picker answers a condition naming the pool out
-  // of the same value the run will carry.
-  const stableParams = useContentStable({
-    ...vm.params,
-    [REFERENCE_POOL_PARAM]: vm.referenceUrls,
-  });
+  const stableParams = useContentStable(vm.params);
   // Crops uploading right now, for THIS node (#1978). Without them the rail
   // stays empty from the moment the marquee is confirmed until the upload
   // lands — and on a node whose rail is otherwise empty the rail does not
@@ -386,7 +381,7 @@ function VideoGeneratePanelBody({
   );
 
   const onChangeParams = React.useCallback(
-    (partial: VideoParamsValue) => {
+    (partial: object) => {
       // The edit lands on the record of the model it was made on, so coming
       // back to that model finds it (#1948).
       // freshVm().model is the RESOLVED model — the one whose controls the
@@ -416,10 +411,10 @@ function VideoGeneratePanelBody({
     (s) => s.startCharacterImagePick,
   );
   const startDrivingVideoPick = useCanvasStore((s) => s.startDrivingVideoPick);
-  const startReferenceVideoPick = useCanvasStore(
-    (s) => s.startReferenceVideoPick,
-  );
   const startDrivingAudioPick = useCanvasStore((s) => s.startDrivingAudioPick);
+  const startSourceVideoPick = useCanvasStore((s) => s.startSourceVideoPick);
+  const startLeftAudioPick = useCanvasStore((s) => s.startLeftAudioPick);
+  const startRightAudioPick = useCanvasStore((s) => s.startRightAudioPick);
   const referencePicking = useCanvasStore(
     (s) =>
       s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
@@ -448,15 +443,19 @@ function VideoGeneratePanelBody({
       endFrame: startEndFramePick,
       characterImage: startCharacterImagePick,
       drivingVideo: startDrivingVideoPick,
-      referenceVideo: startReferenceVideoPick,
       drivingAudio: startDrivingAudioPick,
+      sourceVideo: startSourceVideoPick,
+      leftAudio: startLeftAudioPick,
+      rightAudio: startRightAudioPick,
     }),
     [
+      startSourceVideoPick,
+      startLeftAudioPick,
+      startRightAudioPick,
       startFirstFramePick,
       startEndFramePick,
       startCharacterImagePick,
       startDrivingVideoPick,
-      startReferenceVideoPick,
       startDrivingAudioPick,
     ],
   );
@@ -488,30 +487,9 @@ function VideoGeneratePanelBody({
         endPick();
         return;
       }
-      // A slot can carry a lower reference-image cap with it (#1928): this
-      // model takes 7 alone and 4 alongside a clip. Refused HERE rather than
-      // on the clicked node, so the user is not walked into a picking session
-      // whose every candidate would be rejected — and refused rather than
-      // trimming the images, which would throw away picks they never offered.
-      // Read fresh for the same reason the execute gate is: a collaborator can
-      // change the mode, the model or the picks between render and click.
-      const fresh = freshVm(new Set(atMentionedRef.current));
-      const overCap = slotFillLowersCapBelowPicks(
-        models.find((m) => m.name === fresh.model),
-        fresh.mode,
-        fresh.slotUrls,
-        slot,
-        fresh.referenceUrls.length,
-      );
-      if (overCap) {
-        toast.warning(
-          t('canvas.generatePanel.refusePickTooManyReferences', overCap),
-        );
-        return;
-      }
       startSlotPick[slot](nodeId);
     },
-    [startSlotPick, endPick, nodeId, freshVm, models, t],
+    [startSlotPick, endPick, nodeId],
   );
   // A running slot pick outlives the control that started it when the mode
   // changes (locally or via a collaborator's setNodeMode): the slot stops
@@ -589,7 +567,7 @@ function VideoGeneratePanelBody({
     // clears it, and the editor does not call back on unmount — so without
     // this line a talking-head task would carry the last mode's words.
     const freshPrompt = fresh.promptRequired
-      ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
+      ? (promptEditorRef.current?.serializePrompt(fresh.mentionTokens) ?? promptTextRef.current)
       : '';
     // One evaluation, its own inputs: the button asked the same question of
     // the RENDER-time view model, this asks it of live Yjs. Never reuse the
@@ -615,16 +593,14 @@ function VideoGeneratePanelBody({
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
       maxInputChars,
-      ...videoSourcePlaces(
+      missing: videoMissing(
         fresh.modelEntry,
         fresh.mode,
         fresh.slots,
         fresh.slotUrls,
         fresh.referenceUrls,
       ),
-      sourceRule: fresh.sourceRule,
-      poolCount: fresh.referenceUrls.length,
-      poolCap: fresh.maxReferences,
+      pools: poolCounts(fresh.pool, fresh.referenceUrls),
     });
     if (verdict != null) {
       // The limit is written out here so the check that every id reaches a
@@ -633,10 +609,16 @@ function VideoGeneratePanelBody({
         toast.warning(t('canvas.generatePanel.errorTooManyReferences', verdict.over));
         return;
       }
-      const key = videoRefusalKey(verdict);
+      const key = videoRefusalKey(verdict, fresh.slots, fresh.pool);
       // `max` comes from the same value the gate judged by, so the sentence
-      // can never name a limit other than the one that refused.
-      if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
+      // can never name a limit other than the one that refused; `kind` names
+      // the reference that is missing.
+      if (key) {
+        toast.warning(t(key, {
+          max: maxInputChars ?? 0,
+          kind: poolKindOf(fresh.pool, verdict.slot) ?? 'other',
+        }));
+      }
       return;
     }
     submittingRef.current = true;
@@ -651,12 +633,11 @@ function VideoGeneratePanelBody({
         model: fresh.model,
         params: fresh.params,
         promptText: freshPrompt,
-        // The payload's source fields are built FROM the mode, so a pick left
-        // behind by a mode switch has no way in and needs no gate here.
-        mode: fresh.mode,
+        // The payload's source fields are built FROM the drawn slots, so a
+        // pick left behind by a mode or model switch has no way in.
+        slots: fresh.slots,
         slotUrls: fresh.slotUrls,
-        referenceUrls: fresh.referenceUrls,
-        takesReferences: modelTakesReferences(fresh.modelEntry, fresh.mode),
+        poolParams: poolParams(fresh.pool, fresh.referenceUrls),
       });
       await canvasApi.createTask(payload);
       // Close only if THIS mount is alive AND the panel is still on this node:
@@ -707,11 +688,9 @@ function VideoGeneratePanelBody({
   // them is only what the editor does on arrival: the mention labels are baked
   // into its extensions and force a rebuild, while the placeholder is read live
   // through a ref and republished in place.
-  // One statement of "this mode cannot use a reference image", read by the
-  // prompt editor's chips and its `@` popup. The rail reads the same table
-  // inside the panel.
-  const takesReferences = modelTakesReferences(vm.modelEntry, mode);
-  const imageRefsDisabled = !takesReferences;
+  // One statement of which references this model's pool takes here, read by
+  // the prompt editor's chips and its `@` popup and by the rail.
+  const referenceKinds = useReferenceKinds(vm.pool);
   // One string for every mode, deliberately. The gap a per-mode sentence was
   // written to close is real but lives elsewhere, and #1952 closed it there:
   // with only IMAGE references connected, typing `@` in a mode that cannot use
@@ -739,6 +718,9 @@ function VideoGeneratePanelBody({
   // there is nothing to type into it here, and a mounted collaborative editor
   // costs a TipTap instance plus its bindings. The cost is the prompt's undo
   // history, which lives on the editor instance and dies with it (#1961).
+  // A media chip's words follow the pool, and a new record on every derive
+  // would rebuild the prompt slot each time the canvas moves.
+  const stableMentionTokens = useContentStable(vm.mentionTokens);
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
@@ -751,14 +733,15 @@ function VideoGeneratePanelBody({
           onTextChange={onPromptChange}
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
-          // Same signal as the rail's, from the same table: an image `@` chip
-          // is a model input only under reference-to-video. Both outlets have
-          // to agree, or the rail would say "this mode cannot use that image"
-          // while typing `@` still offered it at full strength.
-          imageRefsDisabled={imageRefsDisabled}
+          // Same signal as the rail's: a media `@` chip is a model input only
+          // where the model's pool takes its kind. Both outlets have to agree,
+          // or the rail would say "this model cannot use that" while typing
+          // `@` still offered it at full strength.
+          referenceKinds={referenceKinds}
           mentionEmptyLabel={mentionEmptyLabel}
           mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
+          mentionTokens={stableMentionTokens}
         />
       ) : null,
     [
@@ -774,9 +757,10 @@ function VideoGeneratePanelBody({
       // the dependency the chips already in the prompt would stay at full
       // strength and the `@` popup would keep offering images the new mode
       // cannot use.
-      imageRefsDisabled,
+      referenceKinds,
       caretProvider,
       promptEditorRef,
+      stableMentionTokens,
     ],
   );
 
@@ -785,9 +769,9 @@ function VideoGeneratePanelBody({
       models={stableModels}
       model={vm.model}
       params={stableParams}
-      creditEstimate={vm.creditEstimate}
+      creditText={creditText}
       mode={mode}
-      takesReferences={takesReferences}
+      referenceKinds={referenceKinds}
       onToggleMode={onToggleMode}
       modeOptions={availableModes}
       promptRequired={vm.promptRequired}
@@ -815,16 +799,14 @@ function VideoGeneratePanelBody({
           isSubmitting,
           promptRequired: vm.promptRequired,
           maxInputChars: vm.modelEntry?.max_input_chars,
-          ...videoSourcePlaces(
+          missing: videoMissing(
             vm.modelEntry,
             vm.mode,
             vm.slots,
             vm.slotUrls,
             vm.referenceUrls,
           ),
-          sourceRule: vm.sourceRule,
-          poolCount: vm.referenceUrls.length,
-          poolCap: vm.maxReferences,
+          pools: poolCounts(vm.pool, vm.referenceUrls),
         })?.refusal ?? null
       }
       promptSlot={promptSlot}
@@ -843,15 +825,21 @@ function VideoGeneratePanelBody({
  * the panel calls it a first frame or a driving video, where the gate knows
  * only that it is empty.
  * @param verdict - What the gate answered.
+ * @param slots - The slots the toolbar draws for this mode.
+ * @param pool - The model's reference pool in this mode.
  * @returns The key, or null when the refusal says nothing.
  */
-function videoRefusalKey(verdict: ExecuteVerdict): string | null {
-  if (verdict.slot === REFERENCE_POOL_PARAM) {
+function videoRefusalKey(
+  verdict: ExecuteVerdict,
+  slots: readonly VideoSlot[],
+  pool: ReferencePool,
+): string | null {
+  // An empty pool param, or a group any member of which would do — every video
+  // model's group is the kinds its pool takes (the Reference to Video ones).
+  if (poolKindOf(pool, verdict.slot) !== undefined || verdict.refusal === 'sources-missing') {
     return 'canvas.generatePanel.errorNoReferenceMention';
   }
-  const spec: SlotSpec | undefined =
-    verdict.slot === undefined ? undefined : VIDEO_SLOTS[verdict.slot as VideoSlot];
-  return spec?.errorKey ?? refusalToastKey(verdict.refusal);
+  return slotRefusalKey(VIDEO_SLOTS, slots, verdict);
 }
 
 /**

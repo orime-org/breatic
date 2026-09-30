@@ -43,6 +43,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "internal work queue for the offline reclaim job: the physical object still needs reclaiming after its project is gone, so the row must not follow a project delete",
   ],
   [
+    "taskUpstreamSteps",
+    "a task's own execution record (0085, #2156): each row is one upstream call the worker made or will make for that task, and what the task is billed is summed over them. It follows its task, which carries deleted_at; a step soft-deleted on its own would drop a paid call from the bill",
+  ],
+  [
     "projectLastOpened",
     "per-user upsert tracker behind the Recent feed: a row for a deleted project is filtered out by the query's join, so a leftover row is harmless. Its mutable column is last_opened_at; there is no updated_at either",
   ],

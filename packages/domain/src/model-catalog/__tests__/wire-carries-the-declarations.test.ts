@@ -2,45 +2,30 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What a mode needs reaches the wire from its declaration (#269).
+ * What a model needs reaches the wire from its declaration (#269, #2156).
  *
- * Two readers ask the question and neither can run the rule: the panel reads
- * `sourcesByMode[activeMode]` off the wire, and the pre-enqueue gate reads the
- * same field back off the catalog. So the catalog projection is where the
- * declaration turns into an answer, and this holds it to the yaml rather than
- * to the table the yaml replaced.
- *
- * `sourceRuleByMode` rides along because the count is not in the source types:
- * a2m needs one audio source and offers three slots to carry it, and only the
- * rule says one of them is enough.
+ * The panel asks `missingSources` of the entry it reads off the wire, and the
+ * pre-enqueue gate asks it of the catalog, so the projection has to carry the
+ * "one of these" groups exactly as the yaml declares them.
  */
 
 import { beforeEach, afterAll, describe, it, expect } from "vitest";
 
-import { getModeConfig } from "../mode-config.js";
-import { MODALITIES, getModelCatalog } from "../model-catalog.js";
+import { MODALITIES, getFullModelConfig, getModelCatalog } from "../model-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
-describe("what the catalog ships about a mode", () => {
+describe("what the catalog ships about a model's sources", () => {
   beforeEach(useFullCatalog);
   afterAll(restoreProcessEnv);
 
-  it("is what the mode declares, for every model in every bucket", () => {
-    const config = getModeConfig();
-    const catalog = getModelCatalog();
+  it("carries every model's source groups as the yaml declares them", () => {
     const disagreeing: string[] = [];
-
     for (const modality of MODALITIES) {
-      for (const entry of catalog[modality]) {
-        for (const mode of Array.isArray(entry.mode) ? entry.mode : [entry.mode]) {
-          const declared = config[modality]?.modes[mode];
-          const at = `${modality}/${entry.name}.${mode}`;
-          if (entry.sourcesByMode[mode]?.join() !== (declared?.sources ?? []).join()) {
-            disagreeing.push(`${at}: sources ${JSON.stringify(entry.sourcesByMode[mode])}`);
-          }
-          if (entry.sourceRuleByMode[mode] !== (declared?.sourceRule ?? "all_of")) {
-            disagreeing.push(`${at}: rule ${String(entry.sourceRuleByMode[mode])}`);
-          }
+      const declared = getFullModelConfig(modality).models;
+      for (const entry of getModelCatalog()[modality]) {
+        const yaml = declared.find((m) => m.name === entry.name)?.source_groups;
+        if (JSON.stringify(entry.source_groups) !== JSON.stringify(yaml)) {
+          disagreeing.push(`${modality}/${entry.name}`);
         }
       }
     }
@@ -48,18 +33,15 @@ describe("what the catalog ships about a mode", () => {
     expect(disagreeing).toEqual([]);
   });
 
-  it("says of a2m that any one of its slots is enough", () => {
-    // The one mode whose panel refuses on an empty set rather than an empty
-    // slot, so a rule that were uniformly all_of would read the same as none.
-    const anyOf = MODALITIES.flatMap((modality) =>
-      getModelCatalog()[modality].flatMap((entry) =>
-        Object.entries(entry.sourceRuleByMode)
-          .filter(([, rule]) => rule === "any_of")
-          .map(([mode]) => `${modality}.${mode}`),
-      ),
+  it("ships the groups the reference modes declare", () => {
+    const withGroups = MODALITIES.flatMap((modality) =>
+      getModelCatalog()[modality]
+        .filter((entry) => (entry.source_groups ?? []).length > 0)
+        .map((entry) => entry.name),
     );
 
-    expect([...new Set(anyOf)]).toEqual(["audio.a2m"]);
+    expect(withGroups).toContain("wan-3.0-reference-to-video");
+    expect(withGroups).toContain("mureka-v9.5-generate-song");
   });
 });
 

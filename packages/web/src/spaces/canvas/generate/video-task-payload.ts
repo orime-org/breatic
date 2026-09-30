@@ -14,15 +14,13 @@
  * belongs to all but one.
  */
 
-import { REFERENCE_POOL_PARAM } from '@breatic/shared';
-import type { TaskCreateInput } from '@breatic/shared';
+import type { ReferencePool, TaskCreateInput } from '@breatic/shared';
+import type { EstimateInput } from '@breatic/shared/pricing';
 
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
-import {
-  slotsForMode,
-} from '@web/spaces/canvas/generate/video-mode-options';
+import { poolParams, type ReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type { VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
+import type { VideoSlot, VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 
 /** Video-node generation task type (AIGC_TASK_TYPES key on the worker). */
 const VIDEO_TASK_TYPE = 'video';
@@ -39,37 +37,30 @@ export interface VideoTaskInput {
   params: Record<string, unknown>;
   /** Plain-text prompt (extracted from the rich-text prompt). */
   promptText: string;
-  /** The active generation mode — it decides which source fields are built. */
-  mode: string;
   /**
-   * URLs picked into slots. Only the ones the active mode collects are built
-   * into the payload; the rest stay on the node, where a switch back to their
-   * mode finds them again.
+   * The slots the toolbar draws for this model in this mode — the source
+   * fields that are built. Picks in any other slot stay on the node, where a
+   * switch back to their mode or model finds them again.
    */
+  slots: readonly VideoSlot[];
+  /** URLs picked into slots, by slot. */
   slotUrls: VideoSlotUrls;
   /**
-   * The reference image URLs the prompt `@`-mentions, snapshotted at execute
-   * time. Written into the payload only under a mode that collects references
-   * (#1927); under the rest this value contributes nothing.
+   * The `@`-mentioned references under the params the model reads them from,
+   * as `poolParams` builds them (#1927, #2156) — empty under a mode whose
+   * model takes no pool, or when nothing is mentioned.
    */
-  referenceUrls?: readonly string[];
-  /**
-   * Whether the model draws on the reference pool in this mode.
-   *
-   * The model declares it, and the caller has the entry: this builder is
-   * handed the model's NAME, which says nothing about its parameters.
-   */
-  takesReferences: boolean;
+  poolParams: Readonly<Record<string, readonly string[]>>;
 }
 
 /**
- * The source params one mode sends.
+ * The source params one run sends.
  *
- * Built FROM the mode rather than collected and then guarded: a mode's field
- * set is fixed, so a slot the mode does not collect has no way in and needs no
- * check to keep it out (user 2026-08-10). Each URL travels as its own param,
- * never folded into the reference array — that array is the `@`-picked pool
- * and means something else to the model. An empty slot adds no key here,
+ * Built FROM the drawn slots rather than collected and then guarded: a slot
+ * the toolbar does not draw has no way in and needs no check to keep it out
+ * (user 2026-08-10). Each URL travels as its own param,
+ * never folded into the pool — the pool is the `@`-picked references and
+ * means something else to the model. An empty slot adds no key here,
  * because the upstream provider reads a source field's presence, not its
  * value.
  *
@@ -79,20 +70,18 @@ export interface VideoTaskInput {
  * key there whatever this returns. That is the same route `seed` and
  * `generate_audio` arrive by, and the worker drops null values before mapping
  * them to vendor names.
- * @param mode - The active generation mode.
+ * @param slots - The slots the toolbar draws.
  * @param slotUrls - What is currently picked, by slot.
- * @param referenceUrls - The `@`-mentioned reference images.
- * @param takesReferences - Whether the model draws on the pool in this mode.
+ * @param pool - The `@`-mentioned references, under the params the model reads.
  * @returns The source params, ready to merge into the payload.
  */
 export function sourceParams(
-  mode: string,
+  slots: readonly VideoSlot[],
   slotUrls: VideoSlotUrls,
-  referenceUrls: readonly string[],
-  takesReferences: boolean,
+  pool: Readonly<Record<string, readonly string[]>>,
 ): Record<string, unknown> {
   const params: Record<string, unknown> = {};
-  for (const slot of slotsForMode(mode)) {
+  for (const slot of slots) {
     const url = slotUrls[slot];
     if (url) params[VIDEO_SLOTS[slot].param] = url;
   }
@@ -102,15 +91,13 @@ export function sourceParams(
   // a source field's presence, so an empty list would be a claim rather than a
   // silence. Execute refuses that submit anyway, and whatever the model's own
   // declared default left in `params` stays as it was.
-  if (takesReferences && referenceUrls.length > 0) {
-    params[REFERENCE_POOL_PARAM] = [...referenceUrls];
-  }
+  for (const [param, urls] of Object.entries(pool)) params[param] = [...urls];
   return params;
 }
 
 /**
  * Builds the overwrite-mode task payload for a video-node Generate.
- * @param input - The node, project/space, model, params, prompt, mode, picked slots and references.
+ * @param input - The node, project/space, model, params, prompt, drawn slots, picks and references.
  * @returns The `POST /canvas/tasks` request body, in overwrite mode.
  */
 export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
@@ -127,11 +114,35 @@ export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
       ...input.params,
       prompt: input.promptText,
       ...sourceParams(
-        input.mode,
+        input.slots,
         input.slotUrls,
-        input.referenceUrls ?? [],
-        input.takesReferences,
+        input.poolParams,
       ),
     },
   });
+}
+
+/** What the price reads off the video panel's view model. */
+interface VideoEstimateSource {
+  params: Readonly<Record<string, unknown>>;
+  slots: readonly VideoSlot[];
+  slotUrls: VideoSlotUrls;
+  pool: ReferencePool;
+  referenceUrls: ReferenceUrls;
+  sourceDurations: Readonly<Record<string, readonly number[]>>;
+}
+
+/**
+ * The run the panel quotes a price for (#2156, design §14): the params with
+ * the same source fields the submit sends, and how long those sources run.
+ * @param vm - The panel's view model.
+ * @param prompt - The prompt as the model reads it.
+ * @returns The estimate input.
+ */
+export function videoEstimateInput(vm: VideoEstimateSource, prompt: string): EstimateInput {
+  return {
+    params: { ...vm.params, ...sourceParams(vm.slots, vm.slotUrls, poolParams(vm.pool, vm.referenceUrls)) },
+    prompt,
+    durations: vm.sourceDurations,
+  };
 }

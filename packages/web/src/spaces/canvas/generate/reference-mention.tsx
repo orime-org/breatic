@@ -26,6 +26,7 @@ import {
 } from '@web/spaces/canvas/generate/at-reference';
 import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { createReferenceMentionCaret } from '@web/spaces/canvas/generate/reference-mention-caret';
 import { createLocalUserInputTracker } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import { createReferenceMentionRangeHighlight } from '@web/spaces/canvas/generate/reference-mention-range-decoration';
@@ -84,8 +85,9 @@ export function referenceMentionContent(item: ReferenceRailItem): {
  * Serializes the prompt for the BACKEND (spec §9.1, user 2026-07-10): the chip
  * stays a chip in the editor, but the string sent to generation substitutes a
  * TEXT chip with its source text node's current content — "@ a text node" means
- * "insert that node's words here". An image chip contributes nothing to the
- * string (it feeds the i2i source-image subset instead), and a text chip whose
+ * "insert that node's words here". A picture, clip or track chip is written the
+ * way the model reads it (`tokens`, #2156) and adds nothing when the model names
+ * no way; its file travels in the pool lists either way. A text chip whose
  * pool row vanished (edge removed mid-flight) or whose node is empty resolves
  * to an empty string. Pool content is read at CALL time, so invoking this at
  * execute-click picks up the text node's latest words even when the prompt doc
@@ -95,12 +97,14 @@ export function referenceMentionContent(item: ReferenceRailItem): {
  * @param blockSeparator - What joins two blocks. TipTap's own default is a
  *   blank line, which is what a prompt reads as; a lyrics box asks for lines
  *   and passes a single newline (#1960).
+ * @param tokens - Each media chip's words by pool id, as `mentionTokens` builds them.
  * @returns The backend-bound prompt string.
  */
 export function serializePromptText(
   editor: Editor,
   pool: ReadonlyArray<ReferenceRailItem>,
   blockSeparator = '\n\n',
+  tokens: MentionTokens = NO_MENTION_TOKENS,
 ): string {
   const textById = new Map(
     pool
@@ -111,9 +115,10 @@ export function serializePromptText(
     blockSeparator,
     textSerializers: {
       [REFERENCE_MENTION_NODE]: ({ node }): string => {
-        if (node.attrs[MENTION_KIND_ATTR] !== 'text') return '';
         const id = node.attrs[MENTION_SOURCE_ID_ATTR] as string | null;
-        return (id != null ? textById.get(id) : undefined) ?? '';
+        if (id == null) return '';
+        if (node.attrs[MENTION_KIND_ATTR] !== 'text') return Object.hasOwn(tokens, id) ? tokens[id]! : '';
+        return textById.get(id) ?? '';
       },
     },
   });

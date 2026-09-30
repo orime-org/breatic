@@ -59,7 +59,26 @@ function current(): Stage {
 const SEED_STEP = 300;
 let seededSoFar = 0;
 
-test.beforeEach(async ({ page }) => {
+/**
+ * Give each case in the calling spec its own Project page and Space, and
+ * delete the Space after it.
+ *
+ * Called from the spec file: a hook registered when this module loads would
+ * attach only to the first spec that imports it in a worker, and every other
+ * spec there would run without an opening.
+ */
+export function registerCanvasStage(): void {
+  test.beforeEach(openStage);
+  test.afterEach(closeStage);
+}
+
+/**
+ * Open the smoke Project and a fresh canvas Space for one case.
+ * @param root0 - Playwright fixtures.
+ * @param root0.page - The case's page.
+ * @throws {Error} When the Project URL carries no id.
+ */
+async function openStage({ page }: { page: Page }): Promise<void> {
   await openSmokeProject(page);
   // The URL segment is the project's SLUG, which ends in its id. Splitting on
   // `/project/` yields the slug, and a Yjs document named after that is a
@@ -69,13 +88,16 @@ test.beforeEach(async ({ page }) => {
   const spaceId = await createSpace(page, 'canvas', `audio-e2e-${Date.now()}`);
   seededSoFar = 0;
   stage = { page, projectId, spaceId };
-});
+}
 
-test.afterEach(async () => {
+/**
+ * Delete the case's Space.
+ */
+async function closeStage(): Promise<void> {
   if (stage === null) return;
   await deleteSpace(stage.page, stage.spaceId);
   stage = null;
-});
+}
 
 /**
  * Write one node into the open Space's document.
@@ -100,7 +122,7 @@ test.afterEach(async () => {
  */
 export async function seedNode(
   nodeId: string,
-  kind: 'audio' | 'video',
+  kind: 'audio' | 'video' | 'image',
   content?: string,
   atX?: number,
   atY = 0,
@@ -182,4 +204,20 @@ export async function openGenerate(nodeId: string, settled = 'generate-audio-exe
   await node.click({ button: 'right' });
   await page.getByTestId('node-menu-generate').click();
   await expect(page.getByTestId(settled)).toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * How many voice rows the settings pill offers: 0 when the model takes no
+ * voice (or has no pill at all), 1 when it does. Opens the pill to look and
+ * closes it again, so the panel is left as it was found.
+ * @param page - A page with the audio panel open.
+ * @returns The number of voice rows.
+ */
+export async function voiceRowCount(page: Page): Promise<number> {
+  const pill = page.getByTestId('generate-audio-settings-trigger');
+  if ((await pill.count()) === 0) return 0;
+  await pill.click();
+  const rows = await page.getByTestId('generate-audio-row-voice_id').count();
+  await page.keyboard.press('Escape');
+  return rows;
 }

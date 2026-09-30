@@ -49,7 +49,7 @@ vi.mock("@breatic/domain", async () => ({
   creditsForUsd: (await import("../../../../domain/src/credit/usage-cost.js")).creditsForUsd,
   taskService: {},
   nodeHistoryService: {},
-  assetService: {},
+  assetService: { resolveOwnerStudioId: async (): Promise<string> => "studio-1" },
   getModel: vi.fn(),
   buildAgentConfig: vi.fn(),
   generateTextRetry: vi.fn(),
@@ -83,8 +83,9 @@ vi.mock("ai", () => ({
 
 // The provider module `importProvider` reaches for. Its validator behaves like
 // the real `validateParams`: it drops every key the model does not declare.
-vi.mock("@worker/providers/video/index.js", () => ({
-  validateVideoParams: (
+vi.mock("@worker/providers/generate.js", () => ({
+  validateModelParams: (
+    _modality: string,
     model: string | undefined,
     params?: Record<string, unknown>,
   ): [string, Record<string, unknown>] => {
@@ -95,13 +96,21 @@ vi.mock("@worker/providers/video/index.js", () => ({
     }
     return [model ?? "kling-o3-pro", kept];
   },
-  generateAsync: mockGenerateAsync,
 }));
+// Generation runs as the task's upstream steps; the spy sees the prompt,
+// model and params that follow the storage, the task and the modality.
+vi.mock("@worker/providers/run-steps.js", () => ({
+  runCatalogTask: (_deps: unknown, _ctx: unknown, _modality: string, ...rest: unknown[]): unknown =>
+    mockGenerateAsync(...rest),
+}));
+vi.mock("@worker/handlers/step-deps.js", () => ({ stepDepsFor: (): unknown => ({}) }));
+
 
 import { runAigcDirect, runMiniTool } from "@worker/handlers/dispatch.js";
 
 /** The resume context both validating paths thread through; nothing reads it. */
-const RESUME = {} as Parameters<typeof runAigcDirect>[3];
+/** The task both validating paths run for; nothing reads its resume context. */
+const RUN = { resume: {}, taskId: "task-1", projectId: "p1" } as Parameters<typeof runAigcDirect>[3];
 
 beforeEach(() => {
   mockGenerateAsync.mockReset();
@@ -128,7 +137,8 @@ describe("both validating execution paths carry the prompt to the provider", () 
       jobId: "job-1",
       userId: "u1",
       projectId: "p1",
-      resume: RESUME,
+      taskId: RUN.taskId,
+      resume: RUN.resume,
     });
 
     expect(mockGenerateAsync).toHaveBeenCalledTimes(1);
@@ -150,7 +160,7 @@ describe("both validating execution paths carry the prompt to the provider", () 
         node_ids: ["n1"],
         project_id: "p1",
       },
-      RESUME,
+      RUN,
     );
 
     expect(mockGenerateAsync).toHaveBeenCalledTimes(1);
@@ -172,7 +182,8 @@ describe("both validating execution paths carry the prompt to the provider", () 
       jobId: "job-1",
       userId: "u1",
       projectId: "p1",
-      resume: RESUME,
+      taskId: RUN.taskId,
+      resume: RUN.resume,
     });
 
     expect(mockGenerateAsync.mock.calls[0]![0]).toBe("bold plan");
@@ -190,12 +201,13 @@ describe("both validating execution paths carry the prompt to the provider", () 
       jobId: "job-1",
       userId: "u1",
       projectId: "p1",
-      resume: RESUME,
+      taskId: RUN.taskId,
+      resume: RUN.resume,
     });
     expect(mockGenerateAsync.mock.calls[0]![0]).toBe("spoken line");
 
     mockGenerateAsync.mockClear();
-    await runAigcDirect("video", "kling-o3-pro", { text: "spoken line" }, RESUME);
+    await runAigcDirect("video", "kling-o3-pro", { text: "spoken line" }, RUN);
     expect(mockGenerateAsync.mock.calls[0]![0]).toBe("spoken line");
   });
 });

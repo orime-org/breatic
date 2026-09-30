@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { getLocale } from '@breatic/shared';
+import { formatCredits, getLocale } from '@breatic/shared';
 
 /**
  * Format a credit balance for display.
@@ -18,5 +18,5 @@ import { getLocale } from '@breatic/shared';
  * @returns It, grouped, with at most two decimals.
  */
 export function formatCreditAmount(value: number): string {
-  return value.toLocaleString(getLocale(), { maximumFractionDigits: 2 });
+  return formatCredits(value, getLocale());
 }

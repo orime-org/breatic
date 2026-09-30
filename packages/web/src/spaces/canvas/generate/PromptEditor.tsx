@@ -9,6 +9,7 @@ import { Text } from '@tiptap/extension-text';
 import { EditorContent, useEditor } from '@tiptap/react';
 import * as React from 'react';
 import type * as Y from 'yjs';
+import { REFERENCE_KINDS, type ReferenceKind } from '@breatic/shared';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
@@ -33,6 +34,7 @@ import {
   serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
 import { dispatchMachineEdit } from '@web/spaces/canvas/generate/reference-mention-local-input';
+import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { planCascadeDeletion } from '@web/spaces/canvas/generate/reference-mention-whitespace';
 
@@ -46,14 +48,26 @@ export interface PromptEditorHandle {
   insertReference: (item: ReferenceRailItem) => void;
   /**
    * Serializes the backend-bound prompt string RIGHT NOW (spec §9.1): text
-   * chips substitute their source node's current content, image chips
-   * contribute nothing. Called at execute-click so a text node edited since
-   * the last prompt keystroke still lands its latest words.
+   * chips substitute their source node's current content, media chips are
+   * written as `tokens` says. Called at execute-click so a text node edited
+   * since the last prompt keystroke still lands its latest words.
+   * @param tokens - Media chips' words from the same snapshot as the lists
+   *   the submit sends; the last rendered ones when absent.
    * @returns The backend prompt string, or null when the editor is not ready.
    */
-  serializePrompt: () => string | null;
+  serializePrompt: (tokens?: MentionTokens) => string | null;
 }
 
+
+/**
+ * The classes greying one kind of `@` chip. Written out whole per kind so the
+ * stylesheet builder finds each class in the source.
+ */
+const DIM_CHIP: Readonly<Record<ReferenceKind, string>> = {
+  image: ' [&_.reference-mention[data-kind=image]]:opacity-40 [&_.reference-mention[data-kind=image]]:grayscale',
+  video: ' [&_.reference-mention[data-kind=video]]:opacity-40 [&_.reference-mention[data-kind=video]]:grayscale',
+  audio: ' [&_.reference-mention[data-kind=audio]]:opacity-40 [&_.reference-mention[data-kind=audio]]:grayscale',
+};
 interface PromptEditorProps {
   /** The node's prompt Y.XmlFragment — the collaborative binding target. */
   fragment: Y.XmlFragment;
@@ -94,6 +108,11 @@ interface PromptEditorProps {
    */
   blockSeparator?: string;
   /**
+   * How each picture, clip or track chip is written into the prompt the model
+   * reads, by pool id (#2156, design §13.2). Absent, such chips add nothing.
+   */
+  mentionTokens?: MentionTokens;
+  /**
    * Placeholder shown while the box is empty.
    *
    * Read live rather than baked in at creation, so a box whose state changes
@@ -113,12 +132,13 @@ interface PromptEditorProps {
   /** Current reference pool (incoming edges) — the `@` picker's options. */
   references: ReferenceRailItem[];
   /**
-   * Whether image `@` mentions are inert for the current generation mode —
-   * image-to-image sources are ignored under text-to-image (design §2.4 C).
-   * A boolean rather than the mode itself: this is the only thing the editor
-   * ever asked the mode, and every panel that mounts it answers it its own way.
+   * Which kinds of `@` mention the active model's pool takes in this mode
+   * (#2156) — a picture, clip or track chip of any other kind is inert and
+   * greyed (design §2.4 C). The kinds rather than the mode itself: this is
+   * the only thing the editor ever asked the mode, and every panel that
+   * mounts it answers it its own way.
    */
-  imageRefsDisabled: boolean;
+  referenceKinds: readonly ReferenceKind[];
   /** Localized empty-state text for the `@` picker popup. */
   mentionEmptyLabel: string;
   /**
@@ -149,7 +169,7 @@ interface PromptEditorProps {
  * @param root0.onTextChange - Receives the current plain-text prompt.
  * @param root0.onAtMentionsChange - Receives the `@`-picked source node ids.
  * @param root0.references - The current reference pool (the `@` picker options).
- * @param root0.imageRefsDisabled - Whether image `@` chips are inert (greyed).
+ * @param root0.referenceKinds - The kinds of `@` chip the pool takes; the rest are inert (greyed).
  * @param root0.mentionEmptyLabel - Localized text for "this mode has nothing to offer".
  * @param root0.mentionNoMatchLabel - Localized text for "your query matched none of them".
  * @param root0.caretProvider - Canvas-space doc provider whose awareness carries collaborator carets (null until connected).
@@ -157,6 +177,7 @@ interface PromptEditorProps {
  * @param root0.startingHeight - How tall the box opens before anything is typed.
  * @param root0.onFocus - Called when the caret enters this box.
  * @param root0.blockSeparator - What joins two blocks in the serialized string.
+ * @param root0.mentionTokens - Each media chip's words in the serialized string, by pool id.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
@@ -170,7 +191,7 @@ export const PromptEditor = React.forwardRef<
     onTextChange,
     onAtMentionsChange,
     references,
-    imageRefsDisabled,
+    referenceKinds,
     mentionEmptyLabel,
     mentionNoMatchLabel,
     caretProvider = null,
@@ -178,6 +199,7 @@ export const PromptEditor = React.forwardRef<
     startingHeight = 'full',
     onFocus,
     blockSeparator,
+    mentionTokens = NO_MENTION_TOKENS,
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -192,8 +214,8 @@ export const PromptEditor = React.forwardRef<
   // Live flag ref (same pattern as poolRef): the `@` suggestion reads it to
   // exclude image references when they are inert, without rebuilding the
   // editor on a mode toggle.
-  const imageRefsDisabledRef = React.useRef(imageRefsDisabled);
-  imageRefsDisabledRef.current = imageRefsDisabled;
+  const referenceKindsRef = React.useRef(referenceKinds);
+  referenceKindsRef.current = referenceKinds;
   // Same pattern again: the editor is built once per fragment, and a callback
   // baked in at creation would keep calling the caller's first render.
   const onFocusRef = React.useRef(onFocus);
@@ -203,16 +225,16 @@ export const PromptEditor = React.forwardRef<
   // a separator would tear down the collaborative binding.
   const blockSeparatorRef = React.useRef(blockSeparator);
   blockSeparatorRef.current = blockSeparator;
-  // Live for the same reason, and for one more: what this box asks for is a
-  // property of the state it is in, not of the box. The lyrics box wants words
-  // on a vocal track and wants nothing on an instrumental one, and a string
-  // baked in at creation would go on asking for words after the switch says
-  // they are not used.
+  const mentionTokensRef = React.useRef(mentionTokens);
+  mentionTokensRef.current = mentionTokens;
+  // Live for the same reason: what this box asks for is a property of the
+  // state it is in, not of the box, and a string baked in at creation would go
+  // on asking for what the panel no longer wants.
   const placeholderRef = React.useRef(placeholder);
   placeholderRef.current = placeholder;
   // The open `@` popup registers a refresh() here (collaboration residual 2): a
   // REMOTE mode / pool change fires no editor transaction, so the visible popup's
-  // list would stay stale. The effect below calls it when `imageRefsDisabled` /
+  // list would stay stale. The effect below calls it when `referenceKinds` /
   // `references` change, refreshing a visible popup's content from the live pool.
   const suggestionRefreshRef = React.useRef<(() => void) | null>(null);
   const editor = useEditor(
@@ -252,7 +274,7 @@ export const PromptEditor = React.forwardRef<
             // Same verdict as the rail's insert button, from the same call:
             // a row the picker offers is a row the rail would insert.
             getUsabilityContext: () => ({
-              takesReferences: !imageRefsDisabledRef.current,
+              referenceKinds: referenceKindsRef.current,
               // Always true here: BOTH containers render a line of copy in
               // place of this editor when the model consumes no prompt
               // (#1966), so there is no `@` picker to open in that state.
@@ -274,13 +296,13 @@ export const PromptEditor = React.forwardRef<
       // current for both local and remote changes.
       onCreate: ({ editor: e }) => {
         onTextChange(
-          serializePromptText(e, poolRef.current, blockSeparatorRef.current),
+          serializePromptText(e, poolRef.current, blockSeparatorRef.current, mentionTokensRef.current),
         );
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
       onUpdate: ({ editor: e }) => {
         onTextChange(
-          serializePromptText(e, poolRef.current, blockSeparatorRef.current),
+          serializePromptText(e, poolRef.current, blockSeparatorRef.current, mentionTokensRef.current),
         );
         onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       },
@@ -330,9 +352,14 @@ export const PromptEditor = React.forwardRef<
           editor.chain().focus('end').insertContent(content).run();
         }
       },
-      serializePrompt: (): string | null =>
+      serializePrompt: (tokens?: MentionTokens): string | null =>
         editor
-          ? serializePromptText(editor, poolRef.current, blockSeparatorRef.current)
+          ? serializePromptText(
+            editor,
+            poolRef.current,
+            blockSeparatorRef.current,
+            tokens ?? mentionTokensRef.current,
+          )
           : null,
     }),
     [editor],
@@ -343,17 +370,19 @@ export const PromptEditor = React.forwardRef<
   // edit (the user types into the text node on the canvas) — onUpdate never
   // fires, so the container's execute-gate mirror would stay stuck on the
   // stale substitution (an empty node @-ed keeps the button dead after the
-  // node gains words; an emptied node leaves the button lit but dead).
+  // node gains words; an emptied node leaves the button lit but dead). A media
+  // chip's words move the same way: mentioning a second picture or switching
+  // model renumbers them with no edit to this chip.
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     onTextChange(
-      serializePromptText(editor, references, blockSeparatorRef.current),
+      serializePromptText(editor, references, blockSeparatorRef.current, mentionTokens),
     );
-  }, [editor, references, onTextChange]);
+  }, [editor, references, mentionTokens, onTextChange]);
 
   // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
   // residual 2): a REMOTE peer toggling this node's mode or editing its
-  // references updates `imageRefsDisabled` / `references` here but fires NO
+  // references updates `referenceKinds` / `references` here but fires NO
   // prompt-doc transaction, so @tiptap/suggestion never re-runs items() and a VISIBLE popup
   // keeps its pre-change list. The popup registers a refresh() (a no-op while
   // hidden) that recomputes its content from the live pool + mode. A LOCAL mode
@@ -361,7 +390,7 @@ export const PromptEditor = React.forwardRef<
   // remote case.
   React.useEffect(() => {
     suggestionRefreshRef.current?.();
-  }, [imageRefsDisabled, references]);
+  }, [referenceKinds, references]);
 
   // Cascade-clear stale @-mention chips: when a reference edge is removed the
   // pool shrinks, so any @-mention pointing at a now-disconnected source must
@@ -460,16 +489,17 @@ export const PromptEditor = React.forwardRef<
   React.useEffect(() => {
     editor?.setEditable(true, false);
   }, [editor, placeholder]);
-  // t2i greys out existing IMAGE @-mention chips (design §2.4 C): the mode
-  // switch visually pre-announces they will not take effect (execute forces
-  // referenceUrls=[] in t2i). TEXT chips stay full-strength — their
-  // substitution feeds the prompt string, and this signal is about image
-  // references (round-2 adversarial: dimming them lied about their effect).
+  // A chip of a kind the pool does not take is greyed (design §2.4 C): a mode
+  // or model switch visually pre-announces it will not take effect, since the
+  // payload sends only the kinds the pool takes. TEXT chips stay
+  // full-strength — their substitution feeds the prompt string, and this
+  // signal is about references (round-2 adversarial: dimming them lied about
+  // their effect).
   // A mode whose model declares no prompt sends an empty one (#1950), but it
   // mounts no editor either, so no chip is on screen to dim.
-  const dimReferences = imageRefsDisabled
-    ? ' [&_.reference-mention[data-kind=image]]:opacity-40 [&_.reference-mention[data-kind=image]]:grayscale'
-    : '';
+  const dimReferences = REFERENCE_KINDS.filter((kind) => !referenceKinds.includes(kind))
+    .map((kind) => DIM_CHIP[kind])
+    .join('');
   return (
     // ScrollArea (#1773): the prompt scrolls behind a custom OVERLAY scrollbar
     // (appears only while scrolling, no layout space, hover changes color

@@ -29,8 +29,8 @@ import {
   GENERATION_NODE_MODES,
   markText,
   MAX_NODE_NAME_LEN,
+  missingSources,
   PANEL_EDITOR_PARAM,
-  REFERENCE_POOL_PARAM,
   type CanvasProposal,
   type GenerationNodeType,
   type ProposalNode,
@@ -88,10 +88,13 @@ function reachableModes(): Reachable[] {
     for (const mode of GENERATION_NODE_MODES[nodeType]) {
       const answer = modelsForMode(nodeType, mode);
       if (!answer.available) continue;
-      const needs = [
-        ...new Set(entries.flatMap((e) => e.sourcesByMode[mode] ?? [])),
-      ] as GenerationNodeType[];
       for (const model of answer.models) {
+        // The kinds of node this model's empty run still asks for: one per
+        // requirement, named by what its first member takes.
+        const entry = entries.find((e) => e.name === model.name);
+        const needs = (entry ? missingSources(entry, mode, {}) : [])
+          .map(([field]) => (field === undefined ? undefined : entry?.params[field]?.accepts))
+          .filter((kind): kind is GenerationNodeType => kind !== undefined);
         const places = Object.entries(model.params).filter(
           ([, p]) => p.filledBySource === true,
         );
@@ -111,9 +114,9 @@ function reachableModes(): Reachable[] {
             .filter(([name, p]) => theirsToFill(name, p))
             .map(([name]) => name),
           ...(model.maxInputChars === undefined ? {} : { maxInputChars: model.maxInputChars }),
-          ...(model.params[REFERENCE_POOL_PARAM]?.maxItems === undefined
+          ...(model.params.images?.maxItems === undefined
             ? {}
-            : { poolCap: model.params[REFERENCE_POOL_PARAM].maxItems }),
+            : { poolCap: model.params.images.maxItems }),
           params: model.params,
         });
       }
@@ -308,6 +311,50 @@ describe("a mode whose material arrives through the reference pool", () => {
     expect(checkProposal(propose(at, { sources: twice }))).toEqual({ ok: true });
   });
 
+  it("counts a clip the step before made against the clip pool, not the picture one (#2156)", () => {
+    // Each kind has its own pool with its own ceiling. A generated clip wired
+    // in lands in the clip pool, so a group that fills it with empty clips and
+    // wires one more made clip in is placed, filled, and then turned away.
+    const clipPool = (m: Reachable): ParamInfo | undefined =>
+      Object.values(m.params).find((p) => p.fromReferencePool === true && p.accepts === "video");
+    const at = pick((m) => clipPool(m)?.maxItems !== undefined, "clip pool with a declared cap");
+    const cap = clipPool(at)?.maxItems ?? 0;
+    const filled = propose(at, { sources: Array.from({ length: cap }, (): GenerationNodeType => "video") });
+    const generation = filled.nodes.length - 1;
+    const maker = sourcelessOn("video");
+    const made = filled.nodes[generation] as ProposalNode;
+
+    const verdict = checkProposal({
+      ...filled,
+      nodes: [
+        ...filled.nodes.slice(0, generation),
+        {
+          ...made,
+          prompt: [
+            ...(made.prompt ?? []),
+            { slot: { kind: "ref", label: "the step before", note: "Nothing to do" } },
+          ],
+        },
+        {
+          role: "generate",
+          type: "video",
+          name: "The first take",
+          mode: maker.mode,
+          model: maker.model,
+          params: {},
+          prompt: [{ text: "an opening shot" }],
+        },
+      ],
+      edges: [...filled.edges, { fromIndex: filled.nodes.length, toIndex: generation }],
+      groupName: "One clip more than it holds",
+    });
+
+    expect(verdict).toEqual({
+      ok: false,
+      reason: expect.stringContaining(`${String(cap)} video reference(s) at a time`),
+    });
+  });
+
   it("is refused when it wires in more than the pool holds", () => {
     // The pool has a ceiling as well as a floor, and the panel refuses over
     // it by name. A group past it is placed, filled, and then turned away.
@@ -330,7 +377,7 @@ describe("a mode whose material arrives through the reference pool", () => {
     // reader would have mentioned, so it takes one of the rows -- counting
     // only the empty nodes lets a group be placed that the panel then refuses.
     const at = pick(
-      (m) => m.byReference && m.poolCap !== undefined && m.nodeType === "video",
+      (m) => m.byReference && m.poolCap !== undefined && m.nodeType === "video" && m.needs.length > 0,
       "video pool with a declared cap",
     );
     const kind = at.needs[0] as GenerationNodeType;
@@ -428,7 +475,12 @@ describe("a mode whose material arrives through a panel slot", () => {
     // not made wrong by a neighbour asking for something.
     const slot = pick((m) => !m.byReference && m.needs.length > 0, "mode fed by a panel slot");
     const other = pick(
-      (m) => !m.byReference && m.needs.length > 0 && !m.needs.includes(slot.needs[0] as GenerationNodeType),
+      // Built with a prompt below, so it has to be a model that reads one.
+      (m) =>
+        !m.byReference &&
+        m.takesPrompt &&
+        m.needs.length > 0 &&
+        !m.needs.includes(slot.needs[0] as GenerationNodeType),
       "mode fed by a slot of another kind",
     );
 
@@ -451,7 +503,7 @@ describe("a mode whose material arrives through a panel slot", () => {
     // Placing one empty node says that piece is theirs to put somewhere; it
     // says nothing about the piece they already have on their canvas.
     const at = pick(
-      (m) => !m.byReference && m.needs.length > 1,
+      (m) => !m.byReference && new Set(m.needs).size > 1,
       "mode needing two kinds through panel slots",
     );
 
@@ -499,7 +551,7 @@ describe("a mode whose material arrives through a panel slot", () => {
     // one place for a picture and one for a voice; two portraits is a group
     // the reader fills and then has nowhere to put the second one.
     const at = pick(
-      (m) => !m.byReference && m.needs.length > 1,
+      (m) => !m.byReference && new Set(m.needs).size > 1,
       "mode needing two kinds through panel slots",
     );
     const twiceTheFirst = [
@@ -557,21 +609,6 @@ describe("what only the reader can fill in", () => {
     expect(checkProposal(propose(at, { params: { [PANEL_EDITOR_PARAM]: "la la la" } })).ok).toBe(
       false,
     );
-  });
-
-  it("stands with nothing marked when the switch takes that box away", () => {
-    // An instrumental track has no words to write, and the panel takes the
-    // lyrics box off the screen. A bracket telling the reader to write lyrics
-    // would point at a box that is not there.
-    const at = pick(
-      (m) => m.params[PANEL_EDITOR_PARAM]?.gate?.kind === "flagOff",
-      "model whose text box a switch takes away",
-    );
-    const flag = (at.params[PANEL_EDITOR_PARAM]?.gate as { param: string }).param;
-
-    expect(checkProposal(propose(at, { tweaks: 0, params: { [flag]: true } }))).toEqual({
-      ok: true,
-    });
   });
 });
 
@@ -891,8 +928,117 @@ describe("what the answer tells the canvas", () => {
     const pool = pooled();
     const slot = slotted();
 
-    expect(answered(propose(pool)).map((n) => n.takesFrom)).toEqual([undefined, "pool"]);
-    expect(answered(propose(slot)).map((n) => n.takesFrom)).toEqual([undefined, "slot"]);
+    const pooledNodes = answered(propose(pool));
+    expect(pooledNodes[0]?.poolKinds).toBeUndefined();
+    expect(pooledNodes[1]?.poolKinds).toContain(pool.needs[0]);
+    expect(answered(propose(slot)).map((n) => n.poolKinds)).toEqual([undefined, []]);
+  });
+
+  /**
+   * The mode whose model takes one kind both ways: a required slot and a pool.
+   * @returns That mode.
+   * @throws {Error} When the catalog offers none.
+   */
+  const mixed = (): Reachable =>
+    pick(
+      (at) =>
+        at.byReference &&
+        Object.values(at.params).some(
+          (p) => p.filledBySource === true && p.fromReferencePool !== true && p.optional !== true,
+        ),
+      "mode with a required slot beside its pool",
+    );
+
+  it("names the slots a run cannot go without, apart from its pool", () => {
+    // The reader's material fills the slot first, so the canvas and the card
+    // must know the slot is there even though the pool takes the same kind.
+    const nodes = answered(propose(mixed()));
+    expect(nodes[nodes.length - 1]?.slotKinds).toEqual(["image"]);
+  });
+
+  it("names no slot for material the model can go without", () => {
+    // Every canvas place here is optional, so none of them is a slot a run
+    // cannot go without.
+    const optionalOnly = pick(
+      (at) =>
+        Object.values(at.params).some((p) => p.filledBySource === true && p.fromReferencePool !== true) &&
+        Object.values(at.params).every(
+          (p) => p.filledBySource !== true || p.fromReferencePool === true || p.optional === true,
+        ),
+      "mode whose canvas places are all optional",
+    );
+    expect(answered(propose(optionalOnly, { sources: [] })).at(-1)?.slotKinds).toEqual([]);
+  });
+
+  it("counts the pool's cap without the picture the required slot takes", () => {
+    const at = mixed();
+    const cap = Object.values(at.params).find((p) => p.fromReferencePool === true)?.maxItems ?? 0;
+    const sources = Array.from({ length: cap + 1 }, () => "image" as const);
+
+    expect(checkProposal(propose(at, { sources, marks: sources.length })).ok).toBe(true);
+  });
+
+  it("refuses a mark naming generated work that fills the required slot", () => {
+    const at = mixed();
+    const first = pick((m) => m.nodeType === "image" && m.needs.length === 0 && m.takesPrompt, "text-to-image mode");
+    const proposal: CanvasProposal = {
+      nodes: [
+        { role: "generate", type: "image", name: "Knight", mode: first.mode, model: first.model, params: {}, prompt: [{ text: "a knight" }] },
+        {
+          role: "generate",
+          type: at.nodeType,
+          name: "Clip",
+          mode: at.mode,
+          model: at.model,
+          params: {},
+          prompt: [{ slot: { kind: "ref", label: "knight", note: "" } }, { text: " walks forward" }],
+        },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "",
+      groupName: "Knight clip",
+    };
+
+    const verdict = checkProposal(proposal);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok ? "" : verdict.reason).toMatch(/slot/);
+  });
+
+  it("lets a mark name the generated work wired in past the one that fills the slot", () => {
+    const at = mixed();
+    const first = pick((m) => m.nodeType === "image" && m.needs.length === 0 && m.takesPrompt, "text-to-image mode");
+    const picture = (name: string): ProposalNode => ({
+      role: "generate",
+      type: "image",
+      name,
+      mode: first.mode,
+      model: first.model,
+      params: {},
+      prompt: [{ text: name }],
+    });
+    const proposal: CanvasProposal = {
+      nodes: [
+        picture("Knight"),
+        picture("Castle"),
+        {
+          role: "generate",
+          type: at.nodeType,
+          name: "Clip",
+          mode: at.mode,
+          model: at.model,
+          params: {},
+          prompt: [{ text: "walk to " }, { slot: { kind: "ref", label: "castle", note: "" } }],
+        },
+      ],
+      edges: [
+        { fromIndex: 0, toIndex: 2 },
+        { fromIndex: 1, toIndex: 2 },
+      ],
+      rationale: "",
+      groupName: "Knight clip",
+    };
+
+    expect(checkProposal(proposal)).toEqual({ ok: true });
   });
 
   it("refuses a proposal that says it itself", () => {
@@ -903,7 +1049,11 @@ describe("what the answer tells the canvas", () => {
     const generate = said.nodes[said.nodes.length - 1] as ProposalNode;
 
     expect(
-      inputSchema.safeParse({ ...said, nodes: [...said.nodes.slice(0, -1), { ...generate, takesFrom: "pool" }] })
+      inputSchema.safeParse({ ...said, nodes: [...said.nodes.slice(0, -1), { ...generate, poolKinds: ["image"] }] })
+        .success,
+    ).toBe(false);
+    expect(
+      inputSchema.safeParse({ ...said, nodes: [...said.nodes.slice(0, -1), { ...generate, slotKinds: ["image"] }] })
         .success,
     ).toBe(false);
   });
@@ -1732,11 +1882,9 @@ describe("a mark pointing at an upstream node", () => {
     });
   });
 
-  it("measures a mark landing on an unmentionable feeder as the nothing it writes", () => {
-    // The canvas writes no mention where the feeder cannot carry one, so the
-    // characters it would have carried never reach the box. Read off a list
-    // with that place dropped, the mark would be paired with the node next
-    // along and the check would judge a string the reader never receives.
+  it("pairs a mark with the node past the one the required slot takes", () => {
+    // The reader picks the slot's node in the panel, so the canvas writes no
+    // mention of it and the one mark is about the caption wired in after it.
     const at = pick(
       (m) => !m.byReference && m.takesPrompt && m.needs.length > 0,
       "mode fed by a panel slot that still takes a prompt",
@@ -1756,11 +1904,7 @@ describe("a mark pointing at an upstream node", () => {
       groupName: "Two steps",
     });
 
-    // The one mark lands on the unmentionable feeder, and it is named.
-    expect(verdict).toEqual({
-      ok: false,
-      reason: expect.stringContaining("cannot carry a mention of"),
-    });
+    expect(verdict).toEqual({ ok: true });
   });
 
   it("refuses a second mark when only one node is wired in to carry it", () => {
@@ -1865,9 +2009,11 @@ describe("a mark pointing at an upstream node", () => {
       groupName: "Two steps",
     });
 
+    // Generated work of the kind the model's slot takes fills that slot, and
+    // a slot is picked in the panel, never mentioned.
     expect(verdict).toEqual({
       ok: false,
-      reason: expect.stringContaining("cannot carry a mention of"),
+      reason: expect.stringMatching(/fills the \w+ slot/),
     });
   });
 });

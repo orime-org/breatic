@@ -26,7 +26,6 @@ function fsWith(params: string[]): Record<string, unknown> {
     "      label: text-to-video",
     "    i2v:",
     "      label: image-to-video",
-    "      sources: [image]",
   ].join("\n");
   const model = [
     "models:",
@@ -90,29 +89,6 @@ describe("the projection", () => {
         '        note: "this fixture does not mount it"',
       ],
       "aspect_ratio",
-    );
-
-    expect(info.noControl).toBe(true);
-  });
-
-  it("draws no control gated on a slot this mode has no slot for", async () => {
-    // The switch is only meaningful beside the video it applies to, and the
-    // fixture's t2v mode offers no video slot.
-    const info = await projected(
-      [
-        "      video:",
-        '        description: "Driving video"',
-        "        default: null",
-        "        fill: canvas",
-        "        accepts: video",
-        "        modes: [i2v]",
-        "      keep_original_sound:",
-        '        description: "Keep the source audio"',
-        "        default: true",
-        "        fill: panel",
-        "        when: { source: video }",
-      ],
-      "keep_original_sound",
     );
 
     expect(info.noControl).toBe(true);

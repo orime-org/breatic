@@ -25,7 +25,8 @@
     "prepare": "git config core.hooksPath .husky || true",
     "db:journal-add": "tsx scripts/db-journal-add.ts",
     "db:journal-repair": "tsx scripts/db-journal-repair.ts",
-    "db:check-watermark": "tsx scripts/db-check-watermark.ts"
+    "db:check-watermark": "tsx scripts/db-check-watermark.ts",
+    "voice-samples": "pnpm --filter @breatic/worker voice-samples"
   },
   "devDependencies": {
     "@breatic/eslint-rules": "workspace:*",

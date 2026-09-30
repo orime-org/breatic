@@ -1,18 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import {
-  ArrowUp,
-  Globe,
-  Languages,
-  Loader2,
-  Sparkles,
-  Star,
-  X,
-} from 'lucide-react';
+import { ArrowUp, Loader2, Star, X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry } from '@breatic/shared';
+import type { ModelEntry, ReferenceKind } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -31,10 +23,7 @@ import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import {
-  imageModeTakesReferences,
-  type ImageGenMode,
-} from '@web/spaces/canvas/generate/image-mode-selection';
+import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 
 interface GeneratePanelProps {
   /** Catalog image models (already narrowed to the active mode). */
@@ -57,16 +46,18 @@ interface GeneratePanelProps {
    * In the rail it refuses INSERT on every row — nothing can be inserted into
    * a prompt that is not sent — and so dims every row's CONTENT, text included.
    * The ✕ is untouched: it removes in every state (#1952). A media row's
-   * content is dimmed by `modeTakesReferences` as well, because that is the
+   * content is dimmed by `referenceKinds` as well, because that is the
    * question whose answer points at a mode where the row actually works.
    */
   promptRequired: boolean;
   /** Current ratio + resolution selection. */
-  params: { aspect_ratio?: string; resolution?: string } & CameraValue;
+  params: { aspect_ratio?: string; resolution?: string } & CameraValue & Readonly<Record<string, unknown>>;
   /** The node's derived reference rows. */
   references: ReferenceRailItem[];
-  /** Estimated credit cost of one generation (current model's cost_per_call). */
-  creditEstimate: number;
+  /** The kinds the active model's pool takes in this mode (#2156). */
+  referenceKinds: readonly ReferenceKind[];
+  /** The run's estimate as printed beside the star; undefined until it resolves. */
+  creditText: string | undefined;
   /**
    * Which execute precondition fails, or null when Generate may proceed.
    *
@@ -86,9 +77,7 @@ interface GeneratePanelProps {
   /** Switch the generation sub-mode (t2i / i2i). */
   onToggleMode: (mode: ImageGenMode) => void;
   /** Change ratio / resolution. */
-  onChangeParams: (
-    partial: { aspect_ratio?: string; resolution?: string } & CameraValue,
-  ) => void;
+  onChangeParams: (partial: object) => void;
   /** Toggle the canvas reference-pick mode (enter, or exit when already picking). */
   onAddReference: () => void;
   /** Whether THIS node's reference pick is running — highlights the button. */
@@ -124,22 +113,10 @@ interface GeneratePanelProps {
   onExecute: () => void;
 }
 
-// Placeholder buttons not yet wired (slice-1 decision B — shown disabled).
-// presets + translate live in the header's top-right (user 2026-07-18); camera
-// + online stay in the footer (left / right clusters respectively).
-const HEADER_PLACEHOLDERS = [
-  { key: 'presets', testId: 'generate-presets', Icon: Sparkles },
-  { key: 'translate', testId: 'generate-translate', Icon: Languages },
-] as const;
-// camera is now the functional CameraPicker (#1788); online stays a placeholder.
-const FOOTER_PLACEHOLDERS = [
-  { key: 'online', testId: 'generate-online', Icon: Globe },
-] as const;
-
 /**
  * The image-node Generate panel (slice 1). Composes the tool row, reference
  * rail, the injected collaborative prompt editor, and a footer (model +
- * ratio/resolution pickers, disabled placeholders for the unbuilt controls, the
+ * ratio/resolution pickers, the
  * credit estimate, and the execute button). Presentational: all node data +
  * Yjs writes are threaded in by the container. Count is fixed to 1 (no count
  * control). The exit button only closes; execute is the separate action.
@@ -154,7 +131,8 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   promptRequired,
   params,
   references,
-  creditEstimate,
+  referenceKinds,
+  creditText,
   executeRefusal,
   promptSlot,
   onExit,
@@ -186,13 +164,8 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   // reference rows and refuses their insert (#1952 — their ✕ stays live), and
   // the @-picker hides them. Every refusal therefore sits on the row, which
   // can say why this mode has no use for it; an entry that goes dark can only
-  // swallow the click (#1986, user 2026-08-19). i2i uses the full pool.
-  const imageSourcesOff = !imageModeTakesReferences(mode);
-  // shrink-0 keeps the fixed-size footer icons from being squeezed when the
-  // pickers' labels run long (the footer row has no flex-wrap by design).
-  const placeholderClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border ' +
-    'text-muted-foreground opacity-50 cursor-not-allowed';
+  // swallow the click (#1986, user 2026-08-19). The model's pool says which
+  // kinds it uses (#2156).
   return (
     <div className='flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
       <div className='flex items-start justify-between'>
@@ -203,25 +176,11 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           styleActive={stylePicking}
           styleThumbnail={styleImageUrl}
           onClearStyle={onClearStyle}
-          styleDisabled={!styleSupported}
+          styleSupported={styleSupported}
           onFocus={onFocus}
           focusActive={focusPicking}
         />
         <div className='flex items-center gap-1.5'>
-          {HEADER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
-            <Button
-              key={key}
-              type='button'
-              variant={null}
-              size={null}
-              data-testid={testId}
-              disabled
-              aria-label={t(`canvas.generatePanel.${key}`)}
-              className={placeholderClass}
-            >
-              <Icon className='h-4 w-4' aria-hidden='true' />
-            </Button>
-          ))}
           <Button
             type='button'
             variant={null}
@@ -240,18 +199,16 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         references={references}
         onRemove={onRemoveReference}
         onInsert={onInsertReference}
-        // Text-to-image reads no source images at all, so its reference
-        // material rows go dark. Their ✕ does not — references are shared
-        // across modes, and a row this mode cannot use is exactly a row the
-        // user may want to clear (user 2026-08-19). A text row stays lit under
-        // this question either way: it feeds the prompt string, which both
-        // modes send. What could dim it is the prop below, and no image model
-        // reachable from this panel declares `takes_prompt: false` (verified
-        // 2026-08-19: the only image model that does is `topaz-upscale`, whose
-        // mode is `upscale` and therefore not in `IMAGE_MODE_OPTIONS`).
-        // Image-to-image is the mode that lights the rest back up; this panel
-        // has exactly those two (`ImageGenMode`).
-        modeTakesReferences={!imageSourcesOff}
+        // Rows of a kind the selected model's pool does not take go dark: a
+        // text-to-image model reads no source images at all. Their ✕ does
+        // not — references are shared across modes and models, and a row this
+        // model cannot use is exactly a row the user may want to clear (user
+        // 2026-08-19). A text row stays lit either way: it feeds the prompt
+        // string. What could dim it is the prop below, and no model this panel
+        // offers declares `takes_prompt: false` — the image models that do
+        // (`crystal-upscaler`, `bria-remove-background`) serve `upscale` and
+        // `remove_bg`, neither of which is in `IMAGE_MODE_OPTIONS`.
+        referenceKinds={referenceKinds}
         modelTakesPrompt={promptRequired}
         pendingFocus={pendingFocus}
       />
@@ -281,27 +238,15 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {FOOTER_PLACEHOLDERS.map(({ key, testId, Icon }) => (
-            <Button
-              key={key}
-              type='button'
-              variant={null}
-              size={null}
-              data-testid={testId}
-              disabled
-              aria-label={t(`canvas.generatePanel.${key}`)}
-              className={placeholderClass}
+          {creditText !== undefined && (
+            <span
+              data-testid='generate-credit'
+              className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
             >
-              <Icon className='h-4 w-4' aria-hidden='true' />
-            </Button>
-          ))}
-          <span
-            data-testid='generate-credit'
-            className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
-          >
-            <Star className='h-3.5 w-3.5' aria-hidden='true' />
-            {creditEstimate}
-          </span>
+              <Star className='h-3.5 w-3.5' aria-hidden='true' />
+              {creditText}
+            </span>
+          )}
           <Button
             type='button'
             variant={null}

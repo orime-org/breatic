@@ -59,8 +59,7 @@ For voice cloning:
       "model": "<voice_clone_model>",
       "params": {
         "text": "<text to speak in cloned voice>",
-        "audio": "<reference_audio_url>",
-        "reference_text": "<transcript of reference audio>"
+        "audio": "<reference_audio_url>"
       }
     }
   ]
@@ -88,15 +87,14 @@ Alice: So tell us about your latest project.
 ```
 
 ### Voice Cloning
-- Provide a clear reference audio clip (15-60 seconds recommended)
-- Include the transcript of the reference audio in `reference_text` for better accuracy
-- The reference audio should have minimal background noise
+- Provide a clear reference audio clip of the one voice to clone
+- Background noise is cleaned from the sample by default, but a quiet recording still clones best
 - Speak naturally in the reference — the clone captures tone, pace, and style
+- The same reference audio reuses the voice it cloned the first time
 
 ### Emotion and Style
 Some models support emotion or style control:
-- **MiniMax Speech**: Use the `emotion` param (happy, sad, angry, neutral, etc.)
-- **ElevenLabs V3**: Adjust `stability` (consistency) and `similarity` (voice faithfulness)
-- **Fish Speech**: Use bracket tags in text like `[whisper]`, `[excited]`, `[laughing]`
+- **MiniMax Speech 2.8 HD**: Use the `emotion` param (happy, sad, angry, neutral, etc.)
+- **ElevenLabs Eleven v3**: Adjust `stability` (consistency) and `similarity` (voice faithfulness)
 
 For batch generation, maintain consistent voice and style settings across segments for a unified listening experience.

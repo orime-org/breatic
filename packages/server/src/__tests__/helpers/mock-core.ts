@@ -579,7 +579,7 @@ export const domainMock = () => ({
   listAvailableModels: vi.fn().mockReturnValue([]),
   // #1580 #7 credit pre-check inputs (canvas + mini-tools routes).
   MIN_TASK_CREDIT_COST: 5,
-  estimateTaskCredits: vi.fn().mockReturnValue(5),
+  estimateTaskCredits: vi.fn().mockResolvedValue(5),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
   getModel: vi.fn(),

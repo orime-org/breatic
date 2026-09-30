@@ -38,7 +38,6 @@ import { z } from "zod";
 
 import {
   canConnect,
-  effectiveItemCap,
   evaluateExecute,
   extractPromptText,
   feedersOf,
@@ -50,9 +49,9 @@ import {
   promptTextOf,
   referenceCapExceeded,
   type CanvasProposal,
-  type CappedParam,
+  type ControlGate,
   type GenerationNodeType,
-  type MaterialPath,
+  type ReferenceKind,
   type PromptSegment,
   type ProposalAnswer,
   type ProposalNode,
@@ -60,6 +59,8 @@ import {
 
 import {
   modelsForMode,
+  poolParams,
+  requiredSlotKinds,
   type ModelInfo,
   type ParamInfo,
 } from "@domain/model-catalog/mode-catalog.js";
@@ -172,20 +173,6 @@ export const inputSchema = z
   .strict();
 
 /**
- * The parameter a model fills from nodes wired into it, when it has one.
- *
- * Two gates turn on this answer -- whether an empty node has to be wired in
- * at all, and what a mark in the prompt lands as once the group is placed --
- * so it is given once.
- * @param chosen - The model the proposal picked, as the catalog projects it.
- * @returns The pool parameter, or undefined when material arrives by slot.
- * @throws {never} Never.
- */
-function poolParam(chosen: ModelInfo): ParamInfo | undefined {
-  return Object.values(chosen.params).find((info) => info.fromReferencePool === true);
-}
-
-/**
  * What the catalog says about one proposed node, for everyone downstream.
  *
  * Answered here because the catalog is the authority and this file is the
@@ -193,12 +180,12 @@ function poolParam(chosen: ModelInfo): ParamInfo | undefined {
  * model, a model it does not carry -- is left unanswered, and the
  * per-generation check says what is wrong with it in its own words.
  * @param node - The proposed node.
- * @returns Its two facts, or undefined when the node generates nothing.
+ * @returns Its three facts, or undefined when the node generates nothing.
  * @throws {never} Never.
  */
 function catalogFactsOf(
   node: ProposalNode,
-): { takesFrom: MaterialPath; takesPrompt: boolean } | undefined {
+): { poolKinds: ReferenceKind[]; slotKinds: ReferenceKind[]; takesPrompt: boolean } | undefined {
   if (node.role !== "generate" || node.type === "text") return undefined;
   const { mode, model } = node;
   if (!mode || !model) return undefined;
@@ -207,7 +194,8 @@ function catalogFactsOf(
   const chosen = reachable.models.find((m) => m.name === model);
   if (!chosen) return undefined;
   return {
-    takesFrom: poolParam(chosen) ? "pool" : "slot",
+    poolKinds: poolParams(chosen).map((pool) => pool.kind),
+    slotKinds: requiredSlotKinds(chosen),
     takesPrompt: chosen.takesPrompt,
   };
 }
@@ -216,7 +204,7 @@ function catalogFactsOf(
  * The same proposal with what the catalog says written onto each node.
  *
  * Done before anything is judged, not after: what a prompt may name is asked
- * of those two facts (`nameableFeeders`), so a check reading them off the node
+ * of those facts (`nameableFeeders`), so a check reading them off the node
  * and a canvas reading them off the same node cannot reach different answers.
  * @param proposal - What the model sent.
  * @returns The proposal as it will be placed.
@@ -229,23 +217,6 @@ function withCatalogFacts(proposal: CanvasProposal): CanvasProposal {
       const facts = catalogFactsOf(node);
       return facts === undefined ? node : { ...node, ...facts };
     }),
-  };
-}
-
-/**
- * A capped parameter in the words the shared cap rule reads it in.
- *
- * The catalog projects a parameter into camel case and the rule is stated on
- * the wire shape, so the two names for one fact meet here rather than the rule
- * being written a second time for this caller.
- * @param info - What the catalog says about the parameter.
- * @returns The same two fields, named the way the rule asks for them.
- * @throws {never} Never.
- */
-function capShapeOf(info: ParamInfo): CappedParam {
-  return {
-    ...(info.maxItems === undefined ? {} : { max_items: info.maxItems }),
-    ...(info.maxItemsWhen === undefined ? {} : { max_items_when_present: info.maxItemsWhen }),
   };
 }
 
@@ -287,10 +258,9 @@ function isDrawn(
   info: ParamInfo,
 ): boolean {
   const gate = info.gate;
-  if (gate === undefined || gate.kind === "source") return true;
+  if (gate === undefined) return true;
   const held = params[gate.param];
-  const on = typeof held === "boolean" ? held : chosen.params[gate.param]?.default === true;
-  return gate.kind === "flagOn" ? on : !on;
+  return typeof held === "boolean" ? held : chosen.params[gate.param]?.default === true;
 }
 
 /**
@@ -341,10 +311,10 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
       };
     }
     if (!isDrawn(chosen, node.params ?? {}, info)) {
-      const gate = info.gate as { kind: "flagOn" | "flagOff"; param: string };
+      const gate = info.gate as ControlGate;
       return {
         ok: false,
-        reason: `"${key}" only counts while "${gate.param}" is ${gate.kind === "flagOn" ? "on" : "off"}, and this proposal leaves it the other way. Set that switch or leave "${key}" out.`,
+        reason: `"${key}" only counts while "${gate.param}" is on, and this proposal leaves it off. Set that switch or leave "${key}" out.`,
       };
     }
     const options = info.options ?? [];
@@ -451,7 +421,7 @@ function checkGenerateNode(
   // fills by clicking any node of that kind anywhere on the canvas. Which one
   // this model uses is what it declares, carried here by the same projection
   // the agent is answered out of.
-  const pool = poolParam(chosen);
+  const pools = poolParams(chosen);
   // A model drawing no box mounts no editor and forces the box empty, so both
   // the words and a mark that lands as a mention of upstream work reach
   // nobody. Asked further down instead, the mention would be turned away for
@@ -484,9 +454,10 @@ function checkGenerateNode(
   const nodesAt = (list: readonly number[]): ProposalNode[] =>
     list.flatMap((i) => proposal.nodes[i] ?? []);
   // What each mark pointing upstream lands on, in the order the marks appear.
-  // The k-th mark is about the k-th node wired in, so the pairing is settled
-  // once here and read the same way by the gate below, the length it is
-  // measured at, and the nodes a refusal names. Asked of the whole list of
+  // The k-th mark is about the k-th node wired in past the ones that fill a
+  // required slot, so the pairing is settled once here and read the same way
+  // by the gate below, the length it is measured at, and the nodes a refusal
+  // names. Asked of the whole list of
   // feeders instead, each of those three answers a different question from
   // the one the canvas will act on.
   //
@@ -525,15 +496,22 @@ function checkGenerateNode(
         reason: `"${node.name}" points at something upstream, and what is wired into it is material the reader fills in. Mark it as material, or wire in the work this draws on.`,
       };
     }
-    if (lost >= wired) {
+    // The slot's nodes are picked in the panel, so the marks count the rest.
+    const markable = held.upstream.filter((i) => !canName.slotted.includes(i));
+    if (lost >= markable.length) {
+      const slot = nodesAt(held.upstream.filter((i) => canName.slotted.includes(i)));
+      const filled = slot
+        .map((n) => ` "${n?.name ?? ""}" fills the ${n?.type ?? ""} slot "${model}" cannot run without, which the reader picks in the panel, so no mark is about it.`)
+        .join("");
+      const counted = slot.length > 0 ? "past the slot" : "are wired into it";
       return {
         ok: false,
-        reason: `"${node.name}" points upstream ${String(pointed.length)} time(s) and ${String(wired)} node(s) are wired into it. Each mark is about one of them, in the order they are listed.`,
+        reason: `"${node.name}" points upstream ${String(pointed.length)} time(s) and ${String(markable.length)} node(s) ${counted}. Each mark is about one of them, in the order they are listed.${filled}`,
       };
     }
     return {
       ok: false,
-      reason: `"${model}" cannot carry a mention of "${nodesAt(held.upstream)[lost]?.name ?? ""}". Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
+      reason: `"${model}" cannot carry a mention of "${nodesAt(markable)[lost]?.name ?? ""}". Say what you meant in the words themselves, and in your reply where the reader picks it up.`,
     };
   }
   // What the panel's own gate would say about the box this proposal fills in.
@@ -577,27 +555,27 @@ function checkGenerateNode(
     };
   }
 
-  // The pool has a ceiling as well, stated by the model and enforced by the
+  // Each pool has a ceiling as well, stated by the model and enforced by the
   // panel by name, so a group placed over it is filled by the reader and then
-  // turned away. Read through the one function the panel, the server and the
-  // worker read, so the number is the same everywhere it is judged.
+  // turned away.
   //
-  // Counted over the image nodes wired in, which is the most the prompt's
-  // marks can put in the pool: the panel takes the reference IMAGES the
-  // prompt mentions (`mentionedReferenceUrls`), one per mark, so a clip
-  // reaching the same generation, or the words upstream, is never one of
-  // them. A wired image the prompt never marks is counted here, and reaches
-  // the pool only once the reader mentions it themselves.
-  const pooled = nodesAt([...held.sources, ...held.upstream]).filter(
-    (n) => n.type === "image",
-  );
-  const cap = pool && effectiveItemCap(capShapeOf(pool), node.params ?? {});
-  const over = pool ? referenceCapExceeded(pooled.length, cap) : null;
-  if (over) {
-    return {
-      ok: false,
-      reason: `"${model}" holds ${String(over.limit)} reference(s) at a time, and ${String(pooled.length)} image node(s) reach node ${String(index)}, any of which its prompt can put in it.`,
-    };
+  // Counted per kind over the nodes of that kind wired in and not taken by a
+  // required slot, which is the most
+  // the prompt's marks can put in that pool: the panel sends each mentioned
+  // row in the list of its own kind (`mentionedReferenceUrls`), and the words
+  // upstream are never one of them. A wired node the prompt never marks is
+  // counted here, and reaches the pool only once the reader mentions it.
+  // A node the model's required slot takes is picked there, not in the pool.
+  const wired = nodesAt([...held.sources, ...held.upstream].filter((i) => !canName.slotted.includes(i)));
+  for (const { kind, info } of pools) {
+    const pooled = wired.filter((n) => n.type === kind).length;
+    const over = referenceCapExceeded(pooled, info.maxItems);
+    if (over) {
+      return {
+        ok: false,
+        reason: `"${model}" holds ${String(over.limit)} ${kind} reference(s) at a time, and ${String(pooled)} ${kind} node(s) reach node ${String(index)}, any of which its prompt can put in it.`,
+      };
+    }
   }
 
   return { ok: true };

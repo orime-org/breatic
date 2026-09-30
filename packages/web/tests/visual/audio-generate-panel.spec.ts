@@ -17,7 +17,9 @@
  */
 import { test, expect } from 'playwright/test';
 
-import { openGenerate, panCanvasDown, seedNode } from '../helpers/audio-panel';
+import { openGenerate, panCanvasDown, seedNode, registerCanvasStage, voiceRowCount } from '../helpers/audio-panel';
+
+registerCanvasStage();
 
 test('the stability tick labels are a pointer target the standard accepts', async ({ page }) => {
   // WCAG 2.2 SC 2.5.8 (AA) takes 24x24 CSS px, or 24px-diameter circles on
@@ -30,7 +32,10 @@ test('the stability tick labels are a pointer target the standard accepts', asyn
   await seedNode(nodeId, 'audio');
   await openGenerate(nodeId);
 
-  await page.getByTestId('generate-audio-params-trigger').click();
+  // The ticks are ElevenLabs' three named positions, on its stability scale.
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-elevenlabs-v3').click();
+  await page.getByTestId('generate-audio-settings-trigger').click();
   const ticks = page.locator('[data-testid^="generate-audio-stability-stop-"]');
   await expect(ticks.first()).toBeVisible({ timeout: 10_000 });
 
@@ -56,7 +61,8 @@ test('the voice list stands the five rows it is sized for @needs-tts', async ({ 
   await seedNode(nodeId, 'audio');
   await openGenerate(nodeId);
 
-  await page.getByTestId('generate-voice-trigger').click();
+  await page.getByTestId('generate-audio-settings-trigger').click();
+  await page.getByTestId('generate-audio-row-voice_id').click();
   const body = page.getByTestId('generate-voice-list-body');
   await expect(body).toBeVisible({ timeout: 20_000 });
   const options = page.locator('[data-testid^="generate-voice-option-"]');
@@ -88,7 +94,8 @@ test('the voice playing is marked by a ring drawn outside its button @needs-tts 
   await seedNode(nodeId, 'audio');
   await openGenerate(nodeId);
 
-  await page.getByTestId('generate-voice-trigger').click();
+  await page.getByTestId('generate-audio-settings-trigger').click();
+  await page.getByTestId('generate-audio-row-voice_id').click();
   const samples = page.locator('[data-testid^="generate-voice-sample-"]');
   await expect(page.locator('[data-testid^="generate-voice-option-"]').first()).toBeVisible({
     timeout: 20_000,
@@ -134,10 +141,10 @@ test('sound effects: a length picker, and a credit figure that follows it', asyn
 
   // The speech controls go with the mode: nothing here picks a voice, and
   // nothing here clones one.
-  await expect(page.getByTestId('generate-audio-params-trigger')).toBeVisible({
+  await expect(page.getByTestId('generate-audio-settings-trigger')).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByTestId('generate-voice-trigger')).toHaveCount(0);
+  expect(await voiceRowCount(page)).toBe(0);
   await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
 
   // The box asks for a sound rather than for lines to speak. Tiptap's
@@ -151,28 +158,24 @@ test('sound effects: a length picker, and a credit figure that follows it', asyn
   await page.getByTestId('generate-prompt-editor').click();
   await page.keyboard.type('glass shattering, then footsteps over the shards');
 
-  // Five seconds is what the model defaults to, and $0.002 a second at
-  // 1 credit = 1 cent puts that at one credit.
-  await expect(page.getByTestId('generate-audio-rate')).toHaveText('1', {
+  // Ten seconds is what the model defaults to, and $0.01 a second at
+  // 1 credit = 1 cent puts that at ten credits.
+  await expect(page.getByTestId('generate-audio-rate')).toHaveText('10', {
     timeout: 10_000,
   });
 
-  // Thirty seconds costs six, and the figure follows the picker rather than
-  // the prompt — which has not changed.
-  await page.getByTestId('generate-audio-params-trigger').click();
-  await page.getByTestId('generate-audio-duration-option-30').click();
-  await expect(page.getByTestId('generate-audio-rate')).toHaveText('6', {
-    timeout: 10_000,
-  });
-
-  // The longest preset the gateway takes, at the price the rate states.
-  await page.getByTestId('generate-audio-duration-option-180').click();
-  await expect(page.getByTestId('generate-audio-rate')).toHaveText('36', {
+  // The longest length the model takes, sixty seconds, costs sixty, and the
+  // figure follows the length rather than the prompt — which has not changed.
+  await page.getByTestId('generate-audio-settings-trigger').click();
+  const length = page.getByTestId('generate-audio-duration-slider').getByRole('slider');
+  await length.focus();
+  await page.keyboard.press('End');
+  await expect(page.getByTestId('generate-audio-rate')).toHaveText('60', {
     timeout: 10_000,
   });
 });
 
-test('text to music: two boxes, a switch, and an empty lyrics box refuses the submit', async ({ page }) => {
+test('text to music: two boxes, and an empty lyrics box refuses the submit', async ({ page }) => {
   const nodeId = crypto.randomUUID();
   // Panned up first, because this panel carries two editors and stands 396px
   // against the suite's 720px window — measured 2026-09-05, against 234px on
@@ -185,12 +188,11 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
   await page.getByTestId('generate-audio-mode-trigger').click();
   await page.getByTestId('generate-audio-mode-t2m').click();
 
-  // The mode's own model, and its flat price. minimax/music-3.0 bills $0.15 a
-  // call whatever the brief says, so the figure holds at 15 while text is
-  // typed. The three speech models move with the prompt and the sound-effect
-  // model moves with the length picker; this is the first on the panel that
-  // moves with neither.
-  await expect(page.getByTestId('generate-audio-rate')).toHaveText('15', {
+  // The mode's own model, and its flat price. Mureka V9.5 bills $0.225 a call
+  // whatever the brief says, so the figure holds at 22.5 while text is typed.
+  // The speech models move with the prompt and the sound-effect model moves
+  // with the length; this one moves with neither.
+  await expect(page.getByTestId('generate-audio-rate')).toHaveText('22.5', {
     timeout: 15_000,
   });
 
@@ -227,7 +229,7 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
 
   // Nothing here picks a voice, clones one, or collects a reference: the mode
   // states its slots and this one states none.
-  await expect(page.getByTestId('generate-voice-trigger')).toHaveCount(0);
+  expect(await voiceRowCount(page)).toBe(0);
   await expect(page.getByTestId('generate-audio-tool-ref-audio')).toHaveCount(0);
   await expect(page.getByTestId('generate-audio-tool-music-song')).toHaveCount(0);
 
@@ -260,26 +262,13 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
       .toBe('text');
   }
 
-  // The pill names the state it is in, the way every other pill on this row
-  // prints its current value. This model declares one param and nothing else,
-  // so this string is the whole pill face.
-  const pill = page.getByTestId('generate-audio-params-trigger');
-  await expect(pill).toContainText('With vocals', { timeout: 10_000 });
-
-  await pill.click();
-  const instrumental = page.getByTestId('generate-audio-is_instrumental-toggle');
-  await expect(instrumental).toBeVisible({ timeout: 10_000 });
-  await expect(instrumental).toHaveAttribute('aria-checked', 'false');
-  await instrumental.click();
-  await expect(instrumental).toHaveAttribute('aria-checked', 'true', {
-    timeout: 10_000,
-  });
-  await expect(pill).toContainText('Instrumental only', { timeout: 10_000 });
-  // The panel says so too: with no vocals there are no words to write, so the
+  // No vocals is its own model: the instrumental one takes no lyrics, so the
   // box is gone rather than standing there refusing typing (user 2026-09-06).
-  // The switch is thrown while the editor is already up, which is the path the
-  // unit suite cannot walk — it is a running editor that has to go, not a
+  // The model is switched while the editor is already up, which is the path
+  // the unit suite cannot walk — it is a running editor that has to go, not a
   // fresh render built from the new state.
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-mureka-v9.5-generate-bgm').click();
   await expect(page.getByTestId('generate-lyrics-editor')).toHaveCount(0, {
     timeout: 10_000,
   });
@@ -288,12 +277,9 @@ test('text to music: two boxes, a switch, and an empty lyrics box refuses the su
   // panel going back to asking for one plain prompt.
   await expect(page.getByText('Style', { exact: true })).toBeVisible();
   await expect(page.getByText('Lyrics', { exact: true })).toHaveCount(0);
-  // Off again, so the case leaves the node the way it found it.
-  await instrumental.click();
-  await expect(instrumental).toHaveAttribute('aria-checked', 'false', {
-    timeout: 10_000,
-  });
-  await expect(pill).toContainText('With vocals', { timeout: 10_000 });
+  // Back to the song model, so the case leaves the node the way it found it.
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-mureka-v9.5-generate-song').click();
   await expect(page.getByTestId('generate-lyrics-editor').locator('[data-placeholder]')).toHaveAttribute(
     'data-placeholder',
     'Write the lyrics',

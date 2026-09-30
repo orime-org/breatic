@@ -20,11 +20,9 @@ import { initCore } from "@breatic/core";
 import { parse } from "yaml";
 import { describe, it, expect, beforeAll } from "vitest";
 
+import { missingSources } from "@breatic/shared";
+
 import { getFullModelConfig } from "../model-catalog.js";
-import {
-  computeSourcesByMode,
-  violatesSourceRequirement,
-} from "../source-requirement.js";
 
 
 const MODES_YAML = resolve(
@@ -33,35 +31,23 @@ const MODES_YAML = resolve(
 );
 
 /** The two models that carry an end frame (config/models/video/*.yaml). */
-const FIRST_LAST_MODELS = ["kling-o3-pro-i2v", "seedance-1.5-pro-i2v"];
+const FIRST_LAST_MODELS = [
+  "gemini-omni-1.1-flash-image-to-video",
+  "minimax-h3-image-to-video",
+  "wan-3.0-image-to-video",
+];
 
 beforeAll(() => {
   initCore(process.env);
 });
 
 describe("first-last frame config wiring (#1904)", () => {
-  it("requires an image for the mode", () => {
-    expect(computeSourcesByMode("video", "first_last")).toEqual({
-      first_last: ["image"],
-    });
-  });
-
-  it("keeps the source gate up for a model that offers both modes", () => {
-    // Without a row of its own, `first_last` would resolve to "needs
-    // nothing", and one source-less mode lets the whole model through — the
-    // image-to-video half would stop asking for a first frame too.
-    const sources = computeSourcesByMode("video", ["i2v", "first_last"]);
-    // The model's own declarations, which is where the gate reads both halves
-    // of the question: which of its params takes a picture, and in what shape.
-    // A param this model does not declare reaches the upstream as nothing.
-    const config = getFullModelConfig("video");
-    const model = config.models.find((m) => m.name === FIRST_LAST_MODELS[0]);
-    const declared = (model?.params ?? {}) as Record<string, { accepts?: string }>;
-    expect(declared.image?.accepts, `${FIRST_LAST_MODELS[0]} takes an image`).toBe("image");
-    expect(violatesSourceRequirement(sources, { prompt: "x" }, declared)).toBe(true);
-    expect(
-      violatesSourceRequirement(sources, { prompt: "x", image: "https://cdn/a.png" }, declared),
-    ).toBe(false);
+  it.each(FIRST_LAST_MODELS)("%s asks for both frames in first_last and one in i2v", (name) => {
+    const model = getFullModelConfig("video").models.find((m) => m.name === name);
+    if (!model) throw new Error(`${name} missing from the video catalog`);
+    const entry = { params: model.params ?? {}, source_groups: model.source_groups };
+    expect(missingSources(entry, "first_last", {})).toEqual([["image"], ["end_image"]]);
+    expect(missingSources(entry, "i2v", {})).toEqual([["image"]]);
   });
 
   it("defines the mode in modes.yaml, where the agent reads its mode list", () => {
@@ -75,7 +61,7 @@ describe("first-last frame config wiring (#1904)", () => {
     expect(firstLast!.description?.trim().length).toBeGreaterThan(0);
   });
 
-  it("declares the mode on both models that can run it", () => {
+  it("declares the mode on every model listed as running it", () => {
     const config = getFullModelConfig("video");
     for (const name of FIRST_LAST_MODELS) {
       const model = config.models.find((m) => m.name === name);
@@ -86,7 +72,7 @@ describe("first-last frame config wiring (#1904)", () => {
     }
   });
 
-  it("keeps the end frame declared as a param on both models", () => {
+  it("keeps the end frame declared as a param on every one of them", () => {
     // The slot's URL travels as `end_image`; a model that stopped declaring it
     // would have it dropped by validateParams before the family ever saw it.
     const config = getFullModelConfig("video");

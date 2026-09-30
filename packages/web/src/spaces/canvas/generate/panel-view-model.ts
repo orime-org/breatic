@@ -8,7 +8,7 @@
  * all unit-testable without React / Yjs / react-query.
  */
 
-import type { FocusImage, ModelEntry } from '@breatic/shared';
+import type { FocusImage, MissingSource, ModelEntry } from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import {
@@ -17,7 +17,6 @@ import {
 } from '@web/spaces/canvas/generate/derive-references';
 import { validFocusImages } from '@web/data/focus-images';
 import {
-  imageModeTakesReferences,
   IMAGE_MODE_OPTIONS,
   resolveMode,
   type ImageGenMode,
@@ -29,8 +28,16 @@ import {
 } from '@web/spaces/canvas/generate/mode-selection';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import { REFERENCE_POOL_PARAM, effectiveItemCap, positiveCap } from '@breatic/shared';
-import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
+import { missingSources, referenceKinds, referencePool, type ReferencePool } from '@breatic/shared';
+import {
+  mentionTokens,
+  mentionedReferenceUrls,
+  NO_MENTION_TOKENS,
+  NO_REFERENCE_URLS,
+  poolParams,
+  type MentionTokens,
+  type ReferenceUrls,
+} from '@web/spaces/canvas/generate/reference-urls';
 import { asContentView } from '@web/data/yjs/node-view';
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
@@ -46,8 +53,16 @@ export interface GeneratePanelViewModel {
   params: Record<string, unknown>;
   /** Reference rail rows derived from incoming edges. */
   references: ReferenceRailItem[];
-  /** Reference source asset URLs, snapshotted for the execute payload. */
-  referenceUrls: string[];
+  /** The `@`-mentioned reference URLs, by kind, snapshotted for the execute payload. */
+  referenceUrls: ReferenceUrls;
+  /**
+   * How each mentioned picture, clip or track is written into the prompt the
+   * model reads, by pool id (#2156, design §13.2) — numbered in the same lists
+   * `referenceUrls` sends.
+   */
+  mentionTokens: MentionTokens;
+  /** Where the active model's pool takes each kind in this mode, and how many (#2156). */
+  pool: ReferencePool;
   /**
    * The node's style-reference image URL (#1664) — a pick-time COPY stored on
    * the node (`data.styleImageUrl`, one max, no upstream relationship). Unlike
@@ -79,29 +94,19 @@ export interface GeneratePanelViewModel {
    * node references). Malformed entries (untrusted Yjs) are dropped.
    */
   focusImages: FocusImage[];
-  /** Credit cost of one generation with the current model. */
-  creditEstimate: number;
+  /** The selected model's catalog entry, when the catalog has it. */
+  modelEntry: ModelEntry | undefined;
   /** The target node's display status — gates execute (no submit while handling). */
   nodeStatus: string | undefined;
   /** Active generation sub-mode (the t2i / i2i toggle state; default t2i). */
   mode: ImageGenMode;
   /**
-   * Whether the effective model needs a source image (i2i / edit modes). Drives
-   * the #1675 execute gate: submitting one of these with no `@`-picked source
-   * image is blocked in the panel (and re-checked server-side before billing).
-   * False when the catalog is empty (no model resolved) — nothing to gate.
+   * The sources this run still needs, by the effective model's own
+   * declarations (`missingSources`, the rule the server re-checks before
+   * enqueue). Drives the #1675 execute gate. Empty when the catalog is empty
+   * (no model resolved) — nothing to gate.
    */
-  requiresSource: boolean;
-  /**
-   * Max reference images the active model accepts under what this node
-   * currently carries — the reference pool's cap on the wire, narrowed by any
-   * `max_items_when_present` the picked sources trigger, normalized so only a
-   * POSITIVE finite cap is set (0 / negative / absent → undefined = uncapped,
-   * matching the server rule + worker guard). Drives the #1735 count gate:
-   * submitting more `@`-picked sources than this is blocked in the panel (and
-   * re-checked server-side before enqueue, which otherwise silently truncates).
-   */
-  maxReferences?: number;
+  missing: readonly MissingSource[];
   /**
    * How much prompt text the active model takes in one request (#1960), when
    * it states a limit.
@@ -151,34 +156,6 @@ export function selectModeModels(
   mode: ImageGenMode,
 ): ModelEntry[] {
   return filterModelsByMode(models, mode);
-}
-
-/**
- * The reference-image cap in force for one node's model and its style pick.
- *
- * The number the panel holds the reader to is the one the run is really under,
- * so it goes through `effectiveItemCap` the way the server gate and the worker
- * do: a catalog narrowing the cap while a style reference is carried states
- * that beside the cap it narrows, and reading the plain number here would let
- * the reader fill a pool the server then refuses.
- * @param model - The catalog entry the node has selected, if the catalog has answered.
- * @param styleImageUrl - The style reference the node carries, if any.
- * @returns The cap, or undefined when the model is unknown or states none.
- */
-function referenceCap(
-  model: ModelEntry | undefined,
-  styleImageUrl: string | undefined,
-): number | undefined {
-  const descriptor = model?.params[REFERENCE_POOL_PARAM];
-  if (!descriptor) return undefined;
-  // The presence conditions are read off the params a submission carries, so
-  // this is the slot half of the payload the panel would build.
-  return positiveCap(
-    effectiveItemCap(
-      descriptor,
-      styleImageUrl ? { [IMAGE_SLOTS.style.param]: [styleImageUrl] } : {},
-    ),
-  );
 }
 
 /**
@@ -243,10 +220,16 @@ export function buildGeneratePanelViewModel(input: {
   const focusImages: FocusImage[] = validFocusImages(content?.focusImages);
 
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
-  const referenceUrls =
-    !imageModeTakesReferences(mode)
-      ? []
-      : mentionedReferenceUrls({ references, focusImages, atMentioned, nodes });
+  // The model's own pool says which kinds a run sends and under which param
+  // (#2156); text-to-image models declare none.
+  const pool = referencePool(current, mode);
+  const sendsReferences = referenceKinds(pool).length > 0;
+  const referenceUrls = sendsReferences
+    ? mentionedReferenceUrls({ references, focusImages, atMentioned, nodes })
+    : NO_REFERENCE_URLS;
+  const mentionTokenMap = sendsReferences
+    ? mentionTokens(pool, { references, focusImages, atMentioned, nodes })
+    : NO_MENTION_TOKENS;
 
   // Style image (#1664): a pick-time URL copy stored on the node itself, so —
   // unlike i2i references — it survives t2i and rides the payload in every
@@ -263,6 +246,8 @@ export function buildGeneratePanelViewModel(input: {
     params,
     references,
     referenceUrls,
+    mentionTokens: mentionTokenMap,
+    pool,
     styleImageUrl,
     focusImages,
     // Capability gate (#1664): the model declares `style_images` on the wire →
@@ -272,31 +257,19 @@ export function buildGeneratePanelViewModel(input: {
     // Capability gate (#1788): the model declares the `camera` cluster on the
     // wire → it can take camera/lens/focal/aperture simulation. Edit variants
     // omit it, so `params.camera` is undefined and the Camera control is hidden
-    // (rendered only when supported, unlike the greyed-disabled Style button).
+    // (rendered only when supported, like the Style slot).
     cameraSupported: current ? current.params.camera != null : false,
-    // `?? 0` covers only the model-not-found case (empty catalog / stale model);
-    // when current is found, cost_per_call is a trusted number (boundary).
-    creditEstimate: current?.cost_per_call ?? 0,
+    modelEntry: current,
     nodeStatus: content?.status,
     mode,
-    // Execute gate (#1675, cross-modality): the ACTIVE PANEL MODE decides the
-    // submission semantics — read the model's precomputed per-mode source needs
-    // (`sourcesByMode`, backend-computed on the wire) for the active mode. Under
-    // t2i that is `[]` (no source), even for a HYBRID whose capability array
-    // also spans i2i; under i2i it is `["image"]`. No model resolved (empty
-    // catalog) → no gate. The rule itself lives backend-side; the panel only
-    // reads the wire field, never runs it.
-    requiresSource: current ? (current.sourcesByMode[mode]?.length ?? 0) > 0 : false,
-    // #1735 count gate: the active model's reference-image cap, read through
-    // `effectiveItemCap` so a cap the catalog narrows while another source is
-    // carried is the one in force here too — the server gate and the worker
-    // read it the same way, and a panel reading the plain number would let the
-    // reader fill more than the run can hold. Only a POSITIVE finite cap counts
-    // — 0 / negative / NaN / undefined all mean "uncapped", matching the server
-    // rule (reference-count.ts, `limit >= 1`) and the worker's truthy
-    // `spec.max_items` guard, so all three layers agree (else a `max_items: 0`
-    // would block every submit here with a nonsensical "limit: 0" toast).
-    maxReferences: referenceCap(current, styleImageUrl),
+    // Execute gate (#1675): the active panel mode and the model's own
+    // declarations decide, through the same rule the server re-checks.
+    missing: current
+      ? missingSources(current, mode, {
+        ...poolParams(pool, referenceUrls),
+        [IMAGE_SLOTS.style.param]: styleImageUrl === undefined ? [] : [styleImageUrl],
+      })
+      : [],
     maxInputChars: current?.max_input_chars,
     promptRequired: current?.takes_prompt ?? true,
   };

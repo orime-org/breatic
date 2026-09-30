@@ -83,7 +83,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       emptyLabel: 'No references',
       noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
-        takesReferences: true,
+        referenceKinds: ['image'],
         takesPrompt: true,
       }),
     });
@@ -135,7 +135,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       // did not. The picker now asks the same predicate as the rail's insert
       // button, so a row offered here is a row the rail would insert.
       getUsabilityContext: () => ({
-        takesReferences: true,
+        referenceKinds: ['image'],
         takesPrompt: true,
       }),
     });
@@ -163,7 +163,7 @@ describe('ReferenceMention — @ suggestion wiring', () => {
       emptyLabel: 'No references',
       noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
-        takesReferences: false,
+        referenceKinds: [],
         takesPrompt: true,
       }),
     });
@@ -252,7 +252,7 @@ describe('makeReferenceSuggestion — the popup shows what the LIVE pool matches
       emptyLabel: 'No references',
       noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
-        takesReferences: true,
+        referenceKinds: ['image'],
         takesPrompt: true,
       }),
       // Driving onStart/onUpdate by hand has no real transaction to advance the
@@ -303,7 +303,7 @@ describe('makeReferenceSuggestion — the popup shows what the LIVE pool matches
       emptyLabel: 'No references',
       noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
-        takesReferences: true,
+        referenceKinds: ['image'],
         takesPrompt: true,
       }),
       isLocalUserInput: () => true,
@@ -395,7 +395,7 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
         emptyLabel: 'No references',
         noMatchLabel: 'No matches',
         getUsabilityContext: () => ({
-          takesReferences: !hideImages,
+          referenceKinds: hideImages ? [] : ['image'],
           takesPrompt: true,
         }),
       });
@@ -425,7 +425,7 @@ describe('makeReferenceSuggestion — refocus re-show recomputes for the live mo
       emptyLabel: 'No references',
       noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
-        takesReferences: !hideImages,
+        referenceKinds: hideImages ? [] : ['image'],
         takesPrompt: true,
       }),
       isLocalUserInput: () => true, // the manually-dispatched caret tr is local
@@ -523,7 +523,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
-        takesReferences: true,
+        referenceKinds: ['image'],
         takesPrompt: true,
       }),
       // `remote` models whether the edit was a remote peer's; the popup's
@@ -576,7 +576,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
-        takesReferences: true,
+        referenceKinds: ['image'],
         takesPrompt: true,
       }),
       // `remote` models whether the edit was a remote peer's; the popup's
@@ -614,7 +614,7 @@ describe('makeReferenceSuggestion — collaboration residuals (#1802)', () => {
       emptyLabel: 'No references',
       noMatchLabel: 'No matches',
       getUsabilityContext: () => ({
-        takesReferences: true,
+        referenceKinds: ['image'],
         takesPrompt: true,
       }),
       refreshRef,
@@ -1099,6 +1099,22 @@ describe('serializePromptText — backend prompt string with text-chip substitut
       // Pool row gone (edge removed between report and read) → no content.
       expect(serializePromptText(editor, [imageRef])).toBe(
         'draw  next to  ',
+      );
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('writes a media chip the way its model reads it, and nothing when it names no way', () => {
+    // #2156, design §13.2: the words have to point at the file the model is
+    // sent, so the panel hands over each chip's spelling by pool id.
+    const editor = seededEditor();
+    try {
+      expect(serializePromptText(editor, [textRef, imageRef], '\n\n', { img: '@image1' })).toBe(
+        'draw a red panda on a bike next to @image1 ',
+      );
+      expect(serializePromptText(editor, [textRef, imageRef], '\n\n', {})).toBe(
+        'draw a red panda on a bike next to  ',
       );
     } finally {
       editor.destroy();

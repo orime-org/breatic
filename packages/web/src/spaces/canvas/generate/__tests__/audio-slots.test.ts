@@ -30,7 +30,7 @@ import {
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import { allSlotSpecs, slotForPurpose } from '@web/spaces/canvas/generate/slots';
+import { allSlotSpecs, slotForPurpose, type SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 describe('the reference-audio slot', () => {
@@ -99,45 +99,46 @@ describe('allSlotSpecs', () => {
 });
 
 /**
- * The three music reference slots (#1960 A6).
+ * The audio slots (#1960 A6, #2156).
  *
- * Reference to music takes a whole song, a vocal line and a backing track, and
- * the vendor reads each under its own name. They ride the same registry as the
- * voice sample so the two lookups above reach them for free — a slot missing
- * from `slotForPurpose` wires an edge instead of filling the slot, and one
- * missing from `allSlotSpecs` makes a still-held asset look unheld when its
- * source node is deleted. Both failures compile.
+ * Each rides the same registry as the voice sample so the two lookups above
+ * reach it for free — a slot missing from `slotForPurpose` wires an edge
+ * instead of filling the slot, and one missing from `allSlotSpecs` makes a
+ * still-held asset look unheld when its source node is deleted. Both failures
+ * compile.
  */
-describe('the music reference slots', () => {
-  const MUSIC_SLOTS = ['musicSong', 'musicVoice', 'musicInstrumental'] as const;
+describe('the audio slots', () => {
+  const ALL = Object.keys(AUDIO_SLOTS) as AudioSlot[];
 
-  it('takes an audio node in each, under the name the vendor reads', () => {
-    // minimax/music-01 names them `song`, `voice` and `instrumental`. Only
-    // `song` has been run against the gateway (2026-09-05); the other two
-    // names come from the vendor's parameter page.
-    expect(AUDIO_SLOTS.musicSong.param).toBe('song');
-    expect(AUDIO_SLOTS.musicVoice.param).toBe('voice');
-    expect(AUDIO_SLOTS.musicInstrumental.param).toBe('instrumental');
-    for (const slot of MUSIC_SLOTS) {
-      expect(AUDIO_SLOTS[slot].accepts, slot).toBe('audio');
+  it('reads each under the name its vendor gives the field', () => {
+    expect(Object.fromEntries(ALL.map((slot) => [slot, AUDIO_SLOTS[slot].param]))).toEqual({
+      refAudio: 'audio',
+      soundVideo: 'video',
+      moodImage: 'image',
+      musicSong: 'song',
+      coverSong: 'audio',
+      musicMelody: 'melody',
+      musicVocal: 'vocal',
+    });
+  });
+
+  it('names its node field and pick after itself, a bare URL field with Url', () => {
+    for (const slot of ALL) {
+      const spec = AUDIO_SLOTS[slot];
+      expect(spec.field, slot).toBe(spec.accepts === 'image' ? `${slot}Url` : slot);
+      expect(spec.purpose, slot).toBe(slot);
     }
   });
 
-  it('names its node field after itself, as the voice sample does', () => {
-    for (const slot of MUSIC_SLOTS) {
-      expect(AUDIO_SLOTS[slot].field, slot).toBe(slot);
-      expect(AUDIO_SLOTS[slot].purpose, slot).toBe(slot);
+  it('stores a cover alongside the URL for anything that is not a picture', () => {
+    for (const slot of ALL) {
+      const spec: SlotSpec = AUDIO_SLOTS[slot];
+      expect(spec.storesCover === true, slot).toBe(spec.accepts !== 'image');
     }
   });
 
-  it('stores a cover alongside the URL, since audio paints no thumbnail', () => {
-    for (const slot of MUSIC_SLOTS) {
-      expect(AUDIO_SLOTS[slot].storesCover, slot).toBe(true);
-    }
-  });
-
-  it('gives each one its own test ids, so the three are distinguishable', () => {
-    const ids = MUSIC_SLOTS.flatMap((slot) => [
+  it('gives each one its own test ids', () => {
+    const ids = ALL.flatMap((slot) => [
       AUDIO_SLOTS[slot].testId,
       AUDIO_SLOTS[slot].thumbnailTestId,
       AUDIO_SLOTS[slot].clearTestId,
@@ -146,9 +147,11 @@ describe('the music reference slots', () => {
   });
 
   it('names messages all five catalogs answer', () => {
-    for (const slot of MUSIC_SLOTS) {
-      const spec = AUDIO_SLOTS[slot];
-      const keys = [spec.labelKey, spec.tipKey, spec.clearLabelKey];
+    for (const slot of ALL) {
+      const spec: SlotSpec = AUDIO_SLOTS[slot];
+      const keys = [spec.labelKey, spec.tipKey, spec.clearLabelKey, spec.errorKey].filter(
+        (key): key is string => key !== undefined,
+      );
       for (const [locale, catalog] of LOCALE_CATALOGS) {
         for (const key of keys) {
           expect(
@@ -160,25 +163,15 @@ describe('the music reference slots', () => {
     }
   });
 
-  // No audio slot carries a refusal sentence of its own: on this panel the
-  // sentence is reached through `refusalToastKey`, the way every other execute
-  // refusal is, and a copy on the slot is one nothing reads and everything can
-  // drift from. The video panel keeps its own because its container looks one
-  // up directly.
-  it('states no refusal of its own, the way this panel refuses', () => {
-    for (const slot of Object.keys(AUDIO_SLOTS) as AudioSlot[]) {
-      expect(AUDIO_SLOTS[slot], slot).not.toHaveProperty('errorKey');
-    }
-  });
-
   // Walked rather than hand-listed: `i18n-no-missing-keys` only reads keys
   // spelled inside a `t("…")` call, and every one of these is table data —
   // returned from `refusalToastKey`, held on a mode option, held on a param
   // spec. A key added to one of those tables and to no catalog is invisible to
   // CI and shows up as the key itself on screen.
   it('answers every execute refusal in all five catalogs', () => {
-    // 遍历那张表本身。哪些成员存在、哪些说话，都由它一处回答；在这里手抄
-    // 一份就是第二处，而这条用例的注释上一版正记着那个洞被重新打开过一次。
+    // Walks the table itself: which refusals exist and which ones speak is
+    // answered there alone, and a copy written out here would be a second
+    // place — the hole this case guards was once reopened exactly that way.
     for (const refusal of Object.keys(REFUSAL_TOAST_KEY) as ExecuteRefusal[]) {
       const key = refusalToastKey(refusal);
       if (key === null) continue;
@@ -196,8 +189,7 @@ describe('the music reference slots', () => {
     // the panel would print the raw key at whichever locale forgot it.
     const paramKeys = Object.values(AUDIO_PARAMS).flatMap((spec) => [
       spec.labelKey,
-      ...('stops' in spec && spec.stops ? spec.stops.map((s) => s.labelKey) : []),
-      ...('stateKeys' in spec ? [spec.stateKeys.on, spec.stateKeys.off] : []),
+      ...(spec.stops ? spec.stops.map((s) => s.labelKey) : []),
     ]);
     const keys = [
       ...AUDIO_MODE_OPTIONS.map((o) => o.placeholderKey),
@@ -217,15 +209,15 @@ describe('the music reference slots', () => {
   });
 
   it('reaches slotForPurpose, the lookup whose wrong answer is silent', () => {
-    for (const slot of MUSIC_SLOTS) {
+    for (const slot of ALL) {
       expect(slotForPurpose(slot), slot).toBe(slot);
     }
   });
 
   it('reaches allSlotSpecs, which the delete accounting walks', () => {
     const fields = allSlotSpecs().map((s) => s.field);
-    for (const slot of MUSIC_SLOTS) {
-      expect(fields, slot).toContain(slot);
+    for (const slot of ALL) {
+      expect(fields, slot).toContain(AUDIO_SLOTS[slot].field);
     }
   });
 });

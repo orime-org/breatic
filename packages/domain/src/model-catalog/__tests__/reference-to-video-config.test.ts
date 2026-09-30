@@ -2,122 +2,73 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Reference-to-video config wiring (#1927).
+ * Reference-to-video, read off the real config.
  *
- * The one model that runs the mode, `kling-o3-pro-ref`, states its reference
- * cap in THREE places: the `max_items` the gates read, and two sentences of
- * English prose (`guide` and `description`). All three said 1-9 while the
- * upstream WaveSpeed endpoint takes at most 7.
- *
- * Fixing only `max_items` would leave the file contradicting itself in a way
- * that matters: `listAvailableModels` projects `type` / `values` / `default` /
- * `description` to the agent and drops `max_items` entirely, so for an agent
- * choosing how many images to send, that prose is the ONLY statement of the
- * cap it can see. It would keep sending 8 and keep being refused.
+ * The reference pool is split by type (design §13): each model declares an
+ * `images`, `videos` and `audios` pool for the kinds its upstream takes, each
+ * capped at the upstream's own maxItems, and says in `source_groups` that at
+ * least one of them has to carry something.
  */
-
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
 import { initCore } from "@breatic/core";
 import { describe, it, expect, beforeAll } from "vitest";
 
-import { getFullModelConfig } from "../model-catalog.js";
-import {
-  computeSourcesByMode,
-  violatesSourceRequirement,
-} from "../source-requirement.js";
-
-
-/** The model that runs reference-to-video (config/models/video/kling.yaml). */
-const REF_MODEL = "kling-o3-pro-ref";
-
-/** What the upstream `kwaivgi/kling-video-o3-pro/reference-to-video` accepts. */
-const UPSTREAM_MAX_IMAGES = 7;
-/** What the same endpoint allows once a reference video rides along (#1928). */
-const UPSTREAM_MAX_IMAGES_WITH_VIDEO = 4;
-
-const KLING_YAML = resolve(
-  import.meta.dirname,
-  "../../../../../config/models/video/kling.yaml",
-);
+import { getFullModelConfig, type FullModelEntry } from "../model-catalog.js";
 
 beforeAll(() => {
   initCore(process.env);
 });
 
-describe("reference-to-video config wiring (#1927)", () => {
-  it("declares the mode on the model that runs it", () => {
-    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
-    expect(model, `${REF_MODEL} missing from the video catalog`).toBeTruthy();
-    const modes = Array.isArray(model!.mode) ? model!.mode : [model!.mode];
-    expect(modes).toContain("ref");
+/** Each ref model, the caps its upstream publishes per pool, and its group. */
+const REF_MODELS: ReadonlyArray<readonly [string, Readonly<Record<string, number>>]> = [
+  ["minimax-h3-reference-to-video", { images: 9, videos: 3, audios: 3 }],
+  ["gemini-omni-1.1-flash-reference-to-video", { images: 10, videos: 3 }],
+  ["wan-3.0-reference-to-video", { images: 10, videos: 5, audios: 5 }],
+  ["happyhorse-1.1-reference-to-video", { images: 9 }],
+];
+
+const ACCEPTS: Readonly<Record<string, string>> = { images: "image", videos: "video", audios: "audio" };
+
+/**
+ * The video bucket's entry for a model name.
+ * @param name - Model id as the catalog spells it.
+ * @returns The full config entry.
+ * @throws {Error} When the catalog has no such video model.
+ */
+function videoEntry(name: string): FullModelEntry {
+  const found = getFullModelConfig("video").models.find((m) => m.name === name);
+  if (!found) throw new Error(`no video model named ${name}`);
+  return found;
+}
+
+describe("reference-to-video config wiring", () => {
+  it.each(REF_MODELS)("%s declares the ref mode", (name) => {
+    expect(videoEntry(name).mode).toBe("ref");
   });
 
-  it("requires an image for the mode", () => {
-    // The panel refuses a submit with nothing @-mentioned; this is the second
-    // half of that, checked server-side before anything is billed.
-    expect(computeSourcesByMode("video", "ref")).toEqual({ ref: ["image"] });
-  });
-
-  it("refuses a reference task carrying no images", () => {
-    const sources = computeSourcesByMode("video", "ref");
-    // The model's own declarations, which is where the gate reads both halves
-    // of the question: which of its params takes a picture, and in what shape.
-    // A param this model does not declare reaches the upstream as nothing.
-    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
-    const declared = (model!.params ?? {}) as Record<string, { accepts?: string }>;
-    expect(declared.images?.accepts, `${REF_MODEL} takes images`).toBe("image");
-    expect(violatesSourceRequirement(sources, { prompt: "x" }, declared)).toBe(true);
-    expect(
-      violatesSourceRequirement(sources, { prompt: "x", images: ["https://cdn/a.png"] }, declared),
-    ).toBe(false);
-  });
-
-  it("caps the reference images where the upstream does", () => {
-    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
-    expect(model!.params?.["images"]?.max_items).toBe(UPSTREAM_MAX_IMAGES);
-  });
-
-  it("says both numbers in the prose the agent reads", () => {
-    // `max_items` and `max_items_when_present` are both dropped by the catalog
-    // projection, so these two sentences are the whole of what an agent knows
-    // about either cap — and it now needs both, because it also sees the
-    // `video` param and will reach for it.
-    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
-    for (const prose of [model!.guide, model!.params?.["images"]?.description]) {
-      expect(typeof prose).toBe("string");
-      expect(prose).toContain(`1-${UPSTREAM_MAX_IMAGES}`);
-      expect(prose).toContain(`1-${UPSTREAM_MAX_IMAGES_WITH_VIDEO}`);
+  it.each(REF_MODELS)("%s caps each pool where its upstream does", (name, caps) => {
+    const params = videoEntry(name).params ?? {};
+    for (const [pool, cap] of Object.entries(caps)) {
+      expect(params[pool], `${name}.${pool}`).toMatchObject({
+        fill: "pool",
+        type: "list",
+        max_items: cap,
+        accepts: ACCEPTS[pool],
+      });
     }
+    const pools = Object.entries(params)
+      .filter(([, spec]) => spec.fill === "pool")
+      .map(([key]) => key)
+      .sort();
+    expect(pools).toEqual(Object.keys(caps).sort());
   });
 
-  it("takes one optional reference video for motion guidance (#1928)", () => {
-    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
-    // A string upstream, so one clip: the panel offers it through a slot, and
-    // a declared default is what keeps the worker from dropping the key.
-    expect(model!.params).toHaveProperty("video");
-    expect(model!.params?.["video"]?.type).toBeUndefined();
-  });
-
-  it("drops the image cap to four while that video rides along (#1928)", () => {
-    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
-    expect(model!.params?.["images"]?.max_items_when_present).toEqual({
-      video: UPSTREAM_MAX_IMAGES_WITH_VIDEO,
-    });
-  });
-
-  it("lets the user keep or drop that video's own sound (#1928)", () => {
-    // Upstream defaults it ON, so a run without the switch would carry the
-    // reference clip's audio into the result with no way to say otherwise.
-    const model = getFullModelConfig("video").models.find((m) => m.name === REF_MODEL);
-    expect(model!.params?.["keep_original_sound"]?.default).toBe(true);
-    expect(model!.params?.["keep_original_sound"]?.values).toEqual([true, false]);
-  });
-
-  it("leaves no copy of the old figure anywhere in the file", () => {
-    // Three places said 1-9. Two of them are prose, which no schema checks, so
-    // the only guard against one being missed is looking at the whole file.
-    expect(readFileSync(KLING_YAML, "utf8")).not.toContain("1-9");
-  });
+  it.each(REF_MODELS.filter(([, caps]) => Object.keys(caps).length > 1))(
+    "%s needs at least one pool filled",
+    (name, caps) => {
+      expect(videoEntry(name).source_groups).toEqual([
+        { mode: "ref", any_of: ["images", "videos", "audios"].filter((p) => p in caps) },
+      ]);
+    },
+  );
 });

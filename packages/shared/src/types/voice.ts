@@ -25,6 +25,12 @@ export interface Voice {
   languages?: string[];
   /** Audio to play as a sample. Absent where the provider offers none. */
   previewUrl?: string;
+  /**
+   * Samples by the value of the model's language param, for a voice that
+   * speaks whichever language the reader picks (Gemini's, #2156). Read before
+   * {@link Voice.previewUrl}, which stays the sample for any other value.
+   */
+  previewUrls?: Record<string, string>;
 }
 
 /** One page of voices. */
@@ -50,6 +56,7 @@ const voiceSchema = z.object({
   description: z.string().optional().catch(undefined),
   languages: z.array(z.string()).optional().catch(undefined),
   previewUrl: z.string().optional().catch(undefined),
+  previewUrls: z.record(z.string(), z.string()).optional().catch(undefined),
 });
 
 /** An empty page, the answer whenever the payload is unusable. */

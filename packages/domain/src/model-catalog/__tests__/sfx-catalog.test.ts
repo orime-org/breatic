@@ -7,20 +7,14 @@
  * Every figure here was measured against the gateway on 2026-09-04 and the
  * probes are kept in the private repo. The ones that would fail silently if
  * they drifted are the reason this file exists: a duration the gateway refuses
- * comes back as a 400 the user reads as "generation failed", and a rate whose
- * unit the wire schema does not know is dropped without a word, leaving the
- * credit row blank.
+ * comes back as a 400 the user reads as "generation failed".
  *
  * These read the REAL config files, as the sibling catalog tests do.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
-import {
-  getFullModelConfig,
-  getModelCatalog,
-  MIN_TASK_CREDIT_COST,
-} from "../model-catalog.js";
+import { getModelCatalog } from "../model-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 beforeAll(() => {
@@ -94,37 +88,5 @@ describe("its output format is pinned (#2088 A8)", () => {
   // `dispatch.ts` stores every audio artefact under a `.mp3` extension.
   it("declares mp3, which is the extension the artefact is stored under", () => {
     expect(audioEntry("sonilo-sfx-v1").params.audio_format?.default).toBe("mp3");
-  });
-});
-
-describe("its price is stated per second (#2088 A6)", () => {
-  // Measured against `POST /billings/search` on 2026-09-04: five seconds
-  // billed $0.010 and three seconds $0.006, i.e. $0.002 a second, at
-  // 1 credit = 1 US cent on the zero-margin deduction rule.
-  it("states 1 credit per 5 seconds", () => {
-    expect(audioEntry("sonilo-sfx-v1").rate).toEqual({
-      credits: 1,
-      per: 5,
-      unit: "seconds",
-    });
-  });
-
-  // `estimateTaskCredits` returns `cost_per_call` whenever it exceeds zero and
-  // only then falls back to MIN_TASK_CREDIT_COST, so this field is the
-  // pre-enqueue balance gate for this model — the audio panel reads `rate`.
-  it("gates enqueue at the shared floor rather than at its cheapest preset", () => {
-    expect(audioEntry("sonilo-sfx-v1").cost_per_call).toBe(MIN_TASK_CREDIT_COST);
-  });
-});
-
-describe("elevenlabs-sfx-v2 stays in the configuration (user 2026-09-04)", () => {
-  // A self-hosted deployment configures its own ElevenLabs key and spends its
-  // own quota; a deployment without that key never sees the model, because the
-  // catalog only carries a model when one of its providers has a key.
-  it("is still declared, and still under the sfx mode", () => {
-    const declared = getFullModelConfig("audio").models.find(
-      (m) => m.name === "elevenlabs-sfx-v2",
-    );
-    expect(declared?.mode).toBe("sfx");
   });
 });

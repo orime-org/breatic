@@ -32,6 +32,7 @@ import { createApp } from "../../app.js";
 // second copy of the very thing the assertions are checking against.
 import { UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
 
+import * as domain from "@breatic/domain";
 import { mocks, mockQueueAdd } from "../helpers/mock-core.js";
 
 const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
@@ -192,6 +193,33 @@ describe("Tasks routes", () => {
       });
 
       expect(res.status).toBe(402);
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+    });
+
+    it("holds the balance to the estimate of the run the request describes", async () => {
+      // 100 spendable, and the run as described prices at 150.
+      vi.mocked(domain.estimateTaskCredits).mockResolvedValueOnce(150);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "video",
+          params: { duration: 10, prompt: "<p>a slow pan</p>" },
+          model: "test-model",
+          source: "task",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(res.status).toBe(402);
+      expect(domain.estimateTaskCredits).toHaveBeenCalledWith(
+        "test-model",
+        { duration: 10, prompt: "<p>a slow pan</p>" },
+        "a slow pan",
+      );
       expect(mocks.taskService.create).not.toHaveBeenCalled();
     });
 

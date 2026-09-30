@@ -1,0 +1,583 @@
+# Models of this modality, every one run on WaveSpeed. Within a mode the first
+# model listed is the one a panel opens on, so entries are ordered by how the
+# catalog ranks them for their mode.
+# Guidelines:
+#   model.description    — max 40 chars, English. The picker draws it under
+#                          display_name, so it is what tells a reader which of
+#                          several models for one mode to pick: say what this
+#                          model is good at, never restate the name or the mode.
+#                          Only capabilities the panel reaches.
+#   model.guide          — what this model is for, in prose. The Skill prompt
+#                          and the canvas capability answer quote it whole, so a
+#                          sentence here the catalog or the panel can prove wrong
+#                          is a promise nothing keeps. Guarded by domain's
+#                          guides-name-what-the-model-takes test.
+#   model.prompt_upstream — the upstream field the prompt is sent as, when it is
+#                          not `prompt` (`text`, `text_prompt`).
+#   model.source_groups  — per mode, params of which at least one has to carry
+#                          material, for inputs the upstream schema leaves
+#                          optional one by one but refuses all empty.
+#   model.extra_steps    — upstream calls a run makes besides the model's own
+#                          endpoint, each priced by its own WaveSpeed contract;
+#                          `at` says whether it runs before or after that call.
+#   param.upstream       — the upstream field this param is sent as, when the
+#                          names differ. The one mapping the request builder,
+#                          the price estimate and the voice-sample planner read.
+#   param.label          — marks a control only this model has; on screen it
+#                          is named by canvas.generatePanel.param.<name> in
+#                          locales/*.json, like the shared controls.
+#   param.value_labels   — how a value of `values` reads on screen, when its
+#                          own spelling is not that (English); the rest read
+#                          as themselves with a capital first letter.
+#   param.type           — list (reference pool), items (a list editor, with
+#                          `fields` and `max_items`), text (a free text field).
+#                          `values: [true, false]` draws a switch; `min`, `max`
+#                          and `step` draw a slider; other `values` an option group.
+#   param.default        — what the param holds when the reader sets nothing;
+#                          a run sends it unless it equals `absent_value`.
+#   param.absent_value   — the value that is sent as nothing: holding it
+#                          leaves the param out of the request (`auto` lets
+#                          the upstream decide).
+#   provider.pricing     — the endpoint's WaveSpeed pricing contract, verbatim:
+#                          base_price (1,000,000 = 1 USD), the JSONata formula
+#                          (empty means base_price per call) and discount_rate
+#                          in percent. The price estimate evaluates it.
+#   generation_time      — max generation time in seconds (worst case)
+
+models:
+
+  - name: "gpt-image-2.5-sunburst-text-to-image"
+    display_name: "GPT Image 2.5 Sunburst"
+    mode: "t2i"
+    takes_prompt: true
+    tier: "recommended"
+    description: "Top-ranked fidelity, 4K, 5 quality tiers"
+    guide: "The default when the image simply has to be as good as it gets — highest measured fidelity and prompt adherence of anything available."
+    generation_time: 120
+    icon: "openai"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "1:1"
+        values: ["1:1", "1:2", "2:1", "1:3", "3:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "9:21", "21:9"]
+        fill: "panel"
+      quality:
+        description: "Rendering quality"
+        label: "Quality"
+        default: "medium"
+        values: ["low", "medium", "high", "xhigh", "max"]
+        value_labels: {xhigh: "XHigh"}
+        fill: "panel"
+      resolution:
+        description: "Output resolution"
+        default: "1k"
+        values: ["1k", "2k", "4k"]
+        fill: "panel"
+    providers:
+      - name: "wavespeed"
+        model_id: "openai/gpt-image-2.5-sunburst/text-to-image"
+        priority: 1
+        pricing:
+          base_price: 24000
+          formula: "{\"total_price\": ((quality = \"low\") ? (resolution = \"4k\" ? 30000 : (resolution = \"2k\" ? 20000 : 10000)) : ((quality = \"high\") ? (resolution = \"4k\" ? 270000 : (resolution = \"2k\" ? 150000 : 90000)) : ((quality = \"xhigh\") ? (resolution = \"4k\" ? 480000 : (resolution = \"2k\" ? 270000 : 160000)) : ((quality = \"max\") ? (resolution = \"4k\" ? 1000000 : (resolution = \"2k\" ? 600000 : 360000)) : (resolution = \"4k\" ? 70000 : (resolution = \"2k\" ? 40000 : 24000))))))}"
+          discount_rate: 100
+
+  - name: "grok-imagine-image-v2.0-text-to-image"
+    display_name: "Grok Imagine Image 2.0"
+    mode: "t2i"
+    takes_prompt: true
+    tier: "optional"
+    description: "Highest-ranked non-OpenAI house style"
+    guide: "The second general-purpose engine, from a different lab — a different house rendering of the same prompt when Sunburst's look is not the one wanted."
+    generation_time: 120
+    icon: "xai"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "1:1"
+        values: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "2:1", "1:2", "19.5:9", "9:19.5", "20:9", "9:20"]
+        fill: "panel"
+      resolution:
+        description: "Output resolution"
+        default: "2k"
+        values: ["1k", "2k"]
+        fill: "panel"
+    providers:
+      - name: "wavespeed"
+        model_id: "x-ai/grok-imagine-image-v2.0/text-to-image"
+        priority: 1
+        pricing:
+          base_price: 50000
+          formula: ""
+          discount_rate: 100
+
+  - name: "reve-2.1-text-to-image"
+    display_name: "Reve 2.1"
+    mode: "t2i"
+    takes_prompt: true
+    tier: "optional"
+    description: "Posters, labels, readable text"
+    guide: "The one for images that carry words — posters, labels, ads, anything where the typography and the layout have to come out right."
+    generation_time: 120
+    icon: "reve"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "1:1"
+        values: ["4:1", "3:1", "21:9", "2:1", "17:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16", "1:2", "1:3", "1:4"]
+        fill: "panel"
+      output_format:
+        description: "Output file format"
+        default: "png"
+        values: ["png", "jpeg", "webp"]
+        fill: "none"
+        note: "our default: png (lossless, keeps alpha)"
+    providers:
+      - name: "wavespeed"
+        model_id: "reve/2.1/text-to-image"
+        priority: 1
+        pricing:
+          base_price: 280000
+          formula: ""
+          discount_rate: 100
+
+  - name: "nano-banana-2"
+    display_name: "Nano Banana 2"
+    mode: "t2i"
+    takes_prompt: true
+    tier: "optional"
+    description: "Grounds images in live web search"
+    guide: "The one for images that have to match the real world — it can look things up while generating, so a named place, product or person comes out right."
+    generation_time: 25
+    icon: "nano-banana"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "1:1"
+        values: ["1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "1:4", "4:1", "1:8", "8:1"]
+        fill: "panel"
+      enable_image_search:
+        description: "Look up reference images before drawing"
+        label: "Image search"
+        default: false
+        values: [true, false]
+        fill: "panel"
+      enable_web_search:
+        description: "Look up facts before drawing"
+        label: "Web search"
+        default: false
+        values: [true, false]
+        fill: "panel"
+      resolution:
+        description: "Output resolution"
+        default: "1k"
+        values: ["0.5k", "1k", "2k", "4k"]
+        fill: "panel"
+      enable_camera:
+        description: "Apply the camera/lens/focal/aperture simulation"
+        values: [true, false]
+        default: false
+        fill: "panel"
+      camera:
+        description: "Camera body style simulation"
+        values: ["ARRI Alexa 35", "ARRI Alexa Mini", "Arricam LT", "RED V-Raptor", "Sony Venice", "Panavision DXL2", "Sony A7 IV", "Canon EOS R5", "Hasselblad X2D", "Leica M6", "Fujifilm X100V", "GoPro Hero", "iPhone"]
+        default: "Canon EOS R5"
+        fill: "panel"
+        when:
+          flag_on: "enable_camera"
+      lens:
+        description: "Lens model simulation"
+        values: ["Cooke S4/i", "Cooke Panchro", "Zeiss Master Prime", "Zeiss Supreme Prime", "Panavision Primo", "Panavision Anamorphic", "Canon K35", "Leica Summilux"]
+        default: "Zeiss Master Prime"
+        fill: "panel"
+        when:
+          flag_on: "enable_camera"
+      focal_length:
+        description: "Focal length in mm"
+        values: [14, 24, 35, 50, 85, 100, 135, 200]
+        default: 50
+        fill: "panel"
+        when:
+          flag_on: "enable_camera"
+      aperture:
+        description: "Aperture f-stop"
+        values: ["f/1.4", "f/2", "f/2.8", "f/4", "f/5.6", "f/8", "f/11", "f/16"]
+        default: "f/2.8"
+        fill: "panel"
+        when:
+          flag_on: "enable_camera"
+    providers:
+      - name: "wavespeed"
+        model_id: "google/nano-banana-2/text-to-image"
+        priority: 1
+        pricing:
+          base_price: 70000
+          formula: "{\"total_price\": ((resolution = \"0.5k\" ? 45000 : base_price * (resolution = \"2k\" ? 1.5 : (resolution = \"4k\" ? 2 : 1))) + (enable_web_search ? 14000 : 0) + (enable_image_search ? 14000 : 0)) }"
+          discount_rate: 90
+
+  - name: "midjourney"
+    display_name: "Midjourney"
+    mode: "t2i"
+    takes_prompt: true
+    tier: "optional"
+    description: "Stylize, chaos and weird dials"
+    guide: "The one for art direction rather than instruction-following — dials that steer taste, variance and strangeness instead of fidelity."
+    generation_time: 120
+    icon: "midjourney"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "1:1"
+        values: ["1:1", "9:16", "16:9", "4:3", "3:4", "2:3", "3:2", "9:21", "21:9"]
+        fill: "panel"
+      chaos:
+        description: "Variation between 4 images (0-100)"
+        label: "Chaos"
+        default: 0
+        min: 0
+        max: 100
+        step: 1
+        fill: "panel"
+      hd:
+        description: "Render in HD"
+        default: true
+        fill: "none"
+        note: "our default: highest"
+      quality:
+        description: "Rendering quality"
+        default: 4
+        values: [1, 4]
+        fill: "none"
+        note: "our default: highest"
+      stylize:
+        description: "Artistic style strength (0-1000)"
+        label: "Stylize"
+        default: 0
+        min: 0
+        max: 1000
+        step: 1
+        fill: "panel"
+      weird:
+        description: "Surreal experimental level (0-3000)"
+        label: "Weird"
+        default: 0
+        min: 0
+        max: 3000
+        step: 1
+        fill: "panel"
+      style_images:
+        description: "Style reference image URL"
+        type: "list"
+        max_items: 1
+        default: null
+        fill: "canvas"
+        accepts: "image"
+        optional: true
+    providers:
+      - name: "wavespeed"
+        model_id: "midjourney/text-to-image"
+        priority: 1
+        pricing:
+          base_price: 100000
+          formula: "{\"total_price\": base_price * (hd ? 1.5 : 1)}"
+          discount_rate: 100
+
+  - name: "recraft-v4.1-pro-text-to-vector"
+    display_name: "Recraft V4.1 Pro Vector"
+    mode: "t2i"
+    takes_prompt: true
+    tier: "optional"
+    description: "True editable SVG, crisp at any size"
+    guide: "The one that hands back an editable vector file instead of pixels — logos, icons and marks that stay crisp at any size and can be recoloured afterwards."
+    generation_time: 120
+    icon: "recraft"
+    params:
+      aspect_ratio:
+        upstream: "image_size"
+        description: "Output aspect ratio"
+        default: "1:1"
+        values: ["1:1", "16:9", "9:16", "4:3", "3:4"]
+        fill: "panel"
+    providers:
+      - name: "wavespeed"
+        model_id: "recraft-ai/recraft-v4.1-pro/text-to-vector"
+        priority: 1
+        pricing:
+          base_price: 300000
+          formula: ""
+          discount_rate: 100
+
+  - name: "riverflow-2.0-pro-text-to-image"
+    display_name: "Riverflow 2.0 Pro"
+    mode: "t2i"
+    takes_prompt: true
+    tier: "optional"
+    description: "Transparent background at 4K"
+    guide: "The one that produces a cut-out asset with no background, ready to drop straight onto another layer of the canvas."
+    generation_time: 120
+    icon: "sourceful"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "1:1"
+        values: ["1:1", "21:9", "16:9", "3:2", "4:3", "5:4", "4:5", "3:4", "2:3", "9:16"]
+        fill: "panel"
+      resolution:
+        description: "Output resolution"
+        default: "1k"
+        values: ["1k", "2k", "4k"]
+        fill: "panel"
+      transparency:
+        description: "Transparent background"
+        label: "Transparent background"
+        default: false
+        values: [true, false]
+        fill: "panel"
+    providers:
+      - name: "wavespeed"
+        model_id: "sourceful/riverflow-2.0-pro/text-to-image"
+        priority: 1
+        pricing:
+          base_price: 150000
+          formula: "{\"total_price\": base_price * (resolution = \"4k\" ? 11/5 : 1)}"
+          discount_rate: 100
+
+  - name: "gpt-image-2.5-sunburst-edit"
+    display_name: "GPT Image 2.5 Sunburst Edit"
+    mode: ["edit", "i2i"]
+    takes_prompt: true
+    tier: "recommended"
+    description: "16 refs, 4K, fidelity tier to max"
+    guide: "The highest-fidelity instruction editor, and the only one that accepts 16 references at once."
+    generation_time: 120
+    icon: "openai"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "auto"
+        absent_value: "auto"
+        values: ["auto", "1:1", "1:2", "2:1", "1:3", "3:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "9:21", "21:9"]
+        fill: "panel"
+      images:
+        description: "Images to edit"
+        default: null
+        type: "list"
+        max_items: 16
+        accepts: "image"
+        fill: "pool"
+        mention: "image {n}"
+      quality:
+        description: "Rendering quality"
+        label: "Quality"
+        default: "medium"
+        values: ["low", "medium", "high", "xhigh", "max"]
+        value_labels: {xhigh: "XHigh"}
+        fill: "panel"
+      resolution:
+        description: "Output resolution"
+        default: "1k"
+        values: ["1k", "2k", "4k"]
+        fill: "panel"
+    providers:
+      - name: "wavespeed"
+        model_id: "openai/gpt-image-2.5-sunburst/edit"
+        priority: 1
+        pricing:
+          base_price: 39000
+          formula: "{\"total_price\": ((quality = \"low\") ? (resolution = \"4k\" ? 45000 : (resolution = \"2k\" ? 35000 : 25000)) : ((quality = \"high\") ? (resolution = \"4k\" ? 285000 : (resolution = \"2k\" ? 165000 : 105000)) : ((quality = \"xhigh\") ? (resolution = \"4k\" ? 495000 : (resolution = \"2k\" ? 285000 : 175000)) : ((quality = \"max\") ? (resolution = \"4k\" ? 1015000 : (resolution = \"2k\" ? 615000 : 375000)) : (resolution = \"4k\" ? 85000 : (resolution = \"2k\" ? 55000 : 39000)))))) + (($count(images) - 1) * 15000)}"
+          discount_rate: 100
+
+  - name: "muse-image-edit"
+    display_name: "Muse Image Edit"
+    mode: ["i2i", "edit"]
+    takes_prompt: true
+    tier: "optional"
+    description: "A different house look, 10 refs"
+    guide: "A second independently top-ranked editing house — different training, different look, ten references."
+    generation_time: 120
+    icon: "meta"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "auto"
+        absent_value: "auto"
+        values: ["auto", "21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "9:21"]
+        fill: "panel"
+      images:
+        upstream: "image_urls"
+        description: "Images to edit"
+        default: null
+        type: "list"
+        max_items: 10
+        accepts: "image"
+        fill: "pool"
+        mention: "image {n}"
+      output_format:
+        description: "Output file format"
+        default: "png"
+        values: ["webp", "png", "jpeg"]
+        fill: "none"
+        note: "our default: png (lossless, keeps alpha)"
+    providers:
+      - name: "wavespeed"
+        model_id: "meta/muse-image/edit"
+        priority: 1
+        pricing:
+          base_price: 11000
+          formula: ""
+          discount_rate: 100
+
+  - name: "nano-banana-pro-edit-ultra"
+    display_name: "Nano Banana Pro Edit Ultra"
+    mode: ["i2i", "edit"]
+    takes_prompt: true
+    tier: "optional"
+    description: "Only path above 4K — reaches 8K"
+    guide: "The only editing path in the catalog that goes above 4K, and the one that rewrites on-image text into another language."
+    generation_time: 120
+    icon: "nano-banana"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "auto"
+        absent_value: "auto"
+        values: ["auto", "1:1", "3:2", "2:3", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]
+        fill: "panel"
+      images:
+        description: "Images to edit"
+        default: null
+        type: "list"
+        max_items: 14
+        accepts: "image"
+        fill: "pool"
+        mention: "image {n}"
+      resolution:
+        description: "Output resolution"
+        default: "4k"
+        values: ["4k", "8k"]
+        fill: "panel"
+    providers:
+      - name: "wavespeed"
+        model_id: "google/nano-banana-pro/edit-ultra"
+        priority: 1
+        pricing:
+          base_price: 150000
+          formula: "{\"total_price\": base_price * (resolution = \"4k\" ? 1 : (resolution = \"8k\" ? 1.2 : 1))}"
+          discount_rate: 100
+
+  - name: "qwen-image-edit-multiple-angles"
+    display_name: "Qwen Image Multiple Angles"
+    mode: "i2i"
+    takes_prompt: true
+    tier: "optional"
+    description: "Exact camera angle, 96 poses"
+    guide: "Repeatable turnarounds and character sheets — the camera moves by numbers, not by adjectives."
+    generation_time: 120
+    icon: "qwen"
+    params:
+      distance:
+        description: "Camera distance from the subject"
+        label: "Distance"
+        default: 1
+        min: 0
+        max: 2
+        step: 1
+        fill: "panel"
+      horizontal_angle:
+        description: "Camera angle around the subject, degrees"
+        label: "Horizontal angle"
+        default: 0
+        min: 0
+        max: 359
+        step: 1
+        fill: "panel"
+      images:
+        description: "Images to edit"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "pool"
+        mention: "image {n}"
+      output_format:
+        description: "Output file format"
+        default: "png"
+        values: ["jpeg", "png", "webp"]
+        fill: "none"
+        note: "our default: png (lossless, keeps alpha)"
+      vertical_angle:
+        description: "Camera angle above or below, degrees"
+        label: "Vertical angle"
+        default: 0
+        min: -30
+        max: 60
+        step: 1
+        fill: "panel"
+    providers:
+      - name: "wavespeed"
+        model_id: "wavespeed-ai/qwen-image/edit-multiple-angles"
+        priority: 1
+        pricing:
+          base_price: 25000
+          formula: ""
+          discount_rate: 100
+
+  - name: "crystal-upscaler"
+    display_name: "Crystal Upscaler"
+    mode: "upscale"
+    takes_prompt: false
+    tier: "internal"
+    description: "Bigger, and still itself"
+    guide: "The default upscale: make it bigger and keep it itself."
+    generation_time: 120
+    icon: "clarity"
+    params:
+      creativity:
+        description: "How freely detail is invented"
+        default: 0
+        fill: "none"
+        note: "mini-tool: no panel reaches this model"
+      image:
+        description: "Source image"
+        default: null
+        accepts: "image"
+        fill: "none"
+        note: "mini-tool: no panel reaches this model"
+      target_megapixels:
+        description: "Output size in megapixels"
+        default: 4
+        fill: "none"
+        note: "mini-tool: no panel reaches this model"
+    providers:
+      - name: "wavespeed"
+        model_id: "clarity-ai/crystal-upscaler"
+        priority: 1
+        pricing:
+          base_price: 30000
+          formula: "{\"total_price\": target_megapixels <= 4 ? 50000 : target_megapixels <= 16 ? 200000 : target_megapixels <= 36 ? 800000 : target_megapixels <= 100 ? 1600000 : target_megapixels <= 400 ? 6400000 : 24000000}"
+          discount_rate: 100
+
+  - name: "bria-remove-background"
+    display_name: "Bria Remove Background"
+    mode: "remove_bg"
+    takes_prompt: false
+    tier: "internal"
+    description: "Clean hair, fur and soft edges"
+    guide: "Automatic whole-subject cutout: the one you reach for without thinking."
+    generation_time: 120
+    icon: "bria"
+    params:
+      image:
+        description: "Source image"
+        default: null
+        accepts: "image"
+        fill: "none"
+        note: "mini-tool: no panel reaches this model"
+    providers:
+      - name: "wavespeed"
+        model_id: "bria/remove-background"
+        priority: 1
+        pricing:
+          base_price: 18000
+          formula: ""
+          discount_rate: 100

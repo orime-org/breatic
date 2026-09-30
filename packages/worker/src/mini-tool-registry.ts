@@ -8,7 +8,7 @@
  * declares HOW it runs, not just which model it calls:
  *
  *   - `kind: 'provider'` → AIGC vendor API via `provider.generateAsync`
- *     (Topaz / Kling / ElevenLabs / ...).
+ *     (Bria / Kling / Inworld / MiniMax / ...).
  *   - `kind: 'local'` → Worker-local execution via `runLocalHandler`,
  *     which dispatches by `handler` path to a function that internally
  *     chooses FFmpeg / Sharp / ImageMagick / anything else. The
@@ -50,8 +50,8 @@ export type MiniToolEntry = ProviderToolEntry | LocalToolEntry;
 /** Mini-tool registry: `taskType` → `toolName` → entry. */
 export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniToolEntry>>> = {
   image: {
-    "remove-bg": { kind: "provider", model: "bg-remover" },
-    upscale: { kind: "provider", model: "topaz-upscale" },
+    "remove-bg": { kind: "provider", model: "bria-remove-background" },
+    upscale: { kind: "provider", model: "crystal-upscaler" },
     // V1 image roster per `design/project/02-mini-tool-system.md` §2.2 =
     // remove-bg / upscale / inpaint. inpaint will land once its
     // overlay-driven param UI is designed; the previous over-broad
@@ -64,12 +64,12 @@ export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniTool
     // `adjust` row moved entirely to frontend Category A in F4-categoryA.
   },
   video: {
-    upscale: { kind: "provider", model: "video-upscale-pro" },
+    upscale: { kind: "provider", model: "seedvr2-video" },
     interpolate: { kind: "provider", model: "rife-interpolation" },
-    extend: { kind: "provider", model: "kling-o3-pro" },
-    edit: { kind: "provider", model: "kling-o3-pro" },
+    extend: { kind: "provider", model: "seedance-2.5-video-extend" },
+    edit: { kind: "provider", model: "wan-3.0-video-edit" },
     motion: { kind: "provider", model: "kling-v3-pro-motion" },
-    animate: { kind: "provider", model: "wan-2.2-animate" },
+    animate: { kind: "provider", model: "wan-2.2-animate-2" },
     "talking-head": { kind: "provider", model: "omnihuman-1.5" },
     // FFmpeg-based local handlers — no AIGC, Worker in-process.
     crop: { kind: "local", handler: "video/crop" },
@@ -85,13 +85,13 @@ export const MINI_TOOL_REGISTRY: Readonly<Record<string, Record<string, MiniTool
     "hdr-conversion": { kind: "local", handler: "video/hdr-conversion" },
   },
   audio: {
-    sfx: { kind: "provider", model: "elevenlabs-sfx-v2" },
+    sfx: { kind: "provider", model: "sfx-1.6-text-to-audio" },
     separate: { kind: "provider", model: "vocal-remover" },
-    extend: { kind: "provider", model: "minimax-music-01" },
+    extend: { kind: "provider", model: "sfx-1.6-extend-audio" },
   },
   tts: {
-    tts: { kind: "provider", model: "elevenlabs-v3" },
-    "voice-clone": { kind: "provider", model: "qwen3-tts-voice-clone" },
+    tts: { kind: "provider", model: "realtime-tts-2" },
+    "voice-clone": { kind: "provider", model: "minimax-voice-clone" },
   },
 };
 

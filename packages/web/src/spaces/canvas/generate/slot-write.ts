@@ -21,6 +21,7 @@
 import { setNodeSlotValue } from '@web/data/yjs/canvas-space';
 import {
   pickedSlotCover,
+  pickedSlotDuration,
   pickedSlotUrl,
 } from '@web/spaces/canvas/generate/slot-pick';
 import type { ClickedNode } from '@web/spaces/canvas/generate/slot-pick';
@@ -50,12 +51,15 @@ export function fillSlot(
   const url = pickedSlotUrl(clicked, spec.accepts);
   if (url === null) return false;
   const cover = spec.storesCover ? pickedSlotCover(clicked) : null;
+  const duration = spec.storesCover ? pickedSlotDuration(clicked) : null;
   setNodeSlotValue(
     projectId,
     spaceId,
     nodeId,
     spec.field,
-    spec.storesCover ? (cover ? { url, cover } : { url }) : url,
+    spec.storesCover
+      ? { url, ...(cover ? { cover } : {}), ...(duration !== null ? { duration } : {}) }
+      : url,
   );
   return true;
 }

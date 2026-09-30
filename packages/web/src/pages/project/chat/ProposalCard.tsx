@@ -5,7 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, Clock, Star } from 'lucide-react';
 import * as React from 'react';
 
-import { promptPlainText, type CanvasProposal } from '@breatic/shared';
+import { promptPlainText, type CanvasProposal, type ModelCatalog } from '@breatic/shared';
+import type { CreditEstimate } from '@breatic/shared/pricing';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -13,6 +14,7 @@ import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import {
   costOf,
+  creditsOf,
   modelOf,
   nameOf,
   shapeOf,
@@ -20,7 +22,38 @@ import {
   writtenOf,
 } from '@web/pages/project/chat/proposal-card';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { creditEstimateText } from '@web/spaces/canvas/generate/credit-estimate-text';
 import { useCanvasStore } from '@web/stores';
+
+/**
+ * What one press of the flow costs, once the estimate resolves.
+ * @param catalog - The model catalog, or undefined while it is being fetched.
+ * @param proposal - The proposal the card draws.
+ * @returns The total, or undefined until it resolves or when there is none.
+ */
+function useProposalCredits(
+  catalog: ModelCatalog | undefined,
+  proposal: CanvasProposal,
+): CreditEstimate | undefined {
+  const [credits, setCredits] = React.useState<CreditEstimate | undefined>(undefined);
+  React.useEffect(() => {
+    let current = true;
+    creditsOf(catalog, proposal).then(
+      (next) => {
+        if (current) setCredits(next);
+      },
+      () => {
+        // A formula the evaluator cannot run leaves the card without a price
+        // rather than a wrong one; the run itself is billed on usage.
+        if (current) setCredits(undefined);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [catalog, proposal]);
+  return credits;
+}
 
 interface ProposalCardProps {
   /** The group the agent proposed, as the tool answered with it. */
@@ -65,6 +98,7 @@ export const ProposalCard = React.memo(function ProposalCard({
   const todos = React.useMemo(() => todosOf(proposal, panelLines), [proposal, panelLines]);
   const words = React.useMemo(() => writtenOf(proposal), [proposal]);
   const price = React.useMemo(() => costOf(catalog, proposal), [catalog, proposal]);
+  const credits = useProposalCredits(catalog, proposal);
   // One note describes one model, so it is drawn only when the whole flow
   // runs on one. Three angles on three models leave it saying nothing anyone
   // can place.
@@ -219,10 +253,10 @@ export const ProposalCard = React.memo(function ProposalCard({
         <div className='flex min-w-0 items-center gap-3 text-xs text-muted-foreground'>
           {price ? (
             <>
-              {price.credits === undefined ? null : (
+              {credits === undefined ? null : (
                 <span className='flex items-center gap-0.5 tabular-nums'>
                   <Star className='h-3.5 w-3.5' aria-hidden='true' />
-                  {price.credits}
+                  {creditEstimateText(credits, t)}
                 </span>
               )}
               <span className='flex items-center gap-0.5 tabular-nums'>

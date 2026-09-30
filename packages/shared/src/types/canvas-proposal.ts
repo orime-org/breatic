@@ -13,6 +13,7 @@
 
 import { insertRefusal } from "@shared/types/canvas-reference.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
+import type { ReferenceKind } from "@shared/reference-pool.js";
 
 /**
  * What a marked spot in the prompt asks of the reader.
@@ -109,15 +110,6 @@ export type ProposalRole = "source" | "generate" | "written";
 /** Every node kind a proposal can place: the three that generate, plus text. */
 export type ProposalNodeType = GenerationNodeType | "text";
 
-/**
- * Which way the reader's material reaches a generation.
- *
- * `pool` is fed by an edge and picked by a mention; `slot` is picked by the
- * reader clicking any node of that kind on the canvas. What a mark in the
- * prompt lands as differs by this, so the card and the canvas both ask it.
- */
-export type MaterialPath = "pool" | "slot";
-
 /** One node of a proposal, before anything is placed. */
 export interface ProposalNode {
   role: ProposalRole;
@@ -128,7 +120,10 @@ export interface ProposalNode {
   params?: Record<string, unknown>;
   prompt?: PromptSegment[];
   /**
-   * How this generation takes material, answered by the check, not the model.
+   * The kinds this generation's reference pool takes, answered by the check,
+   * not the model (#2156: a model takes pictures, clips and tracks each in a
+   * pool of its own). Empty when its material arrives by a slot the reader
+   * clicks a node into; a pool is fed by an edge and picked by a mention.
    *
    * The catalog is the authority and the check has just read it, so the
    * answer travels with the proposal rather than being asked again on the
@@ -136,11 +131,19 @@ export interface ProposalNode {
    * a guess either writes a mention the panel refuses or drops one the pool
    * needs. Absent on a node that generates nothing.
    */
-  takesFrom?: MaterialPath;
+  poolKinds?: ReferenceKind[];
+  /**
+   * One entry per slot the model cannot run without, by the kind it takes,
+   * answered by the check beside {@link ProposalNode.poolKinds}. A model can
+   * take one kind both ways -- Kling O3 wants a first frame in a slot and
+   * builds elements out of mentioned pictures -- and the reader's material
+   * fills the slot first: a run without it cannot go.
+   */
+  slotKinds?: ReferenceKind[];
   /**
    * Whether the panel will draw a prompt box here, answered by the check.
    *
-   * Beside {@link ProposalNode.takesFrom} and carried for the same reason: the
+   * Beside {@link ProposalNode.poolKinds} and carried for the same reason: the
    * catalog is the authority, the check has just read it, and a reader can
    * press Use before the catalog has loaded on the canvas. It decides what a
    * mark may name -- a model drawing no box mounts no editor and forces it
@@ -167,18 +170,28 @@ export interface CanvasProposal {
 }
 
 /**
- * Which feeders a prompt may name, one entry per node wired in.
+ * Which feeders a prompt may name, in node order.
  *
  * `null` where the panel would not take a mention of that node. The place is
- * kept rather than dropped because the k-th mark is about the k-th node wired
- * in: compacted, every mark after the unmentionable one slides onto the node
- * next along.
+ * kept rather than dropped because the k-th mark is about the k-th entry:
+ * compacted, every mark after the unmentionable one slides onto the node next
+ * along. The upstream list leaves out the nodes that fill a required slot,
+ * which the reader picks in the panel.
  */
 export interface NameableFeederIndices {
   /** Indices of the empty nodes wired in, null where none can be mentioned. */
   sources: (number | null)[];
-  /** The same for the nodes wired in that carry work of their own. */
+  /**
+   * The same for the nodes wired in that carry work of their own, past the
+   * ones in `slotted`: a ref mark's mention is its whole text, so the slot's
+   * node has no mark to keep a place for.
+   */
   upstream: (number | null)[];
+  /**
+   * The nodes wired in that fill a required slot, in node order. The reader
+   * picks each into its slot in the panel, so none of them is mentioned.
+   */
+  slotted: number[];
 }
 
 /** Which nodes feed one node of a proposal, split by what they carry. */
@@ -247,12 +260,13 @@ export function nameableFeeders(
   index: number,
 ): NameableFeederIndices {
   const at = proposal.nodes[index];
-  const path = at?.takesFrom;
-  if (path === undefined || at?.takesPrompt === undefined) {
-    return { sources: [], upstream: [] };
+  const poolKinds = at?.poolKinds;
+  if (poolKinds === undefined || at?.takesPrompt === undefined) {
+    return { sources: [], upstream: [], slotted: [] };
   }
+  const byPool = poolKinds.length > 0;
   const held = feedersOf(proposal, index);
-  const ctx = { takesReferences: path === "pool", takesPrompt: at.takesPrompt };
+  const ctx = { referenceKinds: poolKinds, takesPrompt: at.takesPrompt };
   /**
    * Whether the panel would take an `@`-mention of one feeder.
    * @param i - The feeder's index in the proposal.
@@ -263,22 +277,56 @@ export function nameableFeeders(
     const node = proposal.nodes[i];
     return node !== undefined && insertRefusal(node.type, ctx) === null;
   };
+  // The required slots still open, by kind. Each node of that kind wired in
+  // takes one, in the order the nodes are listed, before any reaches the pool.
+  const open = [...(at.slotKinds ?? [])];
+  const slotted: number[] = [];
+  for (const i of [...held.sources, ...held.upstream].sort((a, b) => a - b)) {
+    const slot = open.indexOf(proposal.nodes[i]?.type as ReferenceKind);
+    if (slot === -1) continue;
+    open.splice(slot, 1);
+    slotted.push(i);
+  }
   /**
-   * One entry per node wired in, the index where it can be mentioned.
+   * One entry per node in the list, the index where it can be mentioned.
    * @param list - The feeders, in the order the nodes are listed.
    * @param can - Whether a mention is possible for this run at all.
    * @returns The same length, null where no mention can be written.
    * @throws {never} Never.
    */
   const keepingPlaces = (list: readonly number[], can: boolean): (number | null)[] =>
-    list.map((i) => (can && mentionable(i) ? i : null));
+    list.map((i) => (can && !slotted.includes(i) && mentionable(i) ? i : null));
   return {
     // An asset mark mentions the empty node it names only where that mention
     // is what picks the material. Through a slot the reader picks by clicking
     // and the bracket alone names the slot to pick it in.
-    sources: keepingPlaces(held.sources, path === "pool"),
-    upstream: keepingPlaces(held.upstream, true),
+    sources: keepingPlaces(held.sources, byPool),
+    upstream: keepingPlaces(held.upstream.filter((i) => !slotted.includes(i)), true),
+    slotted,
   };
+}
+
+/**
+ * The feeders one node's prompt actually sends: the k-th asset mark sends the
+ * k-th entry of {@link nameableFeeders}' sources, the k-th ref mark the k-th
+ * upstream entry, the way the canvas writes its mentions. A node wired in and
+ * never marked is not sent.
+ * @param proposal - The proposal being read.
+ * @param index - The node being fed.
+ * @returns The indices the marks send, in the order the marks appear.
+ * @throws {never} Never.
+ */
+export function markTargets(proposal: CanvasProposal, index: number): number[] {
+  const named = nameableFeeders(proposal, index);
+  const sent: number[] = [];
+  let assets = 0;
+  let refs = 0;
+  for (const segment of proposal.nodes[index]?.prompt ?? []) {
+    const kind = segment.slot?.kind;
+    const target = kind === "asset" ? named.sources[assets++] : kind === "ref" ? named.upstream[refs++] : undefined;
+    if (target !== undefined && target !== null) sent.push(target);
+  }
+  return sent;
 }
 
 /**

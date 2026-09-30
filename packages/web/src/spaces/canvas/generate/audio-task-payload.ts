@@ -17,10 +17,13 @@
  */
 
 import type { ModelEntry, TaskCreateInput } from '@breatic/shared';
+import type { EstimateInput } from '@breatic/shared/pricing';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
+import { slotSourceDurations } from '@web/spaces/canvas/generate/slots';
+import { wireParams } from '@web/spaces/canvas/generate/stand-in';
 
 /**
  * The picked source assets, under the param names their vendors read.
@@ -76,11 +79,7 @@ export interface AudioTaskInput {
    * The words to sing, on a mode that collects them (#1960).
    *
    * Absent means this mode has no lyrics box at all, and the field is then
-   * left out of the request entirely rather than sent empty. An empty STRING
-   * is a different statement: the track was marked instrumental, which is the
-   * one case the gateway accepts without words (measured 2026-09-05 — with
-   * `is_instrumental: true` it completes, and both music models refuse an
-   * empty lyrics on any vocal run).
+   * left out of the request entirely rather than sent empty.
    */
   lyricsText?: string;
 }
@@ -100,7 +99,7 @@ export function buildAudioTaskPayload(input: AudioTaskInput): TaskCreateInput {
     // Model params spread FIRST so what the user typed always wins over a
     // same-named key a malformed catalog might carry.
     params: {
-      ...input.params,
+      ...wireParams(input.model, input.params),
       prompt: input.promptText,
       // Only when the mode collects them; see `lyricsText`. After the params
       // spread for the same reason the prompt is: what the user wrote wins
@@ -111,4 +110,36 @@ export function buildAudioTaskPayload(input: AudioTaskInput): TaskCreateInput {
       ...sourceParams(input.slots ?? [], input.slotUrls ?? {}),
     },
   });
+}
+
+/** What the price reads off the audio panel's view model. */
+interface AudioEstimateSource {
+  /** The model the params belong to; it decides which side of a stand-in is priced. */
+  modelEntry: ModelEntry | undefined;
+  params: Readonly<Record<string, unknown>>;
+  slotUrls: AudioSlotUrls;
+  slotDurations: Partial<Record<AudioSlot, number>>;
+}
+
+/**
+ * The run the panel quotes a price for (#2156, design §14): the params with
+ * the same source fields the submit sends, and how long those tracks run.
+ * @param vm - The panel's view model.
+ * @param slots - The slots the active mode collects.
+ * @param prompt - The prompt as the model reads it.
+ * @returns The estimate input.
+ */
+export function audioEstimateInput(
+  vm: AudioEstimateSource,
+  slots: readonly AudioSlot[],
+  prompt: string,
+): EstimateInput {
+  return {
+    params: {
+      ...(vm.modelEntry ? wireParams(vm.modelEntry, vm.params) : vm.params),
+      ...sourceParams(slots, vm.slotUrls),
+    },
+    prompt,
+    durations: slotSourceDurations(AUDIO_SLOTS, slots, vm.slotDurations),
+  };
 }

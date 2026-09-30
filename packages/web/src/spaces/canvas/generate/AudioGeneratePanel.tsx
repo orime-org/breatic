@@ -14,9 +14,9 @@ import type {
 } from '@web/spaces/canvas/generate/audio-slots';
 import { AudioGenerateToolbar } from '@web/spaces/canvas/generate/AudioGenerateToolbar';
 import {
-  AudioParamsPicker,
-  type AudioParamsValue,
-} from '@web/spaces/canvas/generate/AudioParamsPicker';
+  AudioSettingsPicker,
+  type VoiceSource,
+} from '@web/spaces/canvas/generate/AudioSettingsPicker';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
   isExecuteButtonDisabled,
@@ -25,8 +25,8 @@ import {
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
-import { VoicePicker } from '@web/spaces/canvas/generate/VoicePicker';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
+import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
 
 /**
  * The panel's outer surface: width, corners, border, fill, padding, spacing.
@@ -51,30 +51,14 @@ interface AudioGeneratePanelProps {
    * needed, and a second lookup is a second chance to answer differently.
    */
   currentModel: ModelEntry | undefined;
-  /**
-   * What one generation would cost, in credits.
-   *
-   * A model stating a rate counts the unit it bills in — the text for a
-   * speech model, the picked clip length for a sound effect — so the number
-   * moves as that input changes; one stating none prints its cost per call
-   * and holds still. Undefined until a model is picked.
-   */
-  creditEstimate: number | undefined;
+  /** The run's estimate as printed beside the star; undefined until it resolves. */
+  creditText: string | undefined;
   /** Whether that model consumes the prompt (its `takes_prompt`). */
   modelTakesPrompt: boolean;
   /** The selected mode. */
   mode: string;
   /** The modes this panel offers, filtered by what the catalog serves. */
   modeOptions: ReadonlyArray<ModeOption>;
-  /**
-   * Whether the active model picks its voice from a preset catalog — the
-   * voice picker renders only then.
-   *
-   * A voice-cloning model answers no: the voice it speaks in is the recording
-   * picked into the reference slot, not a row in a vendor list, so a picker
-   * here would offer a choice that reaches nothing.
-   */
-  voiceRequired: boolean;
   /** Where the voice list is. */
   voiceList: VoiceListState;
   /** The voice held in this model's param record, or null when none is. */
@@ -106,22 +90,17 @@ interface AudioGeneratePanelProps {
    */
   promptSlot: React.ReactNode;
   /**
-   * The injected lyrics editor, or null on a mode that collects none (#1960)
-   * and on an instrumental track, which has no words to write.
+   * The injected lyrics editor, or null on a mode that collects none (#1960).
    *
    * Its own slot rather than a flag: the editor is a live collaborative view
    * of a Yjs fragment, and the container is the layer that owns those.
    */
   lyricsSlot: React.ReactNode;
   /**
-   * Whether the boxes carry their names.
-   *
-   * A music mode asks for two different things and names both, and it keeps
-   * naming the style box after the lyrics box goes away with the instrumental
-   * switch — otherwise the one remaining box loses its name at the moment the
-   * switch changes what the panel is asking for.
+   * The name over the prompt box, or undefined on a mode whose box is the
+   * plain prompt. The lyrics box always carries its own.
    */
-  labelBoxes: boolean;
+  promptLabel: string | undefined;
   /** Pick a mode. */
   onToggleMode: (mode: string) => void;
   /** Pick a model. */
@@ -139,7 +118,7 @@ interface AudioGeneratePanelProps {
   /** Insert a row's @-mention into the prompt at the caret. */
   onInsertReference: (item: ReferenceRailItem) => void;
   /** One of the model's params changed. */
-  onChangeParams: (partial: AudioParamsValue) => void;
+  onChangeParams: (partial: object) => void;
   /** The voice list opened or collapsed. */
   onVoiceOpenChange: (open: boolean) => void;
   /** What was typed into the voice search. */
@@ -156,12 +135,11 @@ interface AudioGeneratePanelProps {
 
 /**
  * The audio-node Generate panel: the injected collaborative editors over a
- * footer carrying the mode picker, the model picker, the voice picker, the
- * model's params, the credit figure and the submit button.
+ * footer carrying the mode picker, the model picker, the voice-and-settings
+ * pill, the credit figure and the submit button.
  *
- * The figure is one number beside a star, the shape VideoGeneratePanel uses.
- * There it is always the model's cost per call; here it is whichever of the
- * two the model states (`estimateAudioCredits`).
+ * The figure is the run's estimate beside a star, the shape every generate
+ * panel uses.
  *
  * Presentational throughout; every piece of node data and every Yjs write is
  * threaded in by the container.
@@ -169,18 +147,17 @@ interface AudioGeneratePanelProps {
  * @param root0.models - The tts models to offer.
  * @param root0.model - The selected model id.
  * @param root0.currentModel - That model's catalog entry.
- * @param root0.creditEstimate - What this prompt would cost, in credits.
+ * @param root0.creditText - The run's estimate as printed beside the star.
  * @param root0.modelTakesPrompt - Whether it consumes the prompt.
  * @param root0.mode - The selected mode.
  * @param root0.modeOptions - The modes to offer.
- * @param root0.voiceRequired - Whether the model picks a voice from a catalog.
  * @param root0.voiceList - Where the voice list is.
  * @param root0.voiceSelectedId - The stored voice id.
  * @param root0.voiceSelectedName - That voice's name, once known.
  * @param root0.executeRefusal - Which execute precondition fails.
  * @param root0.promptSlot - The injected prompt editor, or null.
  * @param root0.lyricsSlot - The injected lyrics editor, or null.
- * @param root0.labelBoxes - Whether the boxes carry their names.
+ * @param root0.promptLabel - The name over the prompt box, if it has one.
  * @param root0.references - The derived reference rows.
  * @param root0.referencePicking - Whether the reference pick is running.
  * @param root0.slots - The slots the active mode collects.
@@ -208,18 +185,17 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   models,
   model,
   currentModel,
-  creditEstimate,
+  creditText,
   modelTakesPrompt,
   mode,
   modeOptions,
-  voiceRequired,
   voiceList,
   voiceSelectedId,
   voiceSelectedName,
   executeRefusal,
   promptSlot,
   lyricsSlot,
-  labelBoxes,
+  promptLabel,
   references,
   referencePicking = false,
   slots,
@@ -243,6 +219,28 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   onExecute,
 }: AudioGeneratePanelProps): React.JSX.Element {
   const t = useTranslation();
+  // One object for the settings pill, rebuilt only when a piece of it moves:
+  // the pill is memoised and a fresh literal every render would defeat it.
+  const voice = React.useMemo<VoiceSource>(
+    () => ({
+      list: voiceList,
+      selectedId: voiceSelectedId,
+      selectedName: voiceSelectedName,
+      onOpenChange: onVoiceOpenChange,
+      onQueryChange: onVoiceQueryChange,
+      onPick: onVoicePick,
+      onLoadMore: onVoiceLoadMore,
+    }),
+    [
+      voiceList,
+      voiceSelectedId,
+      voiceSelectedName,
+      onVoiceOpenChange,
+      onVoiceQueryChange,
+      onVoicePick,
+      onVoiceLoadMore,
+    ],
+  );
 
   const exitButton = (
     <Button
@@ -303,15 +301,17 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         // No audio model declares a reference pool, so the rail turns away
         // every media row here and a text row is the only one that lands —
         // and a text row is prompt material, outside the
-        // `modeTakesReferences` question entirely. What it answers to is the
+        // `referenceKinds` question entirely. What it answers to is the
         // model's own `takes_prompt`, resolved once by the view model.
+        referenceKinds={NO_REFERENCE_KINDS}
         modelTakesPrompt={modelTakesPrompt}
       />
 
       {/* Two boxes look alike once the placeholders are typed over, so each
-          carries a word saying which is which. Only on a mode that asks for
-          two things: a single prompt box needs no label to be told apart from
-          nothing.
+          carries a word saying which is which. The prompt box is named on a
+          mode whose box asks for something other than the plain prompt — a
+          music mode's style brief — even under a model that takes no lyrics,
+          so the name does not vanish with the second box.
 
           Both wrappers are here whether or not there is a second box, and the
           labels are holes rather than a second branch: React reconciles by
@@ -327,10 +327,8 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           a control's name. */}
       <div className='flex flex-col gap-2.5'>
         <div className='flex flex-col gap-1.5'>
-          {labelBoxes && (
-            <span className='text-xs font-medium text-muted-foreground'>
-              {t('canvas.generatePanel.musicStyleLabel')}
-            </span>
+          {promptLabel !== undefined && (
+            <span className='text-xs font-medium text-muted-foreground'>{promptLabel}</span>
           )}
           {promptSlot}
         </div>
@@ -352,38 +350,24 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
           triggerTestId='generate-audio-mode-trigger'
         />
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
-        {voiceRequired ? (
-          // Only for a model that picks its voice from a preset catalog. A
-          // cloning model speaks in the recording picked into the reference
-          // slot, so a picker here would write an id nothing sends.
-          <VoicePicker
-            list={voiceList}
-            selectedId={voiceSelectedId}
-            selectedName={voiceSelectedName}
-            onOpenChange={onVoiceOpenChange}
-            onQueryChange={onVoiceQueryChange}
-            onPick={onVoicePick}
-            onLoadMore={onVoiceLoadMore}
-          />
-        ) : null}
         {currentModel ? (
-          // Renders nothing when this model declares no param it can show, so
-          // there is no second copy here of what it already decides.
-          <AudioParamsPicker
+          // Renders nothing when this model has no voice and no param to show.
+          <AudioSettingsPicker
             model={currentModel}
             value={params}
             onChange={onChangeParams}
+            voice={voice}
           />
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {creditEstimate !== undefined && (
+          {creditText !== undefined && (
             <span
               data-testid='generate-audio-rate'
               className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
             >
               <Star className='h-3.5 w-3.5' aria-hidden='true' />
-              {creditEstimate}
+              {creditText}
             </span>
           )}
           <Button

@@ -157,14 +157,6 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   drivingVideo?: { url: string; cover?: string };
   /**
-   * Reference-to-video's motion guidance (`data.referenceVideo`) — `url` is
-   * sent as `params.video` at execute time (#1928). Same one-field shape as
-   * `drivingVideo` and for the same reason, and a separate field from it: the
-   * two modes mean different things by a video, so switching between them
-   * leaves each one's pick where it was.
-   */
-  referenceVideo?: { url: string; cover?: string };
-  /**
    * The driving audio for the talking-head mode (#1935, wire
    * `data.drivingAudio`) — `url` is sent as `params.audio` at execute time.
    * Same one-field shape as `drivingVideo` above and for the same reason;
@@ -180,14 +172,25 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   refAudio?: { url: string; cover?: string };
   /**
-   * The three references reference-to-music collects (#1960, wire
-   * `data.musicSong` / `musicVoice` / `musicInstrumental`) — sent as
-   * `params.song` / `voice` / `instrumental`. `cover` is always absent, as
-   * with `refAudio`.
+   * The talking-head sources beyond a portrait and one track (#2156, wire
+   * `data.sourceVideo` / `leftAudio` / `rightAudio`) — sent as `params.video`
+   * / `left_audio` / `right_audio`.
+   */
+  sourceVideo?: { url: string; cover?: string };
+  leftAudio?: { url: string; cover?: string };
+  rightAudio?: { url: string; cover?: string };
+  /**
+   * The music and sound references (#1960, #2156; wire `data.musicSong` /
+   * `coverSong` / `musicMelody` / `musicVocal` / `soundVideo`) — sent as
+   * `params.song` / `audio` / `melody` / `vocal` / `video`.
    */
   musicSong?: { url: string; cover?: string };
-  musicVoice?: { url: string; cover?: string };
-  musicInstrumental?: { url: string; cover?: string };
+  coverSong?: { url: string; cover?: string };
+  musicMelody?: { url: string; cover?: string };
+  musicVocal?: { url: string; cover?: string };
+  soundVideo?: { url: string; cover?: string };
+  /** The picture music takes its mood from (#2156, wire `data.moodImageUrl`) — sent as `params.image`. */
+  moodImageUrl?: string;
   /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
@@ -413,12 +416,17 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     endFrameUrl: data.endFrameUrl,
     characterImageUrl: data.characterImageUrl,
     drivingVideo: data.drivingVideo,
-    referenceVideo: data.referenceVideo,
     drivingAudio: data.drivingAudio,
     refAudio: data.refAudio,
+    sourceVideo: data.sourceVideo,
+    leftAudio: data.leftAudio,
+    rightAudio: data.rightAudio,
     musicSong: data.musicSong,
-    musicVoice: data.musicVoice,
-    musicInstrumental: data.musicInstrumental,
+    coverSong: data.coverSong,
+    musicMelody: data.musicMelody,
+    musicVocal: data.musicVocal,
+    soundVideo: data.soundVideo,
+    moodImageUrl: data.moodImageUrl,
     focusImages: data.focusImages,
   };
   switch (type) {

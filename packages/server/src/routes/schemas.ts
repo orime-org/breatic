@@ -59,9 +59,31 @@ const imageToolBase = z.object({
   ...canvasTaskBinding,
 });
 
+/** A target resolution's long edge, in pixels. */
+const UPSCALE_LONG_EDGE = { "2k": 2048, "4k": 4096, "8k": 8192 } as const;
+
+/**
+ * The megapixels the upscaler reads (#2156, design §7): the target's long
+ * edge, with the short edge following the source's ratio.
+ * @param resolution - The target resolution.
+ * @param width - The source's width in pixels.
+ * @param height - The source's height in pixels.
+ * @returns Megapixels of the output.
+ */
+function upscaleMegapixels(resolution: keyof typeof UPSCALE_LONG_EDGE, width: number, height: number): number {
+  const long = UPSCALE_LONG_EDGE[resolution];
+  const ratio = Math.min(width, height) / Math.max(width, height);
+  return (long * Math.round(long * ratio)) / 1_000_000;
+}
+
 export const imageToolSchema = z.discriminatedUnion("tool", [
   imageToolBase.extend({ tool: z.literal("remove-bg") }),
-  imageToolBase.extend({ tool: z.literal("upscale"), output_resolution: z.string().optional(), source_width: z.number().optional(), source_height: z.number().optional() }),
+  imageToolBase.extend({
+    tool: z.literal("upscale"),
+    output_resolution: z.enum(["2k", "4k", "8k"]).optional(),
+    source_width: z.number().positive().optional(),
+    source_height: z.number().positive().optional(),
+  }),
   // NOTE: per `design/project/02-mini-tool-system.md` §2.2 V1 ships
   // 3 Category B image tools — remove-bg / upscale / inpaint. inpaint
   // will land once its overlay-driven param UI is designed. B5 (this
@@ -75,16 +97,26 @@ export const imageToolSchema = z.discriminatedUnion("tool", [
   // / `manual-adjust` belong in the browser (see
   // `feedback_frontend_backend_boundary` memory) and ship as Category A
   // — same rationale that motivated `adjust` moving to Category A.
-]);
+]).transform((request, ctx) => {
+  if (request.tool !== "upscale") return request;
+  const { output_resolution, source_width, source_height, ...rest } = request;
+  if (output_resolution === undefined) return rest;
+  // The upscaler bills by output megapixels, which follow the source's shape.
+  if (source_width === undefined || source_height === undefined) {
+    ctx.addIssue({ code: "custom", path: ["source_width"], message: "source_width and source_height are required with output_resolution" });
+    return z.NEVER;
+  }
+  return { ...rest, target_megapixels: upscaleMegapixels(output_resolution, source_width, source_height) };
+});
 
 // Mini-Tools: Video
 export const videoToolSchema = z.discriminatedUnion("tool", [
-  z.object({ tool: z.literal("upscale"), video: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
-  z.object({ tool: z.literal("interpolate"), video: z.string(), multiplier: z.number().default(2), model: z.string().optional(), ...canvasTaskBinding }),
-  z.object({ tool: z.literal("extend"), video: z.string(), prompt: z.string().default(""), model: z.string().optional(), ...canvasTaskBinding }),
-  z.object({ tool: z.literal("edit"), video: z.string(), prompt: z.string(), images: z.array(z.string()).optional(), model: z.string().optional(), ...canvasTaskBinding }),
-  z.object({ tool: z.literal("motion"), image: z.string(), video: z.string().optional(), prompt: z.string().default(""), model: z.string().optional(), ...canvasTaskBinding }),
-  z.object({ tool: z.literal("animate"), video: z.string(), image: z.string().optional(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("upscale"), video: z.string(), target_resolution: z.string().optional(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("interpolate"), video: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("extend"), video: z.string(), prompt: z.string().min(1), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("edit"), video: z.string(), prompt: z.string().min(1), reference_images: z.array(z.string()).optional(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("motion"), image: z.string(), video: z.string(), prompt: z.string().default(""), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("animate"), video: z.string(), image: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
   z.object({ tool: z.literal("talking-head"), image: z.string(), audio: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
   // Local (Worker-side FFmpeg) mini-tool — first non-vendor video op.
   // `host_node_id` identifies the mixed-editor container when the
@@ -207,9 +239,9 @@ export const videoToolSchema = z.discriminatedUnion("tool", [
 
 // Mini-Tools: Audio
 export const audioToolSchema = z.discriminatedUnion("tool", [
-  z.object({ tool: z.literal("sfx"), prompt: z.string(), duration_seconds: z.number().optional(), prompt_influence: z.number().default(0.3), loop: z.boolean().default(false), model: z.string().optional(), ...canvasTaskBinding }),
-  z.object({ tool: z.literal("tts"), text: z.string(), voice_id: z.string().default("Alice"), model: z.string().optional(), ...canvasTaskBinding }),
-  z.object({ tool: z.literal("voice-clone"), text: z.string(), audio: z.string(), reference_text: z.string().optional(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("sfx"), prompt: z.string().min(1), duration: z.number().optional(), loop: z.boolean().default(false), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("tts"), text: z.string().min(1), voice_id: z.string().optional(), model: z.string().optional(), ...canvasTaskBinding }),
+  z.object({ tool: z.literal("voice-clone"), text: z.string().min(1), audio: z.string(), model: z.string().optional(), ...canvasTaskBinding }),
   z.object({ tool: z.literal("separate"), audio: z.string(), mode: z.string().default("vocals"), ...canvasTaskBinding }),
   z.object({ tool: z.literal("extend"), audio: z.string(), prompt: z.string().default(""), model: z.string().optional(), ...canvasTaskBinding }),
 ]);

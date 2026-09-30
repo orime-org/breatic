@@ -13,6 +13,7 @@
 
 import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 import type { RefusalKind, UnavailableKind } from "@breatic/domain";
+import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import {
   assetNameFromUrl,
   encodeTaskFailure,
@@ -98,6 +99,8 @@ const REFUSAL_ANSWER_STANDS: Readonly<Record<RefusalKind, boolean>> = {
  * @returns True when another attempt would land on the same answer.
  */
 export function verdictStands(err: unknown): boolean {
+  // A redelivery resumes the same prediction and reads the same failure.
+  if (err instanceof UpstreamTaskFailed) return true;
   if (err instanceof MediaUnavailable) return MEDIA_ANSWER_STANDS[err.kind];
   if (err instanceof UnderstandRefused) return REFUSAL_ANSWER_STANDS[err.kind];
   return false;
