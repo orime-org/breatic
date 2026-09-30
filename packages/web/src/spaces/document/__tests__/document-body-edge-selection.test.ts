@@ -587,3 +587,19 @@ describe('moving rows under a selection that reaches past the last block', () =>
     warn.mockRestore();
   });
 });
+
+describe('Shift+Enter on a selection that reaches past the last block', () => {
+  it('does nothing: the head is on no line to break', () => {
+    const view = open([{ type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
+    const selection = BodyEdgeSelection.create(view.state.doc, textStart(view, 'Middle'), 'end');
+    view.dispatch(view.state.tr.setSelection(selection));
+    const before = view.state.doc;
+
+    const event = new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true });
+    const took = view.someProp('handleKeyDown', (f) => f(view, event));
+
+    expect(took).toBe(true);
+    expect(view.state.doc.eq(before)).toBe(true);
+    expect(view.state.selection.eq(selection)).toBe(true);
+  });
+});
