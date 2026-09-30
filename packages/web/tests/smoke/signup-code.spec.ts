@@ -11,9 +11,9 @@
  * the server which way this stack is set up and walks that way.
  */
 
-import { expect, test, type APIRequestContext, type Page } from 'playwright/test';
+import { expect, test, type Page } from 'playwright/test';
 
-import { readSignupCode } from '../helpers/signup';
+import { emailVerification, readSignupCode } from '../helpers/signup';
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -21,17 +21,6 @@ test.use({ storageState: { cookies: [], origins: [] } });
 function freshCredentials(): { email: string; password: string } {
   const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   return { email: `signup-code-${stamp}@example.test`, password: 'Sm0ke-Signup-Pw!' };
-}
-
-/**
- * Whether this stack signs people up with a mailed code.
- * @param api - The page's request context.
- * @returns `true` when an email backend is enabled.
- */
-async function emailVerification(api: APIRequestContext): Promise<boolean> {
-  const res = await api.get('/api/v1/auth/options');
-  expect(res.ok()).toBe(true);
-  return ((await res.json()) as { data: { emailVerification: boolean } }).data.emailVerification;
 }
 
 /**

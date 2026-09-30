@@ -77,6 +77,19 @@ export async function readSignupCode(
 }
 
 /**
+ * Whether this stack signs people up with a mailed code.
+ * @param api - A request context aimed at the app.
+ * @returns `true` when an email backend is enabled.
+ */
+export async function emailVerification(api: APIRequestContext): Promise<boolean> {
+  const res = await api.get('/api/v1/auth/options');
+  expect(res.ok(), `auth/options answered ${res.status()}`).toBe(true);
+  const value = ((await res.json()) as { data: { emailVerification?: unknown } }).data.emailVerification;
+  expect(typeof value, 'auth/options must answer emailVerification as a boolean').toBe('boolean');
+  return value === true;
+}
+
+/**
  * Create an account and leave `api` signed in as it, whichever way this
  * stack signs people up.
  * @param api - A request context aimed at the app; it keeps the cookies.
@@ -88,19 +101,17 @@ export async function registerAccount(
   api: APIRequestContext,
   credentials: { email: string; password: string },
 ): Promise<void> {
-  const options = await api.get('/api/v1/auth/options');
-  expect(options.ok(), `auth/options answered ${options.status()}`).toBe(true);
-  const { emailVerification } = ((await options.json()) as { data: { emailVerification: boolean } }).data;
+  const withCode = await emailVerification(api);
 
   const since = new Date(Date.now() - 1000);
   const registered = await api.post('/api/v1/auth/register', { data: credentials });
-  const expected = emailVerification ? 202 : 201;
+  const expected = withCode ? 202 : 201;
   expect(
     registered.status(),
     `register answered ${registered.status()}: ${(await registered.text()).slice(0, 200)}. ` +
       'A 429 is the ten-an-hour ceiling in config/rate-limits.yaml.',
   ).toBe(expected);
-  if (!emailVerification) return;
+  if (!withCode) return;
 
   const code = await readSignupCode(api, credentials.email, since);
   const verified = await api.post('/api/v1/auth/register/verify', { data: { code } });
