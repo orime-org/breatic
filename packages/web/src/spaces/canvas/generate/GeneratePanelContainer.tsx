@@ -4,7 +4,6 @@
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 import { toast } from '@web/lib/toast';
-import type * as Y from 'yjs';
 
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
@@ -246,10 +245,10 @@ function GeneratePanelBody({
   // words. Null means the node predates the seeding (see getPromptFragment) —
   // the panel then renders without a prompt editor rather than minting a
   // fragment behind the user's back.
-  const [fragment, setFragment] = React.useState<Y.XmlFragment | null>(null);
-  React.useEffect(() => {
-    setFragment(getPromptFragment(projectId, spaceId, nodeId, vm.mode));
-  }, [projectId, spaceId, nodeId, vm.mode]);
+  const fragment = React.useMemo(
+    () => getPromptFragment(projectId, spaceId, nodeId, vm.mode),
+    [projectId, spaceId, nodeId, vm.mode],
+  );
   const creditText = useCreditText(
     vm.modelEntry,
     imageEstimateInput(vm, extractPromptText(promptText)),

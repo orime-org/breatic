@@ -3,7 +3,6 @@
 
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
-import type * as Y from 'yjs';
 
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
@@ -236,10 +235,10 @@ function VideoGeneratePanelBody({
   // to that mode's words. Null means the node predates prompt seeding (see
   // getPromptFragment) — the panel then renders without an editor rather than
   // minting a fragment behind the user.
-  const [fragment, setFragment] = React.useState<Y.XmlFragment | null>(null);
-  React.useEffect(() => {
-    setFragment(getPromptFragment(projectId, spaceId, nodeId, mode));
-  }, [projectId, spaceId, nodeId, mode]);
+  const fragment = React.useMemo(
+    () => getPromptFragment(projectId, spaceId, nodeId, mode),
+    [projectId, spaceId, nodeId, mode],
+  );
 
   // A referenced text node's body is a shared fragment the node view does not
   // carry (#1774), so the panel follows the ones it can reference. This is the
