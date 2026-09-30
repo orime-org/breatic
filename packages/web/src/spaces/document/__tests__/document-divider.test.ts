@@ -540,6 +540,25 @@ describe('a writable line after a trailing no-text block (A6)', () => {
     expect(shape(b!.document)).toEqual(['paragraph:Above', 'divider:', 'paragraph:']);
   });
 
+  it('is left to the sender when a change that came through Yjs ends the document in a divider', () => {
+    const doc = new Y.Doc();
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc) });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: 'Above' }] as never);
+
+    // A sender that did not append: the divider goes in straight through Yjs.
+    const group = documentBodyFragment(doc).get(0) as Y.XmlElement;
+    const container = new Y.XmlElement('blockContainer');
+    container.setAttribute('id', 'from-peer');
+    container.insert(0, [new Y.XmlElement('divider')]);
+    group.push([container]);
+
+    expect(shape(editor.document)).toEqual(['paragraph:Above', 'divider:']);
+  });
+
   it('lets a selection dragged past the end take the divider in', () => {
     const editor = open([
       { type: 'paragraph', content: 'Above' },
