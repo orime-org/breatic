@@ -90,8 +90,12 @@ describe("what the guide says", () => {
     const text = renderProductGuide();
     for (const heading of [
       "## Spaces",
+      "## The chat panel",
       "## Making nodes",
       "## Filling a node",
+      "## Node menus",
+      "## Notes",
+      "## Moving around the canvas",
       "## Generating",
       "## Inside the generation panel",
       "## Source slots",
@@ -229,9 +233,118 @@ describe("what the guide says", () => {
       "spaces.document.commands.underline",
       "spaces.document.commands.link",
       "spaces.document.commands.code",
+      "chrome.tooltip.agentHide",
+      "chrome.tooltip.agentShow",
+      "chrome.tooltip.revealActiveTab",
+      "chrome.tooltip.newSpace",
+      "chrome.tooltip.openHistory",
+      "chrome.tooltip.newConversation",
+      "spaces.tab.closeAria",
+      "chat.composer.attach",
+      "chat.conversation.rowActions",
+      "viewportToolbar.fitAria",
+      "viewportToolbar.zoomResetAria",
+      "spaces.document.docMenu.label",
     ]) {
       expect(text, id).not.toContain(`"${t(id)}"`);
     }
+  });
+
+  it("lists a node menu's rows in the order the menu shows them", () => {
+    // Every row id the node menu renders, one row per run of adjacent source
+    // lines: a lock / unlock or node / group pair is one row written as a
+    // ternary over two lines, so only rows are ordered, not the words of one.
+    const menu = webSource("spaces/canvas/NodeContextMenu.tsx");
+    const rows: string[][] = [];
+    let last = -2;
+    menu.split("\n").forEach((line, n) => {
+      const ids = [...line.matchAll(/'(canvas\.(?:nodeMenu|contextMenu)\.\w+)'/g)].map((m) => m[1] ?? "");
+      if (ids.length === 0) return;
+      if (n === last + 1) rows[rows.length - 1]?.push(...ids);
+      else rows.push(ids);
+      last = n;
+    });
+    const menus = section("Node menus");
+    const missing = rows.flat().filter((id) => !menus.includes(`"${t(id)}"`));
+    expect(missing).toEqual([]);
+    // Ordered within the node's own list, which ends where the group's begins;
+    // a word the later sentences repeat must not stand in for a missing row.
+    const own = menus.split("A group's menu")[0] ?? "";
+    const at = rows.map((ids) => {
+      const found = ids.map((id) => own.indexOf(`"${t(id)}"`)).filter((i) => i >= 0);
+      return found.length > 0 ? Math.min(...found) : -1;
+    });
+    expect(at, rows.map((ids) => ids.join("|")).join(", ")).not.toContain(-1);
+    expect([...at].sort((x, y) => x - y)).toEqual(at);
+  });
+
+  it("lists the selection menu's rows in the order the menu shows them", () => {
+    const menu = webSource("spaces/canvas/SelectionContextMenu.tsx");
+    const ids = [...menu.matchAll(/t\('([\w.]+)'\)/g)].map((m) => m[1] ?? "");
+    const sentence = section("Node menus").split("Right-clicking one of several selected nodes")[1]?.split(". ")[0] ?? "";
+    const at = ids.map((id) => sentence.indexOf(`"${t(id)}"`));
+    expect(at.every((i) => i >= 0), ids.join(",")).toBe(true);
+    expect([...at].sort((x, y) => x - y)).toEqual(at);
+  });
+
+  it("names the view bar's buttons by their tooltips, in the bar's order", () => {
+    const bar = webSource("pages/project/chrome/viewport-toolbar/ViewportToolbar.tsx");
+    const ids = [...bar.matchAll(/tooltip=\{t\('([\w.]+)'\)\}/g)].map((m) => m[1] ?? "");
+    expect(ids.length).toBeGreaterThan(0);
+    const moving = section("Moving around the canvas");
+    const at = ids.map((id) => moving.indexOf(`"${t(id)}"`));
+    expect(at.every((i) => i >= 0), ids.join(",")).toBe(true);
+    expect([...at].sort((x, y) => x - y)).toEqual(at);
+  });
+
+  it("says the left menu's upload picker lists only what its accept list takes", () => {
+    // Dropping takes any file; the picker is narrower, and the reader told to
+    // pick a PDF there finds it greyed out.
+    const page = webSource("pages/project/ProjectPage.tsx");
+    expect(page).toContain("accept='image/*,video/*,audio/*,text/*'");
+    const making = section("Making nodes");
+    expect(making).toMatch(/file picker that lists pictures, videos, sounds and plain text files/);
+    expect(making).toMatch(/PDF, Word and Excel files go in by dropping or pasting them/);
+  });
+
+  it("says only the picture and video panels show the no-prompt notice", () => {
+    const users = ["spaces/canvas/generate/GeneratePanelContainer.tsx", "spaces/canvas/generate/VideoGeneratePanelContainer.tsx"];
+    for (const path of users) expect(webSource(path)).toContain("PromptNotUsedNotice");
+    expect(webSource("spaces/canvas/generate/AudioGeneratePanelContainer.tsx")).not.toContain("PromptNotUsedNotice");
+    const proposals = section("Proposal cards");
+    expect(proposals).toMatch(new RegExp(`picture or video panel shows "${t("canvas.generatePanel.promptNotUsed").replace(/\./g, "\\.")}"`));
+    expect(proposals).toMatch(/sound panel shows its prompt box empty/);
+  });
+
+  it("says how to change the mode and the model", () => {
+    const panel = section("Inside the generation panel");
+    expect(panel).toMatch(/Clicking the mode lists the modes/);
+    expect(panel).toMatch(/Clicking the model's name lists the current mode's models/);
+  });
+
+  it("gives an empty text node the same second line as the other empty nodes", () => {
+    const filling = section("Filling a node");
+    expect(filling).toContain(`"${t("canvas.nodePlaceholder.rightClickHint")}"`);
+    expect(filling).toMatch(new RegExp(`"${t("canvas.nodePlaceholder.text")}" and the same smaller line`));
+  });
+
+  it("describes a proposal card's summary, run divider and model line", () => {
+    const proposals = section("Proposal cards");
+    expect(proposals).toMatch(/a summary of a sentence or two/);
+    expect(proposals).toMatch(/a \| between runs that do not feed each other/);
+    expect(proposals).toMatch(/when every generating node uses the same model, a line with that model's name/);
+  });
+
+  it("says a slot-bound 📎 spot still has its note on the card", () => {
+    const slot = section("Proposal cards").split("Into one of the mode's source slots")[1] ?? "";
+    expect(slot).toMatch(/own material still has its 📎 note on the card; a generated result has no line/);
+  });
+
+  it("says how to indent and outdent in a document", () => {
+    const doc = section("Document spaces");
+    expect(webSource("spaces/document/document-tab.ts")).toMatch(/Shift/);
+    expect(doc).toMatch(/Tab indents the block under the one above/);
+    expect(doc).toMatch(/Shift\+Tab moves it back out/);
   });
 
   it("lists the block menu rows in the order the menu shows them", () => {
@@ -278,6 +391,18 @@ describe("in the reader's language", () => {
     const quotedFragments = text.match(/"[^"\n]+"/g) ?? [];
     expect(quotedFragments.length).toBeGreaterThan(0);
     for (const fragment of quotedFragments) expect(shown, fragment).toContain(fragment);
+  });
+});
+
+describe("in every language", () => {
+  it("never puts a full stop after a quoted message that already ends its sentence", () => {
+    // A message carrying its own closing mark, followed by the guide's full
+    // stop, reads as a stray second mark in that language.
+    for (const locale of ["en", "zh-CN", "zh-TW", "ja", "ko"]) {
+      const text = runWithLocale(locale, renderProductGuide);
+      const doubled = text.match(/"[^"\n]*[.。!！?？]"[.。]/g) ?? [];
+      expect(doubled, locale).toEqual([]);
+    }
   });
 });
 

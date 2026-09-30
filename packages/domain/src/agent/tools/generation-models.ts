@@ -99,7 +99,7 @@ function renderModel(model: PricedModelInfo): string {
   const pooled = poolParams(model).map((pool) => pool.kind);
   const shared = [...new Set(requiredSlotKinds(model).filter((kind) => pooled.includes(kind)))];
   const routing = shared
-    .map((kind) => ` The first ${String(kind)} node wired in is the one the reader picks into its ${String(kind)} slot; later ones go to its pool.`)
+    .map((kind) => ` Of the ${String(kind)} nodes wired in, the first in the order the proposal lists its nodes is the one the reader picks into its ${String(kind)} slot; later ones go to its pool.`)
     .join("");
   const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}`;
   const params = Object.entries(model.params).map(([name, spec]) => {

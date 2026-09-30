@@ -228,7 +228,7 @@ describe("what the rendered answer tells the model", () => {
   it("says which wired node fills a slot the pool shares a kind with", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(kling-video-o3-4k-image-to-video\)[^\n]*The first image node wired in is the one the reader picks into its image slot; later ones go to its pool\./,
+      /\(kling-video-o3-4k-image-to-video\)[^\n]*Of the image nodes wired in, the first in the order the proposal lists its nodes is the one the reader picks into its image slot; later ones go to its pool\./,
     );
   });
 
