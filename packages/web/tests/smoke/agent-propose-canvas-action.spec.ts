@@ -130,6 +130,11 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
     promptReady.some((line) => cardText.includes(line)),
     `the card says where the prompt is found. Read: "${cardText}"`,
   ).toBe(true);
+  // Credits and run time belong to the generation panel, not the card.
+  expect(
+    await card.locator('svg.lucide-star, svg.lucide-clock').count(),
+    `the card shows no credits and no run time. Read: "${cardText}"`,
+  ).toBe(0);
 
   const before = await page.locator('.react-flow__node').count();
   await card.getByTestId('proposal-use').click();

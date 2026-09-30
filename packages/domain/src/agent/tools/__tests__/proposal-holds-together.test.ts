@@ -2076,11 +2076,11 @@ describe("what the model itself settles", () => {
     expect(prompt.description).toMatch(/in the order the nodes are listed/);
   });
 
-  it("leaves the price to the card rather than asking the model for one", () => {
+  it("keeps credits and run time out of the model note", () => {
     const note = inputSchema.shape.modelNote.description ?? "";
 
-    expect(note).not.toMatch(/cost|price|credit.*(is|are) /i);
-    expect(note).toMatch(/card works out the credits/);
+    expect(note).not.toMatch(/what it costs|how long/i);
+    expect(note).toMatch(/say nothing about credits or run time/);
   });
 });
 

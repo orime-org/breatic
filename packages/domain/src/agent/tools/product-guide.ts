@@ -448,9 +448,9 @@ export function renderProductGuide(): string {
       "column per step with arrows between steps in the order they run (nodes of the same step stacked, empty " +
       "nodes drawn dashed), with a | between runs that do not feed each other; any finished text in full under " +
       "its node's name; when every generating node uses the same model and you gave a model note, a line with " +
-      "that model's name and the note; the list of what is left for the reader; then, once the model list has " +
-      "loaded, the time (a clock) and, when it can be worked out, the credit estimate (a star); and a " +
-      `${quoted(t("chat.proposal.use"))} button.`,
+      "that model's name and the note; the list of what is left for the reader; and a " +
+      `${quoted(t("chat.proposal.use"))} button. The card shows no credits and no run time; the credit ` +
+      "estimate is in each node's generation panel.",
     "The list of what is left is headed by node names when the proposal places more than one node; nodes with " +
       "the same list share one heading, joined by ·. Each generating node's list ends with one of these two " +
       "lines, the second where the model has no prompt box: " +

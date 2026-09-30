@@ -161,7 +161,7 @@ export const inputSchema = z
       .trim()
       .min(1)
       .optional()
-      .describe("What this model is for; the card works out the credits itself"),
+      .describe("What this model is for, in a few words; say nothing about credits or run time"),
     rationale: z.string().trim().min(1).describe("Why this shape, in a sentence or two"),
     groupName: z
       .string()

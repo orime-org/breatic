@@ -181,6 +181,8 @@ describe("what the guide says", () => {
 
   it("says a proposal is grouped only when it places two or more nodes", () => {
     expect(section("Proposal cards")).toMatch(/grouped when there are two or more/i);
+    expect(section("Proposal cards")).toMatch(/shows no credits and no run time/);
+    expect(section("Proposal cards")).not.toMatch(/a clock|a star/);
   });
 
   it("tells the two kinds of bracketed spot apart", () => {
