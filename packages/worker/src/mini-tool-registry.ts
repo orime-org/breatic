@@ -7,8 +7,8 @@
  * Replaces the earlier `mini-tool-defaults.ts`. Each registered tool
  * declares HOW it runs, not just which model it calls:
  *
- *   - `kind: 'provider'` → AIGC vendor API via `provider.generateAsync`
- *     (Bria / Kling / Inworld / MiniMax / ...).
+ *   - `kind: 'provider'` → the modality's catalog provider via
+ *     `provider.generateAsync`, which runs the model on WaveSpeed.
  *   - `kind: 'local'` → Worker-local execution via `runLocalHandler`,
  *     which dispatches by `handler` path to a function that internally
  *     chooses FFmpeg / Sharp / ImageMagick / anything else. The
