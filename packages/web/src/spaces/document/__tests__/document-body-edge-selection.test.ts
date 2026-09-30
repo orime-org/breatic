@@ -14,6 +14,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { runBlockType } from '@web/spaces/document/document-block-run';
 import {
   BodyEdgeSelection,
   bodyEdgeBetween,
@@ -537,5 +538,23 @@ describe('the caret a selection is dropped to', () => {
     const at = textStart(view, 'Above');
 
     expect(caretAtEnd(TextSelection.create(view.state.doc, at, at + 3)).head).toBe(at + 3);
+  });
+});
+
+describe('changing the block type under a selection that reaches past the last block', () => {
+  it('keeps the same range, from the first word to the end', () => {
+    const view = open([
+      { type: 'paragraph', content: 'Above' },
+      { type: 'paragraph', content: 'Middle' },
+      { type: 'divider' },
+    ]);
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end')));
+
+    runBlockType(editors.get(view)! as never, 'heading-2');
+
+    const { selection, doc } = view.state;
+    expect(doc.resolve(textStart(view, 'Above')).parent.type.name).toBe('heading');
+    expect(selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([selection.anchor, selection.head]).toEqual([textStart(view, 'Above'), bodyEdgePos(doc, 'end')]);
   });
 });
