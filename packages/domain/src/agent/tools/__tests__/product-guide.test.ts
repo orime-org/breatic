@@ -68,7 +68,6 @@ function expectRowsInOrder(text: string, rows: readonly (readonly string[])[]): 
   expect([...at].sort((x, y) => x - y)).toEqual(at);
 }
 
-/** The guide's own source, where every message id it shows is spelled out. */
 /**
  * Every message id a web source names in single quotes, to check an
  * extraction against: one that skips an id reads fewer rows than the menu has.
@@ -79,14 +78,32 @@ function namedIds(text: string): string[] {
   return [...text.matchAll(/'([a-z]\w*(?:\.\w+)+)'/g)].map((m) => m[1] ?? "");
 }
 
+/** The guide's own source, where every message id it shows is spelled out. */
 const source = readFileSync(resolve(import.meta.dirname, "..", "product-guide.ts"), "utf8");
+
+/** A `t("…")` call the guide makes: the id, and the sample values it fills in, if any. */
+type MessageCall = [id: string, values: Record<string, number> | undefined];
+
+/**
+ * Every `t("…")` call the guide spells out, with the sample values a call
+ * such as `t("chat.sources.count", { count: 3 })` fills its message with.
+ * @returns The calls, in source order.
+ */
+function messageCalls(): MessageCall[] {
+  return [...source.matchAll(/\bt\("([\w.-]+)"(?:, (\{[^}]*\}))?\)/g)].map((m) => [
+    m[1] ?? "",
+    m[2] === undefined
+      ? undefined
+      : (JSON.parse(m[2].replace(/(\w+):/g, '"$1":')) as Record<string, number>),
+  ]);
+}
 
 /**
  * Every message id the guide spells out in a `t("…")` call.
  * @returns The ids, in source order.
  */
 function messageIds(): string[] {
-  return [...source.matchAll(/\bt\("([\w.-]+)"\)/g)].map((m) => m[1] ?? "");
+  return messageCalls().map(([id]) => id);
 }
 
 beforeAll(() => {
@@ -398,7 +415,7 @@ describe("what the guide says", () => {
   it("says what a filled slot looks like for each kind", () => {
     const slots = section("Source slots");
     expect(slots).toMatch(/A slot holding a picture, or a video with a cover, shows that picture/);
-    expect(slots).toMatch(/a slot\s+holding a sound, or a video without a cover, keeps its icon and name and its border turns darker/);
+    expect(slots).toMatch(/a slot\s+holding a sound, or a video without a cover, keeps its icon and name and its border stands out more/);
     expect(slots).not.toMatch(/coloured/);
   });
 
@@ -494,7 +511,7 @@ describe("in the reader's language", () => {
     // translations; a name written out in English instead shows up as a
     // fragment no id accounts for.
     const text = runWithLocale("zh-CN", renderProductGuide);
-    const shown = new Set(messageIds().map((id) => runWithLocale("zh-CN", () => `"${t(id)}"`)));
+    const shown = new Set(messageCalls().map(([id, values]) => runWithLocale("zh-CN", () => `"${t(id, values)}"`)));
     const quotedFragments = text.match(/"[^"\n]+"/g) ?? [];
     expect(quotedFragments.length).toBeGreaterThan(0);
     for (const fragment of quotedFragments) expect(shown, fragment).toContain(fragment);
@@ -540,7 +557,8 @@ describe("the guide's source", () => {
   it("spells every message id out, where the missing-key check can read it", () => {
     const calls = source.match(/\bt\([^)]*\)/g) ?? [];
     expect(calls.length).toBeGreaterThan(0);
-    for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"\)$/);
+    // A sample number may fill a message that carries one; nothing else goes in.
+    for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: \d+,?)+ ?\})?\)$/);
   });
 
   it("does not name the generate button by its hidden label", () => {
@@ -548,7 +566,7 @@ describe("the guide's source", () => {
   });
 });
 
-describe("what the guide says after the sixth review", () => {
+describe("what the guide says about each surface", () => {
   it("reads the message and attachment limits off their sources", () => {
     const chat = section("The chat panel");
     expect(chat).toContain(`up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters`);
@@ -574,7 +592,7 @@ describe("what the guide says after the sixth review", () => {
 
   it("says each notification item has one of its two buttons, and the answer button leaves the page", () => {
     const top = section("The top bar");
-    expect(top).toMatch(/An item someone is waiting on.*which leaves this page.*any other item shows/s);
+    expect(top).toMatch(/An item someone is waiting on.*which leaves this page.*Any other item shows/s);
     expect(top).not.toMatch(/each item has/);
   });
 
@@ -594,8 +612,8 @@ describe("what the guide says after the sixth review", () => {
 
   it("says the failure box shows only on an empty media node", () => {
     const filling = section("Filling a node");
-    expect(filling).toMatch(/An empty picture, video or sound node whose last task failed, with nothing running/);
-    expect(filling).toMatch(/a text node never shows this box/);
+    expect(filling).toMatch(/An empty picture, video or sound node with a failed or expired task and nothing running/);
+    expect(filling).toMatch(/a text node whose task failed, such as a reading made with "[^"]+", does not show this box/);
     expect(filling).toMatch(/Extraction failed: and the file's name/);
   });
 
@@ -612,7 +630,8 @@ describe("what the guide says after the sixth review", () => {
   it("says when the undo keys work and what undo takes back", () => {
     const undo = section("Groups and undo");
     expect(undo).toMatch(/after pressing a button in this chat, click empty canvas first/);
-    expect(undo).toMatch(/not what a generation or an upload put in a node, and not other people's changes/);
+    expect(undo).toMatch(/It does not take back what a generation or an upload put in a node/);
+    expect(undo).toMatch(/a focus crop \(press the X on its chip\)/);
     expect(undo).toMatch(/Closing the space's tab clears its undo steps/);
   });
 
