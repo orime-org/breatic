@@ -130,6 +130,38 @@ async function theme(p: Page, option: 'dark' | 'system'): Promise<void> {
 const UNDO_CAPTURE_MS = 500;
 
 /**
+ * Press a key and wait for the editor to read the browser's selection back
+ * (see {@link caretBack}).
+ * @param p - The page.
+ * @param key - The key.
+ */
+async function press(p: Page, key: string): Promise<void> {
+  const before = await p.evaluate(
+    (selector) =>
+      JSON.stringify(
+        (document.querySelector(selector) as unknown as {
+          editor: { state: { selection: { toJSON: () => unknown } } };
+        }).editor.state.selection.toJSON(),
+      ),
+    EDITOR,
+  );
+  await p.keyboard.press(key);
+  await expect
+    .poll(() =>
+      p.evaluate(
+        (selector) =>
+          JSON.stringify(
+            (document.querySelector(selector) as unknown as {
+              editor: { state: { selection: { toJSON: () => unknown } } };
+            }).editor.state.selection.toJSON(),
+          ),
+        EDITOR,
+      ),
+    )
+    .not.toBe(before);
+}
+
+/**
  * Walk the caret back to the head of the line it is on. Arrows rather than
  * Home: on macOS Home scrolls the page and leaves the caret where it was.
  *
@@ -236,6 +268,69 @@ for (const mode of ['light', 'dark'] as const) {
     }
   });
 }
+
+test('the arrows walk onto a divider from either side, and Shift+arrow runs across it (A3 · A6)', async () => {
+  await openFreshDocument(page);
+  await sandwich(page);
+
+  // Up from the line below lands on the divider itself.
+  await press(page, 'ArrowUp');
+  await expect.poll(() => band(page)).toMatchObject({ painted: true });
+  // Up again to the line above, then down from it lands on the divider again.
+  await press(page, 'ArrowUp');
+  await expect.poll(async () => (await band(page)).painted).toBe(false);
+  await press(page, 'ArrowDown');
+  await expect.poll(async () => (await band(page)).painted).toBe(true);
+
+  // A range run across it with Shift paints it, and typing replaces it along
+  // with the words.
+  // Up from the divider lands at the end of the line above.
+  await press(page, 'ArrowUp');
+  await press(page, 'Shift+ArrowDown');
+  await expect.poll(async () => (await band(page)).painted).toBe(true);
+  await page.keyboard.type('Q');
+  await expect.poll(() => rows(page)).toEqual(['paragraph:AboveQ']);
+});
+
+test('a read-only body paints a divider inside a drag (A6)', async () => {
+  await openFreshDocument(page);
+  await sandwich(page);
+  // What a viewer's body is: the editor is not editable, so it never takes
+  // the focus.
+  await page.evaluate((selector) => {
+    (document.querySelector(selector) as unknown as {
+      editor: { setEditable: (on: boolean) => void };
+    }).editor.setEditable(false);
+  }, EDITOR);
+
+  const above = await page.locator(EDITOR).getByText('Above').boundingBox();
+  const below = await page.locator(EDITOR).getByText('Below').boundingBox();
+  if (above === null || below === null) throw new Error('no box for the words');
+  await page.mouse.move(above.x + 2, above.y + above.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(below.x + below.width - 2, below.y + below.height / 2, { steps: 10 });
+  await page.mouse.up();
+  await expect.poll(async () => (await band(page)).painted).toBe(true);
+
+  // A click in the body below the words collapses the selection, and the
+  // highlight on the words goes with it.
+  await page.mouse.click(below.x + 2, below.y + below.height + 80);
+  await expect.poll(async () => (await band(page)).painted).toBe(false);
+});
+
+test('a read-only body paints a clicked divider (A3)', async () => {
+  await openFreshDocument(page);
+  await sandwich(page);
+  await page.evaluate((selector) => {
+    (document.querySelector(selector) as unknown as {
+      editor: { setEditable: (on: boolean) => void };
+    }).editor.setEditable(false);
+  }, EDITOR);
+
+  await page.locator(`${DIVIDER} hr`).click();
+
+  await expect.poll(async () => (await band(page)).painted).toBe(true);
+});
 
 test('a selected divider goes with Backspace and comes back with undo (A4)', async () => {
   await openFreshDocument(page);
