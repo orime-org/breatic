@@ -206,9 +206,11 @@ function AudioGeneratePanelBody({
   // then says so instead of offering an editor that stores nothing. Resolving
   // it after the first commit would make that sentence the first thing every
   // modern node's panel renders.
+  // Each mode keeps its own prompt (#2218), so a mode switch binds the editor
+  // to that mode's words.
   const fragment = React.useMemo(
-    () => getPromptFragment(projectId, spaceId, nodeId),
-    [projectId, spaceId, nodeId],
+    () => getPromptFragment(projectId, spaceId, nodeId, mode),
+    [projectId, spaceId, nodeId, mode],
   );
 
   // The ids come off `deriveReferences` itself, so the followed set and the
@@ -254,8 +256,8 @@ function AudioGeneratePanelBody({
   // Read during render for the same reason the prompt fragment is: a
   // synchronous document read, seeded with the node, never created here.
   const lyricsFragment = React.useMemo(
-    () => getLyricsFragment(projectId, spaceId, nodeId),
-    [projectId, spaceId, nodeId],
+    () => getLyricsFragment(projectId, spaceId, nodeId, mode),
+    [projectId, spaceId, nodeId, mode],
   );
   // What this mode's boxes are called, which is this panel's to word.
   const modeOption = audioModeOption(mode);

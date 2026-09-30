@@ -62,8 +62,9 @@ import {
   getPromptFragment,
   readCanvasGraph,
   removeNode,
+  nodeDataMap,
 } from '@web/data/yjs/canvas-space';
-import { _resetForTests } from '@web/data/yjs/manager';
+import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { canvasApi } from '@web/data/api/canvas';
 
 import {
@@ -76,6 +77,17 @@ import {
   LOCALE_CATALOGS,
   readPath,
 } from '@web/test-utils/locale-catalogs';
+
+/**
+ * The mode the panel binds its editors to: the node's stored mode, else the
+ * first mode this panel offers (#2218 keeps one prompt per mode).
+ * @returns The mode.
+ */
+function storedMode(): string {
+  const mode = nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.get('mode');
+  return typeof mode === 'string' ? mode : 't2v';
+}
+
 
 /** A text-to-video model, the one kind this slice offers. */
 const T2V: ModelEntry = {
@@ -413,7 +425,7 @@ function seedVideoNode(over: Record<string, unknown> = {}): void {
  * @param text - The prompt body.
  */
 function typePrompt(text: string): void {
-  const fragment = getPromptFragment('p', 's', 'target');
+  const fragment = getPromptFragment('p', 's', 'target', storedMode());
   if (!fragment) throw new Error('seedVideoNode must run first');
   const paragraph = new Y.XmlElement('paragraph');
   paragraph.insert(0, [new Y.XmlText(text)]);
@@ -429,7 +441,7 @@ function typePrompt(text: string): void {
  * @param sourceIds - The source node ids to mention, in order.
  */
 function typePromptMentioning(text: string, sourceIds: string[]): void {
-  const fragment = getPromptFragment('p', 's', 'target');
+  const fragment = getPromptFragment('p', 's', 'target', storedMode());
   if (!fragment) throw new Error('seedVideoNode must run first');
   const paragraph = new Y.XmlElement('paragraph');
   paragraph.insert(0, [new Y.XmlText(text)]);
@@ -697,7 +709,7 @@ describe('VideoGeneratePanelContainer', () => {
       const execute = await screen.findByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
       act(() => {
-        const fragment = getPromptFragment('p', 's', 'target');
+        const fragment = getPromptFragment('p', 's', 'target', storedMode());
         const paragraph = new Y.XmlElement('paragraph');
         paragraph.insert(0, [new Y.XmlText(' and a second line')]);
         fragment?.insert(fragment.length, [paragraph]);
@@ -1832,7 +1844,7 @@ describe('VideoGeneratePanelContainer — 点不动的时候说清缺什么 (#19
           }) as ReturnType<typeof canvasApi.createTask>,
       );
     await openPanelInMode('t2v', 'veo-3.1');
-    const fragment = getPromptFragment('p', 's', 'target');
+    const fragment = getPromptFragment('p', 's', 'target', storedMode());
     if (!fragment) throw new Error('node has no prompt fragment');
     act(() => {
       const paragraph = new Y.XmlElement('paragraph');

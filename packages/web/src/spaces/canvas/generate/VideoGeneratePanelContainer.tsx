@@ -168,15 +168,6 @@ function VideoGeneratePanelBody({
     atMentionedRef.current = sourceIds;
   }, []);
 
-  // Resolved in an effect, not during render: the node id can change under a
-  // mounted panel and this keeps that transition in one place. Null means the
-  // node predates prompt seeding (see getPromptFragment) — the panel then
-  // renders without an editor rather than minting a fragment behind the user.
-  const [fragment, setFragment] = React.useState<Y.XmlFragment | null>(null);
-  React.useEffect(() => {
-    setFragment(getPromptFragment(projectId, spaceId, nodeId));
-  }, [projectId, spaceId, nodeId]);
-
   // The mode lives on the NODE, not in panel state: the switch is
   // collaborative, so a mode someone else picked has to show up here, and
   // reopening the panel has to land where it was left.
@@ -189,6 +180,17 @@ function VideoGeneratePanelBody({
     [models],
   );
   const mode = nodeVideoMode(nodes, nodeId, availableModes);
+
+  // Resolved in an effect, not during render: the node id and the mode can
+  // change under a mounted panel and this keeps that transition in one place.
+  // Each mode keeps its own prompt (#2218), so a mode switch binds the editor
+  // to that mode's words. Null means the node predates prompt seeding (see
+  // getPromptFragment) — the panel then renders without an editor rather than
+  // minting a fragment behind the user.
+  const [fragment, setFragment] = React.useState<Y.XmlFragment | null>(null);
+  React.useEffect(() => {
+    setFragment(getPromptFragment(projectId, spaceId, nodeId, mode));
+  }, [projectId, spaceId, nodeId, mode]);
 
   // A referenced text node's body is a shared fragment the node view does not
   // carry (#1774), so the panel follows the ones it can reference. This is the

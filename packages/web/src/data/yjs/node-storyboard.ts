@@ -296,3 +296,32 @@ export function retotalStoryboard(
     writeDurations(shots, retotal(durations, total));
   });
 }
+
+/**
+ * Replaces one mode's shots with fresh ones of the given seconds and puts the
+ * storyboard in the per-shot tier, for a proposal landing on a new node.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The video node.
+ * @param mode - The video mode.
+ * @param durations - Each shot's seconds, in order.
+ * @returns Each new shot's prompt fragment, in order.
+ */
+export function setStoryboardShots(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  mode: string,
+  durations: readonly number[],
+): Y.XmlFragment[] {
+  const board = boardMap(projectId, spaceId, nodeId, mode);
+  const shots = board ? shotsOf(board) : null;
+  if (!board || !shots) return [];
+  const fresh = durations.map((d) => newShot(d));
+  board.doc?.transact(() => {
+    shots.delete(0, shots.length);
+    shots.push(fresh);
+    board.set('kind', 'custom');
+  }, CANVAS_UNDO);
+  return fresh.map((shot) => shot.get('prompt') as Y.XmlFragment);
+}

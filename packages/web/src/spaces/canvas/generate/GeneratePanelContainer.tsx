@@ -199,16 +199,6 @@ function GeneratePanelBody({
     promptEditorRef.current?.insertReference(item);
   }, [promptEditorRef]);
 
-  // Resolve the prompt fragment in an effect, NOT during render. Reading is
-  // pure since #1880, but the node id can change under a mounted panel and an
-  // effect keeps that transition in one place. Null means the node predates
-  // the seeding (see getPromptFragment) — the panel then renders without a
-  // prompt editor rather than minting a fragment behind the user's back.
-  const [fragment, setFragment] = React.useState<Y.XmlFragment | null>(null);
-  React.useEffect(() => {
-    setFragment(getPromptFragment(projectId, spaceId, nodeId));
-  }, [projectId, spaceId, nodeId]);
-
   // The render-time view-model drives what the panel DISPLAYS (a frame of lag is
   // fine there). Every write-callback below instead re-derives from live Yjs via
   // freshVm() at click time — a render closure goes stale the moment a
@@ -249,6 +239,17 @@ function GeneratePanelBody({
       buildGeneratePanelViewModel({ nodeId, nodes, edges, models, textById }),
     [nodeId, nodes, edges, models, textById],
   );
+  // Resolve the prompt fragment in an effect, NOT during render. Reading is
+  // pure since #1880, but the node id and the mode can change under a mounted
+  // panel and an effect keeps that transition in one place. Each mode keeps
+  // its own prompt (#2218), so switching mode binds the editor to that mode's
+  // words. Null means the node predates the seeding (see getPromptFragment) —
+  // the panel then renders without a prompt editor rather than minting a
+  // fragment behind the user's back.
+  const [fragment, setFragment] = React.useState<Y.XmlFragment | null>(null);
+  React.useEffect(() => {
+    setFragment(getPromptFragment(projectId, spaceId, nodeId, vm.mode));
+  }, [projectId, spaceId, nodeId, vm.mode]);
   const creditText = useCreditText(
     vm.modelEntry,
     imageEstimateInput(vm, extractPromptText(promptText)),

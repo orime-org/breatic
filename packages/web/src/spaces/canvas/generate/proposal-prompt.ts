@@ -191,3 +191,22 @@ export function writeProposalPrompt(
   if (prompt.doc) prompt.doc.transact(replace);
   else replace();
 }
+
+/**
+ * The feeders left once some segments have taken theirs, for writing the next
+ * part of the same node (#2218). A node's marks pair with its feeders in one
+ * order across the main prompt and then each shot, so each part is written
+ * with what the parts before it did not use.
+ * @param segments - The part just written.
+ * @param feeders - The feeders it was written with.
+ * @returns The feeders for the next part.
+ * @throws {never} Never.
+ */
+export function remainingFeeders(
+  segments: readonly PromptSegment[],
+  feeders: ProposalFeeders,
+): ProposalFeeders {
+  const assets = segments.filter((segment) => segment.slot?.kind === 'asset').length;
+  const refs = segments.filter((segment) => segment.slot?.kind === 'ref').length;
+  return { sources: feeders.sources.slice(assets), upstream: feeders.upstream.slice(refs) };
+}

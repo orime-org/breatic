@@ -17,8 +17,10 @@ import {
   setNodeModel,
   setNodeName,
 } from '@web/data/yjs/canvas-space';
+import { setStoryboardKind, setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import {
+  remainingFeeders,
   writeProposalPrompt,
   type ProposalFeeders,
   type ProposalSource,
@@ -287,17 +289,37 @@ export function useNodeCreation(
         // wiring has to be settled before the mentions are written.
         proposal.nodes.forEach((node, i) => {
           const id = nodeIds[i];
-          if (!id || !node.prompt) return;
+          if (!id) return;
           if (node.role === 'written') {
             // A written node's words are its body, not a prompt: nothing
             // generates there, and the body is what the reader reads and edits.
             const body = getTextBody(projectId, spaceId, id);
-            if (body) writePlainTextIntoBody(body, promptPlainText(node.prompt));
+            if (body && node.prompt) writePlainTextIntoBody(body, promptPlainText(node.prompt));
             return;
           }
-          const fragment = getPromptFragment(projectId, spaceId, id);
-          if (!fragment) return;
-          writeProposalPrompt(fragment, node.prompt, feedersOnCanvas(proposal, i, nodeIds));
+          if (!node.mode) return;
+          // The main prompt goes into the proposal's own mode (#2218), then
+          // each shot; their marks pair with the feeders in that one order.
+          let feeders = feedersOnCanvas(proposal, i, nodeIds);
+          const fragment = getPromptFragment(projectId, spaceId, id, node.mode);
+          if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt, feeders);
+          feeders = remainingFeeders(node.prompt ?? [], feeders);
+          if (node.shots) {
+            const shotFragments = setStoryboardShots(
+              projectId,
+              spaceId,
+              id,
+              node.mode,
+              node.shots.map((shot) => shot.duration),
+            );
+            node.shots.forEach((shot, k) => {
+              const target = shotFragments[k];
+              if (target) writeProposalPrompt(target, shot.prompt, feeders);
+              feeders = remainingFeeders(shot.prompt, feeders);
+            });
+          } else if (node.storyboard === 'auto') {
+            setStoryboardKind(projectId, spaceId, id, node.mode, 'auto');
+          }
         });
       });
       return groupId === undefined ? { nodeIds } : { nodeIds, groupId };
