@@ -19,7 +19,6 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
-import { ySyncPluginKey } from 'y-prosemirror';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -62,7 +61,11 @@ interface Seen {
  * @param blocks - What the document starts with.
  * @returns The editor and its undo manager.
  */
-function open(blocks: unknown[]): { editor: Editor; manager: Y.UndoManager } {
+function open(blocks: unknown[]): {
+  editor: Editor;
+  manager: Y.UndoManager;
+  doc: Y.Doc;
+} {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const { manager, extension } = createDocumentUndo(doc);
@@ -78,7 +81,7 @@ function open(blocks: unknown[]): { editor: Editor; manager: Y.UndoManager } {
   // Y.UndoManager groups by a capture timeout a test outruns.
   manager.stopCapturing();
   editor.prosemirrorView!.focus();
-  return { editor, manager };
+  return { editor, manager, doc };
 }
 
 /** Above, a divider, Below. */
@@ -144,12 +147,54 @@ function dividerSelected(editor: Editor): boolean {
  * Presses a key through the editor's own key handlers.
  * @param editor - The editor.
  * @param key - The key.
+ * @param modifiers - Modifier keys held with it.
  * @returns Whether a handler took it.
  */
-function press(editor: Editor, key: string): boolean {
+function press(
+  editor: Editor,
+  key: string,
+  modifiers: { shiftKey?: boolean } = {},
+): boolean {
   const view = editor.prosemirrorView!;
-  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+  const event = new KeyboardEvent('keydown', {
+    key,
+    ...modifiers,
+    bubbles: true,
+    cancelable: true,
+  });
   return view.someProp('handleKeyDown', (handler) => handler(view, event)) ?? false;
+}
+
+/**
+ * Where the caret is, as the block it stands in and the offset into it.
+ * @param editor - The editor.
+ * @returns The caret, or null when the selection is not a caret.
+ */
+function caretAt(editor: Editor): { text: string; offset: number } | null {
+  const { selection } = editor.prosemirrorView!.state;
+  if (!(selection instanceof TextSelection) || !selection.empty) return null;
+  return { text: selection.$head.parent.textContent, offset: selection.$head.parentOffset };
+}
+
+/**
+ * The shared text node that holds these words.
+ * @param doc - The Yjs document.
+ * @param words - What the text reads.
+ * @returns That node.
+ * @throws {Error} When no text node reads so.
+ */
+function textHolding(doc: Y.Doc, words: string): Y.XmlText {
+  const walk = (node: Y.XmlElement | Y.XmlFragment | Y.XmlText): Y.XmlText | undefined => {
+    if (node instanceof Y.XmlText) return node.toString().includes(words) ? node : undefined;
+    for (const child of node.toArray()) {
+      const found = walk(child as Y.XmlElement | Y.XmlText);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+  const found = walk(documentBodyFragment(doc));
+  if (found === undefined) throw new Error(`no text reads ${words}`);
+  return found;
 }
 
 /**
@@ -172,6 +217,7 @@ describe('a selected divider and the delete keys (A4)', () => {
 
     press(editor, key);
     expect(shape(editor)).toEqual(['paragraph:Above', 'paragraph:Below']);
+    expect(caretAt(editor)).toEqual({ text: 'Below', offset: 0 });
 
     manager.undo();
     expect(shape(editor)).toEqual(['paragraph:Above', 'divider:', 'paragraph:Below']);
@@ -219,6 +265,17 @@ describe('typing on a selected divider (A5)', () => {
     expect(opened.type).toBe('paragraph');
     expect(opened.props['quoted']).toBe(true);
   });
+
+  it('Shift+Enter changes neither the document nor the selection', () => {
+    const { editor } = open(SANDWICH);
+    select(editor);
+    const before = editor.prosemirrorView!.state.doc;
+
+    expect(press(editor, 'Enter', { shiftKey: true })).toBe(true);
+
+    expect(editor.prosemirrorView!.state.doc.eq(before)).toBe(true);
+    expect(dividerSelected(editor)).toBe(true);
+  });
 });
 
 describe('an input method on a selected divider (A5)', () => {
@@ -263,20 +320,43 @@ describe('an input method on a selected divider (A5)', () => {
     expect(manager.undoStack.length).toBe(undoDepth);
   });
 
-  it('lets a co-editor’s change through and keeps hold of the divider it moved', async () => {
-    const { editor } = open(SANDWICH);
+  it('lets a co-editor’s keystroke through and still writes nothing of its own', async () => {
+    // The binding delivers every remote change as one replace over the whole
+    // document, so the co-editor's edit here comes in through Yjs the way a
+    // real one does.
+    const { editor, doc } = open(SANDWICH);
     select(editor);
 
     startComposition(editor);
+    doc.transact(() => {
+      textHolding(doc, 'Below').insert(0, '!');
+    }, 'peer');
     const view = editor.prosemirrorView!;
-    view.dispatch(
-      view.state.tr.insertText('New ', 3).setMeta(ySyncPluginKey, { isChangeOrigin: true }),
-    );
-    expect(shape(editor)).toEqual(['paragraph:New Above', 'divider:', 'paragraph:Below']);
+    view.dispatch(view.state.tr.insertText('ni', view.state.selection.from));
+    expect(shape(editor)).toEqual(['paragraph:Above', 'divider:', 'paragraph:!Below']);
 
     await endComposition(editor);
 
+    expect(shape(editor)).toEqual(['paragraph:Above', 'divider:', 'paragraph:!Below']);
     expect(dividerSelected(editor)).toBe(true);
+  });
+
+  it('lets go once a co-editor deletes the divider', async () => {
+    const { editor, doc } = open(SANDWICH);
+    select(editor);
+
+    startComposition(editor);
+    const body = documentBodyFragment(doc);
+    doc.transact(() => {
+      const group = body.get(0) as Y.XmlElement;
+      group.delete(1, 1);
+    }, 'peer');
+    expect(shape(editor)).toEqual(['paragraph:Above', 'paragraph:Below']);
+    await endComposition(editor);
+
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('x', 3));
+    expect(shape(editor)).toEqual(['paragraph:xAbove', 'paragraph:Below']);
   });
 
   it('leaves a composition in text alone', async () => {
@@ -407,7 +487,8 @@ describe('the block handle on a divider row (A8)', () => {
   });
 
   /**
-   * Opens the handle menu over the divider.
+   * Opens the handle menu over the second row, which holds the block with no
+   * text in these cases.
    * @param editor - The editor.
    */
   function openMenuOverDivider(editor: Editor): void {
@@ -445,6 +526,18 @@ describe('the block handle on a divider row (A8)', () => {
     ['blockType', 'duplicate', 'insertBelow', 'delete'].forEach((id) => {
       expect(greyed(`doc-block-row-${id}`)).toBe(false);
     });
+  });
+
+  it('greys Quote on a fallback row, which has no quote to write', () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'Above' },
+      { type: 'unsupportedBlock', props: { originalName: 'future' } },
+    ]);
+    openMenuOverDivider(editor);
+
+    fireEvent.click(screen.getByTestId('doc-block-row-blockType'));
+
+    expect(greyed('doc-block-type-quote')).toBe(true);
   });
 
   it('offers only Quote in the block type submenu', () => {

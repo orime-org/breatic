@@ -354,6 +354,60 @@ describe('a no-text block inside the reader selection (A3 · A6)', () => {
     expect(painted(editor, DIVIDER_EL)).toEqual([false]);
   });
 
+  /**
+   * Puts the browser's own selection over a range of the body, the way a
+   * drag does, and lets the editor read it back.
+   * @param editor - The editor.
+   * @param from - The text the range starts in.
+   * @param to - The text the range ends in.
+   */
+  function dragAcross(editor: Editor, from: string, to: string): void {
+    const dom = editor.prosemirrorView!.dom;
+    const textOf = (words: string): Text => {
+      const walker = document.createTreeWalker(dom, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n !== null; n = walker.nextNode()) {
+        if (n.textContent === words) return n as Text;
+      }
+      throw new Error(`no text reads ${words}`);
+    };
+    const range = document.createRange();
+    range.setStart(textOf(from), 0);
+    range.setEnd(textOf(to), to.length);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+  }
+
+  it('is painted under a drag in a read-only body, which never holds the focus', async () => {
+    const editor = sandwich();
+    editor.isEditable = false;
+    (editor.prosemirrorView!.dom as HTMLElement).blur();
+
+    dragAcross(editor, 'Above', 'Below');
+
+    await expect.poll(() => painted(editor, DIVIDER_EL)).toEqual([true]);
+  });
+
+  it('is not painted once the browser selection leaves a read-only body', async () => {
+    const editor = sandwich();
+    editor.isEditable = false;
+    (editor.prosemirrorView!.dom as HTMLElement).blur();
+    dragAcross(editor, 'Above', 'Below');
+    await expect.poll(() => painted(editor, DIVIDER_EL)).toEqual([true]);
+
+    const outside = document.createElement('p');
+    outside.textContent = 'elsewhere';
+    document.body.appendChild(outside);
+    const range = document.createRange();
+    range.selectNodeContents(outside);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+
+    await expect.poll(() => painted(editor, DIVIDER_EL)).toEqual([false]);
+  });
+
   it('paints a fallback block inside a range, and not when it alone is node-selected', () => {
     const editor = open([
       { type: 'paragraph', content: 'Above' },
