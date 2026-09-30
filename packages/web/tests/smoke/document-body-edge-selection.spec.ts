@@ -266,6 +266,42 @@ test('a drag that rests on the last line and then goes lower takes it in (A6)', 
   expect((await read(page)).head).toBe((await read(page)).size - 2);
 });
 
+/**
+ * Whether the empty last line wears the selected-empty-line mark.
+ * @param p - The page.
+ * @returns True when it does.
+ */
+async function lastLineMarked(p: Page): Promise<boolean> {
+  return p.evaluate((selector) => {
+    const lines = document.querySelectorAll(`${selector} .bn-block-content`);
+    return lines[lines.length - 1]?.classList.contains('doc-empty-line-in-selection') ?? false;
+  }, EDITOR);
+}
+
+test('an empty last line shows as selected while the drag is still on, both ways (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_EMPTY);
+  const word = await wordBox(page, 'Above');
+  const last = await rowBox(page, -1);
+  const atWord = { x: word.x + 2, y: word.y + word.height / 2 };
+
+  for (const [from, to] of [
+    [atWord, { x: word.x + 30, y: last.y + last.height / 2 }],
+    [atWord, { x: word.x + 30, y: last.y + last.height + 60 }],
+    [{ x: word.x + 30, y: last.y + last.height / 2 }, atWord],
+    [{ x: word.x + 30, y: last.y + last.height + 60 }, atWord],
+  ] as const) {
+    await page.mouse.move(from.x, from.y);
+    await page.waitForTimeout(SETTLE_MS);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 10 });
+    await expect.poll(() => lastLineMarked(page)).toBe(true);
+    await page.mouse.up();
+    await expect.poll(() => lastLineMarked(page)).toBe(true);
+    await page.mouse.click(word.x + 20, word.y + word.height / 2);
+  }
+});
+
 test('a drag onto an empty last line, and one starting on it, take the line in (A6)', async () => {
   await openFreshDocument(page);
   await setBlocks(page, WITH_EMPTY);

@@ -30,21 +30,59 @@
 
 import { createExtension } from '@blocknote/core';
 import { ShowSelectionExtension } from '@blocknote/core/extensions';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
-import type { EditorState } from '@tiptap/pm/state';
+import type { EditorState, Selection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
+import {
+  BodyEdgeSelection,
+  bodyEdgeAt,
+  bodyEdgeBlockPos,
+} from '@web/spaces/document/document-body-edge-selection';
 import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 
 /** The class `index.css` paints a no-text block inside the selection with. */
 export const IN_SELECTION_CLASS = 'doc-in-selection';
 
+/**
+ * The class `index.css` marks an empty line at an end of the body with, when a
+ * selection reaching past that end holds it.
+ */
+export const EMPTY_LINE_CLASS = 'doc-empty-line-in-selection';
+
 /** The blocks with no text that a range selection paints. */
 const NO_TEXT = new Set([DIVIDER, UNSUPPORTED_BLOCK]);
 
 /** Tags the transaction that asks for the band to be redrawn. */
 const KEY = new PluginKey('documentSelectionPaint');
+
+/**
+ * The empty line at an end of the body that a selection reaching past it holds
+ * (#124). The browser marks an empty line inside a range with a sliver at its
+ * start, but the one at an end only once the range is written back to the
+ * page, which during a drag in Chrome it is not. Marked here, `index.css` draws
+ * that sliver itself from the first frame of the drag and clears the
+ * browser's, so the line shows one mark throughout, the same one any selected
+ * empty line shows.
+ * @param selection - The selection.
+ * @param doc - The document.
+ * @returns A decoration per empty line on an edge the selection reaches.
+ */
+function emptyEdgeLines(selection: Selection, doc: PMNode): Decoration[] {
+  if (!(selection instanceof BodyEdgeSelection)) return [];
+  const lines: Decoration[] = [];
+  for (const end of [selection.anchor, selection.head]) {
+    const edge = bodyEdgeAt(doc, end);
+    const pos = edge === null ? null : bodyEdgeBlockPos(doc, edge);
+    const node = pos === null ? null : doc.nodeAt(pos);
+    if (pos !== null && node !== null && node.isTextblock && node.content.size === 0) {
+      lines.push(Decoration.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));
+    }
+  }
+  return lines;
+}
 
 /**
  * The decorations for the blocks the current selection holds.
@@ -69,6 +107,7 @@ function paintFor(state: EditorState): DecorationSet {
       found.push(Decoration.node(pos, pos + node.nodeSize, { class: IN_SELECTION_CLASS }));
       return false;
     });
+    found.push(...emptyEdgeLines(selection, doc));
   }
   return found.length > 0 ? DecorationSet.create(doc, found) : DecorationSet.empty;
 }

@@ -16,7 +16,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { runBlockType } from '@web/spaces/document/document-block-run';
 import { moveRowsFromKeyboard } from '@web/spaces/document/document-keyboard-move';
-import { IN_SELECTION_CLASS } from '@web/spaces/document/document-selection-paint';
+import { EMPTY_LINE_CLASS } from '@web/spaces/document/document-selection-paint';
 import {
   BodyEdgeSelection,
   bodyEdgeBetween,
@@ -607,13 +607,13 @@ describe('Shift+Enter on a selection that reaches past the last block', () => {
 
 describe('an empty line at an end of the body, inside the selection', () => {
   /**
-   * Whether each paragraph's element carries the band's class, by its text.
+   * Whether each paragraph's element carries the empty-line mark's class, by its text.
    * @param view - The view.
    * @returns Text and whether it is painted, per paragraph.
    */
   function paragraphs(view: EditorView): string[] {
     return [...view.dom.querySelectorAll('[data-content-type="paragraph"]')].map(
-      (el) => `${el.textContent ?? ''}:${el.classList.contains(IN_SELECTION_CLASS)}`,
+      (el) => `${el.textContent ?? ''}:${el.classList.contains(EMPTY_LINE_CLASS)}`,
     );
   }
 
