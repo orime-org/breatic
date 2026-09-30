@@ -173,6 +173,38 @@ describe('RegisterPage with email (code step, #287)', () => {
     await waitFor(() => expect(screen.getByTestId('onboarding-page')).toBeInTheDocument());
   });
 
+  it('marks every box after a wrong code and clears the mark once typing starts again', async () => {
+    vi.mocked(authApi.register).mockResolvedValueOnce(CODE_SENT);
+    vi.mocked(authApi.verifySignupCode).mockRejectedValueOnce(refusal(400, 'That code is incorrect.'));
+    const user = userEvent.setup();
+    const { container } = setup();
+    await submitForm(user);
+    const input = await screen.findByLabelText('Verification code');
+    const slots = (): Element[] => Array.from(container.querySelectorAll('[data-slot="input-otp-slot"]'));
+
+    expect(slots()).toHaveLength(6);
+    expect(slots().every((s) => !s.hasAttribute('aria-invalid'))).toBe(true);
+
+    await user.type(input, '111111');
+    await screen.findByText('That code is incorrect.');
+    expect(slots().every((s) => s.getAttribute('aria-invalid') === 'true')).toBe(true);
+
+    await user.type(input, '2');
+    expect(slots().every((s) => !s.hasAttribute('aria-invalid'))).toBe(true);
+    expect(screen.getByText('That code is incorrect.')).toBeInTheDocument();
+  });
+
+  it('keeps the message line in place before any message, so the boxes do not move', async () => {
+    vi.mocked(authApi.register).mockResolvedValueOnce(CODE_SENT);
+    const user = userEvent.setup();
+    setup();
+    await submitForm(user);
+    await screen.findByLabelText('Verification code');
+
+    const line = screen.getByTestId('signup-code-message');
+    expect(line).toBeEmptyDOMElement();
+  });
+
   it('shows what the server says when the address got an account while the code was pending', async () => {
     vi.mocked(authApi.register).mockResolvedValueOnce(CODE_SENT);
     vi.mocked(authApi.verifySignupCode).mockRejectedValueOnce(

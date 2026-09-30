@@ -12,8 +12,8 @@ import { cn } from '@web/lib/utils';
  * only draw what that input holds.
  *
  * Styled to match `Input`: 1px `border-border`, `rounded-chrome`, the active
- * slot takes `border-active-border`, `aria-invalid` turns every slot's border
- * to the error colour.
+ * slot takes `border-active-border`, and a slot given `aria-invalid` draws its
+ * border in the error colour.
  * @param root0 - OTPInput props plus a class for the slot row
  * @param root0.className - classes for the underlying input
  * @param root0.containerClassName - classes for the row that holds the slots
@@ -81,7 +81,7 @@ function InputOTPSlot({
         'relative flex h-12 w-11 items-center justify-center rounded-chrome border border-border bg-transparent',
         'font-mono text-xl font-semibold text-foreground transition-colors',
         'data-[active=true]:border-active-border',
-        'aria-invalid:border-status-error-foreground',
+        'aria-invalid:border-status-error-foreground aria-invalid:data-[active=true]:border-status-error-foreground',
         className,
       )}
       {...props}

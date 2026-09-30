@@ -183,6 +183,8 @@ export function SignupCodeStep({
   );
 
   const waiting = waitLeft > 0;
+  // The boxes carry the error until the reader starts typing the next code.
+  const boxesInvalid = error !== null && code.length === 0;
 
   return (
     <AuthCardShell
@@ -204,15 +206,18 @@ export function SignupCodeStep({
         >
           <InputOTPGroup>
             {SLOT_INDEXES.map((i) => (
-              <InputOTPSlot key={i} index={i} />
+              <InputOTPSlot key={i} index={i} aria-invalid={boxesInvalid || undefined} />
             ))}
           </InputOTPGroup>
         </InputOTP>
-        {error ? (
-          <FieldError role='alert'>{error}</FieldError>
-        ) : info ? (
-          <p className='text-xs text-muted-foreground'>{info}</p>
-        ) : null}
+        {/* One line is always held under the boxes so a message never moves them. */}
+        <div data-testid='signup-code-message' className='min-h-[1lh] text-sm leading-snug'>
+          {error ? (
+            <FieldError role='alert'>{error}</FieldError>
+          ) : info ? (
+            <p className='text-sm leading-snug text-muted-foreground'>{info}</p>
+          ) : null}
+        </div>
       </div>
       <div className='mt-4 flex items-center justify-between'>
         <Button
