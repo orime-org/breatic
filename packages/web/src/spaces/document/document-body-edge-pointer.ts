@@ -32,6 +32,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import {
   bodyEdgeAt,
+  bodyEdgeBlockPos,
   bodyEdgeNeedsTakeover,
   bodyEdgePos,
   dragSelection,
@@ -73,24 +74,24 @@ interface Press {
 }
 
 /**
- * The element of the root block at one end of the body.
+ * The line of the block at one end of the body: the element of its content
+ * node, the deepest last block at the end.
  * @param view - The view.
  * @param edge - Which end.
  * @returns The element, or null in an empty body.
  */
-function rootBlockElement(view: EditorView, edge: BodyEdge): Element | null {
-  const group = view.state.doc.firstChild;
-  const block = edge === 'start' ? group?.firstChild : group?.lastChild;
-  if (!group || !block) return null;
-  const pos = edge === 'start' ? 1 : 1 + group.content.size - block.nodeSize;
-  const element = view.nodeDOM(pos);
+function edgeLine(view: EditorView, edge: BodyEdge): Element | null {
+  const pos = bodyEdgeBlockPos(view.state.doc, edge);
+  const element = pos === null ? null : view.nodeDOM(pos);
   return element instanceof Element ? element : null;
 }
 
 /**
- * Where a point is: past the block at an end of the body that a drag has to
- * reach past, or over the body. The block's box is measured now, not cached:
- * the body scrolls and grows under a drag.
+ * Where a point is: over or past the block at an end of the body that a drag
+ * has to reach past, or over the body. Over the block counts: an empty line
+ * holds one position, at its start, so a range the browser ends on it never
+ * takes the line in, and a block without text holds none. The block's box is
+ * measured now, not cached: the body scrolls and grows under a drag.
  * @param view - The view.
  * @param y - The point, vertically.
  * @returns The zone.
@@ -98,12 +99,12 @@ function rootBlockElement(view: EditorView, edge: BodyEdge): Element | null {
 function zoneAt(view: EditorView, y: number): PointerZone {
   const { doc } = view.state;
   if (bodyEdgeNeedsTakeover(doc, 'end')) {
-    const last = rootBlockElement(view, 'end');
-    if (last && y > last.getBoundingClientRect().bottom) return 'end';
+    const last = edgeLine(view, 'end');
+    if (last && y >= last.getBoundingClientRect().top) return 'end';
   }
   if (bodyEdgeNeedsTakeover(doc, 'start')) {
-    const first = rootBlockElement(view, 'start');
-    if (first && y < first.getBoundingClientRect().top) return 'start';
+    const first = edgeLine(view, 'start');
+    if (first && y <= first.getBoundingClientRect().bottom) return 'start';
   }
   return 'body';
 }

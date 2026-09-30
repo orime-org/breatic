@@ -227,7 +227,9 @@ describe('a drag that starts in the body', () => {
   it('changes nothing when the body ends in words', () => {
     const view = open(BELOW_DIVIDER).prosemirrorView!;
     const at = textStart(view, 'Below');
-    press(view, 10);
+    // On the last line, the one with words: the leading divider's own line
+    // counts as past the start.
+    press(view, 90);
     select(view, at);
 
     move(150);

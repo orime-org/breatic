@@ -74,6 +74,29 @@ function blockAtEdge(doc: Node, edge: BodyEdge): Node | null {
 }
 
 /**
+ * The position of the content node of the block at one end of the body: the
+ * first root block's, or the last block's in document order, nested blocks
+ * included.
+ * @param doc - The document.
+ * @param edge - Which end.
+ * @returns The position, or null in an empty body.
+ */
+export function bodyEdgeBlockPos(doc: Node, edge: BodyEdge): number | null {
+  const group = doc.firstChild;
+  if (!group || group.childCount === 0) return null;
+  if (edge === 'start') return 2;
+  let container = group.lastChild!;
+  let pos = 1 + group.content.size - container.nodeSize;
+  while (container.lastChild?.type.name === 'blockGroup') {
+    const nested = container.lastChild;
+    const groupPos = pos + container.nodeSize - 1 - nested.nodeSize;
+    container = nested.lastChild!;
+    pos = groupPos + nested.nodeSize - 1 - container.nodeSize;
+  }
+  return pos + 1;
+}
+
+/**
  * Whether the block at this end of the body can only be reached by a selection
  * that goes past it: a block without text, or an empty paragraph.
  * @param doc - The document.
