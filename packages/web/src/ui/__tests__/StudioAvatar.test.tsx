@@ -129,15 +129,17 @@ describe('StudioAvatar — initials fallback', () => {
   });
 
   it('keeps a character made of several code points whole', () => {
+    // Woman artist: woman + zero-width joiner + palette, one visible character.
+    const artist = '\u{1F469}\u200D\u{1F3A8}';
     render(
       <StudioAvatar
-        name='👩‍🎨 studio'
+        name={`${artist} studio`}
         type='team'
         avatarUrl={null}
         size='md'
       />,
     );
-    expect(screen.getByText('👩‍🎨')).toBeInTheDocument();
+    expect(screen.getByText(artist)).toBeInTheDocument();
   });
 
   it('skips leading whitespace', () => {
