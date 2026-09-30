@@ -9,43 +9,54 @@ import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
+import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { FieldError } from '@web/pages/auth/_shared/FieldError';
 
 /**
- * Forgot-password entry — dual-path UX:
+ * Forgot-password entry. It offers the one way back in that works on this
+ * deployment, as `GET /auth/options` reports it:
  *
- *   - `email-link`     → POST /auth/forgot-password, server sends a
- *                        reset email (works only if EMAIL_BACKEND
- *                        is `smtp` or `console`; otherwise the user
- *                        sees the same generic "if your email is
- *                        registered…" message and nothing arrives).
- *   - `recovery-code`  → straight to /reset-password?mode=recovery,
- *                        where the user types the one-time code they
- *                        saved at registration.
- *
- * Why dual-path (vs probing backend EMAIL_BACKEND from JS):
- *   1. Whether email is enabled is a server-side configuration we'd
- *      rather not advertise in a public probe endpoint.
- *   2. Even when email IS enabled, some users will lose access to
- *      that mailbox; the recovery code is the always-available path.
- *   3. Putting the choice up-front matches Linear / 1Password "lost
- *      access" flows where users self-select the recovery channel.
+ *   - email enabled → `POST /auth/forgot-password` mails a reset link. An
+ *     account made here proved its address with a code at sign-up, so the
+ *     mailbox is the way back.
+ *   - email disabled → `/reset-password?mode=recovery`, where the reader types
+ *     the recovery code saved at sign-up. Nothing can be mailed, so the page
+ *     does not offer to.
  */
 type Step = 'choose' | 'email-sent';
 
+/** What this deployment offers, once the server has said. */
+type Mode = 'loading' | 'failed' | 'email' | 'recovery';
+
 /**
- * Forgot-password page: request a reset link, then show the "email sent"
- * confirmation.
- * @returns the forgot-password page: either the channel-choice form or the
- * "email sent" confirmation once a reset link has been requested.
+ * Forgot-password page: offer the way back in this deployment supports, then
+ * show the "email sent" confirmation after a reset link was requested.
+ * @returns the page in its loading, failed, recovery-code, email-form or
+ * email-sent state.
  */
 export default function ForgotPasswordPage(): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
 
   const [step, setStep] = React.useState<Step>('choose');
+  const [mode, setMode] = React.useState<Mode>('loading');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    authApi
+      .options()
+      .then(({ emailVerification }) => {
+        if (!cancelled) setMode(emailVerification ? 'email' : 'recovery');
+      })
+      .catch(() => {
+        if (!cancelled) setMode('failed');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [email, setEmail] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [emailError, setEmailError] = React.useState<string | null>(null);
@@ -93,11 +104,53 @@ export default function ForgotPasswordPage(): React.JSX.Element {
     );
   }
 
+  const footer = <AuthLink to='/login'>{t('auth.forgot.backToSignIn')}</AuthLink>;
+
+  if (mode === 'loading') {
+    return (
+      <AuthCardShell title={t('auth.forgot.title')} footer={footer}>
+        <div className='flex flex-col gap-3' data-testid='forgot-loading'>
+          <Skeleton className='h-4 w-2/3' />
+          <Skeleton className='h-[var(--control-height)] w-full' />
+          <Skeleton className='h-[var(--control-height)] w-full' />
+        </div>
+      </AuthCardShell>
+    );
+  }
+
+  if (mode === 'failed') {
+    return (
+      <AuthCardShell title={t('auth.forgot.title')} footer={footer}>
+        <FieldError role='alert'>{t('auth.forgot.optionsFailed')}</FieldError>
+      </AuthCardShell>
+    );
+  }
+
+  if (mode === 'recovery') {
+    return (
+      <AuthCardShell
+        title={t('auth.forgot.title')}
+        subtitle={t('auth.forgot.subtitleRecovery')}
+        footer={footer}
+      >
+        <Button
+          type='button'
+          size='form'
+          variant='outline'
+          onClick={() => navigate('/reset-password?mode=recovery')}
+          className='w-full'
+        >
+          {t('auth.forgot.useRecoveryCode')}
+        </Button>
+      </AuthCardShell>
+    );
+  }
+
   return (
     <AuthCardShell
       title={t('auth.forgot.title')}
-      subtitle={t('auth.forgot.subtitle')}
-      footer={<AuthLink to='/login'>{t('auth.forgot.backToSignIn')}</AuthLink>}
+      subtitle={t('auth.forgot.subtitleEmail')}
+      footer={footer}
     >
       <form onSubmit={handleEmailSubmit} noValidate className='flex flex-col gap-3'>
         <div className='flex flex-col gap-1'>
@@ -130,23 +183,6 @@ export default function ForgotPasswordPage(): React.JSX.Element {
             : t('auth.forgot.sendResetLink')}
         </Button>
       </form>
-
-      <div className='mt-4 flex flex-col gap-2'>
-        <div className='flex items-center gap-2 text-xs text-muted-foreground'>
-          <div className='h-px flex-1 bg-border' />
-          <span>{t('auth.or')}</span>
-          <div className='h-px flex-1 bg-border' />
-        </div>
-        <Button
-          type='button'
-          size='form'
-          variant='outline'
-          onClick={() => navigate('/reset-password?mode=recovery')}
-          className='w-full'
-        >
-          {t('auth.forgot.useRecoveryCode')}
-        </Button>
-      </div>
     </AuthCardShell>
   );
 }

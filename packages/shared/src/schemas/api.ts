@@ -28,6 +28,13 @@ export const registerSchema = z.object({
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
+/** The code a reader types to finish an email sign-up (#287). */
+export const SIGNUP_CODE_REGEX = /^\d{6}$/;
+export const signupVerifySchema = z.object({
+  code: z.string().regex(SIGNUP_CODE_REGEX),
+});
+export type SignupVerifyInput = z.infer<typeof signupVerifySchema>;
+
 /**
  * Slug-format rule for a studio URL handle (the `/studio/{slug}` segment).
  *

@@ -79,7 +79,7 @@ function normalizeError(err: unknown): ApiError {
   if (err instanceof AxiosError) {
     const status = err.response?.status ?? 0;
     const data = err.response?.data as
-      | { error?: { code?: string; message?: string } }
+      | { error?: { code?: string; message?: string; retryAfterSeconds?: number } }
       | undefined;
     const written = data?.error?.message;
     return {
@@ -87,6 +87,7 @@ function normalizeError(err: unknown): ApiError {
       message: written ?? err.message,
       code: data?.error?.code,
       fromServer: written !== undefined,
+      retryAfterSeconds: data?.error?.retryAfterSeconds,
     };
   }
   if (err instanceof Error) {

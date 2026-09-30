@@ -25,6 +25,8 @@
 
 import { expect, request, test } from 'playwright/test';
 
+import { registerAccount } from '../helpers/signup';
+
 /** Credentials nobody else will hold. */
 function freshCredentials(): { email: string; password: string } {
   const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
@@ -46,11 +48,7 @@ test.describe('a new account and its trial credits', () => {
     // the ten-an-hour ceiling in config/rate-limits.yaml, not a defect.
     const api = await request.newContext({ baseURL });
     const made = freshCredentials();
-    const registered = await api.post('/api/v1/auth/register', { data: made });
-    expect(
-      registered.ok(),
-      `register answered ${registered.status()}: ${(await registered.text()).slice(0, 200)}`,
-    ).toBe(true);
+    await registerAccount(api, made);
 
     const slug = `trialer${Math.floor(Date.now() / 1000)}`;
     const studio = await api.post('/api/v1/auth/setup-studio', { data: { slug } });

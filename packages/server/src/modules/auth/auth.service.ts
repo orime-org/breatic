@@ -17,7 +17,7 @@ import {
   hashRecoveryCode,
   verifyRecoveryCode,
 } from "@server/modules/auth/recovery-code.service.js";
-import { buildTokenLinkMail } from "@server/modules/auth/auth-mail.js";
+import { buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import { env } from "@breatic/core";
@@ -35,6 +35,15 @@ import { getActiveLocale, t } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
+
+/**
+ * Hash an account password at the cost every stored password uses.
+ * @param password - The password as typed.
+ * @returns The bcrypt hash to store.
+ */
+export function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
 
 /**
  * Register a new user with email and password (step 1 of 2).
@@ -66,7 +75,7 @@ export async function register(
     throw new ConflictError(t("server.auth.email_taken"));
   }
 
-  const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  const hashedPassword = await hashPassword(password);
   const user = await userRepo.createUser({ email, hashedPassword, locale: getActiveLocale() });
 
   // Generate + store recovery code. Done after createUser so we have
@@ -83,6 +92,17 @@ export async function register(
   // "core and shared must not log", the caller logs the `user_registered`
   // audit line after this resolves.
   return { user, recoveryCode };
+}
+
+/**
+ * Open a session for an account.
+ * @param userId - The account the session signs in.
+ * @returns The opaque session token for the cookie.
+ */
+export async function createSession(userId: string): Promise<string> {
+  const token = crypto.randomUUID();
+  await setSession(getRedis(), token, userId);
+  return token;
 }
 
 /**
@@ -111,9 +131,7 @@ export async function loginEmail(
     throw new UnauthorizedError(t("server.auth.invalid_credentials"));
   }
 
-  const token = crypto.randomUUID();
-  const redis = getRedis();
-  await setSession(redis, token, user.id);
+  const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=email) audit line.
   return { user, token };
 }
@@ -165,9 +183,7 @@ export async function loginOrCreateGoogle(
     user = (await userRepo.updateUser(user.id, { emailVerified: true })) ?? user;
   }
 
-  const token = crypto.randomUUID();
-  const redis = getRedis();
-  await setSession(redis, token, user.id);
+  const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=google) audit line.
   return { user, token };
 }
@@ -280,7 +296,7 @@ export async function forgotPassword(
   await redis.set(key, user.id, "EX", RESET_TOKEN_TTL);
 
   const mailResult = await sendMail(
-    await buildTokenLinkMail("password_reset", {
+    await buildPasswordResetMail({
       locale: user.locale,
       to: email,
       url: `${resetBaseUrl}?token=${token}`,
@@ -306,7 +322,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
     throw new UnauthorizedError(t("server.auth.invalid_reset_token"));
   }
 
-  const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  const hashed = await hashPassword(newPassword);
   await userRepo.updatePassword(userId, hashed);
 
   // Delete the token so it can't be reused
@@ -365,7 +381,7 @@ export async function resetPasswordWithRecoveryCode(
   }
 
   // 1. Update password (bcrypt cost 12).
-  const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  const hashedPassword = await hashPassword(newPassword);
   await userRepo.updatePassword(user.id, hashedPassword);
 
   // 2. Mark current code consumed.
@@ -382,84 +398,4 @@ export async function resetPasswordWithRecoveryCode(
 
   // Caller logs `password_reset_via_recovery_code` audit line.
   return { newRecoveryCode, userId: user.id };
-}
-
-// ── Email verification ───────────────────────────────────────────
-
-const EMAIL_VERIFY_TTL = 24 * 3600; // request-ttl:allow — how long a verification link lives, not a deferred decision anyone answers
-
-/**
- * Generate a one-time email-verification token (PR-a task 9).
- *
- * Stored in Redis (`${env.ENV}:email-verify:{token}` → userId) with
- * 24h TTL. Caller is responsible for sending the user a link that
- * embeds the returned token. Auto-removed on consume or expiry.
- * @param userId - User the verification token is issued for
- * @returns The 64-char hex token to embed in the verify URL.
- */
-export async function generateVerifyEmailToken(userId: string): Promise<string> {
-  const token = crypto.randomBytes(32).toString("hex");
-  const redis = getRedis();
-  const key = `${env.ENV}:email-verify:${token}`;
-  await redis.set(key, userId, "EX", EMAIL_VERIFY_TTL);
-  return token;
-}
-
-/**
- * Consume an email-verification token (PR-a task 9).
- *
- * Looks up the token in Redis, flips `users.email_verified = true`
- * for the resolved user, deletes the token (single-use), and logs.
- * @param token - One-time email-verification token from the verify link
- * @returns `{ userId }` of the user whose email was verified (for audit logging)
- * @throws {UnauthorizedError} if the token is missing / expired / used.
- */
-export async function verifyEmail(token: string): Promise<{ userId: string }> {
-  const redis = getRedis();
-  const key = `${env.ENV}:email-verify:${token}`;
-  const userId = await redis.get(key);
-  if (!userId) {
-    throw new UnauthorizedError(t("server.auth.invalid_verification_token"));
-  }
-  await userRepo.updateUser(userId, { emailVerified: true });
-  await redis.del(key);
-  // Caller logs `email_verified` audit line with the returned userId.
-  return { userId };
-}
-
-/**
- * Resend the verification email for a given user (PR-a task 9).
- *
- * Generates a fresh token (invalidating any previous tokens once the
- * key collides - extremely unlikely, but functionally a no-op since
- * each token is fresh-random and TTL'd) and dispatches via the
- * configured mailer backend. Caller decides whether the user is
- * already verified (skip in that case).
- *
- * Only meaningful when `env.EMAIL_BACKEND !== "disabled"` - caller
- * should gate accordingly; this function will still run (Redis token
- * stored) but `sendMail` will no-op + return false in disabled mode.
- * @param userId - User the fresh verification token is issued for
- * @param email - Destination address for the verification email
- * @param locale - The account's language, which the email is written in
- * @param verifyBaseUrl - Base URL the verify token is appended to in the email link
- * @returns `{ mailResult }` reporting whether the mailer dispatched the email
- */
-export async function resendVerificationEmail(
-  userId: string,
-  email: string,
-  locale: string,
-  verifyBaseUrl: string,
-): Promise<{ mailResult: SendMailResult }> {
-  const token = await generateVerifyEmailToken(userId);
-  const mailResult = await sendMail(
-    await buildTokenLinkMail("email_verification", {
-      locale,
-      to: email,
-      url: `${verifyBaseUrl}?token=${token}`,
-      expiresInSeconds: EMAIL_VERIFY_TTL,
-    }),
-  );
-  // Caller logs `verification_email_sent` + mail result audit line.
-  return { mailResult };
 }

@@ -155,11 +155,6 @@ const ENTRIES: Entry[] = [
     module: 'ResetPasswordPage',
     landed: { text: 'Reset with recovery code' },
   },
-  {
-    address: () => '/verify-email',
-    module: 'VerifyEmailPage',
-    landed: { text: 'Check your inbox' },
-  },
 ];
 
 /**

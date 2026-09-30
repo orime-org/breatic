@@ -36,5 +36,4 @@ export const routeImports = {
   forgotPasswordPage: () => import('@web/pages/auth/ForgotPasswordPage'),
   resetPasswordPage: () => import('@web/pages/auth/ResetPasswordPage'),
   notFoundPage: () => import('@web/pages/NotFoundPage'),
-  verifyEmailPage: () => import('@web/pages/auth/VerifyEmailPage'),
 };

@@ -36,6 +36,8 @@ export interface ApiError {
    * `normalizeError` -- and that one always says.
    */
   fromServer?: boolean;
+  /** Seconds the server said to wait before trying again (a 429 with a known wait). */
+  retryAfterSeconds?: number;
 }
 
 /**
@@ -47,6 +49,8 @@ export class ApiException extends Error {
   readonly code?: string;
   /** Whether {@link Error.message} is a sentence our own server wrote. */
   readonly fromServer: boolean;
+  /** Seconds to wait before the same request will be accepted, when the server said. */
+  readonly retryAfterSeconds?: number;
 
   /**
    * Build an `ApiException` from a normalized API error.
@@ -58,6 +62,7 @@ export class ApiException extends Error {
     this.status = error.status;
     this.code = error.code;
     this.fromServer = error.fromServer === true;
+    this.retryAfterSeconds = error.retryAfterSeconds;
   }
 }
 

@@ -72,7 +72,7 @@ PAYMENT_ENABLED=false
 EMAIL_BACKEND=console
 ```
 
-`PAYMENT_ENABLED=false` 关闭站内支付和对应扣费检查，**不会免除外部 AI 服务费用**。`EMAIL_BACKEND=console` 将邮件内容输出到本机日志，不投递真实邮件；邮箱密码注册可用，不需要 Google OAuth。恢复码请在注册时自行保存。
+`PAYMENT_ENABLED=false` 关闭站内支付和对应扣费检查，**不会免除外部 AI 服务费用**。`EMAIL_BACKEND=console` 将邮件内容输出到本机日志，不投递真实邮件；邮箱密码注册可用，不需要 Google OAuth。注册时需要输入 6 位验证码，`console` 模式下验证码在 server 日志的 `[console] email` 那一行里。`EMAIL_BACKEND=disabled` 时没有验证码这一步，注册后会显示恢复码，请自行保存。
 
 本文假设本机只有一套 Breatic。需要空闲端口：`5432`、`6379`、`3000`、`3001`、`1234`、`1235`、`9101`、`8000`、`8787`。如果已有其他实例，先停止自己不再使用的实例，不要让新实例误连已有业务数据。多实例隔离说明见 `.env.dev` 文件头。
 

@@ -53,7 +53,7 @@ Start with the personal/LAN guide. It covers Cloudflare provisioning, secrets, a
 
 After completing installation:
 
-1. Open the instance in a desktop browser, register an account, save your recovery code and finish your personal Studio setup. There is no shared default password or login bypass.
+1. Open the instance in a desktop browser, register an account and finish your personal Studio setup. With email enabled you confirm the six-digit code mailed to you; with email disabled you save the recovery code shown after signing up. There is no shared default password or login bypass.
 2. Create a project for the work you want to make and choose its initial Space type.
 3. Use the **+** button in the project's Space bar to add a **Document** Space. Name it “Script and brief” and write the story or requirements. If you started with a Document Space, use that one.
 4. Add one or more **Canvas** Spaces for your scenes or creative directions. Give each a meaningful name, then upload references or add nodes to begin working.

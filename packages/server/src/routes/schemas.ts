@@ -11,6 +11,7 @@
 // ── Re-export shared schemas ────────────────────────────────────────
 export {
   registerSchema,
+  signupVerifySchema,
   setupStudioSchema,
   loginSchema,
   chatMessageSchema,

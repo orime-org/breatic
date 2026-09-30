@@ -4,6 +4,8 @@
 /** Shared Zod schemas for API request validation. */
 export {
   registerSchema,
+  signupVerifySchema,
+  SIGNUP_CODE_REGEX,
   setupStudioSchema,
   createTeamStudioSchema,
   updateStudioSchema,
@@ -36,6 +38,7 @@ export {
 
 export type {
   RegisterInput,
+  SignupVerifyInput,
   SetupStudioInput,
   CreateTeamStudioInput,
   UpdateStudioInput,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AxiosError } from 'axios';
 
 import { request, apiGet, apiPost, apiPatch, apiDelete } from '@web/data/api/request';
 import { ApiException, type ApiError } from '@web/data/api/types';
@@ -74,5 +75,45 @@ describe('helper envelope unwrap (DD #152)', () => {
     } as never);
     const result = await apiDelete<{ success: boolean }>('/projects/p1');
     expect(result).toEqual({ success: true });
+  });
+});
+
+describe('a refusal that says how long to wait', () => {
+  it('carries retryAfterSeconds from the error envelope onto the ApiException', async () => {
+    const failure = request.get('/wait', {
+      adapter: (config) =>
+        Promise.reject(
+          new AxiosError('Request failed', 'ERR_BAD_REQUEST', config, null, {
+            status: 429,
+            statusText: 'Too Many Requests',
+            headers: { 'retry-after': '37' },
+            config,
+            data: { error: { code: 429, message: 'Wait 37 seconds', retryAfterSeconds: 37 } },
+          }),
+        ),
+    });
+    await expect(failure).rejects.toMatchObject({
+      status: 429,
+      message: 'Wait 37 seconds',
+      retryAfterSeconds: 37,
+    });
+  });
+
+  it('leaves retryAfterSeconds undefined when the server did not send one', async () => {
+    const failure = request.get('/plain', {
+      adapter: (config) =>
+        Promise.reject(
+          new AxiosError('Request failed', 'ERR_BAD_REQUEST', config, null, {
+            status: 400,
+            statusText: 'Bad Request',
+            headers: {},
+            config,
+            data: { error: { code: 400, message: 'That code is incorrect.' } },
+          }),
+        ),
+    });
+    const err: unknown = await failure.catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiException);
+    expect((err as ApiException).retryAfterSeconds).toBeUndefined();
   });
 });
