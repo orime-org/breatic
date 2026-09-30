@@ -108,6 +108,13 @@ describe("how the prompt says to write a reply", () => {
     expect(wording()).toMatch(/lone `\$` is a dollar sign/i);
   });
 
+  it("shows a single letter inside a sentence written with double dollars", () => {
+    // A real turn wrote "where $a$ and $b$ are the legs" and the reader saw the
+    // dollars: the rule alone did not reach the one-letter case.
+    expect(wording()).toContain("$$a$$");
+    expect(wording()).toMatch(/not `\$a\$`/);
+  });
+
   it("says a code fence names its language", () => {
     expect(wording()).toMatch(/language on every code fence/i);
   });

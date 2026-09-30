@@ -57,9 +57,10 @@ without one is shown uncoloured.
 HTML is not rendered — tags are shown as the characters you wrote, in the
 middle of your prose. To show HTML, put it in a \`\`\`html fence.
 
-A formula goes between $$ and $$: on lines of its own for a formula that
-stands alone, inside the sentence for one that belongs to it. A lone \`$\` is a
-dollar sign and stays one.
+Every formula goes between $$ and $$ — on lines of its own for a formula that
+stands alone, and inside the sentence for one that belongs to it, down to a
+single letter: write $$a$$, not \`$a$\`. A lone \`$\` is a dollar sign and
+stays one, so math in single dollars reaches the reader as the dollars you typed.
 `;
 
 /**
