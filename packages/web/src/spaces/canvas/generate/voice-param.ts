@@ -4,12 +4,10 @@
 /**
  * Locating and reading the param the voice picker fills (#1960).
  *
- * The two tts models spell the same choice differently — ElevenLabs takes
- * `voice_id`, Fish takes `reference_id` — so the picker finds its param by the
- * `remote_source` marker each declares in yaml rather than by name. Writing one
- * shared name instead fails silently: the worker drops a param the model never
- * declared (`shared.ts`'s `unknown_param_dropped`), generation succeeds, and
- * what comes back is the vendor's own default voice.
+ * The picker finds its param by the `remote_source` marker each model declares
+ * in yaml. A param the model never declared is dropped by the worker
+ * (`shared.ts`'s `unknown_param_dropped`), generation still succeeds, and what
+ * comes back is the vendor's own default voice.
  *
  * The value lives in the node's per-model record (`model-params.ts`), which is
  * also where the picker writes, so a choice survives a model switch and reaches
