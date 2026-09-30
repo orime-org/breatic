@@ -16,7 +16,9 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   BodyEdgeSelection,
+  bodyEdgeBetween,
   bodyEdgeNeedsTakeover,
+  dragSelection,
   extendToBodyEdge,
 } from '@web/spaces/document/document-body-edge-selection';
 
@@ -254,5 +256,199 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Only'))));
 
     expect(press(view, 'ArrowDown')).toBe(false);
+  });
+});
+
+describe('the selection between two positions, either of which may be an edge', () => {
+  it('is a text selection when neither end is an edge', () => {
+    const view = open(ABOVE_DIVIDER);
+    const at = textStart(view, 'Above');
+
+    const selection = bodyEdgeBetween(view.state.doc, at, at + 3);
+
+    expect(selection).toBeInstanceOf(TextSelection);
+    expect([selection.anchor, selection.head]).toEqual([at, at + 3]);
+  });
+
+  it('keeps an anchor on the edge and puts the head in text', () => {
+    const view = open(ABOVE_DIVIDER);
+    const { doc } = view.state;
+    const at = textStart(view, 'Above');
+
+    const selection = bodyEdgeBetween(doc, doc.content.size - 1, at + 2);
+
+    expect(selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([selection.anchor, selection.head]).toEqual([doc.content.size - 1, at + 2]);
+  });
+
+  it('collapses to a caret in the nearest text when both ends are the same edge', () => {
+    const view = open(ABOVE_DIVIDER);
+    const { doc } = view.state;
+    const end = doc.content.size - 1;
+
+    const selection = bodyEdgeBetween(doc, end, end);
+
+    expect(selection).toBeInstanceOf(TextSelection);
+    expect(selection.empty).toBe(true);
+    expect(selection.head).toBe(textStart(view, 'Above') + 'Above'.length);
+  });
+
+  it('is the whole document when the ends are the two edges', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }]);
+    const { doc } = view.state;
+
+    expect(bodyEdgeBetween(doc, 1, doc.content.size - 1)).toBeInstanceOf(AllSelection);
+  });
+});
+
+describe('the selection a drag gives, by where it was pressed and where the pointer is', () => {
+  const BOTH_ENDS = [{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }];
+
+  it('leaves a drag that never left the body to the browser', () => {
+    const view = open(BOTH_ENDS);
+    const at = textStart(view, 'Mid');
+
+    expect(dragSelection(view.state.doc, { press: 'body', anchor: at, left: false }, 'body', at + 2)).toBeNull();
+  });
+
+  it('reaches either edge from a press in the body', () => {
+    const view = open(BOTH_ENDS);
+    const { doc } = view.state;
+    const at = textStart(view, 'Mid') + 1;
+
+    const down = dragSelection(doc, { press: 'body', anchor: at, left: true }, 'end', null);
+    const up = dragSelection(doc, { press: 'body', anchor: at, left: true }, 'start', null);
+
+    expect([down?.anchor, down?.head]).toEqual([at, doc.content.size - 1]);
+    expect([up?.anchor, up?.head]).toEqual([at, 1]);
+  });
+
+  it('follows the pointer from the anchor after coming back into the body', () => {
+    const view = open(BOTH_ENDS);
+    const at = textStart(view, 'Mid');
+
+    const back = dragSelection(view.state.doc, { press: 'body', anchor: at, left: true }, 'body', at + 2);
+
+    expect(back).toBeInstanceOf(TextSelection);
+    expect([back?.anchor, back?.head]).toEqual([at, at + 2]);
+  });
+
+  it('anchors on the edge a press outside it was made past', () => {
+    const view = open(BOTH_ENDS);
+    const { doc } = view.state;
+    const at = textStart(view, 'Mid') + 1;
+
+    const fromEnd = dragSelection(doc, { press: 'end', anchor: doc.content.size - 1, left: true }, 'body', at);
+    const fromStart = dragSelection(doc, { press: 'start', anchor: 1, left: true }, 'body', at);
+
+    expect(fromEnd).toBeInstanceOf(BodyEdgeSelection);
+    expect([fromEnd?.anchor, fromEnd?.head]).toEqual([doc.content.size - 1, at]);
+    expect([fromStart?.anchor, fromStart?.head]).toEqual([1, at]);
+  });
+
+  it('treats a press past an edge that has not moved as a click', () => {
+    const view = open(BOTH_ENDS);
+    const { doc } = view.state;
+
+    expect(dragSelection(doc, { press: 'end', anchor: doc.content.size - 1, left: false }, 'end', null)).toBeNull();
+  });
+
+  it('collapses to a caret beside the edge when the drag comes back past where it was pressed', () => {
+    const view = open(BOTH_ENDS);
+    const { doc } = view.state;
+
+    const back = dragSelection(doc, { press: 'end', anchor: doc.content.size - 1, left: true }, 'end', null);
+
+    expect(back).toBeInstanceOf(TextSelection);
+    expect(back?.empty).toBe(true);
+    expect(back?.head).toBe(textStart(view, 'Mid') + 'Mid'.length);
+  });
+
+  it('is the whole document from one edge past the other', () => {
+    const view = open(BOTH_ENDS);
+    const { doc } = view.state;
+
+    expect(dragSelection(doc, { press: 'end', anchor: doc.content.size - 1, left: true }, 'start', null))
+      .toBeInstanceOf(AllSelection);
+    expect(dragSelection(doc, { press: 'start', anchor: 1, left: true }, 'end', null))
+      .toBeInstanceOf(AllSelection);
+  });
+
+  it('keeps the anchor a Shift+click started from wherever the pointer goes', () => {
+    const view = open(BOTH_ENDS);
+    const { doc } = view.state;
+    const at = textStart(view, 'Mid');
+    const shift = { press: 'shift', anchor: at, left: true } as const;
+
+    const inBody = dragSelection(doc, shift, 'body', at + 2);
+    const pastEnd = dragSelection(doc, shift, 'end', null);
+
+    expect([inBody?.anchor, inBody?.head]).toEqual([at, at + 2]);
+    expect(pastEnd).toBeInstanceOf(BodyEdgeSelection);
+    expect([pastEnd?.anchor, pastEnd?.head]).toEqual([at, doc.content.size - 1]);
+  });
+
+  it('is the whole document from a Shift+click past one edge when the anchor is on the other', () => {
+    const view = open(BOTH_ENDS);
+    const { doc } = view.state;
+
+    expect(dragSelection(doc, { press: 'shift', anchor: 1, left: true }, 'end', null)).toBeInstanceOf(AllSelection);
+  });
+
+  it('keeps the current selection when the pointer in the body lands on no position', () => {
+    const view = open(BOTH_ENDS);
+    const { doc } = view.state;
+
+    expect(dragSelection(doc, { press: 'end', anchor: doc.content.size - 1, left: true }, 'body', null)).toBeNull();
+  });
+});
+
+describe('the browser extending a selection one of whose ends is an edge', () => {
+  /**
+   * Asks the editor what selection the browser's range reads back as.
+   * @param view - The view.
+   * @param anchor - The browser's anchor.
+   * @param head - The browser's head.
+   * @returns What a plugin answered, or null when none did.
+   */
+  function readBack(view: EditorView, anchor: number, head: number): Selection | null {
+    const { doc } = view.state;
+    return view.someProp('createSelectionBetween', (f) => f(view, doc.resolve(anchor), doc.resolve(head))) ?? null;
+  }
+
+  it('keeps the anchor on the edge', () => {
+    const view = open(ABOVE_DIVIDER);
+    const { doc } = view.state;
+    const at = textStart(view, 'Above') + 2;
+
+    const selection = readBack(view, doc.content.size - 1, at);
+
+    expect(selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([selection?.anchor, selection?.head]).toEqual([doc.content.size - 1, at]);
+  });
+
+  it('keeps a head written onto the edge', () => {
+    const view = open(ABOVE_DIVIDER);
+    const { doc } = view.state;
+    const at = textStart(view, 'Above') + 2;
+
+    const selection = readBack(view, at, doc.content.size - 1);
+
+    expect(selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([selection?.anchor, selection?.head]).toEqual([at, doc.content.size - 1]);
+  });
+
+  it('leaves a collapsed range to ProseMirror', () => {
+    const view = open(ABOVE_DIVIDER);
+    const end = view.state.doc.content.size - 1;
+
+    expect(readBack(view, end, end)).toBeNull();
+  });
+
+  it('leaves a range with neither end on an edge to ProseMirror', () => {
+    const view = open(ABOVE_DIVIDER);
+    const at = textStart(view, 'Above');
+
+    expect(readBack(view, at, at + 3)).toBeNull();
   });
 });

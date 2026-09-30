@@ -236,7 +236,6 @@ if (holder[REGISTERED] === undefined) {
 /** The selection class, as registered with ProseMirror. */
 export const BodyEdgeSelection = holder[REGISTERED];
 
-
 /** The bookmark of a {@link BodyEdgeSelection}. */
 class BodyEdgeBookmark {
   /**
