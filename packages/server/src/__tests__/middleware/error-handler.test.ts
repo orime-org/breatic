@@ -54,6 +54,7 @@ import { z } from "zod";
 import {
   AppError,
   NotFoundError,
+  TooManyRequestsError,
   loadLocales,
   runWithLocale,
 } from "@breatic/core";
@@ -222,5 +223,26 @@ describe("what the exit already did, still does", () => {
   it("does not leak an unrecognised error's message", async () => {
     const { body } = await answerFor(new Error("connection string: secret"));
     expect(String(body.error?.message)).not.toContain("secret");
+  });
+});
+
+describe("a request refused until a wait is over", () => {
+  // A cooldown knows exactly how long the caller has to wait; the standard
+  // place to say so is the Retry-After header (RFC 9110 §10.2.3), which the
+  // rate limiter already sets on its own 429s.
+  it("answers 429 with the wait in Retry-After and in the body", async () => {
+    const app = appThrowing(new TooManyRequestsError("Wait a moment", 37));
+    const res = await runWithLocale("en", () => app.request("/boom"));
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("37");
+    expect(await res.json()).toEqual({
+      error: { code: 429, message: "Wait a moment", retryAfterSeconds: 37 },
+    });
+  });
+
+  it("rounds a fractional wait up so the client never retries early", async () => {
+    const app = appThrowing(new TooManyRequestsError("Wait a moment", 36.2));
+    const res = await runWithLocale("en", () => app.request("/boom"));
+    expect(res.headers.get("Retry-After")).toBe("37");
   });
 });
