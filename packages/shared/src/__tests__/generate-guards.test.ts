@@ -542,7 +542,7 @@ describe('evaluateExecute — the per-shot storyboard (#2218)', () => {
   it('names the first shot with nothing in it', () => {
     const verdict = evaluateExecute({
       ...custom,
-      storyboard: { ...custom.storyboard, shots: [shots[0]!, { text: ' ​ ', duration: 3 }] },
+      storyboard: { ...custom.storyboard, shots: [shots[0]!, { text: ' \u200b ', duration: 3 }] },
     });
     expect(verdict).toEqual({ refusal: 'storyboard-shot-empty', shot: 2 });
   });

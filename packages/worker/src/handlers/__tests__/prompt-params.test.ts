@@ -231,7 +231,7 @@ describe("cleaning the shots of a storyboard (#2218)", () => {
       {
         multi_prompt: [
           { prompt: "<b>a boat</b>", duration: 2 },
-          { prompt: "the pond​ <!-- x -->", duration: 3 },
+          { prompt: "the pond\u200b <!-- x -->", duration: 3 },
         ],
       },
       "kling-v3.0-4k-text-to-video",

@@ -576,6 +576,11 @@ function checkGenerateNode(
   // tells the model to shorten a prompt that holds none of those characters.
   // The pointed nodes run across the main prompt and then each shot, so each
   // part is measured with the slice of them its own ref marks land on.
+  /**
+   * How many ref marks a part of the prompt carries.
+   * @param segments - That part.
+   * @returns The count.
+   */
   const refsIn = (segments: readonly PromptSegment[]): number =>
     segments.filter((segment) => segment.slot?.kind === "ref").length;
   let taken = refsIn(node.prompt ?? []);

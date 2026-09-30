@@ -60,7 +60,7 @@ function alone(node: Partial<ProposalNode>): CanvasProposal {
     modelNote: "",
     rationale: "",
     groupName: "Clip",
-  } as CanvasProposal;
+  };
 }
 
 const twoShots = [
