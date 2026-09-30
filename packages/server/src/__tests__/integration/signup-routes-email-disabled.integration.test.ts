@@ -22,7 +22,7 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { initCore, loadLocales } from "@breatic/core";
+import { env, getRedis, initCore, loadLocales } from "@breatic/core";
 import type { Hono } from "hono";
 
 loadLocales();
@@ -39,6 +39,10 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  // These cases register far more often than the per-IP sign-up throttle
+  // allows in an hour; give the next case (and the next file) a fresh window.
+  const throttled = await getRedis().keys(`${env.ENV}:ratelimit:register*`);
+  if (throttled.length > 0) await getRedis().del(...throttled);
   for (const email of createdEmails.splice(0)) {
     await sql`UPDATE users SET deleted_at = now() WHERE email = ${email} AND deleted_at IS NULL`;
   }

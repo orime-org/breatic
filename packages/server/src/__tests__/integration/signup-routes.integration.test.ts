@@ -35,7 +35,7 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { initCore, loadLocales, sessionCookieName } from "@breatic/core";
+import { env, getRedis, initCore, loadLocales, sessionCookieName } from "@breatic/core";
 import type { Hono } from "hono";
 
 loadLocales();
@@ -52,6 +52,10 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  // These cases register far more often than the per-IP sign-up throttle
+  // allows in an hour; give the next case (and the next file) a fresh window.
+  const throttled = await getRedis().keys(`${env.ENV}:ratelimit:register*`);
+  if (throttled.length > 0) await getRedis().del(...throttled);
   sent.mails.length = 0;
   for (const email of createdEmails.splice(0)) {
     await sql`UPDATE users SET deleted_at = now() WHERE email = ${email} AND deleted_at IS NULL`;
@@ -90,8 +94,8 @@ function cookiePair(res: Response, prefix: string): string | undefined {
 }
 
 /** POST a JSON body, optionally with a Cookie header. */
-function post(path: string, body: unknown, cookie?: string): Promise<Response> {
-  return app.request(`/api/v1/auth${path}`, {
+async function post(path: string, body: unknown, cookie?: string): Promise<Response> {
+  return await app.request(`/api/v1/auth${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}) },
     body: JSON.stringify(body),
@@ -187,7 +191,8 @@ describe("POST /auth/register/verify", () => {
     const email = freshEmail();
     const started = await post("/register", { email, password: "password1" });
     const res = await post("/register/verify", { code: "12ab56" }, cookiePair(started, "breatic_signup_"));
-    expect(res.status).toBe(400);
+    // Every request body that fails its schema answers 422 (the `validate` middleware).
+    expect(res.status).toBe(422);
     // The malformed try did not use one of the code's five comparisons.
     for (let i = 0; i < 4; i++) {
       await post("/register/verify", { code: lastCode() === "000000" ? "111111" : "000000" }, cookiePair(started, "breatic_signup_"));

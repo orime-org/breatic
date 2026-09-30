@@ -86,6 +86,17 @@ export async function register(
 }
 
 /**
+ * Open a session for an account.
+ * @param userId - The account the session signs in.
+ * @returns The opaque session token for the cookie.
+ */
+export async function createSession(userId: string): Promise<string> {
+  const token = crypto.randomUUID();
+  await setSession(getRedis(), token, userId);
+  return token;
+}
+
+/**
  * Authenticate a user via email and password.
  * @param email - The user's email address
  * @param password - Plaintext password to verify
@@ -111,9 +122,7 @@ export async function loginEmail(
     throw new UnauthorizedError(t("server.auth.invalid_credentials"));
   }
 
-  const token = crypto.randomUUID();
-  const redis = getRedis();
-  await setSession(redis, token, user.id);
+  const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=email) audit line.
   return { user, token };
 }
@@ -165,9 +174,7 @@ export async function loginOrCreateGoogle(
     user = (await userRepo.updateUser(user.id, { emailVerified: true })) ?? user;
   }
 
-  const token = crypto.randomUUID();
-  const redis = getRedis();
-  await setSession(redis, token, user.id);
+  const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=google) audit line.
   return { user, token };
 }

@@ -14,20 +14,23 @@ import { validate } from "@server/middleware/validate.js";
 import { OAuth2Client } from "google-auth-library";
 import type { TokenPayload } from "google-auth-library";
 
-import { registerSchema, loginSchema, setupStudioSchema } from "@server/routes/schemas.js";
+import { registerSchema, signupVerifySchema, loginSchema, setupStudioSchema } from "@server/routes/schemas.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { authService, studioService } from "@server/modules";
-import { env } from "@breatic/core";
+import { authService, signupCodeService, studioService } from "@server/modules";
+import { env, NotFoundError } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { getActiveLocale, t } from "@breatic/shared";
 import type { PersonalStudioRef } from "@breatic/shared";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
   clearSessionCookie,
   readSessionCookie,
+  setSignupTicketCookie,
+  readSignupTicketCookie,
+  clearSignupTicketCookie,
 } from "@server/middleware/session-cookie.js";
 import { logMailResult } from "@server/utils/log-mail.js";
 import { runAfterReply } from "@server/utils/after-reply.js";
@@ -81,28 +84,54 @@ function getGoogleClient(): OAuth2Client {
 }
 
 /**
- * `POST /auth/register` - create a new user account (step 1 of 2).
+ * `GET /auth/options` - what the sign-up and recovery pages need to know
+ * about this deployment: whether an email sign-up proves the address with a
+ * code (and so whether recovery goes by email or by recovery code).
+ * @returns `200` with `{ emailVerification }`
+ */
+auth.get("/options", (c) => {
+  return c.json({ data: { emailVerification: signupCodeService.emailVerificationEnabled() } });
+});
+
+/**
+ * `POST /auth/register` - step 1 of an email sign-up.
  *
- * Creates the account only — NO personal studio. The user picks their
- * slug in the second step (`POST /auth/setup-studio`); until then
- * `/auth/me` reports `personalStudio: null` and the frontend gate forces
- * the slug-setup page (email-registration rewrite, 2026-06-06).
+ * With an email backend enabled (#287) nothing is created yet: a six-digit
+ * code is mailed to the address and the pending sign-up is held under a
+ * ticket in an httpOnly cookie until `POST /auth/register/verify` matches
+ * the code. With email disabled the account is created at once and a
+ * one-time recovery code is returned for the "save this now" screen — the
+ * only way to reset the password without email.
  *
- * Returns a one-time `recoveryCode` (XXXX-XXXX-XXXX-XXXX format) the
- * frontend MUST display to the user with a "save this now" modal -
- * it's the only way to reset password when EMAIL_BACKEND=disabled
- * (self-host default). The code is rotated on every successful
- * recovery-based reset; only the bcrypt hash is stored server-side.
- *
- * Session is delivered as an httpOnly session cookie (the
- * frontend never sees the raw token - XSS cannot exfiltrate it).
- * Response body returns the user plus the one-time `recoveryCode`.
+ * Either way the personal studio is the second step (`POST /auth/setup-studio`).
  * @param c - Hono context with validated `registerSchema` body
- * @returns `201` with `{ user, recoveryCode }` on success + Set-Cookie
+ * @returns `202` `{ status: "code_sent", expiresInSeconds, resendAfterSeconds }`
+ *   + ticket cookie, or `201` `{ status: "created", user, recoveryCode }` + session cookie
  * @throws {AppError} `409` if email is already registered
+ * @throws {TooManyRequestsError} `429` while the address waits for another code
+ * @throws {AppError} `503` when the code mail was not sent
  */
 auth.post("/register", rateLimitFor("register"), validate("json", registerSchema), async (c) => {
   const { email, password } = c.req.valid("json");
+
+  if (signupCodeService.emailVerificationEnabled()) {
+    const sent = await signupCodeService.startSignup({
+      ticket: readSignupTicketCookie(c),
+      email,
+      password,
+      locale: getActiveLocale(),
+    });
+    setSignupTicketCookie(c, sent.ticket, sent.expiresInSeconds);
+    logger.info({ email }, "signup_code_sent");
+    return c.json({
+      data: {
+        status: "code_sent",
+        expiresInSeconds: sent.expiresInSeconds,
+        resendAfterSeconds: sent.resendAfterSeconds,
+      },
+    }, 202);
+  }
+
   const { user, recoveryCode } = await authService.register(email, password);
   const { token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
@@ -117,9 +146,62 @@ auth.post("/register", rateLimitFor("register"), validate("json", registerSchema
   // slips past the `=== null` onboarding gate and silently degrades the
   // display name (#1882).
   return c.json({
-    data: { user: { ...user, personalStudio: null }, recoveryCode },
+    data: { status: "created", user: { ...user, personalStudio: null }, recoveryCode },
   }, 201);
 });
+
+/**
+ * `POST /auth/register/resend` - mail a new code for this browser's pending
+ * sign-up; the previous code stops working.
+ * @param c - Hono context carrying the ticket cookie
+ * @returns `202` `{ status: "code_sent", expiresInSeconds, resendAfterSeconds }`
+ * @throws {NotFoundError} `404` when no email backend is enabled
+ * @throws {AppError} `410` when the pending sign-up is gone
+ * @throws {TooManyRequestsError} `429` while the address waits for another code
+ * @throws {AppError} `503` when the code mail was not sent
+ */
+auth.post("/register/resend", rateLimitFor("register-resend"), async (c) => {
+  if (!signupCodeService.emailVerificationEnabled()) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  const sent = await signupCodeService.resendSignupCode(readSignupTicketCookie(c));
+  setSignupTicketCookie(c, sent.ticket, sent.expiresInSeconds);
+  return c.json({
+    data: {
+      status: "code_sent",
+      expiresInSeconds: sent.expiresInSeconds,
+      resendAfterSeconds: sent.resendAfterSeconds,
+    },
+  }, 202);
+});
+
+/**
+ * `POST /auth/register/verify` - finish an email sign-up: a matching code
+ * writes the account (address verified) and signs it in.
+ * @param c - Hono context with validated `signupVerifySchema` body and the ticket cookie
+ * @returns `201` `{ user }` + session cookie; the ticket cookie is cleared
+ * @throws {NotFoundError} `404` when no email backend is enabled
+ * @throws {AppError} `400` wrong code · `410` sign-up gone · `422` code used up · `409` address taken
+ */
+auth.post(
+  "/register/verify",
+  rateLimitFor("register-verify"),
+  validate("json", signupVerifySchema),
+  async (c) => {
+    if (!signupCodeService.emailVerificationEnabled()) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    const { code } = c.req.valid("json");
+    const user = await signupCodeService.verifySignupCode(readSignupTicketCookie(c), code);
+    clearSignupTicketCookie(c);
+    setSessionCookie(c, await authService.createSession(user.id));
+    logger.info({ userId: user.id, email: user.email }, "user_registered");
+    logger.info({ userId: user.id, method: "email" }, "user_logged_in");
+    // Same shape as the created branch of `/register`: the personal studio
+    // is the next step, and the key must be present for the onboarding gate.
+    return c.json({ data: { user: { ...user, personalStudio: null } } }, 201);
+  },
+);
 
 /**
  * `POST /auth/setup-studio` - create the user's personal studio (step 2).
