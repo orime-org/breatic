@@ -29,6 +29,7 @@ import {
   TooManyRequestsError,
   env,
   getRedis,
+  logger,
   sendMail,
 } from "@breatic/core";
 import { t } from "@breatic/shared";
@@ -182,7 +183,8 @@ async function sendCode(ticket: string, email: string, locale: string): Promise<
     await buildSignupCodeMail({ locale, to: email, code, expiresInSeconds: ttlSeconds }),
   ).catch(async (err: unknown) => {
     await getRedis().del(cooldownKey(email));
-    throw err;
+    logger.error({ err, subject: "signup_code" }, "signup_code_send_threw");
+    throw new AppError(HTTP_UNAVAILABLE, t("server.auth.signup_code_send_failed"));
   });
   logMailResult(result, { subject: "signup_code" });
   if (result.status !== "sent" && result.status !== "backend_console") {

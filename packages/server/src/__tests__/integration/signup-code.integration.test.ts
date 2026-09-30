@@ -194,8 +194,20 @@ describe("starting a sign-up", () => {
     expect(await statusOf(startSignup({ ticket: null, email, password: "password1", locale: "en" }))).toBe(503);
 
     sent.result = { status: "sent" };
-  sent.during = null;
-  hashing.during = null;
+    const retried = await startSignup({ ticket: null, email, password: "password1", locale: "en" });
+    expect(retried.ticket).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+});
+
+describe("sending the code fails by throwing", () => {
+  it("answers 503 and gives the wait back when the mail transport throws", async () => {
+    const email = freshEmail();
+    sent.during = async () => {
+      throw new Error("connect ECONNREFUSED");
+    };
+    expect(await statusOf(startSignup({ ticket: null, email, password: "password1", locale: "en" }))).toBe(503);
+
+    sent.during = null;
     const retried = await startSignup({ ticket: null, email, password: "password1", locale: "en" });
     expect(retried.ticket).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
