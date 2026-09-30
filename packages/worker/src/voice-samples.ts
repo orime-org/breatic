@@ -2,26 +2,24 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * One-shot deploy step: make every voice sample the catalog names that this
- * deployment's bucket does not serve yet (#2156, design §16.4). Runs from
- * docker compose after each deploy, and locally as `pnpm voice-samples`.
- *
- * The application services do not wait for it: a sample still missing plays
- * nothing, and the next run makes it. A run with samples still missing exits
- * non-zero so `docker compose ps` shows it.
+ * Make every voice sample the catalog names that its fixed public address
+ * (`base_url` in config/voice-samples.json, #2239) does not serve yet. Run as
+ * `pnpm voice-samples` by whoever adds voices to the catalog, with storage
+ * settings that publish to that address; every deployment plays the samples
+ * from there. A run with samples still missing exits non-zero.
  */
 
 // MUST be first: reads process.env + initCore before any env.* read.
 import "@worker/bootstrap-config.js";
 
 import { getStorageAdapter, logger } from "@breatic/core";
-import { getFullModelConfig } from "@breatic/domain";
+import { getFullModelConfig, getVoiceSampleConfig, voiceSampleUrl } from "@breatic/domain";
 import { httpRequest } from "@breatic/shared";
 
 import { acquireSemaphore, resolveModel } from "@worker/providers/shared.js";
 import { runPrediction } from "@worker/providers/wavespeed.js";
 import { planVoiceSamples, type VoiceSampleJob } from "@worker/voice-samples/plan.js";
-import { loadVoiceSampleConfig, servedFromHead, syncVoiceSamples } from "@worker/voice-samples/sync.js";
+import { assertUploadsReachSampleAddress, servedFromHead, syncVoiceSamples } from "@worker/voice-samples/sync.js";
 
 /** Passes a failing sample gets; upstream rate limits clear between them. */
 const ATTEMPTS = 3;
@@ -53,10 +51,11 @@ async function generate(job: VoiceSampleJob): Promise<Buffer> {
  */
 async function main(): Promise<void> {
   const storage = await getStorageAdapter();
-  const jobs = planVoiceSamples(getFullModelConfig("tts").models, await loadVoiceSampleConfig());
+  assertUploadsReachSampleAddress((key) => storage.publicUrl(key), voiceSampleUrl);
+  const jobs = planVoiceSamples(getFullModelConfig("tts").models, getVoiceSampleConfig());
   const report = await syncVoiceSamples(jobs, {
     exists: async (key) =>
-      servedFromHead(key, (await httpRequest(storage.publicUrl(key), { method: "HEAD" }, { replaySafe: true })).status),
+      servedFromHead(key, (await httpRequest(voiceSampleUrl(key), { method: "HEAD" }, { replaySafe: true })).status),
     generate,
     upload: async (key, bytes) => {
       await storage.upload(key, bytes, "audio/mpeg");

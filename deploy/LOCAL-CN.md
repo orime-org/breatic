@@ -205,7 +205,7 @@ docker compose ps -a
 docker compose logs --tail=100 migrate
 ```
 
-启动顺序是基础设施健康 → 迁移两个数据库 → API / 协作 / 后台任务 → Web。`migrate` 成功退出（`Exited (0)`）是正常状态；它不是常驻服务。`voice-samples` 也是一次性服务：它把模型目录里写到、而本部署存储桶里还没有的音色样音生成出来（不用 Docker 时跑 `pnpm voice-samples` 效果相同）。其他服务不等它；它非零退出表示还有样音没生成，下次部署会补上。其他服务应处于运行状态，API、collab、worker、postgres、redis 应健康。
+启动顺序是基础设施健康 → 迁移两个数据库 → API / 协作 / 后台任务 → Web。`migrate` 成功退出（`Exited (0)`）是正常状态；它不是常驻服务。其他服务应处于运行状态，API、collab、worker、postgres、redis 应健康。
 
 用浏览器打开 **http://localhost**，注册自己的账号、保存恢复码并完成个人 Studio 设置。首次迁移失败时不要绕过 `migrate` 启动应用。
 

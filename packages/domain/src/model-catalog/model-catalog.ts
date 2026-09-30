@@ -137,7 +137,7 @@ export interface FullModelEntry {
     gender?: string;
     description?: string;
     sample_url?: string | null;
-    /** A sample we generated, as a key in this deployment's bucket (#2156). */
+    /** A sample we generated, as a path under config/voice-samples.json's `base_url` (#2156, #2239). */
     sample_key?: string;
     /** Generated samples by language value, for a voice that speaks any of them. */
     sample_keys?: Record<string, string>;
