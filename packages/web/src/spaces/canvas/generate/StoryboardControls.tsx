@@ -87,9 +87,9 @@ export interface ShotRow {
   readonly duration: number;
 }
 
-interface ShotListProps {
+interface ShotListProps<Shot extends ShotRow> {
   /** The shots, in order. */
-  shots: readonly ShotRow[];
+  shots: readonly Shot[];
   /** The model's total seconds. */
   total: number;
   /** The most shots the model takes; undefined when uncapped. */
@@ -103,7 +103,7 @@ interface ShotListProps {
   /** Add a shot at the end. */
   onAdd: () => void;
   /** The prompt box of each shot, drawn by the container. */
-  renderEditor: (shotId: string, index: number) => React.ReactNode;
+  renderEditor: (shot: Shot, index: number) => React.ReactNode;
 }
 
 /**
@@ -137,7 +137,7 @@ function addBlockedKey(
  * @param root0.renderEditor - Draws a shot's prompt box.
  * @returns The list.
  */
-export function ShotList({
+export function ShotList<Shot extends ShotRow>({
   shots,
   total,
   maxShots,
@@ -146,7 +146,7 @@ export function ShotList({
   onRemove,
   onAdd,
   renderEditor,
-}: ShotListProps): React.JSX.Element {
+}: ShotListProps<Shot>): React.JSX.Element {
   const t = useTranslation();
   const durations = shots.map((shot) => shot.duration);
   const addBlocked = addBlockedKey(durations, total, maxShots);
@@ -215,7 +215,7 @@ export function ShotList({
               {t('canvas.generatePanel.storyboard.removeShot')}
             </Button>
           </div>
-          {renderEditor(shot.id, index)}
+          {renderEditor(shot, index)}
         </div>
       ))}
       <div className='flex items-center gap-2'>

@@ -3,7 +3,7 @@
 
 /**
  * The storyboard's part of one video run (#2218, design §6), one answer for
- * the button, the submit and the payload.
+ * the submit's gate and its payload.
  *
  * Off sends the main prompt and nothing else; the automatic tier sends the
  * main prompt and names itself; the per-shot tier sends every shot in place of
@@ -40,7 +40,7 @@ const OFF: StoryboardRun = { sendsPrompt: true, params: {}, gate: undefined };
 /**
  * The storyboard's part of a run.
  * @param spec - The current model's storyboard, undefined for a model with none.
- * @param kind - The tier stored for the current mode.
+ * @param kind - The tier in effect (`effectiveStoryboardKind`), off for a model with none.
  * @param shots - The mode's shots, in order.
  * @param total - The run's total seconds.
  * @param pool - The node's reference rows, for what a text chip says.

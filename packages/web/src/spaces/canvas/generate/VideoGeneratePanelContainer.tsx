@@ -13,6 +13,7 @@ import {
   readCanvasGraph,
   setNodeMode,
   setNodeModel,
+  runCanvasUndoBatch,
   setNodeParams,
   type CanvasEdge,
   type CanvasNodeView,
@@ -26,6 +27,7 @@ import {
   retotalStoryboard,
   setStoryboardKind,
   stepStoryboardShot,
+  type StoryboardShotView,
 } from '@web/data/yjs/node-storyboard';
 import { useStoryboard } from '@web/data/yjs/use-storyboard';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
@@ -285,12 +287,9 @@ function VideoGeneratePanelBody({
   const storedKind: StoryboardKind = storyboard?.kind ?? 'off';
   const tier = effectiveStoryboardKind(vm.modelEntry?.params ?? {}, storyboard?.kind);
   const total = totalOf(spec, vm.params);
-  // Every keystroke inside a shot produces a new list from `useStoryboard`;
-  // what the list draws only changes with the shots' ids and seconds, so the
-  // rows are held stable on those and the memoized panel below can bail.
-  const shotsKey = storyboard?.shots.map((shot) => `${shot.id}:${String(shot.duration)}`).join(',');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const shots = React.useMemo(() => storyboard?.shots, [shotsKey]);
+  // A fresh list only when a shot is added, removed, brought back or given
+  // other seconds; words typed in a shot leave it as it is (`useStoryboard`).
+  const shots = storyboard?.shots;
 
   // The box the caret was last in, so the rail's insert button lands there:
   // the main prompt, or one shot's box by its id. Same shape as the audio
@@ -387,15 +386,15 @@ function VideoGeneratePanelBody({
     ...references,
     ...vm.focusImages.map(focusToRailItem),
   ]);
+  // The submit serializes shots itself and needs what each text chip says:
+  // the latest rows the editors were handed.
+  const referencesRef = React.useRef(stableReferences);
+  referencesRef.current = stableReferences;
   // The picked slot URLs are a fresh object per view-model build, on the same
   // terms as the references above — at most one short string per slot, so a
   // stringify key is cheap and exact. Before the slots were collected into one
   // object the panel got a plain string and bailed on its own; keying on the
   // content keeps that.
-  // The submit serializes shots itself and needs what each text chip says:
-  // the latest rows the editors were handed.
-  const referencesRef = React.useRef(stableReferences);
-  referencesRef.current = stableReferences;
   const stableSlotUrls = useContentStable(vm.slotUrls);
   // The display URLs are a second object rebuilt just as often, so they need
   // the same treatment: one unstable prop is enough to make both memos below
@@ -471,14 +470,17 @@ function VideoGeneratePanelBody({
         partial,
         live.model,
       );
-      setNodeParams(projectId, spaceId, nodeId, paramsByModel);
       // A new total re-splits the shots in the per-shot tier (design §5.3);
-      // `retotalStoryboard` leaves the other tiers' shots alone.
+      // `retotalStoryboard` leaves the other tiers' shots alone. One gesture,
+      // so one undo takes back both.
       const liveSpec = specOf(live.modelEntry);
       const next = liveSpec?.totalParam === undefined
         ? undefined
         : (partial as Record<string, unknown>)[liveSpec.totalParam];
-      if (typeof next === 'number') retotalStoryboard(projectId, spaceId, nodeId, live.mode, next);
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        setNodeParams(projectId, spaceId, nodeId, paramsByModel);
+        if (typeof next === 'number') retotalStoryboard(projectId, spaceId, nodeId, live.mode, next);
+      });
     },
     [projectId, spaceId, nodeId, freshVm, freshContent],
   );
@@ -919,35 +921,30 @@ function VideoGeneratePanelBody({
   // own fragment. Its words and mentions are read off the fragment at submit,
   // so it reports them to nobody.
   const renderShotEditor = React.useCallback(
-    (shotId: string, index: number) => {
-      const shot = shots?.find((s) => s.id === shotId);
-      if (!shot) return null;
-      return (
-        <PromptEditor
-          ref={(handle) => {
-            if (handle) shotEditors.current.set(shotId, handle);
-            else shotEditors.current.delete(shotId);
-          }}
-          testId={`generate-storyboard-shot-${index + 1}-editor`}
-          startingHeight='half'
-          fragment={shot.prompt}
-          placeholder={shotPlaceholder}
-          onTextChange={IGNORE}
-          onAtMentionsChange={IGNORE}
-          onFocus={() => {
-            lastFocusedBox.current = shotId;
-          }}
-          references={stableReferences}
-          referenceKinds={referenceKinds}
-          mentionEmptyLabel={mentionEmptyLabel}
-          mentionNoMatchLabel={mentionNoMatchLabel}
-          caretProvider={caretProvider}
-          mentionTokens={stableMentionTokens}
-        />
-      );
-    },
+    (shot: StoryboardShotView, index: number) => (
+      <PromptEditor
+        ref={(handle) => {
+          if (handle) shotEditors.current.set(shot.id, handle);
+          else shotEditors.current.delete(shot.id);
+        }}
+        testId={`generate-storyboard-shot-${index + 1}-editor`}
+        startingHeight='half'
+        fragment={shot.prompt}
+        placeholder={shotPlaceholder}
+        onTextChange={IGNORE}
+        onAtMentionsChange={IGNORE}
+        onFocus={() => {
+          lastFocusedBox.current = shot.id;
+        }}
+        references={stableReferences}
+        referenceKinds={referenceKinds}
+        mentionEmptyLabel={mentionEmptyLabel}
+        mentionNoMatchLabel={mentionNoMatchLabel}
+        caretProvider={caretProvider}
+        mentionTokens={stableMentionTokens}
+      />
+    ),
     [
-      shots,
       shotPlaceholder,
       stableReferences,
       referenceKinds,
@@ -1001,13 +998,6 @@ function VideoGeneratePanelBody({
     onRemoveShot,
     onAddShot,
   ]);
-  // What the button reads the storyboard as, on the same terms as the submit.
-  // Read off the live shots (`storyboard`), whose words change without the
-  // rows above changing.
-  const renderRun = React.useMemo(
-    () => storyboardRun(spec, tier, storyboard?.shots ?? [], total, stableReferences, stableMentionTokens),
-    [spec, tier, storyboard, total, stableReferences, stableMentionTokens],
-  );
 
   return (
     <VideoGeneratePanel
@@ -1052,7 +1042,6 @@ function VideoGeneratePanelBody({
             vm.referenceUrls,
           ),
           pools: poolCounts(vm.pool, vm.referenceUrls),
-          storyboard: renderRun.gate,
         })?.refusal ?? null
       }
       promptSlot={promptSlot}

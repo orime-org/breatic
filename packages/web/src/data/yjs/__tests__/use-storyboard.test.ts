@@ -9,6 +9,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { CanvasNodeFields } from '@breatic/shared';
+import * as Y from 'yjs';
 
 import { _resetForTests } from '@web/data/yjs/manager';
 import { addNode } from '@web/data/yjs/canvas-space';
@@ -50,6 +51,18 @@ describe('following a storyboard', () => {
     const first = result.current?.shots[0]?.id ?? '';
     act(() => stepStoryboardShot(PID, SID, 'v1', 't2v', first, 1));
     expect(result.current?.shots.map((s) => s.duration)).toEqual([3, 2]);
+  });
+
+  it('keeps the same read while words are typed inside a shot', () => {
+    const { result } = renderHook(() => useStoryboard(PID, SID, 'v1', 't2v'));
+    act(() => enterStoryboardShots(PID, SID, 'v1', 't2v', 5));
+    const before = result.current;
+    act(() => {
+      const paragraph = new Y.XmlElement('paragraph');
+      paragraph.insert(0, [new Y.XmlText('a paper boat')]);
+      before?.shots[0]?.prompt.insert(0, [paragraph]);
+    });
+    expect(result.current).toBe(before);
   });
 
   it('reads another mode on its own', () => {

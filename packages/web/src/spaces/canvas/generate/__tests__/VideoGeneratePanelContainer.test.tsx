@@ -59,13 +59,14 @@ import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-optio
 import {
   addEdge,
   addNode,
+  getCanvasUndoManager,
   getPromptFragment,
   readCanvasGraph,
   removeNode,
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
-import { enterStoryboardShots, readStoryboard, setStoryboardKind } from '@web/data/yjs/node-storyboard';
+import { enterStoryboardShots, readStoryboard, setStoryboardKind, storyboardMapOf } from '@web/data/yjs/node-storyboard';
 import { canvasApi } from '@web/data/api/canvas';
 
 import {
@@ -2309,6 +2310,56 @@ describe('the storyboard (#2218)', () => {
     fireEvent.click(screen.getByTestId('generate-video-execute'));
     await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Shot 2 is empty', expect.anything()));
     expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it('binds a shot box to the words a restore brings back under the same id and seconds', async () => {
+    await openKling(() => {
+      enterStoryboardShots('p', 's', 'target', 't2v', 5);
+      typeShot(1, 'the words before');
+    });
+    await screen.findByText('the words before');
+    // A collaborator's remove and undo, arriving as one update: the shot
+    // comes back as a new map with the same id and seconds and a new prompt.
+    const board = storyboardMapOf('p', 's', 'target', 't2v');
+    const shots = board?.get('shots') as Y.Array<Y.Map<unknown>>;
+    act(() => {
+      getDoc(docName.canvasSpace('p', 's')).transact(() => {
+        const old = shots.get(1);
+        const restored = new Y.Map<unknown>();
+        restored.set('id', old.get('id'));
+        restored.set('duration', old.get('duration'));
+        const prompt = new Y.XmlFragment();
+        const paragraph = new Y.XmlElement('paragraph');
+        paragraph.insert(0, [new Y.XmlText('the words restored')]);
+        prompt.insert(0, [paragraph]);
+        restored.set('prompt', prompt);
+        shots.delete(1, 1);
+        shots.insert(1, [restored]);
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-storyboard-shot-2-editor').textContent).toContain('the words restored'),
+    );
+  });
+
+  it('takes back a new total and the shots it re-split in one undo', async () => {
+    await openKling(() => enterStoryboardShots('p', 's', 'target', 't2v', 5));
+    const name = docName.canvasSpace('p', 's');
+    const undo = getCanvasUndoManager(getDoc(name), name);
+    undo.clear();
+    fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-video-duration-option-10'));
+    await waitFor(() =>
+      expect(readStoryboard('p', 's', 'target', 't2v')?.shots.map((s) => s.duration)).toEqual([4, 6]),
+    );
+    act(() => {
+      undo.undo();
+    });
+    expect(readStoryboard('p', 's', 'target', 't2v')?.shots.map((s) => s.duration)).toEqual([2, 3]);
+    const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data as {
+      paramsByModel?: Record<string, Record<string, unknown>>;
+    };
+    expect(data.paramsByModel?.['kling-v3']?.duration ?? 5).toBe(5);
   });
 
   it('sends the main prompt beside the automatic tier', async () => {
