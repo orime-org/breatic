@@ -20,7 +20,6 @@ import {
 import { setStoryboardKind, setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import {
-  remainingFeeders,
   writeProposalPrompt,
   type ProposalFeeders,
   type ProposalSource,
@@ -302,8 +301,7 @@ export function useNodeCreation(
           // each shot; their marks pair with the feeders in that one order.
           let feeders = feedersOnCanvas(proposal, i, nodeIds);
           const fragment = getPromptFragment(projectId, spaceId, id, node.mode);
-          if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt, feeders);
-          feeders = remainingFeeders(node.prompt ?? [], feeders);
+          if (fragment && node.prompt) feeders = writeProposalPrompt(fragment, node.prompt, feeders);
           if (node.shots) {
             const shotFragments = setStoryboardShots(
               projectId,
@@ -314,8 +312,7 @@ export function useNodeCreation(
             );
             node.shots.forEach((shot, k) => {
               const target = shotFragments[k];
-              if (target) writeProposalPrompt(target, shot.prompt, feeders);
-              feeders = remainingFeeders(shot.prompt, feeders);
+              if (target) feeders = writeProposalPrompt(target, shot.prompt, feeders);
             });
           } else if (node.storyboard === 'auto') {
             setStoryboardKind(projectId, spaceId, id, node.mode, 'auto');

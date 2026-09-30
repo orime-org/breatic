@@ -69,13 +69,13 @@ type Inline = { text: string } | { mention: ProposalSource };
  * would break the box the moment the reader opened it.
  * @param segments - The prompt as the model sent it.
  * @param feeders - The nodes the marks mention, each list in its own order.
- * @returns One array of inline pieces per line.
+ * @returns One array of inline pieces per line, and the feeders no mark took.
  * @throws {never} Never.
  */
 function layOut(
   segments: readonly PromptSegment[],
   feeders: ProposalFeeders,
-): Inline[][] {
+): { lines: Inline[][]; rest: ProposalFeeders } {
   const lines: Inline[][] = [[]];
   /**
    * Append some words to the current line, starting new lines at newlines.
@@ -114,7 +114,10 @@ function layOut(
     }
     addText(segment.text);
   }
-  return lines;
+  return {
+    lines,
+    rest: { sources: feeders.sources.slice(assetsSeen), upstream: feeders.upstream.slice(pointsSeen) },
+  };
 }
 
 /**
@@ -173,14 +176,18 @@ function blockFor(line: readonly Inline[]): Y.XmlElement {
  * @param prompt - The node's prompt fragment.
  * @param segments - The prompt as the model sent it.
  * @param feeders - The nodes the marks mention, each list in its own order.
+ * @returns The feeders no mark took, for the next part of the same node
+ *   (#2218): a node's marks pair with its feeders in one order across the main
+ *   prompt and then each shot.
  * @throws {never} Never.
  */
 export function writeProposalPrompt(
   prompt: Y.XmlFragment,
   segments: readonly PromptSegment[],
   feeders: ProposalFeeders,
-): void {
-  const blocks = layOut(segments, feeders).map((line) => blockFor(line));
+): ProposalFeeders {
+  const { lines, rest } = layOut(segments, feeders);
+  const blocks = lines.map((line) => blockFor(line));
   /**
    * Swap the fragment's whole content for the new blocks.
    */
@@ -190,23 +197,5 @@ export function writeProposalPrompt(
   };
   if (prompt.doc) prompt.doc.transact(replace);
   else replace();
-}
-
-/**
- * The feeders left once some segments have taken theirs, for writing the next
- * part of the same node (#2218). A node's marks pair with its feeders in one
- * order across the main prompt and then each shot, so each part is written
- * with what the parts before it did not use.
- * @param segments - The part just written.
- * @param feeders - The feeders it was written with.
- * @returns The feeders for the next part.
- * @throws {never} Never.
- */
-export function remainingFeeders(
-  segments: readonly PromptSegment[],
-  feeders: ProposalFeeders,
-): ProposalFeeders {
-  const assets = segments.filter((segment) => segment.slot?.kind === 'asset').length;
-  const refs = segments.filter((segment) => segment.slot?.kind === 'ref').length;
-  return { sources: feeders.sources.slice(assets), upstream: feeders.upstream.slice(refs) };
+  return rest;
 }
