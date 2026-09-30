@@ -229,12 +229,11 @@ function VideoGeneratePanelBody({
   );
   const mode = nodeVideoMode(nodes, nodeId, availableModes);
 
-  // Resolved in an effect, not during render: the node id and the mode can
-  // change under a mounted panel and this keeps that transition in one place.
-  // Each mode keeps its own prompt (#2218), so a mode switch binds the editor
-  // to that mode's words. Null means the node predates prompt seeding (see
-  // getPromptFragment) — the panel then renders without an editor rather than
-  // minting a fragment behind the user.
+  // Read during render: `getPromptFragment` is a synchronous document read with
+  // no side effect. Each mode keeps its own prompt (#2218), so a mode switch
+  // binds the editor to that mode's words. Null means the node predates prompt
+  // seeding (see getPromptFragment) — the panel then renders without a prompt
+  // editor rather than minting a fragment behind the user's back.
   const fragment = React.useMemo(
     () => getPromptFragment(projectId, spaceId, nodeId, mode),
     [projectId, spaceId, nodeId, mode],

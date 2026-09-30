@@ -238,13 +238,11 @@ function GeneratePanelBody({
       buildGeneratePanelViewModel({ nodeId, nodes, edges, models, textById }),
     [nodeId, nodes, edges, models, textById],
   );
-  // Resolve the prompt fragment in an effect, NOT during render. Reading is
-  // pure since #1880, but the node id and the mode can change under a mounted
-  // panel and an effect keeps that transition in one place. Each mode keeps
-  // its own prompt (#2218), so switching mode binds the editor to that mode's
-  // words. Null means the node predates the seeding (see getPromptFragment) —
-  // the panel then renders without a prompt editor rather than minting a
-  // fragment behind the user's back.
+  // Read during render: `getPromptFragment` is a synchronous document read with
+  // no side effect. Each mode keeps its own prompt (#2218), so a mode switch
+  // binds the editor to that mode's words. Null means the node predates prompt
+  // seeding (see getPromptFragment) — the panel then renders without a prompt
+  // editor rather than minting a fragment behind the user's back.
   const fragment = React.useMemo(
     () => getPromptFragment(projectId, spaceId, nodeId, vm.mode),
     [projectId, spaceId, nodeId, vm.mode],
