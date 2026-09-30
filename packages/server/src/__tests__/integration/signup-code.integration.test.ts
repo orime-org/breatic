@@ -23,7 +23,25 @@ interface StubMailResult {
 
 const sent = vi.hoisted(() => {
   const result: StubMailResult = { status: "sent" };
-  return { mails: [] as { to: string; subject: string; text: string }[], result };
+  return {
+    mails: [] as { to: string; subject: string; text: string }[],
+    result,
+    /** Runs while the mail is being sent. */
+    during: null as null | (() => Promise<void>),
+  };
+});
+
+/** Runs while a password is being hashed. */
+const hashing = vi.hoisted(() => ({ during: null as null | (() => Promise<void>) }));
+
+vi.mock("bcryptjs", async (importOriginal: () => Promise<{ default: Record<string, unknown> }>) => {
+  const actual = (await importOriginal()).default as { hash: (pw: string, rounds: number) => Promise<string> };
+  const hash = async (pw: string, rounds: number): Promise<string> => {
+    const hashed = await actual.hash(pw, rounds);
+    await hashing.during?.();
+    return hashed;
+  };
+  return { default: { ...actual, hash } };
 });
 
 vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => {
@@ -32,6 +50,7 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
     ...actual,
     sendMail: async (mail: { to: string; subject: string; text: string }) => {
       sent.mails.push(mail);
+      await sent.during?.();
       return sent.result;
     },
   };
@@ -44,7 +63,7 @@ vi.mock("@server/config/auth.js", () => ({
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import postgres from "postgres";
-import { initCore, loadLocales, AppError, TooManyRequestsError } from "@breatic/core";
+import { initCore, loadLocales, AppError, TooManyRequestsError, env, getRedis } from "@breatic/core";
 
 try {
   initCore(process.env);
@@ -67,6 +86,8 @@ beforeAll(() => {
 afterEach(async () => {
   sent.mails.length = 0;
   sent.result = { status: "sent" };
+  sent.during = null;
+  hashing.during = null;
   for (const email of createdEmails.splice(0)) {
     await sql`UPDATE users SET deleted_at = now() WHERE email = ${email} AND deleted_at IS NULL`;
   }
@@ -105,6 +126,11 @@ async function statusOf(p: Promise<unknown>): Promise<number> {
     throw err;
   }
   throw new Error("expected a rejection");
+}
+
+/** The Redis key of a ticket's pending sign-up. */
+function pendingKey(ticket: string): string {
+  return `${env.ENV}:signup:${crypto.createHash("sha256").update(ticket).digest("hex")}`;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -168,6 +194,8 @@ describe("starting a sign-up", () => {
     expect(await statusOf(startSignup({ ticket: null, email, password: "password1", locale: "en" }))).toBe(503);
 
     sent.result = { status: "sent" };
+  sent.during = null;
+  hashing.during = null;
     const retried = await startSignup({ ticket: null, email, password: "password1", locale: "en" });
     expect(retried.ticket).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
@@ -279,5 +307,28 @@ describe("resending the code", () => {
   it("answers 410 to an unknown ticket", async () => {
     expect(await statusOf(resendSignupCode("no-such-ticket"))).toBe(410);
     expect(await statusOf(resendSignupCode(null))).toBe(410);
+  });
+
+  it("answers 410 when the sign-up expires while the new code is being mailed", async () => {
+    const email = freshEmail();
+    const { ticket } = await startSignup({ ticket: null, email, password: "password1", locale: "en" });
+    await sleep(1100);
+    sent.during = async () => {
+      await getRedis().del(pendingKey(ticket));
+    };
+    expect(await statusOf(resendSignupCode(ticket))).toBe(410);
+    expect(await getRedis().exists(pendingKey(ticket))).toBe(0);
+  });
+});
+
+describe("submitting the form again as the sign-up expires", () => {
+  it("never leaves a pending sign-up without a lifetime", async () => {
+    const email = freshEmail();
+    const first = await startSignup({ ticket: null, email, password: "password1", locale: "en" });
+    hashing.during = async () => {
+      await getRedis().del(pendingKey(first.ticket));
+    };
+    await startSignup({ ticket: first.ticket, email, password: "password2", locale: "en" }).catch(() => undefined);
+    expect(await getRedis().pttl(pendingKey(first.ticket))).not.toBe(-1);
   });
 });

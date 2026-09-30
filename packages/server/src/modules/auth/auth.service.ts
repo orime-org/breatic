@@ -17,7 +17,7 @@ import {
   hashRecoveryCode,
   verifyRecoveryCode,
 } from "@server/modules/auth/recovery-code.service.js";
-import { buildTokenLinkMail } from "@server/modules/auth/auth-mail.js";
+import { buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import { env } from "@breatic/core";
@@ -35,6 +35,15 @@ import { getActiveLocale, t } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
+
+/**
+ * Hash an account password at the cost every stored password uses.
+ * @param password - The password as typed.
+ * @returns The bcrypt hash to store.
+ */
+export function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
 
 /**
  * Register a new user with email and password (step 1 of 2).
@@ -66,7 +75,7 @@ export async function register(
     throw new ConflictError(t("server.auth.email_taken"));
   }
 
-  const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  const hashedPassword = await hashPassword(password);
   const user = await userRepo.createUser({ email, hashedPassword, locale: getActiveLocale() });
 
   // Generate + store recovery code. Done after createUser so we have
@@ -287,7 +296,7 @@ export async function forgotPassword(
   await redis.set(key, user.id, "EX", RESET_TOKEN_TTL);
 
   const mailResult = await sendMail(
-    await buildTokenLinkMail("password_reset", {
+    await buildPasswordResetMail({
       locale: user.locale,
       to: email,
       url: `${resetBaseUrl}?token=${token}`,
@@ -313,7 +322,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
     throw new UnauthorizedError(t("server.auth.invalid_reset_token"));
   }
 
-  const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  const hashed = await hashPassword(newPassword);
   await userRepo.updatePassword(userId, hashed);
 
   // Delete the token so it can't be reused
@@ -372,7 +381,7 @@ export async function resetPasswordWithRecoveryCode(
   }
 
   // 1. Update password (bcrypt cost 12).
-  const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  const hashedPassword = await hashPassword(newPassword);
   await userRepo.updatePassword(user.id, hashedPassword);
 
   // 2. Mark current code consumed.

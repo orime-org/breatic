@@ -16,9 +16,9 @@
  */
 
 import crypto from "node:crypto";
-import bcrypt from "bcryptjs";
 
 import * as userRepo from "@server/modules/auth/user.repo.js";
+import { hashPassword } from "@server/modules/auth/auth.service.js";
 import { buildSignupCodeMail } from "@server/modules/auth/auth-mail.js";
 import { getSignupCodeConfig } from "@server/config/auth.js";
 import { logMailResult } from "@server/utils/log-mail.js";
@@ -34,7 +34,6 @@ import {
 import { t } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 
-const BCRYPT_ROUNDS = 12;
 const CODE_SPACE = 1_000_000;
 const CODE_DIGITS = 6;
 const TICKET_BYTES = 32;
@@ -132,6 +131,41 @@ async function takeCooldown(email: string): Promise<void> {
 }
 
 /**
+ * Put a new code on a pending sign-up that still exists, with a fresh count
+ * and lifetime. A sign-up that expired meanwhile is left gone.
+ *
+ * KEYS[1] pending sign-up · ARGV[1] sha256 of the code · ARGV[2] lifetime in seconds.
+ * Returns 1 stored · 0 no such sign-up.
+ */
+const STORE_CODE_SCRIPT = `
+if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+redis.call('HSET', KEYS[1], 'codeHash', ARGV[1], 'attempts', '0')
+redis.call('EXPIRE', KEYS[1], ARGV[2])
+return 1
+`;
+
+/**
+ * Replace the password and language of a pending sign-up for the same
+ * address, keeping its lifetime. A pending sign-up for another address is
+ * deleted.
+ *
+ * KEYS[1] pending sign-up · ARGV[1] normalized address · ARGV[2] address as
+ * typed · ARGV[3] password hash · ARGV[4] language.
+ * Returns the milliseconds the sign-up has left · 0 no such sign-up or another address.
+ */
+const UPDATE_PENDING_SCRIPT = `
+local held = redis.call('HGET', KEYS[1], 'emailKey')
+if held ~= ARGV[1] then
+  if held then redis.call('DEL', KEYS[1]) end
+  return 0
+end
+local left = redis.call('PTTL', KEYS[1])
+if left <= 0 then return 0 end
+redis.call('HSET', KEYS[1], 'email', ARGV[2], 'passwordHash', ARGV[3], 'locale', ARGV[4])
+return left
+`;
+
+/**
  * Mail a fresh code and, once it is out, store its hash on the pending
  * sign-up with a fresh count and lifetime. The caller already holds the
  * address's wait; a mail that did not go out gives the wait back.
@@ -155,12 +189,14 @@ async function sendCode(ticket: string, email: string, locale: string): Promise<
     await getRedis().del(cooldownKey(email));
     throw new AppError(HTTP_UNAVAILABLE, t("server.auth.signup_code_send_failed"));
   }
-  const key = signupKey(ticket);
-  await getRedis()
-    .multi()
-    .hset(key, { codeHash: sha256(code), attempts: "0" })
-    .expire(key, ttlSeconds)
-    .exec();
+  const stored = await getRedis().eval(
+    STORE_CODE_SCRIPT,
+    1,
+    signupKey(ticket),
+    sha256(code),
+    String(ttlSeconds),
+  );
+  if (stored === 0) throw new AppError(HTTP_GONE, t("server.auth.signup_expired"));
   return { ticket, expiresInSeconds: ttlSeconds, resendAfterSeconds: resendCooldownSeconds };
 }
 
@@ -191,32 +227,35 @@ export async function startSignup(input: {
     throw new ConflictError(t("server.auth.email_taken"));
   }
   const redis = getRedis();
+  const passwordHash = await hashPassword(input.password);
 
   if (input.ticket !== null) {
-    const key = signupKey(input.ticket);
-    const held = await redis.hget(key, "emailKey");
-    if (held === normalizeEmail(email)) {
-      const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
-      await redis.hset(key, { email, passwordHash, locale: input.locale });
+    const leftMs = Number(
+      await redis.eval(
+        UPDATE_PENDING_SCRIPT,
+        1,
+        signupKey(input.ticket),
+        normalizeEmail(email),
+        email,
+        passwordHash,
+        input.locale,
+      ),
+    );
+    if (leftMs > 0) {
       const waitMs = await redis.pttl(cooldownKey(email));
       if (waitMs > 0) {
         return {
           ticket: input.ticket,
-          expiresInSeconds: Math.ceil((await redis.pttl(key)) / MS_PER_SECOND),
+          expiresInSeconds: Math.ceil(leftMs / MS_PER_SECOND),
           resendAfterSeconds: Math.ceil(waitMs / MS_PER_SECOND),
         };
       }
       await takeCooldown(email);
       return sendCode(input.ticket, email, input.locale);
     }
-    if (held !== null) await redis.del(key);
   }
 
   await takeCooldown(email);
-  const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS).catch(async (err: unknown) => {
-    await redis.del(cooldownKey(email));
-    throw err;
-  });
   const ticket = crypto.randomBytes(TICKET_BYTES).toString("base64url");
   const key = signupKey(ticket);
   const { ttlSeconds } = getSignupCodeConfig();
