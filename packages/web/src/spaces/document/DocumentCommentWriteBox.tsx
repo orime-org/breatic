@@ -30,7 +30,7 @@ import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 const BOX_MAX_HEIGHT = 'max-h-[88px]';
 
 interface WriteBoxProps {
-  /** Names this box's three testids, as `doc-comment-<name>-input` and so on. */
+  /** Names this box's four testids, as `doc-comment-<name>-input` and so on. */
   name: string;
   /** What has been written. */
   value: string;

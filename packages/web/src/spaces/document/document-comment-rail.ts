@@ -43,7 +43,7 @@ export interface RailCard {
 export interface CommentRail {
   /** Open cards, in body order. */
   readonly unresolved: readonly RailCard[];
-  /** Resolved cards, in the same order, for the collapsed group. */
+  /** Resolved cards, in the same order, shown under the "all" filter. */
   readonly resolved: readonly RailCard[];
 }
 

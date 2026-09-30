@@ -20,9 +20,10 @@
  * A dropped draft says why until the reader dismisses it: the text it was
  * aimed at is gone (A21), or their right to write here was taken away (A22).
  *
- * WHICH WORDS ARE BEING COMMENTED ON is said by the body itself, in the
- * comment colours: the draft range paints them (design §9.4.1). This card
- * says only whether it is the card being read, the way every card does.
+ * WHICH WORDS ARE BEING COMMENTED ON is said twice: the body paints them in
+ * the comment colours through the draft range (design §9.4.1), and the card
+ * quotes them in one line at its top, the way a saved card does, read from
+ * the body on every change.
  */
 
 import { TextSelection } from '@tiptap/pm/state';

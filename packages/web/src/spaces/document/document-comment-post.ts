@@ -77,9 +77,9 @@ export async function postComment(
   })) as ThreadData;
 
   // Read again: creating the thread was a round trip, and the body may have
-  // moved or lost those words while it was in flight. The thread stays —
-  // it is in the map, so the panel lists it, and §9.2's S3 is exactly this
-  // shape: unresolved with nothing to point at.
+  // moved or lost those words while it was in flight. The thread stays in
+  // the map, but with no mark it has no entry in the position table, so the
+  // panel leaves it out like any thread whose words are gone — §9.2's S3.
   const landing = draftRangeIn(view.state);
   if (landing === null) return thread;
 

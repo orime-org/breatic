@@ -165,10 +165,11 @@ describe('layOutCards', () => {
   });
 });
 
-describe('a card with no words left', () => {
-  // A thread whose run was deleted has no mark to measure, so it arrives
-  // without an anchor. It still has to sit somewhere, and the one place that
-  // is not on top of another card is below the last one that does have words.
+describe('a card with no anchor', () => {
+  // A card whose words are not measured yet, or a draft whose words are
+  // gone, arrives without an anchor. It still has to sit somewhere, and the
+  // one place that is not on top of another card is below the last one that
+  // does have one.
   it('sits below every card that still has an anchor', () => {
     const placed = layOutCards(
       [

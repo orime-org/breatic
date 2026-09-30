@@ -11,7 +11,7 @@
  * pressing a doubly commented run
  * would get one of the two with no way to tell which, or to reach the other.
  *
- * So this names them all and the reader picks, which is what the three
+ * So this names them all and the reader picks, which is what the two
  * implementations that answer the question do: the comment plugin in
  * ProseMirror's own collab example returns every comment at a position and
  * renders them all, and Lexical holds an array of ids and activates all of
@@ -21,7 +21,7 @@
  * `orphan` is read, as the library's own handler reads it: what a reader can
  * press is what is drawn for them. The library sets that attribute from
  * `!thread || resolved || deletedAt` (grep `isOrphan` in
- * `@blocknote/core/dist/comments.js`) and
+ * `@blocknote/core/src/comments/extension.ts`) and
  * `.bn-thread-mark[data-orphan='true']` paints it transparent, so those words
  * look like any others on the page — and a press there belongs to whoever
  * else wants it, the link handler among them.

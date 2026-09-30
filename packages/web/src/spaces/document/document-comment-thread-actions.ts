@@ -74,7 +74,8 @@ export async function reopenThread(
  * Withdraws a whole thread (A10 · A12).
  *
  * The highlight goes with it: the library's mark sync walks the body whenever
- * the threads change and clears a mark whose thread is gone.
+ * the threads change and rewrites the mark of a thread that is gone with
+ * `orphan` set, which is not painted.
  * @param editor - The document editor.
  * @param threadId - Which thread.
  * @throws {Error} Whatever the thread store throws.

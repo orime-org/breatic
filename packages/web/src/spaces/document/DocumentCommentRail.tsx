@@ -9,9 +9,10 @@
  * does (design §5, user 2026-09-22). The outline on the left is the same
  * shape and arrives with task #97.
  *
- * NOTHING HERE DECIDES WHEN IT IS ON SCREEN. The reader does, through the
- * whole-document menu or this panel's own close button, and `DocumentEditor`
- * holds that one bit. A comment arriving from a peer marks the `⋯` button and
+ * NOTHING HERE DECIDES WHEN IT IS ON SCREEN. The reader does — through the
+ * whole-document menu, by pressing a highlight in the body, by opening a
+ * draft from a comment entry, or with this panel's own close button — and
+ * `DocumentEditor` holds that one bit. A comment arriving from a peer marks the `⋯` button and
  * changes nothing else (§5) — the alternative moves the body sideways under a
  * caret somebody is using.
  *

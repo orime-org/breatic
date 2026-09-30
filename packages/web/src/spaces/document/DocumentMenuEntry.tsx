@@ -98,7 +98,7 @@ function ComingCommand({
 interface DocumentMenuEntryProps {
   /** Whether the comment panel is on screen, which takes this row away. */
   commentsOpen: boolean;
-  /** Opens or closes the comment panel. */
+  /** Opens the comment panel; closing it is the panel's own button. */
   onOpenComments: () => void;
   /**
    * How many threads in this document are unresolved.
