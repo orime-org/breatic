@@ -29,6 +29,7 @@ import {
   removeStoryboardShot,
   retotalStoryboard,
   setStoryboardKind,
+  setStoryboardShots,
   stepStoryboardShot,
 } from '@web/data/yjs/node-storyboard';
 
@@ -144,6 +145,24 @@ describe('one storyboard per video mode', () => {
     const last = readStoryboard(PID, SID, 'gen', 't2v')?.shots[2]?.id ?? '';
     removeStoryboardShot(PID, SID, 'gen', 't2v', last, 10);
     expect(durations()).toEqual([3, 7]);
+  });
+
+  it('re-totals the shots only in the per-shot tier', () => {
+    addNode(PID, SID, nodeOf('video'));
+    enterStoryboardShots(PID, SID, 'gen', 't2v', 5);
+    setStoryboardKind(PID, SID, 'gen', 't2v', 'auto');
+    retotalStoryboard(PID, SID, 'gen', 't2v', 10);
+    expect(readStoryboard(PID, SID, 'gen', 't2v')?.shots.map((shot) => shot.duration)).toEqual([2, 3]);
+  });
+
+  it('lands proposed shots in place of the old ones, in the per-shot tier', () => {
+    addNode(PID, SID, nodeOf('video'));
+    enterStoryboardShots(PID, SID, 'gen', 't2v', 5);
+    const fragments = setStoryboardShots(PID, SID, 'gen', 't2v', [1, 2, 3]);
+    const board = readStoryboard(PID, SID, 'gen', 't2v');
+    expect(board?.kind).toBe('custom');
+    expect(board?.shots.map((shot) => shot.duration)).toEqual([1, 2, 3]);
+    expect(fragments).toEqual(board?.shots.map((shot) => shot.prompt));
   });
 
   it('keeps both shots when two people add one at the same time', () => {

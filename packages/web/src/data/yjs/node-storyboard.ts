@@ -17,6 +17,7 @@ import * as Y from 'yjs';
 import {
   addShot,
   enterCustom,
+  newId,
   removeShot,
   retotal,
   stepShot,
@@ -70,6 +71,16 @@ function shotsOf(board: Y.Map<unknown>): Y.Array<Y.Map<unknown>> | null {
 }
 
 /**
+ * A shot's seconds, zero when it holds none.
+ * @param shot - The shot map.
+ * @returns Its seconds.
+ */
+function durationOf(shot: Y.Map<unknown>): number {
+  const duration = shot.get('duration');
+  return typeof duration === 'number' ? duration : 0;
+}
+
+/**
  * One shot map read as a view.
  * @param shot - The shot map.
  * @returns The view, or null for a malformed entry.
@@ -77,11 +88,8 @@ function shotsOf(board: Y.Map<unknown>): Y.Array<Y.Map<unknown>> | null {
 function shotView(shot: Y.Map<unknown>): StoryboardShotView | null {
   const id = shot.get('id');
   const prompt = shot.get('prompt');
-  const duration = shot.get('duration');
-  if (typeof id !== 'string' || !(prompt instanceof Y.XmlFragment) || typeof duration !== 'number') {
-    return null;
-  }
-  return { id, prompt, duration };
+  if (typeof id !== 'string' || !(prompt instanceof Y.XmlFragment)) return null;
+  return { id, prompt, duration: durationOf(shot) };
 }
 
 /**
@@ -132,34 +140,35 @@ export function setStoryboardKind(
  */
 function newShot(duration: number): Y.Map<unknown> {
   const shot = new Y.Map<unknown>();
-  shot.set('id', crypto.randomUUID());
+  shot.set('id', newId());
   shot.set('prompt', new Y.XmlFragment());
   shot.set('duration', duration);
   return shot;
 }
 
 /**
- * Runs a duration rule over one mode's shots and writes the result back in
- * one transaction.
+ * Applies one edit to a mode's storyboard in one transaction.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
  * @param mode - The video mode.
- * @param edit - Given the shots array and their durations, applies the change.
+ * @param edit - Given the shots array, their durations and the board, applies the change.
+ * @returns Whether the node has that mode's storyboard to edit.
  */
 function editShots(
   projectId: string,
   spaceId: string,
   nodeId: string,
   mode: string,
-  edit: (shots: Y.Array<Y.Map<unknown>>, durations: number[]) => void,
-): void {
+  edit: (shots: Y.Array<Y.Map<unknown>>, durations: number[], board: Y.Map<unknown>) => void,
+): boolean {
   const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
   const shots = board ? shotsOf(board) : null;
-  if (!board || !shots) return;
+  if (!board || !shots) return false;
   board.doc?.transact(() => {
-    edit(shots, shots.toArray().map((shot) => Number(shot.get('duration')) || 0));
+    edit(shots, shots.toArray().map(durationOf), board);
   }, CANVAS_UNDO);
+  return true;
 }
 
 /**
@@ -190,15 +199,12 @@ export function enterStoryboardShots(
   mode: string,
   total: number,
 ): void {
-  const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
-  const shots = board ? shotsOf(board) : null;
-  if (!board || !shots) return;
-  board.doc?.transact(() => {
-    const durations = enterCustom(shots.toArray().map((shot) => Number(shot.get('duration')) || 0), total);
-    if (shots.length === 0) shots.push(durations.map((d) => newShot(d)));
-    else writeDurations(shots, durations);
+  editShots(projectId, spaceId, nodeId, mode, (shots, durations, board) => {
+    const next = enterCustom(durations, total);
+    if (shots.length === 0) shots.push(next.map((d) => newShot(d)));
+    else writeDurations(shots, next);
     board.set('kind', 'custom');
-  }, CANVAS_UNDO);
+  });
 }
 
 /**
@@ -291,9 +297,8 @@ export function retotalStoryboard(
   mode: string,
   total: number,
 ): void {
-  if (readStoryboard(projectId, spaceId, nodeId, mode)?.kind !== 'custom') return;
-  editShots(projectId, spaceId, nodeId, mode, (shots, durations) => {
-    writeDurations(shots, retotal(durations, total));
+  editShots(projectId, spaceId, nodeId, mode, (shots, durations, board) => {
+    if (board.get('kind') === 'custom') writeDurations(shots, retotal(durations, total));
   });
 }
 
@@ -314,14 +319,11 @@ export function setStoryboardShots(
   mode: string,
   durations: readonly number[],
 ): Y.XmlFragment[] {
-  const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
-  const shots = board ? shotsOf(board) : null;
-  if (!board || !shots) return [];
   const fresh = durations.map((d) => newShot(d));
-  board.doc?.transact(() => {
+  const landed = editShots(projectId, spaceId, nodeId, mode, (shots, _old, board) => {
     shots.delete(0, shots.length);
     shots.push(fresh);
     board.set('kind', 'custom');
-  }, CANVAS_UNDO);
-  return fresh.map((shot) => shot.get('prompt') as Y.XmlFragment);
+  });
+  return landed ? fresh.map((shot) => shot.get('prompt') as Y.XmlFragment) : [];
 }
