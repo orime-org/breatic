@@ -128,7 +128,9 @@ describe('BodyEdgeSelection', () => {
   it('puts a non-edge end that no longer sits in text back into text when read from JSON', () => {
     const view = open(ABOVE_DIVIDER);
     const { doc } = view.state;
-    const back = Selection.fromJSON(doc, { type: 'bodyEdge', anchor: 1, head: doc.content.size - 1 });
+    // Between the two rows: after the first row's container, before the divider's.
+    const between = textStart(view, 'Above') + 'Above'.length + 2;
+    const back = Selection.fromJSON(doc, { type: 'bodyEdge', anchor: between, head: doc.content.size - 1 });
 
     expect(back.$anchor.parent.inlineContent).toBe(true);
     expect(back.head).toBe(doc.content.size - 1);
