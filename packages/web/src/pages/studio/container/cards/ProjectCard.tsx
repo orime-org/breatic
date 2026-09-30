@@ -60,7 +60,10 @@ export function ProjectCard({
     />
   );
   return (
-    <div className='group relative overflow-hidden rounded-chrome border border-border bg-card transition-colors hover:border-foreground-disabled has-[>:first-child:focus-visible]:ring-1 has-[>:first-child:focus-visible]:ring-ring'>
+    <div
+      data-testid={`project-card-${project.id}`}
+      className='group relative overflow-hidden rounded-chrome border border-border bg-card transition-colors hover:border-foreground-disabled has-[>:first-child:focus-visible]:ring-1 has-[>:first-child:focus-visible]:ring-ring'
+    >
       {project.myRole !== null ? (
         <Link
           to={`/project/${project.slug}-${project.id}`}
