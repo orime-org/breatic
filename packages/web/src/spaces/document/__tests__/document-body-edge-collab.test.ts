@@ -8,9 +8,11 @@
  * every type it did not know as a text selection, pulling the edge back.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
+import { relativePositionToAbsolutePosition, ySyncPluginKey } from 'y-prosemirror';
+import { Awareness } from 'y-protocols/awareness';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -18,6 +20,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { BodyEdgeSelection, bodyEdgePos } from '@web/spaces/document/document-body-edge-selection';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { documentCaretExtension } from '@web/spaces/document/document-caret';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -131,5 +134,37 @@ describe('a selection past the last block, with Yjs rebuilding it', () => {
       at,
       bodyEdgePos(view.state.doc, 'end'),
     ]);
+  });
+});
+
+describe('the caret a selection past the last block shows collaborators', () => {
+  it('sits in the nearest text, not between blocks', () => {
+    const doc = new Y.Doc();
+    const awareness = new Awareness(doc);
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(doc),
+      extensions: [documentCaretExtension(awareness)],
+    });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'Above' },
+      { type: 'divider' },
+    ] as never);
+    const view = editor.prosemirrorView!;
+    // The plugin only publishes while the editor has the focus.
+    vi.spyOn(view, 'hasFocus').mockReturnValue(true);
+    const at = textStart(view, 'Above') + 1;
+
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, at, 'end')));
+
+    const cursor = (awareness.getLocalState() as { cursor: { anchor: unknown; head: unknown } }).cursor;
+    const sync = ySyncPluginKey.getState(view.state) as { type: Y.XmlFragment; binding: { mapping: never } };
+    const absolute = (rel: unknown): number | null =>
+      relativePositionToAbsolutePosition(doc, sync.type, Y.createRelativePositionFromJSON(rel), sync.binding.mapping);
+    expect(absolute(cursor.anchor)).toBe(at);
+    expect(absolute(cursor.head)).toBe(textStart(view, 'Above') + 'Above'.length);
   });
 });
