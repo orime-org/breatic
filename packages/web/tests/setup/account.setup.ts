@@ -170,8 +170,6 @@ async function signInOrRegister(
   }
 
   const made = newCredentials(account);
-  // With email enabled a 2xx from register only means a code was mailed;
-  // the helper finishes the sign-up so `api` really holds a session.
   await registerAccount(api, made);
   rememberAccount(account, made);
 }
