@@ -2075,6 +2075,13 @@ describe("what the model itself settles", () => {
     expect(prompt.description).toMatch(/node wired in/);
     expect(prompt.description).toMatch(/in the order the nodes are listed/);
   });
+
+  it("leaves the price to the card rather than asking the model for one", () => {
+    const note = inputSchema.shape.modelNote.description ?? "";
+
+    expect(note).not.toMatch(/cost|price|credit.*(is|are) /i);
+    expect(note).toMatch(/card works out the credits/);
+  });
 });
 
 describe("what an edge into a generation is worth", () => {
