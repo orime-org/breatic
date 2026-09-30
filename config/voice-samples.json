@@ -1,5 +1,6 @@
 {
-  "$comment": "Voice samples the catalog's tts voices play (#2156). Each sample key in config/models/tts/models.yaml names its language by the path segment after the model (voice-samples/<model>/<lang>/<voice>.mp3; none means en). `languages` gives the sentence each language says; `extra_body` adds what one model takes beyond its text and voice, with {boost} standing for the language's `boost`.",
+  "$comment": "Voice samples the catalog's tts voices play (#2156, #2239). `base_url` is the one public address every deployment plays them from; a sample key in config/models/tts/models.yaml is a path under it and names its language by the segment after the model (voice-samples/<model>/<lang>/<voice>.mp3; none means en). `languages` gives the sentence each language says; `extra_body` adds what one model takes beyond its text and voice, with {boost} standing for the language's `boost`. `pnpm voice-samples` makes the samples that address does not serve yet.",
+  "base_url": "https://resource-dev.breatic.cc",
   "languages": {
     "en": {
       "text": "Hello, this is how I sound. I hope you like my voice.",
@@ -117,7 +118,7 @@
       "boost": "Malay"
     },
     "fa": {
-      "text": "سلام، صدای من این\u200cطور است. امیدوارم خوشتان بیاید.",
+      "text": "سلام، صدای من این‌طور است. امیدوارم خوشتان بیاید.",
       "boost": "Persian"
     },
     "sk": {
