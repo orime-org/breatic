@@ -160,6 +160,37 @@ function whenOutOfReach(
   };
 }
 
+/**
+ * What a menu row carries, depending on whether its command reaches the
+ * hovered row.
+ *
+ * The item's version of {@link whenOutOfReach}. A row out of reach is dimmed,
+ * keeps the keyboard able to land on it (`aria-disabled`, not Radix's
+ * `disabled`), does not light up under the pointer, and does nothing when
+ * chosen.
+ * @param reachable - Whether the command reaches this row.
+ * @param run - What choosing the row does when it does.
+ * @returns Attributes to spread onto the item.
+ */
+function itemWithin(
+  reachable: boolean,
+  run: () => void,
+): React.ComponentProps<typeof DropdownMenuItem> {
+  if (reachable) {
+    return { onSelect: run };
+  }
+  return {
+    'aria-disabled': 'true',
+    className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
+    onPointerMove: (event) => {
+      event.preventDefault();
+    },
+    onSelect: (event) => {
+      event.preventDefault();
+    },
+  };
+}
+
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
   editor: HandleEditor;
@@ -388,26 +419,13 @@ export function DocumentBlockMenu({
                       <DropdownMenuItem
                         data-testid={`doc-block-type-${item.id}`}
                         data-ticked={ticked.has(item.id) ? 'true' : undefined}
-                        {...(reachable
-                          ? {}
-                          : {
-                            'aria-disabled': 'true' as const,
-                            className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
-                            onPointerMove: (event: React.PointerEvent) => {
-                              event.preventDefault();
-                            },
-                          })}
-                        onSelect={(event) => {
-                          if (!reachable) {
-                            event.preventDefault();
-                            return;
-                          }
+                        {...itemWithin(reachable, () => {
                           const live = rowNow();
                           if (live !== undefined) {
                             runBlockType(editor, item.id, live.id);
                           }
                           close();
-                        }}
+                        })}
                       >
                         <ItemIcon />
                         <span className='flex-1 text-left'>{t(item.labelKey)}</span>
@@ -576,17 +594,7 @@ export function DocumentBlockMenu({
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...(reachable
-                ? {}
-                : {
-                  'aria-disabled': 'true' as const,
-                  className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
-                })}
-              onSelect={(event) => {
-                if (!reachable) {
-                  event.preventDefault();
-                  return;
-                }
+              {...itemWithin(reachable, () => {
                 const over = rangeNow();
                 if (over === undefined) {
                   close();
@@ -597,14 +605,7 @@ export function DocumentBlockMenu({
                   to: over.to,
                 });
                 close();
-              }}
-              onPointerMove={
-                reachable
-                  ? undefined
-                  : (event) => {
-                    event.preventDefault();
-                  }
-              }
+              })}
             >
               <Icon />
               {label}

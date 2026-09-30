@@ -16,41 +16,27 @@
  *
  * | when | what |
  * |---|---|
- * | `compositionstart`, capture phase on the editor element | ahead of ProseMirror's own handler: if the selection is a node selection, remember its block |
- * | while remembered | refuse every transaction that changes the document or moves the selection off that block's node — except a change arriving through Yjs, which is a co-editor's and has to land |
- * | `compositionend` | redraw the body from the unchanged state, put the node selection back, forget |
+ * | `compositionstart`, capture phase on the editor element | ahead of ProseMirror's own handler: if the selection is a node selection, start holding |
+ * | while holding | refuse every transaction that changes the document or moves the selection — except a change arriving through Yjs, which is a co-editor's and has to land |
+ * | `compositionend`, once no composition is running | redraw the body from the unchanged state, stop holding |
  *
- * What is remembered is the id of the block the node sits in, not a
- * position: the binding delivers every co-editor's change as one replace over
- * the whole document (`y-prosemirror` 1.3.7, `sync-plugin.js:657-661`), and a
- * position mapped through that comes back deleted. The node is looked up by id
- * whenever it is needed. A co-editor deleting the block mid-composition does
- * not end the hold: the composed characters still stay out, and at the end
- * there is no node to select, so the hold is only let go.
+ * The selection needs no putting back: every local move is refused, and a
+ * co-editor's change restores a node selection itself (`y-prosemirror` 1.3.7,
+ * `restoreRelativeSelection` in `sync-plugin.js:249-275`).
+ *
+ * "Once no composition is running" matters because a Korean input method ends
+ * one syllable's composition and starts the next in the same task. The end
+ * handler runs a tick later, when the next composition is already under way,
+ * and letting go then would let that syllable in.
  */
 
 import { createExtension } from '@blocknote/core';
 import { NodeSelection, Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
-import type { Node as PMNode } from '@tiptap/pm/model';
 import { ySyncPluginKey } from 'y-prosemirror';
 
-import { rowById } from '@web/spaces/document/document-row-by-id';
-
-/** Holds the id of the block the composition began on, or null outside one. */
-const KEY = new PluginKey<string | null>('documentNodeComposition');
-
-/**
- * Where the held block's own node sits in this document.
- * @param doc - The document.
- * @param blockId - The held block's id.
- * @returns The node's position, or null once the block is gone.
- */
-function heldAt(doc: PMNode, blockId: string): number | null {
-  const row = rowById(doc, blockId);
-  // A container opens with its content node, one past its own start.
-  return row === undefined ? null : row.from + 1;
-}
+/** Whether a composition that began on a node selection is being held. */
+const KEY = new PluginKey<boolean>('documentNodeComposition');
 
 /**
  * Whether a transaction is a change that came in through Yjs.
@@ -87,48 +73,33 @@ export const documentNodeCompositionExtension = createExtension(() => {
   return {
     key: 'document-node-composition',
     prosemirrorPlugins: [
-      new Plugin<string | null>({
+      new Plugin<boolean>({
         key: KEY,
         state: {
-          init: () => null,
-          apply: (tr, held) => {
-            const set = tr.getMeta(KEY) as string | null | undefined;
-            return set === undefined ? held : set;
-          },
+          init: () => false,
+          apply: (tr, held) => (tr.getMeta(KEY) as boolean | undefined) ?? held,
         },
-        filterTransaction: (tr, state) => {
-          const held = KEY.getState(state) ?? null;
-          if (held === null || tr.getMeta(KEY) !== undefined || fromYjs(tr)) {
-            return true;
-          }
-          if (tr.docChanged) return false;
-          return (
-            tr.selection instanceof NodeSelection &&
-            tr.selection.from === heldAt(tr.doc, held)
-          );
-        },
+        filterTransaction: (tr, state) =>
+          KEY.getState(state) !== true ||
+          tr.getMeta(KEY) !== undefined ||
+          fromYjs(tr) ||
+          (!tr.docChanged && tr.selection.eq(state.selection)),
         view: (view) => {
-          /** Remembers a node selection the composition begins on. */
+          /** Starts holding when the composition begins on a node selection. */
           const onStart = (): void => {
-            const { selection } = view.state;
-            const id = selection.$from.parent.attrs['id'] as unknown;
-            if (selection instanceof NodeSelection && typeof id === 'string') {
-              view.dispatch(view.state.tr.setMeta(KEY, id));
+            if (view.state.selection instanceof NodeSelection) {
+              view.dispatch(view.state.tr.setMeta(KEY, true));
             }
           };
-          /** Redraws and gives the node selection back once it ends. */
+          /** Redraws and stops holding once the last composition has ended. */
           const onEnd = (): void => {
             // After ProseMirror's own handler has run for this event.
             setTimeout(() => {
-              const held = KEY.getState(view.state) ?? null;
-              if (held === null || view.isDestroyed) return;
-              redraw(view);
-              const tr = view.state.tr.setMeta(KEY, null);
-              const at = heldAt(tr.doc, held);
-              if (at !== null) {
-                tr.setSelection(NodeSelection.create(tr.doc, at));
+              if (KEY.getState(view.state) !== true || view.isDestroyed || view.composing) {
+                return;
               }
-              view.dispatch(tr);
+              redraw(view);
+              view.dispatch(view.state.tr.setMeta(KEY, false));
             }, 0);
           };
           view.dom.addEventListener('compositionstart', onStart, true);

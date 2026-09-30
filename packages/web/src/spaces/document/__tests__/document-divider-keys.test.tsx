@@ -360,6 +360,25 @@ describe('an input method on a selected divider (A5)', () => {
     expect(shape(editor)).toEqual(['paragraph:xAbove', 'paragraph:Below']);
   });
 
+  it('keeps holding through two compositions back to back', async () => {
+    // A Korean input method ends one syllable's composition and starts the
+    // next in the same task, before the first one's end has been handled.
+    const { editor } = open(SANDWICH);
+    select(editor);
+    const view = editor.prosemirrorView!;
+
+    startComposition(editor);
+    view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '한' }));
+    view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    view.dispatch(view.state.tr.insertText('글', posOf(editor, 'divider') - 3));
+    expect(shape(editor)).toEqual(['paragraph:Above', 'divider:', 'paragraph:Below']);
+
+    await endComposition(editor);
+    expect(shape(editor)).toEqual(['paragraph:Above', 'divider:', 'paragraph:Below']);
+    expect(dividerSelected(editor)).toBe(true);
+  });
+
   it('leaves a composition in text alone', async () => {
     const { editor } = open(SANDWICH);
     caretIn(editor, 'Above', 'end');
@@ -386,12 +405,14 @@ describe('the delete keys from the lines beside a divider (A7)', () => {
   });
 
   it('Delete at the end of the line above takes the divider in one press', () => {
-    const { editor } = open(SANDWICH);
+    const { editor, manager } = open(SANDWICH);
     caretIn(editor, 'Above', 'end');
 
     press(editor, 'Delete');
-
     expect(shape(editor)).toEqual(['paragraph:Above', 'paragraph:Below']);
+
+    manager.undo();
+    expect(shape(editor)).toEqual(['paragraph:Above', 'divider:', 'paragraph:Below']);
   });
 });
 

@@ -25,7 +25,6 @@ import type { Selection } from '@tiptap/pm/state';
 import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 
-
 /** The nine rows the menu offers. */
 export type BlockTypeId =
   | 'paragraph'

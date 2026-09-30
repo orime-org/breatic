@@ -14,6 +14,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
+import { ShowSelectionExtension } from '@blocknote/core/extensions';
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 
 import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
@@ -350,9 +351,20 @@ describe('a no-text block inside the reader selection (A3 · A6)', () => {
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, dividerPos(editor))));
     (view.dom as HTMLElement).blur();
-    view.dispatch(view.state.tr);
 
     expect(painted(editor, DIVIDER_EL)).toEqual([false]);
+  });
+
+  it('is painted while a panel stands in for the selection', () => {
+    const editor = sandwich();
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    (view.dom as HTMLElement).blur();
+    expect(painted(editor, DIVIDER_EL)).toEqual([false]);
+
+    editor.getExtension(ShowSelectionExtension)!.showSelection(true, 'test-panel');
+
+    expect(painted(editor, DIVIDER_EL)).toEqual([true]);
   });
 
   /**

@@ -40,11 +40,10 @@ import { DIVIDER } from '@web/spaces/document/document-divider';
 /** The class `index.css` paints a no-text block inside the selection with. */
 export const IN_SELECTION_CLASS = 'doc-in-selection';
 
-
 /** The blocks with no text that a range selection paints. */
 const NO_TEXT = new Set([DIVIDER, UNSUPPORTED_BLOCK]);
 
-/** Tags the transaction a focus change sends to have the band redrawn. */
+/** Tags the transaction that asks for the band to be redrawn. */
 const KEY = new PluginKey('documentSelectionPaint');
 
 /**
@@ -95,14 +94,13 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
   let mounted: EditorView | null = null;
 
   /**
-   * Asks for the decorations again. Focus and the browser's selection change
-   * no state, so without this the band would stand until the next edit.
+   * Asks for the decorations again. A focus change needs none of this: tiptap's
+   * own focus handling dispatches a transaction on focus and on blur. The
+   * browser's selection moving in a read-only body changes no state at all.
    * @param view - The view to redraw.
-   * @returns False, so the event carries on to everyone else.
    */
-  const redraw = (view: EditorView): boolean => {
+  const redraw = (view: EditorView): void => {
     view.dispatch(view.state.tr.setMeta(KEY, true).setMeta('addToHistory', false));
-    return false;
   };
 
   /**
@@ -127,9 +125,21 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
         key: KEY,
         view: (view) => {
           mounted = view;
-          /** Redraws a read-only body when the browser's selection moves. */
+          /** What the band last showed, so a redraw goes out only on a change. */
+          let shown = false;
+          /**
+           * Redraws a read-only body when the browser's selection moves into
+           * or out of it. `selectionchange` fires for every caret move
+           * anywhere on the page, and while the answer stays the same the
+           * editor's own selection transaction already repaints the band.
+           */
           const onSelectionChange = (): void => {
-            if (!view.editable) redraw(view);
+            if (view.editable) return;
+            const now = visible(view);
+            if (now !== shown) {
+              shown = now;
+              redraw(view);
+            }
           };
           view.dom.ownerDocument.addEventListener('selectionchange', onSelectionChange);
           return {
@@ -143,7 +153,6 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
           };
         },
         props: {
-          handleDOMEvents: { focus: redraw, blur: redraw },
           decorations: (state) =>
             (mounted !== null && visible(mounted)) || shownByPanel()
               ? paintFor(state)
