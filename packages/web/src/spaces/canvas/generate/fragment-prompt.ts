@@ -15,7 +15,7 @@ import * as Y from 'yjs';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import { MENTION_KIND_ATTR } from '@web/spaces/canvas/generate/reference-mention';
+import { chipWordsReader, MENTION_KIND_ATTR } from '@web/spaces/canvas/generate/reference-mention';
 import type { MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 
 /** What the editor puts between two blocks of a prompt (`serializePromptText`'s default). */
@@ -46,27 +46,24 @@ export function mentionedSourceIds(fragment: Y.XmlFragment): string[] {
 }
 
 /**
- * One piece of a prompt as the model reads it: text as written, a media chip
- * as its token, a text chip as its source's words.
+ * One piece of a prompt as the model reads it: text as written, a chip as
+ * `chipWordsReader` reads it.
  * @param node - A piece of the prompt.
- * @param tokens - Each media chip's words, by source id.
- * @param textById - Each text source's words, by source id.
+ * @param words - Reads one chip.
  * @returns Its text.
  */
 function pieceText(
   node: Y.XmlElement | Y.XmlText | Y.XmlHook,
-  tokens: MentionTokens,
-  textById: ReadonlyMap<string, string>,
+  words: ReturnType<typeof chipWordsReader>,
 ): string {
   if (node instanceof Y.XmlText) return node.toJSON();
   if (!(node instanceof Y.XmlElement)) return '';
   if (node.nodeName !== REFERENCE_MENTION_NODE) {
-    return node.toArray().map((child) => pieceText(child, tokens, textById)).join('');
+    return node.toArray().map((child) => pieceText(child, words)).join('');
   }
   const id = node.getAttribute(MENTION_SOURCE_ID_ATTR);
-  if (typeof id !== 'string') return '';
-  if (node.getAttribute(MENTION_KIND_ATTR) === 'text') return textById.get(id) ?? '';
-  return Object.hasOwn(tokens, id) ? tokens[id]! : '';
+  const kind = node.getAttribute(MENTION_KIND_ATTR);
+  return words(typeof id === 'string' ? id : null, typeof kind === 'string' ? kind : null);
 }
 
 /**
@@ -82,13 +79,9 @@ export function serializePromptFragment(
   pool: ReadonlyArray<ReferenceRailItem>,
   tokens: MentionTokens,
 ): string {
-  const textById = new Map(
-    pool
-      .filter((r) => r.sourceNodeType === 'text')
-      .map((r) => [r.sourceNodeId, r.textContent ?? '']),
-  );
+  const words = chipWordsReader(pool, tokens);
   return fragment
     .toArray()
-    .map((block) => pieceText(block, tokens, textById))
+    .map((block) => pieceText(block, words))
     .join(BLOCK_SEPARATOR);
 }

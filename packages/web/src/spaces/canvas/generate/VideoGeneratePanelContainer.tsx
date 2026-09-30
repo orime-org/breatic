@@ -35,6 +35,7 @@ import { useCanvasStore } from '@web/stores';
 import {
   evaluateExecute,
   extractPromptText,
+  effectiveStoryboardKind,
   storyboardSpec,
   type ExecuteVerdict,
   type ModelEntry,
@@ -276,32 +277,39 @@ function VideoGeneratePanelBody({
     catalog?.credit_multiplier ?? 1,
   );
 
-  // The rail refuses this itself now (#1966): `takesPrompt` is one of the two
-  // booleans its context carries, so "can this row be inserted" is answered in
-  // one place instead of half here and half there. This callback is back to
-  // doing only what its name says.
   // The mode's storyboard (#2218). Only a model declaring one can use it, so
   // the tier in effect is the stored one on such a model and off on any other;
   // the stored one stays as it is while the reader moves between models.
   const spec = React.useMemo(() => specOf(vm.modelEntry), [vm.modelEntry]);
   const storyboard = useStoryboard(projectId, spaceId, nodeId, mode);
   const storedKind: StoryboardKind = storyboard?.kind ?? 'off';
-  const tier: StoryboardKind = spec === undefined ? 'off' : storedKind;
+  const tier = effectiveStoryboardKind(vm.modelEntry?.params ?? {}, storyboard?.kind);
   const total = totalOf(spec, vm.params);
-  const shots = storyboard?.shots;
+  // Every keystroke inside a shot produces a new list from `useStoryboard`;
+  // what the list draws only changes with the shots' ids and seconds, so the
+  // rows are held stable on those and the memoized panel below can bail.
+  const shotsKey = storyboard?.shots.map((shot) => `${shot.id}:${String(shot.duration)}`).join(',');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const shots = React.useMemo(() => storyboard?.shots, [shotsKey]);
 
   // The box the caret was last in, so the rail's insert button lands there:
   // the main prompt, or one shot's box by its id. Same shape as the audio
   // panel's `lastFocusedBox`.
   const lastFocusedBox = React.useRef<string>('main');
   const shotEditors = React.useRef(new Map<string, PromptEditorHandle>());
+  // The rail refuses a row the prompt cannot take itself (#1966), so this
+  // only routes the insert: the shot box the caret was last in, else the
+  // first shot box, else the main prompt. Shot boxes are mounted only in the
+  // per-shot tier and leave the map when they unmount.
   const handleInsertReference = React.useCallback(
     (item: ReferenceRailItem) => {
-      const shotEditor = shotEditors.current.get(lastFocusedBox.current);
-      const target = shotEditor ?? (tier === 'custom' ? shotEditors.current.values().next().value : undefined);
-      (target ?? promptEditorRef.current)?.insertReference(item);
+      (
+        shotEditors.current.get(lastFocusedBox.current) ??
+        shotEditors.current.values().next().value ??
+        promptEditorRef.current
+      )?.insertReference(item);
     },
-    [promptEditorRef, tier],
+    [promptEditorRef],
   );
   const references = vm.references;
 
@@ -677,7 +685,7 @@ function VideoGeneratePanelBody({
     const probe = freshVm();
     const liveSpec = specOf(probe.modelEntry);
     const board = readStoryboard(projectId, spaceId, nodeId, probe.mode);
-    const liveTier: StoryboardKind = liveSpec === undefined ? 'off' : (board?.kind ?? 'off');
+    const liveTier = effectiveStoryboardKind(probe.modelEntry?.params ?? {}, board?.kind);
     const liveShots = board?.shots ?? [];
     const mentioned = liveTier === 'custom'
       ? liveShots.flatMap((shot) => mentionedSourceIds(shot.prompt))
@@ -994,7 +1002,12 @@ function VideoGeneratePanelBody({
     onAddShot,
   ]);
   // What the button reads the storyboard as, on the same terms as the submit.
-  const renderRun = storyboardRun(spec, tier, shots ?? [], total, stableReferences, vm.mentionTokens);
+  // Read off the live shots (`storyboard`), whose words change without the
+  // rows above changing.
+  const renderRun = React.useMemo(
+    () => storyboardRun(spec, tier, storyboard?.shots ?? [], total, stableReferences, stableMentionTokens),
+    [spec, tier, storyboard, total, stableReferences, stableMentionTokens],
+  );
 
   return (
     <VideoGeneratePanel

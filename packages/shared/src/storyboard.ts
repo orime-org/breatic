@@ -8,9 +8,9 @@
  * A node keeps one storyboard per mode, and its tier stays as stored while the
  * reader moves between models of that mode. Only a model declaring the
  * storyboard params can use it, so the tier a run goes by is the stored one on
- * such a model and off on every other. The gate, the payload, the attach
- * snapshot and the agent's checks all read it through
- * {@link effectiveStoryboardKind}.
+ * such a model and off on every other. The video panel (what it draws, what
+ * its execute gate judges and what it sends) and the attach snapshot read it
+ * through {@link effectiveStoryboardKind}.
  */
 
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";
