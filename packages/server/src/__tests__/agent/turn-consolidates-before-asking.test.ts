@@ -345,7 +345,7 @@ describe("a turn that measured over the budget", () => {
     // what decides how much the tool set can grow before this case moves;
     // when it does, the line moves with it, and no figure is written here to
     // go quietly false.
-    limits.keep = 19_000;
+    limits.keep = 22_500;
     contexts.queue = [
       context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
       context([...turn(3, 6000)], "what turns 1 and 2 came to"),

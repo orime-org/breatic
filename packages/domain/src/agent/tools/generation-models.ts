@@ -18,6 +18,7 @@ import {
   type ModelsForMode,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 
 /** One model with what a run at its defaults costs, when the catalog prices it. */
 export type PricedModelInfo = ModelInfo & { price?: CreditEstimate };
@@ -115,18 +116,13 @@ function renderModel(model: PricedModelInfo): string {
     // for neither, because the reader does neither -- it is the person at the
     // canvas who fills both.
     if (spec.filledBySource) {
-      // The pool takes two gestures where a slot takes one, and the first has
-      // no control anywhere: an image reaches the pool by an edge drawn on the
-      // canvas, or by a focus crop taken on this node -- neither is a field.
-      // The edge is the one named, since it is the route from another node,
-      // which is what a reader holding a picture somewhere else needs. The
-      // second gesture ends in a choice, never in typing -- only
-      // picking a row inserts the mention that carries the source id, and a
-      // node whose name has a space in it closes the picker the moment that
-      // space is typed.
+      // Which gesture fills it is said here, since the shape a proposal takes
+      // depends on it; how to click through that gesture is said once, in the
+      // product guide. The pool is filled by an edge and a mention, and has no
+      // control of its own; a slot is picked on the canvas.
       const how = spec.fromReferencePool
-        ? "two gestures on the canvas, neither typed here: draw an edge from a node into this one to offer its image, then type @ in the prompt and choose that node from the list that opens"
-        : "filled from another node on the canvas, not typed here; leave it unset";
+        ? `filled on the canvas, not typed here, by an edge into this node and a mention of it in the prompt; the steps are in ${GET_PRODUCT_GUIDE}`
+        : `filled from another node on the canvas through a source slot, not typed here; leave it unset; the steps are in ${GET_PRODUCT_GUIDE}`;
       return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
     }
     // Nothing on screen sets it, so what the run uses is the default and the

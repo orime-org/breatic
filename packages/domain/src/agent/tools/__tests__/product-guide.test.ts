@@ -29,9 +29,9 @@ const CREATABLE: readonly NodeType[] = ["text", "image", "video", "audio"];
  * @returns The guide's text.
  */
 async function guide(): Promise<string> {
-  const run = productGuide.execute;
-  if (run === undefined) throw new Error("the guide has no execute");
-  return (await run({}, { toolCallId: "g1", messages: [] })) as string;
+  const execute = (productGuide as unknown as { execute: (i: unknown, o: object) => Promise<string> })
+    .execute;
+  return execute({}, {});
 }
 
 beforeAll(() => {
@@ -50,7 +50,8 @@ describe("the guide as a tool", () => {
   });
 
   it("says in its description what it covers, and how to name what it describes", () => {
-    const said = (productGuide.description ?? "").replace(/\s+/g, " ");
+    const description: unknown = productGuide.description;
+    const said = typeof description === "string" ? description.replace(/\s+/g, " ") : "";
     expect(said).toMatch(/canvas/i);
     expect(said).toMatch(/document/i);
     expect(said).toMatch(/cannot see/i);

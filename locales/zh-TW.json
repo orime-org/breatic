@@ -301,6 +301,7 @@
       "checkingCanvas": "正在查畫布能做什麼",
       "proposingNodes": "正在擬一份提議",
       "checkingModels": "正在查可用的模型",
+      "readingGuide": "正在查產品怎麼用",
       "understanding": "正在檢視媒體",
       "judging": "正在權衡",
       "running": "正在呼叫 {tool}"
