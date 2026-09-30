@@ -340,6 +340,19 @@ export function textEnds(selection: Selection): { anchor: number; head: number }
 }
 
 /**
+ * The caret a selection is dropped to when a panel acting on it closes: at its
+ * end, in the nearest text when that end is an edge of the body.
+ * @param selection - The selection.
+ * @returns A text caret.
+ */
+export function caretAtEnd(selection: Selection): Selection {
+  const doc = selection.$head.doc;
+  if (!(selection instanceof BodyEdgeSelection)) return TextSelection.create(doc, selection.to);
+  const { anchor, head } = textEnds(selection);
+  return TextSelection.create(doc, Math.max(anchor, head));
+}
+
+/**
  * The selection that extends from an anchor to an edge of the body.
  * @param doc - The document.
  * @param anchor - The anchor.

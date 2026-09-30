@@ -19,6 +19,7 @@ import {
   bodyEdgeBetween,
   bodyEdgePos,
   bodyEdgeNeedsTakeover,
+  caretAtEnd,
   dragSelection,
   extendToBodyEdge,
 } from '@web/spaces/document/document-body-edge-selection';
