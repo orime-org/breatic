@@ -31,6 +31,13 @@ import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import {
+  BodyEdgeSelection,
+  bodyEdgeAt,
+  bodyEdgeBetween,
+  bodyEdgePos,
+  type BodyEdge,
+} from '@web/spaces/document/document-body-edge-selection';
+import {
   contentRangeOf,
   rowById,
 } from '@web/spaces/document/document-row-by-id';
@@ -43,12 +50,24 @@ interface Anchored {
   readonly offset: number;
 }
 
+/**
+ * One end of a selection that reaches past the first or last block (#124): it
+ * stays on that edge of the body, whichever block ends up there.
+ */
+interface OnEdge {
+  /** Which edge. */
+  readonly edge: BodyEdge;
+}
+
+/** One end of the reader's selection. */
+type End = Anchored | OnEdge;
+
 /** Where the reader was, for as long as the drag lasts. */
 export interface ReaderPlace {
   /** Where the selection started. */
-  readonly anchor: Anchored;
+  readonly anchor: End;
   /** Where it ended; the same as the anchor for a caret. */
-  readonly head: Anchored;
+  readonly head: End;
 }
 
 /**
@@ -86,7 +105,8 @@ function anchor(doc: PMNode, pos: number): Anchored | undefined {
 }
 
 /**
- * Where the reader's text selection is, if they have one.
+ * Where the reader's text selection is, if they have one; an end of a
+ * selection that reaches past the first or last block is kept as that edge.
  *
  * A node selection is not read: the only one that can be current when a drag
  * starts is the one the drag itself just made.
@@ -94,9 +114,20 @@ function anchor(doc: PMNode, pos: number): Anchored | undefined {
  * @returns The place, or undefined when there is nothing to hand back.
  */
 export function readerPlace(state: EditorState): ReaderPlace | undefined {
-  if (!(state.selection instanceof TextSelection)) return undefined;
-  const anchorEnd = anchor(state.doc, state.selection.anchor);
-  const headEnd = anchor(state.doc, state.selection.head);
+  const { selection, doc } = state;
+  const onEdges = selection instanceof BodyEdgeSelection;
+  if (!(selection instanceof TextSelection) && !onEdges) return undefined;
+  /**
+   * Addresses one end: by its edge when it is on one, else by its block.
+   * @param pos - The end.
+   * @returns The address, or undefined when it has none.
+   */
+  const read = (pos: number): End | undefined => {
+    const edge = onEdges ? bodyEdgeAt(doc, pos) : null;
+    return edge === null ? anchor(doc, pos) : { edge };
+  };
+  const anchorEnd = read(selection.anchor);
+  const headEnd = read(selection.head);
   if (anchorEnd === undefined || headEnd === undefined) return undefined;
 
   return { anchor: anchorEnd, head: headEnd };
@@ -108,7 +139,8 @@ export function readerPlace(state: EditorState): ReaderPlace | undefined {
  * @param end - The block and offset to find.
  * @returns The position, or undefined when that block is gone.
  */
-function positionOf(doc: PMNode, end: Anchored): number | undefined {
+function positionOf(doc: PMNode, end: End): number | undefined {
+  if ('edge' in end) return bodyEdgePos(doc, end.edge);
   const row = rowById(doc, end.blockId);
   const content = row === undefined ? undefined : contentRangeOf(row);
   if (content === undefined) return undefined;
@@ -117,8 +149,8 @@ function positionOf(doc: PMNode, end: Anchored): number | undefined {
 }
 
 /**
- * Leaves the reader with a text selection, at the place they were when there
- * still is one.
+ * Leaves the reader with a text selection, or a selection reaching the same
+ * edge of the body as before, at the place they were when there still is one.
  *
  * TWO THINGS, AND ONLY THE SECOND NEEDS THE PLACE. A text selection goes down
  * whatever happens, because the node selection the drag is carried on is what
@@ -135,10 +167,13 @@ export function restoreReaderPlace(view: EditorView, place: ReaderPlace): void {
   const { doc } = view.state;
   const anchorPos = positionOf(doc, place.anchor);
   const headPos = positionOf(doc, place.head);
+  const onEdge = 'edge' in place.anchor || 'edge' in place.head;
   const asked =
     anchorPos === undefined || headPos === undefined
       ? undefined
-      : TextSelection.create(doc, anchorPos, headPos);
+      : onEdge
+        ? bodyEdgeBetween(doc, anchorPos, headPos)
+        : TextSelection.create(doc, anchorPos, headPos);
 
   view.dispatch(
     view.state.tr.setSelection(
