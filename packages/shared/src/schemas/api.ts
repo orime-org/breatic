@@ -33,7 +33,7 @@ export function normalizeEmail(email: string): string {
 }
 
 /** An email address field, returned in its normalized form. */
-export const emailSchema = z.string().trim().toLowerCase().email();
+export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email());
 
 export const registerSchema = z.object({
   email: emailSchema,

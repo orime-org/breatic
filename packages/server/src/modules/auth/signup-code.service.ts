@@ -18,11 +18,10 @@
 import crypto from "node:crypto";
 
 import * as userRepo from "@server/modules/auth/user.repo.js";
-import { hashPassword } from "@server/modules/auth/auth.service.js";
+import { createAccount, hashPassword } from "@server/modules/auth/auth.service.js";
 import { buildSignupCodeMail } from "@server/modules/auth/auth-mail.js";
 import { getSignupCodeConfig } from "@server/config/auth.js";
 import { logMailResult } from "@server/utils/log-mail.js";
-import { isUniqueViolation } from "@server/utils/pg-error.js";
 import {
   AppError,
   ConflictError,
@@ -91,11 +90,11 @@ function signupKey(ticket: string): string {
 
 /**
  * Redis key of an address's resend wait.
- * @param email - The address as typed.
+ * @param email - The normalized address.
  * @returns The key.
  */
 function cooldownKey(email: string): string {
-  return `${env.ENV}:signup-cooldown:${sha256(normalizeEmail(email))}`;
+  return `${env.ENV}:signup-cooldown:${sha256(email)}`;
 }
 
 /**
@@ -110,7 +109,7 @@ function refuseUntil(ms: number): never {
 
 /**
  * Take the address's resend wait, or refuse with what is left of it.
- * @param email - The address as typed.
+ * @param email - The normalized address.
  * @throws {TooManyRequestsError} when the address is still waiting.
  */
 async function takeCooldown(email: string): Promise<void> {
@@ -140,19 +139,19 @@ return 1
  * address, keeping its lifetime. A pending sign-up for another address is
  * deleted.
  *
- * KEYS[1] pending sign-up · ARGV[1] normalized address · ARGV[2] address as
- * typed · ARGV[3] password hash · ARGV[4] language.
+ * KEYS[1] pending sign-up · ARGV[1] normalized address · ARGV[2] password
+ * hash · ARGV[3] language.
  * Returns the milliseconds the sign-up has left · 0 no such sign-up or another address.
  */
 const UPDATE_PENDING_SCRIPT = `
-local held = redis.call('HGET', KEYS[1], 'emailKey')
+local held = redis.call('HGET', KEYS[1], 'email')
 if held ~= ARGV[1] then
   if held then redis.call('DEL', KEYS[1]) end
   return 0
 end
 local left = redis.call('PTTL', KEYS[1])
 if left <= 0 then return 0 end
-redis.call('HSET', KEYS[1], 'email', ARGV[2], 'passwordHash', ARGV[3], 'locale', ARGV[4])
+redis.call('HSET', KEYS[1], 'passwordHash', ARGV[2], 'locale', ARGV[3])
 return left
 `;
 
@@ -161,7 +160,7 @@ return left
  * sign-up with a fresh count and lifetime. The caller already holds the
  * address's wait; a mail that did not go out gives the wait back.
  * @param ticket - The browser's ticket.
- * @param email - The address as typed.
+ * @param email - The normalized address.
  * @param locale - The language the mail is written in.
  * @returns What the page needs.
  * @throws {AppError} 503 when the mail was not sent.
@@ -200,7 +199,7 @@ async function sendCode(ticket: string, email: string, locale: string): Promise<
  * one typed. Anything else starts a new pending sign-up under a new ticket.
  * @param input - What the sign-up form sent, plus the browser's ticket.
  * @param input.ticket - The browser's ticket, or `null` when it has none.
- * @param input.email - The address as typed.
+ * @param input.email - The address as typed; it is normalized here.
  * @param input.password - The password as typed.
  * @param input.locale - The language the request was made in; the mail is written in it.
  * @returns The ticket and the two timings the page shows.
@@ -214,7 +213,7 @@ export async function startSignup(input: {
   password: string;
   locale: string;
 }): Promise<SignupCodeSent> {
-  const email = input.email.trim();
+  const email = normalizeEmail(input.email);
   if (await userRepo.getUserByEmail(email)) {
     throw new ConflictError(t("server.auth.email_taken"));
   }
@@ -227,7 +226,6 @@ export async function startSignup(input: {
         UPDATE_PENDING_SCRIPT,
         1,
         signupKey(input.ticket),
-        normalizeEmail(email),
         email,
         passwordHash,
         input.locale,
@@ -253,7 +251,7 @@ export async function startSignup(input: {
   const { ttlSeconds } = getSignupCodeConfig();
   await redis
     .multi()
-    .hset(key, { email, emailKey: normalizeEmail(email), passwordHash, locale: input.locale })
+    .hset(key, { email, passwordHash, locale: input.locale })
     .expire(key, ttlSeconds)
     .exec();
   try {
@@ -344,10 +342,5 @@ export async function verifySignupCode(ticket: string | null, code: string): Pro
   if (await userRepo.getUserByEmail(email)) {
     throw new ConflictError(t("server.auth.email_taken"));
   }
-  try {
-    return await userRepo.createUser({ email, hashedPassword, locale, emailVerified: true });
-  } catch (err) {
-    if (isUniqueViolation(err)) throw new ConflictError(t("server.auth.email_taken"));
-    throw err;
-  }
+  return createAccount({ email, hashedPassword, locale, emailVerified: true });
 }

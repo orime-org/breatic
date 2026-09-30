@@ -18,6 +18,7 @@ import {
   verifyRecoveryCode,
 } from "@server/modules/auth/recovery-code.service.js";
 import { buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
+import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import { env } from "@breatic/core";
@@ -43,6 +44,24 @@ const BCRYPT_ROUNDS = 12;
  */
 export function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+/**
+ * Create an account, answering "email already registered" when another
+ * sign-up for the same mailbox wrote first. Every sign-up checks the address
+ * before it writes, and two that arrive together both pass that check; the
+ * unique index is what decides between them.
+ * @param data - The account to create, as `userRepo.createUser` takes it.
+ * @returns The created account.
+ * @throws {ConflictError} When the address already belongs to an account.
+ */
+export async function createAccount(data: Parameters<typeof userRepo.createUser>[0]): Promise<UserEntity> {
+  try {
+    return await userRepo.createUser(data);
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new ConflictError(t("server.auth.email_taken"));
+    throw err;
+  }
 }
 
 /**
@@ -76,7 +95,7 @@ export async function register(
   }
 
   const hashedPassword = await hashPassword(password);
-  const user = await userRepo.createUser({ email, hashedPassword, locale: getActiveLocale() });
+  const user = await createAccount({ email, hashedPassword, locale: getActiveLocale() });
 
   // Generate + store recovery code. Done after createUser so we have
   // a user.id to attach to. Failures here bubble up; the user row will
@@ -173,7 +192,7 @@ export async function loginOrCreateGoogle(
       if (!linked) throw new UnauthorizedError(t("server.auth.google_link_requires_email_login"));
       user = linked;
     } else {
-      user = await userRepo.createUser({ email, googleId, locale: getActiveLocale() });
+      user = await createAccount({ email, googleId, locale: getActiveLocale() });
     }
   }
 
