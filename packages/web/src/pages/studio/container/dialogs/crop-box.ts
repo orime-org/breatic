@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Where the avatar crop box lives, and how big it starts.
+ * Where the crop box for an avatar or a cover lives, and how big it starts.
  *
  * Both are expressed against the IMAGE's drawn area rather than the frame
  * around it. An image whose aspect ratio differs from the frame's is drawn
  * with letterbox margins, and a selection allowed onto those margins crops in
- * a band of empty space — which is what the user would then be stuck with as
- * their avatar.
+ * a band of empty space — which is what the user would then be stuck with.
  *
  * The rect maths itself is the canvas crop tool's, reused rather than
  * reimplemented; this module only supplies the bounds those functions work
@@ -70,14 +69,16 @@ export function imageBoxWithin(
 }
 
 /**
- * The starting selection: the largest square that fits the image, centred.
+ * The starting selection: the largest area of the given ratio that fits the
+ * image, centred.
  * @param box - The image's drawn size.
- * @returns The initial 1:1 crop rect, in the image's display pixels.
+ * @param aspect - Width over height of the selection.
+ * @returns The initial crop rect, in the image's display pixels.
  */
-export function initialSquareCrop(box: CropSize): CropRect {
+export function initialCrop(box: CropSize, aspect: number): CropRect {
   // Seeding with the full box lets the ratio maths shrink to whichever side
-  // is shorter, which is exactly "the biggest square that fits", centred.
-  return applyRatioPreset({ x: 0, y: 0, ...box }, 1, box);
+  // is too long, which is exactly "the biggest one that fits", centred.
+  return applyRatioPreset({ x: 0, y: 0, ...box }, aspect, box);
 }
 
 /**
@@ -90,27 +91,30 @@ export function initialSquareCrop(box: CropSize): CropRect {
  * too small with its top edge a pixel above the image.
  *
  * The scale is taken from the smaller axis ratio and applied to both, so the
- * selection stays square even if the two axes somehow scaled differently, and
- * the result is clamped back inside the new box.
+ * selection keeps its ratio even if the two axes somehow scaled differently,
+ * and the result is clamped back inside the new box.
  * @param rect - The selection, in the old box's coordinates.
  * @param from - The box it was measured against.
  * @param to - The box it should now fit.
+ * @param aspect - Width over height of the selection.
  * @returns The rescaled selection, or `rect` itself when nothing changed.
  */
 export function rescaleCrop(
   rect: CropRect,
   from: CropSize,
   to: CropSize,
+  aspect: number,
 ): CropRect {
   if (from.width <= 0 || from.height <= 0) return rect;
   if (from.width === to.width && from.height === to.height) return rect;
   const scale = Math.min(to.width / from.width, to.height / from.height);
-  const size = Math.min(rect.width * scale, to.width, to.height);
+  const width = Math.min(rect.width * scale, to.width, to.height * aspect);
+  const height = width / aspect;
   return {
-    x: clamp(rect.x * scale, 0, to.width - size),
-    y: clamp(rect.y * scale, 0, to.height - size),
-    width: size,
-    height: size,
+    x: clamp(rect.x * scale, 0, to.width - width),
+    y: clamp(rect.y * scale, 0, to.height - height),
+    width,
+    height,
   };
 }
 

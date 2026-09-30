@@ -3,8 +3,10 @@
 
 import type * as React from 'react';
 
+import { DefaultProjectCover } from '@web/ui/DefaultProjectCover';
+
 interface ItemCardBodyProps {
-  /** Cover image, or `null` for a plain neutral block. */
+  /** Cover image, or `null` for the built-in default cover. */
   thumbnailUrl: string | null;
   name: string;
   /** Left side of the meta line; it takes the free width and may truncate. */
@@ -33,7 +35,7 @@ export function ItemCardBody({
 }: ItemCardBodyProps): React.JSX.Element {
   return (
     <>
-      <div className='aspect-video w-full bg-muted'>
+      <div className='aspect-video w-full bg-muted text-muted-foreground'>
         {thumbnailUrl ? (
           <img
             src={thumbnailUrl}
@@ -41,7 +43,9 @@ export function ItemCardBody({
             className='h-full w-full object-cover'
             loading='lazy'
           />
-        ) : null}
+        ) : (
+          <DefaultProjectCover />
+        )}
       </div>
       <div className='flex flex-col gap-1 px-3 pb-3 pt-2.5'>
         <div className='truncate text-sm font-medium'>{name}</div>

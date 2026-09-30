@@ -3,7 +3,11 @@
 
 import { apiGet, apiPost } from '@web/data/api/request';
 import type { UploadClientConfig } from '@breatic/shared';
-import type { UploadTicketResponse } from '@web/data/upload/ingest-upload';
+import type {
+  PicturePurpose,
+  UploadTargetParams,
+  UploadTicketResponse,
+} from '@web/data/upload/ingest-upload';
 
 /** Session cache for the upload knobs (one fetch per session). */
 let uploadConfigCache: UploadClientConfig | null = null;
@@ -23,7 +27,9 @@ export const assetsApi = {
    * @param params - What is being uploaded and where it lands.
    * @param params.filename - The picked file's name; its extension picks the key's suffix.
    * @param params.contentType - MIME type; the server derives the asset kind from it.
-   * @param params.projectId - Owning project, which gates the request.
+   * @param params.projectId - Owning project, which gates the request. Absent
+   *   for a studio's avatar, which names the studio instead.
+   * @param params.studioId - The studio, for a studio's avatar.
    * @param params.size - Declared byte size, the authoritative cap gate input.
    * @param params.hash - Content sha256. Mandatory: an upload that cannot be
    *   fingerprinted is refused before it gets here, and the server rejects a
@@ -34,12 +40,13 @@ export const assetsApi = {
    * @param params.toolName - The mini-tool's name when `source` says so.
    * @param params.derived - True for a byproduct, which is registered without
    *   an activity-feed row of its own.
+   * @param params.purpose - What the picture is uploaded to become, filed as
+   *   the asset's source.
    * @returns The ticket to upload with, or the existing asset to reuse.
    */
-  requestUploadTicket(params: {
+  requestUploadTicket(params: UploadTargetParams & {
     filename: string;
     contentType: string;
-    projectId: string;
     size: number;
     hash: string;
     nodeId?: string;
@@ -47,11 +54,13 @@ export const assetsApi = {
     source?: 'mini_tool';
     toolName?: string;
     derived?: true;
+    purpose?: PicturePurpose;
   }): Promise<UploadTicketResponse> {
     return apiPost<UploadTicketResponse>('/assets/upload-ticket', {
       filename: params.filename,
       content_type: params.contentType,
-      project_id: params.projectId,
+      ...(params.projectId !== undefined && { project_id: params.projectId }),
+      ...(params.studioId !== undefined && { studio_id: params.studioId }),
       size: params.size,
       client_hash: params.hash,
       ...(params.nodeId !== undefined && { node_id: params.nodeId }),
@@ -59,6 +68,7 @@ export const assetsApi = {
       ...(params.source !== undefined && { source: params.source }),
       ...(params.toolName !== undefined && { tool_name: params.toolName }),
       ...(params.derived !== undefined && { derived: params.derived }),
+      ...(params.purpose !== undefined && { purpose: params.purpose }),
     });
   },
 

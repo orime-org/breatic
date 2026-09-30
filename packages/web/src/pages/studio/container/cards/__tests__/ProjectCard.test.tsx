@@ -33,15 +33,12 @@ const project: ContainerProject = {
   createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
 };
 
-function setup(
-  p: ContainerProject = project,
-  studioRole: 'admin' | 'maintainer' | 'guest' = 'admin',
-) {
+function setup(p: ContainerProject = project) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <ProjectCard project={p} studioRole={studioRole} studioSlug='acme' />
+        <ProjectCard project={p} studioSlug='acme' />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -99,10 +96,8 @@ describe('ProjectCard', () => {
     expect(await screen.findByRole('menuitem', { name: 'Upload cover' })).toBeInTheDocument();
   });
 
-  it('shows no ⋯ menu to anyone but the project owner, studio admin included', () => {
-    setup({ ...project, myRole: 'editor' }, 'admin');
-    expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
-    setup({ ...project, myRole: 'viewer' }, 'maintainer');
+  it('shows no ⋯ menu to a member who does not own the project', () => {
+    setup({ ...project, myRole: 'editor' });
     expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
   });
 

@@ -1105,7 +1105,7 @@ function CanvasSpaceInner({
                   hashFile,
                   requestTicket: assetsApi.requestUploadTicket,
                   sendToIngest: sendFileAndFinish,
-                  onSuccess: (fileUrl) => {
+                  onSuccess: ({ fileUrl }) => {
                     if (fileUrl === undefined) {
                       reject(new Error('upload'));
                       return;

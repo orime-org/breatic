@@ -36,12 +36,22 @@ export interface UploadTicket {
   taskId?: string;
 }
 
+/** Where an upload lands: a project, or a studio that has no project in it. */
+export type UploadTargetParams =
+  | { projectId: string; studioId?: never }
+  | { studioId: string; projectId?: never };
+
+/** What a picture is uploaded to become, filed as the asset's source. */
+export type PicturePurpose = 'project_cover' | 'studio_avatar';
+
 /**
  * The ticket endpoint's other answer: this studio already holds this content,
  * so nothing moves and the existing URL is reused.
  */
 export interface UploadAlreadyStored {
   alreadyExists: true;
+  /** The ledger row being reused. */
+  assetId: string;
   fileUrl: string;
   kind: string;
 }

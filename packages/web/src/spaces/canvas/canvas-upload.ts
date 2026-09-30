@@ -4,6 +4,8 @@
 import { validFocusImages } from '@web/data/focus-images';
 import {
   isAlreadyStored,
+  type PicturePurpose,
+  type UploadTargetParams,
   type UploadTicket,
   type UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
@@ -157,9 +159,7 @@ export function checkFileAdmission(
  * and then stored on the grant, so what the Worker reports back is read
  * against context we hold rather than context a client could restate.
  */
-export interface UploadContext {
-  /** Owning project, which gates the ticket. */
-  projectId: string;
+export type UploadContext = UploadTargetParams & {
   /** The node the bytes land on, when this upload has one. */
   nodeId?: string;
   /** The space that node lives in. */
@@ -170,6 +170,17 @@ export interface UploadContext {
   toolName?: string;
   /** True for a byproduct, registered without an activity-feed row of its own. */
   derived?: true;
+  /** What a picture is uploaded to become — a project cover or a studio avatar. */
+  purpose?: PicturePurpose;
+};
+
+/**
+ * What the server filed a finished upload under, when it said: the address,
+ * and the ledger row a cover or an avatar is then pointed at.
+ */
+export interface StoredUpload {
+  fileUrl: string | undefined;
+  assetId: string | undefined;
 }
 
 /**
@@ -276,10 +287,9 @@ export interface MediaUploadDeps {
    */
   hashFile: (file: File) => Promise<string | null>;
   /** Ask for a ticket, or be told the studio already holds this content. */
-  requestTicket: (params: {
+  requestTicket: (params: UploadTargetParams & {
     filename: string;
     contentType: string;
-    projectId: string;
     size: number;
     /** Mandatory — a hashless upload is refused before it reaches here. */
     hash: string;
@@ -288,6 +298,7 @@ export interface MediaUploadDeps {
     source?: 'mini_tool';
     toolName?: string;
     derived?: true;
+    purpose?: PicturePurpose;
   }) => Promise<UploadTicketResponse>;
   /** Send the bytes to the ingest Worker and finish the upload. */
   sendToIngest: (
@@ -298,13 +309,13 @@ export interface MediaUploadDeps {
   /**
    * The bytes are delivered and the server has them.
    *
-   * The URL is what the server filed the content under, when it said. A node
-   * ignores it: the server writes the node's content through Yjs, and pinning
-   * anything here would be a second writer for the one field that has one
-   * (design §6.6). An upload with no node behind it has no other channel and
-   * this is what it reads.
+   * What the server filed the content under, when it said. A node ignores
+   * it: the server writes the node's content through Yjs, and pinning anything
+   * here would be a second writer for the one field that has one (design
+   * §6.6). An upload with no node behind it has no other channel and this is
+   * what it reads.
    */
-  onSuccess: (fileUrl: string | undefined) => void;
+  onSuccess: (stored: StoredUpload) => void;
   /**
    * Called when the upload cannot complete. `reason` tells the caller which
    * message to show: `hash` (we could not fingerprint the file — reload) vs
@@ -358,7 +369,9 @@ export async function runMediaUpload(
         deps.requestTicket({
           filename: file.name,
           contentType: file.type,
-          projectId: context.projectId,
+          ...(context.projectId !== undefined
+            ? { projectId: context.projectId }
+            : { studioId: context.studioId }),
           size: file.size,
           hash,
           ...(context.nodeId !== undefined && { nodeId: context.nodeId }),
@@ -366,6 +379,7 @@ export async function runMediaUpload(
           ...(context.source !== undefined && { source: context.source }),
           ...(context.toolName !== undefined && { toolName: context.toolName }),
           ...(context.derived !== undefined && { derived: context.derived }),
+          ...(context.purpose !== undefined && { purpose: context.purpose }),
         }),
       {
         attempts: cfg.clientMaxAttempts,
@@ -381,13 +395,16 @@ export async function runMediaUpload(
   if (isAlreadyStored(answer)) {
     // Nothing moves. The server has already written the node's history and
     // published what ends its handling.
-    deps.onSuccess(answer.fileUrl);
+    deps.onSuccess({ fileUrl: answer.fileUrl, assetId: answer.assetId });
     return;
   }
 
   try {
     const outcome = await deps.sendToIngest(file, answer, cfg);
-    deps.onSuccess(outcome.fileUrl);
+    deps.onSuccess({
+      fileUrl: outcome.fileUrl,
+      assetId: outcome.assetId ?? undefined,
+    });
   } catch (err) {
     deps.onFailure({
       reason: failureOf(err),

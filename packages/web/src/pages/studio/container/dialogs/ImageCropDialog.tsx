@@ -14,15 +14,18 @@ import {
 } from '@web/components/ui/dialog';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
-  checkAvatarPixels,
-  renderAvatarBlob,
-} from '@web/pages/studio/container/dialogs/avatar-image';
+  AVATAR_OUTPUT,
+  COVER_OUTPUT,
+  checkPickedPixels,
+  renderCropBlob,
+  type CropOutput,
+} from '@web/pages/studio/container/dialogs/crop-image';
 import {
   imageBoxWithin,
-  initialSquareCrop,
+  initialCrop,
   rescaleCrop,
   type ImageBox,
-} from '@web/pages/studio/container/dialogs/avatar-crop';
+} from '@web/pages/studio/container/dialogs/crop-box';
 import {
   captureResize,
   moveRect,
@@ -46,12 +49,44 @@ const CORNER_POSITION: Readonly<Record<string, string>> = {
 /** How far one arrow-key press nudges the selection, in display pixels. */
 const KEYBOARD_STEP_PX = 4;
 
+/** What one kind of picture is cropped to, and what the dialog says. */
+interface CropVariant {
+  aspect: number;
+  output: CropOutput;
+  titleKey: string;
+  hintKey: string;
+  confirmKey: string;
+  uploadingKey: string;
+}
+
+/** The two pictures this dialog crops. */
+const VARIANTS: Readonly<Record<'avatar' | 'cover', CropVariant>> = {
+  avatar: {
+    aspect: 1,
+    output: AVATAR_OUTPUT,
+    titleKey: 'studio.container.settings.avatarCropTitle',
+    hintKey: 'studio.container.settings.avatarCropHint',
+    confirmKey: 'studio.container.settings.avatarCropConfirm',
+    uploadingKey: 'studio.container.settings.avatarUploading',
+  },
+  cover: {
+    aspect: 16 / 9,
+    output: COVER_OUTPUT,
+    titleKey: 'studio.container.cover.cropTitle',
+    hintKey: 'studio.container.cover.cropHint',
+    confirmKey: 'studio.container.cover.upload',
+    uploadingKey: 'studio.container.cover.uploading',
+  },
+};
+
 /** An in-flight pointer gesture. */
 type Gesture =
   | { kind: 'move'; last: { x: number; y: number } }
   | { kind: 'resize'; capture: CapturedResize };
 
-interface AvatarCropDialogProps {
+interface ImageCropDialogProps {
+  /** Which picture is being cropped: a 1:1 studio avatar or a 16:9 project cover. */
+  variant: 'avatar' | 'cover';
   /** The picked file; `null` keeps the dialog closed. */
   file: File | null;
   /** Whether the produced blob is currently being uploaded. */
@@ -63,13 +98,13 @@ interface AvatarCropDialogProps {
 }
 
 /**
- * Crop a picked image down to the square that becomes the studio avatar.
+ * Crop a picked image down to a studio avatar (1:1) or a project cover (16:9).
  *
- * The image is shown whole and does not move; the user drags a 1:1 selection
- * over it. The selection is bounded by the image's DRAWN area rather than the
+ * The image is shown whole and does not move; the user drags a selection of
+ * the variant's ratio over it. The selection is bounded by the image's DRAWN area rather than the
  * frame — an image that does not match the frame's shape is letterboxed, and a
  * selection reaching onto that margin would bake an empty band into the
- * avatar. Everything outside the selection is dimmed, letterbox included,
+ * picture. Everything outside the selection is dimmed, letterbox included,
  * since none of it survives the crop.
  *
  * Measurement waits for a real layout: a dialog that has not been shown
@@ -85,22 +120,26 @@ interface AvatarCropDialogProps {
  * While an upload is in flight the dialog refuses to close, and a failed
  * upload leaves the crop exactly as it was, so the user can retry without
  * re-doing their work.
- * @param props - The dialog's file, upload state and callbacks.
+ * @param props - The dialog's variant, file, upload state and callbacks.
+ * @param props.variant - Which picture is being cropped.
  * @param props.file - The picked file, or `null` when closed.
  * @param props.uploading - Whether the produced blob is uploading.
  * @param props.error - An upload error to show above the actions.
  * @param props.onCancel - Called when the user dismisses the dialog.
- * @param props.onConfirm - Called with the encoded 512×512 avatar.
+ * @param props.onConfirm - Called with the encoded picture.
  * @returns The crop dialog.
  */
-export function AvatarCropDialog({
+export function ImageCropDialog({
+  variant,
   file,
   uploading,
   error,
   onCancel,
   onConfirm,
-}: AvatarCropDialogProps): React.JSX.Element {
+}: ImageCropDialogProps): React.JSX.Element {
   const t = useTranslation();
+  const { aspect, output, titleKey, hintKey, confirmKey, uploadingKey } =
+    VARIANTS[variant];
   const frameRef = React.useRef<HTMLDivElement | null>(null);
   const imgRef = React.useRef<HTMLImageElement | null>(null);
   const gestureRef = React.useRef<Gesture | null>(null);
@@ -184,12 +223,12 @@ export function AvatarCropDialog({
     // rather than stay at numbers that no longer describe anything.
     setRect((prev) =>
       prev === null
-        ? initialSquareCrop(next)
+        ? initialCrop(next, aspect)
         : prevBox === null
           ? prev
-          : rescaleCrop(prev, prevBox, next),
+          : rescaleCrop(prev, prevBox, next, aspect),
     );
-  }, []);
+  }, [aspect]);
 
   React.useEffect(() => {
     const img = imgRef.current;
@@ -253,9 +292,9 @@ export function AvatarCropDialog({
         gestureRef.current = { kind: 'move', last: p };
         return;
       }
-      setRect(resizeFromCapture(gesture.capture, p, bounds, 1));
+      setRect(resizeFromCapture(gesture.capture, p, bounds, aspect));
     },
-    [box, pointAt],
+    [aspect, box, pointAt],
   );
 
   const endGesture = React.useCallback((): void => {
@@ -293,9 +332,9 @@ export function AvatarCropDialog({
     const img = imgRef.current;
     if (!img || rect === null || box === null) return;
     const natural = { width: img.naturalWidth, height: img.naturalHeight };
-    const pixelProblem = checkAvatarPixels(natural.width, natural.height);
+    const pixelProblem = checkPickedPixels(natural.width, natural.height);
     if (pixelProblem !== null) {
-      setLocalError(t(`studio.container.settings.avatarError.${pixelProblem}`));
+      setLocalError(t(`studio.container.imageError.${pixelProblem}`));
       return;
     }
     setPreparing(true);
@@ -308,17 +347,17 @@ export function AvatarCropDialog({
         { width: box.width, height: box.height },
         natural,
       );
-      onConfirm(await renderAvatarBlob(img, crop));
+      onConfirm(await renderCropBlob(img, crop, output));
     } catch {
-      setLocalError(t('studio.container.settings.avatarError.encode_failed'));
+      setLocalError(t('studio.container.imageError.encode_failed'));
     } finally {
       setPreparing(false);
     }
-  }, [box, onConfirm, rect, t]);
+  }, [box, onConfirm, output, rect, t]);
 
   const busy = uploading || preparing;
   const shown = decodeFailed
-    ? t('studio.container.settings.avatarError.not_an_image')
+    ? t('studio.container.imageError.not_an_image')
     : (error ?? localError);
 
   return (
@@ -331,7 +370,7 @@ export function AvatarCropDialog({
       }}
     >
       <DialogContent
-        data-testid='avatar-crop-dialog'
+        data-testid='image-crop-dialog'
         onEscapeKeyDown={(e) => {
           if (busy) e.preventDefault();
         }}
@@ -343,12 +382,8 @@ export function AvatarCropDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>
-            {t('studio.container.settings.avatarCropTitle')}
-          </DialogTitle>
-          <DialogDescription>
-            {t('studio.container.settings.avatarCropHint')}
-          </DialogDescription>
+          <DialogTitle>{t(titleKey)}</DialogTitle>
+          <DialogDescription>{t(hintKey)}</DialogDescription>
         </DialogHeader>
         <DialogBody className='flex flex-col gap-3'>
           <div
@@ -431,8 +466,8 @@ export function AvatarCropDialog({
                   <div
                     role='application'
                     tabIndex={0}
-                    aria-label={t('studio.container.settings.avatarCropRegion')}
-                    data-testid='avatar-crop-selection'
+                    aria-label={t('studio.container.cropRegion')}
+                    data-testid='image-crop-selection'
                     className='absolute cursor-move border border-white outline-none focus-visible:ring-1 focus-visible:ring-white'
                     style={{
                       left: rect.x,
@@ -464,7 +499,7 @@ export function AvatarCropDialog({
             <p
               role='alert'
               className='text-xs text-status-error-foreground'
-              data-testid='avatar-crop-error'
+              data-testid='image-crop-error'
             >
               {shown}
             </p>
@@ -482,11 +517,9 @@ export function AvatarCropDialog({
               size='sm'
               disabled={busy || rect === null}
               onClick={() => void handleConfirm()}
-              data-testid='avatar-crop-confirm'
+              data-testid='image-crop-confirm'
             >
-              {busy
-                ? t('studio.container.settings.avatarUploading')
-                : t('studio.container.settings.avatarCropConfirm')}
+              {busy ? t(uploadingKey) : t(confirmKey)}
             </Button>
           </div>
         </DialogBody>

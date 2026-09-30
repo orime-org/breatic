@@ -1447,17 +1447,14 @@
         "avatarSaved": "Avatar updated",
         "avatarRemoved": "Avatar removed",
         "avatarUploading": "Uploading…",
+        "avatarUploadError": {
+          "storage": "Storage is full. The avatar was not uploaded.",
+          "unsupportedType": "This file format is not supported.",
+          "upload": "The avatar was not uploaded. Try again."
+        },
         "avatarCropTitle": "Crop your avatar",
         "avatarCropHint": "Drag the square to reposition it, or drag a corner to resize.",
         "avatarCropConfirm": "Save avatar",
-        "avatarCropRegion": "Crop area — use the arrow keys to move it",
-        "avatarError": {
-          "too_large": "That file is over 20 MB — pick a smaller image.",
-          "empty": "That file is empty.",
-          "too_many_pixels": "That image is too large to work with. Try one under 8000 pixels on each side.",
-          "not_an_image": "That file could not be read as an image.",
-          "encode_failed": "Could not prepare the image. Please try another one."
-        },
         "slugChangeOpen": "Change Slug",
         "slugChangeTitle": "Change this Studio's Slug?",
         "slugChangeBody": "The address changes from /studio/{oldSlug} to /studio/{newSlug}.",
@@ -1505,6 +1502,26 @@
       "toolbar": {
         "sortLabel": "Sort",
         "sortValue": "Recently opened"
+      },
+      "imageError": {
+        "too_large": "That file is over 20 MB — pick a smaller image.",
+        "empty": "That file is empty.",
+        "too_many_pixels": "That image is too large to work with. Try one under 8000 pixels on each side.",
+        "not_an_image": "That file could not be read as an image.",
+        "encode_failed": "Could not prepare the image. Please try another one."
+      },
+      "cropRegion": "Crop area — use the arrow keys to move it",
+      "cover": {
+        "menuUpload": "Upload cover",
+        "cropTitle": "Crop the cover",
+        "cropHint": "Drag to choose the part shown on the project card.",
+        "upload": "Upload",
+        "uploading": "Uploading…",
+        "error": {
+          "storage": "Storage is full. The cover was not uploaded.",
+          "unsupportedType": "This file format is not supported.",
+          "upload": "The cover was not uploaded. Try again."
+        }
       }
     },
     "rail": {

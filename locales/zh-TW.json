@@ -1447,17 +1447,14 @@
         "avatarSaved": "頭像已更新",
         "avatarRemoved": "頭像已移除",
         "avatarUploading": "上傳中…",
+        "avatarUploadError": {
+          "storage": "儲存空間已滿，頭像沒有上傳。",
+          "unsupportedType": "不支援這個檔案的格式。",
+          "upload": "頭像沒有上傳，請再試一次。"
+        },
         "avatarCropTitle": "裁切頭像",
         "avatarCropHint": "拖曳方框調整位置，拖曳四角調整大小。",
         "avatarCropConfirm": "儲存頭像",
-        "avatarCropRegion": "裁切區域 — 可用方向鍵移動",
-        "avatarError": {
-          "too_large": "這個檔案超過 20 MB，請換一張小一點的圖片。",
-          "empty": "這個檔案是空的。",
-          "too_many_pixels": "這張圖片太大了，請換一張每邊都小於 8000 像素的。",
-          "not_an_image": "無法把這個檔案讀成圖片。",
-          "encode_failed": "無法處理這張圖片，請換一張試試。"
-        },
         "slugChangeOpen": "修改 Slug",
         "slugChangeTitle": "要修改這個 Studio 的 Slug 嗎？",
         "slugChangeBody": "網址會從 /studio/{oldSlug} 變成 /studio/{newSlug}。",
@@ -1505,6 +1502,26 @@
       "toolbar": {
         "sortLabel": "排序",
         "sortValue": "最近開啟"
+      },
+      "imageError": {
+        "too_large": "這個檔案超過 20 MB，請換一張小一點的圖片。",
+        "empty": "這個檔案是空的。",
+        "too_many_pixels": "這張圖片太大了，請換一張每邊都小於 8000 像素的。",
+        "not_an_image": "無法把這個檔案讀成圖片。",
+        "encode_failed": "無法處理這張圖片，請換一張試試。"
+      },
+      "cropRegion": "裁切區域 — 可用方向鍵移動",
+      "cover": {
+        "menuUpload": "上傳封面",
+        "cropTitle": "裁切封面",
+        "cropHint": "拖曳選擇要顯示在 Project 卡片上的區域。",
+        "upload": "上傳",
+        "uploading": "上傳中…",
+        "error": {
+          "storage": "儲存空間已滿，封面沒有上傳。",
+          "unsupportedType": "不支援這個檔案的格式。",
+          "upload": "封面沒有上傳，請再試一次。"
+        }
       }
     },
     "rail": {

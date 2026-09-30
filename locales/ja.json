@@ -1447,17 +1447,14 @@
         "avatarSaved": "アバターを更新しました",
         "avatarRemoved": "アバターを削除しました",
         "avatarUploading": "アップロード中…",
+        "avatarUploadError": {
+          "storage": "ストレージがいっぱいです。アバターはアップロードされていません。",
+          "unsupportedType": "このファイル形式には対応していません。",
+          "upload": "アバターをアップロードできませんでした。もう一度お試しください。"
+        },
         "avatarCropTitle": "アバターを切り抜く",
         "avatarCropHint": "四角をドラッグして位置を、角をドラッグして大きさを調整します。",
         "avatarCropConfirm": "アバターを保存",
-        "avatarCropRegion": "切り抜き範囲 — 矢印キーで移動できます",
-        "avatarError": {
-          "too_large": "そのファイルは 20 MB を超えています。もっと小さい画像を選んでください。",
-          "empty": "そのファイルは空です。",
-          "too_many_pixels": "その画像は大きすぎます。各辺 8000 ピクセル未満のものをお試しください。",
-          "not_an_image": "そのファイルは画像として読み取れませんでした。",
-          "encode_failed": "画像を準備できませんでした。別の画像をお試しください。"
-        },
         "slugChangeOpen": "Slug を変更",
         "slugChangeTitle": "この Studio の Slug を変更しますか？",
         "slugChangeBody": "アドレスが /studio/{oldSlug} から /studio/{newSlug} に変わります。",
@@ -1505,6 +1502,26 @@
       "toolbar": {
         "sortLabel": "並び替え",
         "sortValue": "最近開いた順"
+      },
+      "imageError": {
+        "too_large": "そのファイルは 20 MB を超えています。もっと小さい画像を選んでください。",
+        "empty": "そのファイルは空です。",
+        "too_many_pixels": "その画像は大きすぎます。各辺 8000 ピクセル未満のものをお試しください。",
+        "not_an_image": "そのファイルは画像として読み取れませんでした。",
+        "encode_failed": "画像を準備できませんでした。別の画像をお試しください。"
+      },
+      "cropRegion": "切り抜き範囲 — 矢印キーで移動できます",
+      "cover": {
+        "menuUpload": "カバーをアップロード",
+        "cropTitle": "カバーをトリミング",
+        "cropHint": "Project カードに表示する範囲をドラッグで選んでください。",
+        "upload": "アップロード",
+        "uploading": "アップロード中…",
+        "error": {
+          "storage": "ストレージがいっぱいです。カバーはアップロードされていません。",
+          "unsupportedType": "このファイル形式には対応していません。",
+          "upload": "カバーをアップロードできませんでした。もう一度お試しください。"
+        }
       }
     },
     "rail": {

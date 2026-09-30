@@ -36,7 +36,7 @@ function uploadForChat(file: File, projectId: string): Promise<string | undefine
         hashFile,
         requestTicket: assetsApi.requestUploadTicket,
         sendToIngest: sendFileAndFinish,
-        onSuccess: resolve,
+        onSuccess: ({ fileUrl }) => resolve(fileUrl),
         onFailure: (outcome) => reject(new Error(outcome.reason)),
       },
     );
