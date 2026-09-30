@@ -17,6 +17,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import {
   BodyEdgeSelection,
   bodyEdgeBetween,
+  bodyEdgePos,
   bodyEdgeNeedsTakeover,
   dragSelection,
   extendToBodyEdge,
@@ -77,6 +78,7 @@ function textStart(view: EditorView, words: string): number {
 }
 
 const ABOVE_DIVIDER = [{ type: 'paragraph', content: 'Above' }, { type: 'divider' }];
+const BELOW_DIVIDER_ROWS = [{ type: 'divider' }, { type: 'paragraph', content: 'Below' }];
 
 describe('which ends of the body need taking over', () => {
   it('takes over a trailing divider, fallback block or empty line', () => {
@@ -110,7 +112,7 @@ describe('BodyEdgeSelection', () => {
     const { doc } = view.state;
     const selection = BodyEdgeSelection.create(doc, textStart(view, 'Above'), 'end');
 
-    expect(selection.to).toBe(doc.content.size - 1);
+    expect(selection.to).toBe(bodyEdgePos(doc, 'end'));
     expect(TextSelection.between(doc.resolve(selection.from), doc.resolve(selection.to)).to)
       .toBeLessThan(selection.to);
   });
@@ -125,7 +127,7 @@ describe('BodyEdgeSelection', () => {
 
     const selection = view.state.selection;
     expect(selection).toBeInstanceOf(BodyEdgeSelection);
-    expect(selection.to).toBe(view.state.doc.content.size - 1);
+    expect(selection.to).toBe(bodyEdgePos(view.state.doc, 'end'));
   });
 
   it('round-trips through JSON with the edge at either end', () => {
@@ -146,10 +148,10 @@ describe('BodyEdgeSelection', () => {
     const { doc } = view.state;
     // Between the two rows: after the first row's container, before the divider's.
     const between = textStart(view, 'Above') + 'Above'.length + 2;
-    const back = Selection.fromJSON(doc, { type: 'bodyEdge', anchor: between, head: doc.content.size - 1 });
+    const back = Selection.fromJSON(doc, { type: 'bodyEdge', anchor: between, head: bodyEdgePos(doc, 'end') });
 
     expect(back.$anchor.parent.inlineContent).toBe(true);
-    expect(back.head).toBe(doc.content.size - 1);
+    expect(back.head).toBe(bodyEdgePos(doc, 'end'));
   });
 
   it('keeps its class through a bookmark', () => {
@@ -186,13 +188,13 @@ describe('extending to an end of the body', () => {
     const next = extendToBodyEdge(view.state.doc, from.anchor, 'end');
 
     expect(next).toBeInstanceOf(BodyEdgeSelection);
-    expect(next.to).toBe(view.state.doc.content.size - 1);
+    expect(next.to).toBe(bodyEdgePos(view.state.doc, 'end'));
   });
 
   it('becomes a whole-document selection when the anchor is already on the other edge', () => {
     const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }]);
 
-    const next = extendToBodyEdge(view.state.doc, 1, 'end');
+    const next = extendToBodyEdge(view.state.doc, bodyEdgePos(view.state.doc, 'start'), 'end');
 
     expect(next).toBeInstanceOf(AllSelection);
   });
@@ -206,7 +208,7 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
     expect(press(view, 'ArrowDown')).toBe(true);
 
     expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
-    expect(view.state.selection.to).toBe(view.state.doc.content.size - 1);
+    expect(view.state.selection.to).toBe(bodyEdgePos(view.state.doc, 'end'));
   });
 
   it('Shift+Up on the first line takes a leading divider in', () => {
@@ -216,7 +218,7 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
     expect(press(view, 'ArrowUp')).toBe(true);
 
     expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
-    expect(view.state.selection.from).toBe(1);
+    expect(view.state.selection.from).toBe(bodyEdgePos(view.state.doc, 'start'));
   });
 
   it('Shift+Down with the head already at the end changes nothing', () => {
@@ -249,7 +251,7 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
     expect(press(view, 'ArrowLeft')).toBe(true);
 
     expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
-    expect(view.state.selection.anchor).toBe(view.state.doc.content.size - 1);
+    expect(view.state.selection.anchor).toBe(bodyEdgePos(view.state.doc, 'end'));
     expect(view.state.selection.head).toBe(text - 1);
   });
 
@@ -277,16 +279,16 @@ describe('the selection between two positions, either of which may be an edge', 
     const { doc } = view.state;
     const at = textStart(view, 'Above');
 
-    const selection = bodyEdgeBetween(doc, doc.content.size - 1, at + 2);
+    const selection = bodyEdgeBetween(doc, bodyEdgePos(doc, 'end'), at + 2);
 
     expect(selection).toBeInstanceOf(BodyEdgeSelection);
-    expect([selection.anchor, selection.head]).toEqual([doc.content.size - 1, at + 2]);
+    expect([selection.anchor, selection.head]).toEqual([bodyEdgePos(doc, 'end'), at + 2]);
   });
 
   it('collapses to a caret in the nearest text when both ends are the same edge', () => {
     const view = open(ABOVE_DIVIDER);
     const { doc } = view.state;
-    const end = doc.content.size - 1;
+    const end = bodyEdgePos(doc, 'end');
 
     const selection = bodyEdgeBetween(doc, end, end);
 
@@ -299,7 +301,7 @@ describe('the selection between two positions, either of which may be an edge', 
     const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }]);
     const { doc } = view.state;
 
-    expect(bodyEdgeBetween(doc, 1, doc.content.size - 1)).toBeInstanceOf(AllSelection);
+    expect(bodyEdgeBetween(doc, bodyEdgePos(doc, 'start'), bodyEdgePos(doc, 'end'))).toBeInstanceOf(AllSelection);
   });
 });
 
@@ -321,8 +323,8 @@ describe('the selection a drag gives, by where it was pressed and where the poin
     const down = dragSelection(doc, { press: 'body', anchor: at, left: true }, 'end', null);
     const up = dragSelection(doc, { press: 'body', anchor: at, left: true }, 'start', null);
 
-    expect([down?.anchor, down?.head]).toEqual([at, doc.content.size - 1]);
-    expect([up?.anchor, up?.head]).toEqual([at, 1]);
+    expect([down?.anchor, down?.head]).toEqual([at, bodyEdgePos(doc, 'end')]);
+    expect([up?.anchor, up?.head]).toEqual([at, bodyEdgePos(doc, 'start')]);
   });
 
   it('follows the pointer from the anchor after coming back into the body', () => {
@@ -340,26 +342,26 @@ describe('the selection a drag gives, by where it was pressed and where the poin
     const { doc } = view.state;
     const at = textStart(view, 'Mid') + 1;
 
-    const fromEnd = dragSelection(doc, { press: 'end', anchor: doc.content.size - 1, left: true }, 'body', at);
-    const fromStart = dragSelection(doc, { press: 'start', anchor: 1, left: true }, 'body', at);
+    const fromEnd = dragSelection(doc, { press: 'end', anchor: bodyEdgePos(doc, 'end'), left: true }, 'body', at);
+    const fromStart = dragSelection(doc, { press: 'start', anchor: bodyEdgePos(doc, 'start'), left: true }, 'body', at);
 
     expect(fromEnd).toBeInstanceOf(BodyEdgeSelection);
-    expect([fromEnd?.anchor, fromEnd?.head]).toEqual([doc.content.size - 1, at]);
-    expect([fromStart?.anchor, fromStart?.head]).toEqual([1, at]);
+    expect([fromEnd?.anchor, fromEnd?.head]).toEqual([bodyEdgePos(doc, 'end'), at]);
+    expect([fromStart?.anchor, fromStart?.head]).toEqual([bodyEdgePos(doc, 'start'), at]);
   });
 
   it('treats a press past an edge that has not moved as a click', () => {
     const view = open(BOTH_ENDS);
     const { doc } = view.state;
 
-    expect(dragSelection(doc, { press: 'end', anchor: doc.content.size - 1, left: false }, 'end', null)).toBeNull();
+    expect(dragSelection(doc, { press: 'end', anchor: bodyEdgePos(doc, 'end'), left: false }, 'end', null)).toBeNull();
   });
 
   it('collapses to a caret beside the edge when the drag comes back past where it was pressed', () => {
     const view = open(BOTH_ENDS);
     const { doc } = view.state;
 
-    const back = dragSelection(doc, { press: 'end', anchor: doc.content.size - 1, left: true }, 'end', null);
+    const back = dragSelection(doc, { press: 'end', anchor: bodyEdgePos(doc, 'end'), left: true }, 'end', null);
 
     expect(back).toBeInstanceOf(TextSelection);
     expect(back?.empty).toBe(true);
@@ -370,9 +372,9 @@ describe('the selection a drag gives, by where it was pressed and where the poin
     const view = open(BOTH_ENDS);
     const { doc } = view.state;
 
-    expect(dragSelection(doc, { press: 'end', anchor: doc.content.size - 1, left: true }, 'start', null))
+    expect(dragSelection(doc, { press: 'end', anchor: bodyEdgePos(doc, 'end'), left: true }, 'start', null))
       .toBeInstanceOf(AllSelection);
-    expect(dragSelection(doc, { press: 'start', anchor: 1, left: true }, 'end', null))
+    expect(dragSelection(doc, { press: 'start', anchor: bodyEdgePos(doc, 'start'), left: true }, 'end', null))
       .toBeInstanceOf(AllSelection);
   });
 
@@ -387,21 +389,21 @@ describe('the selection a drag gives, by where it was pressed and where the poin
 
     expect([inBody?.anchor, inBody?.head]).toEqual([at, at + 2]);
     expect(pastEnd).toBeInstanceOf(BodyEdgeSelection);
-    expect([pastEnd?.anchor, pastEnd?.head]).toEqual([at, doc.content.size - 1]);
+    expect([pastEnd?.anchor, pastEnd?.head]).toEqual([at, bodyEdgePos(doc, 'end')]);
   });
 
   it('is the whole document from a Shift+click past one edge when the anchor is on the other', () => {
     const view = open(BOTH_ENDS);
     const { doc } = view.state;
 
-    expect(dragSelection(doc, { press: 'shift', anchor: 1, left: true }, 'end', null)).toBeInstanceOf(AllSelection);
+    expect(dragSelection(doc, { press: 'shift', anchor: bodyEdgePos(doc, 'start'), left: true }, 'end', null)).toBeInstanceOf(AllSelection);
   });
 
   it('keeps the current selection when the pointer in the body lands on no position', () => {
     const view = open(BOTH_ENDS);
     const { doc } = view.state;
 
-    expect(dragSelection(doc, { press: 'end', anchor: doc.content.size - 1, left: true }, 'body', null)).toBeNull();
+    expect(dragSelection(doc, { press: 'end', anchor: bodyEdgePos(doc, 'end'), left: true }, 'body', null)).toBeNull();
   });
 });
 
@@ -423,10 +425,10 @@ describe('the browser extending a selection one of whose ends is an edge', () =>
     const { doc } = view.state;
     const at = textStart(view, 'Above') + 2;
 
-    const selection = readBack(view, doc.content.size - 1, at);
+    const selection = readBack(view, bodyEdgePos(doc, 'end'), at);
 
     expect(selection).toBeInstanceOf(BodyEdgeSelection);
-    expect([selection?.anchor, selection?.head]).toEqual([doc.content.size - 1, at]);
+    expect([selection?.anchor, selection?.head]).toEqual([bodyEdgePos(doc, 'end'), at]);
   });
 
   it('keeps a head written onto the edge', () => {
@@ -434,10 +436,34 @@ describe('the browser extending a selection one of whose ends is an edge', () =>
     const { doc } = view.state;
     const at = textStart(view, 'Above') + 2;
 
-    const selection = readBack(view, at, doc.content.size - 1);
+    const selection = readBack(view, at, bodyEdgePos(doc, 'end'));
 
     expect(selection).toBeInstanceOf(BodyEdgeSelection);
-    expect([selection?.anchor, selection?.head]).toEqual([at, doc.content.size - 1]);
+    expect([selection?.anchor, selection?.head]).toEqual([at, bodyEdgePos(doc, 'end')]);
+  });
+
+  it('reads the page position past the last block as the end edge', () => {
+    const view = open(ABOVE_DIVIDER);
+    const { doc } = view.state;
+    const at = textStart(view, 'Above') + 2;
+
+    // The page can only say "past the last block" as the position between
+    // blocks, one after the model's edge: measured, the edge written to the
+    // page reads back as `size - 1`.
+    const selection = readBack(view, doc.content.size - 1, at);
+
+    expect(selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([selection?.anchor, selection?.head]).toEqual([bodyEdgePos(doc, 'end'), at]);
+  });
+
+  it('reads the page position before the first block as the start edge', () => {
+    const view = open(BELOW_DIVIDER_ROWS);
+    const { doc } = view.state;
+    const at = textStart(view, 'Below') + 2;
+
+    const selection = readBack(view, 1, at);
+
+    expect([selection?.anchor, selection?.head]).toEqual([bodyEdgePos(doc, 'start'), at]);
   });
 
   it('leaves a range past a last block with words to ProseMirror', () => {
@@ -453,7 +479,7 @@ describe('the browser extending a selection one of whose ends is an edge', () =>
 
   it('leaves a collapsed range to ProseMirror', () => {
     const view = open(ABOVE_DIVIDER);
-    const end = view.state.doc.content.size - 1;
+    const end = bodyEdgePos(view.state.doc, 'end');
 
     expect(readBack(view, end, end)).toBeNull();
   });
