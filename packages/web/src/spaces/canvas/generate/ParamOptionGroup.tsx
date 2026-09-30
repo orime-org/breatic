@@ -11,6 +11,8 @@ export interface ParamOption {
   value: string | number;
   /** What the option button shows. */
   label: string;
+  /** Whether it cannot be picked right now. */
+  disabled?: boolean;
 }
 
 interface ParamOptionGroupProps {
@@ -81,7 +83,8 @@ export function ParamOptionGroup({
     // The whole group shares this list, so hover has to answer the same way:
     // plain hover outranks the chosen fill and would take the mark off the
     // option the pointer is on.
-    'aria-[current=true]:hover:bg-accent-strong';
+    'aria-[current=true]:hover:bg-accent-strong ' +
+    'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent';
   return (
     <div className={className}>
       <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{label}</p>
@@ -100,6 +103,7 @@ export function ParamOptionGroup({
             size={null}
             data-testid={`${testIdPrefix}-${String(option.value)}`}
             aria-current={value === option.value}
+            disabled={option.disabled}
             onClick={() => onSelect(option.value)}
             className={optionClass}
           >

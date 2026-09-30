@@ -24,6 +24,8 @@ export interface StoryboardSpec {
   readonly shotsParam: string;
   /** The param naming the tier upstream, when the model has one. */
   readonly tierParam: string | undefined;
+  /** The field of a shot that carries its seconds, when a shot has one. */
+  readonly secondsField: string | undefined;
   /**
    * The model's own param that each shot's seconds have to add up to: the
    * one named like the seconds field of a shot. Undefined when it has none.
@@ -53,6 +55,7 @@ export function storyboardSpec(
   return {
     shotsParam,
     tierParam: tier?.[0],
+    secondsField: seconds,
     totalParam: seconds !== undefined && seconds in params ? seconds : undefined,
     maxShots: spec.max_items,
     maxChars: spec.fields?.prompt?.max_chars,
@@ -71,4 +74,45 @@ export function effectiveStoryboardKind(
   stored: StoryboardKind | undefined,
 ): StoryboardKind {
   return storyboardSpec(params) === undefined ? "off" : (stored ?? "off");
+}
+
+/**
+ * The tier values the tier param takes upstream, in the catalog's vocabulary
+ * (`config/models/video/models.yaml`).
+ */
+const TIER_VALUES: Readonly<Record<Exclude<StoryboardKind, "off">, string>> = {
+  auto: "intelligence",
+  custom: "customize",
+};
+
+/** One shot as a run sends it: its words as plain text and its seconds. */
+export interface StoryboardShotInput {
+  readonly prompt: string;
+  readonly duration: number;
+}
+
+/**
+ * The params a storyboard adds to a run. Off adds none; the automatic tier
+ * names itself and leaves the shots to the model; the per-shot tier names
+ * itself and sends every shot, whose words stand in for the main prompt.
+ * @param spec - The model's storyboard.
+ * @param kind - The effective tier.
+ * @param shots - The shots, in order, with their words already plain text.
+ * @returns The params to merge into the run.
+ */
+export function storyboardParams(
+  spec: StoryboardSpec,
+  kind: StoryboardKind,
+  shots: readonly StoryboardShotInput[],
+): Record<string, unknown> {
+  if (kind === "off") return {};
+  const tier = spec.tierParam === undefined ? {} : { [spec.tierParam]: TIER_VALUES[kind] };
+  if (kind === "auto") return tier;
+  const seconds = spec.secondsField;
+  return {
+    ...tier,
+    [spec.shotsParam]: shots.map((shot) =>
+      seconds === undefined ? { prompt: shot.prompt } : { prompt: shot.prompt, [seconds]: shot.duration },
+    ),
+  };
 }

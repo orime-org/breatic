@@ -65,6 +65,7 @@ import {
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
+import { enterStoryboardShots, readStoryboard, setStoryboardKind } from '@web/data/yjs/node-storyboard';
 import { canvasApi } from '@web/data/api/canvas';
 
 import {
@@ -2197,5 +2198,144 @@ describe('a model that states how much text it takes', () => {
     expect(vi.mocked(toast.warning).mock.calls[0]?.[0]).toContain('20');
     expect(createTask).not.toHaveBeenCalled();
     createTask.mockRestore();
+  });
+});
+
+describe('the storyboard (#2218)', () => {
+  /** A text-to-video model that takes a storyboard, the way the Kling entries declare one. */
+  const KLING: ModelEntry = {
+    ...T2V,
+    name: 'kling-v3',
+    display_name: 'Kling v3',
+    params: {
+      duration: { description: '', values: [3, 5, 10], default: 5, fill: 'panel' },
+      multi_prompt: {
+        description: '',
+        default: null,
+        type: 'items',
+        max_items: 6,
+        fill: 'storyboard',
+        fields: { prompt: { type: 'text', max_chars: 512 }, duration: { values: [1, 2, 3, 4, 5] } },
+      },
+      shot_type: { description: '', default: null, values: ['intelligence', 'customize'], fill: 'storyboard' },
+    },
+  };
+
+  /**
+   * Opens the panel on a Kling node.
+   * @param before - Writes to make on the node before the panel opens.
+   * @param model - The model the node stores.
+   */
+  async function openKling(before: () => void = () => undefined, model = 'kling-v3'): Promise<void> {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [KLING, ...catalog().video] });
+    const stored = { mode: 't2v', model };
+    seedVideoNode(stored);
+    before();
+    mountContainer('video', stored);
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'video');
+    });
+    await screen.findByTestId('generate-video-execute');
+  }
+
+  /**
+   * Writes a line into one shot's box.
+   * @param index - The shot, counted from 0.
+   * @param text - Its words.
+   */
+  function typeShot(index: number, text: string): void {
+    const shot = readStoryboard('p', 's', 'target', 't2v')?.shots[index];
+    if (!shot) throw new Error(`no shot ${index}`);
+    const paragraph = new Y.XmlElement('paragraph');
+    paragraph.insert(0, [new Y.XmlText(text)]);
+    shot.prompt.insert(0, [paragraph]);
+  }
+
+  beforeEach(() => {
+    _resetForTests();
+    vi.mocked(toast.warning).mockClear();
+    useCanvasStore.setState({ panelHostId: null, panelKind: null, pickSession: null });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('offers the switch on a model that takes a storyboard, and not on one that does not', async () => {
+    await openKling();
+    expect(screen.getByTestId('generate-storyboard-switch')).toBeInTheDocument();
+  });
+
+  it('draws no switch for a model that takes no storyboard', async () => {
+    await openKling(() => undefined, 'veo-3.1');
+    expect(screen.queryByTestId('generate-storyboard-switch')).toBeNull();
+  });
+
+  it('enters the per-shot tier with two shots splitting the total', async () => {
+    await openKling();
+    fireEvent.click(screen.getByTestId('generate-storyboard-per-shot'));
+    await screen.findByTestId('generate-storyboard-shot-2-editor');
+    expect(screen.getByTestId('generate-storyboard-shot-1-seconds').textContent).toBe('2s');
+    expect(screen.getByTestId('generate-storyboard-shot-2-seconds').textContent).toBe('3s');
+    expect(screen.queryByTestId('generate-prompt-editor')).toBeNull();
+  });
+
+  it('sends every shot and no main prompt under the per-shot tier', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openKling(() => {
+      typePrompt('the main prompt');
+      enterStoryboardShots('p', 's', 'target', 't2v', 5);
+      typeShot(0, 'a paper boat');
+      typeShot(1, 'the pond at dusk');
+    });
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    const params = createTask.mock.calls[0]?.[0]?.params;
+    expect(params).toMatchObject({
+      shot_type: 'customize',
+      multi_prompt: [
+        { prompt: 'a paper boat', duration: 2 },
+        { prompt: 'the pond at dusk', duration: 3 },
+      ],
+    });
+    expect(params).not.toHaveProperty('prompt');
+  });
+
+  it('refuses an empty shot, naming it', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask');
+    await openKling(() => {
+      enterStoryboardShots('p', 's', 'target', 't2v', 5);
+      typeShot(0, 'a paper boat');
+    });
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Shot 2 is empty', expect.anything()));
+    expect(createTask).not.toHaveBeenCalled();
+  });
+
+  it('sends the main prompt beside the automatic tier', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openKling(() => {
+      typePrompt('a boat, then the pond');
+      setStoryboardKind('p', 's', 'target', 't2v', 'auto');
+    });
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    expect(createTask.mock.calls[0]?.[0]?.params).toMatchObject({
+      prompt: 'a boat, then the pond',
+      shot_type: 'intelligence',
+    });
+  });
+
+  it('sends the main prompt on a model with no storyboard, whatever tier is stored', async () => {
+    const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openKling(() => {
+      typePrompt('a drone shot');
+      enterStoryboardShots('p', 's', 'target', 't2v', 8);
+    }, 'veo-3.1');
+    fireEvent.click(screen.getByTestId('generate-video-execute'));
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    const params = createTask.mock.calls[0]?.[0]?.params;
+    expect(params).toMatchObject({ prompt: 'a drone shot' });
+    expect(params).not.toHaveProperty('shot_type');
+    expect(params).not.toHaveProperty('multi_prompt');
   });
 });

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { effectiveStoryboardKind, storyboardSpec } from "@shared/storyboard.js";
+import { effectiveStoryboardKind, storyboardParams, storyboardSpec } from "@shared/storyboard.js";
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";
 
 const kling: Record<string, ParamDescriptor> = {
@@ -48,6 +48,7 @@ describe("what a model says about its storyboard", () => {
     expect(storyboardSpec(kling)).toEqual({
       shotsParam: "multi_prompt",
       tierParam: "shot_type",
+      secondsField: "duration",
       totalParam: "duration",
       maxShots: 6,
       maxChars: 512,
@@ -56,5 +57,31 @@ describe("what a model says about its storyboard", () => {
 
   it("is absent for a model with no storyboard", () => {
     expect(storyboardSpec(other)).toBeUndefined();
+  });
+});
+
+describe("the params a storyboard sends", () => {
+  const spec = storyboardSpec(kling)!;
+  const shots = [
+    { prompt: "a paper boat", duration: 2 },
+    { prompt: "the pond at dusk", duration: 3 },
+  ];
+
+  it("sends nothing when off", () => {
+    expect(storyboardParams(spec, "off", shots)).toEqual({});
+  });
+
+  it("names the automatic tier and sends no shots", () => {
+    expect(storyboardParams(spec, "auto", shots)).toEqual({ shot_type: "intelligence" });
+  });
+
+  it("sends each shot's words and seconds under the per-shot tier", () => {
+    expect(storyboardParams(spec, "custom", shots)).toEqual({
+      shot_type: "customize",
+      multi_prompt: [
+        { prompt: "a paper boat", duration: 2 },
+        { prompt: "the pond at dusk", duration: 3 },
+      ],
+    });
   });
 });

@@ -384,8 +384,8 @@ export {
   retotal,
   stepShot,
 } from "@shared/storyboard-durations.js";
-export { effectiveStoryboardKind, storyboardSpec } from "@shared/storyboard.js";
-export type { StoryboardKind, StoryboardSpec } from "@shared/storyboard.js";
+export { effectiveStoryboardKind, storyboardParams, storyboardSpec } from "@shared/storyboard.js";
+export type { StoryboardKind, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
 export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
 export { formatCredits } from "@shared/format-credits.js";
 export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";

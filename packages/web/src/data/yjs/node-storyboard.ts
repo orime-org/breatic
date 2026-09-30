@@ -40,14 +40,14 @@ export interface StoryboardView {
 }
 
 /**
- * The live storyboard map of one mode.
+ * The live storyboard map of one mode, for a reader that follows it.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The video node.
  * @param mode - The video mode.
  * @returns The map, or null when the node or that mode has none.
  */
-function boardMap(
+export function storyboardMapOf(
   projectId: string,
   spaceId: string,
   nodeId: string,
@@ -98,7 +98,7 @@ export function readStoryboard(
   nodeId: string,
   mode: string,
 ): StoryboardView | null {
-  const board = boardMap(projectId, spaceId, nodeId, mode);
+  const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
   if (!board) return null;
   const kind = board.get('kind');
   const shots = shotsOf(board)?.toArray().flatMap((shot) => shotView(shot) ?? []) ?? [];
@@ -120,7 +120,7 @@ export function setStoryboardKind(
   mode: string,
   kind: StoryboardKind,
 ): void {
-  const board = boardMap(projectId, spaceId, nodeId, mode);
+  const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
   if (!board) return;
   board.doc?.transact(() => board.set('kind', kind), CANVAS_UNDO);
 }
@@ -154,7 +154,7 @@ function editShots(
   mode: string,
   edit: (shots: Y.Array<Y.Map<unknown>>, durations: number[]) => void,
 ): void {
-  const board = boardMap(projectId, spaceId, nodeId, mode);
+  const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
   const shots = board ? shotsOf(board) : null;
   if (!board || !shots) return;
   board.doc?.transact(() => {
@@ -190,7 +190,7 @@ export function enterStoryboardShots(
   mode: string,
   total: number,
 ): void {
-  const board = boardMap(projectId, spaceId, nodeId, mode);
+  const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
   const shots = board ? shotsOf(board) : null;
   if (!board || !shots) return;
   board.doc?.transact(() => {
@@ -314,7 +314,7 @@ export function setStoryboardShots(
   mode: string,
   durations: readonly number[],
 ): Y.XmlFragment[] {
-  const board = boardMap(projectId, spaceId, nodeId, mode);
+  const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
   const shots = board ? shotsOf(board) : null;
   if (!board || !shots) return [];
   const fresh = durations.map((d) => newShot(d));

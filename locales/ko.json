@@ -645,7 +645,24 @@
         "voice": "음성",
         "text": "텍스트",
         "pronunciation": "읽는 법"
-      }
+      },
+      "storyboard": {
+        "label": "스토리보드",
+        "perShot": "샷별 편집",
+        "autoHint": "모델이 샷을 나눕니다",
+        "mainPromptKept": "메인 프롬프트가 유지됩니다",
+        "back": "자동 스토리보드로 돌아가기",
+        "shot": "샷 {n, number}",
+        "removeShot": "삭제",
+        "addShot": "샷 추가",
+        "shotPlaceholder": "이 샷을 설명하세요. @ 로 참조 추가",
+        "shotCapReached": "최대 {max, number}개 샷",
+        "noSecondToSpare": "샷마다 1초 이상 필요합니다"
+      },
+      "refuseStoryboardShotEmpty": "샷 {shot, number}이(가) 비어 있습니다",
+      "refuseStoryboardTooMany": "최대 {limit, number}개 샷",
+      "refuseStoryboardShotTooLong": "샷 {shot, number}이(가) {limit, number}자 제한을 초과했습니다",
+      "refuseStoryboardDurationMismatch": "샷 합계 {shots, number}초, 영상 {total, number}초"
     },
     "nodeMenu": {
       "generate": "생성",

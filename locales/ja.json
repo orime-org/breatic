@@ -645,7 +645,24 @@
         "voice": "音声",
         "text": "テキスト",
         "pronunciation": "読み"
-      }
+      },
+      "storyboard": {
+        "label": "ストーリーボード",
+        "perShot": "ショットごとに編集",
+        "autoHint": "モデルがショットを分割します",
+        "mainPromptKept": "メインプロンプトは保持されています",
+        "back": "自動ストーリーボードに戻る",
+        "shot": "ショット {n, number}",
+        "removeShot": "削除",
+        "addShot": "ショットを追加",
+        "shotPlaceholder": "このショットを説明してください。@ で参照を追加",
+        "shotCapReached": "最大 {max, number} ショット",
+        "noSecondToSpare": "各ショットは 1 秒以上必要です"
+      },
+      "refuseStoryboardShotEmpty": "ショット {shot, number} が空です",
+      "refuseStoryboardTooMany": "最大 {limit, number} ショット",
+      "refuseStoryboardShotTooLong": "ショット {shot, number} が{limit, number}文字の上限を超えています",
+      "refuseStoryboardDurationMismatch": "ショットの合計は{shots, number}秒、動画は{total, number}秒です"
     },
     "nodeMenu": {
       "generate": "生成",
