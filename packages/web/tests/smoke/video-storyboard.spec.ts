@@ -189,3 +189,38 @@ test('Kling makes a video from the shots @needs-model', async () => {
   const node = page.locator(`.react-flow__node[data-id="${nodeId}"]`);
   await expect(node.locator('video')).toHaveCount(1, { timeout: 14 * 60_000 });
 });
+
+test('a mode switch on one client moves the other to that mode\'s own words', async ({ browser }) => {
+  const nodeId = await seedVideoNode(page);
+  await openGenerate(page, nodeId);
+  const editor = page.getByTestId('generate-prompt-editor');
+  await editor.click();
+  await page.keyboard.type('shared text to video words');
+
+  // A second client on the same Space, its panel open on the same node.
+  const peer = await browser.newPage({ storageState: STATE_FILE.A });
+  try {
+    await peer.goto(`/project/${projectId}`);
+    const tab = peer.getByTestId(`space-tab-name-${spaceId}`);
+    await expect(tab).toBeVisible({ timeout: 20_000 });
+    await tab.click();
+    await openGenerate(peer, nodeId);
+    const peerEditor = peer.getByTestId('generate-prompt-editor');
+    await expect(peerEditor).toContainText('shared text to video words');
+
+    // One switches; both panels show the other mode's own, empty box.
+    await switchMode(page, 'i2v');
+    await expect(editor).not.toContainText('shared text to video words');
+    await expect(peerEditor).not.toContainText('shared text to video words', { timeout: 10_000 });
+
+    // Words typed there reach the other side; switching back finds the first mode's words kept.
+    await editor.click();
+    await page.keyboard.type('image to video words');
+    await expect(peerEditor).toContainText('image to video words', { timeout: 10_000 });
+    await switchMode(peer, 't2v');
+    await expect(editor).toContainText('shared text to video words', { timeout: 10_000 });
+    await expect(peerEditor).toContainText('shared text to video words');
+  } finally {
+    await peer.close();
+  }
+});
