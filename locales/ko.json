@@ -42,7 +42,12 @@
       "verify_email_sent": "확인 이메일을 보냈습니다. 받은편지함을 확인하세요.",
       "invalid_reset_token": "이 비밀번호 재설정 링크는 유효하지 않거나 만료되었습니다",
       "invalid_recovery_code": "이메일 또는 복구 코드가 올바르지 않습니다",
-      "invalid_verification_token": "이 인증 링크는 유효하지 않거나 만료되었습니다"
+      "invalid_verification_token": "이 인증 링크는 유효하지 않거나 만료되었습니다",
+      "signup_code_invalid": "코드가 올바르지 않습니다.",
+      "signup_code_exhausted": "이 코드는 더 이상 사용할 수 없습니다. 새 코드를 받으세요.",
+      "signup_expired": "가입 요청이 만료되었습니다.",
+      "signup_resend_cooldown": "{seconds, plural, other {#초}} 후에 다시 코드를 받으세요.",
+      "signup_code_send_failed": "인증 코드를 보내지 못했습니다. 다시 시도하세요."
     },
     "studio": {
       "slug_taken": "이미 사용 중인 Slug입니다. 다른 것을 선택하세요.",
@@ -230,6 +235,11 @@
         "about": "소개",
         "terms": "이용약관",
         "privacy": "개인정보 처리방침"
+      },
+      "signup_code": {
+        "subject": "Breatic 인증 코드",
+        "lead": "가입 페이지에 아래 코드를 입력해 계정 만들기를 완료하세요.",
+        "footer": "이 코드는 {minutes, plural, other {#분}} 후에 만료됩니다. 본인이 가입을 시도하지 않았다면 이 메일을 무시해도 됩니다."
       }
     }
   },

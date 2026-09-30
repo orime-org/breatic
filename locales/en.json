@@ -42,7 +42,12 @@
       "verify_email_sent": "Verification email sent. Check your inbox.",
       "invalid_reset_token": "This password reset link is invalid or has expired",
       "invalid_recovery_code": "That email or recovery code is not correct",
-      "invalid_verification_token": "This verification link is invalid or has expired"
+      "invalid_verification_token": "This verification link is invalid or has expired",
+      "signup_code_invalid": "That code is incorrect.",
+      "signup_code_exhausted": "This code can no longer be used. Request a new one.",
+      "signup_expired": "This sign-up has expired.",
+      "signup_resend_cooldown": "Wait {seconds, plural, one {# second} other {# seconds}} before requesting another code.",
+      "signup_code_send_failed": "The verification code could not be sent. Try again."
     },
     "studio": {
       "slug_taken": "That Slug is already in use. Please choose another.",
@@ -230,6 +235,11 @@
         "about": "About",
         "terms": "Terms",
         "privacy": "Privacy"
+      },
+      "signup_code": {
+        "subject": "Your Breatic verification code",
+        "lead": "Enter this code on the sign-up page to finish creating your account.",
+        "footer": "This code expires in {minutes, plural, one {# minute} other {# minutes}}. If you didn't try to sign up, you can ignore this email."
       }
     }
   },

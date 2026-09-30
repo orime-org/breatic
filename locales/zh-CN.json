@@ -45,7 +45,12 @@
       "verify_email_sent": "验证邮件已发送,请查收。",
       "invalid_reset_token": "这个密码重置链接无效或已过期",
       "invalid_recovery_code": "邮箱或恢复码不正确",
-      "invalid_verification_token": "这个验证链接无效或已过期"
+      "invalid_verification_token": "这个验证链接无效或已过期",
+      "signup_code_invalid": "验证码不正确。",
+      "signup_code_exhausted": "这个验证码已失效，请重新获取。",
+      "signup_expired": "本次注册已过期。",
+      "signup_resend_cooldown": "请 {seconds, plural, other {# 秒}}后再获取验证码。",
+      "signup_code_send_failed": "验证码发送失败，请重试。"
     },
     "studio": {
       "slug_taken": "该 Slug 已被使用，请换一个。",
@@ -230,6 +235,11 @@
         "about": "关于我们",
         "terms": "使用条款",
         "privacy": "隐私政策"
+      },
+      "signup_code": {
+        "subject": "你的 Breatic 验证码",
+        "lead": "在注册页面输入下面的验证码，完成创建账号。",
+        "footer": "验证码将在 {minutes, plural, other {# 分钟}}后失效。如果不是你本人操作，可以忽略这封邮件。"
       }
     }
   },

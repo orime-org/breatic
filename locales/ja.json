@@ -42,7 +42,12 @@
       "verify_email_sent": "確認メールを送信しました。受信トレイをご確認ください。",
       "invalid_reset_token": "このパスワード再設定リンクは無効か、有効期限が切れています",
       "invalid_recovery_code": "メールアドレスまたはリカバリーコードが正しくありません",
-      "invalid_verification_token": "この確認リンクは無効か、有効期限が切れています"
+      "invalid_verification_token": "この確認リンクは無効か、有効期限が切れています",
+      "signup_code_invalid": "コードが正しくありません。",
+      "signup_code_exhausted": "このコードは使用できなくなりました。新しいコードを取得してください。",
+      "signup_expired": "この登録は期限切れです。",
+      "signup_resend_cooldown": "{seconds, plural, other {# 秒}}後に再度コードを取得してください。",
+      "signup_code_send_failed": "確認コードを送信できませんでした。もう一度お試しください。"
     },
     "studio": {
       "slug_taken": "その Slug はすでに使用されています。別のものを選んでください。",
@@ -230,6 +235,11 @@
         "about": "私たちについて",
         "terms": "利用規約",
         "privacy": "プライバシーポリシー"
+      },
+      "signup_code": {
+        "subject": "Breatic の確認コード",
+        "lead": "登録ページで次のコードを入力して、アカウントの作成を完了してください。",
+        "footer": "このコードは {minutes, plural, other {# 分}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
       }
     }
   },

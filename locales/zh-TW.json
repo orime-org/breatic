@@ -42,7 +42,12 @@
       "verify_email_sent": "驗證郵件已寄送,請查收。",
       "invalid_reset_token": "這個密碼重設連結無效或已過期",
       "invalid_recovery_code": "電子郵件或復原碼不正確",
-      "invalid_verification_token": "這個驗證連結無效或已過期"
+      "invalid_verification_token": "這個驗證連結無效或已過期",
+      "signup_code_invalid": "驗證碼不正確。",
+      "signup_code_exhausted": "這個驗證碼已失效，請重新取得。",
+      "signup_expired": "本次註冊已過期。",
+      "signup_resend_cooldown": "請 {seconds, plural, other {# 秒}}後再取得驗證碼。",
+      "signup_code_send_failed": "驗證碼傳送失敗，請重試。"
     },
     "studio": {
       "slug_taken": "該 Slug 已被使用，請換一個。",
@@ -230,6 +235,11 @@
         "about": "關於我們",
         "terms": "使用條款",
         "privacy": "隱私政策"
+      },
+      "signup_code": {
+        "subject": "你的 Breatic 驗證碼",
+        "lead": "在註冊頁面輸入下方的驗證碼，完成建立帳號。",
+        "footer": "驗證碼將在 {minutes, plural, other {# 分鐘}}後失效。如果不是你本人操作，可以忽略這封郵件。"
       }
     }
   },

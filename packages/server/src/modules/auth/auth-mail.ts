@@ -53,3 +53,41 @@ export function buildTokenLinkMail(
     },
   });
 }
+
+const SECONDS_PER_MINUTE = 60;
+
+/** The code block: large, monospaced and spaced so it reads at a glance and copies as one run. */
+const CODE_BLOCK_STYLE =
+  "margin:20px 0 0;padding:16px 0;text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace;" +
+  "font-size:32px;font-weight:600;line-height:1;letter-spacing:8px;color:#1e1e1e;background:#f0f0f0;border-radius:8px;";
+
+/** Fields for the sign-up code mail. */
+export interface SignupCodeMailInput {
+  /** The language the sign-up was made in. */
+  locale: string;
+  to: string;
+  /** The six-digit code. */
+  code: string;
+  /** How long the code lives. */
+  expiresInSeconds: number;
+}
+
+/**
+ * Build the mail that carries a sign-up code. It has no button: the reader
+ * types the code into the page they signed up on.
+ * @param input - The language and address, the code, and its lifetime.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
+ */
+export function buildSignupCodeMail(input: SignupCodeMailInput): Promise<RenderedMail> {
+  const section = "server.mail.signup_code";
+  return renderMail(input.locale, {
+    to: input.to,
+    subject: { key: `${section}.subject` },
+    body: [{ key: `${section}.lead` }],
+    details: { html: `<div style="${CODE_BLOCK_STYLE}">${input.code}</div>`, text: input.code },
+    note: {
+      key: `${section}.footer`,
+      params: { minutes: Math.round(input.expiresInSeconds / SECONDS_PER_MINUTE) },
+    },
+  });
+}
