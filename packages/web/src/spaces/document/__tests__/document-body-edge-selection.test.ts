@@ -15,6 +15,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { runBlockType } from '@web/spaces/document/document-block-run';
+import { moveRowsFromKeyboard } from '@web/spaces/document/document-keyboard-move';
 import {
   BodyEdgeSelection,
   bodyEdgeBetween,
@@ -556,5 +557,33 @@ describe('changing the block type under a selection that reaches past the last b
     expect(doc.resolve(textStart(view, 'Above')).parent.type.name).toBe('heading');
     expect(selection).toBeInstanceOf(BodyEdgeSelection);
     expect([selection.anchor, selection.head]).toEqual([textStart(view, 'Above'), bodyEdgePos(doc, 'end')]);
+  });
+});
+
+describe('moving rows under a selection that reaches past the last block', () => {
+  it('keeps the same words and the divider selected', () => {
+    const view = open([
+      { type: 'paragraph', content: 'Above' },
+      { type: 'paragraph', content: 'Middle' },
+      { type: 'divider' },
+    ]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Middle') + 1, 'end')));
+
+    moveRowsFromKeyboard(editors.get(view)! as never, 'up');
+
+    const { selection, doc } = view.state;
+    const order: string[] = [];
+    doc.firstChild!.forEach((row) => order.push(row.firstChild!.type.name === 'divider' ? '---' : row.textContent));
+    expect(order).toEqual(['Middle', '---', 'Above']);
+    expect(selection.from).toBe(textStart(view, 'Middle') + 1);
+    let dividerAt = -1;
+    doc.descendants((node, pos) => {
+      if (node.type.name === 'divider') dividerAt = pos;
+    });
+    expect(selection.to).toBeGreaterThan(dividerAt);
+    expect(doc.textBetween(selection.from, selection.to)).toBe('iddle');
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
