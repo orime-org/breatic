@@ -1,0 +1,110 @@
+# Template for config/pricing.yaml — credit purchase packs.
+#
+# Copy this file to `config/pricing.yaml` and fill in your own figures and
+# Stripe price ids. The copy is not tracked by git: it names what a deployment
+# really charges and the Stripe objects it really sells, and neither belongs to
+# anybody but the deployment that holds them.
+#
+# The server checks this file at startup when PAYMENT_ENABLED=true and
+# refuses to start without it. Nothing else opens it, so an install with
+# payments off needs no copy.
+#
+# Every `credits` and `price_cents` below is 0, which the loader's schema
+# rejects (`z.number().int().positive()`). Copying this file without editing it
+# is therefore refused rather than silently selling a pack nobody priced.
+#
+# How many credits a pack grants is a decision about margin, not a figure to
+# invent: pick it from what your own generation costs, and leave room for the
+# worst case rather than the average.
+#
+# `price_cents` is what the pack is listed at, before tax. With Stripe Tax on,
+# the buyer's local tax is added at checkout, so the number shown on the page
+# is not the number the buyer pays. Create each Price with
+# `tax_behavior: exclusive`, which Stripe cannot change once set.
+#
+# Each pack carries a test and a live Stripe price id; the backend picks by ENV
+# (dev/staging → test, prod → live).
+#
+# `name` identifies a pack to whoever edits this file, and appears in the
+# message for a pack with no price id configured. No screen reads it: a buyer
+# picks a pack by its price and what it grants, and a checkout request names
+# one by `price_cents`.
+
+tiers:
+  - name: "Starter pack"
+    credits: 0
+    price_cents: 0
+    currency: usd
+    stripe_price_id:
+      test: ""
+      live: ""
+
+  - name: "Small pack"
+    credits: 0
+    price_cents: 0
+    currency: usd
+    stripe_price_id:
+      test: ""
+      live: ""
+
+  - name: "Medium pack"
+    credits: 0
+    price_cents: 0
+    currency: usd
+    stripe_price_id:
+      test: ""
+      live: ""
+
+  - name: "Large pack"
+    credits: 0
+    price_cents: 0
+    currency: usd
+    stripe_price_id:
+      test: ""
+      live: ""
+
+  - name: "Bulk pack"
+    credits: 0
+    price_cents: 0
+    currency: usd
+    stripe_price_id:
+      test: ""
+      live: ""
+
+# Repairing payments that neither the return-side confirmation nor the webhook
+# finished. It runs on every read of the credits overview, so it is bounded on
+# two sides here; which states it looks at and in what order are in the query.
+reconcile:
+  # How many payments one pass asks Stripe about. Three round trips fit inside
+  # one page load; the rest wait for the next.
+  batch_size: 3
+  # How old a payment has to be before a pass touches it. Younger than this and
+  # the buyer is most likely still on the Stripe page filling in a card, where
+  # the answer is certainly `unpaid` and the round trip buys nothing.
+  min_age_seconds: 120
+
+# How long a confirmation email may sit in `sending` before the resend control
+# offers it again. A process replaced between claiming the send and writing the
+# result strands the row there, and nothing sweeps it: this screen is its only
+# reader, so this is the timeout that frees it.
+stale_sending_minutes: 10
+
+# How long the page waits for the confirmation endpoint before it stops
+# waiting. The purchase is unharmed either way — the webhook and reconciling
+# both settle it — so this is only about not holding a buyer behind a spinner
+# that may never stop. The value lives here and the timer runs in the browser,
+# so it is carried on the pack list the buy screen already reads.
+confirm_timeout_ms: 15000
+
+# Credits a new account is given when its personal studio is created — the
+# first credits anybody gets without paying, and the only ones granted
+# automatically. Pinned to that studio when the lot is written, so they can
+# only be spent on the account holder's own work; they are not refundable,
+# because nobody paid for them.
+#
+# Only granted where the deployment charges for anything: a self-hosted
+# install that never takes payment has no notion of a credit to give.
+#
+# Zero means none are granted; the figure is a real zero, not a sentinel.
+trial_grant:
+  credits: 0

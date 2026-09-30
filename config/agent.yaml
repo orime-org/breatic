@@ -52,26 +52,34 @@ sse_heartbeat_interval_ms: 5000
 # context. Three is the figure Anthropic's clear_tool_uses_20250919 keeps.
 tool_result_keep: 3
 
-# Maximum character length for project memory injected into AI calls.
-memory_project_max_size: 3072
+# Maximum character length for project memory injected into AI calls. The
+# conversation layer below carries the same ceiling.
+memory_project_max_size: 8192
 
 # Maximum character length for conversation memory injected into AI calls.
 # Consolidation rewrites this layer whole every time it runs, so it is the one
 # segment that grows from its own output.
-memory_conversation_max_size: 3072
+memory_conversation_max_size: 8192
 
 # The ceiling on one model call's answer, in tokens. Per call, not per turn:
 # a turn can make many calls and each of them is bounded by this.
 max_output_tokens: 16384
 
-# How long one turn's question may be, in characters. Measured on what
-# reaches the model: a message carries the canvas content the reader attached
-# folded in front of it, and a skill command carries its name and input.
-# Both entrances measure the same way.
+# How long the words of one turn's question may be, in characters.
 #
 # The browser draws a lower line (10,000) and says so as the reader types;
 # this one is where a client cannot skip it.
 user_message_max_chars: 15000
+
+# How long the items attached to one message may be, in characters, measured
+# on the attachment section as the model is sent it. Apart from the words: an
+# extracted document is far longer than a typed question. The browser checks
+# the same section before sending.
+attachment_max_chars: 200000
+
+# How many items may be attached to one message: each uploaded file is one,
+# and each pick added from the canvas is one, however many nodes it holds. The browser checks the same number before sending.
+attachment_max_items: 10
 
 # How long an assembled request may be before a consolidation runs, in
 # characters. Measured against everything about to go to the model: system
@@ -142,6 +150,23 @@ understand_media_read_floor_ms: 5000
 # How long ONE DELIVERY of the model call may take, in milliseconds.
 # The whole clip goes up inside it: measured, 26 MiB of base64 took 61 seconds.
 understand_media_call_timeout_ms: 180000
+
+# How long the WHOLE judgement call may take, in milliseconds -- every
+# delivery of it and every backoff between them, because a signal spanning the
+# call is what holds the wait to this figure. Measured, the endpoint answers in
+# 285-395 ms once connected, and 1181 ms on the first call of a process.
+judge_likelihood_timeout_ms: 10000
+
+# How long after an OpenRouter call whose cost was not in hand (cut off, or
+# ended without one) its cost is first looked up, in milliseconds. OpenRouter keeps generating for providers that cannot be
+# cancelled and bills the whole response, so the cost is settled only once
+# the generation is over. Retries back off exponentially from this figure.
+usage_lookup_delay_ms: 30000
+
+# How many lookups are made before the call is recorded as missing. With the
+# delay above, six attempts span about sixteen minutes (30 s, then waits of
+# 30, 60, 120, 240 and 480 s).
+usage_lookup_attempts: 6
 
 # How much the model may write about one piece of media, in tokens.
 # The same figure web_search takes, for the same measured reason: 2048 returns

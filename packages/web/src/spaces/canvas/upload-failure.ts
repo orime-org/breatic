@@ -4,9 +4,8 @@
 /**
  * What the browser does with an upload that ended badly (#186 §3.7.3).
  *
- * Pure, so the rule is readable without a canvas: the caller performs the two
- * side effects (a toast, and either keeping the File or dropping the node it
- * created).
+ * Pure, so the rule is readable without a canvas: the caller performs the side
+ * effects (a toast, and keeping the File where a Retry can re-send it).
  */
 
 import type { UploadFailure } from '@web/spaces/canvas/canvas-upload';
@@ -14,12 +13,11 @@ import type { UploadFailure } from '@web/spaces/canvas/canvas-upload';
 /**
  * What to do about a failed upload.
  *
- * `serverKnows` — the ticket was granted, so a task row exists, carrying its
- * own budget. That row reaches an end whatever the browser does; keeping the
- * File under its id is what lets the row's own Retry re-send it.
- *
- * `nobodyKnows` — the ticket never was. No row and no grant: nothing on the
- * server can end this, so the empty node this drop created has no future.
+ * `toastOnly` — say it, and keep the File where a Retry can re-send it when
+ * re-sending could end differently. Whether a task row exists decides who ends
+ * the task, which is the row's business rather than this side's: either way the
+ * node stays, because a node that exists is the reader's to remove and only
+ * theirs (#2177).
  */
 export type UploadFailurePlan =
   | {
@@ -38,23 +36,18 @@ export type UploadFailurePlan =
       readonly taskId: string;
     }
   | {
-      readonly kind: 'serverKnows';
-      readonly taskId: string;
+      readonly kind: 'toastOnly';
+      readonly toastKey: string;
+      readonly severity: UploadFailureSeverity;
       /**
        * The task to keep the File under, when keeping it is worth anything.
        *
        * Absent when the failure is about the bytes rather than about this
        * attempt: the same file re-sent meets the same answer, so offering a
-       * Retry would contradict the sentence beside it.
+       * Retry would contradict the sentence beside it. Absent too when no
+       * ticket was granted, because there is no row for a Retry to hang on.
        */
       readonly keepFileFor?: string;
-      readonly toastKey: string;
-      readonly severity: UploadFailureSeverity;
-    }
-  | {
-      readonly kind: 'nobodyKnows';
-      readonly toastKey: string;
-      readonly severity: UploadFailureSeverity;
     };
 
 /**
@@ -114,7 +107,7 @@ export function resolveUploadFailure(
     return outcome.taskId !== undefined
       ? { kind: 'reportToServer', taskId: outcome.taskId }
       : {
-        kind: 'nobodyKnows',
+        kind: 'toastOnly',
         toastKey: TOAST_KEY.upload,
         severity: 'error',
       };
@@ -123,16 +116,13 @@ export function resolveUploadFailure(
   const severity: UploadFailureSeverity = REFUSALS.has(outcome.reason)
     ? 'warning'
     : 'error';
-  if (outcome.taskId !== undefined) {
-    return {
-      kind: 'serverKnows',
-      taskId: outcome.taskId,
-      severity,
-      // Only the catch-all is about this attempt. Every named reason is about
-      // the file or the account, and re-sending meets the same answer.
-      ...(outcome.reason === 'upload' && { keepFileFor: outcome.taskId }),
-      toastKey,
-    };
-  }
-  return { kind: 'nobodyKnows', toastKey, severity };
+  return {
+    kind: 'toastOnly',
+    toastKey,
+    severity,
+    // Only the catch-all is about this attempt. Every named reason is about
+    // the file or the account, and re-sending meets the same answer.
+    ...(outcome.reason === 'upload' &&
+      outcome.taskId !== undefined && { keepFileFor: outcome.taskId }),
+  };
 }

@@ -54,7 +54,7 @@ export const EMPTY_NODE_SIZE = { width: 288, height: 192 } as const;
  * @param rect - The rectangle.
  * @returns Its geometric center.
  */
-function centerOf(rect: Rect): Point {
+export function centerOf(rect: Rect): Point {
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 }
 

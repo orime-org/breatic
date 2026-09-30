@@ -33,11 +33,6 @@ describe('toRecentItemView', () => {
     });
   });
 
-  it('defaults a null wire role (open-baseline, no membership row) to viewer', () => {
-    const view = toRecentItemView({ ...WIRE, myRole: null });
-    expect(view.myRole).toBe('viewer');
-  });
-
   it('carries a null thumbnail through unchanged', () => {
     const view = toRecentItemView({ ...WIRE, thumbnailUrl: null });
     expect(view.thumbnailUrl).toBeNull();

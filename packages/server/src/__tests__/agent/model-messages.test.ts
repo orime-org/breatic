@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { FAILURE_LINES, NOTHING_SAID_WHY } from "@breatic/shared";
+import { FAILURE_LINES, NOTHING_SAID_WHY, userTurnForModel } from "@breatic/shared";
 import type { MessageData, ProposalAnswer } from "@breatic/shared";
 
 import {
@@ -509,7 +509,6 @@ const modelsAnswer: ModelsForMode = {
       name: "some-model",
       displayName: "Some Model",
       what: "does things",
-      credits: 4,
       seconds: 18,
       takesPrompt: true,
       params: {},
@@ -613,5 +612,28 @@ describe("the question a turn ended on", () => {
     expect(out).toHaveLength(2);
     expect(out[0]).toMatchObject({ role: "assistant" });
     expect(out[1]).toMatchObject({ role: "tool" });
+  });
+});
+
+describe("a user message that carried attachments", () => {
+  it("goes back to the model with its attachments in front of the words", () => {
+    const chip = {
+      id: "a1",
+      type: "image" as const,
+      name: "cover.png",
+      data_snapshot: { url: "https://cdn.example/cover.png" },
+    };
+    const history = [
+      stored("user", [
+        { type: "attachment", chip },
+        { type: "text", text: "what is in this?" },
+      ]),
+    ];
+
+    const out = toModelMessages(history);
+
+    expect(out).toEqual([
+      { role: "user", content: userTurnForModel([chip], "what is in this?") },
+    ]);
   });
 });

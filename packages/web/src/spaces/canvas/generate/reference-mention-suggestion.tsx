@@ -23,10 +23,7 @@ import {
 
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
-import {
-  insertRefusal,
-  type ReferenceUsabilityContext,
-} from '@web/spaces/canvas/generate/reference-usability';
+import { insertRefusal, REFERENCE_KINDS, type ReferenceUsabilityContext } from '@breatic/shared';
 import { wasLastChangeLocalUserInput } from '@web/spaces/canvas/generate/reference-mention-local-input';
 import {
   ReferenceMentionList,
@@ -39,13 +36,13 @@ type RefreshHandleRef = { current: (() => void) | null };
 /**
  * Default mode context, used when no getter is wired: references are in play,
  * so the picker offers what any reference-taking mode offers — the text rows
- * and the image rows. A caller that does not know the mode still gets the
- * usable rows rather than an empty list; what it cannot get is a row no mode
- * consumes, because `insertRefusal` refuses non-image reference material
- * under every context.
+ * and the rows of every kind a pool can take. A caller that does not know the
+ * mode still gets the usable rows rather than an empty list; what it cannot
+ * get is a row no pool takes, which `insertRefusal` refuses under every
+ * context.
  */
 const ANY_CONTEXT: ReferenceUsabilityContext = {
-  takesReferences: true,
+  referenceKinds: REFERENCE_KINDS,
   // The picker lives inside the prompt editor, which only mounts when the
   // model consumes a prompt (#1966), so this dimension cannot be false here.
   takesPrompt: true,

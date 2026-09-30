@@ -14,10 +14,13 @@
     "credit": {
       "not_studio_admin": "You can only assign credits to a studio you administer.",
       "designation_locked": "This purchase is being refunded and cannot be reassigned.",
+      "designation_not_purchased": "These credits were granted, and can only be used in your personal Studio.",
       "in_debt": "This Studio owes {owed} credits. Credits assigned next pay that off first.",
       "unassigned": "You have {available} credits that are not assigned to a studio yet. Assign them to use them.",
       "none": "Not enough credits. Add credits to continue.",
+      "granted_elsewhere": "Your credits were granted, and can only be used in your personal Studio.",
       "refund_already_asked": "This purchase has already been sent for a refund.",
+      "refund_not_purchased": "These credits were granted, not paid for, so there is nothing to refund.",
       "refund_still_designated": "This purchase is assigned to a Studio. Unassign it first.",
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
       "refund_window_closed": "The refund window for this purchase has closed."
@@ -31,6 +34,7 @@
       "google_oauth_unconfigured": "Google sign-in is not available on this server",
       "invalid_google_credential": "Could not verify your Google account",
       "google_email_unverified": "Your Google account email is not verified",
+      "google_link_requires_email_login": "Sign in with email to access this account. Google could not safely link it.",
       "reset_link_sent": "If this email is registered, a reset link has been sent.",
       "reset_success": "Password reset successful. Please sign in.",
       "reset_recovery_success": "Password reset successful. Save your new recovery code.",
@@ -55,6 +59,8 @@
       "avatar_unsupported_type": "That file could not be read as an image. Try a different picture."
     },
     "project": {
+      "join_already_member": "You're already a member of this project.",
+      "join_already_pending": "You've already asked to join this project. The owner hasn't answered yet.",
       "email_not_registered": "No account is registered with that email.",
       "already_member": "That user already has access.",
       "already_invited": "That user already has a pending invitation.",
@@ -84,6 +90,13 @@
         "expired": "Past 30 days, packs are no longer refundable.",
         "unassigned": "Only a pack that is not assigned to a Studio can be refunded."
       },
+      "refund-credits-v3": {
+        "unused": "Bought within the last 30 days and haven't spent a single credit? Refunded in full, back to the original card.",
+        "used": "Spent any of them, even one? That pack can no longer be refunded.",
+        "expired": "Past 30 days, packs are no longer refundable.",
+        "unassigned": "Only a pack that is not assigned to a Studio can be refunded.",
+        "purchased": "Only a pack that was bought can be refunded."
+      },
       "not_found": "That purchase could not be found.",
       "unavailable": "This deployment does not sell credits."
     },
@@ -109,15 +122,14 @@
       "too_many_inputs": "This model accepts at most {limit} inputs of this kind, but {actual} were provided",
       "history_entry_not_found": "History entry not found",
       "voices_model_not_found": "That model is not available",
-      "voices_not_offered": "This model does not offer a voice list",
-      "voices_provider_unconfigured": "Voices are unavailable on this server",
-      "voices_upstream_failed": "Could not load voices. Please try again."
+      "voices_not_offered": "This model does not offer a voice list"
     },
     "membership": {
       "already_subscribed": "You already have a membership.",
       "no_subscription": "You do not have a membership.",
       "not_cancelling": "This membership is not scheduled to end.",
-      "downgrade_not_offered": "Memberships cannot be moved to a lower tier.",
+      "change_not_offered": "That change is not on offer.",
+      "change_unconfirmed": "Your change reached Stripe, but we could not confirm it. Contact us before trying again.",
       "same_tier": "You are already on this membership.",
       "payment_overdue": "Payment for this membership is overdue.",
       "unavailable": "Memberships are unavailable."
@@ -130,38 +142,112 @@
     "purchase_mail": {
       "subject": "Your credits are in",
       "intro": "Thank you for your purchase. Here is what it was, kept for your records.",
-      "credits": "Credits added: {credits}",
-      "balance": "Balance now: {credits}",
-      "subtotal": "Price: {amount}",
-      "tax": "Tax: {amount}",
-      "total": "Total charged: {amount}",
-      "purchased_at": "Purchased: {when}",
-      "refund_by": "Refundable until: {when}",
-      "order_ref": "Order reference: {ref}",
+      "label": {
+        "credits": "Credits added",
+        "balance": "Balance now",
+        "subtotal": "Price",
+        "tax": "Tax",
+        "total": "Total charged",
+        "purchased_at": "Purchased",
+        "refund_by": "Refundable until",
+        "order_ref": "Order reference"
+      },
+      "credits_amount": "{credits}",
+      "fact_line": "{label}: {value}",
       "consent_heading": "What you agreed to when you bought",
       "refund_heading": "Refund rules for credit packs",
-      "support": "Questions about this purchase? Write to {email}."
+      "support": "Questions about this purchase? Write to <mailto>{email}</mailto>."
     },
     "chat": {
-      "message_too_long": "This message is too long. It may hold at most {limit, number} characters, attached content included; this one holds {actual, number}."
+      "message_too_long": "This message is too long. It may hold at most {limit, number} characters; this one holds {actual, number}.",
+      "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
+      "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}."
+    },
+    "mail": {
+      "studio_invite": {
+        "subject": "{inviter} invited you to {studio}",
+        "lead": "<b>{inviter}</b> invited you to join the studio <b>{studio}</b> as <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code>.",
+        "action": "Open the invitation"
+      },
+      "project_invite": {
+        "subject": "{inviter} invited you to {project}",
+        "lead": "<b>{inviter}</b> invited you to collaborate on the project <b>{project}</b> as <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code>.",
+        "action": "Open the invitation"
+      },
+      "studio_transfer": {
+        "subject": "{initiator} wants to transfer {studio} to you",
+        "lead": "<b>{initiator}</b> wants to make you <code>Admin</code> of the studio <b>{studio}</b>.",
+        "action": "Review this transfer"
+      },
+      "project_transfer": {
+        "subject": "{initiator} wants to transfer {project} to you",
+        "lead": "<b>{initiator}</b> wants to make you <code>Owner</code> of the project <b>{project}</b>.",
+        "action": "Review this transfer"
+      },
+      "role_upgrade": {
+        "subject": "{requester} asked for a bigger role on {project}",
+        "lead": "<b>{requester}</b> asked to become <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code> on <b>{project}</b>.",
+        "action": "Review this request"
+      },
+      "project_join": {
+        "subject": "{requester} asked to join {project}",
+        "lead": "<b>{requester}</b> asked to join <b>{project}</b>.",
+        "action": "Review this request"
+      },
+      "reason": " They said: <em>{message}</em>",
+      "expiry": {
+        "invitation": "This invitation expires in {days, plural, one {# day} other {# days}}. If you didn't expect it, you can ignore this email.",
+        "transfer": "This transfer request expires in {days, plural, one {# day} other {# days}}. If you didn't expect it, you can ignore this email.",
+        "request": "This request expires in {days, plural, one {# day} other {# days}}. If you didn't expect it, you can ignore this email."
+      },
+      "membership_ended": {
+        "subject": "Your {tier} membership has ended",
+        "lead": "Your <b>{tier}</b> membership has ended. Your account is on the free plan.",
+        "footer": "Subscribe again at any time from the membership panel."
+      },
+      "storage_full": {
+        "subject": "Your storage is full",
+        "lead": "Your storage is full, so uploads and generations were refused in <b>{studio}</b>. Storage is counted across every studio you administer, not just this one.",
+        "footer": "Raise your membership to get more room."
+      },
+      "password_reset": {
+        "subject": "Reset your password",
+        "lead": "You requested a password reset.",
+        "action": "Reset your password",
+        "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, ignore this email."
+      },
+      "email_verification": {
+        "subject": "Verify your email",
+        "lead": "Welcome to Breatic. Click the button below to verify your email address.",
+        "action": "Verify your email address",
+        "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, you can ignore this email."
+      },
+      "footer": "This is an automated message; replies are not read.",
+      "help": "Need help? Read the <manual>User manual</manual> or write to <contact>{email}</contact>.",
+      "legal": {
+        "about": "About",
+        "terms": "Terms",
+        "privacy": "Privacy"
+      }
     }
   },
   "chat": {
     "composer": {
-      "selectMode": {
-        "label": "Select mode — click nodes on the canvas to add references",
-        "title": "Select mode"
-      },
       "chipsAria": "Selected chips",
-      "placeholder": "Describe what you want to do (use @ to reference chips above)…",
+      "placeholder": "Ask something, or hand me things from the canvas…",
       "inputAria": "Chat input",
-      "skill": {
-        "label": "Pick a Skill to scope the agent's behavior",
-        "title": "Pick Skill"
-      },
       "send": "Send",
       "sending": "Sending",
-      "atLimit": "At the {limit, number}-character limit"
+      "atLimit": "At the {limit, number}-character limit",
+      "attach": "Attach files",
+      "removeAttachment": "Remove {name}",
+      "attachmentUploading": "Uploading",
+      "attachmentFailed": "{reason, select, upload {Upload failed} extract {Couldn’t read it} too_long {Too long} other {Failed}}",
+      "attachFull": "At most {limit, number} items can be attached",
+      "attachTooLong": "Too much content attached. Attach fewer items or shorter files.",
+      "attachUnsupported": "{filename} can’t be attached",
+      "attachTooLarge": "{filename} is too large to attach",
+      "attachUnavailable": "Couldn’t attach right now. Try again."
     },
     "empty": {
       "greetingWithName": "Hi, {name}!",
@@ -216,6 +302,7 @@
       "proposingNodes": "Drafting a proposal",
       "checkingModels": "Looking up the models",
       "understanding": "Looking at the media",
+      "judging": "Weighing it up",
       "running": "Calling {tool}"
     },
     "loadEarlier": "Load earlier messages",
@@ -261,11 +348,19 @@
       "use": "Use",
       "building": "Creating…",
       "failed": "Could not create these nodes.",
-      "needCanvas": "Open a canvas first."
+      "eachRun": "{s, number}s × {n, number}",
+      "needCanvas": "Open a canvas first.",
+      "promptReady": "Prompt ready. Right-click the node and choose Generate to open the generation panel and see it.",
+      "settingsReady": "Settings ready. Right-click the node and choose Generate to open the generation panel and see them."
     },
     "thinking": "Thought for a moment",
     "thinkingNow": "Thinking",
-    "thinkingFor": "Thought for {m, plural, =0 {} other {# min }}{s, number} s"
+    "thinkingFor": "Thought for {m, plural, =0 {} other {# min }}{s, number} s",
+    "attachment": {
+      "kind": "{kind, select, canvas {Canvas} image {Image} video {Video} audio {Audio} text {Text} other {Item}}",
+      "nodes": "{count, plural, one {# node} other {# nodes}}",
+      "more": "{count} more"
+    }
   },
   "canvas": {
     "group": {
@@ -313,7 +408,8 @@
       "deleteNode": "Delete node",
       "deleteGroup": "Delete group",
       "deleteSelection": "Delete selection",
-      "clipboardError": "Couldn't reach the clipboard. Use the keyboard shortcut instead."
+      "clipboardError": "Couldn't reach the clipboard. Use the keyboard shortcut instead.",
+      "addToAgent": "Add to Agent"
     },
     "gate": {
       "locked": "This item is locked — unlock it to make changes.",
@@ -342,7 +438,13 @@
       "unlock": "Unlock node",
       "resetEmpty": "Reset to empty image",
       "history": "History",
-      "download": "Download"
+      "snapshot": "Save snapshot",
+      "download": "Download",
+      "understand": "Understand"
+    },
+    "understand": {
+      "couldNotStart": "Could not start. Try again.",
+      "sourceGone": "The node being read is gone. This reading has no wire to it."
     },
     "generatePanel": {
       "style": "Style",
@@ -358,7 +460,7 @@
       "refuseExecuteNoPrompt": "Write a prompt first",
       "refuseExecuteNoVoice": "Choose a voice",
       "refuseExecuteTooLong": "Text is over the {max, number}-character limit",
-      "refuseInsertTypeUnused": "{kind, select, audio {References take images only, not audio} video {References take images only, not video} other {References take images only, not this kind of material}}",
+      "refuseInsertTypeUnused": "This model doesn't take {kind, select, image {images} audio {audio} video {video} other {this kind of material}} as a reference",
       "exit": "Exit",
       "promptPlaceholder": "Describe the image you want to generate, @ to add a reference",
       "mentionEmpty": "No references available",
@@ -390,12 +492,10 @@
       "selectEndFrameFromCanvas": "Pick an image on the canvas to be the end frame",
       "selectCharacterImageFromCanvas": "Pick an image on the canvas to be the character",
       "selectDrivingVideoFromCanvas": "Pick a video on the canvas to drive the motion",
-      "selectReferenceVideoFromCanvas": "Pick a video on the canvas to guide the motion",
       "selectDrivingAudioFromCanvas": "Pick an audio track on the canvas for the lips to follow",
       "removeStyle": "Remove style reference",
       "exitSelect": "Exit",
       "locateSource": "Recenter the source node",
-      "presets": "Presets",
       "camera": "Camera",
       "cameraBody": "Camera",
       "lens": "Lens",
@@ -403,8 +503,6 @@
       "aperture": "Aperture",
       "switchOn": "On",
       "switchOff": "Off",
-      "online": "Web search",
-      "translate": "Translate prompt",
       "execute": "Generate",
       "resolution": "Resolution",
       "ratio": "Ratio",
@@ -412,8 +510,7 @@
       "errorUnavailable": "Generation is temporarily unavailable. Please try again.",
       "errorFailed": "Couldn't start generation. Please try again.",
       "errorNoSourceImage": "This model needs a source image — type @ in the prompt to pick a connected image.",
-      "errorTooManyReferences": "This model accepts at most {limit} reference images — remove some to generate.",
-      "refusePickTooManyReferences": "A motion clip allows {limit} reference images — remove some, then pick the clip.",
+      "errorTooManyReferences": "This model accepts at most {limit} reference {kind, select, video {videos} audio {audio clips} other {images}} — remove some to generate.",
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
       "referencePoolFull": "Reference pool is full ({cap} max) — remove some references or focus crops first.",
       "modelUnavailable": "That model is no longer available — pick another.",
@@ -447,10 +544,10 @@
       "duration": "Duration",
       "durationSeconds": "{n}s",
       "generateAudio": "Generate audio",
-      "keepOriginalSound": "Keep original sound",
+      "imageParams": "Parameters",
       "videoParams": "Parameters",
       "videoPromptPlaceholder": "Describe the video you want to generate, @ to add a reference",
-      "errorNoReferenceMention": "Still missing a reference image — connect one to this node and type @ in the prompt to use it",
+      "errorNoReferenceMention": "Still missing {kind, select, video {a reference video} audio {a reference audio clip} image {a reference image} other {a reference}} — connect one to this node and type @ in the prompt to use it",
       "firstFrame": "First frame",
       "firstFrameTip": "Pick an image to start the video from",
       "removeFirstFrame": "Remove first frame",
@@ -464,16 +561,27 @@
       "removeCharacterImage": "Remove character",
       "errorNoCharacterImage": "Pick a character image",
       "drivingVideo": "Driving video",
+      "sourceVideo": "Video",
+      "sourceVideoTip": "Pick a video",
+      "removeSourceVideo": "Remove video",
+      "errorNoSourceVideo": "Pick a video first",
+      "selectSourceVideoFromCanvas": "Pick a video on the canvas",
+      "leftAudio": "Left audio",
+      "leftAudioTip": "Pick the left speaker's audio",
+      "removeLeftAudio": "Remove left audio",
+      "errorNoLeftAudio": "Pick the left audio first",
+      "selectLeftAudioFromCanvas": "Pick the left speaker's audio on the canvas",
+      "rightAudio": "Right audio",
+      "rightAudioTip": "Pick the right speaker's audio",
+      "removeRightAudio": "Remove right audio",
+      "errorNoRightAudio": "Pick the right audio first",
+      "selectRightAudioFromCanvas": "Pick the right speaker's audio on the canvas",
       "drivingAudio": "Driving audio",
       "drivingVideoTip": "Pick the video whose motion is copied",
       "drivingAudioTip": "Pick the audio the lips follow",
       "removeDrivingVideo": "Remove driving video",
-      "referenceVideo": "Motion clip",
-      "referenceVideoTip": "Pick a video to guide the motion",
-      "removeReferenceVideo": "Remove reference video",
       "removeDrivingAudio": "Remove driving audio",
       "errorNoDrivingVideo": "Pick a driving video",
-      "errorNoReferenceVideo": "Pick a motion clip",
       "errorNoDrivingAudio": "Pick a driving audio track",
       "promptNotUsed": "This mode does not need a prompt.",
       "refuseInsertNoPrompt": "This mode has no prompt to insert into",
@@ -486,24 +594,70 @@
       "musicSong": "Song",
       "musicSongTip": "Pick an audio node to write a new song after",
       "removeMusicSong": "Remove song",
-      "musicVoice": "Vocals",
-      "musicVoiceTip": "Pick an audio node whose vocal line to follow",
-      "removeMusicVoice": "Remove vocals",
-      "musicInstrumental": "Backing",
-      "musicInstrumentalTip": "Pick an audio node to play the new song over",
-      "removeMusicInstrumental": "Remove backing",
+      "musicVocal": "Vocals",
+      "musicVocalTip": "Pick an audio node to sing in its voice",
+      "removeMusicVocal": "Remove vocals",
+      "selectMusicVocalFromCanvas": "Pick a singing voice",
+      "selectSoundVideoFromCanvas": "Pick a video to score or sound",
+      "musicMelody": "Melody",
+      "musicMelodyTip": "Pick an audio node whose melody to follow",
+      "removeMusicMelody": "Remove melody",
+      "selectMusicMelodyFromCanvas": "Pick a melody to follow",
+      "coverSongTip": "Pick an audio node to cover",
+      "selectCoverSongFromCanvas": "Pick a song to cover",
+      "errorNoMusicSong": "Pick a song first",
+      "moodImage": "Reference image",
+      "moodImageTip": "Pick an image to set the mood",
+      "removeMoodImage": "Remove reference image",
+      "selectMoodImageFromCanvas": "Pick an image to set the mood",
       "selectMusicSongFromCanvas": "Pick a song to write the new one after",
-      "selectMusicVoiceFromCanvas": "Pick a vocal line to follow",
-      "selectMusicInstrumentalFromCanvas": "Pick a backing track to play over",
-      "musicInstrumentalOnly": "Instrumental only",
-      "musicWithVocals": "With vocals",
       "musicPromptPlaceholder": "Describe the genre, mood, instruments and tempo",
       "musicLyricsPlaceholder": "Write the lyrics",
       "musicStyleLabel": "Style",
       "musicLyricsLabel": "Lyrics",
       "lyricsMissing": "Write the lyrics first",
       "refuseExecuteNoStyle": "Write the style first",
-      "refuseExecuteNoReference": "Pick a song, vocals or backing"
+      "refuseExecuteNoReference": "Pick a song, melody or vocals",
+      "creditsPerThousandChars": "{credits} / 1K chars",
+      "itemsAdd": "Add",
+      "itemsRemove": "Remove",
+      "refuseExecuteNoSpeakers": "Fill in the speakers",
+      "audioSettings": "Voice and settings",
+      "audioVoice": "Voice",
+      "audioReadingMode": "Reading",
+      "audioReadingSingle": "Single voice",
+      "audioReadingDialogue": "Dialogue ({count})",
+      "audioDialogueSummary": "Dialogue · {count}",
+      "audioSpeakersNote": "Write each line as \"Name: line\"",
+      "audioLanguageSearch": "Search languages…",
+      "audioOptionEmpty": "No matches",
+      "param": {
+        "language": "Language",
+        "speakers": "Speakers",
+        "emotion": "Emotion",
+        "pronunciation_dict": "Pronunciations",
+        "loop": "Seamless loop",
+        "quality": "Quality",
+        "enable_image_search": "Image search",
+        "enable_web_search": "Web search",
+        "chaos": "Chaos",
+        "stylize": "Stylize",
+        "weird": "Weird",
+        "transparency": "Transparent background",
+        "distance": "Distance",
+        "horizontal_angle": "Horizontal angle",
+        "vertical_angle": "Vertical angle",
+        "negative_prompt": "Negative prompt",
+        "motion": "Motion",
+        "order": "Order",
+        "model_mode": "Region"
+      },
+      "paramField": {
+        "speaker": "Name",
+        "voice": "Voice",
+        "text": "Text",
+        "pronunciation": "Read as"
+      }
     },
     "edge": {
       "delete": "Delete connection"
@@ -568,6 +722,10 @@
       "failed": "Can’t restore",
       "typeGeneration": "Generated",
       "typeUpload": "Upload",
+      "typeSnapshot": "Snapshot",
+      "snapshotKept": "Snapshot kept",
+      "snapshotEmpty": "Nothing to keep — this node is empty",
+      "snapshotFailed": "Could not keep the snapshot",
       "end": "No more",
       "close": "Close",
       "loadError": "Couldn’t load history",
@@ -610,13 +768,18 @@
       "failure": {
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {Larger than a reading takes.} other {Larger than a reading takes. The limit is {limit}.}}} other {{bytes, select, none {{limit, select, unknown {Larger than a reading takes ({file}).} other {Larger than a reading takes ({file}). The limit is {limit}.}}} other {{limit, select, unknown {Larger than a reading takes ({file}, {bytes}).} other {Larger than a reading takes ({file}, {bytes}). The limit is {limit}.}}}}}}",
+        "understand_unsupported_type": "{file, select, none {{type, select, none {Cannot understand this file type.} other {Cannot understand this file type ({type}).}}} other {{type, select, none {Cannot understand this file type ({file}).} other {Cannot understand this file type ({file}, {type}).}}}}",
         "expired": "This ran out of time.",
         "no_result": "This run produced nothing.",
         "source_unreachable": "This address would not open.",
         "source_too_slow": "This address was still sending when the time ran out.",
         "unsupported_type": "{kind, select, image {Not a supported format. Images take {formats}.} video {Not a supported format. Video takes {formats}.} audio {Not a supported format. Audio takes {formats}.} other {Not a supported format.}}",
         "empty": "Nothing came back.",
-        "internal": "Something on our side went wrong. Try again."
+        "internal": "Something on our side went wrong. Try again.",
+        "no_credits": "No credits available.",
+        "declined": "The model declined this request.",
+        "media_refused": "The model would not take this file."
       }
     }
   },
@@ -636,8 +799,8 @@
       "signUp": "Sign up",
       "noAccount": "Don't have an account?",
       "forgotPassword": "Forgot password?",
-      "continueWithGoogle": "Continue with Google",
-      "googleSoon": "Google sign-in is coming soon.",
+      "googleLoading": "Loading Google sign-in…",
+      "googleFailed": "Google sign-in is unavailable. Please try again or use email sign-in.",
       "failed": "Sign-in failed. Please try again."
     },
     "register": {
@@ -755,6 +918,14 @@
         "create": "Creating Space…"
       },
       "noActive": "No open spaces — open one from the drawer or click + to create."
+    },
+    "update": {
+      "available": "New version",
+      "title": "A new version is available",
+      "description": "Refresh to use the new version.",
+      "busy": "An upload or another operation is in progress. Refreshing will interrupt it. We recommend waiting until it finishes.",
+      "later": "Later",
+      "refresh": "Update"
     }
   },
   "common": {
@@ -1057,12 +1228,16 @@
       "studioTransferApproved": "{actor} accepted your admin transfer for {studio}",
       "projectTransferRequest": "{actor} asked you to take over {project}",
       "projectTransferApproved": "{actor} accepted your ownership transfer for {project}",
+      "projectJoinRequest": "{actor} asked to join {project}",
+      "projectJoinApproved": "{actor} let you into {project}",
+      "projectJoinRejected": "{actor} declined your request to join {project}",
       "studioInviteRequest": "{actor} invited you to join {studio}",
       "studioInviteAccepted": "{actor} accepted your invite to {studio}",
       "projectInviteRequest": "{actor} invited you to join {project}",
       "projectInviteAccepted": "{actor} accepted your invite to {project}",
       "membershipEnded": "Your {tier} membership has ended",
-      "membershipUpgradeIncomplete": "Your upgrade to {tier} was not completed",
+      "membershipUpgradeIncomplete": "Payment for your move to {tier} {period} was not completed",
+      "membershipUpgradeIncompleteNoPeriod": "Payment for your move to {tier} was not completed",
       "storageQuotaExceeded": "Your storage is full"
     },
     "actorFallback": "Someone",
@@ -1124,6 +1299,7 @@
       "account": "Account",
       "signOut": "Sign out",
       "credits": "Credits",
+      "creditsUnavailable": "Unavailable",
       "membership": "Membership",
       "accountSettings": "Account settings"
     },
@@ -1371,12 +1547,25 @@
       "agentColumnWidth": "Adjust agent panel width",
       "language": "Language: {name}",
       "theme": "Theme: {theme}"
-    }
+    },
+    "languageNotSaved": "Language not saved to your account"
   },
-  "noAccess": {
-    "title": "You don't have access to this project",
-    "description": "Please contact the project owner to request access. They can invite you by email.",
-    "backToStudio": "Back to Studio"
+  "projectJoin": {
+    "title": "You're not a member of this project",
+    "body": "The owner needs to approve before you can open {project}.",
+    "messageLabel": "Message to the owner (optional)",
+    "messagePlaceholder": "Why you'd like to join",
+    "cancel": "Cancel",
+    "request": "Request to join",
+    "sentTitle": "Request sent",
+    "sentBody": "You'll get a notification when the owner approves.",
+    "ok": "OK",
+    "pendingTitle": "Request pending",
+    "pendingBody": "You asked to join {project} on {date}. The owner hasn't answered yet.",
+    "withdraw": "Withdraw request",
+    "requestFailed": "Couldn't send the request. Try again.",
+    "withdrawFailed": "Couldn't withdraw the request. Try again.",
+    "loadFailed": "Couldn't open this project. Try again."
   },
   "activity": {
     "description": "Uploads, generations, and Space / member changes",
@@ -1425,11 +1614,20 @@
   "decision": {
     "loadingTitle": "Opening this request…",
     "loadingBody": "One moment while we look it up.",
-    "title": "{kind, select, studio_invite {You've been invited to a Studio} project_invite {You've been invited to a Project} role_upgrade {Someone asked for a bigger role} project_transfer {A Project is being handed to you} studio_transfer {A Studio is being handed to you} other {Something needs your answer}}",
-    "body": "{kind, select, studio_invite {{actor} invited you to join {entity} as {role, select, maintainer {a Maintainer} guest {a Guest} other {a Member}}.} project_invite {{actor} invited you to work on {entity} as {role, select, editor {an Editor} viewer {a Viewer} other {a Member}}.} role_upgrade {{actor} asked to become {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}} on {entity}.} project_transfer {{actor} wants to make you the Owner of {entity}.} studio_transfer {{actor} wants to make you the Admin of {entity}.} other {{actor} is waiting on your answer about {entity}.}}",
+    "title": "{kind, select, studio_invite {You've been invited to a Studio} project_invite {You've been invited to a Project} role_upgrade {Someone asked for a bigger role} project_join {Join request} project_transfer {A Project is being handed to you} studio_transfer {A Studio is being handed to you} other {Something needs your answer}}",
+    "body": "{kind, select, studio_invite {{actor} invited you to join {entity} as {role, select, maintainer {a Maintainer} guest {a Guest} other {a Member}}.} project_invite {{actor} invited you to work on {entity} as {role, select, editor {an Editor} viewer {a Viewer} other {a Member}}.} role_upgrade {{actor} asked to become {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}} on {entity}.} project_join {{actor} asked to join {entity}.} project_transfer {{actor} wants to make you the Owner of {entity}.} studio_transfer {{actor} wants to make you the Admin of {entity}.} other {{actor} is waiting on your answer about {entity}.}}",
     "reason": "They said: {message}",
-    "confirm": "{kind, select, role_upgrade {Approve} other {Accept}}",
-    "decline": "{kind, select, role_upgrade {Decline} other {Decline}}",
+    "confirm": "{kind, select, role_upgrade {Approve} project_join {Approve} other {Accept}}",
+    "decline": "{kind, select, role_upgrade {Decline} project_join {Decline} other {Decline}}",
+    "grantRole": "Role",
+    "field": {
+      "requester": "Requester",
+      "project": "Project",
+      "message": "Message",
+      "expires": "Expires"
+    },
+    "expiresBefore": "Until {date}",
+    "actorWithHandle": "{name} (@{handle})",
     "windowNote": "This request could be answered within {days, plural, one {# day} other {# days}}.",
     "acceptedTitle": "You already accepted this",
     "acceptedBody": "There is nothing left to do here.",
@@ -1458,8 +1656,9 @@
     "panelTitle": "Membership",
     "close": "Close",
     "currentTier": "Current membership",
+    "chooseTier": "Choose a membership",
     "tier": {
-      "base": "Base",
+      "base": "Starter",
       "pro": "PRO",
       "team": "Team",
       "self_hosted": "Self-hosted",
@@ -1488,7 +1687,6 @@
     },
     "enterpriseQuota": "Your allowances are set by a separate agreement and are not shown here.",
     "compare": "Compare tiers",
-    "monthlyFee": "Monthly",
     "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
     "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
     "contactEnterpriseAccount": "Questions about your allowances, or need them changed? Email us:",
@@ -1504,11 +1702,37 @@
     "resume": "Resume membership",
     "notice": {
       "firstPaymentPending": "Payment not completed",
-      "upgradePending": "Upgrade payment not completed",
-      "paymentOverdue": "This month's payment did not go through"
+      "upgradePending": "Payment for the change is not complete",
+      "paymentOverdue": "Payment did not go through"
+    },
+    "checkout": {
+      "done": "{plan} is active",
+      "processing": "Payment is still going through",
+      "failed": "Membership not activated"
     },
     "payNow": "Pay now",
-    "actionFailed": "That did not go through. Try again."
+    "actionFailed": "That did not go through. Try again.",
+    "period": {
+      "month": "Monthly",
+      "year": "Yearly"
+    },
+    "saveTwoMonths": "Twelve months for the price of ten",
+    "yearSaving": "Save about {percent}% with yearly billing",
+    "tierWithPeriod": "{tier} · {period}",
+    "priceSuffix": {
+      "month": "{amount} /mo",
+      "year": "{amount} /yr"
+    },
+    "priceOnRequest": "On request",
+    "contactSales": "Talk to us",
+    "card": {
+      "storage": "{value} storage",
+      "teamStudios": "{count, plural, =0 {No Team Studios} one {# Team Studio} other {# Team Studios}}",
+      "connections": "{count, plural, one {# connection per document} other {# connections per document}}",
+      "enterpriseScale": "Capacity by agreement",
+      "enterpriseGovernance": "SSO, audit, IP indemnity"
+    },
+    "noCreditsIncluded": "Membership includes no generation credits. Credits are bought separately."
   },
   "credits": {
     "panelTitle": "Credits",
@@ -1524,13 +1748,20 @@
     },
     "section": {
       "overview": "Overview",
-      "lots": "Purchases",
+      "lots": "Credit history",
       "ledger": "Spending",
       "studios": "By Studio",
       "buy": "Buy credits",
       "assign": "Assign",
       "refunds": "Refunds"
     },
+    "source": {
+      "payment": "Purchase",
+      "gift": "Trial credits",
+      "compensation": "Compensation",
+      "discount": "Discount"
+    },
+    "pinnedToPersonalStudio": "Your personal Studio only",
     "lifecycle": {
       "depleted": "Used up",
       "refund_pending": "Under review",
@@ -1554,8 +1785,8 @@
     },
     "lotsEmpty": "No purchases yet.",
     "lotsEmptyNotice": {
-      "title": "Every purchase will be listed here",
-      "body": "Each one shows what it cost, where it stands, and which Studio its credits went to."
+      "title": "Every credit you hold is listed here",
+      "body": "Bought and granted alike, with where each came from, what it cost, how far it got, and which Studio it went to."
     },
     "assignedTo": "Assigned to {studio}",
     "ofPurchased": "of {amount}",
@@ -1587,13 +1818,10 @@
       "body": "Each purchase goes to one Studio, and can be moved at any time."
     },
     "assignNote": "The list holds only Studios you administer. Moving a purchase takes it from the Studio that had it, immediately.",
-    "remaining": "{amount} credits left",
     "designationFor": "Studio for the {amount} purchase",
     "designateFailed": "That did not save. Try again.",
     "refundsEmpty": "No credit packs bought yet.",
     "askRefund": "Ask for a refund",
-    "refundPendingHint": "{credits} credits · it cannot be assigned to a Studio while it is under review",
-    "refundingHint": "{credits} credits · it cannot be assigned to a Studio while the money goes back",
     "refundTitle": "Refund rule",
     "buy": {
       "taxNotice": "Prices exclude tax. What you pay is the price plus the tax where you are, and the checkout page shows the final amount.",
@@ -1638,9 +1866,16 @@
       "expired": "Over 30 days"
     },
     "refundHint": {
-      "assigned": "{credits} credits left · unassign it to ask for a refund",
-      "depleted": "{credits} credits in all",
-      "refunded": "Back to the original payment method"
+      "assigned": "Unassign it to ask for a refund"
     }
+  },
+  "notFound": {
+    "heading": "Page not found",
+    "body": "The page you're looking for doesn't exist or has moved. Let's get you back on track.",
+    "cta": "Back to home"
+  },
+  "pageLoadError": {
+    "message": "This page could not be loaded. Please try again.",
+    "retry": "Try again"
   }
 }

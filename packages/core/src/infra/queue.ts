@@ -20,14 +20,20 @@ import { jitterBackoffStrategy } from "@core/infra/retry.js";
  * BullMQ accepts a plain connection config object, avoiding ioredis
  * version mismatch issues.
  * @returns BullMQ connection options derived from `REDIS_QUEUE_URL`
+ * @throws {Error} If the URL is malformed or uses an unsupported protocol.
  */
 function parseRedisUrl(): ConnectionOptions {
   const url = new URL(env.REDIS_QUEUE_URL);
+  if (url.protocol !== "redis:" && url.protocol !== "rediss:") {
+    throw new Error("REDIS_QUEUE_URL must use redis:// or rediss://");
+  }
   return {
-    host: url.hostname,
+    host: url.hostname.replace(/^\[|\]$/g, ""),
     port: Number(url.port) || 6379,
     db: Number(url.pathname.slice(1)) || 0,
-    password: url.password || undefined,
+    username: url.username ? decodeURIComponent(url.username) : undefined,
+    password: url.password ? decodeURIComponent(url.password) : undefined,
+    ...(url.protocol === "rediss:" ? { tls: {} } : {}),
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
   };

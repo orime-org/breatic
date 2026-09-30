@@ -4,11 +4,11 @@
 /**
  * The hard edge on what one turn may say (#148, G2).
  *
- * The browser stops at ten thousand characters and says so. This is the same
- * line drawn where a client cannot skip it, and it is drawn around the thing
- * that actually reaches the model: what the user typed with their attached
- * canvas content folded in front of it. Checked per field it would pass a
- * message of nine thousand carrying chips worth another nine.
+ * Two lines, each drawn where a client cannot skip it: one on what the user
+ * typed (the browser stops at ten thousand characters and says so), one on
+ * the attached items as the model is sent them. The attachments do not eat
+ * into what the reader may type, and a long question does not shrink what
+ * may be attached.
  *
  * The refusal is an error rather than a trim. A silently shortened message
  * leaves the reader unable to see what went missing, reading an answer to
@@ -43,6 +43,7 @@ import {
   getAgentConfig,
 } from "@breatic/core";
 import type { Hono } from "hono";
+import { attachmentSection } from "@breatic/shared";
 
 try {
   initCore(process.env);
@@ -94,8 +95,8 @@ async function seedOwner(): Promise<Seeded> {
     INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')
   `;
   const [project] = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}, 'private') RETURNING id
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}) RETURNING id
   `;
   await sql`
     INSERT INTO project_members (project_id, user_id, role, added_by)
@@ -115,14 +116,14 @@ async function seedOwner(): Promise<Seeded> {
 }
 
 /**
- * Post to one of the two chat entrances.
- * @param path - Which entrance.
+ * Post to the chat entrance.
+ * @param path - The entrance.
  * @param body - The request body.
  * @param cookie - The session cookie.
  * @returns The raw response.
  */
 async function post(
-  path: "/api/v1/chat/message" | "/api/v1/chat/skill",
+  path: "/api/v1/chat/message",
   body: Record<string, unknown>,
   cookie: string,
 ): Promise<Response> {
@@ -148,6 +149,16 @@ function chip(n: number, size: number) {
   };
 }
 
+/**
+ * A text chip whose laid-out attachment section is exactly a given length.
+ * @param length - How long the section should be.
+ * @returns The chip.
+ */
+function chipWithSection(length: number) {
+  const bare = attachmentSection([chip(1, 0)]).length;
+  return chip(1, length - bare);
+}
+
 describe("what one turn may send", () => {
   it("refuses a message past the limit", async () => {
     const { projectId, conversationId, cookie } = await seedOwner();
@@ -159,84 +170,6 @@ describe("what one turn may send", () => {
         project_id: projectId,
         conversation_id: conversationId,
         attached_chips: [],
-      },
-      cookie,
-    );
-
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.status).toBeLessThan(500);
-  });
-
-  it("counts the attached canvas content, which the reader never typed", async () => {
-    const { projectId, conversationId, cookie } = await seedOwner();
-
-    const res = await post(
-      "/api/v1/chat/message",
-      {
-        message: "have a look at this",
-        project_id: projectId,
-        conversation_id: conversationId,
-        attached_chips: [chip(1, 20_000)],
-      },
-      cookie,
-    );
-
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.status).toBeLessThan(500);
-  });
-
-  it("counts them together, so neither half can hide under the line", async () => {
-    // The case a per-field check passes: two halves that are each well
-    // inside the limit and are sent to the model as one message.
-    const { projectId, conversationId, cookie } = await seedOwner();
-
-    const res = await post(
-      "/api/v1/chat/message",
-      {
-        message: "y".repeat(9_000),
-        project_id: projectId,
-        conversation_id: conversationId,
-        attached_chips: [chip(1, 9_000)],
-      },
-      cookie,
-    );
-
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.status).toBeLessThan(500);
-  });
-
-  it("refuses a skill command past the limit", async () => {
-    const { projectId, conversationId, cookie } = await seedOwner();
-
-    const res = await post(
-      "/api/v1/chat/skill",
-      {
-        skill_name: "brainstorm",
-        input: "y".repeat(20_000),
-        project_id: projectId,
-        conversation_id: conversationId,
-      },
-      cookie,
-    );
-
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.status).toBeLessThan(500);
-  });
-
-  it("counts the command the skill route writes around the input", async () => {
-    // What goes to the model on this path is `/skill <name> ` and then the
-    // input, so an input measured on its own passes the ceiling and the turn
-    // sends more than it. The limit is on what one turn may carry, and the
-    // command is part of what it carries.
-    const { projectId, conversationId, cookie } = await seedOwner();
-
-    const res = await post(
-      "/api/v1/chat/skill",
-      {
-        skill_name: "brainstorm",
-        input: "y".repeat(getAgentConfig().user_message_max_chars),
-        project_id: projectId,
-        conversation_id: conversationId,
       },
       cookie,
     );
@@ -263,5 +196,78 @@ describe("what one turn may send", () => {
     );
 
     expect(res.status).toBe(200);
+  });
+
+  it("measures the attachments apart from the words", async () => {
+    // Each half is under its own limit, and together they are past the limit
+    // on the words: the attachments do not eat into what the reader may type.
+    const { projectId, conversationId, cookie } = await seedOwner();
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: "y".repeat(getAgentConfig().user_message_max_chars),
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: [chip(1, 20_000)],
+      },
+      cookie,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("admits attachments that land exactly on their limit", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: "have a look at this",
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: [chipWithSection(getAgentConfig().attachment_max_chars)],
+      },
+      cookie,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("refuses more attached items than one message may carry", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+    const max = getAgentConfig().attachment_max_items;
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: "have a look at these",
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: Array.from({ length: max + 1 }, (_, i) => chip(i, 1)),
+      },
+      cookie,
+    );
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+  });
+
+  it("refuses attachments past their limit", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: "have a look at this",
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: [chipWithSection(getAgentConfig().attachment_max_chars + 1)],
+      },
+      cookie,
+    );
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
   });
 });

@@ -94,10 +94,17 @@ describe("POST /auth/resend-verification-email", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 200 + invokes service with current user when authenticated", async () => {
+  it.each(["http://localhost:8000", "https://untrusted.example"])("uses an allowed frontend for verification links (request origin: %s)", async (origin) => {
     mocks.userRepo.getUserById.mockResolvedValue({
       id: "user-1",
       email: "u@x.com",
+    });
+    // The mail is written in the account's language, which reaches the route
+    // on the session user.
+    mocks.authService.getUserByToken.mockResolvedValueOnce({
+      id: "user-1",
+      email: "u@x.com",
+      locale: "ja",
     });
     mocks.authService.resendVerificationEmail.mockResolvedValue({
       mailResult: { status: "skipped", reason: "backend_disabled" },
@@ -106,14 +113,15 @@ describe("POST /auth/resend-verification-email", () => {
     const app = createApp();
     const res = await app.request("/api/v1/auth/resend-verification-email", {
       method: "POST",
-      headers: { ...AUTH, Origin: "https://app.test" },
+      headers: { ...AUTH, Origin: origin },
     });
 
     expect(res.status).toBe(200);
     expect(mocks.authService.resendVerificationEmail).toHaveBeenCalledWith(
       "user-1",
       "u@x.com",
-      "https://app.test/verify-email",
+      "ja",
+      "http://localhost:8000/verify-email",
     );
   });
 });

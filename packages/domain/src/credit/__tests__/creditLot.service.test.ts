@@ -19,6 +19,7 @@ import { initCore, NotFoundError } from "@breatic/core";
 
 const resolveOwnerStudioId = vi.fn<(projectId: string) => Promise<string>>();
 const appendLedgerEntry = vi.fn(async (..._args: unknown[]) => undefined);
+const recordStandaloneUsage = vi.fn(async (..._args: unknown[]) => undefined);
 
 vi.mock("@domain/asset/asset.service.js", () => ({
   resolveOwnerStudioId: (projectId: string) => resolveOwnerStudioId(projectId),
@@ -26,6 +27,7 @@ vi.mock("@domain/asset/asset.service.js", () => ({
 
 vi.mock("@domain/credit/creditLot.repo.js", () => ({
   appendLedgerEntry: (...args: unknown[]) => appendLedgerEntry(...args),
+  recordStandaloneUsage: (...args: unknown[]) => recordStandaloneUsage(...args),
   listSpendableLots: async () => [],
   lockLot: async () => null,
   applyCharge: async () => undefined,
@@ -43,6 +45,7 @@ beforeAll(() => {
 beforeEach(() => {
   resolveOwnerStudioId.mockReset();
   appendLedgerEntry.mockClear();
+  recordStandaloneUsage.mockClear();
 });
 
 /** 每个用例各自 import，让上面的替身在模块求值时就位。 */
@@ -65,7 +68,10 @@ describe("project 真的没了", () => {
       shortfall: 10,
       studioId: null,
     });
-    expect(appendLedgerEntry).toHaveBeenCalledTimes(1);
+    // The standalone exit, which is the one that carries no lot: this row
+    // keeps no balance in step, so it is whole on its own.
+    expect(recordStandaloneUsage).toHaveBeenCalledTimes(1);
+    expect(appendLedgerEntry).not.toHaveBeenCalled();
   });
 });
 
@@ -84,5 +90,6 @@ describe("解析 studio 的查询本身失败", () => {
     await charge().catch(() => undefined);
 
     expect(appendLedgerEntry).not.toHaveBeenCalled();
+    expect(recordStandaloneUsage).not.toHaveBeenCalled();
   });
 });

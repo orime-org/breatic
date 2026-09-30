@@ -21,10 +21,22 @@ import type { StoredAsset } from "@breatic/domain";
  */
 export interface PersistedOutput {
   url?: string;
+  /**
+   * The text a read answered with, for a run that produces no file.
+   *
+   * Beside `url` rather than sharing it: `persistOutputs` decides what to
+   * store by whether an output names an address, and a sentence that happens
+   * to begin with `http` is not one.
+   */
+  content?: string;
   cover_url?: string;
   width?: number | null;
   height?: number | null;
   duration_seconds?: number | null;
+  /** What the ledger judged this file to be, off the bytes that landed. */
+  mime_type?: string | null;
+  /** What the ledger counted the bytes at. */
+  size_bytes?: number | null;
   extra?: Record<string, unknown>;
 }
 
@@ -48,5 +60,84 @@ export function storedAsOutput(
     width: stored.width,
     height: stored.height,
     duration_seconds: stored.durationSeconds,
+    mime_type: stored.mimeType,
+    size_bytes: stored.sizeBytes,
+  };
+}
+
+/**
+ * What each target node is told, read off the outputs this run produced.
+ *
+ * The two vocabularies meet here and nowhere else: an output names its fields
+ * the way the transports and storage do, and a node's event names them the
+ * way the document does. Three exits carry this — the redelivery of a paid
+ * result, the Stage-4 publish, and the crash net's recovery — and each one
+ * spelling the mapping out for itself is three places to edit when a field
+ * joins, which is how this run's own two arrived.
+ * @param nodeIds - The nodes this run writes to, in output order.
+ * @param outputs - What it produced, one per node.
+ * @returns One result per node, in the shape the event carries.
+ */
+export function nodeResultsFrom(
+  nodeIds: readonly string[],
+  outputs: readonly PersistedOutput[],
+): Array<{
+  nodeId: string;
+  content: string | undefined;
+  coverUrl: string | undefined;
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+  mimeType: string | null;
+  size: number | null;
+}> {
+  return nodeIds.map((nodeId, i) => ({
+    nodeId,
+    content: outputs[i]?.content ?? outputs[i]?.url,
+    coverUrl: outputs[i]?.cover_url,
+    // The paid result already holds what the container measured, and these
+    // deliveries are the only ones the node will get for it.
+    width: outputs[i]?.width ?? null,
+    height: outputs[i]?.height ?? null,
+    duration: outputs[i]?.duration_seconds ?? null,
+    mimeType: outputs[i]?.mime_type ?? null,
+    size: outputs[i]?.size_bytes ?? null,
+  }));
+}
+
+/**
+ * What a history row says about the run behind it.
+ *
+ * Three deliveries write these rows — a run finishing, a redelivery after the
+ * provider already answered, and the net that picks up a crashed run — and
+ * each is the only row its node gets. The model is the field that needs a
+ * rule: a result carries the name only when the provider echoed one, and a
+ * reading's answer is text and a finish reason, so the job's own model is
+ * what a row would otherwise be missing.
+ * @param run - Where each field comes from.
+ * @param run.reportedModel - The model the stored result named, when it did.
+ * @param run.jobModel - The model the job asked for.
+ * @param run.credits - What this run was billed, in credits.
+ * @param run.durationMs - How long the provider call took.
+ * @param run.params - What the run was given.
+ * @returns The metadata, in the shape the history row holds.
+ */
+export function generationMetadata(run: {
+  reportedModel: string | undefined;
+  jobModel: string | undefined;
+  credits: number | undefined;
+  durationMs: number | undefined;
+  params: Record<string, unknown> | undefined;
+}): {
+  model?: string;
+  credits?: number;
+  durationMs?: number;
+  params?: Record<string, unknown>;
+} {
+  return {
+    model: run.reportedModel ?? run.jobModel,
+    credits: run.credits,
+    durationMs: run.durationMs,
+    params: run.params,
   };
 }

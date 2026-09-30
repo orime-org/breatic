@@ -4,9 +4,8 @@
 /**
  * Chat routes — conversational AI with SSE streaming.
  *
- * Provides endpoints for chat messages, skill commands, and
- * conversation CRUD. Streaming responses use Server-Sent Events
- * via Hono's streaming helper.
+ * Provides endpoints for chat messages and conversation CRUD.
+ * Streaming responses use Server-Sent Events via Hono's streaming helper.
  */
 
 import { Hono } from "hono";
@@ -16,7 +15,6 @@ import { validate } from "@server/middleware/validate.js";
 
 import {
   chatMessageSchema,
-  skillCommandSchema,
   chatConversationsQuerySchema,
   chatOpenSchema,
   chatCreateConversationSchema,
@@ -30,62 +28,53 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { conversationService } from "@server/modules";
 import { attachmentService } from "@server/modules";
 import { projectService } from "@server/modules";
+import { precheckCredits } from "@server/modules";
+import { SMALLEST_CREDIT } from "@breatic/domain";
 import { MainAgent } from "@server/agent/main-agent.js";
-import { skillCommandText } from "@server/agent/skill-command.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
 import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig, ValidationError } from "@breatic/core";
-import { t } from "@breatic/shared";
-import { assertSkillUsable } from "@breatic/domain";
+import { attachmentSection, t } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
 
 /**
- * Format the user's attached canvas chips as a structured prelude to
- * the chat message (spec/07 §10.18.2 v13 — chat-message-level snapshot).
+ * Refuse a message whose words or attachments are past their limits.
  *
- * Chips are independent C1 copies fixed at attach-time on the frontend;
- * here we serialize them into a prose section the LLM sees alongside
- * the user's plain text. The LLM receives one combined user message:
- * the context block followed by the user's raw text. When chips is
- * empty (default for non-v13 clients) this is a no-op pass-through.
- * @param chips - The canvas chips attached to the message, each carrying a name, type, and data snapshot.
- * @param message - The user's raw chat text.
- * @returns The message unchanged when no chips are attached; otherwise a combined prelude block of serialized chips followed by the user message.
- */
-function formatChipsForLLM(
-  chips: readonly ChatAttachedChip[],
-  message: string,
-): string {
-  if (!chips || chips.length === 0) return message;
-  const sections = chips
-    .map(
-      (c) =>
-        `### ${c.name} (type: ${c.type})\n${JSON.stringify(c.data_snapshot, null, 2)}`,
-    )
-    .join("\n\n");
-  return `## Attached Space content (snapshot — later canvas edits do not mutate these)\n\n${sections}\n\n## User message\n\n${message}`;
-}
-
-/**
- * Refuse a question longer than one turn may carry.
- *
- * Measured on the finished text rather than on any field of the request: what
- * the model is sent is the message with its attached canvas content in front
- * of it, or the skill command written around the input, and a per-field check
- * admits a short field carrying a turn many times the limit.
+ * Two limits, measured apart: the words on what the user typed, the
+ * attachments on the section the model is sent them in. A long question does
+ * not shrink what may be attached, and an attached document does not eat
+ * into what may be typed.
  *
  * Refused rather than trimmed. A silently shortened question leaves the
  * reader unable to see what went missing, reading an answer to something they
  * did not ask.
- * @param said - What the turn would send.
- * @throws {AppError} With 422 when it is over the limit.
+ * @param message - What the user typed.
+ * @param chips - What the user attached.
+ * @throws {AppError} With 422 when the words, the number of attached items or
+ *   the attachments' length is over its limit.
  */
-function assertSayable(said: string): void {
-  const limit = getAgentConfig().user_message_max_chars;
-  if (said.length <= limit) return;
-  throw new ValidationError(
-    t("server.chat.message_too_long", { limit, actual: said.length }),
-  );
+function assertSayable(message: string, chips: readonly ChatAttachedChip[]): void {
+  const { user_message_max_chars, attachment_max_chars, attachment_max_items } =
+    getAgentConfig();
+  if (message.length > user_message_max_chars) {
+    throw new ValidationError(
+      t("server.chat.message_too_long", {
+        limit: user_message_max_chars,
+        actual: message.length,
+      }),
+    );
+  }
+  if (chips.length > attachment_max_items) {
+    throw new ValidationError(
+      t("server.chat.attachments_too_many", { limit: attachment_max_items, actual: chips.length }),
+    );
+  }
+  const attached = attachmentSection(chips).length;
+  if (attached > attachment_max_chars) {
+    throw new ValidationError(
+      t("server.chat.attachments_too_long", { limit: attachment_max_chars, actual: attached }),
+    );
+  }
 }
 
 /**
@@ -237,54 +226,15 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
     body.project_id,
   );
 
-  // Spec §10.18.2 v13: attach chips into the user message before the
-  // LLM call. Chips are pre-frozen C1 snapshots (deep copies from the
-  // frontend at attach time), so subsequent canvas mutations don't
-  // affect the chat history.
-  const messageWithChips = formatChipsForLLM(body.attached_chips, body.message);
-  assertSayable(messageWithChips);
+  assertSayable(body.message, body.attached_chips);
+
+  // A turn needs a balance above zero to start (#296). Payments off: no check.
+  await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
 
   return streamTurn(
     c,
     { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
-    (signal) => new MainAgent().chat(messageWithChips, signal),
-  );
-});
-
-/**
- * `POST /chat/skill` — execute a skill command via SSE stream.
- *
- * Same streaming pattern as `/message`, but uses
- * `agent.handleSkillCommand()` for skill-specific execution.
- * @param c - Hono context with validated `skillCommandSchema` body
- * @returns SSE text/event-stream response
- */
-chat.post("/skill", validate("json", skillCommandSchema), async (c) => {
-  const user = c.get("user");
-  const body = c.req.valid("json");
-
-  // Gate the skill to end-user invocation. Not every skill is something a
-  // user may fire directly — some exist only for the model to reach for
-  // mid-turn. The gate is deny-by-default: a skill has to be declared
-  // user-invocable to get through here.
-  assertSkillUsable(body.skill_name, "chat");
-
-  // Cross-tenant guard (same rationale as /chat/message)
-  await projectService.assertAccess(body.project_id, user.id, "editor");
-
-  // Same check as the message entrance — one client-supplied id, one rule.
-  const conversation = await conversationService.assertWritable(
-    body.conversation_id,
-    user.id,
-    body.project_id,
-  );
-
-  assertSayable(skillCommandText(body.skill_name, body.input));
-
-  return streamTurn(
-    c,
-    { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
-    (signal) => new MainAgent().handleSkillCommand(body.skill_name, body.input, signal),
+    (signal) => new MainAgent().chat(body.message, signal, body.attached_chips),
   );
 });
 
@@ -498,8 +448,11 @@ chat.delete(
 );
 
 /**
- * `GET /chat/stream-config` — the one knob a browser needs to read a turn's
- * stream, from `config/agent.yaml`.
+ * `GET /chat/stream-config` — the chat knobs a browser needs, from
+ * `config/agent.yaml`: how often a stream says it is alive, and how long the
+ * attachments on one message may be and how many there may be. The browser
+ * checks attachments against those before sending, so it measures against
+ * the same limits the server enforces.
  *
  * How often this server says a stream is alive is the same fact as how long a
  * browser waits before deciding it is not, so it has one home and the browser
@@ -516,7 +469,14 @@ chat.delete(
  * knobs out of `config/storage.yaml` for the same reason.
  */
 chat.get("/stream-config", (c) => {
-  return c.json({ data: { heartbeatIntervalMs: getAgentConfig().sse_heartbeat_interval_ms } });
+  const config = getAgentConfig();
+  return c.json({
+    data: {
+      heartbeatIntervalMs: config.sse_heartbeat_interval_ms,
+      attachmentMaxChars: config.attachment_max_chars,
+      attachmentMaxItems: config.attachment_max_items,
+    },
+  });
 });
 
 export { chat as chatRoute };

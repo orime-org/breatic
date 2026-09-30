@@ -107,6 +107,7 @@ describe("buildAgentConfig", () => {
     expect(Object.keys(config.tools).sort()).toEqual([
       "ask_user",
       "get_canvas_capabilities",
+      "judge_likelihood",
       "list_generation_models",
       "propose_canvas_action",
       "search_images",
@@ -175,6 +176,7 @@ describe("buildAgentConfig", () => {
     // still benefits from what a search found, because that reaches the model.
     const config = buildAgentConfig({ skillName: "researchy" });
     expect(Object.keys(config.tools).sort()).toEqual([
+      "judge_likelihood",
       "search_images",
       "understand_media",
       "web_search",

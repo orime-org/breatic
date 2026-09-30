@@ -34,13 +34,10 @@ function model(name: string, modality: ModelEntry['modality']): ModelEntry {
     description: '',
     guide: '',
     tier: 'optional',
-    cost_per_call: 0,
     generation_time: 0,
     takes_prompt: true,
     params: {},
     providers: [],
-    sourcesByMode: {},
-    sourceRuleByMode: {},
   };
 }
 
@@ -50,8 +47,8 @@ const CATALOG: ModelCatalog = {
   tts: [model('elevenlabs-v3', 'tts'), model('fish-s2-pro', 'tts')],
   audio: [model('minimax-music-3.0', 'audio')],
   three_d: [],
-  understand: [],
   total: 5,
+  credit_multiplier: 1,
 };
 
 describe('modelsForModality (#1960 §6.9)', () => {

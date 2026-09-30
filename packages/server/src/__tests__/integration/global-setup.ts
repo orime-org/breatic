@@ -17,16 +17,63 @@
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
+import { copyFileSync, existsSync, rmSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Shared state across setup / teardown. */
 let pgContainer: StartedPostgreSqlContainer;
 let redisContainer: StartedTestContainer;
+
+/**
+ * The payment config files these suites need, and where a fixture for each
+ * lives.
+ *
+ * Neither is tracked by git: both name what a deployment really charges and
+ * which Stripe objects it really sells. The suites that exercise checkout,
+ * fulfilment, the membership panel and the subscription webhooks still need
+ * a price list to exercise, so a run that finds none lays down a fixture.
+ */
+const PAYMENT_CONFIGS = ["pricing", "subscription"] as const;
+
+/** Repo root, from this file at packages/server/src/__tests__/integration/. */
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../..");
+
+/** The configs this run laid down, and therefore the ones it may remove. */
+const laidDown: string[] = [];
+
+/**
+ * Give the run a price list where the machine has none.
+ *
+ * Only writes what is absent, and records what it wrote, so a developer who
+ * keeps their own `config/*.yaml` runs against theirs and still has it
+ * afterwards.
+ * @returns nothing; {@link laidDown} records what teardown must remove.
+ */
+function layDownPaymentConfigs(): void {
+  for (const name of PAYMENT_CONFIGS) {
+    const target = resolve(REPO_ROOT, `config/${name}.yaml`);
+    if (existsSync(target)) continue;
+    copyFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), `fixtures/${name}.yaml`),
+      target,
+    );
+    laidDown.push(target);
+  }
+}
 
 type ProvideContext = {
   provide: (key: string, value: string) => void;
 };
 
 export async function setup({ provide }: ProvideContext): Promise<void> {
+  // Before the containers, because this is cheap and a run that cannot get a
+  // price list should say so before spending a minute pulling images.
+  layDownPaymentConfigs();
+  if (laidDown.length > 0) {
+    console.log(`[integration] Laid down payment config fixtures: ${laidDown.join(", ")}`);
+  }
+
   console.log("[integration] Starting testcontainers...");
 
   // Start PostgreSQL + Redis in parallel for speed
@@ -127,5 +174,8 @@ export async function teardown(): Promise<void> {
     pgContainer?.stop(),
     redisContainer?.stop(),
   ]);
+  // Only what this run wrote. A developer's own config was never touched and
+  // is not in this list.
+  for (const path of laidDown) rmSync(path, { force: true });
   console.log("[integration] Containers stopped.");
 }

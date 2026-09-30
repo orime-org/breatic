@@ -36,18 +36,22 @@ import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   PANEL_EDITOR_PARAM,
-  REFERENCE_POOL_PARAM,
+  REFERENCE_KINDS,
 } from '@breatic/shared';
-import type { GenerationNodeType } from '@breatic/shared';
+import type { GenerationNodeType, ModelEntry } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 
-import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
+import {
+  AUDIO_MODE_OPTIONS,
+  audioModeOption,
+} from '@web/spaces/canvas/generate/audio-mode-options';
 import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
+import { modelControls } from '@web/spaces/canvas/generate/model-controls';
 import { RATIO_RESOLUTION_PARAMS } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import {
   slotsForMode,
@@ -194,9 +198,7 @@ const PANEL: Readonly<
     controls: [...EDITED_PARAMS],
   },
   audio: {
-    // One param per slot here, so every audio mode reaches all of them and
-    // which ones a model actually offers is its own declaration's business.
-    slots: () => Object.values(AUDIO_SLOTS).map((spec) => spec.param),
+    slots: (mode) => audioModeOption(mode).slots.map((slot) => AUDIO_SLOTS[slot].param),
     controls: Object.keys(AUDIO_PARAMS),
   },
 };
@@ -236,6 +238,11 @@ function claimsFor(
     if (!GENERATION_NODE_MODES[node].includes(mode)) continue;
     for (const param of PANEL[node].slots(mode)) slots.add(param);
     for (const param of PANEL[node].controls) controls.add(param);
+    // Every panel also draws the controls only this model has, by the shape
+    // its declaration takes — the same function the popovers call.
+    for (const control of modelControls({ params: model.params } as unknown as ModelEntry)) {
+      controls.add(control.name);
+    }
   }
   return { slots, controls };
 }
@@ -361,13 +368,28 @@ describe('what the catalog declares', () => {
     ).toEqual([]);
   });
 
-  it('spells every pool-filled param the way the reference pool is read', () => {
+  it('gives every pool-filled param a kind the pool carries, one param per kind', () => {
+    /**
+     * Whether two params' mode lists can meet — absent means every mode.
+     * @param a - One param's modes.
+     * @param b - The other's.
+     * @returns True when some mode has both.
+     */
+    const meet = (a: unknown, b: unknown): boolean =>
+      !Array.isArray(a) || !Array.isArray(b) || a.some((mode) => b.includes(mode));
     expect(
-      objections('pool', (_model, param) =>
-        param === REFERENCE_POOL_PARAM
-          ? null
-          : `declares fill: pool while the pool travels as '${REFERENCE_POOL_PARAM}', so the references a reader adds reach the run under a name this model never declared`,
-      ),
+      objections('pool', (model, param, spec) => {
+        if (!REFERENCE_KINDS.some((kind) => kind === spec.accepts)) {
+          return `declares fill: pool accepting '${String(spec.accepts)}', which the pool does not carry, so no reference a reader adds reaches it`;
+        }
+        const twin = Object.entries(model.params).find(
+          ([other, o]) =>
+            other !== param && o?.fill === 'pool' && o.accepts === spec.accepts && meet(spec.modes, o.modes),
+        );
+        return twin
+          ? `shares its kind with '${twin[0]}' in some mode, so a mentioned ${String(spec.accepts)} has two params to travel under`
+          : null;
+      }),
     ).toEqual([]);
   });
 
@@ -432,9 +454,6 @@ describe('what the catalog declares', () => {
       if (offeredModes(model).some((mode) => claimsFor(model, mode).controls.has(param))) {
         return 'declares fill: none while the panel draws a control under that name, so a value a reader sets is dropped';
       }
-      if (param === REFERENCE_POOL_PARAM && nodesOffering(model).length > 0) {
-        return 'declares fill: none under the reference pool\'s own name, so references a reader adds are dropped';
-      }
       return null;
     });
     // The reason travels with the param. A central list of them sat far from
@@ -482,7 +501,7 @@ describe('what the catalog declares', () => {
     ];
     const apart: string[] = [];
     for (const [node, mode, printed] of drawn) {
-      const declared = GENERATION_NODE_BUCKETS[node as GenerationNodeType]
+      const declared = GENERATION_NODE_BUCKETS[node]
         .map((bucket) => declaredModes.get(`${bucket}.${mode}`))
         .find((found) => found !== undefined);
       if (declared === undefined) {

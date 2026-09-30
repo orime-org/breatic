@@ -26,6 +26,15 @@ import {
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
+// The reading's pinned model, passed through rather than typed out: the
+// route names it on the row, on the job and against the charge, and a copy
+// here would let all three drift from it while the suite stayed green.
+import { UNDERSTAND_PINS as REAL_UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
+// Real: the tracker is pure, and what a turn hands off depends on it.
+import {
+  isGenerationId as realIsGenerationId,
+  trackOpenGeneration as realTrackOpenGeneration,
+} from "../../../../domain/src/credit/open-generation.js";
 
 const mockPipeline = {
   zremrangebyscore: () => mockPipeline,
@@ -65,6 +74,8 @@ export const mockCreateQueue = vi.fn();
 
 /** Mock references — tests can override behavior per-test. */
 export const mocks = {
+  /** The later-lookup hand-off; tests read what a turn handed off. */
+  handOffLookups: vi.fn(async (..._args: unknown[]) => undefined),
   /**
    * core's real AppError, stashed by coreMock.
    *
@@ -152,6 +163,7 @@ export const mocks = {
     recordGenerationSuccess: vi.fn(),
     recordGenerationFailure: vi.fn(),
     recordUpload: vi.fn(),
+    recordSnapshot: vi.fn(),
   },
   // #186 — the task table behind a node's four counts.
   emitNodeTaskCounts: vi.fn(),
@@ -163,7 +175,15 @@ export const mocks = {
       id: "node-task-1",
       counts: { running: 1, done: 0, failed: 0, expired: 0 },
     }),
-    settle: vi.fn(),
+    // Shaped like the real one for the same reason `open` is: a route that
+    // reads the counts off a bare `vi.fn()` throws a TypeError, and the
+    // failure then reads as a 500 about the route rather than about the
+    // double.
+    settle: vi.fn().mockResolvedValue({
+      applied: true,
+      landed: true,
+      counts: { running: 0, done: 0, failed: 1, expired: 0 },
+    }),
     dismiss: vi.fn(),
     findById: vi.fn().mockResolvedValue(null),
     countsFor: vi.fn().mockResolvedValue({
@@ -231,6 +251,7 @@ export const mocks = {
       studios: [],
     }),
     getUnassignedCredits: vi.fn().mockResolvedValue(0),
+    getGrantedCredits: vi.fn().mockResolvedValue(0),
     chargeForGeneration: vi.fn().mockResolvedValue({
       billed: true,
       charged: 5,
@@ -259,6 +280,10 @@ export const mocks = {
   // publish failures (#1580 adversarial: the handling-OPEN is a hard
   // prerequisite of the gen echo chain, not best-effort).
   publishNodeEvent: vi.fn().mockResolvedValue(undefined),
+  // The sliding window behind every throttled route. Shared ref so a route
+  // test can read which action was counted — a route that carries no
+  // throttle counts nothing, and nothing else in a test says so.
+  checkRateLimit: vi.fn().mockResolvedValue(true),
   // The R2 storage adapter. Exposed on `mocks` so route tests can configure
   // publicUrl() per-test (e.g. the #1824 cover wire); default unconfigured
   // (resolves undefined) — only happy-path upload tests set it.
@@ -429,7 +454,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     },
     closeQueues: vi.fn(),
     defaultJobOpts: () => ({}),
-    checkRateLimit: vi.fn().mockResolvedValue(true),
+    checkRateLimit: mocks.checkRateLimit,
     publishNodeEvent: mocks.publishNodeEvent,
     getStorageAdapter: mocks.getStorageAdapter,
     // The mailer lives in core again (#40): collab needs to alert ops on a
@@ -446,7 +471,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // Config
     env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "r2", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
     MONOREPO_ROOT: "/tmp",
-    getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_chars: 850000, memory_keep_chars: 500000, user_message_max_chars: 15000, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
+    getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_chars: 850000, memory_keep_chars: 500000, user_message_max_chars: 15000, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
@@ -488,7 +513,49 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  * llm and the `ai` SDK behind it. Per-test overrides go through the
  * shared `mocks` refs (creditLotService / taskService / ...).
  */
+/**
+ * A usage recorder for turns built on `domainMock` (#296): it writes nothing
+ * and counts a credit per token a model call reports, so a turn that spent
+ * something settles to a positive amount and one that spent nothing to zero.
+ * What a call really costs is `usage-cost.ts`'s to say and is tested there.
+ * @returns A recorder with the real interface.
+ */
+function usageRecorderDouble(options: {
+  operationKey: string;
+  feature: string;
+  actorUserId: string;
+  projectId: string | null;
+}): {
+  operation: { operationKey: string; feature: string; actorUserId: string; projectId: string | null };
+  recordModelCall: (call: { usage: { inputTokens?: number; outputTokens?: number } }) => void;
+  recordServiceCall: () => void;
+  recordLookedUpCall: () => void;
+  awaitingLookup: () => readonly string[];
+  settle: () => Promise<number>;
+} {
+  let credits = 0;
+  const { operationKey, feature, actorUserId, projectId } = options;
+  return {
+    operation: { operationKey, feature, actorUserId, projectId },
+    recordModelCall: (call) => {
+      credits += (call.usage.inputTokens ?? 0) + (call.usage.outputTokens ?? 0);
+    },
+    recordServiceCall: () => {},
+    recordLookedUpCall: () => {},
+    awaitingLookup: () => [],
+    settle: async () => credits,
+  };
+}
+
 export const domainMock = () => ({
+  createUsageRecorder: vi.fn(usageRecorderDouble),
+  trackOpenGeneration: realTrackOpenGeneration,
+  isGenerationId: realIsGenerationId,
+  handOffLookups: mocks.handOffLookups,
+  // The same shape as the real one: every tool in the set gets the recorder.
+  usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
+    Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
+  SMALLEST_CREDIT: 0.000001,
   assetService: mocks.assetService,
   uploadGrantService: mocks.uploadGrantService,
   uploadGrantRepo: mocks.uploadGrantRepo,
@@ -504,6 +571,7 @@ export const domainMock = () => ({
   nodeTaskService: mocks.nodeTaskService,
   taskService: mocks.taskService,
   taskRepo: mocks.taskRepo,
+  UNDERSTAND_PINS: REAL_UNDERSTAND_PINS,
   creditLotService: mocks.creditLotService,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,
@@ -511,7 +579,7 @@ export const domainMock = () => ({
   listAvailableModels: vi.fn().mockReturnValue([]),
   // #1580 #7 credit pre-check inputs (canvas + mini-tools routes).
   MIN_TASK_CREDIT_COST: 5,
-  estimateTaskCredits: vi.fn().mockReturnValue(5),
+  estimateTaskCredits: vi.fn().mockResolvedValue(5),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
   getModel: vi.fn(),

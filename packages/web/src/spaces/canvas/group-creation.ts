@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Pure planner for "wrap the current selection in a Group" (group
- * redesign 2026-06-23). A Group owns an authoritative size, so this computes
- * the Group's stored position + width/height (members' padded bounding box) and
- * each member's position relative to the Group top-left. Kept ReactFlow-agnostic
+ * Pure planner for "wrap a set of nodes in a Group" (group redesign
+ * 2026-06-23). A Group owns an authoritative size, so this computes the Group's
+ * stored position + width/height (members' padded bounding box) and each
+ * member's position relative to the Group top-left. Kept ReactFlow-agnostic
  * (a plan, not a mutation) so it is unit-tested in isolation; the canvas applies
- * the plan to Yjs and clears the members' selection in its own buffer.
+ * the plan to Yjs, and when the nodes came from a selection it also clears that
+ * selection in its own buffer.
  */
 
 import type { Node } from '@xyflow/react';
@@ -58,13 +59,14 @@ function flowNodeRect(node: Node): Rect {
 }
 
 /**
- * Plan wrapping the selected nodes in a Group: the Group's stored position +
+ * Plan wrapping the given nodes in a Group: the Group's stored position +
  * size and each member's parent-relative position. Returns `null` when fewer
- * than two nodes are selected (nothing to wrap).
+ * than two nodes were given (nothing to wrap).
  * @param flowNodes - The current render buffer.
- * @param selectedIds - Ids of the nodes to wrap (the current selection).
+ * @param selectedIds - Ids of the nodes to wrap: the current selection, or a
+ * batch one upload just created.
  * @param groupId - Pre-generated id for the new Group node.
- * @returns The Group-creation plan, or `null` when fewer than two nodes are selected.
+ * @returns The Group-creation plan, or `null` when fewer than two nodes were given.
  */
 export function planGroupCreation(
   flowNodes: ReadonlyArray<Node>,
@@ -76,7 +78,7 @@ export function planGroupCreation(
   const members = flowNodes.filter(
     (node) => ids.has(node.id) && canJoinGroup(node.type),
   );
-  // Whatever the user picked, a Group needs two things it may actually hold.
+  // Whatever the caller handed over, a Group needs two things it may hold.
   if (members.length < 2) return null;
   const rect = groupRectForMembers(members.map(flowNodeRect));
   if (!rect) return null;

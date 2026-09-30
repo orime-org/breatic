@@ -12,8 +12,12 @@
  */
 
 import { z } from "zod";
-import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@shared/types/membership.js";
+import {
+  BILLING_PERIODS,
+  SUBSCRIBABLE_MEMBERSHIP_TIERS,
+} from "@shared/types/membership.js";
 
+import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
@@ -144,21 +148,21 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 
 // ── Chat ─────────────────────────────────────────────────────────────
 
+/** Longer than any node or file id; the id is stored with the message. */
+const ATTACHED_CHIP_ID_MAX = 128;
+
 /**
- * Chat-attached chip — a snapshot of a canvas node the user picked
- * from a Space and attached to this message (spec/07-chat-agent.md
- * §10.18.2 v13). The `dataSnapshot` is a deep copy taken at attach
- * time; subsequent Space-side edits / deletions of the source node
- * do NOT mutate the chip (C1 full-snapshot model — same philosophy as
- * spec §6.2 Studio→Space copies).
+ * One item attached to a chat message: a piece of the canvas the reader added
+ * to the agent, or a file picked with the attach button. The snapshot is taken
+ * when it is attached; later edits to the canvas do not reach it.
  */
 export const chatAttachedChipSchema = z.object({
-  /** Source node id (audit only — not a live reference). */
-  id: z.string(),
-  type: z.enum(["image", "video", "audio", "text", "annotation"]),
+  /** Made up for the item: from the picked node ids, or fresh for a file. */
+  id: z.string().max(ATTACHED_CHIP_ID_MAX),
+  type: z.enum(["canvas", "image", "video", "audio", "text"]),
   /** Display name for the chip; LLM context renders this as the section title. */
   name: z.string(),
-  /** Deep copy of the source node's `data` at attach time. */
+  /** A canvas piece's `{ nodes, edges }`, or a file's `{ url }` or `{ text }`. */
   data_snapshot: z.record(z.string(), z.unknown()),
 });
 export type ChatAttachedChip = z.infer<typeof chatAttachedChipSchema>;
@@ -176,37 +180,25 @@ export const chatMessageSchema = z.object({
    */
   conversation_id: z.string().uuid(),
   /**
-   * V13 (spec §10.18.2): canvas-node snapshots the user attached to
-   * this message via the chips bar. Required field but defaults to
-   * `[]` so legacy callers (skills / SDK that don't surface a chips
-   * bar) keep working. The chat handler injects each chip's
-   * `data_snapshot` into the LLM prompt as a structured context section.
+   * The items in the composer's tray when the message was sent: files
+   * picked with the attach button and pieces of the canvas added to the
+   * agent. Defaults to `[]` for callers with no tray. `userTurnForModel`
+   * puts them in front of the message, one section per item.
    */
   attached_chips: z.array(chatAttachedChipSchema).default([]),
   /**
-   * V13 (spec §10.18.5): user-picked Skill name (resolved against the
-   * registered skills/ directory). Optional — bare chat works without
-   * a skill.
+   * A skill name for this message. The composer has no control that sends
+   * it, and the `/message` handler does not read it.
    */
   skill: z.string().optional(),
   /**
-   * V13: model override. Spec §10.18.5 v13 dropped the in-composer
-   * model picker (model is now decided by the Skill or global
-   * settings), but we keep the wire field so SDK callers and test
-   * cases can override explicitly. Normal chat omits this.
+   * A model override for this message. The composer does not send it, and
+   * the `/message` handler does not read it: the model comes from the
+   * agent config.
    */
   model: z.string().optional(),
 });
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
-
-export const skillCommandSchema = z.object({
-  skill_name: z.string().min(1),
-  input: z.string().min(1),
-  /** Same contract as `chatMessageSchema` — both entrances are checked alike. */
-  project_id: z.string().uuid(),
-  conversation_id: z.string().uuid(),
-});
-export type SkillCommandInput = z.infer<typeof skillCommandSchema>;
 
 // ── Canvas ───────────────────────────────────────────────────────────
 
@@ -229,7 +221,10 @@ export const taskCreateSchema = z
      * so this is required. Plain UUID — no FK on the server side.
      */
     space_id: z.string().uuid(),
-    source: z.string().default("canvas"),
+    // The lane this row is filed under in the activity feed, which has one
+    // vocabulary (`GENERATION_SOURCES`). A free string here reached the feed
+    // as a word nothing could render.
+    source: z.enum(GENERATION_SOURCES).default("task"),
     /**
      * UUID v4 of the canvas node that will receive the task result.
      * Required when `node_ids` is present (single-node tasks).
@@ -267,15 +262,73 @@ export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 
 export const understandSchema = z.object({
   source_type: z.enum(["image", "video", "audio"]),
-  source_url: z.string(),
-  node_ids: z.array(z.string()).min(1).optional(),
-  model: z.string().optional(),
+  /**
+   * Where the media is. The run reads the file's name off it and writes that
+   * name into the sentence on the reader's row, so this is bound the same way
+   * `source_mime_type` below is: uncapped, it is text a caller chooses and
+   * every reader of that node is shown. The ceiling is the one
+   * `/canvas/ingest-url` already holds an address to. That sibling also
+   * demands https, which this one cannot: the address here is our own
+   * storage, and a local deployment serves it over http.
+   */
+  source_url: z.string().url().max(2048),
+  // The node the run writes to, which the browser built before asking. It
+  // names one it just made, so anything that is not an id of ours came from
+  // somewhere else and names nothing this space holds. One, because a reading
+  // answers with one piece of text: a second name opens a second row — an
+  // insert, a count and a publish — for a node no answer is coming to.
+  //
+  // Required, because a row on that node is the only thing that carries a
+  // cause back to the canvas: a run naming none bills and answers into
+  // nowhere, and the reader watches a node that never changes.
+  node_ids: z.array(z.string().uuid()).min(1).max(1),
+  /**
+   * What the ledger judged this file to be, off the bytes that landed.
+   *
+   * The node carries it and the browser's own format gate judged by it, so
+   * the run judges by the same one — storage answers with the type a ticket
+   * signed, which was guessed from a file name. Absent on a node stored
+   * before the ledger reported it.
+   *
+   * Capped at what the ledger's own column holds (`mime_type varchar(100)`):
+   * the run names this type in the sentence it writes onto the reader's row,
+   * so an uncapped value is text a caller chooses and every reader of that
+   * node is shown.
+   */
+  source_mime_type: z.string().min(1).max(100).optional(),
   prompt: z.string().optional(),
+  /**
+   * The language the answer is read in, as the browser's locale code.
+   *
+   * Carried, not judged: the run names the language to the model, and a code
+   * this build does not ship names none — the same as a request carrying no
+   * locale at all.
+   */
+  reader_locale: z.string().optional(),
   project_id: z.string().uuid(),
   /** Same as taskCreateSchema.space_id (v10 multi-doc). Required. */
   space_id: z.string().uuid(),
 });
 export type UnderstandInput = z.infer<typeof understandSchema>;
+
+/**
+ * A copy of what a text node holds, kept because somebody asked for it
+ * (#2175). The browser is the only writer: the words live in the canvas
+ * document, which the server does not read.
+ */
+export const nodeHistorySnapshotSchema = z.object({
+  project_id: z.string().uuid(),
+  node_id: z.string().uuid(),
+  // A snapshot of an empty node is not one, and the menu greys the item out
+  // for the same reason — this is the half of that rule the server keeps.
+  // What a node holds is whatever the reader typed, blank lines included, so
+  // the floor is emptiness rather than blankness. No ceiling either: a text
+  // node's words have none, and this row holds exactly them.
+  text: z.string().min(1),
+});
+export type NodeHistorySnapshotInput = z.infer<
+  typeof nodeHistorySnapshotSchema
+>;
 
 // ── Projects ─────────────────────────────────────────────────────────
 
@@ -288,7 +341,6 @@ export const projectCreateSchema = z.object({
     .min(6)
     .max(50)
     .regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/, "slug must be lowercase letters/digits with single hyphens"),
-  visibility: z.enum(["studio", "private"]).default("studio"),
   /**
    * Initial Space type seeded on first open. Canvas is the only editable
    * type today; document/timeline are accepted + plumbed end-to-end
@@ -374,18 +426,31 @@ export type PaymentHistoryQuery = z.infer<typeof paymentHistoryQuerySchema>;
  * The tier is checked against the tiers that can actually be subscribed to, so
  * `base` — the tier an account falls back to — is refused at the boundary
  * rather than reaching Stripe as a missing price.
+ *
+ * The period is required rather than defaulted. A default here would pick a
+ * price for somebody: a request that forgot to say which one is a request
+ * nobody can price, and answering it by charging the monthly rate is a
+ * decision this boundary has no business making.
  */
 export const subscriptionPlanSchema = z.object({
   // Built from the one list of subscribable tiers, so a fourth priced tier
   // becomes acceptable here by itself rather than by somebody remembering.
   tier: z.enum(SUBSCRIBABLE_MEMBERSHIP_TIERS),
+  period: z.enum(BILLING_PERIODS),
   return_url: z.string().url(),
 });
 export type SubscriptionPlanInput = z.infer<typeof subscriptionPlanSchema>;
 
-/** Changing an existing subscription's tier (#106) — no return URL involved. */
+/**
+ * Moving an existing subscription to another offer (#106, #253) — no return
+ * URL involved.
+ *
+ * Both halves travel, because a move can change either one: PRO monthly to
+ * PRO yearly keeps the tier, and PRO yearly to Team yearly keeps the period.
+ */
 export const subscriptionChangeSchema = z.object({
   tier: z.enum(SUBSCRIBABLE_MEMBERSHIP_TIERS),
+  period: z.enum(BILLING_PERIODS),
 });
 export type SubscriptionChangeInput = z.infer<typeof subscriptionChangeSchema>;
 

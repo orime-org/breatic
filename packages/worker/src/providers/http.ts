@@ -154,6 +154,27 @@ export interface PollOptions {
 }
 
 /**
+ * The upstream ran the task and reported it failed. A retry would ask about
+ * the same failed task, so a caller that tracks steps marks the step failed
+ * on this and on nothing else.
+ */
+export class UpstreamTaskFailed extends Error {
+  /** The upstream's own words for why. */
+  readonly upstreamError: string;
+
+  /**
+   * Record which upstream failed the task and what it said.
+   * @param provider - The upstream that ran the task.
+   * @param upstreamError - The upstream's own words for why.
+   */
+  constructor(provider: string, upstreamError: string) {
+    super(`${provider} task failed: ${upstreamError}`);
+    this.name = "UpstreamTaskFailed";
+    this.upstreamError = upstreamError;
+  }
+}
+
+/**
  * Poll an async task endpoint until it reaches a terminal status.
  *
  * Both timings come from `config/worker.yaml` and no caller can override
@@ -203,7 +224,7 @@ export async function pollUntilDone(
       // #1628: log at the poll layer (not only via the bubbled-up job error)
       // so vendor-side failures are attributable to the specific poll URL.
       logger.warn({ provider, url, status, errorMsg }, "poll_task_failed");
-      throw new Error(`${provider} task failed: ${errorMsg}`);
+      throw new UpstreamTaskFailed(provider, errorMsg);
     }
 
     await sleep(interval);
@@ -214,6 +235,13 @@ export async function pollUntilDone(
   logger.warn({ provider, url, maxWait }, "poll_timeout");
   throw new Error(`${provider} task did not complete within ${maxWait / 1000}s`);
 }
+
+/**
+ * How a billing line moves the prediction's cost: a deduction adds its price,
+ * a refund takes its price back. A prediction that failed upstream carries one
+ * of each at the same price (captured 2026-09-28 from a failed vocal-clone).
+ */
+const BILLING_SIGN: Readonly<Record<string, number>> = { deduct: 1, refund: -1 };
 
 /** One line of a WaveSpeed billing answer. */
 interface BillingLine {
@@ -232,15 +260,15 @@ interface BillingLine {
  *        "order":{"origin_price":0.0026,"price":0.0026,"state":"done"},
  *        "prediction":{"model_uuid":"elevenlabs/eleven-v3","status":"completed"}}]}}
  *
- * Lines are summed because one prediction may carry more than one, and only
- * the deducting ones count — adding a refund would state the opposite of what
- * happened.
+ * Lines are summed because one prediction may carry more than one: deductions
+ * add, refunds take back, and any other line type is left out.
  *
  * Every zero that comes from a lookup going wrong is logged — a refused
- * request, no deducting line, a line carrying no price. What is left, a zero
- * summed from lines the vendor priced at zero, is the vendor saying the
- * generation was free, and it answers quietly. A charge is taken on this
- * number, so the two have to stay tellable apart.
+ * request, no deducting line, a line carrying no price. What is left answers
+ * quietly: a zero summed from lines the vendor priced at zero (the generation
+ * was free), or from a deduction the vendor refunded in full (a prediction
+ * that failed upstream). A charge is taken on this number, so a lookup gone
+ * wrong has to stay tellable apart from those two.
  * @param resolved - Resolved provider endpoint.
  * @param taskId - The vendor's prediction uuid.
  * @returns What the prediction cost in USD, or 0 when the vendor did not say.
@@ -270,13 +298,15 @@ export async function queryBilling(resolved: ResolvedModel, taskId: string): Pro
       return 0;
     }
     let total = 0;
-    for (const line of deducted) {
+    for (const line of body.data?.items ?? []) {
+      const sign = BILLING_SIGN[line.billing_type ?? ""];
+      if (sign === undefined) continue;
       const price = line.order?.price;
       if (typeof price !== "number") {
-        logger.warn({ taskId }, "billing_line_without_price");
+        logger.warn({ taskId, billingType: line.billing_type }, "billing_line_without_price");
         continue;
       }
-      total += price;
+      total += sign * price;
     }
     return total;
   } catch (err) {

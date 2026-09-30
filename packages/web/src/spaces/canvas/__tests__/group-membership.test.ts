@@ -426,3 +426,42 @@ describe('an annotation someone else wrote survives a delete aimed at it', () =>
     expect(out.reason).toBe('locked');
   });
 });
+
+describe('filterGatedDeletion — a Group outlives a deletion its members survive (#2209)', () => {
+  // A batch that was just uploaded: the Group holds two nodes, one of which is
+  // still handling its upload and so cannot be deleted.
+  const allNodes = [
+    { id: 'g', type: 'group', data: {} },
+    { id: 'busy', type: 'image', parentId: 'g', data: { status: 'handling' } },
+    { id: 'done', type: 'image', parentId: 'g', data: {} },
+  ];
+
+  it('keeps the Group while a member of it is vetoed', () => {
+    // Deleting a Group asks for its members too. `busy` is handling, so it
+    // stays — and a Group that still holds a member must stay with it, or the
+    // reader is left with loose nodes where their batch was.
+    const out = filterGatedDeletion(
+      [{ id: 'g' }, { id: 'busy' }, { id: 'done' }],
+      [],
+      allNodes,
+      ANYONE,
+    );
+
+    expect(out.nodes.map((n) => n.id)).toEqual(['done']);
+  });
+
+  it('deletes a Group whose members are all deletable', () => {
+    const settled = allNodes.map((node) =>
+      node.id === 'busy' ? { ...node, data: {} } : node,
+    );
+
+    const out = filterGatedDeletion(
+      [{ id: 'g' }, { id: 'busy' }, { id: 'done' }],
+      [],
+      settled,
+      ANYONE,
+    );
+
+    expect(out.nodes.map((n) => n.id)).toEqual(['g', 'busy', 'done']);
+  });
+});

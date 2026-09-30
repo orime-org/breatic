@@ -21,8 +21,11 @@
  * from payment, full refund only while nothing in the pack has been spent,
  * one refund per purchase, and — since a pack is spent by the Studio it is
  * pointed at — nothing pointed at a Studio can be asked about until it is
- * released. Three of those four lines are the pricing page's wording verbatim;
- * the condition about assignment is stated in-app and at checkout only.
+ * released. Three of those lines are the pricing page's wording verbatim; the
+ * condition about assignment and the one naming a purchase are stated in-app
+ * and at checkout only. The last was added once an account could hold credits
+ * nobody paid for (#267): a refund returns money, and there is none to return
+ * on those.
  */
 
 import { t } from "@breatic/shared";
@@ -33,19 +36,21 @@ import type { Locale } from "@breatic/shared";
 export const CONSENT_CREDITS_VERSION = "consent-credits-v2";
 
 /** The refund rule a credit purchase made today is made under. */
-export const REFUND_CREDITS_VERSION = "refund-credits-v2";
+export const REFUND_CREDITS_VERSION = "refund-credits-v3";
 
 /**
  * Which lines each version of the refund rule is made of.
  *
  * A version's line count is part of that version: v1 stated three answers,
- * v2 states those three and the condition a buyer meets first. Reading a
- * stored version through today's list would print a purchase a clause it
- * never agreed to.
+ * v2 states those three and the condition a buyer meets first, v3 adds the
+ * one that separates a pack from credits nobody paid for. Reading a stored
+ * version through today's list would print a purchase a clause it never
+ * agreed to.
  */
 const REFUND_LINE_KEYS: Readonly<Record<string, readonly string[]>> = {
   "refund-credits-v1": ["unused", "used", "expired"],
   "refund-credits-v2": ["unused", "used", "expired", "unassigned"],
+  "refund-credits-v3": ["unused", "used", "expired", "unassigned", "purchased"],
 };
 
 /**

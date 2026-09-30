@@ -4,7 +4,8 @@
 import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
-import { buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
+import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
+import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 
 /**
  * A model in the given bucket.
@@ -21,13 +22,10 @@ function model(name: string, modality: ModelEntry['modality']): ModelEntry {
     description: '',
     guide: '',
     tier: 'recommended',
-    cost_per_call: 0,
     generation_time: 0,
     takes_prompt: true,
     params: {},
     providers: [],
-    sourcesByMode: {},
-    sourceRuleByMode: {},
   };
 }
 
@@ -215,61 +213,107 @@ describe('buildAudioTaskPayload — the music models (#1960)', () => {
     expect(payload.params).not.toHaveProperty('lyrics');
   });
 
-  it('sends an empty lyrics through on an instrumental track', () => {
-    // Measured 2026-09-05: `is_instrumental: true` with an empty `lyrics` is
-    // accepted and completes, and it is the only empty case the panel can
-    // build — both music models refuse an empty one on a vocal run. Empty
-    // stays empty rather than being dropped or filled with the style brief;
-    // the user would hear their own "warm indie folk, 90 BPM" sung back.
+  it('puts each reference track under its own vendor name', () => {
     const payload = buildAudioTaskPayload({
       ...BASE,
-      model: model('minimax-music-3.0', 'audio'),
-      params: { is_instrumental: true },
-      lyricsText: '',
-    });
-    expect(payload.params.lyrics).toBe('');
-    expect(payload.params.is_instrumental).toBe(true);
-  });
-
-  it('puts each of the three reference tracks under its own vendor name', () => {
-    const payload = buildAudioTaskPayload({
-      ...BASE,
-      model: model('minimax-music-01', 'audio'),
-      slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
+      model: model('mureka-v9.5-generate-song', 'audio'),
+      slots: ['musicSong', 'musicMelody', 'musicVocal'],
       slotUrls: {
         musicSong: 'https://cdn/song.mp3',
-        musicVoice: 'https://cdn/voice.mp3',
-        musicInstrumental: 'https://cdn/backing.mp3',
+        musicMelody: 'https://cdn/melody.mp3',
+        musicVocal: 'https://cdn/vocal.mp3',
       },
     });
     expect(payload.params).toMatchObject({
       song: 'https://cdn/song.mp3',
-      voice: 'https://cdn/voice.mp3',
-      instrumental: 'https://cdn/backing.mp3',
+      melody: 'https://cdn/melody.mp3',
+      vocal: 'https://cdn/vocal.mp3',
     });
   });
 
   it('sends only what was picked, on a mode where one is enough', () => {
     const payload = buildAudioTaskPayload({
       ...BASE,
-      model: model('minimax-music-01', 'audio'),
-      slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
-      slotUrls: { musicVoice: 'https://cdn/voice.mp3' },
+      model: model('mureka-v9.5-generate-song', 'audio'),
+      slots: ['musicSong', 'musicMelody', 'musicVocal'],
+      slotUrls: { musicVocal: 'https://cdn/vocal.mp3' },
     });
-    expect(payload.params).toMatchObject({ voice: 'https://cdn/voice.mp3' });
+    expect(payload.params).toMatchObject({ vocal: 'https://cdn/vocal.mp3' });
     expect(payload.params).not.toHaveProperty('song');
-    expect(payload.params).not.toHaveProperty('instrumental');
+    expect(payload.params).not.toHaveProperty('melody');
   });
 
-  it('leaves a voice sample behind, which music never asked for', () => {
-    // The cloning pick survives a mode switch by design. It is not one of the
-    // three this mode collects, so it must not travel as one.
+  it('sends the song to cover as `audio`, leaving the voice sample behind', () => {
+    // Both travel as `audio`. The cloning pick survives a mode switch by
+    // design; it is not drawn under Reference to Music, so it must not ride
+    // in place of the song.
     const payload = buildAudioTaskPayload({
       ...BASE,
-      model: model('minimax-music-01', 'audio'),
-      slots: ['musicSong', 'musicVoice', 'musicInstrumental'],
-      slotUrls: { refAudio: 'https://cdn/sample.mp3' },
+      model: model('minimax-music-cover', 'audio'),
+      slots: ['coverSong'],
+      slotUrls: { refAudio: 'https://cdn/sample.mp3', coverSong: 'https://cdn/song.mp3' },
     });
-    expect(payload.params).not.toHaveProperty('audio');
+    expect(payload.params).toMatchObject({ audio: 'https://cdn/song.mp3' });
+  });
+});
+
+describe('audioEstimateInput — the run the price is quoted for', () => {
+  it('carries the drawn slots\' picks and lengths, and nothing from a slot this mode does not draw', () => {
+    const input = audioEstimateInput(
+      {
+        modelEntry: undefined,
+        params: { model_version: 'v9' },
+        slotUrls: { musicSong: 'https://cdn/song.mp3', refAudio: 'https://cdn/ref.mp3' },
+        slotDurations: { musicSong: 42, refAudio: 9 },
+      },
+      ['musicSong'],
+      'a ballad',
+    );
+    expect(input).toEqual({
+      params: { model_version: 'v9', [AUDIO_SLOTS.musicSong.param]: 'https://cdn/song.mp3' },
+      prompt: 'a ballad',
+      durations: { [AUDIO_SLOTS.musicSong.param]: [42] },
+    });
+  });
+});
+
+describe('buildAudioTaskPayload — a model that reads a dialogue (#2156)', () => {
+  const gemini: ModelEntry = {
+    ...model('gemini', 'tts'),
+    params: {
+      speakers: { description: '', default: null, type: 'items', replaces: 'voice_id', min_items: 2 },
+      voice_id: { description: '', default: 'Kore', remote_source: 'voices' },
+    },
+  };
+  const pair = [
+    { speaker: 'Ada', voice: 'Kore' },
+    { speaker: 'Bo', voice: 'Puck' },
+  ];
+
+  it('sends the speakers and no voice in a dialogue, and never the switch', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: gemini,
+      params: { voice_id: 'Kore', speakers: pair, _stand_in_on: true },
+    });
+    expect(payload.params).toEqual({ speakers: pair, prompt: 'Good evening.' });
+  });
+
+  it('sends the voice and not the kept speakers when reading alone', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: gemini,
+      params: { voice_id: 'Kore', speakers: pair },
+    });
+    expect(payload.params).toEqual({ voice_id: 'Kore', prompt: 'Good evening.' });
+  });
+
+  it('prices what is sent', () => {
+    const input = audioEstimateInput(
+      { modelEntry: gemini, params: { voice_id: 'Kore', speakers: pair, _stand_in_on: true }, slotUrls: {}, slotDurations: {} },
+      [],
+      'hi',
+    );
+    expect(input.params).toEqual({ speakers: pair });
   });
 });

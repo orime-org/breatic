@@ -1,14 +1,18 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ArrowUp, Loader2, Square, SquareMousePointer, Wand2 } from 'lucide-react';
+import { ArrowUp, Loader2, Plus, Square, TriangleAlert } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { CHAT_MESSAGE_MAX_CHARS } from '@breatic/shared';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
+import { useTranslation } from '@web/i18n/use-translation';
+import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
+import { NO_ATTACHMENTS, type TrayItem } from '@web/stores/chat-attachments';
+import type { TurnPhase } from '@web/stores/conversation-runtime';
 
 /**
  * The id the at-limit line carries, so the box can point at it.
@@ -18,15 +22,6 @@ import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
  * a screen reader would only meet it by leaving the box.
  */
 export const CHAT_LIMIT_NOTICE_ID = 'chat-composer-at-limit';
-
-import { useTranslation } from '@web/i18n/use-translation';
-import type { TurnPhase } from '@web/stores/conversation-runtime';
-
-interface ReferenceChip {
-  id: string;
-  label: string;
-  type?: string;
-}
 
 interface ChatComposerProps {
   draft: string;
@@ -49,79 +44,74 @@ interface ChatComposerProps {
    * usable and does nothing when pressed reads as broken.
    */
   navigating?: boolean;
-  chips?: ReadonlyArray<ReferenceChip>;
-  activeSkillLabel?: string;
-  selectMode?: boolean;
+  /** What is attached to the next message, in order. */
+  attachments?: ReadonlyArray<TrayItem>;
+  /** What the file picker offers, as an `accept` value. */
+  attachAccept?: string;
+  /** Something to say about the last attempt to attach, beside the attach button. */
+  attachNotice?: string;
   onChange: (next: string) => void;
   onSubmit: () => void;
   onAbort?: () => void;
-  onToggleSelectMode?: () => void;
-  onPickSkill?: () => void;
-  onRemoveChip?: (id: string) => void;
+  /** Called with the files the reader picked. */
+  onAttachFiles?: (files: File[]) => void;
+  /** Called with an item's id to take it out. */
+  onRemoveAttachment?: (id: string) => void;
 }
 
 /**
- * Bottom-of-panel chat composer — single outer container, 3 stacked
- * sections sharing one border + focus-within. Sizing + colour match
- * chrome-baseline mock `.composer` so the elevated card visually sits
- * on top of the panel surface.
+ * Bottom-of-panel chat composer: one card in three rows sharing one border.
  *
- *   ┌───────────────────────────────────┐  bg = --color-card (content card)
- *   │ [📐 select mode] [chip] [chip]…   │  composer-top   p 8/16, min-h 32
- *   │ ─────────────────────────────────── │  chips/input divider
- *   │ describe what you want…            │  composer-input p 10/12/4
+ *   ┌───────────────────────────────────┐
+ *   │ [item] [item] …                   │  what is attached, only when something is
  *   │ ─────────────────────────────────── │
- *   │ [✨ Skill]                  [↑]    │  composer-actions p 12/16/16
- *   └───────────────────────────────────┘  radius = --radius-content-md (12px)
- *
- * Visual tokens (mock-aligned, see CSS lines 627-758):
- *   - Outer card uses `bg-card` (content-card tier; the former `elevated`
- *     step was removed 2026-06-13; ADR 14 brand-guard forbids raw
- *     `bg-neutral-*` in chrome surfaces)
- *   - Outer radius is `rounded-md` (= `--radius-content-md` 12px,
- *     Tweaks-linked so the slider can resize content-region radius)
- *   - Focus-within border uses `border-muted-foreground` (closest
- *     semantic to mock's `--neutral-700` darken on focus)
- *   - Select-mode toggle and send button use the same 32 / 28 px hit
- *     areas as the mock (`--btn-chrome` and `--btn-inline`)
+ *   │ describe what you want…            │  the box
+ *   │ [+]                         [↑]    │  attach, and send / wait / stop
+ *   └───────────────────────────────────┘
  *
  * Behaviour:
  *   - Enter without Shift submits; Shift+Enter newlines
- *   - The bottom-right corner has 4 states: disabled send (empty draft),
- *     ready send (foreground/background swap), waiting (a spinner, nothing
- *     to press), streaming (destructive accent → Abort with Square icon)
+ *   - Send is available only when there is something typed, the turn is idle,
+ *     and every attached item is ready: what is sent is what is shown
+ *   - The bottom-right corner has 4 states: disabled send, ready send,
+ *     waiting (a spinner, nothing to press), streaming (Abort)
  * @param root0 - The component props.
  * @param root0.draft - The current draft text in the input.
  * @param root0.turnPhase - How far along the turn is: idle, sending, running.
  * @param root0.navigating - The panel is on its way to another conversation.
- * @param root0.chips - The reference chips attached to the next message.
- * @param root0.activeSkillLabel - The label of the currently selected skill, if any.
- * @param root0.selectMode - Whether canvas select mode is active.
+ * @param root0.attachments - What is attached to the next message.
+ * @param root0.attachAccept - What the file picker offers.
+ * @param root0.attachNotice - What to say about the last attempt to attach.
  * @param root0.onChange - Called with the next draft text on each edit.
  * @param root0.onSubmit - Called to send the draft message.
  * @param root0.onAbort - Called to abort the in-flight streaming response.
- * @param root0.onToggleSelectMode - Called to toggle canvas select mode.
- * @param root0.onPickSkill - Called to open the skill picker.
- * @param root0.onRemoveChip - Called with a chip id to detach that reference.
- * @returns The composer card with chips, textarea, and action buttons.
+ * @param root0.onAttachFiles - Called with the files the reader picked.
+ * @param root0.onRemoveAttachment - Called with an item's id to take it out.
+ * @returns The composer card with attachments, textarea, and action buttons.
  */
 function ChatComposerInner({
   draft,
   turnPhase = 'idle',
   navigating = false,
-  chips = [],
-  activeSkillLabel,
-  selectMode,
+  attachments = NO_ATTACHMENTS,
+  attachAccept,
+  attachNotice,
   onChange,
   onSubmit,
   onAbort,
-  onToggleSelectMode,
-  onPickSkill,
-  onRemoveChip,
+  onAttachFiles,
+  onRemoveAttachment,
 }: ChatComposerProps): React.JSX.Element {
   const t = useTranslation();
-  const ready = draft.trim().length > 0 && turnPhase === 'idle' && !navigating;
+  // Held still for the same stretch the box is: between the press and the
+  // first frame the attached items are the ones being sent, and while the
+  // panel changes conversation they belong to the one being left.
+  const frozen = turnPhase === 'sending' || navigating;
+  const allReady = attachments.every((item) => item.status === 'ready');
+  const ready = draft.trim().length > 0 && turnPhase === 'idle' && !navigating && allReady;
+  const picker = React.useRef<HTMLInputElement>(null);
   const box = React.useRef<HTMLTextAreaElement>(null);
+  const tray = React.useRef<HTMLDivElement>(null);
 
   // The box takes exactly the height of what is written in it, and the
   // wrapper below caps how much of that is on screen.
@@ -171,6 +161,23 @@ function ChatComposerInner({
     box.current?.focus();
   };
 
+  /**
+   * Take an item out. When the keyboard stands on it, hand the keyboard to the
+   * next item, the previous one, or the box -- before the row unmounts and
+   * focus falls to the body.
+   */
+  const removeAttachment = React.useCallback(
+    (id: string): void => {
+      const row = tray.current?.querySelector(`[data-attachment-id="${CSS.escape(id)}"]`);
+      if (row?.contains(document.activeElement)) {
+        const neighbour = (row.nextElementSibling ?? row.previousElementSibling)?.querySelector('button');
+        (neighbour ?? box.current)?.focus();
+      }
+      onRemoveAttachment?.(id);
+    },
+    [onRemoveAttachment],
+  );
+
   return (
     <div
       data-testid='chat-composer'
@@ -180,40 +187,28 @@ function ChatComposerInner({
           control here is what made this a row that could never go away, and
           an empty row at the top of the composer is a row of the
           conversation the reader does not get. */}
-      {chips.length > 0 ? (
+      {attachments.length > 0 ? (
         <div className='flex min-h-[var(--btn-chrome)] flex-nowrap items-center gap-1.5 border-b border-border px-2 py-1'>
           <div
             className='flex min-w-0 flex-1 flex-wrap items-center gap-1 py-0.5'
+            ref={tray}
             data-testid='chat-composer-chips'
             role='list'
             aria-label={t('chat.composer.chipsAria')}
           >
-            {chips.map((chip) => (
-              <span
-                key={chip.id}
-                role='listitem'
-                className='inline-flex h-6 items-center gap-1 rounded-chrome border border-border bg-muted pl-2 pr-1 text-xs text-foreground'
-                data-testid={`chat-chip-${chip.id}`}
-              >
-                {chip.type ? (
-                  <span className='text-2xs text-muted-foreground'>
-                    {chip.type}
-                  </span>
-                ) : null}
-                <span className='truncate'>{chip.label}</span>
-                {onRemoveChip ? (
-                  <Button
-                    type='button'
-                    variant={null}
-                    size={null}
-                    aria-label={`Remove ${chip.label}`}
-                    onClick={() => onRemoveChip(chip.id)}
-                    className='inline-flex h-4 w-4 items-center justify-center rounded-chrome text-xs leading-none text-muted-foreground hover:bg-accent hover:text-foreground'
-                  >
-                  ×
-                  </Button>
-                ) : null}
-              </span>
+            {attachments.map((item) => (
+              <AttachmentChip
+                key={item.id}
+                id={item.id}
+                type={item.type}
+                name={item.name}
+                chip={item.chip}
+                status={item.status}
+                {...(item.failure ? { failure: item.failure } : {})}
+                {...(onRemoveAttachment ? { onRemove: removeAttachment } : {})}
+                removeDisabled={frozen}
+                testId={`chat-chip-${item.id}`}
+              />
             ))}
           </div>
         </div>
@@ -302,44 +297,46 @@ function ChatComposerInner({
         />
       </ScrollArea>
       <div className='flex items-center justify-between gap-2 px-2 pb-2 pt-1.5'>
-        <div className='flex items-center gap-1.5'>
-          {/* Down here with the other controls rather than in the row above:
-            that row carries what is being referenced, and a control living in
-            it is what kept it on screen with nothing in it. */}
+        <div className='flex min-w-0 flex-1 items-center gap-1.5'>
+          <input
+            ref={picker}
+            type='file'
+            multiple
+            hidden
+            {...(attachAccept ? { accept: attachAccept } : {})}
+            data-testid='chat-composer-file-input'
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              // Emptied so picking the same file again fires a change.
+              e.target.value = '';
+              if (files.length > 0) onAttachFiles?.(files);
+            }}
+          />
           <Button
             type='button'
-            variant={null}
+            variant='chrome-ghost'
             size={null}
-            aria-label={t('chat.composer.selectMode.label')}
-            title={t('chat.composer.selectMode.title')}
-            onClick={onToggleSelectMode}
-            data-testid='chat-composer-select-mode'
-            aria-pressed={selectMode}
-            className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-colors ${
-            selectMode
-              ? 'bg-foreground text-background'
-              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
-          }`}
+            aria-label={t('chat.composer.attach')}
+            disabled={frozen || !onAttachFiles}
+            onClick={() => picker.current?.click()}
+            data-testid='chat-composer-attach'
+            className='h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 bg-transparent'
           >
-            <SquareMousePointer className='h-4 w-4' />
+            <Plus className='h-4 w-4' />
           </Button>
-          <Button
-            type='button'
-            variant={null}
-            size={null}
-            aria-label={t('chat.composer.skill.label')}
-            title={t('chat.composer.skill.title')}
-            onClick={onPickSkill}
-            data-testid='chat-composer-skill'
-            className={`inline-flex h-[var(--btn-inline)] items-center gap-1.5 rounded-chrome border border-transparent px-2 text-xs font-medium transition-colors ${
-            activeSkillLabel
-              ? 'border-foreground bg-foreground text-background'
-              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
-          }`}
-          >
-            <Wand2 className='h-4 w-4' />
-            <span>{activeSkillLabel ?? 'Skill'}</span>
-          </Button>
+          {attachNotice ? (
+            // Beside the button that attaches: something the reader tried did
+            // not go in. The icon carries the warning colour; the words stay in
+            // the body colour, as warning orange at 12px does not reach 4.5:1
+            // on this surface in the light theme.
+            <p
+              data-testid='chat-composer-attach-notice'
+              className='flex min-w-0 items-center gap-1.5 text-xs text-foreground'
+            >
+              <TriangleAlert className='size-3.5 shrink-0 text-status-warning-foreground' aria-hidden='true' />
+              <span className='truncate'>{attachNotice}</span>
+            </p>
+          ) : null}
         </div>
         {turnPhase === 'sending' ? (
           // The press landed and the server has not spoken yet. Something has
@@ -403,7 +400,6 @@ function ChatComposerInner({
   );
 }
 
-export type { ReferenceChip };
 
 /**
  * Rendered again only when its own props change.

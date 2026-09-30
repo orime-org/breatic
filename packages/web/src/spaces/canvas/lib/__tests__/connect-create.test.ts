@@ -16,7 +16,7 @@ import {
 // dragged source's kind (connection rules §9.1) — never a row that would be
 // rejected the moment the edge is written.
 describe('connectableCreatableTypes — creatable ∩ rule-compatible targets', () => {
-  it('image source can feed text / image / video (audio accepts text only)', () => {
+  it('image source can feed text / image / video', () => {
     expect(connectableCreatableTypes('image')).toEqual([
       'text',
       'image',
@@ -33,8 +33,8 @@ describe('connectableCreatableTypes — creatable ∩ rule-compatible targets', 
     ]);
   });
 
-  it('audio source can feed text / video only', () => {
-    expect(connectableCreatableTypes('audio')).toEqual(['text', 'video']);
+  it('audio source can feed text / audio / video', () => {
+    expect(connectableCreatableTypes('audio')).toEqual(['text', 'audio', 'video']);
   });
 
   it('video source can feed text / video only', () => {

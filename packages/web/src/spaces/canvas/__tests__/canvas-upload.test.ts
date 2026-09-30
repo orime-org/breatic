@@ -484,7 +484,6 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
     // owns it; this pins only that the reason was handed over.
     expect(deps.onUploadFailure).toHaveBeenCalledExactlyOnceWith(
       { reason: 'upload' },
-      'n1',
       file,
     );
     expect(deps.setError).not.toHaveBeenCalled();

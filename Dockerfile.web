@@ -26,12 +26,16 @@ COPY locales/ locales/
 # Build shared (dependency) then web
 RUN pnpm turbo build --filter=@breatic/shared
 
-# The version string is the only build-time var left. API/WebSocket URLs
-# are resolved at runtime from window.location, so a single bundle works on
-# any host behind the same reverse proxy.
+# Optional public addresses for a separately hosted frontend. Empty values
+# preserve the same-origin API/WebSocket behavior of local deployments.
+ARG GOOGLE_CLIENT_ID=
+ENV GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
 ARG VITE_APP_VERSION=0.1.0
-
+ARG VITE_API_BASE_URL=
+ARG VITE_COLLAB_URL=
 ENV VITE_APP_VERSION=${VITE_APP_VERSION}
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_COLLAB_URL=${VITE_COLLAB_URL}
 
 # Vite config hardcodes base='/' — no CLI override needed
 RUN cd packages/web && pnpm build

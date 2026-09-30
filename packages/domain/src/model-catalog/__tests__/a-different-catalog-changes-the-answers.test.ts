@@ -6,8 +6,8 @@
  *
  * This is the whole point stated as one test. The catalog below differs from
  * the repository's in four ways a deployment could plausibly differ: a model
- * spells its picture `portrait`, its mode takes any one of the two slots it
- * offers rather than both, one of its controls waits on that picture, and
+ * spells its picture `portrait`, it takes any one of the two slots it offers
+ * rather than both, one of its controls waits on a switch of its own, and
  * there is a mode nothing in this repository has ever heard of.
  *
  * Three of the four consumers run here: the pre-enqueue gate, the proposal
@@ -36,7 +36,6 @@ const VIDEO = [
   '    display_name: "Own Words Model"',
   '    mode: "i2v"',
   "    takes_prompt: true",
-  "    cost_per_call: 1",
   "    generation_time: 10",
   "    providers:",
   "      - name: wavespeed",
@@ -46,23 +45,33 @@ const VIDEO = [
   "      portrait:",
   '        fill: "canvas"',
   '        accepts: "image"',
+  "        optional: true",
   '        description: "the picture to move"',
   "        default: null",
   "      closing_frame:",
   '        fill: "canvas"',
   '        accepts: "image"',
+  "        optional: true",
   '        description: "where it ends up"',
   "        default: null",
+  "      steady:",
+  '        fill: "panel"',
+  '        description: "keep the camera still"',
+  "        values: [true, false]",
+  "        default: false",
   "      stabilise:",
   '        fill: "panel"',
-  "        when: { source: portrait }",
-  '        description: "hold the frame steady"',
-  "        default: false",
+  "        when: { flag_on: steady }",
+  '        description: "how hard to hold the frame"',
+  "        values: [low, high]",
+  "        default: low",
+  "    source_groups:",
+  '      - mode: "i2v"',
+  '        any_of: ["portrait", "closing_frame"]',
   '  - name: "orbiting-model"',
   '    display_name: "Orbiting Model"',
   '    mode: "orbit"',
   "    takes_prompt: true",
-  "    cost_per_call: 1",
   "    generation_time: 10",
   "    providers:",
   "      - name: wavespeed",
@@ -83,12 +92,9 @@ const MODES = [
   "    i2v:",
   "      label: A Picture, Moving",
   "      description: Takes one picture and moves it.",
-  "      sources: [image]",
-  "      source_rule: any_of",
   "    orbit:",
   "      label: Orbit Around It",
   "      description: Circles the subject.",
-  "      sources: [image]",
 ].join("\n");
 
 /** The skill prompt these declarations are injected into. */
@@ -138,12 +144,12 @@ describe("a catalog that differs from this repository's", () => {
     ).toBe(false);
   });
 
-  it("asks the proposal tool for one piece where the mode takes any one slot", async () => {
+  it("asks the proposal tool for one piece where the model takes any one slot", async () => {
     await useSwappedCatalog();
     const { checkProposal } = await import("@domain/agent/tools/propose-canvas-action.js");
 
-    // Two slots, and the mode says either will do -- so a group carrying one
-    // empty node is right, and the tool wanted two before the rule was read.
+    // Two slots, and the model says either will do -- so a group carrying one
+    // empty node is right, and the tool wanted two before the group was read.
     expect(
       checkProposal({
         nodes: [
@@ -164,6 +170,7 @@ describe("a catalog that differs from this repository's", () => {
         edges: [],
         modelNote: "",
         rationale: "",
+        groupName: "A slow pan",
       }),
     ).toEqual({ ok: true });
   });
@@ -182,17 +189,18 @@ describe("a catalog that differs from this repository's", () => {
   });
 
   it("hands back the mode layer too when the catalog is reset", async () => {
-    // The answer a model carries is built from both layers, so a reset that
-    // clears only the model layer serves the new models under the old modes --
-    // and the caller has no second reset to reach for.
+    // The catalog checks its models against the mode layer, so a reset that
+    // clears only the model layer checks the new models against the old
+    // modes -- and the caller has no second reset to reach for.
     await useSwappedCatalog();
-    const { getModelCatalog, resetModelCatalog } = await import("../model-catalog.js");
-    expect(getModelCatalog().video[0]?.sourceRuleByMode.i2v).toBe("any_of");
+    const { resetModelCatalog } = await import("../model-catalog.js");
+    const { getModeConfig } = await import("../mode-config.js");
+    expect(getModeConfig().video?.modes.i2v?.label).toBe("A Picture, Moving");
 
-    reviseFixtureCatalog({ modes: MODES.replace("source_rule: any_of", "source_rule: all_of") });
+    reviseFixtureCatalog({ modes: MODES.replace("A Picture, Moving", "A Picture, Still Moving") });
     resetModelCatalog();
 
-    expect(getModelCatalog().video[0]?.sourceRuleByMode.i2v).toBe("all_of");
+    expect(getModeConfig().video?.modes.i2v?.label).toBe("A Picture, Still Moving");
   });
 
   it("ships the panel a projection of these declarations", async () => {
@@ -203,8 +211,7 @@ describe("a catalog that differs from this repository's", () => {
 
     expect(entry?.params.portrait?.fill).toBe("canvas");
     expect(entry?.params.portrait?.accepts).toBe("image");
-    expect(entry?.sourcesByMode.i2v).toEqual(["image"]);
-    expect(entry?.sourceRuleByMode.i2v).toBe("any_of");
-    expect(entry?.params.stabilise?.when).toEqual({ source: "portrait" });
+    expect(entry?.source_groups).toEqual([{ mode: "i2v", any_of: ["portrait", "closing_frame"] }]);
+    expect(entry?.params.stabilise?.when).toEqual({ flag_on: "steady" });
   });
 });

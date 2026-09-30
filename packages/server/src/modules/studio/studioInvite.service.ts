@@ -168,13 +168,14 @@ export async function createInvite(
   if (origin) {
     await sendBestEffortMail(async () => {
       return buildStudioInvitationMail({
+        locale: invitee.locale,
         inviteeEmail: email,
         inviterName,
         studioName: studio.name,
         role,
         inviteLink: decisionLink(origin, shareToken),
       });
-    }, { userId: inviterUserId, subject: "studio_invite" });
+    }, { userId: invitee.id, subject: "studio_invite" });
   }
 
   return {

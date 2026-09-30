@@ -100,6 +100,14 @@ export function getModelForTool(_toolName: string): string {
   return loadConfig().model;
 }
 
+/**
+ * Every model a text tool can run on, each once.
+ * @returns The model ids.
+ */
+export function textToolModels(): string[] {
+  return [...new Set(Object.keys(PROMPTS).map((name) => getModelForTool(name)))];
+}
+
 /** Language instruction appended to all prompts. */
 const LANGUAGE_INSTRUCTION =
   "\n\nIMPORTANT: Respond in the same language as the user's input. " +

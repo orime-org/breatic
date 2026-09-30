@@ -20,6 +20,7 @@ export type {
   DecisionState,
   DecisionView,
   DecisionAction,
+  DecisionGrantRole,
   DecisionResult,
 } from "@shared/types/decision.js";
 
@@ -44,7 +45,6 @@ export type {
   NotificationRef,
   NotificationListView,
   ProjectEntity,
-  ProjectVisibility,
   ProjectDetail,
   ProjectSummary,
   RecentItem,
@@ -63,12 +63,14 @@ export type {
   ModelTier,
   ParamDescriptor,
   RemoteParamSource,
-  ModelRate,
   ModelProvider,
   ModelEntry,
+  PricingContract,
+  ExtraStep,
+  SourceGroup,
+  ItemField,
   ModelCatalog,
   SourceType,
-  SourceRule,
   ProjectRole,
   ProjectMember,
   Studio,
@@ -89,11 +91,17 @@ export type {
   SubscribableMembershipTier,
   SubscriptionSituation,
   SubscriptionActionAvailability,
-  UpgradeOffer,
+  MoveOffer,
+  CardAction,
+  CardActionInput,
+  MembershipCard,
   SubscriptionSummary,
   TierOffer,
+  TierPrice,
   AccountUsage,
   AccountMembership,
+  BillingPeriod,
+  MembershipOffer,
   InvitableProjectRole,
   ProjectInvitationStatus,
   PendingProjectInvitationSummary,
@@ -121,6 +129,11 @@ export {
   holdsActionableSubscription,
   subscriptionActions,
   isComparableMembershipTier,
+  BILLING_PERIODS,
+  canMoveTo,
+  cardAction,
+  canConnect,
+  MAX_NODE_NAME_LEN,
   canGenerate,
   CANVAS_NODES_KEY,
   membersChangedChannel,
@@ -153,6 +166,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   AssetActivityPayloadSchema,
+  GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
   SpaceActivityPayloadSchema,
   MemberActivityPayloadSchema,
@@ -161,10 +175,14 @@ export {
   ActivityNewSignalSchema,
 } from "@shared/types/index.js";
 export type { ControlGate } from "@shared/types/index.js";
+export type { GenerationSource } from "@shared/types/project-activity.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
+  ReferenceRefusal,
+  ReferenceUsabilityContext,
   PromptSegment,
   ProposalNode,
+  ProposalNodeType,
   CanvasProposal,
   ProposalRefused,
   ProposalAnswer,
@@ -179,7 +197,6 @@ export type {
 } from "@shared/types/index.js";
 
 export {
-  SOURCE_RULES,
   modelCatalogSchema,
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
@@ -188,15 +205,22 @@ export {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   paramValues,
-  REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
+  feedersOf,
+  insertRefusal,
+  isReferenceMaterial,
+  layersOf,
+  markTargets,
+  nameableFeeders,
   markText,
+  promptPlainText,
   promptTextOf,
   sanitizeVoicePage,
 } from "@shared/types/index.js";
 
 export type {
   CreditPage,
+  CreditSourceKind,
   PurchaseRow,
   CreditLotView,
   StudioLotView,
@@ -210,6 +234,9 @@ export type {
 
 export {
   accountTotal,
+  CREDIT_SOURCE_KINDS,
+  isPurchased,
+  GRANTED_SOURCE_KINDS,
   HELD_LIFECYCLES,
   IN_FLIGHT_REFUND_LIFECYCLES,
 } from "@shared/types/index.js";
@@ -232,9 +259,9 @@ export {
   loginSchema,
   chatMessageSchema,
   chatAttachedChipSchema,
-  skillCommandSchema,
   taskCreateSchema,
   understandSchema,
+  nodeHistorySnapshotSchema,
   projectCreateSchema,
   checkoutSchema,
   paymentConfirmSchema,
@@ -260,7 +287,6 @@ export type {
   LoginInput,
   ChatMessageInput,
   ChatAttachedChip,
-  SkillCommandInput,
   TaskCreateInput,
   UnderstandInput,
   ProjectCreateInput,
@@ -276,6 +302,7 @@ export type {
 
 export {
   t,
+  tRich,
   setLocale,
   getLocale,
   getActiveLocale,
@@ -346,8 +373,11 @@ export { newId, deriveId } from "@shared/ids.js";
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
-export { effectiveItemCap, isPresent } from "@shared/item-cap.js";
+export { completeEntries, itemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
+export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
+export { formatCredits } from "@shared/format-credits.js";
+export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";
 
 // The tab bar belongs to one browser; these are the pure ordering rules the
 // reducer and the Space drawer call.
@@ -364,6 +394,15 @@ export {
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { extractPromptText } from "@shared/agent/extract-prompt.js";
+export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
+export {
+  ATTACHMENT_DATA_PART,
+  attachmentPart,
+  attachmentSection,
+  chipOfPart,
+  userTurnForModel,
+} from "@shared/agent/attachments.js";
+export type { AttachmentDataPart } from "@shared/agent/attachments.js";
 export {
   carrying,
   FAILURE_LINES,
@@ -476,12 +515,34 @@ export {
 // and the reader is whoever opens the list, in their own language.
 export {
   TASK_FAILURE_REASONS,
-  asTaskFailureReason,
+  encodeTaskFailure,
+  readTaskFailure,
   type TaskFailureReason,
 } from "@shared/types/task-failure.js";
-// The encoding those credentials use, exported for the session token the
-// Worker signs with the same secret. `btoa` refuses anything outside latin1,
-// and a storage key's extension comes from a filename we let be any Unicode.
+// Which media the understanding endpoint takes. Both ends ask it: the browser
+// before it builds anything, the backend before it sends bytes.
+export {
+  AUDIO_FORMAT_NAMES,
+  IMAGE_TYPES,
+  IMAGE_FORMAT_NAMES,
+  VIDEO_FORMAT_NAMES,
+  audioFormatOf,
+  videoFormatOf,
+  type AudioFormat,
+  type VideoFormat,
+} from "@shared/understand/media-formats.js";
+// The one word each format goes by on screen, asked by both gates that name a
+// format while refusing a file.
+export {
+  formatNameOf,
+  formatPhrase,
+} from "@shared/media/format-names.js";
+// What a stored asset is called, which is the last segment of the address it
+// is stored at — read by both ends that name a file while refusing it.
+export { assetNameFromUrl } from "@shared/media/asset-name.js";
+// Plain text in and out of a text node's body ships at
+// `@breatic/shared/canvas/text-body` — that file says why it is not here.
+
 // The arithmetic both sides of an upload read: the browser sizes each part's
 // deadline with it, and the config refuses windows narrower than what they
 // have to hold.
@@ -512,6 +573,9 @@ export {
   type IngestMeasurements,
   type MediaLimits,
 } from "@shared/upload/ingest-client.js";
+// The encoding those credentials use, exported for the session token the
+// Worker signs with the same secret. `btoa` refuses anything outside latin1,
+// and a storage key's extension comes from a filename we let be any Unicode.
 export {
   encodeBase64Utf8,
   decodeBase64Utf8,
@@ -575,3 +639,11 @@ export {
 // How many references a model takes, read the same way by the panels that
 // draw the pool, the gate that refuses a submit over it, and the tool.
 export { positiveCap, referenceCapExceeded } from "@shared/reference-cap.js";
+export {
+  REFERENCE_KINDS,
+  referenceKinds,
+  referencePool,
+  type PoolPlace,
+  type ReferenceKind,
+  type ReferencePool,
+} from "@shared/reference-pool.js";

@@ -35,6 +35,11 @@ export interface AuthUser {
    * panel that shows it.
    */
   membershipTier: MembershipTier;
+  /**
+   * The account's language. Applied to the interface at sign-in and on a
+   * cold load; emails to the account are written in it.
+   */
+  locale: string;
 }
 
 /**
@@ -102,7 +107,7 @@ export const authApi = {
   login(body: { email: string; password: string }) {
     return apiPost<LoginResponse>('/auth/login', body);
   },
-  google(body: { idToken: string }) {
+  google(body: { credential: string }) {
     return apiPost<LoginResponse>('/auth/google', body);
   },
   me() {

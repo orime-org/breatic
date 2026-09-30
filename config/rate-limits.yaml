@@ -5,8 +5,10 @@
 # The key DIMENSION (IP for pre-auth endpoints, user id for post-auth)
 # is fixed in code per action for security; only the counts live here.
 #
-# Every action a route throttles MUST have an entry — a missing action
-# fails loudly at startup rather than silently disabling the throttle.
+# Every action a route throttles MUST have an entry. A missing one is read
+# when that route is first requested, and the request answers 500 — the
+# throttle is never silently skipped. The parsed file is held for the life of
+# the process, so an edit here reaches a running service on its next start.
 
 # Auth (pre-auth, IP-keyed)
 login:          { max: 5,   window_seconds: 60 }
@@ -52,11 +54,18 @@ upload-complete: { max: 60, window_seconds: 60 }
 # size, and the ceiling on what it can pull is the same 2 GiB.
 ingest-url:     { max: 30,  window_seconds: 60 }
 
-# Voice catalog (post-auth, user-keyed)
-# Every miss reaches a vendor on our key and against our quota. A person
-# opening the picker, typing a search and scrolling a few pages fits inside
-# 60/60s; a loop hammering a vendor on our account does not.
-voices:         { max: 60,  window_seconds: 60 }
+# Keeping a copy of what a text node holds (#2175, post-auth, user-keyed).
+# One call writes one row carrying a node's whole body, so a loop is a write
+# amplifier on our database. A person pressing Snapshot after each round of
+# edits fits well inside 60/60s.
+node-history-snapshot: { max: 60,  window_seconds: 60 }
+
+# Reading a node's media into a text node (#2175, post-auth, user-keyed).
+# One call opens a task row per node it names and puts a model call behind it,
+# and the rows open before the credit gate so a refusal has somewhere to be
+# said. A person pressing Understand on node after node stays well inside
+# 30/60s, which is where the two neighbouring write routes sit.
+understand:     { max: 30,  window_seconds: 60 }
 
 # Reading the membership panel. It reconciles with Stripe on every read
 # (#106 §10.2), so an unthrottled reader is an unthrottled caller of somebody
@@ -90,3 +99,9 @@ credits-refund: { max: 20, window_seconds: 60 }
 # past anything the panel asks for -- while an unthrottled caller here spends
 # our Stripe rate limit, and Stripe's limit is shared by every account we have.
 subscription-write: { max: 10, window_seconds: 60 }
+
+# Asking a project's owner to let you in (#96, post-auth, user-keyed). The
+# one-pending index stops repeats on one project; this caps one account ringing
+# the owners of many projects. Each call writes a request row, a bell entry
+# and an email.
+project-join-request: { max: 20, window_seconds: 3600 }

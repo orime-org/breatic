@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { ProjectUpdateNotice } from '@web/pages/project/chrome/ProjectUpdateNotice';
+import type { ConnectionStatus } from '@web/data/yjs/use-socket';
+
 import { ArrowLeft, Star } from 'lucide-react';
 import type * as React from 'react';
 import { Link } from 'react-router-dom';
@@ -70,6 +73,8 @@ interface TopBarProps {
   members: ReadonlyArray<Member>;
   /** Current user's id, used by MembersStack to mark the "me" row. */
   currentUserId?: string;
+  /** Realtime failures take priority over release notices. */
+  connectionStatus?: ConnectionStatus;
 }
 
 /**
@@ -92,6 +97,7 @@ interface TopBarProps {
  * @param root0.credits - What the credits pill reads out.
  * @param root0.onRename - Called with the new title when the user finishes editing the project name.
  * @param root0.members - The project's roster, forwarded to both member components.
+ * @param root0.connectionStatus - Realtime status giving connection errors priority.
  * @param root0.currentUserId - Current user's id, used by MembersStack to mark the "me" row.
  * @returns the project chrome top bar with its left identity block and right action groups.
  */
@@ -103,6 +109,7 @@ export function TopBar({
   onRename,
   members,
   currentUserId,
+  connectionStatus = 'connected',
 }: TopBarProps): React.JSX.Element {
   return (
     <header
@@ -125,6 +132,7 @@ export function TopBar({
         <RoleTag role={role} projectId={projectId} />
       </div>
       <div className='flex items-center' style={{ gap: 'var(--space-2)' }}>
+        <ProjectUpdateNotice status={connectionStatus} />
         <div
           className='flex items-center'
           style={{ gap: 'var(--space-2)' }}

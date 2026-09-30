@@ -239,25 +239,12 @@ export const coreConfigSchema = z.object({
   GOOGLE_API_KEY: z.string().default(""),
   DEEPSEEK_API_KEY: z.string().default(""),
   WAVESPEED_API_KEY: z.string().default(""),
-  DASHSCOPE_API_KEY: z.string().default(""),
-  BYTEPLUS_API_KEY: z.string().default(""),
-  KLINGAI_ACCESS_KEY: z.string().default(""),
-  KLINGAI_SECRET_KEY: z.string().default(""),
-  MINIMAX_API_KEY: z.string().default(""),
-  ELEVENLABS_API_KEY: z.string().default(""),
-  FAL_API_KEY: z.string().default(""),
-  TOPAZ_API_KEY: z.string().default(""),
-  PIXVERSE_API_KEY: z.string().default(""),
-  VIDU_API_KEY: z.string().default(""),
-  LUMA_API_KEY: z.string().default(""),
-  FISH_API_KEY: z.string().default(""),
 
   // ── Agent Tools ───────────────────────────────────
   BRAVE_SEARCH_API_KEY: z.string().default(""),
 
   // ── Google OAuth ────────────────────────────────
   GOOGLE_CLIENT_ID: z.string().default(""),
-  GOOGLE_CLIENT_SECRET: z.string().default(""),
 
   // ── Payment ──────────────────────────────────────
   PAYMENT_ENABLED: z
@@ -330,10 +317,9 @@ export const coreConfigSchema = z.object({
   SMTP_PORT: numeric(z.coerce.number().default(587)),
   SMTP_USER: z.string().default(""),
   SMTP_PASSWORD: z.string().default(""),
-  // Where a buyer writes back. It goes into the purchase confirmation, which
-  // has to name a way to reach us, and it belongs beside the SMTP settings
-  // because a self-hosted deployment answers its own mail.
-  SUPPORT_EMAIL: z.string().default(""),
+  // Verified sender address, optionally with a display name. Empty preserves
+  // the legacy SMTP_USER sender; authentication always uses SMTP_USER.
+  SMTP_FROM: z.string().trim().default(""),
 })
   // Resolve `REDIS_KEY_PREFIX` here rather than at each call site: a
   // fallback repeated at every consumer is a fallback that eventually

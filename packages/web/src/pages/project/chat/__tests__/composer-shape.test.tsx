@@ -15,15 +15,24 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import type { TrayItem } from '@web/stores/chat-attachments';
 
 /** What the composer needs to render at all. */
 const BASICS = {
   draft: '',
   onChange: (): void => undefined,
   onSubmit: (): void => undefined,
-  onToggleSelectMode: (): void => undefined,
-  onPickSkill: (): void => undefined,
-  onRemoveChip: (): void => undefined,
+  onAttachFiles: (): void => undefined,
+  onRemoveAttachment: (): void => undefined,
+};
+
+/** One attached item, ready to go. */
+const NOTE: TrayItem = {
+  id: 'n1',
+  name: 'A node',
+  type: 'text',
+  status: 'ready',
+  chip: { id: 'n1', type: 'text', name: 'A node', data_snapshot: {} },
 };
 
 afterEach(cleanup);
@@ -36,25 +45,36 @@ describe('the row that carries references', () => {
   });
 
   it('appears once a reference is picked up', () => {
-    render(<ChatComposer {...BASICS} chips={[{ id: 'n1', label: 'A node' }]} />);
+    render(<ChatComposer {...BASICS} attachments={[NOTE]} />);
 
     expect(screen.getByTestId('chat-composer-chips')).toBeInTheDocument();
   });
 
-  it('leaves the button that picks them up in the row below', () => {
-    // The row above holds references, and holding a control in it is what
-    // made it a row that could never go away.
-    render(<ChatComposer {...BASICS} chips={[{ id: 'n1', label: 'A node' }]} />);
+  it('leaves the button that attaches files in the row below', () => {
+    // The row above holds what is attached, and holding a control in it is
+    // what made it a row that could never go away.
+    render(<ChatComposer {...BASICS} attachments={[NOTE]} />);
 
-    const picker = screen.getByTestId('chat-composer-select-mode');
+    const attach = screen.getByTestId('chat-composer-attach');
     const chips = screen.getByTestId('chat-composer-chips');
-    expect(chips.contains(picker)).toBe(false);
+    expect(chips.contains(attach)).toBe(false);
   });
 
-  it('keeps the picker reachable when there are no references yet', () => {
+  it('keeps the attach button reachable when nothing is attached yet', () => {
     render(<ChatComposer {...BASICS} />);
 
-    expect(screen.getByTestId('chat-composer-select-mode')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-composer-attach')).toBeInTheDocument();
+  });
+});
+
+describe('the row of controls under the box', () => {
+  it('holds only attach and send', () => {
+    render(<ChatComposer {...BASICS} />);
+
+    expect(screen.queryByTestId('chat-composer-select-mode')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('chat-composer-skill')).not.toBeInTheDocument();
+    expect(screen.getByTestId('chat-composer-attach')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-composer-send')).toBeInTheDocument();
   });
 });
 
@@ -104,5 +124,47 @@ describe('the box the reader types in', () => {
     rerender(<ChatComposer {...BASICS} draft={'one line\ntwo lines\nthree'} />);
 
     expect(written).toContain(120);
+  });
+});
+
+describe('what is said about an attempt to attach', () => {
+  it('sits between the attach button and send, marked by a warning icon', () => {
+    render(<ChatComposer {...BASICS} attachNotice='At most 10 items' />);
+
+    const notice = screen.getByTestId('chat-composer-attach-notice');
+    const attach = screen.getByTestId('chat-composer-attach');
+    expect(attach.parentElement?.contains(notice)).toBe(true);
+    // The words read in the body colour: warning orange on this surface
+    // does not reach 4.5:1 at 12px. The icon carries the warning.
+    expect(notice.className).toContain('text-foreground');
+    expect(notice.className).not.toContain('text-status-warning-foreground');
+    const icon = notice.querySelector('svg');
+    expect(icon?.getAttribute('class')).toContain('text-status-warning-foreground');
+  });
+
+  it('gives the attach button no hover title', () => {
+    render(<ChatComposer {...BASICS} />);
+
+    expect(screen.getByTestId('chat-composer-attach')).not.toHaveAttribute('title');
+  });
+});
+
+describe('a piece of the canvas above the box', () => {
+  it('is counted when several nodes went in unnamed', () => {
+    const piece: TrayItem = {
+      id: 'canvas-3-x',
+      name: '',
+      type: 'canvas',
+      status: 'ready',
+      chip: {
+        id: 'canvas-3-x',
+        type: 'canvas',
+        name: '',
+        data_snapshot: { nodes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], edges: [] },
+      },
+    };
+    render(<ChatComposer {...BASICS} attachments={[piece]} />);
+
+    expect(screen.getByTestId('chat-chip-canvas-3-x')).toHaveTextContent('3 nodes');
   });
 });

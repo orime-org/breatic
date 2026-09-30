@@ -7,7 +7,8 @@
 
 import { extractPromptText } from "@shared/agent/extract-prompt.js";
 import { referenceCapExceeded } from "@shared/reference-cap.js";
-import type { SourceRule } from "@shared/types/model-catalog.js";
+import type { ReferenceKind } from "@shared/reference-pool.js";
+import type { MissingSource } from "@shared/missing-sources.js";
 
 /** Everything the execute gate must weigh before a task may be submitted. */
 export interface ExecuteGateInput {
@@ -62,42 +63,23 @@ export interface ExecuteGateInput {
    */
   voiceRequired?: boolean;
   /**
-   * The places the active mode takes material in, in the order the panel
-   * refuses them (#1960, #269).
+   * What the run still needs, as `missingSources` answers it for the active
+   * mode (#2156): each unmet requirement, required params first in the order
+   * the model declares them, then its "any one of these" groups.
    *
-   * Every place a run's material can come from is one of these, whether the
-   * panel draws it as a slot on its toolbar or fills it from the reference
-   * pool: what differs is the gesture, and a gate told about one kind and not
-   * the other would be judging half the modes. A slot the mode may run
-   * without is left out rather than marked, since a gate has nothing to say
-   * about it.
-   *
-   * Empty or absent means this mode takes no material — the truth for
-   * text-to-image and for the three audio modes that collect nothing.
+   * Empty or absent means the run has every source it needs — the truth for
+   * text-to-image and every mode that collects nothing.
    */
-  requiredSlots?: readonly string[];
-  /** Which of those hold something. Read only against `requiredSlots`. */
-  filledSlots?: readonly string[];
+  missing?: readonly MissingSource[];
   /**
-   * Whether the mode takes every one of them or any one (#269).
+   * How many references of each kind the pool holds, against the most the
+   * model takes of that kind (#2156) — `cap` undefined means uncapped.
    *
-   * Read off the catalog, where the mode declares it, rather than inferred
-   * from the panel: reference-to-music offers three places and takes any one,
-   * and first-and-last-frame offers two and takes both. Absent reads as
-   * `all_of`, the stricter of the two, so a mode whose rule did not reach the
-   * browser refuses rather than submits a run the upstream will reject.
+   * The server re-checks before enqueue; refusing here is what turns that
+   * into something the user can act on, since the worker would otherwise
+   * truncate the extras without saying so.
    */
-  sourceRule?: SourceRule;
-  /** How many references the pool holds, for the cap below. */
-  poolCount?: number;
-  /**
-   * The most the model takes at once, when it caps the pool.
-   *
-   * Absent means uncapped. The server re-checks before enqueue; refusing here
-   * is what turns that into something the user can act on, since the worker
-   * would otherwise truncate the extras without saying so.
-   */
-  poolCap?: number;
+  pools?: ReadonlyArray<{ kind: ReferenceKind; count: number; cap: number | undefined }>;
   /**
    * Whether the active mode insists on lyrics (#1960).
    *
@@ -110,19 +92,6 @@ export interface ExecuteGateInput {
   lyricsRequired?: boolean;
   /** What the lyrics box holds. Read only when `lyricsRequired`. */
   lyricsText?: string;
-  /**
-   * Whether the track is marked instrumental — no vocals at all (#1960).
-   *
-   * It lifts the lyrics requirement, because the gateway lifts it: measured
-   * 2026-09-05, `lyrics: ""` with `is_instrumental: true` is accepted and
-   * completes. Demanding words to sing for a track the user marked vocal-free
-   * is a rule we would be inventing.
-   *
-   * Only text-to-music can answer yes — it is the one model declaring the
-   * switch. Reference-to-music declares none, so nothing lifts its own
-   * requirement.
-   */
-  instrumental?: boolean;
   /**
    * Whether the stored voice is one this deployment's provider accepts.
    *
@@ -137,6 +106,13 @@ export interface ExecuteGateInput {
    * one is true.
    */
   voiceChosen?: boolean;
+  /**
+   * Whether a dialogue holds fewer complete speakers than the model takes
+   * (#2156, design §16) — counted with `completeEntries`, the same entries the
+   * worker would send. Optional because only a model reading its script as a
+   * dialogue has speakers.
+   */
+  speakersShort?: boolean;
 }
 
 /**
@@ -158,6 +134,7 @@ export type ExecuteRefusal =
   | 'style-missing'
   | 'prompt-too-long'
   | 'voice-missing'
+  | 'speakers-missing'
   | 'source-missing'
   | 'sources-missing'
   | 'too-many-references'
@@ -176,8 +153,8 @@ export interface ExecuteVerdict {
   readonly refusal: ExecuteRefusal;
   /** Which place is empty, when one of them is. */
   readonly slot?: string;
-  /** What the too-many sentence interpolates. */
-  readonly over?: { limit: number };
+  /** What the too-many sentence interpolates: the cap, and of which kind. */
+  readonly over?: { limit: number; kind: ReferenceKind };
 }
 
 /**
@@ -217,7 +194,10 @@ export function evaluateExecute(
   // a lyrics box under it and labels the pair Style and Lyrics, where a
   // sentence saying "write a prompt" names neither of the two things on
   // screen.
-  if (input.promptRequired && input.promptText.trim().length === 0) {
+  //
+  // Judged on the text the worker sends (`prompt-params.ts`): a box holding
+  // only characters that function removes reaches the vendor empty.
+  if (input.promptRequired && extractPromptText(input.promptText).length === 0) {
     return { refusal: input.lyricsRequired ? 'style-missing' : 'prompt-missing' };
   }
   // Counted on the text the vendor will actually receive. The worker cleans
@@ -245,48 +225,33 @@ export function evaluateExecute(
   // it does shortens. A box holding a zero-width space or an HTML comment
   // survives `.trim()` and reaches the gateway empty, which is the
   // `invalid params` the refusal exists to spare the user.
-  if (
-    input.lyricsRequired &&
-    input.instrumental !== true &&
-    extractPromptText(input.lyricsText).length === 0
-  ) {
+  if (input.lyricsRequired && extractPromptText(input.lyricsText).length === 0) {
     return { refusal: 'lyrics-missing' };
   }
   // The remaining refusals name a control the user has to go and fill. Only
   // one can be live at a time: `voiceRequired` says the model picks from a
-  // preset catalog, `requiredSlots` says the mode needs a source picked off
+  // preset catalog, `missing` says the model needs a source picked off
   // the canvas, and a model answering yes to both would be one whose panel
   // shows a picker and a slot for the same voice.
   if (input.voiceRequired && !input.voiceChosen) return { refusal: 'voice-missing' };
-  const required = input.requiredSlots ?? [];
-  const filled = input.filledSlots ?? [];
-  if (required.length > 0) {
-    if (input.sourceRule === 'any_of') {
-      // One of them is enough, so nothing is missing until all of them are. A
-      // mode offering several refuses with a sentence about the set, because
-      // naming any single member of it would be the wrong sentence.
-      if (!required.some((slot) => filled.includes(slot))) {
-        return required.length === 1
-          ? { refusal: 'source-missing', slot: required[0] }
-          : { refusal: 'sources-missing' };
-      }
-    } else {
-      // Every one of them, refused in the order the panel offers them, so the
-      // sentence names the first empty place rather than an arbitrary one.
-      const empty = required.find((slot) => !filled.includes(slot));
-      if (empty !== undefined) {
-        return {
-          refusal: required.length === 1 ? 'source-missing' : 'sources-missing',
-          slot: empty,
-        };
-      }
-    }
+  // The dialogue's own form of the same question: who reads which line.
+  if (input.speakersShort) return { refusal: 'speakers-missing' };
+  // The first unmet requirement is the one named. One param names its place;
+  // a group any member of which would do refuses with a sentence about the
+  // set, because naming a single member of it would be the wrong sentence.
+  const first = input.missing?.[0];
+  if (first !== undefined) {
+    return first.length === 1
+      ? { refusal: 'source-missing', slot: first[0] }
+      : { refusal: 'sources-missing' };
   }
   // The other end of the same question: more than the model takes. Naming the
   // limit is the point -- otherwise the only way to find it is to remove one
   // and try again.
-  const over = referenceCapExceeded(input.poolCount ?? 0, input.poolCap);
-  if (over) return { refusal: 'too-many-references', over };
+  for (const pool of input.pools ?? []) {
+    const over = referenceCapExceeded(pool.count, pool.cap);
+    if (over) return { refusal: 'too-many-references', over: { ...over, kind: pool.kind } };
+  }
   return null;
 }
 
@@ -361,6 +326,7 @@ export const REFUSAL_TOAST_KEY: Record<ExecuteRefusal, string | null> = {
   'style-missing': 'canvas.generatePanel.refuseExecuteNoStyle',
   'prompt-too-long': 'canvas.generatePanel.refuseExecuteTooLong',
   'voice-missing': 'canvas.generatePanel.refuseExecuteNoVoice',
+  'speakers-missing': 'canvas.generatePanel.refuseExecuteNoSpeakers',
   // The two a panel may word for itself, by naming the place it draws. The
   // sentences here are what it falls back to when it has none of its own.
   'source-missing': 'canvas.generatePanel.errorNoRefAudio',

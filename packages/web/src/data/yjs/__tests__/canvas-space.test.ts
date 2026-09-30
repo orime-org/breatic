@@ -21,6 +21,7 @@ import {
   runCanvasUndoBatch,
   setGroupBackground,
   getLyricsFragment,
+  readNodeFragments,
   getPromptFragment,
   isNodeLocked,
   setNodeStyleImage,
@@ -42,7 +43,7 @@ import {
 import {
   bodyToPlainText,
   writePlainTextIntoBody,
-} from '@web/data/yjs/text-body';
+} from '@breatic/shared/canvas/text-body';
 
 /**
  * Builds a complete wire `CanvasNodeFields` fixture.
@@ -905,6 +906,19 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(getLyricsFragment(PID, SID, 'ghost')).toBeNull();
   });
 
+
+  it('readNodeFragments reads every fragment a node holds, by field', () => {
+    addNode(PID, SID, sampleFields('audio'));
+    const fragments = readNodeFragments(PID, SID, 'n1');
+    expect(fragments).toEqual({
+      prompt: getPromptFragment(PID, SID, 'n1'),
+      lyrics: getLyricsFragment(PID, SID, 'n1'),
+    });
+  });
+
+  it('readNodeFragments reads nothing for a missing node', () => {
+    expect(readNodeFragments(PID, SID, 'ghost')).toEqual({});
+  });
 
   it('isNodeLocked reflects the live lock state (fresh Yjs read)', () => {
     addNode(PID, SID, sampleFields('image', { locked: false }));

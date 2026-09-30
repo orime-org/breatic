@@ -27,7 +27,7 @@ import {
   insertRefusal,
   isReferenceMaterial,
   type ReferenceUsabilityContext,
-} from '@web/spaces/canvas/generate/reference-usability';
+} from '@breatic/shared';
 import type { NodeKind } from '@web/data/yjs/node-view';
 
 /** The four upstream modalities the connection rules let reach a video node. */
@@ -36,7 +36,7 @@ const ROW_KINDS: NodeKind[] = ['text', 'image', 'audio', 'video'];
 /**
  * The video panel's six modes, with the one thing the rail asks of a mode.
  *
- * `takesReferences` mirrors `modeTakesReferences` — only `ref` collects the
+ * `referenceKinds` is the mode's reference pool — only `ref` collects the
  * `@` pool (#1927). It is NOT the same question as "does this mode need an
  * image at all": `i2v` needs one but takes it from a SLOT, so its rail is
  * dark while its backend source list is non-empty. That value is the only one
@@ -48,18 +48,18 @@ const ROW_KINDS: NodeKind[] = ['text', 'image', 'audio', 'video'];
  * bottom of the file is where it varies.
  */
 const VIDEO_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceUsabilityContext }> = [
-  { mode: 't2v', ctx: { takesReferences: false, takesPrompt: true } },
-  { mode: 'i2v', ctx: { takesReferences: false, takesPrompt: true } },
-  { mode: 'first_last', ctx: { takesReferences: false, takesPrompt: true } },
-  { mode: 'animate', ctx: { takesReferences: false, takesPrompt: true } },
-  { mode: 'ref', ctx: { takesReferences: true, takesPrompt: true } },
-  { mode: 'talking_head', ctx: { takesReferences: false, takesPrompt: true } },
+  { mode: 't2v', ctx: { referenceKinds: [], takesPrompt: true } },
+  { mode: 'i2v', ctx: { referenceKinds: [], takesPrompt: true } },
+  { mode: 'first_last', ctx: { referenceKinds: [], takesPrompt: true } },
+  { mode: 'animate', ctx: { referenceKinds: [], takesPrompt: true } },
+  { mode: 'ref', ctx: { referenceKinds: ['image'], takesPrompt: true } },
+  { mode: 'talking_head', ctx: { referenceKinds: [], takesPrompt: true } },
 ];
 
 /** The image panel's two reference-relevant modes. */
 const IMAGE_MODES: ReadonlyArray<{ mode: string; ctx: ReferenceUsabilityContext }> = [
-  { mode: 't2i', ctx: { takesReferences: false, takesPrompt: true } },
-  { mode: 'i2i', ctx: { takesReferences: true, takesPrompt: true } },
+  { mode: 't2i', ctx: { referenceKinds: [], takesPrompt: true } },
+  { mode: 'i2i', ctx: { referenceKinds: ['image'], takesPrompt: true } },
 ];
 
 describe('insertRefusal — text rows are prompt material, not reference material', () => {
@@ -79,7 +79,7 @@ describe('insertRefusal — text rows are prompt material, not reference materia
 describe('insertRefusal — media rows need BOTH conditions', () => {
   it('refuses every media row in a mode that does not take references', () => {
     for (const { mode, ctx } of VIDEO_MODES.filter(
-      (m) => !m.ctx.takesReferences,
+      (m) => m.ctx.referenceKinds.length === 0,
     )) {
       for (const kind of ['image', 'audio', 'video'] as const) {
         expect(insertRefusal(kind, ctx), `${kind} row in ${mode}`).toBe(
@@ -129,10 +129,26 @@ describe('insertRefusal — media rows need BOTH conditions', () => {
     expect(insertRefusal('audio', i2i)).toBe('source-type-unused');
     expect(insertRefusal('video', i2i)).toBe('source-type-unused');
   });
+
+  it('allows a video row when the reference pool takes video', () => {
+    const ctx: ReferenceUsabilityContext = {
+      referenceKinds: ['image', 'video'],
+      takesPrompt: true,
+    };
+    expect(insertRefusal('video', ctx)).toBeNull();
+  });
+
+  it('refuses an audio row as source-type-unused when the pool takes image and video only', () => {
+    const ctx: ReferenceUsabilityContext = {
+      referenceKinds: ['image', 'video'],
+      takesPrompt: true,
+    };
+    expect(insertRefusal('audio', ctx)).toBe('source-type-unused');
+  });
 });
 
 describe('insertRefusal — the criterion depends on nothing asynchronous', () => {
-  it('answers from two plain booleans — no catalog handle, no promise', () => {
+  it('answers from two plain values — no catalog handle, no promise', () => {
     // #1966 added the second field, and it is model-derived, so this is no
     // longer "no model context". What did NOT change is the property this
     // assertion exists for: neither field is a catalog handle or a promise, so
@@ -141,8 +157,8 @@ describe('insertRefusal — the criterion depends on nothing asynchronous', () =
     // rounds of review once produced three different wrong answers to "what
     // while the catalog is loading"; the question was the defect. The caller
     // resolves both values and passes them in.
-    const ref: ReferenceUsabilityContext = { takesReferences: true, takesPrompt: true };
-    expect(Object.keys(ref).sort()).toEqual(['takesPrompt', 'takesReferences']);
+    const ref: ReferenceUsabilityContext = { referenceKinds: ['image'], takesPrompt: true };
+    expect(Object.keys(ref).sort()).toEqual(['referenceKinds', 'takesPrompt']);
     expect(insertRefusal('image', ref)).toBeNull();
     expect(insertRefusal('text', ref)).toBeNull();
     expect(insertRefusal('audio', ref)).toBe('source-type-unused');
@@ -154,14 +170,14 @@ describe('insertRefusal — the criterion depends on nothing asynchronous', () =
     // URLs. Both of its producers — `imageUrlOf` for node rows, the image
     // panel's `focusImages` append for crops — require an image, so a
     // non-image row has nothing to give either one.
-    const ref: ReferenceUsabilityContext = { takesReferences: true, takesPrompt: true };
+    const ref: ReferenceUsabilityContext = { referenceKinds: ['image'], takesPrompt: true };
     for (const kind of ['audio', 'video', '3d', 'web'] as NodeKind[]) {
       expect(insertRefusal(kind, ref), kind).toBe('source-type-unused');
     }
   });
 });
 
-describe('isReferenceMaterial — one name for what `takesReferences` reads on', () => {
+describe('isReferenceMaterial — one name for what `referenceKinds` reads on', () => {
   it('holds for the three media modalities and not for text', () => {
     for (const kind of ['image', 'audio', 'video'] as const) {
       expect(isReferenceMaterial(kind), kind).toBe(true);
@@ -232,9 +248,9 @@ describe('insertRefusal — the rail and the @ picker give the same answer', () 
 // 同时这一维把 #1962 那两处判断合成一处：此前「能不能插」由这个模块判一半
 // （这个模式吃不吃参考素材）、由视频面板容器判另一半（这个模型要不要提示词）。
 describe('这一档不发提示词时 (#1966)', () => {
-  const noPrompt = { takesReferences: false, takesPrompt: false } as const;
-  const noPromptButRefs = { takesReferences: true, takesPrompt: false } as const;
-  const normal = { takesReferences: true, takesPrompt: true } as const;
+  const noPrompt = { referenceKinds: [], takesPrompt: false } as const;
+  const noPromptButRefs = { referenceKinds: ['image'], takesPrompt: false } as const;
+  const normal = { referenceKinds: ['image'], takesPrompt: true } as const;
 
   it('文本行的插入被拒，理由是没有提示词框', () => {
     expect(insertRefusal('text', noPrompt)).toBe('model-takes-no-prompt');
@@ -252,8 +268,8 @@ describe('这一档不发提示词时 (#1966)', () => {
   });
 
   it('这一档吃参考素材但不发提示词时，插入说没框', () => {
-    // 今天不可达（面板里唯一 takesPrompt=false 的模式，takesReferences 也是
-    // false），但判定必须是全序，所以这一格要有定义。参考那一问已经过了，
+    // 今天不可达（面板里唯一 takesPrompt=false 的模式，referenceKinds 也是
+    // 空），但判定必须是全序，所以这一格要有定义。参考那一问已经过了，
     // 所以插入才轮到提示词那一问。
     expect(insertRefusal('image', noPromptButRefs)).toBe('model-takes-no-prompt');
   });

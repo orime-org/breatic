@@ -10,6 +10,10 @@ import { toast } from '@web/lib/toast';
 
 import { newId, type SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@web/data/api';
+import { ApiException } from '@web/data/api/types';
+import type { ProjectDetail } from '@web/data/api/projects';
+import { NotFoundScreen } from '@web/components/not-found-screen';
+import { ResourceLoadError } from '@web/components/resource-load-error';
 import {
   useProjectMembers,
   useRosterRefreshOnJoin,
@@ -33,6 +37,7 @@ import {
 import { useCanvasStore, useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
+import { ProjectJoinGate } from '@web/pages/project/ProjectJoinGate';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import type { SpaceType } from '@breatic/shared';
 
@@ -131,6 +136,29 @@ export default function ProjectPage(): React.JSX.Element {
   // dial until AuthBootstrap has resolved a session, or the first connect
   // races the cookie and sticks on authFailed forever (regressed in v14 reset).
   const userId = useCurrentUserStore((s) => s.user?.id);
+  const projectQuery = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: () => projectsApi.get(projectId),
+    // 403 = a studio member who is not on this project: offer to join
+    // instead of looping a useless retry. The 404 path also
+    // short-circuits (project may have been deleted).
+    retry: (failureCount, err) => {
+      if (err instanceof Error && 'status' in err) {
+        const status = (err as { status?: number }).status;
+        if (status === 403 || status === 404) return false;
+      }
+      return failureCount < 2;
+    },
+  });
+
+  const { refetch } = projectQuery;
+  const retry = React.useCallback(() => { void refetch(); }, [refetch]);
+  if (projectQuery.error instanceof ApiException && projectQuery.error.status === 404) return <main><NotFoundScreen /></main>;
+  if (projectQuery.error instanceof ApiException && projectQuery.error.status === 403) {
+    return <ProjectJoinGate projectId={projectId} />;
+  }
+  if (projectQuery.isError && !projectQuery.data) return <main><ResourceLoadError onRetry={retry} /></main>;
+  if (!projectQuery.data) return <LoadingScreen />;
   return (
     <CollabSocketProvider userId={userId}>
       {/*
@@ -139,9 +167,9 @@ export default function ProjectPage(): React.JSX.Element {
         one project to another under this element — the Back button does it,
         measured — and React reconciles on the same route pattern, so without
         the key the workspace would carry one project's state into another's
-        address. The socket above is the account's, so it stays.
+        address. The socket is shared while the authorized workspace is mounted.
       */}
-      <ProjectWorkspace key={projectId} projectId={projectId} />
+      <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} />
     </CollabSocketProvider>
   );
 }
@@ -153,47 +181,22 @@ export default function ProjectPage(): React.JSX.Element {
  * {@link CollabSocketProvider}.
  * @param root0 - Workspace props.
  * @param root0.projectId - Resolved project uuid (slug already stripped).
+ * @param root0.project - The resource already authorized by the backend.
  * @returns The project workspace, or a loading screen while the socket connects.
  */
 function ProjectWorkspace({
   projectId,
+  project,
 }: {
   projectId: string;
+  project: ProjectDetail;
 }): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
 
-  // ---- Project meta (name / credits / role) ----
-  const projectQuery = useQuery({
-    queryKey: ['project', projectId],
-    queryFn: () => projectsApi.get(projectId),
-    enabled: projectId !== 'demo',
-    // 403 = caller is NOT_MEMBER of this project - bail to the
-    // access request page instead of looping a useless retry. The
-    // 404 path also short-circuits (project may have been deleted).
-    retry: (failureCount, err) => {
-      if (err instanceof Error && 'status' in err) {
-        const status = (err as { status?: number }).status;
-        if (status === 403 || status === 404) return false;
-      }
-      return failureCount < 2;
-    },
-  });
-
-  // NOT_MEMBER redirect - caller bounced off a project they can't
-  // see → route them to the access request page so they can ask the
-  // owner for permission (PR-d NOT_MEMBER path 1).
-  React.useEffect(() => {
-    if (!projectQuery.error) return;
-    const err = projectQuery.error as Error & { status?: number };
-    if (err.status === 403) {
-      navigate(`/project/${projectId}/access`, { replace: true });
-    }
-  }, [projectQuery.error, projectId, navigate]);
-
   // Record the open once the project has loaded — floats it to the top of the
   // cross-studio Recent landing. StrictMode-safe + best-effort (see the hook).
-  useRecordProjectOpen(projectId, projectQuery.isSuccess);
+  useRecordProjectOpen(projectId, true);
 
   // Follow the user between the two regions, so the canvas keyboard and
   // clipboard gates and the active-state colours read the same value.
@@ -213,11 +216,11 @@ function ProjectWorkspace({
   // singleton does not reset with component-local state.
   React.useEffect(() => () => resetProjectUiStores(projectId), [projectId]);
 
-  const projectName = projectQuery.data?.name ?? 'Untitled project';
+  const projectName = project.name;
   // Fail-safe default: if `myRole` is missing (glitch / pre-load race),
   // treat the caller as the most-restrictive 'viewer' so chrome affordances
   // stay hidden rather than leaking owner/editor actions (user 2026-06-18).
-  const role = projectQuery.data?.myRole ?? 'viewer';
+  const role = project.myRole ?? 'viewer';
   // Viewer affordance model (access-permission § 6.2, option B): the canvas
   // left creation menu stays visible + disabled (LeftFloatingMenu) and the
   // canvas body is read-only (SpaceOutlet); everything else a viewer cannot
@@ -722,7 +725,7 @@ function ProjectWorkspace({
   // on the same frame. They were not, and only the banner half showed on a
   // dropped connection.
   //
-  // Cover it with a full-area `bg-black/80` overlay that
+  // Cover it with a full-area `bg-overlay` overlay that
   // (a) matches the LoadingOverlay / Dialog backdrop dim pattern used
   //     elsewhere in the app (single visual vocabulary for "blocked"),
   // (b) is unmistakable at a glance, which is the entire job: once the user can
@@ -837,6 +840,7 @@ function ProjectWorkspace({
             data-workspace-disabled={workspaceDisabled || undefined}
           >
             <TopBar
+              connectionStatus={connectionStatus}
               projectId={projectId}
               projectName={projectName}
               role={role}
@@ -1042,7 +1046,7 @@ function ProjectWorkspace({
             through either. */}
             {workspaceDisabled ? (
               <div
-                className='absolute inset-0 z-40 cursor-not-allowed bg-black/80'
+                className='absolute inset-0 z-40 cursor-not-allowed bg-overlay'
                 data-testid='workspace-disabled-overlay'
               />
             ) : null}

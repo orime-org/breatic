@@ -168,6 +168,33 @@ export function t(
 }
 
 /**
+ * Translate a key whose message carries rich-text tags such as
+ * `<b>{actor}</b>`. Each tag is rendered by the handler of the same name,
+ * which receives the already-formatted chunks inside it. Markup therefore
+ * comes only from the locale file: parameter values are inserted as given,
+ * so callers building HTML escape them first.
+ *
+ * Same lookup as `t()`: current locale, then English, then the key itself.
+ * @param key - Dot-notation translation key
+ * @param params - Parameter map for ICU placeholders
+ * @param tags - Handler per tag name, e.g. `{ b: (c) => "<strong>" + c.join("") + "</strong>" }`
+ * @returns The formatted string, or the key itself if not found
+ */
+export function tRich(
+  key: string,
+  params: Record<string, string | number | Date>,
+  tags: Record<string, (chunks: string[]) => string>,
+): string {
+  const message = resolveMessage(key);
+  if (message === undefined) return key;
+  const formatted = new IntlMessageFormat(message, activeLocale()).format<string>({
+    ...params,
+    ...tags,
+  });
+  return Array.isArray(formatted) ? formatted.join("") : String(formatted);
+}
+
+/**
  * Resolve a key against current locale → en fallback → undefined.
  * @param key - the dot-notation translation key to look up
  * @returns the raw ICU message, or `undefined` when absent in both current and en locales

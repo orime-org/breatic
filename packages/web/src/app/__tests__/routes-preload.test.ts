@@ -40,7 +40,7 @@ describe('route table wiring', () => {
   });
 
   it('asks again once a redirect has settled on a destination', async () => {
-    // `/` and any unknown address match a `<Navigate>`, which carries no page,
+    // `/` matches a `<Navigate>`, which carries no page,
     // so the call above finds nothing to start. Typing the bare domain is the
     // commonest cold entry there is, and without a second ask it pays the auth
     // ping and the page chunk one after the other.

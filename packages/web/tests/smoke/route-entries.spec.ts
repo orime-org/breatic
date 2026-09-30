@@ -120,11 +120,6 @@ const ENTRIES: Entry[] = [
     landed: { testId: 'project-page' },
   },
   {
-    address: (ids) => `/project/${ids.projectId}/access`,
-    module: 'NoAccessPage',
-    landed: { testId: 'no-access-page' },
-  },
-  {
     address: () => '/decision',
     module: 'DecisionLandingPage',
     landed: { text: 'This link is not valid' },

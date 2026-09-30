@@ -53,8 +53,8 @@ function emptyCatalog(): ModelCatalog {
     audio: [],
     tts: [],
     three_d: [],
-    understand: [],
     total: 0,
+    credit_multiplier: 1,
   };
 }
 
@@ -74,16 +74,14 @@ function catalogWithImageModel(): ModelCatalog {
         description: '',
         guide: '',
         tier: 'optional',
-        cost_per_call: 5,
         generation_time: 10,
         takes_prompt: true,
         params: {},
         providers: [],
-        sourcesByMode: {},
-        sourceRuleByMode: {},
       },
     ],
     total: 1,
+    credit_multiplier: 1,
   };
 }
 

@@ -24,18 +24,19 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as ChatApiModule from '@web/data/api/chat';
+import type { StreamConfig } from '@web/data/api/chat';
 
 const BEAT_MS = 5000;
 
 /** 这一轮问心跳间隔时，答复挂在这里，由用例决定什么时候回。 */
-let answerConfig: ((value: { heartbeatIntervalMs: number }) => void) | null = null;
+let answerConfig: ((value: StreamConfig) => void) | null = null;
 
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
     streamConfig: vi.fn(
       () =>
-        new Promise<{ heartbeatIntervalMs: number }>((resolve) => {
+        new Promise<StreamConfig>((resolve) => {
           answerConfig = resolve;
         }),
     ),
@@ -264,7 +265,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     expect(told).toHaveLength(1);
 
     // 心跳间隔这时候才答复回来。
-    answerConfig?.({ heartbeatIntervalMs: BEAT_MS });
+    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10 });
     await settle();
     await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
     await settle();
@@ -286,7 +287,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     await settle();
 
     // 这一轮还跑着的时候心跳间隔就回来了，所以表真的装上了。
-    answerConfig?.({ heartbeatIntervalMs: BEAT_MS });
+    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10 });
     await settle();
 
     for (const chunk of turnOpens()) wire.current()?.push(chunk);
@@ -337,7 +338,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     await settle();
 
     // 第一轮那次现在才回来，而正在跑的是第二轮。
-    answerFirstTurn?.({ heartbeatIntervalMs: BEAT_MS });
+    answerFirstTurn?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10 });
     await settle();
     await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
     await settle();
@@ -371,7 +372,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     expect(chat.status).toBe('ready');
 
     // 问心跳间隔的那次往返这时才回来，而这一轮早就结束了。
-    answerConfig?.({ heartbeatIntervalMs: BEAT_MS });
+    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10 });
     await settle();
     await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
     await settle();

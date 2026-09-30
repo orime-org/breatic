@@ -21,12 +21,14 @@
 
 import nodemailer from "nodemailer";
 import { env } from "@core/config/env.js";
+import { getSmtpTimeouts } from "@core/config/mail.js";
 
 let transporter: nodemailer.Transporter | null = null;
 
 /**
  * Lazily build and cache the nodemailer SMTP transporter from `SMTP_*` env.
  * @returns The cached transporter, or `null` when `SMTP_HOST`/`SMTP_USER` are not configured.
+ * @throws {Error} When `config/mail.yaml` is missing or malformed.
  */
 function getTransporter(): nodemailer.Transporter | null {
   if (transporter) return transporter;
@@ -35,6 +37,7 @@ function getTransporter(): nodemailer.Transporter | null {
     return null;
   }
 
+  const timeouts = getSmtpTimeouts();
   transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
@@ -43,6 +46,12 @@ function getTransporter(): nodemailer.Transporter | null {
       user: env.SMTP_USER,
       pass: env.SMTP_PASSWORD,
     },
+    // nodemailer's defaults are two minutes to connect and ten minutes of
+    // idle socket; `config/mail.yaml` says why these are shorter.
+    dnsTimeout: timeouts.dnsTimeoutMs,
+    connectionTimeout: timeouts.connectionTimeoutMs,
+    greetingTimeout: timeouts.greetingTimeoutMs,
+    socketTimeout: timeouts.socketTimeoutMs,
   });
 
   return transporter;
@@ -107,7 +116,7 @@ export async function sendMail(options: SendMailOptions): Promise<SendMailResult
   }
 
   await t.sendMail({
-    from: env.SMTP_USER,
+    from: env.SMTP_FROM || env.SMTP_USER,
     to: options.to,
     subject: options.subject,
     html: options.html,

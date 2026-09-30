@@ -42,10 +42,9 @@ vi.mock('@web/i18n/use-translation', () => ({
 /**
  * Builds a tts model the way the catalog serves one.
  * @param name - Model id.
- * @param rate - What it charges, if it declares a rate.
  * @returns A model entry.
  */
-function ttsModel(name: string, rate?: ModelEntry['rate']): ModelEntry {
+function ttsModel(name: string): ModelEntry {
   return {
     name,
     display_name: name,
@@ -54,27 +53,18 @@ function ttsModel(name: string, rate?: ModelEntry['rate']): ModelEntry {
     description: '',
     guide: '',
     tier: 'recommended',
-    cost_per_call: 0,
     generation_time: 0,
     takes_prompt: true,
     params: {},
     providers: [],
-    sourcesByMode: {},
-    sourceRuleByMode: {},
-    rate,
   };
 }
 
-const ELEVEN = ttsModel('elevenlabs-v3', {
-  credits: 10,
-  per: 1000,
-  unit: 'characters',
-});
-const FISH = ttsModel('fish-s2-pro', {
-  credits: 1.5,
-  per: 1000,
-  unit: 'utf8_bytes',
-});
+const ELEVEN: ModelEntry = {
+  ...ttsModel('elevenlabs-v3'),
+  params: { voice_id: { description: '', default: null, remote_source: 'voices', fill: 'remote' } },
+};
+const FISH = ttsModel('fish-s2-pro');
 
 /**
  * Renders inside the app-level TooltipProvider (App.tsx mounts the real one) —
@@ -94,7 +84,6 @@ const BASE = {
   modelTakesPrompt: true,
   mode: 'tts',
   modeOptions: AUDIO_MODE_OPTIONS,
-  voiceRequired: true,
   voiceList: initialVoiceListState,
   slots: [],
   slotUrls: {},
@@ -103,12 +92,12 @@ const BASE = {
   onClearSlot: (): void => {},
   voiceSelectedId: null,
   voiceSelectedName: null,
-  creditEstimate: 10,
+  creditText: '10',
   executeRefusal: null,
   promptSlot: <div data-testid='prompt-editor' />,
   // Null on every mode but the two music ones, which is what BASE stands for.
   lyricsSlot: null,
-  labelBoxes: false,
+  promptLabel: undefined,
   references: [],
   params: {},
   referencePicking: false,
@@ -132,19 +121,19 @@ describe('AudioGeneratePanel (#1960 A1)', () => {
     expect(screen.getByTestId('prompt-editor')).toBeInTheDocument();
   });
 
-  it('offers the mode picker, the model picker and the voice picker', () => {
+  it('offers the mode picker, the model picker and the voice-and-settings pill', () => {
     renderPanel(<AudioGeneratePanel {...BASE} />);
     expect(screen.getByTestId('generate-audio-mode-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-model-trigger')).toBeInTheDocument();
-    expect(screen.getByTestId('generate-voice-trigger')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toBeInTheDocument();
   });
 
-  it('drops the voice picker for a model that picks no voice from a catalog', () => {
+  it('drops the pill for a model with no voice and nothing to set', () => {
     // A cloning model speaks in the recording picked into the slot, so a
     // picker here would offer a choice that reaches nothing. Nothing else in
     // the suite notices this branch going away.
-    renderPanel(<AudioGeneratePanel {...BASE} voiceRequired={false} />);
-    expect(screen.queryByTestId('generate-voice-trigger')).toBeNull();
+    renderPanel(<AudioGeneratePanel {...BASE} models={[FISH]} currentModel={FISH} model={FISH.name} />);
+    expect(screen.queryByTestId('generate-audio-settings-trigger')).toBeNull();
     // The rest of the footer stays: the mode and model pickers are how the
     // reader gets back to a text-to-speech model.
     expect(screen.getByTestId('generate-audio-mode-trigger')).toBeInTheDocument();
@@ -174,31 +163,20 @@ describe('AudioGeneratePanel (#1960 A1)', () => {
   });
 });
 
-describe('AudioGeneratePanel credit estimate (#1960 A5)', () => {
-  it('prints the number and nothing around it, as the video panel does', () => {
-    // A bare figure beside the star: same shape as VideoGeneratePanel, and no
-    // wording to translate. What it costs follows the prompt, so the container
-    // works the figure out and this prints it.
-    renderPanel(<AudioGeneratePanel {...BASE} creditEstimate={20} />);
-    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('20');
-    expect(screen.getByTestId('generate-audio-rate').textContent).not.toMatch(
-      /[a-zA-Z]/,
-    );
+describe('AudioGeneratePanel credit estimate (#1960 A5, #2156)', () => {
+  it('prints the estimate the container worked out beside the star', () => {
+    renderPanel(<AudioGeneratePanel {...BASE} creditText='≥ 20' />);
+    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('≥ 20');
   });
 
-  it('prints a zero before anything is typed, rather than going away', () => {
-    renderPanel(<AudioGeneratePanel {...BASE} creditEstimate={0} />);
-    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('0');
-  });
-
-  it('says nothing where the model declares no rate', () => {
+  it('says nothing until an estimate resolves', () => {
     renderPanel(
       <AudioGeneratePanel
         {...BASE}
         models={[ttsModel('no-rate')]}
         currentModel={ttsModel('no-rate')}
         model='no-rate'
-        creditEstimate={undefined}
+        creditText={undefined}
       />,
     );
     expect(screen.queryByTestId('generate-audio-rate')).toBeNull();
@@ -289,7 +267,7 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
     },
   };
 
-  it('offers the params picker for a model that declares one', () => {
+  it('offers the pill for a model that declares a param', () => {
     renderPanel(
       <AudioGeneratePanel
         {...BASE}
@@ -298,12 +276,7 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
         model={WITH_PARAMS.name}
       />,
     );
-    expect(screen.getByTestId('generate-audio-params-trigger')).toBeInTheDocument();
-  });
-
-  it('offers none for a model that declares nothing it can show', () => {
-    renderPanel(<AudioGeneratePanel {...BASE} />);
-    expect(screen.queryByTestId('generate-audio-params-trigger')).toBeNull();
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toBeInTheDocument();
   });
 
   it('reports a changed param', () => {
@@ -317,7 +290,7 @@ describe('AudioGeneratePanel — speaking params (#1960 A15)', () => {
         onChangeParams={onChangeParams}
       />,
     );
-    fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-stability-stop-1'));
     expect(onChangeParams).toHaveBeenCalledWith({ stability: 1 });
   });
@@ -349,8 +322,7 @@ describe('AudioGeneratePanel on a node built before generation (#1960 A13)', () 
       'generate-ref-insert-e1',
       'generate-audio-mode-trigger',
       'generate-model-trigger',
-      'generate-voice-trigger',
-      'generate-audio-params-trigger',
+      'generate-audio-settings-trigger',
       'generate-audio-rate',
       'generate-audio-execute',
     ]) {
@@ -418,7 +390,7 @@ describe('AudioGeneratePanel — the box labels', () => {
     renderPanel(
       <AudioGeneratePanel
         {...BASE}
-        labelBoxes
+        promptLabel={STYLE_LABEL}
         promptSlot={<div data-testid='prompt-editor' />}
         lyricsSlot={<div data-testid='lyrics-editor' />}
       />,
@@ -431,7 +403,7 @@ describe('AudioGeneratePanel — the box labels', () => {
     renderPanel(
       <AudioGeneratePanel
         {...BASE}
-        labelBoxes
+        promptLabel={STYLE_LABEL}
         promptSlot={<div data-testid='prompt-editor' />}
         lyricsSlot={null}
       />,
@@ -466,7 +438,7 @@ describe('PromptEditor — where each box starts', () => {
         onTextChange={() => {}}
         onAtMentionsChange={() => {}}
         references={[]}
-        imageRefsDisabled
+        referenceKinds={[]}
         mentionEmptyLabel='e'
         mentionNoMatchLabel='n'
       />,

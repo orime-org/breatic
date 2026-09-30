@@ -26,6 +26,7 @@
 
 import type Stripe from "stripe";
 import {
+  AppError,
   ConflictError,
   LIVE_SUBSCRIPTION_STATUSES,
   ValidationError,
@@ -39,9 +40,12 @@ import type {
   StoredSubscription,
   SubscriptionSituation,
 } from "@breatic/core";
-import type { SubscribableMembershipTier } from "@breatic/shared";
+import type {
+  BillingPeriod,
+  SubscribableMembershipTier,
+} from "@breatic/shared";
 import {
-  COMPARABLE_MEMBERSHIP_TIERS,
+  canMoveTo,
   holdsActionableSubscription,
   subscriptionActions,
   t,
@@ -104,14 +108,44 @@ async function ensureCustomer(userId: string): Promise<string> {
 }
 
 /**
+ * The two addresses Stripe sends somebody back to, marked apart.
+ *
+ * Both land on the page they left, so without a mark the page cannot tell a
+ * completed payment from somebody pressing Stripe's back link — and a page
+ * that cannot tell them apart cannot report either one.
+ *
+ * No session id on the paid one. What the account now holds is read by
+ * reconciling it, which happens anyway and answers for a webhook that has not
+ * landed yet; a session id would only name a second way to ask the same
+ * question. It would also collide with the credits return, which gates on
+ * that very parameter.
+ * @param returnUrl - The page the purchase was started from.
+ * @returns The two URLs, named as Stripe's own fields.
+ */
+function returnUrls(returnUrl: string): {
+  success_url: string;
+  cancel_url: string;
+} {
+  const paid = new URL(returnUrl);
+  paid.searchParams.set("membership", "1");
+
+  const left = new URL(returnUrl);
+  left.searchParams.set("membership", "1");
+  left.searchParams.set("cancelled", "1");
+
+  return { success_url: paid.toString(), cancel_url: left.toString() };
+}
+
+/**
  * Starts a checkout for an account that does not subscribe yet.
  *
  * Also the path back for somebody whose subscription ended: an ended
  * subscription cannot be updated or revived, so a returning customer gets a
  * new one alongside the old row.
- * @param input - Who, which tier, and where to send them afterwards.
+ * @param input - Who, which offer, and where to send them afterwards.
  * @param input.userId - The account paying.
  * @param input.tier - The tier being bought.
+ * @param input.period - How often it is to be billed.
  * @param input.returnUrl - The page to come back to, paid or not.
  * @returns Stripe's hosted checkout page.
  * @throws {ConflictError} if the account already holds a membership.
@@ -119,6 +153,7 @@ async function ensureCustomer(userId: string): Promise<string> {
 export async function startCheckout(input: {
   userId: string;
   tier: SubscribableMembershipTier;
+  period: BillingPeriod;
   returnUrl: string;
 }): Promise<CheckoutStart> {
   const { situation, record } = await readSituation(input.userId);
@@ -140,14 +175,16 @@ export async function startCheckout(input: {
     mode: "subscription",
     customer: customerId,
     line_items: [
-      { price: getSubscriptionPlan(input.tier).stripePriceId, quantity: 1 },
+      {
+        price: getSubscriptionPlan(input.tier, input.period).stripePriceId,
+        quantity: 1,
+      },
     ],
     // Reaches the subscription object, which is what events carry. Top-level
     // metadata and `client_reference_id` stop at the Session.
     subscription_data: { metadata: { userId: input.userId } },
     client_reference_id: input.userId,
-    success_url: input.returnUrl,
-    cancel_url: input.returnUrl,
+    ...returnUrls(input.returnUrl),
   });
 
   if (!session.url) {
@@ -156,18 +193,6 @@ export async function startCheckout(input: {
   return { url: session.url };
 }
 
-/**
- * Whether one tier sits above another on the price list.
- * @param tier - The tier being moved to.
- * @param than - The tier currently held.
- * @returns Whether the move is upwards.
- */
-function isHigherThan(tier: string, than: string): boolean {
-  return (
-    COMPARABLE_MEMBERSHIP_TIERS.indexOf(tier as never) >
-    COMPARABLE_MEMBERSHIP_TIERS.indexOf(than as never)
-  );
-}
 
 /**
  * The subscription item whose price an upgrade replaces.
@@ -294,35 +319,47 @@ function subscriptionGoneAtStripe(err: unknown): boolean {
 }
 
 /**
- * Moves an account that already subscribes onto a higher tier.
+ * Moves an account that already subscribes onto another offer.
  *
  * Replaces the price on the existing item rather than starting a second
  * subscription, and collects the difference before the change takes effect.
- * @param input - Who and which tier.
+ * @param input - Who and which offer.
  * @param input.userId - The account.
  * @param input.tier - The tier to move to.
+ * @param input.period - The period to be billed over from now on.
  * @returns Whether the new tier is in force, and where to pay if not.
- * @throws {ConflictError} if nothing is live, the tier is already held, or
- *   payment is overdue.
- * @throws {ValidationError} if the target tier is lower than the one held.
+ * @throws {ConflictError} if nothing is live, the same tier and period are
+ *   already held, or payment is overdue.
+ * @throws {ValidationError} if the target is a lower tier or a shorter period
+ *   than the one held.
  */
 export async function changePlan(input: {
   userId: string;
   tier: SubscribableMembershipTier;
+  period: BillingPeriod;
 }): Promise<PlanChange> {
   const { situation, record } = await readSituation(input.userId);
   if (!record || !holdsActionableSubscription(situation)) {
     throw new ConflictError(t("server.membership.no_subscription"));
   }
-  if (record.tier === input.tier) {
+  if (record.tier === input.tier && record.period === input.period) {
     throw new ConflictError(t("server.membership.same_tier"));
   }
-  if (!isHigherThan(input.tier, record.tier)) {
-    // No entrance offers this — the panel leaves the lower rows blank — so
-    // anything arriving here called the endpoint directly.
-    throw new ValidationError(t("server.membership.downgrade_not_offered"));
+  // The same rule the panel draws with, so an entrance exists exactly where
+  // this accepts. Nothing refused here has a button: the cells that cannot be
+  // reached are left blank rather than explained, and whatever arrives here
+  // called the endpoint directly.
+  if (
+    !canMoveTo(
+      // A stored subscription was sold, so its tier is one of the two on the
+      // price list; the column's wider type is what every tier column carries.
+      { tier: record.tier as SubscribableMembershipTier, period: record.period },
+      { tier: input.tier, period: input.period },
+    )
+  ) {
+    throw new ValidationError(t("server.membership.change_not_offered"));
   }
-  if (subscriptionActions(situation, record.cancelAtPeriodEnd).upgrade === "withheld") {
+  if (subscriptionActions(situation, record.cancelAtPeriodEnd).move === "withheld") {
     // The paid tier is held while Stripe retries, but selling more during that
     // window would bill a card that is already failing. The panel reads the
     // same answer and draws no entrance, so nobody arrives here by clicking.
@@ -335,7 +372,7 @@ export async function changePlan(input: {
       items: [
         {
           id: itemToReplace(record),
-          price: getSubscriptionPlan(input.tier).stripePriceId,
+          price: getSubscriptionPlan(input.tier, input.period).stripePriceId,
         },
       ],
       // `cancel_at_period_end` must NOT travel with this call. A pending
@@ -354,7 +391,14 @@ export async function changePlan(input: {
   );
 
   const read = readStripeSubscription(updated, input.userId);
-  const pending = read?.hasPendingUpdate ?? false;
+  if (!read.ok) {
+    // Stripe took the change and what came back does not agree with our price
+    // list. Reporting "applied" here is the one answer that cannot be taken
+    // back: the reader is told their plan changed while the row still holds
+    // the old one, and nothing later contradicts it.
+    throw new AppError(500, t("server.membership.change_unconfirmed"));
+  }
+  const pending = read.write.hasPendingUpdate;
 
   if (situation === "cancelling") {
     await withdrawCancellation(record.stripeSubscriptionId, input.userId);
@@ -362,7 +406,7 @@ export async function changePlan(input: {
 
   return {
     status: pending ? "pendingPayment" : "applied",
-    payableInvoiceUrl: read?.payableInvoiceUrl ?? null,
+    payableInvoiceUrl: read.write.payableInvoiceUrl,
   };
 }
 

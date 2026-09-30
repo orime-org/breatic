@@ -11,9 +11,9 @@
  * (spec §6.4): the node-history row (`entryCredits`) and the activity-feed row
  * both gate through this. Deliberately NO `> 0` gate and NO rounding — a `> 0`
  * gate would hide a genuine free (0-credit) run and rounding would contradict
- * the raw billed value (0.4 → "0"). The DATA source differs per caller (node
- * history reads the estimate `metadata.cost`; the activity feed reads the actual
- * deducted `payload.credits`), only the gate + raw-value rule are shared.
+ * the raw billed value (0.4 → "0"). Both callers read the credits actually
+ * deducted — node history from `metadata.credits`, the activity feed from
+ * `payload.credits` — so the figure means the same thing wherever it appears.
  * @param value - A candidate credit cost (number, null, undefined, or anything).
  * @returns The finite number, or undefined.
  */

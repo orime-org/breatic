@@ -22,10 +22,18 @@ vi.mock('@web/i18n/use-translation', () => ({
 }));
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
+import type * as Y from 'yjs';
+
 import { canvasApi, type NodeHistoryEntry } from '@web/data/api/canvas';
+import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
+import { _resetForTests } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
 import { useCanvasStore } from '@web/stores/canvas';
+
+const PID = 'p';
+const SID = 's';
 
 // Minimal host-node view: the container only reads `type` + `data.content`.
 const NODES = [
@@ -53,6 +61,7 @@ function mount(): ReturnType<typeof render> {
           <NodeHistoryPanelContainer
             nodes={NODES}
             projectId='p'
+            spaceId='s'
             onRestore={vi.fn()}
           />
         </ReactFlow>
@@ -291,6 +300,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
             <NodeHistoryPanelContainer
               nodes={twoNodes}
               projectId='p'
+              spaceId='s'
               onRestore={vi.fn()}
             />
           </ReactFlow>
@@ -327,7 +337,7 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const tree = (content: string): React.JSX.Element => (
+    const tree = (done: number): React.JSX.Element => (
       <QueryClientProvider client={client}>
         <TooltipProvider>
           <ReactFlow
@@ -337,28 +347,36 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
             <NodeHistoryPanelContainer
               nodes={
                 [
-                  { id: 'target', type: 'image', data: { content } },
+                  {
+                    id: 'target',
+                    type: 'image',
+                    data: {
+                      content: 'a.png',
+                      taskCounts: { running: 0, done, failed: 0, expired: 0 },
+                    },
+                  },
                 ] as unknown as React.ComponentProps<
                   typeof NodeHistoryPanelContainer
                 >['nodes']
               }
               projectId='p'
+              spaceId='s'
               onRestore={vi.fn()}
             />
           </ReactFlow>
         </TooltipProvider>
       </QueryClientProvider>
     );
-    const { rerender } = render(tree('a.png'));
+    const { rerender } = render(tree(0));
     act(() => {
       useCanvasStore.getState().openHistoryPanel('target');
     });
     await waitFor(() =>
       expect(screen.getByTestId('node-history-close')).toBeInTheDocument(),
     );
-    // Change the node's content to a value NOT in the loaded rows → the
-    // edge-triggered effect invalidates → refetch → the 2nd mock REJECTS.
-    rerender(tree('changed.png'));
+    // A run on this node reaches its end → the edge-triggered effect
+    // invalidates → refetch → the 2nd mock REJECTS.
+    rerender(tree(1));
     await waitFor(() =>
       expect(canvasApi.listNodeHistory).toHaveBeenCalledTimes(2),
     );
@@ -367,5 +385,153 @@ describe('NodeHistoryPanelContainer loading UX — C hybrid (#1812, user 2026-07
     expect(screen.queryByTestId('node-history-error')).not.toBeInTheDocument();
     expect(toast.error).not.toHaveBeenCalled();
     expect(useCanvasStore.getState().panelKind).toBe('history');
+  });
+});
+
+describe('what makes the panel ask the server again (#2175)', () => {
+  beforeEach(() => {
+    onlineManager.setOnline(true);
+    vi.clearAllMocks();
+    vi.mocked(canvasApi.fetchLimits).mockResolvedValue({
+      nodeHistoryPageSize: 20,
+    } as never);
+    _resetForTests();
+    useCanvasStore.setState({
+      panelHostId: null,
+      panelKind: null,
+      pickSession: null,
+    });
+  });
+
+  // The refetch exists because a finished run lands silently: the content the
+  // node shows becomes something no loaded row holds, and that is the only
+  // announcement there is. A text node's words are not that — the reader
+  // types them — so reading a keystroke as a landed result would put a
+  // request on the wire for every letter.
+  // A run that finishes while the panel is open puts a row at the top of a
+  // list already on screen. Nothing else announces it — the rows are one
+  // fetch — so the node's settled-task count is what the list watches.
+  it('asks again when a run on this node reaches its end', async () => {
+    vi.mocked(canvasApi.listNodeHistory).mockResolvedValue({
+      entries: [entry('a')],
+      total: 1,
+    });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const tree = (done: number): React.JSX.Element => (
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <ReactFlow
+            nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
+            edges={[]}
+          >
+            <NodeHistoryPanelContainer
+              nodes={
+                [
+                  {
+                    id: 'target',
+                    type: 'image',
+                    data: {
+                      content: 'x.png',
+                      taskCounts: { running: 1 - done, done, failed: 0, expired: 0 },
+                    },
+                  },
+                ] as unknown as React.ComponentProps<
+                  typeof NodeHistoryPanelContainer
+                >['nodes']
+              }
+              projectId={PID}
+              spaceId={SID}
+              onRestore={vi.fn()}
+            />
+          </ReactFlow>
+        </TooltipProvider>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree(0));
+    act(() => {
+      useCanvasStore.getState().openHistoryPanel('target');
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('node-history-close')).toBeInTheDocument(),
+    );
+    const afterOpen = vi.mocked(canvasApi.listNodeHistory).mock.calls.length;
+
+    rerender(tree(1));
+
+    await waitFor(() =>
+      expect(
+        vi.mocked(canvasApi.listNodeHistory).mock.calls.length,
+      ).toBeGreaterThan(afterOpen),
+    );
+  });
+
+  it('does not ask again because the reader typed into a text node', async () => {
+    vi.mocked(canvasApi.listNodeHistory).mockResolvedValue({
+      entries: [entry('a')],
+      total: 1,
+    });
+    addNode(PID, SID, {
+      id: 'target',
+      type: 'text',
+      position: { x: 0, y: 0 },
+      data: {
+        name: 'N',
+        createdAt: 1000,
+        createdBy: 'u1',
+        locked: false,
+        attachments: [],
+      },
+    });
+    const body = getTextBody(PID, SID, 'target') as Y.XmlFragment;
+    writePlainTextIntoBody(body, 'A re');
+
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <TooltipProvider>
+          <ReactFlow
+            nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
+            edges={[]}
+          >
+            <NodeHistoryPanelContainer
+              nodes={
+                [
+                  { id: 'target', type: 'text', data: {} },
+                ] as unknown as React.ComponentProps<
+                  typeof NodeHistoryPanelContainer
+                >['nodes']
+              }
+              projectId={PID}
+              spaceId={SID}
+              onRestore={vi.fn()}
+            />
+          </ReactFlow>
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    act(() => {
+      useCanvasStore.getState().openHistoryPanel('target');
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('node-history-close')).toBeInTheDocument(),
+    );
+    const afterOpen = vi.mocked(canvasApi.listNodeHistory).mock.calls.length;
+
+    // Four more letters, each a separate edit the panel sees live.
+    for (const words of ['A red', 'A red ', 'A red b', 'A red bi']) {
+      act(() => {
+        writePlainTextIntoBody(body, words);
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId('node-history-close')).toBeInTheDocument(),
+      );
+    }
+
+    expect(vi.mocked(canvasApi.listNodeHistory).mock.calls.length).toBe(
+      afterOpen,
+    );
   });
 });

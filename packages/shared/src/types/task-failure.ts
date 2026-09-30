@@ -28,6 +28,14 @@ export const TASK_FAILURE_REASONS = [
   "aborted",
   /** What landed is larger than an upload is allowed to be. */
   "over_cap",
+  /**
+   * The file is larger than a reading takes.
+   *
+   * Separate from `over_cap` because they are different ceilings on
+   * different files: this one names a file that uploaded fine and is on the
+   * canvas, so the upload sentence would be a false statement about it.
+   */
+  "understand_over_cap",
   /** The deadline passed with no result. */
   "expired",
   /** The run finished, and came back with nothing to put on the node. */
@@ -39,6 +47,17 @@ export const TASK_FAILURE_REASONS = [
   /** What arrived is not a kind a node can hold. */
   "unsupported_type",
   /**
+   * The file is not a format a reading takes.
+   *
+   * Separate from `unsupported_type` for the same reason `understand_over_cap`
+   * is separate from `over_cap`: the two lanes judge against two tables that
+   * differ in both directions. An upload takes `audio/mp4` and `audio/webm`,
+   * which a reading refuses; a reading takes `image/gif` and `video/mpeg`,
+   * which an upload refuses. One code for both means one sentence naming the
+   * wrong list.
+   */
+  "understand_unsupported_type",
+  /**
    * Nothing arrived: an address that answered empty, or a backend upload
    * opened for bytes that turned out not to exist.
    */
@@ -48,6 +67,22 @@ export const TASK_FAILURE_REASONS = [
    * what the person does next, and which part broke is in the log.
    */
   "internal",
+  /**
+   * The account has no credits left. The row exists because the node was
+   * already on the canvas when this was found — a run refused before it
+   * started still has somewhere to say so.
+   */
+  "no_credits",
+  /**
+   * A model's safety gate refused this question. Asking it differently may
+   * get an answer; nothing on our side broke.
+   */
+  "declined",
+  /**
+   * A model refused these bytes. The same file asked again answers the same
+   * way, so repeating it is not what the person does next.
+   */
+  "media_refused",
 ] as const;
 
 /** One of the causes above. */
@@ -87,12 +122,87 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
 ]);
 
 /**
- * Read a stored `error_message` as one of our causes.
- * @param message - What the row holds, or null.
- * @returns The cause, or null when this is not one of ours.
+ * What a stored failure says about the file it was about.
+ *
+ * A cause on its own leaves the reader asking which of their files this
+ * happened to and what it was that we would not take. Both are known where
+ * the failure is raised — the run holds the address it was handed and the
+ * type it judged, and the browser's own gate holds the same two — so they
+ * travel with the cause rather than being looked up again by a surface that
+ * cannot reach them (user 2026-09-20).
  */
-export function asTaskFailureReason(
-  message: string | null,
-): TaskFailureReason | null {
-  return message !== null ? (CAUSE_OF.get(message) ?? null) : null;
+export interface TaskFailureDetail {
+  /** What the file is called: its storage key's last segment. */
+  file?: string;
+  /** The type it was judged as, as the word a reader uses for that format. */
+  type?: string;
+  /** How many bytes it is, for a cause that refused it over a ceiling. */
+  bytes?: number;
 }
+
+/** A stored failure, read back. */
+export interface StoredTaskFailure extends TaskFailureDetail {
+  /** The cause, or null when the stored text is not one of ours. */
+  reason: TaskFailureReason | null;
+}
+
+/**
+ * Write a cause and what it was about as one stored value.
+ *
+ * A cause with nothing to add stays the bare code it has always been, so
+ * every row already written and every lane that writes one reads back the
+ * same way.
+ * @param reason - The cause the row holds, from the vocabulary above.
+ * @param about - What is known about the file it happened to.
+ * @returns What to store in `error_message`.
+ */
+export function encodeTaskFailure(
+  reason: TaskFailureReason,
+  about: TaskFailureDetail = {},
+): string {
+  const detail: TaskFailureDetail = {
+    ...(about.file !== undefined && about.file !== "" && { file: about.file }),
+    ...(about.type !== undefined && about.type !== "" && { type: about.type }),
+    ...(Number.isFinite(about.bytes) && { bytes: about.bytes }),
+  };
+  return Object.keys(detail).length === 0
+    ? reason
+    : JSON.stringify({ reason, ...detail });
+}
+
+/**
+ * Read a stored `error_message` as a cause and what it was about.
+ * @param message - What the row holds, or null.
+ * @returns The cause and its detail; the cause is null when this is not ours.
+ */
+export function readTaskFailure(message: string | null): StoredTaskFailure {
+  if (message === null) return { reason: null };
+  // A bare code is every row written before a cause had anything to add, and
+  // every cause that still has nothing.
+  if (!message.startsWith("{")) {
+    return { reason: CAUSE_OF.get(message) ?? null };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    // A provider whose own error text happens to open with a brace. It is
+    // what that provider said, and it travels as itself.
+    return { reason: null };
+  }
+  // No text that opens with a brace and parses reaches here as anything but
+  // an object, so this returns for nothing the product writes. It stays
+  // because the line below reads fields off the result, and the day a second
+  // caller reaches this function without the brace check above, `null.reason`
+  // is what it would throw.
+  if (typeof parsed !== "object" || parsed === null) return { reason: null };
+  const held = parsed as Record<string, unknown>;
+  const reason = typeof held.reason === "string" ? held.reason : "";
+  return {
+    reason: CAUSE_OF.get(reason) ?? null,
+    ...(typeof held.file === "string" && { file: held.file }),
+    ...(typeof held.type === "string" && { type: held.type }),
+    ...(typeof held.bytes === "number" && { bytes: held.bytes }),
+  };
+}
+

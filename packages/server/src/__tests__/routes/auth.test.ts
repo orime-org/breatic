@@ -40,6 +40,8 @@ vi.mock("@server/modules", async (importOriginal) => {
 
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
+import { settleAfterReply } from "@server/utils/after-reply.js";
+import { t } from "@breatic/shared";
 
 const SESSION_COOKIE = { Cookie: "breatic_session=valid-token" };
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -281,6 +283,58 @@ describe("Auth routes", () => {
       });
 
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe("POST /auth/forgot-password", () => {
+    it("answers before any account-dependent work finishes", async () => {
+      // Held open until the reply is in: if the route awaited the lookup, the
+      // send or anything else that depends on the account, this request would
+      // hang.
+      let release!: () => void;
+      mocks.authService.forgotPassword.mockReturnValue(
+        new Promise((resolve) => {
+          release = () => resolve({ status: "unknown_email" });
+        }),
+      );
+
+      const app = createApp();
+      const res = await app.request("/api/v1/auth/forgot-password", {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ email: "someone@example.com" }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { message: string };
+      expect(body.message).toBe(t("server.auth.reset_link_sent"));
+      expect(mocks.authService.forgotPassword).toHaveBeenCalledWith(
+        "someone@example.com",
+        expect.stringMatching(/\/reset-password$/),
+      );
+      release();
+      await settleAfterReply();
+    });
+
+    it("gives the same answer when the background send fails, and logs the failure", async () => {
+      const err = new Error("smtp refused");
+      mocks.authService.forgotPassword.mockRejectedValue(err);
+
+      const app = createApp();
+      const res = await app.request("/api/v1/auth/forgot-password", {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ email: "someone@example.com" }),
+      });
+      await settleAfterReply();
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { message: string };
+      expect(body.message).toBe(t("server.auth.reset_link_sent"));
+      expect(mocks.logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ err, task: "password_reset", email: "someone@example.com" }),
+        "after_reply_failed",
+      );
     });
   });
 

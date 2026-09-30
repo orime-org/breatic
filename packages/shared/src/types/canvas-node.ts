@@ -78,6 +78,71 @@ export function canGenerate(type: NodeType): boolean {
 }
 
 /**
+ * Node-type connection rules (user-ratified 2026-07-10, batch spec §9.1).
+ *
+ * "A connection IS a reference" — so what may wire into a node's input is a
+ * PRODUCT rule, not a graph nicety. Sources that can't feed a target's
+ * generation are rejected at the wire level (drag preview, drop commit, and
+ * pick-mode click all consult this), instead of being accepted and then
+ * silently dropped at execute time — the contradictory dead-end the
+ * adversarial pass surfaced. User-ratified whitelists:
+ *
+ *   image input ← image (i2i source) + text (prompt content)
+ *   video input ← text + video + audio + image (all content modalities)
+ *   text  input ← text + video + audio + image
+ *   audio input ← text + audio (user 2026-09-22: an edge says one piece of
+ *                 audio is what the next one is made from, and that reading
+ *                 stands whether or not the pool can carry a mention of it)
+ *
+ * 3d / web have no ratified input rule yet and keep the current
+ * anything-connects behavior (extend INPUT_WHITELIST when theirs land).
+ *
+ * It lives here rather than beside the canvas because the agent proposes
+ * edges too (#263), and the tool that judges a proposal sits in a library
+ * package that cannot reach into the frontend. Two copies of a ratified
+ * product rule drift apart the first time the whitelist changes.
+ */
+const INPUT_WHITELIST: Partial<Record<NodeType, ReadonlySet<string>>> = {
+  image: new Set<string>(['image', 'text']),
+  video: new Set<string>(['text', 'video', 'audio', 'image']),
+  text: new Set<string>(['text', 'video', 'audio', 'image']),
+  audio: new Set<string>(['text', 'audio']),
+};
+
+/**
+ * Decides whether a source node's output may wire into a target node's input.
+ *
+ * Kinds are read from Yjs-synced node data, so both arguments are treated as
+ * untrusted strings: an unknown source kind fails CLOSED against a whitelisted
+ * target (it is not on the list) and open against an unrestricted one.
+ * @param sourceKind - The source (upstream) node's modality.
+ * @param targetKind - The target (downstream) node's modality.
+ * @returns Whether the connection is allowed.
+ * @throws {never} Never.
+ */
+export function canConnect(
+  sourceKind: NodeType | string,
+  targetKind: NodeType | string,
+): boolean {
+  const whitelist = Object.hasOwn(INPUT_WHITELIST, targetKind)
+    ? INPUT_WHITELIST[targetKind as NodeType]
+    : undefined;
+  return whitelist === undefined || whitelist.has(sourceKind);
+}
+
+/**
+ * How long a node's name may be, in characters.
+ *
+ * The rename input stops at this and the commit clips to it, so it is also
+ * the longest name a reader can give a node by hand. It lives here beside the
+ * connection rule for the same reason that one does: the agent proposes names
+ * too (#263), and the tool judging a proposal sits in a library package that
+ * cannot reach into the frontend. A name past this is one nobody could have
+ * typed, and the first rename shortens it without saying so.
+ */
+export const MAX_NODE_NAME_LEN = 30;
+
+/**
  * Attachment reference stored in a node's `attachments` array — a plain
  * array value on the data Y.Map (node data holds plain values only, see
  * the web `buildDataMap`).
@@ -162,10 +227,13 @@ export interface AnnotationReply {
 // A text node's words live in `data.body`, an opaque `Y.XmlFragment` seeded
 // when the node is created, so two people typing in one node merge character
 // by character instead of overwriting each other. It is absent from the
-// interface below for the same reason `prompt` carries no structured type:
-// this package has no yjs dependency (it must stay browser-safe and bundles
-// through a single entry), and a live collaborative object is not wire data.
-// Read it through the web helpers `getTextBody` / `bodyToPlainText`.
+// interface below for the same reason `prompt` carries no structured type: a
+// live collaborative object is not wire data, and this interface describes
+// what the wire carries. Read it through the web helpers `getTextBody` /
+// `bodyToPlainText`; the shape written into it is `writePlainTextIntoBody`,
+// which lives in this package beside `canvas/text-body.ts` because both
+// writers need it — the browser's own landing and the server's, which
+// reaches the document through collab.
 //
 // `content` below is dead for a text node: nothing writes it (a landing task
 // puts its words in the body instead) and nothing reads it (the view
@@ -217,6 +285,21 @@ export interface CanvasNodeFields {
      * undeletable and its `content` is immutable.
      */
     locked: boolean;
+
+    /**
+     * The history row a reader last put back onto this node, when one was.
+     *
+     * "Current" in the history panel names WHICH ROW the node is on, and
+     * content cannot answer that: two snapshots of the same words are two
+     * rows a reader is allowed to keep, and asset dedup yields several rows
+     * holding one URL. The reader who restores a row gets that row, so the
+     * node remembers it (user 2026-09-20).
+     *
+     * Absent on a node whose content arrived on its own — a run, an upload.
+     * Stale once the node holds something else, which the panel settles by
+     * checking the remembered row still holds what the node shows.
+     */
+    restoredFromEntryId?: string;
 
     // ─── Tasks (all node types) ─────────────────────────────
     /** Last failure message from whatever wrote this node's content. */
@@ -275,6 +358,17 @@ export interface CanvasNodeFields {
     mediaHeight?: number;
     /** Video / audio duration in seconds. */
     duration?: number;
+    /**
+     * Media type of `content`, as the ledger judged it off the bytes that
+     * landed (#240) — the only authority on what this file is.
+     *
+     * Absent for a row stored before the ledger reported it. A reader that
+     * has to know the type, rather than merely prefer it, has to say what it
+     * does when this is missing.
+     */
+    mimeType?: string;
+    /** Byte count of `content`, as the ledger counted it. See `data.mimeType`. */
+    size?: number;
     /** Source node id when this data node was produced by a mini-tool from a parent node. */
     sourceNodeId?: string;
     /** Tool name when produced by mini-tool (e.g., 'image.crop'). */
@@ -399,16 +493,6 @@ export interface CanvasNodeFields {
      */
     drivingVideo?: { url: string; cover?: string };
     /**
-     * Reference-to-video's motion guidance (`data.referenceVideo`) — the one
-     * clip whose movement the vendor follows, sent as `params.video` (#1928).
-     *
-     * Its own field rather than `drivingVideo`'s: image animation needs a
-     * driving video to run at all, this one is optional guidance alongside
-     * reference images, and a user moving between the two modes keeps each
-     * pick where it was.
-     */
-    referenceVideo?: { url: string; cover?: string };
-    /**
      * The driving audio for the talking-head mode (#1935, wire
      * `data.drivingAudio`) — the track the portrait's lips follow. `url` is
      * sent as `params.audio` at execute time.
@@ -436,19 +520,35 @@ export interface CanvasNodeFields {
      */
     refAudio?: { url: string; cover?: string };
     /**
-     * The three references the audio panel's reference-to-music mode collects
-     * (#1960, wire `data.musicSong` / `musicVoice` / `musicInstrumental`) —
-     * a whole song to write after, a vocal line to follow, a backing track to
-     * play over. Their `url`s are sent as `params.song` / `voice` /
-     * `instrumental`, the names minimax/music-01 reads them under.
+     * The talking-head sources beyond a portrait and one track (#2156, wire
+     * `data.sourceVideo` / `leftAudio` / `rightAudio`): the clip whose lips
+     * are redone, and the two speakers' tracks of a two-person scene. Sent as
+     * `params.video` / `left_audio` / `right_audio`. Shaped like `refAudio`.
+     */
+    sourceVideo?: { url: string; cover?: string };
+    leftAudio?: { url: string; cover?: string };
+    rightAudio?: { url: string; cover?: string };
+    /**
+     * The references the audio panel's music and sound modes collect (#1960,
+     * #2156; wire `data.musicSong` / `coverSong` / `musicMelody` /
+     * `musicVocal` / `soundVideo`) — a song to write after, a song to cover,
+     * a melody, a singing voice, and the picture a run is scored or sounded
+     * to. Sent as `params.song` / `audio` / `melody` / `vocal` / `video`.
      *
-     * Three fields rather than one list because the vendor gives each its own
-     * role and a user may supply any combination. Shaped like `refAudio` for
-     * the same convergence reason, and `cover` is likewise always absent.
+     * One field per role because the vendor reads each under its own name and
+     * a user may supply any combination. Shaped like `refAudio` for the same
+     * convergence reason.
      */
     musicSong?: { url: string; cover?: string };
-    musicVoice?: { url: string; cover?: string };
-    musicInstrumental?: { url: string; cover?: string };
+    coverSong?: { url: string; cover?: string };
+    musicMelody?: { url: string; cover?: string };
+    musicVocal?: { url: string; cover?: string };
+    soundVideo?: { url: string; cover?: string };
+    /**
+     * The picture a piece of music takes its mood from (#2156, wire
+     * `data.moodImageUrl`) — sent as `params.image`.
+     */
+    moodImageUrl?: string;
     /**
      * The words to sing, on an audio node (#1960, wire `data.lyrics`) — a
      * `Y.XmlFragment` beside `prompt`, since two people may write lyrics at
@@ -518,13 +618,14 @@ export interface NodeTaskCounts {
 }
 
 /**
- * The five content fields a finished task writes onto its node.
+ * The content fields a finished task writes onto its node.
  *
- * The last three are measured where the bytes are — at the edge, on the way
+ * All but `content` are settled where the bytes are — at the edge, on the way
  * into R2, by the media container every lane's finish waits on — so a node
- * carries its pixel size and its duration before a byte of media is fetched.
- * A medium with no such number, and equally one the container could not read,
- * sends `null`; the node falls back to what it reads off the element.
+ * carries its pixel size, its duration, its type and its byte count before a
+ * byte of media is fetched. A medium with no such number, and equally one the
+ * container could not read, sends `null`; the node falls back to what it
+ * reads off the element.
  */
 export interface NodeTaskResult {
   content: string;
@@ -535,6 +636,10 @@ export interface NodeTaskResult {
   height: number | null;
   /** Playing time of a video or audio, in seconds. */
   duration: number | null;
+  /** Media type, as the ledger judged it off the bytes that landed. */
+  mimeType: string | null;
+  /** Byte count, as the ledger counted it off the bytes that landed. */
+  size: number | null;
 }
 
 /**

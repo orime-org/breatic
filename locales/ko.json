@@ -14,10 +14,13 @@
     "credit": {
       "not_studio_admin": "크레딧은 본인이 관리하는 Studio에만 지정할 수 있습니다.",
       "designation_locked": "이 결제는 환불 처리 중이라 지정을 변경할 수 없습니다.",
+      "designation_not_purchased": "이 크레딧은 지급된 것이라 개인 Studio에서만 사용할 수 있습니다.",
       "in_debt": "이 Studio는 크레딧 {owed}을 미납했습니다. 다음에 지정하는 크레딧이 먼저 충당됩니다.",
       "unassigned": "지정되지 않은 크레딧이 {available} 있습니다. 사용하려면 Studio에 지정하세요.",
       "none": "크레딧이 부족합니다. 충전해 주세요.",
+      "granted_elsewhere": "보유한 크레딧은 지급된 것이라 개인 Studio에서만 사용할 수 있습니다.",
       "refund_already_asked": "이 구매는 이미 환불을 신청했습니다.",
+      "refund_not_purchased": "이 크레딧은 지급된 것이라 결제 내역이 없어 환불할 수 없습니다.",
       "refund_still_designated": "이 구매는 Studio에 배정되어 있습니다. 먼저 배정을 해제하세요.",
       "refund_already_spent": "이 구매의 크레딧을 사용했으므로 환불할 수 없습니다.",
       "refund_window_closed": "이 구매의 환불 기간이 종료되었습니다."
@@ -31,6 +34,7 @@
       "google_oauth_unconfigured": "이 서버에서는 Google 로그인을 사용할 수 없습니다",
       "invalid_google_credential": "Google 계정을 확인할 수 없습니다",
       "google_email_unverified": "Google 계정의 이메일이 확인되지 않았습니다",
+      "google_link_requires_email_login": "이 계정은 이메일로 로그인하세요. Google 계정을 안전하게 연결할 수 없습니다.",
       "reset_link_sent": "이 이메일로 등록된 계정이 있으면 재설정 링크를 보내 드렸습니다.",
       "reset_success": "비밀번호를 재설정했습니다. 로그인해 주세요.",
       "reset_recovery_success": "비밀번호를 재설정했습니다. 새 복구 코드를 저장하세요.",
@@ -55,6 +59,8 @@
       "avatar_unsupported_type": "이 파일은 이미지로 읽을 수 없습니다. 다른 사진을 사용해 보세요."
     },
     "project": {
+      "join_already_member": "이미 이 Project의 멤버입니다.",
+      "join_already_pending": "이 Project에 이미 참여를 요청했습니다. Owner의 승인을 기다리는 중입니다.",
       "email_not_registered": "해당 이메일로 가입된 계정이 없습니다.",
       "already_member": "해당 사용자는 이미 접근 권한을 가지고 있습니다.",
       "already_invited": "해당 사용자에게 이미 대기 중인 초대가 있습니다.",
@@ -84,6 +90,13 @@
         "expired": "30일이 지나면 환불되지 않습니다.",
         "unassigned": "Studio에 지정되지 않은 패키지만 환불할 수 있습니다."
       },
+      "refund-credits-v3": {
+        "unused": "30일 이내에 구매했고 크레딧을 하나도 쓰지 않았다면, 원래 결제 카드로 전액 환불됩니다.",
+        "used": "하나라도 사용했다면 해당 패키지는 환불되지 않습니다.",
+        "expired": "30일이 지나면 환불되지 않습니다.",
+        "unassigned": "Studio에 지정되지 않은 패키지만 환불할 수 있습니다.",
+        "purchased": "구매한 패키지만 환불할 수 있습니다."
+      },
       "not_found": "해당 구매를 찾을 수 없습니다.",
       "unavailable": "이 배포에서는 크레딧을 판매하지 않습니다."
     },
@@ -109,15 +122,14 @@
       "too_many_inputs": "이 모델은 이런 종류의 입력을 최대 {limit}개까지 받지만 {actual}개가 전달되었습니다",
       "history_entry_not_found": "기록을 찾을 수 없습니다",
       "voices_model_not_found": "이 모델은 사용할 수 없습니다",
-      "voices_not_offered": "이 모델에는 음성 목록이 없습니다",
-      "voices_provider_unconfigured": "이 서버에서는 음성을 사용할 수 없습니다",
-      "voices_upstream_failed": "음성을 불러오지 못했습니다. 다시 시도해 주세요."
+      "voices_not_offered": "이 모델에는 음성 목록이 없습니다"
     },
     "membership": {
       "already_subscribed": "이미 멤버십이 있습니다.",
       "no_subscription": "멤버십이 없습니다.",
       "not_cancelling": "이 멤버십은 종료 예정이 아닙니다.",
-      "downgrade_not_offered": "하위 등급으로 변경할 수 없습니다.",
+      "change_not_offered": "해당 변경은 제공되지 않습니다.",
+      "change_unconfirmed": "변경 사항이 Stripe에 전달되었지만 결과를 확인하지 못했습니다. 다시 시도하기 전에 문의해 주세요.",
       "same_tier": "이미 이 멤버십입니다.",
       "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
       "unavailable": "멤버십을 사용할 수 없습니다."
@@ -130,38 +142,112 @@
     "purchase_mail": {
       "subject": "크레딧이 충전되었습니다",
       "intro": "구매해 주셔서 감사합니다. 아래는 이번 구매 내역이니 보관해 주세요.",
-      "credits": "이번 충전: {credits} 크레딧",
-      "balance": "현재 잔액: {credits} 크레딧",
-      "subtotal": "가격: {amount}",
-      "tax": "세액: {amount}",
-      "total": "결제 합계: {amount}",
-      "purchased_at": "구매 시각: {when}",
-      "refund_by": "환불 가능 기한: {when}",
-      "order_ref": "주문 번호: {ref}",
+      "label": {
+        "credits": "이번 충전",
+        "balance": "현재 잔액",
+        "subtotal": "가격",
+        "tax": "세액",
+        "total": "결제 합계",
+        "purchased_at": "구매 시각",
+        "refund_by": "환불 가능 기한",
+        "order_ref": "주문 번호"
+      },
+      "credits_amount": "{credits} 크레딧",
+      "fact_line": "{label}: {value}",
       "consent_heading": "구매 시 동의하신 내용",
       "refund_heading": "크레딧 패키지 환불 규정",
-      "support": "이번 구매에 대한 문의는 {email} 로 보내주세요."
+      "support": "이번 구매에 대한 문의는 <mailto>{email}</mailto> 로 보내주세요."
     },
     "chat": {
-      "message_too_long": "이 메시지는 너무 깁니다. 첨부한 내용을 포함해 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다."
+      "message_too_long": "이 메시지는 너무 깁니다. 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다.",
+      "attachments_too_long": "첨부한 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다.",
+      "attachments_too_many": "첨부가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다."
+    },
+    "mail": {
+      "studio_invite": {
+        "subject": "{inviter} 님이 {studio}에 초대했습니다",
+        "lead": "<b>{inviter}</b> 님이 Studio <b>{studio}</b>에 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code>(으)로 초대했습니다.",
+        "action": "초대 열기"
+      },
+      "project_invite": {
+        "subject": "{inviter} 님이 {project}에 초대했습니다",
+        "lead": "<b>{inviter}</b> 님이 Project <b>{project}</b>에 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code>(으)로 초대했습니다.",
+        "action": "초대 열기"
+      },
+      "studio_transfer": {
+        "subject": "{initiator} 님이 {studio}을(를) 넘기려고 합니다",
+        "lead": "<b>{initiator}</b> 님이 회원님을 Studio <b>{studio}</b>의 <code>Admin</code>으로 지정하려고 합니다.",
+        "action": "이 이전 요청 보기"
+      },
+      "project_transfer": {
+        "subject": "{initiator} 님이 {project}을(를) 넘기려고 합니다",
+        "lead": "<b>{initiator}</b> 님이 Project <b>{project}</b>의 소유권을 회원님에게 넘기려고 합니다.",
+        "action": "이 이전 요청 보기"
+      },
+      "role_upgrade": {
+        "subject": "{requester} 님이 {project}에서 더 높은 역할을 요청했습니다",
+        "lead": "<b>{requester}</b> 님이 <b>{project}</b>에서 <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code>(이)가 되기를 요청했습니다.",
+        "action": "이 요청 보기"
+      },
+      "project_join": {
+        "subject": "{requester} 님이 {project} 참여를 요청했습니다",
+        "lead": "<b>{requester}</b> 님이 <b>{project}</b> 참여를 요청했습니다.",
+        "action": "이 요청 보기"
+      },
+      "reason": " 메시지: <em>{message}</em>",
+      "expiry": {
+        "invitation": "이 초대는 {days, plural, other {#일}} 후에 만료됩니다. 예상하지 못한 메일이라면 무시하셔도 됩니다.",
+        "transfer": "이 이전 요청은 {days, plural, other {#일}} 후에 만료됩니다. 예상하지 못한 메일이라면 무시하셔도 됩니다.",
+        "request": "이 요청은 {days, plural, other {#일}} 후에 만료됩니다. 예상하지 못한 메일이라면 무시하셔도 됩니다."
+      },
+      "membership_ended": {
+        "subject": "{tier} 멤버십이 종료되었습니다",
+        "lead": "<b>{tier}</b> 멤버십이 종료되었습니다. 계정은 무료 플랜으로 전환되었습니다.",
+        "footer": "멤버십 패널에서 언제든지 다시 구독할 수 있습니다."
+      },
+      "storage_full": {
+        "subject": "저장 공간이 가득 찼습니다",
+        "lead": "저장 공간이 가득 차서 <b>{studio}</b>에서 업로드와 생성이 거부되었습니다. 저장 공간은 이 Studio뿐 아니라 회원님이 관리하는 모든 Studio를 합산해 계산됩니다.",
+        "footer": "멤버십을 업그레이드하면 더 많은 공간을 사용할 수 있습니다."
+      },
+      "password_reset": {
+        "subject": "비밀번호 재설정",
+        "lead": "비밀번호 재설정을 요청하셨습니다.",
+        "action": "비밀번호 재설정",
+        "footer": "이 링크는 {hours, plural, other {#시간}} 후에 만료됩니다. 본인이 요청하지 않았다면 이 메일을 무시하세요."
+      },
+      "email_verification": {
+        "subject": "이메일 확인",
+        "lead": "Breatic에 오신 것을 환영합니다. 아래 버튼을 눌러 이메일 주소를 확인하세요.",
+        "action": "이메일 주소 확인",
+        "footer": "이 링크는 {hours, plural, other {#시간}} 후에 만료됩니다. 본인이 요청하지 않았다면 이 메일을 무시해도 됩니다."
+      },
+      "footer": "이 메일은 자동으로 발송되었습니다. 회신은 확인되지 않습니다.",
+      "help": "도움이 필요하신가요? <manual>사용자 설명서</manual>를 확인하거나 <contact>{email}</contact>로 문의하세요.",
+      "legal": {
+        "about": "소개",
+        "terms": "이용약관",
+        "privacy": "개인정보 처리방침"
+      }
     }
   },
   "chat": {
     "composer": {
-      "selectMode": {
-        "label": "선택 모드 — 캔버스에서 노드를 클릭하여 참조를 추가하세요",
-        "title": "선택 모드"
-      },
       "chipsAria": "선택된 칩",
-      "placeholder": "원하는 작업을 입력하세요 (@로 위의 칩을 참조)…",
+      "placeholder": "질문하거나 캔버스의 항목을 넘겨주세요…",
       "inputAria": "채팅 입력",
-      "skill": {
-        "label": "스킬을 선택하여 에이전트의 동작 범위를 지정하세요",
-        "title": "스킬 선택"
-      },
       "send": "전송",
       "sending": "보내는 중",
-      "atLimit": "{limit, number}자 제한에 도달했습니다"
+      "atLimit": "{limit, number}자 제한에 도달했습니다",
+      "attach": "파일 첨부",
+      "removeAttachment": "{name} 제거",
+      "attachmentUploading": "업로드 중",
+      "attachmentFailed": "{reason, select, upload {업로드 실패} extract {읽기 실패} too_long {너무 김} other {실패}}",
+      "attachFull": "최대 {limit, number}개까지 첨부할 수 있습니다",
+      "attachTooLong": "첨부한 내용이 너무 많습니다. 항목을 줄이거나 더 짧은 파일을 사용하세요.",
+      "attachUnsupported": "{filename}은(는) 첨부할 수 없습니다",
+      "attachTooLarge": "{filename}은(는) 너무 커서 첨부할 수 없습니다",
+      "attachUnavailable": "지금은 첨부할 수 없습니다. 다시 시도하세요."
     },
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
@@ -216,6 +302,7 @@
       "proposingNodes": "제안을 정리하는 중",
       "checkingModels": "사용할 수 있는 모델 확인 중",
       "understanding": "미디어 확인 중",
+      "judging": "가늠하는 중",
       "running": "{tool} 실행 중"
     },
     "loadEarlier": "이전 메시지 불러오기",
@@ -261,11 +348,19 @@
       "use": "사용",
       "building": "만드는 중…",
       "failed": "만들지 못했습니다.",
-      "needCanvas": "먼저 캔버스를 여세요."
+      "eachRun": "{s, number}초 × {n, number}",
+      "needCanvas": "먼저 캔버스를 여세요.",
+      "promptReady": "프롬프트가 준비되었습니다. 노드를 우클릭하고 「생성」을 선택하면 열리는 생성 패널에서 확인할 수 있습니다.",
+      "settingsReady": "설정이 준비되었습니다. 노드를 우클릭하고 「생성」을 선택하면 열리는 생성 패널에서 확인할 수 있습니다."
     },
     "thinking": "잠시 생각했습니다",
     "thinkingNow": "생각 중",
-    "thinkingFor": "{m, plural, =0 {} other {# 분 }}{s, number}초 동안 생각했습니다"
+    "thinkingFor": "{m, plural, =0 {} other {# 분 }}{s, number}초 동안 생각했습니다",
+    "attachment": {
+      "kind": "{kind, select, canvas {캔버스} image {이미지} video {동영상} audio {오디오} text {텍스트} other {항목}}",
+      "nodes": "노드 {count}개",
+      "more": "외 {count}개"
+    }
   },
   "canvas": {
     "group": {
@@ -313,7 +408,8 @@
       "deleteNode": "노드 삭제",
       "deleteGroup": "그룹 삭제",
       "deleteSelection": "선택 항목 삭제",
-      "clipboardError": "클립보드에 접근할 수 없습니다. 키보드 단축키를 사용하세요."
+      "clipboardError": "클립보드에 접근할 수 없습니다. 키보드 단축키를 사용하세요.",
+      "addToAgent": "Agent에 추가"
     },
     "gate": {
       "locked": "이 항목은 잠겨 있습니다. 변경하려면 잠금을 해제하세요.",
@@ -334,6 +430,10 @@
       "cannotWrite": "여기에는 더 이상 쓸 수 없습니다.",
       "unknownAuthor": "알 수 없음"
     },
+    "understand": {
+      "couldNotStart": "시작하지 못했습니다. 다시 시도해 주세요.",
+      "sourceGone": "읽어 들이던 노드가 없습니다. 이 읽기에는 연결선이 없습니다."
+    },
     "generatePanel": {
       "style": "스타일",
       "focus": "포커스",
@@ -348,7 +448,7 @@
       "refuseExecuteNoPrompt": "프롬프트를 먼저 입력하세요",
       "refuseExecuteNoVoice": "음성을 선택하세요",
       "refuseExecuteTooLong": "텍스트가 {max, number}자 제한을 초과했습니다",
-      "refuseInsertTypeUnused": "{kind, select, audio {참조는 이미지만 받습니다. 오디오는 사용할 수 없습니다} video {참조는 이미지만 받습니다. 비디오는 사용할 수 없습니다} other {참조는 이미지만 받습니다. 이런 종류의 소재는 사용할 수 없습니다}}",
+      "refuseInsertTypeUnused": "이 모델은 참조로 {kind, select, image {이미지를} audio {오디오를} video {비디오를} other {이런 종류의 소재를}} 받지 않습니다",
       "exit": "종료",
       "promptPlaceholder": "생성할 이미지를 설명하세요. @ 로 참조 추가",
       "mentionEmpty": "참조할 수 있는 항목이 없습니다",
@@ -380,12 +480,10 @@
       "selectEndFrameFromCanvas": "캔버스에서 마지막 프레임으로 쓸 이미지 선택",
       "selectCharacterImageFromCanvas": "캔버스에서 캐릭터로 쓸 이미지 선택",
       "selectDrivingVideoFromCanvas": "캔버스에서 동작을 가져올 영상 선택",
-      "selectReferenceVideoFromCanvas": "캔버스에서 동작을 참고할 영상 선택",
       "selectDrivingAudioFromCanvas": "캔버스에서 입 모양이 따라갈 음성 선택",
       "removeStyle": "스타일 참조 제거",
       "exitSelect": "종료",
       "locateSource": "소스 노드로 이동",
-      "presets": "프리셋",
       "camera": "카메라",
       "cameraBody": "카메라",
       "lens": "렌즈",
@@ -393,8 +491,6 @@
       "aperture": "조리개",
       "switchOn": "켜짐",
       "switchOff": "꺼짐",
-      "online": "웹 검색",
-      "translate": "프롬프트 번역",
       "execute": "생성",
       "resolution": "해상도",
       "ratio": "비율",
@@ -402,8 +498,7 @@
       "errorUnavailable": "생성 서비스를 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
       "errorFailed": "생성을 시작하지 못했습니다. 다시 시도해 주세요.",
       "errorNoSourceImage": "이 모델에는 원본 이미지가 필요합니다 —— 프롬프트에 @ 를 입력해 연결된 이미지를 선택하세요.",
-      "errorTooManyReferences": "이 모델은 참고 이미지를 최대 {limit}장까지 허용합니다 —— 일부를 제거한 후 생성하세요.",
-      "refusePickTooManyReferences": "동작 클립을 쓰면 참고 이미지는 {limit}장까지입니다. 줄인 뒤 클립을 고르세요.",
+      "errorTooManyReferences": "이 모델은 참고 {kind, select, video {비디오를 최대 {limit}개} audio {오디오를 최대 {limit}개} other {이미지를 최대 {limit}장}}까지 허용합니다 —— 일부를 제거한 후 생성하세요.",
       "referenceAddFailed": "참조를 추가할 수 없습니다——해당 노드가 존재하지 않습니다.",
       "referencePoolFull": "참조 풀이 상한({cap})에 도달했습니다——먼저 참조 또는 포커스 이미지를 삭제하세요.",
       "modelUnavailable": "해당 모델은 더 이상 사용할 수 없습니다——다른 모델을 선택하세요.",
@@ -437,10 +532,10 @@
       "duration": "길이",
       "durationSeconds": "{n}초",
       "generateAudio": "오디오 생성",
-      "keepOriginalSound": "원본 소리 유지",
+      "imageParams": "매개변수",
       "videoParams": "매개변수",
       "videoPromptPlaceholder": "생성할 영상을 설명하세요. @ 로 참조 추가",
-      "errorNoReferenceMention": "참고 이미지가 아직 없습니다 —— 이 노드에 이미지를 연결한 뒤 프롬프트에 @ 를 입력해 지정하세요.",
+      "errorNoReferenceMention": "{kind, select, video {참고 비디오가} audio {참고 오디오가} image {참고 이미지가} other {참고 소재가}} 아직 없습니다 —— 이 노드에 연결한 뒤 프롬프트에 @ 를 입력해 지정하세요.",
       "firstFrame": "첫 프레임",
       "firstFrameTip": "영상의 첫 프레임으로 쓸 이미지를 고르세요",
       "removeFirstFrame": "첫 프레임 제거",
@@ -454,16 +549,27 @@
       "removeCharacterImage": "캐릭터 제거",
       "errorNoCharacterImage": "캐릭터 이미지를 고르세요",
       "drivingVideo": "동작 영상",
+      "sourceVideo": "영상",
+      "sourceVideoTip": "영상을 고르세요",
+      "removeSourceVideo": "영상 제거",
+      "errorNoSourceVideo": "영상을 고르세요",
+      "selectSourceVideoFromCanvas": "캔버스에서 영상 선택",
+      "leftAudio": "왼쪽 음성",
+      "leftAudioTip": "왼쪽 화자의 음성을 고르세요",
+      "removeLeftAudio": "왼쪽 음성 제거",
+      "errorNoLeftAudio": "왼쪽 음성을 고르세요",
+      "selectLeftAudioFromCanvas": "캔버스에서 왼쪽 화자의 음성 선택",
+      "rightAudio": "오른쪽 음성",
+      "rightAudioTip": "오른쪽 화자의 음성을 고르세요",
+      "removeRightAudio": "오른쪽 음성 제거",
+      "errorNoRightAudio": "오른쪽 음성을 고르세요",
+      "selectRightAudioFromCanvas": "캔버스에서 오른쪽 화자의 음성 선택",
       "drivingAudio": "음성",
       "drivingVideoTip": "동작을 가져올 영상을 고르세요",
       "drivingAudioTip": "입 모양이 따라갈 음성을 고르세요",
       "removeDrivingVideo": "동작 영상 제거",
-      "referenceVideo": "동작 클립",
-      "referenceVideoTip": "동작을 참고할 영상을 고르세요",
-      "removeReferenceVideo": "참고 영상 제거",
       "removeDrivingAudio": "음성 제거",
       "errorNoDrivingVideo": "동작을 가져올 영상을 고르세요",
-      "errorNoReferenceVideo": "모션 클립을 고르세요",
       "errorNoDrivingAudio": "입 모양이 따라갈 음성을 고르세요",
       "promptNotUsed": "이 모드에는 프롬프트가 필요하지 않습니다.",
       "refuseInsertNoPrompt": "이 모드에는 프롬프트 입력란이 없어 넣을 수 없습니다",
@@ -476,24 +582,70 @@
       "musicSong": "전체 곡",
       "musicSongTip": "오디오 노드를 골라 그 곡을 바탕으로 새 곡을 만듭니다",
       "removeMusicSong": "전체 곡 제거",
-      "musicVoice": "보컬",
-      "musicVoiceTip": "오디오 노드를 골라 그 보컬을 따릅니다",
-      "removeMusicVoice": "보컬 제거",
-      "musicInstrumental": "반주",
-      "musicInstrumentalTip": "오디오 노드를 골라 그 위에 새 곡을 얹습니다",
-      "removeMusicInstrumental": "반주 제거",
+      "musicVocal": "보컬",
+      "musicVocalTip": "오디오 노드를 골라 그 목소리로 부릅니다",
+      "removeMusicVocal": "보컬 제거",
+      "selectMusicVocalFromCanvas": "노래 목소리 고르기",
+      "selectSoundVideoFromCanvas": "소리를 입힐 영상 고르기",
+      "musicMelody": "멜로디",
+      "musicMelodyTip": "오디오 노드를 골라 그 멜로디를 따릅니다",
+      "removeMusicMelody": "멜로디 제거",
+      "selectMusicMelodyFromCanvas": "따를 멜로디 고르기",
+      "coverSongTip": "오디오 노드를 골라 그 곡을 커버합니다",
+      "selectCoverSongFromCanvas": "커버할 곡 고르기",
+      "errorNoMusicSong": "곡을 먼저 고르세요",
+      "moodImage": "참고 이미지",
+      "moodImageTip": "이미지를 골라 분위기를 정합니다",
+      "removeMoodImage": "참고 이미지 제거",
+      "selectMoodImageFromCanvas": "분위기를 정할 이미지 고르기",
       "selectMusicSongFromCanvas": "바탕이 될 곡 고르기",
-      "selectMusicVoiceFromCanvas": "따라갈 보컬 고르기",
-      "selectMusicInstrumentalFromCanvas": "얹을 반주 고르기",
-      "musicInstrumentalOnly": "반주만",
-      "musicWithVocals": "보컬 있음",
       "musicPromptPlaceholder": "장르, 분위기, 악기, 템포를 적으세요",
       "musicLyricsPlaceholder": "가사를 적으세요",
       "musicStyleLabel": "스타일",
       "musicLyricsLabel": "가사",
       "lyricsMissing": "먼저 가사를 적으세요",
       "refuseExecuteNoStyle": "먼저 스타일을 적으세요",
-      "refuseExecuteNoReference": "전체 곡, 보컬, 반주 중 하나를 고르세요"
+      "refuseExecuteNoReference": "전체 곡, 멜로디, 보컬 중 하나를 고르세요",
+      "creditsPerThousandChars": "{credits} / 1000자",
+      "itemsAdd": "추가",
+      "itemsRemove": "삭제",
+      "refuseExecuteNoSpeakers": "화자를 입력하세요",
+      "audioSettings": "음성 및 설정",
+      "audioVoice": "음성",
+      "audioReadingMode": "낭독 방식",
+      "audioReadingSingle": "1인",
+      "audioReadingDialogue": "대화 ({count}인)",
+      "audioDialogueSummary": "대화 · {count}인",
+      "audioSpeakersNote": "대사는 \"이름: 대사\"로 적습니다",
+      "audioLanguageSearch": "언어 검색…",
+      "audioOptionEmpty": "일치하는 항목이 없습니다",
+      "param": {
+        "language": "언어",
+        "speakers": "화자",
+        "emotion": "감정",
+        "pronunciation_dict": "발음",
+        "loop": "끊김 없는 반복",
+        "quality": "품질",
+        "enable_image_search": "이미지 검색",
+        "enable_web_search": "웹 검색",
+        "chaos": "카오스",
+        "stylize": "스타일화",
+        "weird": "기묘함",
+        "transparency": "투명 배경",
+        "distance": "거리",
+        "horizontal_angle": "수평 각도",
+        "vertical_angle": "수직 각도",
+        "negative_prompt": "네거티브 프롬프트",
+        "motion": "움직임 정도",
+        "order": "순서",
+        "model_mode": "영역"
+      },
+      "paramField": {
+        "speaker": "이름",
+        "voice": "음성",
+        "text": "텍스트",
+        "pronunciation": "읽는 법"
+      }
     },
     "nodeMenu": {
       "generate": "생성",
@@ -503,7 +655,9 @@
       "unlock": "노드 잠금 해제",
       "resetEmpty": "빈 이미지로 초기화",
       "history": "기록",
-      "download": "다운로드"
+      "snapshot": "스냅샷 저장",
+      "download": "다운로드",
+      "understand": "내용 읽기"
     },
     "edge": {
       "delete": "연결 삭제"
@@ -568,6 +722,10 @@
       "failed": "복원 불가",
       "typeGeneration": "생성",
       "typeUpload": "업로드",
+      "typeSnapshot": "스냅샷",
+      "snapshotKept": "스냅샷을 저장했습니다",
+      "snapshotEmpty": "저장할 내용이 없습니다. 이 노드는 비어 있습니다",
+      "snapshotFailed": "스냅샷을 저장하지 못했습니다",
       "end": "더 이상 없음",
       "close": "닫기",
       "loadError": "기록을 불러오지 못했습니다",
@@ -610,13 +768,18 @@
       "failure": {
         "aborted": "업로드가 끝나기 전에 중단되었습니다.",
         "over_cap": "이 파일은 업로드 크기 상한을 넘습니다.",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다.} other {이 파일은 읽기 크기 상한을 넘습니다. 상한은 {limit}입니다.}}} other {{bytes, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}). 상한은 {limit}입니다.}}} other {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}). 상한은 {limit}입니다.}}}}}}",
+        "understand_unsupported_type": "{file, select, none {{type, select, none {읽을 수 없는 파일 형식입니다.} other {읽을 수 없는 파일 형식입니다({type}).}}} other {{type, select, none {읽을 수 없는 파일 형식입니다({file}).} other {읽을 수 없는 파일 형식입니다({file}, {type}).}}}}",
         "expired": "시간이 초과되었습니다.",
         "no_result": "이 실행은 아무것도 생성하지 않았습니다.",
         "source_unreachable": "이 주소를 열 수 없습니다.",
         "source_too_slow": "이 주소를 가져오는 데 시간이 초과되었습니다.",
         "unsupported_type": "{kind, select, image {지원하지 않는 형식입니다. 이미지는 {formats}을(를) 지원합니다.} video {지원하지 않는 형식입니다. 동영상은 {formats}을(를) 지원합니다.} audio {지원하지 않는 형식입니다. 오디오는 {formats}을(를) 지원합니다.} other {지원하지 않는 형식입니다.}}",
         "empty": "아무것도 받지 못했습니다.",
-        "internal": "저희 쪽에서 문제가 생겼습니다. 다시 시도해 주세요."
+        "internal": "저희 쪽에서 문제가 생겼습니다. 다시 시도해 주세요.",
+        "no_credits": "사용할 수 있는 크레딧이 없습니다.",
+        "declined": "모델이 이 요청을 거부했습니다.",
+        "media_refused": "모델이 이 파일을 받지 않았습니다."
       }
     }
   },
@@ -636,8 +799,8 @@
       "signUp": "회원가입",
       "noAccount": "계정이 없으신가요?",
       "forgotPassword": "비밀번호를 잊으셨나요?",
-      "continueWithGoogle": "Google로 계속하기",
-      "googleSoon": "Google 로그인은 곧 제공될 예정입니다.",
+      "googleLoading": "Google 로그인 불러오는 중…",
+      "googleFailed": "Google 로그인을 사용할 수 없습니다. 다시 시도하거나 이메일로 로그인하세요.",
       "failed": "로그인에 실패했습니다. 다시 시도해 주세요."
     },
     "register": {
@@ -755,6 +918,14 @@
         "create": "Space를 생성하는 중…"
       },
       "noActive": "열려 있는 Spaces가 없습니다 — 드로어에서 열거나 + 를 클릭하여 새로 만드세요."
+    },
+    "update": {
+      "available": "새 버전",
+      "title": "새 버전을 사용할 수 있습니다",
+      "description": "새로고침하면 새 버전을 사용할 수 있습니다.",
+      "busy": "업로드 또는 다른 작업이 진행 중입니다. 새로고침하면 중단되므로 완료될 때까지 기다리는 것이 좋습니다.",
+      "later": "나중에",
+      "refresh": "업데이트"
     }
   },
   "common": {
@@ -1057,12 +1228,16 @@
       "studioTransferApproved": "{actor}님이 {studio}의 Admin 이전을 수락했습니다",
       "projectTransferRequest": "{actor}님이 {project} 인수를 요청했습니다",
       "projectTransferApproved": "{actor}님이 {project}의 소유권 이전을 수락했습니다",
+      "projectJoinRequest": "{actor}님이 {project} 참여를 요청했습니다",
+      "projectJoinApproved": "{actor}님이 {project} 참여를 승인했습니다",
+      "projectJoinRejected": "{actor}님이 {project} 참여 요청을 승인하지 않았습니다",
       "studioInviteRequest": "{actor}님이 {studio}에 초대했습니다",
       "studioInviteAccepted": "{actor}님이 {studio} 초대를 수락했습니다",
       "projectInviteRequest": "{actor}님이 {project}에 초대했습니다",
       "projectInviteAccepted": "{actor}님이 {project} 초대를 수락했습니다",
       "membershipEnded": "{tier} 멤버십이 종료되었습니다",
-      "membershipUpgradeIncomplete": "{tier} 업그레이드가 완료되지 않았습니다",
+      "membershipUpgradeIncomplete": "{tier} {period}(으)로 변경하는 결제가 완료되지 않았습니다",
+      "membershipUpgradeIncompleteNoPeriod": "{tier}(으)로 변경하는 결제가 완료되지 않았습니다",
       "storageQuotaExceeded": "저장 공간이 가득 찼습니다"
     },
     "actorFallback": "누군가",
@@ -1124,6 +1299,7 @@
       "account": "계정",
       "signOut": "로그아웃",
       "credits": "크레딧",
+      "creditsUnavailable": "불러올 수 없음",
       "membership": "멤버십",
       "accountSettings": "계정 설정"
     },
@@ -1371,12 +1547,25 @@
       "agentColumnWidth": "에이전트 패널 너비 조정",
       "language": "언어: {name}",
       "theme": "테마: {theme}"
-    }
+    },
+    "languageNotSaved": "언어를 계정에 저장하지 못했습니다"
   },
-  "noAccess": {
-    "title": "이 Project에 대한 접근 권한이 없습니다",
-    "description": "Project Owner에게 연락하여 접근을 요청해 주세요. 이메일로 초대해 줄 수 있습니다.",
-    "backToStudio": "Studio로 돌아가기"
+  "projectJoin": {
+    "title": "이 Project의 멤버가 아닙니다",
+    "body": "{project}에 들어가려면 Owner의 승인이 필요합니다.",
+    "messageLabel": "Owner에게 메시지 (선택)",
+    "messagePlaceholder": "참여하려는 이유",
+    "cancel": "취소",
+    "request": "참여 요청",
+    "sentTitle": "요청을 보냈습니다",
+    "sentBody": "Owner가 승인하면 알림을 받습니다.",
+    "ok": "확인",
+    "pendingTitle": "승인 대기 중",
+    "pendingBody": "{date}에 {project} 참여를 요청했습니다. Owner가 아직 처리하지 않았습니다.",
+    "withdraw": "요청 철회",
+    "requestFailed": "요청을 보내지 못했습니다. 다시 시도하세요.",
+    "withdrawFailed": "철회하지 못했습니다. 다시 시도하세요.",
+    "loadFailed": "이 Project를 열지 못했습니다. 다시 시도하세요."
   },
   "activity": {
     "description": "업로드, 생성, Space 및 멤버 변경",
@@ -1425,11 +1614,20 @@
   "decision": {
     "loadingTitle": "요청을 여는 중…",
     "loadingBody": "잠시만 기다려 주세요.",
-    "title": "{kind, select, studio_invite {Studio 초대를 받았습니다} project_invite {Project 초대를 받았습니다} role_upgrade {누군가 더 높은 역할을 요청했습니다} project_transfer {Project를 넘겨받도록 요청받았습니다} studio_transfer {Studio를 넘겨받도록 요청받았습니다} other {답변이 필요한 일이 있습니다}}",
-    "body": "{kind, select, studio_invite {{actor} 님이 {entity}에 {role, select, maintainer {Maintainer} guest {Guest} other {Member}}(으)로 초대했습니다.} project_invite {{actor} 님이 {entity}에 {role, select, editor {Editor} viewer {Viewer} other {Member}}(으)로 초대했습니다.} role_upgrade {{actor} 님이 {entity}에서 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}(이)가 되기를 요청했습니다.} project_transfer {{actor} 님이 {entity}의 Owner를 넘기려고 합니다.} studio_transfer {{actor} 님이 {entity}의 Admin을 맡기려고 합니다.} other {{actor} 님이 {entity}에 대한 답변을 기다리고 있습니다.}}",
+    "title": "{kind, select, studio_invite {Studio 초대를 받았습니다} project_invite {Project 초대를 받았습니다} role_upgrade {누군가 더 높은 역할을 요청했습니다} project_join {참여 요청} project_transfer {Project를 넘겨받도록 요청받았습니다} studio_transfer {Studio를 넘겨받도록 요청받았습니다} other {답변이 필요한 일이 있습니다}}",
+    "body": "{kind, select, studio_invite {{actor} 님이 {entity}에 {role, select, maintainer {Maintainer} guest {Guest} other {Member}}(으)로 초대했습니다.} project_invite {{actor} 님이 {entity}에 {role, select, editor {Editor} viewer {Viewer} other {Member}}(으)로 초대했습니다.} role_upgrade {{actor} 님이 {entity}에서 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}(이)가 되기를 요청했습니다.} project_join {{actor}님이 {entity} 참여를 요청했습니다.} project_transfer {{actor} 님이 {entity}의 Owner를 넘기려고 합니다.} studio_transfer {{actor} 님이 {entity}의 Admin을 맡기려고 합니다.} other {{actor} 님이 {entity}에 대한 답변을 기다리고 있습니다.}}",
     "reason": "남긴 말: {message}",
-    "confirm": "{kind, select, role_upgrade {승인} other {수락}}",
-    "decline": "{kind, select, role_upgrade {거절} other {거절}}",
+    "confirm": "{kind, select, role_upgrade {승인} project_join {승인} other {수락}}",
+    "decline": "{kind, select, role_upgrade {거절} project_join {거절} other {거절}}",
+    "grantRole": "역할",
+    "field": {
+      "requester": "요청자",
+      "project": "Project",
+      "message": "메시지",
+      "expires": "유효 기간"
+    },
+    "expiresBefore": "{date}까지",
+    "actorWithHandle": "{name} (@{handle})",
     "windowNote": "이 요청은 {days}일 이내에 답변할 수 있었습니다.",
     "acceptedTitle": "이미 수락했습니다",
     "acceptedBody": "여기서 더 할 일은 없습니다.",
@@ -1458,8 +1656,9 @@
     "panelTitle": "멤버십",
     "close": "닫기",
     "currentTier": "현재 멤버십",
+    "chooseTier": "멤버십 선택",
     "tier": {
-      "base": "Base",
+      "base": "Starter",
       "pro": "PRO",
       "team": "Team",
       "self_hosted": "자체 호스팅",
@@ -1488,7 +1687,6 @@
     },
     "enterpriseQuota": "사용 한도는 별도 계약으로 정해져 있어 여기에 표시되지 않습니다.",
     "compare": "등급 비교",
-    "monthlyFee": "월 요금",
     "contactEnterprise": "더 큰 규모나 별도의 상업 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactSelfHosted": "상업용 라이선스나 별도의 지원 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactEnterpriseAccount": "사용 한도에 대해 궁금하거나 조정이 필요하신가요? 메일로 문의해 주세요:",
@@ -1504,11 +1702,37 @@
     "resume": "멤버십 재개",
     "notice": {
       "firstPaymentPending": "결제가 완료되지 않았습니다",
-      "upgradePending": "업그레이드 결제가 완료되지 않았습니다",
-      "paymentOverdue": "이번 달 결제가 이루어지지 않았습니다"
+      "upgradePending": "변경 건의 결제가 완료되지 않았습니다",
+      "paymentOverdue": "결제가 완료되지 않았습니다"
+    },
+    "checkout": {
+      "done": "{plan} 이(가) 활성화되었습니다",
+      "processing": "결제를 처리하고 있습니다",
+      "failed": "멤버십이 활성화되지 않았습니다"
     },
     "payNow": "결제하기",
-    "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요."
+    "actionFailed": "처리하지 못했습니다. 다시 시도해 주세요.",
+    "period": {
+      "month": "월간",
+      "year": "연간"
+    },
+    "saveTwoMonths": "12개월을 10개월 가격에",
+    "yearSaving": "연간 결제 시 약 {percent}% 절약",
+    "tierWithPeriod": "{tier} · {period}",
+    "priceSuffix": {
+      "month": "{amount} / 월",
+      "year": "{amount} / 년"
+    },
+    "priceOnRequest": "협의",
+    "contactSales": "문의하기",
+    "card": {
+      "storage": "저장 공간 {value}",
+      "teamStudios": "{count, plural, =0 {팀 Studio 없음} other {팀 Studio #개}}",
+      "connections": "{count, plural, other {문서당 연결 #개}}",
+      "enterpriseScale": "용량은 협의로 결정",
+      "enterpriseGovernance": "SSO, 감사, 지식재산 보증"
+    },
+    "noCreditsIncluded": "멤버십에는 생성 크레딧이 포함되지 않습니다. 크레딧은 별도로 구매합니다."
   },
   "credits": {
     "panelTitle": "크레딧",
@@ -1524,13 +1748,20 @@
     },
     "section": {
       "overview": "개요",
-      "lots": "구매 내역",
+      "lots": "획득 내역",
       "ledger": "사용 내역",
       "studios": "Studio 별",
       "buy": "크레딧 구매",
       "assign": "지정",
       "refunds": "환불"
     },
+    "source": {
+      "payment": "충전",
+      "gift": "체험 크레딧",
+      "compensation": "보상",
+      "discount": "할인"
+    },
+    "pinnedToPersonalStudio": "개인 Studio에서만 사용",
     "lifecycle": {
       "depleted": "모두 사용함",
       "refund_pending": "심사 중",
@@ -1554,8 +1785,8 @@
     },
     "lotsEmpty": "구매 내역이 아직 없습니다.",
     "lotsEmptyNotice": {
-      "title": "모든 구매가 여기에 표시됩니다",
-      "body": "각 구매의 금액, 처리 상태, 크레딧이 지정된 Studio를 확인할 수 있습니다."
+      "title": "크레딧을 어떻게 얻었는지 여기에 표시됩니다",
+      "body": "구매한 것과 지급받은 것 모두, 출처와 금액, 처리 상태, 어느 Studio에 배정했는지를 보여줍니다."
     },
     "assignedTo": "{studio}에 지정",
     "ofPurchased": "총 {amount}",
@@ -1587,13 +1818,10 @@
       "body": "충전 한 건은 Studio 하나에 통째로 지정하며, 언제든 바꿀 수 있습니다."
     },
     "assignNote": "목록에는 본인이 Admin인 Studio만 나옵니다. 바꾸면 원래 Studio는 그 즉시 이 크레딧을 잃습니다.",
-    "remaining": "{amount} 크레딧 남음",
     "designationFor": "{amount} 충전의 지정 대상",
     "designateFailed": "저장하지 못했습니다. 다시 시도해 주세요.",
     "refundsEmpty": "아직 크레딧 패키지를 구매하지 않았습니다",
     "askRefund": "환불 신청",
-    "refundPendingHint": "{credits} 크레딧 · 심사 중에는 Studio에 지정할 수 없습니다",
-    "refundingHint": "{credits} 크레딧 · 환불 처리 중에는 Studio에 지정할 수 없습니다",
     "refundTitle": "환불 규정",
     "buy": {
       "taxNotice": "표시 가격은 세금이 포함되지 않습니다. 결제 금액은 표시 가격에 거주 지역의 세액을 더한 금액이며, 결제 페이지에 최종 금액이 표시됩니다.",
@@ -1638,9 +1866,16 @@
       "expired": "30일 경과"
     },
     "refundHint": {
-      "assigned": "{credits} 크레딧 남음 · 지정을 해제하면 환불을 신청할 수 있습니다",
-      "depleted": "총 {credits} 크레딧",
-      "refunded": "원래 결제 수단으로 환불됨"
+      "assigned": "지정을 해제하면 환불을 신청할 수 있습니다"
     }
+  },
+  "notFound": {
+    "heading": "페이지를 찾을 수 없습니다",
+    "body": "찾으시는 페이지가 존재하지 않거나 이동되었습니다. 홈으로 돌아가 다시 시작해 보세요.",
+    "cta": "홈으로 돌아가기"
+  },
+  "pageLoadError": {
+    "message": "페이지를 불러오지 못했습니다. 다시 시도해 주세요.",
+    "retry": "다시 시도"
   }
 }

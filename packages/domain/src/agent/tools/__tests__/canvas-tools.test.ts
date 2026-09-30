@@ -19,8 +19,8 @@ import {
 import {
   generationModels,
   renderGenerationModelsForModel,
+  type PricedModelsForMode,
 } from "@domain/agent/tools/generation-models.js";
-import type { ModelsForMode } from "@domain/model-catalog/mode-catalog.js";
 import {
   allProviderKeyNames,
   restoreProcessEnv,
@@ -46,6 +46,26 @@ async function run<T>(canvasTool: unknown, input: unknown): Promise<T> {
   const execute = (canvasTool as { execute: (i: unknown, o: object) => Promise<T> })
     .execute;
   return execute(input, {});
+}
+
+/**
+ * One model with a parameter no panel control reaches.
+ * @returns The answer the tool would give for it.
+ */
+function withUnreachableSeed(): PricedModelsForMode {
+  return {
+    available: true,
+    models: [
+      {
+        name: "fixture-model",
+        displayName: "Fixture Model",
+        what: "A fixture.",
+        seconds: 60,
+        takesPrompt: true,
+        params: { seed: { noControl: true, default: 7, what: "Random seed" } },
+      },
+    ],
+  };
 }
 
 describe("get_canvas_capabilities", () => {
@@ -86,9 +106,63 @@ describe("get_canvas_capabilities", () => {
   });
 });
 
+// A proposal decides how many nodes to lay down and which of them hold words
+// rather than generate, and that decision needs the text node's part in a
+// flow. The modes list answers what can be generated, so the one thing it says
+// about text nodes today is that they are absent from it — which leaves the
+// model to guess what mentioning one does.
+describe("what get_canvas_capabilities says about text nodes", () => {
+  /**
+   * The rendered answer for the live catalog.
+   * @returns What the model reads.
+   */
+  async function rendered(): Promise<string> {
+    return renderCapabilitiesForModel(
+      await run<CanvasCapabilityAnswer>(canvasCapabilities, {}),
+    );
+  }
+
+  it("states both halves of what a mention does", async () => {
+    // `serializePromptText` swaps a text mention for that node's words;
+    // `mentionedReferenceUrls` takes an image node's url as reference
+    // material. Those are the two outcomes, and the answer names both.
+    const text = await rendered();
+    expect(text).toContain("puts that node's words into the prompt");
+    expect(text).toContain("as reference material");
+  });
+
+  it("says a mention names the node rather than copying it", async () => {
+    // Both paths read the node at submit time, so editing the node changes
+    // what every mention of it sends. A model that reads a mention as a
+    // snapshot writes the words into the prompt a second time instead.
+    expect(await rendered()).toContain("at the moment the reader presses Generate");
+  });
+
+  it("says one text node can be mentioned by several nodes downstream", async () => {
+    expect(await rendered()).toContain("mentioned by several nodes downstream");
+  });
+
+  it("names the three things a text node carries", async () => {
+    // The reader keeps one, the flow is described by another, and the third is
+    // the prompt fragment the nodes downstream mention.
+    const text = await rendered();
+    expect(text).toContain("a finished piece of writing");
+    expect(text).toContain("what a group of nodes is for");
+    expect(text).toContain("a shared prompt fragment");
+  });
+
+  it("says it even when nothing on this canvas can generate", () => {
+    // A deployment that reaches no model still lays down text nodes, so the
+    // sentence naming that has to carry this alongside it.
+    const text = renderCapabilitiesForModel({ nodes: [] });
+    expect(text).toContain("cannot generate anything right now");
+    expect(text).toContain("puts that node's words into the prompt");
+  });
+});
+
 describe("list_generation_models", () => {
   it("answers with the models behind one mode", async () => {
-    const answer = await run<ModelsForMode>(generationModels, {
+    const answer = await run<PricedModelsForMode>(generationModels, {
       nodeType: "image",
       mode: "t2i",
     });
@@ -98,7 +172,7 @@ describe("list_generation_models", () => {
   });
 
   it("puts the model names and parameters in front of the model", async () => {
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
     const rendered = renderGenerationModelsForModel(answer);
     if (!answer.available) throw new Error("t2i has models");
     for (const model of answer.models) expect(rendered).toContain(model.name);
@@ -106,7 +180,7 @@ describe("list_generation_models", () => {
   });
 
   it("says what the node does offer when asked for a mode it does not", async () => {
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "upscale" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "upscale" });
     const rendered = renderGenerationModelsForModel(answer);
     expect(rendered).toContain("t2i");
   });
@@ -131,15 +205,40 @@ describe("list_generation_models", () => {
 });
 
 describe("what the rendered answer tells the model", () => {
-  it("prices a usage-billed model by its rate", async () => {
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "sfx" });
-    const rendered = renderGenerationModelsForModel(answer);
-    // The flat number on these is the balance floor, not the price.
-    expect(rendered).toMatch(/per \d+ seconds/);
+  it("prices a model by its contract at its defaults", async () => {
+    // Gemini Omni text-to-video: $0.10 a second, 8 seconds at 720p by default.
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /\(gemini-omni-1\.1-flash-text-to-video\) \(80 credits at its defaults, up to 600s\)/,
+    );
+  });
+
+  // GPT Image 2.5 Sunburst Edit: $0.039 for one image to edit at its defaults,
+  // and the run cannot go without one. Part-credits are charged, so they show.
+  it("prices a required source not picked yet at one item, part-credits kept", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /\(gpt-image-2\.5-sunburst-edit\) \(at least 3\.9 credits at its defaults/,
+    );
+  });
+
+  // Kling O3 image-to-video takes pictures two ways: its first frame in a slot
+  // and elements from the pool. Which wired picture goes where is decided by
+  // the order the nodes are listed, so the answer says so.
+  it("says which wired node fills a slot the pool shares a kind with", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(
+      /\(kling-video-o3-4k-image-to-video\)[^\n]*The first image node wired in fills its image slot; later ones go to its pool\./,
+    );
+  });
+
+  it("prices a per-character model per thousand characters while it has no text", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(/credits per 1000 characters of prompt/);
   });
 
   it("says when a model takes no prompt", async () => {
-    const answer = await run<ModelsForMode>(generationModels, {
+    const answer = await run<PricedModelsForMode>(generationModels, {
       nodeType: "video",
       mode: "talking_head",
     });
@@ -149,12 +248,12 @@ describe("what the rendered answer tells the model", () => {
   it("names a parameter's declared type", async () => {
     // Stated on the slot's own line: every param the catalog gives a type to
     // is a slot, so a type clause reserved for settable fields renders never.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     expect(renderGenerationModelsForModel(answer)).toMatch(/images:[^\n]*a list/);
   });
 
   it("says a voice parameter's values come from elsewhere", async () => {
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
     const rendered = renderGenerationModelsForModel(answer);
     // Asserted on the parameter's own line: the word "voices" also appears in
     // one model's prose, so a bare substring passes with the branch deleted.
@@ -164,7 +263,7 @@ describe("what the rendered answer tells the model", () => {
   it("lists what the picker lists for a range it walks", async () => {
     // The picker walks an unstepped range one whole step at a time, so the
     // two ends alone would have a reader ask for a value in between.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
       /duration: one of 3 \| 4 \| 5[^\n]*\| 15;/,
     );
@@ -172,29 +271,9 @@ describe("what the rendered answer tells the model", () => {
 
   it("states a stepped range by its bounds and step", async () => {
     // A slider, where the ends and the step say more than walking it would.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
       /stability: 0 to 1 in steps of 0.05;/,
-    );
-  });
-
-  it("says a control the panel mounts on a slot waits for that slot", async () => {
-    // The switch describes the reference clip's audio, so the panel mounts it
-    // only once a clip is picked -- and this mode runs without one. Stated as
-    // a plain settable field, a reader is told to set a switch that is not
-    // on screen.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(
-      /keep_original_sound:[^\n]*once video is filled/,
-    );
-  });
-
-  it("says a control the panel drops on a switch waits for that switch", async () => {
-    // The lyrics box is gone while the track is marked instrumental, so a
-    // reader told to write words has nowhere to write them.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "t2m" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(
-      /lyrics:[^\n]*while is_instrumental is on/,
     );
   });
 
@@ -202,20 +281,20 @@ describe("what the rendered answer tells the model", () => {
     // The four camera controls are drawn whatever the switch says, and the run
     // throws their values away while it is off -- so the default this states
     // is not what the run takes.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
       /camera:[^\n]*only while enable_camera is on/,
     );
   });
 
-  it("says a voice has to be picked rather than quoting a default", async () => {
-    // The panel refuses the submit until one is chosen, so the yaml default is
-    // never what the run takes -- and it is a vendor id nobody can read.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
+  it("says a voice stands on the first of its list rather than quoting the yaml default", async () => {
+    // The panel sends the list's first voice until the reader picks one, so the
+    // yaml default is never what the run takes.
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
     const rendered = renderGenerationModelsForModel(answer);
-    expect(rendered).toMatch(/voice_id:[^\n]*pick one in the panel/);
-    expect(rendered, "the raw vendor id says nothing to a reader").not.toContain(
-      "Xb7hH8MSUJpSbSDYk0k2",
+    expect(rendered).toMatch(/voice_id:[^\n]*defaults to the first entry of that list/);
+    expect(rendered, "no voice line quotes a yaml default").not.toMatch(
+      /voice_id:[^\n]*(Dennis|Alicia)/,
     );
   });
 
@@ -223,7 +302,7 @@ describe("what the rendered answer tells the model", () => {
     // Reference-to-music takes lyrics on every run: the model behind it
     // declares no instrumental switch, so a clause about one sends the reader
     // looking for a control the panel never draws.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "a2m" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "a2m" });
     const rendered = renderGenerationModelsForModel(answer);
     expect(rendered).toMatch(/lyrics:/);
     expect(rendered, "no switch takes the lyrics box away here").not.toMatch(
@@ -235,24 +314,25 @@ describe("what the rendered answer tells the model", () => {
     // What a model is good at is written once for the whole entry, so an
     // entry serving two modes says things about the other one. Naming that
     // mode is what lets a reader place the sentence it belongs to.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(/also serves first_last/i);
   });
 
   it("states the generation time as the ceiling the catalog measures", async () => {
     // Every catalog file heads the field "worst case". Called "about", a model
     // whose own guide says it is quick reads as two timings five times apart.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(/\(4 credits, up to 20s\)/);
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(/credits at its defaults, up to 120s\)/);
   });
 
   it("names the parameters nothing here can reach, beside what it is for", async () => {
     // A reader picks a model off the head line. A capability sold there whose
     // parameter has no control is one they cannot take, and the per-parameter
     // lines saying so are read after the choice is already made.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(
-      /Nothing here reaches:[^\n]*negative_prompt/,
+    // No model a panel reaches declares such a parameter today, so the answer
+    // is built by hand: this is the rendering, not the catalog.
+    expect(renderGenerationModelsForModel(withUnreachableSeed())).toMatch(
+      /Nothing here reaches: seed\./,
     );
   });
 
@@ -264,7 +344,7 @@ describe("what the rendered answer tells the model", () => {
     // a run with no source; told to type the name instead of choosing, they get
     // no mention at all, and a name with a space in it closes the list as they
     // type it. Anchored to the line, since "style_images:" ends in this name.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     const rendered = renderGenerationModelsForModel(answer);
     expect(rendered).toMatch(/^ *images:.*draw an edge/m);
     expect(rendered).toMatch(/^ *images:.*type @/m);
@@ -272,14 +352,13 @@ describe("what the rendered answer tells the model", () => {
   });
 
   it("says when the panel draws no control for a parameter", async () => {
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(
-      /seed: this panel draws no control for it; the run takes/,
+    expect(renderGenerationModelsForModel(withUnreachableSeed())).toMatch(
+      /seed: this panel draws no control for it; the run takes 7/,
     );
   });
 
   it("names the model the way the picker names it", async () => {
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
     const rendered = renderGenerationModelsForModel(answer);
     if (!answer.available) throw new Error("t2i has models");
     // Asserted on the head line rather than as a substring: a display name
@@ -296,7 +375,7 @@ describe("what the rendered answer tells the model", () => {
   });
 
   it("marks the parameters a wired node fills", async () => {
-    const answer = await run<ModelsForMode>(generationModels, {
+    const answer = await run<PricedModelsForMode>(generationModels, {
       nodeType: "video",
       mode: "talking_head",
     });
@@ -307,30 +386,21 @@ describe("what the rendered answer tells the model", () => {
   });
 
   it("states how much prompt a capped model takes", async () => {
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "audio", mode: "tts" });
     expect(renderGenerationModelsForModel(answer)).toMatch(/5000 characters/);
   });
 
   it("states a list cap whatever else the parameter declares", async () => {
     // The cap belongs to the parameter, not to one of the shapes it can take:
     // a reference list states both its type and how many it holds.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(/images:[^\n]*at most 7/);
-  });
-
-  it("states a cap that tightens when another slot is filled", async () => {
-    // The reference list takes fewer when a reference video is picked, and
-    // both the panel and the server enforce the tighter number.
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(
-      /images:[^\n]*at most 7[^\n]*4 when video is set/,
-    );
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
+    expect(renderGenerationModelsForModel(answer)).toMatch(/images:[^\n]*a list;[^\n]*at most 9/);
   });
 
   it("says a source slot is filled from the canvas rather than by wiring", async () => {
     // Drawing an edge fills none of these: a slot is picked by clicking a
     // node, and following an instruction to wire one leaves the slot empty.
-    const answer = await run<ModelsForMode>(generationModels, {
+    const answer = await run<PricedModelsForMode>(generationModels, {
       nodeType: "video",
       mode: "talking_head",
     });
@@ -340,10 +410,15 @@ describe("what the rendered answer tells the model", () => {
   });
 
   it("marks an optional source slot the same as a required one", async () => {
-    const answer = await run<ModelsForMode>(generationModels, { nodeType: "video", mode: "ref" });
-    expect(renderGenerationModelsForModel(answer)).toMatch(
-      /video:[^\n]*another node on the canvas/,
-    );
+    // LTX 2.3 Lipsync can invent its speaker, so its image slot is optional.
+    const answer = await run<PricedModelsForMode>(generationModels, {
+      nodeType: "video",
+      mode: "talking_head",
+    });
+    const ltx = renderGenerationModelsForModel(answer)
+      .split("\n- ")
+      .find((block) => block.includes("(ltx-2.3-lipsync)"));
+    expect(ltx).toMatch(/image:[^\n]*another node on the canvas/);
   });
 });
 
@@ -362,7 +437,7 @@ describe("what the running turn reads", () => {
       { nodeType: "image", mode: "t2i" },
       async (): Promise<string> =>
         renderGenerationModelsForModel(
-          await run<ModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" }),
+          await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" }),
         ),
     ],
   ])(

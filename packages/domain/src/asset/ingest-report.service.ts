@@ -171,6 +171,10 @@ interface RegisteredMedia {
   width: number | null;
   height: number | null;
   durationSeconds: number | null;
+  /** What the ledger judged this file to be, off the bytes that landed. */
+  mimeType: string | null;
+  /** What the ledger counted the bytes at. */
+  sizeBytes: number | null;
 }
 
 /** What the report handler decided, for the route to answer with. */
@@ -245,6 +249,10 @@ interface SettledAsset {
   width: number | null;
   height: number | null;
   durationSeconds: number | null;
+  /** What the ledger judged this file to be, off the bytes that landed. */
+  mimeType: string | null;
+  /** What the ledger counted the bytes at. */
+  sizeBytes: number | null;
 }
 
 /**
@@ -270,6 +278,8 @@ async function announceSuccess(
       width: settled.width,
       height: settled.height,
       duration: settled.durationSeconds,
+      mimeType: settled.mimeType,
+      size: settled.sizeBytes,
     },
   });
 }
@@ -554,6 +564,8 @@ export async function applyIngestReport(
       width: existing.width,
       height: existing.height,
       durationSeconds: existing.durationSeconds,
+      mimeType: existing.mimeType,
+      sizeBytes: existing.sizeBytes,
     });
     return {
       status: "already_registered",
@@ -564,6 +576,8 @@ export async function applyIngestReport(
       width: existing.width,
       height: existing.height,
       durationSeconds: existing.durationSeconds,
+      mimeType: existing.mimeType,
+      sizeBytes: existing.sizeBytes,
       ...(countsPublishFailed && { countsPublishFailed }),
     };
   }
@@ -715,6 +729,8 @@ export async function applyIngestReport(
       width: asset.width,
       height: asset.height,
       durationSeconds: asset.durationSeconds,
+      mimeType: asset.mimeType,
+      sizeBytes: asset.sizeBytes,
     },
     historyEntryId,
   );
@@ -737,6 +753,8 @@ export async function applyIngestReport(
     width: asset.width,
     height: asset.height,
     durationSeconds: asset.durationSeconds,
+    mimeType: asset.mimeType,
+    sizeBytes: asset.sizeBytes,
     ...(countsPublishFailed && { countsPublishFailed }),
     ...(reclaimUnrecorded && { reclaimQueueFailed: reclaimUnrecorded }),
     ...(activityAppendFailed && { activityAppendFailed }),

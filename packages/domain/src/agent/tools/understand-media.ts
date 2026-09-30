@@ -21,28 +21,17 @@ import { z } from "zod";
 import { getAgentConfig, getRawEnvVar } from "@breatic/core";
 import { FAILURE_LINES } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed } from "@domain/agent/tools/failure.js";
+import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
+import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import {
   AUDIO_FORMAT_NAMES,
   IMAGE_FORMAT_NAMES,
   MediaUnavailable,
+  UNDERSTAND_PINS,
   understandMediaAt,
   UnderstandRefused,
   VIDEO_FORMAT_NAMES,
 } from "@domain/understand/index.js";
-
-/**
- * The model this tool asks, and the backend it pins.
- *
- * Both are fixed here rather than configured: they are what every measurement
- * behind this tool was taken against. The backend matters on its own — the two
- * that serve this model take different body sizes, and leaving the choice to
- * the service means a clip that worked yesterday is refused today.
- */
-const MODEL = "google/gemini-3.8-flash";
-const BACKEND = "google-vertex";
-
-/** Where the service lives. */
-const BASE_URL = "https://openrouter.ai/api/v1";
 
 /** What the model may ask this tool to look at. */
 const inputSchema = z.object({
@@ -233,7 +222,7 @@ const STOPPED_SHORT: Readonly<Record<string, string>> = {
  * everyone else.
  * @returns The tool.
  */
-export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string> {
+export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string, UsageContext> {
   // Whether this turn already has one of these in the air. The model gets one
   // address per call, so a message carrying several files becomes several
   // calls in one step, and `ai@7.0.68` runs every tool call of a step through
@@ -258,12 +247,27 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
       "question about it. Give one address at a time, and wait for the answer before asking " +
       "about the next one.",
     inputSchema,
+    contextSchema: usageContextSchema,
     // What the panel reads about a running call, resolved by the web package.
     metadata: { runningLine: "chat.tool.understanding" },
     execute: async (
       { url, question },
-      { abortSignal }: { abortSignal?: AbortSignal },
+      { abortSignal, context }: { abortSignal?: AbortSignal; context: UsageContext },
     ): Promise<string> => {
+      /**
+       * Record one billed call.
+       * @param costUsd - What the service said it charged, when it said.
+       */
+      const recordBilled = (costUsd: number | undefined): void => {
+        context.usage.recordServiceCall({
+          source: "tool:understand_media",
+          service: UNDERSTAND_PINS.model,
+          provider: "openrouter",
+          requests: 1,
+          ...(costUsd === undefined ? {} : { costUsd }),
+        });
+      };
+
       const config = getAgentConfig();
       const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
       if (!apiKey) {
@@ -299,12 +303,13 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
           minBytesPerSec: config.understand_media_min_bytes_per_sec,
           readFloorMs: config.understand_media_read_floor_ms,
           timeoutMs: config.understand_media_call_timeout_ms,
-          model: MODEL,
-          backend: BACKEND,
+          model: UNDERSTAND_PINS.model,
+          backend: UNDERSTAND_PINS.backend,
           apiKey,
-          baseUrl: BASE_URL,
+          baseUrl: UNDERSTAND_PINS.baseUrl,
           maxOutputTokens: config.understand_media_max_output_tokens,
           ...(abortSignal ? { signal: abortSignal } : {}),
+          onBilled: recordBilled,
         });
       } catch (err) {
         if (isStop(err, abortSignal)) throw stoppedByUser();

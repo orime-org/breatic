@@ -3,7 +3,7 @@
 
 import { USER_LOOKUP_MAX_IDS } from '@breatic/shared';
 
-import { apiGet } from '@web/data/api/request';
+import { apiGet, apiPatch } from '@web/data/api/request';
 
 export interface UserSummary {
   id: string;
@@ -41,6 +41,15 @@ function toUserSummary(row: RawUserRow): UserSummary {
 }
 
 export const usersApi = {
+  /**
+   * Record the account's language, which later emails are written in.
+   * @param locale - One of the shipped locale codes.
+   * @returns The language now stored.
+   * @throws {ApiException} When the request fails or the server returns an error envelope.
+   */
+  setLocale(locale: string): Promise<{ locale: string }> {
+    return apiPatch<{ locale: string }>('/users/me/locale', { locale });
+  },
   search(query: string) {
     return apiGet<{ users: UserSummary[] }>('/users', { params: { q: query } });
   },

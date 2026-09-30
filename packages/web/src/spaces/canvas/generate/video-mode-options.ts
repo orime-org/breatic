@@ -62,21 +62,19 @@ export const VIDEO_MODE_OPTIONS: ReadonlyArray<VideoModeOption> = [
     value: 'ref',
     label: 'Reference to Video',
     testId: 'generate-video-mode-ref',
-    // The first mode taking both kinds at once: its reference images come from
-    // the rail, and the one video the vendor reads for motion guidance is a
-    // slot, because it is a single asset with a role rather than something the
-    // prompt refers to. Optional, so the panel runs on the images alone.
-    slots: ['referenceVideo'],
+    // Every source comes from the rail: the pictures, clips and tracks the
+    // model's pool takes, each named with `@` in the prompt (#2156).
+    slots: [],
   },
   {
     value: 'talking_head',
     label: 'Talking Head',
     testId: 'generate-video-mode-talking-head',
     // The character image is the same slot image animation collects: both
-    // modes want one picture of a person, and a slot shared across modes is
-    // how the first frame already works. The driving audio is the first slot
-    // in this panel that takes an audio node.
-    slots: ['characterImage', 'drivingAudio'],
+    // modes want one picture of a person. The models under this mode collect
+    // different sets — a portrait, a clip whose lips are redone, or two
+    // speakers' tracks — and each draws only the ones it declares.
+    slots: ['characterImage', 'sourceVideo', 'drivingAudio', 'leftAudio', 'rightAudio'],
   },
 ];
 

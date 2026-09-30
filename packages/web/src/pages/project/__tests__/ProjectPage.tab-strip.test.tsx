@@ -379,7 +379,7 @@ describe('ProjectPage — the strip the browser was holding', () => {
     });
   });
 
-  it('opens on the stored strip, in its order, on the stored tab', () => {
+  it('opens on the stored strip, in its order, on the stored tab', async () => {
     window.localStorage.setItem(
       KEY,
       JSON.stringify({
@@ -395,11 +395,11 @@ describe('ProjectPage — the strip the browser was holding', () => {
       }),
     );
     setup();
-    expect(shownOrder()).toEqual([SPACE_B, SPACE_A]);
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_B, SPACE_A]));
     expect(barProps.current?.activeSpaceId).toBe(SPACE_A);
   });
 
-  it('reads only the entry of the account that is signed in', () => {
+  it('reads only the entry of the account that is signed in', async () => {
     window.localStorage.setItem(
       KEY,
       JSON.stringify({
@@ -413,7 +413,7 @@ describe('ProjectPage — the strip the browser was holding', () => {
     );
     setup();
     // The landing rule, not the other account's strip.
-    expect(shownOrder()).toEqual([SPACE_C]);
+    await waitFor(() => expect(shownOrder()).toEqual([SPACE_C]));
   });
 
   it('stores the strip the reader is left with after closing a tab', async () => {

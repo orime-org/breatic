@@ -47,6 +47,13 @@ export interface DedupHit {
   width: number | null;
   height: number | null;
   durationSeconds: number | null;
+  /**
+   * What the ledger judged the row to be, and counted its bytes at. The canvas
+   * gates Understand on both, so a node this hit puts content on needs them
+   * for the same reason it needs the numbers above.
+   */
+  mimeType: string | null;
+  sizeBytes: number | null;
 }
 
 /**
@@ -83,6 +90,8 @@ export async function checkUploadDedup(params: {
     width: existing.width,
     height: existing.height,
     durationSeconds: existing.durationSeconds,
+    mimeType: existing.mimeType,
+    sizeBytes: existing.sizeBytes,
   };
 }
 
@@ -189,6 +198,8 @@ export async function settleDedupHit(params: {
       width: params.hit.width,
       height: params.hit.height,
       duration: params.hit.durationSeconds,
+      mimeType: params.hit.mimeType,
+      size: params.hit.sizeBytes,
     },
   );
 }

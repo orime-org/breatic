@@ -68,13 +68,3 @@ skills:
     surfaces: [chat]
     user_invocable: true
     model_invocable: true
-
-  # ── Canvas-side ───────────────────────────────────────────
-  # The only skill on two surfaces, and the only one the model may not reach
-  # for on its own: it runs from a node's action button, so the user picks it.
-  # That last fact used to live in the skill's description as prose the model
-  # read and no code could act on.
-  vision_analyze:
-    surfaces: [chat, canvas]
-    user_invocable: true
-    model_invocable: false

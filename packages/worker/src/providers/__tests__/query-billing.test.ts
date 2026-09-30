@@ -10,10 +10,11 @@
  * `billing_type`. This endpoint has no public documentation — that observation
  * is the whole specification, which is why it is written down as cases.
  *
- * Every path where the lookup goes wrong says so in the log, so the one quiet
- * zero left — lines the vendor priced at zero — reads as the vendor calling
- * the generation free. The number this returns is what a charge is taken on,
- * so those two have to stay tellable apart.
+ * Every path where the lookup goes wrong says so in the log. The quiet zeros
+ * left are lines the vendor priced at zero (the generation was free) and a
+ * deduction the vendor refunded in full (a prediction that failed upstream).
+ * The number this returns is what a charge is taken on, so a lookup gone
+ * wrong has to stay tellable apart from those two.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -60,11 +61,6 @@ const RESOLVED: ResolvedModel = {
   apiKey: "ws-key",
   timeout: 60,
   maxConcurrency: 5,
-  costPerCall: 0,
-  extraParams: {},
-  litellmModel: undefined,
-  tokenPrice: undefined,
-  creditPrice: undefined,
 };
 
 /**
@@ -113,15 +109,32 @@ describe("queryBilling reads the vendor's real answer", () => {
     expect(await queryBilling(RESOLVED, "t")).toBeCloseTo(0.0026, 10);
   });
 
-  // Only what was deducted is a cost. A line of any other type is left out
-  // rather than added, because adding a refund as spending states the opposite
-  // of what happened.
-  it("counts only the lines that deducted", async () => {
+  // A prediction that failed upstream carries a deducting line and a refunding
+  // line of the same price (captured 2026-09-28 from a failed vocal-clone, see
+  // the #2156 helper-endpoint probe): what it cost is the difference.
+  it("takes what the vendor refunded off what it deducted", async () => {
     httpRequestMock.mockResolvedValue(
       billing([
-        deduct(0.0026),
-        { billing_type: "refund", order: { price: 0.0026, state: "done" } },
+        deduct(7.5),
+        { billing_type: "refund", order: { price: 7.5, state: "refunded" } },
       ]),
+    );
+
+    expect(await queryBilling(RESOLVED, "t")).toBe(0);
+    expect(warnMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps what was not refunded", async () => {
+    httpRequestMock.mockResolvedValue(
+      billing([deduct(0.01), { billing_type: "refund", order: { price: 0.004 } }]),
+    );
+
+    expect(await queryBilling(RESOLVED, "t")).toBeCloseTo(0.006, 10);
+  });
+
+  it("leaves out lines that are neither a deduction nor a refund", async () => {
+    httpRequestMock.mockResolvedValue(
+      billing([deduct(0.0026), { billing_type: "adjust", order: { price: 5 } }]),
     );
 
     expect(await queryBilling(RESOLVED, "t")).toBe(0.0026);

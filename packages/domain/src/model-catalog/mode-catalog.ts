@@ -11,8 +11,8 @@ import {
   type ControlGate,
   type GenerationNodeType,
   type ModelEntry,
-  type ModelRate,
   type ParamDescriptor,
+  type ReferenceKind,
 } from "@breatic/shared";
 
 import { materialCount } from "@domain/model-catalog/material-count.js";
@@ -83,15 +83,6 @@ export interface ParamInfo {
   /** How many entries it takes, for a field that takes a list. */
   maxItems?: number;
   /**
-   * How much tighter that cap gets when another field is filled.
-   *
-   * The reference list takes fewer images once a reference video is picked,
-   * and the panel and the submit gate both enforce the tighter number. Stated
-   * as its own clause because the answer describes a slot rather than one
-   * submission, so there is no single number to give.
-   */
-  maxItemsWhen?: Readonly<Record<string, number>>;
-  /**
    * Where its values come from, for a field whose domain lives upstream.
    *
    * The two voice params are the case: their values are served by
@@ -108,6 +99,15 @@ export interface ParamInfo {
    */
   filledBySource?: boolean;
   /**
+   * The kind of node this place takes, for a place material goes.
+   *
+   * The catalog requires it of every such place (`assertParamDeclarations`),
+   * and it is what says a talking head's two places are a portrait and a
+   * voice rather than two of either. Carried because the modes table speaks
+   * in kinds and says nothing about how many places hold each.
+   */
+  accepts?: string;
+  /**
    * Whether that source is the reference pool, which takes a second gesture.
    *
    * An edge makes an image available; an `@`-mention in the prompt picks it
@@ -115,6 +115,14 @@ export interface ParamInfo {
    * source, and the gate refuses it.
    */
   fromReferencePool?: true;
+  /**
+   * Whether a run can go without this source, for a place material goes.
+   *
+   * A required slot and a pool can take the same kind; the reader's material
+   * fills the slot first, which is only knowable when the slot says it is
+   * required.
+   */
+  optional?: true;
   /**
    * Whether this node's panel draws no control for it.
    *
@@ -152,18 +160,6 @@ export interface ModelInfo {
   displayName: string;
   /** What it is good at, on one line. */
   what: string;
-  /** What one call costs, for a model that bills per call. */
-  credits: number;
-  /**
-   * What it charges per unit of what its vendor counts, when it bills that
-   * way rather than per call.
-   *
-   * `cost_per_call` on such a model is the pre-enqueue balance floor, not the
-   * price: sonilo states 5 as the floor and prices its longest preset at 36.
-   * Reporting the floor as the price contradicts the number the panel shows
-   * the user before they generate.
-   */
-  rate?: ModelRate;
   /** Roughly how long one call takes. */
   seconds: number;
   /**
@@ -195,8 +191,8 @@ export interface ModelInfo {
 }
 
 /** What one node can do in one mode: the models, or why there are none. */
-export type ModelsForMode =
-  | { available: true; models: ModelInfo[] }
+export type ModelsForMode<M extends ModelInfo = ModelInfo> =
+  | { available: true; models: M[] }
   | { available: false; offered: string[] };
 
 /**
@@ -217,13 +213,13 @@ export function materialNeeded(
   model: string,
 ): number {
   const catalog = getModelCatalog();
-  const config = getModeConfig();
   for (const bucket of GENERATION_NODE_BUCKETS[nodeType]) {
     const entry = (catalog[bucket] ?? []).find((e) => e.name === model);
-    if (entry) return materialCount(entry, mode, config[bucket]?.modes[mode]);
+    if (entry) return materialCount(entry, mode);
   }
   return 0;
 }
+
 
 /**
  * The modes a picker offers that the catalog can currently back.
@@ -332,13 +328,11 @@ export function entriesForNode(nodeType: GenerationNodeType): ModelEntry[] {
  * draws nothing for it. A carrier field belonging to some other mode of the
  * same model is reached by nobody here, which is why the caller drops it.
  * @param spec - What the catalog declares about it.
- * @param entry - The model declaring it, for the parameters its gates name.
  * @param mode - The mode it is asking about.
  * @returns What fills it, or "elsewhere" when this mode does not use it.
  */
 function reachedBy(
   spec: ParamDescriptor,
-  entry: ModelEntry,
   mode: string,
 ): "canvas" | "panel" | "nothing" | "elsewhere" {
   // `modes` says which of the model's modes this parameter applies to; absent
@@ -350,27 +344,9 @@ function reachedBy(
     return here ? "canvas" : "elsewhere";
   }
   if (!here) return "nothing";
-  if (spec.fill === "panel" || spec.fill === "remote" || spec.fill === "editor") {
-    // A control mounted on a slot this mode has no slot for is never drawn.
-    // A switch is on the panel either way, so a flag gate leaves it reachable.
-    const on = spec.when?.source;
-    if (on === undefined) return "panel";
-    const carrier = entry.params[on];
-    return carrierIn(carrier, mode) ? "panel" : "nothing";
-  }
+  // A switch is on the panel either way, so a flag gate leaves it reachable.
+  if (spec.fill === "panel" || spec.fill === "remote" || spec.fill === "editor") return "panel";
   return "nothing";
-}
-
-/**
- * Whether a parameter is a slot this mode fills off the canvas.
- * @param spec - The gating parameter's declaration, if the model has it.
- * @param mode - The mode being asked about.
- * @returns True when that parameter is a canvas slot here.
- */
-function carrierIn(spec: ParamDescriptor | undefined, mode: string): boolean {
-  if (spec === undefined) return false;
-  if (spec.fill !== "canvas" && spec.fill !== "pool") return false;
-  return spec.modes === undefined || spec.modes.includes(mode);
 }
 
 /**
@@ -379,10 +355,7 @@ function carrierIn(spec: ParamDescriptor | undefined, mode: string): boolean {
  * @returns The gate it declares, or undefined when it declares none.
  */
 function gateOf(spec: ParamDescriptor): ControlGate | undefined {
-  if (spec.when?.source !== undefined) return { kind: "source", param: spec.when.source };
-  if (spec.when?.flag_on !== undefined) return { kind: "flagOn", param: spec.when.flag_on };
-  if (spec.when?.flag_off !== undefined) return { kind: "flagOff", param: spec.when.flag_off };
-  return undefined;
+  return spec.when?.flag_on === undefined ? undefined : { kind: "flagOn", param: spec.when.flag_on };
 }
 
 /**
@@ -413,21 +386,66 @@ function projectParam(
     ...(spec.max !== undefined ? { max: spec.max } : {}),
     ...(spec.step !== undefined ? { step: spec.step } : {}),
     ...(spec.max_items !== undefined ? { maxItems: spec.max_items } : {}),
-    ...(spec.max_items_when_present !== undefined
-      ? { maxItemsWhen: spec.max_items_when_present }
-      : {}),
     ...(spec.remote_source !== undefined ? { valuesFrom: spec.remote_source } : {}),
     ...(by === "canvas" ? { filledBySource: true as const } : {}),
+    ...(by === "canvas" && spec.accepts !== undefined ? { accepts: spec.accepts } : {}),
     // Both fills reach the answer as "canvas", because both are material off
     // the canvas; the two gestures that put it there differ, and that is what
     // this says. It comes off `fill` rather than the name the pool travels
     // under, so the answer holds for a model spelling its pool differently.
     ...(by === "canvas" && spec.fill === "pool" ? { fromReferencePool: true as const } : {}),
+    ...(by === "canvas" && spec.optional === true ? { optional: true as const } : {}),
     ...(by === "nothing" ? { noControl: true as const } : {}),
     ...(gate !== undefined ? { gate } : {}),
     default: spec.default,
     what: oneLine(spec.description ?? ""),
   };
+}
+
+/**
+ * The parameters a model fills from nodes wired into it, one per kind it
+ * takes that way (#2156: pictures, clips and tracks each have a pool).
+ *
+ * Two gates turn on this answer -- whether an empty node has to be wired in
+ * at all, and what a mark in the prompt lands as once the group is placed --
+ * so it is given once.
+ * @param chosen - The model the proposal picked, as the catalog projects it.
+ * @returns Each pool parameter with the kind it takes; empty when material
+ *   arrives by slot.
+ * @throws {never} Never.
+ */
+export function poolParams(chosen: ModelInfo): Array<{ kind: ReferenceKind; info: ParamInfo }> {
+  return Object.values(chosen.params).flatMap((info) =>
+    info.fromReferencePool === true && isReferenceKind(info.accepts) ? [{ kind: info.accepts, info }] : [],
+  );
+}
+
+/**
+ * Whether a declared `accepts` names a kind a pool carries.
+ * @param accepts - What the param says it takes.
+ * @returns True for a picture, clip or track.
+ * @throws {never} Never.
+ */
+function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind {
+  return accepts === "image" || accepts === "video" || accepts === "audio";
+}
+
+/**
+ * The kinds a model takes by a required slot: one entry per canvas place a
+ * run cannot go without, so a kind with two such places appears twice.
+ *
+ * The agent's catalog text and the proposal's routing both read this, so the
+ * sentence the model is told and the place a node lands agree.
+ * @param chosen - The model, as the catalog projects it.
+ * @returns The slot kinds, in declaration order.
+ * @throws {never} Never.
+ */
+export function requiredSlotKinds(chosen: ModelInfo): ReferenceKind[] {
+  return Object.values(chosen.params).flatMap((info) =>
+    info.filledBySource === true && info.fromReferencePool !== true && info.optional !== true && isReferenceKind(info.accepts)
+      ? [info.accepts]
+      : [],
+  );
 }
 
 /**
@@ -458,7 +476,7 @@ export function modelsForMode(
         (other) => other !== mode && panelModes.includes(other),
       );
       const reached = Object.entries(entry.params).map(
-        ([name, spec]) => [name, spec, reachedBy(spec, entry, mode)] as const,
+        ([name, spec]) => [name, spec, reachedBy(spec, mode)] as const,
       );
       return {
       name: entry.name,
@@ -467,8 +485,6 @@ export function modelsForMode(
       // good at; the description is written for a person and says what it is.
       // Either answers "should I propose this one", so take whichever exists.
       what: oneLine(entry.guide || entry.description || ""),
-      credits: entry.cost_per_call,
-      ...(entry.rate !== undefined ? { rate: entry.rate } : {}),
       seconds: entry.generation_time,
       ...(entry.max_input_chars !== undefined
         ? { maxInputChars: entry.max_input_chars }

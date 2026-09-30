@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Canvas limits route tests — the frontend-consumed reference-pool cap
- * knob (#1782): config/limits.yaml → GET /canvas/limits.
+ * Canvas limits route tests — the knobs the frontend reads before it can
+ * gate anything (#1782, #2175): config yaml → GET /canvas/limits.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -34,6 +34,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 vi.mock("../../config/limits.js", () => ({
   getCanvasReferencePoolCap: vi.fn(() => 42),
   getNodeHistoryPageSize: vi.fn(() => 15),
+  getUnderstandConfig: vi.fn(() => ({ max_media_bytes: 20_971_520 })),
 }));
 
 import { createApp } from "../../app.js";
@@ -56,9 +57,17 @@ describe("GET /canvas/limits", () => {
     const res = await app.request("/api/v1/canvas/limits", { headers: AUTH });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      data: { referencePoolCap: number; nodeHistoryPageSize: number };
+      data: {
+        referencePoolCap: number;
+        nodeHistoryPageSize: number;
+        understandMaxBytes: number;
+      };
     };
     expect(body.data.referencePoolCap).toBe(42);
     expect(body.data.nodeHistoryPageSize).toBe(15);
+    // The browser refuses a file over this before it builds anything, and its
+    // toast says the number — so the number has to reach it, and it comes
+    // from the same file the run itself reads.
+    expect(body.data.understandMaxBytes).toBe(20_971_520);
   });
 });

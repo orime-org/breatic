@@ -143,6 +143,21 @@ const PROJECT_ROWS: Partial<
     nameField: 'accepterName',
     actorIdField: 'accepterUserId',
   },
+  'project.join_request': {
+    key: 'projectJoinRequest',
+    nameField: 'requesterName',
+    actorIdField: 'requesterUserId',
+  },
+  'project.join_approved': {
+    key: 'projectJoinApproved',
+    nameField: 'deciderName',
+    actorIdField: 'deciderUserId',
+  },
+  'project.join_rejected': {
+    key: 'projectJoinRejected',
+    nameField: 'deciderName',
+    actorIdField: 'deciderUserId',
+  },
 };
 
 /** Per-type config for a notification whose entity is a studio. */
@@ -298,8 +313,21 @@ export function notificationHeadline(
     });
   }
   if (n.type === 'membership.upgrade_incomplete') {
+    const tier = TIER_LABEL[str(n.payload, 'toTier')] ?? '';
+    const period = str(n.payload, 'toPeriod');
+    // Rows written before we recorded a period carry none. Composing the key
+    // from an empty string gives `membership.period.`, which resolves to
+    // nothing — and an unresolved key is rendered as itself, so the reader
+    // was shown a key name in the middle of the sentence.
+    if (period !== 'month' && period !== 'year') {
+      return t(
+        'notifications.headline.membershipUpgradeIncompleteNoPeriod',
+        { tier },
+      );
+    }
     return t('notifications.headline.membershipUpgradeIncomplete', {
-      tier: TIER_LABEL[str(n.payload, 'toTier')] ?? '',
+      tier,
+      period: t(`membership.period.${period}`),
     });
   }
   // Like the two above: nobody did this to you and there is nothing to open.

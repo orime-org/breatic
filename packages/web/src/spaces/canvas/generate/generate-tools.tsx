@@ -26,6 +26,15 @@ import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { HoverPreviewKind } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 
+/**
+ * The params pill every Generate panel draws in its footer (image, video,
+ * audio): one look and one width cap, so the three read as the same control.
+ */
+export const PARAMS_PILL_CLASS =
+  'flex h-8 min-w-0 max-w-[150px] items-center gap-1 rounded-full border border-border bg-background ' +
+  'px-2.5 text-xs text-foreground transition-colors hover:bg-accent ' +
+  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+
 // Shared layout / disabled classes; color + hover applied per-state. The tools
 // pass `size={null}` and lay themselves out here (icon over label, two lines) —
 // the Button size ladder has no entry for that footprint, and an explicit null

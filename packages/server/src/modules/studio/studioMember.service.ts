@@ -19,6 +19,7 @@ import { db, projectMembersRepo } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
+import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 
 /** Roles an admin may grant by change-role; admin is excluded. */
 type GrantableRole = "maintainer" | "guest";
@@ -88,7 +89,9 @@ export async function leaveStudio(slug: string, userId: string): Promise<void> {
  *   2. read the owned-project list BEFORE the soft delete, or the rows are
  *      already gone — and read it UNDER A LOCK, or a project transfer
  *      committing in the gap moves one of them to somebody else and the
- *      handover below collides with the one-owner index
+ *      handover below collides with the one-owner index. The project rows
+ *      are locked before their member rows, the order the delete cascade
+ *      and the request decisions follow
  *   3. soft-delete the target's project rows BEFORE handing them over —
  *      `materializeOwner` upserts and clears `deleted_at`, so the one-owner
  *      partial unique index rejects the handover while the leaver still holds
@@ -144,6 +147,7 @@ async function detachMember(
     await projectMembersRepo.softDeleteAllInStudioForUser(studio.id, targetUserId, tx);
     for (const projectId of owned) {
       await projectMembersRepo.materializeOwner(projectId, adminUserId, tx);
+      await projectJoinRequestService.readdressOnOwnerChange(projectId, adminUserId, tx);
     }
     await studioMembersRepo.softDelete(studio.id, targetUserId, tx);
   });

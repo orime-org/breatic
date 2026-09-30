@@ -104,6 +104,51 @@ describe('restoreNodeMedia (#1619 history restore, critical path)', () => {
     expect(nodeData().get('errorMessage')).toBeUndefined();
   });
 
+  // Which row the node is on. The panel calls it "current", and content
+  // cannot answer it: two snapshots of the same words are two rows a reader
+  // is allowed to keep, and dedup yields several rows holding one URL. The
+  // reader picked one of them (user 2026-09-20).
+  it('remembers the row the reader put back', () => {
+    addNode(PID, SID, fields('image', { content: 'old.png' }));
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'restored.png',
+      coverUrl: undefined,
+      entryId: 'h-7',
+    });
+    expect(nodeData().get('restoredFromEntryId')).toBe('h-7');
+  });
+
+  // All four kinds that carry history remember it. A text node's words land
+  // in the body rather than the content field, and the row it came from is
+  // written the same way regardless.
+  it.each([['image'], ['video'], ['audio'], ['text']] as const)(
+    'remembers it on a %s node too',
+    (type) => {
+      addNode(PID, SID, fields(type));
+      restoreNodeMedia(PID, SID, 'n1', {
+        content: 'restored',
+        coverUrl: undefined,
+        entryId: 'h-9',
+      });
+      expect(nodeData().get('restoredFromEntryId')).toBe('h-9');
+    },
+  );
+
+  // The task list's Replace lands a result, not a history row, so it leaves
+  // no row behind it and the panel falls back to what the node holds.
+  it('forgets a previous row when the caller names none', () => {
+    addNode(PID, SID, fields('image', { content: 'old.png' }));
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'a.png',
+      coverUrl: undefined,
+      entryId: 'h-7',
+    });
+
+    restoreNodeMedia(PID, SID, 'n1', { content: 'b.png', coverUrl: undefined });
+
+    expect(nodeData().get('restoredFromEntryId')).toBeUndefined();
+  });
+
   it('is a no-op on a missing node (no throw)', () => {
     expect(() =>
       restoreNodeMedia(PID, SID, 'ghost', {
@@ -159,5 +204,70 @@ describe('what a restore does with the numbers already on the node', () => {
     const data = nodeData();
     expect(data.has('mediaWidth')).toBe(false);
     expect(data.has('mediaHeight')).toBe(false);
+  });
+});
+
+describe('restoring onto a text node (#2175)', () => {
+  beforeEach(() => {
+    _resetForTests();
+  });
+
+  // A text node's words live in the shared body the editor binds to; its
+  // `content` is retired (#1774). Written to the plain field they would sync
+  // and never be shown — the node would look empty right after the reader
+  // picked a row to go back to.
+  it('puts the words where the node reads them', () => {
+    addNode(PID, SID, fields('text'));
+
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'A red bicycle against a brick wall.',
+      coverUrl: undefined,
+    });
+
+    const body = nodeData().get('body');
+    expect(body).toBeInstanceOf(Y.XmlFragment);
+    expect((body as Y.XmlFragment).toJSON()).toContain(
+      'A red bicycle against a brick wall.',
+    );
+  });
+
+  // The plain field is what every other modality reads, and a text node that
+  // also carries one leaves two answers to "what does this node say".
+  it('leaves the plain field alone', () => {
+    addNode(PID, SID, fields('text'));
+
+    restoreNodeMedia(PID, SID, 'n1', { content: 'kept', coverUrl: undefined });
+
+    expect(nodeData().get('content')).toBeUndefined();
+  });
+});
+
+describe('what a restore takes away with the old result (#2175)', () => {
+  beforeEach(() => {
+    _resetForTests();
+  });
+
+  // The canvas refuses an Understand run by reading these two off the node,
+  // and prints the byte count it read in the refusal. A history row carries
+  // neither, so leaving the previous file's numbers there makes the gate
+  // judge the restored file by a file it no longer shows.
+  it('clears the type and byte count the old result put there', () => {
+    addNode(
+      PID,
+      SID,
+      fields('image', {
+        content: 'https://cdn/old.mp4',
+        mimeType: 'video/mp4',
+        size: 31_457_280,
+      }),
+    );
+
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'https://cdn/small.png',
+      coverUrl: undefined,
+    });
+
+    expect(nodeData().get('mimeType')).toBeUndefined();
+    expect(nodeData().get('size')).toBeUndefined();
   });
 });

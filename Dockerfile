@@ -1,5 +1,5 @@
 # ── Stage 1: Install dependencies + Build ────────────────────────────
-FROM node:22-slim AS builder
+FROM node:22-bookworm-slim AS builder
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
@@ -37,7 +37,7 @@ RUN pnpm deploy --filter=@breatic/worker --prod /app/deploy/worker
 RUN pnpm deploy --filter=@breatic/collab --prod /app/deploy/collab
 
 # ── Stage 2: Runtime (slim) ──────────────────────────────────────────
-FROM node:22-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 
 # ffmpeg for the worker's eight video mini-tools (crop, cut, speed, adjust,
 # stabilisation, scene extension, audio denoise, HDR conversion). Cover frames
@@ -90,6 +90,7 @@ COPY package.json pnpm-workspace.yaml ./
 
 # Drizzle migration SQL files (for auto-migrate at startup)
 COPY --from=builder /app/packages/core/src/db/migrations ./packages/core/src/db/migrations
+COPY --from=builder /app/packages/core/src/db/migrations-yjs ./packages/core/src/db/migrations-yjs
 
 # What this image distributes and under what terms. It goes where the rest of
 # this filesystem keeps that kind of file: Debian's own FFmpeg copyright is at

@@ -194,6 +194,24 @@ export async function attachNotification(
 }
 
 /**
+ * Which project an offer is about, read WITHOUT a lock.
+ *
+ * Accepting locks the recipient's studio membership and the project before the
+ * offer, so it needs the project id first. An offer's `project_id` never
+ * changes.
+ * @param id - Transfer id.
+ * @param tx - The deciding transaction.
+ * @returns The project id, or null when there is no such live row.
+ */
+export async function getProjectIdOf(id: string, tx: DbTx): Promise<string | null> {
+  const rows = await tx
+    .select({ projectId: projectTransfers.projectId })
+    .from(projectTransfers)
+    .where(and(eq(projectTransfers.id, id), isNull(projectTransfers.deletedAt)));
+  return rows[0]?.projectId ?? null;
+}
+
+/**
  * Take the row lock the decision path serialises on, and report what it found.
  *
  * Locks by id alone — see this module's header for why adding `status` to the

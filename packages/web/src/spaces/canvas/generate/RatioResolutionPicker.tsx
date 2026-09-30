@@ -18,6 +18,9 @@ import {
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { paramValues } from '@breatic/shared';
+import { PARAMS_PILL_CLASS } from '@web/spaces/canvas/generate/generate-tools';
+import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
+import { optionLabel, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The subset of generate params this picker edits. */
@@ -29,10 +32,10 @@ interface RatioResolutionValue {
 interface RatioResolutionPickerProps {
   /** The current model, whose params define the allowed ratios / resolutions. */
   model: ModelEntry;
-  /** The current ratio + resolution selection. */
-  value: RatioResolutionValue;
-  /** Called with the changed field ({ aspect_ratio } or { resolution }). */
-  onChange: (partial: RatioResolutionValue) => void;
+  /** What the node holds for this model: ratio and resolution, and the model's own params. */
+  value: RatioResolutionValue & Readonly<Record<string, unknown>>;
+  /** Called with the changed field only. */
+  onChange: (partial: object) => void;
 }
 
 /**
@@ -72,13 +75,22 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   const [ratioParam, resolutionParam] = RATIO_RESOLUTION_PARAMS;
   const ratios: ParamOption[] = paramValues(model, ratioParam).map((v) => ({
     value: String(v),
-    label: String(v),
+    label: optionLabel({}, String(v)),
   }));
   const resolutions: ParamOption[] = paramValues(model, resolutionParam).map((v) => ({
     value: String(v),
     label: String(v),
   }));
-  const label = [value.aspect_ratio, value.resolution].filter(Boolean).join(' · ');
+  // A model with none of the shared two still has its own controls to open.
+  // The pill reads in the popover's order, top to bottom.
+  const label =
+    [
+      value.resolution,
+      value.aspect_ratio === undefined ? undefined : optionLabel({}, value.aspect_ratio),
+      ...ownControlSummary(model, value, (name) => t(`canvas.generatePanel.param.${name}`)),
+    ]
+      .filter(Boolean)
+      .join(' · ') || t('canvas.generatePanel.imageParams');
   const onSelectRatio = React.useCallback(
     (v: string | number) => onChange({ aspect_ratio: String(v) }),
     [onChange],
@@ -95,13 +107,13 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
           variant={null}
           size={null}
           data-testid='generate-ratio-trigger'
-          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          className={PARAMS_PILL_CLASS}
         >
           {/* truncate: catalog aspect_ratio/resolution values carry no length
               cap at the sanitize boundary — unbounded, a verbose value would
               stretch the panel footer row (same class as the ModelPicker
               display_name fix). */}
-          <span className='max-w-[10rem] truncate'>{label}</span>
+          <span className='truncate'>{label}</span>
           <ChevronDown
             className='h-3.5 w-3.5 shrink-0 opacity-60'
             aria-hidden='true'
@@ -131,6 +143,12 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
           value={value.aspect_ratio}
           onSelect={onSelectRatio}
           testIdPrefix='generate-ratio-option'
+        />
+        <ModelParamControls
+          model={model}
+          value={value}
+          onChange={onChange}
+          className={ratios.length + resolutions.length > 0 ? 'mt-3 border-t border-border pt-3' : undefined}
         />
       </PopoverContent>
     </Popover>

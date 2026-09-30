@@ -20,8 +20,29 @@
 // ── Credit (the "spend" side: deduction + balance + ledger) ──────
 // The lot-based engine (#11): the only writer of a lot's lifecycle, its
 // designation, and what is left on it.
+export * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
+export { SMALLEST_CREDIT } from "@domain/credit/credit-math.js";
+export {
+  createUsageRecorder,
+  type RecordedOperation,
+  type UsageRecorder,
+  type UsageRow,
+  type UsageFeature,
+  type UsageSource,
+} from "@domain/credit/usage-recorder.js";
+export { usageContextFor } from "@domain/agent/tools/usage-context.js";
+export { creditsForUsd, type ModelCallUsage } from "@domain/credit/usage-cost.js";
+export { agentModelIds, assertModelsPriced } from "@domain/credit/priced-models.js";
+export {
+  USAGE_LOOKUP_QUEUE,
+  handOffLookups,
+  lookupGeneration,
+  type GenerationAnswer,
+  type UsageLookupJob,
+} from "@domain/credit/generation-lookup.js";
+export { isGenerationId, trackOpenGeneration, type OpenGeneration } from "@domain/credit/open-generation.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
@@ -31,6 +52,8 @@ export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 // ── Task (+ markCompletedAndBill: task·credit cross-table atomic) ─
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
+export * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
+export * as upstreamCloneRepo from "@domain/task/upstreamClone.repo.js";
 
 // ── Node history (per-node content timeline, append-only) ────────
 export * as nodeHistoryService from "@domain/node-history/node-history.service.js";
@@ -59,6 +82,7 @@ export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js"
 export {
   buildToolSet,
   BASELINE_TOOLS,
+  TOOL_MAP,
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS,
@@ -137,3 +161,20 @@ export type {
   IngestSideEffects,
 } from "@domain/asset/ingest-report.service.js";
 export { INGEST_SIDE_EFFECT_EVENTS } from "@domain/asset/ingest-report.service.js";
+
+// ── Reading a piece of media into text (the agent's tool and the canvas's
+//    task call the same capability — one order of steps, one classification
+//    of failures) ──
+export {
+  MediaUnavailable,
+  UNDERSTAND_PINS,
+  UnderstandRefused,
+  understandMediaAt,
+} from "@domain/understand/index.js";
+export type {
+  MediaKind,
+  RefusalKind,
+  UnavailableKind,
+  UnderstandAnswer,
+  UnderstandAt,
+} from "@domain/understand/index.js";

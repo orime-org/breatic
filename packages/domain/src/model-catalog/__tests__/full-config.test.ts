@@ -7,13 +7,14 @@
  * worker's resolveModel/validateParams consume this instead of parsing
  * config/models themselves, so these tests pin exactly the fields the
  * worker's transport connection building depends on (base_url,
- * api_key_env, timeout, token_price, extra_params, ...) against the real
+ * api_key_env, timeout, ...) against the real
  * config files.
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { initCore } from "@breatic/core";
 import {
+  MODALITIES,
   getFullModelConfig,
   getModelCatalog,
   resetModelCatalog,
@@ -36,13 +37,10 @@ describe("getFullModelConfig (#1672)", () => {
 
   it("keeps full per-provider model fields the catalog projection drops", () => {
     const config = getFullModelConfig("image");
-    const midjourney = config.models.find((m) => m.name === "midjourney-v7");
+    const midjourney = config.models.find((m) => m.name === "midjourney");
     expect(midjourney).toBeTruthy();
     expect(midjourney!.providers?.[0]?.model_id).toBe("midjourney/text-to-image");
-    const anyTokenPriced = config.models.some((m) =>
-      (m.providers ?? []).some((p) => typeof p.token_price === "number"),
-    );
-    expect(anyTokenPriced).toBe(true);
+    expect(midjourney!.providers?.[0]?.pricing).toMatchObject({ base_price: 100_000 });
   });
 
   it("preserves array modes as authored in yaml", () => {
@@ -53,7 +51,7 @@ describe("getFullModelConfig (#1672)", () => {
 
   it("preserves param specs (values + default) the worker validates against", () => {
     const config = getFullModelConfig("image");
-    const midjourney = config.models.find((m) => m.name === "midjourney-v7");
+    const midjourney = config.models.find((m) => m.name === "midjourney");
     const aspect = midjourney?.params?.["aspect_ratio"];
     expect(aspect?.values).toContain("16:9");
     expect(aspect?.default).toBe("1:1");
@@ -80,5 +78,30 @@ describe("getFullModelConfig (#1672)", () => {
     const after = getFullModelConfig("image");
     expect(after).not.toBe(before);
     expect(after.models.length).toBe(before.models.length);
+  });
+
+  it("says of every extra upstream call whether it runs before or after the model's own (#2156)", () => {
+    const undeclared = MODALITIES.flatMap((modality) =>
+      getFullModelConfig(modality).models.flatMap((m) =>
+        (m.extra_steps ?? [])
+          .filter((step) => step.at !== "before" && step.at !== "after")
+          .map((step) => `${m.name} -> ${step.endpoint}`),
+      ),
+    );
+    expect(undeclared).toEqual([]);
+  });
+
+  it("runs Voice Cloning's speech after the clone, and every other extra call first", () => {
+    const at = (modality: string, name: string): string[] =>
+      (getFullModelConfig(modality).models.find((m) => m.name === name)?.extra_steps ?? []).map(
+        (step) => `${step.endpoint}@${String(step.at)}`,
+      );
+    expect(at("tts", "minimax-voice-clone")).toEqual(["minimax/speech-2.8-hd@after"]);
+    expect(at("video", "kling-video-o3-4k-image-to-video")).toEqual(["kwaivgi/kling-elements@before"]);
+    expect(at("audio", "mureka-v9.5-generate-song")).toEqual([
+      "mureka-ai/create-upload-id@before",
+      "mureka-ai/create-upload-id@before",
+      "mureka-ai/vocal-clone@before",
+    ]);
   });
 });

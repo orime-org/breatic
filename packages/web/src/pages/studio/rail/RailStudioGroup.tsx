@@ -36,30 +36,23 @@ interface RailStudioGroupProps {
  * The group heading: a quiet label, one step below the rows it names. It sits
  * at the top level's indent, taken from there rather than typed again.
  */
-const HEADING = `flex h-7 items-center gap-1 ${RAIL_INDENT_TOP} pr-1`;
+const HEADING = `flex h-7 items-center ${RAIL_INDENT_TOP} pr-1`;
 
 /** The heading's text — 11px with wider tracking, so studio names stay loudest. */
-const HEADING_TEXT =
-  'flex-1 truncate text-2xs font-semibold tracking-wider text-muted-foreground';
+const HEADING_TEXT = 'flex-1 truncate text-left text-2xs font-semibold tracking-wider';
 
 /**
- * The chevron's own hit area — `--btn-compact`, the smallest step on the
- * chrome ladder. Small, but far larger than the 12px glyph inside it.
- *
- * Everything else about how it looks comes from the `chrome-ghost` variant,
- * which is the description of exactly this: an icon-only chrome button, muted
- * at rest, accent fill and full foreground under the pointer. Written out by
- * hand it takes fourteen classes: seven the `Button` base hands out
- * unconditionally, three that are exactly what `chrome-ghost` says, and four
- * of its own — so ten of the fourteen were a copy of something already said.
- *
- * The glyph inside takes no colour of its own. `currentColor` resolves against
- * the nearest element that sets one, so a glyph naming its own colour makes
- * the button's `text-*` and `hover:text-*` dead and needs a `group-hover:`
- * variant to win the effect back. Leaving the colour to the button is one rule
- * instead of three.
+ * The heading's one control: title and chevron together, so the group opens
+ * and closes from its words as well as its arrow. Under the pointer the words
+ * and the chevron brighten and no fill appears, so it does not read as a row
+ * that navigates somewhere. The glyph inside takes no colour of its own and
+ * follows the button's `text-*` and `hover:text-*`.
  */
-const TOGGLE = 'h-6 w-6 shrink-0';
+const TOGGLE =
+  'h-7 min-w-0 flex-1 justify-between gap-1 text-muted-foreground hover:text-foreground';
+
+/** The chevron's slot — `--btn-compact`, so the arrow keeps a 24px box. */
+const CHEVRON_SLOT = 'flex h-6 w-6 shrink-0 items-center justify-center';
 
 /**
  * A rail studio group (spec §4.2 / §4.3 — Discord-style two-level expand): a
@@ -69,14 +62,8 @@ const TOGGLE = 'h-6 w-6 shrink-0';
  * future join fills it in with zero display-logic change). The collapse state
  * persists across sessions via `useRailCollapse`.
  *
- * Collapsing answers to the chevron alone. The heading is a label, not a
- * control: a whole row lighting up under the pointer reads as "this row goes
- * somewhere", and this one only opens and closes — the reach and what it does
- * did not match. Keeping the heading a plain element also leaves room to put
- * something else on that line later without nesting one button inside another.
- *
- * The chevron takes its accessible name from the heading through
- * `aria-labelledby`, so the group is named once, in one translated string.
+ * The whole heading is one disclosure button: clicking the title or the
+ * chevron opens and closes the group, and the button's own text names it.
  * @param props the group's title, studios, active slug, empty text and key.
  * @param props.title the section label.
  * @param props.studios the studios in this group.
@@ -94,19 +81,14 @@ export function RailStudioGroup({
 }: RailStudioGroupProps): React.JSX.Element {
   const { collapsed, toggle } = useRailCollapse(collapseKey);
   const Chevron = collapsed ? ChevronRight : ChevronDown;
-  const titleId = React.useId();
   const listId = React.useId();
   return (
     <div className='flex flex-col'>
       <div className={HEADING}>
-        <span id={titleId} className={HEADING_TEXT}>
-          {title}
-        </span>
         <Button
           type='button'
           onClick={toggle}
           aria-expanded={!collapsed}
-          aria-labelledby={titleId}
           // Named only while the list is mounted. Collapsing unmounts it, and
           // the collapse is persisted, so a fixed value would go on naming an
           // element that is not in the document for as long as the group stays
@@ -118,11 +100,14 @@ export function RailStudioGroup({
           // require a resolvable reference (combobox, scrollbar) keep theirs.
           // `aria-expanded` carries the state either way.
           aria-controls={collapsed ? undefined : listId}
-          variant='chrome-ghost'
+          variant={null}
           size={null}
           className={TOGGLE}
         >
-          <Chevron className='h-3 w-3' />
+          <span className={HEADING_TEXT}>{title}</span>
+          <span className={CHEVRON_SLOT}>
+            <Chevron className='h-3 w-3' />
+          </span>
         </Button>
       </div>
       {collapsed ? null : (

@@ -21,7 +21,6 @@ export type {
   NotificationRef,
   NotificationListView,
   ProjectEntity,
-  ProjectVisibility,
   ProjectDetail,
   ProjectSummary,
   RecentItem,
@@ -32,6 +31,7 @@ export type {
 
 export type {
   CreditPage,
+  CreditSourceKind,
   PurchaseRow,
   CreditLotView,
   StudioLotView,
@@ -45,11 +45,16 @@ export type {
 
 export {
   accountTotal,
+  CREDIT_SOURCE_KINDS,
+  isPurchased,
+  GRANTED_SOURCE_KINDS,
   HELD_LIFECYCLES,
   IN_FLIGHT_REFUND_LIFECYCLES,
 } from "@shared/types/credit.js";
 
 export {
+  canConnect,
+  MAX_NODE_NAME_LEN,
   canGenerate,
   CANVAS_NODES_KEY,
 } from "@shared/types/canvas-node.js";
@@ -70,16 +75,17 @@ export type {
   ModelTier,
   ParamDescriptor,
   RemoteParamSource,
-  ModelRate,
   ModelProvider,
   ModelEntry,
+  PricingContract,
+  ExtraStep,
+  SourceGroup,
+  ItemField,
   ModelCatalog,
   SourceType,
-  SourceRule,
   GenerationNodeType,
 } from "@shared/types/model-catalog.js";
 export {
-  SOURCE_RULES,
   modelCatalogSchema,
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
@@ -91,7 +97,6 @@ export {
 
 export { paramValues } from "@shared/types/param-values.js";
 export {
-  REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
 } from "@shared/types/generate-panel.js";
 export type { ControlGate } from "@shared/types/generate-panel.js";
@@ -100,11 +105,29 @@ export type { ParamOptionValue } from "@shared/types/param-values.js";
 export type {
   PromptSegment,
   ProposalNode,
+  ProposalNodeType,
   CanvasProposal,
   ProposalRefused,
   ProposalAnswer,
 } from "@shared/types/canvas-proposal.js";
-export { markText, promptTextOf } from "@shared/types/canvas-proposal.js";
+export {
+  feedersOf,
+  layersOf,
+  markText,
+  markTargets,
+  nameableFeeders,
+  promptPlainText,
+  promptTextOf,
+} from "@shared/types/canvas-proposal.js";
+
+export type {
+  ReferenceRefusal,
+  ReferenceUsabilityContext,
+} from "@shared/types/canvas-reference.js";
+export {
+  insertRefusal,
+  isReferenceMaterial,
+} from "@shared/types/canvas-reference.js";
 
 export type { Voice, VoicePage } from "@shared/types/voice.js";
 export { sanitizeVoicePage } from "@shared/types/voice.js";
@@ -134,11 +157,17 @@ export type {
   MembershipLimits,
   ComparableMembershipTier,
   SubscribableMembershipTier,
+  BillingPeriod,
+  MembershipOffer,
   SubscriptionSituation,
   SubscriptionActionAvailability,
-  UpgradeOffer,
+  MoveOffer,
+  CardAction,
+  CardActionInput,
+  MembershipCard,
   SubscriptionSummary,
   TierOffer,
+  TierPrice,
   AccountUsage,
   AccountMembership,
 } from "@shared/types/membership.js";
@@ -154,6 +183,9 @@ export {
   holdsActionableSubscription,
   subscriptionActions,
   isComparableMembershipTier,
+  BILLING_PERIODS,
+  canMoveTo,
+  cardAction,
 } from "@shared/types/membership.js";
 
 export type {
@@ -169,6 +201,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   AssetActivityPayloadSchema,
+  GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
   SpaceActivityPayloadSchema,
   MemberActivityPayloadSchema,

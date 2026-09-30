@@ -11,9 +11,10 @@ import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-refer
 import {
   insertRefusal,
   isReferenceMaterial,
+  type ReferenceKind,
   type ReferenceUsabilityContext,
   type ReferenceRefusal,
-} from '@web/spaces/canvas/generate/reference-usability';
+} from '@breatic/shared';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import type { NodeKind } from '@web/data/yjs/node-view';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
@@ -58,8 +59,9 @@ interface ReferenceRailProps {
   /** Insert this reference's @-mention into the prompt at the cursor (chip click). */
   onInsert: (item: ReferenceRailItem) => void;
   /**
-   * Does the active mode consume the reference pool at all? False dims every
-   * REFERENCE MATERIAL row's CONTENT and refuses its insert. The row's ✕ is
+   * Which kinds of node the active model's pool takes in this mode (#2156).
+   * Empty dims every REFERENCE MATERIAL row's CONTENT and refuses its insert;
+   * a row of a kind the pool does not take is refused the same way. The row's ✕ is
    * untouched — it removes in every state (user 2026-08-19), so a row this
    * mode cannot use is still a row the user can clear.
    *
@@ -68,20 +70,20 @@ interface ReferenceRailProps {
    * modality: dimming by type is what left audio / video rows looking live
    * inside a mode that would never read them (#1930, #1940).
    */
-  modeTakesReferences?: boolean;
+  referenceKinds: readonly ReferenceKind[];
   /**
    * Does the ACTIVE MODEL consume the prompt (#1966)? False refuses INSERT on
    * every row — there is nowhere to insert into — and so dims every row.
    *
-   * Text rows are exempt from `modeTakesReferences` because they are prompt
+   * Text rows are exempt from `referenceKinds` because they are prompt
    * material; that exemption only holds while there IS a prompt. A mode
    * sending none has nothing for a text row to be material for, so it dims
    * there too (user 2026-08-16). A media row keeps answering to
-   * `modeTakesReferences` as well: of the two questions, only that one names a
+   * `referenceKinds` as well: of the two questions, only that one names a
    * state the user can leave and reach a mode where the row WORKS.
    *
-   * Defaulted `true` for the same reason as the prop above: a caller that
-   * knows nothing about prompts gets the pre-#1966 rail.
+   * Defaulted `true`: a caller that knows nothing about prompts gets the
+   * pre-#1966 rail.
    */
   modelTakesPrompt?: boolean;
   /**
@@ -101,7 +103,7 @@ interface ReferenceRailProps {
  * @param root0.references - The derived reference rows.
  * @param root0.onRemove - Remove a reference by id.
  * @param root0.onInsert - Insert a reference's @-mention into the prompt.
- * @param root0.modeTakesReferences - Whether the active mode consumes the reference pool.
+ * @param root0.referenceKinds - The kinds the active model's pool takes.
  * @param root0.modelTakesPrompt - Whether the active model consumes the prompt.
  * @param root0.pendingFocus - Focus crops whose upload is still in flight.
  * @returns The reference rail, or null when empty.
@@ -110,17 +112,17 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   references,
   onRemove,
   onInsert,
-  modeTakesReferences = true,
+  referenceKinds,
   modelTakesPrompt = true,
   pendingFocus = [],
 }: ReferenceRailProps): React.JSX.Element | null {
   const t = useTranslation();
   const usabilityCtx: ReferenceUsabilityContext = React.useMemo(
     () => ({
-      takesReferences: modeTakesReferences,
+      referenceKinds,
       takesPrompt: modelTakesPrompt,
     }),
-    [modeTakesReferences, modelTakesPrompt],
+    [referenceKinds, modelTakesPrompt],
   );
   // Three refusal reasons, three messages, one each — they all belong to
   // insert now. Removal asks nothing since #1952, so there is no second family

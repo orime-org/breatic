@@ -48,6 +48,17 @@ describe('evaluateExecute — which precondition is the one that fails', () => {
     );
   });
 
+  // The worker sends `extractPromptText(prompt)`, so a box holding only
+  // characters it removes reaches the vendor empty.
+  it('names the prompt for one the worker would send empty', () => {
+    const tagged = [...'draw a dog']
+      .map((c) => String.fromCodePoint(0xe0000 + c.codePointAt(0)!))
+      .join('');
+    for (const promptText of [tagged, '\u200B', '<!-- note -->']) {
+      expect(refusalOf({ ...ok, promptText })).toBe('prompt-missing');
+    }
+  });
+
   it('lets an empty prompt through when the model consumes none (#1935)', () => {
     // The talking-head model declares `takes_prompt: false`, so demanding one
     // would be a requirement we invented: the caller asks the selected model
@@ -88,6 +99,13 @@ describe('evaluateExecute — which precondition is the one that fails', () => {
     expect(
       refusalOf({ ...ok, voiceRequired: true, voiceChosen: true }),
     ).toBeNull();
+  });
+
+  it('names the speakers when a dialogue has fewer complete ones than the model takes', () => {
+    // Gemini takes exactly two; one row left without a name reaches the
+    // upstream as a single speaker and is refused after the run started.
+    expect(refusalOf({ ...ok, speakersShort: true })).toBe('speakers-missing');
+    expect(refusalOf({ ...ok, speakersShort: false })).toBeNull();
   });
 
   it('ignores the voice for a model that takes none', () => {
@@ -326,47 +344,50 @@ describe('evaluateExecute — text the model will not take (#1960 A17)', () => {
 });
 
 /**
- * The reference audio a cloning model needs (#1960 PR2).
+ * What the run still needs, as `missingSources` answers it (#2156).
  *
- * Same shape as `voice-missing`, and for the same reason: it is a condition the
- * user can act on, so the button stays live and the click says what is missing.
- * A greyed-out button would never tell them a slot is empty.
+ * The gate is handed that answer rather than a list of slots and a rule for
+ * reading them: the model's declarations decide what is required, in one
+ * place the server and the agent read too. Every one of these is a condition
+ * the user can act on, so the button stays live and the click says what is
+ * missing.
  */
-describe('evaluateExecute — the reference-audio slot', () => {
-  /** A cloning model with nothing picked yet. */
-  const cloning = {
-    ...ok,
-    requiredSlots: ['refAudio'],
-    filledSlots: [] as readonly string[],
-  };
-
-  it('names the empty slot when the mode needs an audio source', () => {
-    expect(refusalOf(cloning)).toBe('source-missing');
+describe('evaluateExecute — the sources the run still needs', () => {
+  it('passes when nothing is missing', () => {
+    expect(refusalOf({ ...ok, missing: [] })).toBeNull();
+    expect(refusalOf(ok)).toBeNull();
   });
 
-  it('passes once something is picked', () => {
-    expect(refusalOf({ ...cloning, filledSlots: ['refAudio'] })).toBeNull();
+  it('names the place when one required param is empty', () => {
+    expect(evaluateExecute({ ...ok, missing: [['audio']] })).toEqual({
+      refusal: 'source-missing',
+      slot: 'audio',
+    });
   });
 
-  it('says nothing about it on a mode that needs no audio source', () => {
-    // Text to speech declares no audio source, so an unfilled slot it never shows
-    // must not refuse anything.
+  it('names the first of several, in the order they were declared', () => {
     expect(
-      refusalOf({ ...ok, requiredSlots: [], filledSlots: [] }),
-    ).toBeNull();
+      evaluateExecute({ ...ok, missing: [['image'], ['end_image']] }),
+    ).toEqual({ refusal: 'source-missing', slot: 'image' });
+  });
+
+  it('asks for any one of a group rather than naming one member of it', () => {
+    expect(
+      evaluateExecute({ ...ok, missing: [['song', 'vocal', 'melody']] }),
+    ).toEqual({ refusal: 'sources-missing' });
   });
 
   it('reports the prompt first, the panel order', () => {
-    // The editor sits above the toolbar's slot, so an empty prompt is what the
-    // user is told about first — the same ordering `voice-missing` follows.
-    expect(refusalOf({ ...cloning, promptText: '' })).toBe('prompt-missing');
+    expect(refusalOf({ ...ok, promptText: '', missing: [['audio']] })).toBe(
+      'prompt-missing',
+    );
   });
 
   it('leaves the button live and speaks on click', () => {
-    expect(isExecuteButtonDisabled('source-missing')).toBe(false);
-    expect(refusalToastKey('source-missing')).toBe(
-      'canvas.generatePanel.errorNoRefAudio',
-    );
+    for (const refusal of ['source-missing', 'sources-missing'] as const) {
+      expect(isExecuteButtonDisabled(refusal), refusal).toBe(false);
+      expect(refusalToastKey(refusal), refusal).not.toBeNull();
+    }
   });
 
   it('keeps every refusal the user can act on clickable', () => {
@@ -376,6 +397,7 @@ describe('evaluateExecute — the reference-audio slot', () => {
       'prompt-missing',
       'prompt-too-long',
       'voice-missing',
+      'speakers-missing',
       'source-missing',
       'sources-missing',
       'lyrics-missing',
@@ -384,56 +406,6 @@ describe('evaluateExecute — the reference-audio slot', () => {
       expect(isExecuteButtonDisabled(refusal), refusal).toBe(false);
       expect(refusalToastKey(refusal), refusal).not.toBeNull();
     }
-  });
-});
-
-/**
- * A mode that offers several slots and needs any one of them (#1960 A6).
- *
- * Reference to music collects a whole song, a vocal line and a backing track,
- * and one is enough — the vendor takes whichever are given. The gate weighed a
- * single `refAudioRequired` / `refAudioChosen` pair before, so a user who
- * filled all three of these still faced a greyed-out button: none of them is
- * named `refAudio`.
- */
-describe('evaluateExecute — a mode with several slots takes any one', () => {
-  const MUSIC_SLOTS = ['musicSong', 'musicVoice', 'musicInstrumental'];
-  /** Reference to music with all three slots empty. */
-  const a2m = {
-    ...ok,
-    requiredSlots: MUSIC_SLOTS,
-    filledSlots: [] as readonly string[],
-    sourceRule: 'any_of' as const,
-  };
-
-  it('asks for a reference while every slot is empty', () => {
-    expect(refusalOf(a2m)).toBe('sources-missing');
-  });
-
-  it('passes on any one of the three, not just the first', () => {
-    for (const slot of MUSIC_SLOTS) {
-      expect(refusalOf({ ...a2m, filledSlots: [slot] }), slot).toBeNull();
-    }
-  });
-
-  it('passes with several filled', () => {
-    expect(refusalOf({ ...a2m, filledSlots: MUSIC_SLOTS })).toBeNull();
-  });
-
-  it('ignores a pick that is not one of this mode\'s slots', () => {
-    // A voice sample picked on the cloning mode stays on the node when the
-    // user switches to music. It is not one of the three this mode collects,
-    // so it must not stand in for one.
-    expect(refusalOf({ ...a2m, filledSlots: ['refAudio'] })).toBe(
-      'sources-missing',
-    );
-  });
-
-  it('says "any one of these" rather than naming the voice sample', () => {
-    expect(isExecuteButtonDisabled('sources-missing')).toBe(false);
-    expect(refusalToastKey('sources-missing')).toBe(
-      'canvas.generatePanel.refuseExecuteNoReference',
-    );
   });
 });
 
@@ -512,82 +484,41 @@ describe('evaluateExecute — the lyrics box', () => {
       'canvas.generatePanel.lyricsMissing',
     );
   });
-
-  // Measured against the gateway on 2026-09-05: `is_instrumental: true` with
-  // an empty `lyrics` is accepted and completes. Demanding words to sing for a
-  // track the user marked vocal-free is our own rule, not the vendor's.
-  it('asks for no lyrics once the track is marked instrumental', () => {
-    expect(refusalOf({ ...t2m, instrumental: true })).toBeNull();
-  });
-
-  it('asks for them again the moment that switch goes back off', () => {
-    expect(refusalOf({ ...t2m, instrumental: false })).toBe('lyrics-missing');
-  });
-
-  it('says nothing about the switch on a mode that collects no lyrics', () => {
-    // Text to speech declares no lyrics box, so the switch it never shows
-    // must not turn into a condition here.
-    expect(
-      refusalOf({ ...ok, lyricsRequired: false, instrumental: true }),
-    ).toBeNull();
-  });
-});
-
-describe('evaluateExecute — a mode that takes every place it offers', () => {
-  // The video panel's own rule until #269: first-and-last-frame needs both
-  // frames, and reference-to-video needs a reference mentioned in the prompt.
-  // The catalog says which it is; absent reads as all of them.
-  const frames = {
-    ...ok,
-    requiredSlots: ['image', 'endImage'] as readonly string[],
-    filledSlots: [] as readonly string[],
-  };
-
-  it('names the first empty place, in the order the panel offers them', () => {
-    expect(evaluateExecute(frames)).toMatchObject({
-      refusal: 'sources-missing',
-      slot: 'image',
-    });
-    expect(evaluateExecute({ ...frames, filledSlots: ['image'] })).toMatchObject({
-      slot: 'endImage',
-    });
-  });
-
-  it('refuses one filled place, where a mode taking any one would pass', () => {
-    const filled = { ...frames, filledSlots: ['image'] as readonly string[] };
-    expect(refusalOf(filled)).toBe('sources-missing');
-    expect(refusalOf({ ...filled, sourceRule: 'any_of' })).toBeNull();
-  });
-
-  it('passes once every one of them holds something', () => {
-    expect(refusalOf({ ...frames, filledSlots: ['image', 'endImage'] })).toBeNull();
-  });
-
-  it('names the one place a single-place mode takes', () => {
-    const one = { ...ok, requiredSlots: ['image'], filledSlots: [] };
-    expect(evaluateExecute(one)).toMatchObject({ refusal: 'source-missing', slot: 'image' });
-  });
 });
 
 describe('evaluateExecute — more references than the model takes', () => {
-  const pooled = { ...ok, poolCount: 8, poolCap: 7 };
+  const pooled = { ...ok, pools: [{ kind: 'image' as const, count: 8, cap: 7 }] };
 
   it('names the limit, which is the only way to find it without guessing', () => {
     expect(evaluateExecute(pooled)).toEqual({
       refusal: 'too-many-references',
-      over: { limit: 7 },
+      over: { limit: 7, kind: 'image' },
+    });
+  });
+
+  it('names the kind that is over, each kind against its own cap', () => {
+    const mixed = {
+      ...ok,
+      pools: [
+        { kind: 'image' as const, count: 9, cap: 30 },
+        { kind: 'video' as const, count: 4, cap: 3 },
+      ],
+    };
+    expect(evaluateExecute(mixed)).toEqual({
+      refusal: 'too-many-references',
+      over: { limit: 3, kind: 'video' },
     });
   });
 
   it('passes at the cap and where the model states none', () => {
-    expect(refusalOf({ ...pooled, poolCount: 7 })).toBeNull();
-    expect(refusalOf({ ...pooled, poolCap: undefined })).toBeNull();
+    expect(refusalOf({ ...ok, pools: [{ kind: 'image', count: 7, cap: 7 }] })).toBeNull();
+    expect(refusalOf({ ...ok, pools: [{ kind: 'image', count: 8, cap: undefined }] })).toBeNull();
   });
 
   it('asks for the missing material first, the panel order', () => {
     // Over the cap and an empty slot cannot both be acted on at once, and the
     // empty one is what the mode cannot run without.
-    expect(refusalOf({ ...pooled, requiredSlots: ['image'], filledSlots: [] })).toBe(
+    expect(refusalOf({ ...pooled, missing: [['image']] })).toBe(
       'source-missing',
     );
   });

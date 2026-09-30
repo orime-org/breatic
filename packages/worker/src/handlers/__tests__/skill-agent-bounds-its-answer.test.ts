@@ -16,6 +16,9 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type { UsageRecorder } from "@breatic/domain";
+
+const handOffLookups = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 
 const generateTextRetry = vi.hoisted(() => vi.fn());
 const buildAgentConfig = vi.hoisted(() => vi.fn());
@@ -51,7 +54,28 @@ vi.mock("@breatic/domain", () => ({
   extractPromptText: (x: unknown) => String(x ?? ""),
   releaseCanvasNodeLock: vi.fn(),
   reacquireCanvasNodeLock: vi.fn(),
+  resolveProvider: () => "routed",
+  handOffLookups,
+  usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
+    Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
 }));
+
+/** A recorder that keeps the model calls it was told about. */
+function recorder(): UsageRecorder & {
+  recordModelCall: ReturnType<typeof vi.fn>;
+  awaitingLookup: ReturnType<typeof vi.fn>;
+  settle: ReturnType<typeof vi.fn>;
+} {
+  return {
+    operation: { operationKey: "task:t-1", feature: "skill_task", actorUserId: "u-1", projectId: "p-1" },
+    recordModelCall: vi.fn(),
+    recordServiceCall: vi.fn(),
+    recordLookedUpCall: vi.fn(),
+    awaitingLookup: vi.fn(() => []),
+    settle: vi.fn(async () => 0),
+  };
+}
+
 
 vi.mock("@breatic/shared", () => ({
   canvasSpaceDocName: (pid: string, sid: string) => `project-${pid}/canvas-${sid}`,
@@ -85,7 +109,7 @@ beforeEach(() => {
 
 describe("the model calls a skill job makes", () => {
   it("are bounded by the same key chat's are", async () => {
-    await runSkillAgent("brainstorm", { topic: "a canyon" });
+    await runSkillAgent("brainstorm", { topic: "a canyon" }, recorder());
 
     expect(generateTextRetry).toHaveBeenCalledTimes(1);
     const call = generateTextRetry.mock.calls[0]?.[0] as { maxOutputTokens?: number };
@@ -95,7 +119,7 @@ describe("the model calls a skill job makes", () => {
   it("still stop after the configured number of steps", async () => {
     // The ceiling is per call and the step limit bounds how many calls there
     // are. Both have to hold for a job to be bounded at all.
-    await runSkillAgent("brainstorm", { topic: "a canyon" });
+    await runSkillAgent("brainstorm", { topic: "a canyon" }, recorder());
 
     const call = generateTextRetry.mock.calls[0]?.[0] as {
       stopWhen?: { stepLimit?: number };

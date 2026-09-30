@@ -21,7 +21,11 @@
  */
 
 import { COMPARABLE_MEMBERSHIP_TIERS } from "@breatic/shared";
-import type { MembershipTier, SubscriptionSituation } from "@breatic/shared";
+import type {
+  BillingPeriod,
+  MembershipTier,
+  SubscriptionSituation,
+} from "@breatic/shared";
 
 /**
  * The eight statuses a Stripe subscription can hold.
@@ -66,6 +70,14 @@ export interface SubscriptionRecord {
   readonly status: string;
   /** The tier this subscription has been paid for. */
   readonly tier: MembershipTier;
+  /**
+   * How often it is billed.
+   *
+   * Beside the tier because the two together are what somebody bought: the
+   * same tier is sold monthly and yearly at two prices, and which one a row
+   * holds decides the price shown, the renewal date and what it may move to.
+   */
+  readonly period: BillingPeriod;
   /** Whether the plan is set to end when the paid period runs out. */
   readonly cancelAtPeriodEnd: boolean;
   /** Whether an upgrade is waiting on its invoice being paid. */

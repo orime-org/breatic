@@ -4,11 +4,13 @@
 import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 
+import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import {
   EMPTY_NODE_SIZE,
   GROUP_PADDING,
 } from '@web/spaces/canvas/group-geometry';
+import { centerToTopLeft } from '@web/spaces/canvas/node-factory';
 
 /**
  * Build a flow node with an explicit measured size for deterministic rects.
@@ -130,4 +132,82 @@ describe('planGroupCreation', () => {
     expect(byId['b']).toEqual({ x: 200 - top.x, y: 180 - top.y });
   });
 
+  describe('the Group one multi-file upload becomes (#2209)', () => {
+    const ORIGIN = { x: 0, y: 0 };
+
+    /**
+     * The batch as the drop hands it to the planner: one node per file, placed
+     * by `batchCentresAt` and written at the top-left `createUploadNodeAt`
+     * derives from it. None is measured yet, which is what the canvas passes.
+     * @param count - How many files the drop admitted.
+     * @returns The flow nodes for that batch, in the order they were placed.
+     */
+    function batch(count: number): Node[] {
+      return batchCentresAt(ORIGIN, count).map((centre, i) => ({
+        id: `f${String(i)}`,
+        type: 'image',
+        position: centerToTopLeft(centre, EMPTY_NODE_SIZE),
+        data: {},
+      }));
+    }
+
+    /**
+     * Wrap a whole batch, the way the drop does.
+     * @param count - How many files the drop admitted.
+     * @returns The plan, or null when the batch is too small for a Group.
+     */
+    function wrap(count: number): ReturnType<typeof planGroupCreation> {
+      const nodes = batch(count);
+      return planGroupCreation(
+        nodes,
+        nodes.map((n) => n.id),
+        `g-${String(count)}`,
+      );
+    }
+
+    it('frames two files with the padding, and keeps them a gap apart', () => {
+      const plan = wrap(2);
+
+      // 288x192 nodes one 346 step apart (the node plus the task-count
+      // column beside it plus a gap), padded by 24 on every side.
+      expect(plan).not.toBeNull();
+      expect(plan?.width).toBe(682);
+      expect(plan?.height).toBe(240);
+      expect(plan?.members).toEqual([
+        { id: 'f0', position: { x: 24, y: 24 } },
+        { id: 'f1', position: { x: 370, y: 24 } },
+      ]);
+    });
+
+    it('is two rows tall once the fifth file wraps', () => {
+      const plan = wrap(5);
+
+      // Four across, so the fifth starts a second row one 216 step down.
+      expect(plan?.width).toBe(1374);
+      expect(plan?.height).toBe(456);
+      expect(plan?.members.map((m) => m.position)).toEqual([
+        { x: 24, y: 24 },
+        { x: 370, y: 24 },
+        { x: 716, y: 24 },
+        { x: 1062, y: 24 },
+        { x: 24, y: 240 },
+      ]);
+    });
+
+    it('centres the Group on the point the batch came in at', () => {
+      // A single file puts its node's centre there, so a batch puts the centre
+      // of the Group there: the reader points at a place and what they handed
+      // over appears around it, whatever the count.
+      for (const count of [2, 5, 9]) {
+        const plan = wrap(count);
+        expect(plan).not.toBeNull();
+        expect(plan!.position.x + plan!.width / 2).toBe(ORIGIN.x);
+        expect(plan!.position.y + plan!.height / 2).toBe(ORIGIN.y);
+      }
+    });
+
+    it('leaves a single file on its own', () => {
+      expect(wrap(1)).toBeNull();
+    });
+  });
 });

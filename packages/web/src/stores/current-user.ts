@@ -6,7 +6,7 @@ import { immer } from 'zustand/middleware/immer';
 
 import type { MembershipTier, PersonalStudioRef } from '@breatic/shared';
 
-import { deriveDisplayName, type AuthUser } from '@web/data/api/auth';
+import { authApi, deriveDisplayName, type AuthUser } from '@web/data/api/auth';
 import { rememberSession } from '@web/lib/session-seen';
 
 /**
@@ -46,10 +46,9 @@ export interface CurrentUser {
    * Which membership tier the account is on.
    *
    * The avatar menu names it, and the membership panel opens from there.
-   * It arrives with the session payload, so it is as fresh as the last
-   * `/auth/me` — a tier changed elsewhere reaches this tab on the next boot
-   * (#110 makes that immediate, and belongs with the upgrade flow that can
-   * change it).
+   * It arrives with the session payload and is read again each time the
+   * avatar menu opens (`refreshCurrentUser`), so a tier changed in another tab
+   * shows here the next time the menu is opened.
    */
   membershipTier: MembershipTier;
 }
@@ -105,6 +104,35 @@ export function applyPersonalStudio(
     avatarUrl: ref.avatarUrl ?? undefined,
     personalStudio: ref,
   };
+}
+
+/**
+ * Read the account again and put what comes back in the store.
+ *
+ * The store's copy is a snapshot of `/auth/me` from whenever the page last
+ * booted. Two things change the account after that and neither of them passes
+ * through here: a purchase settles server-side some moments after Stripe sends
+ * the browser home, and another tab can move the same account. So everywhere
+ * that is about to show one of these fields calls this first — the account
+ * menu when it opens, the checkout return when it lands.
+ *
+ * A failed read leaves the store alone. It is a refresh of something already
+ * on screen: showing the tier from a minute ago beats replacing the menu with
+ * an error because one request did not land.
+ * @returns Nothing; the store is where the answer goes.
+ */
+export async function refreshCurrentUser(): Promise<void> {
+  try {
+    const fresh = await authApi.me();
+    // Only over the account the read was about. Somebody can sign out, or
+    // sign in as someone else, while it is out; an answer landing after that
+    // would put the previous account back on screen.
+    const { user, setUser } = useCurrentUserStore.getState();
+    if (user?.id === fresh.id) setUser(toCurrentUser(fresh));
+  } catch {
+    // Nothing to do here and nothing to say: the fields on screen are the
+    // ones from the last successful read, which is what they already were.
+  }
 }
 
 interface CurrentUserState {

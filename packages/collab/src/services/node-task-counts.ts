@@ -18,6 +18,7 @@
 import * as Y from "yjs";
 import type { NodeTaskCounts, NodeTaskResult } from "@breatic/shared";
 import { CANVAS_NODES_KEY } from "@breatic/shared";
+import { writePlainTextIntoBody } from "@breatic/shared/canvas/text-body";
 
 /**
  * Write the counts, and the content fields when the event carries them.
@@ -31,8 +32,8 @@ import { CANVAS_NODES_KEY } from "@breatic/shared";
  * @param event - What the server recounted.
  * @param event.nodeId - The node these counts belong to.
  * @param event.counts - All four, freshly counted from the table.
- * @param event.result - The five content fields, present only on the
- *   transition that reached `done`.
+ * @param event.result - The content fields, present only on the transition
+ *   that reached `done`.
  */
 export function applyNodeTaskCounts(
   doc: Y.Doc,
@@ -43,12 +44,25 @@ export function applyNodeTaskCounts(
   if (!(node instanceof Y.Map)) return;
   const data = node.get("data");
   if (!(data instanceof Y.Map)) return;
+  const isText = node.get("type") === "text";
 
   doc.transact(() => {
     data.set("taskCounts", { ...event.counts });
 
     const result = event.result;
     if (result === undefined) return;
+    if (isText) {
+      // A text node holds its words in the `Y.XmlFragment` the editor binds
+      // to; its `content` is retired (#1774). Written there, a finished read
+      // would reach the node with nothing to render it.
+      let body = data.get("body");
+      if (!(body instanceof Y.XmlFragment)) {
+        body = new Y.XmlFragment();
+        data.set("body", body);
+      }
+      writePlainTextIntoBody(body as Y.XmlFragment, result.content);
+      return;
+    }
     data.set("content", result.content);
     // The four below are absent on the node when the medium has no such
     // number, which is not the same as holding null: the node's data declares
@@ -62,6 +76,12 @@ export function applyNodeTaskCounts(
     setOrRemove(data, "mediaWidth", result.width);
     setOrRemove(data, "mediaHeight", result.height);
     setOrRemove(data, "duration", result.duration);
+    // What the ledger judged off the bytes that landed. The canvas reads both
+    // before it will start an Understand run, so a node that lost them to a
+    // later result it has no numbers for is a node that can only be gated by
+    // guessing — removing is as deliberate here as setting.
+    setOrRemove(data, "mimeType", result.mimeType);
+    setOrRemove(data, "size", result.size);
   });
 }
 

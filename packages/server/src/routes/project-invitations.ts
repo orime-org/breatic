@@ -15,6 +15,7 @@
  */
 
 import { Hono } from "hono";
+import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { z } from "zod";
 import { validate } from "@server/middleware/validate.js";
 import { decisionLink } from "@server/utils/decision-link.js";
@@ -55,7 +56,7 @@ projectInvites.post(
     const user = c.get("user");
     const projectId = getProjectId(c);
     const body = c.req.valid("json");
-    const origin = c.req.header("Origin") ?? "http://localhost:8000";
+    const origin = frontendOrigin(c.req.header("Origin"));
     // The optional best-effort invite email is sent inside the service (the bell
     // notification is the always-delivered path); the route passes the Origin and
     // reuses the returned token to build the copyable invite URL.

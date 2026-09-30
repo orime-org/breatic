@@ -53,7 +53,8 @@ type ProviderOptionsFor = NonNullable<ReasoningOptions["providerOptions"]>[strin
  * a typo through to runtime, where it reads as undefined: the route silently
  * never opens, every call for that vendor goes to OpenRouter instead, and
  * the charge is recorded against OpenRouter too. This repo has made exactly
- * that typo before -- see the `KLING_ACCESS_KEY` note in `skill-availability`.
+ * that typo before: a providers.yaml once named `KLING_ACCESS_KEY` where the
+ * schema said `KLINGAI_ACCESS_KEY`.
  */
 type ProviderKeyName = Extract<keyof CoreConfig, `${string}_API_KEY`>;
 

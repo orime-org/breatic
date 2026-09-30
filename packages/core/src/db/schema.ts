@@ -25,6 +25,8 @@ import {
   index,
   primaryKey,
   check,
+  unique,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 // A self-referencing FK needs its column type spelled out, since the table is
 // still being defined at the point the reference is written.
@@ -112,6 +114,11 @@ export const users = pgTable(
     // and creating one per registration would make a Stripe object per signup.
     // One customer per account, reused across every subscription it ever has.
     stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+    // The account's language (0084, #286): every email to this account is
+    // rendered in it. Written at sign-up from the language the request was
+    // negotiated in, and changed only when the user switches the interface
+    // language.
+    locale: varchar("locale", { length: 10 }).default("en").notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -250,9 +257,6 @@ export const projects = pgTable(
     // URL slug for /project/{slug}-{uuid}. Format-validated app-side, NOT
     // unique (same-name projects disambiguate by uuid; URL design §5.7).
     slug: varchar("slug", { length: 120 }).notNull(),
-    // 'studio' = visible to every studio member (open baseline); 'private'
-    // = only users with an explicit project_members row (slice 2 §2.3).
-    visibility: varchar("visibility", { length: 16 }).default("studio").notNull(),
     // Initial Space type seeded on first open (B.2). varchar with NO check
     // constraint — same pattern as studio_members.role, so adding 3d/plan
     // later is a zero-migration change. Canvas is the only editable type
@@ -552,15 +556,86 @@ export const tasks = pgTable(
   ],
 );
 
+// ── Task upstream steps ──────────────────────────────────────────────
+
+/**
+ * The upstream calls one task makes, in order (#2156): a Mureka upload, a
+ * cloned voice, vocal or element, then the model's own call, and for Voice
+ * Cloning the speech after it. Written by the worker on the task's first run
+ * and advanced only by its step executor, so a redelivered job resumes from
+ * the first step that is not done and never submits a step twice.
+ *
+ * The kind and status CHECKs live in migration 0085 only, as 0061 does for
+ * its tables.
+ */
+export const taskUpstreamSteps = pgTable(
+  "task_upstream_steps",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "restrict" }),
+    position: integer("position").notNull(),
+    /** What the step does, which decides what it reads off the answer. */
+    kind: varchar("kind", { length: 24 }).notNull(),
+    /** The WaveSpeed model path the step posts to. */
+    endpoint: varchar("endpoint", { length: 200 }).notNull(),
+    /** Which item of a list param the step serves (one element per image). */
+    itemIndex: integer("item_index"),
+    status: varchar("status", { length: 16 }).default("pending").notNull(),
+    /** The WaveSpeed prediction id, stored before polling. */
+    predictionId: text("prediction_id"),
+    /** What the step answered: an upload id, a clone id, an output url, a description. */
+    output: jsonb("output").$type<Record<string, unknown>>(),
+    /** What the step cost outside its prediction, in USD (the understand call of an element). */
+    inlineCostUsd: doublePrecision("inline_cost_usd").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex("task_upstream_steps_task_position_key").on(table.taskId, table.position)],
+);
+
+// ── Studio upstream clones ───────────────────────────────────────────
+
+/**
+ * The voices, vocals and elements a studio has had cloned upstream, by the
+ * source they were cloned from (#2156): the first run on a source clones it,
+ * every later run reuses the id. Read and written only by the worker.
+ *
+ * At most one live row per (studio, kind, source): the partial unique index
+ * is what settles two runs cloning the same source at once — the first insert
+ * wins and the second keeps its own id for its own run.
+ */
+export const studioUpstreamClones = pgTable(
+  "studio_upstream_clones",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    kind: varchar("kind", { length: 16 }).notNull(),
+    /** The source asset's sha256; an element adds its name after a colon. */
+    sourceKey: text("source_key").notNull(),
+    upstreamId: text("upstream_id").notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("studio_upstream_clones_live_key")
+      .on(table.studioId, table.kind, table.sourceKey)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
 // ── Node History ─────────────────────────────────────────────────────
 
 /**
  * Per-node content timeline.
  *
  * Records every content change on a canvas node: successful/failed
- * AIGC generations + user uploads. Queried by frontend to show
- * version history and support restore. Node soft-deletes don't
- * cascade - history is preserved until the project is deleted.
+ * AIGC generations, user uploads, and the copies a reader asks to keep.
+ * Queried by frontend to show version history and support restore. Node
+ * soft-deletes don't cascade - history is preserved until the project is
+ * deleted.
  */
 export const nodeHistory = pgTable(
   "node_history",
@@ -574,7 +649,7 @@ export const nodeHistory = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
 
-    entryType: varchar("entry_type", { length: 20 }).notNull(), // 'generation' | 'upload'
+    entryType: varchar("entry_type", { length: 20 }).notNull(), // 'generation' | 'upload' | 'snapshot'
     status: varchar("status", { length: 20 }).notNull(),         // 'success' | 'failed'
     content: text("content"),                                    // URL or text (null if failed)
     thumbnailUrl: text("thumbnail_url"),                         // cover for video, self for image
@@ -757,10 +832,61 @@ export const conversationAttachments = pgTable(
 
 // ── 7. Payments ──────────────────────────────────────────────────────
 
+/**
+ * What a lot of credits came from (0079, #259).
+ *
+ * Every lot points at one row here, and `kind` says what sort of receipt it
+ * is. The column this replaced was called `payment_id` and was NOT NULL, which
+ * spelled "a lot always comes from a payment" into the schema — and a
+ * back-office compensation has a compensation record and no payment at all.
+ *
+ * Each kind keeps its details in its own child table, sharing this row's
+ * primary key: `payments.id` IS its source id, so no child carries a second
+ * column pointing here and the two cannot drift apart. `UNIQUE (id, kind)`
+ * adds nothing in row terms — `id` is already the key — and exists to give
+ * those children something composite to reference, which is what stops a
+ * payment from being filed under `gift`.
+ *
+ * Append-only: `created_at` and no `deleted_at`. A receipt outlives the
+ * credits it opened, and one that could vanish would leave lots pointing at
+ * nothing — the written reason this table is waived from the soft-delete
+ * mandate.
+ *
+ * The CHECK on `kind` lives in the migration, as the lifecycle one does, for
+ * the reason 0061 gives: a `check()` beside the column would be a second copy
+ * no tool compares against the first.
+ */
+export const creditSources = pgTable(
+  "credit_sources",
+  {
+    id: uuid("id").primaryKey(),
+    /** One of `payment` / `compensation` / `gift` / `discount`. CHECK in 0079. */
+    kind: varchar("kind", { length: 16 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [unique("credit_sources_id_kind_key").on(table.id, table.kind)],
+);
+
 export const payments = pgTable(
   "payments",
   {
-    id: uuid("id").defaultRandom().primaryKey(),
+    // Declared without a default, so an insert has to name this id: it is also
+    // the id of the row's `credit_sources` receipt, which the composite foreign
+    // key requires to already exist, and only the caller that opened that
+    // receipt knows it. The column in the database keeps the
+    // `gen_random_uuid()` it was created with; the foreign key is what refuses
+    // an id nobody opened a receipt for.
+    id: uuid("id").primaryKey(),
+    /**
+     * Constant, and half of the composite key below. On its own it says
+     * nothing; paired with `id` it is what makes the database refuse a payment
+     * whose source row claims some other kind.
+     */
+    sourceKind: varchar("source_kind", { length: 16 })
+      .default("payment")
+      .notNull(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -797,6 +923,13 @@ export const payments = pgTable(
       "payments_status_check",
       sql`${table.status} IN ('pending', 'completed', 'failed', 'expired')`,
     ),
+    // The CHECK pinning `source_kind` to 'payment' lives in 0079, beside the
+    // other hand-written ones.
+    foreignKey({
+      name: "payments_source_fk",
+      columns: [table.id, table.sourceKind],
+      foreignColumns: [creditSources.id, creditSources.kind],
+    }).onDelete("restrict"),
   ],
 );
 
@@ -920,6 +1053,13 @@ export const subscriptions = pgTable(
     // so a `check()` beside the column would be a second copy nothing compares
     // against the first.
     tier: varchar("tier", { length: 16 }).notNull(),
+    // How often this subscription is billed. The tier alone no longer says
+    // what somebody pays: PRO monthly and PRO yearly are the same tier at two
+    // prices. CHECK constraint added by hand in 0081, same reason as `tier`'s.
+    //
+    // No default, so a writer that forgets the column fails rather than
+    // landing the account silently on the cheaper period.
+    period: varchar("period", { length: 8 }).notNull(),
     status: varchar("status", { length: 30 }).notNull(),
     // From `items.data[0].current_period_end`. Stripe moved it off the
     // subscription object in the 2025-03-31 release; nullable because a
@@ -934,6 +1074,11 @@ export const subscriptions = pgTable(
     stripeItemId: varchar("stripe_item_id", { length: 255 }),
     hasPendingUpdate: boolean("has_pending_update").default(false).notNull(),
     pendingTier: varchar("pending_tier", { length: 16 }),
+    // The period a waiting change moves to. Null whenever nothing is waiting,
+    // and separate from `period` because a change can move the period without
+    // moving the tier — PRO monthly to PRO yearly is one of the moves the
+    // product sells.
+    pendingPeriod: varchar("pending_period", { length: 8 }),
     payableInvoiceUrl: text("payable_invoice_url"),
     // When the snapshot this row was written from was taken (0058).
     //
@@ -983,14 +1128,14 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
 /**
  * One top-up (0061, task #11).
  *
- * A row is one payment that succeeded, and it tracks that purchase for the
- * rest of its life: how much of it is left, which studio may spend it, and
+ * A row is credits granted once, and it tracks that grant for the rest of its
+ * life: how much of it is left, which studio may spend it, and
  * whether it is on its way back to the buyer. Credits are spent lot by lot,
  * oldest first, which is why the remainder lives per purchase rather than as
  * one number per account — a refund returns a purchase, so a purchase has to
  * be a thing that can still be pointed at.
  *
- * `payment_id` is NOT NULL and unique, and that is the whole of "a payment
+ * `source_id` is NOT NULL and unique, and that is the whole of "a payment
  * grants credits exactly once". The `payments` table cannot carry that rule:
  * `stripe_payment_intent_id` has no unique index, and the one on
  * `stripe_session_id` sits on a nullable column, where Postgres admits any
@@ -1026,9 +1171,20 @@ export const creditLots = pgTable(
   "credit_lots",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    paymentId: uuid("payment_id")
-      .notNull()
-      .references(() => payments.id, { onDelete: "restrict" }),
+    sourceId: uuid("source_id").notNull(),
+    /**
+     * Half of the composite key below, and the only column that says where
+     * these credits came from.
+     *
+     * Read off the row rather than joined for, because every reader that
+     * turns on it holds a lot and nothing else: re-designation and refunds
+     * see only what `lockLot` returns, and that read takes a row lock the
+     * charge loop runs per candidate lot on every generation. Paired with
+     * `source_id` it is what makes the database refuse a lot filed under a
+     * kind its receipt does not claim. No default: which kind opened a lot is
+     * the caller's to state.
+     */
+    sourceKind: varchar("source_kind", { length: 16 }).notNull(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -1058,7 +1214,7 @@ export const creditLots = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex("credit_lots_payment_id_idx").on(table.paymentId),
+    uniqueIndex("credit_lots_source_id_idx").on(table.sourceId),
     index("credit_lots_user_id_created_at_idx").on(
       table.userId,
       table.createdAt,
@@ -1068,6 +1224,16 @@ export const creditLots = pgTable(
       table.lifecycle,
       table.createdAt,
     ),
+    // Composite, so the database refuses a lot filed under a kind its receipt
+    // does not claim. It replaces the single-column key the `source_id` column
+    // carried before 0080: that one implied nothing about `source_kind`, and
+    // the kind is what decides whether these credits may be re-designated or
+    // refunded.
+    foreignKey({
+      name: "credit_lots_source_fk",
+      columns: [table.sourceId, table.sourceKind],
+      foreignColumns: [creditSources.id, creditSources.kind],
+    }).onDelete("restrict"),
   ],
 );
 
@@ -1164,6 +1330,58 @@ export const creditLedger = pgTable(
     index("credit_ledger_payer_studio_created_idx")
       .on(table.payerUserId, table.studioId, desc(table.createdAt))
       .where(sql`${table.studioId} IS NOT NULL`),
+  ],
+);
+
+/**
+ * One paid call the agent made (#296): a model call, a search, a media read,
+ * a decision query. Written where the call happens, one row each, so every
+ * dollar spent can be traced to the call that spent it.
+ *
+ * `operation_key` groups a turn, a consolidation, a text-tool run or a task;
+ * it is the same key handed to the credit engine, so what was charged for an
+ * operation is the `credit_ledger` rows whose `reference_id` equals it, plus
+ * one row per later-looked-up OpenRouter call under
+ * `<operation_key>:gen:<generation id>`. This
+ * table records cost; it does not record whether a charge was made.
+ *
+ * `created_at` only, and no `deleted_at`: an append-only usage record, the
+ * same carve-out as `credit_ledger`.
+ */
+export const agentUsageRecords = pgTable(
+  "agent_usage_records",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    operationKey: varchar("operation_key", { length: 255 }).notNull(),
+    // `chat_turn` / `memory_consolidation` / `text_tool` / `canvas_understand`
+    // / `skill_task`.
+    feature: varchar("feature", { length: 40 }).notNull(),
+    // `model`, or `tool:<name>` for a paid call a tool made.
+    source: varchar("source", { length: 40 }).notNull(),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "restrict",
+    }),
+    model: varchar("model", { length: 100 }).notNull(),
+    provider: varchar("provider", { length: 50 }).notNull(),
+    inputTokens: integer("input_tokens"),
+    cachedInputTokens: integer("cached_input_tokens"),
+    // Reasoning tokens are part of output.
+    outputTokens: integer("output_tokens"),
+    reasoningTokens: integer("reasoning_tokens"),
+    requestCount: integer("request_count"),
+    costUsd: numeric("cost_usd", { precision: 20, scale: 8 }).notNull(),
+    // `provider` / `price_table` / `generation_lookup` / `missing`.
+    costSource: varchar("cost_source", { length: 20 }).notNull(),
+    credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("agent_usage_records_operation_key_idx").on(table.operationKey),
   ],
 );
 
@@ -1442,6 +1660,9 @@ export const notifications = pgTable(
      * - 'project.invite_accepted' - invitee accepted; the inviting owner is notified
      * - 'project.transfer_request' - owner asks the user to take the project (TTL) (0039)
      * - 'project.transfer_approved' - user accepted; the old owner is notified (0039)
+     * - 'project.join_request' - a studio member asks the owner to join a project (TTL) (0082)
+     * - 'project.join_approved' - the owner let the requester in (0082)
+     * - 'project.join_rejected' - the owner turned the request down (0082)
      * - 'membership.ended' - the account fell back to the free tier (0056)
      * - 'membership.upgrade_incomplete' - an upgrade's invoice went unpaid (0056)
      * - 'storage.quota_exceeded' - a write was refused because the admin's
@@ -1716,6 +1937,60 @@ export const roleUpgradeRequests = pgTable(
     ),
     // One LIVE pending request per (project, requester) is enforced by a partial
     // unique index (`role_upgrade_requests_one_pending`) in the migration.
+  ],
+);
+
+/**
+ * A studio member who is not on a project asks its owner to let them in (#96).
+ *
+ * Mirrors `role_upgrade_requests`. The requester asks for membership, not for
+ * a role: the owner picks viewer or editor when approving, and that choice is
+ * `granted_role`, set exactly when `status = 'approved'` (CHECK in 0082). One
+ * live pending request per (project, requester) is the partial unique index
+ * `project_join_requests_one_pending` in the migration.
+ */
+export const projectJoinRequests = pgTable(
+  "project_join_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    requesterUserId: uuid("requester_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Optional note the requester wrote for the owner. */
+    message: text("message"),
+    /** Lifecycle: 'pending' | 'approved' | 'rejected' | 'expired' | 'cancelled'. */
+    status: varchar("status", { length: 16 }).notNull(),
+    /** The role the owner granted: 'viewer' | 'editor'; non-null iff approved. */
+    grantedRole: varchar("granted_role", { length: 16 }),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /**
+     * The owner's bell entry for this request. It follows the owner: an owner
+     * change retires it and points this column at the new owner's entry.
+     */
+    notificationId: uuid("notification_id").references(() => notifications.id, {
+      onDelete: "set null",
+    }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** Names this request in the `/decision?token=` link; never rotated. */
+    shareToken: varchar("share_token", { length: 64 }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("project_join_requests_share_token_key").on(table.shareToken),
+    index("project_join_requests_project_id_idx").on(
+      table.projectId,
+      table.deletedAt,
+    ),
+    index("project_join_requests_requester_user_id_idx").on(
+      table.requesterUserId,
+    ),
   ],
 );
 

@@ -27,7 +27,6 @@ const MODEL: ModelEntry = {
   description: '',
   guide: '',
   tier: 'recommended',
-  cost_per_call: 7,
   generation_time: 30,
   takes_prompt: true,
   params: {
@@ -35,8 +34,6 @@ const MODEL: ModelEntry = {
     resolution: { description: '', values: ['1K', '2K'], default: '1K' },
   },
   providers: [],
-  sourcesByMode: {},
-  sourceRuleByMode: {},
 };
 
 /**
@@ -52,11 +49,12 @@ function setup(
       models={[MODEL]}
       model='nano_banana_pro'
       mode='t2i'
+      referenceKinds={[]}
       promptRequired
       modeOptions={IMAGE_MODE_OPTIONS}
       params={{ aspect_ratio: '16:9', resolution: '2K' }}
       references={[]}
-      creditEstimate={7}
+      creditText='7'
       executeRefusal={null}
       promptSlot={<div data-testid='prompt-slot'>prompt</div>}
       onExit={() => {}}
@@ -88,9 +86,6 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(
       (container.firstChild as HTMLElement).className,
     ).toContain('w-[min(600px,92vw)]');
-    expect(screen.getByTestId('generate-presets').className).toContain(
-      'shrink-0',
-    );
     expect(screen.getByTestId('generate-execute').className).toContain(
       'shrink-0',
     );
@@ -106,11 +101,11 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.getByTestId('generate-credit')).toHaveTextContent('7');
   });
 
-  it('renders the unbuilt footer controls as disabled placeholders (岔路二 B)', () => {
+  it('draws no presets, translate or web-search control (user 2026-09-29)', () => {
     setup();
-    expect(screen.getByTestId('generate-presets')).toBeDisabled();
-    expect(screen.getByTestId('generate-online')).toBeDisabled();
-    expect(screen.getByTestId('generate-translate')).toBeDisabled();
+    expect(screen.queryByTestId('generate-presets')).toBeNull();
+    expect(screen.queryByTestId('generate-translate')).toBeNull();
+    expect(screen.queryByTestId('generate-online')).toBeNull();
   });
 
   it('hides the Camera control when the model omits the cluster (#1788 — unsupported → hidden, not greyed)', () => {
@@ -164,7 +159,7 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
   });
 
   it('enables the reference add-button in i2i', () => {
-    setup({ mode: 'i2i' });
+    setup({ mode: 'i2i', referenceKinds: ['image'] });
     expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
   });
 
@@ -180,7 +175,7 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
   });
 
   it('enables Focus in i2i (#1782)', () => {
-    setup({ mode: 'i2i' });
+    setup({ mode: 'i2i', referenceKinds: ['image'] });
     expect(screen.getByTestId('generate-tool-focus')).not.toBeDisabled();
   });
 

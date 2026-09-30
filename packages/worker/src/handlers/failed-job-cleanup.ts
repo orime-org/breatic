@@ -38,12 +38,17 @@ import {
   settleTaskForNode,
 } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
-import type { PersistedOutput } from "@worker/handlers/persisted-output.js";
+import {
+  generationMetadata,
+  nodeResultsFrom,
+  type PersistedOutput,
+} from "@worker/handlers/persisted-output.js";
 import {
   mediaKindForActivity,
   recordGenerationForNodes,
   type TaskJobData,
 } from "@worker/handlers/dispatch.js";
+import { storedFailure } from "@worker/handlers/stored-failure.js";
 
 /** Minimal failed-job shape (BullMQ `Job` narrowed to what we read). */
 export interface FailedJobLike {
@@ -162,23 +167,18 @@ export async function cleanupFailedJobNodes(
         userId: task.userId,
         taskId: job.data.taskId,
         taskType: job.data.taskType,
-        metadata: {
-          model: billedResult.model,
-          cost: billedResult.cost,
+        // The credits are the same figure the activity row above carries:
+        // what the run was billed. `billedResult.cost` is the dollars the
+        // service charged us, a hundred times smaller and a different unit.
+        metadata: generationMetadata({
+          reportedModel: billedResult.model,
+          jobModel: job.data.model,
+          credits: task.billedCredits ?? undefined,
           durationMs: task.durationMs ?? undefined,
           params: task.params,
-        },
+        }),
       },
-      targetNodeIds.map((nodeId, i) => ({
-        nodeId,
-        url: outputs[i]?.url,
-        coverUrl: outputs[i]?.cover_url,
-        // The paid result already holds what the container measured, and this
-        // recovery is the only delivery the node will get for it.
-        width: outputs[i]?.width ?? null,
-        height: outputs[i]?.height ?? null,
-        duration: outputs[i]?.duration_seconds ?? null,
-      })),
+      nodeResultsFrom(targetNodeIds, outputs),
     );
     return targetNodeIds.length;
   }
@@ -228,7 +228,14 @@ export async function cleanupFailedJobNodes(
         taskId: job.data.taskId,
         nodeId,
         outcome: "failed",
-        errorMessage: `Task failed: ${reason}`,
+        // The same exit the handler's own failure path uses, so a lane whose
+        // causes are stored as codes keeps storing codes when the net is what
+        // settles the row: a reader opens this list in their own language, and
+        // BullMQ's sentence is in one.
+        errorMessage: storedFailure(
+          job.data.taskType,
+          new Error(`Task failed: ${reason}`),
+        ),
       });
       emitted++;
     } catch (err) {
@@ -238,7 +245,7 @@ export async function cleanupFailedJobNodes(
       // the last thing that will touch these rows, so the reason is written
       // here or nowhere.
       logger.warn(
-        { err, taskId: job.data.taskId, nodeId },
+        { err, taskId: job.data.taskId, nodeId, reason },
         "node_task settle (crash net) failed",
       );
     }

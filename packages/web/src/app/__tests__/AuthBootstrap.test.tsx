@@ -7,6 +7,9 @@ import { render, waitFor } from '@testing-library/react';
 import AuthBootstrap from '@web/app/AuthBootstrap';
 import { authApi } from '@web/data/api/auth';
 import { useCurrentUserStore } from '@web/stores';
+import { getLocale } from '@breatic/shared';
+import { changeLocale } from '@web/i18n/locale-bootstrap';
+import { STORAGE_KEYS } from '@web/lib/storage-keys';
 
 // `vi.mock` replaces the WHOLE module — when AuthBootstrap also
 // pulls `deriveDisplayName` from the same module, omitting it from
@@ -51,6 +54,7 @@ describe('AuthBootstrap', () => {
         avatarUrl: 'https://cdn/alice.png',
       },
       membershipTier: 'base',
+      locale: 'en',
     });
     render(
       <AuthBootstrap>
@@ -85,6 +89,7 @@ describe('AuthBootstrap', () => {
       email: 'c@d.com',
       personalStudio: { name: 'Chen', slug: 'chen', avatarUrl: null },
       membershipTier: 'base',
+      locale: 'en',
     });
     render(
       <AuthBootstrap>
@@ -108,6 +113,7 @@ describe('AuthBootstrap', () => {
       email: 'songxiuxing@gmail.com',
       personalStudio: null,
       membershipTier: 'base',
+      locale: 'en',
     });
     render(
       <AuthBootstrap>
@@ -238,5 +244,25 @@ describe('AuthBootstrap', () => {
       expect(useCurrentUserStore.getState().bootstrapped).toBe(true);
     });
     expect(useCurrentUserStore.getState().user?.id).toBe('signed-in');
+  });
+  it('switches the interface to the account language', async () => {
+    vi.mocked(authApi.me).mockResolvedValueOnce({
+      id: 'u1',
+      email: 'a@b.com',
+      personalStudio: null,
+      membershipTier: 'base',
+      locale: 'ja',
+    });
+    try {
+      render(
+        <AuthBootstrap>
+          <div />
+        </AuthBootstrap>,
+      );
+      await waitFor(() => expect(getLocale()).toBe('ja'));
+      expect(localStorage.getItem(STORAGE_KEYS.locale)).toBe('ja');
+    } finally {
+      changeLocale('en');
+    }
   });
 });

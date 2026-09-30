@@ -12,6 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { UIMessage } from 'ai';
+import { ATTACHMENT_DATA_PART } from '@breatic/shared';
 import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
 
 /**
@@ -262,5 +263,40 @@ describe('工具真失败之后这一轮才被停掉', () => {
     const view = toChatMessage(message, { streaming: false });
 
     expect(view.toolCalls?.[0]?.failureKind).toBe('user_aborted');
+  });
+});
+
+describe('what a message carried', () => {
+  it('reads the attached items off the message, in order', () => {
+    const image = {
+      id: 'a1',
+      type: 'image',
+      name: 'cover.png',
+      data_snapshot: { url: 'https://cdn.example/cover.png' },
+    };
+    const note = { id: 'n1', type: 'text', name: 'Brief', data_snapshot: { text: 'hi' } };
+
+    const message = toChatMessage({
+      id: 'm1',
+      role: 'user',
+      parts: [
+        { type: ATTACHMENT_DATA_PART, data: image },
+        { type: ATTACHMENT_DATA_PART, data: note },
+        { type: 'text', text: 'look' },
+      ],
+    } as UIMessage);
+
+    expect(message.attachments).toEqual([image, note]);
+    expect(message.content).toBe('look');
+  });
+
+  it('carries none when nothing was attached', () => {
+    const message = toChatMessage({
+      id: 'm1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'look' }],
+    } as UIMessage);
+
+    expect(message.attachments).toBeUndefined();
   });
 });

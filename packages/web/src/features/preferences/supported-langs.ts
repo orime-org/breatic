@@ -1,9 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { getLocale, type Locale } from '@breatic/shared';
+import { getLocale, t, type Locale } from '@breatic/shared';
 
+import { usersApi } from '@web/data/api/users';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
+import { toast } from '@web/lib/toast';
 import { useTranslation } from '@web/i18n/use-translation';
 
 export interface SupportedLang {
@@ -47,6 +49,19 @@ export interface UseLocaleSwitch {
 }
 
 /**
+ * Switch the interface language and record it on the account. The interface
+ * switches at once; the account write runs behind it, and when it fails the
+ * reader is told the choice was not saved to the account.
+ * @param code - The locale the reader picked.
+ */
+function switchLocale(code: Locale): void {
+  changeLocale(code);
+  usersApi.setLocale(code).catch(() => {
+    toast.error(t('chrome.languageNotSaved'));
+  });
+}
+
+/**
  * Shared locale-switch hook used by every language switcher (project +
  * studio). The i18n engine is the single source of truth — there is no
  * Zustand mirror (see `feedback_double_source_state_mirror_trap`).
@@ -58,7 +73,7 @@ export function useLocaleSwitch(): UseLocaleSwitch {
   useTranslation(); // subscribe so the trigger re-renders on locale change
   return {
     locale: getLocale(),
-    setLocale: changeLocale,
+    setLocale: switchLocale,
     langs: SUPPORTED_LANGS,
   };
 }

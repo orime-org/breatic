@@ -113,8 +113,8 @@ async function seedEditor(): Promise<{
   `;
   const slug = `ut-proj-${seq++}`;
   const projects = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studioId}, ${userId}, ${`P ${slug}`}, ${slug}, 'private')
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioId}, ${userId}, ${`P ${slug}`}, ${slug})
     RETURNING id
   `;
   const projectId = projects[0]!.id;

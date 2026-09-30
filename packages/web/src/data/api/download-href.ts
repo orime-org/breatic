@@ -13,7 +13,7 @@
 import { API_BASE_PATH } from '@web/data/api/base-path';
 
 /**
- * The same-origin address that downloads one asset.
+ * The configured backend address that downloads one asset.
  *
  * The server reads the asset URL off the query, confirms the URL is ours,
  * and redirects to the ingest Worker, which serves the object with

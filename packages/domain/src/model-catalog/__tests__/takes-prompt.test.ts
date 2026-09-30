@@ -48,12 +48,12 @@ describe("takes_prompt is declared by every model (#1966)", () => {
     expect(missing).toEqual([]);
   });
 
-  it("covers all 43 catalogued models across the six modalities", () => {
+  it("covers all 62 catalogued models across the five modalities", () => {
     const total = MODALITIES.reduce(
       (sum, m) => sum + getFullModelConfig(m).models.length,
       0,
     );
-    expect(total).toBe(43);
+    expect(total).toBe(62);
   });
 });
 
@@ -87,34 +87,29 @@ describe("the values the panels will read (#1966)", () => {
     expect(takesPromptOf("omnihuman-1.5")).toBe(false);
   });
 
-  // 后处理两个：放大和补帧没有文本输入。
-  it.each(["video-upscale-pro", "rife-interpolation"])(
+  // Upscaling and frame interpolation take no text.
+  it.each(["seedvr2-video", "rife-interpolation"])(
     "%s does not take one",
     (name) => {
       expect(takesPromptOf(name)).toBe(false);
     },
   );
 
-  // 这四个是本次要闭合的那个缺口：文生图显然要提示词，而它们一个都没在
-  // params 里声明过，所以旧那条 `params.prompt != null` 会把它们全判成不要。
+  // Text-to-image models take a prompt without declaring a prompt param.
   it.each([
-    "midjourney-v7",
+    "midjourney",
     "nano-banana-2",
-    "nano-banana-pro",
-    "seedream-5.0-lite",
+    "gpt-image-2.5-sunburst-text-to-image",
+    "reve-2.1-text-to-image",
   ])("%s takes one even though it never declared a prompt param", (name) => {
     expect(takesPromptOf(name)).toBe(true);
   });
 
-  // 上游文档说提示词可选但接受（设计 §4.2）——可选也是吃。
-  it("veo-3.1-extend takes one (upstream calls it optional, not absent)", () => {
-    expect(takesPromptOf("veo-3.1-extend")).toBe(true);
+  // The extension mini-tool writes the prompt itself, so the model still takes one.
+  it("seedance-2.5-video-extend takes one", () => {
+    expect(takesPromptOf("seedance-2.5-video-extend")).toBe(true);
   });
 
-  // 我们自己给它写了转发分支，而 runUnderstand 保证 prompt 恒非空。
-  it("whisper-turbo takes one (we forward a guidance prompt to it)", () => {
-    expect(takesPromptOf("whisper-turbo")).toBe(true);
-  });
 });
 
 describe("assertTakesPromptDeclared (#1966)", () => {

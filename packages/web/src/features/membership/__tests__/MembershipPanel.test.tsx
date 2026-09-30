@@ -27,7 +27,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
@@ -75,10 +75,12 @@ function subscription(
 ): SubscriptionSummary {
   return {
     state: 'active',
+    period: 'month',
     tier: 'pro',
     currentPeriodEnd: '2026-09-18T00:00:00.000Z',
     cancelAtPeriodEnd: false,
     payableInvoiceUrl: null,
+    reconciled: true,
     ...over,
   };
 }
@@ -106,10 +108,9 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           project_members: 4,
           storage_bytes: 5 * GIB,
         },
-        priceCents: null,
-        currency: null,
+        prices: { month: null, year: null },
       },
-      { tier: 'pro', limits: limits(), priceCents: 1200, currency: 'usd' },
+      { tier: 'pro', limits: limits(), prices: { month: { priceCents: 1999, currency: 'usd' }, year: { priceCents: 19999, currency: 'usd' } } },
       {
         tier: 'team',
         limits: {
@@ -120,8 +121,7 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           project_members: 40,
           storage_bytes: 500 * GIB,
         },
-        priceCents: 3900,
-        currency: 'usd',
+        prices: { month: { priceCents: 7999, currency: 'usd' }, year: { priceCents: 79999, currency: 'usd' } },
       },
     ],
     subscription: null,
@@ -168,22 +168,27 @@ beforeEach(() => {
 });
 
 describe('MembershipPanel', () => {
-  it('caps the element that scrolls, not the box around it', async () => {
+  it('keeps the current tier in place while everything below it scrolls', async () => {
     membershipMock.mockResolvedValue(answer());
     const { container } = setup();
-    await screen.findAllByText(/Pro/);
+    await screen.findByTestId('current-tier-name');
 
-    // The scroll area's root is overflow-hidden with an auto height, so a cap
-    // there clips what it cannot scroll. The viewport is the element that
-    // scrolls, and the cap belongs to it.
+    // The head is what the reader opened the panel to see; the quota, the
+    // cards and the table under it are what they scroll through. So the head
+    // sits outside the scroll region and the rest sits inside it.
     // From the dialog outwards: the first `[data-scrollbars]` in the document
     // is the overlay's own scroller, which is a different element.
-    const root = container.ownerDocument.querySelector(
-      '[role="dialog"] [data-scrollbars]',
-    )!;
-    const viewport = root.querySelector('[data-radix-scroll-area-viewport]')!;
-    expect(viewport.className).toContain('max-h-[calc(100vh-80px)]');
-    expect(root.className).not.toContain('max-h-');
+    const dialog = container.ownerDocument.querySelector('[role="dialog"]')!;
+    const viewport = dialog.querySelector('[data-radix-scroll-area-viewport]')!;
+    expect(viewport.contains(screen.getByTestId('current-tier-name'))).toBe(false);
+    expect(viewport.contains(screen.getByTestId('quota-storage'))).toBe(true);
+
+    // The ceiling goes on the dialog, and its rows are a grid: under a
+    // `max-height` a flex column leaves its items at `height: auto`, the
+    // viewport grows to its content and the dialog clips instead of
+    // scrolling. Grid tracks are definite either way.
+    expect(dialog.className).toContain('max-h-[calc(100vh-80px)]');
+    expect(dialog.className).toContain('grid-rows-[auto_minmax(0,1fr)]');
   });
 
   it('显示档位和账号级的两项额度', async () => {
@@ -216,18 +221,20 @@ describe('MembershipPanel', () => {
     expect(screen.queryByTestId('quota-concurrent-editors')).toBeNull();
   });
 
-  it('对比表列出三档，当前那一档标出来', async () => {
+  it('lists the three tiers and marks none of them as current', async () => {
+    // Since #253 this table answers one question: what each tier's figures
+    // are. The tier in force is named in the first section and marked on its
+    // card; a third telling would only tint a column nobody reads it from.
     membershipMock.mockResolvedValue(answer());
     setup();
 
     const table = await screen.findByRole('table');
-    expect(table).toHaveTextContent('Base');
+    expect(table).toHaveTextContent('Starter');
     expect(table).toHaveTextContent('Team');
     // 自托管是部署形态、企业版一家一谈，两者都不在价目表上。
     expect(table).not.toHaveTextContent('Self-hosted');
-    expect(screen.getByTestId('compare-column-pro')).toHaveAttribute(
+    expect(screen.getByTestId('compare-column-pro')).not.toHaveAttribute(
       'aria-current',
-      'true',
     );
   });
 
@@ -241,10 +248,10 @@ describe('MembershipPanel', () => {
     await screen.findByTestId('current-tier-name');
     expect(screen.getByTestId('membership-choose-team')).toBeInTheDocument();
     expect(screen.queryByTestId('membership-choose-base')).toBeNull();
-    expect(screen.getByTestId('compare-action-base')).toBeEmptyDOMElement();
-    expect(screen.getByTestId('compare-action-pro')).toHaveTextContent(
-      'Current',
-    );
+    // The free card carries nothing at all — neither a dimmed button nor a
+    // sentence about not being able to drop to it.
+    expect(screen.getByTestId('tier-card-base')).not.toHaveTextContent('Choose');
+    expect(screen.getByTestId('tier-current-pro')).toHaveTextContent('Current');
   });
 
   it('按后端给的货币格式化金额，不写死符号也不吞末位零', async () => {
@@ -252,22 +259,23 @@ describe('MembershipPanel', () => {
     // `1250 / 100` 直接字符串化会显示 12.5，钱不能这么写。
     membershipMock.mockResolvedValue(
       answer({
+        subscription: subscription({ period: 'month' }),
         catalog: [
-          { tier: 'base', limits: limits(), priceCents: null, currency: null },
-          { tier: 'pro', limits: limits(), priceCents: 1250, currency: 'eur' },
-          { tier: 'team', limits: limits(), priceCents: 3900, currency: 'eur' },
+          { tier: 'base', limits: limits(), prices: { month: null, year: null } },
+          { tier: 'pro', limits: limits(), prices: { month: { priceCents: 1250, currency: 'eur' }, year: { priceCents: 12500, currency: 'eur' } } },
+          { tier: 'team', limits: limits(), prices: { month: { priceCents: 3900, currency: 'eur' }, year: { priceCents: 39000, currency: 'eur' } } },
         ],
       }),
     );
     setup();
 
     await screen.findByTestId('current-tier-name');
-    const pro = screen.getByTestId('compare-cell-pro-monthlyFee').textContent ?? '';
+    const pro = screen.getByTestId('tier-price-pro').textContent ?? '';
     expect(pro).toMatch(/12[.,]50/);
     expect(pro).not.toContain('$');
-    expect(screen.getByTestId('compare-cell-base-monthlyFee')).toHaveTextContent(
-      'Free',
-    );
+    // The free tier has no price over either period, and its price slot says
+    // so in words rather than as a zero.
+    expect(screen.getByTestId('tier-price-base')).toHaveTextContent('Free');
   });
 
   it('动作失败时给出反馈，不是点了什么都不发生', async () => {
@@ -293,6 +301,102 @@ describe('MembershipPanel', () => {
     await waitFor(() => expect(errorSpy).toHaveBeenCalled());
     // 失败之后按钮要还能再点，否则用户连重试都做不到。
     expect(screen.getByTestId('membership-choose-pro')).not.toBeDisabled();
+  });
+
+  it('spins the chosen card, holds every card, and keeps holding once the page is leaving', async () => {
+    const subscriptionApi = await import('@web/data/api/subscription');
+    let open: (value: { url: string }) => void = () => undefined;
+    vi.spyOn(subscriptionApi, 'startSubscriptionCheckout').mockReturnValue(
+      new Promise((resolve) => {
+        open = resolve;
+      }) as never,
+    );
+    const assignSpy = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign: assignSpy,
+      reload: vi.fn(),
+    } as never);
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'none', tier: 'base', currentPeriodEnd: null }),
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    const pro = await screen.findByTestId('membership-choose-pro');
+    const team = screen.getByTestId('membership-choose-team');
+    const label = pro.textContent;
+    await user.click(pro);
+
+    await waitFor(() => {
+      expect(within(pro).getByTestId('membership-choose-pending')).toBeInTheDocument();
+    });
+    expect(pro).toBeDisabled();
+    expect(pro.textContent).toBe(label);
+    expect(team).toBeDisabled();
+    expect(within(team).queryByTestId('membership-choose-pending')).toBeNull();
+
+    open({ url: 'https://checkout.stripe.example/c/pay/abc' });
+    await waitFor(() => expect(assignSpy).toHaveBeenCalled());
+    expect(pro).toBeDisabled();
+    expect(within(pro).getByTestId('membership-choose-pending')).toBeInTheDocument();
+  });
+
+  it('drops the spin and frees every card when starting the checkout fails', async () => {
+    const subscriptionApi = await import('@web/data/api/subscription');
+    let fail: (reason: Error) => void = () => undefined;
+    vi.spyOn(subscriptionApi, 'startSubscriptionCheckout').mockReturnValue(
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }) as never,
+    );
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({ state: 'none', tier: 'base', currentPeriodEnd: null }),
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    const pro = await screen.findByTestId('membership-choose-pro');
+    await user.click(pro);
+    await waitFor(() => {
+      expect(within(pro).getByTestId('membership-choose-pending')).toBeInTheDocument();
+    });
+
+    fail(new Error('409'));
+    await waitFor(() => expect(pro).toBeEnabled());
+    expect(within(pro).queryByTestId('membership-choose-pending')).toBeNull();
+    expect(screen.getByTestId('membership-choose-team')).toBeEnabled();
+  });
+
+  it('spins the cancel button while the cancel runs, and frees it after', async () => {
+    const subscriptionApi = await import('@web/data/api/subscription');
+    let done: () => void = () => undefined;
+    vi.spyOn(subscriptionApi, 'cancelSubscription').mockReturnValue(
+      new Promise<void>((resolve) => {
+        done = resolve;
+      }) as never,
+    );
+    membershipMock.mockResolvedValue(answer({ subscription: subscription() }));
+    const user = userEvent.setup();
+    setup();
+
+    const cancel = await screen.findByTestId('membership-cancel');
+    await user.click(cancel);
+    await waitFor(() => {
+      expect(within(cancel).getByTestId('membership-cancel-pending')).toBeInTheDocument();
+    });
+    expect(cancel).toBeDisabled();
+
+    done();
+    await waitFor(() => {
+      expect(screen.queryByTestId('membership-cancel-pending')).toBeNull();
+    });
   });
 
   it('点取消打的是取消接口，并且重新拉面板而不是整页重载', async () => {
@@ -404,6 +508,34 @@ describe('MembershipPanel', () => {
     expect(screen.queryByTestId('membership-resume')).toBeNull();
   });
 
+  it('opens the switcher on the period being paid for, before that payment settles', async () => {
+    // Which period was bought and whether the subscription can be acted on
+    // are two questions. Answering the first with the second opens the page
+    // on yearly for somebody in the middle of buying a month, so the prices
+    // beside their own "finish paying" link are not the ones they owe.
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({
+          state: 'firstPaymentUnsettled',
+          tier: 'pro',
+          period: 'month',
+        }),
+      }),
+    );
+    setup();
+
+    await screen.findByTestId('membership-period-switch');
+    expect(screen.getByTestId('membership-period-month')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByTestId('membership-period-year')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
   it('从没订过的 Base 账号照样看得到升级入口', async () => {
     // 真机上抓到的：后端把「这个部署不卖订阅」和「这个账号还没订」都答成
     // null，前端据此把整行藏了 —— 结果是最需要那几个按钮的人反而看不到。
@@ -428,8 +560,16 @@ describe('MembershipPanel', () => {
     setup();
 
     await screen.findByTestId('current-tier-name');
-    expect(screen.queryByTestId('compare-action-team')).toBeNull();
+    expect(screen.queryByTestId('membership-choose-team')).toBeNull();
     expect(screen.queryByTestId('membership-cancel')).toBeNull();
+    // What the switcher offers is two prices, and this deployment quotes
+    // neither.
+    expect(screen.queryByTestId('membership-period-switch')).toBeNull();
+    // The sales card stays: it was never a purchase.
+    expect(screen.getByTestId('membership-contact-sales')).toHaveAttribute(
+      'href',
+      'mailto:breatic@orime.ai',
+    );
   });
 
   it('正常订阅显示下次扣费日期和取消入口', async () => {
@@ -546,7 +686,7 @@ describe('MembershipPanel', () => {
     await screen.findByTestId('current-tier-name');
     expect(screen.getByTestId('current-tier-name')).toHaveTextContent('PRO');
     expect(screen.getByTestId('subscription-notice')).toHaveTextContent(
-      'Upgrade payment not completed',
+      'Payment for the change is not complete',
     );
   });
 
@@ -579,6 +719,10 @@ describe('MembershipPanel', () => {
     );
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByTestId('membership-upgrade')).toBeNull();
+    // The whole purchase section is absent — no cards, no switcher.
+    expect(screen.queryByTestId('tier-card-pro')).toBeNull();
+    expect(screen.queryByTestId('tier-card-enterprise')).toBeNull();
+    expect(screen.queryByTestId('membership-period-switch')).toBeNull();
     // 自部署不向我们付费，所以价格一个字都不出现。
     expect(screen.queryByText(/\$\d/)).toBeNull();
     expect(screen.queryByText('Free')).toBeNull();
@@ -601,6 +745,8 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('enterprise-quota-note')).toBeInTheDocument();
     expect(screen.queryByTestId('quota-storage')).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.queryByTestId('tier-card-pro')).toBeNull();
+    expect(screen.queryByTestId('membership-period-switch')).toBeNull();
     // 这一档的额度只存在于协议里，用户读完「由单独协议约定」之后想问的
     // 正是「那是多少」——没有邮箱他就没有任何去处。
     const contact = screen.getByTestId('membership-contact-enterprise');
@@ -671,26 +817,39 @@ describe('MembershipPanel', () => {
     }
   });
 
-  it('对比表当前那一列整列有底色，别的列没有', async () => {
-    // 当前档位那一列靠底色标出来（user 2026-08-16 拍的：整列换底色，不画
-    // 竖线）。用的是 accent —— 亮色下比页面暗、暗色下比页面亮，两个主题
-    // 下都看得出来；card 两个主题都往亮走，亮色下等于把该突出的那一列往
-    // 背景里推。
+  it('gives the held card a fill and an active border, and no other card', async () => {
+    // The mark moved from a column of the table onto the card (#253). The
+    // fill stays `accent`: darker than the page in light, lighter in dark, so
+    // it reads in both. `card` lifts in both themes, which in light pushes
+    // the very card being singled out toward the background. The border is
+    // `active-border`, the one token this product uses to say "this one" in
+    // a neutral colour.
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ tier: 'pro', period: 'year' }) }),
+    );
+    setup();
+
+    const current = await screen.findByTestId('tier-card-pro');
+    expect(current.className).toContain('bg-accent');
+    expect(current.className).toContain('border-active-border');
+    expect(current).toHaveAttribute('aria-current', 'true');
+    for (const other of ['base', 'team', 'enterprise']) {
+      const card = screen.getByTestId(`tier-card-${other}`);
+      expect(card.className).not.toContain('bg-accent');
+      expect(card).not.toHaveAttribute('aria-current');
+    }
+  });
+
+  it('gives the table six rows for six ceilings, and no price row', async () => {
     membershipMock.mockResolvedValue(answer());
     setup();
 
-    const header = await screen.findByTestId('compare-column-pro');
-    expect(header.className).toContain('bg-accent');
+    await screen.findByTestId('compare-column-pro');
     const cells = document.querySelectorAll('[data-testid^="compare-cell-pro-"]');
-    // 月费 + 六项上限。
-    expect(cells).toHaveLength(7);
-    for (const cell of cells) {
-      expect(cell.className).toContain('bg-accent');
-    }
-    // 别的列没有。
-    for (const cell of document.querySelectorAll('[data-testid^="compare-cell-base-"]')) {
-      expect(cell.className).not.toContain('bg-accent');
-    }
+    expect(cells).toHaveLength(6);
+    expect(
+      document.querySelector('[data-testid$="-monthlyFee"]'),
+    ).toBeNull();
   });
 
   it('换账号之后不把上一个账号的答案端给下一个人', async () => {
@@ -717,7 +876,7 @@ describe('MembershipPanel', () => {
     setup(shared);
 
     expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
-      'Base',
+      'Starter',
     );
     // 两个账号各问了一次；共用一个 key 的话第二次会被 staleTime 挡掉。
     expect(membershipMock).toHaveBeenCalledTimes(2);
@@ -732,8 +891,9 @@ describe('MembershipPanel', () => {
     await screen.findByTestId('compare-column-pro');
 
     const expected: Record<string, [string, string, string]> = {
-      // 行 key: [base, pro, team]
-      monthlyFee: ['Free', '$12', '$39'],
+      // Row keys: [base, pro, team]. The monthly-fee row went in #253 — a
+      // tier has one price per period and a row holds one of them, so the
+      // prices moved onto the cards.
       teamStudios: ['0', '1', '3'],
       projectsPerStudio: ['10', '100', '300'],
       studioMembers: ['1', '10', '100'],
@@ -786,6 +946,117 @@ describe('MembershipPanel', () => {
     );
   });
 
+  it('says both of the two things this page owes the reader', async () => {
+    // Membership and credits are separate legs. Somebody who reads a tier as
+    // including generation allowance finds out part-way through generating.
+    // Nothing computes tax yet (#170), so that sentence stops at "excludes
+    // tax".
+    membershipMock.mockResolvedValue(answer({ subscription: subscription() }));
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('membership-no-credits')).toHaveTextContent(
+      'no generation credits',
+    );
+    expect(screen.getByTestId('membership-tax-note')).toHaveTextContent(
+      'Prices exclude tax',
+    );
+    // "Tax is added at checkout" was removed once already in #106.
+    expect(screen.getByTestId('membership-tax-note')).not.toHaveTextContent(
+      'checkout',
+    );
+  });
+
+  it('states what a year saves and promises nothing about changing plans', async () => {
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ period: 'year' }) }),
+    );
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('membership-save-line')).toHaveTextContent(
+      'Twelve months for the price of ten',
+    );
+    const page = document.body.textContent ?? '';
+    // How a change is prorated, and whether anything is refunded, is not
+    // something this page says a word about.
+    for (const promise of ['prorat', 'refund', 'credit back', 'downgrade']) {
+      expect(page.toLowerCase()).not.toContain(promise);
+    }
+  });
+
+  it('moves the prices and the saving line when the switcher is pressed', async () => {
+    // This page's central interaction, and nothing had ever pressed it: the
+    // matrix tests feed `selectedPeriod` in as a prop, so the stretch from
+    // the button to the state was never walked.
+    const user = userEvent.setup();
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ period: 'year' }) }),
+    );
+    setup();
+
+    await screen.findByTestId('tier-price-pro');
+    expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$199.99');
+    expect(screen.getByTestId('membership-save-line')).toHaveTextContent(
+      'Twelve months for the price of ten',
+    );
+
+    await user.click(screen.getByTestId('membership-period-month'));
+
+    expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$19.99');
+    // That line is about what a year saves. Beside monthly prices it
+    // describes something other than what the reader is looking at.
+    expect(screen.queryByTestId('membership-save-line')).toBeNull();
+
+    await user.click(screen.getByTestId('membership-period-year'));
+    expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$199.99');
+  });
+
+  it('names the period beside the tier on the current-membership line', async () => {
+    membershipMock.mockResolvedValue(
+      answer({ subscription: subscription({ tier: 'pro', period: 'year' }) }),
+    );
+    setup();
+
+    expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
+      'PRO · Yearly',
+    );
+  });
+
+  it('names the tier alone, with no dangling separator, when nothing is held', async () => {
+    membershipMock.mockResolvedValue(
+      answer({ tier: 'base', subscription: null }),
+    );
+    setup();
+
+    const line = await screen.findByTestId('current-tier-name');
+    expect(line).toHaveTextContent('Starter');
+    expect(line.textContent).not.toContain('·');
+  });
+
+  it('keeps a period off the free tier while a first payment is unsettled', async () => {
+    // The subscription row exists and carries a period while the tier in
+    // force is still Starter. Composing from the period alone would read as
+    // "Starter · Yearly", putting a billing period on a tier nobody pays
+    // for. The cards already answer this with the held-and-actionable test,
+    // and this line has to use the same one.
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({
+          state: 'firstPaymentUnsettled',
+          tier: 'pro',
+          period: 'year',
+        }),
+      }),
+    );
+    setup();
+
+    const line = await screen.findByTestId('current-tier-name');
+    expect(line).toHaveTextContent('Starter');
+    expect(line.textContent).not.toContain('·');
+  });
+
   it('「各档对比」是表格第一列的表头，跟三个档位名同一行', async () => {
     // 它原本是表格上方一个单独的标题，于是第一列没有任何标签。
     membershipMock.mockResolvedValue(answer());
@@ -795,7 +1066,7 @@ describe('MembershipPanel', () => {
     const headerRow = table.querySelectorAll('thead tr th');
     expect(headerRow).toHaveLength(4);
     expect(headerRow[0]).toHaveTextContent('Compare tiers');
-    expect(headerRow[1]).toHaveTextContent('Base');
+    expect(headerRow[1]).toHaveTextContent('Starter');
     expect(headerRow[3]).toHaveTextContent('Team');
     // 表格外面不再有第二个「各档对比」。
     expect(screen.getAllByText('Compare tiers')).toHaveLength(1);

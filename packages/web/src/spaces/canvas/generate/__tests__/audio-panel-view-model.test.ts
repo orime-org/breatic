@@ -4,7 +4,10 @@
 import { describe, it, expect } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
 
-import { buildAudioPanelViewModel } from '@web/spaces/canvas/generate/audio-panel-view-model';
+import {
+  buildAudioPanelViewModel,
+  withListDefaultVoice,
+} from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 
@@ -23,23 +26,20 @@ function ttsModel(name: string, overrides: Partial<ModelEntry> = {}): ModelEntry
     description: '',
     guide: '',
     tier: 'recommended',
-    cost_per_call: 10,
     generation_time: 30,
     takes_prompt: true,
     params: {},
     providers: [],
-    sourcesByMode: {},
-    sourceRuleByMode: {},
     ...overrides,
   };
 }
 
 const ELEVEN = ttsModel('elevenlabs-v3', {
+  pricing: { base_price: 50000, formula: '', discount_rate: 100 },
   params: {
     voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
     stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
   },
-  rate: { credits: 10, per: 1000, unit: 'characters' },
 });
 const FISH = ttsModel('fish-s2-pro', {
   params: {
@@ -97,12 +97,12 @@ describe('buildAudioPanelViewModel — which model the panel is on', () => {
     expect(vm.model).toBe('elevenlabs-v3');
   });
 
-  it('carries the rate of the model it landed on', () => {
+  it('carries the pricing of the model it landed on', () => {
     const vm = buildAudioPanelViewModel({ ...BASE, nodes: nodes() });
-    expect(vm.modelEntry?.rate).toEqual({
-      credits: 10,
-      per: 1000,
-      unit: 'characters',
+    expect(vm.modelEntry?.pricing).toEqual({
+      base_price: 50000,
+      formula: '',
+      discount_rate: 100,
     });
   });
 
@@ -216,6 +216,50 @@ describe('buildAudioPanelViewModel — whether a voice has been chosen', () => {
   });
 });
 
+describe('withListDefaultVoice — the first voice stands in when none is held', () => {
+  const FIRST = { id: 'first-id', name: 'First' };
+
+  it('takes the list\'s first voice when the record holds none', () => {
+    const vm = withListDefaultVoice(buildAudioPanelViewModel({ ...BASE, nodes: nodes() }), FIRST);
+    expect(vm.voiceChosen).toBe(true);
+    expect(vm.voiceSelectedId).toBe('first-id');
+    expect(vm.params.voice_id).toBe('first-id');
+  });
+
+  it('writes it under the model\'s own voice param', () => {
+    const vm = withListDefaultVoice(
+      buildAudioPanelViewModel({ ...BASE, nodes: nodes({ model: 'fish-s2-pro' }) }),
+      FIRST,
+    );
+    expect(vm.params.reference_id).toBe('first-id');
+  });
+
+  it('leaves a held voice alone', () => {
+    const held = buildAudioPanelViewModel({
+      ...BASE,
+      nodes: nodes({ model: 'elevenlabs-v3', paramsByModel: { 'elevenlabs-v3': { voice_id: 'Aria' } } }),
+    });
+    const vm = withListDefaultVoice(held, FIRST);
+    expect(vm.voiceSelectedId).toBe('Aria');
+    expect(vm.params.voice_id).toBe('Aria');
+  });
+
+  it('stays unchosen while the list has not answered, or answered empty', () => {
+    const bare = buildAudioPanelViewModel({ ...BASE, nodes: nodes() });
+    expect(withListDefaultVoice(bare, undefined).voiceChosen).toBe(false);
+    expect(withListDefaultVoice(bare, null).voiceChosen).toBe(false);
+  });
+
+  it('adds nothing to a model that takes no voice', () => {
+    const vm = withListDefaultVoice(
+      buildAudioPanelViewModel({ ...BASE, models: [ttsModel('no-voice')], nodes: nodes() }),
+      FIRST,
+    );
+    expect(vm.voiceSelectedId).toBeNull();
+    expect(vm.params).toEqual({});
+  });
+});
+
 describe('buildAudioPanelViewModel — what execute needs to know', () => {
   it('reports the node status the execute gate reads', () => {
     const vm = buildAudioPanelViewModel({
@@ -237,5 +281,39 @@ describe('buildAudioPanelViewModel — what execute needs to know', () => {
       nodes: nodes(),
     });
     expect(vm.promptRequired).toBe(false);
+  });
+});
+
+describe('buildAudioPanelViewModel — a model that reads a dialogue (#2156)', () => {
+  const GEMINI = ttsModel('gemini', {
+    params: {
+      speakers: {
+        description: '',
+        default: null,
+        type: 'items',
+        min_items: 2,
+        max_items: 2,
+        replaces: 'voice_id',
+        fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+      },
+      voice_id: { description: '', default: 'Kore', remote_source: 'voices' },
+    },
+  });
+  const models = { ...BASE, models: [GEMINI] };
+
+  it('asks for a voice when reading alone', () => {
+    const vm = buildAudioPanelViewModel({ ...models, nodes: nodes() });
+    expect(vm.voiceRequired).toBe(true);
+    expect(vm.speakersShort).toBe(false);
+  });
+
+  it('asks for the speakers instead of a voice in a dialogue', () => {
+    const record = { speakers: [{ speaker: 'Ada', voice: 'Kore' }], _stand_in_on: true };
+    const vm = buildAudioPanelViewModel({
+      ...models,
+      nodes: nodes({ model: 'gemini', paramsByModel: { gemini: record } }),
+    });
+    expect(vm.voiceRequired).toBe(false);
+    expect(vm.speakersShort).toBe(true);
   });
 });

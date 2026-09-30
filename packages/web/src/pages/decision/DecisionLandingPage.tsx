@@ -4,9 +4,11 @@
 /**
  * The one page every waiting request is answered on — `/decision?token=`.
  *
- * It replaces two nearly identical invite pages and serves five flows. What the
+ * It replaces two nearly identical invite pages and serves six flows. What the
  * request IS only changes the wording, which is why the copy is one ICU select
- * on `kind` rather than five screens: a sixth flow adds an arm, not a page.
+ * on `kind` rather than six screens: a seventh flow adds an arm, not a page.
+ * The one control that differs by kind is the role picker a join request's
+ * approval carries.
  *
  * The states it can land in used to collapse into one sentence. "Already
  * answered", "timed out", "withdrawn", "the project was deleted" and "this
@@ -24,10 +26,19 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { toast } from '@web/lib/toast';
 import { expiresInLabel } from '@web/lib/expires-in';
-import type { DecisionAction, DecisionView } from '@breatic/shared';
+import { formatLocalDay } from '@web/lib/format-day';
+import type { DecisionAction, DecisionGrantRole, DecisionView } from '@breatic/shared';
 import { decisionsApi } from '@web/data/api/decisions';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
+import { Label } from '@web/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@web/components/ui/select';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 
@@ -43,7 +54,7 @@ import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 type Phase = 'loading' | 'ready' | 'invalid' | 'unreachable';
 
 /**
- * The landing page for any of the five waiting-for-an-answer flows.
+ * The landing page for any of the six waiting-for-an-answer flows.
  * @returns The card for whatever state this request turned out to be in.
  */
 export default function DecisionLandingPage(): React.JSX.Element {
@@ -58,6 +69,12 @@ export default function DecisionLandingPage(): React.JSX.Element {
   );
   const [view, setView] = React.useState<DecisionView | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  // The role a join request's approval grants; only that kind shows the picker.
+  const [grantRole, setGrantRole] = React.useState<DecisionGrantRole>('viewer');
+  const onGrantRoleChange = React.useCallback(
+    (value: string): void => setGrantRole(value === 'editor' ? 'editor' : 'viewer'),
+    [],
+  );
   const [attempt, setAttempt] = React.useState(0);
 
   React.useEffect(() => {
@@ -91,7 +108,10 @@ export default function DecisionLandingPage(): React.JSX.Element {
       if (token === null || view === null) return;
       setSubmitting(true);
       try {
-        const result = await decisionsApi.respond(token, action);
+        const result =
+          view.kind === 'project_join' && action === 'confirm'
+            ? await decisionsApi.respond(token, action, grantRole)
+            : await decisionsApi.respond(token, action);
         // Deciding changes what the rest of the app shows: the bell row is
         // done, and accepting a studio or a transfer changes the rail. Both
         // used to be refreshed by the bell's own mutation, which is being
@@ -121,7 +141,7 @@ export default function DecisionLandingPage(): React.JSX.Element {
         setSubmitting(false);
       }
     },
-    [navigate, queryClient, t, token, view],
+    [grantRole, navigate, queryClient, t, token, view],
   );
 
   const onConfirm = React.useCallback((): void => void answer('confirm'), [answer]);
@@ -269,30 +289,76 @@ export default function DecisionLandingPage(): React.JSX.Element {
     );
   }
 
+  const isJoin = view.kind === 'project_join';
   return (
     <AuthCardShell title={t('decision.title', vars)}>
       <div className='flex flex-col gap-4'>
-        <p className='text-sm text-muted-foreground'>{t('decision.body', vars)}</p>
-        {view.message !== null && view.message !== '' && (
-          <p className='text-sm text-muted-foreground'>
-            {t('decision.reason', { message: view.message })}
-          </p>
+        {isJoin ? (
+          <dl className='grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm'>
+            <dt className='text-muted-foreground'>{t('decision.field.requester')}</dt>
+            <dd className='text-foreground'>
+              {view.actorHandle === null
+                ? view.actorName
+                : t('decision.actorWithHandle', { name: view.actorName, handle: view.actorHandle })}
+            </dd>
+            <dt className='text-muted-foreground'>{t('decision.field.project')}</dt>
+            <dd className='text-foreground'>{view.entityName}</dd>
+            {view.message !== null && view.message !== '' && (
+              <>
+                <dt className='text-muted-foreground'>{t('decision.field.message')}</dt>
+                <dd className='whitespace-pre-wrap break-words text-foreground'>{view.message}</dd>
+              </>
+            )}
+            {view.expiresAt !== null && (
+              <>
+                <dt className='text-muted-foreground'>{t('decision.field.expires')}</dt>
+                <dd className='text-foreground'>
+                  {t('decision.expiresBefore', { date: formatLocalDay(view.expiresAt) })}
+                </dd>
+              </>
+            )}
+          </dl>
+        ) : (
+          <>
+            <p className='text-sm text-muted-foreground'>{t('decision.body', vars)}</p>
+            {view.message !== null && view.message !== '' && (
+              <p className='text-sm text-muted-foreground'>
+                {t('decision.reason', { message: view.message })}
+              </p>
+            )}
+            {/* The bell's own formatter, so the two surfaces can never disagree
+                about how long is left on the same request. The static "within N
+                days" line lives on the expired card, where it answers WHY. */}
+            {view.expiresAt !== null && (
+              <p className='text-xs text-muted-foreground'>
+                {expiresInLabel(view.expiresAt, t)}
+              </p>
+            )}
+          </>
         )}
-        {/* The bell's own formatter, so the two surfaces can never disagree
-            about how long is left on the same request. The static "within N
-            days" line lives on the expired card, where it answers WHY. */}
-        {view.expiresAt !== null && (
-          <p className='text-xs text-muted-foreground'>
-            {expiresInLabel(view.expiresAt, t)}
-          </p>
-        )}
-        <div className='flex gap-2'>
-          <Button onClick={onConfirm} disabled={submitting}>
-            {t('decision.confirm', vars)}
-          </Button>
-          <Button variant='outline' onClick={onDecline} disabled={submitting}>
-            {t('decision.decline', vars)}
-          </Button>
+        <div className={isJoin ? 'flex items-center justify-between gap-2' : 'flex justify-end'}>
+          {isJoin && (
+            <div className='flex items-center gap-2'>
+              <Label htmlFor='decision-grant-role'>{t('decision.grantRole')}</Label>
+              <Select value={grantRole} onValueChange={onGrantRoleChange} disabled={submitting}>
+                <SelectTrigger id='decision-grant-role' className='w-[120px]'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='viewer'>{t('role.viewer')}</SelectItem>
+                  <SelectItem value='editor'>{t('role.editor')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className='flex gap-2'>
+            <Button variant='outline' onClick={onDecline} disabled={submitting}>
+              {t('decision.decline', vars)}
+            </Button>
+            <Button onClick={onConfirm} disabled={submitting}>
+              {t('decision.confirm', vars)}
+            </Button>
+          </div>
         </div>
       </div>
     </AuthCardShell>

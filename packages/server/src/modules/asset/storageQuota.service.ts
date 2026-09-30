@@ -157,6 +157,7 @@ async function tellTheAdmin(
       ]);
       if (!admin || !studio) return null;
       return buildStorageQuotaExceededMail({
+        locale: admin.locale,
         recipientEmail: admin.email,
         studioName: studio.name,
       });

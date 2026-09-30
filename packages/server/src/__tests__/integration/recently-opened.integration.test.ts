@@ -6,9 +6,8 @@
  * `recentService.listRecent` against a real Postgres.
  *
  * The recent feed is a CLAUDE.md critical path (auth + data integrity): it must
- * NEVER surface a project the viewer can no longer access (kicked from the
- * studio, project turned private with no membership, project soft-deleted),
- * and must never leak another user's private project. Those guarantees are
+ * NEVER surface a project the viewer cannot enter (kicked from it, never a
+ * member of it, or project soft-deleted). Those guarantees are
  * SQL-level — the access-filter WHERE clause, the composite-PK upsert revive,
  * and the `ON CONFLICT DO UPDATE last_opened_at = now()` only behave correctly
  * against real Postgres, so a mocked query builder cannot prove them.
@@ -104,12 +103,11 @@ let projSeq = 0;
 async function insertProject(
   studioId: string,
   ownerUserId: string,
-  visibility: "studio" | "private",
 ): Promise<string> {
   const slug = `ro-project-${projSeq++}`;
   const rows = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studioId}, ${ownerUserId}, ${`Project ${slug}`}, ${slug}, ${visibility})
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioId}, ${ownerUserId}, ${`Project ${slug}`}, ${slug})
     RETURNING id
   `;
   const projectId = rows[0]!.id;
@@ -182,7 +180,7 @@ describe("recordOpen — upsert + access gate (C2, critical path)", () => {
     const owner = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    const pid = await insertProject(studioId, owner, "studio");
+    const pid = await insertProject(studioId, owner);
 
     expect(await openRowCount(owner, pid)).toBe(0);
     await recentService.recordOpen(pid, owner);
@@ -195,7 +193,7 @@ describe("recordOpen — upsert + access gate (C2, critical path)", () => {
     const owner = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    const pid = await insertProject(studioId, owner, "studio");
+    const pid = await insertProject(studioId, owner);
 
     // Seed a stale open far in the past, then re-open via the service.
     await seedOpen(owner, pid, "2020-01-01T00:00:00Z");
@@ -217,7 +215,7 @@ describe("recordOpen — upsert + access gate (C2, critical path)", () => {
     const stranger = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    const pid = await insertProject(studioId, owner, "private");
+    const pid = await insertProject(studioId, owner);
 
     await expect(recentService.recordOpen(pid, stranger)).rejects.toBeInstanceOf(
       NotFoundError,
@@ -231,9 +229,9 @@ describe("listRecent — ordering (C3)", () => {
     const user = await insertUser();
     const studioId = await insertStudio(user);
     await insertStudioMember(studioId, user, "admin");
-    const pA = await insertProject(studioId, user, "studio");
-    const pB = await insertProject(studioId, user, "studio");
-    const pC = await insertProject(studioId, user, "studio");
+    const pA = await insertProject(studioId, user);
+    const pB = await insertProject(studioId, user);
+    const pC = await insertProject(studioId, user);
 
     await seedOpen(user, pA, "2026-01-01T00:00:00Z"); // oldest
     await seedOpen(user, pB, "2026-02-01T00:00:00Z");
@@ -253,7 +251,7 @@ describe("listRecent — ordering (C3)", () => {
     const user = await insertUser();
     const studioId = await insertStudio(user);
     await insertStudioMember(studioId, user, "admin");
-    const pid = await insertProject(studioId, user, "studio"); // user is the owner
+    const pid = await insertProject(studioId, user); // user is the owner
     await seedOpen(user, pid, "2026-04-01T00:00:00Z");
 
     const item = (await recentService.listRecent(user)).find(
@@ -263,38 +261,38 @@ describe("listRecent — ordering (C3)", () => {
     expect(item.slug).toMatch(/^ro-project-/);
     expect(item.studioId).toBe(studioId);
     expect(item.studioName).toMatch(/^Studio ro-studio-/);
-    expect(item.myRole).toBe("owner"); // from the LEFT JOIN on project_members
+    expect(item.myRole).toBe("owner"); // from the join on project_members
     expect(item.lastOpenedAt).toBeInstanceOf(Date);
   });
 });
 
 describe("listRecent — access filter (C3, CRITICAL: never leak inaccessible projects)", () => {
-  it("includes studio-visible + own-membership; EXCLUDES kicked / others' private / soft-deleted", async () => {
+  it("includes projects with an active membership; EXCLUDES kicked / never-joined / soft-deleted", async () => {
     const user = await insertUser();
     const owner = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
     await insertStudioMember(studioId, user, "guest");
 
-    // (a) studio-visible project the user opened (materialized viewer row) → IN.
-    const pVisible = await insertProject(studioId, owner, "studio");
+    // (a) project the user is a viewer on → IN.
+    const pVisible = await insertProject(studioId, owner);
     await insertProjectMember(pVisible, user, "viewer");
 
-    // (b) private project the user is an active member of → IN.
-    const pPrivateMember = await insertProject(studioId, owner, "private");
+    // (b) project the user is an editor on → IN.
+    const pPrivateMember = await insertProject(studioId, owner);
     await insertProjectMember(pPrivateMember, user, "editor");
 
     // (c) project the user opened then got KICKED from (member row soft-deleted)
-    //     AND it is private → OUT (no leak after access revoked).
-    const pKicked = await insertProject(studioId, owner, "private");
+    //     → OUT (no leak after access revoked).
+    const pKicked = await insertProject(studioId, owner);
     await insertProjectMember(pKicked, user, "viewer", true);
 
-    // (d) someone else's PRIVATE project, stale open row but no membership and
-    //     not visible to the user → OUT (never leak others' private).
-    const pOthersPrivate = await insertProject(studioId, owner, "private");
+    // (d) a project in the user's studio they have no membership on, with a
+    //     stale open row → OUT (they cannot enter it, so it is not recent).
+    const pOthersPrivate = await insertProject(studioId, owner);
 
     // (e) soft-deleted project the user did open → OUT.
-    const pDeleted = await insertProject(studioId, owner, "studio");
+    const pDeleted = await insertProject(studioId, owner);
     await insertProjectMember(pDeleted, user, "viewer");
 
     // The user has an open row for every one of them (incl. ones now inaccessible).
@@ -319,32 +317,30 @@ describe("listRecent — access filter (C3, CRITICAL: never leak inaccessible pr
     expect(ids.has(pDeleted)).toBe(false);
   });
 
-  it("studio-visible project floats back in via open-baseline even with no materialized row", async () => {
-    // A studio member who opened a studio-visible project but whose member row
-    // was never persisted (defensive: the open-baseline branch must still admit
-    // them, so recent never UNDER-shows a project they can legitimately reopen).
+  it("a studio member with an open row but no membership on the project is excluded", async () => {
+    // Studio membership alone does not let anyone enter a project, so a project
+    // they cannot open never shows up as recent.
     const user = await insertUser();
     const owner = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
     await insertStudioMember(studioId, user, "guest");
-    const pVisibleNoRow = await insertProject(studioId, owner, "studio");
+    const pVisibleNoRow = await insertProject(studioId, owner);
     await seedOpen(user, pVisibleNoRow, "2026-05-02T00:00:00Z");
 
     const ids = new Set(
       (await recentService.listRecent(user)).map((r) => r.projectId),
     );
-    expect(ids.has(pVisibleNoRow)).toBe(true);
+    expect(ids.has(pVisibleNoRow)).toBe(false);
   });
 
-  it("a non-studio-member with a stale open row on a studio-visible project is excluded", async () => {
+  it("a non-studio-member with a stale open row on a project is excluded", async () => {
     const user = await insertUser();
     const owner = await insertUser();
     const studioId = await insertStudio(owner);
     await insertStudioMember(studioId, owner, "admin");
-    // `user` is NOT a member of the studio (was removed). Open-baseline must
-    // not admit them just because the project is studio-visible.
-    const pVisible = await insertProject(studioId, owner, "studio");
+    // `user` is NOT a member of the studio (was removed).
+    const pVisible = await insertProject(studioId, owner);
     await seedOpen(user, pVisible, "2026-05-03T00:00:00Z");
 
     const ids = new Set(

@@ -456,7 +456,7 @@ function formatModelsSection(
 
 /**
  * Extract mode code to display label mapping for a modality.
- * @param modality - One of "image", "video", "audio", "tts", "three_d", "understand"
+ * @param modality - One of "image", "video", "audio", "tts", "three_d"
  * @returns Mapping of mode codes to labels
  */
 function getModeLabels(modality: string): Record<string, string> {
@@ -469,7 +469,7 @@ function getModeLabels(modality: string): Record<string, string> {
 
 /**
  * Build a Markdown Mode Selection section from `modes.yaml`.
- * @param modality - One of "image", "video", "audio", "tts", "three_d", "understand"
+ * @param modality - One of "image", "video", "audio", "tts", "three_d"
  * @param allowedModes - If provided, only include these mode codes. Null means all.
  * @returns A Markdown string with mode descriptions and selection guide
  */
@@ -522,7 +522,7 @@ import { listAvailableModels } from "@domain/model-catalog/model-catalog.js";
 
 /**
  * Fetch the available models for a modality in the {@link ModelInfo} shape.
- * @param modality - One of "image", "video", "audio", "tts", "three_d", "understand".
+ * @param modality - One of "image", "video", "audio", "tts", "three_d".
  * @returns The modality's available models.
  */
 function getModelsForModality(modality: string): ModelInfo[] {
@@ -627,19 +627,6 @@ function buildThreeDModelsSection(): string {
   );
 }
 
-/**
- * Build the `{available_models}` Markdown section for the vision/understand
- * analysis skill.
- * @returns The Markdown models section, or a fallback message if none are available.
- */
-function buildUnderstandModelsSection(): string {
-  return formatModelsSection(
-    getModelsForModality("understand"),
-    getModeLabels("understand"),
-    "_No understand models available. Check your API key configuration._",
-  );
-}
-
 /** Skill name to builder function for dynamic `{available_models}` injection. */
 const DYNAMIC_SKILLS: Record<string, () => string> = {
   generate_image_plan: buildImageModelsSection,
@@ -647,7 +634,6 @@ const DYNAMIC_SKILLS: Record<string, () => string> = {
   generate_video_plan: buildVideoModelsSection,
   generate_tts_plan: buildTtsModelsSection,
   generate_3d_plan: buildThreeDModelsSection,
-  vision_analyze: buildUnderstandModelsSection,
 };
 
 /**
@@ -660,7 +646,6 @@ const DYNAMIC_MODES: Record<string, [string, ReadonlySet<string> | null]> = {
   generate_video_plan: ["video", VIDEO_PLAN_MODES],
   generate_tts_plan: ["tts", null],
   generate_3d_plan: ["three_d", null],
-  vision_analyze: ["understand", null],
 };
 
 // ── Singleton ───────────────────────────────────────────────────────

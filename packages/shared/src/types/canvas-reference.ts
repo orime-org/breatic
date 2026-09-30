@@ -1,0 +1,176 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Whether a reference rail row can act, and when it cannot, why (#1945).
+ *
+ * The rail expresses two independent things and used to carry both in one
+ * boolean, which is how it got both wrong.
+ *
+ * The dim was the visible half: it reached only the IMAGE rows, so audio and
+ * video rows stayed bright and removable inside a mode that would never read
+ * them (#1930, #1940).
+ *
+ * The insert criterion was the invisible half. It asked whether the row's
+ * modality could connect to an IMAGE node — the image panel's question, where
+ * `audio → image` really is a pre-rules legacy edge, while on a video node
+ * `audio → video` is a currently legal connection. The right question is not
+ * about connections at all: what the rail feeds is the model's pool, one list
+ * of URLs per kind it takes (#2156), so a reference row is usable when its
+ * kind is one the pool takes.
+ *
+ * Those lists are filled by `mentionedReferenceUrls`, which sorts each
+ * mentioned row by its node's kind and appends focus crops — images by
+ * construction — to the image list. So this predicate is not re-evaluating
+ * one expression the payload also evaluates; it asks for the one property the
+ * producer requires.
+ *
+ * A third question joined them in #1966: does the active model consume the
+ * prompt at all (`ModelEntry.takes_prompt`)? That every mode sends a prompt
+ * stopped being true in #1950 — a model that declares none mounts no editor —
+ * and the answer used to live in the video container, which refused the insert
+ * itself. It moved in here so that "can this row act" has ONE home (#1962).
+ *
+ * It lives in this package rather than beside the panel because the agent
+ * proposes prompts too (#263), and the tool that judges a proposal sits in a
+ * library package that cannot reach into the frontend: it has to know which of
+ * a proposed node's feeders the prompt may name, and that is this question
+ * asked of a row the reader has not seen yet. Two copies of it drift apart the
+ * first time either side changes — the check carried one for three rounds and
+ * it was missing the prompt question the whole time.
+ *
+ * Only ONE control asks anything now (#1952): the ✕ removes a row in every
+ * state, so there is nothing left for it to refuse. What the user can no
+ * longer USE and what they can no longer GET RID OF stopped being the same
+ * question — the second one has no answer but yes.
+ *
+ * {@link insertRefusal} starts from the ROW KIND and asks only what can
+ * actually refuse that kind:
+ *
+ * | Row kind | asks, in order |
+ * |---|---|
+ * | text | Is there a prompt |
+ * | image / audio / video / … | Does this mode use references; is there a prompt; does the pool take this kind |
+ *
+ * The two MODE-shaped reasons name a state the user can leave and arrive
+ * somewhere the row works: a media row becomes usable in a mode that takes
+ * references, a text row in a mode that sends a prompt. Asking a media row
+ * about the prompt first would have sent its user to t2v / i2v / first_last /
+ * animate — all of which send a prompt and still refuse it. The third,
+ * `source-type-unused`, names no mode to switch to: the pool takes the kinds
+ * its model takes, so a row of any other kind is refused whichever mode is on,
+ * and the way out is a different row or a model that takes that kind.
+ *
+ * A media row is asked two further things: is there a destination to insert
+ * INTO, and can the pool carry this row.
+ *
+ * The dim follows this one verdict for every row, text included: a text row is
+ * lit under a mode that merely ignores references — that rule is not about it
+ * (user 2026-08-13) — and dark under a model that sends no prompt, where it has
+ * nothing to be material for (#1966).
+ *
+ * The verdict itself reads nothing asynchronous: the caller hands in
+ * `referenceKinds`, the kinds the active model's pool takes under this mode
+ * (#2156). That list comes from the model catalog, and the panels render only
+ * once the catalog has loaded (`CatalogGatedFrame`).
+ */
+
+import type { NodeType } from "@shared/types/canvas-node.js";
+
+/**
+ * Why a rail control refuses to act. Three reasons, each with its own remedy:
+ * switch to a mode that uses references, bring an image instead, or switch to
+ * a model that takes a prompt.
+ *
+ * One message per reason, three in all. The `source-type-unused` one varies by
+ * modality through ICU rather than through a second key.
+ */
+export type ReferenceRefusal =
+  | "mode-takes-no-references"
+  | "source-type-unused"
+  | "model-takes-no-prompt";
+
+/**
+ * What the rail needs to know to answer for a row: one fact about the active
+ * MODE (does it use the reference pool) and one about the active MODEL (does
+ * it take a prompt). Named for what it is used for rather than for either
+ * source, because the two fields do not share one — see each field.
+ */
+export interface ReferenceUsabilityContext {
+  /**
+   * Which node kinds the active model's `@`-picked pool takes under this mode
+   * (#2156) — an image pool, and on some models a video and an audio one
+   * beside it. Empty means the mode consumes no pool at all: every REFERENCE
+   * MATERIAL row's content dims and its insert is refused. Text rows are
+   * outside it — see the module docstring. The ✕ is outside it too, and
+   * outside everything else here (#1952).
+   */
+  referenceKinds: readonly NodeType[];
+  /**
+   * Does the ACTIVE MODEL consume the prompt (`ModelEntry.takes_prompt`,
+   * #1966)? False refuses INSERT on every row — there is no editor to insert
+   * into — including TEXT rows, which are prompt material and have nothing to
+   * be material FOR under such a mode (user 2026-08-16).
+   *
+   * A plain boolean the caller passes in, exactly like `referenceKinds`: the
+   * value comes from the model catalog, but this module still reads nothing
+   * asynchronous itself — the thing the module docstring keeps out of here.
+   */
+  takesPrompt: boolean;
+}
+
+/**
+ * Whether a row is REFERENCE MATERIAL — what `referenceKinds` reads on.
+ *
+ * A named predicate rather than a check spelled out at each site: the refusal
+ * and the empty hint both ask this one question, and when they were spelled
+ * differently ("is it one of the three media kinds" vs "is it not text") they
+ * disagreed about `3d` and `web` — the refusal turned such a row down while
+ * the hint treated it as text and offered it the wrong sentence.
+ * Text is the only modality that is not reference material, because it is
+ * prompt material: its content substitutes into the prompt string.
+ * @param kind - The upstream node's modality.
+ * @returns True for everything except text.
+ * @throws {never} Never.
+ */
+export function isReferenceMaterial(kind: NodeType): boolean {
+  return kind !== "text";
+}
+
+/**
+ * Decides whether a row can be inserted into the prompt as an `@`-mention —
+ * the same call the `@` picker filters with, so the two entry points cannot
+ * drift into disagreeing about one row.
+ * @param sourceNodeType - The upstream node's modality.
+ * @param ctx - What the active mode does with references, and whether its model takes a prompt.
+ * @returns The refusal reason, or null when the row can be inserted.
+ * @throws {never} Never.
+ */
+export function insertRefusal(
+  sourceNodeType: NodeType,
+  ctx: ReferenceUsabilityContext,
+): ReferenceRefusal | null {
+  // A text row lives in the prompt and nowhere else, so the prompt question is
+  // the only one that can refuse it. The video container used to ask this one,
+  // reading the same `promptRequired` its editor mounts on; that second home is
+  // what #1962 removed.
+  if (!isReferenceMaterial(sourceNodeType)) {
+    return ctx.takesPrompt ? null : "model-takes-no-prompt";
+  }
+  // For a media row the reference question comes first, and it comes first for
+  // the reason the whole module exists: of the two refusals, only this one
+  // names a state the user can leave and reach a mode where the row WORKS.
+  // Leading with "there is no prompt box" sends them to t2v / i2v /
+  // first_last / animate, which all send a prompt and still refuse this row.
+  if (ctx.referenceKinds.length === 0) return "mode-takes-no-references";
+  // The mode does use references, so now the destination matters: with no
+  // prompt there is no box to put the `@` chip in. Unreachable in today's
+  // catalog — the one mode that takes references also sends a prompt — but the
+  // order has to be total.
+  if (!ctx.takesPrompt) return "model-takes-no-prompt";
+  // The pool carries the kinds this model takes (#2156): images always, and
+  // videos and audio for the models that take those. Anything else is a
+  // legitimate connection (an edge carries creative intent as well as data
+  // use, user 2026-08-13) that this pool has no way to carry.
+  return ctx.referenceKinds.includes(sourceNodeType) ? null : "source-type-unused";
+}

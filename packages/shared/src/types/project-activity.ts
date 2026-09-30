@@ -51,13 +51,25 @@ export const AssetActivityPayloadSchema = z.object({
 });
 
 /**
- * Generation payloads. `source` distinguishes canvas tasks from
- * mini-tools; `executedOn: 'frontend'` marks browser-executed
- * mini-tools (capability rule: pure media transforms run client-side
- * and report through the upload handshake - they carry no taskId).
+ * Which lane opened a run.
+ *
+ * Named on its own because the value travels three processes — the route
+ * writes it onto the task row and into the job, the worker carries it, the
+ * crash net hands it back to the feed — and each of those held a free string
+ * until this type reached them. Every one of those hops now takes the type,
+ * so a lane outside this list cannot be written at any of them.
+ *
+ * `executedOn: 'frontend'` is a different axis: it marks the mini-tools a
+ * browser runs itself, which report through the upload handshake and carry
+ * no taskId.
  */
+export const GENERATION_SOURCES = ["task", "mini_tool", "understand"] as const;
+
+/** One of the lanes above. */
+export type GenerationSource = (typeof GENERATION_SOURCES)[number];
+
 export const GenerationActivityPayloadSchema = z.object({
-  source: z.enum(["task", "mini_tool", "understand"]),
+  source: z.enum(GENERATION_SOURCES),
   toolName: z.string().optional(),
   model: z.string().optional(),
   outputCount: z.number().int().positive().optional(),

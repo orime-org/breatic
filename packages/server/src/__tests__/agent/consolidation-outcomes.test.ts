@@ -84,7 +84,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 
 const { consolidateWindow } = await import("@server/agent/memory-consolidator.js");
 const { logger } = await import("@breatic/core");
-const { creditsForTokens } = await import("@server/modules/credit/token-pricing.js");
+const { createUsageRecorder } = await import("@breatic/domain");
 
 const USER = "11111111-1111-4111-8111-111111111111";
 const CONVERSATION = "22222222-2222-4222-8222-222222222222";
@@ -158,7 +158,17 @@ const GOOD_ANSWER = {
     projectUpdate: "the project uses that technique",
     historyEntry: "read three pages",
   }),
-  usage: { totalTokens: 400 },
+  // The SDK's shape. The recorder double counts a credit per input and output
+  // token, so this call settles to 400.
+  usage: {
+    inputTokens: 150,
+    inputTokenDetails: { noCacheTokens: 150, cacheReadTokens: 0 },
+    outputTokens: 250,
+    outputTokenDetails: { reasoningTokens: 0 },
+    totalTokens: 400,
+  },
+  providerMetadata: undefined,
+  response: { id: "gen-5" },
 };
 
 beforeEach(() => {
@@ -330,11 +340,47 @@ describe("a consolidation that works", () => {
     expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({
       projectId: PROJECT,
       actorUserId: USER,
-      // What it costs, by the one rate every token-priced call uses. Left
-      // unasserted, a charge of zero — or of the token count itself — passes.
-      tokensUsed: GOOD_ANSWER.usage.totalTokens,
-      amount: creditsForTokens(GOOD_ANSWER.usage.totalTokens),
+      // What the recorder settled to: the call's usage, priced. Left
+      // unasserted, a charge of zero passes.
+      amount: 400,
     });
+    // The call is recorded under the same key it is charged under.
+    expect(vi.mocked(createUsageRecorder).mock.calls[0]?.[0]).toMatchObject({
+      operationKey: `consolidate:${CONVERSATION}:7`,
+      feature: "memory_consolidation",
+      actorUserId: USER,
+      projectId: PROJECT,
+    });
+  });
+
+  it("records the call under its generation id, and hands what it could not price to the lookup", async () => {
+    const { mocks } = await import("../helpers/mock-core.js");
+    const recordModelCall = vi.fn();
+    const operation = {
+      operationKey: `consolidate:${CONVERSATION}:7`,
+      feature: "memory_consolidation" as const,
+      actorUserId: USER,
+      projectId: PROJECT,
+    };
+    vi.mocked(createUsageRecorder).mockReturnValueOnce({
+      operation,
+      recordModelCall,
+      recordServiceCall: vi.fn(),
+      recordLookedUpCall: vi.fn(),
+      awaitingLookup: () => ["gen-5"],
+      settle: async () => 0,
+    });
+
+    await consolidate();
+
+    expect(recordModelCall).toHaveBeenCalledWith(expect.objectContaining({ generationId: "gen-5" }));
+    expect(mocks.handOffLookups).toHaveBeenCalledWith(
+      ["gen-5"],
+      operation,
+      expect.objectContaining({ description: "Memory consolidation", charge: true }),
+    );
+    // A call waiting for its lookup settles to nothing now; it is charged later.
+    expect(chargeOnceForGeneration).not.toHaveBeenCalled();
   });
 
   it("leaves the retrying to the call that already retries", async () => {
@@ -362,7 +408,8 @@ describe("a consolidation that fails", () => {
   it("discards the window when the answer is not the JSON it asked for", async () => {
     generateTextRetry.mockResolvedValue({
       text: "Sure! Here is a summary.",
-      usage: { totalTokens: 400 },
+      usage: GOOD_ANSWER.usage,
+      response: GOOD_ANSWER.response,
     });
 
     const outcome = await consolidate();
@@ -426,7 +473,7 @@ describe("a consolidation that fails", () => {
     // the watermark; the other's model answers with something unreadable and
     // goes to discard turns that are no longer in the history. The write
     // matches no row, and the window it was going to lose is safely folded.
-    generateTextRetry.mockResolvedValue({ text: "not json at all", usage: { totalTokens: 10 } });
+    generateTextRetry.mockResolvedValue({ text: "not json at all", usage: GOOD_ANSWER.usage, response: GOOD_ANSWER.response });
     discardConsolidation.mockResolvedValue(false);
 
     const outcome = await consolidate();
@@ -440,7 +487,7 @@ describe("a consolidation that fails", () => {
   });
 
   it("says the window went when nobody else had taken it", async () => {
-    generateTextRetry.mockResolvedValue({ text: "not json at all", usage: { totalTokens: 10 } });
+    generateTextRetry.mockResolvedValue({ text: "not json at all", usage: GOOD_ANSWER.usage, response: GOOD_ANSWER.response });
     discardConsolidation.mockResolvedValue(true);
 
     const outcome = await consolidate();

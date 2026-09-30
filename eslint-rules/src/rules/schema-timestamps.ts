@@ -19,8 +19,16 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "append-only ledger of tier moves, the same carve-out as payments above: the column on users holds the current tier and every change to it is appended here, so deleting a row leaves a history that no longer adds up to the value on the account",
   ],
   [
+    "creditSources",
+    "the receipt a lot of credits came from (0079, #259): every lot points at one, and each kind of source shares this row's primary key, so soft-deleting it would leave a lot pointing at a receipt that no longer says what it was for. A receipt outlives the credits it opened — there is no state in which one stops having been issued",
+  ],
+  [
     "creditLedger",
     "append-only credit ledger (0061): a lot's remaining balance IS this table summed over that lot, so deleting a row would silently change a balance that has already been spent against, and deleting a topup row would make that payment grantable again",
+  ],
+  [
+    "agentUsageRecords",
+    "append-only record of what each paid agent call cost us (0083, #296): a row says money already left, so deleting one would make an operation's cost look smaller than what was paid for it. The same carve-out as creditLedger",
   ],
   [
     "studioCreditDebts",
@@ -33,6 +41,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   [
     "storageReclaimQueue",
     "internal work queue for the offline reclaim job: the physical object still needs reclaiming after its project is gone, so the row must not follow a project delete",
+  ],
+  [
+    "taskUpstreamSteps",
+    "a task's own execution record (0085, #2156): each row is one upstream call the worker made or will make for that task, and what the task is billed is summed over them. It follows its task, which carries deleted_at; a step soft-deleted on its own would drop a paid call from the bill",
   ],
   [
     "projectLastOpened",

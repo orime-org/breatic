@@ -147,9 +147,15 @@ async function seedPendingPayment(
   credits: number,
 ): Promise<{ paymentId: string; sessionId: string }> {
   const sessionId = `cs_test_${seq++}_${Date.now()}`;
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (user_id, stripe_session_id, amount_cents, status, credits_granted)
-    VALUES (${userId}, ${sessionId}, 1000, 'pending', ${credits}) RETURNING id
+    INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, status, credits_granted)
+    VALUES (${source!.id}, ${userId}, ${sessionId}, 1000, 'pending', ${credits}) RETURNING id
   `;
   return { paymentId: payment!.id, sessionId };
 }
@@ -163,7 +169,7 @@ describe("充值到账", () => {
     expect(outcome.status).toBe("granted");
 
     const lots = await sql<{ id: string; remaining_credits: string }[]>`
-      SELECT id, remaining_credits FROM credit_lots WHERE payment_id = ${paymentId}
+      SELECT id, remaining_credits FROM credit_lots WHERE source_id = ${paymentId}
     `;
     expect(lots).toHaveLength(1);
     expect(lots[0]?.remaining_credits).toBe("880.000000");
@@ -185,7 +191,7 @@ describe("充值到账", () => {
 
     expect(replay.status).toBe("replay");
     const counted = await sql<{ count: string }[]>`
-      SELECT COUNT(*)::text AS count FROM credit_lots WHERE payment_id = ${paymentId}
+      SELECT COUNT(*)::text AS count FROM credit_lots WHERE source_id = ${paymentId}
     `;
     expect(counted[0]?.count).toBe("1");
   });
@@ -332,10 +338,11 @@ describe("会话载荷", () => {
 
 describe("Idempotency-Key", () => {
   it("形状不合法时当场答 422，不等到模型跑完才发现", async () => {
-    // 这个 header 一路走到 `chargeOnceForGeneration` 的 refKey，而那里有
-    // `REFKEY_PATTERN` 拦它。拦得太晚：到那一步模型已经调过了、token 已经
-    // 烧掉了，而扣费抛出来的异常被 `recordTokenUsage` 的 catch 吞掉，用户
-    // 拿到一个看着成功的响应。校验属于入口。
+    // This header travels all the way to `chargeOnceForGeneration`'s refKey,
+    // where `REFKEY_PATTERN` rejects it. That is too late: by then the model
+    // has been called and paid for, and the error the charge throws is
+    // swallowed by the catch in `chargeRecorded`, so the user gets a
+    // response that looks like a success. Validation belongs at the entry.
     const fx = await seedFixture();
     const token = crypto.randomBytes(24).toString("hex");
     await setSession(getRedis(), token, fx.userId);

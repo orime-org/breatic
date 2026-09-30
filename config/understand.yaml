@@ -1,0 +1,41 @@
+# Reading a node's media into text (#2175).
+#
+# The canvas path has its own figures rather than the agent's, because the two
+# runs differ in what is waiting on them: the agent holds a conversation open
+# while it reads up to five pieces of media in turn, and a canvas run is one
+# press producing one task that nobody is watching.
+
+# The largest file a run will take, in bytes, for images, video and audio
+# alike. What this server will carry, not what the endpoint would accept:
+# video and audio are downloaded here, base64'd and held inside a JSON body,
+# so one call at this ceiling occupies several times it in memory.
+#
+# The browser refuses a larger file before it builds anything, and says this
+# number — so it is the figure a reader is told, and 20 MiB is what "20 MB"
+# means to the file manager they got the file from.
+max_media_bytes: 20971520
+
+# How long ONE DELIVERY of the media fetch may take, in milliseconds.
+# It covers reaching the response headers; reading the body that follows runs
+# under a budget worked out from the file's size and the rate below.
+fetch_timeout_ms: 30000
+
+# The rate a media body is expected to arrive at, in bytes per second.
+# The read budget is the file's size divided by this. Same figure as the
+# upload path's client_put_min_bytes_per_sec.
+min_bytes_per_sec: 65536
+
+# The smallest read budget for a media body, in milliseconds.
+# The budget is the size over the rate above, so a small file divides down to
+# almost nothing; this is the floor it cannot go under.
+read_floor_ms: 5000
+
+# How long ONE DELIVERY of the model call may take, in milliseconds.
+# The whole clip goes up inside it: measured, 26 MiB of base64 took 61
+# seconds.
+call_timeout_ms: 180000
+
+# How much the model may write about one piece of media, in tokens.
+# What it writes is the whole of what the new text node holds, and a reader
+# who asked for a description of a video is reading all of it.
+max_output_tokens: 8192

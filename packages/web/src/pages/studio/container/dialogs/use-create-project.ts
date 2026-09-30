@@ -20,12 +20,16 @@ import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
  * the canvas, and the project page records the open so the project also surfaces
  * at the top of the cross-studio Recent landing. On failure it surfaces the
  * error as a toast (an application-layer concern; the API layer stays silent).
+ * The returned function answers with a promise so the dialog can hold itself
+ * open and say it is working until the create settles (#255); a rejection is
+ * the dialog's cue to stay up with what was typed still in it, while the toast
+ * below says what went wrong.
  * @param studios the viewer's studios (used to resolve the fallback default + the target slug).
- * @returns a `mutate(values)` to call when the create dialog submits.
+ * @returns a `create(values)` to call when the create dialog submits.
  */
 export function useCreateProject(
   studios: readonly StudioSummary[],
-): (values: NewItemValues) => void {
+): (values: NewItemValues) => Promise<unknown> {
   const t = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -64,5 +68,5 @@ export function useCreateProject(
       });
     },
   });
-  return mutation.mutate;
+  return mutation.mutateAsync;
 }

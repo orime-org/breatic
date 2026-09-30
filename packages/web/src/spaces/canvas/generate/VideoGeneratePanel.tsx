@@ -4,7 +4,7 @@
 import { ArrowUp, Loader2, Star, X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ModelEntry } from '@breatic/shared';
+import type { ModelEntry, ReferenceKind } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -27,7 +27,6 @@ import {
 import {
   VideoParamsPicker,
   videoParamsPickerHasOptions,
-  type VideoParamsValue,
 } from '@web/spaces/canvas/generate/VideoParamsPicker';
 
 interface VideoGeneratePanelProps {
@@ -37,8 +36,8 @@ interface VideoGeneratePanelProps {
   model: string;
   /** What a submission would carry, forwarded to the picker. */
   params: Readonly<Record<string, unknown>>;
-  /** Estimated credit cost of one generation (current model's cost_per_call). */
-  creditEstimate: number;
+  /** The run's estimate as printed beside the star; undefined until it resolves. */
+  creditText: string | undefined;
   /** The active generation mode. */
   mode: string;
   /** Switch generation mode. */
@@ -57,17 +56,17 @@ interface VideoGeneratePanelProps {
    * In the rail it refuses INSERT on every row — nothing can be inserted into
    * a prompt that is not sent — and so dims every row's CONTENT, text included.
    * The ✕ is untouched: it removes in every state (#1952). A media row's
-   * content is dimmed by `modeTakesReferences` as well, because that is the
+   * content is dimmed by `referenceKinds` as well, because that is the
    * question whose answer points at a mode where the row actually works.
    */
   promptRequired: boolean;
   /**
-   * Whether the model draws on the reference pool in this mode.
+   * The kinds the model's reference pool takes in this mode (#2156).
    *
    * The model declares it, so a mode two models serve differently is drawn
    * differently for each — which no table keyed by mode alone can do.
    */
-  takesReferences: boolean;
+  referenceKinds: readonly ReferenceKind[];
   /** Rail rows: this node's incoming edges, then its focus crops (#1978). */
   references: ReferenceRailItem[];
   /**
@@ -120,7 +119,7 @@ interface VideoGeneratePanelProps {
   /** Pick a model. */
   onSelectModel: (modelId: string) => void;
   /** Change one parameter. */
-  onChangeParams: (partial: VideoParamsValue) => void;
+  onChangeParams: (partial: object) => void;
   /**
    * Execute: submit the task (the panel closes on success). The node does NOT
    * enter handling here — the server publishes handling only after it accepts
@@ -147,12 +146,12 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   models,
   model,
   params,
-  creditEstimate,
+  creditText,
   mode,
   onToggleMode,
   modeOptions,
   promptRequired,
-  takesReferences,
+  referenceKinds,
   references,
   pendingFocus,
   onAddReference,
@@ -218,7 +217,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         // prompt material, so this question leaves it alone — the one below is
         // the one that reaches it, and in talking head (the only mode whose
         // model sends no prompt) it dims there too (#1966).
-        modeTakesReferences={takesReferences}
+        referenceKinds={referenceKinds}
         modelTakesPrompt={promptRequired}
       />
 
@@ -236,20 +235,20 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           <VideoParamsPicker
             model={currentModel}
             params={params}
-            slots={slots}
-            slotUrls={slotUrls}
             onChange={onChangeParams}
           />
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          <span
-            data-testid='generate-video-credit'
-            className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
-          >
-            <Star className='h-3.5 w-3.5' aria-hidden='true' />
-            {creditEstimate}
-          </span>
+          {creditText !== undefined && (
+            <span
+              data-testid='generate-video-credit'
+              className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
+            >
+              <Star className='h-3.5 w-3.5' aria-hidden='true' />
+              {creditText}
+            </span>
+          )}
           <Button
             type='button'
             variant={null}

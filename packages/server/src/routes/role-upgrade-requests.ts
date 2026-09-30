@@ -28,6 +28,7 @@
  */
 
 import { Hono } from "hono";
+import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -89,7 +90,7 @@ projectRoleUpgradeRequests.post(
       projectId,
       projectName: project.name,
       message: body.message ?? null,
-      origin: c.req.header("Origin") ?? "",
+      origin: frontendOrigin(c.req.header("Origin")),
     });
 
     // Just the id of the thing that was created. The bell entry the service

@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { projectCreateSchema } from "@shared/schemas/api.js";
+import { chatAttachedChipSchema, projectCreateSchema, taskCreateSchema } from "@shared/schemas/api.js";
 
 const base = {
   studioId: "11111111-1111-4111-8111-111111111111",
@@ -29,27 +29,42 @@ describe("projectCreateSchema — spaceType (B.2 create→seed plumbing)", () =>
   });
 });
 
-describe("projectCreateSchema — visibility", () => {
-  it("defaults visibility to studio when omitted", () => {
-    // Load-bearing since 2026-08-07. The create dialog dropped the visibility
-    // picker and the client stopped sending the field, so this default is now
-    // the only thing deciding what every new project gets: flipping it to
-    // 'private' would hide every project created from then on from most of its
-    // studio. The route's own assertion (server routes/projects.test.ts) reads
-    // the same default through zValidator, so that flip turns both red —
-    // verified. The segment past the route is watched separately, by an
-    // assertion on the created row in the project-visibility-materialize
-    // integration suite; that one calls the service with an explicit value, so
-    // it guards against the repo rewriting it rather than against this flip.
-    expect(projectCreateSchema.parse(base).visibility).toBe("studio");
+describe("taskCreateSchema — source", () => {
+  const task = {
+    task_type: "image",
+    params: {},
+    project_id: "11111111-1111-4111-8111-111111111111",
+    space_id: "22222222-2222-4222-8222-222222222222",
+    mode: "append" as const,
+  };
+
+  // The column has one vocabulary, and a caller that names no lane falls to
+  // this default rather than to the column's own — which is a word from
+  // before that vocabulary existed, and would reach the feed as a row
+  // nothing can render.
+  it("files a caller that names no lane under the generic one", () => {
+    expect(taskCreateSchema.parse(task).source).toBe("task");
   });
 
-  it("still accepts an explicit value", () => {
-    // The request schema deliberately kept the field, so a caller that sends
-    // one is honoured. That is the accepted gap of stopping at the UI layer,
-    // not an oversight — pinning it here so removing it reads as a decision.
-    expect(projectCreateSchema.parse({ ...base, visibility: "private" }).visibility).toBe(
-      "private",
+  it("keeps the lane a caller does name", () => {
+    expect(taskCreateSchema.parse({ ...task, source: "understand" }).source).toBe(
+      "understand",
     );
+  });
+
+  it("refuses a lane outside the vocabulary", () => {
+    expect(() => taskCreateSchema.parse({ ...task, source: "canvas" })).toThrow();
+  });
+});
+
+describe("chatAttachedChipSchema — id", () => {
+  const chip = { type: "image", name: "cover.png", data_snapshot: { url: "https://cdn.example/c.png" } };
+
+  it("refuses an id longer than any node or file id", () => {
+    expect(chatAttachedChipSchema.safeParse({ ...chip, id: "x".repeat(129) }).success).toBe(false);
+  });
+
+  it("takes an id as long as a uuid", () => {
+    expect(chatAttachedChipSchema.safeParse({ ...chip, id: "0".repeat(36) }).success).toBe(true);
   });
 });

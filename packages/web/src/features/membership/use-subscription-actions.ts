@@ -17,7 +17,7 @@ import { toast } from '@web/lib/toast';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   holdsActionableSubscription,
-  type SubscribableMembershipTier,
+  type MembershipOffer,
   type SubscriptionSummary,
 } from '@breatic/shared';
 
@@ -28,16 +28,24 @@ import {
   startSubscriptionCheckout,
 } from '@web/data/api/subscription';
 
+/** Which of the panel's actions is running. */
+export type PendingSubscriptionAction =
+  | { readonly kind: 'choose'; readonly offer: MembershipOffer }
+  | { readonly kind: 'cancel' }
+  | { readonly kind: 'resume' };
+
 /** What the panel can do about a subscription. */
 export interface SubscriptionActions {
-  /** Take the account to a tier above its own. */
-  choose: (tier: SubscribableMembershipTier) => void;
+  /** Take the account to another offer: a tier, a period, or both. */
+  choose: (offer: MembershipOffer) => void;
   /** Stop the membership renewing at the end of the paid period. */
   cancel: () => void;
   /** Take back a scheduled cancellation. */
   resume: () => void;
   /** Whether one of these is already running, so the controls wait. */
   busy: boolean;
+  /** The one that is running, so its own control can say so. */
+  pending: PendingSubscriptionAction | null;
 }
 
 /**
@@ -53,14 +61,16 @@ export interface SubscriptionActions {
  * panel's own query and leave the reader where they were.
  * @param subscription - The account's subscription, or null when this
  *   deployment sells none.
- * @returns The three actions and whether one is running.
+ * @returns The three actions, whether one is running, and which.
  */
 export function useSubscriptionActions(
   subscription: SubscriptionSummary | null,
 ): SubscriptionActions {
   const t = useTranslation();
   const queryClient = useQueryClient();
-  const [busy, setBusy] = React.useState(false);
+  const [pending, setPending] = React.useState<PendingSubscriptionAction | null>(
+    null,
+  );
 
   // Re-reads the panel's own data and leaves the page alone.
   //
@@ -76,11 +86,18 @@ export function useSubscriptionActions(
     });
   }, [queryClient]);
 
+  // `work` answers 'leaving' once it has sent the browser to another page.
+  // The action stays pending from then on: the page is going, and a button
+  // that comes back to life during that moment is one a second tap can reach.
   const run = React.useCallback(
-    async (work: () => Promise<void>) => {
-      setBusy(true);
+    async (
+      action: PendingSubscriptionAction,
+      work: () => Promise<'leaving' | void>,
+    ) => {
+      setPending(action);
+      let leaving = false;
       try {
-        await work();
+        leaving = (await work()) === 'leaving';
       } catch (err) {
         // Every one of these can fail without anything being broken: two tabs
         // open on this panel and one of them subscribes first makes the other
@@ -89,50 +106,51 @@ export function useSubscriptionActions(
         // reader had no way to tell a refusal from a dead app.
         toast.error(serverMessage(err, t('membership.actionFailed')));
       } finally {
-        setBusy(false);
+        if (!leaving) setPending(null);
       }
     },
     [t],
   );
 
   const choose = React.useCallback(
-    (tier: SubscribableMembershipTier) => {
-      void run(async () => {
+    (offer: MembershipOffer) => {
+      void run({ kind: 'choose', offer }, async () => {
         if (subscription && holdsActionableSubscription(subscription.state)) {
-          const result = await changeSubscriptionPlan(tier);
+          const result = await changeSubscriptionPlan(offer);
           // The difference was not charged, so Stripe is holding the change
           // until it is. Sending them straight to the invoice is the whole of
           // "there is a way to finish paying".
           if (result.payableInvoiceUrl) {
             window.location.assign(result.payableInvoiceUrl);
-            return;
+            return 'leaving';
           }
           window.location.reload();
-          return;
+          return 'leaving';
         }
         const start = await startSubscriptionCheckout(
-          tier,
+          offer,
           window.location.href,
         );
         window.location.assign(start.url);
+        return 'leaving';
       });
     },
     [run, subscription],
   );
 
   const cancel = React.useCallback(() => {
-    void run(async () => {
+    void run({ kind: 'cancel' }, async () => {
       await cancelSubscription();
       await refreshPanel();
     });
   }, [run, refreshPanel]);
 
   const resume = React.useCallback(() => {
-    void run(async () => {
+    void run({ kind: 'resume' }, async () => {
       await resumeSubscription();
       await refreshPanel();
     });
   }, [run, refreshPanel]);
 
-  return { choose, cancel, resume, busy };
+  return { choose, cancel, resume, busy: pending !== null, pending };
 }

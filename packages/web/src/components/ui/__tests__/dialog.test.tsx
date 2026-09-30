@@ -42,6 +42,38 @@ describe('Dialog', () => {
     expect(screen.queryByText('Title')).not.toBeInTheDocument();
   });
 
+  it('focuses the dialog itself on open, not the close button', async () => {
+    render(
+      <Dialog open>
+        <DialogContent data-testid='content'>
+          <DialogHeader>
+            <DialogTitle>Title</DialogTitle>
+          </DialogHeader>
+          <input aria-label='Note' />
+        </DialogContent>
+      </Dialog>,
+    );
+    await act(async () => {});
+    expect(document.activeElement).toBe(screen.getByTestId('content'));
+    expect(screen.getByRole('button', { name: 'Close' })).not.toHaveFocus();
+  });
+
+  it('leaves focus on a field the dialog asks to focus', async () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Title</DialogTitle>
+          </DialogHeader>
+          {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the case under test is a dialog field that asks for focus, as NewSpaceDialog's name input does */}
+          <input aria-label='Name' autoFocus />
+        </DialogContent>
+      </Dialog>,
+    );
+    await act(async () => {});
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveFocus();
+  });
+
   it('renders title + description + close button when open', () => {
     setup(true);
     expect(screen.getByText('Title')).toBeInTheDocument();

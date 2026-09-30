@@ -15,7 +15,7 @@ import type * as ChatApiModule from '@web/data/api/chat';
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000 })),
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10 })),
     openChat: vi.fn(),
     messagesBefore: vi.fn(),
     readConversation: vi.fn(),
@@ -27,6 +27,15 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
 }));
 
 import { chatApi } from '@web/data/api/chat';
+import { chatAttachments, type TrayItem } from '@web/stores/chat-attachments';
+
+const READY_ITEM: TrayItem = {
+  id: 'n-1',
+  name: 'note',
+  type: 'text',
+  status: 'ready',
+  chip: { id: 'n-1', type: 'text', name: 'note', data_snapshot: { text: 'hi' } },
+};
 import {
   conversationRuntime,
   useConversationRuntime,
@@ -425,6 +434,32 @@ describe('what each conversation has half-typed', () => {
     conversationRuntime.leaveProject(PROJECT);
 
     expect(conversationRuntime.draftOf('c-1')).toBe('');
+  });
+
+  it('forgets the items attached in a project once the reader leaves it', async () => {
+    openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+    chatAttachments.add('c-1', [READY_ITEM], { maxItems: 10, maxChars: 200_000 });
+
+    conversationRuntime.leaveProject(PROJECT);
+
+    expect(chatAttachments.trayOf('c-1')).toEqual([]);
+  });
+
+  it('forgets the items attached in a conversation once it is deleted', async () => {
+    openAnswers([{ id: 'c-1', title: 'first' }, { id: 'c-2', title: 'second' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+    chatAttachments.add('c-1', [READY_ITEM], { maxItems: 10, maxChars: 200_000 });
+    vi.mocked(chatApi.deleteConversation).mockResolvedValue(undefined);
+    vi.mocked(chatApi.readConversation).mockResolvedValue({
+      conversation: { id: 'c-2', title: 'second' },
+      messages: [],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+
+    await conversationRuntime.remove(PROJECT, 'c-1');
+
+    expect(chatAttachments.trayOf('c-1')).toEqual([]);
   });
 });
 

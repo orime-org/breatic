@@ -48,9 +48,6 @@ loadLocales();
 
 const PG_DRIVER_LOCAL = "chat-conversation-id-test-driver";
 
-/** A skill the routing config marks usable from chat by a user. */
-const CHAT_SKILL = "brainstorm";
-
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
 
@@ -93,8 +90,8 @@ async function seedOpenedProject(): Promise<{
     INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')
   `;
   const [project] = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}, 'private') RETURNING id
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}) RETURNING id
   `;
   await sql`
     INSERT INTO project_members (project_id, user_id, role, added_by)
@@ -158,18 +155,6 @@ describe("the conversation id is required", () => {
 
     expect(res.status).toBe(422);
   });
-
-  it("refuses a skill invocation with no conversation id", async () => {
-    const { projectId, cookie } = await seedOpenedProject();
-
-    const res = await app.request("/api/v1/chat/skill", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie },
-      body: JSON.stringify({ skill_name: CHAT_SKILL, input: "go", project_id: projectId }),
-    });
-
-    expect(res.status).toBe(422);
-  });
 });
 
 describe("the conversation id is checked before anything is written", () => {
@@ -229,8 +214,8 @@ describe("the conversation id is checked before anything is written", () => {
 
     // Same owner, second project, its own conversation.
     const [project] = await sql<{ id: string }[]>`
-      INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-      VALUES (${here.studioId}, ${here.userId}, 'second', ${`second-${seq++}`}, 'private') RETURNING id
+      INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+      VALUES (${here.studioId}, ${here.userId}, 'second', ${`second-${seq++}`}) RETURNING id
     `;
     await sql`
       INSERT INTO project_members (project_id, user_id, role, added_by)
@@ -274,29 +259,23 @@ describe("the conversation id is checked before anything is written", () => {
   });
 });
 
-describe("both entrances treat the id the same way", () => {
-  it("lands a skill invocation and a message in the conversation they name", async () => {
+describe("two turns in one conversation", () => {
+  it("lands both in the conversation they name", async () => {
     const { projectId, cookie, conversationId } = await seedOpenedProject();
 
-    const skillRes = await app.request("/api/v1/chat/skill", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie },
-      body: JSON.stringify({
-        skill_name: CHAT_SKILL,
-        input: "three angles",
-        project_id: projectId,
-        conversation_id: conversationId,
-      }),
-    });
-    expect(skillRes.status).toBe(200);
-    await skillRes.text();
+    const first = await send(
+      { message: "three angles", project_id: projectId, conversation_id: conversationId },
+      cookie,
+    );
+    expect(first.status).toBe(200);
+    await first.text();
 
-    const messageRes = await send(
+    const second = await send(
       { message: "and one more", project_id: projectId, conversation_id: conversationId },
       cookie,
     );
-    expect(messageRes.status).toBe(200);
-    await messageRes.text();
+    expect(second.status).toBe(200);
+    await second.text();
 
     const rows = await sql<{ conversation_id: string; turn_index: number }[]>`
       SELECT conversation_id, turn_index FROM conversation_messages
@@ -306,24 +285,5 @@ describe("both entrances treat the id the same way", () => {
     expect(mine).toHaveLength(2);
     // Consecutive turns in one conversation, not two conversations of one turn.
     expect(mine.map((r) => r.turn_index)).toEqual([1, 2]);
-  });
-
-  it("refuses someone else's conversation on the skill entrance too", async () => {
-    const mine = await seedOpenedProject();
-    const theirs = await seedOpenedProject();
-
-    const res = await app.request("/api/v1/chat/skill", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: mine.cookie },
-      body: JSON.stringify({
-        skill_name: CHAT_SKILL,
-        input: "go",
-        project_id: mine.projectId,
-        conversation_id: theirs.conversationId,
-      }),
-    });
-
-    expect(res.status).toBe(404);
-    expect(await messageCount(theirs.conversationId)).toBe(0);
   });
 });

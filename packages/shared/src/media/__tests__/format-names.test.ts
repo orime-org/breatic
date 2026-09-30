@@ -1,0 +1,132 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * The word a format goes by on screen.
+ *
+ * Two gates name a format while refusing a file, and their sentences can sit
+ * one node apart in the same list — so what matters here is that one table
+ * answers both, and that it still answers for the formats it does not list,
+ * which is most of what a refusal is handed.
+ */
+
+import { describe, expect, it } from "vitest";
+
+import { assetNameFromUrl } from "@shared/media/asset-name.js";
+import { formatNameOf, formatPhrase } from "@shared/media/format-names.js";
+import {
+  AUDIO_FORMAT_NAMES,
+  IMAGE_FORMAT_NAMES,
+  VIDEO_FORMAT_NAMES,
+} from "@shared/understand/media-formats.js";
+import { uploadableFormatList } from "@shared/upload/media-type.js";
+
+describe("what to call the format a file is in", () => {
+  it("gives a listed type the word a reader uses for it", () => {
+    expect(formatNameOf("audio/mpeg")).toBe("MP3");
+    expect(formatNameOf("video/quicktime")).toBe("MOV");
+    expect(formatNameOf("image/jpeg")).toBe("JPG");
+  });
+
+  // One subtype is two formats depending on the medium, which is why the
+  // table is keyed on the whole type.
+  it("tells an M4A from an MP4", () => {
+    expect(formatNameOf("audio/mp4")).toBe("M4A");
+    expect(formatNameOf("video/mp4")).toBe("MP4");
+  });
+
+  it("falls back to the subtype for a format the table does not list", () => {
+    expect(formatNameOf("image/tiff")).toBe("TIFF");
+    expect(formatNameOf("audio/flac")).toBe("FLAC");
+  });
+
+  // An .avi arrives as `video/x-msvideo` and a .wmv as `video/x-ms-wmv`;
+  // neither registry prefix is part of what anybody calls the file.
+  it("drops the registry prefix before capitalising", () => {
+    expect(formatNameOf("video/x-msvideo")).toBe("MSVIDEO");
+    expect(formatNameOf("audio/vnd.wave")).toBe("WAVE");
+  });
+
+  it("names nothing when there is no type to name", () => {
+    expect(formatNameOf(undefined)).toBeNull();
+    expect(formatNameOf(null)).toBeNull();
+    expect(formatNameOf("application")).toBeNull();
+    expect(formatNameOf("image/")).toBeNull();
+  });
+});
+
+describe("the two gates spell from one table", () => {
+  // The upload gate's own sentence is built from the same words the reading
+  // gate names a refused file with, so a format both know cannot come to be
+  // spelled two ways.
+  it("spells a format the same whichever gate names it", () => {
+    for (const type of ["image/png", "video/quicktime", "audio/mpeg"]) {
+      const word = formatNameOf(type);
+      expect(word).not.toBeNull();
+      const medium = type.split("/")[0] as "image" | "video" | "audio";
+      expect(uploadableFormatList(medium).split(" / ")).toContain(word);
+    }
+  });
+
+  // A third table spells the same words for a sentence a model reads
+  // (`media-formats.ts`), keyed on subtype where this one is keyed on a whole
+  // media type. They name the same formats and can come apart silently.
+  it("agrees with the words the model-facing sentence is built from", () => {
+    expect(AUDIO_FORMAT_NAMES).toBe(
+      formatPhrase([formatNameOf("audio/mpeg"), formatNameOf("audio/wav")] as string[]),
+    );
+    expect(IMAGE_FORMAT_NAMES).toBe(
+      formatPhrase([
+        formatNameOf("image/png"),
+        formatNameOf("image/jpeg"),
+        formatNameOf("image/webp"),
+        formatNameOf("image/gif"),
+      ] as string[]),
+    );
+    expect(VIDEO_FORMAT_NAMES).toBe(
+      formatPhrase([
+        formatNameOf("video/mp4"),
+        formatNameOf("video/mpeg"),
+        formatNameOf("video/webm"),
+        formatNameOf("video/quicktime"),
+      ] as string[]),
+    );
+  });
+
+  it("strings several names together with one separator", () => {
+    expect(formatPhrase(["MP3", "WAV"])).toBe("MP3 / WAV");
+    expect(uploadableFormatList("image")).toBe(
+      formatPhrase(["PNG", "JPG", "WebP"]),
+    );
+  });
+});
+
+/**
+ * What the asset at an address is called.
+ *
+ * By the time a reading refuses a file it has been uploaded, so its storage
+ * key is what it goes by — and the key is in the address both ends hold.
+ */
+describe("what the file at an address is called", () => {
+  it("reads the key's own name off the address", () => {
+    expect(
+      assetNameFromUrl("https://cdn.invalid/upload/2026-09-20/1758_a1b2.aiff"),
+    ).toBe("1758_a1b2.aiff");
+  });
+
+  // A signed address carries both, and neither is part of the name.
+  it("drops the query and the fragment", () => {
+    expect(assetNameFromUrl("https://cdn/x/a.mp4?sig=abc&exp=1")).toBe("a.mp4");
+    expect(assetNameFromUrl("https://cdn/x/a.mp4#t=3")).toBe("a.mp4");
+  });
+
+  it("gives back the name a reader would read", () => {
+    expect(assetNameFromUrl("https://cdn/x/my%20clip.wav")).toBe("my clip.wav");
+  });
+
+  it("names nothing when there is no segment to read", () => {
+    expect(assetNameFromUrl(undefined)).toBeNull();
+    expect(assetNameFromUrl(null)).toBeNull();
+    expect(assetNameFromUrl("https://cdn/x/")).toBeNull();
+  });
+});

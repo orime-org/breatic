@@ -18,11 +18,11 @@ import {
 
 describe("subscriptionActions — 升级入口", () => {
   it("欠费重试时不给：服务端对它一律拒绝", () => {
-    expect(subscriptionActions("retrying", false).upgrade).toBe("withheld");
+    expect(subscriptionActions("retrying", false).move).toBe("withheld");
   });
 
   it("升级已买待付款时显示为处理中，不邀请再买一次", () => {
-    expect(subscriptionActions("upgradePending", false).upgrade).toBe(
+    expect(subscriptionActions("upgradePending", false).move).toBe(
       "pending",
     );
   });
@@ -30,7 +30,7 @@ describe("subscriptionActions — 升级入口", () => {
   it.each(["none", "firstPaymentUnsettled", "active", "cancelling", "unexpected"] as const)(
     "%s 时照常给",
     (state) => {
-      expect(subscriptionActions(state, false).upgrade).toBe("offered");
+      expect(subscriptionActions(state, false).move).toBe("offered");
     },
   );
 });
@@ -82,7 +82,7 @@ describe("subscriptionActions — 取消与恢复", () => {
     for (const state of SUBSCRIPTION_SITUATIONS) {
       for (const scheduled of [true, false]) {
         const actions = subscriptionActions(state, scheduled);
-        expect(["offered", "pending", "withheld"]).toContain(actions.upgrade);
+        expect(["offered", "pending", "withheld"]).toContain(actions.move);
         expect(typeof actions.cancel).toBe("boolean");
         expect(typeof actions.resume).toBe("boolean");
       }

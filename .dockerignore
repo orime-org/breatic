@@ -77,3 +77,10 @@ packages/*/src/__tests__
 eslint.config.ts
 packages/*/vitest.config.ts
 packages/*/typedoc.json
+
+# Operator database backups
+backups/
+
+# Operator TLS material must not enter build layers.
+docker/certs/*.pem
+docker/certs/*.key

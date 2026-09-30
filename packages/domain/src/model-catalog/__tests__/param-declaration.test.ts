@@ -35,7 +35,8 @@ describe("a parameter declaration", () => {
         modelWith({
           image: { fill: "canvas", accepts: "image" },
           duration: { fill: "panel" },
-          keep_original_sound: { fill: "panel", when: { source: "image" } },
+          enable_camera: { fill: "panel" },
+          lens: { fill: "panel", when: { flag_on: "enable_camera" } },
           end_image: { fill: "canvas", accepts: "image", modes: ["first_last"] },
           seed: { fill: "none", note: "reproducibility plumbing" },
         }, ["i2v", "first_last"]),
@@ -47,6 +48,36 @@ describe("a parameter declaration", () => {
     expect(() => assertParamDeclarations("video", modelWith({ image: { fill: "canvas" } }))).toThrow(
       /a-model.*image.*accepts/s,
     );
+  });
+
+  it("takes a pool's mention with one position placeholder", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({
+          images: { fill: "pool", accepts: "image", type: "list", mention: "@image{n}" },
+          videos: { fill: "pool", accepts: "video", type: "list", mention: "<VIDEO_{i}>" },
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("is refused when a mention sits on a param the pool does not fill", () => {
+    // Only a chip picked from the pool is written with it; anywhere else it is
+    // a spelling nothing reads.
+    expect(() =>
+      assertParamDeclarations("video", modelWith({ image: { fill: "canvas", accepts: "image", mention: "image {n}" } })),
+    ).toThrow(/a-model\.image: only a pool param writes its chips with a mention/);
+  });
+
+  it.each([
+    ["no placeholder", "the image"],
+    ["both placeholders", "{n} of {i}"],
+    ["the same placeholder twice", "{n}{n}"],
+  ])("is refused when a mention has %s", (_case, mention) => {
+    expect(() =>
+      assertParamDeclarations("video", modelWith({ images: { fill: "pool", accepts: "image", type: "list", mention } })),
+    ).toThrow(/a-model\.images: a mention holds exactly one \{n\} or \{i\}/);
   });
 
   it("is refused when a pool does not say which kind of node it takes", () => {
@@ -62,9 +93,9 @@ describe("a parameter declaration", () => {
     expect(() =>
       assertParamDeclarations(
         "video",
-        modelWith({ keep_original_sound: { fill: "panel", when: { source: "video" } } }),
+        modelWith({ lens: { fill: "panel", when: { flag_on: "enable_camera" } } }),
       ),
-    ).toThrow(/a-model.*keep_original_sound.*video/s);
+    ).toThrow(/a-model.*lens.*enable_camera/s);
   });
 
   it("is refused when it limits itself to a mode the model does not serve", () => {
@@ -96,26 +127,27 @@ describe("a parameter declaration", () => {
     // shapes of the same field.
     expect(() =>
       assertParamDeclarations(
-        "understand",
-        modelWith({ images: { fill: "none", note: "no panel", accepts: "image", max_items: 20 } }, "vi"),
+        "image",
+        modelWith({ images: { fill: "none", note: "no panel", accepts: "image", max_items: 20 } }, "generate"),
       ),
     ).toThrow(/a-model.*images.*max_items.*list/s);
   });
 
-  it("is refused when its conditional cap is set on something that is not a list", () => {
+  it("is refused when it still declares a conditional cap", () => {
     expect(() =>
       assertParamDeclarations(
         "video",
         modelWith({
-          video: { fill: "canvas", accepts: "video", optional: true },
           images: {
             fill: "pool",
             accepts: "image",
+            type: "list",
+            max_items: 7,
             max_items_when_present: { video: 4 },
           },
         }),
       ),
-    ).toThrow(/a-model.*images.*max_items_when_present.*list/s);
+    ).toThrow(/a-model.*images.*max_items_when_present/s);
   });
 
   it("is refused when it does not say how it gets filled at all", () => {
@@ -130,46 +162,7 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*seed.*note/s);
   });
 
-  it("is refused when its conditional cap names a parameter the model does not declare", () => {
-    // The cap is read by looking that name up among the submitted params, so a
-    // misspelling reads as "nothing is there" and the wider cap stands. Every
-    // gate below it already gets this check; the cap did not.
-    expect(() =>
-      assertParamDeclarations(
-        "video",
-        modelWith({
-          video: { fill: "canvas", accepts: "video", optional: true },
-          images: {
-            fill: "pool",
-            accepts: "image",
-            type: "list",
-            max_items: 7,
-            max_items_when_present: { video_url: 4 },
-          },
-        }),
-      ),
-    ).toThrow(/a-model.*images.*video_url/s);
-  });
 
-  it("is refused when its conditional cap has no cap to narrow", () => {
-    // The field states a LOWER cap that takes over, so it needs one to be
-    // lower than. Without it the reader of the number treats the param as
-    // uncapped and this narrowing never applies to anything.
-    expect(() =>
-      assertParamDeclarations(
-        "video",
-        modelWith({
-          video: { fill: "canvas", accepts: "video", optional: true },
-          images: {
-            fill: "pool",
-            accepts: "image",
-            type: "list",
-            max_items_when_present: { video: 4 },
-          },
-        }),
-      ),
-    ).toThrow(/a-model.*images.*max_items/s);
-  });
 
   it("is refused when it spells the one shape a list can be any other way", () => {
     // Readers compare this field against that exact string: anything else is
@@ -229,6 +222,82 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*image/s);
   });
 
+  it("lets a list editor state a floor and name the param it stands in for", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "tts",
+        modelWith({
+          voice_id: { fill: "remote", remote_source: "voices" },
+          speakers: { fill: "panel", type: "items", min_items: 2, max_items: 2, replaces: "voice_id" },
+        }, "tts"),
+      ),
+    ).not.toThrow();
+  });
+
+  it("is refused when it stands in for a param the model does not declare", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "tts",
+        modelWith({ speakers: { fill: "panel", type: "items", replaces: "voice" } }, "tts"),
+      ),
+    ).toThrow(/a-model\.speakers.*replaces "voice"/s);
+  });
+
+  it("is refused when its floor sits above its cap", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "tts",
+        modelWith({ speakers: { fill: "panel", type: "items", min_items: 3, max_items: 2 } }, "tts"),
+      ),
+    ).toThrow(/a-model\.speakers.*min_items/s);
+  });
+
+  it("lets a choice name the language each of its values is, one for one", () => {
+    const language = {
+      fill: "panel",
+      values: ["English (United States)", "Japanese (Japan)"],
+      default: "English (United States)",
+    };
+    expect(() =>
+      assertParamDeclarations("tts", modelWith({ language: { ...language, value_locales: ["en-US", "ja-JP"] } }, "tts")),
+    ).not.toThrow();
+    expect(() =>
+      assertParamDeclarations("tts", modelWith({ language: { ...language, value_locales: ["en-US"] } }, "tts")),
+    ).toThrow(/a-model\.language.*value_locales/s);
+  });
+
+  it("lets a choice name how each of its values reads", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({
+          order: {
+            fill: "panel",
+            values: ["meanwhile", "left_right"],
+            default: "meanwhile",
+            value_labels: { meanwhile: "Together", left_right: "Left first" },
+          },
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("is refused when it names how a value reads that it does not offer", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({
+          order: {
+            fill: "panel",
+            values: ["meanwhile"],
+            default: "meanwhile",
+            value_labels: { right_left: "Right first" },
+          },
+        }),
+      ),
+    ).toThrow(/a-model.*order.*value_labels.*right_left/s);
+  });
+
   it("lets the reference pool carry as many as the model says", () => {
     expect(() =>
       assertParamDeclarations(
@@ -245,6 +314,51 @@ describe("a parameter declaration", () => {
 // The cases above hold up the check itself. These hold up its place in the
 // loading path: take that call out of the loader and every case above stays
 // green, because no declaration in the real yaml breaks one today.
+describe("a panel parameter's default", () => {
+  // User 2026-09-29: a control the panel draws always stands on a value, and
+  // that value is the one the catalog declares, so a new node reads it there.
+  it("passes when a choice defaults to one of its values and a range to a number inside it", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "image",
+        modelWith({
+          quality: { fill: "panel", values: ["low", "high"], default: "low" },
+          chaos: { fill: "panel", min: 0, max: 100, default: 0 },
+          transparency: { fill: "panel", values: [false, true], default: false },
+        }, "t2i"),
+      ),
+    ).not.toThrow();
+  });
+
+  it("is refused when a choice declares no default, or one it does not offer", () => {
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ aspect_ratio: { fill: "panel", values: ["1:1"], default: null } }, "t2i")),
+    ).toThrow(/a-model\.aspect_ratio.*default/s);
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ quality: { fill: "panel", values: ["low"] } }, "t2i")),
+    ).toThrow(/a-model\.quality.*default/s);
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ quality: { fill: "panel", values: ["low"], default: "max" } }, "t2i")),
+    ).toThrow(/a-model\.quality.*default/s);
+  });
+
+  it("is refused when a range defaults outside itself", () => {
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ chaos: { fill: "panel", min: 0, max: 100, default: 101 } }, "t2i")),
+    ).toThrow(/a-model\.chaos.*default/s);
+  });
+
+  it("lets a choice name the value that is sent as nothing, when it offers it", () => {
+    const ratio = { fill: "panel", values: ["auto", "1:1"], default: "auto" };
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ aspect_ratio: { ...ratio, absent_value: "auto" } }, "t2i")),
+    ).not.toThrow();
+    expect(() =>
+      assertParamDeclarations("image", modelWith({ aspect_ratio: { ...ratio, absent_value: "match" } }, "t2i")),
+    ).toThrow(/a-model\.aspect_ratio.*absent_value/s);
+  });
+});
+
 describe("the loader refuses what these checks refuse", () => {
   afterEach(() => {
     vi.doUnmock("node:fs");

@@ -147,6 +147,8 @@ describe("carrying a counts event to its document", () => {
           width: 800,
           height: 600,
           duration: null,
+          mimeType: null,
+          size: null,
         },
       }),
     );

@@ -48,6 +48,7 @@ import {
 } from "@collab/services/project-space-list.js";
 import {
   createLogger,
+  env,
   getSession,
   projectAuthService,
   sessionCookieName,
@@ -235,6 +236,13 @@ export function createAuthHook({
     // (Redis/Postgres connection-level failures) with the same
     // `auth_unexpected_error` tag so a single grep finds them.
     try {
+      // Browser handshakes always carry Origin. Non-browser clients still
+      // require a valid session and project membership below.
+      const origin = requestHeaders.get("origin");
+      if (origin && !env.ALLOWED_ORIGINS.split(",").map((value) => value.trim()).includes(origin)) {
+        logger.warn({ documentName, reason: "origin_not_allowed" }, "auth_rejected");
+        throw new Error("Origin not allowed");
+      }
       // Session token travels exclusively as the httpOnly session
       // cookie (`sessionCookieName()`) sent on the WebSocket upgrade
       // request (2026-05-26 cookie migration). Hocuspocus's own
@@ -527,6 +535,7 @@ export function createAuthHook({
       // either way; only the server-side trail differs).
       const e = err as Error;
       const isKnownReject =
+        e.message === "Origin not allowed" ||
         e.message === "Missing session cookie" ||
         e.message === "Invalid or expired session token" ||
         e.message.startsWith("Document '") ||

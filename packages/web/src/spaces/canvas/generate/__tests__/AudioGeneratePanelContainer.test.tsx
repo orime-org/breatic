@@ -85,7 +85,6 @@ const ELEVEN: ModelEntry = {
   description: '',
   guide: '',
   tier: 'recommended',
-  cost_per_call: 10,
   generation_time: 30,
   takes_prompt: true,
   params: {
@@ -95,9 +94,12 @@ const ELEVEN: ModelEntry = {
     stability: { description: '', min: 0, max: 1, step: 0.05, default: 0.5 },
   },
   providers: [],
-  sourcesByMode: { tts: [] },
-  sourceRuleByMode: { tts: 'all_of' as const },
-  rate: { credits: 10, per: 1000, unit: 'characters' },
+  prompt_upstream: 'text',
+  pricing: {
+    base_price: 50000,
+    formula: '{"total_price": $ceil(base_price * $length(text) / 1000)}',
+    discount_rate: 100,
+  },
 };
 
 const FISH: ModelEntry = {
@@ -108,7 +110,6 @@ const FISH: ModelEntry = {
     reference_id: { description: '', default: null, remote_source: 'voices' },
     speed: { description: '', min: 0.5, max: 2, step: 0.05, default: 1 },
   },
-  rate: { credits: 1.5, per: 1000, unit: 'utf8_bytes' },
 };
 
 /** The voice-cloning model: no voice catalog, one audio source (#1960 PR2). */
@@ -120,9 +121,6 @@ const CLONE: ModelEntry = {
   params: {
     audio: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
   },
-  sourcesByMode: { voice_clone: ['audio'] },
-  sourceRuleByMode: { voice_clone: 'all_of' as const },
-  rate: { credits: 5, per: 1000, unit: 'characters' },
 };
 
 /** The sound-effect model, as `config/models/audio/sonilo.yaml` declares it. */
@@ -140,10 +138,12 @@ const SFX: ModelEntry = {
     },
     audio_format: { description: '', default: 'mp3' },
   },
-  sourcesByMode: { sfx: [] },
-  sourceRuleByMode: { sfx: 'all_of' as const },
-  // $0.002 a second at 1 credit = 1 cent, so five seconds is one credit.
-  rate: { credits: 1, per: 5, unit: 'seconds' },
+  // As the catalog prices it: $0.002 a second, three seconds at least.
+  pricing: {
+    base_price: 2000,
+    formula: '{"total_price": base_price * $max([3, $min([duration, 180])])}',
+    discount_rate: 100,
+  },
 };
 
 /** Text to music, as `config/models/audio/minimax.yaml` declares it (#1960). */
@@ -154,37 +154,33 @@ const T2M: ModelEntry = {
   modality: 'audio',
   mode: 't2m',
   params: {
-    lyrics: {
-      description: '',
-      default: null,
-      fill: 'editor',
-      when: { flag_off: 'is_instrumental' },
-    },
-    is_instrumental: { description: '', default: false, fill: 'panel' },
+    lyrics: { description: '', default: null, fill: 'editor' },
   },
-  sourcesByMode: { t2m: [] },
-  sourceRuleByMode: { t2m: 'all_of' as const },
-  cost_per_call: 15,
-  rate: undefined,
+};
+
+/** Text to music without vocals: a style brief and nothing to sing. */
+const BGM: ModelEntry = {
+  ...T2M,
+  name: 'mureka-v9.5-generate-bgm',
+  display_name: 'Mureka V9.5 BGM',
+  params: {},
 };
 
 /** Reference to music: three audio slots, and lyrics the gateway insists on. */
 const A2M: ModelEntry = {
   ...T2M,
-  name: 'minimax-music-01',
-  display_name: 'MiniMax Music 01',
+  name: 'mureka-v9.5-generate-song',
+  display_name: 'Mureka V9.5 Song',
   mode: 'a2m',
   params: {
     lyrics: { description: '', default: null, fill: 'editor' },
-    song: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
-    voice: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
-    instrumental: { description: '', default: null, fill: 'canvas', accepts: 'audio' },
+    song: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
+    melody: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
+    vocal: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
   },
-  sourcesByMode: { a2m: ['audio'] },
   // The mode takes any one of its three places, which is what lets a submit
   // carrying only a song through.
-  sourceRuleByMode: { a2m: 'any_of' as const },
-  cost_per_call: 35,
+  source_groups: [{ mode: 'a2m', any_of: ['song', 'melody', 'vocal'] }],
 };
 
 /**
@@ -197,11 +193,11 @@ function catalog(): ModelCatalog {
     video: [],
     // The audio bucket really does hold models outside text to speech today
     // (`config/models/audio/`), and this panel reads both buckets.
-    audio: [SFX, T2M, A2M],
+    audio: [SFX, T2M, BGM, A2M],
     tts: [ELEVEN, FISH, CLONE],
     three_d: [],
-    understand: [],
     total: 2,
+    credit_multiplier: 1,
   };
 }
 
@@ -421,11 +417,10 @@ beforeEach(() => {
 });
 
 describe('AudioGeneratePanelContainer — what it offers', () => {
-  it('shows the panel with the model, voice and params controls', async () => {
+  it('shows the panel with the model and the voice-and-settings pill', async () => {
     await openPanel({ model: 'elevenlabs-v3' });
     expect(screen.getByTestId('generate-model-trigger')).toBeInTheDocument();
-    expect(screen.getByTestId('generate-voice-trigger')).toBeInTheDocument();
-    expect(screen.getByTestId('generate-audio-params-trigger')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('generate-audio-tool-reference')).toBeInTheDocument();
   });
 
@@ -457,8 +452,7 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
     for (const gone of [
       'generate-audio-execute',
       'generate-model-trigger',
-      'generate-voice-trigger',
-      'generate-audio-params-trigger',
+      'generate-audio-settings-trigger',
       'generate-audio-tool-reference',
       'generate-audio-rate',
     ]) {
@@ -500,7 +494,9 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
       model: 'sonilo-sfx-v1',
       paramsByModel: { 'sonilo-sfx-v1': { duration: 5 } },
     });
-    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('1');
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('1'),
+    );
     unmount();
 
     await openPanel({
@@ -508,15 +504,22 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
       model: 'sonilo-sfx-v1',
       paramsByModel: { 'sonilo-sfx-v1': { duration: 30 } },
     });
-    expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('6');
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent('6'),
+    );
   });
 
-  it('costs nothing on a panel whose prompt is still empty', async () => {
-    // The figure follows the prompt, so a panel just opened on an empty one
-    // reads zero. What it does as text arrives is `estimateAudioCredits`, and
-    // its own tests cover the two vendors' units.
+  it('states the price per thousand characters while the prompt is still empty', async () => {
+    // A model priced by its text has no figure for a run with no text, so the
+    // panel states the rate instead: $0.05 per thousand characters is five
+    // credits. What it does as text arrives is `estimateCredits`, and its own
+    // tests cover the pricing formulas.
     await openPanel({ model: 'fish-s2-pro' });
-    expect(screen.getByTestId('generate-audio-rate').textContent).toBe('0');
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent(
+        '5 / 1K chars',
+      ),
+    );
   });
 });
 
@@ -547,7 +550,8 @@ describe('AudioGeneratePanelContainer — the mode comes off the node', () => {
 describe('AudioGeneratePanelContainer — picking writes to the node', () => {
   it('stores a picked voice on the model\'s own record', async () => {
     await openPanel({ model: 'elevenlabs-v3' });
-    fireEvent.click(screen.getByTestId('generate-voice-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
     await screen.findByTestId('generate-voice-option-Aria');
     fireEvent.click(screen.getByTestId('generate-voice-option-Aria'));
 
@@ -575,7 +579,8 @@ describe('AudioGeneratePanelContainer — picking writes to the node', () => {
       useCanvasStore.getState().openGeneratePanel('target', 'audio');
     });
     await screen.findByTestId('generate-audio-execute');
-    fireEvent.click(screen.getByTestId('generate-voice-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
     await screen.findByTestId('generate-voice-option-Aria');
     fireEvent.click(screen.getByTestId('generate-voice-option-Aria'));
 
@@ -592,7 +597,8 @@ describe('AudioGeneratePanelContainer — picking writes to the node', () => {
     // hand belongs to the outgoing model's domain; writing it into the
     // incoming model's record submits a value that vendor never issued.
     await openPanel({ model: 'elevenlabs-v3' });
-    fireEvent.click(screen.getByTestId('generate-voice-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
     await screen.findByTestId('generate-voice-option-Aria');
     nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.set(
       'model',
@@ -614,7 +620,7 @@ describe('AudioGeneratePanelContainer — picking writes to the node', () => {
 
   it('stores a changed param on that same record', async () => {
     await openPanel({ model: 'elevenlabs-v3' });
-    fireEvent.click(screen.getByTestId('generate-audio-params-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     fireEvent.click(screen.getByTestId('generate-audio-stability-stop-1'));
 
     await waitFor(() => {
@@ -638,7 +644,7 @@ describe('AudioGeneratePanelContainer — what the trigger says', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId('generate-voice-trigger').textContent).toContain(
+      expect(screen.getByTestId('generate-audio-settings-trigger').textContent).toContain(
         'Rachel',
       );
     });
@@ -647,12 +653,22 @@ describe('AudioGeneratePanelContainer — what the trigger says', () => {
 });
 
 describe('AudioGeneratePanelContainer — submitting', () => {
-  it('refuses when no voice has been chosen, and says which', async () => {
-    // The catalog's default voice is not a value every deployment accepts, so
-    // an untouched picker means no voice — and the submit says so rather than
-    // sending one the user never saw.
+  it('sends the list\'s first voice when none has been chosen', async () => {
+    // User 2026-09-29: with no voice chosen, the voice is the first one.
     const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openPanel({ model: 'elevenlabs-v3' });
+    await waitFor(() => expect(listVoices).toHaveBeenCalled());
+    typePrompt('Good evening.');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.voice_id).toBe('Alice');
+  });
+
+  it('refuses when no voice is chosen and the list has none, and says which', async () => {
+    listVoices.mockResolvedValue(voicePage([]));
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({ model: 'elevenlabs-v3' });
+    await waitFor(() => expect(listVoices).toHaveBeenCalled());
     typePrompt('Good evening.');
     fireEvent.click(screen.getByTestId('generate-audio-execute'));
     // The sentence, not just that one appeared: both refusals a click can
@@ -771,14 +787,26 @@ describe('AudioGeneratePanelContainer — a mode switch that takes the slot away
  * why the container owns them and the panel takes them as slots.
  *
  * Measured against the WaveSpeed gateway on 2026-09-05: both models refuse a
- * run without lyrics — music-3.0 unless the track is marked instrumental,
- * music-01 unconditionally, since it declares no such switch.
+ * run without lyrics.
  */
 describe('AudioGeneratePanelContainer — the music modes', () => {
   it('opens a second box for the words to sing', async () => {
     await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
     expect(screen.getByTestId('generate-prompt-editor')).toBeInTheDocument();
     expect(screen.getByTestId('generate-lyrics-editor')).toBeInTheDocument();
+  });
+
+  it('names the style box on a music model that takes no lyrics, as on one that does', async () => {
+    // The box still asks for a style brief; without its name it would read as
+    // the plain prompt every other mode shows (user 2026-09-06).
+    await openPanel({ mode: 't2m', model: 'mureka-v9.5-generate-bgm' });
+    expect(screen.queryByTestId('generate-lyrics-editor')).toBeNull();
+    expect(screen.getByText('Style')).toBeInTheDocument();
+  });
+
+  it('leaves the prompt box unnamed on a mode that asks for no style', async () => {
+    await openPanel({ mode: 'sfx', model: 'sonilo-sfx-v1' });
+    expect(screen.queryByText('Style')).toBeNull();
   });
 
   it('opens one box on a mode that collects no lyrics', async () => {
@@ -801,11 +829,10 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
   });
 
   it('refuses reference to music on the same empty box', async () => {
-    // It has no instrumental switch, so nothing lifts the requirement here.
     const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openPanel({
       mode: 'a2m',
-      model: 'minimax-music-01',
+      model: 'mureka-v9.5-generate-song',
       musicSong: { url: 'https://x/y.mp3' },
     });
     typePrompt('same mood, slower');
@@ -841,7 +868,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openPanel({
       mode: 'a2m',
-      model: 'minimax-music-01',
+      model: 'mureka-v9.5-generate-song',
       musicSong: { url: 'https://x/y.mp3' },
     });
     typePrompt('same mood, slower');
@@ -852,32 +879,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     expect(create.mock.calls[0]?.[0]?.params.song).toBe('https://x/y.mp3');
   });
 
-  // The switch and the box are one statement: with no vocals there are no words
-  // to write, so the box is not there — rather than standing there explaining
-  // why it refuses typing (user 2026-09-06). What was written stays on the
-  // node, and comes back with the box when the switch goes off.
-  it('takes the lyrics box away while the track is marked instrumental', async () => {
-    await openPanel({
-      mode: 't2m',
-      model: 'minimax-music-3.0',
-      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
-    });
-    typeLyrics('morning light');
-    // The style box is still there, so this is the panel settling on the mode
-    // rather than the panel not having rendered yet.
-    await screen.findByTestId('generate-prompt-editor');
-    expect(screen.queryByTestId('generate-lyrics-editor')).toBeNull();
-    // The box that stays keeps its name. Deciding this off the lyrics box
-    // being present would strip it at the moment the switch flips.
-    expect(screen.getByText('Style')).toBeInTheDocument();
-    // Untouched on the node: the switch decides what the run uses, not what
-    // the user wrote.
-    expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
-      'morning light',
-    );
-  });
-
-  it('asks for words again once the track has vocals', async () => {
+  it('asks for the words in the lyrics box placeholder', async () => {
     await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
     const box = await screen.findByTestId('generate-lyrics-editor');
     await waitFor(() =>
@@ -888,7 +890,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
-  it('leaves it writable while the track has vocals', async () => {
+  it('leaves the lyrics box writable', async () => {
     await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
     const box = await screen.findByTestId('generate-lyrics-editor');
     await waitFor(() =>
@@ -896,29 +898,6 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
         'contenteditable',
         'true',
       ),
-    );
-  });
-
-  // The panel offers no box to write words in; the request has to agree.
-  // Measured 2026-09-05, `is_instrumental: true` with an empty `lyrics` is
-  // accepted and completes — that combination is the one this sends. The words
-  // stay on the node, so turning the switch back off returns them.
-  it('sends no words for a track the user marked vocal-free', async () => {
-    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
-    await openPanel({
-      mode: 't2m',
-      model: 'minimax-music-3.0',
-      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
-    });
-    typePrompt('rain on a tin roof');
-    typeLyrics('morning light');
-    fireEvent.click(screen.getByTestId('generate-audio-execute'));
-
-    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
-    expect(create.mock.calls[0]?.[0]?.params.lyrics).toBe('');
-    // Still on the node: the fragment is untouched.
-    expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
-      'morning light',
     );
   });
 
@@ -1008,8 +987,8 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
   });
 
   it('still inserts once the box the caret was in goes away', async () => {
-    // The caret was in the lyrics box, and then the box left — the instrumental
-    // switch takes it away mid-mode, and a mode switch takes it away outright.
+    // The caret was in the lyrics box, and then the box left — a mode switch
+    // takes it away.
     // The remembered box is gone; the button still has to land the chip.
     const board = textSource('src', 'let the river carry me home');
     const view = await openPanel(
@@ -1040,16 +1019,4 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
-  it('runs an instrumental track with the lyrics box empty', async () => {
-    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
-    await openPanel({
-      mode: 't2m',
-      model: 'minimax-music-3.0',
-      paramsByModel: { 'minimax-music-3.0': { is_instrumental: true } },
-    });
-    typePrompt('rain on a tin roof');
-    fireEvent.click(screen.getByTestId('generate-audio-execute'));
-    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
-    expect(create.mock.calls[0]?.[0]?.params.is_instrumental).toBe(true);
-  });
 });

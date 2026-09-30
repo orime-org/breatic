@@ -56,11 +56,25 @@ vi.mock("@server/config/limits.js", () => ({
   getDecisionWindowMs: () => decisionWindow.days * 24 * 60 * 60 * 1000,
   getDecisionWindowSeconds: () => decisionWindow.days * 24 * 60 * 60,
 }));
+// The invitation email is captured rather than sent, so a case can read the
+// letter the invitee would get and the log context it would be filed under.
+const mailCalls = vi.hoisted(
+  () => [] as Array<{ build: () => Promise<unknown>; ctx: { userId?: string } }>,
+);
+vi.mock("@server/utils/send-best-effort-mail.js", () => ({
+  sendBestEffortMail: async (
+    build: () => Promise<unknown>,
+    ctx: { userId?: string },
+  ): Promise<void> => {
+    mailCalls.push({ build, ctx });
+  },
+}));
+
 
 import { eq, and, isNull, sql } from "drizzle-orm";
 import {
   initCore,
-  getMembershipLimits,
+  loadLocales,
   schema,
   createTestDb,
   projectMembersRepo,
@@ -68,6 +82,7 @@ import {
 import { NotFoundError, ConflictError } from "@breatic/core";
 
 initCore(process.env);
+loadLocales();
 
 import * as inviteService from "../../modules/project-invite/projectInvite.service.js";
 import * as invitesRepo from "../../modules/project-invite/projectInvitations.repo.js";
@@ -124,7 +139,6 @@ beforeAll(async () => {
     createdByUserId: OWNER,
     name: "Test Project",
     slug: "test-project",
-    visibility: "private",
   });
   // The owner's project_members row (fixture, never cleaned).
   await db.insert(schema.projectMembers).values({
@@ -562,41 +576,20 @@ describe("re-invite lifecycle (#1769)", () => {
   });
 });
 
-// The collaborator ceiling itself moved to config/membership.yaml, keyed by
-// the tier of the admin of the studio this project lives in (task #87). Its
-// cases — both check points, the copy each reader gets, concurrency, and a
-// confirm against a deleted project — live in
-// `member-quota.integration.test.ts`, which can seed accounts on chosen tiers.
-// What stays here is the invariant that the ceiling must never touch: open
-// baseline access.
-describe("open baseline is never gated by the collaborator ceiling", () => {
-  it("INVARIANT: a baseline viewer materializes even at cap and is NOT counted (open baseline never blocked)", async () => {
-    // Fill the explicit roster to this studio admin's real ceiling. Reading it
-    // from the shipped config rather than pinning a number keeps the case
-    // honest if the tier's numbers are ever retuned.
-    const ceiling = getMembershipLimits("pro").project_members;
-    for (let i = 0; i < ceiling; i++) {
-      const [filler] = await db
-        .insert(schema.users)
-        .values({ email: `baseline-filler-${i}@svc-test.dev` })
-        .returning({ id: schema.users.id });
-      await db.insert(schema.projectMembers).values({
-        projectId: PROJECT,
-        userId: filler!.id,
-        role: "editor",
-        addedBy: OWNER,
-      });
+describe("the invitation email", () => {
+  it("is written in the invitee's language and filed under the invitee", async () => {
+    // The inviter stays on the default language, so the two differ.
+    await db.update(schema.users).set({ locale: "ja" }).where(eq(schema.users.id, INVITEE));
+    mailCalls.length = 0;
+    try {
+      await inviteService.createInvite(PROJECT, OWNER, INVITEE_EMAIL, "editor", "https://app.test");
+      expect(mailCalls).toHaveLength(1);
+      const mail = (await mailCalls[0]!.build()) as { to: string; html: string };
+      expect(mail.to).toBe(INVITEE_EMAIL);
+      expect(mail.html).toContain("招待");
+      expect(mailCalls[0]!.ctx.userId).toBe(INVITEE);
+    } finally {
+      await db.update(schema.users).set({ locale: "en" }).where(eq(schema.users.id, INVITEE));
     }
-    expect(await projectMembersRepo.countExplicitMembers(PROJECT)).toBe(ceiling);
-
-    // A studio member opening the project auto-materializes as a baseline viewer
-    // (addedBy null). Even with the cap full, this MUST succeed — open-baseline
-    // viewing access is never gated by the collaborator cap.
-    await projectMembersRepo.materializeBaselineViewer(PROJECT, INVITEE);
-
-    expect(await projectMembersRepo.getRole(PROJECT, INVITEE)).toBe("viewer");
-    // …and the auto-viewer does NOT consume ceiling budget — the explicit count
-    // is unchanged, proving baseline viewers are exempt.
-    expect(await projectMembersRepo.countExplicitMembers(PROJECT)).toBe(ceiling);
   });
 });

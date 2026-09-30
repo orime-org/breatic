@@ -145,13 +145,14 @@ describe('GenerateToolbar — Style / Focus / Reference are the three live tools
     }
   });
 
-  it('Style is gated on the MODEL capability, not the mode (#1664)', () => {
-    // Style survives every mode — only a model without style_images disables the
-    // Style pick. Reference is available in both modes (#1788 batch-3 #1), so
-    // its button stays enabled regardless.
-    setup({ styleDisabled: true });
+  it('draws no Style slot, and no divider before it, for a model that takes no style image', () => {
+    // Same as the video row: a slot the model cannot use is not drawn
+    // (user 2026-09-29). Reference and Focus stay.
+    setup({ styleSupported: false });
+    expect(screen.queryByTestId('generate-tool-style')).toBeNull();
+    expect(screen.queryByTestId('generate-tool-sep')).toBeNull();
     expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
-    expect(screen.getByTestId('generate-tool-style')).toBeDisabled();
+    expect(screen.getByTestId('generate-tool-focus')).toBeInTheDocument();
   });
 
   // ── Style slot: picked thumbnail + ✕ badge (#1664, one style image max) ──
@@ -201,20 +202,6 @@ describe('GenerateToolbar — Style / Focus / Reference are the three live tools
     setup({ styleThumbnail: 'https://cdn/style.png', onStyle });
     fireEvent.click(screen.getByTestId('generate-tool-style'));
     expect(onStyle).toHaveBeenCalledTimes(1);
-  });
-
-  it('the ✕ stays active even when style picking is model-disabled', () => {
-    // A stale copy (picked under a style-capable model, then switched) must
-    // always be removable.
-    const onClearStyle = vi.fn();
-    setup({
-      styleThumbnail: 'https://cdn/style.png',
-      styleDisabled: true,
-      onClearStyle,
-    });
-    expect(screen.getByTestId('generate-tool-style')).toBeDisabled();
-    fireEvent.click(screen.getByTestId('generate-style-clear'));
-    expect(onClearStyle).toHaveBeenCalledTimes(1);
   });
 
   it('renders the active Style in the minimap white-fill style', () => {

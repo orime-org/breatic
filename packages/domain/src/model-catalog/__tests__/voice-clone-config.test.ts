@@ -2,26 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The voice-cloning model, read off the real config (#1960 PR2).
+ * The voice cloning models, read off the real config.
  *
- * The mode and its source requirement were already in place before this slice;
- * what was missing is a model that serves it on an upstream we can read a
- * charge back from. f5-tts on fal returned `cost: 0` for every run, and the
- * dispatch layer skips the charge entirely when credits come to zero — so each
- * generation was ours to pay for.
- *
- * These read the config rather than a fixture: a rate written into the yaml
- * with the wrong scale, or a mode string that no mode option matches, both look
- * fine in isolation and only fail where the two meet.
+ * MiniMax Voice Clone is the one the panel opens on: the worker clones the
+ * reference audio on its first use, keeps the id for that audio, and reads
+ * the text in the cloned voice with MiniMax Speech 2.8 HD (design §9.5).
  */
 
 import { initCore } from "@breatic/core";
 import { describe, it, expect, beforeAll } from "vitest";
 
-import { getFullModelConfig } from "../model-catalog.js";
-import { computeSourcesByMode, violatesSourceRequirement } from "../source-requirement.js";
-
-const CLONE_MODEL = "qwen3-tts-voice-clone";
+import { getFullModelConfig, type FullModelEntry } from "@domain/model-catalog/model-catalog.js";
 
 beforeAll(() => {
   initCore(process.env);
@@ -30,87 +21,42 @@ beforeAll(() => {
 /**
  * The tts bucket's entry for a model name.
  * @param name - Model id as the catalog spells it.
- * @returns The full config entry, or undefined when the catalog has none.
+ * @returns The full config entry.
+ * @throws {Error} When the catalog has no such tts model.
  */
-function ttsEntry(name: string): Record<string, unknown> | undefined {
-  const bucket = getFullModelConfig("tts") as {
-    models?: Array<Record<string, unknown>>;
-  };
-  return bucket.models?.find((m) => m.name === name);
+function ttsEntry(name: string): FullModelEntry {
+  const found = getFullModelConfig("tts").models.find((m) => m.name === name);
+  if (!found) throw new Error(`no tts model named ${name}`);
+  return found;
 }
 
-describe("qwen3 voice cloning is in the catalog", () => {
-  it("declares the mode the panel and the source table both spell", () => {
-    const entry = ttsEntry(CLONE_MODEL);
-    expect(entry, `${CLONE_MODEL} missing from the tts bucket`).toBeTruthy();
-    expect(entry!.mode).toBe("voice_clone");
+describe("MiniMax Voice Clone", () => {
+  const clone = (): FullModelEntry => ttsEntry("minimax-voice-clone");
+
+  it("declares the voice_clone mode and opens that mode", () => {
+    expect(clone().mode).toBe("voice_clone");
+    const first = getFullModelConfig("tts").models.find((m) => m.mode === "voice_clone");
+    expect(first?.name).toBe("minimax-voice-clone");
   });
 
-  it("bills by character, on the scale the voiceover models use", () => {
-    // 5 US cents per 1000 characters, the vendor's published price. The
-    // voiceover models state their own rates in the same shape, so all three
-    // read off one ruler.
-    expect(ttsEntry(CLONE_MODEL)!.rate).toEqual({
-      credits: 5,
-      per: 1000,
-      unit: "characters",
-    });
+  it("takes the reference audio from a canvas slot", () => {
+    expect(clone().params?.audio).toMatchObject({ fill: "canvas", accepts: "audio" });
+    expect(clone().params?.audio?.optional).toBeUndefined();
+  });
+
+  it("clones for the speech model the catalog keeps", () => {
+    expect(clone().params?.model).toMatchObject({ fill: "none", default: "speech-2.8-hd" });
+  });
+
+  it("leaves the voice id to the worker", () => {
+    expect(clone().params?.custom_voice_id).toMatchObject({ fill: "none" });
   });
 
   it("names an icon, which the picker has no fallback for", () => {
-    expect(typeof ttsEntry(CLONE_MODEL)!.icon).toBe("string");
-    expect((ttsEntry(CLONE_MODEL)!.icon as string).length).toBeGreaterThan(0);
+    expect(clone().icon).toBe("minimax");
   });
 
-  it("declares the reference audio, which is what lets it reach the vendor", () => {
-    // The worker keeps only the params a model declares (`validateParams`
-    // drops the rest), so an undeclared `audio` is deleted between the
-    // server's gate and the HTTP submit and the clone runs with no reference.
-    // `default: null` is what every source-carrying model states; the panel
-    // spreads the picked URL over it at execute time.
-    const params = ttsEntry(CLONE_MODEL)!.params as
-      | Record<string, { default?: unknown }>
-      | undefined;
-    expect(params?.audio).toBeDefined();
-    expect(params?.audio?.default).toBeNull();
-  });
-
-  it("states no input cap, because the vendor publishes none", () => {
-    expect(ttsEntry(CLONE_MODEL)!.max_input_chars).toBeUndefined();
-  });
-
-  it("runs on wavespeed, the upstream that answers what a call cost", () => {
-    const providers = ttsEntry(CLONE_MODEL)!.providers as Array<{ name: string }>;
-    expect(providers.map((p) => p.name)).toContain("wavespeed");
-  });
-});
-
-describe("the source gate holds for cloning", () => {
-  it("asks for an audio source", () => {
-    expect(computeSourcesByMode("tts", "voice_clone")).toEqual({
-      voice_clone: ["audio"],
-    });
-  });
-
-  it("refuses a submit with no reference audio, and takes one that has it", () => {
-    const sources = computeSourcesByMode("tts", "voice_clone");
-    // The model's own declaration: qwen3-tts/voice-clone reads its reference
-    // under `audio`, and the gate asks which of a model's params takes the
-    // kind the mode needs.
-    const declared = { audio: { accepts: "audio" } };
-    expect(violatesSourceRequirement(sources, { prompt: "x" }, declared)).toBe(true);
-    expect(
-      violatesSourceRequirement(
-        sources,
-        { prompt: "x", audio: "https://cdn/a.m4a" },
-        declared,
-      ),
-    ).toBe(false);
-  });
-});
-
-describe("f5-tts is gone", () => {
-  it("no longer appears in the tts bucket", () => {
-    expect(ttsEntry("f5-tts")).toBeUndefined();
+  it("runs on WaveSpeed", () => {
+    expect(clone().providers?.map((p) => p.model_id)).toEqual(["minimax/voice-clone"]);
   });
 });

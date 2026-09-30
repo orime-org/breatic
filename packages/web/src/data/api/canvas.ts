@@ -30,6 +30,12 @@ export interface CanvasLimits {
    * this loads.
    */
   nodeHistoryPageSize: number;
+  /**
+   * Largest file an Understand run will read, in bytes. The run reads the
+   * same figure from the same file, so a press made before this loads is
+   * judged there instead of here.
+   */
+  understandMaxBytes: number;
 }
 
 /**
@@ -46,7 +52,7 @@ export interface NodeHistoryEntry {
    * (studio deleted); the row then shows the time alone (#1619).
    */
   operatorName: string | null;
-  entryType: 'generation' | 'upload';
+  entryType: 'generation' | 'upload' | 'snapshot';
   status: 'success' | 'failed';
   /** The result asset URL; `null` for a failed generation. */
   content: string | null;
@@ -54,7 +60,8 @@ export interface NodeHistoryEntry {
   errorMessage: string | null;
   metadata: {
     model?: string;
-    cost?: number;
+    /** What the run was charged. A generation has one; an upload does not. */
+    credits?: number;
     filename?: string;
     [k: string]: unknown;
   };
@@ -107,6 +114,17 @@ export function getCachedReferencePoolCap(): number | null {
   return limitsCache ? limitsCache.referencePoolCap : null;
 }
 
+/**
+ * Sync accessor for the Understand gate: the cached ceiling, or `null` while
+ * the knobs have not loaded. A press that reads null goes ahead — the run
+ * reads the same ceiling from the same file and refuses there, on the row,
+ * which is where a refusal belongs once a node exists to carry it.
+ * @returns The cached ceiling in bytes, or null before the first fetch.
+ */
+export function getCachedUnderstandMaxBytes(): number | null {
+  return limitsCache ? limitsCache.understandMaxBytes : null;
+}
+
 export const canvasApi = {
   /**
    * Fetch the canvas limits knobs, cached for the session (they only
@@ -140,16 +158,52 @@ export const canvasApi = {
   createTask(body: TaskCreateInput): Promise<CanvasTask> {
     return apiPost<CanvasTask>('/canvas/tasks', body);
   },
+  /**
+   * Start a run that reads one node's media into a text node the browser has
+   * already built (#2175).
+   * @param body - The run, in the shape the route validates.
+   * @param body.project_id - Owning project.
+   * @param body.space_id - The canvas space both nodes live in.
+   * @param body.source_type - Which of the three kinds the read node holds.
+   * @param body.source_url - The address of what it is showing.
+   * @param body.node_ids - The node this run writes to, which already exists.
+   * @param body.reader_locale - The language the answer is read in.
+   * @param body.source_mime_type - What the ledger judged the file to be.
+   * @returns The queued task.
+   * @throws {import('@web/data/api/types').ApiException} On 402 / 403 / 503.
+   */
   understand(body: {
-    projectId: string;
-    spaceId: string;
-    nodeId: string;
-    sourceUrl: string;
-    /** asr | description | etc. */
-    kind: string;
-  }) {
+    project_id: string;
+    space_id: string;
+    source_type: 'image' | 'video' | 'audio';
+    source_url: string;
+    node_ids: string[];
+    reader_locale: string;
+    source_mime_type?: string;
+  }): Promise<CanvasTask> {
     return apiPost<CanvasTask>('/canvas/understand', body);
   },
+  /**
+   * Keep a copy of what a text node says right now (#2175).
+   *
+   * Its words live in the canvas document, where the next edit replaces them
+   * and the server never reads them — so the browser is the only writer of
+   * this row, and this is its one way in.
+   * @param body - The snapshot, in the shape the route validates.
+   * @param body.project_id - Owning project.
+   * @param body.node_id - The node whose words these are.
+   * @param body.text - What it says at this moment.
+   * @returns The id of the row that now holds them.
+   * @throws {import('@web/data/api/types').ApiException} On 403 / 404 / 429.
+   */
+  snapshotNodeText(body: {
+    project_id: string;
+    node_id: string;
+    text: string;
+  }): Promise<{ id: string }> {
+    return apiPost<{ id: string }>('/canvas/node-history/snapshot', body);
+  },
+
   listTasks(projectId: string, params: { page?: number; limit?: number } = {}) {
     return apiGet<{ tasks: CanvasTask[] }>('/canvas/tasks', {
       params: { projectId, ...params },
@@ -157,7 +211,7 @@ export const canvasApi = {
   },
 
   /**
-   * List a node's content history (generations + uploads), newest first,
+   * List a node's content history (generations, uploads, snapshots), newest first,
    * paginated (#1619). The endpoint nests `{ entries, total }` under `data`,
    * so `apiGet` unwraps it in one hop (no bespoke raw read).
    * @param nodeId - Canvas node id (uuid).

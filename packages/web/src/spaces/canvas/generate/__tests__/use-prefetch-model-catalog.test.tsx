@@ -36,8 +36,8 @@ function catalog(): ModelCatalog {
     audio: [],
     tts: [],
     three_d: [],
-    understand: [],
     total: 0,
+    credit_multiplier: 1,
   };
 }
 

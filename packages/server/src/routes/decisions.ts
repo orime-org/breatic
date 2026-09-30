@@ -4,7 +4,7 @@
 /**
  * The one HTTP surface behind `/decision?token=`.
  *
- * Two endpoints serve all five waiting-for-an-answer flows: read what the token
+ * Two endpoints serve all six waiting-for-an-answer flows: read what the token
  * points at, and answer it. Both require a signed-in caller — the token names a
  * request, it does not stand in for an identity, and who may answer is decided
  * by who you are, not by what you are holding.
@@ -26,6 +26,8 @@ import * as decisionService from "@server/modules/decision/decision.service.js";
 const respondSchema = z.object({
   token: z.string().min(1),
   action: z.enum(["confirm", "decline"]),
+  /** The role a join request's confirmation grants; refused on any other answer. */
+  role: z.enum(["viewer", "editor"]).optional(),
 });
 
 const route = new Hono<{ Variables: AuthVariables }>();
@@ -55,8 +57,8 @@ route.get("/:token", async (c) => {
  */
 route.post("/respond", validate("json", respondSchema), async (c) => {
   const user = c.get("user");
-  const { token, action } = c.req.valid("json");
-  const result = await decisionService.respond(token, user.id, action);
+  const { token, action, role } = c.req.valid("json");
+  const result = await decisionService.respond(token, user.id, action, role);
   return c.json({ data: result });
 });
 

@@ -35,7 +35,6 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
     description: '',
     guide: '',
     tier: 'optional',
-    cost_per_call: 40,
     generation_time: 120,
     takes_prompt: true,
     params: {
@@ -47,17 +46,6 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
     providers: [],
     ...over,
     mode,
-    sourcesByMode:
-      over.sourcesByMode ??
-      Object.fromEntries(
-        (Array.isArray(mode) ? mode : [mode]).map((m) => [
-          m,
-          m === 't2v' ? [] : (['image'] as const),
-        ]),
-      ),
-    sourceRuleByMode:
-      over.sourceRuleByMode ??
-      Object.fromEntries((Array.isArray(mode) ? mode : [mode]).map((m) => [m, 'all_of'])),
   };
 }
 
@@ -215,10 +203,10 @@ describe('buildVideoPanelViewModel — 渲染时按本模式记住的模型解�
 
 describe('buildVideoPanelViewModel', () => {
   const models = [
-    makeModel('veo-3.1', { mode: 't2v', cost_per_call: 88 }),
-    makeModel('veo-3.1-lite', { mode: 't2v', cost_per_call: 21 }),
-    makeModel('kling-o3-pro-i2v', { mode: 'i2v', cost_per_call: 56 }),
-    makeModel('video-upscale-pro', { mode: 'upscale', cost_per_call: 4 }),
+    makeModel('veo-3.1', { mode: 't2v' }),
+    makeModel('veo-3.1-lite', { mode: 't2v' }),
+    makeModel('kling-o3-pro-i2v', { mode: 'i2v' }),
+    makeModel('video-upscale-pro', { mode: 'upscale' }),
   ];
 
   it('picks from the active mode only, never from another mode or a mini-tool entry', () => {
@@ -231,8 +219,8 @@ describe('buildVideoPanelViewModel', () => {
       nodeId: 'n1',
       nodes,
       models: [
-        makeModel('video-upscale-pro', { mode: 'upscale', cost_per_call: 4 }),
-        makeModel('kling-o3-pro-i2v', { mode: 'i2v', cost_per_call: 56 }),
+        makeModel('video-upscale-pro', { mode: 'upscale' }),
+        makeModel('kling-o3-pro-i2v', { mode: 'i2v' }),
         ...models,
       ],
       mode: 't2v',
@@ -249,7 +237,6 @@ describe('buildVideoPanelViewModel', () => {
       mode: 't2v',
     });
     expect(vm.model).toBe('veo-3.1-lite');
-    expect(vm.creditEstimate).toBe(21);
   });
 
   it('falls back to the first offered model when none is stored', () => {
@@ -261,7 +248,6 @@ describe('buildVideoPanelViewModel', () => {
       mode: 't2v',
     });
     expect(vm.model).toBe('veo-3.1');
-    expect(vm.creditEstimate).toBe(88);
   });
 
   it('falls back to the first offered model when the stored one is not offered here', () => {
@@ -289,7 +275,6 @@ describe('buildVideoPanelViewModel', () => {
     });
     expect(vm.model).toBe('');
     expect(vm.params).toEqual({});
-    expect(vm.creditEstimate).toBe(0);
   });
 
   it('reconciles stored params against the effective model', () => {
@@ -385,27 +370,27 @@ describe('buildVideoPanelViewModel', () => {
       mode: 't2v',
     });
     expect(vm.model).toBe('');
-    expect(vm.creditEstimate).toBe(0);
     expect(vm.params).toEqual({});
   });
 });
 
 describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () => {
+  const frame = { description: '', default: null, fill: 'canvas', accepts: 'image' } as const;
   const models = [
     makeModel('veo-3.1', { mode: 't2v' }),
-    makeModel('kling-o3-pro-i2v', { mode: 'i2v' }),
+    makeModel('kling-o3-pro-i2v', { mode: 'i2v', params: { image: frame } }),
+    makeModel('text-only-i2v', { mode: 'i2v', params: {} }),
   ];
 
-  it('collects the slots the active mode states, not a rule of its own', () => {
-    // What a mode sends upstream is a fixed set of fields, and it states that
-    // set itself (#1904). Text-to-video collects nothing; image-to-video the
-    // first frame; first-last frame both, in the order they are shown.
+  it('draws the slots of the mode row its model declares, in the order they are shown', () => {
+    // A mode's row lists every source it can take (#1904); a model draws the
+    // ones it declares (#2156, design §6). Text-to-video collects nothing.
     const nodes = [node('n1', videoView())];
-    const slotsIn = (mode: VideoGenMode): readonly string[] =>
-      buildVm({ nodeId: 'n1', nodes, models, mode }).slots;
+    const slotsIn = (mode: VideoGenMode, model?: string): readonly string[] =>
+      buildVm({ nodeId: 'n1', nodes: model ? [node('n1', videoView({ model }))] : nodes, models, mode }).slots;
     expect(slotsIn('t2v')).toEqual([]);
-    expect(slotsIn('i2v')).toEqual(['firstFrame']);
-    expect(slotsIn('first_last')).toEqual(['firstFrame', 'endFrame']);
+    expect(slotsIn('i2v', 'kling-o3-pro-i2v')).toEqual(['firstFrame']);
+    expect(slotsIn('i2v', 'text-only-i2v')).toEqual([]);
   });
 
   it('echoes the mode back, so the payload is built from the same one', () => {
@@ -505,8 +490,8 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     ).toBe('https://cdn/l.png');
   });
 
-  it('keeps the two video slots apart across a mode switch (#1928)', () => {
-    // The reference clip and the driving video are both video picks storing
+  it('keeps the two video slots apart across a mode switch (#1928, #2156)', () => {
+    // The lipsync source clip and the driving video are both video picks storing
     // `{url, cover}`, and each mode shows only its own — so a shared field
     // would look correct until the user switched modes and found the other
     // mode's clip in this one's slot. Read under BOTH modes: one direction
@@ -515,14 +500,14 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
       node(
         'n1',
         videoView({
-          referenceVideo: { url: 'https://cdn/clip.mp4' },
+          sourceVideo: { url: 'https://cdn/clip.mp4' },
           drivingVideo: { url: 'https://cdn/driving.mp4' },
         }),
       ),
     ];
-    for (const mode of ['ref', 'animate'] as const) {
+    for (const mode of ['talking_head', 'animate'] as const) {
       const { slotUrls } = buildVm({ nodeId: 'n1', nodes, models, mode });
-      expect(slotUrls.referenceVideo).toBe('https://cdn/clip.mp4');
+      expect(slotUrls.sourceVideo).toBe('https://cdn/clip.mp4');
       expect(slotUrls.drivingVideo).toBe('https://cdn/driving.mp4');
     }
   });
@@ -754,39 +739,6 @@ describe('resolveModeSwitch — 视频侧的六个模式 (#1948 起两个面板�
  * time — the same reason the image panel does it this way.
  */
 describe('buildVideoPanelViewModel — references (#1927)', () => {
-  /** The same model once its cap moves with the reference video (#1928). */
-  const CONDITIONAL_REF_MODELS = [
-    makeModel('kling-o3-pro-ref', {
-      mode: 'ref',
-      params: {
-        images: {
-          description: '',
-          type: 'list',
-          max_items: 7,
-          max_items_when_present: { video: 4 },
-          default: null,
-          fill: 'pool',
-          accepts: 'image',
-        },
-        video: { description: '', default: null },
-      },
-    }),
-    makeModel('kling-o3-pro', {
-      mode: 't2v',
-      params: {
-        images: {
-          description: '',
-          type: 'list',
-          max_items: 7,
-          max_items_when_present: { video: 4 },
-          default: null,
-          fill: 'pool',
-          accepts: 'image',
-        },
-      },
-    }),
-  ];
-
   const REF_MODELS = [
     makeModel('kling-o3-pro-ref', {
       mode: 'ref',
@@ -824,6 +776,103 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     };
   }
 
+  it('sorts a mentioned clip into the video list of a model whose pool takes clips (#2156)', () => {
+    const takesClips = [
+      makeModel('wan-3.0-reference-to-video', {
+        mode: 'ref',
+        params: {
+          images: { description: '', type: 'list', default: null, fill: 'pool', accepts: 'image' },
+          videos: { description: '', type: 'list', default: null, fill: 'pool', accepts: 'video', max_items: 5 },
+        },
+      }),
+    ];
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node('n1', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
+        node('src-a', { kind: 'image', status: 'idle', content: 'https://cdn/a.png' }),
+        node('src-v', { kind: 'video', status: 'idle', content: 'https://cdn/v.mp4' }),
+      ],
+      edges: [
+        { id: 'e-a', source: 'src-a', target: 'n1' },
+        { id: 'e-v', source: 'src-v', target: 'n1' },
+      ],
+      models: takesClips,
+      mode: 'ref',
+      atMentionedSourceIds: new Set(['src-a', 'src-v']),
+    });
+    expect(vm.referenceUrls).toEqual({
+      image: ['https://cdn/a.png'],
+      video: ['https://cdn/v.mp4'],
+      audio: [],
+    });
+    expect(vm.pool.video).toEqual({ param: 'videos', cap: 5 });
+  });
+
+  it('hands the prompt each mentioned chip in the words its model reads (#2156)', () => {
+    const wan = [
+      makeModel('wan-3.0-reference-to-video', {
+        mode: 'ref',
+        params: {
+          images: { description: '', type: 'list', default: null, fill: 'pool', accepts: 'image', mention: 'Image {n}' },
+          videos: { description: '', type: 'list', default: null, fill: 'pool', accepts: 'video', mention: 'Video {n}' },
+        },
+      }),
+    ];
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node('n1', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
+        node('src-a', { kind: 'image', status: 'idle', content: 'https://cdn/a.png' }),
+        node('src-v', { kind: 'video', status: 'idle', content: 'https://cdn/v.mp4' }),
+      ],
+      edges: [
+        { id: 'e-a', source: 'src-a', target: 'n1' },
+        { id: 'e-v', source: 'src-v', target: 'n1' },
+      ],
+      models: wan,
+      mode: 'ref',
+      atMentionedSourceIds: new Set(['src-a', 'src-v']),
+    });
+    expect(vm.mentionTokens).toEqual({ 'src-a': 'Image 1', 'src-v': 'Video 1' });
+  });
+
+  it('knows how long each mentioned clip runs, for a price by the second (#2156)', () => {
+    const wan = [
+      makeModel('wan-3.0-reference-to-video', {
+        mode: 'ref',
+        params: {
+          videos: { description: '', type: 'list', default: null, fill: 'pool', accepts: 'video' },
+        },
+      }),
+    ];
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes: [
+        node('n1', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
+        node('src-v', { kind: 'video', status: 'idle', content: 'https://cdn/v.mp4', duration: 8 }),
+      ],
+      edges: [{ id: 'e-v', source: 'src-v', target: 'n1' }],
+      models: wan,
+      mode: 'ref',
+      atMentionedSourceIds: new Set(['src-v']),
+    });
+    expect(vm.sourceDurations).toEqual({ videos: [8] });
+  });
+
+  it('hands the prompt no words under a mode that sends no references', () => {
+    const { nodes, edges } = twoConnectedImages();
+    const vm = buildVm({
+      nodeId: 'n1',
+      nodes,
+      edges,
+      models: REF_MODELS,
+      mode: 't2v',
+      atMentionedSourceIds: new Set(['src-a']),
+    });
+    expect(vm.mentionTokens).toEqual({});
+  });
+
   it('shows every connected source in the rail, @-mentioned or not', () => {
     const { nodes, edges } = twoConnectedImages();
     const vm = buildVm({ nodeId: 'n1', nodes, edges, models: REF_MODELS, mode: 'ref' });
@@ -844,7 +893,7 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
       mode: 'ref',
       atMentionedSourceIds: new Set(['src-b']),
     });
-    expect(vm.referenceUrls).toEqual(['https://cdn/b.png']);
+    expect(vm.referenceUrls.image).toEqual(['https://cdn/b.png']);
   });
 
   it('keeps rail order, not mention order', () => {
@@ -857,14 +906,14 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
       mode: 'ref',
       atMentionedSourceIds: new Set(['src-b', 'src-a']),
     });
-    expect(vm.referenceUrls).toEqual(['https://cdn/a.png', 'https://cdn/b.png']);
+    expect(vm.referenceUrls.image).toEqual(['https://cdn/a.png', 'https://cdn/b.png']);
   });
 
   it('sends nothing when nothing is @-mentioned', () => {
     const { nodes, edges } = twoConnectedImages();
     const vm = buildVm({ nodeId: 'n1', nodes, edges, models: REF_MODELS, mode: 'ref' });
     expect(vm.references).toHaveLength(2);
-    expect(vm.referenceUrls).toEqual([]);
+    expect(vm.referenceUrls.image).toEqual([]);
   });
 
   it('sends nothing under a mode that does not take references', () => {
@@ -881,7 +930,7 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
         mode,
         atMentionedSourceIds: new Set(['src-a', 'src-b']),
       });
-      expect(vm.referenceUrls, mode).toEqual([]);
+      expect(vm.referenceUrls.image, mode).toEqual([]);
     }
   });
 
@@ -902,64 +951,13 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
       mode: 'ref',
       atMentionedSourceIds: new Set(['src-t']),
     });
-    expect(vm.referenceUrls).toEqual([]);
+    expect(vm.referenceUrls.image).toEqual([]);
   });
 
   it('reads the model\'s reference cap off the wire', () => {
     const { nodes, edges } = twoConnectedImages();
     const vm = buildVm({ nodeId: 'n1', nodes, edges, models: REF_MODELS, mode: 'ref' });
-    expect(vm.maxReferences).toBe(7);
-  });
-
-  it('lowers the cap while a reference video rides along (#1928)', () => {
-    // A5's first half: the number the panel shows and gates on moves with the
-    // slot, because the vendor takes fewer images once it also has a clip.
-    const { nodes, edges } = twoConnectedImages();
-    const withClip = nodes.map((n) =>
-      n.id === 'n1'
-        ? {
-          ...n,
-          data: {
-            ...n.data,
-            referenceVideo: { url: 'https://cdn/clip.mp4' },
-          },
-        }
-        : n,
-    ) as typeof nodes;
-    const vm = buildVm({
-      nodeId: 'n1',
-      nodes: withClip,
-      edges,
-      models: CONDITIONAL_REF_MODELS,
-      mode: 'ref',
-    });
-    expect(vm.maxReferences).toBe(4);
-  });
-
-  it('keeps the plain cap when that clip belongs to another mode (#1928)', () => {
-    // The slot's pick stays on the node across a mode switch by design; a clip
-    // this mode never sends lowers nothing.
-    const { nodes, edges } = twoConnectedImages();
-    const withClip = nodes.map((n) =>
-      n.id === 'n1'
-        ? {
-          ...n,
-          data: {
-            ...n.data,
-            mode: 't2v',
-            referenceVideo: { url: 'https://cdn/clip.mp4' },
-          },
-        }
-        : n,
-    ) as typeof nodes;
-    const vm = buildVm({
-      nodeId: 'n1',
-      nodes: withClip,
-      edges,
-      models: CONDITIONAL_REF_MODELS,
-      mode: 't2v',
-    });
-    expect(vm.maxReferences).toBe(7);
+    expect(vm.pool.image?.cap).toBe(7);
   });
 
   it('treats a non-positive cap as uncapped, like the server and the worker', () => {
@@ -972,12 +970,12 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
         makeModel('kling-o3-pro-ref', {
           mode: 'ref',
           params: {
-            images: { description: '', type: 'list', max_items: cap, default: null },
+            images: { description: '', type: 'list', fill: 'pool', accepts: 'image', max_items: cap, default: null },
           },
         }),
       ];
       const vm = buildVm({ nodeId: 'n1', nodes, edges, models, mode: 'ref' });
-      expect(vm.maxReferences, String(cap)).toBeUndefined();
+      expect(vm.pool.image?.cap, String(cap)).toBeUndefined();
     }
   });
 
@@ -990,7 +988,7 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
       models: [makeModel('veo-3.1', { mode: 'ref' })],
       mode: 'ref',
     });
-    expect(vm.maxReferences).toBeUndefined();
+    expect(vm.pool).toEqual({});
   });
 });
 
@@ -1072,7 +1070,7 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
       mode: 'ref',
       atMentionedSourceIds: new Set([focusRefId(crop.id)]),
     });
-    expect(vm.referenceUrls).toEqual([crop.url]);
+    expect(vm.referenceUrls.image).toEqual([crop.url]);
   });
 
   it('排在节点参考之后 —— 载荷顺序跟着轨道顺序', () => {
@@ -1089,7 +1087,7 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
       mode: 'ref',
       atMentionedSourceIds: new Set(['src-a', focusRefId(crop.id)]),
     });
-    expect(vm.referenceUrls).toEqual(['https://cdn/a.png', crop.url]);
+    expect(vm.referenceUrls.image).toEqual(['https://cdn/a.png', crop.url]);
   });
 
   it('没提到就不上路 —— 池子里有不等于用了它', () => {
@@ -1100,7 +1098,7 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
       mode: 'ref',
       atMentionedSourceIds: new Set(),
     });
-    expect(vm.referenceUrls).toEqual([]);
+    expect(vm.referenceUrls.image).toEqual([]);
   });
 
   it('这一档不吃参考图时，提到了也不上路', () => {
@@ -1111,6 +1109,6 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
       mode: 't2v',
       atMentionedSourceIds: new Set([focusRefId(crop.id)]),
     });
-    expect(vm.referenceUrls).toEqual([]);
+    expect(vm.referenceUrls.image).toEqual([]);
   });
 });

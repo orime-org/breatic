@@ -2,26 +2,25 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * estimateTaskCredits (#1580 #7 credit pre-check) — the estimate the
- * /canvas/tasks route requires a caller's balance to cover before enqueue.
- * The real catalog loads from config YAML; these tests only need the
- * fallback contract and the known-model lookup path, so the catalog is
- * exercised through the same public API the route uses.
+ * estimateTaskCredits — the estimate the /canvas/tasks route requires a
+ * caller's balance to cover before enqueue. It prices the run the request
+ * describes by the model's pricing contract, taking a source's length as zero
+ * (the lower bound), and never asks for less than MIN_TASK_CREDIT_COST.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { initCore } from "@breatic/core";
 import {
+  estimateModelCredits,
   estimateTaskCredits,
   getModelCatalog,
   MIN_TASK_CREDIT_COST,
+  resetModelCatalog,
 } from "../model-catalog.js";
-import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
+import { allProviderKeyNames, restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
-// getModelCatalog resolves config YAML via core's injected config; tests
-// stand in for the application entry, which is what normally calls initCore.
-// 目录一律按 provider 可用性过滤（#1951），而 CI 跑单测时一个 key 都不设 ——
-// 不声明这个前提，目录在 CI 上是空的，「返回目录里的 cost_per_call」那一条会
-// 走 `if (!priced) return` 提前退出，断言一句不执行而测试照绿。
+// The catalog carries a model only when its provider has a key; without this
+// the catalog is empty on CI and every case below prices nothing.
 beforeAll(() => {
   useFullCatalog();
 });
@@ -30,34 +29,65 @@ afterAll(() => {
   restoreProcessEnv();
 });
 
-describe("estimateTaskCredits (#1580 #7)", () => {
-  it("falls back to MIN_TASK_CREDIT_COST when no model is specified", () => {
-    expect(estimateTaskCredits(undefined)).toBe(MIN_TASK_CREDIT_COST);
+describe("estimateTaskCredits", () => {
+  it("falls back to MIN_TASK_CREDIT_COST when no model is specified", async () => {
+    expect(await estimateTaskCredits(undefined, {})).toBe(MIN_TASK_CREDIT_COST);
   });
 
-  it("falls back to MIN_TASK_CREDIT_COST for an unknown model name", () => {
-    expect(estimateTaskCredits("no-such-model-xyz")).toBe(MIN_TASK_CREDIT_COST);
+  it("falls back to MIN_TASK_CREDIT_COST for an unknown model name", async () => {
+    expect(await estimateTaskCredits("no-such-model-xyz", {})).toBe(MIN_TASK_CREDIT_COST);
   });
 
-  it("returns the catalog cost_per_call for a known model with a positive cost", () => {
-    // Use whatever the real catalog provides — the contract under test is
-    // "known model → its own cost_per_call", not a specific model's price.
-    const catalog = getModelCatalog();
-    const priced = [
-      ...catalog.image,
-      ...catalog.video,
-      ...catalog.audio,
-      ...catalog.tts,
-      ...catalog.three_d,
-      ...catalog.understand,
-    ].find((m) => m.cost_per_call > 0);
-    if (!priced) {
-      // Catalog config without priced models — the fallback contract above
-      // already covers this environment.
-      expect(estimateTaskCredits("anything")).toBe(MIN_TASK_CREDIT_COST);
-      return;
+  it("prices the params the request carries", async () => {
+    // wan-3.0 text-to-video: $0.10 a second at 1080p, 95% discount rate.
+    expect(
+      await estimateTaskCredits("wan-3.0-text-to-video", { resolution: "1080p", duration: 10 }),
+    ).toBeCloseTo(190, 6);
+  });
+
+  it("prices the prompt a per-character model reads", async () => {
+    // MiniMax Speech 2.8 HD: $0.10 per thousand characters.
+    expect(
+      await estimateTaskCredits("minimax-speech-2.8-hd", {}, "x".repeat(10_000)),
+    ).toBeCloseTo(100, 6);
+  });
+
+  it("never asks for less than the floor", async () => {
+    // A run priced by a source whose length the server does not know prices at zero.
+    expect(await estimateTaskCredits("dreamactor-v2", { image: "i", video: "v" })).toBe(
+      MIN_TASK_CREDIT_COST,
+    );
+  });
+
+  it("converts by the deployment's credit multiplier", async () => {
+    const env: Record<string, string | undefined> = { ...process.env, CREDIT_MULTIPLIER: "2" };
+    for (const name of allProviderKeyNames()) env[name] = "test-key";
+    initCore(env);
+    resetModelCatalog();
+    try {
+      expect(await estimateTaskCredits("midjourney", {})).toBeCloseTo(30, 6);
+    } finally {
+      useFullCatalog();
     }
-    expect(estimateTaskCredits(priced.name)).toBe(priced.cost_per_call);
+  });
+
+  it("carries the multiplier on the catalog the panels estimate with", () => {
+    expect(getModelCatalog().credit_multiplier).toBeGreaterThan(0);
+  });
+
+  it("estimates a model at its defaults with how the number bounds the charge", async () => {
+    // wan-3.0 text-to-video defaults: 720p, 5 seconds.
+    expect(await estimateModelCredits("wan-3.0-text-to-video", { params: {} })).toEqual({
+      credits: expect.closeTo(47.5, 6) as number,
+      bound: "exact",
+    });
+    expect(await estimateModelCredits("minimax-speech-2.8-hd", { params: {} })).toMatchObject({
+      bound: "per_thousand_chars",
+    });
+  });
+
+  it("answers nothing for a model the catalog does not serve", async () => {
+    expect(await estimateModelCredits("no-such-model-xyz", { params: {} })).toBeUndefined();
   });
 
   it("MIN_TASK_CREDIT_COST is a positive integer floor", () => {

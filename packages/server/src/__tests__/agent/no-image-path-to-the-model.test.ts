@@ -4,11 +4,9 @@
 /**
  * Nothing hands a picture to the model that answers chat.
  *
- * Recognising an image, a video or a recording belongs to a skill built for
- * it -- `config/models/understand/` is that set, and its files say so:
- * gemini declares image, video and audio modes, whisper declares transcribe,
- * and the header comment describes the guide text as something injected into
- * a skill prompt to help it pick a model.
+ * Recognising an image, a video or a recording is its own capability, reached
+ * from the node menu and run against a model pinned for it
+ * (`understandMediaAt`). It is not something the chat model is asked to do.
  *
  * The path this file guards against was never walked. `buildUserContent`
  * assembled image parts out of resource URLs by file extension, the two chat

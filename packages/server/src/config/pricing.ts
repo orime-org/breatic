@@ -36,9 +36,16 @@ const reconcileSchema = z.object({
   min_age_seconds: z.number().int().positive().default(120),
 });
 
+const trialGrantSchema = z.object({
+  // Non-negative rather than positive: zero is a real value here, and it is
+  // how a deployment turns the grant off without removing the section.
+  credits: z.number().int().nonnegative().default(0),
+});
+
 /** The price file's shape, exported so its normalisation can be asserted. */
 export const pricingSchema = z.object({
   tiers: z.array(tierSchema),
+  trial_grant: trialGrantSchema.default({ credits: 0 }),
   reconcile: reconcileSchema.default({ batch_size: 3, min_age_seconds: 120 }),
   stale_sending_minutes: z.number().int().positive().default(10),
   confirm_timeout_ms: z.number().int().positive().default(15000),
@@ -165,4 +172,17 @@ export function getStaleSendingMinutes(): number {
 export function resetPricingCache(): void {
   _cachedFile = null;
   _cachedTiers = null;
+}
+
+/**
+ * How many credits a new account is granted with its personal studio.
+ *
+ * Read here and passed into the grant, because the file this comes from is
+ * read by this package: the domain layer cannot reach it, and how much to
+ * give is an input to granting rather than something granting knows.
+ * @returns The configured figure; zero when the deployment grants none.
+ * @throws {Error} When the file is missing or malformed.
+ */
+export function getTrialGrantCredits(): number {
+  return loadPricingFile().trial_grant.credits;
 }

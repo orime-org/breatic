@@ -56,7 +56,7 @@ import type { CollaboratorNames } from '@web/features/collab-editor/use-collabor
  * `whitespace-break-spaces` itself, to MATCH what the editor computes.
  */
 export const TEXT_BODY_BOX =
-  'min-h-48 break-words p-3 text-justify text-sm outline-none';
+  'min-h-48 break-words p-3 text-sm outline-none';
 
 /**
  * The height the body is allowed to reach before it scrolls (edit) or clips

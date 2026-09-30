@@ -126,9 +126,15 @@ async function seedLot(
   credits: number,
   designateTo: string | null = null,
 ): Promise<string> {
+  // A payment shares its source row's primary key, so the receipt is opened
+  // first and the payment is written under its id (0079, #259).
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind)
+    VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (user_id, amount_cents, status, credits_granted)
-    VALUES (${fx.userId}, 1000, 'completed', ${credits}) RETURNING id
+    INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
+    VALUES (${source!.id}, ${fx.userId}, 1000, 'completed', ${credits}) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,

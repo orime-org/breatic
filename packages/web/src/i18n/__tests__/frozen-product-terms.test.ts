@@ -81,6 +81,16 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   // Post button, and the notice it dismissed, are gone with it.
   'spaces.document.comment.post',
   'spaces.document.comment.dismissNotice',
+  // No model the catalog carries has a vocal-free switch any more (#2156).
+  'canvas.generatePanel.musicInstrumentalOnly',
+  'canvas.generatePanel.musicWithVocals',
+  // Google now renders and localizes its official button; the placeholder is gone.
+  'auth.login.continueWithGoogle',
+  'auth.login.googleSoon',
+  // Voices come from the catalog alone since #2156: the two errors of the
+  // vendor voice lookups went with the lookups.
+  'server.canvas.voices_provider_unconfigured',
+  'server.canvas.voices_upstream_failed',
   // A node carries several tasks at once (#186), so nothing refuses a second
   // one and nothing aborts a task over a stream that would not take an event:
   // the lock that answered "busy", the error naming its holder, and the 503
@@ -100,6 +110,14 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   'studio.topBar.notOpenYet',
   'membership.pricePerMonth',
   'membership.upgrade',
+  // The comparison table's monthly-fee row, gone in #253: a tier has a price
+  // per period now, and the cards carry both. A single row headed "Monthly"
+  // could only show one of them.
+  'membership.monthlyFee',
+  // The yearly card's small line said what a year worked out at per month and
+  // that it saved two months. It states the saving as a percentage now, which
+  // is how the products this one sits beside write it.
+  'membership.perMonthEquivalent',
   'chat.conversation.startNew',
   'notifications.roleHint.editor',
   'notifications.roleHint.viewer',
@@ -127,7 +145,7 @@ describe('frozen product terms (#1336)', () => {
   beforeEach(() => {
     resetLocales();
     for (const [locale, catalog] of LOCALE_CATALOGS) {
-      setLocaleMessages(locale, catalog as Record<string, unknown>);
+      setLocaleMessages(locale, catalog);
     }
     setLocale('en');
   });

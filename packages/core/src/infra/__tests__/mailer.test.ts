@@ -24,6 +24,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import nodemailer from "nodemailer";
 
 const mockSendMail = vi.fn().mockResolvedValue({ messageId: "test-id" });
 vi.mock("nodemailer", () => ({
@@ -38,11 +39,21 @@ const mockEnv: Record<string, unknown> = {
   SMTP_PORT: 587,
   SMTP_USER: "",
   SMTP_PASSWORD: "",
+  SMTP_FROM: "",
 };
 // mailer reads `env` from core's own config module (config is injected
 // via initCore), the same way every other module inside core does.
 vi.mock("@core/config/env.js", () => ({
   get env() { return mockEnv; },
+}));
+// Distinct values, so a timeout wired to the wrong option shows up.
+vi.mock("@core/config/mail.js", () => ({
+  getSmtpTimeouts: () => ({
+    dnsTimeoutMs: 1111,
+    connectionTimeoutMs: 2222,
+    greetingTimeoutMs: 3333,
+    socketTimeoutMs: 4444,
+  }),
 }));
 
 describe("mailer — EMAIL_BACKEND 3-state contract", () => {
@@ -53,6 +64,7 @@ describe("mailer — EMAIL_BACKEND 3-state contract", () => {
     mockEnv.SMTP_HOST = "";
     mockEnv.SMTP_USER = "";
     mockEnv.SMTP_PASSWORD = "";
+    mockEnv.SMTP_FROM = "";
   });
 
   it("EMAIL_BACKEND=disabled — returns skipped/backend_disabled, nodemailer never invoked", async () => {
@@ -126,5 +138,32 @@ describe("mailer — EMAIL_BACKEND 3-state contract", () => {
       subject: "Verify",
     });
     expect(mockSendMail).not.toHaveBeenCalled();
+  });
+
+  it.each(["mail@example.com", "Breatic <mail@example.com>"])("uses SMTP_FROM %s without changing SMTP authentication", async (sender) => {
+    Object.assign(mockEnv, { EMAIL_BACKEND: "smtp", SMTP_HOST: "smtp.example.com", SMTP_USER: "relay-account", SMTP_PASSWORD: "test-password", SMTP_FROM: sender });
+    const { sendMail } = await import("../mailer.js");
+    await sendMail({ to: "recipient@example.com", subject: "Sender check", html: "<p>Hello</p>", text: "Hello" });
+    expect(nodemailer.createTransport).toHaveBeenCalledWith(expect.objectContaining({ auth: { user: "relay-account", pass: "test-password" } }));
+    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: sender, text: "Hello" }));
+  });
+
+  it("hands the four configured SMTP timeouts to the transport", async () => {
+    Object.assign(mockEnv, { EMAIL_BACKEND: "smtp", SMTP_HOST: "smtp.example.com", SMTP_USER: "relay-account" });
+    const { sendMail } = await import("../mailer.js");
+    await sendMail({ to: "recipient@example.com", subject: "Timeouts", html: "<p>Hello</p>" });
+    expect(nodemailer.createTransport).toHaveBeenCalledWith(expect.objectContaining({
+      dnsTimeout: 1111,
+      connectionTimeout: 2222,
+      greetingTimeout: 3333,
+      socketTimeout: 4444,
+    }));
+  });
+
+  it("keeps the legacy username sender when SMTP_FROM is empty", async () => {
+    Object.assign(mockEnv, { EMAIL_BACKEND: "smtp", SMTP_HOST: "smtp.example.com", SMTP_USER: "legacy@example.com" });
+    const { sendMail } = await import("../mailer.js");
+    await sendMail({ to: "recipient@example.com", subject: "Legacy sender", html: "<p>Hello</p>" });
+    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: "legacy@example.com" }));
   });
 });

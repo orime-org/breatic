@@ -39,6 +39,13 @@ interface SlugFieldProps {
    * whose Confirm is unreachable only looks like it will work.
    */
   disabled?: boolean;
+  /**
+   * The input itself, for a form that has to put the cursor here. A submit
+   * handler that calls `preventDefault` takes over the job the browser would
+   * have done: native validation focuses the field it rejected, and a form
+   * judging its own values owes the reader the same.
+   */
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 /**
@@ -58,6 +65,7 @@ interface SlugFieldProps {
  * @param props.helper the always-on explanatory line (optional).
  * @param props.availability the live async availability state (optional).
  * @param props.disabled whether the input is greyed out (optional).
+ * @param props.inputRef the input element, for a form that focuses it (optional).
  * @returns the slug field.
  */
 export function SlugField({
@@ -71,6 +79,7 @@ export function SlugField({
   helper,
   availability,
   disabled = false,
+  inputRef,
 }: SlugFieldProps): React.JSX.Element {
   const t = useTranslation();
   const message =
@@ -95,6 +104,7 @@ export function SlugField({
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
+        ref={inputRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         disabled={disabled}

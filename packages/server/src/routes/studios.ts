@@ -8,8 +8,8 @@
  *   - `GET /api/v1/studios`            — the current user's studios (switcher).
  *   - `GET /api/v1/studios/recent`     — the cross-studio "Recent" landing feed.
  *   - `GET /api/v1/studio/:slug`       — one studio's public-facing shell.
- *   - `GET /api/v1/studio/:slug/projects` — the studio's projects, filtered
- *     to what the viewer may see (open-baseline visibility, slice 2).
+ *   - `GET /api/v1/studio/:slug/projects` — the studio's projects; every
+ *     studio member sees all of them.
  *
  * The shell is visible to any authenticated user (decision A — a studio's
  * `/studio/{slug}` page is its front door): a non-member gets a `200` with
@@ -21,6 +21,7 @@
  */
 
 import { Hono } from "hono";
+import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { z } from "zod";
 import { validate } from "@server/middleware/validate.js";
 import { t } from "@breatic/shared";
@@ -255,12 +256,11 @@ studio.delete("/:slug/avatar", requireStudioRole("admin"), async (c) => {
 });
 
 /**
- * `GET /api/v1/studio/:slug/projects` — the studio's projects visible to the
- * viewer (open-baseline visibility, slice 2).
+ * `GET /api/v1/studio/:slug/projects` — the studio's projects.
  *
- * Server-side filtered (`projectService.listByStudioSlug`): a studio member
- * sees studio-visible projects + their own private ones; an admin sees all;
- * a non-member gets `[]` (the non-member shell shows no projects). A slug with no
+ * `projectService.listByStudioSlug`: a studio member sees every project, each
+ * tagged with their own role on it; a non-member gets `[]` (the non-member
+ * shell shows no projects). A slug with no
  * active studio surfaces as `404`.
  * @returns `200` with `{ data: ProjectSummary[] }`
  */
@@ -310,7 +310,7 @@ studio.post(
       user.id,
       body.email,
       body.role,
-      c.req.header("Origin") ?? "http://localhost:8000",
+      frontendOrigin(c.req.header("Origin")),
     );
     return c.json({ data: { ok: true } }, 201);
   },
@@ -403,7 +403,7 @@ studio.post(
       slug,
       user.id,
       body.toUserId,
-      c.req.header("Origin") ?? "http://localhost:8000",
+      frontendOrigin(c.req.header("Origin")),
     );
     return c.json({ data: { ok: true } }, 201);
   },

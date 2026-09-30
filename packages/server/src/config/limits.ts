@@ -35,7 +35,6 @@ export const limitsConfigSchema = z.object({
   credit_page_max: z.number().int().positive().default(100),
   decision_window_days: z.number().int().positive().default(7),
   storage_notice_window_seconds: z.number().int().positive().default(86400),
-  voice_catalog_cache_seconds: z.number().int().positive().default(300),
 });
 
 /** Hours per day × minutes per hour × seconds per minute — written once. */
@@ -158,16 +157,4 @@ export function getDecisionWindowSeconds(): number {
  */
 export function getStorageNoticeWindowSeconds(): number {
   return loadConfig().storage_notice_window_seconds;
-}
-
-/**
- * How long one answer from a vendor's voice list is reused (#1960).
- *
- * A vendor's roster changes on the order of days, while one person opening
- * the picker, searching and paging produces a burst of reads inside a minute
- * — every one of them spending our quota with that vendor.
- * @returns The cache window in seconds.
- */
-export function getVoiceCatalogCacheSeconds(): number {
-  return loadConfig().voice_catalog_cache_seconds;
 }

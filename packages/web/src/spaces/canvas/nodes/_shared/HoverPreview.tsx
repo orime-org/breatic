@@ -15,6 +15,9 @@ import {
 } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
+/** How far the preview stays from the viewport edge when pushed against it, in px. */
+const HOVER_PREVIEW_EDGE_GAP = 6;
+
 /** Which content form the large preview renders. */
 export type HoverPreviewKind = 'image' | 'text' | 'audio' | 'video';
 
@@ -51,6 +54,18 @@ export interface HoverPreviewProps {
    * screen centre, since the activity Sheet hugs the right edge) and may flip.
    */
   followCanvas?: boolean;
+  /**
+   * A preview of the caller's own, for a form this component does not draw
+   * (the chat's attached cards list canvas nodes as rows). When present it is
+   * the card's content and the kind-driven forms are not used.
+   */
+  body?: React.ReactNode;
+  /**
+   * Which side of the trigger the card opens on, for a surface whose free
+   * room is known (the chat's cards sit above its input box, so they open
+   * upward). Radix still flips it when that side has no room.
+   */
+  side?: 'top' | 'right' | 'bottom' | 'left';
   /** The trigger element (the small thumbnail / chip). */
   children: React.ReactNode;
 }
@@ -80,6 +95,8 @@ export interface HoverPreviewProps {
  * @param root0.emptyHint - Hint shown when the source is empty.
  * @param root0.resolveOnOpen - Live text/hint resolver read at hover-open (overrides text/emptyHint).
  * @param root0.followCanvas - Follow the ReactFlow viewport while open (canvas surfaces).
+ * @param root0.body - A preview of the caller's own, used in place of the kind's form.
+ * @param root0.side - The side the card opens on, in place of the default.
  * @param root0.children - The trigger element (thumbnail / chip).
  * @returns The trigger with (when it has content) a hover preview.
  */
@@ -92,6 +109,8 @@ export function HoverPreview({
   emptyHint,
   resolveOnOpen,
   followCanvas = false,
+  body,
+  side,
   children,
 }: HoverPreviewProps): React.JSX.Element {
   // Live-at-open cache (decision C, the prompt `@` chip's live projection):
@@ -116,39 +135,21 @@ export function HoverPreview({
   // because a caller whose content comes and goes (a generate slot being filled
   // and cleared) would otherwise have its trigger unmounted and remounted on
   // every flip — dropping keyboard focus to <body> (#1946).
-  const hasAnything = Boolean(src || text || emptyHint || resolveOnOpen);
+  const hasAnything = Boolean(body || src || text || emptyHint || resolveOnOpen);
 
   const isMedia = kind === 'audio' || kind === 'video';
   let content: React.ReactNode = null;
-  if (isMedia && src) {
-    content = (
-      <div className='w-[220px] max-w-[220px]'>
-        <MediaPlayer
-          modality={kind}
-          src={src}
-          poster={poster}
-          variant='preview'
-        />
-      </div>
-    );
+  if (body) {
+    content = body;
+  } else if (isMedia && src) {
+    content = <MediaPlayer modality={kind} src={src} poster={poster} variant='preview' />;
   } else if (kind === 'image' && src) {
-    // Same sizing model as the media wrapper below (user 2026-07-23, decision
-    // B): a 220px-wide box filled by the image, height following its aspect —
-    // and sharp corners (decision A), matching video / audio which are already
-    // square. Not the old 220×220 object-contain bounding box.
-    content = (
-      <div className='w-[220px] max-w-[220px]'>
-        <img
-          src={src}
-          alt={alt}
-          draggable={false}
-          className='block w-full'
-        />
-      </div>
-    );
+    // Filling the preview's width, height following its aspect, sharp corners
+    // like video / audio (user 2026-07-23, decisions A and B).
+    content = <img src={src} alt={alt} draggable={false} className='block w-full' />;
   } else if (previewText) {
     content = (
-      <div className='max-h-[220px] max-w-[220px] overflow-hidden whitespace-pre-wrap p-1 text-xs text-popover-foreground'>
+      <div className='max-h-[220px] overflow-hidden whitespace-pre-wrap p-1 text-xs text-popover-foreground'>
         {previewText}
       </div>
     );
@@ -177,8 +178,10 @@ export function HoverPreview({
       {hasAnything ? (
         <HoverCardContent
           data-testid='hover-preview-content'
-          side={followCanvas ? 'top' : 'left'}
+          side={side ?? (followCanvas ? 'top' : 'left')}
           avoidCollisions={followCanvas ? false : undefined}
+          // Pushed in from the viewport edge rather than flush against it.
+          collisionPadding={HOVER_PREVIEW_EDGE_GAP}
           // Re-enable clicks inside a modal Sheet: the modal sets the body to
           // `pointer-events: none`, which the portaled content inherits; an
           // explicit `auto` on the content lets its play / seek subtree be
@@ -186,7 +189,9 @@ export function HoverPreview({
           // (already auto there). See the hover-preview spec §3.10 / INV-11.
           style={{ pointerEvents: 'auto' }}
         >
-          {content}
+          {/* One width for every form, so a short text or a hint opens as
+              wide as a picture does. */}
+          <div className='w-[220px]'>{content}</div>
         </HoverCardContent>
       ) : null}
     </HoverCard>

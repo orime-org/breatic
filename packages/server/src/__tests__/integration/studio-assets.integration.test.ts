@@ -98,8 +98,8 @@ async function insertProjectInStudio(
 ): Promise<string> {
   const slug = `asset-proj-${seq++}`;
   const rows = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studioId}, ${ownerUserId}, ${`P ${slug}`}, ${slug}, 'private')
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioId}, ${ownerUserId}, ${`P ${slug}`}, ${slug})
     RETURNING id
   `;
   return rows[0]!.id;

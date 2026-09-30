@@ -46,6 +46,7 @@ import { recordProjectActivity } from "@server/modules/activity/projectActivity.
 import { buildProjectInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import { db, getLimitsForStudio } from "@breatic/core";
+import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { projectMembersRepo } from "@breatic/core";
 import { type ProjectRole, t } from "@breatic/shared";
@@ -112,15 +113,13 @@ export async function createInvite(
 
   // The collaborator ceiling belongs to the studio this project lives in —
   // more precisely to whoever currently administers that studio, who need not
-  // be the person inviting. Counts EXPLICITLY invited members
-  // (`added_by IS NOT NULL`); the creator-owner and auto-materialized baseline
-  // viewers are exempt, so open-baseline viewing is never blocked. Failing
-  // EARLY here is a courtesy to the inviter; the gate is in `confirmInvite`,
-  // and only that one runs behind a row lock.
+  // be the person inviting. Counts every member but the owner. Failing EARLY
+  // here is a courtesy to the inviter; the gate is in `confirmInvite`, and
+  // only that one runs behind a row lock.
   const { project_members: collaboratorLimit } = await getLimitsForStudio(
     project.studioId,
   );
-  const collaboratorCount = await projectMembersRepo.countExplicitMembers(projectId);
+  const collaboratorCount = await projectMembersRepo.countCollaborators(projectId);
   if (collaboratorCount >= collaboratorLimit) {
     throw new ConflictError(
       t("server.project.collaborator_limit_reached", {
@@ -202,13 +201,14 @@ export async function createInvite(
     await sendBestEffortMail(
       async () =>
         buildProjectInvitationMail({
+          locale: invitee.locale,
           inviteeEmail: email,
           inviterName,
           projectName: project.name,
           role,
           inviteLink: decisionLink(origin, shareToken),
         }),
-      { userId: inviterUserId, subject: "project_invite" },
+      { userId: invitee.id, subject: "project_invite" },
     );
   }
 
@@ -285,8 +285,9 @@ export async function confirmInvite(
     // The REAL gate. Between sending and accepting the project may have filled
     // up, and unlike the invite-time hint this one runs behind the row lock
     // taken above, so two simultaneous confirms cannot both see the same last
-    // seat. Counts committed explicit members; auto-viewers and the owner are
-    // exempt (`added_by` null). The project is re-read here rather than at the
+    // seat. Only a NEW seat is checked: an invitee who became a member by
+    // another route since the invite was sent already holds one, and accepting
+    // only changes its role. The project is re-read here rather than at the
     // bottom of this transaction because the ceiling belongs to its studio.
     const project = await projectRepo.getProjectById(accepted.projectId, tx);
     if (!project) throw new NotFoundError(t("server.error.not_found"));
@@ -294,11 +295,17 @@ export async function confirmInvite(
       project.studioId,
       tx,
     );
-    const collaboratorCount = await projectMembersRepo.countExplicitMembers(
+    const alreadyMember =
+      (await projectMembersRepo.getRole(
+        accepted.projectId,
+        accepted.invitedUserId,
+        tx,
+      )) !== null;
+    const collaboratorCount = await projectMembersRepo.countCollaborators(
       accepted.projectId,
       tx,
     );
-    if (collaboratorCount >= collaboratorLimit) {
+    if (!alreadyMember && collaboratorCount >= collaboratorLimit) {
       // Different sentence from the invite-time one: the person reading this
       // is the invitee, who holds neither the tier nor any way to raise it.
       throw new ConflictError(
@@ -313,6 +320,7 @@ export async function confirmInvite(
       accepted.invitedBy,
       tx,
     );
+    await projectJoinRequestService.settleOnJoin(accepted.projectId, accepted.invitedUserId, tx);
 
     if (accepted.notificationId) {
       await notificationRepo.markRead(

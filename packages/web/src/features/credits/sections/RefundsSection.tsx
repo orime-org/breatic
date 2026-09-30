@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { refundRefusal } from '@breatic/shared';
+import { refundRefusal, isPurchased } from '@breatic/shared';
 import type { CreditLotView, RefundRefusal } from '@breatic/shared';
 
 import {
@@ -27,6 +27,7 @@ import {
   ListEnd,
   Notice,
   Row,
+  RowBalance,
   Rows,
   RuleLines,
   Section,
@@ -43,88 +44,50 @@ import { useTranslation } from '@web/i18n/use-translation';
 
 /** The translator, as the hook hands it over. */
 type Translate = ReturnType<typeof useTranslation>;
-import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
 import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
 import { usePaymentTiers } from '@web/features/credits/use-payment-tiers';
 
-/** What a row puts in its right column and on the line under the amount. */
-interface RowFace {
-  /** The state's name, or null on a row that carries the ask button. */
-  badge: string | null;
-  /** The line under the amount. */
-  hint: string;
-}
-
 /**
- * What one purchase says about itself on this screen.
+ * The line under the balance, in the right column.
  *
- * The refusal decides everything here, which is what keeps the screen and the
- * server saying the same thing: the button appears exactly when the server
- * would accept the ask, and the badge names the same reason it would refuse
- * with.
+ * The balance sits on the first line on every screen in this panel, so this
+ * is where a row says why it carries no ask button. The state IS the reason:
+ * the button appears exactly when the server would accept the ask, and this
+ * word names what it would refuse with.
  * @param lot - The purchase.
  * @param refusal - Why it cannot be refunded, or null when it can.
  * @param t - The translator.
- * @returns What to draw.
+ * @returns The word, or null on a row that carries the button.
  */
-function faceOf(
+function noteOf(
   lot: CreditLotView,
   refusal: RefundRefusal | null,
   t: Translate,
-): RowFace {
-  const left = { credits: formatCreditAmount(lot.remainingCredits) };
-  const remaining = t('credits.remaining', { amount: left.credits });
-  if (refusal === null) {
-    return { badge: null, hint: remaining };
-  }
+): string | null {
+  if (refusal === null) return null;
   if (refusal === 'already_asked') {
-    return {
-      badge: t(`credits.lifecycle.${lot.lifecycle}`),
-      hint:
-        lot.lifecycle === 'refunded'
-          ? t('credits.refundHint.refunded')
-          : t(
-            lot.lifecycle === 'refunding'
-              ? 'credits.refundingHint'
-              : 'credits.refundPendingHint',
-            left,
-          ),
-    };
+    return t(`credits.lifecycle.${lot.lifecycle}`);
   }
   if (refusal === 'already_spent') {
     // Spent to nothing and spent from read as different facts to the buyer,
-    // though the rule refuses both on the same count. One still shows a
-    // balance, so saying "used" beside a count of what is left would look
-    // like a mistake.
+    // though the rule refuses both on the same count.
     return lot.remainingCredits === 0
-      ? {
-        badge: t('credits.lifecycle.depleted'),
-        hint: t('credits.refundHint.depleted', {
-          credits: formatCreditAmount(lot.purchasedCredits),
-        }),
-      }
-      : {
-        badge: t('credits.refundReason.spent'),
-        hint: remaining,
-      };
+      ? t('credits.lifecycle.depleted')
+      : t('credits.refundReason.spent');
   }
   if (refusal === 'window_closed') {
-    return {
-      badge: t('credits.refundReason.expired'),
-      hint: remaining,
-    };
+    return t('credits.refundReason.expired');
   }
-  return {
-    // A purchase pointed at a deleted studio keeps the refusal and loses the
-    // name, so it says the plain fact rather than naming an empty studio.
-    badge:
-      lot.designatedStudioName === null
-        ? t('credits.assigned')
-        : t('credits.assignedTo', { studio: lot.designatedStudioName }),
-    hint: t('credits.refundHint.assigned', left),
-  };
+  if (refusal === 'not_purchased') {
+    // The row already names the source where a price would go, and the rule
+    // at the foot of the screen states that only a purchase can be refunded.
+    return null;
+  }
+  // Still pointed at a Studio. Which Studio is on the left now, so this says
+  // the step that comes before asking.
+  return t('credits.refundHint.assigned');
 }
 
 /** Whose purchases, and whether billing is on at all. */
@@ -180,10 +143,10 @@ export function RefundsSection({
       // The terms hold whatever the list is doing, so they stay on screen for
       // a reader whose list is empty or still arriving.
       //
-      // The four lines the rule is published as, read back from the version
-      // in force today. A summary written separately said two of them, and
-      // one of the two it left out is the one a buyer acts on: a pack has to
-      // be released from its Studio before it can be asked about.
+      // The lines the rule is published as, read back from the version in
+      // force today. A summary written separately said two of them, and one
+      // of the two it left out is the one a buyer acts on: a pack has to be
+      // released from its Studio before it can be asked about.
       //
       // Its own read, so the list is not held up by it — and its own three
       // states for the same reason: silence here is the one outcome that
@@ -273,8 +236,13 @@ const LotRow = React.memo(function LotRow({
   const t = useTranslation();
   const client = useQueryClient();
   const [asking, setAsking] = React.useState(false);
-  const refusal = refundRefusal(lot, now);
-  const face = faceOf(lot, refusal, t);
+  // The view is the candidate in every field but one: the rule asks whether
+  // anyone paid, and the row carries where the credits came from.
+  const refusal = refundRefusal(
+    { ...lot, purchased: isPurchased(lot.sourceKind) },
+    now,
+  );
+  const note = noteOf(lot, refusal, t);
 
   const askRefund = useMutation({
     mutationFn: () => requestCreditLotRefund(lot.id),
@@ -307,55 +275,65 @@ const LotRow = React.memo(function LotRow({
 
   return (
     <Row
-      main={`${formatMoney(lot.paidCents, lot.currency)} · ${formatLocalDay(lot.createdAt)}`}
-      sub={face.hint}
+      main={`${
+        lot.paidCents === null
+          ? t(`credits.source.${lot.sourceKind}`)
+          : formatMoney(lot.paidCents, lot.currency ?? 'usd')
+      } · ${formatLocalDay(lot.createdAt)}`}
+      sub={
+        lot.designatedStudioName === null
+          ? t('credits.unassigned')
+          : t('credits.assignedTo', { studio: lot.designatedStudioName })
+      }
       right={
-        refusal === null ? (
-          <>
-            <Button
-              type='button'
-              variant='outline'
-              size='sm'
-              disabled={askRefund.isPending}
-              onClick={() => {
-                setAsking(true);
-              }}
-            >
-              {t('credits.askRefund')}
-            </Button>
-            <AlertDialog open={asking} onOpenChange={setAsking}>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>
-                    {t('credits.confirmRefund.title')}
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('credits.confirmRefund.body')}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>
-                    {t('credits.confirmRefund.cancel')}
-                  </AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => {
-                      askRefund.mutate();
-                    }}
-                  >
-                    {t('credits.confirmRefund.confirm')}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </>
-        ) : (
+        <>
+          <RowBalance data-testid='lot-remaining' credits={lot.remainingCredits} />
+          {refusal === null ? (
+            <>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                disabled={askRefund.isPending}
+                onClick={() => {
+                  setAsking(true);
+                }}
+              >
+                {t('credits.askRefund')}
+              </Button>
+              <AlertDialog open={asking} onOpenChange={setAsking}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {t('credits.confirmRefund.title')}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t('credits.confirmRefund.body')}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>
+                      {t('credits.confirmRefund.cancel')}
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => {
+                        askRefund.mutate();
+                      }}
+                    >
+                      {t('credits.confirmRefund.confirm')}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
+          ) : (
           // Quiet text, no border and no fill. This column is where the ask
           // button sits, so anything drawn as a block here reads as a button
           // that has been turned off — and a state the purchase is in is not
-          // a control at all. Which step of the refund flow it is at, and
-          // whether a decision is still coming, is what the hint line says.
-          <span className='text-xs text-muted-foreground'>{face.badge}</span>
-        )
+          // a control at all.
+            <span className='block text-xs text-muted-foreground'>{note}</span>
+          )}
+        </>
       }
     />
   );

@@ -36,6 +36,7 @@ export async function sendBestEffortMail(
     const mail = await buildMail();
     if (!mail) return;
     const result = await sendMail(mail);
+    if (result.status === "sent") logger.info({ ...ctx }, "email_sent");
     logMailResult(result, ctx);
   } catch (err) {
     logger.error(

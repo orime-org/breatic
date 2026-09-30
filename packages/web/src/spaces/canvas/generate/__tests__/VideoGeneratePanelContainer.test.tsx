@@ -86,7 +86,6 @@ const T2V: ModelEntry = {
   description: '',
   guide: '',
   tier: 'recommended',
-  cost_per_call: 88,
   generation_time: 120,
   // The panel asks the model this (#1966). It used to infer the same answer
   // from a `prompt` entry under `params`; that entry is gone from the catalog,
@@ -98,8 +97,6 @@ const T2V: ModelEntry = {
     duration: { description: '', values: [4, 8], default: 8 },
   },
   providers: [],
-  sourcesByMode: { t2v: [] },
-  sourceRuleByMode: { t2v: 'all_of' as const },
 };
 
 /** A picture the run starts from, declared the way the real entries do (#269). */
@@ -115,7 +112,6 @@ const T2V_LITE: ModelEntry = {
   ...T2V,
   name: 'veo-3.1-lite',
   display_name: 'VEO 3.1 Lite',
-  cost_per_call: 21,
 };
 
 /**
@@ -129,8 +125,6 @@ const I2V: ModelEntry = {
   // Both modes, as config/models/video/kling.yaml declares them since #1904:
   // the same model runs image-to-video and first-last frame.
   mode: ['i2v', 'first_last'],
-  sourcesByMode: { i2v: ['image'], first_last: ['image'] },
-  sourceRuleByMode: { i2v: 'all_of' as const, first_last: 'all_of' as const },
   params: {
     ...T2V.params,
     image: PICTURE,
@@ -151,8 +145,6 @@ const ANIMATE: ModelEntry = {
   name: 'wan-2.2-animate',
   display_name: 'Wan 2.2 Animate',
   mode: 'animate',
-  sourcesByMode: { animate: ['image', 'video'] },
-  sourceRuleByMode: { animate: 'all_of' as const },
   params: {
     ...T2V.params,
     image: PICTURE,
@@ -167,8 +159,6 @@ const T2I: ModelEntry = {
   display_name: 'Nano Banana',
   modality: 'image',
   mode: 't2i',
-  sourcesByMode: { t2i: [] },
-  sourceRuleByMode: { t2i: 'all_of' as const },
 };
 
 /**
@@ -180,19 +170,13 @@ const REF: ModelEntry = {
   name: 'kling-o3-pro-ref',
   display_name: 'Kling O3 Pro Ref',
   mode: 'ref',
-  sourcesByMode: { ref: ['image'] },
-  sourceRuleByMode: { ref: 'all_of' as const },
   params: {
     ...T2V.params,
-    // Two on its own, one alongside a reference clip — the same SHAPE the
-    // real entry declares (7 and 4), scaled down so a case needs two images
-    // rather than five. The conditional cap is what makes filling the clip
-    // able to put an untouched set of images over the line (#1928).
+    // Two, scaled down from the real cap so a case needs few images.
     images: {
       description: '',
       type: 'list',
       max_items: 2,
-      max_items_when_present: { video: 1 },
       default: null,
       fill: 'pool',
       accepts: 'image',
@@ -205,15 +189,6 @@ const REF: ModelEntry = {
       fill: 'canvas',
       accepts: 'video',
       optional: true,
-    },
-    // Declared the way the real entry does: on by default, so a run carrying
-    // a clip keeps that clip's sound unless the user says otherwise (#1928),
-    // and waiting on the source it describes (#269).
-    keep_original_sound: {
-      description: '',
-      values: [true, false],
-      default: true,
-      when: { source: 'video' },
     },
   },
 };
@@ -231,8 +206,6 @@ const TALKING_HEAD: ModelEntry = {
   name: 'omnihuman-1.5',
   display_name: 'OmniHuman 1.5',
   mode: 'talking_head',
-  sourcesByMode: { talking_head: ['image', 'audio'] },
-  sourceRuleByMode: { talking_head: 'all_of' as const },
   takes_prompt: false,
   params: {
     image: PICTURE,
@@ -268,8 +241,8 @@ function catalog(): ModelCatalog {
     audio: [],
     tts: [],
     three_d: [],
-    understand: [],
     total: 8,
+    credit_multiplier: 1,
   };
 }
 
@@ -1298,12 +1271,14 @@ describe('VideoGeneratePanelContainer', () => {
      * vanish the moment execute is pressed.
      * @param mentioned - The source ids the prompt `@`-mentions.
      * @param over - Extra node data to seed, merged over mode and model.
+     * @param models - The catalog the panel is served.
      */
     async function openRefPanel(
       mentioned: string[],
       over: Record<string, unknown> = {},
+      models: ModelCatalog = catalog(),
     ): Promise<void> {
-      vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
+      vi.spyOn(modelsApi, 'list').mockResolvedValue(models);
       const stored = { mode: 'ref', model: 'kling-o3-pro-ref', ...over };
       seedVideoNode(stored);
       for (const source of SOURCES) {
@@ -1334,90 +1309,15 @@ describe('VideoGeneratePanelContainer', () => {
       await waitFor(() => expect(execute).not.toBeDisabled());
     }
 
-    it('offers the reference clip and no other slot — the images come from the rail', async () => {
-      // The images this mode generates from arrive through the rail, so none
-      // of the image slots belong here. The clip is the one thing the rail
-      // cannot carry (#1928): it is motion guidance, not a reference image.
+    it('offers no slot — every source comes from the rail', async () => {
       await openRefPanel(['ref-a']);
-      expect(
-        screen.getByTestId('generate-video-tool-reference-video'),
-      ).toBeVisible();
       expect(screen.queryByTestId('generate-video-tool-first-frame')).toBeNull();
       expect(screen.queryByTestId('generate-video-tool-end-frame')).toBeNull();
       expect(
         screen.queryByTestId('generate-video-tool-character-image'),
       ).toBeNull();
       expect(screen.queryByTestId('generate-video-tool-driving-video')).toBeNull();
-    });
-
-    it('starts the clip pick while the images are within the cap it would bring', async () => {
-      await openRefPanel(['ref-a']);
-      fireEvent.click(screen.getByTestId('generate-video-tool-reference-video'));
-      expect(useCanvasStore.getState().pickSession).toEqual({
-        nodeId: 'target',
-        purpose: 'referenceVideo',
-      });
-      expect(toast.warning).not.toHaveBeenCalled();
-    });
-
-    it('shows the stored keep-original-sound value, so the switch can be turned off', async () => {
-      // A7's promise is that the user can turn it OFF, and the switch is
-      // controlled by what the container hands down. Asserted on a node
-      // storing `true` — the declared default and what every real node
-      // carries — because a switch handed no value at all also renders
-      // unchecked and also reports `true` on click, so a `false` node cannot
-      // tell the two apart.
-      await openRefPanel(['ref-a'], {
-        referenceVideo: { url: 'https://cdn/clip.mp4' },
-        paramsByModel: { 'kling-o3-pro-ref': { keep_original_sound: true } },
-      });
-      fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
-      const toggle = await screen.findByTestId(
-        'generate-video-keep-original-sound-toggle',
-      );
-      expect(toggle).toHaveAttribute('data-state', 'checked');
-
-      fireEvent.click(toggle);
-      await waitFor(() => {
-        const data = readCanvasGraph('p', 's').nodes.find(
-          (n) => n.id === 'target',
-        )?.data;
-        const records = (
-          data as { paramsByModel?: Record<string, Record<string, unknown>> }
-        ).paramsByModel;
-        expect(records?.['kling-o3-pro-ref']?.keep_original_sound).toBe(false);
-      });
-    });
-
-    it('keeps the switch off on a node that turned it off', async () => {
-      // The complement of the case above, and the only one that catches a
-      // container handing the picker a constant: seeded `true` renders checked
-      // whether the value is read or hardcoded on, seeded `false` renders
-      // unchecked whether it is read or hardcoded off. Both directions are
-      // needed to say the stored value is what reaches the control.
-      await openRefPanel(['ref-a'], {
-        referenceVideo: { url: 'https://cdn/clip.mp4' },
-        paramsByModel: { 'kling-o3-pro-ref': { keep_original_sound: false } },
-      });
-      fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
-      await expect(
-        screen.findByTestId('generate-video-keep-original-sound-toggle'),
-      ).resolves.toHaveAttribute('data-state', 'unchecked');
-    });
-
-    it('refuses to start the clip pick when it would drop the cap under the picked images', async () => {
-      // A6: the clip lowers the image cap, so reaching for it with two images
-      // already mentioned would put the node over a cap it was within. The
-      // images are the user's work — they stay, and the refusal names the
-      // number to get down to. Refused before the pick starts, so the user is
-      // not walked into a session whose every candidate would be rejected.
-      await openRefPanel(['ref-a', 'ref-b']);
-      fireEvent.click(screen.getByTestId('generate-video-tool-reference-video'));
-      expect(useCanvasStore.getState().pickSession).toBeNull();
-      await waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
-      expect(vi.mocked(toast.warning).mock.calls[0]![0]).toBe(
-        'A motion clip allows 1 reference images — remove some, then pick the clip.',
-      );
+      expect(screen.queryByTestId('generate-video-tool-source-video')).toBeNull();
     });
 
     it('sends only the @-mentioned image, not everything connected', async () => {
@@ -1432,6 +1332,24 @@ describe('VideoGeneratePanelContainer', () => {
       expect(create.mock.calls[0]![0].params.images).toEqual([
         'https://cdn/b.png',
       ]);
+    });
+
+    it('writes each chip into the prompt by its place in the list it is sent in (#2156)', async () => {
+      // The prompt names c before a; the rail, and so the images list, puts a
+      // first. The words have to point at the file the vendor gets there.
+      const named: ModelEntry = {
+        ...REF,
+        params: { ...REF.params, images: { ...REF.params.images!, mention: 'image {n}' } },
+      };
+      await openRefPanel(['ref-c', 'ref-a'], {}, { ...catalog(), video: [named] });
+      const create = vi
+        .spyOn(canvasApi, 'createTask')
+        .mockResolvedValue({ id: 't1' } as Awaited<ReturnType<typeof canvasApi.createTask>>);
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      const sent = create.mock.calls[0]![0];
+      expect(sent.params.images).toEqual(['https://cdn/a.png', 'https://cdn/c.png']);
+      expect(sent.params.prompt).toMatch(/^the two of them walk into frame\s*image 2\s+image 1\s*$/);
     });
 
     it('stays clickable with nothing mentioned, and says what to do', async () => {
@@ -1837,7 +1755,7 @@ describe('VideoGeneratePanelContainer', () => {
 
     it('参考轨道对图片引用行的既有拒绝语没被这一片改掉', async () => {
       // 这一条钉的是既有行为、不是这一片新加的：口播档在档位表里
-      // `takesReferences: false`（video-mode-options.ts），参考轨道自己就在
+      // `referenceKinds: []`（video-mode-options.ts），参考轨道自己就在
       // `refuseInsert`（ReferenceRail.tsx:118）拦下并弹了拒绝语，压根走不到
       // 容器那句会静默吞掉的 `promptEditorRef.current?.insertReference`。
       // 留着它是因为编辑器在这一档不挂载了，那句吞掉的代码从此没有别的

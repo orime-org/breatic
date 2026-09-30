@@ -166,6 +166,10 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
       type: 'project.transfer_request',
       payload: { transferId: 't-2', projectId: PID, fromUserId: 'u-other', shareToken: 'e'.repeat(64) },
     },
+    {
+      type: 'project.join_request',
+      payload: { requestId: 'j-1', projectId: PID, requesterUserId: 'u-other', shareToken: 'f'.repeat(64) },
+    },
   ];
 
   it.each(WAITING)('$type shows one answer button and no inline decision', async ({ type, payload }) => {
@@ -256,6 +260,9 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
       'project.invite_accepted',
       'project.transfer_request',
       'project.transfer_approved',
+      'project.join_request',
+      'project.join_approved',
+      'project.join_rejected',
       'membership.ended',
       'membership.upgrade_incomplete',
       'storage.quota_exceeded',
@@ -278,6 +285,19 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     await screen.findByTestId('bell-notification-headline-n-g0');
 
     expect(screen.queryByText('?')).toBeNull();
+  });
+
+  it('says how long ago a row arrived in the reader\'s language', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-8', 'studio.transfer_approved', { studioId: N1 })],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    expect(await screen.findByText('5 minutes ago')).toBeInTheDocument();
+    expect(screen.queryByText('5m ago')).toBeNull();
   });
 
   it('informational rows still mark read rather than offering an answer', async () => {

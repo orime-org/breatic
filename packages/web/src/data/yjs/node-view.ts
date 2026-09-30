@@ -64,6 +64,17 @@ interface NodeViewCommon {
 /** Fields shared by every content-node view. */
 interface ContentNodeViewBase extends NodeViewCommon {
   /**
+   * What the ledger judged this node's file to be, and counted its bytes at
+   * (#240). Absent for a node stored before the ledger reported them, and for
+   * a text node, which holds no file.
+   *
+   * The Understand gate reads both: a format the endpoint cannot read and a
+   * file over the ceiling are refused in the browser, before anything is
+   * built.
+   */
+  mimeType?: string;
+  sizeBytes?: number;
+  /**
    * Editable display name shown in the node name header (fixed-English
    * default). Optional in the view (like `locked`) so component tests that
    * only exercise the body need not spell it out; `toNodeView` always
@@ -79,6 +90,12 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   taskCounts?: NodeTaskCounts;
   errorMessage?: string;
+  /**
+   * The history row a reader last put back on this node. The panel names it
+   * "current": content cannot tell two rows holding the same thing apart,
+   * and the reader picked one of them.
+   */
+  restoredFromEntryId?: string;
   // Generate panel inputs (model revision 2026-06-15) — a content node can
   // carry the Generate action's collaborative inputs. All optional: a node
   // with no Generate history simply omits them.
@@ -140,14 +157,6 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   drivingVideo?: { url: string; cover?: string };
   /**
-   * Reference-to-video's motion guidance (`data.referenceVideo`) — `url` is
-   * sent as `params.video` at execute time (#1928). Same one-field shape as
-   * `drivingVideo` and for the same reason, and a separate field from it: the
-   * two modes mean different things by a video, so switching between them
-   * leaves each one's pick where it was.
-   */
-  referenceVideo?: { url: string; cover?: string };
-  /**
    * The driving audio for the talking-head mode (#1935, wire
    * `data.drivingAudio`) — `url` is sent as `params.audio` at execute time.
    * Same one-field shape as `drivingVideo` above and for the same reason;
@@ -163,14 +172,25 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   refAudio?: { url: string; cover?: string };
   /**
-   * The three references reference-to-music collects (#1960, wire
-   * `data.musicSong` / `musicVoice` / `musicInstrumental`) — sent as
-   * `params.song` / `voice` / `instrumental`. `cover` is always absent, as
-   * with `refAudio`.
+   * The talking-head sources beyond a portrait and one track (#2156, wire
+   * `data.sourceVideo` / `leftAudio` / `rightAudio`) — sent as `params.video`
+   * / `left_audio` / `right_audio`.
+   */
+  sourceVideo?: { url: string; cover?: string };
+  leftAudio?: { url: string; cover?: string };
+  rightAudio?: { url: string; cover?: string };
+  /**
+   * The music and sound references (#1960, #2156; wire `data.musicSong` /
+   * `coverSong` / `musicMelody` / `musicVocal` / `soundVideo`) — sent as
+   * `params.song` / `audio` / `melody` / `vocal` / `video`.
    */
   musicSong?: { url: string; cover?: string };
-  musicVoice?: { url: string; cover?: string };
-  musicInstrumental?: { url: string; cover?: string };
+  coverSong?: { url: string; cover?: string };
+  musicMelody?: { url: string; cover?: string };
+  musicVocal?: { url: string; cover?: string };
+  soundVideo?: { url: string; cover?: string };
+  /** The picture music takes its mood from (#2156, wire `data.moodImageUrl`) — sent as `params.image`. */
+  moodImageUrl?: string;
   /**
    * Focus crops (#1782, wire `data.focusImages`) — standalone copies cropped
    * out of source nodes, zero upstream relationship. The panel renders them
@@ -298,10 +318,21 @@ export type NodeView = ContentNodeView | AnnotationNodeView | GroupNodeView;
  * reaches the task table: text extracted in the browser (§3.7.4). It is the
  * only writer left for that field.
  *
+ * `holdsBody` is what a text node answers true to: its words live in a
+ * fragment the editor binds to, and an empty one is still a paragraph
+ * somebody can type into. A failed TASK on such a node shows in the counts
+ * column and in the row that failed, and the body stays readable and
+ * editable (user 2026-09-19: what a node shows and what its tasks did are
+ * two different things).
+ *
+ * The extraction failure is the other half and is not covered by that: it
+ * has no task row at all, so this box is the only place it can be said.
+ *
  * There is no clock: whether a task has run past its deadline is settled
  * server-side when somebody reads the node's task list (§4.6), never by
  * whoever is looking at the node.
  * @param data - The wire data fields carrying `taskCounts`, `errorMessage` and `content`.
+ * @param holdsBody - Whether this node shows a body rather than `content`.
  * @returns The derived display status.
  */
 export function deriveStatus(
@@ -309,14 +340,18 @@ export function deriveStatus(
     CanvasNodeFields['data'],
     'taskCounts' | 'errorMessage' | 'content'
   >,
+  holdsBody = false,
 ): DisplayStatus {
   const counts = data.taskCounts;
   if (counts !== undefined && counts.running > 0) return 'handling';
-  const wentWrong =
-    (counts !== undefined && (counts.failed > 0 || counts.expired > 0)) ||
-    data.errorMessage != null;
-  if (wentWrong && (data.content === undefined || data.content === ''))
-    return 'error';
+  const nothingToShow = data.content === undefined || data.content === '';
+  // Text this browser could not extract (§3.7.4). It opens no task row, so
+  // the box is where it is said, on a node holding a body as much as on one
+  // holding content.
+  if (data.errorMessage != null && nothingToShow) return 'error';
+  const taskFailed =
+    counts !== undefined && (counts.failed > 0 || counts.expired > 0);
+  if (taskFailed && !holdsBody && nothingToShow) return 'error';
   return 'idle';
 }
 
@@ -352,7 +387,7 @@ export function failedTaskListToOpen(
  */
 export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const { type, data } = fields;
-  const status = deriveStatus(data);
+  const status = deriveStatus(data, type === 'text');
   const errorMessage = data.errorMessage;
   const locked = data.locked;
   // Common content-view fields: the editable name (node name header), the
@@ -362,7 +397,13 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const contentCommon = {
     name: data.name,
     status,
+    // What the ledger judged off the bytes that landed. The Understand gate
+    // reads both before it builds anything; absent for a node stored before
+    // the ledger reported them.
+    mimeType: data.mimeType,
+    sizeBytes: data.size,
     taskCounts: data.taskCounts,
+    restoredFromEntryId: data.restoredFromEntryId,
     errorMessage,
     locked,
     prompt: data.prompt,
@@ -375,12 +416,17 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     endFrameUrl: data.endFrameUrl,
     characterImageUrl: data.characterImageUrl,
     drivingVideo: data.drivingVideo,
-    referenceVideo: data.referenceVideo,
     drivingAudio: data.drivingAudio,
     refAudio: data.refAudio,
+    sourceVideo: data.sourceVideo,
+    leftAudio: data.leftAudio,
+    rightAudio: data.rightAudio,
     musicSong: data.musicSong,
-    musicVoice: data.musicVoice,
-    musicInstrumental: data.musicInstrumental,
+    coverSong: data.coverSong,
+    musicMelody: data.musicMelody,
+    musicVocal: data.musicVocal,
+    soundVideo: data.soundVideo,
+    moodImageUrl: data.moodImageUrl,
     focusImages: data.focusImages,
   };
   switch (type) {

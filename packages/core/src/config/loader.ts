@@ -115,14 +115,14 @@ const agentConfigSchema = z.object({
    * agrees on — Anthropic's `clear_tool_uses_20250919` keeps three.
    */
   tool_result_keep: z.number().int().positive().default(3),
-  memory_project_max_size: z.number().int().positive().default(3072),
+  memory_project_max_size: z.number().int().positive().default(8192),
   /**
    * How much of a conversation's own memory reaches the system prompt.
    *
    * Consolidation rewrites this layer whole every time it runs, so it is the
    * one segment that grows from its own output.
    */
-  memory_conversation_max_size: z.number().int().positive().default(3072),
+  memory_conversation_max_size: z.number().int().positive().default(8192),
   /**
    * The ceiling on one model call's answer, in tokens.
    *
@@ -131,16 +131,27 @@ const agentConfigSchema = z.object({
    */
   max_output_tokens: z.number().int().positive().default(16384),
   /**
-   * How long one turn's question may be, in characters.
-   *
-   * Measured on what reaches the model: the message with the canvas content
-   * the reader attached folded in front of it. Per field it would admit a
-   * short message carrying chips worth many times the limit.
+   * How long the words of one turn's question may be, in characters.
    *
    * The browser draws a lower line and says so as the reader types; this one
    * is where a client cannot skip it.
    */
   user_message_max_chars: z.number().int().positive().default(15000),
+  /**
+   * How long the items attached to one message may be, in characters,
+   * measured on the attachment section as the model is sent it.
+   *
+   * Its own limit, apart from the words: an extracted document is far longer
+   * than a typed question. The browser checks the same section against this
+   * before sending, and reads the number from `GET /chat/stream-config`.
+   */
+  attachment_max_chars: z.number().int().positive().default(200000),
+  /**
+   * How many items may be attached to one message: each uploaded file is one,
+   * and each pick added from the canvas is one, however many nodes it holds. The browser checks the same number before sending, and
+   * reads it from `GET /chat/stream-config`.
+   */
+  attachment_max_items: z.number().int().positive().default(10),
   /**
    * How long an assembled request may be before a consolidation runs, in
    * characters.
@@ -264,6 +275,16 @@ const agentConfigSchema = z.object({
    */
   understand_media_call_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(180_000),
   /**
+   * How long the WHOLE judgement call may take, in milliseconds.
+   *
+   * Every delivery and every backoff between them, not one delivery: a
+   * signal spanning the call is what holds the wait to this. Declining
+   * replay settles only the deliveries the caller owns, and a 429 or a 408
+   * is replayed whatever the caller declared. Measured 2026-09-23: 285-395 ms once connected,
+   * 1181 ms on the first call of a process.
+   */
+  judge_likelihood_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(10_000),
+  /**
    * How much the model may write about one piece of media, in tokens.
    *
    * The same bounds and the same default as `web_search_max_tokens`: both cap
@@ -271,6 +292,17 @@ const agentConfigSchema = z.object({
    * cut off at the length limit reaches the reader as a half sentence.
    */
   understand_media_max_output_tokens: z.number().int().min(1024).max(32768).default(8192),
+  /**
+   * How long after an OpenRouter call whose cost was not in hand (cut off, or
+   * ended without one) its cost is first looked up, in milliseconds (#296). OpenRouter keeps generating for providers
+   * that cannot be cancelled, so the cost is settled only once it is done.
+   */
+  usage_lookup_delay_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(30_000),
+  /**
+   * How many times that lookup is made before the call is recorded as
+   * missing. Retries back off exponentially from the delay above.
+   */
+  usage_lookup_attempts: z.number().int().min(1).max(20).default(6),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
 }).superRefine((config, ctx) => {

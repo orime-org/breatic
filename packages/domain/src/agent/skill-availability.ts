@@ -68,13 +68,10 @@ const TEXT_FALLBACK_KEY = FALLBACK_ROUTE.keyName;
  * Whether an env var holds something.
  *
  * Read through `getRawEnvVar` rather than the `env` proxy, because half the
- * names here are not in the schema and never can be. The proxy resolves
- * against the validated config, so a name it has not heard of comes back
- * undefined however the process was actually started — and provider key
- * names come off yaml files free to name anything. Measured in this repo:
- * `config/models/video/providers.yaml` declares `KLING_ACCESS_KEY` while
- * the schema declares `KLINGAI_ACCESS_KEY`, so through the proxy that
- * provider can never be seen as configured.
+ * names here need not be in the schema. The proxy resolves against the
+ * validated config, so a name it has not heard of comes back undefined
+ * however the process was actually started — and provider key names come
+ * off yaml files free to name anything.
  * @param name - The env var name.
  * @returns True when it is a non-empty string.
  */

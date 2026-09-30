@@ -149,9 +149,10 @@ store_alert_email: ""
 store_alert_window_ms: 600000
 
 # How long the mail transport gets before the alert is written off. It needs
-# its own bound: the transport is built without timeout options, so it
-# inherits nodemailer's two-minute connection timeout, and the unload gate
-# waits for the alert. An unreachable SMTP host during a database outage would
-# otherwise hold every unloading document in memory for two minutes each.
+# its own bound: the transport's timeouts (config/mail.yaml) bound one send up
+# to the greeting by (resolved addresses x connection timeout) + greeting
+# timeout, host resolution is not fully bounded, and the unload gate waits for
+# the alert. An unreachable SMTP host during a database outage would otherwise
+# hold every unloading document in memory for that long each.
 store_alert_timeout_ms: 3000
 

@@ -25,10 +25,18 @@ vi.mock("../studio.repo.js", () => ({
 }));
 
 // db.transaction(cb) runs the callback immediately with a stub tx handle.
+// Whether this deployment sells anything decides whether the trial grant's
+// figure is read at all, so the flag is a knob here rather than whatever the
+// developer's own .env happens to say.
+const { envRef, mockTrialGrantCredits } = vi.hoisted(() => ({
+  envRef: { PAYMENT_ENABLED: true },
+  mockTrialGrantCredits: vi.fn(() => 100),
+}));
 vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => {
   const actual = await importOriginal();
   return {
     ...actual,
+    env: envRef,
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
         cb({ TX: true }),
@@ -37,16 +45,26 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
   };
 });
 
+// The price file is a deployment's own and git does not track it, so a test
+// that opened the real one would pass or fail on whether the machine running
+// it happens to sell anything.
+vi.mock("@server/config/pricing.js", () => ({
+  getTrialGrantCredits: mockTrialGrantCredits,
+}));
+
 // Explicit (no importOriginal) so loading @breatic/domain never pulls the
 // real agent llm and the `ai` SDK behind it.
 // `vi.hoisted` keeps the spy reference valid inside the hoisted factory.
-const { mockInsertAdmin, mockLoadStudioRole } = vi.hoisted(() => ({
-  mockInsertAdmin: vi.fn().mockResolvedValue(undefined),
-  mockLoadStudioRole: vi.fn(),
-}));
+const { mockInsertAdmin, mockLoadStudioRole, mockGrantTrialCredits } =
+  vi.hoisted(() => ({
+    mockInsertAdmin: vi.fn().mockResolvedValue(undefined),
+    mockLoadStudioRole: vi.fn(),
+    mockGrantTrialCredits: vi.fn().mockResolvedValue(null),
+  }));
 vi.mock("@breatic/domain", () => ({
   studioMembersRepo: { insertAdmin: mockInsertAdmin, getRole: vi.fn() },
   studioAuthService: { loadStudioRole: mockLoadStudioRole },
+  creditLotService: { grantTrialCredits: mockGrantTrialCredits },
 }));
 
 vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, unknown>>) => ({
@@ -93,6 +111,8 @@ const TEAM_STUDIO: Studio = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  envRef.PAYMENT_ENABLED = true;
+  mockTrialGrantCredits.mockReturnValue(100);
 });
 
 describe("createPersonalStudio", () => {
@@ -111,6 +131,31 @@ describe("createPersonalStudio", () => {
     );
     // Admin member row written in the SAME tx (atomic with the studio insert).
     expect(mockInsertAdmin).toHaveBeenCalledWith("studio-1", "user-1", { TX: true });
+    // And the trial grant in that same tx, aimed at the studio just made: a
+    // grant that committed beside a studio that did not would point nowhere.
+    // How much comes from the price file, so it is read from there rather
+    // than written here.
+    expect(mockGrantTrialCredits).toHaveBeenCalledWith(
+      { userId: "user-1", studioId: "studio-1", credits: 100 },
+      { TX: true },
+    );
+  });
+
+  it("never opens the price file when this deployment sells nothing", async () => {
+    // The grant discards the figure with payments off, and the file it comes
+    // from belongs to a deployment that charges. Reading it anyway would fail
+    // every registration on a self-hosted install over a number about to be
+    // thrown away.
+    envRef.PAYMENT_ENABLED = false;
+    vi.mocked(studioRepo.createPersonalStudio).mockResolvedValueOnce(STUDIO);
+
+    await createPersonalStudio("user-1", "alice-handle");
+
+    expect(mockTrialGrantCredits).not.toHaveBeenCalled();
+    expect(mockGrantTrialCredits).toHaveBeenCalledWith(
+      { userId: "user-1", studioId: "studio-1", credits: 0 },
+      { TX: true },
+    );
   });
 
   it("maps a unique-violation (SQLSTATE 23505) slug collision to ConflictError, not a raw 500", async () => {

@@ -9,7 +9,7 @@
  */
 
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
-import { creditLotService } from "@breatic/domain";
+import { creditLotService, creditSourceRepo } from "@breatic/domain";
 import { getStripeClient } from "@server/infra/stripe.js";
 import {
   findTierByPriceCents,
@@ -23,6 +23,7 @@ import type {
   PaymentEntity,
   CreditPage,
   CreditLotLifecycle,
+  CreditSourceKind,
   PurchaseRow,
 } from "@breatic/shared";
 import { t, getActiveLocale } from "@breatic/shared";
@@ -34,7 +35,6 @@ import {
 } from "@breatic/core";
 import {
   db,
-  env,
   logger,
   decodeActivityCursor,
 } from "@breatic/core";
@@ -412,11 +412,7 @@ export async function fulfillPayment(
 async function sendConfirmationFor(paymentId: string): Promise<boolean> {
   const view = await paymentRepo.getConfirmationView(paymentId);
   if (!view) return false;
-  const letter = renderPurchaseConfirmation(
-    view,
-    view.timeZone,
-    env.SUPPORT_EMAIL,
-  );
+  const letter = await renderPurchaseConfirmation(view, view.timeZone);
   return sendPurchaseConfirmation({
     paymentId,
     to: view.email,
@@ -588,23 +584,32 @@ export async function createCheckout(input: {
     metadata: { userId: input.userId, credits: String(tier.credits) },
   }, stripeCallBounds());
 
-  const payment = await paymentRepo.createPayment({
-    id: paymentId,
-    userId: input.userId,
-    stripeSessionId: session.id,
-    amountCents: tier.priceCents,
-    creditsGranted: tier.credits,
-    currency: tier.currency,
-    // These five cannot be worked out later. A webhook carries no
-    // `Accept-Language`, no hint of a time zone, and no idea what the buyer
-    // ticked; the versions say what wording this purchase was made under.
-    metadata: {
-      locale,
-      timeZone: knownTimeZone(input.timeZone),
-      consentTextVersion: CONSENT_CREDITS_VERSION,
-      refundTextVersion: REFUND_CREDITS_VERSION,
-      consentedAt: consentedAt.toISOString(),
-    },
+  // One transaction, because a payment shares its receipt's primary key —
+  // see `createSource` for why the receipt is opened here and not later.
+  const payment = await db.transaction(async (tx) => {
+    await creditSourceRepo.createSource({ id: paymentId, kind: "payment" }, tx);
+    return paymentRepo.createPayment(
+      {
+        id: paymentId,
+        userId: input.userId,
+        stripeSessionId: session.id,
+        amountCents: tier.priceCents,
+        creditsGranted: tier.credits,
+        currency: tier.currency,
+        // These five cannot be worked out later. A webhook carries no
+        // `Accept-Language`, no hint of a time zone, and no idea what the
+        // buyer ticked; the versions say what wording this purchase was made
+        // under.
+        metadata: {
+          locale,
+          timeZone: knownTimeZone(input.timeZone),
+          consentTextVersion: CONSENT_CREDITS_VERSION,
+          refundTextVersion: REFUND_CREDITS_VERSION,
+          consentedAt: consentedAt.toISOString(),
+        },
+      },
+      tx,
+    );
   });
 
   // Caller logs `payment_checkout_session_created` audit line with
@@ -945,7 +950,7 @@ export async function getPurchaseHistory(
       : Math.min(asked, bounds.max);
   const cursor = rawCursor ? decodeActivityCursor(rawCursor) : null;
 
-  const rows = await paymentRepo.listPurchaseHistory(
+  const rows = await paymentRepo.listAcquisitionHistory(
     userId,
     size,
     cursor === null ? null : { createdAt: cursor.createdAt, id: cursor.id },
@@ -954,6 +959,8 @@ export async function getPurchaseHistory(
     rows,
     size,
     (row) => ({
+      rowId: row.rowId,
+      sourceKind: row.sourceKind as CreditSourceKind,
       paymentId: row.paymentId,
       amountCents: row.amountCents,
       totalCents: row.totalCents,
@@ -967,9 +974,11 @@ export async function getPurchaseHistory(
       designatedStudioName: row.designatedStudioName,
       status: row.status,
       createdAt: row.createdAt.toISOString(),
-      canResend: canResend(row.mailStatus, row.mailUpdatedAt),
+      // A row nobody paid for has no confirmation letter to send again.
+      canResend:
+        row.paymentId !== null && canResend(row.mailStatus, row.mailUpdatedAt),
     }),
-    (row) => ({ cursorAt: row.cursorAt, id: row.paymentId }),
+    (row) => ({ cursorAt: row.cursorAt, id: row.rowId }),
   );
 }
 

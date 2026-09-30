@@ -19,7 +19,7 @@ const HISTORY_PAGE_SIZE_FALLBACK = 20;
  * @param nodeId - The node id (or a sentinel when no panel is open).
  * @returns The stable query key tuple.
  */
-function historyKey(
+export function historyKey(
   projectId: string,
   nodeId: string,
 ): readonly ['node-history', string, string] {
@@ -58,26 +58,37 @@ export interface UseNodeHistory {
 }
 
 /**
- * Loads a node's history (generations + uploads), paginated + deduped, for the
+ * Loads a node's history (generations, uploads, snapshots), paginated + deduped, for the
  * recovery panel (#1619). Newest-first, infinite scroll via offset pages; rows
  * are deduped by id because a concurrent head-insert can shift the offset
  * window and repeat a row (spec §5.5).
  *
- * While the panel is open, a change to the node's live content that matches no
- * loaded row invalidates the first page ONCE — a generation that completed
- * while browsing lands at the top and the total refreshes. The effect keys
- * ONLY on `currentContent` and reads the loaded rows through a ref (never a
- * dep), so it fires once per distinct content value and never in a
- * refetch → new-data → effect-reruns loop (spec §4, Gate-1 R2 fix).
+ * Two things bring the list up to date, and between them they cover the two
+ * ways a row appears without this hook seeing it.
+ *
+ * Opening the panel fetches (`refetchOnMount: 'always'`): the reader is asking
+ * to see the list now, and the client holds pages for 30s — long enough for a
+ * run that landed while the panel was shut to be missing from them.
+ *
+ * While it is open, a run reaching its end invalidates the first page ONCE —
+ * it wrote a row, that row belongs at the top, and the rows on screen are one
+ * fetch that knows nothing about it. The effect keys ONLY on `settledRuns` and
+ * never on the loaded data, so it fires once per run and never in a
+ * refetch → new-data → effect-reruns loop (spec §4, Gate-1 R2 fix). Counting
+ * settled runs rather than watching the node's content is what makes this the
+ * same for every modality: a text node's words are written by the reader too,
+ * and a keystroke is not a new row.
  * @param nodeId - The host node id, or null when no history panel is open.
  * @param projectId - Project the node belongs to.
- * @param currentContent - The node's live `data.content`; drives the refetch.
+ * @param settledRuns - How many runs on this node have reached an end. Null
+ *   before the node's counts have been read; the list then refreshes only on
+ *   an explicit invalidation.
  * @returns The deduped entries, total, and paging state.
  */
 export function useNodeHistory(
   nodeId: string | null,
   projectId: string,
-  currentContent: string | null | undefined,
+  settledRuns: number | null,
 ): UseNodeHistory {
   const query = useInfiniteQuery({
     queryKey: historyKey(projectId, nodeId ?? '__none__'),
@@ -95,6 +106,7 @@ export function useNodeHistory(
       return loaded < lastPage.total ? loaded : undefined;
     },
     enabled: nodeId != null,
+    refetchOnMount: 'always',
   });
 
   // Flatten pages + dedup by id (offset pagination can repeat a row when a new
@@ -115,24 +127,27 @@ export function useNodeHistory(
 
   const total = query.data?.pages[0]?.total ?? 0;
 
-  // Edge-triggered refetch (§4, loop-proof). Read the loaded rows via a ref,
-  // NOT a dep: putting `entries` / `query.data` in the dep array would re-run
-  // this on every refetch (new data identity) and loop forever. Keying only on
-  // `currentContent` fires it once per distinct value.
+  // Edge-triggered refetch (§4, loop-proof). The count is the only dep, and
+  // the loaded data is not one: putting `entries` / `query.data` in the dep
+  // array would re-run this on every refetch (new data identity) and loop
+  // forever. The first reading opens the panel rather than refetching it —
+  // the fetch it would ask for is the one already in flight.
   const queryClient = useQueryClient();
-  const entriesRef = React.useRef(entries);
-  entriesRef.current = entries;
+  // The first reading is this list's opening one rather than a run that just
+  // landed. A different node is a different list and gets its own opening
+  // reading: the panel remounts on a host switch (`key={host}`), so this ref
+  // starts empty there too.
+  const seenRuns = React.useRef<number | null>(null);
   React.useEffect(() => {
-    if (nodeId == null || currentContent == null) return;
-    const inLoaded = entriesRef.current.some(
-      (e) => e.content === currentContent,
-    );
-    if (!inLoaded) {
+    if (nodeId == null || settledRuns == null) return;
+    const before = seenRuns.current;
+    seenRuns.current = settledRuns;
+    if (before !== null && settledRuns > before) {
       void queryClient.invalidateQueries({
         queryKey: historyKey(projectId, nodeId),
       });
     }
-  }, [currentContent, nodeId, projectId, queryClient]);
+  }, [settledRuns, nodeId, projectId, queryClient]);
 
   // Stable callback so the panel's React.memo bails and its IntersectionObserver
   // effect doesn't re-subscribe every render. React Query's fetchNextPage is a

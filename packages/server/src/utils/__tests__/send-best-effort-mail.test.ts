@@ -26,7 +26,16 @@ describe("sendBestEffortMail", () => {
 
     expect(sendMail).toHaveBeenCalledWith(MAIL);
     expect(logMailResult).toHaveBeenCalledWith({ status: "sent" }, CTX);
+    expect(logger.info).toHaveBeenCalledWith(CTX, "email_sent");
     expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it("records nothing as sent when the mail was not handed to SMTP", async () => {
+    vi.mocked(sendMail).mockResolvedValueOnce({ status: "skipped", reason: "backend_disabled" });
+
+    await sendBestEffortMail(async () => MAIL, CTX);
+
+    expect(logger.info).not.toHaveBeenCalled();
   });
 
   it("swallows a send failure — never rethrows, logs the error at the boundary", async () => {

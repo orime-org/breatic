@@ -27,7 +27,8 @@ import type { NodeHistoryEntity } from "@breatic/shared";
  * @param opts.taskId - ID of the task that produced this result.
  * @param opts.metadata - Generation metadata.
  * @param opts.metadata.model - Model identifier that produced the result.
- * @param opts.metadata.cost - Credits/cost attributed to the generation.
+ * @param opts.metadata.credits - Credits charged for the generation. Not the
+ *   dollars the service charged us: the row's chip is labelled in credits.
  * @param opts.metadata.durationMs - Provider call duration in milliseconds.
  * @param opts.metadata.params - Provider/tool parameters used for the generation.
  * @returns The created `NodeHistoryEntity`.
@@ -41,7 +42,7 @@ export async function recordGenerationSuccess(opts: {
   taskId: string;
   metadata: {
     model?: string;
-    cost?: number;
+    credits?: number;
     durationMs?: number;
     params?: Record<string, unknown>;
   };
@@ -139,6 +140,36 @@ export async function recordUpload(opts: {
     ...(opts.thumbnailUrl !== undefined && { thumbnailUrl: opts.thumbnailUrl }),
     ...(opts.storageKey !== undefined && { storageKey: opts.storageKey }),
     metadata: opts.metadata ?? {},
+  });
+}
+
+/**
+ * Record a copy of what a node holds right now, because somebody asked to
+ * keep it (#2175).
+ *
+ * A text node's words live in the canvas document, where the next edit
+ * replaces them. This row is what a reader comes back to when they want the
+ * version they had.
+ * @param opts - Whose node, and what it held.
+ * @param opts.projectId - Owning project.
+ * @param opts.nodeId - The node this is a copy of.
+ * @param opts.userId - Who asked for it.
+ * @param opts.content - What the node held.
+ * @returns The row.
+ */
+export async function recordSnapshot(opts: {
+  projectId: string;
+  nodeId: string;
+  userId: string;
+  content: string;
+}): Promise<NodeHistoryEntity> {
+  return repo.create({
+    projectId: opts.projectId,
+    nodeId: opts.nodeId,
+    userId: opts.userId,
+    entryType: "snapshot",
+    status: "success",
+    content: opts.content,
   });
 }
 

@@ -20,6 +20,7 @@ export {
   AUDIO_FORMAT_NAMES,
   IMAGE_FORMAT_NAMES,
   MediaUnavailable,
+  UNDERSTAND_PINS,
   UnderstandRefused,
   VIDEO_FORMAT_NAMES,
 } from "@domain/understand/types.js";

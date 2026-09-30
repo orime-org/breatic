@@ -15,7 +15,9 @@ import { createApp } from "@server/app.js";
 import { env,
   getAgentConfig,
   getSkillRouting,
+  getSubscriptionPlans,
 } from "@breatic/core";
+import { getPricingTiers } from "@server/config/pricing.js";
 import { closeDb } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
@@ -28,7 +30,9 @@ import { renderMetrics } from "@server/infra/metrics.js";
 import { logger, initLogger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
-import { modelCatalog } from "@breatic/domain";
+import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
+import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
+import { textToolModels } from "@server/config/text-tools.js";
 
 // Tag this process's logs as "server" (file dir logs/server/, `name:"server"`).
 // Runs after initCore (bootstrap-config) and before the first log below;
@@ -96,6 +100,42 @@ try {
 } catch (err) {
   logger.error({ err }, "agent_config_invalid");
   process.exit(1);
+}
+
+// Every model the agent runs on has to be priceable (#296). One reached
+// directly reports tokens but no cost, and is priced from
+// config/usage-pricing.yaml; lazily, a missing price would surface as the
+// first call that spent money failing to record what it spent.
+try {
+  assertModelsPriced([...agentModelIds(), ...textToolModels()]);
+} catch (err) {
+  logger.error({ err }, "usage_pricing_incomplete");
+  process.exit(1);
+}
+
+// The two files that say what this deployment charges: membership plans and
+// credit packs. Unlike the configs above they are not in the repository —
+// they name real prices and real Stripe objects, so each deployment writes
+// its own from the `.template` beside it. Loading them here is what makes a
+// deployment that forgot to fail at boot instead of at the moment somebody
+// tries to pay: the loaders are lazy, and the first read would otherwise be
+// a checkout request.
+//
+// Only when this deployment sells something. A self-hosted install with
+// payments off never reaches either loader, so requiring the files of it
+// would refuse to start over two files it has no use for.
+//
+// A copy of the template with nothing filled in is refused too, without a
+// second check: every price in it is 0, and both schemas require a positive
+// integer.
+if (env.PAYMENT_ENABLED) {
+  try {
+    getSubscriptionPlans();
+    getPricingTiers();
+  } catch (err) {
+    logger.error({ err }, "payment_config_invalid");
+    process.exit(1);
+  }
 }
 
 // Fail-fast: verify PG + Redis are reachable before starting the
@@ -238,10 +278,18 @@ async function shutdown(signal: string): Promise<void> {
         lifecycleRelay.stop();
         return Promise.resolve();
       },
-      () => Promise.allSettled([closeDb(), closeRedis(), closeQueues()]),
+      // Work a route left running after its reply (a password-reset send)
+      // still needs the pools, so they close once it has finished.
+      () =>
+        settleAfterReply().then(() =>
+          Promise.allSettled([closeDb(), closeRedis(), closeQueues()]),
+        ),
     ],
     deadlineMs: SHUTDOWN_DEADLINE_MS,
   });
+  for (const ctx of pendingAfterReply()) {
+    logger.error(ctx, "after_reply_cut_off_by_shutdown");
+  }
 
   logger.info("Shutdown complete");
   process.exit(0);

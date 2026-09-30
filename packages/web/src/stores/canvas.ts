@@ -110,16 +110,22 @@ export type HistoryCommand = 'undo' | 'redo';
  *     same one-field shape as `drivingVideo` for the same reason, though an
  *     audio node has no poster to copy, so the toolbar keeps showing the
  *     slot's icon.
+ *   - `sourceVideo` / `leftAudio` / `rightAudio` — the same, into their own
+ *     fields (#2156): the clip a lipsync model redoes, and the two speakers'
+ *     tracks of a two-person talking head.
  *   - `refAudio` — the same, into `refAudio` (#1960 PR2), also from an AUDIO
  *     node: the voice a cloning model speaks the new lines in. Its own slot
  *     rather than `drivingAudio`'s, though both travel as `audio`, because
  *     the two are picked on different panels for different jobs and a pick
  *     survives a mode switch.
- *   - `musicSong` / `musicVoice` / `musicInstrumental` — three more of the
- *     same into their own slots (#1960), all from AUDIO nodes: the track a
- *     new song is written after, a vocal line to follow, a backing track to
- *     play over. Three rather than one because the vendor reads each under
- *     its own name and a user may give any combination of them.
+ *   - `musicSong` / `coverSong` / `musicMelody` / `musicVocal` — more of the
+ *     same into their own slots (#1960, #2156), all from AUDIO nodes: the
+ *     track a new song is written after, a song to cover, a melody, a
+ *     singing voice. One per role because the vendor reads each under its own
+ *     name and a user may give any combination of them.
+ *   - `soundVideo` / `moodImage` — the picture a sound or a score follows,
+ *     from a VIDEO node, and the picture music takes its mood from, from an
+ *     IMAGE node (#2156).
  */
 export type PickPurpose =
   | 'reference'
@@ -129,12 +135,17 @@ export type PickPurpose =
   | 'endFrame'
   | 'characterImage'
   | 'drivingVideo'
-  | 'referenceVideo'
   | 'drivingAudio'
+  | 'sourceVideo'
+  | 'leftAudio'
+  | 'rightAudio'
   | 'refAudio'
   | 'musicSong'
-  | 'musicVoice'
-  | 'musicInstrumental';
+  | 'coverSong'
+  | 'musicMelody'
+  | 'musicVocal'
+  | 'soundVideo'
+  | 'moodImage';
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a
@@ -365,18 +376,28 @@ interface CanvasState {
   startCharacterImagePick: (nodeId: string) => void;
   /** Enter the driving-video pick for a video node (#1918). */
   startDrivingVideoPick: (nodeId: string) => void;
-  /** Enter the reference-video pick for a video node (#1928). */
-  startReferenceVideoPick: (nodeId: string) => void;
   /** Enter the driving-audio pick for a video node (#1935). */
   startDrivingAudioPick: (nodeId: string) => void;
+  /** Enter the source-video pick for a video node (#2156). */
+  startSourceVideoPick: (nodeId: string) => void;
+  /** Enter the left-speaker audio pick for a video node (#2156). */
+  startLeftAudioPick: (nodeId: string) => void;
+  /** Enter the right-speaker audio pick for a video node (#2156). */
+  startRightAudioPick: (nodeId: string) => void;
   /** Enter the reference-audio pick for an audio node (#1960 PR2). */
   startRefAudioPick: (nodeId: string) => void;
   /** Enter the whole-song reference pick for an audio node (#1960). */
   startMusicSongPick: (nodeId: string) => void;
-  /** Enter the vocal-line reference pick for an audio node (#1960). */
-  startMusicVoicePick: (nodeId: string) => void;
-  /** Enter the backing-track reference pick for an audio node (#1960). */
-  startMusicInstrumentalPick: (nodeId: string) => void;
+  /** Enter the song-to-cover pick for an audio node (#2156). */
+  startCoverSongPick: (nodeId: string) => void;
+  /** Enter the melody pick for an audio node (#2156). */
+  startMusicMelodyPick: (nodeId: string) => void;
+  /** Enter the singing-voice pick for an audio node (#2156). */
+  startMusicVocalPick: (nodeId: string) => void;
+  /** Enter the video pick for an audio node (#2156). */
+  startSoundVideoPick: (nodeId: string) => void;
+  /** Enter the mood-image pick for an audio node (#2156). */
+  startMoodImagePick: (nodeId: string) => void;
   /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
   startFocusPick: (nodeId: string) => void;
   /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
@@ -648,12 +669,17 @@ export const useCanvasStore = create<CanvasState>()(
     startEndFramePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'endFrame' })),
     startCharacterImagePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'characterImage' })),
     startDrivingVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'drivingVideo' })),
-    startReferenceVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'referenceVideo' })),
     startDrivingAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'drivingAudio' })),
+    startSourceVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'sourceVideo' })),
+    startLeftAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'leftAudio' })),
+    startRightAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'rightAudio' })),
     startRefAudioPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'refAudio' })),
     startMusicSongPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicSong' })),
-    startMusicVoicePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicVoice' })),
-    startMusicInstrumentalPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicInstrumental' })),
+    startCoverSongPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'coverSong' })),
+    startMusicMelodyPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicMelody' })),
+    startMusicVocalPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicVocal' })),
+    startSoundVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'soundVideo' })),
+    startMoodImagePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'moodImage' })),
     startFocusPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'focus' })),
     addPendingFocusUpload: (entry) =>
       set((s) => {

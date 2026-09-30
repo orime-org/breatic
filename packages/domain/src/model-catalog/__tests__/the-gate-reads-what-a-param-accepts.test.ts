@@ -50,7 +50,6 @@ const MODES = [
   "  modes:",
   "    i2v:",
   "      label: Image to Video",
-  "      sources: [image]",
 ].join("\n");
 
 /**

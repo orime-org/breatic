@@ -13,8 +13,8 @@
  * param value reader all serve both.
  */
 
-import { VIDEO_GENERATION_MODES } from '@breatic/shared';
-import type { FocusImage, ModelEntry, SourceRule } from '@breatic/shared';
+import { referenceKinds, referencePool, VIDEO_GENERATION_MODES, type ReferencePool } from '@breatic/shared';
+import type { FocusImage, ModelEntry } from '@breatic/shared';
 
 import { validFocusImages } from '@web/data/focus-images';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
@@ -28,19 +28,22 @@ import {
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import { modelReferenceCap } from '@web/spaces/canvas/generate/model-reference-cap';
-import { mentionedReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 import {
-  slotsForMode,
-} from '@web/spaces/canvas/generate/video-mode-options';
+  mentionDurations,
+  mentionTokens,
+  mentionedReferenceUrls,
+  NO_MENTION_TOKENS,
+  NO_REFERENCE_URLS,
+  type MentionTokens,
+  type ReferenceUrls,
+} from '@web/spaces/canvas/generate/reference-urls';
 import {
+  readSlotDurations,
   readSlotThumbnails,
   readSlotUrls,
+  slotSourceDurations,
 } from '@web/spaces/canvas/generate/slots';
-import {
-  modelTakesReferences,
-  VIDEO_SLOTS,
-} from '@web/spaces/canvas/generate/video-slots';
+import { VIDEO_SLOTS, videoSlotsForModel } from '@web/spaces/canvas/generate/video-slots';
 import type {
   VideoSlot,
   VideoSlotUrls,
@@ -67,8 +70,6 @@ export interface VideoPanelViewModel {
   model: string;
   /** Effective params, reconciled against the current model. */
   params: Record<string, unknown>;
-  /** Credit cost of one generation with the current model. */
-  creditEstimate: number;
   /** The target node's display status — gates execute (no submit while handling). */
   nodeStatus: string | undefined;
   /**
@@ -114,25 +115,30 @@ export interface VideoPanelViewModel {
    */
   focusImages: FocusImage[];
   /**
-   * The reference image URLs this submit sends (#1927) — the `@`-mentioned
-   * ones only, in rail order, and only under a mode that takes references.
-   * What the PAYLOAD carries, which is a smaller thing than what the rail
-   * shows: connecting an image offers it, mentioning it uses it.
+   * The reference URLs this submit sends (#1927), by kind — the
+   * `@`-mentioned ones only, in rail order, and only the kinds the model's
+   * pool takes in this mode. What the PAYLOAD carries, which is a smaller
+   * thing than what the rail shows: connecting a node offers it, mentioning
+   * it uses it.
    */
-  referenceUrls: string[];
+  referenceUrls: ReferenceUrls;
   /**
-   * How many reference images the active model takes, or undefined when it is
-   * uncapped. Read off the wire so the panel, the server rule and the worker
-   * all count against the same figure.
+   * How each mentioned picture, clip or track is written into the prompt the
+   * model reads, by pool id (#2156, design §13.2) — numbered in the same lists
+   * `referenceUrls` sends.
    */
-  maxReferences: number | undefined;
+  mentionTokens: MentionTokens;
   /**
-   * Whether the mode takes every place it offers material in, or any one.
-   *
-   * Off the catalog, where the mode declares it: the panel cannot derive it,
-   * since two modes offering the same number of slots can differ on it.
+   * How long the run's clips and tracks run, per param, where known (#2156,
+   * design §14): the drawn slots' picks and the mentioned references.
    */
-  sourceRule: SourceRule;
+  sourceDurations: Record<string, number[]>;
+  /**
+   * Where the active model's pool takes each kind in this mode, and how many
+   * (#2156). Read off the wire so the panel, the server rule and the worker
+   * all count against the same figures.
+   */
+  pool: ReferencePool;
   /**
    * The resolved catalog entry, for the declarations the panel reads off it.
    *
@@ -314,9 +320,15 @@ export function buildVideoPanelViewModel(input: {
   // for reference-to-video would ride into a first-last-frame task.
   const atMentioned = input.atMentionedSourceIds ?? EMPTY_SOURCE_IDS;
   const focusImages = validFocusImages(content?.focusImages);
-  const referenceUrls = modelTakesReferences(current, mode)
+  const pool = referencePool(current, mode);
+  const sendsReferences = referenceKinds(pool).length > 0;
+  const slots = videoSlotsForModel(current, mode);
+  const referenceUrls = sendsReferences
     ? mentionedReferenceUrls({ references, focusImages, atMentioned, nodes })
-    : [];
+    : NO_REFERENCE_URLS;
+  const mentionTokenMap = sendsReferences
+    ? mentionTokens(pool, { references, focusImages, atMentioned, nodes })
+    : NO_MENTION_TOKENS;
 
   return {
     model,
@@ -327,12 +339,9 @@ export function buildVideoPanelViewModel(input: {
     // slice closes. The records this returns are dropped — rendering reads,
     // it does not persist.
     params: current ? resolveModelSwitch(content, current).params : {},
-    // `?? 0` covers only the model-not-found case (empty catalog / stale
-    // model); when current is found, cost_per_call is a trusted number.
-    creditEstimate: current?.cost_per_call ?? 0,
     nodeStatus: content?.status,
     mode,
-    slots: slotsForMode(mode),
+    slots,
     slotUrls,
     slotThumbnails: readSlotThumbnails(VIDEO_SLOTS, content),
     references,
@@ -341,12 +350,16 @@ export function buildVideoPanelViewModel(input: {
     // as an entry (#1978).
     focusImages,
     referenceUrls,
-    // Through the shared rule, so this number and the one the server
+    mentionTokens: mentionTokenMap,
+    sourceDurations: {
+      ...slotSourceDurations(VIDEO_SLOTS, slots, readSlotDurations(VIDEO_SLOTS, content)),
+      ...(sendsReferences
+        ? mentionDurations(pool, { references, focusImages, atMentioned, nodes })
+        : {}),
+    },
+    // Through the shared rule, so these caps and the ones the server
     // re-checks before enqueue are the same arithmetic (#1928).
-    maxReferences: modelReferenceCap(current, mode, slotUrls),
-    // Declared per mode in the catalog and precomputed onto the wire, beside
-    // the source types the same row states (#269).
-    sourceRule: current?.sourceRuleByMode[mode] ?? 'all_of',
+    pool,
     modelEntry: current,
 
     // The model states it (#1966). This used to be inferred from a `prompt`

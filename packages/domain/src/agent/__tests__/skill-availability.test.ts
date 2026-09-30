@@ -46,7 +46,7 @@ const keys: Record<string, string> = {};
  * block is hoisted above it by the mock factory.
  */
 const SKILLS: Record<string, Record<string, unknown>> = {
-  unreachable: { name: "unreachable", description: "d", tools: [], model: "kling-o3-pro" },
+  unreachable: { name: "unreachable", description: "d", tools: [], model: "wan-3.0-text-to-video" },
   reachable: { name: "reachable", description: "d", tools: [], model: "anthropic/claude-sonnet-4-6" },
 };
 
@@ -65,9 +65,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // `getRawEnvVar`, not the `env` proxy. The proxy resolves against the
     // validated config, which holds only the schema's keys — and a provider's
     // key name comes off a yaml file that is free to name one the schema has
-    // never heard of. `KLING_ACCESS_KEY` is exactly that: providers.yaml
-    // declares it, the schema declares KLINGAI_ACCESS_KEY, and reading it
-    // through the proxy yields undefined however the process was started.
+    // never heard of, and reading such a name through the proxy yields
+    // undefined however the process was started.
     getRawEnvVar: (name: string) => keys[name],
     // Both fixtures are permitted, so the only thing left that can refuse
     // them is the availability check — which is what these tests are about.
@@ -90,8 +89,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
  * branch left all eight green. Naming a key the text path can never produce
  * is what makes these two tests about media at all.
  */
-const MEDIA_MODEL = "kling-o3-pro";
-const KLINGAI_KEY = "KLING_ACCESS_KEY";
+const MEDIA_MODEL = "wan-3.0-text-to-video";
 const WAVESPEED_KEY = "WAVESPEED_API_KEY";
 
 beforeAll(() => {
@@ -164,22 +162,19 @@ describe("whether a skill's model can actually run", () => {
     expect(result.missing).toContain("GOOGLE_API_KEY");
   });
 
-  it("says no for a media model, naming every provider key that would fix it", () => {
+  it("says no for a media model, naming the provider key that would fix it", () => {
     keys.OPENROUTER_API_KEY = "sk-or";  // text route fine; the media one is not
     const result = checkSkillModelRunnable(MEDIA_MODEL);
     expect(result.ok).toBe(false);
-    // Both of the model's providers, read off providers.yaml. Note
-    // KLING_ACCESS_KEY: it is not in the env schema, which is exactly why
-    // the names have to come from that file rather than a list in code.
-    expect([...result.missing].sort()).toEqual([KLINGAI_KEY, WAVESPEED_KEY].sort());
+    // The model's provider key, read off providers.yaml.
+    expect([...result.missing]).toEqual([WAVESPEED_KEY]);
     // And an OpenRouter key does not save a media model, however text-like
     // the model name looks.
     expect(result.missing).not.toContain("OPENROUTER_API_KEY");
   });
 
   it("says yes for a media model once its provider AND the text route are set", () => {
-    // The lower-priority provider, so this cannot pass by only ever
-    // consulting the first entry. The text key too: both consumers hand the
+    // The text key too: both consumers hand the
     // resolved model to `getModel`, which carries every request whatever the
     // modality, so a media key alone is not enough to run anything.
     keys[WAVESPEED_KEY] = "configured";
@@ -192,7 +187,7 @@ describe("whether a skill's model can actually run", () => {
     keys.OPENROUTER_API_KEY = "sk-or";
     const result = checkSkillModelRunnable(MEDIA_MODEL);
     expect(result.ok).toBe(false);
-    expect([...result.missing].sort()).toEqual([KLINGAI_KEY, WAVESPEED_KEY].sort());
+    expect([...result.missing]).toEqual([WAVESPEED_KEY]);
   });
 
   it("still says no for a media model with only its provider set", () => {

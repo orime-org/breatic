@@ -51,7 +51,6 @@ const MODES = [
   "  modes:",
   "    i2v:",
   "      label: Image to Video",
-  "      sources: [image]",
 ].join("\n");
 
 /**
@@ -78,6 +77,7 @@ function wiredGroup(): CanvasProposal {
     edges: [{ fromIndex: 0, toIndex: 1 }],
     modelNote: "",
     rationale: "",
+    groupName: "Your group",
   };
 }
 

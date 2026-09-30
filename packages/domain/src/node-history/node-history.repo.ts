@@ -31,7 +31,7 @@ function toEntity(
     nodeId: row.nodeId,
     userId: row.userId,
     operatorName,
-    entryType: row.entryType as "generation" | "upload",
+    entryType: row.entryType as "generation" | "upload" | "snapshot",
     status: row.status as "success" | "failed",
     content: row.content,
     thumbnailUrl: row.thumbnailUrl,
@@ -48,7 +48,7 @@ function toEntity(
  * @param data.projectId - ID of the project owning the node.
  * @param data.nodeId - ID of the canvas node this entry records a change for.
  * @param data.userId - ID of the user who triggered the change.
- * @param data.entryType - `"generation"` for AIGC output or `"upload"` for a manual user upload.
+ * @param data.entryType - `"generation"` for AIGC output, `"upload"` for a file the user brought, or `"snapshot"` for a copy they asked to keep.
  * @param data.status - `"success"` or `"failed"`.
  * @param data.content - Resulting content reference (e.g. asset URL); null when absent.
  * @param data.thumbnailUrl - Thumbnail URL for previews; null when absent.
@@ -61,7 +61,7 @@ export async function create(data: {
   projectId: string;
   nodeId: string;
   userId: string;
-  entryType: "generation" | "upload";
+  entryType: "generation" | "upload" | "snapshot";
   status: "success" | "failed";
   content?: string;
   thumbnailUrl?: string;

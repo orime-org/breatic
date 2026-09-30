@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, act, renderHook } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -14,6 +14,8 @@ beforeAll(() => {
   HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
   HTMLMediaElement.prototype.pause = vi.fn();
 });
+
+beforeEach(() => vi.clearAllMocks());
 
 /**
  * Minimal harness: a native <audio> wired to the hook, with the hook's state
@@ -44,7 +46,10 @@ describe('useMediaPlayer', () => {
 
     expect(screen.getByTestId('playing').textContent).toBe('false');
 
-    act(() => el.dispatchEvent(new Event('play')));
+    act(() => {
+      Object.defineProperty(el, 'paused', { value: false, configurable: true });
+      el.dispatchEvent(new Event('play'));
+    });
     expect(screen.getByTestId('playing').textContent).toBe('true');
 
     Object.defineProperty(el, 'duration', { value: 100, configurable: true });
@@ -57,7 +62,10 @@ describe('useMediaPlayer', () => {
     // progress = currentTime / duration
     expect(screen.getByTestId('progress').textContent).toBe('0.25');
 
-    act(() => el.dispatchEvent(new Event('pause')));
+    act(() => {
+      Object.defineProperty(el, 'paused', { value: true, configurable: true });
+      el.dispatchEvent(new Event('pause'));
+    });
     expect(screen.getByTestId('playing').textContent).toBe('false');
   });
 
@@ -69,9 +77,64 @@ describe('useMediaPlayer', () => {
     await user.click(screen.getByTestId('toggle'));
     expect(el.play).toHaveBeenCalledTimes(1);
 
-    act(() => el.dispatchEvent(new Event('play')));
+    act(() => {
+      Object.defineProperty(el, 'paused', { value: false, configurable: true });
+      el.dispatchEvent(new Event('play'));
+    });
     await user.click(screen.getByTestId('toggle'));
     expect(el.pause).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['audio', 'video'] as const)('%s resets after a source change without a pause event', (kind) => {
+    const el = document.createElement(kind);
+    let paused = true;
+    Object.defineProperty(el, 'paused', { get: () => paused });
+    Object.defineProperty(el, 'duration', { value: 40, configurable: true });
+    const ref = { current: el };
+    const { result } = renderHook(() => useMediaPlayer(ref));
+    act(() => {
+      paused = false;
+      el.currentTime = 12;
+      el.dispatchEvent(new Event('play'));
+      el.dispatchEvent(new Event('timeupdate'));
+    });
+    expect(result.current.playing).toBe(true);
+    expect(result.current.currentTime).toBe(12);
+
+    // The native load algorithm resets paused without emitting pause.
+    act(() => {
+      paused = true;
+      el.currentTime = 0;
+      Object.defineProperty(el, 'duration', { value: NaN, configurable: true });
+      el.dispatchEvent(new Event('emptied'));
+    });
+    expect(result.current.playing).toBe(false);
+    expect(result.current.currentTime).toBe(0);
+    expect(result.current.duration).toBe(0);
+    expect(result.current.progress).toBe(0);
+    act(() => result.current.togglePlay());
+    expect(el.play).toHaveBeenCalledTimes(1);
+    expect(el.pause).not.toHaveBeenCalled();
+  });
+
+  it('uses the element when a click precedes its queued transport event', () => {
+    const el = document.createElement('audio');
+    let paused = false;
+    Object.defineProperty(el, 'paused', { get: () => paused });
+    const { result } = renderHook(() => useMediaPlayer({ current: el }));
+    expect(result.current.playing).toBe(true);
+    paused = true;
+    act(() => result.current.togglePlay());
+    expect(el.play).toHaveBeenCalledTimes(1);
+    expect(el.pause).not.toHaveBeenCalled();
+  });
+
+  it('does not replay an obsolete queued play event after a reset', () => {
+    const el = document.createElement('video');
+    const { result } = renderHook(() => useMediaPlayer({ current: el }));
+    // Native state is already paused when this queued notification arrives.
+    act(() => el.dispatchEvent(new Event('play')));
+    expect(result.current.playing).toBe(false);
   });
 
   it('StrictMode-safe: cleanup removes exactly what setup added (no leak)', () => {

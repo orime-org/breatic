@@ -108,8 +108,8 @@ async function fullAccount(filledBytes: number): Promise<{
   `;
   const slug = `sqr-proj-${seq++}`;
   const [p] = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, visibility)
-    VALUES (${studioId}, ${userId}, ${`P ${slug}`}, ${slug}, 'private')
+    INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+    VALUES (${studioId}, ${userId}, ${`P ${slug}`}, ${slug})
     RETURNING id
   `;
   const projectId = p!.id;
@@ -224,7 +224,7 @@ describe("the two write paths behind the storage gate", () => {
         task_type: "image",
         params: { prompt: "a cat" },
         model: "test-model",
-        source: "canvas",
+        source: "task",
         project_id: projectId,
         space_id: crypto.randomUUID(),
         mode: "append",
@@ -250,7 +250,7 @@ describe("the two write paths behind the storage gate", () => {
         task_type: "image",
         params: { prompt: "a cat" },
         model: "test-model",
-        source: "canvas",
+        source: "task",
         project_id: projectId,
         space_id: crypto.randomUUID(),
         mode: "append",

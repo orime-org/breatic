@@ -4,15 +4,14 @@
 import * as React from 'react';
 import { Lock } from 'lucide-react';
 
+import { MAX_NODE_NAME_LEN } from '@breatic/shared';
+
 import { cn } from '@web/lib/utils';
 import {
   groupBackgroundStyle,
   groupBorderStyle,
 } from '@web/spaces/canvas/group-background';
-import {
-  MAX_NODE_NAME_LEN,
-  useInlineRename,
-} from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
+import { useInlineRename } from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
 import { NodeOccupantsContext } from '@web/spaces/canvas/nodes/_shared/node-occupants-context';
 import { NodeOccupantTags } from '@web/spaces/canvas/nodes/_shared/NodeOccupantTags';
 import { ZoomCounterScaled } from '@web/spaces/canvas/nodes/_shared/ZoomCounterScaled';

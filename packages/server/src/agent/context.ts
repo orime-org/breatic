@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The persona and the skill list, which is all the base prompt is.
+ * The persona, which is all the base prompt is.
  *
  * Memory is deliberately not assembled here — see `buildSystemPrompt` for
- * why — and neither is anything about tools beyond how to behave with them:
- * each tool's own description already reaches the model, and a roster written
- * here would drift from whatever the running skill actually declares.
+ * why. Nothing here is about any one tool: what a tool is for, when to reach
+ * for it and how to use its answer are said in its own description, and only
+ * there. A second copy written here drifts from the first, and a roster would
+ * name tools the turn was not given. What stays is how to behave with tools
+ * in general -- call them rather than write calls out, read an error, say
+ * what could not be had.
  */
 
-import { getSkillRegistry } from "@breatic/domain";
-
-/** Static template with `{skills_summary}` and `{always_skills}` placeholders. */
+/** The whole prompt, with nothing to fill in. */
 const SYSTEM_PROMPT_TEMPLATE = `\
 You are the AI core of Breatic — a creative operating system for content creators.
 You are not a task dispatcher. You are a creative collaborator.
@@ -60,17 +61,6 @@ looks like a tool call is not a tool call; nothing runs it.
 Never present something as looked up, searched, fetched or read unless a tool
 actually returned it on this turn. If you have not checked, say you have not.
 
-One tool puts a question to the user and ends your turn there. Use it when
-you genuinely need an answer to continue, not to fill a pause. Put the whole
-question in the call: the question itself, and every answer you are offering,
-each as one of the options. The reader is shown what the call carries, so a
-question you also write out arrives twice, and answers you list in your own
-prose arrive as a run-on sentence with nothing to pick from. The options are
-drawn numbered, and what the reader is told about answering is howToAnswer —
-your own line, in the language you are replying in, saying that a number will
-do and that they may answer in their own words instead. Leave it out when the
-question speaks for itself.
-
 When a tool comes back with an error, read what it says before doing anything
 else. It says what failed, and it ends with what you may do about it — correct
 the call and try once more, try a different source, or carry on without it. Do
@@ -80,51 +70,17 @@ tool the same way will fail the same way; do not.
 When you cannot get something a task needed, say so in your reply, in words,
 and carry on with what you do have. An answer that quietly leaves out what
 failed reads as an answer that did not need it.
-
-When a search returns sources, each one arrives with a number. Write something
-you took from one of them and mark it with that number where you write it, like
-[1]. Searches within one reply share one run of numbers, so use the number each
-source arrived with in this reply. A sentence drawing on several sources takes
-several markers, like [2][5]. Every reply numbers its own sources from one, so a
-number an earlier reply used stands for something else here: write about those
-sources in words. Never write a number no source arrived with in this reply.
-
-## Available Skills
-{skills_summary}
-
-## Always-active Skill Context
-{always_skills}
-
 `;
 
-/** Options accepted by {@link buildSystemPrompt}. */
-export interface BuildSystemPromptOptions {
-  /** Pre-built XML skill summary (overrides registry lookup when provided). */
-  skillsSummary?: string;
-  /** Pre-built always-on skill content (overrides registry lookup when provided). */
-  alwaysSkillsContent?: string;
-}
-
 /**
- * Build the base system prompt: persona plus the skill summary.
+ * Build the base system prompt.
  *
  * Memory is deliberately not here. It used to be injected in three separate
  * places with two different sets of section headings, so it now belongs to
  * `buildAgentConfig`, which is the one place an agent's instructions get
  * assembled.
- * @param options - Pre-built skill sections, when the caller has them
  * @returns The base prompt, ready to hand to `buildAgentConfig`
  */
-export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): string {
-  const { skillsSummary, alwaysSkillsContent } = options;
-
-  const registry = getSkillRegistry();
-  const summary = skillsSummary ?? registry.buildSummaryXml();
-  const always = alwaysSkillsContent ?? (registry.getAlwaysContent() || "(none)");
-
-  const prompt = SYSTEM_PROMPT_TEMPLATE
-    .replace("{skills_summary}", summary)
-    .replace("{always_skills}", always);
-
-  return prompt;
+export function buildSystemPrompt(): string {
+  return SYSTEM_PROMPT_TEMPLATE;
 }

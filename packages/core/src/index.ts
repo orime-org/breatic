@@ -59,6 +59,13 @@ export { getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
 export { getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
+export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
+export {
+  getUsagePricing,
+  parseUsagePricing,
+  type UsagePricing,
+  type ModelPrice,
+} from "@core/config/usage-pricing.js";
 export type { StorageConfig } from "@core/config/storage.js";
 export {
   getMembershipConfig,
@@ -69,7 +76,7 @@ export type { MembershipConfig, MembershipLimits } from "@core/config/membership
 export {
   getSubscriptionPlans,
   getSubscriptionPlan,
-  findSubscribableTierByPriceId,
+  findOfferByPriceId,
   getSubscriptionStaleAfterDays,
   getStripeCallTimeoutMs,
   resetSubscriptionConfigCache,
@@ -117,6 +124,7 @@ export {
   storageKey,
 } from "@core/infra/storage/index.js";
 export { sendMail } from "@core/infra/mailer.js";
+export { getMailLayout, type MailLayout } from "@core/config/mail.js";
 export type { SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
 export {
   publishNodeEvent,

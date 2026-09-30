@@ -14,10 +14,13 @@
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
       "designation_locked": "这笔积分在退款流程中，不能改指定。",
+      "designation_not_purchased": "这笔积分是赠送的，只能用在你的个人 Studio 里，不能改指定。",
       "in_debt": "这个 Studio 欠着 {owed} 积分，指定新的积分会先抵掉它。",
       "unassigned": "你有 {available} 积分未指定，指定给 Studio 后才能使用。",
       "none": "积分不足，请先充值。",
+      "granted_elsewhere": "你的积分是赠送的，只能用在你的个人 Studio 里。",
       "refund_already_asked": "这笔已经提交过退款。",
+      "refund_not_purchased": "这笔积分是赠送的，没有付过款，所以不能退款。",
       "refund_still_designated": "这笔已指定给某个 Studio，请先解除指定。",
       "refund_already_spent": "这笔的积分已经用过，不能退款。",
       "refund_window_closed": "这笔的退款期限已过。"
@@ -34,6 +37,7 @@
       "google_oauth_unconfigured": "本服务器未开启 Google 登录",
       "invalid_google_credential": "无法验证你的 Google 账号",
       "google_email_unverified": "你的 Google 账号邮箱未验证",
+      "google_link_requires_email_login": "请使用邮箱登录此账号，Google 无法安全关联此邮箱。",
       "reset_link_sent": "如果该邮箱已注册,重置链接已发送。",
       "reset_success": "密码重置成功,请登录。",
       "reset_recovery_success": "密码重置成功,请保存新的恢复码。",
@@ -58,6 +62,8 @@
       "avatar_unsupported_type": "这个文件无法作为图片读取，换一张试试。"
     },
     "project": {
+      "join_already_member": "你已经是这个 Project 的成员。",
+      "join_already_pending": "你已经申请加入这个 Project，正在等 Owner 审核。",
       "email_not_registered": "该邮箱未注册。",
       "already_member": "该用户已有访问权限。",
       "already_invited": "该用户已有一个待确认的邀请。",
@@ -84,6 +90,13 @@
         "expired": "超过 30 天，不再受理退款。",
         "unassigned": "只有未指定给 Studio 的积分包才能退款。"
       },
+      "refund-credits-v3": {
+        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
+        "used": "只要花过其中任何一个，这一笔就不能再退了。",
+        "expired": "超过 30 天，不再受理退款。",
+        "unassigned": "只有未指定给 Studio 的积分包才能退款。",
+        "purchased": "只有购买的积分包可以退款。"
+      },
       "not_found": "找不到这笔购买。",
       "unavailable": "这个部署不出售积分。"
     },
@@ -109,15 +122,14 @@
       "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual, number} 个",
       "history_entry_not_found": "找不到这条历史记录",
       "voices_model_not_found": "这个模型不可用",
-      "voices_not_offered": "这个模型没有音色列表",
-      "voices_provider_unconfigured": "这台服务器上音色不可用",
-      "voices_upstream_failed": "音色加载失败，请重试。"
+      "voices_not_offered": "这个模型没有音色列表"
     },
     "membership": {
       "already_subscribed": "你已有会员。",
       "no_subscription": "你没有会员。",
       "not_cancelling": "这个会员没有预约结束。",
-      "downgrade_not_offered": "会员不能降到更低档位。",
+      "change_not_offered": "这项变更暂不提供。",
+      "change_unconfirmed": "变更已提交到 Stripe，但没能确认结果。请先联系我们，不要重复操作。",
       "same_tier": "你已经在这一档会员。",
       "payment_overdue": "这个会员有一期款项未付。",
       "unavailable": "会员当前不可用。"
@@ -130,38 +142,112 @@
     "purchase_mail": {
       "subject": "积分已到账",
       "intro": "感谢购买。以下是这笔购买的内容，请留存。",
-      "credits": "本次到账：{credits} 积分",
-      "balance": "当前余额：{credits} 积分",
-      "subtotal": "价格：{amount}",
-      "tax": "税额：{amount}",
-      "total": "实付合计：{amount}",
-      "purchased_at": "购买时间：{when}",
-      "refund_by": "可退款截止：{when}",
-      "order_ref": "订单号：{ref}",
+      "label": {
+        "credits": "本次到账",
+        "balance": "当前余额",
+        "subtotal": "价格",
+        "tax": "税额",
+        "total": "实付合计",
+        "purchased_at": "购买时间",
+        "refund_by": "可退款截止",
+        "order_ref": "订单号"
+      },
+      "credits_amount": "{credits} 积分",
+      "fact_line": "{label}：{value}",
       "consent_heading": "你在购买时同意的内容",
       "refund_heading": "积分包退款规则",
-      "support": "对这笔购买有疑问，请写信到 {email}。"
+      "support": "对这笔购买有疑问，请写信到 <mailto>{email}</mailto>。"
     },
     "chat": {
-      "message_too_long": "这条消息太长了。连同附带的内容最多 {limit, number} 个字符，这条有 {actual, number} 个。"
+      "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
+      "attachments_too_long": "附带的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
+      "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。"
+    },
+    "mail": {
+      "studio_invite": {
+        "subject": "{inviter} 邀请你加入 {studio}",
+        "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> 身份加入 Studio <b>{studio}</b>。",
+        "action": "打开邀请"
+      },
+      "project_invite": {
+        "subject": "{inviter} 邀请你参与 {project}",
+        "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> 身份参与 Project <b>{project}</b>。",
+        "action": "打开邀请"
+      },
+      "studio_transfer": {
+        "subject": "{initiator} 想把 {studio} 交给你",
+        "lead": "<b>{initiator}</b> 想让你成为 Studio <b>{studio}</b> 的 <code>Admin</code>。",
+        "action": "查看这次转让"
+      },
+      "project_transfer": {
+        "subject": "{initiator} 想把 {project} 交给你",
+        "lead": "<b>{initiator}</b> 想把 Project <b>{project}</b> 的所有权交给你。",
+        "action": "查看这次转让"
+      },
+      "role_upgrade": {
+        "subject": "{requester} 申请在 {project} 中获得更高的角色",
+        "lead": "<b>{requester}</b> 申请在 <b>{project}</b> 中成为 <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code>。",
+        "action": "查看这条申请"
+      },
+      "project_join": {
+        "subject": "{requester} 申请加入 {project}",
+        "lead": "<b>{requester}</b> 申请加入 <b>{project}</b>。",
+        "action": "查看这条申请"
+      },
+      "reason": "附言：<em>{message}</em>",
+      "expiry": {
+        "invitation": "这条邀请将在 {days, plural, other {# 天}}后过期。如果你没有预期收到它，可以忽略这封邮件。",
+        "transfer": "这条转让请求将在 {days, plural, other {# 天}}后过期。如果你没有预期收到它，可以忽略这封邮件。",
+        "request": "这条申请将在 {days, plural, other {# 天}}后过期。如果你没有预期收到它，可以忽略这封邮件。"
+      },
+      "membership_ended": {
+        "subject": "你的 {tier} 会员已结束",
+        "lead": "你的 <b>{tier}</b> 会员已结束，账号已回到免费方案。",
+        "footer": "随时可以在会员面板重新订阅。"
+      },
+      "storage_full": {
+        "subject": "你的存储空间已满",
+        "lead": "你的存储空间已满，<b>{studio}</b> 中的上传和生成被拒绝了。存储按你管理的所有 Studio 合计，不只是这一个。",
+        "footer": "升级会员可以获得更多空间。"
+      },
+      "password_reset": {
+        "subject": "重置密码",
+        "lead": "你申请了重置密码。",
+        "action": "重置密码",
+        "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，请忽略这封邮件。"
+      },
+      "email_verification": {
+        "subject": "验证你的邮箱",
+        "lead": "欢迎来到 Breatic。点击下面的按钮验证你的邮箱地址。",
+        "action": "验证邮箱地址",
+        "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，可以忽略这封邮件。"
+      },
+      "footer": "这是一封自动发送的邮件，回复不会被阅读。",
+      "help": "需要帮助？查看<manual>用户手册</manual>，或发邮件到 <contact>{email}</contact>。",
+      "legal": {
+        "about": "关于我们",
+        "terms": "使用条款",
+        "privacy": "隐私政策"
+      }
     }
   },
   "chat": {
     "composer": {
-      "selectMode": {
-        "label": "选中模式 — 在画布点节点添加引用",
-        "title": "选中模式"
-      },
       "chipsAria": "已选 chips",
-      "placeholder": "描述你想做什么(用 @ 引用上方 chips)…",
+      "placeholder": "问点什么，或者把画布上的东西交给我…",
       "inputAria": "Chat 输入",
-      "skill": {
-        "label": "选择 Skill 限定 agent 行为",
-        "title": "选择 Skill"
-      },
       "send": "发送",
       "sending": "发送中",
-      "atLimit": "已达 {limit, number} 字上限"
+      "atLimit": "已达 {limit, number} 字上限",
+      "attach": "添加文件",
+      "removeAttachment": "移除 {name}",
+      "attachmentUploading": "上传中",
+      "attachmentFailed": "{reason, select, upload {上传失败} extract {读取失败} too_long {太长} other {失败}}",
+      "attachFull": "最多附带 {limit, number} 项",
+      "attachTooLong": "附带的内容太多了，请少挂几项或换短一点的文件。",
+      "attachUnsupported": "{filename} 不能附带",
+      "attachTooLarge": "{filename} 太大，不能附带",
+      "attachUnavailable": "暂时无法添加，请重试。"
     },
     "empty": {
       "greetingWithName": "嗨, {name}!",
@@ -216,6 +302,7 @@
       "proposingNodes": "正在拟一份提议",
       "checkingModels": "正在查可用的模型",
       "understanding": "正在查看媒体",
+      "judging": "正在权衡",
       "running": "正在调用 {tool}"
     },
     "loadEarlier": "加载更早的消息",
@@ -261,11 +348,19 @@
       "use": "使用",
       "building": "正在建…",
       "failed": "没建成，可以再试一次。",
-      "needCanvas": "先打开一个画布。"
+      "eachRun": "{s, number} 秒 × {n, number}",
+      "needCanvas": "先打开一个画布。",
+      "promptReady": "提示词已写好，右键节点选「生成」，在打开的生成面板里查看",
+      "settingsReady": "设置已配好，右键节点选「生成」，在打开的生成面板里查看"
     },
     "thinking": "思考了一会儿",
     "thinkingNow": "思考中",
-    "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒"
+    "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒",
+    "attachment": {
+      "kind": "{kind, select, canvas {画布} image {图片} video {视频} audio {音频} text {文本} other {内容}}",
+      "nodes": "{count} 个节点",
+      "more": "还有 {count} 个"
+    }
   },
   "canvas": {
     "group": {
@@ -313,7 +408,8 @@
       "deleteNode": "删除节点",
       "deleteGroup": "删除编组",
       "deleteSelection": "删除选中",
-      "clipboardError": "无法访问剪贴板，请改用键盘快捷键。"
+      "clipboardError": "无法访问剪贴板，请改用键盘快捷键。",
+      "addToAgent": "添加到 Agent"
     },
     "gate": {
       "locked": "此项已锁定，解锁后才能修改。",
@@ -334,6 +430,10 @@
       "cannotWrite": "你已不能在这里写了。",
       "unknownAuthor": "未知"
     },
+    "understand": {
+      "couldNotStart": "没能开始，可以重试。",
+      "sourceGone": "被读取的节点已不存在。这次理解没有连线。"
+    },
     "generatePanel": {
       "style": "风格",
       "focus": "聚焦",
@@ -348,7 +448,7 @@
       "refuseExecuteNoPrompt": "先写提示词",
       "refuseExecuteNoVoice": "请选择音色",
       "refuseExecuteTooLong": "文本超过 {max, number} 字上限",
-      "refuseInsertTypeUnused": "{kind, select, audio {参考只收图片，不收音频} video {参考只收图片，不收视频} other {参考只收图片，不收这类素材}}",
+      "refuseInsertTypeUnused": "这个模型的参考不收{kind, select, image {图片} audio {音频} video {视频} other {这类素材}}",
       "exit": "退出",
       "promptPlaceholder": "描述你想要生成的画面内容，@ 引用参考",
       "mentionEmpty": "没有可引用的内容",
@@ -380,12 +480,10 @@
       "selectEndFrameFromCanvas": "在画布上选一张图片作为尾帧",
       "selectCharacterImageFromCanvas": "在画布上选一张图片作为角色",
       "selectDrivingVideoFromCanvas": "在画布上选一段视频来驱动动作",
-      "selectReferenceVideoFromCanvas": "在画布上选一段视频作为动作参考",
       "selectDrivingAudioFromCanvas": "在画布上选一段音频，口型跟着它动",
       "removeStyle": "移除风格参考",
       "exitSelect": "退出",
       "locateSource": "定位到源节点",
-      "presets": "预设",
       "camera": "摄像机",
       "cameraBody": "相机",
       "lens": "镜头",
@@ -393,8 +491,6 @@
       "aperture": "光圈",
       "switchOn": "已开启",
       "switchOff": "已关闭",
-      "online": "联网搜索",
-      "translate": "翻译提示词",
       "execute": "生成",
       "resolution": "分辨率",
       "ratio": "比例",
@@ -402,8 +498,7 @@
       "errorUnavailable": "生成服务暂时不可用，请稍后重试。",
       "errorFailed": "生成启动失败，请重试。",
       "errorNoSourceImage": "该模型需要源图 —— 在提示词里输入 @ 选择一张已连线的图。",
-      "errorTooManyReferences": "该模型最多接受 {limit} 张参考图 —— 移除一些再生成。",
-      "refusePickTooManyReferences": "配动作片段时最多 {limit} 张参考图 —— 先移除一些再挑片段。",
+      "errorTooManyReferences": "该模型最多接受 {limit} {kind, select, video {段参考视频} audio {段参考音频} other {张参考图}} —— 移除一些再生成。",
       "referenceAddFailed": "无法添加参考——该节点已不存在。",
       "referencePoolFull": "参考池已满(上限 {cap})——请先移除一些参考或聚焦图。",
       "modelUnavailable": "该模型已不可用——请另选一个。",
@@ -437,10 +532,10 @@
       "duration": "生成时长",
       "durationSeconds": "{n} 秒",
       "generateAudio": "生成音频",
-      "keepOriginalSound": "保留原声",
+      "imageParams": "参数",
       "videoParams": "参数",
       "videoPromptPlaceholder": "描述你想生成的视频，@ 引用参考",
-      "errorNoReferenceMention": "还缺一张参考图 —— 先把图连到这个节点，再在提示词里输入 @ 引用它。",
+      "errorNoReferenceMention": "还缺{kind, select, video {一段参考视频} audio {一段参考音频} image {一张参考图} other {参考素材}} —— 先把它连到这个节点，再在提示词里输入 @ 引用它。",
       "firstFrame": "首帧",
       "firstFrameTip": "挑一张图作为视频的第一帧",
       "removeFirstFrame": "移除首帧",
@@ -454,16 +549,27 @@
       "removeCharacterImage": "移除角色图",
       "errorNoCharacterImage": "先挑一张角色图",
       "drivingVideo": "驱动视频",
+      "sourceVideo": "视频",
+      "sourceVideoTip": "挑一段视频",
+      "removeSourceVideo": "移除视频",
+      "errorNoSourceVideo": "先挑一段视频",
+      "selectSourceVideoFromCanvas": "在画布上选一段视频",
+      "leftAudio": "左侧音频",
+      "leftAudioTip": "挑左边那个人的音频",
+      "removeLeftAudio": "移除左侧音频",
+      "errorNoLeftAudio": "先挑左侧音频",
+      "selectLeftAudioFromCanvas": "在画布上选左边那个人的音频",
+      "rightAudio": "右侧音频",
+      "rightAudioTip": "挑右边那个人的音频",
+      "removeRightAudio": "移除右侧音频",
+      "errorNoRightAudio": "先挑右侧音频",
+      "selectRightAudioFromCanvas": "在画布上选右边那个人的音频",
       "drivingAudio": "驱动音频",
       "drivingVideoTip": "挑一段视频，它的动作会被套到角色上",
       "drivingAudioTip": "挑一段音频，口型会跟着它动",
       "removeDrivingVideo": "移除驱动视频",
-      "referenceVideo": "动作片段",
-      "referenceVideoTip": "挑一段视频，生成时照它的动作走",
-      "removeReferenceVideo": "移除参考视频",
       "removeDrivingAudio": "移除驱动音频",
       "errorNoDrivingVideo": "先挑一段驱动视频",
-      "errorNoReferenceVideo": "先挑一段动态参考",
       "errorNoDrivingAudio": "先挑一段驱动音频",
       "promptNotUsed": "这一档不需要提示词。",
       "refuseInsertNoPrompt": "这一档没有提示词框，插不进去",
@@ -476,24 +582,70 @@
       "musicSong": "整曲",
       "musicSongTip": "挑一个音频节点，照它写一首新的",
       "removeMusicSong": "移除整曲",
-      "musicVoice": "人声",
-      "musicVoiceTip": "挑一个音频节点，跟着它的人声唱",
-      "removeMusicVoice": "移除人声",
-      "musicInstrumental": "伴奏",
-      "musicInstrumentalTip": "挑一个音频节点，新歌盖在它上面",
-      "removeMusicInstrumental": "移除伴奏",
+      "musicVocal": "人声",
+      "musicVocalTip": "挑一个音频节点，用它的嗓音唱",
+      "removeMusicVocal": "移除人声",
+      "selectMusicVocalFromCanvas": "挑一段歌声",
+      "selectSoundVideoFromCanvas": "挑一段要配音的视频",
+      "musicMelody": "旋律",
+      "musicMelodyTip": "挑一个音频节点，跟着它的旋律写",
+      "removeMusicMelody": "移除旋律",
+      "selectMusicMelodyFromCanvas": "挑一段旋律",
+      "coverSongTip": "挑一个音频节点，翻唱这首",
+      "selectCoverSongFromCanvas": "挑一首要翻唱的歌",
+      "errorNoMusicSong": "先挑一首歌",
+      "moodImage": "参考图",
+      "moodImageTip": "挑一张图，定下音乐的情绪",
+      "removeMoodImage": "移除参考图",
+      "selectMoodImageFromCanvas": "挑一张定情绪的图",
       "selectMusicSongFromCanvas": "挑一首歌，照它写一首新的",
-      "selectMusicVoiceFromCanvas": "挑一段人声，跟着它唱",
-      "selectMusicInstrumentalFromCanvas": "挑一段伴奏，新歌盖在上面",
-      "musicInstrumentalOnly": "纯伴奏",
-      "musicWithVocals": "有人声",
       "musicPromptPlaceholder": "写下曲风、情绪、乐器和速度",
       "musicLyricsPlaceholder": "写下歌词",
       "musicStyleLabel": "风格",
       "musicLyricsLabel": "歌词",
       "lyricsMissing": "先写下歌词",
       "refuseExecuteNoStyle": "先写下风格",
-      "refuseExecuteNoReference": "挑一段整曲、人声或伴奏"
+      "refuseExecuteNoReference": "挑一段整曲、旋律或人声",
+      "creditsPerThousandChars": "{credits} / 千字",
+      "itemsAdd": "添加",
+      "itemsRemove": "移除",
+      "refuseExecuteNoSpeakers": "请填好说话人",
+      "audioSettings": "音色与参数",
+      "audioVoice": "音色",
+      "audioReadingMode": "朗读方式",
+      "audioReadingSingle": "单人",
+      "audioReadingDialogue": "对话（{count} 人）",
+      "audioDialogueSummary": "对话 · {count} 人",
+      "audioSpeakersNote": "台词写成「名字：台词」",
+      "audioLanguageSearch": "搜索语言…",
+      "audioOptionEmpty": "没有匹配项",
+      "param": {
+        "language": "语言",
+        "speakers": "说话人",
+        "emotion": "情绪",
+        "pronunciation_dict": "读音",
+        "loop": "无缝循环",
+        "quality": "质量",
+        "enable_image_search": "图片搜索",
+        "enable_web_search": "网络搜索",
+        "chaos": "混沌度",
+        "stylize": "风格化",
+        "weird": "怪异度",
+        "transparency": "透明背景",
+        "distance": "距离",
+        "horizontal_angle": "水平角度",
+        "vertical_angle": "垂直角度",
+        "negative_prompt": "反向提示词",
+        "motion": "运动幅度",
+        "order": "顺序",
+        "model_mode": "区域"
+      },
+      "paramField": {
+        "speaker": "名字",
+        "voice": "音色",
+        "text": "文字",
+        "pronunciation": "读作"
+      }
     },
     "nodeMenu": {
       "generate": "生成",
@@ -503,7 +655,9 @@
       "unlock": "解锁节点",
       "resetEmpty": "重置为空图片",
       "history": "历史记录",
-      "download": "下载"
+      "snapshot": "保存快照",
+      "download": "下载",
+      "understand": "理解"
     },
     "edge": {
       "delete": "删除连线"
@@ -568,6 +722,10 @@
       "failed": "不可恢复",
       "typeGeneration": "生成",
       "typeUpload": "上传",
+      "typeSnapshot": "快照",
+      "snapshotKept": "快照已保存",
+      "snapshotEmpty": "没有内容可保存，这个节点是空的",
+      "snapshotFailed": "快照保存失败",
       "end": "没有更多了",
       "close": "关闭",
       "loadError": "历史记录加载失败",
@@ -610,13 +768,18 @@
       "failure": {
         "aborted": "上传没传完就中断了。",
         "over_cap": "这个文件超过了上传大小上限。",
+        "understand_over_cap": "{file, select, none {{limit, select, unknown {这个文件超过了理解的大小上限。} other {这个文件超过了理解的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {这个文件超过了理解的大小上限（{file}）。} other {这个文件超过了理解的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {这个文件超过了理解的大小上限（{file}，{bytes}）。} other {这个文件超过了理解的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}",
+        "understand_unsupported_type": "{file, select, none {{type, select, none {不能理解的文件类型。} other {不能理解的文件类型（{type}）。}}} other {{type, select, none {不能理解的文件类型（{file}）。} other {不能理解的文件类型（{file}，{type}）。}}}}",
         "expired": "它超时了。",
-        "no_result": "这次生成没有产出内容。",
+        "no_result": "这次运行没有产出内容。",
         "source_unreachable": "这个地址打不开。",
         "source_too_slow": "取这个地址的内容超时了。",
         "unsupported_type": "{kind, select, image {不是支持的格式，图片只收 {formats}。} video {不是支持的格式，视频只收 {formats}。} audio {不是支持的格式，音频只收 {formats}。} other {不是支持的格式。}}",
         "empty": "没有拿到任何内容。",
-        "internal": "我们这边出错了，可以重试。"
+        "internal": "我们这边出错了，可以重试。",
+        "no_credits": "没有可用积分。",
+        "declined": "模型拒绝了这次请求。",
+        "media_refused": "模型不接受这个文件。"
       }
     }
   },
@@ -636,8 +799,8 @@
       "signUp": "注册",
       "noAccount": "还没有账号?",
       "forgotPassword": "忘记密码?",
-      "continueWithGoogle": "使用 Google 继续",
-      "googleSoon": "Google 登录即将上线。",
+      "googleLoading": "正在加载 Google 登录…",
+      "googleFailed": "Google 登录暂不可用，请重试或使用邮箱登录。",
       "failed": "登录失败,请重试。"
     },
     "register": {
@@ -755,6 +918,14 @@
         "create": "正在创建 Space…"
       },
       "noActive": "没有打开的 Space — 点抽屉里的 Space 打开,或点 + 新建。"
+    },
+    "update": {
+      "available": "有新版本",
+      "title": "有新版本可用",
+      "description": "新版本已上线，刷新后即可使用。",
+      "busy": "有上传或其他操作正在进行，刷新会中断操作。建议完成后再刷新。",
+      "later": "稍后",
+      "refresh": "更新"
     }
   },
   "common": {
@@ -1057,12 +1228,16 @@
       "studioTransferApproved": "{actor} 接受了你对 {studio} 的 Admin 转让",
       "projectTransferRequest": "{actor} 邀请你接管 {project}",
       "projectTransferApproved": "{actor} 接受了你对 {project} 的所有权转让",
+      "projectJoinRequest": "{actor} 申请加入 {project}",
+      "projectJoinApproved": "{actor} 同意你加入 {project}",
+      "projectJoinRejected": "{actor} 没有通过你加入 {project} 的申请",
       "studioInviteRequest": "{actor} 邀请你加入 {studio}",
       "studioInviteAccepted": "{actor} 接受了你对 {studio} 的邀请",
       "projectInviteRequest": "{actor} 邀请你加入 {project}",
       "projectInviteAccepted": "{actor} 接受了你对 {project} 的邀请",
       "membershipEnded": "{tier} 会员已结束",
-      "membershipUpgradeIncomplete": "升级到 {tier} 未完成",
+      "membershipUpgradeIncomplete": "换到 {tier} {period} 的付款没有完成",
+      "membershipUpgradeIncompleteNoPeriod": "换到 {tier} 的付款没有完成",
       "storageQuotaExceeded": "存储已满"
     },
     "actorFallback": "某人",
@@ -1124,6 +1299,7 @@
       "account": "账号",
       "signOut": "退出登录",
       "credits": "积分",
+      "creditsUnavailable": "当前不可用",
       "membership": "会员",
       "accountSettings": "账号设置"
     },
@@ -1371,12 +1547,25 @@
       "agentColumnWidth": "调整 Agent 面板宽度",
       "language": "语言：{name}",
       "theme": "主题：{theme}"
-    }
+    },
+    "languageNotSaved": "语言未保存到账号"
   },
-  "noAccess": {
-    "title": "你没有访问该 Project 的权限",
-    "description": "请联系 Project Owner 申请访问,他们可以通过邮箱邀请你。",
-    "backToStudio": "返回 Studio"
+  "projectJoin": {
+    "title": "你还不是这个 Project 的成员",
+    "body": "「{project}」需要 Owner 同意后才能进入。",
+    "messageLabel": "给 Owner 留言（可选）",
+    "messagePlaceholder": "说说你为什么想加入",
+    "cancel": "取消",
+    "request": "申请加入",
+    "sentTitle": "申请已发送",
+    "sentBody": "Owner 通过后你会收到通知。",
+    "ok": "好的",
+    "pendingTitle": "申请审核中",
+    "pendingBody": "你在 {date} 申请加入「{project}」，Owner 还没有处理。",
+    "withdraw": "撤回申请",
+    "requestFailed": "申请没有发出去，请重试。",
+    "withdrawFailed": "撤回没有成功，请重试。",
+    "loadFailed": "没能打开这个 Project，请重试。"
   },
   "activity": {
     "description": "上传、生成、Space 与成员变更",
@@ -1425,11 +1614,20 @@
   "decision": {
     "loadingTitle": "正在打开这个请求…",
     "loadingBody": "稍等，正在查找。",
-    "title": "{kind, select, studio_invite {有人邀请你加入一个 Studio} project_invite {有人邀请你加入一个 Project} role_upgrade {有人申请更高的角色} project_transfer {有人要把一个 Project 交给你} studio_transfer {有人要把一个 Studio 交给你} other {有件事等你答复}}",
-    "body": "{kind, select, studio_invite {{actor} 邀请你以{role, select, maintainer {Maintainer} guest {Guest} other {Member}}身份加入 {entity}。} project_invite {{actor} 邀请你以{role, select, editor {Editor} viewer {Viewer} other {Member}}身份参与 {entity}。} role_upgrade {{actor} 申请在 {entity} 中成为 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}。} project_transfer {{actor} 想把 {entity} 的所有权交给你。} studio_transfer {{actor} 想让你成为 {entity} 的 Admin。} other {{actor} 在等你对 {entity} 的答复。}}",
+    "title": "{kind, select, studio_invite {有人邀请你加入一个 Studio} project_invite {有人邀请你加入一个 Project} role_upgrade {有人申请更高的角色} project_join {加入申请} project_transfer {有人要把一个 Project 交给你} studio_transfer {有人要把一个 Studio 交给你} other {有件事等你答复}}",
+    "body": "{kind, select, studio_invite {{actor} 邀请你以{role, select, maintainer {Maintainer} guest {Guest} other {Member}}身份加入 {entity}。} project_invite {{actor} 邀请你以{role, select, editor {Editor} viewer {Viewer} other {Member}}身份参与 {entity}。} role_upgrade {{actor} 申请在 {entity} 中成为 {role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}。} project_join {{actor} 申请加入 {entity}。} project_transfer {{actor} 想把 {entity} 的所有权交给你。} studio_transfer {{actor} 想让你成为 {entity} 的 Admin。} other {{actor} 在等你对 {entity} 的答复。}}",
     "reason": "附言：{message}",
-    "confirm": "{kind, select, role_upgrade {批准} other {接受}}",
-    "decline": "{kind, select, role_upgrade {拒绝} other {拒绝}}",
+    "confirm": "{kind, select, role_upgrade {批准} project_join {通过} other {接受}}",
+    "decline": "{kind, select, role_upgrade {拒绝} project_join {拒绝} other {拒绝}}",
+    "grantRole": "角色",
+    "field": {
+      "requester": "申请人",
+      "project": "Project",
+      "message": "留言",
+      "expires": "有效期"
+    },
+    "expiresBefore": "{date} 截止",
+    "actorWithHandle": "{name}（@{handle}）",
     "windowNote": "这个请求当时可在 {days} 天内答复。",
     "acceptedTitle": "你已经接受过了",
     "acceptedBody": "这里没有别的事要做了。",
@@ -1458,8 +1656,9 @@
     "panelTitle": "会员",
     "close": "关闭",
     "currentTier": "当前会员",
+    "chooseTier": "选择会员",
     "tier": {
-      "base": "Base",
+      "base": "Starter",
       "pro": "PRO",
       "team": "Team",
       "self_hosted": "自托管",
@@ -1488,7 +1687,6 @@
     },
     "enterpriseQuota": "你的额度由单独协议约定，不在这里显示。",
     "compare": "各档对比",
-    "monthlyFee": "月费",
     "contactEnterprise": "需要更大规模或单独的商用条款？发邮件跟我们谈：",
     "contactSelfHosted": "需要商用授权或单独的支持条款？发邮件跟我们谈：",
     "contactEnterpriseAccount": "额度有疑问或需要调整？发邮件跟我们谈：",
@@ -1504,11 +1702,37 @@
     "resume": "恢复会员",
     "notice": {
       "firstPaymentPending": "付款未完成",
-      "upgradePending": "升级付款未完成",
-      "paymentOverdue": "这个月的款项没有扣成功"
+      "upgradePending": "这次变更的付款还没完成",
+      "paymentOverdue": "这次扣款没有成功"
+    },
+    "checkout": {
+      "done": "{plan} 已生效",
+      "processing": "付款还在处理中",
+      "failed": "会员没有开通"
     },
     "payNow": "去付款",
-    "actionFailed": "没有成功，请再试一次。"
+    "actionFailed": "没有成功，请再试一次。",
+    "period": {
+      "month": "月付",
+      "year": "年付"
+    },
+    "saveTwoMonths": "十二个月，按十个月的价",
+    "yearSaving": "年付约省 {percent}%",
+    "tierWithPeriod": "{tier} · {period}",
+    "priceSuffix": {
+      "month": "{amount} / 月",
+      "year": "{amount} / 年"
+    },
+    "priceOnRequest": "面议",
+    "contactSales": "联系我们",
+    "card": {
+      "storage": "{value} 存储",
+      "teamStudios": "{count, plural, =0 {不含团队 Studio} other {# 个团队 Studio}}",
+      "connections": "{count, plural, other {每份文档 # 条连接}}",
+      "enterpriseScale": "容量按协议约定",
+      "enterpriseGovernance": "SSO、审计、知识产权保障"
+    },
+    "noCreditsIncluded": "会员不含生成积分，积分单独购买。"
   },
   "credits": {
     "panelTitle": "积分",
@@ -1524,13 +1748,20 @@
     },
     "section": {
       "overview": "总览",
-      "lots": "购买记录",
+      "lots": "获取记录",
       "ledger": "消耗流水",
       "studios": "各 Studio",
       "buy": "购买积分",
       "assign": "指定",
       "refunds": "退款"
     },
+    "source": {
+      "payment": "充值",
+      "gift": "体验积分",
+      "compensation": "补偿",
+      "discount": "优惠"
+    },
+    "pinnedToPersonalStudio": "只能用在你的个人 Studio",
     "lifecycle": {
       "depleted": "已消耗完毕",
       "refund_pending": "审核中",
@@ -1554,8 +1785,8 @@
     },
     "lotsEmpty": "还没有购买记录。",
     "lotsEmptyNotice": {
-      "title": "每一笔购买都会列在这里",
-      "body": "每一笔会显示花了多少、处理到哪一步，以及积分去了哪个 Studio。"
+      "title": "积分是怎么来的，都列在这里",
+      "body": "买来的、赠送的都会列出来，显示来源、花了多少、处理到哪一步，以及积分去了哪个 Studio。"
     },
     "assignedTo": "指定给 {studio}",
     "ofPurchased": "共 {amount}",
@@ -1587,13 +1818,10 @@
       "body": "每个积分包整个指定给一个 Studio，随时可以改。"
     },
     "assignNote": "下拉里只有你是 Admin 的 Studio。改了之后原来那个 Studio 立刻失去这个积分包。",
-    "remaining": "还剩 {amount} 积分",
     "designationFor": "{amount} 这个积分包的指定去向",
     "designateFailed": "指定没能保存，请重试。",
     "refundsEmpty": "还没有买过积分包",
     "askRefund": "申请退款",
-    "refundPendingHint": "{credits} 积分 · 审核期间不能指定给 Studio",
-    "refundingHint": "{credits} 积分 · 退款进行中，不能指定给 Studio",
     "refundTitle": "退款规则",
     "buy": {
       "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
@@ -1638,9 +1866,16 @@
       "expired": "超过 30 天"
     },
     "refundHint": {
-      "assigned": "还剩 {credits} 积分 · 解除指定后可以申请退款",
-      "depleted": "共 {credits} 积分",
-      "refunded": "已退回原付款方式"
+      "assigned": "解除指定后可以申请退款"
     }
+  },
+  "notFound": {
+    "heading": "页面未找到",
+    "body": "你访问的页面不存在或已经移动。我们带你回首页。",
+    "cta": "返回首页"
+  },
+  "pageLoadError": {
+    "message": "页面加载失败，请重试。",
+    "retry": "重试"
   }
 }

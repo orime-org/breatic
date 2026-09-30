@@ -56,11 +56,13 @@ For batch generation (e.g. multi-scene storyboard, a series of clips):
 
 ## Model Selection Tips
 
-- For highest quality cinematic content → Kling O3 Pro, VEO 3.1, Seedance 2.0
-- For balanced quality and cost → Kling O3 Std, Wan 2.6, Seedance 1.5 Pro
-- For budget-friendly generation → Kling O1 Std, Wan 2.5, Seedance 1 Lite, PixVerse 5
-- For built-in audio generation → VEO 3.1 (default on), Kling O3 (optional), Seedance 1.5 (optional)
-- For reference-based consistency → Kling O3 Ref, Wan 2.6 Ref, Vidu Q2 Ref, Seedance 1 Lite Ref
+- For the highest quality from a prompt → Gemini Omni 1.1 Flash (synced audio, up to 4K)
+- For long single takes → Wan 3.0 (up to 30s with native audio)
+- For an image that starts the shot → MiniMax H3 Image-to-Video, Gemini Omni 1.1 Flash Image-to-Video
+- For a fixed first and last frame → FLUX 3 Start-End, Gemini Omni, MiniMax H3, Wan 3.0
+- For reference-based consistency → MiniMax H3 Reference, Gemini Omni 1.1 Flash Reference, Wan 3.0 Reference, HappyHorse 1.1 Reference
+- For a character that stays the same across the clip → Kling Video O3 4K (images become elements)
+- For a talking character → OmniHuman 1.5 (portrait + audio), Sync Lipsync 3 (redub real footage)
 
 ## Prompt Tips
 

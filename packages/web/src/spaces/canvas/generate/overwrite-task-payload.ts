@@ -43,7 +43,7 @@ export function buildOverwriteTaskPayload(
     node_ids: [input.nodeId],
     project_id: input.projectId,
     space_id: input.spaceId,
-    source: 'canvas',
+    source: 'task',
     target_node_id: input.nodeId,
     mode: 'overwrite',
   };
