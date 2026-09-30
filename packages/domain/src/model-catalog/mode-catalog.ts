@@ -126,6 +126,11 @@ export interface ParamInfo {
    */
   optional?: true;
   /**
+   * Filled from the node's storyboard (#2218): a proposal reaches it through
+   * its `storyboard` and `shots`, never through `params`.
+   */
+  fromStoryboard?: true;
+  /**
    * Whether this node's panel draws no control for it.
    *
    * The panel draws the controls it has, not one per declared parameter. A
@@ -133,11 +138,6 @@ export interface ParamInfo {
    * presented as a field to fill it has the reader looking for a control that
    * is not there.
    */
-  /**
-   * Filled from the node's storyboard (#2218): a proposal reaches it through
-   * its `storyboard` and `shots`, never through `params`.
-   */
-  fromStoryboard?: true;
   noControl?: true;
   /**
    * What has to hold before setting this counts for anything.

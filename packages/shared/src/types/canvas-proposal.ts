@@ -110,13 +110,13 @@ export type ProposalRole = "source" | "generate" | "written";
 /** Every node kind a proposal can place: the three that generate, plus text. */
 export type ProposalNodeType = GenerationNodeType | "text";
 
-/** One node of a proposal, before anything is placed. */
 /** One shot of a proposed per-shot storyboard. */
 export interface ProposalShot {
   prompt: PromptSegment[];
   duration: number;
 }
 
+/** One node of a proposal, before anything is placed. */
 export interface ProposalNode {
   role: ProposalRole;
   type: ProposalNodeType;
