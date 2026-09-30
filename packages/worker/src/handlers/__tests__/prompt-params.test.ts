@@ -220,3 +220,32 @@ describe("cleaning the lyrics a music model is handed (#1960)", () => {
     expect("lyrics" in validated).toBe(false);
   });
 });
+
+/**
+ * Each shot of a storyboard is a prompt the reader typed in its own editor
+ * (#2218), and gets the same cleaning on its way upstream.
+ */
+describe("cleaning the shots of a storyboard (#2218)", () => {
+  it("strips each shot's prompt and keeps its seconds", () => {
+    const [, , validated] = takePromptAndValidate(
+      {
+        multi_prompt: [
+          { prompt: "<b>a boat</b>", duration: 2 },
+          { prompt: "the pond​ <!-- x -->", duration: 3 },
+        ],
+      },
+      "kling-v3.0-4k-text-to-video",
+      keepAll,
+    );
+    expect(validated.multi_prompt).toEqual([
+      { prompt: "a boat", duration: 2 },
+      { prompt: "the pond", duration: 3 },
+    ]);
+  });
+
+  it("leaves list params without prompts alone", () => {
+    const speakers = [{ voice_id: "a", name: "Ann" }];
+    const [, , validated] = takePromptAndValidate({ prompt: "p", speakers }, "m", keepAll);
+    expect(validated.speakers).toEqual(speakers);
+  });
+});
