@@ -917,6 +917,37 @@ describe('the comment panel', () => {
       expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
     });
 
+    it('quotes the words it is aimed at, the way a saved card does', async () => {
+      // A card pushed off its line still says which words it is for.
+      show();
+
+      aimDraft(0, 5);
+
+      expect(
+        (await screen.findByTestId('doc-comment-draft-quote')).textContent,
+      ).toBe('alpha');
+    });
+
+    it('keeps its quote in step with the words as the reader edits them', async () => {
+      // A same-length rewrite leaves the range where it was, so only a
+      // reading of the body catches it.
+      show();
+      aimDraft(0, 5);
+      await screen.findByTestId('doc-comment-draft-quote');
+
+      const run = firstRun();
+      act(() => {
+        const view = handle.editor.prosemirrorView!;
+        view.dispatch(view.state.tr.insertText('L', run.from + 1, run.from + 2));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('doc-comment-draft-quote').textContent).toBe(
+          'aLpha',
+        );
+      });
+    });
+
     it('carries no button until the reader writes something', async () => {
       // A29. The reply box answers the same way, and for the same reason: a
       // control that would send nothing has no business being on screen.

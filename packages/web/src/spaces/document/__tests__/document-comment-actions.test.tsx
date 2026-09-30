@@ -51,6 +51,7 @@ import {
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { toast } from '@web/lib/toast';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { usersApi } from '@web/data/api/users';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -86,6 +87,7 @@ describe('what a card lets a reader do', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     _resetDocumentEditorCacheForTests();
     awareness.destroy();
     doc.destroy();
@@ -483,6 +485,33 @@ describe('what a card lets a reader do', () => {
 
     const entry = screen.getByTestId('doc-comment-entry');
     expect(entry.querySelector('.line-clamp-3')).not.toBeNull();
+  });
+
+  it('puts an avatar of its author before each comment', async () => {
+    // Several replies on one card read as one paragraph without a mark on
+    // each; the initials stand in while an account has no picture.
+    vi.spyOn(usersApi, 'getByIds').mockResolvedValue([
+      { id: ME, name: 'Mia Chen', email: 'me@example.com' },
+    ]);
+    await open();
+    await comment('the first');
+    await answer('the second');
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByTestId('doc-comment-avatar').map((a) => a.textContent),
+      ).toEqual(['MC', 'MC']);
+    });
+  });
+
+  it('gives an author nobody can name the initials of that word', async () => {
+    vi.spyOn(usersApi, 'getByIds').mockResolvedValue([]);
+    await open();
+    await comment('the first');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-comment-avatar').textContent).toBe('UN');
+    });
   });
 
   it('shows a lone comment whole once the reader opens it', async () => {
