@@ -34,7 +34,7 @@ import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
-import { canGenerate, newId, type Voice } from '@breatic/shared';
+import { canGenerate, newId } from '@breatic/shared';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
 import { Button } from '@web/components/ui/button';
@@ -92,11 +92,8 @@ import {
   type CanvasNodeView,
   readCanvasGraph,
   readTextBodies,
-  nodeDataMap,
 } from '@web/data/yjs/canvas-space';
-import { itemForPick } from '@web/spaces/canvas/attach-nodes';
-import { firstVoiceKey, firstVoiceQuery } from '@web/spaces/canvas/generate/first-voice-query';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { pickForAgent } from '@web/spaces/canvas/pick-for-agent';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -3358,46 +3355,15 @@ function CanvasSpaceInner({
 
   const queryClient = useQueryClient();
   /**
-   * Hand the picked piece of the canvas to the agent as one item, read fresh
-   * from the document at the press. The catalog tells each generating node
-   * what it would run right now (#2218); without it that cannot be said, so
-   * nothing is handed over and the reader hears why, as the panel says it.
-   * An audio node with no voice picked runs the first of its model's list, so
-   * that voice is asked for first, by the query the audio panel uses.
+   * Hand the picked piece of the canvas to the agent as one item. Without the
+   * catalog nothing is handed over and the reader hears why, as the panel
+   * says it.
    * @param ids - The picked node ids; a group brings its members.
    */
   const addToAgent = React.useCallback(
     (ids: readonly string[]): void => {
-      void queryClient.ensureQueryData(modelCatalogQuery()).then(
-        async (catalog) => {
-          const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-          const graph = readCanvasGraph(projectId, spaceId);
-          const unknownVoices = new Set<string>();
-          /**
-           * The pick as handed over, with each first voice as cached now.
-           * @returns The item, or null for nothing to hand over.
-           */
-          const pick = (): ReturnType<typeof itemForPick> =>
-            itemForPick(graph, ids, {
-              dataOf: (id) => nodeDataMap(doc, id),
-              catalog,
-              firstVoiceOf: (model) => {
-                const first = queryClient.getQueryData<Voice | null>(firstVoiceKey(model));
-                if (first === undefined) unknownVoices.add(model);
-                return first;
-              },
-            });
-          let item = pick();
-          if (unknownVoices.size > 0) {
-            // A list that cannot be read leaves that voice out, as it does
-            // in the panel.
-            await Promise.allSettled(
-              [...unknownVoices].map((model) => queryClient.fetchQuery(firstVoiceQuery(queryClient, model))),
-            );
-            item = pick();
-          }
-          return attachToChat(projectId, item ? [item] : []);
-        },
+      void pickForAgent(queryClient, projectId, spaceId, ids).then(
+        (item) => attachToChat(projectId, item ? [item] : []),
         () => {
           toast.error(t('canvas.generatePanel.catalogUnavailable'), {
             id: 'generate-catalog-unavailable',
