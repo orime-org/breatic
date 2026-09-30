@@ -24,6 +24,11 @@ export interface StoryboardSpec {
   readonly shotsParam: string;
   /** The param naming the tier upstream, when the model has one. */
   readonly tierParam: string | undefined;
+  /**
+   * The model's own param that each shot's seconds have to add up to: the
+   * one named like the seconds field of a shot. Undefined when it has none.
+   */
+  readonly totalParam: string | undefined;
   /** The most shots it takes; undefined when it declares no cap. */
   readonly maxShots: number | undefined;
   /** The most characters one shot's text takes; undefined when uncapped. */
@@ -44,9 +49,11 @@ export function storyboardSpec(
   if (shots === undefined) return undefined;
   const tier = entries.find(([name]) => name !== shots[0]);
   const [shotsParam, spec] = shots;
+  const seconds = Object.keys(spec.fields ?? {}).find((field) => field !== "prompt");
   return {
     shotsParam,
     tierParam: tier?.[0],
+    totalParam: seconds !== undefined && seconds in params ? seconds : undefined,
     maxShots: spec.max_items,
     maxChars: spec.fields?.prompt?.max_chars,
   };

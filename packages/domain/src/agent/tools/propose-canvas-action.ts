@@ -47,6 +47,7 @@ import {
   PANEL_EDITOR_PARAM,
   promptPlainText,
   promptTextOf,
+  proposalMarkSegments,
   referenceCapExceeded,
   type CanvasProposal,
   type ControlGate,
@@ -133,6 +134,30 @@ const proposalNode = z
           "supplies or picks; the k-th asset mark pairs with the k-th empty " +
           "node wired in, the k-th ref mark with the k-th other, in the " +
           "order the nodes are listed",
+      ),
+    storyboard: z
+      .literal("auto")
+      .optional()
+      .describe(
+        "role generate only, on a model that takes a storyboard: the model " +
+          "splits the prompt into shots itself",
+      ),
+    shots: z
+      .array(
+        z
+          .object({
+            prompt: z.array(promptSegment),
+            duration: z.number().int().min(1),
+          })
+          .strict(),
+      )
+      .min(1)
+      .optional()
+      .describe(
+        "role generate only, on a model that takes a storyboard: each shot's " +
+          "own prompt and whole seconds, which add up to the duration. The " +
+          "main prompt is not sent then, so leave it out. Marks count across " +
+          "the prompt, then each shot in order",
       ),
   })
   .strict();
@@ -304,6 +329,12 @@ function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
           : `"${key}" carries the reader's own material, which they put in a slot on the panel. Leave it out.`,
       };
     }
+    if (info.fromStoryboard === true) {
+      return {
+        ok: false,
+        reason: `"${key}" is set by the node's storyboard. Leave it out of params and use storyboard or shots.`,
+      };
+    }
     if (info.noControl === true) {
       return {
         ok: false,
@@ -415,7 +446,23 @@ function checkGenerateNode(
   const values = checkParams(chosen, node);
   if (!values.ok) return values;
 
-  const prompt = node.prompt ?? [];
+  const board = chosen.storyboard;
+  if ((node.shots !== undefined || node.storyboard !== undefined) && board === undefined) {
+    return {
+      ok: false,
+      reason: `"${model}" takes no storyboard. Leave storyboard and shots out, or propose a model that takes one.`,
+    };
+  }
+  if (node.shots !== undefined && node.storyboard !== undefined) {
+    return {
+      ok: false,
+      reason: `Give either storyboard "auto" (the model splits the prompt) or shots (each written out), not both.`,
+    };
+  }
+
+  // Every segment that can carry a mark, in the one order the card and the
+  // canvas pair marks by: the main prompt, then each shot.
+  const prompt = proposalMarkSegments(node);
   // Two ways the reader's material reaches a generation: the reference pool,
   // which an edge feeds, and a slot on the panel's toolbar, which the reader
   // fills by clicking any node of that kind anywhere on the canvas. Which one
@@ -527,7 +574,21 @@ function checkGenerateNode(
   // Measured once and reported from the same string: a sentence quoting the
   // unsubstituted length names a number below the cap it just refused on, and
   // tells the model to shorten a prompt that holds none of those characters.
-  const measured = measuredPrompt(prompt, pointed);
+  // The pointed nodes run across the main prompt and then each shot, so each
+  // part is measured with the slice of them its own ref marks land on.
+  const refsIn = (segments: readonly PromptSegment[]): number =>
+    segments.filter((segment) => segment.slot?.kind === "ref").length;
+  let taken = refsIn(node.prompt ?? []);
+  const measured = measuredPrompt(node.prompt ?? [], pointed.slice(0, taken));
+  const shots = (node.shots ?? []).map((shot) => {
+    const from = taken;
+    taken += refsIn(shot.prompt);
+    return { text: measuredPrompt(shot.prompt, pointed.slice(from, taken)), duration: shot.duration };
+  });
+  const totalParam = board?.totalParam;
+  const total = totalParam === undefined
+    ? undefined
+    : Number(node.params?.[totalParam] ?? chosen.params[totalParam]?.default);
   const verdict = evaluateExecute({
     promptText: measured,
     model,
@@ -535,7 +596,26 @@ function checkGenerateNode(
     isSubmitting: false,
     promptRequired: chosen.takesPrompt,
     ...(chosen.maxInputChars === undefined ? {} : { maxInputChars: chosen.maxInputChars }),
+    ...(node.shots !== undefined && total !== undefined
+      ? {
+          storyboard: {
+            shots,
+            total,
+            ...(board?.maxShots === undefined ? {} : { maxShots: board.maxShots }),
+            ...(board?.maxChars === undefined ? {} : { maxChars: board.maxChars }),
+          },
+        }
+      : {}),
   });
+  const storyboardReason = {
+    "storyboard-shot-empty": `Shot ${String(verdict?.shot)} writes nothing. Every shot needs its own words.`,
+    "storyboard-too-many": `"${model}" takes at most ${String(verdict?.limit)} shots.`,
+    "storyboard-shot-too-long": `Shot ${String(verdict?.shot)} is longer than the ${String(verdict?.limit)} characters "${model}" takes for one shot. Shorten it.`,
+    "storyboard-duration-mismatch": `The shots add up to ${String(verdict?.seconds?.shots)} seconds and ${String(totalParam)} is ${String(verdict?.seconds?.total)}. Make them match.`,
+  } as const;
+  if (verdict !== null && verdict.refusal in storyboardReason) {
+    return { ok: false, reason: storyboardReason[verdict.refusal as keyof typeof storyboardReason] };
+  }
   if (verdict?.refusal === "prompt-missing" || verdict?.refusal === "style-missing") {
     return {
       ok: false,

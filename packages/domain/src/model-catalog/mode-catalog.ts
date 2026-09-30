@@ -8,11 +8,13 @@ import {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   paramValues,
+  storyboardSpec,
   type ControlGate,
   type GenerationNodeType,
   type ModelEntry,
   type ParamDescriptor,
   type ReferenceKind,
+  type StoryboardSpec,
 } from "@breatic/shared";
 
 import { materialCount } from "@domain/model-catalog/material-count.js";
@@ -131,6 +133,11 @@ export interface ParamInfo {
    * presented as a field to fill it has the reader looking for a control that
    * is not there.
    */
+  /**
+   * Filled from the node's storyboard (#2218): a proposal reaches it through
+   * its `storyboard` and `shots`, never through `params`.
+   */
+  fromStoryboard?: true;
   noControl?: true;
   /**
    * What has to hold before setting this counts for anything.
@@ -188,6 +195,11 @@ export interface ModelInfo {
   alsoServes?: string[];
   /** Its parameters, keyed by the name the node stores them under. */
   params: Record<string, ParamInfo>;
+  /**
+   * The storyboard it takes (#2218), for a model that declares one: how many
+   * shots, how long each may be written, and what their seconds add up to.
+   */
+  storyboard?: StoryboardSpec;
 }
 
 /** What one node can do in one mode: the models, or why there are none. */
@@ -396,6 +408,7 @@ function projectParam(
     ...(by === "canvas" && spec.fill === "pool" ? { fromReferencePool: true as const } : {}),
     ...(by === "canvas" && spec.optional === true ? { optional: true as const } : {}),
     ...(by === "nothing" ? { noControl: true as const } : {}),
+    ...(spec.fill === "storyboard" ? { fromStoryboard: true as const } : {}),
     ...(gate !== undefined ? { gate } : {}),
     default: spec.default,
     what: oneLine(spec.description ?? ""),
@@ -478,6 +491,7 @@ export function modelsForMode(
       const reached = Object.entries(entry.params).map(
         ([name, spec]) => [name, spec, reachedBy(spec, mode)] as const,
       );
+      const storyboard = storyboardSpec(entry.params);
       return {
       name: entry.name,
       displayName: entry.display_name,
@@ -491,6 +505,7 @@ export function modelsForMode(
         : {}),
       takesPrompt: entry.takes_prompt,
       ...(others.length > 0 ? { alsoServes: others } : {}),
+      ...(storyboard ? { storyboard } : {}),
       params: Object.fromEntries(
         reached
           // A carrier field this mode does not use belongs to another mode of

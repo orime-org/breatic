@@ -48,6 +48,7 @@ describe("what a model says about its storyboard", () => {
     expect(storyboardSpec(kling)).toEqual({
       shotsParam: "multi_prompt",
       tierParam: "shot_type",
+      totalParam: "duration",
       maxShots: 6,
       maxChars: 512,
     });

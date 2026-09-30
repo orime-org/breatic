@@ -62,6 +62,20 @@ function renderPrice(price: CreditEstimate): string {
 }
 
 /**
+ * What a model's storyboard lets a proposal do, for a model that has one.
+ * @param model - The model to describe.
+ * @returns A sentence to append to its line, or the empty string.
+ */
+function renderStoryboard(model: PricedModelInfo): string {
+  const board = model.storyboard;
+  if (!board) return "";
+  const shots = board.maxShots !== undefined ? `at most ${board.maxShots} shots` : "shots";
+  const chars = board.maxChars !== undefined ? `, each at most ${board.maxChars} characters` : "";
+  const total = board.totalParam !== undefined ? `, whole seconds adding up to ${board.totalParam}` : "";
+  return ` Takes a storyboard: set storyboard "auto" to let it split the prompt into shots, or give shots (${shots}${chars}${total}) to write each one, leaving prompt out.`;
+}
+
+/**
  * One model rendered for the model to read.
  * @param model - The model to describe.
  * @returns Its name, what it is for, what it costs, and its parameters.
@@ -81,7 +95,7 @@ function renderModel(model: PricedModelInfo): string {
   // whose own prose calls itself quick reads as two timings far apart; named as
   // the ceiling, the two sit inside one another.
   const beyond = Object.entries(model.params)
-    .filter(([, spec]) => spec.noControl)
+    .filter(([, spec]) => spec.noControl && !spec.fromStoryboard)
     .map(([name]) => name);
   // A reader picks a model off this line. A capability its prose sells whose
   // parameter nothing can set is one they cannot have, and the per-parameter
@@ -100,8 +114,8 @@ function renderModel(model: PricedModelInfo): string {
   const routing = shared
     .map((kind) => ` The first ${String(kind)} node wired in fills its ${String(kind)} slot; later ones go to its pool.`)
     .join("");
-  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}`;
-  const params = Object.entries(model.params).map(([name, spec]) => {
+  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderStoryboard(model)}`;
+  const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are
     // how many nodes may be pointed at this one. Every param in the catalog
