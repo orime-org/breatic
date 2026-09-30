@@ -109,7 +109,9 @@ test('asked about a document, reads the guide @needs-model', async () => {
   const used = await toolsUsed(page);
   expect(used, `tools used: ${used.join(', ')}`).toContain('get_product_guide');
   const text = await reply.innerText();
-  expect(text, `the reply: ${text}`).toMatch(/#|Alt\s*\+\s*1|⌥/);
+  // A heading is `#` then a space at the start of a line, or Cmd with
+  // Option / Alt and 1; a bare `#` anywhere else says nothing about headings.
+  expect(text, `the reply: ${text}`).toMatch(/(^|\s)#{1,3}\s|(Alt|Option|⌥)\s*\+?\s*1/m);
 });
 
 test('writes a formula and HTML the way the reply renders them @needs-model', async () => {
@@ -127,6 +129,14 @@ test('writes a formula and HTML the way the reply renders them @needs-model', as
   // HTML in a fence is a code block; HTML in prose would be characters in a
   // paragraph with no block around it.
   await expect(reply.locator('pre code').first()).toContainText('hello');
+  // A formula left in single dollars, even one letter inside a sentence,
+  // reaches the reader as the dollars themselves.
+  const prose = await reply.evaluate((el) => {
+    const copy = el.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('pre, .katex').forEach((n) => n.remove());
+    return copy.innerText;
+  });
+  expect(prose, `the prose: ${prose}`).not.toContain('$');
 });
 
 test('cites a search without listing source addresses @needs-model', async () => {

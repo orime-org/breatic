@@ -49,6 +49,25 @@ function webSource(path: string): string {
   return readFileSync(resolve(import.meta.dirname, "../../../../../web/src", path), "utf8");
 }
 
+/**
+ * Assert each row is named in the text, and the rows appear in the order given.
+ * A row is one or more message ids of which any one may stand for it (the two
+ * words of a lock / unlock toggle); its position is the first one found.
+ * @param text - Where the rows should appear.
+ * @param rows - The rows, in the order the screen shows them.
+ */
+function expectRowsInOrder(text: string, rows: readonly (readonly string[])[]): void {
+  // A regex that stopped matching the web source yields no rows, and an empty
+  // list is trivially in order.
+  expect(rows.length).toBeGreaterThan(0);
+  const at = rows.map((ids) => {
+    const found = ids.map((id) => text.indexOf(`"${t(id)}"`)).filter((i) => i >= 0);
+    return found.length > 0 ? Math.min(...found) : -1;
+  });
+  expect(at, rows.map((ids) => ids.join("|")).join(", ")).not.toContain(-1);
+  expect([...at].sort((x, y) => x - y)).toEqual(at);
+}
+
 /** The guide's own source, where every message id it shows is spelled out. */
 const source = readFileSync(resolve(import.meta.dirname, "..", "product-guide.ts"), "utf8");
 
@@ -89,6 +108,7 @@ describe("what the guide says", () => {
   it("covers every part the reader asks about", () => {
     const text = renderProductGuide();
     for (const heading of [
+      "## The top bar",
       "## Spaces",
       "## The chat panel",
       "## Making nodes",
@@ -105,6 +125,7 @@ describe("what the guide says", () => {
       "## Groups and undo",
       "## Proposal cards",
       "## Document spaces",
+      "## When something is wrong",
     ]) {
       expect(text).toContain(heading);
     }
@@ -155,7 +176,7 @@ describe("what the guide says", () => {
     // prompt the placing had already written.
     const proposals = section("Proposal cards");
     expect(proposals).toMatch(/prompt written/i);
-    expect(proposals).toMatch(/mode and model set/i);
+    expect(proposals).toMatch(/with its mode, model and the settings the proposal chose already set/);
   });
 
   it("says a proposal is grouped only when it places two or more nodes", () => {
@@ -224,7 +245,6 @@ describe("what the guide says", () => {
     const text = renderProductGuide();
     for (const id of [
       "canvas.generatePanel.audioSettings",
-      "canvas.generatePanel.imageParams",
       "canvas.generatePanel.videoParams",
       "canvas.generatePanel.focusCropTag",
       "spaces.document.commands.bold",
@@ -246,55 +266,50 @@ describe("what the guide says", () => {
       "viewportToolbar.zoomResetAria",
       "spaces.document.docMenu.label",
     ]) {
+      // Two ids can share a word; the check is on this id's word, so it only
+      // counts when no id the guide does quote reads the same.
+      if (messageIds().some((quotedId) => t(quotedId) === t(id))) continue;
       expect(text, id).not.toContain(`"${t(id)}"`);
     }
   });
 
-  it("lists a node menu's rows in the order the menu shows them", () => {
-    // Every row id the node menu renders, one row per run of adjacent source
-    // lines: a lock / unlock or node / group pair is one row written as a
-    // ternary over two lines, so only rows are ordered, not the words of one.
+  it("lists the node and group menus' rows in the order the menu shows them", () => {
+    // One row per run of adjacent source lines: a lock / unlock or node / group
+    // pair is one row written as a ternary over two lines.
     const menu = webSource("spaces/canvas/NodeContextMenu.tsx");
     const rows: string[][] = [];
     let last = -2;
     menu.split("\n").forEach((line, n) => {
-      const ids = [...line.matchAll(/'(canvas\.(?:nodeMenu|contextMenu)\.\w+)'/g)].map((m) => m[1] ?? "");
+      const ids = [...line.matchAll(/'(canvas\.(?:nodeMenu|contextMenu|group)\.\w+)'/g)].map((m) => m[1] ?? "");
       if (ids.length === 0) return;
       if (n === last + 1) rows[rows.length - 1]?.push(...ids);
       else rows.push(ids);
       last = n;
     });
+    const groupOnly = (id: string): boolean =>
+      id.startsWith("canvas.group.") || id === "canvas.contextMenu.deleteGroup";
     const menus = section("Node menus");
-    const missing = rows.flat().filter((id) => !menus.includes(`"${t(id)}"`));
-    expect(missing).toEqual([]);
-    // Ordered within the node's own list, which ends where the group's begins;
-    // a word the later sentences repeat must not stand in for a missing row.
-    const own = menus.split("A group's menu")[0] ?? "";
-    const at = rows.map((ids) => {
-      const found = ids.map((id) => own.indexOf(`"${t(id)}"`)).filter((i) => i >= 0);
-      return found.length > 0 ? Math.min(...found) : -1;
-    });
-    expect(at, rows.map((ids) => ids.join("|")).join(", ")).not.toContain(-1);
-    expect([...at].sort((x, y) => x - y)).toEqual(at);
+    // The node's own list ends where the group's begins, so a word a later
+    // sentence repeats cannot stand in for a missing row.
+    const [own = "", rest = ""] = menus.split("A group's menu");
+    const groupSentence = rest.split(". ")[0] ?? "";
+    expectRowsInOrder(own, rows.map((ids) => ids.filter((id) => !groupOnly(id))).filter((ids) => ids.length > 0));
+    // A group's menu starts at Copy; before it are rows only a node has.
+    const fromCopy = rows.slice(rows.findIndex((ids) => ids.includes("canvas.contextMenu.copy")));
+    expectRowsInOrder(groupSentence, fromCopy.map((ids) => (ids.some(groupOnly) ? ids.filter(groupOnly) : ids)));
   });
 
   it("lists the selection menu's rows in the order the menu shows them", () => {
     const menu = webSource("spaces/canvas/SelectionContextMenu.tsx");
-    const ids = [...menu.matchAll(/t\('([\w.]+)'\)/g)].map((m) => m[1] ?? "");
-    const sentence = section("Node menus").split("Right-clicking one of several selected nodes")[1]?.split(". ")[0] ?? "";
-    const at = ids.map((id) => sentence.indexOf(`"${t(id)}"`));
-    expect(at.every((i) => i >= 0), ids.join(",")).toBe(true);
-    expect([...at].sort((x, y) => x - y)).toEqual(at);
+    const ids = [...menu.matchAll(/t\('([\w.]+)'\)/g)].map((m) => [m[1] ?? ""]);
+    const sentence = section("Node menus").split("right-clicking the selection opens")[1]?.split(". ")[0] ?? "";
+    expectRowsInOrder(sentence, ids);
   });
 
   it("names the view bar's buttons by their tooltips, in the bar's order", () => {
     const bar = webSource("pages/project/chrome/viewport-toolbar/ViewportToolbar.tsx");
-    const ids = [...bar.matchAll(/tooltip=\{t\('([\w.]+)'\)\}/g)].map((m) => m[1] ?? "");
-    expect(ids.length).toBeGreaterThan(0);
-    const moving = section("Moving around the canvas");
-    const at = ids.map((id) => moving.indexOf(`"${t(id)}"`));
-    expect(at.every((i) => i >= 0), ids.join(",")).toBe(true);
-    expect([...at].sort((x, y) => x - y)).toEqual(at);
+    const ids = [...bar.matchAll(/tooltip=\{t\('([\w.]+)'\)\}/g)].map((m) => [m[1] ?? ""]);
+    expectRowsInOrder(section("Moving around the canvas"), ids);
   });
 
   it("says the left menu's upload picker lists only what its accept list takes", () => {
@@ -309,11 +324,87 @@ describe("what the guide says", () => {
 
   it("says only the picture and video panels show the no-prompt notice", () => {
     const users = ["spaces/canvas/generate/GeneratePanelContainer.tsx", "spaces/canvas/generate/VideoGeneratePanelContainer.tsx"];
-    for (const path of users) expect(webSource(path)).toContain("PromptNotUsedNotice");
-    expect(webSource("spaces/canvas/generate/AudioGeneratePanelContainer.tsx")).not.toContain("PromptNotUsedNotice");
+    for (const path of users) expect(webSource(path)).toContain("<PromptNotUsedNotice");
+    expect(webSource("spaces/canvas/generate/AudioGeneratePanelContainer.tsx")).not.toContain("<PromptNotUsedNotice");
     const proposals = section("Proposal cards");
     expect(proposals).toMatch(new RegExp(`picture or video panel shows "${t("canvas.generatePanel.promptNotUsed").replace(/\./g, "\\.")}"`));
-    expect(proposals).toMatch(/sound panel shows its prompt box empty/);
+    expect(proposals).toMatch(/a sound panel still shows a box that holds only the proposal's bracketed spots/);
+  });
+
+  it("names the picture panel's settings pill by the word it shows when there is nothing to summarise", () => {
+    // The pill falls back to this word when the model has no values to show,
+    // so a reader with such a model sees it on screen.
+    expect(webSource("spaces/canvas/generate/RatioResolutionPicker.tsx")).toContain(
+      ".join(' · ') || t('canvas.generatePanel.imageParams')",
+    );
+    expect(section("Inside the generation panel")).toContain(
+      `On the picture panel a model with no settings shows the pill as "${t("canvas.generatePanel.imageParams")}"`,
+    );
+  });
+
+  it("says the reader is an editor, since people who can only view get no chat", () => {
+    expect(webSource("pages/project/ProjectPage.tsx")).toContain("collapsed || isViewer ? null");
+    expect(renderProductGuide()).toMatch(/^You are talking to someone who can edit this project/);
+  });
+
+  it("says only a list's own shortcut turns it back to plain text", () => {
+    expect(webSource("spaces/document/document-block-run.ts")).toMatch(
+      /LIST_ROWS[^=]*=\s*new Set<BlockTypeId>\(\[\s*'bullet-list',\s*'ordered-list',\s*'task-list',\s*\]\)/,
+    );
+    const doc = section("Document spaces");
+    expect(doc).toMatch(/Pressing a list's shortcut again on an item of that list turns it back to plain text/);
+    expect(doc).toMatch(/a heading's or code block's own shortcut pressed again changes nothing/);
+  });
+
+  it("says Enter and Shift+Enter swap roles in a code block", () => {
+    const doc = section("Document spaces");
+    expect(doc).toMatch(/In a code block Enter adds a line inside it/);
+    expect(doc).toMatch(/Shift\+Enter there starts a new block below/);
+  });
+
+  it("says a sound panel can mention only connected text", () => {
+    const audio = webSource("spaces/canvas/generate/AudioGeneratePanelContainer.tsx");
+    expect(audio).toContain("referenceKinds={NO_REFERENCE_KINDS}");
+    // Every editor the sound panel draws takes no reference kinds.
+    expect(audio).not.toMatch(/referenceKinds=\{(?!NO_REFERENCE_KINDS\})/);
+    expect(section("Inside the generation panel")).toMatch(/Here only a connected text node can be mentioned/);
+  });
+
+  it("says the X on a connected node's chip deletes the connection", () => {
+    expect(webSource("spaces/canvas/generate/remove-reference-row.ts")).toContain("removeEdge(projectId, spaceId, item.refId)");
+    expect(section("Inside the generation panel")).toMatch(/On a connected node's chip the X deletes that connection from the canvas/);
+  });
+
+  it("says how to put a node into a group and take it out", () => {
+    expect(section("Groups and undo")).toMatch(/Drag a node into an unlocked group to add it: it joins when its centre ends inside/);
+  });
+
+  it("says what a filled slot looks like for each kind", () => {
+    const slots = section("Source slots");
+    expect(slots).toMatch(/A slot holding a picture, or a video with a cover, shows that picture/);
+    expect(slots).toMatch(/a slot holding a sound keeps its icon and name/);
+  });
+
+  it("says locking a space only stops renaming and deleting it", () => {
+    expect(section("Spaces")).toMatch(/Locking a space only stops it being renamed or deleted; what is in it stays editable/);
+  });
+
+  it("says how to send, break a line and stop a reply", () => {
+    expect(webSource("pages/project/chat/ChatComposer.tsx")).toContain("e.key === 'Enter' && !e.shiftKey");
+    const chat = section("The chat panel");
+    expect(chat).toMatch(/Enter sends the message and Shift\+Enter starts a new line/);
+    expect(chat).toMatch(/red square, which stops the reply/);
+  });
+
+  it("names the notice a space shows when it cannot be written to", () => {
+    expect(section("When something is wrong")).toContain(`"${t("spaces.readOnlyNotice")}"`);
+  });
+
+  it("says only the owner can invite", () => {
+    expect(webSource("pages/project/chrome/top-bar/TopBar.tsx")).toContain("role === 'owner' ? <ShareDialog");
+    const bar = section("The top bar");
+    expect(bar).toMatch(/The owner also has a person icon with a plus/);
+    expect(bar).toContain(`"${t("share.inviteButton")}"`);
   });
 
   it("says how to change the mode and the model", () => {
@@ -332,7 +423,7 @@ describe("what the guide says", () => {
     const proposals = section("Proposal cards");
     expect(proposals).toMatch(/a summary of a sentence or two/);
     expect(proposals).toMatch(/a \| between runs that do not feed each other/);
-    expect(proposals).toMatch(/when every generating node uses the same model, a line with that model's name/);
+    expect(proposals).toMatch(/when every generating node uses the same model and you gave a model note, a line with that model's name/);
   });
 
   it("says a slot-bound 📎 spot still has its note on the card", () => {
@@ -342,7 +433,7 @@ describe("what the guide says", () => {
 
   it("says how to indent and outdent in a document", () => {
     const doc = section("Document spaces");
-    expect(webSource("spaces/document/document-tab.ts")).toMatch(/Shift/);
+    expect(webSource("spaces/document/document-tab.ts")).toContain("'Shift-Tab':");
     expect(doc).toMatch(/Tab indents the block under the one above/);
     expect(doc).toMatch(/Shift\+Tab moves it back out/);
   });
@@ -351,10 +442,7 @@ describe("what the guide says", () => {
     const handle = section("Document spaces").split("Hovering a line")[1]?.split("\n")[0] ?? "";
     // The rows in the order the menu's own table lists them.
     const rows = webSource("spaces/document/document-block-menu-rows.ts");
-    const order = [...rows.matchAll(/labelKey: '(spaces\.document\.[\w.]+)'/g)]
-      .map((m) => m[1] ?? "").map((id) => handle.indexOf(`"${t(id)}"`));
-    expect(order.every((at) => at >= 0), order.join(",")).toBe(true);
-    expect([...order].sort((x, y) => x - y)).toEqual(order);
+    expectRowsInOrder(handle, [...rows.matchAll(/labelKey: '(spaces\.document\.[\w.]+)'/g)].map((m) => [m[1] ?? ""]));
   });
 
   it("keeps its hand-written list of creatable types in the create menu's order", () => {
@@ -395,13 +483,26 @@ describe("in the reader's language", () => {
 });
 
 describe("in every language", () => {
-  it("never puts a full stop after a quoted message that already ends its sentence", () => {
-    // A message carrying its own closing mark, followed by the guide's full
-    // stop, reads as a stray second mark in that language.
+  it("never puts punctuation after a quoted message that already ends its sentence", () => {
+    // A message carrying its own closing mark, followed by the guide's own
+    // full stop or comma, reads as a stray second mark in that language.
     for (const locale of ["en", "zh-CN", "zh-TW", "ja", "ko"]) {
       const text = runWithLocale(locale, renderProductGuide);
-      const doubled = text.match(/"[^"\n]*[.。!！?？]"[.。]/g) ?? [];
+      const doubled = text.match(/"[^"\n]*[.。!！?？]"[.。,，;；:：]/g) ?? [];
       expect(doubled, locale).toEqual([]);
+    }
+  });
+});
+
+describe("messages the guide borrows", () => {
+  it("quotes the picture placeholder for video and sound because all three read the same", () => {
+    // The guide names the three empty media nodes with the picture node's
+    // line; that is only true while the video and sound lines match it.
+    for (const locale of ["en", "zh-CN", "zh-TW", "ja", "ko"]) {
+      runWithLocale(locale, () => {
+        expect(t("canvas.nodePlaceholder.video"), locale).toBe(t("canvas.nodePlaceholder.image"));
+        expect(t("canvas.nodePlaceholder.audio"), locale).toBe(t("canvas.nodePlaceholder.image"));
+      });
     }
   });
 });

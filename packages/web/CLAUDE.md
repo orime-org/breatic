@@ -239,6 +239,6 @@ Agent 回答「这个怎么操作」时，唯一的依据是 `packages/domain/sr
 
 指南只写读者**在屏幕上看得见的东西**:引号里的名字必须是屏幕上显示成文字的那几个字(菜单行、按钮上的字、悬停出来的 tooltip),经 `t("…")` 从 locale 读;只在 `aria-label` 或 sr-only 里的名字读者看不见(`title` 悬停时会显示，算看得见)(读屏在范围外),那种控件按外观描述(图标长什么样、在哪)。
 
-自动跟着走的只有两种变化：同一个 key 的文字改了(指南读的就是它)；`@breatic/shared` 的 `canGenerate` / `canConnect` 规则改了(指南运行时读它们)。**其余全靠这条规矩**:控件换用了另一个 key、原来显示的字挪进了 `aria-label`、新增一种能新建的节点类型(同时改 `product-guide.ts` 的 `CREATABLE`)、手势、位置、只有图标的控件、快捷键、菜单顺序 —— 这些变了都没有检查会报。`packages/web/tests/smoke/agent-product-guide.spec.ts` 用真实问题问 Agent、从屏幕上读控件名比对，是跑起来之后的兜底。
+自动跟着走的只有两种变化：同一个 key 的文字改了(指南读的就是它)；`@breatic/shared` 的 `canGenerate` / `canConnect` 规则改了(指南运行时读它们)。`product-guide.test.ts` 读 web 源码比对的几样，改了会红(同时改指南):能新建的节点类型(`node-factory.ts`)、节点 / 编组 / 多选菜单和块菜单的行与顺序、视图栏按钮顺序、左侧上传选择器收的文件类型、哪几个面板显示「不需要提示词」。**其余全靠这条规矩**:控件换用了另一个 key、原来显示的字挪进了 `aria-label`、手势、位置、只有图标的控件、快捷键 —— 这些变了都没有检查会报。`packages/web/tests/smoke/agent-product-guide.spec.ts` 用真实问题问 Agent、从屏幕上读控件名比对，是跑起来之后的兜底。
 
 判定题:**我这次改动，会让 `product-guide.ts` 里哪一句变成假的？** 说不出来就是没查 —— 去读一遍那个文件。**我正要在指南里加一个带引号的名字 —— 它在屏幕上显示成文字吗？** 只在 `aria-label` 里的不算。
