@@ -38,7 +38,7 @@ import {
   buildStorageQuotaExceededMail,
 } from "@server/utils/notification-mail.js";
 import { escapeHtml, type RenderedMail } from "@server/utils/mail-shell.js";
-import { buildSignupCodeMail, buildTokenLinkMail } from "@server/modules/auth/auth-mail.js";
+import { buildSignupCodeMail, buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 
 loadLocales();
 
@@ -127,7 +127,7 @@ async function allMails(locale: string): Promise<Record<string, RenderedMail>> {
     storageFull: buildStorageQuotaExceededMail({
       locale, recipientEmail: "to@example.test", studioName: NAME,
     }),
-    passwordReset: buildTokenLinkMail("password_reset", {
+    passwordReset: buildPasswordResetMail({
       locale, to: "to@example.test", url: LINK, expiresInSeconds: 3600,
     }),
     signupCode: buildSignupCodeMail({

@@ -16,11 +16,8 @@ import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
 
 const SECONDS_PER_HOUR = 3600;
 
-/** Which token mail; also its `server.mail.*` catalog section. */
-export type TokenLinkMailKind = "password_reset";
-
-/** Fields for a token-link mail. */
-export interface TokenLinkMailInput {
+/** Fields for the password-reset mail. */
+export interface PasswordResetMailInput {
   /** The account's language. */
   locale: string;
   to: string;
@@ -34,15 +31,11 @@ export interface TokenLinkMailInput {
  * Build the password-reset mail. The button is labelled with words: Aliyun
  * DirectMail refuses a message whose link text is the bare address
  * ("554 Reject by content spam").
- * @param kind - Which token mail (the password reset).
  * @param input - The account's language and address, the token link, and its lifetime.
  * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
-export function buildTokenLinkMail(
-  kind: TokenLinkMailKind,
-  input: TokenLinkMailInput,
-): Promise<RenderedMail> {
-  const section = `server.mail.${kind}`;
+export function buildPasswordResetMail(input: PasswordResetMailInput): Promise<RenderedMail> {
+  const section = "server.mail.password_reset";
   return renderMail(input.locale, {
     to: input.to,
     subject: { key: `${section}.subject` },

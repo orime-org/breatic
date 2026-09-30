@@ -122,7 +122,6 @@ auth.post("/register", rateLimitFor("register"), validate("json", registerSchema
       locale: getActiveLocale(),
     });
     setSignupTicketCookie(c, sent.ticket, sent.expiresInSeconds);
-    logger.info({ email }, "signup_code_sent");
     return c.json({
       data: {
         status: "code_sent",
@@ -472,7 +471,5 @@ auth.post(
     });
   },
 );
-
-// ── Email verification (PR-a task 9) ─────────────────────────────
 
 export { auth as authRoute };
