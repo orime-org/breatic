@@ -10,7 +10,13 @@ import type {
   FocusImage,
   NodeType,
 } from '@breatic/shared';
-import { canGenerate, CANVAS_NODES_KEY } from '@breatic/shared';
+import {
+  AUDIO_GENERATION_MODES,
+  CANVAS_NODES_KEY,
+  GENERATION_NODE_MODES,
+  VIDEO_GENERATION_MODES,
+  canGenerate,
+} from '@breatic/shared';
 
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -454,15 +460,21 @@ export function useCanvasSpace(
  * `body` — a text node's shared fragment, what its editor binds to (#1774).
  * Seeded non-empty, because the editor's schema wants at least one block.
  *
- * `prompt` — the Generate prompt fragment, on the modalities that offer
- * Generate (#1880). Seeded empty; {@link getPromptFragment} only reads.
+ * `prompts` — one Generate prompt fragment per mode, on the modalities that
+ * offer Generate (#1880, #2218). Seeded empty; {@link getPromptFragment} only
+ * reads.
  *
- * `lyrics` — the words to sing, a second fragment beside the style brief on
- * audio nodes (#1960). Seeded empty; {@link getLyricsFragment} only reads.
+ * `lyrics` — one lyrics fragment per audio mode, the words to sing beside the
+ * style brief (#1960, #2218). Seeded empty; {@link getLyricsFragment} only
+ * reads.
+ *
+ * `storyboards` — one storyboard per video mode, off with no shots (#2218);
+ * `node-storyboard.ts` reads and edits it.
  * @param data - The plain wire data fields to write.
  * @param type - The node's modality, which decides which containers are
- *   seeded: `body` for text, `prompt` for generate-capable modalities,
- *   `lyrics` for audio, and `replies` for an annotation.
+ *   seeded: `body` for text, `prompts` for generate-capable modalities,
+ *   `lyrics` for audio, `storyboards` for video, and `replies` for an
+ *   annotation.
  * @returns A Y.Map populated with the defined data fields.
  */
 function buildDataMap(
@@ -517,11 +529,26 @@ function buildDataMap(
   // race the header describes, observed rather than reasoned about. Only the
   // modalities that offer Generate get one; on a group or a sticky it would be
   // a container nothing ever reads.
-  if (canGenerate(type)) map.set('prompt', new Y.XmlFragment());
-  // Audio alone, since the two music modes are the only place words are asked
-  // for — the same "no container nothing reads" rule the prompt follows, just
-  // with a narrower answer.
-  if (type === 'audio') map.set('lyrics', new Y.XmlFragment());
+  // One prompt per mode (#2218): switching mode switches to that mode's own
+  // words, and every mode's container is born here for the #1880 reason.
+  if (canGenerate(type)) {
+    map.set('prompts', fragmentsFor(GENERATION_NODE_MODES[type as keyof typeof GENERATION_NODE_MODES] ?? []));
+  }
+  // Every audio mode gets lyrics: which modes' models take them is a catalog
+  // fact this birth does not know, and a container born later would race.
+  if (type === 'audio') map.set('lyrics', fragmentsFor(AUDIO_GENERATION_MODES));
+  // One storyboard per video mode, off with no shots (#2218). Each shot is
+  // inserted whole with its own fragment, so concurrent adds both survive.
+  if (type === 'video') {
+    const boards = new Y.Map<Y.Map<unknown>>();
+    for (const mode of VIDEO_GENERATION_MODES) {
+      const board = new Y.Map<unknown>();
+      board.set('kind', 'off');
+      board.set('shots', new Y.Array<Y.Map<unknown>>());
+      boards.set(mode, board);
+    }
+    map.set('storyboards', boards);
+  }
   // Same reasoning as the crops container, and the same race #1880 recorded:
   // two people replying to an annotation that has none would each create a
   // Y.Array under this key and the merge would keep one, taking a reply with
@@ -530,6 +557,17 @@ function buildDataMap(
   // the clipboard, and every other birth path builds its data fresh.
   if (type === 'annotation') map.set('replies', new Y.Array<Y.Map<unknown>>());
   return map;
+}
+
+/**
+ * One empty fragment per mode, keyed by mode.
+ * @param modes - The modes to seed.
+ * @returns The map of fragments.
+ */
+function fragmentsFor(modes: readonly string[]): Y.Map<Y.XmlFragment> {
+  const out = new Y.Map<Y.XmlFragment>();
+  for (const mode of modes) out.set(mode, new Y.XmlFragment());
+  return out;
 }
 
 /**
@@ -1348,18 +1386,38 @@ export function ensureTextBody(
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the node whose prompt fragment to read.
+ * @param mode - The mode whose prompt to read (#2218).
  * @returns The prompt Y.XmlFragment, or null when there is none.
  */
 export function getPromptFragment(
   projectId: string,
   spaceId: string,
   nodeId: string,
+  mode: string,
 ): Y.XmlFragment | null {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const data = nodeDataMap(doc, nodeId);
-  if (!data) return null;
-  const existing = data.get('prompt');
-  return existing instanceof Y.XmlFragment ? existing : null;
+  return modeFragment(projectId, spaceId, nodeId, 'prompts', mode);
+}
+
+/**
+ * The fragment one mode keeps under a per-mode map of a node.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The node.
+ * @param key - `prompts` or `lyrics`.
+ * @param mode - The mode.
+ * @returns The fragment, or null when the node or that mode has none.
+ */
+function modeFragment(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  key: 'prompts' | 'lyrics',
+  mode: string,
+): Y.XmlFragment | null {
+  const data = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId);
+  const byMode = data?.get(key);
+  const fragment = byMode instanceof Y.Map ? byMode.get(mode) : undefined;
+  return fragment instanceof Y.XmlFragment ? fragment : null;
 }
 
 /**
@@ -1390,25 +1448,23 @@ export function readNodeFragments(
  * Reads a node's lyrics fragment (#1960), the collaborative text behind the
  * music modes' second editor.
  *
- * Seeded with the node the way `prompt` is, and read-only here for the same
+ * Seeded with the node the way `prompts` is, and read-only here for the same
  * reason: minting one on demand is what let two clients each create their own
  * and lose one outright (#1880). Null for a node that is missing, one that is
  * not an audio node, or one older than this field.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the node whose lyrics fragment to read.
+ * @param mode - The mode whose lyrics to read (#2218).
  * @returns The lyrics Y.XmlFragment, or null when there is none.
  */
 export function getLyricsFragment(
   projectId: string,
   spaceId: string,
   nodeId: string,
+  mode: string,
 ): Y.XmlFragment | null {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const data = nodeDataMap(doc, nodeId);
-  if (!data) return null;
-  const existing = data.get('lyrics');
-  return existing instanceof Y.XmlFragment ? existing : null;
+  return modeFragment(projectId, spaceId, nodeId, 'lyrics', mode);
 }
 
 
