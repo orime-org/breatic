@@ -52,7 +52,12 @@ async function openOn(
   const doc = new Y.Doc();
   const awareness = new Awareness(doc);
   const rendered = renderHook(() =>
-    useDocumentEditor({ doc, name, caretProvider: { awareness } }),
+    useDocumentEditor({
+      doc,
+      name,
+      caretProvider: { awareness },
+      readWho: () => ({ role: 'editor', viewerId: 'u1' }),
+    }),
   );
   await waitFor(() => expect(rendered.result.current).not.toBeNull());
   const handle = rendered.result.current!;
@@ -82,6 +87,7 @@ describe('the document placeholder', () => {
         doc,
         name: 'project-p/document-locale',
         caretProvider: { awareness },
+        readWho: () => ({ role: 'editor', viewerId: 'u1' }),
       }),
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());

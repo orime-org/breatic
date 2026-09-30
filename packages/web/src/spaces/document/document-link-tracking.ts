@@ -80,7 +80,7 @@ interface SyncPluginState {
  * @returns The three things a position conversion needs, or null when this
  *   editor is not bound to a shared document.
  */
-function binding(editorState: EditorState): {
+export function syncBindingOf(editorState: EditorState): {
   doc: Y.Doc;
   type: Y.XmlFragment;
   mapping: ProsemirrorMapping;
@@ -105,7 +105,7 @@ export function trackLink(
   editorState: EditorState,
   span: { from: number; to: number },
 ): TrackedLink | null {
-  const bound = binding(editorState);
+  const bound = syncBindingOf(editorState);
   if (!bound) return null;
   return {
     start: absolutePositionToRelativePosition(
@@ -166,7 +166,7 @@ export function resolveTrackedSpan(
   editorState: EditorState,
   tracked: TrackedLink,
 ): { from: number; to: number } | null {
-  const bound = binding(editorState);
+  const bound = syncBindingOf(editorState);
   if (!bound) return null;
   const from = relativePositionToAbsolutePosition(
     bound.doc,

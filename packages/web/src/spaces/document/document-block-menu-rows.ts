@@ -44,9 +44,9 @@ export interface BlockMenuRow {
 /**
  * The seven rows, in the demo's order.
  *
- * Comment is a row with nothing behind it yet and is drawn like the bubble
- * bar's comment entry already is (A10) — the shape is whole from the first
- * slice, and what it must not do is look usable.
+ * Comment opens a draft over the hovered row (A2), and reads unavailable on
+ * a row with no words in it (A3) — the same two answers the bubble bar's own
+ * comment entry gives.
  *
  * Alignment and colour open what the bubble bar's own two slots open, down to
  * the rows and the panel, and each carries the icon the demo draws for it.

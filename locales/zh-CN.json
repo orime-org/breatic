@@ -1074,7 +1074,7 @@
         "strike": "删除线",
         "underline": "下划线",
         "code": "行内代码",
-        "comment": "评论",
+        "comment": "批注",
         "ai": "AI",
         "comingLabel": "{name}（未开放）",
         "link": "链接",
@@ -1105,6 +1105,27 @@
         "ai_illustrate": "据这段生成示意图",
         "ai_custom": "自定义要求…"
       },
+      "comment": {
+        "placeholder": "写一条批注…",
+        "targetGone": "原文已被改动或删除。",
+        "cannotWrite": "你已不能在这里写了。",
+        "railTitle": "批注",
+        "filterOpen": "未解决",
+        "filterAll": "全部",
+        "closeRail": "关闭批注栏",
+        "empty": "这篇文档还没有批注。选中正文里的文字，或者点行左边的抓手。",
+        "nothingUnresolved": "没有未解决的批注。",
+        "writeFailed": "这次改动没能保存。",
+        "unknownAuthor": "未知",
+        "folded": "还有 {count} 条",
+        "reply": "回复…",
+        "save": "保存",
+        "cancel": "取消",
+        "resolve": "解决",
+        "reopen": "重新打开",
+        "deleteThread": "删除",
+        "deleteReply": "删除这条回复"
+      },
       "schemaOutdated": {
         "headline": "文档编辑器已更新",
         "body": "这个页面用的还是旧版本，继续编辑会破坏别人写的内容。",
@@ -1117,7 +1138,10 @@
         "label": "整篇文档的命令",
         "saveSnapshot": "保存快照",
         "restoreSnapshot": "恢复快照",
-        "notOpenYet": "未开放"
+        "notOpenYet": "未开放",
+        "comments": "批注",
+        "commentsUnresolved": "{count} 条未解决",
+        "commentsNone": "无"
       },
       "link": {
         "placeholder": "粘贴或输入网址",

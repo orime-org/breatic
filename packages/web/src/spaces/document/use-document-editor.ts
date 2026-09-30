@@ -19,6 +19,7 @@ import type * as Y from 'yjs';
 
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
+import type { DocumentCommentAuthInput } from '@web/spaces/document/document-comment-auth';
 import {
   getDocumentEditor,
   type DocumentEditorHandle,
@@ -36,6 +37,13 @@ export interface UseDocumentEditorOptions {
    * carets and rebuilt later.
    */
   caretProvider: { awareness: unknown } | null;
+  /**
+   * Who is reading, asked afresh for every question the comment store puts.
+   *
+   * Must read live values rather than close over them: the editor is built
+   * once per document, and a role can change while it is open (A17).
+   */
+  readWho: () => DocumentCommentAuthInput;
   /** False puts the editor in read-only mode (viewer role, history preview). */
   editable?: boolean;
   /**
@@ -71,6 +79,7 @@ export interface UseDocumentEditorOptions {
  * @param options.doc - The Space's Y.Doc.
  * @param options.name - The canonical document name (cache key).
  * @param options.caretProvider - Provider whose awareness carries carets.
+ * @param options.readWho - Who is reading, read afresh per comment-auth answer.
  * @param options.editable - False for read-only.
  * @param options.enabled - False builds no editor. Destroying one that exists belongs to `DocumentInterceptGuard`, not here.
  * @returns The editor and its undo manager, or null while the wiring is absent.
@@ -79,6 +88,7 @@ export function useDocumentEditor({
   doc,
   name,
   caretProvider,
+  readWho,
   editable = true,
   enabled = true,
 }: UseDocumentEditorOptions): DocumentEditorHandle | null {
@@ -101,6 +111,7 @@ export function useDocumentEditor({
         ? getDocumentEditor(doc, name, {
           caretProvider,
           resolveCollaboratorName: collaboratorNames?.resolve,
+          readWho,
           editable,
         })
         : null,
@@ -108,6 +119,9 @@ export function useDocumentEditor({
     // wiring, and the cache ignores its inputs on a hit. Later changes go
     // through `setEditable` in the effect below, which must not rebuild the
     // editor — that would discard the undo stack and the selection.
+    // `readWho` is left out for the same reason: it is construction-time
+    // wiring that reads live values, so a caller rebuilding the function has
+    // nothing to tell the editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [doc, name, caretProvider, collaboratorNames?.resolve, enabled],
   );

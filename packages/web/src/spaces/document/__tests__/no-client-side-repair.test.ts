@@ -103,6 +103,7 @@ describe('opening a document does not write to it', () => {
         doc,
         name: NAME,
         caretProvider: { awareness },
+        readWho: () => ({ role: 'editor', viewerId: 'u1' }),
         editable,
       }),
     );
@@ -270,6 +271,7 @@ describe('editability is settled before the first paint', () => {
   function resolve(editable: boolean): boolean {
     return getDocumentEditor(doc, NAME, {
       caretProvider: { awareness },
+      readWho: () => ({ role: 'editor', viewerId: 'u1' }),
       editable,
     }).editor.isEditable;
   }
@@ -332,6 +334,7 @@ describe('the setEditable paths write nothing (#108)', () => {
   function open(editable: boolean): ReturnType<typeof getDocumentEditor> {
     const handle = getDocumentEditor(doc, NAME, {
       caretProvider: { awareness },
+      readWho: () => ({ role: 'editor', viewerId: 'u1' }),
       editable,
     });
     const container = document.createElement('div');

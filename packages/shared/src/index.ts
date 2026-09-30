@@ -327,6 +327,7 @@ export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export {
   documentBodyFragment,
+  documentCommentThreads,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
 

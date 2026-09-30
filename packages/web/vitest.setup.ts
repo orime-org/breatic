@@ -147,6 +147,7 @@ if (typeof Element !== 'undefined') {
   Element.prototype.releasePointerCapture ??= () => {};
   Element.prototype.setPointerCapture ??= () => {};
   Element.prototype.scrollIntoView ??= () => {};
+  Element.prototype.scrollTo ??= () => {};
 }
 
 // jsdom lacks layout APIs on non-Element nodes AND on Range. ProseMirror's

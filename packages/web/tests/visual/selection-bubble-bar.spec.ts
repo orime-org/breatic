@@ -16,7 +16,6 @@ import { test, expect, type Locator } from 'playwright/test';
 
 import {
   GAP_FROM_SELECTION_PX,
-  HOVER_TRANSITION_MS,
   bodyViewportTop,
   hoverOpenSlot,
   openFreshDocument,
@@ -135,7 +134,7 @@ for (const scheme of ['light', 'dark'] as const) {
           ariaDisabled: n.getAttribute('aria-disabled'),
         };
       };
-      const comment = control('doc-bubble-coming-comment');
+      const comment = control('doc-bubble-tool-comment');
       const ai = control('doc-bubble-ai');
       // A5：最上层命中的真的是浮出条自己——比「它在 DOM 里」强，能同时排除
       // 被裁掉一半和被别的东西盖住。
@@ -210,14 +209,13 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(sep.marginRight).toBe('3px');
       expect(sep.background).toBe(sep.tokenBorder);
     }
-    // 评论那一个照 `ComingTool` 的既有表示画：图标按钮（`.bubble-btn`，28 宽），
-    // 变暗、不可点，看得出它的功能还没做（#18）。
+    // 评论那一个是普通图标按钮（`.bubble-btn`，28 宽），按下去开一条批注草稿
+    // （#18 A1）。
     expect(geo.comment).toMatchObject({
       width: 28,
       height: 28,
-      opacity: '0.5',
-      cursor: 'not-allowed',
-      ariaDisabled: 'true',
+      opacity: '1',
+      ariaDisabled: null,
     });
     // AI 那格是普通控件：hover 就展开菜单，菜单里每一项照 demo 画，按下去在
     // 控制台留一行（user 2026-08-26）。demo 给它的是带文字和箭头的下拉样子
@@ -305,88 +303,6 @@ test('keeps the side it came up on as its line scrolls to the top (E3)', async (
   expect(after.gap).toBe(8);
 });
 
-// #902 A10：图标按钮上没有地方摆「未开放」那个徽章，所以理由挂在 tooltip 和
-// 可访问名上。jsdom 打不开 Radix 的 tooltip（它走 pointer 事件），只有真引擎
-// 答得了这一条。
-//
-// 只悬停一个入口：两个走的是同一个 `ComingTool`，差别只在传进去的 props，而
-// 连着悬停两个会撞上换 trigger 那一刻的中间态——新的已经开了、旧的还在关闭动
-// 画里，两个 `[role=tooltip]` 同时挂在 DOM 上。那个中间态跟这条要验的事无关。
-test('未开放的入口悬停时说得出自己为什么不能用', async ({ page }) => {
-  await openFreshDocument(page);
-  await page.keyboard.type('the quick brown fox');
-  await selectFirstParagraph(page);
-  await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible();
-
-  const entry = page.getByTestId('doc-bubble-coming-comment');
-  const box = (await entry.boundingBox())!;
-  // 分步移动，不用 `.hover()`：后者是瞬移，Radix 靠 pointer 事件判断指针到了
-  // 哪儿，一个 pointermove 都收不到时它不开。真人的鼠标是连着走的。
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, {
-    steps: 12,
-  });
-
-  const tip = page.getByRole('tooltip');
-  await expect(tip).toBeVisible({ timeout: 5_000 });
-  expect(await tip.textContent()).toBe(await entry.getAttribute('aria-label'));
-
-  // 指针就停在入口上，顺带验它没有亮起来。ghost 变体自带的悬停高亮被两个
-  // `hover:` 类关掉了，而那两个类只有真引擎跑得出效果——jsdom 不套 CSS。
-  //
-  // Both assertions here have to outlast {@link HOVER_TRANSITION_MS}: a
-  // computed background only leaves its starting value once a frame has
-  // rendered, and `DEBUG=pw:api` measured 4 to 6 milliseconds between a
-  // pointer move returning and the style being read — inside one frame, which
-  // reads the colour from before the hover. This case went red four times in
-  // five before the wait (measured 2026-08-24; it does the same on main).
-  //
-  // The positive assertion below polls for the settled colour. This one can
-  // only wait: it expects the background NOT to change, and a transition that
-  // never happens fires no `transitionend` and offers nothing to poll for.
-  await page.waitForTimeout(HOVER_TRANSITION_MS * 2);
-  expect(
-    await entry.evaluate((n) => getComputedStyle(n).backgroundColor),
-  ).toBe('rgba(0, 0, 0, 0)');
-  const lit = page.getByTestId('doc-bubble-tool-bold');
-  const litBox = (await lit.boundingBox())!;
-  await page.mouse.move(litBox.x + litBox.width / 2, litBox.y + litBox.height / 2, {
-    steps: 12,
-  });
-  // 对照：同一条上能按的按钮，同样的指针动作下底色确实变了。没有这一半，上面
-  // 那条断言对一个根本没收到悬停的元素也成立。
-  await expect
-    .poll(() => lit.evaluate((n) => getComputedStyle(n).backgroundColor), {
-      timeout: 5_000,
-    })
-    .not.toBe('rgba(0, 0, 0, 0)');
-
-  // 按下去什么都不该发生。`aria-disabled` 不拦点击——那正是它跟 HTML
-  // `disabled` 的区别：入口留在可访问性树里，读得出来，也点得到。它什么都不做
-  // 是因为身上没挂任何处理器；这条断言守的就是这一点，等后面的切片给它接上真
-  // 功能时它会红，那时候正该红。
-  const html = (): Promise<string> =>
-    page.evaluate(
-      () =>
-        document.querySelector('[data-testid="document-space"] .ProseMirror')
-          ?.innerHTML ?? '',
-    );
-  //
-  // `force` 是必须的：playwright 把 `aria-disabled` 读成「未启用」，它自己的
-  // 可操作性检查会一直等下去。真人的鼠标不走那道检查。
-  const before = await html();
-  await entry.click({ force: true });
-  await page.getByTestId('doc-bubble-ai').click({ force: true });
-  expect(await html()).toBe(before);
-
-  // 这套用例共享同一个 page，而后面几条的前提是「鼠标不在正文里」。上面的悬停
-  // 会把指针留在条上，所以离开时把它放回正文外，跟这条开始时一样。
-  await page.mouse.move(8, 8);
-});
-
-// B1 and A5/A6 in a real browser. Every hover menu on the bar had been opened
-// only in jsdom, where no stylesheet loads and Radix's own pointer handling
-// runs against a layout that does not exist — so what a reader sees on
-// hovering one of these four had never been measured.
 test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台', async ({ page }) => {
   await openFreshDocument(page);
   await page.keyboard.type('the quick brown fox jumps');

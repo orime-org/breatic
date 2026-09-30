@@ -30,7 +30,7 @@ export const DEFAULT_LINK_PROTOCOL = 'https';
  * The anchor a link in the body renders as.
  *
  * The attribute is BlockNote's, and its own click handler finds a link by the
- * same one (`.../Link/helpers/clickHandler.ts:33-35`), so the press that opens
+ * same one (upstream's `Link/helpers/clickHandler.ts`), so the press that opens
  * an address matches whatever that handler matches.
  *
  * The press is the only route that reaches a link through the DOM. The pointer

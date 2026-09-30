@@ -55,7 +55,7 @@ export const MIXED_ALIGNMENT = 'mixed';
  * What the slot reads where alignment reaches no block under the selection.
  *
  * The slot is drawn grey and its menu does not open, the treatment
- * `document-coming-tool.tsx` defines for a control that cannot act.
+ * `document-unavailable-control.ts` defines for a control that cannot act.
  */
 export const NO_ALIGNABLE_BLOCK = 'none';
 

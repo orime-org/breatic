@@ -1105,6 +1105,27 @@
         "ai_illustrate": "この段落から図を作る",
         "ai_custom": "カスタム指示…"
       },
+      "comment": {
+        "placeholder": "コメントを書く",
+        "targetGone": "対象の文章は変更または削除されました。",
+        "cannotWrite": "ここには書き込めなくなりました。",
+        "railTitle": "コメント",
+        "filterOpen": "未解決",
+        "filterAll": "すべて",
+        "closeRail": "コメント欄を閉じる",
+        "empty": "このドキュメントにはまだコメントがありません。本文を選択するか、行の左からコメントを追加できます。",
+        "nothingUnresolved": "未解決のコメントはありません。",
+        "writeFailed": "この変更を保存できませんでした。",
+        "unknownAuthor": "不明",
+        "folded": "他 {count} 件",
+        "reply": "返信…",
+        "save": "保存",
+        "cancel": "キャンセル",
+        "resolve": "解決",
+        "reopen": "再開",
+        "deleteThread": "削除",
+        "deleteReply": "この返信を削除"
+      },
       "schemaOutdated": {
         "headline": "ドキュメントエディターが更新されました",
         "body": "このページは古いバージョンで動作しており、ここで編集すると他の人が書いた内容を壊してしまいます。",
@@ -1117,7 +1138,10 @@
         "label": "ドキュメント全体の操作",
         "saveSnapshot": "スナップショットを保存",
         "restoreSnapshot": "スナップショットを復元",
-        "notOpenYet": "未提供"
+        "notOpenYet": "未提供",
+        "comments": "コメント",
+        "commentsUnresolved": "未解決 {count} 件",
+        "commentsNone": "なし"
       },
       "link": {
         "placeholder": "URL を貼り付けるか入力",

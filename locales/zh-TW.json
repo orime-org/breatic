@@ -1074,7 +1074,7 @@
         "strike": "刪除線",
         "underline": "底線",
         "code": "行內程式碼",
-        "comment": "評論",
+        "comment": "批註",
         "ai": "AI",
         "comingLabel": "{name}（未開放）",
         "link": "連結",
@@ -1105,6 +1105,27 @@
         "ai_illustrate": "依這段產生示意圖",
         "ai_custom": "自訂要求…"
       },
+      "comment": {
+        "placeholder": "寫一條批註…",
+        "targetGone": "原文已被改動或刪除。",
+        "cannotWrite": "你已無法在這裡書寫。",
+        "railTitle": "批註",
+        "filterOpen": "未解決",
+        "filterAll": "全部",
+        "closeRail": "關閉批註欄",
+        "empty": "這份文件還沒有批註。選取正文裡的文字，或者點行左邊的握把。",
+        "nothingUnresolved": "沒有未解決的批註。",
+        "writeFailed": "這次改動沒能儲存。",
+        "unknownAuthor": "未知",
+        "folded": "還有 {count} 則",
+        "reply": "回覆…",
+        "save": "儲存",
+        "cancel": "取消",
+        "resolve": "解決",
+        "reopen": "重新開啟",
+        "deleteThread": "刪除",
+        "deleteReply": "刪除這條回覆"
+      },
       "schemaOutdated": {
         "headline": "文件編輯器已更新",
         "body": "這個頁面用的還是舊版本，繼續編輯會破壞別人寫的內容。",
@@ -1117,7 +1138,10 @@
         "label": "整篇文件的命令",
         "saveSnapshot": "儲存快照",
         "restoreSnapshot": "還原快照",
-        "notOpenYet": "未開放"
+        "notOpenYet": "未開放",
+        "comments": "批註",
+        "commentsUnresolved": "{count} 條未解決",
+        "commentsNone": "無"
       },
       "link": {
         "placeholder": "貼上或輸入網址",

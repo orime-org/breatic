@@ -39,12 +39,21 @@ import type * as Y from 'yjs';
 
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
+import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
 import { documentDragDropExtension } from '@web/spaces/document/document-drag-drop';
+import { documentCommentMarkExtension } from '@web/spaces/document/document-comment-mark';
+import {
+  documentCommentsExtension,
+  type DocumentCommentsOptions,
+} from '@web/spaces/document/document-comment-thread-store';
+import { documentCommentDraftRange } from '@web/spaces/document/document-comment-draft-range';
+import { documentCommentPasteExtension } from '@web/spaces/document/document-comment-paste';
+import { documentCommentSelection } from '@web/spaces/document/document-comment-selection';
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 
@@ -54,6 +63,13 @@ export interface DocumentEditorOptions {
   readonly fragment: Y.XmlFragment;
   /** Extensions to register, the cross-version fallbacks among them. */
   readonly extensions?: readonly ExtensionFactoryInstance[];
+  /**
+   * Wires comments to this document, or leaves the body without them.
+   *
+   * Named rather than passed among `extensions` because it decides which of
+   * two registrars brings the comment mark — see {@link commentWiring}.
+   */
+  readonly comments?: DocumentCommentsOptions;
 }
 
 /**
@@ -65,7 +81,7 @@ export interface DocumentEditorOptions {
  * this element's class list onto the copy: the drag preview is a clone of the
  * dragged block group, appended to `document.body` with every class of
  * `view.dom` except `ProseMirror`, `bn-root` and `bn-editor`
- * (`@blocknote/core/src/extensions/SideMenu/dragging.ts:112-126`, whose own
+ * (`@blocknote/core`'s `SideMenu/dragging.ts` upstream, whose own
  * comment asks for a better way of doing exactly this). Scoped to the wrapper,
  * as these rules were until 2026-09-17, the clone matched none of them and the
  * floating copy of a dragged row was drawn in BlockNote's defaults — measured,
@@ -109,11 +125,18 @@ export function buildDocumentEditor(
       documentEnterExtension(),
       documentSafariImeExtension(),
       documentTabExtension(),
+      documentKeyboardMoveExtension(),
       documentTrailingPressExtension(),
       documentQuoteInputExtension(),
       documentLinkEditMarkExtension(),
       documentDragDropExtension(),
       documentNoNodeClickExtension(),
+      // Ahead of the wiring: a press on two overlapping highlights has to be
+      // answered before the library's own handler takes the first of them.
+      documentCommentSelection(),
+      commentWiring(options.comments),
+      documentCommentPasteExtension(),
+      documentCommentDraftRange(),
       ...(options.extensions ?? []),
     ],
     disableExtensions: [
@@ -124,9 +147,11 @@ export function buildDocumentEditor(
       // mounts, subscribes to every change and every selection change, and
       // each one walks a copy of the selected slice
       // (`FormattingToolbar.ts:11-46,52-72`). Nothing in this Space reads that
-      // store; inside BlockNote only its own Tab binding does
-      // (`KeyboardShortcutsExtension.ts:963`), which declines the key for
-      // every non-empty selection so a reader can tab INTO the toolbar.
+      // store; inside BlockNote only its own Tab and Shift-Tab bindings do,
+      // and they decline the key while the toolbar judges it should be on
+      // screen — a selection that is non-empty, holds text, and does not
+      // reach into plain content like a code block — so a reader can tab
+      // INTO the toolbar.
       'formattingToolbar',
     ],
   });
@@ -154,12 +179,33 @@ export function buildDocumentEditor(
 }
 
 /**
+ * Registers the comment mark, with a thread store behind it or without one.
+ *
+ * The mark is in the schema either way: `DOCUMENT_SCHEMA_VERSION` is this
+ * build's vocabulary, and a mark that came and went with a runtime option
+ * would make the vocabulary depend on how the editor happened to be
+ * constructed. What the wiring decides is which extension registers it — the
+ * library's own brings the same `CommentMark`, and tiptap keeps every copy it
+ * is handed, warning about the duplicate name for the life of the editor.
+ * @param comments - The thread-store wiring, or undefined for a body with no
+ *   comments behind it.
+ * @returns The extension that puts `comment` in the schema.
+ */
+function commentWiring(
+  comments: DocumentCommentsOptions | undefined,
+): ExtensionFactoryInstance {
+  return comments === undefined
+    ? documentCommentMarkExtension()
+    : documentCommentsExtension(comments);
+}
+
+/**
  * Opens a pressed link, with no handle back to this tab.
  *
  * The implicit `noopener` the HTML spec gives `<a target=_blank>` covers
  * navigations, not a `window.open` call — and the factory handler opens a link
  * with `window.open(href, target)`
- * (`@blocknote/core/src/extensions/tiptap-extensions/Link/helpers/clickHandler.ts:73`),
+ * (grep `window.open` in `@blocknote/core/dist/blocknote.js`),
  * so the opened page would keep `window.opener` and could send this tab
  * anywhere it liked. Addresses in a shared document come from co-editors and
  * from pastes.
@@ -172,7 +218,7 @@ export function buildDocumentEditor(
  * collab seat.
  *
  * Returning nothing marks the press handled
- * (`.../Link/helpers/clickHandler.ts:66`).
+ * (upstream's `Link/helpers/clickHandler.ts` returns nothing there).
  * @param event - The press, which the handler has already matched to a link.
  */
 function openLinkInANewTab(event: MouseEvent): void {

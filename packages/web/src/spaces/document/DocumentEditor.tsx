@@ -11,6 +11,22 @@ import {
 import { DocumentBlockControls } from '@web/spaces/document/DocumentBlockControls';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
+import {
+  DOCUMENT_COMMENT_DRAFT_RANGE,
+  draftIn,
+  onDraftChange,
+} from '@web/spaces/document/document-comment-draft-range';
+import { clearReplies } from '@web/spaces/document/document-comment-unsent';
+import type { ProjectRole } from '@breatic/shared';
+
+import { DocumentCommentRail } from '@web/spaces/document/DocumentCommentRail';
+import {
+  hoverThread,
+  onSelectedThreadsChange,
+  selectThreads,
+  selectedThreadsIn,
+} from '@web/spaces/document/document-comment-selection';
+import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
@@ -19,6 +35,16 @@ interface DocumentEditorProps {
   handle: ShowableEditor;
   /** True for a viewer. */
   readOnly?: boolean;
+  /**
+   * The reader's role on the project.
+   *
+   * `readOnly` answers "may this person write at all", which the carriers
+   * gate on. The draft card asks a second question — whether the right to
+   * write was taken away while it was open (A22) — and that needs the role
+   * itself. Defaults to the most restrictive reading, as `SpaceBodyProps`
+   * does.
+   */
+  myRole?: ProjectRole;
 }
 
 /**
@@ -34,13 +60,72 @@ interface DocumentEditorProps {
  * @param root0 - Editor chrome props.
  * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
- * @returns The editor body, the entry and the bubble bar.
+ * @param root0.myRole - The reader's role on the project.
+ * @returns The editor body, the comment panel beside it, the entry and the
+ *   bubble bar.
  */
 export const DocumentEditor = React.memo(function DocumentEditor({
   handle,
   readOnly = false,
+  myRole = 'viewer',
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
+  // The one bit that says whether the panel is on screen, and the reader is
+  // the only one who writes it: a comment arriving from a peer marks the `⋯`
+  // button and moves nothing (design §5). Held here because the menu opens
+  // the panel and the panel closes itself, so neither owns it.
+  const [railOpen, setRailOpen] = React.useState(false);
+  // Opening only: the menu row this is on stands aside while the panel is up,
+  // and the panel closes itself.
+  const openRail = React.useCallback(() => {
+    setRailOpen(true);
+  }, []);
+  // A press on a highlight opens the panel, which is where a comment is read
+  // (user 2026-09-22). The panel then brings that card into view and marks
+  // it; nothing floats over the body.
+  const pressed = React.useSyncExternalStore(onSelectedThreadsChange, () =>
+    selectedThreadsIn(handle.editor.prosemirrorState),
+  );
+  React.useEffect(() => {
+    if (pressed.length > 0) setRailOpen(true);
+  }, [pressed]);
+  // A comment being written is written in the panel, so the panel is up
+  // whenever a draft is open, aimed or dropped (A1 · A2, design §9.6). The
+  // entries dispatch the range and nothing else; this is the one place that
+  // turns it into the panel being up, the same shape the press on a
+  // highlight above takes.
+  const draft = React.useSyncExternalStore(onDraftChange, () =>
+    draftIn(handle.editor.prosemirrorState),
+  );
+  React.useEffect(() => {
+    if (draft !== null) setRailOpen(true);
+  }, [draft]);
+  // Closing it ends both the reading and the pointer, because the panel is
+  // the only thing that releases either and it is about to be gone. The
+  // reading, left standing, makes the next press on the same highlight read
+  // as "already open" — which answers nothing and leaves the panel shut. The
+  // pointer, left standing, keeps a run of the body painted with nothing on
+  // screen to explain it: the close button can be worked from the keyboard
+  // while the pointer still rests on a card, so `onMouseLeave` never fires
+  // (measured 2026-09-23, design §9.5).
+  const closeRail = React.useCallback(() => {
+    setRailOpen(false);
+    selectThreads(handle.editor, []);
+    hoverThread(handle.editor, null);
+    // And the draft with them: the card it is written in lives in the panel,
+    // so closing the panel is throwing it away. Left standing, the range
+    // would put an empty card back on screen the next time the reader opens
+    // the panel, with nothing to explain where it came from (§9.4).
+    const view = handle.editor.prosemirrorView;
+    if (view !== null) {
+      view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null));
+    }
+    // And every reply box's unsent words. They are kept by the editor so a
+    // Space tab switch does not take them; closing the panel is the reader's
+    // own doing, and it does (§9.6).
+    clearReplies(handle.editor);
+  }, [handle.editor]);
+  const rail = useCommentRail(handle.editor);
   // Held here because this is where the editor's DOM enters the scroller, and
   // the bar needs the element that now holds it. A child looking it up for
   // itself would look before this effect has run.
@@ -85,24 +170,51 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           answers no clicks (see `index.css`, `.doc-body-editor .ProseMirror`).
           The right gutter is also where the whole-document entry stands, which
           is what sizes both of them (`--doc-body-gutter`). */}
-      <ScrollArea
-        className={`${BODY_SCROLLER_CLASS} flex-1`}
-        // `relative` makes the viewport the containing block for the link
-        // panel's anchor, which is what lets that anchor scroll with the text
-        // it points at. Nothing else inside is measured against it: the
-        // whole-document entry is `sticky` (it answers to the scroller), the
-        // caret that opens a document is `absolute` with no offsets and so
-        // stays at its static position, and a remote caret's label is measured
-        // against the caret itself.
-        viewportClassName='relative px-[var(--doc-body-gutter)]'
-      >
-        <DocumentMenuEntry />
-        <div
-          ref={body}
-          data-testid='document-editor-content'
-          className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
-        />
-      </ScrollArea>
+      {/* One scroller over both columns, so the scrollbar sits at the far
+          right of the Space rather than between the text and the panel, and a
+          wheel anywhere in here moves both sides together. */}
+      <div className='flex min-h-0 flex-1'>
+        <ScrollArea
+          className={`${BODY_SCROLLER_CLASS} flex-1`}
+          // `relative` makes the viewport the containing block for the link
+          // panel's anchor, which is what lets that anchor scroll with the text
+          // it points at. Nothing else inside is measured against it: the
+          // whole-document entry is `sticky` (it answers to the scroller), the
+          // caret that opens a document is `absolute` with no offsets and so
+          // stays at its static position, and a remote caret's label is measured
+          // against the caret itself.
+          viewportClassName='relative'
+        >
+          {/* Both a flex item of the wrapper `index.css` grows, so the row
+              takes that height, and a flex container, so the text column and
+              the panel beside it each take it in turn. */}
+          <div className='flex flex-1'>
+            <div className='flex min-w-0 flex-1 flex-col px-[var(--doc-body-gutter)]'>
+              <DocumentMenuEntry
+                commentsOpen={railOpen}
+                onOpenComments={openRail}
+                unresolvedComments={rail.unresolved.length}
+              />
+              <div
+                ref={body}
+                data-testid='document-editor-content'
+                className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
+              />
+            </div>
+            {/* Beside the body rather than over it, so opening it narrows the
+              text column and closing it widens the column again (A18). */}
+            {railOpen && (
+              <DocumentCommentRail
+                editor={handle.editor}
+                rail={rail}
+                myRole={myRole}
+                onClose={closeRail}
+                scroller={viewport}
+              />
+            )}
+          </div>
+        </ScrollArea>
+      </div>
       {/* A sibling here, inside the scroller's viewport at runtime: the bar
           portals itself there, so the viewport's own overflow is what takes it
           away once it has been carried out of sight. Over a select-all it is

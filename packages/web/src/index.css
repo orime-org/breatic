@@ -1926,6 +1926,85 @@ body {
   text-underline-offset: 2px;
 }
 
+/* ---- The mark a comment leaves in the body (#18) ----
+   Half of what a comment is for: the words it is about have to look
+   commented. The mark itself is the library's — it carries the thread id and
+   survives an Enter through `keepOnSplit` — and what it looks like is here,
+   because nothing else paints `bn-thread-mark`.
+
+   The hue is the sticky note's, which is what a comment already looks like on
+   the canvas. Nothing in the seven-colour palette is yellow, so a reader
+   cannot mistake it for a background colour they chose themselves.
+
+   Overlapping comments need no rule of their own. ProseMirror renders two
+   marks over the same run as nested spans (measured), so the shared words are
+   painted twice and come out deeper on their own: two 42% layers leave 66%,
+   which is the depth the demo drew for them.
+
+   THE COLOUR IS THE WHOLE OF IT — no corner radius, no horizontal padding.
+   The demo draws one comment as one `<mark>`; in the body it reaches the DOM
+   as several adjacent spans whenever another mark nests inside it or a
+   peer's edit splits the text, and every span paints itself. An edge drawn
+   per span comes apart at each join: three spans of one live comment
+   measured rectangles meeting at the same x, with the painted corners the
+   only thing between them.
+
+   A comment being written wears the same colour over the words it is aimed
+   at (design §9.4.1): it is a comment that has not been saved yet. */
+.doc-body .bn-thread-mark,
+.doc-body .doc-comment-draft-mark {
+  background-color: var(--color-comment-mark);
+}
+
+/* The pointer says a press does something other than put the caret down, and
+   it is owed the same answer the hit test gives: `document-comment-hit.ts`
+   reaches a thread only while its mark is not orphaned. A settled thread
+   keeps its mark with the paint taken off it, so those words read as prose
+   and a press on them does nothing — offered the pointer they read as
+   something to open (user 2026-09-22). */
+.doc-body .bn-thread-mark:not([data-orphan='true']) {
+  cursor: pointer;
+}
+
+/* A resolved thread keeps its mark and loses its paint (§9.2, S2). The mark is
+   where the highlight comes back from when somebody reopens the thread, so it
+   must not be removed — the library sets this attribute for a thread that is
+   resolved, deleted, or not yet known here. */
+.doc-body .bn-thread-mark[data-orphan='true'] {
+  /* Stated rather than left to inherit: A8 promises these words read as
+     prose, and a case can only hold that promise against a rule that makes
+     it. `auto` over editable text is the text caret. */
+  cursor: auto;
+  background-color: transparent;
+}
+
+/* The thread being read. This class is ours, drawn per mark run
+   (`document-comment-selection.ts`); the library draws one of its own over
+   the thread's MERGED range — first start to last end — because telling it
+   which thread is being read is what makes its click handler stand aside
+   (A20).
+
+   Both decorations land on the same span, and that span sits INSIDE every
+   mark covering the run (measured 2026-09-23, single, overlapping and split
+   runs alike). So the library's `.bn-thread-mark .bn-thread-mark-selected`
+   does reach it and does carry a colour — this rule, unlayered, wins over
+   that one in `@layer base`. */
+.doc-body .doc-comment-mark-reading {
+  background-color: var(--color-comment-mark-active);
+}
+
+/* The colour belongs to the rule above and to nothing else.
+   The library's decoration spans the thread's MERGED range, so it also
+   covers whatever sits between two runs of one thread — and that stretch
+   reaches the library's own descendant selector whenever it carries a mark
+   of its own, a settled thread's mark included. Measured 2026-09-23: a
+   resolved comment's words dragged between two runs of a live one come out
+   at rgba(255, 200, 0, 0.25) the moment that live comment is opened, while
+   belonging to no comment a reader can see. */
+.doc-body .bn-thread-mark-selected:not(.doc-comment-mark-reading) {
+  background-color: transparent;
+}
+
 /* ---- Room to click under the last block ----
    The editable surface has to reach the bottom of the scroll viewport: the
    affordance that opens a block at the end of the document grows into
@@ -1960,10 +2039,16 @@ body {
    and `min-height` turned the 5px line the plugin writes inline into a
    768 × 870 pale block over the rest of the page (measured 2026-09-17, task
    #113 — the reader saw the whole area below a dragged row fill with colour).
-   `:has(> .doc-body-editor)` names the one child that holds the text column, so
+   `:has(.doc-body-editor)` names the one child that holds the text column, so
    nothing else mounted here can match however it arrives. Specificity is
-   unchanged at (0,4,1): `:has()` counts its argument the way `:not()` did. */
-[data-scrollbars='vertical'].doc-body-scroller > [data-radix-scroll-area-viewport] > div:has(> .doc-body-editor) {
+   unchanged at (0,4,1): `:has()` counts its argument the way `:not()` did.
+
+   At any depth, not as a direct child: the panel put a row between this
+   wrapper and the text column, and a child combinator here then matched
+   nothing at all — measured 2026-09-23, the editable surface was 54.5px tall
+   in an 870px viewport and the panel 139px. Nothing else that mounts here
+   holds the text, so naming it at any depth picks out the same one child. */
+[data-scrollbars='vertical'].doc-body-scroller > [data-radix-scroll-area-viewport] > div:has(.doc-body-editor) {
   display: flex !important;
   flex-direction: column;
   min-height: 100%;

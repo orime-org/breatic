@@ -1105,6 +1105,27 @@
         "ai_illustrate": "Illustrate this passage",
         "ai_custom": "Custom instruction…"
       },
+      "comment": {
+        "placeholder": "Write a comment…",
+        "targetGone": "The text was changed or deleted.",
+        "cannotWrite": "You can no longer write here.",
+        "railTitle": "Comments",
+        "filterOpen": "Unresolved",
+        "filterAll": "All",
+        "closeRail": "Close comments",
+        "empty": "No comments yet. Select some text, or use the handle beside a line.",
+        "nothingUnresolved": "Nothing unresolved.",
+        "writeFailed": "That change could not be saved.",
+        "unknownAuthor": "Unknown",
+        "folded": "{count, plural, one {# more comment} other {# more comments}}",
+        "reply": "Reply…",
+        "save": "Save",
+        "cancel": "Cancel",
+        "resolve": "Resolve",
+        "reopen": "Reopen",
+        "deleteThread": "Delete",
+        "deleteReply": "Delete this reply"
+      },
       "schemaOutdated": {
         "headline": "Document editor updated",
         "body": "This page is running an older version, and editing here would damage what others have written.",
@@ -1117,7 +1138,10 @@
         "label": "Whole-document commands",
         "saveSnapshot": "Save snapshot",
         "restoreSnapshot": "Restore snapshot",
-        "notOpenYet": "Not open yet"
+        "notOpenYet": "Not open yet",
+        "comments": "Comments",
+        "commentsUnresolved": "{count} unresolved",
+        "commentsNone": "None"
       },
       "link": {
         "placeholder": "Paste or type a URL",

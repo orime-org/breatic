@@ -52,6 +52,7 @@ describe('a collaborator caret', () => {
           doc,
           name: 'project-p/document-carets',
           caretProvider: { awareness },
+          readWho: () => ({ role: 'editor', viewerId: 'u1' }),
         }),
       {
         // The name is resolved from the roster now (#1882), not published by
