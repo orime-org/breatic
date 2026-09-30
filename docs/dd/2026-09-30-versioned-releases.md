@@ -31,7 +31,9 @@ No distributed custom lifecycle is introduced: GitHub's draft/published release 
 
 ## Acceptance plan
 
-- [ ] Metadata unit tests, static lint/typecheck and real frontend build.
+- [x] Metadata unit tests, static lint/typecheck and real frontend build.
 - [ ] Docker artifact verification or explicitly record an external build blocker.
-- [ ] Inner selection, packaging, deployment failure and existing frontend routing regression tests.
-- [ ] Update deployment docs and open reviewable PRs; do not tag or deploy production in this change.
+- [x] Inner selection, packaging, deployment failure and existing frontend routing regression tests.
+- [x] Update deployment docs and open reviewable PRs; do not tag or deploy production in this change.
+
+Local evidence: actual Vite build and web typecheck passed; metadata CLI tests (5), update-hook tests (17), repo checks (32), inner Python tests and Worker route tests passed. A real nginx container returned the generated version JSON with HTTP 200 and no-store. Full Docker build/CI results are recorded on PR #628; no release tag or publication is exercised by this PR.

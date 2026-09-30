@@ -394,6 +394,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already reserved; use a new version tag." >&2
+            exit 1
+          fi
           args=()
           if [[ "$TAG" == *-rc.* ]]; then args+=(--prerelease); fi
           gh release create "$TAG" --verify-tag --draft --title "$TAG" --generate-notes "${args[@]}"

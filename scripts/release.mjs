@@ -18,7 +18,7 @@ export function buildInfo(version = '0.0.0-dev', revision = 'unknown') {
 
 /** Create the portable manifest only from registry-confirmed image digests. */
 export function releaseManifest(tag, revision, repository, backend, web) {
-  if (!tag.startsWith('v')) throw new Error('Release tags start with v');
+  if (!tag.startsWith('v') || !releasePattern.test(tag.slice(1))) throw new Error('Invalid release tag');
   const info = buildInfo(tag.slice(1), revision);
   if (!/^[a-z0-9-]+\/breatic$/.test(repository)) throw new Error('Invalid product repository');
   for (const [name, ref] of [['breatic', backend], ['breatic-web', web]]) {
@@ -40,7 +40,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const [ref, revision] = args;
     const release = ref.startsWith('refs/tags/');
     const tag = release ? ref.slice('refs/tags/'.length) : 'ci';
-    if (release && !tag.startsWith('v')) throw new Error('Release tags start with v');
+    if (release && (!tag.startsWith('v') || !releasePattern.test(tag.slice(1)))) throw new Error('Invalid release tag');
     const info = buildInfo(release ? tag.slice(1) : '0.0.0-dev', revision);
     console.log(`version=${info.releaseVersion}\nimage_tag=${tag}`);
   } else {
