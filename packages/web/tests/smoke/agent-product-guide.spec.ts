@@ -128,3 +128,37 @@ test('writes a formula and HTML the way the reply renders them @needs-model', as
   // paragraph with no block around it.
   await expect(reply.locator('pre code').first()).toContainText('hello');
 });
+
+test('cites a search without listing source addresses @needs-model', async () => {
+  test.setTimeout(300_000);
+  spaces.push(await createSpace(page, 'canvas', `search-${String(Date.now())}`));
+
+  const reply = await ask(page, '搜一下最近一周 AI 视频生成有什么新发布，简单说说。');
+
+  const used = await toolsUsed(page);
+  expect(used, `tools used: ${used.join(', ')}`).toContain('web_search');
+  // The panel draws the sources under the reply itself; an address in the
+  // reply's own words is a second copy of them.
+  const text = await reply.innerText();
+  expect(text, `the reply: ${text}`).not.toMatch(/https?:\/\//);
+});
+
+test('after a proposal, does not ask the reader to write the prompt it wrote @needs-model', async () => {
+  test.setTimeout(300_000);
+  spaces.push(await createSpace(page, 'canvas', `steps-${String(Date.now())}`));
+
+  const reply = await ask(
+    page,
+    'I have a product photo and I want it on a plain white background. Set it up for me on the canvas -- do not ask me anything, just propose it, and tell me what to do after I place it.',
+  );
+
+  const used = await toolsUsed(page);
+  expect(used, `tools used: ${used.join(', ')}`).toContain('propose_canvas_action');
+  expect(used, `tools used: ${used.join(', ')}`).toContain('get_product_guide');
+  // Placing writes the prompt, its marks and its mentions; steps that start
+  // from an empty prompt box describe a panel the reader will not see.
+  const text = await reply.innerText();
+  expect(text, `the reply: ${text}`).not.toMatch(
+    /\b(write|type|enter)\s+(a|the|your)\s+(\w+\s+)?prompt\b/i,
+  );
+});
