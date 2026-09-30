@@ -154,6 +154,7 @@ describe('what the card of a picked piece of the canvas previews', () => {
   const readers = {
     dataOf: (id: string): Y.Map<unknown> | null => (id === 't1' ? scriptData : null),
     catalog: { image: [], video: [], audio: [], tts: [], three_d: [], total: 0, credit_multiplier: 1 } as unknown as ModelCatalog,
+    firstVoiceOf: (): undefined => undefined,
   };
   const pick = (ids: string[]) => previewOf(itemForPick(graph, ids, readers)?.chip);
 

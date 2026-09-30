@@ -31,6 +31,8 @@ export interface NodeReaders {
   dataOf: (nodeId: string) => Y.Map<unknown> | null;
   /** The model catalog, to resolve what each node would run right now. */
   catalog: ModelCatalog;
+  /** The first voice of a model's list, which an audio node sends when nobody picked one. */
+  firstVoiceOf: (model: string) => { id: string } | null | undefined;
 }
 
 /**
@@ -183,9 +185,10 @@ export function itemForPick(
     const current = GENERATING.has(node.data.kind)
       ? currentGeneration(
           node.data.kind as GenerationNodeType,
-          data as unknown as ContentNodeView,
+          node.data as ContentNodeView,
           readers.catalog,
           (mode) => storedTier(data, mode),
+          readers.firstVoiceOf,
       )
       : null;
     return {

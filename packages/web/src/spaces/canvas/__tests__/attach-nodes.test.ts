@@ -34,10 +34,11 @@ function node(id: string, data: Record<string, unknown>, parentId?: string): Can
 const IMAGE = node('i1', { kind: 'image', name: 'Cover', content: 'https://cdn.example/c.png' });
 const TEXT = node('t1', { kind: 'text', name: 'Script' });
 const GROUP = node('g1', { kind: 'group', name: 'Shots' });
-const IN_GROUP = node('v1', { kind: 'video', name: 'Opening' }, 'g1');
+const IN_GROUP = node('v1', { kind: 'video', name: 'Opening', mode: 't2v', model: 'kling' }, 'g1');
 const MODEL = node('m1', { kind: '3d', name: 'Model' });
 const NOTE = node('a1', { kind: 'annotation', content: 'Check the colours here', replies: [] });
-const ALL = [IMAGE, TEXT, GROUP, IN_GROUP, MODEL, NOTE];
+const SPEECH = node('s1', { kind: 'audio', name: 'Voice', mode: 'tts' });
+const ALL = [IMAGE, TEXT, GROUP, IN_GROUP, MODEL, NOTE, SPEECH];
 
 /**
  * A paragraph of text, as the editors write one.
@@ -145,11 +146,18 @@ function videoModel(name: string, storyboard: boolean): ModelEntry {
   } as ModelEntry;
 }
 
+const SPEECH_MODEL = {
+  ...videoModel('speech', false),
+  modality: 'audio',
+  mode: ['tts'],
+  params: { voice_id: { description: '', default: null, remote_source: 'voices' } },
+} as ModelEntry;
+
 const CATALOG = {
-  image: [], video: [videoModel('kling', true)], audio: [], tts: [], three_d: [], total: 1, credit_multiplier: 1,
+  image: [], video: [videoModel('kling', true)], audio: [SPEECH_MODEL], tts: [], three_d: [], total: 2, credit_multiplier: 1,
 } as unknown as ModelCatalog;
 
-const readers = { dataOf: dataMaps(), catalog: CATALOG };
+const readers = { dataOf: dataMaps(), catalog: CATALOG, firstVoiceOf: () => undefined };
 
 const EDGES: CanvasEdge[] = [
   { id: 'e1', source: 'i1', target: 'v1' },
@@ -224,6 +232,14 @@ describe('a piece of the canvas handed to the agent', () => {
     const [video] = (item?.chip?.data_snapshot as { nodes: Array<Record<string, unknown>> }).nodes;
 
     expect(video?.current).toMatchObject({ storyboard: 'off' });
+  });
+
+  it('says an audio node with no voice picked would send the first voice of its model', () => {
+    const voiced = { ...readers, firstVoiceOf: (model: string) => (model === 'speech' ? { id: 'first' } : undefined) };
+    const item = itemForPick(GRAPH, ['s1'], voiced);
+    const [speech] = (item?.chip?.data_snapshot as { nodes: Array<Record<string, unknown>> }).nodes;
+
+    expect(speech?.current).toMatchObject({ mode: 'tts', model: 'speech', params: { voice_id: 'first' } });
   });
 
   it('gives no current generation to a node that does not generate', () => {

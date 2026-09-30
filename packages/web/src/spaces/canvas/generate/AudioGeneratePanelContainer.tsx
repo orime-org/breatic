@@ -21,6 +21,7 @@ import type { Voice } from '@breatic/shared';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { voicesApi } from '@web/data/api/voices';
+import { firstVoiceKey, firstVoiceQuery } from '@web/spaces/canvas/generate/first-voice-query';
 import {
   getLyricsFragment,
   getPromptFragment,
@@ -237,15 +238,9 @@ function AudioGeneratePanelBody({
     [nodeId, nodes, models, mode],
   );
   // With no voice held, the first voice of the model's list is the voice
-  // (user 2026-09-29). Asked for only while it would be used; the row it
-  // brings back also seeds the by-id cache the pill reads its name from.
+  // (user 2026-09-29). Asked for only while it would be used.
   const { data: firstVoice } = useQuery({
-    queryKey: firstVoiceKey(nodeVm.model),
-    queryFn: async () => {
-      const first = (await voicesApi.list(nodeVm.model, { query: '' })).voices[0] ?? null;
-      if (first) queryClient.setQueryData(['voice', nodeVm.model, first.id], first);
-      return first;
-    },
+    ...firstVoiceQuery(queryClient, nodeVm.model),
     enabled: nodeVm.model !== '' && nodeVm.voiceRequired && !nodeVm.voiceChosen,
   });
   const vm = React.useMemo(
@@ -747,15 +742,6 @@ function AudioGeneratePanelBody({
  */
 function noop(): void {
   // Intentionally empty.
-}
-
-/**
- * Where a model's first listed voice is cached.
- * @param model - The model id.
- * @returns The query key.
- */
-function firstVoiceKey(model: string): readonly [string, string] {
-  return ['voice-default', model] as const;
 }
 
 /**

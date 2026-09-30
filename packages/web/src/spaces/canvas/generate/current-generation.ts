@@ -15,11 +15,13 @@ import {
   effectiveStoryboardKind,
   type GenerationNodeType,
   type ModelCatalog,
+  type ModelEntry,
   type StoryboardKind,
 } from '@breatic/shared';
 
 import type { ContentNodeView } from '@web/data/yjs/node-view';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
+import { buildAudioPanelViewModel, withListDefaultVoice } from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
@@ -51,6 +53,8 @@ const MODE_OPTIONS: Readonly<Record<GenerationNodeType, readonly { value: string
  * @param content - The node's content view.
  * @param catalog - The model catalog, or undefined before it arrives.
  * @param storyboardKindOf - Reads the tier stored for a mode.
+ * @param firstVoiceOf - The first voice of a model's list, which the audio
+ *   panel sends when nobody picked one; undefined when it is not known.
  * @returns The generation in effect, or null when the catalog is missing or
  *   serves nothing for this type.
  */
@@ -59,6 +63,7 @@ export function currentGeneration(
   content: ContentNodeView,
   catalog: ModelCatalog | undefined,
   storyboardKindOf: (mode: string) => StoryboardKind | undefined,
+  firstVoiceOf: (model: string) => { id: string } | null | undefined,
 ): CurrentGeneration | null {
   const models = modelsForModality(catalog, kind);
   const mode = resolveAvailableMode(content.mode, filterAvailableModes(MODE_OPTIONS[kind], models));
@@ -70,7 +75,28 @@ export function currentGeneration(
   return {
     mode,
     model: entry.name,
-    params: resolveModelSwitch(content, entry).params,
+    params: kind === 'audio' ? audioParams(content, models, mode, firstVoiceOf) : resolveModelSwitch(content, entry).params,
     storyboard: effectiveStoryboardKind(entry.params, storyboardKindOf(mode)),
   };
+}
+
+/**
+ * The audio panel's params: the node's own, plus the list's first voice where
+ * nobody picked one, by the panel's own two steps.
+ * @param content - The node's content view.
+ * @param models - The audio models on offer.
+ * @param mode - The mode in effect.
+ * @param firstVoiceOf - The first voice of a model's list.
+ * @returns The params.
+ */
+function audioParams(
+  content: ContentNodeView,
+  models: ModelEntry[],
+  mode: string,
+  firstVoiceOf: (model: string) => { id: string } | null | undefined,
+): Record<string, unknown> {
+  const vm = buildAudioPanelViewModel({ nodeId: '', nodes: [{ id: '', data: content }], models, mode });
+  // Asked for only where the panel asks for it.
+  const first = vm.voiceRequired && !vm.voiceChosen ? firstVoiceOf(vm.model) : undefined;
+  return withListDefaultVoice(vm, first).params;
 }

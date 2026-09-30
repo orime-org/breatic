@@ -40,11 +40,24 @@ const kling = video('kling', ['t2v'], {
   shot_type: { description: '', default: null, values: ['intelligence', 'customize'], fill: 'storyboard' },
 });
 const minimax = video('minimax', ['t2v']);
-const catalog = { image: [], video: [kling, minimax], audio: [], tts: [], three_d: [], total: 2, credit_multiplier: 1 } as unknown as ModelCatalog;
+const speech: ModelEntry = {
+  ...video('speech', ['tts']),
+  modality: 'audio',
+  params: { voice_id: { description: '', default: null, remote_source: 'voices' } },
+};
+const catalog = { image: [], video: [kling, minimax], audio: [speech], tts: [], three_d: [], total: 3, credit_multiplier: 1 } as unknown as ModelCatalog;
+
+/**
+ * A voice list that has nothing to offer.
+ * @returns Nothing.
+ */
+function noVoice(): undefined {
+  return undefined;
+}
 
 describe('what a node would run right now', () => {
   it('falls back to the first served mode and model when nothing is stored', () => {
-    const now = currentGeneration('video', { kind: 'video', status: 'idle' } as never, catalog, () => undefined);
+    const now = currentGeneration('video', { kind: 'video', status: 'idle' } as never, catalog, () => undefined, noVoice);
     expect(now).toMatchObject({ mode: 't2v', model: 'kling', params: { duration: 5 }, storyboard: 'off' });
   });
 
@@ -54,6 +67,7 @@ describe('what a node would run right now', () => {
       { kind: 'video', status: 'idle', mode: 't2v', model: 'kling', paramsByModel: { kling: { duration: 3 } } } as never,
       catalog,
       () => 'custom',
+      noVoice,
     );
     expect(now).toMatchObject({ mode: 't2v', model: 'kling', params: { duration: 3 }, storyboard: 'custom' });
   });
@@ -64,11 +78,28 @@ describe('what a node would run right now', () => {
       { kind: 'video', status: 'idle', mode: 't2v', model: 'minimax' } as never,
       catalog,
       () => 'custom',
+      noVoice,
     );
     expect(now).toMatchObject({ model: 'minimax', storyboard: 'off' });
   });
 
+  it('sends the first listed voice when nobody picked one, as the audio panel does', () => {
+    const now = currentGeneration('audio', { kind: 'audio', status: 'idle', mode: 'tts' } as never, catalog, () => undefined, () => ({ id: 'first' }));
+    expect(now).toMatchObject({ mode: 'tts', model: 'speech', params: { voice_id: 'first' } });
+  });
+
+  it('keeps the voice the reader picked', () => {
+    const now = currentGeneration(
+      'audio',
+      { kind: 'audio', status: 'idle', mode: 'tts', model: 'speech', paramsByModel: { speech: { voice_id: 'mine' } } } as never,
+      catalog,
+      () => undefined,
+      () => ({ id: 'first' }),
+    );
+    expect(now?.params).toMatchObject({ voice_id: 'mine' });
+  });
+
   it('is null without a catalog', () => {
-    expect(currentGeneration('video', { kind: 'video', status: 'idle' } as never, undefined, () => undefined)).toBeNull();
+    expect(currentGeneration('video', { kind: 'video', status: 'idle' } as never, undefined, () => undefined, noVoice)).toBeNull();
   });
 });
