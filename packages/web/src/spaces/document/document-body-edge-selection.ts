@@ -10,9 +10,12 @@
  * the last block is a divider, a fallback block or an empty line, nothing
  * after it is text, so a drag or Shift+Down past the end can never take it in.
  * Framer and prosemirror-tables answer the same limit with their own Selection
- * subclass; this is that shape. Exactly one end sits on an edge of the body:
- * `1`, before the first block of the root group, or `size - 1`, after the last.
- * The other end is a text position.
+ * subclass; this is that shape. Exactly one end sits on an edge of the body
+ * and the other is a text position. The edges are inside the first and last
+ * root blocks — before the first one's content, after everything in the last
+ * one, nested blocks included — because BlockNote reads the block a selection
+ * is in off its ends (`getTextCursorPosition`, its Enter and Tab handlers) and
+ * finds none for a position between blocks.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -31,10 +34,13 @@ type EdgeSide = 'anchor' | 'head';
  * The position of an edge of the body.
  * @param doc - The document.
  * @param edge - Which edge.
- * @returns `1` for the start, `size - 1` for the end.
+ * @returns `2`, inside the first root block before its content, for the
+ *   start; `size - 2`, inside the last root block after all of it, for the
+ *   end. No text position is either: text sits one level deeper, inside a
+ *   block's content node.
  */
 export function bodyEdgePos(doc: Node, edge: BodyEdge): number {
-  return edge === 'start' ? 1 : doc.content.size - 1;
+  return edge === 'start' ? 2 : doc.content.size - 2;
 }
 
 /**
@@ -353,20 +359,43 @@ export function dragSelection(doc: Node, drag: EdgeDrag, zone: PointerZone, poin
 }
 
 /**
- * Keeps an end that sits on an edge when the browser extends the selection
- * (design §5.10.5). Reading the browser's range back goes through
- * `TextSelection.between`, which would pull that end back into text.
+ * Which edge a position the page reported stands for. The page can only say
+ * "past the last block" as the position between blocks — the edge this module
+ * writes, `size - 2`, reads back from the page as `size - 1` (measured,
+ * probe15), since BlockNote's block element is not the block's content
+ * element — so both the model's edge and the one beside it outside the block
+ * count. Only an edge whose block a text selection cannot reach counts: past a
+ * last block with words the browser's own range is right.
+ * @param doc - The document.
+ * @param pos - The position the page reported.
+ * @returns The edge, or null.
+ */
+function pageEdgeAt(doc: Node, pos: number): BodyEdge | null {
+  const edge =
+    bodyEdgeAt(doc, pos) ?? (pos === 1 ? 'start' : pos === doc.content.size - 1 ? 'end' : null);
+  return edge !== null && bodyEdgeNeedsTakeover(doc, edge) ? edge : null;
+}
+
+/**
+ * Keeps an end that sits on an edge when the browser's range is read back
+ * (design §5.10.5): after a drag that anchored past the last block, a
+ * Shift+click or a Shift+arrow extends the browser's range from there, and
+ * `TextSelection.between` would pull that end back into text.
  * @param view - The view.
  * @param $anchor - The browser's anchor.
  * @param $head - The browser's head.
- * @returns The selection, or null when neither end is an edge or the range is
- *   collapsed.
+ * @returns The selection, or null when the range is collapsed or neither end
+ *   is an edge {@link pageEdgeAt} counts.
  */
 function readBackAtEdge(view: EditorView, $anchor: ResolvedPos, $head: ResolvedPos): Selection | null {
   const { doc } = view.state;
   if ($anchor.pos === $head.pos) return null;
-  if (bodyEdgeAt(doc, $anchor.pos) === null && bodyEdgeAt(doc, $head.pos) === null) return null;
-  return bodyEdgeBetween(doc, $anchor.pos, $head.pos);
+  const anchorEdge = pageEdgeAt(doc, $anchor.pos);
+  const headEdge = pageEdgeAt(doc, $head.pos);
+  if (anchorEdge === null && headEdge === null) return null;
+  const anchor = anchorEdge === null ? $anchor.pos : bodyEdgePos(doc, anchorEdge);
+  const head = headEdge === null ? $head.pos : bodyEdgePos(doc, headEdge);
+  return bodyEdgeBetween(doc, anchor, head);
 }
 
 /**

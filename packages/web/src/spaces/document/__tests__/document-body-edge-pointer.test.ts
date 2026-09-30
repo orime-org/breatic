@@ -16,7 +16,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
+import { BodyEdgeSelection, bodyEdgePos } from '@web/spaces/document/document-body-edge-selection';
 import { declarationsOf } from '@web/spaces/document/__tests__/index-css-rules';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -172,7 +172,7 @@ describe('a drag that starts in the body', () => {
     move(150);
 
     expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
-    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, view.state.doc.content.size - 1]);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, bodyEdgePos(view.state.doc, 'end')]);
   });
 
   it('takes a trailing empty line in, nested under the last row', () => {
@@ -185,7 +185,7 @@ describe('a drag that starts in the body', () => {
 
     move(150);
 
-    expect(view.state.selection.head).toBe(view.state.doc.content.size - 1);
+    expect(view.state.selection.head).toBe(bodyEdgePos(view.state.doc, 'end'));
   });
 
   it('takes a leading divider in when it goes above the first block', () => {
@@ -196,7 +196,7 @@ describe('a drag that starts in the body', () => {
 
     move(-20);
 
-    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, 1]);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, bodyEdgePos(view.state.doc, 'start')]);
   });
 
   it('follows the pointer from the same anchor after coming back', () => {
@@ -247,7 +247,7 @@ describe('a drag that starts in the body', () => {
     layOut(view, 200);
     document.dispatchEvent(new Event('scroll'));
 
-    expect(view.state.selection.head).toBe(view.state.doc.content.size - 1);
+    expect(view.state.selection.head).toBe(bodyEdgePos(view.state.doc, 'end'));
   });
 
   it('answers the browser with the same selection while the pointer is past the end', () => {
@@ -276,7 +276,7 @@ describe('a drag that starts past an end of the body', () => {
     move(10);
 
     expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
-    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([view.state.doc.content.size - 1, at]);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([bodyEdgePos(view.state.doc, 'end'), at]);
   });
 
   it('selects the whole document from past the end to past the start', () => {
@@ -294,7 +294,7 @@ describe('a drag that starts past an end of the body', () => {
     const view = editor.prosemirrorView!;
     const widget = view.dom.querySelector('.bn-trailing-block')!;
     place(widget, { top: 100, bottom: 400 });
-    pointAt(view, view.state.doc.content.size - 1);
+    pointAt(view, bodyEdgePos(view.state.doc, 'end'));
 
     press(view, 150);
     release(150);
@@ -328,7 +328,7 @@ describe('Shift+click past an end of the body', () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
-    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, view.state.doc.content.size - 1]);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, bodyEdgePos(view.state.doc, 'end')]);
   });
 
   it('is the whole document when the anchor is already on the other edge', () => {
