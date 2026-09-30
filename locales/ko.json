@@ -142,22 +142,93 @@
     "purchase_mail": {
       "subject": "크레딧이 충전되었습니다",
       "intro": "구매해 주셔서 감사합니다. 아래는 이번 구매 내역이니 보관해 주세요.",
-      "credits": "이번 충전: {credits} 크레딧",
-      "balance": "현재 잔액: {credits} 크레딧",
-      "subtotal": "가격: {amount}",
-      "tax": "세액: {amount}",
-      "total": "결제 합계: {amount}",
-      "purchased_at": "구매 시각: {when}",
-      "refund_by": "환불 가능 기한: {when}",
-      "order_ref": "주문 번호: {ref}",
+      "label": {
+        "credits": "이번 충전",
+        "balance": "현재 잔액",
+        "subtotal": "가격",
+        "tax": "세액",
+        "total": "결제 합계",
+        "purchased_at": "구매 시각",
+        "refund_by": "환불 가능 기한",
+        "order_ref": "주문 번호"
+      },
+      "credits_amount": "{credits} 크레딧",
+      "fact_line": "{label}: {value}",
       "consent_heading": "구매 시 동의하신 내용",
       "refund_heading": "크레딧 패키지 환불 규정",
-      "support": "이번 구매에 대한 문의는 {email} 로 보내주세요."
+      "support": "이번 구매에 대한 문의는 <mailto>{email}</mailto> 로 보내주세요."
     },
     "chat": {
       "message_too_long": "이 메시지는 너무 깁니다. 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다.",
       "attachments_too_long": "첨부한 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다.",
       "attachments_too_many": "첨부가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다."
+    },
+    "mail": {
+      "studio_invite": {
+        "subject": "{inviter} 님이 {studio}에 초대했습니다",
+        "lead": "<b>{inviter}</b> 님이 Studio <b>{studio}</b>에 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code>(으)로 초대했습니다.",
+        "action": "초대 열기"
+      },
+      "project_invite": {
+        "subject": "{inviter} 님이 {project}에 초대했습니다",
+        "lead": "<b>{inviter}</b> 님이 Project <b>{project}</b>에 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code>(으)로 초대했습니다.",
+        "action": "초대 열기"
+      },
+      "studio_transfer": {
+        "subject": "{initiator} 님이 {studio}을(를) 넘기려고 합니다",
+        "lead": "<b>{initiator}</b> 님이 회원님을 Studio <b>{studio}</b>의 <code>Admin</code>으로 지정하려고 합니다.",
+        "action": "이 이전 요청 보기"
+      },
+      "project_transfer": {
+        "subject": "{initiator} 님이 {project}을(를) 넘기려고 합니다",
+        "lead": "<b>{initiator}</b> 님이 Project <b>{project}</b>의 소유권을 회원님에게 넘기려고 합니다.",
+        "action": "이 이전 요청 보기"
+      },
+      "role_upgrade": {
+        "subject": "{requester} 님이 {project}에서 더 높은 역할을 요청했습니다",
+        "lead": "<b>{requester}</b> 님이 <b>{project}</b>에서 <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code>(이)가 되기를 요청했습니다.",
+        "action": "이 요청 보기"
+      },
+      "project_join": {
+        "subject": "{requester} 님이 {project} 참여를 요청했습니다",
+        "lead": "<b>{requester}</b> 님이 <b>{project}</b> 참여를 요청했습니다.",
+        "action": "이 요청 보기"
+      },
+      "reason": " 메시지: <em>{message}</em>",
+      "expiry": {
+        "invitation": "이 초대는 {days, plural, other {#일}} 후에 만료됩니다. 예상하지 못한 메일이라면 무시하셔도 됩니다.",
+        "transfer": "이 이전 요청은 {days, plural, other {#일}} 후에 만료됩니다. 예상하지 못한 메일이라면 무시하셔도 됩니다.",
+        "request": "이 요청은 {days, plural, other {#일}} 후에 만료됩니다. 예상하지 못한 메일이라면 무시하셔도 됩니다."
+      },
+      "membership_ended": {
+        "subject": "{tier} 멤버십이 종료되었습니다",
+        "lead": "<b>{tier}</b> 멤버십이 종료되었습니다. 계정은 무료 플랜으로 전환되었습니다.",
+        "footer": "멤버십 패널에서 언제든지 다시 구독할 수 있습니다."
+      },
+      "storage_full": {
+        "subject": "저장 공간이 가득 찼습니다",
+        "lead": "저장 공간이 가득 차서 <b>{studio}</b>에서 업로드와 생성이 거부되었습니다. 저장 공간은 이 Studio뿐 아니라 회원님이 관리하는 모든 Studio를 합산해 계산됩니다.",
+        "footer": "멤버십을 업그레이드하면 더 많은 공간을 사용할 수 있습니다."
+      },
+      "password_reset": {
+        "subject": "비밀번호 재설정",
+        "lead": "비밀번호 재설정을 요청하셨습니다.",
+        "action": "비밀번호 재설정",
+        "footer": "이 링크는 {hours, plural, other {#시간}} 후에 만료됩니다. 본인이 요청하지 않았다면 이 메일을 무시하세요."
+      },
+      "email_verification": {
+        "subject": "이메일 확인",
+        "lead": "Breatic에 오신 것을 환영합니다. 아래 버튼을 눌러 이메일 주소를 확인하세요.",
+        "action": "이메일 주소 확인",
+        "footer": "이 링크는 {hours, plural, other {#시간}} 후에 만료됩니다. 본인이 요청하지 않았다면 이 메일을 무시해도 됩니다."
+      },
+      "footer": "이 메일은 자동으로 발송되었습니다. 회신은 확인되지 않습니다.",
+      "help": "도움이 필요하신가요? <manual>사용자 설명서</manual>를 확인하거나 <contact>{email}</contact>로 문의하세요.",
+      "legal": {
+        "about": "소개",
+        "terms": "이용약관",
+        "privacy": "개인정보 처리방침"
+      }
     }
   },
   "chat": {
@@ -1452,7 +1523,8 @@
       "agentColumnWidth": "에이전트 패널 너비 조정",
       "language": "언어: {name}",
       "theme": "테마: {theme}"
-    }
+    },
+    "languageNotSaved": "언어를 계정에 저장하지 못했습니다"
   },
   "projectJoin": {
     "title": "이 Project의 멤버가 아닙니다",

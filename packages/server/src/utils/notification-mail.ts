@@ -7,20 +7,20 @@
  *
  * These builders are best-effort NOTIFICATION emails: the bell
  * notification is the always-delivered path, the email is an optional
- * enhancement that only fires when an SMTP backend is configured. They share a
- * single HTML shell + a single HTML escaper here (previously copied across four
- * per-module files). English-only by design — the backend stores no per-user
- * locale, so it cannot pick the recipient's language at send time.
+ * enhancement that only fires when an SMTP backend is configured. Each renders
+ * in the recipient's language, passed in as `locale` (the recipient's
+ * `users.locale`), from the `server.mail.*` catalog entries; the branded layout
+ * and escaping live in `mail-shell.ts`.
  *
- * Auth emails (password reset / email verification) are deliberately NOT here:
- * those are the primary delivery channel (no bell fallback) and surface their
- * send result to the caller, so they must not go through the best-effort path.
+ * Auth emails (password reset / email verification) are built in
+ * `modules/auth/auth-mail.ts`: those are the primary delivery channel (no bell
+ * fallback) and surface their send result to the caller, so they must not go
+ * through the best-effort path.
  */
 
-import type { SendMailOptions } from "@breatic/core";
 import { getDecisionWindowDays } from "@server/config/limits.js";
+import { renderMail, type MailMessage, type RenderedMail } from "@server/utils/mail-shell.js";
 
-const BRAND = "Breatic";
 /**
  * Build the closing line of an invitation, transfer or request email.
  *
@@ -28,76 +28,27 @@ const BRAND = "Breatic";
  * stored on the row are the same fact told to two audiences, and a sentence
  * the recipient has no way to check is the worst place to keep a second copy
  * of a number.
- * @param subject - What expires, as it opens the sentence ("This invitation").
- * @returns The footer sentence, with the configured window in it.
+ * @param what - Which kind of waiting item expires.
+ * @returns The note, with the configured window in it.
  */
-function expiryFooter(subject: string): string {
-  const days = getDecisionWindowDays();
-  const unit = days === 1 ? "day" : "days";
-  return `${subject} expires in ${days} ${unit}. If you didn't expect it, you can ignore this email.`;
+function expiryNote(what: "invitation" | "transfer" | "request"): MailMessage {
+  return { key: `server.mail.expiry.${what}`, params: { days: getDecisionWindowDays() } };
 }
 
 /**
- * Escape HTML-significant chars in user-supplied strings (XSS-safe email body).
- * @param s - The raw user-supplied string to escape.
- * @returns The string with `& < > " '` replaced by their HTML entities.
+ * The requester's own words, as a sentence that follows the lead.
+ * @param message - What they typed, or null when they gave nothing.
+ * @returns The sentence, or nothing when they gave none.
  */
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/** The pieces every notification email shares — assembled by {@link renderNotificationMail}. */
-interface NotificationMailShell {
-  /** Recipient address. */
-  to: string;
-  /** Plain-text subject line (email header — not HTML, not escaped). */
-  subject: string;
-  /** Inner HTML of the lead paragraph — the caller escapes user fields. */
-  leadHtml: string;
-  /**
-   * Raw link target — escaped into the `href` attribute here.
-   *
-   * Absent on an email with nothing to do: a membership that ended is a
-   * notice, and a link that only says "open the app" is noise.
-   */
-  linkHref?: string;
-  /** Visible link text, e.g. `Open the invitation`. */
-  linkLabel?: string;
-  /** Text after `</a>`, e.g. ` to accept or decline.` */
-  linkTrailing?: string;
-  /** Gray footer sentence (expiry hint). */
-  footer: string;
-}
-
-/**
- * Assemble the shared notification-email HTML shell (lead paragraph + link
- * action paragraph + gray footer).
- * @param shell - The per-email pieces (subject, lead, link, footer).
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
- */
-function renderNotificationMail(shell: NotificationMailShell): SendMailOptions {
-  return {
-    to: shell.to,
-    subject: shell.subject,
-    html: [
-      `<p>${shell.leadHtml}</p>`,
-      shell.linkHref
-        ? `<p><a href="${escapeHtml(shell.linkHref)}">${shell.linkLabel}</a>${shell.linkTrailing ?? ""}</p>`
-        : null,
-      `<p style="color: #666; font-size: 90%;">${shell.footer}</p>`,
-    ]
-      .filter(Boolean)
-      .join("\n      "),
-  };
+function reasonSentence(message: string | null): MailMessage[] {
+  if (message === null || message.trim() === "") return [];
+  return [{ key: "server.mail.reason", params: { message } }];
 }
 
 /** Fields for the studio invitation email. */
 export interface StudioInvitationMailInput {
+  /** The invitee's language. */
+  locale: string;
   inviteeEmail: string;
   inviterName: string;
   studioName: string;
@@ -110,25 +61,26 @@ export interface StudioInvitationMailInput {
  * Build the studio invitation email — the invitee opens the link and lands on
  * the decision page, where they answer (NOT auto-accept). The bell row leads
  * to that same page, so both entrances end in one place.
- * @param input - Invitee email, inviter + studio names, role, and the landing link.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @param input - The invitee's language and email, inviter + studio names, role, and the landing link.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildStudioInvitationMail(
   input: StudioInvitationMailInput,
-): SendMailOptions {
-  return renderNotificationMail({
+): Promise<RenderedMail> {
+  const names = { inviter: input.inviterName, studio: input.studioName };
+  return renderMail(input.locale, {
     to: input.inviteeEmail,
-    subject: `${BRAND} - ${input.inviterName} invited you to ${input.studioName}`,
-    leadHtml: `<strong>${escapeHtml(input.inviterName)}</strong> invited you to join the studio <strong>${escapeHtml(input.studioName)}</strong> as <code>${escapeHtml(input.role)}</code>.`,
-    linkHref: input.inviteLink,
-    linkLabel: "Open the invitation",
-    linkTrailing: " to accept or decline.",
-    footer: expiryFooter("This invitation"),
+    subject: { key: "server.mail.studio_invite.subject", params: names },
+    body: [{ key: "server.mail.studio_invite.lead", params: { ...names, role: input.role } }],
+    action: { label: { key: "server.mail.studio_invite.action" }, href: input.inviteLink },
+    note: expiryNote("invitation"),
   });
 }
 
 /** Fields for the project invitation email. */
 export interface ProjectInvitationMailInput {
+  /** The invitee's language. */
+  locale: string;
   inviteeEmail: string;
   inviterName: string;
   projectName: string;
@@ -141,25 +93,26 @@ export interface ProjectInvitationMailInput {
  * Build the project invitation email — the invitee opens the link and lands on
  * the decision page, where they answer (NOT auto-accept). The bell row leads
  * to that same page, so both entrances end in one place.
- * @param input - Invitee email, inviter + project names, role, and the landing link.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @param input - The invitee's language and email, inviter + project names, role, and the landing link.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildProjectInvitationMail(
   input: ProjectInvitationMailInput,
-): SendMailOptions {
-  return renderNotificationMail({
+): Promise<RenderedMail> {
+  const names = { inviter: input.inviterName, project: input.projectName };
+  return renderMail(input.locale, {
     to: input.inviteeEmail,
-    subject: `${BRAND} - ${input.inviterName} invited you to ${input.projectName}`,
-    leadHtml: `<strong>${escapeHtml(input.inviterName)}</strong> invited you to collaborate on the project <strong>${escapeHtml(input.projectName)}</strong> as <code>${escapeHtml(input.role)}</code>.`,
-    linkHref: input.inviteLink,
-    linkLabel: "Open the invitation",
-    linkTrailing: " to accept or decline.",
-    footer: expiryFooter("This invitation"),
+    subject: { key: "server.mail.project_invite.subject", params: names },
+    body: [{ key: "server.mail.project_invite.lead", params: { ...names, role: input.role } }],
+    action: { label: { key: "server.mail.project_invite.action" }, href: input.inviteLink },
+    note: expiryNote("invitation"),
   });
 }
 
 /** Fields for the studio transfer-admin email. */
 export interface StudioTransferMailInput {
+  /** The recipient's language. */
+  locale: string;
   recipientEmail: string;
   initiatorName: string;
   studioName: string;
@@ -171,25 +124,26 @@ export interface StudioTransferMailInput {
  * Build the studio transfer-admin email — the recipient accepts / declines from
  * their bell notifications, and its link opens the same `/decision?token=`
  * landing page every waiting request is answered on.
- * @param input - Recipient email, initiator + studio names, and the app link.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @param input - The recipient's language and email, initiator + studio names, and the app link.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildStudioTransferMail(
   input: StudioTransferMailInput,
-): SendMailOptions {
-  return renderNotificationMail({
+): Promise<RenderedMail> {
+  const names = { initiator: input.initiatorName, studio: input.studioName };
+  return renderMail(input.locale, {
     to: input.recipientEmail,
-    subject: `${BRAND} - ${input.initiatorName} wants to transfer ${input.studioName} to you`,
-    leadHtml: `<strong>${escapeHtml(input.initiatorName)}</strong> wants to make you the admin of the studio <strong>${escapeHtml(input.studioName)}</strong>.`,
-    linkHref: input.decisionLink,
-    linkLabel: "Review this transfer",
-    linkTrailing: " to accept or decline.",
-    footer: expiryFooter("This transfer request"),
+    subject: { key: "server.mail.studio_transfer.subject", params: names },
+    body: [{ key: "server.mail.studio_transfer.lead", params: names }],
+    action: { label: { key: "server.mail.studio_transfer.action" }, href: input.decisionLink },
+    note: expiryNote("transfer"),
   });
 }
 
 /** Fields for the project transfer-owner email. */
 export interface ProjectTransferMailInput {
+  /** The recipient's language. */
+  locale: string;
   recipientEmail: string;
   initiatorName: string;
   projectName: string;
@@ -201,25 +155,26 @@ export interface ProjectTransferMailInput {
  * Build the project transfer-owner email — the recipient accepts / declines from
  * their bell notifications, and its link opens the same `/decision?token=`
  * landing page every waiting request is answered on.
- * @param input - Recipient email, initiator + project names, and the app link.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @param input - The recipient's language and email, initiator + project names, and the app link.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildProjectTransferMail(
   input: ProjectTransferMailInput,
-): SendMailOptions {
-  return renderNotificationMail({
+): Promise<RenderedMail> {
+  const names = { initiator: input.initiatorName, project: input.projectName };
+  return renderMail(input.locale, {
     to: input.recipientEmail,
-    subject: `${BRAND} - ${input.initiatorName} wants to transfer ${input.projectName} to you`,
-    leadHtml: `<strong>${escapeHtml(input.initiatorName)}</strong> wants to make you the owner of the project <strong>${escapeHtml(input.projectName)}</strong>.`,
-    linkHref: input.decisionLink,
-    linkLabel: "Review this transfer",
-    linkTrailing: " to accept or decline.",
-    footer: expiryFooter("This transfer request"),
+    subject: { key: "server.mail.project_transfer.subject", params: names },
+    body: [{ key: "server.mail.project_transfer.lead", params: names }],
+    action: { label: { key: "server.mail.project_transfer.action" }, href: input.decisionLink },
+    note: expiryNote("transfer"),
   });
 }
 
 /** Fields for the role-upgrade request email, sent to the project's owner. */
 export interface RoleUpgradeRequestMailInput {
+  /** The owner's language. */
+  locale: string;
   ownerEmail: string;
   requesterName: string;
   projectName: string;
@@ -232,35 +187,33 @@ export interface RoleUpgradeRequestMailInput {
 /**
  * Builds the email telling a project's owner that somebody wants a bigger role.
  *
- * This flow had no email at all until now — it existed only as a bell entry, so
- * an owner who was not in the app that week never learned there was a decision
- * waiting. The reason the requester typed is included because it is the whole
- * basis for the answer.
- * @param input - Recipient, names, requested role, reason and link.
+ * The reason the requester typed is included because it is the whole basis
+ * for the answer.
+ * @param input - The owner's language and email, names, requested role, reason and link.
  * @returns The mail options to send.
  */
 export function buildRoleUpgradeRequestMail(
   input: RoleUpgradeRequestMailInput,
-): SendMailOptions {
-  const reason =
-    input.message === null || input.message.trim() === ""
-      ? ""
-      : ` They said: <em>${escapeHtml(input.message)}</em>`;
-  return renderNotificationMail({
+): Promise<RenderedMail> {
+  const names = { requester: input.requesterName, project: input.projectName };
+  return renderMail(input.locale, {
     to: input.ownerEmail,
-    subject: `${BRAND} - ${input.requesterName} asked for a bigger role on ${input.projectName}`,
-    leadHtml: `<strong>${escapeHtml(input.requesterName)}</strong> asked to become <strong>${escapeHtml(input.requestedRole)}</strong> on <strong>${escapeHtml(input.projectName)}</strong>.${reason}`,
-    linkHref: input.decisionLink,
-    linkLabel: "Review this request",
-    linkTrailing: " to approve or decline.",
+    subject: { key: "server.mail.role_upgrade.subject", params: names },
+    body: [
+      { key: "server.mail.role_upgrade.lead", params: { ...names, role: input.requestedRole } },
+      ...reasonSentence(input.message),
+    ],
+    action: { label: { key: "server.mail.role_upgrade.action" }, href: input.decisionLink },
     // Not "transfer request": nothing is changing hands, somebody is asking
     // for a bigger role on something that stays where it is.
-    footer: expiryFooter("This request"),
+    note: expiryNote("request"),
   });
 }
 
 /** Fields for the join-request email, sent to the project's owner. */
 export interface ProjectJoinRequestMailInput {
+  /** The owner's language. */
+  locale: string;
   ownerEmail: string;
   requesterName: string;
   projectName: string;
@@ -271,29 +224,29 @@ export interface ProjectJoinRequestMailInput {
 
 /**
  * Builds the email telling a project's owner that a studio member asked to join.
- * @param input - Recipient, names, reason and link.
+ * @param input - The owner's language and email, names, reason and link.
  * @returns The mail options to send.
  */
 export function buildProjectJoinRequestMail(
   input: ProjectJoinRequestMailInput,
-): SendMailOptions {
-  const reason =
-    input.message === null || input.message.trim() === ""
-      ? ""
-      : ` They said: <em>${escapeHtml(input.message)}</em>`;
-  return renderNotificationMail({
+): Promise<RenderedMail> {
+  const names = { requester: input.requesterName, project: input.projectName };
+  return renderMail(input.locale, {
     to: input.ownerEmail,
-    subject: `${BRAND} - ${input.requesterName} asked to join ${input.projectName}`,
-    leadHtml: `<strong>${escapeHtml(input.requesterName)}</strong> asked to join <strong>${escapeHtml(input.projectName)}</strong>.${reason}`,
-    linkHref: input.decisionLink,
-    linkLabel: "Review this request",
-    linkTrailing: " to approve or decline.",
-    footer: expiryFooter("This request"),
+    subject: { key: "server.mail.project_join.subject", params: names },
+    body: [
+      { key: "server.mail.project_join.lead", params: names },
+      ...reasonSentence(input.message),
+    ],
+    action: { label: { key: "server.mail.project_join.action" }, href: input.decisionLink },
+    note: expiryNote("request"),
   });
 }
 
 /** Fields for the membership-ended email. */
 export interface MembershipEndedMailInput {
+  /** The recipient's language. */
+  locale: string;
   /** Where to send it. */
   recipientEmail: string;
   /** The paid tier that just ended, as the product names it. */
@@ -306,22 +259,24 @@ export interface MembershipEndedMailInput {
  * A notice, not a request: nothing is waiting to be answered, so it carries no
  * action link and no deadline. The bell row beside it is the delivery
  * guarantee; this only leaves when an SMTP backend is configured.
- * @param input - Recipient email and the tier that ended.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @param input - The recipient's language and email, and the tier that ended.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildMembershipEndedMail(
   input: MembershipEndedMailInput,
-): SendMailOptions {
-  return renderNotificationMail({
+): Promise<RenderedMail> {
+  return renderMail(input.locale, {
     to: input.recipientEmail,
-    subject: `${BRAND} - your ${input.tierLabel} membership has ended`,
-    leadHtml: `Your <strong>${escapeHtml(input.tierLabel)}</strong> membership has ended. Your account is on the free plan.`,
-    footer: "Subscribe again at any time from the membership panel.",
+    subject: { key: "server.mail.membership_ended.subject", params: { tier: input.tierLabel } },
+    body: [{ key: "server.mail.membership_ended.lead", params: { tier: input.tierLabel } }],
+    note: { key: "server.mail.membership_ended.footer" },
   });
 }
 
 /** What the storage-full email needs. */
 interface StorageQuotaExceededMailInput {
+  /** The recipient's language. */
+  locale: string;
   /** Where to send it — the admin of the studio the write was aimed at. */
   recipientEmail: string;
   /** The studio that write was aimed at, for "where did this happen". */
@@ -332,8 +287,7 @@ interface StorageQuotaExceededMailInput {
  * Build the storage-full email (#89).
  *
  * A notice, not a request: nothing is waiting to be answered, so no action
- * link and no deadline — `expiryFooter` would be about a decision window that
- * does not exist here.
+ * link and no deadline.
  *
  * Says the ACCOUNT is full, not the studio, and the difference is about WHEN
  * it is read. The sentence on the operator's screen names the studio because
@@ -341,19 +295,16 @@ interface StorageQuotaExceededMailInput {
  * hours later, by somebody who administers several studios — naming one of
  * them would send them to look at whichever studio happened to trigger it,
  * which may hold hardly anything.
- * @param input - Recipient email and the studio the refused write was aimed at.
- * @returns `SendMailOptions` (to / subject / html) for `sendMail`.
+ * @param input - The recipient's language and email, and the studio the refused write was aimed at.
+ * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */
 export function buildStorageQuotaExceededMail(
   input: StorageQuotaExceededMailInput,
-): SendMailOptions {
-  return renderNotificationMail({
+): Promise<RenderedMail> {
+  return renderMail(input.locale, {
     to: input.recipientEmail,
-    subject: `${BRAND} - your storage is full`,
-    leadHtml:
-      `Your storage is full, so uploads and generations were refused in ` +
-      `<strong>${escapeHtml(input.studioName)}</strong>. Storage is counted ` +
-      `across every studio you administer, not just this one.`,
-    footer: "Raise your membership to get more room.",
+    subject: { key: "server.mail.storage_full.subject" },
+    body: [{ key: "server.mail.storage_full.lead", params: { studio: input.studioName } }],
+    note: { key: "server.mail.storage_full.footer" },
   });
 }

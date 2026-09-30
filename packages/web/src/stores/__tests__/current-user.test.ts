@@ -99,6 +99,7 @@ describe('useCurrentUserStore', () => {
       email: 'c@d.com',
       personalStudio: { name: 'Carol', slug: 'carol', avatarUrl: null },
       membershipTier: 'pro',
+      locale: 'en',
     });
 
     expect(user.membershipTier).toBe('pro');
@@ -111,6 +112,7 @@ describe('useCurrentUserStore', () => {
       email: 'e@f.com',
       personalStudio: null,
       membershipTier: 'enterprise',
+      locale: 'en',
     });
 
     expect(user.membershipTier).toBe('enterprise');
@@ -137,6 +139,7 @@ describe('the persisted mirror of whether a session was ever held', () => {
         name: 'A',
         personalStudio: null,
         membershipTier: 'base',
+        locale: 'en',
       } as Parameters<typeof toCurrentUser>[0]),
     );
 

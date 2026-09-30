@@ -142,22 +142,93 @@
     "purchase_mail": {
       "subject": "クレジットを追加しました",
       "intro": "ご購入ありがとうございます。内容は以下のとおりです。控えとして保管してください。",
-      "credits": "今回の追加：{credits} クレジット",
-      "balance": "現在の残高：{credits} クレジット",
-      "subtotal": "価格：{amount}",
-      "tax": "税額：{amount}",
-      "total": "お支払い合計：{amount}",
-      "purchased_at": "購入日時：{when}",
-      "refund_by": "返金可能期限：{when}",
-      "order_ref": "注文番号：{ref}",
+      "label": {
+        "credits": "今回の追加",
+        "balance": "現在の残高",
+        "subtotal": "価格",
+        "tax": "税額",
+        "total": "お支払い合計",
+        "purchased_at": "購入日時",
+        "refund_by": "返金可能期限",
+        "order_ref": "注文番号"
+      },
+      "credits_amount": "{credits} クレジット",
+      "fact_line": "{label}：{value}",
       "consent_heading": "ご購入時に同意いただいた内容",
       "refund_heading": "クレジットパックの返金規定",
-      "support": "このご購入に関するお問い合わせは {email} までご連絡ください。"
+      "support": "このご購入に関するお問い合わせは <mailto>{email}</mailto> までご連絡ください。"
     },
     "chat": {
       "message_too_long": "このメッセージは長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "attachments_too_long": "添付した内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。"
+    },
+    "mail": {
+      "studio_invite": {
+        "subject": "{inviter} さんから {studio} への招待が届いています",
+        "lead": "<b>{inviter}</b> さんが Studio <b>{studio}</b> に <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> として招待しています。",
+        "action": "招待を開く"
+      },
+      "project_invite": {
+        "subject": "{inviter} さんから {project} への招待が届いています",
+        "lead": "<b>{inviter}</b> さんが Project <b>{project}</b> に <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> として招待しています。",
+        "action": "招待を開く"
+      },
+      "studio_transfer": {
+        "subject": "{initiator} さんが {studio} をあなたに引き継ごうとしています",
+        "lead": "<b>{initiator}</b> さんが Studio <b>{studio}</b> の <code>Admin</code> をあなたに引き継ごうとしています。",
+        "action": "この引き継ぎを確認する"
+      },
+      "project_transfer": {
+        "subject": "{initiator} さんが {project} をあなたに引き継ごうとしています",
+        "lead": "<b>{initiator}</b> さんが Project <b>{project}</b> の <code>Owner</code> をあなたに引き継ごうとしています。",
+        "action": "この引き継ぎを確認する"
+      },
+      "role_upgrade": {
+        "subject": "{requester} さんが {project} でより上位のロールを申請しています",
+        "lead": "<b>{requester}</b> さんが <b>{project}</b> で <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code> になることを申請しています。",
+        "action": "この申請を確認する"
+      },
+      "project_join": {
+        "subject": "{requester} さんが {project} への参加を申請しています",
+        "lead": "<b>{requester}</b> さんが <b>{project}</b> への参加を申請しています。",
+        "action": "この申請を確認する"
+      },
+      "reason": "メッセージ：<em>{message}</em>",
+      "expiry": {
+        "invitation": "この招待は {days, plural, other {# 日}}後に期限切れになります。心当たりがない場合は、このメールを無視してください。",
+        "transfer": "この引き継ぎリクエストは {days, plural, other {# 日}}後に期限切れになります。心当たりがない場合は、このメールを無視してください。",
+        "request": "この申請は {days, plural, other {# 日}}後に期限切れになります。心当たりがない場合は、このメールを無視してください。"
+      },
+      "membership_ended": {
+        "subject": "{tier} メンバーシップが終了しました",
+        "lead": "<b>{tier}</b> メンバーシップが終了しました。アカウントは無料プランになっています。",
+        "footer": "メンバーシップパネルからいつでも再登録できます。"
+      },
+      "storage_full": {
+        "subject": "ストレージがいっぱいです",
+        "lead": "ストレージがいっぱいのため、<b>{studio}</b> でのアップロードと生成が拒否されました。ストレージはこの Studio だけでなく、あなたが管理するすべての Studio の合計で数えられます。",
+        "footer": "メンバーシップをアップグレードすると容量が増えます。"
+      },
+      "password_reset": {
+        "subject": "パスワードのリセット",
+        "lead": "パスワードのリセットがリクエストされました。",
+        "action": "パスワードをリセット",
+        "footer": "このリンクは {hours, plural, other {# 時間}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
+      },
+      "email_verification": {
+        "subject": "メールアドレスの確認",
+        "lead": "Breatic へようこそ。下のボタンからメールアドレスを確認してください。",
+        "action": "メールアドレスを確認する",
+        "footer": "このリンクは {hours, plural, other {# 時間}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
+      },
+      "footer": "このメールは自動送信です。返信は確認されません。",
+      "help": "お困りですか？<manual>ユーザーマニュアル</manual>をご覧いただくか、<contact>{email}</contact> までご連絡ください。",
+      "legal": {
+        "about": "私たちについて",
+        "terms": "利用規約",
+        "privacy": "プライバシーポリシー"
+      }
     }
   },
   "chat": {
@@ -1452,7 +1523,8 @@
       "agentColumnWidth": "エージェントパネルの幅を調整",
       "language": "言語：{name}",
       "theme": "テーマ：{theme}"
-    }
+    },
+    "languageNotSaved": "言語をアカウントに保存できませんでした"
   },
   "projectJoin": {
     "title": "この Project のメンバーではありません",

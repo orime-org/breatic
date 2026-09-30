@@ -174,8 +174,12 @@ export function licenceCoverage(
       // entry has to state every term the tool reported. Any entry, not the
       // first to name the package — entries cross-reference each other, and a
       // mention in someone else's prose is not this package's entry.
-      const covered = naming.some((entry) =>
-        terms(licence).every((term) => states(entry, term)),
+      // Some packages report prose rather than SPDX, such as `MIT (<url>)`;
+      // an entry quoting that string as written states it.
+      const covered = naming.some(
+        (entry) =>
+          states(entry, licence.toLowerCase()) ||
+          terms(licence).every((term) => states(entry, term)),
       );
       if (!covered) {
         gaps.push({ ...pkg, licence, reason: "licence-mismatch" });

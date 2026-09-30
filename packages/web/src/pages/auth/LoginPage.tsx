@@ -14,6 +14,7 @@ import { Input } from '@web/components/ui/input';
 import { PasswordInput } from '@web/components/ui/password-input';
 import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
+import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { FieldError } from '@web/pages/auth/_shared/FieldError';
 
@@ -74,6 +75,7 @@ export default function LoginPage(): React.JSX.Element {
       const { user } = await authApi.google({ credential });
       if (!mounted.current) return;
       setUser(toCurrentUser(user));
+      changeLocale(user.locale);
       navigate(params.get('next') ?? '/studio', { replace: true });
     } catch (err) {
       if (mounted.current) setFormError(err instanceof ApiException ? err.message : t('auth.login.failed'));
@@ -117,6 +119,7 @@ export default function LoginPage(): React.JSX.Element {
       const { user } = await authApi.login({ email: trimmedEmail, password });
       if (!mounted.current) return;
       setUser(toCurrentUser(user));
+      changeLocale(user.locale);
       navigate(params.get('next') ?? '/studio', { replace: true });
     } catch (err) {
       const message =

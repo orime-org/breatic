@@ -30,6 +30,7 @@ import { renderMetrics } from "@server/infra/metrics.js";
 import { logger, initLogger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
+import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
 import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
 
@@ -277,10 +278,18 @@ async function shutdown(signal: string): Promise<void> {
         lifecycleRelay.stop();
         return Promise.resolve();
       },
-      () => Promise.allSettled([closeDb(), closeRedis(), closeQueues()]),
+      // Work a route left running after its reply (a password-reset send)
+      // still needs the pools, so they close once it has finished.
+      () =>
+        settleAfterReply().then(() =>
+          Promise.allSettled([closeDb(), closeRedis(), closeQueues()]),
+        ),
     ],
     deadlineMs: SHUTDOWN_DEADLINE_MS,
   });
+  for (const ctx of pendingAfterReply()) {
+    logger.error(ctx, "after_reply_cut_off_by_shutdown");
+  }
 
   logger.info("Shutdown complete");
   process.exit(0);

@@ -4,6 +4,7 @@
 import React from 'react';
 
 import { authApi } from '@web/data/api/auth';
+import { changeLocale } from '@web/i18n/locale-bootstrap';
 // The store's own module, not the `@web/stores` barrel. `App` mounts this
 // file above the router and the route table imports `ProtectedRoute`
 // statically, so both land in the chunk every reader downloads — and the
@@ -63,6 +64,7 @@ export default function AuthBootstrap({
         if (cancelled) return;
         if (useCurrentUserStore.getState().user === null) {
           setUser(toCurrentUser(u));
+          changeLocale(u.locale);
         }
       })
       .catch(() => {

@@ -320,10 +320,6 @@ export const coreConfigSchema = z.object({
   // Verified sender address, optionally with a display name. Empty preserves
   // the legacy SMTP_USER sender; authentication always uses SMTP_USER.
   SMTP_FROM: z.string().trim().default(""),
-  // Where a buyer writes back. It goes into the purchase confirmation, which
-  // has to name a way to reach us, and it belongs beside the SMTP settings
-  // because a self-hosted deployment answers its own mail.
-  SUPPORT_EMAIL: z.string().default(""),
 })
   // Resolve `REDIS_KEY_PREFIX` here rather than at each call site: a
   // fallback repeated at every consumer is a fallback that eventually

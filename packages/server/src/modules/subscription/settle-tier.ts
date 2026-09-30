@@ -147,6 +147,7 @@ export async function sendMembershipEndedMail(
       const user = await userRepo.getUserById(userId);
       if (!user) return null;
       return buildMembershipEndedMail({
+        locale: user.locale,
         recipientEmail: user.email,
         tierLabel: TIER_LABEL[fromTier] ?? fromTier,
       });

@@ -142,22 +142,93 @@
     "purchase_mail": {
       "subject": "积分已到账",
       "intro": "感谢购买。以下是这笔购买的内容，请留存。",
-      "credits": "本次到账：{credits} 积分",
-      "balance": "当前余额：{credits} 积分",
-      "subtotal": "价格：{amount}",
-      "tax": "税额：{amount}",
-      "total": "实付合计：{amount}",
-      "purchased_at": "购买时间：{when}",
-      "refund_by": "可退款截止：{when}",
-      "order_ref": "订单号：{ref}",
+      "label": {
+        "credits": "本次到账",
+        "balance": "当前余额",
+        "subtotal": "价格",
+        "tax": "税额",
+        "total": "实付合计",
+        "purchased_at": "购买时间",
+        "refund_by": "可退款截止",
+        "order_ref": "订单号"
+      },
+      "credits_amount": "{credits} 积分",
+      "fact_line": "{label}：{value}",
       "consent_heading": "你在购买时同意的内容",
       "refund_heading": "积分包退款规则",
-      "support": "对这笔购买有疑问，请写信到 {email}。"
+      "support": "对这笔购买有疑问，请写信到 <mailto>{email}</mailto>。"
     },
     "chat": {
       "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
       "attachments_too_long": "附带的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
       "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。"
+    },
+    "mail": {
+      "studio_invite": {
+        "subject": "{inviter} 邀请你加入 {studio}",
+        "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> 身份加入 Studio <b>{studio}</b>。",
+        "action": "打开邀请"
+      },
+      "project_invite": {
+        "subject": "{inviter} 邀请你参与 {project}",
+        "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> 身份参与 Project <b>{project}</b>。",
+        "action": "打开邀请"
+      },
+      "studio_transfer": {
+        "subject": "{initiator} 想把 {studio} 交给你",
+        "lead": "<b>{initiator}</b> 想让你成为 Studio <b>{studio}</b> 的 <code>Admin</code>。",
+        "action": "查看这次转让"
+      },
+      "project_transfer": {
+        "subject": "{initiator} 想把 {project} 交给你",
+        "lead": "<b>{initiator}</b> 想把 Project <b>{project}</b> 的所有权交给你。",
+        "action": "查看这次转让"
+      },
+      "role_upgrade": {
+        "subject": "{requester} 申请在 {project} 中获得更高的角色",
+        "lead": "<b>{requester}</b> 申请在 <b>{project}</b> 中成为 <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code>。",
+        "action": "查看这条申请"
+      },
+      "project_join": {
+        "subject": "{requester} 申请加入 {project}",
+        "lead": "<b>{requester}</b> 申请加入 <b>{project}</b>。",
+        "action": "查看这条申请"
+      },
+      "reason": "附言：<em>{message}</em>",
+      "expiry": {
+        "invitation": "这条邀请将在 {days, plural, other {# 天}}后过期。如果你没有预期收到它，可以忽略这封邮件。",
+        "transfer": "这条转让请求将在 {days, plural, other {# 天}}后过期。如果你没有预期收到它，可以忽略这封邮件。",
+        "request": "这条申请将在 {days, plural, other {# 天}}后过期。如果你没有预期收到它，可以忽略这封邮件。"
+      },
+      "membership_ended": {
+        "subject": "你的 {tier} 会员已结束",
+        "lead": "你的 <b>{tier}</b> 会员已结束，账号已回到免费方案。",
+        "footer": "随时可以在会员面板重新订阅。"
+      },
+      "storage_full": {
+        "subject": "你的存储空间已满",
+        "lead": "你的存储空间已满，<b>{studio}</b> 中的上传和生成被拒绝了。存储按你管理的所有 Studio 合计，不只是这一个。",
+        "footer": "升级会员可以获得更多空间。"
+      },
+      "password_reset": {
+        "subject": "重置密码",
+        "lead": "你申请了重置密码。",
+        "action": "重置密码",
+        "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，请忽略这封邮件。"
+      },
+      "email_verification": {
+        "subject": "验证你的邮箱",
+        "lead": "欢迎来到 Breatic。点击下面的按钮验证你的邮箱地址。",
+        "action": "验证邮箱地址",
+        "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，可以忽略这封邮件。"
+      },
+      "footer": "这是一封自动发送的邮件，回复不会被阅读。",
+      "help": "需要帮助？查看<manual>用户手册</manual>，或发邮件到 <contact>{email}</contact>。",
+      "legal": {
+        "about": "关于我们",
+        "terms": "使用条款",
+        "privacy": "隐私政策"
+      }
     }
   },
   "chat": {
@@ -1452,7 +1523,8 @@
       "agentColumnWidth": "调整 Agent 面板宽度",
       "language": "语言：{name}",
       "theme": "主题：{theme}"
-    }
+    },
+    "languageNotSaved": "语言未保存到账号"
   },
   "projectJoin": {
     "title": "你还不是这个 Project 的成员",

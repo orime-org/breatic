@@ -142,22 +142,93 @@
     "purchase_mail": {
       "subject": "Your credits are in",
       "intro": "Thank you for your purchase. Here is what it was, kept for your records.",
-      "credits": "Credits added: {credits}",
-      "balance": "Balance now: {credits}",
-      "subtotal": "Price: {amount}",
-      "tax": "Tax: {amount}",
-      "total": "Total charged: {amount}",
-      "purchased_at": "Purchased: {when}",
-      "refund_by": "Refundable until: {when}",
-      "order_ref": "Order reference: {ref}",
+      "label": {
+        "credits": "Credits added",
+        "balance": "Balance now",
+        "subtotal": "Price",
+        "tax": "Tax",
+        "total": "Total charged",
+        "purchased_at": "Purchased",
+        "refund_by": "Refundable until",
+        "order_ref": "Order reference"
+      },
+      "credits_amount": "{credits}",
+      "fact_line": "{label}: {value}",
       "consent_heading": "What you agreed to when you bought",
       "refund_heading": "Refund rules for credit packs",
-      "support": "Questions about this purchase? Write to {email}."
+      "support": "Questions about this purchase? Write to <mailto>{email}</mailto>."
     },
     "chat": {
       "message_too_long": "This message is too long. It may hold at most {limit, number} characters; this one holds {actual, number}.",
       "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
       "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}."
+    },
+    "mail": {
+      "studio_invite": {
+        "subject": "{inviter} invited you to {studio}",
+        "lead": "<b>{inviter}</b> invited you to join the studio <b>{studio}</b> as <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code>.",
+        "action": "Open the invitation"
+      },
+      "project_invite": {
+        "subject": "{inviter} invited you to {project}",
+        "lead": "<b>{inviter}</b> invited you to collaborate on the project <b>{project}</b> as <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code>.",
+        "action": "Open the invitation"
+      },
+      "studio_transfer": {
+        "subject": "{initiator} wants to transfer {studio} to you",
+        "lead": "<b>{initiator}</b> wants to make you <code>Admin</code> of the studio <b>{studio}</b>.",
+        "action": "Review this transfer"
+      },
+      "project_transfer": {
+        "subject": "{initiator} wants to transfer {project} to you",
+        "lead": "<b>{initiator}</b> wants to make you <code>Owner</code> of the project <b>{project}</b>.",
+        "action": "Review this transfer"
+      },
+      "role_upgrade": {
+        "subject": "{requester} asked for a bigger role on {project}",
+        "lead": "<b>{requester}</b> asked to become <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code> on <b>{project}</b>.",
+        "action": "Review this request"
+      },
+      "project_join": {
+        "subject": "{requester} asked to join {project}",
+        "lead": "<b>{requester}</b> asked to join <b>{project}</b>.",
+        "action": "Review this request"
+      },
+      "reason": " They said: <em>{message}</em>",
+      "expiry": {
+        "invitation": "This invitation expires in {days, plural, one {# day} other {# days}}. If you didn't expect it, you can ignore this email.",
+        "transfer": "This transfer request expires in {days, plural, one {# day} other {# days}}. If you didn't expect it, you can ignore this email.",
+        "request": "This request expires in {days, plural, one {# day} other {# days}}. If you didn't expect it, you can ignore this email."
+      },
+      "membership_ended": {
+        "subject": "Your {tier} membership has ended",
+        "lead": "Your <b>{tier}</b> membership has ended. Your account is on the free plan.",
+        "footer": "Subscribe again at any time from the membership panel."
+      },
+      "storage_full": {
+        "subject": "Your storage is full",
+        "lead": "Your storage is full, so uploads and generations were refused in <b>{studio}</b>. Storage is counted across every studio you administer, not just this one.",
+        "footer": "Raise your membership to get more room."
+      },
+      "password_reset": {
+        "subject": "Reset your password",
+        "lead": "You requested a password reset.",
+        "action": "Reset your password",
+        "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, ignore this email."
+      },
+      "email_verification": {
+        "subject": "Verify your email",
+        "lead": "Welcome to Breatic. Click the button below to verify your email address.",
+        "action": "Verify your email address",
+        "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, you can ignore this email."
+      },
+      "footer": "This is an automated message; replies are not read.",
+      "help": "Need help? Read the <manual>User manual</manual> or write to <contact>{email}</contact>.",
+      "legal": {
+        "about": "About",
+        "terms": "Terms",
+        "privacy": "Privacy"
+      }
     }
   },
   "chat": {
@@ -1452,7 +1523,8 @@
       "agentColumnWidth": "Adjust agent panel width",
       "language": "Language: {name}",
       "theme": "Theme: {theme}"
-    }
+    },
+    "languageNotSaved": "Language not saved to your account"
   },
   "projectJoin": {
     "title": "You're not a member of this project",

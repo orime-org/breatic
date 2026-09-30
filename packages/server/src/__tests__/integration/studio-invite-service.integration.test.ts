@@ -50,12 +50,27 @@ vi.mock("@server/config/limits.js", () => ({
   getDecisionWindowMs: () => decisionWindow.days * 24 * 60 * 60 * 1000,
   getDecisionWindowSeconds: () => decisionWindow.days * 24 * 60 * 60,
 }));
+// The invitation email is captured rather than sent, so a case can read the
+// letter the invitee would get and the log context it would be filed under.
+const mailCalls = vi.hoisted(
+  () => [] as Array<{ build: () => Promise<unknown>; ctx: { userId?: string } }>,
+);
+vi.mock("@server/utils/send-best-effort-mail.js", () => ({
+  sendBestEffortMail: async (
+    build: () => Promise<unknown>,
+    ctx: { userId?: string },
+  ): Promise<void> => {
+    mailCalls.push({ build, ctx });
+  },
+}));
+
 
 import { eq, and, inArray, isNull, sql } from "drizzle-orm";
-import { initCore, schema, createTestDb } from "@breatic/core";
+import { initCore, loadLocales, schema, createTestDb } from "@breatic/core";
 import { NotFoundError, ConflictError, ForbiddenError } from "@breatic/core";
 
 initCore(process.env);
+loadLocales();
 
 import { studioMembersRepo } from "@breatic/domain";
 import * as inviteService from "../../modules/studio/studioInvite.service.js";
@@ -381,5 +396,23 @@ describe("the deadline the window actually enforces", () => {
     const aheadMs = row!.expiresAt.getTime() - Date.now();
     expect(aheadMs).toBeLessThanOrEqual(windowMs);
     expect(aheadMs).toBeGreaterThan(windowMs - 60_000);
+  });
+});
+
+describe("the invitation email", () => {
+  it("is written in the invitee's language and filed under the invitee", async () => {
+    // The inviter stays on the default language, so the two differ.
+    await db.update(schema.users).set({ locale: "ja" }).where(eq(schema.users.id, INVITEE));
+    mailCalls.length = 0;
+    try {
+      await inviteService.createInvite("svc-team", INVITER, INVITEE_EMAIL, "guest", "https://app.test");
+      expect(mailCalls).toHaveLength(1);
+      const mail = (await mailCalls[0]!.build()) as { to: string; html: string };
+      expect(mail.to).toBe(INVITEE_EMAIL);
+      expect(mail.html).toContain("招待");
+      expect(mailCalls[0]!.ctx.userId).toBe(INVITEE);
+    } finally {
+      await db.update(schema.users).set({ locale: "en" }).where(eq(schema.users.id, INVITEE));
+    }
   });
 });

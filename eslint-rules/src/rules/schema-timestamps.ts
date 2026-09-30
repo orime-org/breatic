@@ -44,7 +44,7 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   ],
   [
     "taskUpstreamSteps",
-    "a task's own execution record (0084, #2156): each row is one upstream call the worker made or will make for that task, and what the task is billed is summed over them. It follows its task, which carries deleted_at; a step soft-deleted on its own would drop a paid call from the bill",
+    "a task's own execution record (0085, #2156): each row is one upstream call the worker made or will make for that task, and what the task is billed is summed over them. It follows its task, which carries deleted_at; a step soft-deleted on its own would drop a paid call from the bill",
   ],
   [
     "projectLastOpened",

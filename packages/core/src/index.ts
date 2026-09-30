@@ -124,6 +124,7 @@ export {
   storageKey,
 } from "@core/infra/storage/index.js";
 export { sendMail } from "@core/infra/mailer.js";
+export { getMailLayout, type MailLayout } from "@core/config/mail.js";
 export type { SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
 export {
   publishNodeEvent,

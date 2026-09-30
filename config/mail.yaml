@@ -1,0 +1,52 @@
+# Outgoing mail (#286).
+#
+# SMTP timeouts, in milliseconds. nodemailer's own defaults are two minutes to
+# connect and ten minutes of idle socket, so without these a send stuck on an
+# unresponsive server holds its connection and its promise for that long.
+#
+# nodemailer times the stages one after another: resolving the host, opening
+# the connection (TCP and TLS), then waiting for the server's greeting. When
+# opening times out it tries the next address the host resolved to, so the
+# bound up to the greeting is (addresses x connection) + greeting. After the
+# greeting every stage (AUTH, MAIL, DATA) is bounded only by the idle socket
+# timeout.
+#
+# Resolving is not fully bounded by dns_timeout_ms: when both the IPv4 and IPv6
+# lookups fail nodemailer falls back to the system resolver, which takes no
+# timeout.
+smtp:
+  # Resolving the SMTP host name.
+  dns_timeout_ms: 5000
+  # Opening the connection, TCP and TLS, per resolved address.
+  connection_timeout_ms: 5000
+  # Waiting for the server's greeting once connected.
+  greeting_timeout_ms: 5000
+  # How long the connection may sit idle mid-transfer before it is dropped.
+  socket_timeout_ms: 10000
+
+# The branded layout every product email is assembled into.
+layout:
+  # The logo at the top of every mail. Mail clients do not render SVG, so this
+  # is a PNG, and it must be reachable over https from the recipient's client.
+  logo_url: https://breatic.ai/icon-192.png
+  # The marketing site. The footer links to its user manual, about, terms and
+  # privacy pages in the recipient's language: <site_url>/<locale>/<page>/,
+  # except the language the site serves at its root, which has no <locale>.
+  site_url: https://breatic.ai
+  site_root_locale: en
+  # Where the footer's help line sends people, and the address a purchase
+  # receipt gives the buyer for questions about that purchase.
+  contact_email: contact@breatic.ai
+  # The footer's social row, in this order. Same links as the marketing
+  # site's footer.
+  social:
+    - label: GitHub
+      url: https://github.com/orime-org/breatic
+    - label: Discord
+      url: https://discord.gg/Yeu6A4aejN
+    - label: X
+      url: https://x.com/breatic_ai
+    - label: YouTube
+      url: https://www.youtube.com/@breatic_ai
+    - label: Instagram
+      url: https://www.instagram.com/breatic_ai

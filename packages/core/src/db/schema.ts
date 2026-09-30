@@ -114,6 +114,11 @@ export const users = pgTable(
     // and creating one per registration would make a Stripe object per signup.
     // One customer per account, reused across every subscription it ever has.
     stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+    // The account's language (0084, #286): every email to this account is
+    // rendered in it. Written at sign-up from the language the request was
+    // negotiated in, and changed only when the user switches the interface
+    // language.
+    locale: varchar("locale", { length: 10 }).default("en").notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -560,7 +565,7 @@ export const tasks = pgTable(
  * and advanced only by its step executor, so a redelivered job resumes from
  * the first step that is not done and never submits a step twice.
  *
- * The kind and status CHECKs live in migration 0084 only, as 0061 does for
+ * The kind and status CHECKs live in migration 0085 only, as 0061 does for
  * its tables.
  */
 export const taskUpstreamSteps = pgTable(

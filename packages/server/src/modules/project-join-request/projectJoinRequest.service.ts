@@ -193,6 +193,7 @@ export async function request(input: {
         const owner = await userRepo.getUserById(ownerUserId);
         if (!owner) return null;
         return buildProjectJoinRequestMail({
+          locale: owner.locale,
           ownerEmail: owner.email,
           requesterName,
           projectName: project.name,

@@ -25,6 +25,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { authApi } from '@web/data/api/auth';
 import LoginPage from '@web/pages/auth/LoginPage';
 import { useCurrentUserStore } from '@web/stores';
+import { getLocale } from '@breatic/shared';
+import { changeLocale } from '@web/i18n/locale-bootstrap';
 
 // Mock only the network call; the projection into the store stays real.
 vi.mock('@web/data/api/auth', async () => {
@@ -124,5 +126,23 @@ describe('LoginPage', () => {
       expect(useCurrentUserStore.getState().user?.name).toBe('Ada'),
     );
     expect(useCurrentUserStore.getState().user?.avatarUrl).toBeUndefined();
+  });
+  it('switches the interface to the account language', async () => {
+    vi.mocked(authApi.login).mockResolvedValue({
+      user: {
+        id: 'u-ada',
+        email: 'ada@example.com',
+        personalStudio: null,
+        membershipTier: 'base',
+        locale: 'ko',
+      },
+    });
+    try {
+      setup();
+      await signIn();
+      await waitFor(() => expect(getLocale()).toBe('ko'));
+    } finally {
+      changeLocale('en');
+    }
   });
 });

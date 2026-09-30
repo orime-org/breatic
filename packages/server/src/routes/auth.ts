@@ -30,6 +30,7 @@ import {
   readSessionCookie,
 } from "@server/middleware/session-cookie.js";
 import { logMailResult } from "@server/utils/log-mail.js";
+import { runAfterReply } from "@server/utils/after-reply.js";
 
 const auth = new Hono<{ Variables: AuthVariables }>();
 
@@ -302,22 +303,23 @@ auth.post(
     const { email } = c.req.valid("json");
     const resetBaseUrl = `${frontendOrigin(c.req.header("Origin"))}/reset-password`;
 
-    const result = await authService.forgotPassword(email, resetBaseUrl);
-    // Audit log moved from auth.service.ts (17B mandate). The
-    // discriminant tells us internally which branch ran without
-    // ever leaking it to the client - anti-enumeration preserved
-    // because the response body below is the same in both cases.
-    if (result.status === "unknown_email") {
-      logger.info({ email }, "password_reset_unknown_email");
-    } else {
-      logger.info(
-        { userId: result.userId, email, mailStatus: result.mailResult.status },
-        "password_reset_email_sent",
-      );
-      logMailResult(result.mailResult, { userId: result.userId, subject: "password_reset" });
-    }
+    // Everything that depends on the account — the lookup, the token, the
+    // send — runs after the reply, so a registered and an unregistered
+    // address get the same answer at the same speed (OWASP Forgot Password
+    // Cheat Sheet). A failure there is logged, never shown.
+    runAfterReply({ task: "password_reset", email }, async () => {
+      const result = await authService.forgotPassword(email, resetBaseUrl);
+      if (result.status === "unknown_email") {
+        logger.info({ email }, "password_reset_unknown_email");
+      } else {
+        logger.info(
+          { userId: result.userId, email, mailStatus: result.mailResult.status },
+          "password_reset_email_sent",
+        );
+        logMailResult(result.mailResult, { userId: result.userId, subject: "password_reset" });
+      }
+    });
 
-    // Always return success (don't reveal if email exists)
     return c.json({ message: t("server.auth.reset_link_sent") });
   },
 );
@@ -437,6 +439,7 @@ auth.post(
     const { mailResult } = await authService.resendVerificationEmail(
       user.id,
       user.email,
+      user.locale,
       verifyBaseUrl,
     );
     // Audit log moved from auth.service.ts (17B mandate).

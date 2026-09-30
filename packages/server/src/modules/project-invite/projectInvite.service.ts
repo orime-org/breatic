@@ -201,13 +201,14 @@ export async function createInvite(
     await sendBestEffortMail(
       async () =>
         buildProjectInvitationMail({
+          locale: invitee.locale,
           inviteeEmail: email,
           inviterName,
           projectName: project.name,
           role,
           inviteLink: decisionLink(origin, shareToken),
         }),
-      { userId: inviterUserId, subject: "project_invite" },
+      { userId: invitee.id, subject: "project_invite" },
     );
   }
 

@@ -99,6 +99,13 @@ describe("POST /auth/resend-verification-email", () => {
       id: "user-1",
       email: "u@x.com",
     });
+    // The mail is written in the account's language, which reaches the route
+    // on the session user.
+    mocks.authService.getUserByToken.mockResolvedValueOnce({
+      id: "user-1",
+      email: "u@x.com",
+      locale: "ja",
+    });
     mocks.authService.resendVerificationEmail.mockResolvedValue({
       mailResult: { status: "skipped", reason: "backend_disabled" },
     });
@@ -113,6 +120,7 @@ describe("POST /auth/resend-verification-email", () => {
     expect(mocks.authService.resendVerificationEmail).toHaveBeenCalledWith(
       "user-1",
       "u@x.com",
+      "ja",
       "http://localhost:8000/verify-email",
     );
   });

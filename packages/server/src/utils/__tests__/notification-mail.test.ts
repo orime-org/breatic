@@ -18,6 +18,9 @@ import {
   buildProjectTransferMail,
   buildRoleUpgradeRequestMail,
 } from "@server/utils/notification-mail.js";
+import { loadLocales } from "@breatic/core";
+
+loadLocales();
 
 // One builder per flow, five flows. Subjects are plain text (email headers)
 // so raw names are fine there; bodies are HTML so every user field is escaped,
@@ -25,8 +28,9 @@ import {
 // number of its own.
 
 describe("buildStudioInvitationMail", () => {
-  it("targets the invitee, names the studio + role, and escapes body fields", () => {
-    const mail = buildStudioInvitationMail({
+  it("targets the invitee, names the studio + role, and escapes body fields", async () => {
+    const mail = await buildStudioInvitationMail({
+      locale: "en",
       inviteeEmail: "invitee@example.com",
       inviterName: "Alice <b>",
       studioName: "Team & Co",
@@ -40,16 +44,16 @@ describe("buildStudioInvitationMail", () => {
     expect(mail.html).toContain("Team &amp; Co");
     expect(mail.html).not.toContain("Alice <b>");
     expect(mail.html).toContain("join the studio");
-    expect(mail.html).toContain("maintainer");
+    expect(mail.html).toMatch(/<code[^>]*>Maintainer<\/code>/);
     expect(mail.html).toContain("https://app.test/decision?token=abc");
     expect(mail.html).toContain("Open the invitation");
-    expect(mail.html.toLowerCase()).toContain("accept or decline");
   });
 });
 
 describe("buildProjectInvitationMail", () => {
-  it("targets the invitee, names the project + role, and escapes body fields", () => {
-    const mail = buildProjectInvitationMail({
+  it("targets the invitee, names the project + role, and escapes body fields", async () => {
+    const mail = await buildProjectInvitationMail({
+      locale: "en",
       inviteeEmail: "invitee@example.com",
       inviterName: "Bob <i>",
       projectName: "Launch & Grow",
@@ -63,16 +67,16 @@ describe("buildProjectInvitationMail", () => {
     expect(mail.html).toContain("Launch &amp; Grow");
     expect(mail.html).not.toContain("Bob <i>");
     expect(mail.html).toContain("collaborate on the project");
-    expect(mail.html).toContain("editor");
+    expect(mail.html).toMatch(/<code[^>]*>Editor<\/code>/);
     expect(mail.html).toContain("https://app.test/decision?token=xyz");
     expect(mail.html).toContain("Open the invitation");
-    expect(mail.html.toLowerCase()).toContain("accept or decline");
   });
 });
 
 describe("buildStudioTransferMail", () => {
-  it("targets the recipient, names the studio, escapes body fields, points at the app", () => {
-    const mail = buildStudioTransferMail({
+  it("targets the recipient, names the studio, escapes body fields, points at the app", async () => {
+    const mail = await buildStudioTransferMail({
+      locale: "en",
       recipientEmail: "new-admin@example.com",
       initiatorName: "Alice <b>",
       studioName: "Team & Co",
@@ -84,17 +88,17 @@ describe("buildStudioTransferMail", () => {
     expect(mail.html).toContain("Alice &lt;b&gt;");
     expect(mail.html).toContain("Team &amp; Co");
     expect(mail.html).not.toContain("Alice <b>");
-    expect(mail.html).toContain("make you the admin of the studio");
+    expect(mail.html).toMatch(/make you <code[^>]*>Admin<\/code> of the studio/);
     expect(mail.html).toContain("https://app.test/studio/team-co");
     expect(mail.html).toContain("Review this transfer");
-    expect(mail.html.toLowerCase()).toContain("to accept or decline");
     expect(mail.html.toLowerCase()).toContain("this transfer request expires in 3 days");
   });
 });
 
 describe("buildProjectTransferMail", () => {
-  it("targets the recipient, names the project, escapes body fields, points at the app", () => {
-    const mail = buildProjectTransferMail({
+  it("targets the recipient, names the project, escapes body fields, points at the app", async () => {
+    const mail = await buildProjectTransferMail({
+      locale: "en",
       recipientEmail: "new-owner@example.com",
       initiatorName: "Bob <i>",
       projectName: "Launch & Grow",
@@ -106,10 +110,9 @@ describe("buildProjectTransferMail", () => {
     expect(mail.html).toContain("Bob &lt;i&gt;");
     expect(mail.html).toContain("Launch &amp; Grow");
     expect(mail.html).not.toContain("Bob <i>");
-    expect(mail.html).toContain("make you the owner of the project");
+    expect(mail.html).toMatch(/make you <code[^>]*>Owner<\/code> of the project/);
     expect(mail.html).toContain("https://app.test/project/launch-grow-123");
     expect(mail.html).toContain("Review this transfer");
-    expect(mail.html.toLowerCase()).toContain("to accept or decline");
     expect(mail.html.toLowerCase()).toContain("this transfer request expires in 3 days");
   });
 });
@@ -117,8 +120,9 @@ describe("buildProjectTransferMail", () => {
 // The link href itself must be escaped too (a malicious token/link can't break
 // out of the href attribute).
 describe("notification mail — link href escaping", () => {
-  it("escapes a quote-bearing link so it cannot break out of the href attribute", () => {
-    const mail = buildStudioTransferMail({
+  it("escapes a quote-bearing link so it cannot break out of the href attribute", async () => {
+    const mail = await buildStudioTransferMail({
+      locale: "en",
       recipientEmail: "x@example.com",
       initiatorName: "X",
       studioName: "S",
@@ -140,8 +144,9 @@ describe("every decision email points at the shared landing page", () => {
   const TOKEN = "b".repeat(64);
   const LINK = `https://app.test/decision?token=${TOKEN}`;
 
-  it("the studio transfer email links to the decision page, not the studio", () => {
-    const mail = buildStudioTransferMail({
+  it("the studio transfer email links to the decision page, not the studio", async () => {
+    const mail = await buildStudioTransferMail({
+      locale: "en",
       recipientEmail: "heir@example.com",
       initiatorName: "Alice",
       studioName: "Team & Co",
@@ -153,8 +158,9 @@ describe("every decision email points at the shared landing page", () => {
     expect(mail.html).not.toMatch(/\/studio\/[a-z]/i);
   });
 
-  it("the project transfer email links to the decision page, not the project", () => {
-    const mail = buildProjectTransferMail({
+  it("the project transfer email links to the decision page, not the project", async () => {
+    const mail = await buildProjectTransferMail({
+      locale: "en",
       recipientEmail: "heir@example.com",
       initiatorName: "Alice",
       projectName: "Rocket",
@@ -164,8 +170,9 @@ describe("every decision email points at the shared landing page", () => {
     expect(mail.html).not.toMatch(/\/project\/[a-z]/i);
   });
 
-  it("the role upgrade email exists, goes to the owner, and carries the reason", () => {
-    const mail = buildRoleUpgradeRequestMail({
+  it("the role upgrade email exists, goes to the owner, and carries the reason", async () => {
+    const mail = await buildRoleUpgradeRequestMail({
+      locale: "en",
       ownerEmail: "owner@example.com",
       requesterName: "Bob <script>",
       projectName: "Rocket & Co",
@@ -181,8 +188,9 @@ describe("every decision email points at the shared landing page", () => {
     expect(mail.html).not.toContain("<script>");
   });
 
-  it("a role upgrade with no reason given still renders", () => {
-    const mail = buildRoleUpgradeRequestMail({
+  it("a role upgrade with no reason given still renders", async () => {
+    const mail = await buildRoleUpgradeRequestMail({
+      locale: "en",
       ownerEmail: "owner@example.com",
       requesterName: "Bob",
       projectName: "Rocket",
@@ -199,38 +207,44 @@ describe("the expiry footer follows the yaml knob", () => {
   // reads it. A hardcoded 7 here contradicted the landing card the moment ops
   // turned the knob — so the mock says three, and a builder carrying its own
   // number fails against it.
-  it("all five builders say the configured window, not one of their own", () => {
-    const all = [
+  it("all five builders say the configured window, not one of their own", async () => {
+    const all = await Promise.all([
       buildStudioInvitationMail({
+        locale: "en",
         inviteeEmail: "a@example.com", inviterName: "A", studioName: "S",
         role: "guest", inviteLink: "https://app.test/decision?token=t",
       }),
       buildProjectInvitationMail({
+        locale: "en",
         inviteeEmail: "a@example.com", inviterName: "A", projectName: "P",
         role: "viewer", inviteLink: "https://app.test/decision?token=t",
       }),
       buildStudioTransferMail({
+        locale: "en",
         recipientEmail: "a@example.com", initiatorName: "A", studioName: "S",
         decisionLink: "https://app.test/decision?token=t",
       }),
       buildProjectTransferMail({
+        locale: "en",
         recipientEmail: "a@example.com", initiatorName: "A", projectName: "P",
         decisionLink: "https://app.test/decision?token=t",
       }),
       buildRoleUpgradeRequestMail({
+        locale: "en",
         ownerEmail: "a@example.com", requesterName: "A", projectName: "P",
         requestedRole: "editor", message: null,
         decisionLink: "https://app.test/decision?token=t",
       }),
-    ];
+    ]);
     for (const mail of all) {
       expect(mail.html.toLowerCase()).toContain("expires in 3 days");
       expect(mail.html.toLowerCase()).not.toContain("7 days");
     }
   });
 
-  it("a role upgrade is not called a transfer", () => {
-    const mail = buildRoleUpgradeRequestMail({
+  it("a role upgrade is not called a transfer", async () => {
+    const mail = await buildRoleUpgradeRequestMail({
+      locale: "en",
       ownerEmail: "a@example.com", requesterName: "A", projectName: "P",
       requestedRole: "editor", message: null,
       decisionLink: "https://app.test/decision?token=t",
