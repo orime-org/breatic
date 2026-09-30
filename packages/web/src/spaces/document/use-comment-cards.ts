@@ -58,7 +58,7 @@ export interface CommentCardView {
   readonly id: string;
   /** Whether it has been settled, which is what the card offers on it. */
   readonly settled: boolean;
-  /** The words it is about, or null once they are gone. */
+  /** The words it is about. */
   readonly quote: string;
   /** The opening comment and every reply, oldest first. */
   readonly entries: readonly CommentEntryView[];
@@ -66,7 +66,7 @@ export interface CommentCardView {
 
 /** The two groups the panel draws. */
 export interface CommentCards {
-  /** Open and orphaned, in body order. */
+  /** Open, in body order. */
   readonly unresolved: readonly CommentCardView[];
   /** Resolved, in the same order. */
   readonly resolved: readonly CommentCardView[];

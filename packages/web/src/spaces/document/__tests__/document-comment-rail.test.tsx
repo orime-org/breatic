@@ -11,8 +11,8 @@
  * that shows itself pushes the body sideways under a caret somebody is using.
  *
  * The cards are `commentRail`'s reading drawn out: unresolved first in body
- * order, resolved behind their own heading, orphans saying the text they were
- * about is gone.
+ * order, resolved behind their own heading, and none for a thread whose words
+ * are gone.
  *
  * TDD: red because neither the menu row nor the panel exists yet.
  */

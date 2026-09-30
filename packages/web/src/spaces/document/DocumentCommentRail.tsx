@@ -208,9 +208,9 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     [editor],
   );
 
-  // Let go of when the thread itself is gone rather than when the card
-  // leaves — a settled thread is still one filter press away with those words
-  // in it (design §9.6). Asked of both groups, not of what the panel shows.
+  // Unsent words live as long as their card: both groups are asked, since a
+  // settled thread is one filter press away. A thread whose words are gone
+  // has no card (A13), and what was typed in it goes too — it was never sent.
   React.useEffect(() => {
     keepRepliesOf(
       editor,

@@ -11,7 +11,7 @@
  * dependency, no backend change.
  *
  * The library's extension is what computes `threadPositions`, the table the
- * orphan test reads (§9), so it has to be registered even though none of its
+ * panel reads to leave out a thread whose words are gone (§9), so it has to be registered even though none of its
  * React components are used — those need a components context that only
  * `BlockNoteView` provides (§4.3).
  *

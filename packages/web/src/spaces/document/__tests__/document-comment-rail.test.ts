@@ -8,12 +8,8 @@
  * resolved ones in their own group (A9). The dot on the `⋯` button is the
  * first group's length, counted in `DocumentEditor` rather than here.
  *
- * Body order leaves one case open, and the design's own transition table is
- * what opens it: a thread whose text was deleted stays in the unresolved
- * group (§9.2), and it has no position to sort by. They go last, oldest
- * first — sorting them among the others would need a position they do not
- * have, and any stand-in would make the list jump at the moment a peer
- * deletes the text.
+ * A thread whose words were all deleted has no position and is left out of
+ * both groups (A13); its card comes back when its words do.
  *
  * TDD: red because `commentRail` does not exist yet.
  */
