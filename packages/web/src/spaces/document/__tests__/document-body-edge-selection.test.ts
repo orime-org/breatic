@@ -20,6 +20,18 @@ import {
   extendToBodyEdge,
 } from '@web/spaces/document/document-body-edge-selection';
 
+/**
+ * Presses a key through the editor's key handlers.
+ * @param view - The view.
+ * @param key - The key name.
+ * @param shift - Whether Shift is held.
+ * @returns Whether a handler took the key.
+ */
+function press(view: EditorView, key: string, shift = true): boolean {
+  const event = new KeyboardEvent('keydown', { key, shiftKey: shift, bubbles: true, cancelable: true });
+  return view.someProp('handleKeyDown', (f) => f(view, event)) ?? false;
+}
+
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
@@ -179,5 +191,68 @@ describe('extending to an end of the body', () => {
     const next = extendToBodyEdge(view.state.doc, 1, 'end');
 
     expect(next).toBeInstanceOf(AllSelection);
+  });
+});
+
+describe('Shift+Up and Shift+Down at the ends of the body', () => {
+  it('Shift+Down on the last line takes a trailing divider in', () => {
+    const view = open(ABOVE_DIVIDER);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Above'))));
+
+    expect(press(view, 'ArrowDown')).toBe(true);
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect(view.state.selection.to).toBe(view.state.doc.content.size - 1);
+  });
+
+  it('Shift+Up on the first line takes a leading divider in', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Below' }]);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Below') + 2)));
+
+    expect(press(view, 'ArrowUp')).toBe(true);
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect(view.state.selection.from).toBe(1);
+  });
+
+  it('Shift+Down with the head already at the end changes nothing', () => {
+    const view = open(ABOVE_DIVIDER);
+    const selection = BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end');
+    view.dispatch(view.state.tr.setSelection(selection));
+
+    expect(press(view, 'ArrowDown')).toBe(true);
+
+    expect(view.state.selection.eq(selection)).toBe(true);
+  });
+
+  it('Shift+Up from the end brings the head back into the last line of text', () => {
+    const view = open(ABOVE_DIVIDER);
+    const anchor = textStart(view, 'Above');
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, anchor, 'end')));
+
+    expect(press(view, 'ArrowUp')).toBe(true);
+
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect(view.state.selection.anchor).toBe(anchor);
+    expect(view.state.selection.head).toBe(anchor + 'Above'.length);
+  });
+
+  it('Shift+Left on an edge selection moves the text end and keeps the edge', () => {
+    const view = open(ABOVE_DIVIDER);
+    const text = textStart(view, 'Above') + 3;
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'end', text)));
+
+    expect(press(view, 'ArrowLeft')).toBe(true);
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect(view.state.selection.anchor).toBe(view.state.doc.content.size - 1);
+    expect(view.state.selection.head).toBe(text - 1);
+  });
+
+  it('leaves Shift+Down to the browser when the body ends in words', () => {
+    const view = open([{ type: 'paragraph', content: 'Only' }]);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Only'))));
+
+    expect(press(view, 'ArrowDown')).toBe(false);
   });
 });
