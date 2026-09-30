@@ -459,6 +459,14 @@ function checkGenerateNode(
       reason: `Give either storyboard "auto" (the model splits the prompt) or shots (each written out), not both.`,
     };
   }
+  // The per-shot run sends the shots in place of the main prompt, so marks in
+  // a main prompt beside them would be counted and priced but never sent.
+  if (node.shots !== undefined && (node.prompt?.length ?? 0) > 0) {
+    return {
+      ok: false,
+      reason: `With shots the main prompt is not sent. Put its words into the shots and leave prompt out.`,
+    };
+  }
 
   // Every segment that can carry a mark, in the one order the card and the
   // canvas pair marks by: the main prompt, then each shot.

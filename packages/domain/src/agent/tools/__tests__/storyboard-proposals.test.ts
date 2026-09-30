@@ -109,6 +109,11 @@ describe("a proposal with a storyboard", () => {
     expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/not both/) });
   });
 
+  it("refuses a main prompt beside shots, which the run would not send", () => {
+    const answer = checkProposal(alone({ prompt: [{ text: "the whole film" }], shots: twoShots }));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/main prompt is not sent/) });
+  });
+
   it("refuses shots on a model that takes no storyboard", () => {
     const answer = checkProposal(
       alone({ model: "minimax-h3-text-to-video", prompt: undefined, shots: twoShots, params: {} }),
