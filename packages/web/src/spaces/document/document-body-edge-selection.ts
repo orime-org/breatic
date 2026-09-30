@@ -316,6 +316,30 @@ export function bodyEdgeBetween(doc: Node, anchor: number, head: number): Select
 }
 
 /**
+ * The ends of a selection with an end on an edge of the body moved into the
+ * nearest text, for whoever places something at an end. A collaborator's
+ * caret is drawn at the head (y-prosemirror `cursor-plugin.js:106-118`), and an
+ * edge sits inside a block but outside its content, where a caret element has
+ * no line to stand on.
+ * @param selection - The selection.
+ * @returns Its anchor and head, each in text or where it was.
+ */
+export function textEnds(selection: Selection): { anchor: number; head: number } {
+  if (!(selection instanceof BodyEdgeSelection)) return { anchor: selection.anchor, head: selection.head };
+  const doc = selection.$head.doc;
+  /**
+   * Moves a position on an edge into the nearest text.
+   * @param pos - The position.
+   * @returns The text position, or the position itself when it is no edge.
+   */
+  const intoText = (pos: number): number => {
+    const edge = bodyEdgeAt(doc, pos);
+    return edge === null ? pos : textNear(doc, pos, edge);
+  };
+  return { anchor: intoText(selection.anchor), head: intoText(selection.head) };
+}
+
+/**
  * The selection that extends from an anchor to an edge of the body.
  * @param doc - The document.
  * @param anchor - The anchor.
