@@ -336,19 +336,16 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
-  it("says a reference list is wired, then chosen from the prompt's list", async () => {
-    // Three halves, each of which has been the whole sentence at some point and
-    // read as complete: the edge that offers the image, the @ that opens the
-    // list, and the choice that inserts the mention. Without the edge a reader
-    // types @ over a node nothing points at; without the @ they wire and submit
-    // a run with no source; told to type the name instead of choosing, they get
-    // no mention at all, and a name with a space in it closes the list as they
-    // type it. Anchored to the line, since "style_images:" ends in this name.
+  it("says a reference list is filled by an edge and a mention, and where the steps are", async () => {
+    // Which gesture fills the parameter belongs here, since the model picks a
+    // shape out of it; how to click through that gesture is said once, in the
+    // product guide, whose own test pins its three halves. Anchored to the
+    // line, since "style_images:" ends in this name.
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     const rendered = renderGenerationModelsForModel(answer);
-    expect(rendered).toMatch(/^ *images:.*draw an edge/m);
-    expect(rendered).toMatch(/^ *images:.*type @/m);
-    expect(rendered).toMatch(/^ *images:.*choose that node from the list/m);
+    expect(rendered).toMatch(/^ *images:.*an edge into this node and a mention/m);
+    expect(rendered).toMatch(/^ *images:.*get_product_guide/m);
+    expect(rendered).not.toMatch(/^ *images:.*choose that node from the list/m);
   });
 
   it("says when the panel draws no control for a parameter", async () => {
