@@ -344,8 +344,28 @@ describe("what the rendered answer tells the model", () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     const rendered = renderGenerationModelsForModel(answer);
     expect(rendered).toMatch(/^ *images:.*an edge into this node or a focus crop taken in its panel, then a mention/m);
-    expect(rendered).toMatch(/^ *images:.*get_product_guide/m);
     expect(rendered).not.toMatch(/^ *images:.*choose that node from the list/m);
+  });
+
+  it("offers a focus crop only for a reference list that takes pictures", async () => {
+    // A focus crop is always a picture, so a list of reference videos or
+    // sounds cannot be filled with one.
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
+    const rendered = renderGenerationModelsForModel(answer);
+    expect(rendered).toMatch(/^ *videos:.*an edge into this node, then a mention/m);
+    expect(rendered).toMatch(/^ *audios:.*an edge into this node, then a mention/m);
+    expect(rendered).not.toMatch(/^ *(videos|audios):.*focus crop/m);
+    expect(rendered).toMatch(/^ *images:.*focus crop/m);
+  });
+
+  it("points at the product guide once, in its description, not on every parameter", () => {
+    const description: unknown = generationModels.description;
+    expect(typeof description === "string" ? description : "").toContain("get_product_guide");
+  });
+
+  it("names the product guide on no parameter line", async () => {
+    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
+    expect(renderGenerationModelsForModel(answer)).not.toContain("get_product_guide");
   });
 
   it("says when the panel draws no control for a parameter", async () => {

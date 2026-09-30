@@ -152,8 +152,8 @@ interface BubbleGroup {
  * type menu, which is where the demo draws them.
  *
  * Comment stands here with no command behind it (its function is task #18), as
- * do alignment, colour, and every AI command — each of those needs schema or a
- * model call that arrives with its own slice. They all carry the treatment
+ * does every AI command — each of those needs schema or a model call that
+ * arrives with its own slice. They all carry the treatment
  * `document-coming-tool.tsx` defines (user 2026-08-23: a control that reads as
  * available and answers a click with nothing tells the reader it is broken).
  */

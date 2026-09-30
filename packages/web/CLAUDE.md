@@ -232,3 +232,11 @@ demo 里那些动画参数是随手写的示意,不是定稿 —— 完全实现
 | **② 组锁**(`group.data.locked`)| 只冻**几何**(成员移动 / 拖动)+ **结构**(加/删成员:reparent-in、paste-into、ungroup、删成员;组自身移动 / 删除)+ **组自身身份**(组名 / 组位置 / 缩放)| **成员的内容 / 名字 / 内联编辑 / 生成 / 上传 / 连线** —— 这些一律跟随**各成员自己的** `data.locked` |
 
 **边是逻辑关系,永不受锁门控**(节点锁 + 组锁都不锁边;`onConnect` 已不 gate,删边同理对称)—— 删边只跟随「端点是否真被删」(防悬空),显式删边一律放行。判定题:**这个门控的是「几何 / 结构 / 组身份」还是「成员内容 / 名字 / 关系」?前者 → group-aware 冻结集(`group-membership.ts` 的 `lockedNodeIds`,只接进 move 的 draggable + delete 的节点侧);后者 → 节点自身 `data.locked`(fresh 读),别把内容门 group-aware 化**。实现真相源 = `group-membership.ts` 顶部 TSDoc。
+
+## 操作流程改了，同一个 PR 同步改 Agent 的产品指南(MANDATORY)
+
+Agent 回答「这个怎么操作」时，唯一的依据是 `packages/domain/src/agent/tools/product-guide.ts`(`get_product_guide` 工具)。它看不到读者的屏幕，指南写的就是它会告诉读者的。**所以改了画布或文档空间里用户怎么操作的任何东西 —— 菜单项、按钮位置或形状、手势、快捷键、面板里有什么、放置提议之后的样子 —— 同一个 PR 里把指南里对应的那几句一起改对。**
+
+已经自动跟着走的两样不用手改：带文字的控件名一律经 `t("…")` 从 locale 读(key 删了 repo-lint 的 `i18n-no-missing-keys` 会报)；哪些节点能生成、什么能连进什么，运行时读 `@breatic/shared` 的 `canGenerate` / `canConnect`。其余(手势、位置、只有图标的控件、快捷键、菜单顺序)是手写的，靠这条规矩。`packages/web/tests/smoke/agent-product-guide.spec.ts` 用真实问题问 Agent、从屏幕上读控件名比对，是跑起来之后的兜底。
+
+判定题:**我这次改动，会让 `product-guide.ts` 里哪一句变成假的？** 说不出来就是没查 —— 去读一遍那个文件。

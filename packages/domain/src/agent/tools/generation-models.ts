@@ -118,11 +118,13 @@ function renderModel(model: PricedModelInfo): string {
     if (spec.filledBySource) {
       // Which gesture fills it is said here, since the shape a proposal takes
       // depends on it; how to click through that gesture is said once, in the
-      // product guide. The pool is filled by an edge or a focus crop, then a
-      // mention, and has no control of its own; a slot is picked on the canvas.
+      // product guide the description points at. The pool is filled by an
+      // edge, or for pictures also by a focus crop, which is always a picture;
+      // then a mention. A slot is picked on the canvas.
+      const via = spec.accepts === "image" ? "an edge into this node or a focus crop taken in its panel" : "an edge into this node";
       const how = spec.fromReferencePool
-        ? `filled on the canvas, not typed here, by an edge into this node or a focus crop taken in its panel, then a mention of it in the prompt; the steps are in ${GET_PRODUCT_GUIDE}`
-        : `filled from another node on the canvas through a source slot, not typed here; leave it unset; the steps are in ${GET_PRODUCT_GUIDE}`;
+        ? `filled on the canvas, not typed here, by ${via}, then a mention of it in the prompt`
+        : "filled from another node on the canvas through a source slot, not typed here; leave it unset";
       return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
     }
     // Nothing on screen sets it, so what the run uses is the default and the
@@ -174,7 +176,7 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     "is good at, what a call costs, how long it takes, and every parameter " +
     "with its default. Ask get_canvas_capabilities first for the node type " +
     "and mode to pass here. Propose only a model this returns, and only " +
-    "parameters it names.",
+    `parameters it names. How the reader fills a source parameter on screen is in ${GET_PRODUCT_GUIDE}.`,
   inputSchema,
   metadata: { runningLine: "chat.tool.checkingModels" },
   // The SDK's own conversion, which is what a running turn reaches -- the
