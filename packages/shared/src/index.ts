@@ -205,6 +205,7 @@ export {
   AUDIO_GENERATION_MODES,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
+  isGenerationNodeType,
   paramValues,
   PANEL_EDITOR_PARAM,
   feedersOf,

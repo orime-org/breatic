@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { asStoryboardKind, type ChatAttachedChip, type GenerationNodeType, type ModelCatalog, type StoryboardKind } from '@breatic/shared';
+import { asStoryboardKind, isGenerationNodeType, type ChatAttachedChip, type ModelCatalog, type StoryboardKind } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import * as Y from 'yjs';
 
@@ -21,9 +21,6 @@ const ATTACHABLE = new Set<string>(['text', 'image', 'audio', 'video', 'annotati
 
 /** How long a note's own words may run when they stand in for its name. */
 const NOTE_NAME_CHARS = 40;
-
-/** The node kinds that generate, and so have a generation in effect. */
-const GENERATING = new Set<string>(['image', 'video', 'audio']);
 
 /** What the pick reads beyond the canvas view (#2218). */
 export interface NodeReaders {
@@ -181,9 +178,10 @@ export function itemForPick(
       ...(node.data as unknown as Record<string, unknown>),
       ...(stored ? (plain(stored) as Record<string, unknown>) : {}),
     };
-    const current = GENERATING.has(node.data.kind)
+    const kind = node.data.kind;
+    const current = isGenerationNodeType(kind)
       ? currentGeneration(
-          node.data.kind as GenerationNodeType,
+        kind,
           node.data as ContentNodeView,
           readers.catalog,
           (mode) => storedTier(data, mode),

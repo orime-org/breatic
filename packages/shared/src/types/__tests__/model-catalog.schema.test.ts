@@ -8,6 +8,7 @@ import {
   AUDIO_GENERATION_MODES,
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
+  isGenerationNodeType,
 } from "@shared/types/model-catalog.js";
 import type { ModelCatalog, ModelEntry } from "@shared/types/model-catalog.js";
 
@@ -526,5 +527,17 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     const out = sanitizeModelCatalog(raw);
     expect(out.image[0]?.params.seed?.step).toBeUndefined();
     expect(out.image[0]?.params.seed?.max).toBe(1);
+  });
+});
+
+describe("a node type that generates", () => {
+  it("is image, video or audio", () => {
+    expect(["image", "video", "audio"].map(isGenerationNodeType)).toEqual([true, true, true]);
+  });
+
+  it("is not any other node type, nor a name an object carries by inheritance", () => {
+    expect(["text", "group", "annotation", "3d", "toString"].map(isGenerationNodeType)).toEqual([
+      false, false, false, false, false,
+    ]);
   });
 });

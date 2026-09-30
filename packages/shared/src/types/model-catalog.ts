@@ -371,6 +371,15 @@ export const GENERATION_NODE_MODES: Readonly<
   audio: AUDIO_GENERATION_MODES,
 };
 
+/**
+ * Whether a node type anchors a Generate panel.
+ * @param type - A node type.
+ * @returns True for image, video and audio.
+ */
+export function isGenerationNodeType(type: string): type is GenerationNodeType {
+  return Object.hasOwn(GENERATION_NODE_MODES, type);
+}
+
 // ── Boundary sanitizer ───────────────────────────────────────────────
 //
 // Lenient by design: an entry is only DROPPED when it lacks a usable identity
