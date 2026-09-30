@@ -881,16 +881,19 @@ test.describe('the card a comment is written in', () => {
     await expect(
       page.locator('[data-testid="doc-comment-card"][data-selected="true"]'),
     ).toHaveCount(0);
+    // The saved card takes the draft's place, so the pointer that pressed
+    // Save rests on it, and a hovered card lights its words too.
+    await page.mouse.move(0, 0);
     await expect(
       page.locator(`${EDITOR} .doc-comment-mark-reading`),
     ).toHaveCount(0);
   });
 
-  test('leaves the same space above the box as below it', async ({
+  test('leaves the same space above its quote as below the box', async ({
     page,
   }) => {
-    // Before anything is typed the card holds the box and nothing else, so
-    // the box sits in the middle of it.
+    // Before anything is typed the card holds its quote and the box and
+    // nothing else, so the two sit in the middle of it.
     await openWithALongSelection(page);
     await page.getByTestId('doc-bubble-tool-comment').click();
     await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
@@ -898,10 +901,13 @@ test.describe('the card a comment is written in', () => {
     const card = (await page
       .getByTestId('doc-comment-draft-card')
       .boundingBox())!;
+    const quote = (await page
+      .getByTestId('doc-comment-draft-quote')
+      .boundingBox())!;
     const box = (await page
       .getByTestId('doc-comment-draft-scroller')
       .boundingBox())!;
-    const above = box.y - card.y;
+    const above = quote.y - card.y;
     const below = card.y + card.height - (box.y + box.height);
     expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
   });
