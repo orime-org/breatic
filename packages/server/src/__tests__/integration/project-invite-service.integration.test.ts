@@ -271,6 +271,11 @@ describe("createInvite", () => {
     expect(payload).not.toHaveProperty("projectSlug");
   });
 
+  it("finds the invitee when the address is typed in another case", async () => {
+    const result = await inviteService.createInvite(PROJECT, OWNER, ` ${INVITEE_EMAIL.toUpperCase()} `, "editor");
+    expect(result.inviteeUserId).toBe(INVITEE);
+  });
+
   it("rejects an unregistered email with NotFound", async () => {
     await expect(
       inviteService.createInvite(PROJECT, OWNER, "nobody@proj-test.dev", "editor"),

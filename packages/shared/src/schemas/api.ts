@@ -22,8 +22,21 @@ import { SpaceTypeSchema } from "@shared/types/space.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
+/**
+ * The one form an address is stored and compared in: casing and surrounding
+ * space do not change which mailbox it names, so one mailbox is one account.
+ * @param email - The address as typed or as a provider reported it.
+ * @returns The trimmed, lower-cased address.
+ */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/** An email address field, returned in its normalized form. */
+export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email());
+
 export const registerSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
   password: z.string().min(8),
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -143,7 +156,7 @@ export const updateStudioSchema = z
 export type UpdateStudioInput = z.infer<typeof updateStudioSchema>;
 
 export const loginSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
   password: z.string(),
 });
 export type LoginInput = z.infer<typeof loginSchema>;

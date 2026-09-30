@@ -10,6 +10,7 @@
 import { eq, and, or, isNull, inArray } from "drizzle-orm";
 import { db, getDefaultMembershipTier, asKnownTier } from "@breatic/core";
 import { users } from "@breatic/core";
+import { normalizeEmail } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 
 /**
@@ -69,7 +70,7 @@ export async function getUsersByIds(ids: string[]): Promise<UserEntity[]> {
 }
 
 /**
- * Find a user by email (excludes soft-deleted).
+ * Find a user by email (excludes soft-deleted), in any casing.
  * @param email - Email address to look up
  * @returns The user entity, or null if not found or soft-deleted
  */
@@ -77,7 +78,7 @@ export async function getUserByEmail(email: string): Promise<UserEntity | null> 
   const rows = await db
     .select()
     .from(users)
-    .where(and(eq(users.email, email), isNull(users.deletedAt)))
+    .where(and(eq(users.email, normalizeEmail(email)), isNull(users.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
 }
@@ -124,7 +125,7 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
  * Both sign-up paths, email and Google, come through here, so this is the
  * only place that decision is made.
  * @param data - User fields to insert
- * @param data.email - Email address (unique per active user)
+ * @param data.email - Email address, stored normalized (unique across all rows)
  * @param data.hashedPassword - Optional bcrypt password hash (absent for OAuth-only sign-ups)
  * @param data.googleId - Optional linked Google account identifier
  * @param data.locale - The account's language: the one the sign-up request was negotiated in
@@ -144,7 +145,7 @@ export async function createUser(data: {
   const rows = await db
     .insert(users)
     .values({
-      email: data.email,
+      email: normalizeEmail(data.email),
       hashedPassword: data.hashedPassword,
       googleId: data.googleId,
       locale: data.locale,

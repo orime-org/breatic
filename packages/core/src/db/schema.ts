@@ -52,6 +52,11 @@ export const users = pgTable(
   "users",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    // Stored trimmed and lower-cased, so `users_email_idx` makes one mailbox
+    // one account. The CHECK `users_email_normalized` holding it to that form
+    // is in migration 0086 (hand-written CHECKs live only in their migration);
+    // an integration case writes an unnormalized address and expects it
+    // refused.
     email: varchar("email", { length: 255 }).notNull(),
     // No business-identity columns here — a user's display name, URL handle,
     // and avatar all live on their personal studio (studios.name /

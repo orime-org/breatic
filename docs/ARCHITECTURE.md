@@ -541,6 +541,8 @@ packages/web/
 
 鉴权基于 cookie — 后端在登录 / 注册完成(启用邮件时是验证码输对那一刻) / OAuth 时种一个 httpOnly 的 session cookie;前端不在 JS 里读或存任何 token。**cookie 名是部署级的**(`breatic_session_{REDIS_KEY_PREFIX}`,构造在 core 的 `sessionCookieName()`,是唯一一处),因为 **cookie 不按端口隔离**(RFC 6265 §8.5)—— 同机跑两套部署时端口分得开服务、分不开 cookie jar,同名就会互相顶掉登录态。服务端环境变量 `COOKIE_DOMAIN` + `EMAIL_BACKEND` 见 [Configuration files](#configuration-files) 段(后端)。
 
+**邮箱不分大小写**:一个收件箱只对应一个账号。所有收邮箱的接口(注册、登录、两种找回、两种邀请)都用 `@breatic/shared` 的 `emailSchema`,它去掉首尾空格、整段转小写;Google 登录在路由里对 ID token 的邮箱做同一次 `normalizeEmail`。`users.email` 只存归一化后的地址,CHECK `users_email_normalized` 拒绝其余写入,`users_email_idx` 因此就是不分大小写的唯一索引。建号统一走 `auth.service` 的 `createAccount`,两个注册同时撞上唯一索引时答 409「邮箱已注册」。
+
 ## Coding standards (function definition format)
 
 本节是 breatic 全栈(`core` / `server` / `worker` / `collab` / `shared` / `web`)的**函数定义格式规范**:一个函数定义"长什么样"——它的文档注释、参数描述、返回类型、异常类型该写在哪、怎么写。规范由 ESLint 在 CI 强制(error 级,违反即 fail)。
