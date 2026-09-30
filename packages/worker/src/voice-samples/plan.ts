@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Which voice samples a deployment's bucket has to hold, and how each is made
+ * Which voice samples the fixed sample address has to serve, and how each is made
  * (#2156, design §16.4).
  *
  * The keys are the catalog's own (`sample_key`, and `sample_keys` for a voice
@@ -15,15 +15,7 @@
  * in `sample_keys`.
  */
 
-import type { FullModelEntry } from "@breatic/domain";
-
-/** `config/voice-samples.json`. */
-export interface VoiceSampleConfig {
-  /** Language tag -> the sentence, and the `{boost}` a model may send with it. */
-  languages: Record<string, { text: string; boost?: string }>;
-  /** Model name -> fields sent beyond text and voice; `{boost}` is filled in. */
-  extra_body: Record<string, Record<string, string>>;
-}
+import type { FullModelEntry, VoiceSampleConfig } from "@breatic/domain";
 
 /** One sample to make. */
 export interface VoiceSampleJob {

@@ -2,45 +2,34 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Filling a deployment's bucket with the voice samples its catalog names
- * (#2156, design §16.4). A sample the bucket already serves is left alone, so
- * a deployment that has them all only asks, and a rerun makes only what a
- * previous run could not.
+ * Filling the one address every deployment plays the voice samples from
+ * (#2156, #2239). A sample already served there is left alone, so a run with
+ * nothing new only asks, and a rerun makes only what a previous run could not.
  */
 
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import type { VoiceSampleJob } from "@worker/voice-samples/plan.js";
 
-import { MONOREPO_ROOT } from "@breatic/core";
-
-import type { VoiceSampleConfig, VoiceSampleJob } from "@worker/voice-samples/plan.js";
+/** The key the storage check asks about. */
+const PROBE_KEY = "voice-samples/probe.mp3";
 
 /**
- * Whether a JSON value is an object.
- * @param value - The value.
- * @returns True for a plain object.
+ * Stop before generating anything when this machine's storage settings would
+ * put the samples somewhere no deployment reads them from.
+ * @param storageUrl - Where the storage settings publish a key.
+ * @param sampleUrl - Where every deployment plays a sample key from.
+ * @throws {Error} When the two addresses differ.
  */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * Read `config/voice-samples.json`.
- * @returns The sentences and per-model extras.
- * @throws {Error} When the file is missing or malformed.
- */
-export async function loadVoiceSampleConfig(): Promise<VoiceSampleConfig> {
-  const raw: unknown = JSON.parse(await readFile(resolve(MONOREPO_ROOT, "config/voice-samples.json"), "utf8"));
-  const { languages, extra_body: extraBody } = (raw ?? {}) as Record<string, unknown>;
-  if (!isRecord(languages) || !isRecord(extraBody)) {
-    throw new Error("config/voice-samples.json needs `languages` and `extra_body` objects");
+export function assertUploadsReachSampleAddress(
+  storageUrl: (key: string) => string,
+  sampleUrl: (key: string) => string,
+): void {
+  const stored = storageUrl(PROBE_KEY);
+  const played = sampleUrl(PROBE_KEY);
+  if (stored !== played) {
+    throw new Error(
+      `The storage settings publish ${PROBE_KEY} at ${stored}, but every deployment plays it from ${played}`,
+    );
   }
-  for (const [tag, said] of Object.entries(languages)) {
-    if (!isRecord(said) || typeof said.text !== "string" || said.text === "") {
-      throw new Error(`config/voice-samples.json: language "${tag}" needs a text`);
-    }
-  }
-  return { languages, extra_body: extraBody } as VoiceSampleConfig;
 }
 
 /**
@@ -62,7 +51,7 @@ export function servedFromHead(key: string, status: number): boolean {
 
 /** What a sync needs from the outside. */
 export interface SyncDeps {
-  /** Whether the bucket already serves this key. */
+  /** Whether the sample address already serves this key. */
   exists: (key: string) => Promise<boolean>;
   /** Make the sample's bytes. */
   generate: (job: VoiceSampleJob) => Promise<Buffer>;
@@ -76,7 +65,7 @@ export interface SyncDeps {
 
 /** What a sync did. */
 export interface SyncReport {
-  /** Samples the bucket already served. */
+  /** Samples the sample address already served. */
   present: number;
   /** Samples made and stored. */
   made: number;
@@ -100,9 +89,9 @@ async function eachLimited<T>(jobs: readonly T[], concurrency: number, work: (jo
 }
 
 /**
- * Make every sample the bucket does not serve yet.
+ * Make every sample the sample address does not serve yet.
  * @param jobs - Every sample the catalog names.
- * @param deps - Bucket, generator and pass count.
+ * @param deps - Sample address, generator, storage and pass count.
  * @returns How many were there, made, and still missing.
  */
 export async function syncVoiceSamples(jobs: readonly VoiceSampleJob[], deps: SyncDeps): Promise<SyncReport> {

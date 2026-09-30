@@ -10,7 +10,7 @@
  * node and what the next generation sends back out.
  */
 
-import { AppError, getStorageAdapter } from "@breatic/core";
+import { AppError } from "@breatic/core";
 import { t, type Voice, type VoicePage } from "@breatic/shared";
 
 import {
@@ -18,6 +18,7 @@ import {
   getFullModelConfig,
   type FullModelEntry,
 } from "@domain/model-catalog/model-catalog.js";
+import { voiceSampleUrl } from "@domain/model-catalog/voice-sample-config.js";
 
 // `Voice` and `VoicePage` are the wire shape, so they live in shared where the
 // panel that renders them can reach them too. Re-exported here so this module
@@ -87,24 +88,16 @@ function isKeyMap(value: unknown): value is Record<string, string> {
  * only thing a person can choose by (#2086).
  *
  * A sample is either the vendor's own (`sample_url`, served from its CDN) or
- * one we generated (`sample_key`, an object in this deployment's bucket, #2156
- * design §16.4). The key is resolved here rather than written as a url in the
- * yaml because every deployment serves its bucket from its own address. A
- * voice that speaks whichever language the reader picks carries one key per
- * language value as well (`sample_keys`), served as `previewUrls`.
+ * one we generated (`sample_key`, a path under the one address every
+ * deployment plays our samples from, #2239). A voice that speaks whichever
+ * language the reader picks carries one key per language value as well
+ * (`sample_keys`), served as `previewUrls`.
  * @param entry - The model's yaml entry.
  * @returns Every inline voice, in the order the file lists them.
- * @throws {Error} When a voice names a sample key and the storage settings are missing.
+ * @throws {Error} When a voice names a sample key and config/voice-samples.json is missing or malformed.
  */
-async function inlineVoices(entry: FullModelEntry): Promise<Voice[]> {
+function inlineVoices(entry: FullModelEntry): Voice[] {
   const declared = Array.isArray(entry.voices) ? entry.voices : [];
-  const keyed = declared.some((raw) => {
-    const voice = raw as InlineVoice;
-    return typeof voice.sample_key === "string" || isKeyMap(voice.sample_keys);
-  });
-  // Only asked for when a key needs it: the adapter needs the storage
-  // settings, and a model whose samples are all the vendor's needs none.
-  const storage = keyed ? await getStorageAdapter() : null;
   const voices: Voice[] = [];
   for (const raw of declared) {
     const voice = raw as InlineVoice;
@@ -118,13 +111,13 @@ async function inlineVoices(entry: FullModelEntry): Promise<Voice[]> {
         : {}),
       ...(typeof voice.sample_url === "string" && voice.sample_url
         ? { previewUrl: voice.sample_url }
-        : storage && typeof voice.sample_key === "string" && voice.sample_key
-          ? { previewUrl: storage.publicUrl(voice.sample_key) }
+        : typeof voice.sample_key === "string" && voice.sample_key
+          ? { previewUrl: voiceSampleUrl(voice.sample_key) }
           : {}),
-      ...(storage && isKeyMap(voice.sample_keys)
+      ...(isKeyMap(voice.sample_keys)
         ? {
             previewUrls: Object.fromEntries(
-              Object.entries(voice.sample_keys).map(([value, key]) => [value, storage.publicUrl(key)]),
+              Object.entries(voice.sample_keys).map(([value, key]) => [value, voiceSampleUrl(key)]),
             ),
           }
         : {}),
@@ -139,7 +132,7 @@ async function inlineVoices(entry: FullModelEntry): Promise<Voice[]> {
  * @param options - Search term; the cursor is accepted and ignored, the whole list is one page.
  * @returns One page holding every matching voice.
  * @throws {AppError} 404 when the model is unknown or offers no voices.
- * @throws {Error} When a voice names a sample key and the storage settings are missing.
+ * @throws {Error} When a voice names a sample key and config/voice-samples.json is missing or malformed.
  */
 export async function listVoices(modelName: string, options: VoiceQuery): Promise<VoicePage> {
   const entry = findModel(modelName);
@@ -148,7 +141,7 @@ export async function listVoices(modelName: string, options: VoiceQuery): Promis
   // them would answer a one-letter search with every voice whose id happens to
   // contain that letter.
   const term = options.query?.toLowerCase();
-  const voices = (await inlineVoices(entry)).filter(
+  const voices = inlineVoices(entry).filter(
     (v) => !term || v.name.toLowerCase().includes(term),
   );
   return { voices, hasMore: false };
@@ -160,10 +153,10 @@ export async function listVoices(modelName: string, options: VoiceQuery): Promis
  * @param voiceId - The value stored in the node's params.
  * @returns The voice, or null when the model's list no longer carries that id.
  * @throws {AppError} 404 when the model is unknown or offers no voices.
- * @throws {Error} When a voice names a sample key and the storage settings are missing.
+ * @throws {Error} When a voice names a sample key and config/voice-samples.json is missing or malformed.
  */
 export async function getVoice(modelName: string, voiceId: string): Promise<Voice | null> {
   const entry = findModel(modelName);
   assertOffersVoices(entry);
-  return (await inlineVoices(entry)).find((v) => v.id === voiceId) ?? null;
+  return inlineVoices(entry).find((v) => v.id === voiceId) ?? null;
 }

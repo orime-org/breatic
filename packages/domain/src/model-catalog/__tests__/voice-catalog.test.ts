@@ -10,19 +10,12 @@
  * and travels back out on the next generation.
  */
 
-import { describe, it, expect, afterAll, vi } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
 import { initCore } from "@breatic/core";
-import type * as Core from "@breatic/core";
 
-// The storage adapter needs R2 settings this suite does not have; what is
-// under test is that a sample key becomes this deployment's public url.
-vi.mock("@breatic/core", async (importOriginal) => ({
-  ...(await importOriginal<typeof Core>()),
-  getStorageAdapter: async () => ({ publicUrl: (key: string) => `https://cdn.test/${key}` }),
-}));
-
-const { listVoices, getVoice } = await import("../voice-catalog.js");
-const { getFullModelConfig, resetModelCatalog } = await import("../model-catalog.js");
+import { listVoices, getVoice } from "../voice-catalog.js";
+import { getFullModelConfig, resetModelCatalog } from "../model-catalog.js";
+import { getVoiceSampleConfig } from "../voice-sample-config.js";
 
 initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
 resetModelCatalog();
@@ -66,14 +59,15 @@ describe("listVoices", () => {
   // By name, which is the only part of a row a person reads. Searching the
   // ids too would answer "a" with every voice whose opaque id contains one.
   // Three vendors publish no sample, so ours is generated once per voice and
-  // kept in this deployment's bucket (#2156, design §16.4): the yaml names the
-  // key, and the url is built from where this deployment serves it.
+  // served from one fixed address every deployment reads (#2239): the yaml
+  // names the key, config/voice-samples.json names the address.
   it("gives every voice of the models without a vendor sample one of ours", async () => {
+    const base = getVoiceSampleConfig().base_url.replace(/[.]/g, "\\.");
     for (const model of ["realtime-tts-2", "gemini-3.1-flash-text-to-speech", "minimax-speech-2.8-hd"]) {
       const page = await listVoices(model, {});
       for (const voice of page.voices) {
         expect(voice.previewUrl, `${model}/${voice.id}`).toMatch(
-          new RegExp(`^https://cdn\\.test/voice-samples/${model}/(?:[a-zA-Z-]+/)?[A-Za-z0-9_-]+\\.mp3$`),
+          new RegExp(`^${base}/voice-samples/${model}/(?:[a-zA-Z-]+/)?[A-Za-z0-9_-]+\\.mp3$`),
         );
       }
     }
