@@ -67,6 +67,7 @@ import {
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { AllSelection } from '@tiptap/pm/state';
+import { textEnds } from '@web/spaces/document/document-body-edge-selection';
 import {
   FloatingPortal,
   useFloating,
@@ -220,7 +221,11 @@ function pickAnchorLine(
   view: EditorView,
   bounds: DOMRect,
 ): { top: number; bottom: number } {
-  const { from, head } = view.state.selection;
+  // An end on an edge of the body sits between blocks, where the answer is the
+  // zero-height separator described above; the nearest text stands in for it
+  // (#124), the same place a collaborator's caret is drawn.
+  const { anchor, head } = textEnds(view.state.selection);
+  const from = Math.min(anchor, head);
   // `head` is always inside `[from, to]` — a selection defines them as the min
   // and max of its anchor and head — so the only question is whether it shows.
   const headLine = view.coordsAtPos(head);
