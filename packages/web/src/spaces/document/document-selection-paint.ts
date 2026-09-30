@@ -17,9 +17,13 @@
  * onto it with the arrows, and the 2026-09-18 rule that the machinery's own
  * node selections are not drawn (`index.css:558`) stays for every other block.
  *
- * WHEN. Only while the reader can see a selection at all: the editor holds the
- * focus, or `ShowSelectionExtension` is standing in for the selection while a
- * panel holds it (`DocumentLinkPopover.tsx:297-303`). Outside those the browser
+ * WHEN. Only while the reader can see a selection at all. In an editable body
+ * that is while it holds the focus. A read-only body never takes the focus —
+ * it has no tabindex (`@tiptap/core` `extensions/tabindex.ts`) — yet the
+ * browser still paints the words a viewer drags across, so there it is while
+ * the browser's own selection sits inside the body. Either way
+ * `ShowSelectionExtension` standing in for the selection while a panel holds
+ * it (`DocumentLinkPopover.tsx:297-303`) counts too. Outside those the browser
  * stops painting text, and a block painted on its own would read as the only
  * thing selected.
  */
@@ -31,12 +35,11 @@ import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
+import { DIVIDER } from '@web/spaces/document/document-divider';
 
 /** The class `index.css` paints a no-text block inside the selection with. */
 export const IN_SELECTION_CLASS = 'doc-in-selection';
 
-/** The divider's node name. */
-const DIVIDER = 'divider';
 
 /** The blocks with no text that a range selection paints. */
 const NO_TEXT = new Set([DIVIDER, UNSUPPORTED_BLOCK]);
@@ -61,6 +64,7 @@ function paintFor(state: EditorState): DecorationSet {
   } else if (selection instanceof AllSelection || !selection.empty) {
     const { from, to } = selection;
     doc.nodesBetween(from, to, (node, pos) => {
+      if (node.isTextblock) return false;
       if (NO_TEXT.has(node.type.name)) {
         if (pos >= from && pos + node.nodeSize <= to) {
           found.push(
@@ -91,14 +95,29 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
   let mounted: EditorView | null = null;
 
   /**
-   * Asks for the decorations again. Focus changes no state, so without this a
-   * blur would leave the band standing until the next edit.
-   * @param view - The view whose focus changed.
+   * Asks for the decorations again. Focus and the browser's selection change
+   * no state, so without this the band would stand until the next edit.
+   * @param view - The view to redraw.
    * @returns False, so the event carries on to everyone else.
    */
   const redraw = (view: EditorView): boolean => {
     view.dispatch(view.state.tr.setMeta(KEY, true).setMeta('addToHistory', false));
     return false;
+  };
+
+  /**
+   * Whether the reader can see a selection in this body right now.
+   * @param view - The view.
+   * @returns True while the band belongs on screen.
+   */
+  const visible = (view: EditorView): boolean => {
+    if (view.editable) return view.hasFocus();
+    const selection = view.dom.ownerDocument.getSelection();
+    return (
+      selection !== null &&
+      selection.rangeCount > 0 &&
+      view.dom.contains(selection.anchorNode)
+    );
   };
 
   return {
@@ -108,8 +127,17 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
         key: KEY,
         view: (view) => {
           mounted = view;
+          /** Redraws a read-only body when the browser's selection moves. */
+          const onSelectionChange = (): void => {
+            if (!view.editable) redraw(view);
+          };
+          view.dom.ownerDocument.addEventListener('selectionchange', onSelectionChange);
           return {
             destroy: () => {
+              view.dom.ownerDocument.removeEventListener(
+                'selectionchange',
+                onSelectionChange,
+              );
               mounted = null;
             },
           };
@@ -117,7 +145,7 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
         props: {
           handleDOMEvents: { focus: redraw, blur: redraw },
           decorations: (state) =>
-            (mounted?.hasFocus() ?? false) || shownByPanel()
+            (mounted !== null && visible(mounted)) || shownByPanel()
               ? paintFor(state)
               : DecorationSet.empty,
         },

@@ -341,7 +341,7 @@ describe('an input method on a selected divider (A5)', () => {
     expect(dividerSelected(editor)).toBe(true);
   });
 
-  it('lets go once a co-editor deletes the divider', async () => {
+  it('still writes nothing when a co-editor deletes the divider, and lets go at the end', async () => {
     const { editor, doc } = open(SANDWICH);
     select(editor);
 
@@ -351,10 +351,11 @@ describe('an input method on a selected divider (A5)', () => {
       const group = body.get(0) as Y.XmlElement;
       group.delete(1, 1);
     }, 'peer');
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('ni', 8));
     expect(shape(editor)).toEqual(['paragraph:Above', 'paragraph:Below']);
     await endComposition(editor);
 
-    const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.insertText('x', 3));
     expect(shape(editor)).toEqual(['paragraph:xAbove', 'paragraph:Below']);
   });

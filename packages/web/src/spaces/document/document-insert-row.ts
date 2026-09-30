@@ -28,33 +28,36 @@ import { QUOTED } from '@web/spaces/document/document-list-block';
  * Referencing the first child with `'before'` is the same place the reader
  * gets from pressing Enter.
  *
- * It inherits the pressed row's quoting: the schema's default is
+ * Blocks named in `lead` go in first, in the same place, and the row comes
+ * after them: the Divider entry is a divider with the row under it (#124, A2).
+ *
+ * Everything made inherits the pressed row's quoting: the schema's default is
  * `quoted: false` (`document-schema-blocknote.ts:53`), and a row inserted
  * inside a quote has to stay in the quote, the way Enter's does.
  * @param editor - The editor to write to.
  * @param row - The block the menu was opened on.
+ * @param lead - Block types to place before the row, in order.
  * @returns The id of the row that was made.
- * @throws {Error} When the pressed block is no longer in the document.
+ * @throws {Error} `Block with ID … not found`, from BlockNote's
+ *   `insertBlocks`, when the pressed block is no longer in the document.
  */
 export function insertRowForMenu(
   editor: HandleEditor,
   row: PressedBlock,
+  lead: readonly string[] = [],
 ): string {
+  const quoted = row.props?.[QUOTED] === true;
   const firstChild = row.children?.[0];
   const made = editor.insertBlocks(
-    [
-      {
-        type: 'paragraph',
-        props: { [QUOTED]: row.props?.[QUOTED] === true },
-      } as never,
-    ],
+    [...lead, 'paragraph'].map((type) => ({
+      type,
+      props: { [QUOTED]: quoted },
+    })) as never,
     firstChild?.id ?? row.id,
     firstChild === undefined ? 'after' : 'before',
-  )[0] as { id: string } | undefined;
-  if (made === undefined) {
-    throw new Error(`could not make a row under the block ${row.id}`);
-  }
-
-  editor.setTextCursorPosition(made.id, 'start');
-  return made.id;
+  ) as { id: string }[];
+  // `insertBlocks` hands back one block for every block it was given.
+  const rowMade = made[made.length - 1]!;
+  editor.setTextCursorPosition(rowMade.id, 'start');
+  return rowMade.id;
 }

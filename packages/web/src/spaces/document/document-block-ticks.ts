@@ -23,9 +23,8 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
 
 import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
+import { DIVIDER } from '@web/spaces/document/document-divider';
 
-/** The one block without text a row reaches (see {@link blocksUnderFor}). */
-const DIVIDER = 'divider';
 
 /** The nine rows the menu offers. */
 export type BlockTypeId =

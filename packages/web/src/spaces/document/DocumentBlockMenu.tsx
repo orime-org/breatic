@@ -54,6 +54,7 @@ import { MenuTick } from '@web/spaces/document/document-menu-tick';
 import {
   DIMENSION_OF_ROW,
   blocksUnder,
+  blocksUnderFor,
   tickedOver,
   type BlockTypeId,
 } from '@web/spaces/document/document-block-ticks';
@@ -72,7 +73,7 @@ import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
 import { insertRowForMenu } from '@web/spaces/document/document-insert-row';
-import { insertDividerForMenu } from '@web/spaces/document/document-divider';
+import { DIVIDER } from '@web/spaces/document/document-divider';
 
 /**
  * How far from the menu's edge its submenus sit.
@@ -188,11 +189,14 @@ interface StyleFaces {
   readonly colour: ColourFace;
   /** Whether this row holds words a comment could mark (A3). */
   readonly canComment: boolean;
-  /**
-   * Whether this row has words at all. A divider does not, and of the nine
-   * block type rows only Quote reaches it (#124, A8).
-   */
+  /** Whether the eight rows that set a block's type reach this row. */
   readonly holdsText: boolean;
+  /**
+   * Whether the Quote row reaches this row. It reads the quote's own working
+   * set, which also holds a divider (#124, A8), so the row greys exactly where
+   * pressing it would write nothing.
+   */
+  readonly quotable: boolean;
 }
 
 /**
@@ -206,6 +210,7 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
     a.align === b.align &&
     a.canComment === b.canComment &&
     a.holdsText === b.holdsText &&
+    a.quotable === b.quotable &&
     sameColours(a.colour, b.colour)
   );
 }
@@ -230,6 +235,7 @@ function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
       colour: colourFaceOver(tr.doc, over),
       canComment: canCommentOver(tr.doc, over),
       holdsText: blocksUnder(tr.doc, over).length > 0,
+      quotable: blocksUnderFor(tr.doc, over, 'quote').length > 0,
     };
   });
 }
@@ -371,7 +377,8 @@ export function DocumentBlockMenu({
               >
                 {BLOCK_TYPE_ITEMS.map((item, index) => {
                   const ItemIcon = item.Icon;
-                  const reachable = faces.holdsText || item.id === 'quote';
+                  const reachable =
+                    item.id === 'quote' ? faces.quotable : faces.holdsText;
                   const ruled = rulesAfter(
                     item.id,
                     BLOCK_TYPE_ITEMS[index + 1]?.id,
@@ -463,7 +470,7 @@ export function DocumentBlockMenu({
                   data-testid='doc-block-insert-divider'
                   onSelect={() => {
                     const live = rowNow();
-                    if (live !== undefined) insertDividerForMenu(editor, live);
+                    if (live !== undefined) insertRowForMenu(editor, live, [DIVIDER]);
                     close();
                   }}
                 >

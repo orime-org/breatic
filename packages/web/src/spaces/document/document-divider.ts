@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The two ways a reader puts a divider into the body.
+ * The divider's name, and the `---` rule that places one.
  *
- * Both leave the caret on the line right under the new divider, so whatever
- * the reader types next is a line of its own (user 2026-09-30).
+ * The rule, like the handle menu's Divider entry (`insertRowForMenu` with the
+ * divider as its lead), leaves the caret on the line right under the new
+ * divider, so whatever the reader types next is a line of its own (user
+ * 2026-09-30).
  *
  * `---` at the head of a line puts the divider ABOVE that line and leaves the
  * line untouched — its type, its words after the caret, its children and its
@@ -19,14 +21,10 @@ import { blockToNode, createExtension } from '@blocknote/core';
 import { InputRule, inputRules } from '@tiptap/pm/inputrules';
 import { TextSelection } from '@tiptap/pm/state';
 
-import {
-  type HandleEditor,
-  type PressedBlock,
-} from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 
-/** The block type this file places. */
-const DIVIDER = 'divider';
+/** The divider's block type, which is also its node name. */
+export const DIVIDER = 'divider';
 
 /**
  * Three dashes with nothing before them in the line. ProseMirror matches the
@@ -84,35 +82,3 @@ export const documentDividerInputExtension = createExtension(() => ({
   key: 'document-divider-input',
   prosemirrorPlugins: [inputRules({ rules: [dividerRule] })],
 }) as never);
-
-/**
- * Puts a divider under the pressed row, an empty line under the divider, and
- * the caret in that line.
- *
- * Placement and quoting follow every other insert-below row
- * (`insertRowForMenu`): before the pressed row's first child when it has
- * children, after it otherwise, and inside the quote the pressed row is in.
- * @param editor - The editor to write to.
- * @param row - The block the menu was opened on.
- * @throws {Error} When the pressed block is no longer in the document.
- */
-export function insertDividerForMenu(
-  editor: HandleEditor,
-  row: PressedBlock,
-): void {
-  const quoted = row.props?.[QUOTED] === true;
-  const firstChild = row.children?.[0];
-  const made = editor.insertBlocks(
-    [
-      { type: DIVIDER, props: { [QUOTED]: quoted } },
-      { type: 'paragraph', props: { [QUOTED]: quoted } },
-    ] as never,
-    firstChild?.id ?? row.id,
-    firstChild === undefined ? 'after' : 'before',
-  ) as { id: string }[];
-  const line = made[1];
-  if (line === undefined) {
-    throw new Error(`could not place a divider under the block ${row.id}`);
-  }
-  editor.setTextCursorPosition(line.id, 'start');
-}

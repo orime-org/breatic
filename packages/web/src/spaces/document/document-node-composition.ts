@@ -16,22 +16,41 @@
  *
  * | when | what |
  * |---|---|
- * | `compositionstart`, capture phase on the editor element | ahead of ProseMirror's own handler: if the selection is a node selection, remember where |
- * | while remembered | refuse every transaction that changes the document or moves the selection off that node — except a change arriving through Yjs, which is a co-editor's and has to land |
+ * | `compositionstart`, capture phase on the editor element | ahead of ProseMirror's own handler: if the selection is a node selection, remember its block |
+ * | while remembered | refuse every transaction that changes the document or moves the selection off that block's node — except a change arriving through Yjs, which is a co-editor's and has to land |
  * | `compositionend` | redraw the body from the unchanged state, put the node selection back, forget |
  *
- * The remembered position is plugin state, mapped through every transaction
- * that gets through, so a co-editor's edit above the node leaves it pointing
- * at the same node, and one that deletes the node drops it.
+ * What is remembered is the id of the block the node sits in, not a
+ * position: the binding delivers every co-editor's change as one replace over
+ * the whole document (`y-prosemirror` 1.3.7, `sync-plugin.js:657-661`), and a
+ * position mapped through that comes back deleted. The node is looked up by id
+ * whenever it is needed. A co-editor deleting the block mid-composition does
+ * not end the hold: the composed characters still stay out, and at the end
+ * there is no node to select, so the hold is only let go.
  */
 
 import { createExtension } from '@blocknote/core';
 import { NodeSelection, Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { ySyncPluginKey } from 'y-prosemirror';
 
-/** Holds where the composition began, or null outside one. */
-const KEY = new PluginKey<number | null>('documentNodeComposition');
+import { rowById } from '@web/spaces/document/document-row-by-id';
+
+/** Holds the id of the block the composition began on, or null outside one. */
+const KEY = new PluginKey<string | null>('documentNodeComposition');
+
+/**
+ * Where the held block's own node sits in this document.
+ * @param doc - The document.
+ * @param blockId - The held block's id.
+ * @returns The node's position, or null once the block is gone.
+ */
+function heldAt(doc: PMNode, blockId: string): number | null {
+  const row = rowById(doc, blockId);
+  // A container opens with its content node, one past its own start.
+  return row === undefined ? null : row.from + 1;
+}
 
 /**
  * Whether a transaction is a change that came in through Yjs.
@@ -68,16 +87,13 @@ export const documentNodeCompositionExtension = createExtension(() => {
   return {
     key: 'document-node-composition',
     prosemirrorPlugins: [
-      new Plugin<number | null>({
+      new Plugin<string | null>({
         key: KEY,
         state: {
           init: () => null,
           apply: (tr, held) => {
-            const set = tr.getMeta(KEY) as number | null | undefined;
-            if (set !== undefined) return set;
-            if (held === null) return null;
-            const mapped = tr.mapping.mapResult(held);
-            return mapped.deleted ? null : mapped.pos;
+            const set = tr.getMeta(KEY) as string | null | undefined;
+            return set === undefined ? held : set;
           },
         },
         filterTransaction: (tr, state) => {
@@ -86,14 +102,18 @@ export const documentNodeCompositionExtension = createExtension(() => {
             return true;
           }
           if (tr.docChanged) return false;
-          return tr.selection instanceof NodeSelection && tr.selection.from === held;
+          return (
+            tr.selection instanceof NodeSelection &&
+            tr.selection.from === heldAt(tr.doc, held)
+          );
         },
         view: (view) => {
           /** Remembers a node selection the composition begins on. */
           const onStart = (): void => {
             const { selection } = view.state;
-            if (selection instanceof NodeSelection) {
-              view.dispatch(view.state.tr.setMeta(KEY, selection.from));
+            const id = selection.$from.parent.attrs['id'] as unknown;
+            if (selection instanceof NodeSelection && typeof id === 'string') {
+              view.dispatch(view.state.tr.setMeta(KEY, id));
             }
           };
           /** Redraws and gives the node selection back once it ends. */
@@ -104,9 +124,9 @@ export const documentNodeCompositionExtension = createExtension(() => {
               if (held === null || view.isDestroyed) return;
               redraw(view);
               const tr = view.state.tr.setMeta(KEY, null);
-              const node = tr.doc.nodeAt(held);
-              if (node !== null && NodeSelection.isSelectable(node)) {
-                tr.setSelection(NodeSelection.create(tr.doc, held));
+              const at = heldAt(tr.doc, held);
+              if (at !== null) {
+                tr.setSelection(NodeSelection.create(tr.doc, at));
               }
               view.dispatch(tr);
             }, 0);
