@@ -228,7 +228,7 @@
         "privacy": "개인정보 처리방침"
       },
       "signup_code": {
-        "subject": "Breatic 인증 코드",
+        "subject": "인증 코드",
         "lead": "가입 페이지에 아래 코드를 입력해 계정 만들기를 완료하세요.",
         "footer": "이 코드는 {minutes, plural, other {#분}} 후에 만료됩니다. 본인이 가입을 시도하지 않았다면 이 메일을 무시해도 됩니다."
       }

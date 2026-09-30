@@ -228,7 +228,7 @@
         "privacy": "隐私政策"
       },
       "signup_code": {
-        "subject": "你的 Breatic 验证码",
+        "subject": "你的验证码",
         "lead": "在注册页面输入下面的验证码，完成创建账号。",
         "footer": "验证码将在 {minutes, plural, other {# 分钟}}后失效。如果不是你本人操作，可以忽略这封邮件。"
       }
