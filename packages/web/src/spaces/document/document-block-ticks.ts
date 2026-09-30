@@ -261,9 +261,13 @@ function blocksOf(
  * @returns The ticked rows.
  */
 export function tickedOver(doc: PMNode, selection: Selection): Set<BlockTypeId> {
+  // One walk: the quote row reads the words and the dividers, every other row
+  // the words alone (see {@link blocksUnderFor}).
+  const withDividers = blocksOf(doc, selection, true);
+  const words = withDividers.filter(({ node }) => node.isTextblock);
   return new Set(
     ROWS.filter((id) => {
-      const blocks = blocksUnderFor(doc, selection, id);
+      const blocks = id === 'quote' ? withDividers : words;
       return blocks.length > 0 && blocks.every(({ node }) => isRow(node, id));
     }),
   );

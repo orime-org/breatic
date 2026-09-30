@@ -30,7 +30,7 @@
 
 import { createExtension } from '@blocknote/core';
 import { ShowSelectionExtension } from '@blocknote/core/extensions';
-import { AllSelection, NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
@@ -60,19 +60,14 @@ function paintFor(state: EditorState): DecorationSet {
         Decoration.node(selection.from, selection.to, { class: IN_SELECTION_CLASS }),
       );
     }
-  } else if (selection instanceof AllSelection || !selection.empty) {
-    const { from, to } = selection;
-    doc.nodesBetween(from, to, (node, pos) => {
+  } else if (!selection.empty) {
+    // A no-text block is a leaf of size one, so reaching it here means the
+    // range holds all of it.
+    doc.nodesBetween(selection.from, selection.to, (node, pos) => {
       if (node.isTextblock) return false;
-      if (NO_TEXT.has(node.type.name)) {
-        if (pos >= from && pos + node.nodeSize <= to) {
-          found.push(
-            Decoration.node(pos, pos + node.nodeSize, { class: IN_SELECTION_CLASS }),
-          );
-        }
-        return false;
-      }
-      return true;
+      if (!NO_TEXT.has(node.type.name)) return true;
+      found.push(Decoration.node(pos, pos + node.nodeSize, { class: IN_SELECTION_CLASS }));
+      return false;
     });
   }
   return found.length > 0 ? DecorationSet.create(doc, found) : DecorationSet.empty;
@@ -143,6 +138,12 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
           };
           view.dom.ownerDocument.addEventListener('selectionchange', onSelectionChange);
           return {
+            // What the band shows is decided on every update, whatever sent
+            // it; keeping `shown` to that is what lets the listener above tell
+            // a real change from none.
+            update: (updated) => {
+              shown = visible(updated);
+            },
             destroy: () => {
               view.dom.ownerDocument.removeEventListener(
                 'selectionchange',

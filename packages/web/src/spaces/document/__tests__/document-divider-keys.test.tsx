@@ -222,6 +222,16 @@ describe('a selected divider and the delete keys (A4)', () => {
     manager.undo();
     expect(shape(editor)).toEqual(['paragraph:Above', 'divider:', 'paragraph:Below']);
   });
+
+  it.each(['Backspace', 'Delete'])('%s on a divider with nothing after it leaves the caret in the block above', (key) => {
+    const { editor } = open([{ type: 'paragraph', content: 'Above' }, { type: 'divider' }]);
+    select(editor);
+
+    press(editor, key);
+
+    expect(shape(editor)).toEqual(['paragraph:Above']);
+    expect(caretAt(editor)).toEqual({ text: 'Above', offset: 5 });
+  });
 });
 
 describe('typing on a selected divider (A5)', () => {
@@ -443,8 +453,11 @@ describe('quoting a range with a divider in it (A10)', () => {
     select(editor);
 
     runBlockType(editor, 'quote');
-
     expect(quotes(editor)).toEqual([false, true, false]);
+
+    runBlockType(editor, 'quote');
+    expect(quotes(editor)).toEqual([false, false, false]);
+    expect(dividerSelected(editor)).toBe(true);
   });
 
   it('leaves a fallback block in the range untouched, and still takes the quote off', () => {
@@ -512,9 +525,11 @@ describe('the block handle on a divider row (A8)', () => {
    * Opens the handle menu over the second row, which holds the block with no
    * text in these cases.
    * @param editor - The editor.
+   * @returns What the menu was handed to close itself with.
    */
-  function openMenuOverDivider(editor: Editor): void {
+  function openMenuOverDivider(editor: Editor): ReturnType<typeof vi.fn> {
     const block = (editor.document as Seen[])[1]!;
+    const close = vi.fn();
     render(
       <DropdownMenu open>
         <DropdownMenuTrigger />
@@ -522,11 +537,12 @@ describe('the block handle on a divider row (A8)', () => {
           <DocumentBlockMenu
             editor={editor as unknown as HandleEditor}
             block={block as unknown as PressedBlock}
-            close={vi.fn()}
+            close={close}
           />
         </DropdownMenuContent>
       </DropdownMenu>,
     );
+    return close;
   }
 
   /**
@@ -582,5 +598,18 @@ describe('the block handle on a divider row (A8)', () => {
       expect(greyed(`doc-block-type-${id}`)).toBe(true);
     });
     expect(greyed('doc-block-type-quote')).toBe(false);
+  });
+
+  it('does nothing and stays open when a greyed row is chosen', () => {
+    const { editor } = open(SANDWICH);
+    const close = openMenuOverDivider(editor);
+    const before = shape(editor);
+
+    fireEvent.click(screen.getByTestId('doc-block-row-blockType'));
+    fireEvent.click(screen.getByTestId('doc-block-type-heading-1'));
+    fireEvent.click(screen.getByTestId('doc-block-row-comment'));
+
+    expect(close).not.toHaveBeenCalled();
+    expect(shape(editor)).toEqual(before);
   });
 });

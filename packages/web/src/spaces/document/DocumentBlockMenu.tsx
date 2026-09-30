@@ -119,6 +119,19 @@ function rulesAfter(id: BlockTypeId, next: BlockTypeId | undefined): boolean {
 const OPENS_SUBMENU = new Set(['ArrowRight', 'Enter', ' ']);
 
 /**
+ * What every row out of reach carries, trigger or item: dimmed, reachable by
+ * the keyboard (`aria-disabled`, not Radix's `disabled`), and not lit up
+ * under the pointer.
+ */
+const GREYED = {
+  'aria-disabled': 'true',
+  className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
+  onPointerMove: (event: React.PointerEvent): void => {
+    event.preventDefault();
+  },
+} as const;
+
+/**
  * What a submenu trigger carries while the hovered row is out of the
  * command's reach.
  *
@@ -144,12 +157,8 @@ function whenOutOfReach(
     return {};
   }
   return {
-    'aria-disabled': 'true',
-    className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
+    ...GREYED,
     onClick: (event) => {
-      event.preventDefault();
-    },
-    onPointerMove: (event) => {
       event.preventDefault();
     },
     onKeyDown: (event) => {
@@ -180,11 +189,7 @@ function itemWithin(
     return { onSelect: run };
   }
   return {
-    'aria-disabled': 'true',
-    className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
-    onPointerMove: (event) => {
-      event.preventDefault();
-    },
+    ...GREYED,
     onSelect: (event) => {
       event.preventDefault();
     },
@@ -581,8 +586,8 @@ export function DocumentBlockMenu({
           //
           // A row with no words in it covers no run, so there is nothing for
           // a press to mark and the entry says so rather than looking usable
-          // (A3, R7). The treatment is `whenOutOfReach`'s, which the colour
-          // row beside it already uses for the same reason.
+          // (A3, R7). The treatment is `itemWithin`'s, the menu-item side of
+          // the `whenOutOfReach` the colour row beside it uses.
           //
           // THE KEYBOARD STILL HAS TO SEE WHERE IT IS. `aria-disabled` rather
           // than Radix's `disabled` is what the ARIA authoring practices ask

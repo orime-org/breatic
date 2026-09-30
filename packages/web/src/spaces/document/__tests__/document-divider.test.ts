@@ -402,6 +402,27 @@ describe('a no-text block inside the reader selection (A3 · A6)', () => {
     await expect.poll(() => painted(editor, DIVIDER_EL)).toEqual([true]);
   });
 
+  it('is not painted once the selection leaves a body that turned read-only while it held one', async () => {
+    const editor = sandwich();
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    expect(painted(editor, DIVIDER_EL)).toEqual([true]);
+    dragAcross(editor, 'Above', 'Below');
+
+    editor.isEditable = false;
+    (view.dom as HTMLElement).blur();
+    const outside = document.createElement('p');
+    outside.textContent = 'elsewhere';
+    document.body.appendChild(outside);
+    const range = document.createRange();
+    range.selectNodeContents(outside);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+
+    await expect.poll(() => painted(editor, DIVIDER_EL)).toEqual([false]);
+  });
+
   it('is not painted once the browser selection leaves a read-only body', async () => {
     const editor = sandwich();
     editor.isEditable = false;

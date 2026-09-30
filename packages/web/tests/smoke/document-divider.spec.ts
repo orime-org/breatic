@@ -437,7 +437,7 @@ test('quoting across a divider draws one unbroken rule (A10)', async () => {
   expect(quoted).toEqual([true, true, true]);
 });
 
-test('the gap cursor above a leading divider shows in dark, and takes typing (A11)', async () => {
+test('the gap cursor above a leading divider shows in both themes, and takes typing (A11)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('---');
   await page.keyboard.type('Below');
@@ -445,14 +445,22 @@ test('the gap cursor above a leading divider shows in dark, and takes typing (A1
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('ArrowUp');
 
-  await theme(page, 'dark');
-  try {
+  /**
+   * The gap cursor's line colour against the foreground token, this theme.
+   */
+  async function caretIsForeground(): Promise<void> {
     const foreground = await tokenColour(page, '--color-foreground');
     const caret = await page.evaluate((selector) => {
       const gap = document.querySelector(`${selector} .ProseMirror-gapcursor`);
       return gap === null ? null : getComputedStyle(gap, '::after').borderTopColor;
     }, EDITOR);
     expect(caret).toBe(foreground);
+  }
+
+  await caretIsForeground();
+  await theme(page, 'dark');
+  try {
+    await caretIsForeground();
   } finally {
     await theme(page, 'system');
   }

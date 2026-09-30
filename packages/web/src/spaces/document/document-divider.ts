@@ -50,16 +50,11 @@ const dividerRule = new InputRule(DASHES, (state, _match, start, end) => {
   const line = $start.parent;
   // A code block is where dashes are code.
   if (line.type.spec.code === true) return null;
-  // `start` has to be the line's own first position: the regex already says
-  // nothing precedes the dashes in the matched text, and this rules out a
-  // match that began inside an inline node's text.
-  if ($start.parentOffset !== 0) return null;
 
-  // blockContent sits in a blockContainer; the divider goes in a container of
-  // its own right before this one.
+  // The regex matches from the head of the line, so `start` is the line's own
+  // first position. The line's block sits in a blockContainer; the divider goes
+  // in a container of its own right before it.
   const containerDepth = $start.depth - 1;
-  const container = $start.node(containerDepth);
-  if (container.type.name !== 'blockContainer') return null;
   const quoted = line.attrs[QUOTED] === true;
 
   const tr = state.tr.delete(start, end);
