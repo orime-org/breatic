@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "turbo run dev",
+    "dev:mailpit": "tsx scripts/dev-mailpit.ts",
     "db:migrate": "tsx scripts/db-migrate.ts",
     "dev:server": "pnpm --filter @breatic/server dev",
     "dev:collab": "pnpm --filter @breatic/collab dev",
