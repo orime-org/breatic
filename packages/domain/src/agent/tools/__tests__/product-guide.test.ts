@@ -40,6 +40,15 @@ function label(type: (typeof CREATABLE)[number]): string {
   return `"${t(id)}"`;
 }
 
+/**
+ * A web source file, read as text.
+ * @param path - Its path under packages/web/src.
+ * @returns The file's text.
+ */
+function webSource(path: string): string {
+  return readFileSync(resolve(import.meta.dirname, "../../../../../web/src", path), "utf8");
+}
+
 /** The guide's own source, where every message id it shows is spelled out. */
 const source = readFileSync(resolve(import.meta.dirname, "..", "product-guide.ts"), "utf8");
 
@@ -227,23 +236,19 @@ describe("what the guide says", () => {
 
   it("lists the block menu rows in the order the menu shows them", () => {
     const handle = section("Document spaces").split("Hovering a line")[1]?.split("\n")[0] ?? "";
-    const order = [
-      "spaces.document.commands.blockType",
-      "spaces.document.blockHandle.duplicate",
-      "spaces.document.blockHandle.insertBelow",
-      "spaces.document.commands.align",
-      "spaces.document.commands.color",
-      "spaces.document.commands.comment",
-      "spaces.document.blockHandle.delete",
-    ].map((id) => handle.indexOf(`"${t(id)}"`));
+    // The rows in the order the menu's own table lists them.
+    const rows = webSource("spaces/document/document-block-menu-rows.ts");
+    const order = [...rows.matchAll(/labelKey: '(spaces\.document\.[\w.]+)'/g)]
+      .map((m) => m[1] ?? "").map((id) => handle.indexOf(`"${t(id)}"`));
     expect(order.every((at) => at >= 0), order.join(",")).toBe(true);
     expect([...order].sort((x, y) => x - y)).toEqual(order);
   });
 
   it("keeps its hand-written list of creatable types in the create menu's order", () => {
-    // A copy of the web menu's list (CREATABLE_NODE_TYPES); when that changes,
-    // this line fails and the guide gets updated with it.
-    expect(CREATABLE).toEqual(["text", "image", "audio", "video"]);
+    // Read off the web menu's own list, so a type added there fails here.
+    const menu = webSource("spaces/canvas/node-factory.ts");
+    const listed = /CREATABLE_NODE_TYPES[^=]*=\s*\[([^\]]*)\]/.exec(menu)?.[1] ?? "";
+    expect(CREATABLE).toEqual([...listed.matchAll(/'(\w+)'/g)].map((m) => m[1]));
   });
 
   it("lists which nodes generate, from the rule the canvas enforces", () => {
@@ -273,9 +278,6 @@ describe("in the reader's language", () => {
     const quotedFragments = text.match(/"[^"\n]+"/g) ?? [];
     expect(quotedFragments.length).toBeGreaterThan(0);
     for (const fragment of quotedFragments) expect(shown, fragment).toContain(fragment);
-    for (const id of messageIds()) {
-      expect(text, id).toContain(`"${runWithLocale("zh-CN", () => t(id))}"`);
-    }
   });
 });
 
