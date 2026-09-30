@@ -6,8 +6,9 @@
  *
  * The rules under test are the ones that were inconsistent before this
  * component existed (design §3.2): shape follows `studios.type` (personal =
- * round, team = squared) rather than where it is used, initials are always
- * two characters, and the size comes from the `--avatar-*` scale.
+ * round, team = squared) rather than where it is used, the initials fallback
+ * is the name's first character, and the size comes from the `--avatar-*`
+ * scale.
  *
  * Radix's Avatar preloads through `new window.Image()` and only mounts the
  * `<img>` once that fires `load` — which never happens in jsdom. The image
@@ -99,24 +100,8 @@ afterEach(() => {
 });
 
 describe('StudioAvatar — initials fallback', () => {
-  // The rule is the one the project member stack already used, kept rather
-  // than replaced: a multi-word name takes the first letter of its first and
-  // last word, so "Songxiu Lei" reads as SL instead of SO. That carries more
-  // information for people's names, and it degrades to the first two
-  // characters for single-word names, which is what every other site did.
-  it('takes the first and last word initials for a multi-word name', () => {
-    render(
-      <StudioAvatar
-        name='orime studio'
-        type='team'
-        avatarUrl={null}
-        size='md'
-      />,
-    );
-    expect(screen.getByText('OS')).toBeInTheDocument();
-  });
-
-  it('ignores the middle words', () => {
+  // One character: the first of the name, upper-cased.
+  it('shows the first letter of a multi-word name', () => {
     render(
       <StudioAvatar
         name='Ada Byron Lovelace'
@@ -125,24 +110,39 @@ describe('StudioAvatar — initials fallback', () => {
         size='md'
       />,
     );
-    expect(screen.getByText('AL')).toBeInTheDocument();
+    expect(screen.getByText('A')).toBeInTheDocument();
   });
 
-  it('takes the first two characters of a single-word name', () => {
+  it('shows the first letter of a single-word name, upper-cased', () => {
     render(
       <StudioAvatar name='orime' type='team' avatarUrl={null} size='md' />,
     );
-    expect(screen.getByText('OR')).toBeInTheDocument();
+    expect(screen.getByText('O')).toBeInTheDocument();
   });
 
-  it('shows the single available character for a one-character name', () => {
+  it('shows the first character of a CJK name', () => {
+    // The CJK name is the data under test.
     render(
-      <StudioAvatar name='x' type='personal' avatarUrl={null} size='md' />,
+      <StudioAvatar name='宋秀雷' type='personal' avatarUrl={null} size='md' />,
     );
-    expect(screen.getByText('X')).toBeInTheDocument();
+    expect(screen.getByText('宋')).toBeInTheDocument();
   });
 
-  it('tolerates runs of whitespace rather than reading them as words', () => {
+  it('keeps a character made of several code points whole', () => {
+    // Woman artist: woman + zero-width joiner + palette, one visible character.
+    const artist = '\u{1F469}\u200D\u{1F3A8}';
+    render(
+      <StudioAvatar
+        name={`${artist} studio`}
+        type='team'
+        avatarUrl={null}
+        size='md'
+      />,
+    );
+    expect(screen.getByText(artist)).toBeInTheDocument();
+  });
+
+  it('skips leading whitespace', () => {
     render(
       <StudioAvatar
         name='  orime   studio  '
@@ -151,7 +151,7 @@ describe('StudioAvatar — initials fallback', () => {
         size='md'
       />,
     );
-    expect(screen.getByText('OS')).toBeInTheDocument();
+    expect(screen.getByText('O')).toBeInTheDocument();
   });
 
   it('falls back to ? for an empty name instead of an empty circle', () => {
@@ -165,11 +165,11 @@ describe('StudioAvatar — initials fallback', () => {
     const { rerender } = render(
       <StudioAvatar name='Alpha co' type='team' avatarUrl={null} size='md' />,
     );
-    expect(screen.getByText('AC')).toBeInTheDocument();
+    expect(screen.getByText('A')).toBeInTheDocument();
     rerender(
       <StudioAvatar name='Beta co' type='team' avatarUrl={null} size='md' />,
     );
-    expect(screen.getByText('BC')).toBeInTheDocument();
+    expect(screen.getByText('B')).toBeInTheDocument();
   });
 });
 
@@ -206,7 +206,7 @@ describe('StudioAvatar — image', () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByText('OR')).toBeInTheDocument();
+      expect(screen.getByText('O')).toBeInTheDocument();
     });
     expect(document.querySelector('img')).toBeNull();
   });
@@ -245,7 +245,7 @@ describe('StudioAvatar — shape follows studios.type', () => {
     // Round happens to be the primitive's own default, so this asserts the
     // outcome rather than guarding the wiring — it goes red only if that
     // default changes. The team case below is the one that guards the fix.
-    const fallback = screen.getByText('AL');
+    const fallback = screen.getByText('A');
     expect(fallback.className).toContain('rounded-full');
   });
 
@@ -262,7 +262,7 @@ describe('StudioAvatar — shape follows studios.type', () => {
     const root = screen.getByTestId('avatar');
     expect(root.className).toContain('rounded-chrome');
     expect(root.className).not.toContain('rounded-full');
-    const fallback = screen.getByText('OR');
+    const fallback = screen.getByText('O');
     expect(fallback.className).toContain('rounded-chrome');
     expect(fallback.className).not.toContain('rounded-full');
   });
@@ -321,7 +321,7 @@ describe('StudioAvatar — colour discipline (A18.1)', () => {
       />,
     );
     const root = screen.getByTestId('avatar');
-    const fallback = screen.getByText('OR');
+    const fallback = screen.getByText('O');
     expect(fallback.className).toContain('bg-muted');
     expect(fallback.className).toContain('text-muted-foreground');
     // The demo used a per-studio colour; the ratified rule is one muted grey.
