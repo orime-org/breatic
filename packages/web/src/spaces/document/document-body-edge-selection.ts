@@ -272,17 +272,101 @@ class BodyEdgeBookmark {
 }
 
 /**
+ * A caret in the text nearest an edge of the body.
+ * @param doc - The document.
+ * @param edge - Which edge.
+ * @returns A text caret, or the nearest selection of any kind when the body
+ *   holds no text.
+ */
+function caretNear(doc: Node, edge: BodyEdge): Selection {
+  const $edge = doc.resolve(edgePos(doc, edge));
+  const inward = edge === 'end' ? -1 : 1;
+  return (
+    Selection.findFrom($edge, inward, true) ??
+    Selection.findFrom($edge, -inward, true) ??
+    Selection.near($edge, inward)
+  );
+}
+
+/**
+ * The selection from one position to another, either of which may be an edge
+ * of the body.
+ * @param doc - The document.
+ * @param anchor - The anchor.
+ * @param head - The head.
+ * @returns A text selection when neither end is an edge; a
+ *   {@link BodyEdgeSelection} when one is; a caret beside the edge when both
+ *   are the same edge; the whole document when they are the two edges.
+ */
+export function bodyEdgeBetween(doc: Node, anchor: number, head: number): Selection {
+  const anchorEdge = edgeAt(doc, anchor);
+  const headEdge = edgeAt(doc, head);
+  if (anchorEdge !== null && headEdge !== null) {
+    return anchorEdge === headEdge ? caretNear(doc, anchorEdge) : new AllSelection(doc);
+  }
+  if (anchorEdge !== null) return BodyEdgeSelection.fromEdge(doc, anchorEdge, head);
+  if (headEdge !== null) return BodyEdgeSelection.create(doc, anchor, headEdge);
+  return TextSelection.between(doc.resolve(anchor), doc.resolve(head));
+}
+
+/**
  * The selection that extends from an anchor to an edge of the body.
  * @param doc - The document.
  * @param anchor - The anchor.
  * @param edge - The edge to reach.
- * @returns A whole-document selection when the anchor is already on the other
- *   edge, otherwise a {@link BodyEdgeSelection}.
+ * @returns See {@link bodyEdgeBetween}.
  */
 export function extendToBodyEdge(doc: Node, anchor: number, edge: BodyEdge): Selection {
-  const anchorEdge = edgeAt(doc, anchor);
-  if (anchorEdge !== null && anchorEdge !== edge) return new AllSelection(doc);
-  return BodyEdgeSelection.create(doc, anchor, edge);
+  return bodyEdgeBetween(doc, anchor, edgePos(doc, edge));
+}
+
+/** Where the pointer is: over the body, or past the block at one of its ends. */
+export type PointerZone = 'body' | BodyEdge;
+
+/** A drag the pointer plugin is following. */
+export interface EdgeDrag {
+  /** Where it was pressed; `shift` for a Shift+click past an edge. */
+  readonly press: PointerZone | 'shift';
+  /** The anchor the selection keeps. */
+  readonly anchor: number;
+  /** Whether the pointer has been anywhere but where it was pressed. */
+  readonly left: boolean;
+}
+
+/**
+ * The selection a drag gives (design §5.10.3, the press × pointer table).
+ * @param doc - The document.
+ * @param drag - The drag.
+ * @param zone - Where the pointer is now.
+ * @param pointer - The document position under the pointer, when it is over
+ *   the body; null when there is none.
+ * @returns The selection, or null to leave it to ProseMirror and the browser.
+ */
+export function dragSelection(doc: Node, drag: EdgeDrag, zone: PointerZone, pointer: number | null): Selection | null {
+  if (zone !== 'body') {
+    if (drag.press === zone && !drag.left) return null;
+    return bodyEdgeBetween(doc, drag.anchor, edgePos(doc, zone));
+  }
+  if (drag.press === 'body' && !drag.left) return null;
+  if (pointer === null) return null;
+  return bodyEdgeBetween(doc, drag.anchor, pointer);
+}
+
+/**
+ * Keeps an end that sits on an edge when the browser extends the selection
+ * (design §5.10.5). Reading the browser's range back goes through
+ * `TextSelection.between`, which would pull that end back into text.
+ * @param view - The view.
+ * @param $anchor - The browser's anchor.
+ * @param $head - The browser's head.
+ * @returns The selection, or null when neither end is an edge or the range is
+ *   collapsed.
+ */
+function readBackAtEdge(view: EditorView, $anchor: ResolvedPos, $head: ResolvedPos): Selection | null {
+  const { doc } = view.state;
+  if ($anchor.pos === $head.pos) return null;
+  if (edgeAt(doc, $anchor.pos) === null && edgeAt(doc, $head.pos) === null) return null;
+  return bodyEdgeBetween(doc, $anchor.pos, $head.pos);
 }
 
 /**
@@ -366,7 +450,7 @@ export const documentBodyEdgeExtension = createExtension(() => {
     prosemirrorPlugins: [
       new Plugin({
         key: new PluginKey('documentBodyEdge'),
-        props: { handleKeyDown: onKeyDown },
+        props: { handleKeyDown: onKeyDown, createSelectionBetween: readBackAtEdge },
       }),
     ],
   } as never;
