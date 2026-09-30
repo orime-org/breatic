@@ -52,6 +52,16 @@ describe("adding a shot", () => {
     expect(addShot([1, 1, 1, 1, 1, 1], 10, 6)).toBeNull();
   });
 
+  it('re-splits a list whose seconds drifted, so every shot keeps at least 1 second', () => {
+    // Two collaborators each removing a shot leave none; concurrent steps can
+    // leave seconds that no longer add up to the total.
+    expect(addShot([], 5, 6)).toEqual([5]);
+    const drifted = addShot([1, 1], 5, 6);
+    expect(drifted).toHaveLength(3);
+    expect(drifted?.every((d) => d >= 1)).toBe(true);
+    expect(drifted?.reduce((a, b) => a + b, 0)).toBe(5);
+  });
+
   it("is refused when every shot is already at one second", () => {
     expect(addShot([1, 1, 1], 3, 6)).toBeNull();
   });

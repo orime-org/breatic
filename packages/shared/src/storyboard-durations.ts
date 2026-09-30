@@ -91,8 +91,10 @@ export function addShot(
     out[longest] = (out[longest] ?? 0) - 1;
     got++;
   }
-  out.push(got);
-  return out;
+  out.push(Math.max(1, got));
+  // A list whose seconds drifted from the total (two collaborators editing at
+  // once) is re-split here, so the new shot never lands at 0 seconds.
+  return enterCustom(out, total);
 }
 
 /**
