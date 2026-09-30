@@ -359,11 +359,12 @@ export function renderProductGuide(): string {
       `deletes the group with everything in it (${quoted(t("canvas.group.ungroup"))} keeps the members). A ` +
       `locked group has no ${quoted(t("canvas.group.ungroup"))} or ${quoted(t("canvas.contextMenu.rename"))}; ` +
       "its members cannot be moved, deleted or dragged out, but their contents and names can still change. After " +
-      "dragging a box around several nodes, right-clicking the selection opens " +
-      `${quoted(t("canvas.group.group"))} (only when, notes aside, every selected node is loose -- not a group ` +
-      "and not inside one -- and there are at least two), " +
+      "dragging a box over one or more nodes, a frame covers them until you click empty canvas; right-clicking " +
+      `inside that frame opens ${quoted(t("canvas.group.group"))} (only when, notes aside, every selected node ` +
+      "is loose -- not a group and not inside one -- and there are at least two), " +
       `${quoted(t("canvas.contextMenu.copy"))}, ${quoted(t("canvas.contextMenu.duplicate"))}, ` +
-      `${quoted(t("canvas.contextMenu.addToAgent"))} and ${quoted(t("canvas.contextMenu.deleteSelection"))}. ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} and ${quoted(t("canvas.contextMenu.deleteSelection"))} ` +
+      "instead of a node's own menu, so click empty canvas first to reach a node's menu. " +
       "With nodes picked one by one with Cmd/Ctrl-click, right-clicking one opens that node's own menu. A note's " +
       `menu has ${quoted(t("canvas.nodeMenu.lock"))} or ${quoted(t("canvas.nodeMenu.unlock"))}, ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} and ${quoted(t("canvas.contextMenu.deleteNode"))}.`,

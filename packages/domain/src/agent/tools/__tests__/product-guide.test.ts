@@ -333,7 +333,7 @@ describe("what the guide says", () => {
     const menu = webSource("spaces/canvas/SelectionContextMenu.tsx");
     const ids = [...menu.matchAll(/t\('([\w.]+)'\)/g)].map((m) => [m[1] ?? ""]);
     expect(ids.flat()).toEqual(namedIds(menu));
-    const sentence = section("Node menus").split("right-clicking the selection opens")[1]?.split(". ")[0] ?? "";
+    const sentence = section("Node menus").split("inside that frame opens")[1]?.split(". ")[0] ?? "";
     expectRowsInOrder(sentence, ids);
   });
 
