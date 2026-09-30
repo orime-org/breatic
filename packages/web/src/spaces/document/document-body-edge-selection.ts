@@ -100,7 +100,7 @@ function textNear(doc: Node, pos: number, edge: BodyEdge): number {
 /**
  * A range from a position to an edge of the body.
  */
-export class BodyEdgeSelection extends Selection {
+class BodyEdgeSelectionClass extends Selection {
   /**
    * Builds the selection from its two resolved ends.
    * @param $anchor - The anchor.
@@ -117,8 +117,8 @@ export class BodyEdgeSelection extends Selection {
    * @param edge - The edge the head sits on.
    * @returns The selection.
    */
-  static create(doc: Node, anchor: number, edge: BodyEdge): BodyEdgeSelection {
-    return BodyEdgeSelection.build(doc, 'head', edge, anchor);
+  static create(doc: Node, anchor: number, edge: BodyEdge): BodyEdgeSelectionClass {
+    return BodyEdgeSelectionClass.build(doc, 'head', edge, anchor);
   }
 
   /**
@@ -128,8 +128,8 @@ export class BodyEdgeSelection extends Selection {
    * @param head - The head.
    * @returns The selection.
    */
-  static fromEdge(doc: Node, edge: BodyEdge, head: number): BodyEdgeSelection {
-    return BodyEdgeSelection.build(doc, 'anchor', edge, head);
+  static fromEdge(doc: Node, edge: BodyEdge, head: number): BodyEdgeSelectionClass {
+    return BodyEdgeSelectionClass.build(doc, 'anchor', edge, head);
   }
 
   /**
@@ -140,12 +140,12 @@ export class BodyEdgeSelection extends Selection {
    * @param other - The other end, put into text.
    * @returns The selection.
    */
-  private static build(doc: Node, side: EdgeSide, edge: BodyEdge, other: number): BodyEdgeSelection {
+  private static build(doc: Node, side: EdgeSide, edge: BodyEdge, other: number): BodyEdgeSelectionClass {
     const $edge = doc.resolve(edgePos(doc, edge));
     const $other = doc.resolve(textNear(doc, other, edge));
     return side === 'head'
-      ? new BodyEdgeSelection($other, $edge)
-      : new BodyEdgeSelection($edge, $other);
+      ? new BodyEdgeSelectionClass($other, $edge)
+      : new BodyEdgeSelectionClass($edge, $other);
   }
 
   /**
@@ -167,7 +167,7 @@ export class BodyEdgeSelection extends Selection {
    */
   map(doc: Node, mapping: Mappable): Selection {
     const { side, edge, other } = this.edgeOf();
-    return BodyEdgeSelection.build(doc, side, edge, mapping.map(other));
+    return BodyEdgeSelectionClass.build(doc, side, edge, mapping.map(other));
   }
 
   /**
@@ -176,7 +176,7 @@ export class BodyEdgeSelection extends Selection {
    * @returns True for a body-edge selection with the same ends.
    */
   eq(other: Selection): boolean {
-    return other instanceof BodyEdgeSelection && other.anchor === this.anchor && other.head === this.head;
+    return other instanceof BodyEdgeSelectionClass && other.anchor === this.anchor && other.head === this.head;
   }
 
   /**
@@ -201,9 +201,9 @@ export class BodyEdgeSelection extends Selection {
     const headEdge = edgeAt(doc, json.head);
     const anchorEdge = edgeAt(doc, json.anchor);
     if (headEdge !== null && anchorEdge !== null && headEdge !== anchorEdge) return new AllSelection(doc);
-    if (headEdge !== null) return BodyEdgeSelection.create(doc, json.anchor, headEdge);
-    if (anchorEdge !== null) return BodyEdgeSelection.fromEdge(doc, anchorEdge, json.head);
-    throw new RangeError('Invalid input for BodyEdgeSelection.fromJSON');
+    if (headEdge !== null) return BodyEdgeSelectionClass.create(doc, json.anchor, headEdge);
+    if (anchorEdge !== null) return BodyEdgeSelectionClass.fromEdge(doc, anchorEdge, json.head);
+    throw new RangeError('Invalid input for BodyEdgeSelectionClass.fromJSON');
   }
 
   /**
@@ -216,7 +216,26 @@ export class BodyEdgeSelection extends Selection {
   }
 }
 
-Selection.jsonID('bodyEdge', BodyEdgeSelection);
+/**
+ * The key the registered class is kept under. ProseMirror keeps one registry of
+ * selection classes per loaded `prosemirror-state`, and registering an id twice
+ * throws. This module can be evaluated more than once against the same
+ * registry (hot reload, one test worker running several files), so the first
+ * class registered is kept on `Selection` itself and every later evaluation
+ * uses that one: one registry entry, one class for `instanceof`.
+ */
+const REGISTERED = Symbol.for('breatic.document.bodyEdgeSelection');
+
+/** `Selection`, seen as the holder of the registered class. */
+const holder = Selection as unknown as { [REGISTERED]?: typeof BodyEdgeSelectionClass };
+if (holder[REGISTERED] === undefined) {
+  holder[REGISTERED] = BodyEdgeSelectionClass;
+  Selection.jsonID('bodyEdge', BodyEdgeSelectionClass);
+}
+
+/** The selection class, as registered with ProseMirror. */
+export const BodyEdgeSelection = holder[REGISTERED];
+
 
 /** The bookmark of a {@link BodyEdgeSelection}. */
 class BodyEdgeBookmark {
