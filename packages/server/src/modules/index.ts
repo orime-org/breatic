@@ -19,6 +19,7 @@ export * as assetUploadService from "@server/modules/asset/assetUpload.service.j
 export * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 export * as authService from "@server/modules/auth/auth.service.js";
 export * as recoveryCodeService from "@server/modules/auth/recovery-code.service.js";
+export * as signupCodeService from "@server/modules/auth/signup-code.service.js";
 export * as conversationService from "@server/modules/conversation/conversation.service.js";
 export * as attachmentService from "@server/modules/conversation/conversation-attachment.service.js";
 export * as memoryService from "@server/modules/memory/memory.service.js";

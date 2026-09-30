@@ -38,11 +38,13 @@
       "reset_link_sent": "이 이메일로 등록된 계정이 있으면 재설정 링크를 보내 드렸습니다.",
       "reset_success": "비밀번호를 재설정했습니다. 로그인해 주세요.",
       "reset_recovery_success": "비밀번호를 재설정했습니다. 새 복구 코드를 저장하세요.",
-      "email_verified": "이메일이 확인되었습니다.",
-      "verify_email_sent": "확인 이메일을 보냈습니다. 받은편지함을 확인하세요.",
       "invalid_reset_token": "이 비밀번호 재설정 링크는 유효하지 않거나 만료되었습니다",
       "invalid_recovery_code": "이메일 또는 복구 코드가 올바르지 않습니다",
-      "invalid_verification_token": "이 인증 링크는 유효하지 않거나 만료되었습니다"
+      "signup_code_invalid": "코드가 올바르지 않습니다.",
+      "signup_code_exhausted": "이 코드는 더 이상 사용할 수 없습니다. 새 코드를 받으세요.",
+      "signup_expired": "가입 요청이 만료되었습니다.",
+      "signup_resend_cooldown": "{seconds, plural, other {#초}} 후에 다시 코드를 받으세요.",
+      "signup_code_send_failed": "인증 코드를 보내지 못했습니다. 다시 시도하세요."
     },
     "studio": {
       "slug_taken": "이미 사용 중인 Slug입니다. 다른 것을 선택하세요.",
@@ -216,18 +218,17 @@
         "action": "비밀번호 재설정",
         "footer": "이 링크는 {hours, plural, other {#시간}} 후에 만료됩니다. 본인이 요청하지 않았다면 이 메일을 무시하세요."
       },
-      "email_verification": {
-        "subject": "이메일 확인",
-        "lead": "Breatic에 오신 것을 환영합니다. 아래 버튼을 눌러 이메일 주소를 확인하세요.",
-        "action": "이메일 주소 확인",
-        "footer": "이 링크는 {hours, plural, other {#시간}} 후에 만료됩니다. 본인이 요청하지 않았다면 이 메일을 무시해도 됩니다."
-      },
       "footer": "이 메일은 자동으로 발송되었습니다. 회신은 확인되지 않습니다.",
       "help": "도움이 필요하신가요? <manual>사용자 설명서</manual>를 확인하거나 <contact>{email}</contact>로 문의하세요.",
       "legal": {
         "about": "소개",
         "terms": "이용약관",
         "privacy": "개인정보 처리방침"
+      },
+      "signup_code": {
+        "subject": "인증 코드",
+        "lead": "가입 페이지에 아래 코드를 입력해 계정 만들기를 완료하세요.",
+        "footer": "이 코드는 {minutes, plural, other {#분}} 후에 만료됩니다. 본인이 가입을 시도하지 않았다면 이 메일을 무시해도 됩니다."
       }
     }
   },
@@ -828,7 +829,16 @@
       "haveAccount": "이미 계정이 있으신가요?",
       "signIn": "로그인",
       "passwordHint": "8자 이상이어야 합니다.",
-      "failed": "회원가입에 실패했습니다. 다시 시도해 주세요."
+      "failed": "회원가입에 실패했습니다. 다시 시도해 주세요.",
+      "code": {
+        "title": "이메일 확인",
+        "sentTo": "{email}(으)로 6자리 코드를 보냈습니다",
+        "codeLabel": "인증 코드",
+        "resend": "코드 다시 보내기",
+        "resendIn": "{seconds}초 후 다시 보내기",
+        "changeEmail": "다른 이메일 사용",
+        "newCodeSent": "새 코드를 보냈습니다."
+      }
     },
     "onboarding": {
       "title": "Slug 선택",
@@ -852,15 +862,17 @@
     },
     "forgot": {
       "title": "비밀번호를 잊으셨나요?",
-      "subtitle": "재설정 링크를 이메일로 보내 드리거나, 복구 코드를 사용할 수 있습니다.",
       "sendResetLink": "재설정 링크를 이메일로 받기",
       "sending": "전송 중...",
-      "useRecoveryCode": "대신 복구 코드 사용하기",
+      "useRecoveryCode": "복구 코드 사용",
       "sentTitle": "받은편지함을 확인하세요",
       "sentSubtitle": "해당 주소로 등록된 계정이 있으면 재설정 링크를 보내 드렸습니다.",
-      "sentBody": "{email}(으)로 재설정 링크를 보냈습니다. 몇 분이 지나도 보이지 않으면 스팸함을 확인하거나 복구 코드를 사용하세요.",
+      "sentBody": "{email}(으)로 재설정 링크를 보냈습니다. 몇 분 안에 오지 않으면 스팸함을 확인하세요.",
       "backToSignIn": "로그인으로 돌아가기",
-      "failed": "재설정 링크를 보내지 못했습니다. 다시 시도해 주세요."
+      "failed": "재설정 링크를 보내지 못했습니다. 다시 시도해 주세요.",
+      "subtitleEmail": "비밀번호 재설정 링크를 이메일로 보내 드립니다.",
+      "subtitleRecovery": "가입할 때 저장한 복구 코드를 사용하세요.",
+      "optionsFailed": "페이지를 불러오지 못했습니다. 새로 고침한 뒤 다시 시도하세요."
     },
     "reset": {
       "titleToken": "새 비밀번호 설정",
@@ -875,19 +887,6 @@
       "success": "비밀번호를 업데이트했습니다. 로그인해 주세요.",
       "failed": "비밀번호를 재설정하지 못했습니다. 다시 시도해 주세요.",
       "backToSignIn": "로그인으로 돌아가기"
-    },
-    "verify": {
-      "verifying": "이메일을 확인하는 중...",
-      "pleaseWait": "잠시만 기다려 주세요.",
-      "successTitle": "이메일이 확인되었습니다",
-      "successBody": "이메일이 확인되었습니다. 이제 Breatic의 모든 기능을 이용할 수 있습니다.",
-      "goToStudio": "Studio로 이동",
-      "failedTitle": "이메일을 확인하지 못했습니다",
-      "failedBody": "링크가 만료되었거나 이미 사용되었을 수 있습니다. 로그인 후 계정 설정에서 새 확인 이메일을 요청하세요.",
-      "checkInboxTitle": "받은편지함을 확인하세요",
-      "checkInboxBody": "방금 보내 드린 이메일 확인 링크를 열어 주세요. 도착하지 않았다면 계정 설정에서 다시 요청할 수 있습니다.",
-      "signIn": "로그인",
-      "failed": "이메일 확인에 실패했습니다."
     }
   },
   "roleTag": {

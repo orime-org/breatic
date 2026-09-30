@@ -38,18 +38,19 @@ import {
   buildStorageQuotaExceededMail,
 } from "@server/utils/notification-mail.js";
 import { escapeHtml, type RenderedMail } from "@server/utils/mail-shell.js";
-import { buildTokenLinkMail } from "@server/modules/auth/auth-mail.js";
+import { buildSignupCodeMail, buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 
 loadLocales();
 
 const LOCALES = ["en", "zh-CN", "zh-TW", "ja", "ko"] as const;
+const SIGNUP_CODE = "048213";
 const NAME = "A<b>&_*`x";
 const ESCAPED = "A&lt;b&gt;&amp;_*`x";
 const LINK = "https://app.test/decision?token=t";
 const SLOGAN = "An AI operating system for content creators";
 const WITH_ACTION = [
   "studioInvite", "projectInvite", "studioTransfer", "projectTransfer",
-  "roleUpgrade", "projectJoin", "passwordReset", "emailVerification",
+  "roleUpgrade", "projectJoin", "passwordReset",
 ];
 
 /**
@@ -126,18 +127,18 @@ async function allMails(locale: string): Promise<Record<string, RenderedMail>> {
     storageFull: buildStorageQuotaExceededMail({
       locale, recipientEmail: "to@example.test", studioName: NAME,
     }),
-    passwordReset: buildTokenLinkMail("password_reset", {
+    passwordReset: buildPasswordResetMail({
       locale, to: "to@example.test", url: LINK, expiresInSeconds: 3600,
     }),
-    emailVerification: buildTokenLinkMail("email_verification", {
-      locale, to: "to@example.test", url: LINK, expiresInSeconds: 86400,
+    signupCode: buildSignupCodeMail({
+      locale, to: "to@example.test", code: SIGNUP_CODE, expiresInSeconds: 600,
     }),
   };
   const built = await Promise.all(Object.values(mails));
   return Object.fromEntries(Object.keys(mails).map((kind, i) => [kind, built[i]!]));
 }
 
-const KINDS = [...WITH_ACTION, "membershipEnded", "storageFull"];
+const KINDS = [...WITH_ACTION, "membershipEnded", "storageFull", "signupCode"];
 
 describe("mail catalogs", () => {
   const english = leafKeys(mailCatalog("en"));
@@ -163,6 +164,12 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
     expect(mail.html).not.toContain("<b>&");
     expect(mail.html).not.toContain("A<b>");
     if (mail.html.includes("A&")) expect(mail.html).toContain(ESCAPED);
+  });
+
+  it("shows the sign-up code in both the HTML and the text part", () => {
+    const mail = mails.signupCode!;
+    expect(mail.html).toContain(`>${SIGNUP_CODE}</div>`);
+    expect(mail.text.split("\n")).toContain(SIGNUP_CODE);
   });
 
   it("puts the links, bold names and roles where the catalog marks them", () => {
@@ -337,7 +344,7 @@ describe("the language actually changes", () => {
     const en = await allMails("en");
     expect(en.studioInvite!.html).toContain("expires in 3 days");
     expect(en.passwordReset!.html).toContain("expires in 1 hour.");
-    expect(en.emailVerification!.html).toContain("expires in 24 hours.");
+    expect(en.signupCode!.html).toContain("expires in 10 minutes.");
     expect((await allMails("zh-CN")).projectJoin!.html).toContain("3 天");
   });
 

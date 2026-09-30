@@ -128,6 +128,7 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
  * @param data.hashedPassword - Optional bcrypt password hash (absent for OAuth-only sign-ups)
  * @param data.googleId - Optional linked Google account identifier
  * @param data.locale - The account's language: the one the sign-up request was negotiated in
+ * @param data.emailVerified - Whether the address was proven at sign-up (a matched sign-up code)
  * @returns The created UserEntity
  * @throws {z.ZodError} if `config/membership.yaml` is malformed — the file is
  *   read on first use and on a fresh server this is often that first use, so
@@ -138,6 +139,7 @@ export async function createUser(data: {
   hashedPassword?: string;
   googleId?: string;
   locale: string;
+  emailVerified?: boolean;
 }): Promise<UserEntity> {
   const rows = await db
     .insert(users)
@@ -146,6 +148,7 @@ export async function createUser(data: {
       hashedPassword: data.hashedPassword,
       googleId: data.googleId,
       locale: data.locale,
+      emailVerified: data.emailVerified ?? false,
       membershipTier: getDefaultMembershipTier(),
     })
     .returning();

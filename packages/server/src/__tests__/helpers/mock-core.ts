@@ -108,11 +108,6 @@ export const mocks = {
       newRecoveryCode: "AAAA-BBBB-CCCC-DDDD",
       userId: "user-1",
     }),
-    generateVerifyEmailToken: vi.fn(),
-    verifyEmail: vi.fn().mockResolvedValue({ userId: "user-1" }),
-    resendVerificationEmail: vi.fn().mockResolvedValue({
-      mailResult: { status: "skipped", reason: "backend_disabled" },
-    }),
   },
   projectService: {
     assertAccess: vi.fn().mockResolvedValue(undefined),
