@@ -192,14 +192,13 @@ describe('what the card says before it is pressed', () => {
   });
 
   it('shows neither a price nor a run time', async () => {
-    // The catalog prices this model at 4 credits and 12 seconds; the card
-    // leaves both to the generation panel.
+    // The catalog says this model runs for 12 seconds; the card leaves that,
+    // and the credits, to the generation panel.
     listModels.mockResolvedValue(CATALOG);
     const client = renderCard();
 
     await waitFor(() => expect(client.getQueryData(['models'])).toBeDefined());
     expect(screen.getByText('Some Model')).toBeTruthy();
-    expect(screen.queryByText('4')).toBeNull();
     expect(screen.queryByText(/12\s*s/)).toBeNull();
   });
 

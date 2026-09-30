@@ -210,7 +210,6 @@ export {
   insertRefusal,
   isReferenceMaterial,
   layersOf,
-  markTargets,
   nameableFeeders,
   markText,
   promptPlainText,

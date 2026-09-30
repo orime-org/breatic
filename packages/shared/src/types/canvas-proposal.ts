@@ -307,29 +307,6 @@ export function nameableFeeders(
 }
 
 /**
- * The feeders one node's prompt actually sends: the k-th asset mark sends the
- * k-th entry of {@link nameableFeeders}' sources, the k-th ref mark the k-th
- * upstream entry, the way the canvas writes its mentions. A node wired in and
- * never marked is not sent.
- * @param proposal - The proposal being read.
- * @param index - The node being fed.
- * @returns The indices the marks send, in the order the marks appear.
- * @throws {never} Never.
- */
-export function markTargets(proposal: CanvasProposal, index: number): number[] {
-  const named = nameableFeeders(proposal, index);
-  const sent: number[] = [];
-  let assets = 0;
-  let refs = 0;
-  for (const segment of proposal.nodes[index]?.prompt ?? []) {
-    const kind = segment.slot?.kind;
-    const target = kind === "asset" ? named.sources[assets++] : kind === "ref" ? named.upstream[refs++] : undefined;
-    if (target !== undefined && target !== null) sent.push(target);
-  }
-  return sent;
-}
-
-/**
  * How far downstream each node of a proposal sits, counting from what starts it.
  *
  * One further than the last thing that feeds it. Both the card's little

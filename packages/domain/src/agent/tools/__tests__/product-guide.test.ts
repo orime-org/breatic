@@ -14,8 +14,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { loadLocales, runWithLocale } from "@breatic/core";
-import { canConnect, canGenerate, t } from "@breatic/shared";
+import { getAgentConfig, loadLocales, runWithLocale } from "@breatic/core";
+import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t } from "@breatic/shared";
 
 import { CANVAS_TOOLS, TOOL_MAP } from "@domain/agent/tools/index.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
@@ -69,6 +69,16 @@ function expectRowsInOrder(text: string, rows: readonly (readonly string[])[]): 
 }
 
 /** The guide's own source, where every message id it shows is spelled out. */
+/**
+ * Every message id a web source names in single quotes, to check an
+ * extraction against: one that skips an id reads fewer rows than the menu has.
+ * @param text - The web source.
+ * @returns The ids, in the order they appear.
+ */
+function namedIds(text: string): string[] {
+  return [...text.matchAll(/'([a-z]\w*(?:\.\w+)+)'/g)].map((m) => m[1] ?? "");
+}
+
 const source = readFileSync(resolve(import.meta.dirname, "..", "product-guide.ts"), "utf8");
 
 /**
@@ -226,7 +236,7 @@ describe("what the guide says", () => {
     expect(generating).toMatch(/spinning circle \(running\)/);
     expect(generating).toMatch(/a clock \(expired\)/);
     expect(generating).toMatch(/Hovering one shows how many/);
-    expect(generating).toMatch(/Zoomed far out, only the spinning one remains/);
+    expect(generating).toMatch(/Zoomed far out, only the spinning icon remains/);
   });
 
   it("says letters after @ narrow a list of at most eight rows", () => {
@@ -288,6 +298,7 @@ describe("what the guide says", () => {
       else rows.push(ids);
       last = n;
     });
+    expect(rows.flat()).toEqual(namedIds(menu));
     const groupOnly = (id: string): boolean =>
       id.startsWith("canvas.group.") || id === "canvas.contextMenu.deleteGroup";
     const menus = section("Node menus");
@@ -304,6 +315,7 @@ describe("what the guide says", () => {
   it("lists the selection menu's rows in the order the menu shows them", () => {
     const menu = webSource("spaces/canvas/SelectionContextMenu.tsx");
     const ids = [...menu.matchAll(/t\('([\w.]+)'\)/g)].map((m) => [m[1] ?? ""]);
+    expect(ids.flat()).toEqual(namedIds(menu));
     const sentence = section("Node menus").split("right-clicking the selection opens")[1]?.split(". ")[0] ?? "";
     expectRowsInOrder(sentence, ids);
   });
@@ -311,6 +323,8 @@ describe("what the guide says", () => {
   it("names the view bar's buttons by their tooltips, in the bar's order", () => {
     const bar = webSource("pages/project/chrome/viewport-toolbar/ViewportToolbar.tsx");
     const ids = [...bar.matchAll(/tooltip=\{t\('([\w.]+)'\)\}/g)].map((m) => [m[1] ?? ""]);
+    // Every tooltip the bar sets is one plain message, or a button would be skipped.
+    expect(ids).toHaveLength([...bar.matchAll(/tooltip=/g)].length);
     expectRowsInOrder(section("Moving around the canvas"), ids);
   });
 
@@ -384,7 +398,8 @@ describe("what the guide says", () => {
   it("says what a filled slot looks like for each kind", () => {
     const slots = section("Source slots");
     expect(slots).toMatch(/A slot holding a picture, or a video with a cover, shows that picture/);
-    expect(slots).toMatch(/a slot holding a sound keeps its icon and name/);
+    expect(slots).toMatch(/a slot\s+holding a sound, or a video without a cover, keeps its icon and name and its border turns darker/);
+    expect(slots).not.toMatch(/coloured/);
   });
 
   it("says locking a space only stops renaming and deleting it", () => {
@@ -444,7 +459,9 @@ describe("what the guide says", () => {
     const handle = section("Document spaces").split("Hovering a line")[1]?.split("\n")[0] ?? "";
     // The rows in the order the menu's own table lists them.
     const rows = webSource("spaces/document/document-block-menu-rows.ts");
-    expectRowsInOrder(handle, [...rows.matchAll(/labelKey: '(spaces\.document\.[\w.]+)'/g)].map((m) => [m[1] ?? ""]));
+    const ids = [...rows.matchAll(/labelKey: '(spaces\.document\.[\w.]+)'/g)].map((m) => m[1] ?? "");
+    expect(ids).toEqual(namedIds(rows));
+    expectRowsInOrder(handle, ids.map((id) => [id]));
   });
 
   it("keeps its hand-written list of creatable types in the create menu's order", () => {
@@ -494,6 +511,16 @@ describe("in every language", () => {
       expect(doubled, locale).toEqual([]);
     }
   });
+
+  it("never runs a quoted message straight into the next sentence", () => {
+    // A message with no closing mark of its own, followed by a new sentence,
+    // reads as one sentence in every language.
+    for (const locale of ["en", "zh-CN", "zh-TW", "ja", "ko"]) {
+      const text = runWithLocale(locale, renderProductGuide);
+      const joined = text.match(/"[^"\n]*[^.。!！?？\s"]" [A-Z]/g) ?? [];
+      expect(joined, locale).toEqual([]);
+    }
+  });
 });
 
 describe("messages the guide borrows", () => {
@@ -518,5 +545,111 @@ describe("the guide's source", () => {
 
   it("does not name the generate button by its hidden label", () => {
     expect(source).not.toContain("canvas.generatePanel.execute");
+  });
+});
+
+describe("what the guide says after the sixth review", () => {
+  it("reads the message and attachment limits off their sources", () => {
+    const chat = section("The chat panel");
+    expect(chat).toContain(`up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters`);
+    expect(chat).toContain(`attaches up to ${String(getAgentConfig().attachment_max_items)} pictures`);
+    expect(renderProductGuide()).not.toMatch(/at most 50 connections/);
+    // Written out by hand, the numbers would stay behind when their sources change.
+    expect(source).not.toMatch(/10,000|up to ten|at most 50/);
+  });
+
+  it("greys generate on exactly the node types that do not generate", () => {
+    const idle = CREATABLE.filter((type) => !canGenerate(type)).map(label);
+    const menus = section("Node menus");
+    for (const name of idle) expect(menus).toContain(name);
+    expect(menus).toContain(`(greyed on ${idle.join(", ")})`);
+  });
+
+  it("says the send button is a dark square and when a message can go", () => {
+    const chat = section("The chat panel");
+    expect(chat).toMatch(/dark square button with an upward arrow/);
+    expect(chat).toMatch(/only when the box has some words, no reply is being written and every attachment has finished uploading/);
+    expect(chat).not.toMatch(/a Sources button/);
+  });
+
+  it("says each notification item has one of its two buttons, and the answer button leaves the page", () => {
+    const top = section("The top bar");
+    expect(top).toMatch(/An item someone is waiting on.*which leaves this page.*any other item shows/s);
+    expect(top).not.toMatch(/each item has/);
+  });
+
+  it("says a transfer waits for the other member to accept", () => {
+    expect(section("The top bar")).toMatch(/Nothing changes until that member accepts: then they become the owner and the reader becomes an editor/);
+  });
+
+  it("says a restored space comes back to the list, not as a tab", () => {
+    expect(section("Spaces")).toMatch(/brings the space back into "[^"]+", not as a tab: open it from there/);
+  });
+
+  it("says which copies are prefixed and what a placed proposal node is called", () => {
+    const filling = section("Filling a node");
+    expect(filling).toMatch(/nodes copied along inside a group keep their names/);
+    expect(filling).toMatch(/placed from a proposal card has the name the card showed/);
+  });
+
+  it("says the failure box shows only on an empty media node", () => {
+    const filling = section("Filling a node");
+    expect(filling).toMatch(/An empty picture, video or sound node whose last task failed, with nothing running/);
+    expect(filling).toMatch(/a text node never shows this box/);
+    expect(filling).toMatch(/Extraction failed: and the file's name/);
+  });
+
+  it("says files dropped on a node still make new nodes", () => {
+    expect(section("Making nodes")).toMatch(/Files dropped on top of a node, or pasted while a node is selected, still make new nodes/);
+  });
+
+  it("offers Group only when every selected node is loose", () => {
+    expect(section("Node menus")).toMatch(/only when, notes aside, every selected node is loose/);
+    expect(section("Groups and undo")).toMatch(/One group or grouped node in the selection takes the offer away/);
+    expect(section("Groups and undo")).toMatch(/making it bigger takes in the loose nodes whose centres end up inside/);
+  });
+
+  it("says when the undo keys work and what undo takes back", () => {
+    const undo = section("Groups and undo");
+    expect(undo).toMatch(/after pressing a button in this chat, click empty canvas first/);
+    expect(undo).toMatch(/not what a generation or an upload put in a node, and not other people's changes/);
+    expect(undo).toMatch(/Closing the space's tab clears its undo steps/);
+  });
+
+  it("says a slot holding a sound gets a darker border, and removing a connection removes its mentions", () => {
+    expect(section("Source slots")).not.toMatch(/coloured/);
+    expect(section("Connections")).toMatch(/Removing a connection also removes every mention of that node from the prompt/);
+  });
+
+  it("says some models need a mention and cap how many", () => {
+    const mentions = section("Mentions");
+    expect(mentions).toMatch(/Some models need at least one connected node mentioned before they run/);
+    expect(mentions).toMatch(/A mentioned text node sends its words as they are when the run starts/);
+  });
+
+  it("says brackets left in a prompt are sent", () => {
+    expect(section("Proposal cards")).toMatch(/Whatever is left in a prompt is sent as it is, brackets included/);
+  });
+
+  it("says what the read-only notice counts and what the leave prompt covers", () => {
+    const wrong = section("When something is wrong");
+    expect(wrong).toMatch(/every browser tab that has the space open counts, the reader's own included/);
+    expect(wrong).toMatch(/Closing or reloading the browser tab, including by the reload buttons above, shows the browser's own prompt/);
+    expect(wrong).toMatch(/the page still takes typing, but none of it is saved/);
+    expect(wrong).toMatch(/until they upgrade/);
+  });
+
+  it("says a note's replies are posted with Save or Enter and deleting the note takes its replies", () => {
+    const notes = section("Notes");
+    expect(notes).toMatch(/or Enter posts it/);
+    expect(notes).toMatch(/on the note itself removes the whole note with every reply/);
+  });
+
+  it("says nodes and notes are moved by dragging", () => {
+    expect(section("Moving around the canvas")).toMatch(/Drag a node, a group or a note to move it/);
+  });
+
+  it("says the camera switch starts off and gates the wheels", () => {
+    expect(section("Inside the generation panel")).toMatch(/the wheels only apply while the switch reads/);
   });
 });

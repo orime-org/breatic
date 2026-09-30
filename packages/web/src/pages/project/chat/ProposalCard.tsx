@@ -31,8 +31,9 @@ interface ProposalCardProps {
  *
  * The card exists for the reader who has said what they want in the chat and
  * does not know the canvas: it says what would be built, which model it runs
- * on, and what is left for them afterwards -- all before they press. Pressing posts the proposal to the canvas, which owns the
- * viewport and decides where the group lands.
+ * on, and what is left for them afterwards -- all before they press. Pressing
+ * posts the proposal to the canvas, which owns the viewport and decides where
+ * the group lands.
  *
  * It remembers nothing between presses, and could not: nothing about it is
  * stored, and this message may be several turns old. Pressing twice builds two
