@@ -393,6 +393,28 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(sanitizeModelCatalog(raw).image[0]?.params.seed?.fill).toBeUndefined();
   });
 
+  it("keeps the storyboard fill and a list field's character cap", () => {
+    // The storyboard control is drawn only for a param declaring this fill,
+    // and each shot's cap comes from the catalog, not from the code.
+    const raw = catalog([
+      entry("kling", {
+        params: {
+          multi_prompt: {
+            description: "",
+            type: "items",
+            max_items: 6,
+            fill: "storyboard",
+            fields: { prompt: { type: "text", max_chars: 512 }, duration: { values: [1, 2] } },
+            default: null,
+          },
+        },
+      }),
+    ]);
+    const shots = sanitizeModelCatalog(raw).image[0]?.params.multi_prompt;
+    expect(shots?.fill).toBe("storyboard");
+    expect(shots?.fields?.prompt?.max_chars).toBe(512);
+  });
+
   it("keeps a param's remote_source, which names the picker that fills it", () => {
     const raw = catalog([
       entry("elevenlabs-v3", {

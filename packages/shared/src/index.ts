@@ -375,6 +375,15 @@ export { newId, deriveId } from "@shared/ids.js";
 // so a submission the panel allowed is never the one the worker truncates.
 export { completeEntries, itemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
+export {
+  addShot,
+  enterCustom,
+  removeShot,
+  retotal,
+  stepShot,
+} from "@shared/storyboard-durations.js";
+export { effectiveStoryboardKind, storyboardSpec } from "@shared/storyboard.js";
+export type { StoryboardKind, StoryboardSpec } from "@shared/storyboard.js";
 export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
 export { formatCredits } from "@shared/format-credits.js";
 export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";
