@@ -36,6 +36,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { canPostAnnotations } from '@web/spaces/canvas/annotation/rights';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
+  draftRangeIn,
   type Draft,
   type DraftCommand,
 } from '@web/spaces/document/document-comment-draft-range';
@@ -49,7 +50,9 @@ import { postComment } from '@web/spaces/document/document-comment-post';
 import {
   CARD_READING_OUTLINE,
   CARD_SURFACE,
+  CommentQuote,
 } from '@web/spaces/document/DocumentCommentCard';
+import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
@@ -68,6 +71,20 @@ interface DraftCardProps {
   myRole: ProjectRole;
   /** Whether this is the card being read. */
   reading: boolean;
+}
+
+/**
+ * The words the open draft is aimed at, as the body stands.
+ *
+ * Blocks are joined by a space, the way a saved card joins its stretches.
+ * @param editor - The document editor.
+ * @returns Those words, or null while no draft is aimed anywhere.
+ */
+function readDraftQuote(editor: ToolEditor): string | null {
+  const state = editor.prosemirrorView?.state;
+  if (state === undefined) return null;
+  const aim = draftRangeIn(state);
+  return aim === null ? null : state.doc.textBetween(aim.from, aim.to, ' ');
 }
 
 /**
@@ -92,6 +109,9 @@ export function DocumentCommentDraftCard({
   const words = React.useSyncExternalStore(onUnsentChange, () =>
     draftWordsOf(opening),
   );
+  // Read from the body on every change: a rewrite inside the range can leave
+  // its two ends where they were.
+  const quote = useEditorSnapshot(editor, readDraftQuote);
 
   /**
    * Sends one command to the draft, dropping the selection with it (A30).
@@ -188,7 +208,7 @@ export function DocumentCommentDraftCard({
           )}
         </p>
         <Button
-          variant='ghost'
+          variant='chrome-ghost'
           size='icon'
           className='size-4.5 shrink-0'
           data-testid='doc-comment-draft-dismiss'
@@ -207,6 +227,9 @@ export function DocumentCommentDraftCard({
       data-selected={reading}
       className={`${CARD_SURFACE} ${CARD_READING_OUTLINE}`}
     >
+      {quote !== null && (
+        <CommentQuote words={quote} testId='doc-comment-draft-quote' />
+      )}
       <DocumentCommentWriteBox
         // Mounted afresh on every press of an entry, the first one or one
         // that only moves the draft: each is the reader asking to write.

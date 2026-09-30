@@ -46,6 +46,8 @@ export interface CommentEntryView {
   readonly author: string | null;
   /** Their account id, for deciding what this reader may do to it. */
   readonly authorId: string;
+  /** Their picture, or null while there is none to show. */
+  readonly avatarUrl: string | null;
   /** What it says, as plain text. */
   readonly body: string;
   /** When it was written. */
@@ -114,6 +116,7 @@ function entryOf(
     id: comment.id,
     author: source.userStore.getUser(comment.userId)?.username ?? null,
     authorId: comment.userId,
+    avatarUrl: source.userStore.getUser(comment.userId)?.avatarUrl || null,
     body: bodyText(comment.body),
     createdAt: comment.createdAt,
   };
@@ -164,6 +167,7 @@ function sameCard(a: CommentCardView, b: CommentCardView): boolean {
         other !== undefined &&
         entry.id === other.id &&
         entry.author === other.author &&
+        entry.avatarUrl === other.avatarUrl &&
         entry.body === other.body
       );
     })

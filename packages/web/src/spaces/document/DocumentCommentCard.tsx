@@ -52,6 +52,7 @@ import {
   canPostAnnotations,
 } from '@web/spaces/canvas/annotation/rights';
 import { openedBy } from '@web/spaces/document/document-comment-auth';
+import { StudioAvatar } from '@web/ui/StudioAvatar';
 import type {
   CommentCardView,
   CommentEntryView,
@@ -69,6 +70,33 @@ export const CARD_SURFACE =
 
 /** The outline a card wears while it is the one being read, on `data-selected`. */
 export const CARD_READING_OUTLINE = 'data-[selected=true]:border-active-border';
+
+/**
+ * The words a card is about, one line at the top of it.
+ *
+ * Shared with the draft card for the reason the surface is: a comment being
+ * written and one already written say which words they are about the same way.
+ * @param root0 - The words and the test hook.
+ * @param root0.words - The words the comment is about.
+ * @param root0.testId - Test hook for the line.
+ * @returns The line.
+ */
+export function CommentQuote({
+  words,
+  testId,
+}: {
+  words: string;
+  testId: string;
+}): React.JSX.Element {
+  return (
+    <p
+      data-testid={testId}
+      className='mb-2 truncate border-l border-note-border pl-1.5 text-2xs text-muted-foreground'
+    >
+      {words}
+    </p>
+  );
+}
 
 interface DocumentCommentCardProps {
   /** The thread this card is for. */
@@ -162,34 +190,43 @@ function Entry({
   const t = useTranslation();
   const author = entry.author ?? t('spaces.document.comment.unknownAuthor');
   return (
-    <div className='mb-2 last:mb-0' data-testid='doc-comment-entry'>
-      <div className='flex items-center text-2xs'>
-        <span className='font-medium'>{author}</span>
-        <time
-          className='ml-1.5 text-muted-foreground'
-          dateTime={entry.createdAt.toISOString()}
-        >
-          {formatRelativeTime(entry.createdAt.getTime(), t)}
-        </time>
-        {canDelete && (
-          <Button
-            variant='ghost'
-            size='icon'
-            className='ml-auto size-4.5'
-            aria-label={t('spaces.document.comment.deleteReply')}
-            data-testid='doc-comment-delete-reply'
-            onClick={onDelete}
+    <div className='mb-2 flex gap-2 last:mb-0' data-testid='doc-comment-entry'>
+      <StudioAvatar
+        name={author}
+        type='personal'
+        avatarUrl={entry.avatarUrl}
+        size='sm'
+        data-testid='doc-comment-avatar'
+      />
+      <div className='min-w-0 flex-1'>
+        <div className='flex items-center text-2xs'>
+          <span className='font-medium'>{author}</span>
+          <time
+            className='ml-1.5 text-muted-foreground'
+            dateTime={entry.createdAt.toISOString()}
           >
-            <X className='h-3 w-3' />
-          </Button>
-        )}
-      </div>
-      <div
-        className={`mt-0.5 whitespace-pre-wrap break-words text-sm ${
+            {formatRelativeTime(entry.createdAt.getTime(), t)}
+          </time>
+          {canDelete && (
+            <Button
+              variant='chrome-ghost'
+              size='icon'
+              className='ml-auto size-4.5 hover:text-status-error-foreground'
+              aria-label={t('spaces.document.comment.deleteReply')}
+              data-testid='doc-comment-delete-reply'
+              onClick={onDelete}
+            >
+              <X className='h-3 w-3' />
+            </Button>
+          )}
+        </div>
+        <div
+          className={`mt-0.5 whitespace-pre-wrap break-words text-sm ${
           shortened ? FOLDED_LINE_CLAMP : ''
         }`}
-      >
-        {entry.body}
+        >
+          {entry.body}
+        </div>
       </div>
     </div>
   );
@@ -269,14 +306,9 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       data-thread={card.id}
       data-settled={settled}
       data-selected={marked}
-      className={`${CARD_SURFACE} ${CARD_READING_OUTLINE} data-[settled=true]:opacity-70`}
+      className={`${CARD_SURFACE} ${CARD_READING_OUTLINE} data-[settled=true]:text-muted-foreground`}
     >
-      <p
-        data-testid='doc-comment-card-quote'
-        className='mb-2 truncate border-l border-note-border pl-1.5 text-2xs text-muted-foreground'
-      >
-        {card.quote}
-      </p>
+      <CommentQuote words={card.quote} testId='doc-comment-card-quote' />
 
       {drawn.map((entry, index) => (
         <React.Fragment key={entry.id}>

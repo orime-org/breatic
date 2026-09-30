@@ -107,7 +107,7 @@ export interface CommentsApi {
   };
   /** Who wrote what, resolved lazily by account id. */
   readonly userStore: {
-    getUser(id: string): { username: string } | undefined;
+    getUser(id: string): { username: string; avatarUrl?: string } | undefined;
     loadUsers(ids: string[]): Promise<void>;
     store: { subscribe(listener: () => void): () => void };
   };

@@ -643,7 +643,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
           />
         </div>
         <Button
-          variant='ghost'
+          variant='chrome-ghost'
           size='icon'
           className='size-5.5'
           aria-label={t('spaces.document.comment.closeRail')}
@@ -1006,7 +1006,9 @@ function FilterButton({
       onClick={onPress}
       className={cn(
         'rounded-chrome px-2 py-0.5 text-2xs',
-        on ? 'bg-accent text-foreground' : 'text-muted-foreground',
+        on
+          ? 'bg-accent-strong text-foreground'
+          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
       )}
     >
       {label}
