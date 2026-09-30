@@ -67,16 +67,16 @@ function open(blocks: unknown[], lastBottom = 100): Editor {
 }
 
 /**
- * Gives the surface and its first and last root blocks their boxes.
+ * Gives the surface, the first block's own line and the last block's own line
+ * (the deepest one, nested blocks included) their boxes.
  * @param view - The view.
- * @param lastBottom - The bottom of the last root block.
+ * @param lastBottom - The bottom of the last block's line.
  */
 function layOut(view: EditorView, lastBottom: number): void {
-  const group = view.state.doc.firstChild!;
-  const lastPos = 1 + group.content.size - group.lastChild!.nodeSize;
+  const lines = view.dom.querySelectorAll('.bn-block-content');
   place(view.dom, { top: -40, bottom: 400 });
-  place(view.nodeDOM(1) as Element, { top: 0, bottom: 20 });
-  place(view.nodeDOM(lastPos) as Element, { top: lastBottom - 20, bottom: lastBottom });
+  place(lines[0]!, { top: 0, bottom: 20 });
+  place(lines[lines.length - 1]!, { top: lastBottom - 20, bottom: lastBottom });
 }
 
 /**
@@ -263,6 +263,59 @@ describe('a drag that starts in the body', () => {
     );
 
     expect(answer?.eq(view.state.selection)).toBe(true);
+  });
+});
+
+const ABOVE_EMPTY = [{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: '' }];
+
+describe('the pointer over an empty last line', () => {
+  it('anchors on the end when the drag starts on that line', () => {
+    const view = open(ABOVE_EMPTY).prosemirrorView!;
+    const at = textStart(view, 'Above') + 1;
+    pointAt(view, at);
+    press(view, 90);
+
+    move(10);
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([bodyEdgePos(view.state.doc, 'end'), at]);
+  });
+
+  it('takes the line in when a drag from the body reaches it', () => {
+    const view = open(ABOVE_EMPTY).prosemirrorView!;
+    const at = textStart(view, 'Above');
+    press(view, 10);
+    select(view, at);
+
+    move(90);
+
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, bodyEdgePos(view.state.doc, 'end')]);
+  });
+
+  it('leaves a click on that line to the browser', () => {
+    const editor = open(ABOVE_EMPTY);
+    const view = editor.prosemirrorView!;
+    const at = textStart(view, 'Above');
+    select(view, at);
+
+    press(view, 90);
+    release(90);
+
+    expect(view.state.selection.head).toBe(at);
+    expect(blocksOf(editor)).toHaveLength(2);
+  });
+
+  it('keeps the words of the row an empty last line is nested under in the body', () => {
+    const view = open([
+      { type: 'bulletListItem', content: 'Parent', children: [{ type: 'paragraph', content: '' }] },
+    ]).prosemirrorView!;
+    const at = textStart(view, 'Parent');
+    press(view, 10);
+    select(view, at, at + 2);
+
+    move(15);
+
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, at + 2]);
   });
 });
 
