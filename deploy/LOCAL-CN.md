@@ -207,7 +207,7 @@ docker compose logs --tail=100 migrate
 
 启动顺序是基础设施健康 → 迁移两个数据库 → API / 协作 / 后台任务 → Web。`migrate` 成功退出（`Exited (0)`）是正常状态；它不是常驻服务。其他服务应处于运行状态，API、collab、worker、postgres、redis 应健康。
 
-用浏览器打开 **http://localhost**，注册自己的账号、保存恢复码并完成个人 Studio 设置。首次迁移失败时不要绕过 `migrate` 启动应用。
+用浏览器打开 **http://localhost**，注册自己的账号并完成个人 Studio 设置。`EMAIL_BACKEND=console` 时，6 位注册验证码打印在 `docker compose logs server` 的 `[console] email` 那一行；`EMAIL_BACKEND=disabled` 时，改为保存注册后显示的恢复码。首次迁移失败时不要绕过 `migrate` 启动应用。
 
 如果原有 PostgreSQL 数据卷缺少第二个数据库，在确认不存在后执行：
 

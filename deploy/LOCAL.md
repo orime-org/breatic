@@ -207,7 +207,7 @@ docker compose logs --tail=100 migrate
 
 Startup order is infrastructure health, migrations for both databases, application services, then web. A successful `migrate` exit (`Exited (0)`) is expected; it is not a long-running service. Other services should run, with server, collab, worker, postgres and redis healthy.
 
-Open **http://localhost**, register your own account, save the recovery code and complete your personal Studio setup. Do not bypass a failed migration to start the application.
+Open **http://localhost**, register your own account and complete your personal Studio setup. With `EMAIL_BACKEND=console` the six-digit sign-up code is printed in `docker compose logs server` (the `[console] email` line); with `EMAIL_BACKEND=disabled` you save the recovery code shown instead. Do not bypass a failed migration to start the application.
 
 For an older PostgreSQL volume missing the second database, confirm that it is absent before creating it:
 
