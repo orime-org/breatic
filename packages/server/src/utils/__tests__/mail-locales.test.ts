@@ -38,11 +38,12 @@ import {
   buildStorageQuotaExceededMail,
 } from "@server/utils/notification-mail.js";
 import { escapeHtml, type RenderedMail } from "@server/utils/mail-shell.js";
-import { buildTokenLinkMail } from "@server/modules/auth/auth-mail.js";
+import { buildSignupCodeMail, buildTokenLinkMail } from "@server/modules/auth/auth-mail.js";
 
 loadLocales();
 
 const LOCALES = ["en", "zh-CN", "zh-TW", "ja", "ko"] as const;
+const SIGNUP_CODE = "048213";
 const NAME = "A<b>&_*`x";
 const ESCAPED = "A&lt;b&gt;&amp;_*`x";
 const LINK = "https://app.test/decision?token=t";
@@ -132,12 +133,15 @@ async function allMails(locale: string): Promise<Record<string, RenderedMail>> {
     emailVerification: buildTokenLinkMail("email_verification", {
       locale, to: "to@example.test", url: LINK, expiresInSeconds: 86400,
     }),
+    signupCode: buildSignupCodeMail({
+      locale, to: "to@example.test", code: SIGNUP_CODE, expiresInSeconds: 600,
+    }),
   };
   const built = await Promise.all(Object.values(mails));
   return Object.fromEntries(Object.keys(mails).map((kind, i) => [kind, built[i]!]));
 }
 
-const KINDS = [...WITH_ACTION, "membershipEnded", "storageFull"];
+const KINDS = [...WITH_ACTION, "membershipEnded", "storageFull", "signupCode"];
 
 describe("mail catalogs", () => {
   const english = leafKeys(mailCatalog("en"));
@@ -163,6 +167,13 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
     expect(mail.html).not.toContain("<b>&");
     expect(mail.html).not.toContain("A<b>");
     if (mail.html.includes("A&")) expect(mail.html).toContain(ESCAPED);
+  });
+
+  it("shows the sign-up code in both parts and its lifetime in minutes", () => {
+    const mail = mails.signupCode!;
+    expect(mail.html).toContain(`>${SIGNUP_CODE}</div>`);
+    expect(mail.text.split("\n")).toContain(SIGNUP_CODE);
+    expect(mail.text).toContain("10");
   });
 
   it("puts the links, bold names and roles where the catalog marks them", () => {
