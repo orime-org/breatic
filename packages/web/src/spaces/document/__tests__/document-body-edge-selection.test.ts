@@ -511,3 +511,30 @@ describe('what BlockNote reads from an edge selection', () => {
     warn.mockRestore();
   });
 });
+
+describe('the caret a selection is dropped to', () => {
+  it('sits in the last text before an end edge', () => {
+    const view = open(ABOVE_DIVIDER);
+    const selection = BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end');
+
+    const caret = caretAtEnd(selection);
+
+    expect(caret).toBeInstanceOf(TextSelection);
+    expect(caret.empty).toBe(true);
+    expect(caret.head).toBe(textStart(view, 'Above') + 'Above'.length);
+  });
+
+  it('sits at the text end of a selection anchored on the start edge', () => {
+    const view = open(BELOW_DIVIDER_ROWS);
+    const at = textStart(view, 'Below') + 3;
+
+    expect(caretAtEnd(BodyEdgeSelection.fromEdge(view.state.doc, 'start', at)).head).toBe(at);
+  });
+
+  it('sits at the end of any other selection', () => {
+    const view = open(ABOVE_DIVIDER);
+    const at = textStart(view, 'Above');
+
+    expect(caretAtEnd(TextSelection.create(view.state.doc, at, at + 3)).head).toBe(at + 3);
+  });
+});
