@@ -204,8 +204,7 @@ jobs:
     runs-on: ubuntu-latest
     # Independent job (no `needs`) so it runs in parallel with
     # lint-typecheck-test and keeps a separate infra-flaky signal; it is
-    # deliberately NOT in docker's `needs`, so a slow container boot never
-    # delays the image build. Every `*.integration.test.ts` suite is excluded
+    # included in docker's `needs`: release publication waits for these checks. Every `*.integration.test.ts` suite is excluded
     # from the unit `pnpm turbo test` run, so without this job the
     # real-Postgres invariant tests (credit-deduction atomicity, role-upgrade
     # decide-once, etc.), the transport layer's real-socket cases and the
@@ -269,84 +268,94 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: lint-typecheck-test
+    needs: [lint-typecheck-test, integration-tests, dev-proxy-guard, auth-bypass-residue]
 
-    # Builds both images (API-shared + web) and pushes to GHCR.
-    # - PR:            build-only (no push) — smoke test that Dockerfiles still work
-    # - push to main:  tags `:main` + `:latest`
-    # - push to any other branch (e.g. test_thinkai_cc): tag = branch name
-    # - push to v* tag: semver tags (`:1.2.3` + `:1.2`)
-    #
-    # docker/metadata-action@v5 generates all the tag permutations from the
-    # triggering git ref — the rule table lives inline below so future edits
-    # don't require reading metadata-action docs.
-    #
-    # Buildx + gha cache persists base-image layers across runs so we don't
-    # re-pull `node:22-slim` every time and are resilient to Docker Hub 5xx.
+    # PRs and branch pushes build only. Version tags publish exact-tag images.
+    # Serialize each tag and never cancel a publication halfway through.
+    concurrency:
+      group: docker-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
-      contents: read
-      packages: write  # required to push images to GHCR
+      contents: write
+      packages: write
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Validate release identity
+        id: release
+        env:
+          REF: ${{ github.ref }}
+          REVISION: ${{ github.sha }}
+        run: |
+          node --test scripts/release.test.mjs
+          node scripts/release.mjs ci "$REF" "$REVISION" >> "$GITHUB_OUTPUT"
+          if [[ "$REF" == refs/tags/* ]]; then
+            git merge-base --is-ancestor "$REVISION" origin/main
+          fi
 
       - uses: docker/setup-buildx-action@v4
 
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compute tags (breatic)
-        id: meta-breatic
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/breatic
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build + push breatic (API/Worker/Collab/Migrate)
+      - name: Build backend
         uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'pull_request' }}
-          tags: ${{ steps.meta-breatic.outputs.tags }}
-          labels: ${{ steps.meta-breatic.outputs.labels }}
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ghcr.io/${{ github.repository }}:${{ steps.release.outputs.image_tag }}
+          build-args: |
+            RELEASE_VERSION=${{ steps.release.outputs.version }}
+            VCS_REF=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=breatic
           cache-to: type=gha,mode=max,scope=breatic
 
-      - name: Compute tags (breatic-web)
-        id: meta-web
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/breatic-web
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build + push breatic-web (nginx + SPA)
+      - name: Build web
         uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.web
-          push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'pull_request' }}
-          tags: ${{ steps.meta-web.outputs.tags }}
-          labels: ${{ steps.meta-web.outputs.labels }}
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ghcr.io/${{ github.repository }}-web:${{ steps.release.outputs.image_tag }}
+          build-args: |
+            VITE_RELEASE_VERSION=${{ steps.release.outputs.version }}
+            VITE_APP_VERSION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=breatic-web
           cache-to: type=gha,mode=max,scope=breatic-web
+
+      - name: Check embedded version metadata
+        env:
+          BACKEND: ghcr.io/${{ github.repository }}:${{ steps.release.outputs.image_tag }}
+          WEB: ghcr.io/${{ github.repository }}-web:${{ steps.release.outputs.image_tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+          REVISION: ${{ github.sha }}
+        run: |
+          docker run --rm --entrypoint cat "$BACKEND" /app/build-info.json > backend-info.json
+          docker run --rm --entrypoint cat "$WEB" /usr/share/nginx/html/app-version.json > web-info.json
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          import assert from 'node:assert/strict';
+          for (const file of ['backend-info.json', 'web-info.json']) {
+            const info = JSON.parse(readFileSync(file, 'utf8'));
+            assert.equal(info.releaseVersion, process.env.VERSION);
+            assert.equal(info.revision, process.env.REVISION);
+          }
+          JS
 
       # The media container is deployed by wrangler rather than pushed to GHCR,
       # so nothing here needs its image — but nothing else builds it either, and
@@ -376,3 +385,45 @@ jobs:
              && test -s /usr/share/ffmpeg-source/SOURCE \
              && test -s /usr/share/doc/breatic/THIRD-PARTY.md \
              && cat /usr/share/ffmpeg-source/SOURCE'
+
+      # Reserve the release before the first push. Existing releases (including
+      # interrupted drafts) fail rather than silently replacing version images.
+      - name: Reserve release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already reserved; use a new version tag." >&2
+            exit 1
+          fi
+          args=()
+          if [[ "$TAG" == *-rc.* ]]; then args+=(--prerelease); fi
+          gh release create "$TAG" --verify-tag --draft --title "$TAG" --generate-notes "${args[@]}"
+
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish tested images and release manifest
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REVISION: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          backend="ghcr.io/$REPOSITORY:$TAG"
+          web="ghcr.io/$REPOSITORY-web:$TAG"
+          docker push "$backend"
+          docker push "$web"
+          backend_digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$backend")
+          web_digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$web")
+          node scripts/release.mjs manifest "$TAG" "$REVISION" "$REPOSITORY" "$backend_digest" "$web_digest" release.json
+          gh release upload "$TAG" release.json
+          gh release edit "$TAG" --draft=false --latest=false

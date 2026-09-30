@@ -22,6 +22,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts=false
 COPY packages/ packages/
 COPY tsconfig.base.json turbo.json ./
 COPY locales/ locales/
+COPY scripts/release.mjs scripts/release.mjs
 
 # Build shared (dependency) then web
 RUN pnpm turbo build --filter=@breatic/shared
@@ -30,7 +31,9 @@ RUN pnpm turbo build --filter=@breatic/shared
 # preserve the same-origin API/WebSocket behavior of local deployments.
 ARG GOOGLE_CLIENT_ID=
 ENV GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-ARG VITE_APP_VERSION=0.1.0
+ARG VITE_APP_VERSION=unknown
+ARG VITE_RELEASE_VERSION=0.0.0-dev
+ENV VITE_RELEASE_VERSION=${VITE_RELEASE_VERSION}
 ARG VITE_API_BASE_URL=
 ARG VITE_COLLAB_URL=
 ENV VITE_APP_VERSION=${VITE_APP_VERSION}
