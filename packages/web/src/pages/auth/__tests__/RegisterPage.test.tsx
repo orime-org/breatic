@@ -173,6 +173,19 @@ describe('RegisterPage with email (code step, #287)', () => {
     await waitFor(() => expect(screen.getByTestId('onboarding-page')).toBeInTheDocument());
   });
 
+  it('shows what the server says when the address got an account while the code was pending', async () => {
+    vi.mocked(authApi.register).mockResolvedValueOnce(CODE_SENT);
+    vi.mocked(authApi.verifySignupCode).mockRejectedValueOnce(
+      refusal(409, 'This email is already registered.'),
+    );
+    const user = userEvent.setup();
+    setup();
+    await submitForm(user);
+    await user.type(await screen.findByLabelText('Verification code'), '123456');
+
+    expect(await screen.findByText('This email is already registered.')).toBeInTheDocument();
+  });
+
   it('locks the boxes once the code is used up and leaves resend as the way on (A5)', async () => {
     vi.mocked(authApi.register).mockResolvedValueOnce({ ...CODE_SENT, resendAfterSeconds: 0 });
     vi.mocked(authApi.verifySignupCode).mockRejectedValueOnce(

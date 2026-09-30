@@ -14,15 +14,13 @@ import { FieldError } from '@web/pages/auth/_shared/FieldError';
 const CODE_LENGTH = 6;
 const SLOT_INDEXES = Array.from({ length: CODE_LENGTH }, (_, i) => i);
 const TICK_MS = 1000;
-const HTTP_WRONG_CODE = 400;
 const HTTP_EXPIRED = 410;
 const HTTP_USED_UP = 422;
-const HTTP_TOO_SOON = 429;
 
 interface SignupCodeStepProps {
   /** The address the code went to. */
   email: string;
-  /** What the last code-sent answer said; a new object restarts the wait. */
+  /** What the code-sent answer said when this step opened. */
   sent: SignupCodeSent;
   /**
    * Start the sign-up again with the email and password the form still
@@ -57,6 +55,17 @@ function SentTo({ text, email }: { text: string; email: string }): React.JSX.Ele
 }
 
 /**
+ * The sentence to show for a failed request: the server's own when it wrote
+ * one, otherwise the generic one.
+ * @param err - What the request threw.
+ * @param fallback - The generic sentence.
+ * @returns The sentence.
+ */
+function messageOf(err: unknown, fallback: string): string {
+  return err instanceof ApiException && err.fromServer ? err.message : fallback;
+}
+
+/**
  * Second screen of an email sign-up (#287): six boxes for the mailed code,
  * a resend with its countdown, and a way back to change the address. A full
  * code submits by itself; a wrong one clears the boxes; a used-up one locks
@@ -64,7 +73,7 @@ function SentTo({ text, email }: { text: string; email: string }): React.JSX.Ele
  * what the form still holds.
  * @param root0 - component props
  * @param root0.email - the address the code went to
- * @param root0.sent - the last code-sent answer
+ * @param root0.sent - the code-sent answer when the step opened
  * @param root0.restart - start the sign-up again after it expired
  * @param root0.onVerified - called with the new account
  * @param root0.onChangeEmail - go back to the form
@@ -86,15 +95,12 @@ export function SignupCodeStep({
   const [info, setInfo] = React.useState<string | null>(null);
   const [waitLeft, setWaitLeft] = React.useState(sent.resendAfterSeconds);
 
-  // The reader arrives here straight from submitting the form; the code is
-  // the only thing left to do, so the caret starts in the first box.
+  // The code is the only thing left to do here, so the caret goes to the
+  // boxes whenever they can take typing: on arrival, after a check, and once
+  // a new code unlocks them.
   React.useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  React.useEffect(() => {
-    setWaitLeft(sent.resendAfterSeconds);
-  }, [sent]);
+    if (!submitting && !usedUp) inputRef.current?.focus();
+  }, [submitting, usedUp]);
 
   React.useEffect(() => {
     if (waitLeft <= 0) return undefined;
@@ -105,7 +111,7 @@ export function SignupCodeStep({
   /** Clear the boxes and put the caret back in the first one. */
   const clearAndFocus = React.useCallback((): void => {
     setCode('');
-    window.setTimeout(() => inputRef.current?.focus(), 0);
+    inputRef.current?.focus();
   }, []);
 
   /** A new code is out: unlock, clear and say so. */
@@ -140,10 +146,7 @@ export function SignupCodeStep({
           return;
         }
         if (err instanceof ApiException && err.status === HTTP_USED_UP) setUsedUp(true);
-        const known =
-          err instanceof ApiException &&
-          (err.status === HTTP_WRONG_CODE || err.status === HTTP_USED_UP || err.status === HTTP_TOO_SOON);
-        setError(known ? err.message : t('auth.register.failed'));
+        setError(messageOf(err, t('auth.register.failed')));
         clearAndFocus();
       } finally {
         setSubmitting(false);
@@ -152,21 +155,23 @@ export function SignupCodeStep({
     [onVerified, startOver, clearAndFocus, t],
   );
 
-  const resend = React.useCallback(async (): Promise<void> => {
+  const resend = React.useCallback((): void => {
     setError(null);
     setInfo(null);
-    try {
-      acceptNewCode(await authApi.resendSignupCode());
-    } catch (err) {
-      if (err instanceof ApiException && err.status === HTTP_EXPIRED) {
-        await startOver();
-        return;
+    void (async (): Promise<void> => {
+      try {
+        acceptNewCode(await authApi.resendSignupCode());
+      } catch (err) {
+        if (err instanceof ApiException && err.status === HTTP_EXPIRED) {
+          await startOver();
+          return;
+        }
+        if (err instanceof ApiException && err.retryAfterSeconds !== undefined) {
+          setWaitLeft(err.retryAfterSeconds);
+        }
+        setError(messageOf(err, t('auth.register.failed')));
       }
-      if (err instanceof ApiException && err.retryAfterSeconds !== undefined) {
-        setWaitLeft(err.retryAfterSeconds);
-      }
-      setError(err instanceof ApiException ? err.message : t('auth.register.failed'));
-    }
+    })();
   }, [acceptNewCode, startOver, t]);
 
   const handleChange = React.useCallback(
@@ -226,7 +231,7 @@ export function SignupCodeStep({
           size={null}
           className='h-auto p-0 text-sm font-medium text-foreground disabled:text-muted-foreground'
           disabled={waiting || submitting}
-          onClick={() => void resend()}
+          onClick={resend}
         >
           {waiting
             ? t('auth.register.code.resendIn', { seconds: waitLeft })
