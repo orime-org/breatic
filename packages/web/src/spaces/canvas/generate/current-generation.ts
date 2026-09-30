@@ -25,6 +25,7 @@ import { buildAudioPanelViewModel, withListDefaultVoice } from '@web/spaces/canv
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
+import { wireParams } from '@web/spaces/canvas/generate/stand-in';
 import {
   filterAvailableModes,
   filterModelsByMode,
@@ -75,7 +76,12 @@ export function currentGeneration(
   return {
     mode,
     model: entry.name,
-    params: kind === 'audio' ? audioParams(content, models, mode, firstVoiceOf) : resolveModelSwitch(content, entry).params,
+    // As the run sends them: the side of a stand-in not in use and its switch
+    // stay behind.
+    params: wireParams(
+      entry,
+      kind === 'audio' ? audioParams(content, models, mode, firstVoiceOf) : resolveModelSwitch(content, entry).params,
+    ),
     storyboard: effectiveStoryboardKind(entry.params, storyboardKindOf(mode)),
   };
 }

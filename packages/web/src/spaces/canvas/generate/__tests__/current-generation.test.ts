@@ -45,7 +45,25 @@ const speech: ModelEntry = {
   modality: 'audio',
   params: { voice_id: { description: '', default: null, remote_source: 'voices' } },
 };
-const catalog = { image: [], video: [kling, minimax], audio: [speech], tts: [], three_d: [], total: 3, credit_multiplier: 1 } as unknown as ModelCatalog;
+const dialogue: ModelEntry = {
+  ...video('dialogue', ['tts']),
+  modality: 'audio',
+  params: {
+    speakers: {
+      description: '',
+      default: null,
+      type: 'items',
+      min_items: 2,
+      max_items: 2,
+      replaces: 'voice_id',
+      fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+      fill: 'panel',
+    },
+    voice_id: { description: '', default: 'Kore', remote_source: 'voices', fill: 'remote' },
+  },
+};
+const catalog = { image: [], video: [kling, minimax], audio: [speech, dialogue], tts: [], three_d: [], total: 4, credit_multiplier: 1 } as unknown as ModelCatalog;
+const TWO = [{ speaker: 'A', voice: 'Kore' }, { speaker: 'B', voice: 'Puck' }];
 
 /**
  * A voice list that has nothing to offer.
@@ -97,6 +115,37 @@ describe('what a node would run right now', () => {
       () => ({ id: 'first' }),
     );
     expect(now?.params).toMatchObject({ voice_id: 'mine' });
+  });
+
+  it('names the speakers and not the single voice while dialogue is on, as the run sends', () => {
+    const now = currentGeneration(
+      'audio',
+      {
+        kind: 'audio', status: 'idle', mode: 'tts', model: 'dialogue',
+        paramsByModel: { dialogue: { voice_id: 'Puck', speakers: TWO, _stand_in_on: true } },
+      } as never,
+      catalog,
+      () => undefined,
+      noVoice,
+    );
+    expect(now?.params).toMatchObject({ speakers: TWO });
+    expect(now?.params).not.toHaveProperty('voice_id');
+    expect(now?.params).not.toHaveProperty('_stand_in_on');
+  });
+
+  it('names the single voice and not the speakers while dialogue is off', () => {
+    const now = currentGeneration(
+      'audio',
+      {
+        kind: 'audio', status: 'idle', mode: 'tts', model: 'dialogue',
+        paramsByModel: { dialogue: { voice_id: 'Puck', speakers: TWO } },
+      } as never,
+      catalog,
+      () => undefined,
+      noVoice,
+    );
+    expect(now?.params).toMatchObject({ voice_id: 'Puck' });
+    expect(now?.params).not.toHaveProperty('speakers');
   });
 
   it('is null without a catalog', () => {
