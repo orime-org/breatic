@@ -3361,8 +3361,8 @@ function CanvasSpaceInner({
    */
   const addToAgent = React.useCallback(
     (ids: readonly string[]): void => {
-      void handToAgent(queryClient, projectId, spaceId, ids).then((result) => {
-        if (result !== 'no-catalog') return;
+      void handToAgent(queryClient, projectId, spaceId, ids).then((read) => {
+        if (read) return;
         toast.error(t('canvas.generatePanel.catalogUnavailable'), {
           id: 'generate-catalog-unavailable',
         });

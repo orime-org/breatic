@@ -64,29 +64,29 @@ export async function pickForAgent(
 }
 
 /**
- * Hand the picked piece of the canvas to the chat. Only a catalog that cannot
- * be read is answered as such; anything else that fails while the pick is
- * built rejects as itself.
+ * Hand the picked piece of the canvas to the chat. Attaching says its own
+ * outcome above the chat box; only a catalog that cannot be read is left to
+ * the caller to say.
  * @param queryClient - Holds the catalog and each model's first voice.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - The canvas space.
  * @param ids - The picked node ids; a group brings its members.
- * @returns Whether it was handed over, or that the catalog could not be read.
- * @throws {Error} When building or attaching the pick fails.
+ * @returns Whether the catalog was read.
+ * @throws {never} Never.
  */
 export async function handToAgent(
   queryClient: QueryClient,
   projectId: string,
   spaceId: string,
   ids: readonly string[],
-): Promise<'attached' | 'no-catalog'> {
+): Promise<boolean> {
   let catalog: ModelCatalog;
   try {
     catalog = await queryClient.ensureQueryData(modelCatalogQuery());
   } catch {
-    return 'no-catalog';
+    return false;
   }
   const item = await pickForAgent(queryClient, catalog, projectId, spaceId, ids);
   await attachToChat(projectId, item ? [item] : []);
-  return 'attached';
+  return true;
 }

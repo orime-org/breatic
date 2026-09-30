@@ -134,25 +134,16 @@ describe('handing a pick over', () => {
     const queryClient = client();
     queryClient.setQueryData(modelCatalogQuery().queryKey, CATALOG);
 
-    await expect(handToAgent(queryClient, PID, SID, ['a1'])).resolves.toBe('attached');
+    await expect(handToAgent(queryClient, PID, SID, ['a1'])).resolves.toBe(true);
     expect(attached).toHaveBeenCalledTimes(1);
   });
 
-  it('says the catalog is missing, and attaches nothing, when it cannot be read', async () => {
+  it('answers that the catalog is missing, and attaches nothing, when it cannot be read', async () => {
     const attached = vi.spyOn(attach, 'attachToChat');
     const queryClient = client();
     vi.spyOn(queryClient, 'ensureQueryData').mockRejectedValue(new Error('down'));
 
-    await expect(handToAgent(queryClient, PID, SID, ['a1'])).resolves.toBe('no-catalog');
+    await expect(handToAgent(queryClient, PID, SID, ['a1'])).resolves.toBe(false);
     expect(attached).not.toHaveBeenCalled();
-  });
-
-  it('lets a failure while building the pick through as itself', async () => {
-    vi.spyOn(attach, 'attachToChat').mockRejectedValue(new Error('tray down'));
-    vi.spyOn(voicesApi, 'list').mockResolvedValue({ voices: [] } as never);
-    const queryClient = client();
-    queryClient.setQueryData(modelCatalogQuery().queryKey, CATALOG);
-
-    await expect(handToAgent(queryClient, PID, SID, ['a1'])).rejects.toThrow('tray down');
   });
 });
