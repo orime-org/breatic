@@ -8,7 +8,7 @@
  * the reader fills belongs in the slot first: a run without it cannot go.
  */
 import { describe, expect, it } from "vitest";
-import { markTargets, nameableFeeders, type CanvasProposal, type ProposalNode } from "@shared/types/canvas-proposal";
+import { markTargets, nameableFeeders, proposalMarkSegments, type CanvasProposal, type ProposalNode } from "@shared/types/canvas-proposal";
 
 const photo = (name: string): ProposalNode => ({ role: "source", type: "image", name });
 
@@ -105,5 +105,34 @@ describe("markTargets", () => {
     const marked = { ...pooled, prompt: [{ slot: { kind: "ref" as const, label: "knight", note: "" } }, { text: " walks" }] };
 
     expect(markTargets(into([work, marked]), 1)).toEqual([0]);
+  });
+});
+
+describe("the marks of a node with shots (#2218)", () => {
+  const pooled = { ...mixedRun, slotKinds: [] };
+  const asset = (label: string) => ({ slot: { kind: "asset" as const, label, note: "" } });
+
+  it("reads the main prompt first, then each shot in order", () => {
+    const node: ProposalNode = {
+      ...pooled,
+      prompt: [{ text: "a " }, asset("a")],
+      shots: [
+        { prompt: [asset("b")], duration: 2 },
+        { prompt: [{ text: "then " }, asset("c")], duration: 3 },
+      ],
+    };
+    expect(proposalMarkSegments(node).filter((s) => s.slot).map((s) => s.slot?.label)).toEqual(["a", "b", "c"]);
+  });
+
+  it("sends the node each shot's mark names, counting across shots", () => {
+    const node: ProposalNode = {
+      ...pooled,
+      prompt: undefined,
+      shots: [
+        { prompt: [asset("hero")], duration: 2 },
+        { prompt: [asset("extra")], duration: 3 },
+      ],
+    };
+    expect(markTargets(into([photo("Hero"), photo("Extra"), node]), 2)).toEqual([0, 1]);
   });
 });

@@ -111,6 +111,12 @@ export type ProposalRole = "source" | "generate" | "written";
 export type ProposalNodeType = GenerationNodeType | "text";
 
 /** One node of a proposal, before anything is placed. */
+/** One shot of a proposed per-shot storyboard. */
+export interface ProposalShot {
+  prompt: PromptSegment[];
+  duration: number;
+}
+
 export interface ProposalNode {
   role: ProposalRole;
   type: ProposalNodeType;
@@ -119,6 +125,17 @@ export interface ProposalNode {
   model?: string;
   params?: Record<string, unknown>;
   prompt?: PromptSegment[];
+  /**
+   * The storyboard tier to set (#2218): `auto` lets the model split the main
+   * prompt into shots. Absent means none, unless {@link ProposalNode.shots}
+   * sets the per-shot tier.
+   */
+  storyboard?: "auto";
+  /**
+   * The shots of a per-shot storyboard (#2218), each with its own prompt and
+   * whole seconds. Present means the node lands in the per-shot tier.
+   */
+  shots?: ProposalShot[];
   /**
    * The kinds this generation's reference pool takes, answered by the check,
    * not the model (#2156: a model takes pictures, clips and tracks each in a
@@ -307,6 +324,18 @@ export function nameableFeeders(
 }
 
 /**
+ * Every segment of a node that can carry a mark, in the one order the tool,
+ * the card and the canvas all pair marks with feeders by: the main prompt,
+ * then each shot in turn (#2218).
+ * @param node - The proposed node.
+ * @returns The segments in pairing order.
+ * @throws {never} Never.
+ */
+export function proposalMarkSegments(node: ProposalNode): PromptSegment[] {
+  return [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
+}
+
+/**
  * The feeders one node's prompt actually sends: the k-th asset mark sends the
  * k-th entry of {@link nameableFeeders}' sources, the k-th ref mark the k-th
  * upstream entry, the way the canvas writes its mentions. A node wired in and
@@ -317,11 +346,12 @@ export function nameableFeeders(
  * @throws {never} Never.
  */
 export function markTargets(proposal: CanvasProposal, index: number): number[] {
+  const node = proposal.nodes[index];
   const named = nameableFeeders(proposal, index);
   const sent: number[] = [];
   let assets = 0;
   let refs = 0;
-  for (const segment of proposal.nodes[index]?.prompt ?? []) {
+  for (const segment of node ? proposalMarkSegments(node) : []) {
     const kind = segment.slot?.kind;
     const target = kind === "asset" ? named.sources[assets++] : kind === "ref" ? named.upstream[refs++] : undefined;
     if (target !== undefined && target !== null) sent.push(target);
