@@ -17,6 +17,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { BodyEdgeSelection, bodyEdgePos } from '@web/spaces/document/document-body-edge-selection';
+import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -29,17 +30,28 @@ afterEach(() => {
 });
 
 /**
- * Mounts an editor on a document.
+ * Mounts an editor on a document, with the undo the Space gives it.
  * @param doc - The Yjs document.
- * @returns The editor.
+ * @returns The editor and its undo manager.
  */
-function mount(doc: Y.Doc): Editor {
-  const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc) });
+function mount(doc: Y.Doc): { editor: Editor; manager: Y.UndoManager } {
+  const { manager, extension } = createDocumentUndo(doc);
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc), extensions: [extension] });
   const root = document.createElement('div');
   document.body.appendChild(root);
   editor.mount(root);
   mounted.push(editor);
-  return editor;
+  return { editor, manager };
+}
+
+/**
+ * Lets the undo manager's deferred work run.
+ * @returns When it has.
+ */
+function settle(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 20);
+  });
 }
 
 /**
@@ -61,7 +73,7 @@ function textStart(view: EditorView, words: string): number {
  * Two editors on two documents that pass every update to each other.
  * @returns Ours and theirs.
  */
-function pair(): { ours: Editor; theirs: Editor } {
+function pair(): { ours: Editor; theirs: Editor; manager: Y.UndoManager } {
   const a = new Y.Doc();
   const b = new Y.Doc();
   a.on('update', (update: Uint8Array, origin: unknown) => {
@@ -70,14 +82,16 @@ function pair(): { ours: Editor; theirs: Editor } {
   b.on('update', (update: Uint8Array, origin: unknown) => {
     if (origin !== 'peer') Y.applyUpdate(a, update, 'peer');
   });
-  const ours = mount(a);
-  const theirs = mount(b);
+  const { editor: ours, manager } = mount(a);
+  const { editor: theirs } = mount(b);
   ours.replaceBlocks(ours.document, [
     { type: 'paragraph', content: 'Above' },
     { type: 'paragraph', content: 'Middle' },
     { type: 'divider' },
   ] as never);
-  return { ours, theirs };
+  // Close the undo unit the document was built in, or undo takes it back too.
+  manager.stopCapturing();
+  return { ours, theirs, manager };
 }
 
 describe('a selection past the last block, with Yjs rebuilding it', () => {
@@ -98,15 +112,19 @@ describe('a selection past the last block, with Yjs rebuilding it', () => {
     ]);
   });
 
-  it('comes back after the deletion it made is undone', () => {
-    const { ours } = pair();
+  it('comes back after the deletion it made is undone', async () => {
+    const { ours, manager } = pair();
     const view = ours.prosemirrorView!;
     const at = textStart(view, 'Middle') + 2;
+    // Selecting and deleting are two dispatches, as they are for a reader.
     view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, at, 'end')));
     view.dispatch(view.state.tr.deleteSelection());
+    await settle();
+    manager.stopCapturing();
     expect(view.state.selection).toBeInstanceOf(TextSelection);
 
     ours.undo();
+    await settle();
 
     expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([
