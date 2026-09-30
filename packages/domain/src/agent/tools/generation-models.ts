@@ -99,7 +99,7 @@ function renderModel(model: PricedModelInfo): string {
   const pooled = poolParams(model).map((pool) => pool.kind);
   const shared = [...new Set(requiredSlotKinds(model).filter((kind) => pooled.includes(kind)))];
   const routing = shared
-    .map((kind) => ` The first ${String(kind)} node wired in fills its ${String(kind)} slot; later ones go to its pool.`)
+    .map((kind) => ` The first ${String(kind)} node wired in is the one the reader picks into its ${String(kind)} slot; later ones go to its pool.`)
     .join("");
   const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}`;
   const params = Object.entries(model.params).map(([name, spec]) => {
@@ -119,11 +119,9 @@ function renderModel(model: PricedModelInfo): string {
       // Which gesture fills it is said here, since the shape a proposal takes
       // depends on it; how to click through that gesture is said once, in the
       // product guide the description points at. The pool is filled by an
-      // edge, or for pictures also by a focus crop, which is always a picture;
-      // then a mention. A slot is picked on the canvas.
-      const via = spec.accepts === "image" ? "an edge into this node or a focus crop taken in its panel" : "an edge into this node";
+      // edge and then a mention; a slot is picked on the canvas.
       const how = spec.fromReferencePool
-        ? `filled on the canvas, not typed here, by ${via}, then a mention of it in the prompt`
+        ? "filled on the canvas, not typed here, by an edge into this node, then a mention of it in the prompt"
         : "filled from another node on the canvas through a source slot, not typed here; leave it unset";
       return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
     }

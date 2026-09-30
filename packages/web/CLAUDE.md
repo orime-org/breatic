@@ -237,6 +237,8 @@ demo 里那些动画参数是随手写的示意,不是定稿 —— 完全实现
 
 Agent 回答「这个怎么操作」时，唯一的依据是 `packages/domain/src/agent/tools/product-guide.ts`(`get_product_guide` 工具)。它看不到读者的屏幕，指南写的就是它会告诉读者的。**所以改了画布或文档空间里用户怎么操作的任何东西 —— 菜单项、按钮位置或形状、手势、快捷键、面板里有什么、放置提议之后的样子 —— 同一个 PR 里把指南里对应的那几句一起改对。**
 
-已经自动跟着走的两样不用手改：带文字的控件名一律经 `t("…")` 从 locale 读(key 删了 repo-lint 的 `i18n-no-missing-keys` 会报)；哪些节点能生成、什么能连进什么，运行时读 `@breatic/shared` 的 `canGenerate` / `canConnect`。其余(手势、位置、只有图标的控件、快捷键、菜单顺序)是手写的，靠这条规矩。`packages/web/tests/smoke/agent-product-guide.spec.ts` 用真实问题问 Agent、从屏幕上读控件名比对，是跑起来之后的兜底。
+指南只写读者**在屏幕上看得见的东西**:引号里的名字必须是屏幕上显示成文字的那几个字(菜单行、按钮上的字、悬停出来的 tooltip),经 `t("…")` 从 locale 读;只在 `aria-label`、sr-only、`title` 里的名字读者看不见(读屏在范围外),那种控件按外观描述(图标长什么样、在哪)。
 
-判定题:**我这次改动，会让 `product-guide.ts` 里哪一句变成假的？** 说不出来就是没查 —— 去读一遍那个文件。
+自动跟着走的只有两种变化：同一个 key 的文字改了(指南读的就是它)；`@breatic/shared` 的 `canGenerate` / `canConnect` 规则改了(指南运行时读它们)。**其余全靠这条规矩**:控件换用了另一个 key、原来显示的字挪进了 `aria-label`、新增一种能新建的节点类型(同时改 `product-guide.ts` 的 `CREATABLE`)、手势、位置、只有图标的控件、快捷键、菜单顺序 —— 这些变了都没有检查会报。`packages/web/tests/smoke/agent-product-guide.spec.ts` 用真实问题问 Agent、从屏幕上读控件名比对，是跑起来之后的兜底。
+
+判定题:**我这次改动，会让 `product-guide.ts` 里哪一句变成假的？** 说不出来就是没查 —— 去读一遍那个文件。**我正要在指南里加一个带引号的名字 —— 它在屏幕上显示成文字吗？** 只在 `aria-label` 里的不算。

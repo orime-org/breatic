@@ -30,6 +30,16 @@ function section(heading: string): string {
   return renderProductGuide().split(`## ${heading}`)[1]?.split("\n## ")[0] ?? "";
 }
 
+/**
+ * A node type as the create menus name it, quoted.
+ * @param type - A creatable type.
+ * @returns Its menu label between double quotes.
+ */
+function label(type: (typeof CREATABLE)[number]): string {
+  const id = { text: "canvas.handle.nodeText", image: "canvas.handle.nodeImage", audio: "canvas.handle.nodeAudio", video: "canvas.handle.nodeVideo" }[type];
+  return `"${t(id)}"`;
+}
+
 /** The guide's own source, where every message id it shows is spelled out. */
 const source = readFileSync(resolve(import.meta.dirname, "..", "product-guide.ts"), "utf8");
 
@@ -148,15 +158,18 @@ describe("what the guide says", () => {
   });
 
   it("says material bound for a source slot is picked in the panel, not mentioned", () => {
-    // The placing mentions an empty node only where a mention is what picks
-    // it; a node feeding one of the mode's slots gets no mention.
+    // The placing mentions a feeder only where a mention is what picks it; a
+    // node feeding one of the mode's slots, empty or generated, gets none.
     const proposals = section("Proposal cards");
-    expect(proposals).toMatch(/source slots[^.]*not mentioned/i);
-    expect(proposals).toMatch(/presses that slot's button in the panel and clicks the node/i);
+    expect(proposals).toMatch(/source slots: it is not mentioned/i);
+    expect(proposals).toMatch(/file or its generated result/i);
+    expect(proposals).toMatch(/presses that slot's button and clicks the node/i);
   });
 
-  it("says a model with no prompt box shows no brackets and the card lists what is left", () => {
-    expect(section("Proposal cards")).toMatch(/no prompt box shows no brackets; the card lists what is left/i);
+  it("says what a model with no prompt box shows instead", () => {
+    const proposals = section("Proposal cards");
+    expect(proposals).toContain(`"${t("chat.proposal.settingsReady")}"`);
+    expect(proposals).toContain(`"${t("canvas.generatePanel.promptNotUsed")}"`);
   });
 
   it("says a code block is three backticks followed by a space", () => {
@@ -167,26 +180,49 @@ describe("what the guide says", () => {
   it("says the left menu shows icons that name themselves when hovered", () => {
     // Those two buttons carry no words; their names live in the tooltips.
     const making = section("Making nodes");
-    expect(making).toMatch(/icons along the left edge, each naming itself when hovered/i);
+    expect(making).toMatch(/floating menu of icons runs along the left edge; each names itself when hovered/i);
     expect(making).toMatch(/sparkle/i);
-    expect(making).toMatch(/upward arrow/i);
+    expect(making).toMatch(/arrow pointing up out of a tray/i);
   });
 
   it("says the task marks are icons in four states, with the count on hover", () => {
     const generating = section("Generating");
-    expect(generating).toMatch(/running, done, failed or expired/i);
-    expect(generating).toMatch(/hovering one shows how many/i);
+    expect(generating).toMatch(/spinning circle \(running\)/);
+    expect(generating).toMatch(/a clock \(expired\)/);
+    expect(generating).toMatch(/Hovering one shows how many/);
+    expect(generating).toMatch(/Zoomed far out, only the spinning one remains/);
   });
 
   it("says letters after @ narrow a list of at most eight rows", () => {
     expect(section("Mentions")).toMatch(/narrow the list, which shows up to eight rows/i);
   });
 
-  it("names the selection bar's comment and AI buttons as not open yet", () => {
+  it("describes the selection bar by its icons, since its buttons show no name", () => {
     const doc = section("Document spaces");
-    expect(doc).toMatch(/bar of buttons, each naming itself when hovered/i);
-    expect(doc).not.toMatch(/looks active/i);
-    expect(doc).toMatch(/marked not open yet/i);
+    expect(doc).toMatch(/The other buttons show no name on hover/);
+    expect(doc).not.toMatch(/each nam(es|ing) itself when hovered/i);
+    expect(doc).toMatch(/speech bubble shows "[^"]+" marked not open yet/);
+    expect(doc).toMatch(/AI menu's commands look available but do nothing yet/);
+  });
+
+  it("quotes no name the screen only gives a screen reader", () => {
+    // Each of these is an aria-label, a sr-only span or a fallback the pill
+    // never shows (measured in a real browser); a reader cannot see them.
+    const text = renderProductGuide();
+    for (const id of [
+      "canvas.generatePanel.audioSettings",
+      "canvas.generatePanel.imageParams",
+      "canvas.generatePanel.videoParams",
+      "canvas.generatePanel.focusCropTag",
+      "spaces.document.commands.bold",
+      "spaces.document.commands.italic",
+      "spaces.document.commands.strike",
+      "spaces.document.commands.underline",
+      "spaces.document.commands.link",
+      "spaces.document.commands.code",
+    ]) {
+      expect(text, id).not.toContain(`"${t(id)}"`);
+    }
   });
 
   it("lists the block menu rows in the order the menu shows them", () => {
@@ -204,9 +240,15 @@ describe("what the guide says", () => {
     expect([...order].sort((x, y) => x - y)).toEqual(order);
   });
 
+  it("keeps its hand-written list of creatable types in the create menu's order", () => {
+    // A copy of the web menu's list (CREATABLE_NODE_TYPES); when that changes,
+    // this line fails and the guide gets updated with it.
+    expect(CREATABLE).toEqual(["text", "image", "audio", "video"]);
+  });
+
   it("lists which nodes generate, from the rule the canvas enforces", () => {
     const text = renderProductGuide();
-    const generating = CREATABLE.filter((type) => canGenerate(type));
+    const generating = CREATABLE.filter((type) => canGenerate(type)).map(label);
     const line = text.split("\n").find((l) => l.startsWith("Nodes that generate:"));
     expect(line).toBe(`Nodes that generate: ${generating.join(", ")}.`);
   });
@@ -214,8 +256,8 @@ describe("what the guide says", () => {
   it("lists what connects into each node, from the rule the canvas enforces", () => {
     const text = renderProductGuide();
     for (const target of CREATABLE) {
-      const from = CREATABLE.filter((source) => canConnect(source, target));
-      expect(text).toContain(`- into ${target}: ${from.join(", ")}`);
+      const from = CREATABLE.filter((source) => canConnect(source, target)).map(label);
+      expect(text).toContain(`- into ${label(target)}: ${from.join(", ")}`);
     }
   });
 });

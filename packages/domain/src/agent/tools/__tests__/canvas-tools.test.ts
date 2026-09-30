@@ -228,7 +228,7 @@ describe("what the rendered answer tells the model", () => {
   it("says which wired node fills a slot the pool shares a kind with", async () => {
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "i2v" });
     expect(renderGenerationModelsForModel(answer)).toMatch(
-      /\(kling-video-o3-4k-image-to-video\)[^\n]*The first image node wired in fills its image slot; later ones go to its pool\./,
+      /\(kling-video-o3-4k-image-to-video\)[^\n]*The first image node wired in is the one the reader picks into its image slot; later ones go to its pool\./,
     );
   });
 
@@ -336,26 +336,22 @@ describe("what the rendered answer tells the model", () => {
     );
   });
 
-  it("says a reference list is filled by an edge or a focus crop and a mention, and where the steps are", async () => {
+  it("says a reference list is filled by an edge and a mention", async () => {
     // Which gesture fills the parameter belongs here, since the model picks a
     // shape out of it; how to click through that gesture is said once, in the
     // product guide, whose own test pins its three halves. Anchored to the
     // line, since "style_images:" ends in this name.
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     const rendered = renderGenerationModelsForModel(answer);
-    expect(rendered).toMatch(/^ *images:.*an edge into this node or a focus crop taken in its panel, then a mention/m);
+    expect(rendered).toMatch(/^ *images:.*an edge into this node, then a mention/m);
     expect(rendered).not.toMatch(/^ *images:.*choose that node from the list/m);
   });
 
-  it("offers a focus crop only for a reference list that takes pictures", async () => {
-    // A focus crop is always a picture, so a list of reference videos or
-    // sounds cannot be filled with one.
+  it("names no focus crop, which a proposal cannot make", async () => {
+    // The answer shapes a proposal, and placing one never takes a focus crop;
+    // how to take one by hand is in the product guide.
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
-    const rendered = renderGenerationModelsForModel(answer);
-    expect(rendered).toMatch(/^ *videos:.*an edge into this node, then a mention/m);
-    expect(rendered).toMatch(/^ *audios:.*an edge into this node, then a mention/m);
-    expect(rendered).not.toMatch(/^ *(videos|audios):.*focus crop/m);
-    expect(rendered).toMatch(/^ *images:.*focus crop/m);
+    expect(renderGenerationModelsForModel(answer)).not.toMatch(/focus crop/i);
   });
 
   it("points at the product guide once, in its description, not on every parameter", () => {
@@ -363,9 +359,12 @@ describe("what the rendered answer tells the model", () => {
     expect(typeof description === "string" ? description : "").toContain("get_product_guide");
   });
 
-  it("names the product guide on no parameter line", async () => {
-    const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode: "t2v" });
-    expect(renderGenerationModelsForModel(answer)).not.toContain("get_product_guide");
+  it("names the product guide on no parameter line, pool or slot", async () => {
+    // t2v has reference lists and no slots; talking_head has slots.
+    for (const mode of ["t2v", "talking_head"] as const) {
+      const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "video", mode });
+      expect(renderGenerationModelsForModel(answer), mode).not.toContain("get_product_guide");
+    }
   });
 
   it("says when the panel draws no control for a parameter", async () => {
