@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { authApi } from '@web/data/api/auth';
+import { authApi, type AuthUser, type SignupCodeSent } from '@web/data/api/auth';
 import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
@@ -14,28 +14,25 @@ import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { SignupCodeStep } from '@web/pages/auth/SignupCodeStep';
 
 /**
  * Email + password registration — step one of the two-step sign-up.
  *
- * Flow:
- *   1. Submit registers (email + password only; no display name) + the
- *      server sets the session cookie. Response body returns
- *      `{ user, recoveryCode }`. At this point the account exists but
- *      has NO personal studio yet (`personalStudio === null`).
- *   2. We navigate to `/recovery-code` (carrying the code in nav state) to
- *      force the user to copy / download / acknowledge the one-time code.
- *   3. Continue redirects to the onboarding slug page
- *      (`/choose-slug`), step two, where the user picks a slug and
- *      the server creates their personal studio. The personal-studio
- *      gate in `ProtectedRoute` enforces this — a half-finished sign-up
- *      cannot reach the app proper.
+ * The server answers the form one of two ways:
  *
- * The recovery code is the ONLY recovery path on SMTP-less self-host
- * installs (`EMAIL_BACKEND=disabled`). The server only stores its
- * bcrypt hash — a missed save here is unrecoverable.
- * @returns the registration form; on success it navigates to the
- * recovery-code screen (`/recovery-code`).
+ *   - `code_sent` (an email backend is enabled, #287): nothing is created
+ *     yet. The same card turns into the code step; a matching code creates
+ *     the account, signs it in and goes straight to the slug page. There is
+ *     no recovery code — password recovery goes by email.
+ *   - `created` (no email backend): the account exists and is signed in; we
+ *     go to `/recovery-code` to have the one-time recovery code saved — the
+ *     only way back in without email — and from there to the slug page.
+ *
+ * Either way the account has NO personal studio yet (`personalStudio ===
+ * null`); the gate in `ProtectedRoute` keeps a half-finished sign-up on
+ * `/choose-slug` until the slug is picked.
+ * @returns the registration form, or the code step once a code was sent.
  */
 export default function RegisterPage(): React.JSX.Element {
   const t = useTranslation();
@@ -50,10 +47,60 @@ export default function RegisterPage(): React.JSX.Element {
     password?: string;
   }>({});
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [codeSent, setCodeSent] = React.useState<SignupCodeSent | null>(null);
 
   /**
-   * Validate the fields client-side, register the account, mirror the new
-   * user into the store, and stash the returned recovery code to reveal.
+   * Send the form's email and password and follow the answer.
+   * @param trimmedEmail - the address as submitted
+   * @returns the code-sent answer, or `null` when the sign-up went another way
+   *   (created, or refused — the refusal is shown on the form)
+   */
+  const register = React.useCallback(
+    async (trimmedEmail: string): Promise<SignupCodeSent | null> => {
+      try {
+        const answer = await authApi.register({ email: trimmedEmail, password });
+        if (answer.status === 'code_sent') {
+          setCodeSent(answer);
+          return answer;
+        }
+        // Step one creates the account with no personal studio yet — the
+        // store mirrors that null so the onboarding gate is consistent
+        // even before the recovery dialog is dismissed.
+        setUser(toCurrentUser(answer.user));
+        navigate('/recovery-code', {
+          state: { code: answer.recoveryCode, next: '/choose-slug' },
+          replace: true,
+        });
+        return null;
+      } catch (err) {
+        setCodeSent(null);
+        setFormError(err instanceof ApiException ? err.message : t('auth.register.failed'));
+        return null;
+      }
+    },
+    [password, setUser, navigate, t],
+  );
+
+  const restart = React.useCallback(
+    (): Promise<SignupCodeSent | null> => register(email.trim()),
+    [register, email],
+  );
+
+  const handleVerified = React.useCallback(
+    (user: AuthUser): void => {
+      setUser(toCurrentUser(user));
+      navigate('/choose-slug', { replace: true });
+    },
+    [setUser, navigate],
+  );
+
+  const handleChangeEmail = React.useCallback((): void => {
+    setCodeSent(null);
+    setFormError(null);
+  }, []);
+
+  /**
+   * Validate the fields client-side and send them.
    * @param e - the form submit event, prevented so the page does not reload
    */
   async function handleSubmit(e: React.FormEvent): Promise<void> {
@@ -71,25 +118,22 @@ export default function RegisterPage(): React.JSX.Element {
 
     setSubmitting(true);
     try {
-      const { user, recoveryCode: code } = await authApi.register({
-        email: trimmedEmail,
-        password,
-      });
-      // Step one creates the account with no personal studio yet — the
-      // store mirrors that null so the onboarding gate is consistent
-      // even before the recovery dialog is dismissed.
-      setUser(toCurrentUser(user));
-      navigate('/recovery-code', {
-        state: { code, next: '/choose-slug' },
-        replace: true,
-      });
-    } catch (err) {
-      const message =
-        err instanceof ApiException ? err.message : t('auth.register.failed');
-      setFormError(message);
+      await register(trimmedEmail);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (codeSent) {
+    return (
+      <SignupCodeStep
+        email={email.trim()}
+        sent={codeSent}
+        restart={restart}
+        onVerified={handleVerified}
+        onChangeEmail={handleChangeEmail}
+      />
+    );
   }
 
   return (

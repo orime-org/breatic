@@ -762,7 +762,16 @@
       "haveAccount": "已有账号?",
       "signIn": "登录",
       "passwordHint": "至少 8 个字符。",
-      "failed": "注册失败,请重试。"
+      "failed": "注册失败,请重试。",
+      "code": {
+        "title": "验证邮箱",
+        "sentTo": "验证码已发送至 {email}",
+        "codeLabel": "验证码",
+        "resend": "重新发送",
+        "resendIn": "{seconds} 秒后可重新发送",
+        "changeEmail": "换一个邮箱",
+        "newCodeSent": "新验证码已发送。"
+      }
     },
     "onboarding": {
       "title": "选择你的 Slug",
@@ -786,15 +795,17 @@
     },
     "forgot": {
       "title": "忘记密码了?",
-      "subtitle": "我们可以给你的邮箱发重置链接,或者你也可以用恢复码。",
       "sendResetLink": "给我发重置链接",
       "sending": "发送中...",
-      "useRecoveryCode": "改用恢复码",
+      "useRecoveryCode": "使用恢复码",
       "sentTitle": "请查收邮件",
       "sentSubtitle": "如果该邮箱已注册账号,重置链接已在路上。",
-      "sentBody": "我们已经向 {email} 发送了重置链接。如果几分钟内没收到,请检查垃圾邮件,或者改用恢复码。",
+      "sentBody": "重置链接已发送至 {email}。几分钟后仍未收到，请检查垃圾邮件。",
       "backToSignIn": "返回登录",
-      "failed": "重置链接发送失败,请重试。"
+      "failed": "重置链接发送失败,请重试。",
+      "subtitleEmail": "我们会给你发一封重置密码的邮件。",
+      "subtitleRecovery": "使用你注册时保存的恢复码。",
+      "optionsFailed": "页面加载失败，请刷新后重试。"
     },
     "reset": {
       "titleToken": "设置新密码",

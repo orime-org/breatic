@@ -762,7 +762,16 @@
       "haveAccount": "Already have an account?",
       "signIn": "Sign in",
       "passwordHint": "At least 8 characters.",
-      "failed": "Registration failed. Please try again."
+      "failed": "Registration failed. Please try again.",
+      "code": {
+        "title": "Verify your email",
+        "sentTo": "We sent a 6-digit code to {email}",
+        "codeLabel": "Verification code",
+        "resend": "Resend code",
+        "resendIn": "Resend in {seconds}s",
+        "changeEmail": "Use a different email",
+        "newCodeSent": "We sent you a new code."
+      }
     },
     "onboarding": {
       "title": "Pick your Slug",
@@ -786,15 +795,17 @@
     },
     "forgot": {
       "title": "Forgot your password?",
-      "subtitle": "We can email you a reset link, or you can use your recovery code.",
       "sendResetLink": "Email me a reset link",
       "sending": "Sending...",
-      "useRecoveryCode": "Use recovery code instead",
+      "useRecoveryCode": "Use recovery code",
       "sentTitle": "Check your inbox",
       "sentSubtitle": "If an account exists for that address, a reset link is on its way.",
-      "sentBody": "We sent a reset link to {email}. If you don't see it within a few minutes, check spam or use the recovery code.",
+      "sentBody": "We sent a reset link to {email}. If you don't see it within a few minutes, check spam.",
       "backToSignIn": "Back to sign in",
-      "failed": "Could not send the reset link. Please try again."
+      "failed": "Could not send the reset link. Please try again.",
+      "subtitleEmail": "We'll email you a reset link.",
+      "subtitleRecovery": "Use the recovery code you saved when you signed up.",
+      "optionsFailed": "This page could not load. Refresh to try again."
     },
     "reset": {
       "titleToken": "Set a new password",

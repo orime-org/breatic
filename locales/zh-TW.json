@@ -762,7 +762,16 @@
       "haveAccount": "已有帳號?",
       "signIn": "登入",
       "passwordHint": "至少 8 個字元。",
-      "failed": "註冊失敗,請重試。"
+      "failed": "註冊失敗,請重試。",
+      "code": {
+        "title": "驗證電子郵件",
+        "sentTo": "驗證碼已傳送至 {email}",
+        "codeLabel": "驗證碼",
+        "resend": "重新傳送",
+        "resendIn": "{seconds} 秒後可重新傳送",
+        "changeEmail": "換一個電子郵件",
+        "newCodeSent": "新驗證碼已傳送。"
+      }
     },
     "onboarding": {
       "title": "選擇你的 Slug",
@@ -786,15 +795,17 @@
     },
     "forgot": {
       "title": "忘記密碼?",
-      "subtitle": "我們可以將重設連結寄到你的信箱,或者你也可以使用復原碼。",
       "sendResetLink": "寄送重設連結",
       "sending": "寄送中...",
-      "useRecoveryCode": "改用復原碼",
+      "useRecoveryCode": "使用復原碼",
       "sentTitle": "請查收郵件",
       "sentSubtitle": "若該電子郵件已註冊帳號,重設連結已在送出中。",
-      "sentBody": "我們已向 {email} 寄送重設連結。若數分鐘內未收到,請檢查垃圾郵件,或改用復原碼。",
+      "sentBody": "重設連結已寄至 {email}。幾分鐘後仍未收到，請檢查垃圾郵件。",
       "backToSignIn": "返回登入",
-      "failed": "重設連結寄送失敗,請重試。"
+      "failed": "重設連結寄送失敗,請重試。",
+      "subtitleEmail": "我們會寄一封重設密碼的郵件給你。",
+      "subtitleRecovery": "使用你註冊時儲存的復原碼。",
+      "optionsFailed": "頁面載入失敗，請重新整理後再試。"
     },
     "reset": {
       "titleToken": "設定新密碼",

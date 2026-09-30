@@ -762,7 +762,16 @@
       "haveAccount": "이미 계정이 있으신가요?",
       "signIn": "로그인",
       "passwordHint": "8자 이상이어야 합니다.",
-      "failed": "회원가입에 실패했습니다. 다시 시도해 주세요."
+      "failed": "회원가입에 실패했습니다. 다시 시도해 주세요.",
+      "code": {
+        "title": "이메일 확인",
+        "sentTo": "{email}(으)로 6자리 코드를 보냈습니다",
+        "codeLabel": "인증 코드",
+        "resend": "코드 다시 보내기",
+        "resendIn": "{seconds}초 후 다시 보내기",
+        "changeEmail": "다른 이메일 사용",
+        "newCodeSent": "새 코드를 보냈습니다."
+      }
     },
     "onboarding": {
       "title": "Slug 선택",
@@ -786,15 +795,17 @@
     },
     "forgot": {
       "title": "비밀번호를 잊으셨나요?",
-      "subtitle": "재설정 링크를 이메일로 보내 드리거나, 복구 코드를 사용할 수 있습니다.",
       "sendResetLink": "재설정 링크를 이메일로 받기",
       "sending": "전송 중...",
-      "useRecoveryCode": "대신 복구 코드 사용하기",
+      "useRecoveryCode": "복구 코드 사용",
       "sentTitle": "받은편지함을 확인하세요",
       "sentSubtitle": "해당 주소로 등록된 계정이 있으면 재설정 링크를 보내 드렸습니다.",
-      "sentBody": "{email}(으)로 재설정 링크를 보냈습니다. 몇 분이 지나도 보이지 않으면 스팸함을 확인하거나 복구 코드를 사용하세요.",
+      "sentBody": "{email}(으)로 재설정 링크를 보냈습니다. 몇 분 안에 오지 않으면 스팸함을 확인하세요.",
       "backToSignIn": "로그인으로 돌아가기",
-      "failed": "재설정 링크를 보내지 못했습니다. 다시 시도해 주세요."
+      "failed": "재설정 링크를 보내지 못했습니다. 다시 시도해 주세요.",
+      "subtitleEmail": "비밀번호 재설정 링크를 이메일로 보내 드립니다.",
+      "subtitleRecovery": "가입할 때 저장한 복구 코드를 사용하세요.",
+      "optionsFailed": "페이지를 불러오지 못했습니다. 새로 고침한 뒤 다시 시도하세요."
     },
     "reset": {
       "titleToken": "새 비밀번호 설정",
