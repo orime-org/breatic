@@ -6,7 +6,7 @@
  * when that block is a divider, a fallback block or an empty line.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
 import { AllSelection, Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
@@ -37,6 +37,7 @@ function press(view: EditorView, key: string, shift = true): boolean {
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
+const editors = new WeakMap<EditorView, Editor>();
 
 afterEach(() => {
   mounted.splice(0).forEach((editor) => {
@@ -56,6 +57,7 @@ function open(blocks: unknown[]): EditorView {
   editor.mount(root);
   mounted.push(editor);
   editor.replaceBlocks(editor.document, blocks as never);
+  editors.set(editor.prosemirrorView!, editor);
   return editor.prosemirrorView!;
 }
 
@@ -438,6 +440,17 @@ describe('the browser extending a selection one of whose ends is an edge', () =>
     expect([selection?.anchor, selection?.head]).toEqual([at, doc.content.size - 1]);
   });
 
+  it('leaves a range past a last block with words to ProseMirror', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Below' }]);
+    const at = textStart(view, 'Above');
+    const size = view.state.doc.content.size;
+
+    // Past the last block's content, and past the last block.
+    for (const past of [size - 2, size - 1]) {
+      expect(readBack(view, at, past)).toBeNull();
+    }
+  });
+
   it('leaves a collapsed range to ProseMirror', () => {
     const view = open(ABOVE_DIVIDER);
     const end = view.state.doc.content.size - 1;
@@ -450,5 +463,25 @@ describe('the browser extending a selection one of whose ends is an edge', () =>
     const at = textStart(view, 'Above');
 
     expect(readBack(view, at, at + 3)).toBeNull();
+  });
+});
+
+describe('what BlockNote reads from an edge selection', () => {
+  it('finds the block at either end without falling back', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }]);
+    const editor = editors.get(view)!;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const mid = textStart(view, 'Mid');
+
+    for (const selection of [
+      BodyEdgeSelection.fromEdge(view.state.doc, 'end', mid),
+      BodyEdgeSelection.fromEdge(view.state.doc, 'start', mid),
+    ]) {
+      view.dispatch(view.state.tr.setSelection(selection));
+      editor.getTextCursorPosition();
+    }
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
