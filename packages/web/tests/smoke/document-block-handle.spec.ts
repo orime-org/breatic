@@ -1206,7 +1206,10 @@ test('rules the block type submenu where the bubble bar rules it', async () => {
       .querySelector('[data-testid="doc-block-type-heading-1"]')
       ?.closest('[role="menu"]');
     if (panel === null || panel === undefined) return null;
-    return [...panel.children].map((child) =>
+    // The rows sit in the element the menu primitive marks for them.
+    const rows = panel.querySelector('[data-menu-rows]');
+    if (rows === null) return null;
+    return [...rows.children].map((child) =>
       child.getAttribute('data-testid') ?? child.getAttribute('role') ?? '',
     );
   });
@@ -1322,7 +1325,10 @@ test('rules the insert submenu the same way', async () => {
       .querySelector('[data-testid="doc-block-insert-quote"]')
       ?.closest('[role="menu"]');
     if (panel === null || panel === undefined) return null;
-    return [...panel.children].map(
+    // The rows sit in the element the menu primitive marks for them.
+    const rows = panel.querySelector('[data-menu-rows]');
+    if (rows === null) return null;
+    return [...rows.children].map(
       (child) =>
         child.getAttribute('data-testid') ?? child.getAttribute('role') ?? '',
     );

@@ -40,6 +40,7 @@ function expectCappedAndScrolling(row: HTMLElement, variable: string): void {
   const viewport = row.closest('[data-radix-scroll-area-viewport]');
   expect(viewport).not.toBeNull();
   expect(surface?.contains(viewport ?? null)).toBe(true);
+  expect(row.parentElement?.hasAttribute('data-menu-rows')).toBe(true);
 }
 
 describe('a dropdown menu taller than the room it opens into', () => {

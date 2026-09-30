@@ -33,7 +33,9 @@ export function MenuRows({
 }: MenuSurfaceProps & { children?: ReactNode }): ReactNode {
   return (
     <ScrollArea scrollbars='vertical' className='min-h-0'>
-      <div className={cn('p-1', rowsClassName)}>{children}</div>
+      <div data-menu-rows='' className={cn('p-1', rowsClassName)}>
+        {children}
+      </div>
     </ScrollArea>
   );
 }
