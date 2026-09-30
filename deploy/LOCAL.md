@@ -50,14 +50,14 @@ cp .env.docker .env
 
 Alternatively, extract the source ZIP and enter the directory containing `docker-compose.yml`, `Dockerfile` and `package.json`. Run subsequent commands from that root. Do not overwrite an existing `.env`.
 
-**Keep versions together.** Application images, Ingest source and deployment configuration should come from the same release. `BREATIC_TAG` selects both application image tags; confirm that both exist before selecting a release. Do not invent a version number. `main` and `latest` move over time and are suitable for evaluation, not a reproducible release. When evaluating branch images, record their actual digests and the source commit. Editing local configuration does not update files already baked into an image.
+**Keep versions together.** Images, Ingest source and configuration must match the selected release. Set `BREATIC_TAG` to an existing published full tag (for example `v0.2.0`, only an example). There is no floating default; `main` / `latest` are no longer updated. See [Versioned releases](RELEASE.md).
 
 ## 3. Configure the application
 
 Edit existing entries in `.env`, keeping one definition per key. For an initial HTTP installation accessible only from this computer:
 
 ```dotenv
-BREATIC_TAG=main
+BREATIC_TAG=<published-release-tag>
 WEB_BIND_ADDRESS=127.0.0.1
 ENV=dev
 COOKIE_DOMAIN=

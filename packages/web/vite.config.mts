@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv } from 'vite';
+import { buildInfo } from '../../scripts/release.mjs';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
@@ -41,6 +42,21 @@ export default defineConfig(({ command, mode }) => {
     },
     plugins: [
       react(),
+      {
+        name: 'breatic-build-version',
+        apply: 'build',
+        generateBundle() {
+          const releaseVersion = env.VITE_RELEASE_VERSION || '0.0.0-dev';
+          const revision = releaseVersion === '0.0.0-dev' && !/^[a-f0-9]{40}$/.test(env.VITE_APP_VERSION || '')
+            ? 'unknown' : env.VITE_APP_VERSION || 'unknown';
+          const info = buildInfo(releaseVersion, revision);
+          this.emitFile({
+            type: 'asset',
+            fileName: 'app-version.json',
+            source: JSON.stringify({ version: env.VITE_APP_VERSION || 'unknown', ...info }) + '\n',
+          });
+        },
+      },
       // Tailwind 4 vite plugin — processes `@import "tailwindcss"` +
       // `@theme {}` directives in CSS and generates utility classes.
       // Replaces the v3 PostCSS plugin path. No JS config: there is no
