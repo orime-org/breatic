@@ -40,6 +40,7 @@ import type * as Y from 'yjs';
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
 import { documentNodeCompositionExtension } from '@web/spaces/document/document-node-composition';
 import { documentDividerInputExtension } from '@web/spaces/document/document-divider';
+import { documentBodyEdgePointerExtension } from '@web/spaces/document/document-body-edge-pointer';
 import { documentBodyEdgeExtension } from '@web/spaces/document/document-body-edge-selection';
 import { documentSelectionPaintExtension } from '@web/spaces/document/document-selection-paint';
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
@@ -134,6 +135,7 @@ export function buildDocumentEditor(
       documentQuoteInputExtension(),
       documentDividerInputExtension(),
       documentNodeCompositionExtension(),
+      documentBodyEdgePointerExtension(),
       documentBodyEdgeExtension(),
       documentSelectionPaintExtension(),
       documentLinkEditMarkExtension(),

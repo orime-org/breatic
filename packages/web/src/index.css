@@ -1198,6 +1198,14 @@ body {
   height: auto;
 }
 
+/* While the last block is one a drag has to reach past (a divider, a fallback
+   block or an empty line), presses go through the widget to the surface, so a
+   press below the last block can start a drag that reaches it; a click there
+   still opens a paragraph (`document-body-edge-pointer.ts`). */
+.doc-body[data-body-end-takeover] .bn-trailing-block {
+  pointer-events: none;
+}
+
 /* The body is set in our own stack at our own size. BlockNote's
    `.bn-default-styles` names a stack of its own and a flat 16px, and both
    reach the editor: the stack it ships carries no CJK face, so Chinese fell

@@ -144,6 +144,21 @@ function select(view: EditorView, anchor: number, head = anchor): void {
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, anchor, head)));
 }
 
+/** A block as `editor.document` hands it back. */
+interface ReadBlock {
+  id: string;
+  type: string;
+}
+
+/**
+ * The root blocks of the document.
+ * @param editor - The editor.
+ * @returns Its blocks.
+ */
+function blocksOf(editor: Editor): ReadBlock[] {
+  return editor.document as unknown as ReadBlock[];
+}
+
 const ABOVE_DIVIDER = [{ type: 'paragraph', content: 'Above' }, { type: 'divider' }];
 const BELOW_DIVIDER = [{ type: 'divider' }, { type: 'paragraph', content: 'Below' }];
 
@@ -284,9 +299,9 @@ describe('a drag that starts past an end of the body', () => {
     press(view, 150);
     release(150);
 
-    const blocks = editor.document;
+    const blocks = blocksOf(editor);
     expect(blocks.map((b) => b.type)).toEqual(['paragraph', 'divider', 'paragraph']);
-    expect(editor.getTextCursorPosition().block.id).toBe(blocks[2]!.id);
+    expect((editor.getTextCursorPosition().block as unknown as ReadBlock).id).toBe(blocks[2]!.id);
   });
 
   it('opens nothing when the press moved before it was let go', () => {
@@ -299,7 +314,7 @@ describe('a drag that starts past an end of the body', () => {
     move(10);
     release(10);
 
-    expect(editor.document.map((b) => b.type)).toEqual(['paragraph', 'divider']);
+    expect(blocksOf(editor).map((b) => b.type)).toEqual(['paragraph', 'divider']);
   });
 });
 
@@ -350,6 +365,19 @@ describe('what ends a press, and what is never one', () => {
     expect(view.state.selection.head).toBe(at);
   });
 
+  it('stops following once a move arrives with no button held', () => {
+    const view = open(ABOVE_DIVIDER).prosemirrorView!;
+    const at = textStart(view, 'Above');
+    press(view, 10);
+    select(view, at);
+    // Let go outside the window: no mouseup reaches the page.
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 10, buttons: 0, bubbles: true }));
+
+    move(150);
+
+    expect(view.state.selection.head).toBe(at);
+  });
+
   it('stops following once the window loses focus', () => {
     const view = open(ABOVE_DIVIDER).prosemirrorView!;
     const at = textStart(view, 'Above');
@@ -366,12 +394,26 @@ describe('what ends a press, and what is never one', () => {
     const view = open(ABOVE_DIVIDER).prosemirrorView!;
     const at = textStart(view, 'Above');
     select(view, at);
+    pointAt(view, at + 3);
 
     for (const init of [{ button: 2 }, { metaKey: true }, { ctrlKey: true }, { altKey: true }]) {
       press(view, 150, init);
       move(10);
       release(10);
     }
+
+    expect(view.state.selection.head).toBe(at);
+  });
+
+  it('stops following once the document stops being editable', () => {
+    const editor = open(ABOVE_DIVIDER);
+    const view = editor.prosemirrorView!;
+    const at = textStart(view, 'Above');
+    press(view, 10);
+    select(view, at);
+    editor.isEditable = false;
+
+    move(150);
 
     expect(view.state.selection.head).toBe(at);
   });

@@ -33,7 +33,7 @@ type EdgeSide = 'anchor' | 'head';
  * @param edge - Which edge.
  * @returns `1` for the start, `size - 1` for the end.
  */
-function edgePos(doc: Node, edge: BodyEdge): number {
+export function bodyEdgePos(doc: Node, edge: BodyEdge): number {
   return edge === 'start' ? 1 : doc.content.size - 1;
 }
 
@@ -43,9 +43,9 @@ function edgePos(doc: Node, edge: BodyEdge): number {
  * @param pos - The position.
  * @returns The edge, or null for any other position.
  */
-function edgeAt(doc: Node, pos: number): BodyEdge | null {
-  if (pos === edgePos(doc, 'start')) return 'start';
-  if (pos === edgePos(doc, 'end')) return 'end';
+export function bodyEdgeAt(doc: Node, pos: number): BodyEdge | null {
+  if (pos === bodyEdgePos(doc, 'start')) return 'start';
+  if (pos === bodyEdgePos(doc, 'end')) return 'end';
   return null;
 }
 
@@ -141,7 +141,7 @@ class BodyEdgeSelectionClass extends Selection {
    * @returns The selection.
    */
   private static build(doc: Node, side: EdgeSide, edge: BodyEdge, other: number): BodyEdgeSelectionClass {
-    const $edge = doc.resolve(edgePos(doc, edge));
+    const $edge = doc.resolve(bodyEdgePos(doc, edge));
     const $other = doc.resolve(textNear(doc, other, edge));
     return side === 'head'
       ? new BodyEdgeSelectionClass($other, $edge)
@@ -154,9 +154,9 @@ class BodyEdgeSelectionClass extends Selection {
    */
   private edgeOf(): { side: EdgeSide; edge: BodyEdge; other: number } {
     const doc = this.$head.doc;
-    const headEdge = edgeAt(doc, this.head);
+    const headEdge = bodyEdgeAt(doc, this.head);
     if (headEdge !== null) return { side: 'head', edge: headEdge, other: this.anchor };
-    return { side: 'anchor', edge: edgeAt(doc, this.anchor) ?? 'end', other: this.head };
+    return { side: 'anchor', edge: bodyEdgeAt(doc, this.anchor) ?? 'end', other: this.head };
   }
 
   /**
@@ -198,8 +198,8 @@ class BodyEdgeSelectionClass extends Selection {
    * @throws {RangeError} When neither end is an edge of the body.
    */
   static fromJSON(doc: Node, json: { anchor: number; head: number }): Selection {
-    const headEdge = edgeAt(doc, json.head);
-    const anchorEdge = edgeAt(doc, json.anchor);
+    const headEdge = bodyEdgeAt(doc, json.head);
+    const anchorEdge = bodyEdgeAt(doc, json.anchor);
     if (headEdge !== null && anchorEdge !== null && headEdge !== anchorEdge) return new AllSelection(doc);
     if (headEdge !== null) return BodyEdgeSelectionClass.create(doc, json.anchor, headEdge);
     if (anchorEdge !== null) return BodyEdgeSelectionClass.fromEdge(doc, anchorEdge, json.head);
@@ -279,7 +279,7 @@ class BodyEdgeBookmark {
  *   holds no text.
  */
 function caretNear(doc: Node, edge: BodyEdge): Selection {
-  const $edge = doc.resolve(edgePos(doc, edge));
+  const $edge = doc.resolve(bodyEdgePos(doc, edge));
   const inward = edge === 'end' ? -1 : 1;
   return (
     Selection.findFrom($edge, inward, true) ??
@@ -299,8 +299,8 @@ function caretNear(doc: Node, edge: BodyEdge): Selection {
  *   are the same edge; the whole document when they are the two edges.
  */
 export function bodyEdgeBetween(doc: Node, anchor: number, head: number): Selection {
-  const anchorEdge = edgeAt(doc, anchor);
-  const headEdge = edgeAt(doc, head);
+  const anchorEdge = bodyEdgeAt(doc, anchor);
+  const headEdge = bodyEdgeAt(doc, head);
   if (anchorEdge !== null && headEdge !== null) {
     return anchorEdge === headEdge ? caretNear(doc, anchorEdge) : new AllSelection(doc);
   }
@@ -317,7 +317,7 @@ export function bodyEdgeBetween(doc: Node, anchor: number, head: number): Select
  * @returns See {@link bodyEdgeBetween}.
  */
 export function extendToBodyEdge(doc: Node, anchor: number, edge: BodyEdge): Selection {
-  return bodyEdgeBetween(doc, anchor, edgePos(doc, edge));
+  return bodyEdgeBetween(doc, anchor, bodyEdgePos(doc, edge));
 }
 
 /** Where the pointer is: over the body, or past the block at one of its ends. */
@@ -345,7 +345,7 @@ export interface EdgeDrag {
 export function dragSelection(doc: Node, drag: EdgeDrag, zone: PointerZone, pointer: number | null): Selection | null {
   if (zone !== 'body') {
     if (drag.press === zone && !drag.left) return null;
-    return bodyEdgeBetween(doc, drag.anchor, edgePos(doc, zone));
+    return bodyEdgeBetween(doc, drag.anchor, bodyEdgePos(doc, zone));
   }
   if (drag.press === 'body' && !drag.left) return null;
   if (pointer === null) return null;
@@ -365,7 +365,7 @@ export function dragSelection(doc: Node, drag: EdgeDrag, zone: PointerZone, poin
 function readBackAtEdge(view: EditorView, $anchor: ResolvedPos, $head: ResolvedPos): Selection | null {
   const { doc } = view.state;
   if ($anchor.pos === $head.pos) return null;
-  if (edgeAt(doc, $anchor.pos) === null && edgeAt(doc, $head.pos) === null) return null;
+  if (bodyEdgeAt(doc, $anchor.pos) === null && bodyEdgeAt(doc, $head.pos) === null) return null;
   return bodyEdgeBetween(doc, $anchor.pos, $head.pos);
 }
 
@@ -401,14 +401,14 @@ function arrowOnEdge(view: EditorView, key: string): Selection | null {
   const edge: BodyEdge | null =
     key === 'ArrowDown' ? 'end' : key === 'ArrowUp' ? 'start' : null;
   if (selection instanceof BodyEdgeSelection) {
-    const headEdge = edgeAt(doc, selection.head);
+    const headEdge = bodyEdgeAt(doc, selection.head);
     if (headEdge !== null) {
       const inward = headEdge === 'end' ? ['ArrowUp', 'ArrowLeft'] : ['ArrowDown', 'ArrowRight'];
       if (!inward.includes(key)) return selection;
-      const head = textNear(doc, edgePos(doc, headEdge), headEdge);
+      const head = textNear(doc, bodyEdgePos(doc, headEdge), headEdge);
       return TextSelection.create(doc, selection.anchor, head);
     }
-    const anchorEdge = edgeAt(doc, selection.anchor) ?? 'end';
+    const anchorEdge = bodyEdgeAt(doc, selection.anchor) ?? 'end';
     if (key === 'ArrowLeft' || key === 'ArrowRight') {
       const target = selection.head + (key === 'ArrowLeft' ? -1 : 1);
       return BodyEdgeSelection.fromEdge(doc, anchorEdge, target);
