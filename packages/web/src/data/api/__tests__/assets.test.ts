@@ -73,6 +73,30 @@ describe('assetsApi.requestUploadTicket', () => {
     expect(sent.derived).toBe(true);
   });
 
+  // A studio's avatar has no project; the ticket names the studio and says
+  // what the picture is for.
+  it('sends a studio target and a purpose, with no project', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ alreadyExists: true, assetId: 'a1', fileUrl: 'u', kind: 'image' });
+
+    await assetsApi.requestUploadTicket({
+      filename: 'avatar.png',
+      contentType: 'image/png',
+      studioId: 'st1',
+      size: 10,
+      hash: 'c'.repeat(64),
+      purpose: 'studio_avatar',
+    });
+
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/assets/upload-ticket', {
+      filename: 'avatar.png',
+      content_type: 'image/png',
+      studio_id: 'st1',
+      size: 10,
+      client_hash: 'c'.repeat(64),
+      purpose: 'studio_avatar',
+    });
+  });
+
   it('hands back a dedup hit as it came', async () => {
     vi.mocked(apiPost).mockResolvedValue({
       alreadyExists: true,

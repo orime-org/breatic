@@ -216,6 +216,7 @@ function makeUploadDeps(
     hashFile: vi.fn().mockResolvedValue(HASH),
     requestTicket: vi.fn().mockResolvedValue(TICKET),
     sendToIngest: vi.fn().mockResolvedValue({
+      assetId: 'asset-new',
       fileUrl: 'https://cdn/p.png',
       kind: 'image',
     }),
@@ -255,13 +256,17 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     await runMediaUpload(file, context, deps);
 
-    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith('https://cdn/p.png');
+    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
+      fileUrl: 'https://cdn/p.png',
+      assetId: 'asset-new',
+    });
   });
 
   it('sends nothing when the studio already holds the content', async () => {
     const deps = makeUploadDeps({
       requestTicket: vi.fn().mockResolvedValue({
         alreadyExists: true,
+        assetId: 'asset-existing',
         fileUrl: 'https://cdn/existing.png',
         kind: 'image',
       }),
@@ -270,9 +275,27 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     await runMediaUpload(file, context, deps);
 
     expect(deps.sendToIngest).not.toHaveBeenCalled();
-    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
-      'https://cdn/existing.png',
-    );
+    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
+      fileUrl: 'https://cdn/existing.png',
+      assetId: 'asset-existing',
+    });
+  });
+
+  // A studio's avatar belongs to no project: the ticket names the studio, and
+  // what the picture is for travels with it.
+  it('asks for a studio-scoped ticket for a studio avatar', async () => {
+    const deps = makeUploadDeps();
+
+    await runMediaUpload(file, { studioId: 'st1', purpose: 'studio_avatar' }, deps);
+
+    expect(deps.requestTicket).toHaveBeenCalledWith({
+      filename: 'photo.png',
+      contentType: 'image/png',
+      studioId: 'st1',
+      size: file.size,
+      hash: HASH,
+      purpose: 'studio_avatar',
+    });
   });
 
   // No hash, no upload (user decision 2026-07-26): the ledger keys on content,

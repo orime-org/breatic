@@ -36,7 +36,7 @@ function renderProject(project: ContainerProject, studioRole: StudioRole) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
-        <ProjectCard project={project} studioRole={studioRole} />
+        <ProjectCard project={project} studioRole={studioRole} studioSlug='acme' />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -72,9 +72,10 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
     expect(screen.queryByRole('button', MORE)).toBeNull();
   });
 
-  it('shows the governance menu to a studio admin even when not owner', () => {
+  it('hides the menu from a studio admin who does not own the project', () => {
+    // The menu holds the cover upload only, which is the owner's (#21).
     renderProject(SHARED_STUDIO, 'admin');
-    expect(screen.getByRole('button', MORE)).toBeInTheDocument();
+    expect(screen.queryByRole('button', MORE)).toBeNull();
   });
 
   it('shows no role and no link for a project the viewer is not on', () => {

@@ -6,7 +6,7 @@
  *
  * Every case here is a hole an adversarial review found in the shipped code,
  * kept so the same hole cannot reopen. The crop geometry itself is covered by
- * `avatar-crop.test.ts` and by a real-browser run — jsdom reports every size
+ * `crop-box.test.ts` and by a real-browser run — jsdom reports every size
  * as zero, so it can say nothing about where the selection lands.
  */
 
@@ -14,7 +14,7 @@ import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-import { AvatarCropDialog } from '@web/pages/studio/container/dialogs/AvatarCropDialog';
+import { ImageCropDialog } from '@web/pages/studio/container/dialogs/ImageCropDialog';
 
 vi.mock('@web/i18n/use-translation', () => ({
   useTranslation: () => (key: string) => key,
@@ -46,14 +46,15 @@ function pickedFile(name = 'a.png'): File {
   return new File(['x'], name, { type: 'image/png' });
 }
 
-describe('AvatarCropDialog — an image the browser cannot decode', () => {
+describe('ImageCropDialog — an image the browser cannot decode', () => {
   it('says so instead of leaving an empty frame and a dead Confirm button', async () => {
     // A HEIC off a phone, a truncated JPEG, a .txt renamed to .png: the
     // element never fires `load`, so the box is never measured, the selection
     // never appears and Confirm can never enable. Without an error the user
     // sees a blank grey box with no explanation and only Cancel to press.
     render(
-      <AvatarCropDialog
+      <ImageCropDialog
+        variant='avatar'
         file={pickedFile('broken.png')}
         uploading={false}
         error={null}
@@ -65,15 +66,16 @@ describe('AvatarCropDialog — an image the browser cannot decode', () => {
     fireEvent.error(document.querySelector('img')!);
 
     await waitFor(() => {
-      expect(screen.getByTestId('avatar-crop-error')).toHaveTextContent(
-        'studio.container.settings.avatarError.not_an_image',
+      expect(screen.getByTestId('image-crop-error')).toHaveTextContent(
+        'studio.container.imageError.not_an_image',
       );
     });
   });
 
   it('clears that error when a different file is picked', async () => {
     const { rerender } = render(
-      <AvatarCropDialog
+      <ImageCropDialog
+        variant='avatar'
         file={pickedFile('broken.png')}
         uploading={false}
         error={null}
@@ -83,11 +85,12 @@ describe('AvatarCropDialog — an image the browser cannot decode', () => {
     );
     fireEvent.error(document.querySelector('img')!);
     await waitFor(() =>
-      expect(screen.queryByTestId('avatar-crop-error')).toBeInTheDocument(),
+      expect(screen.queryByTestId('image-crop-error')).toBeInTheDocument(),
     );
 
     rerender(
-      <AvatarCropDialog
+      <ImageCropDialog
+        variant='avatar'
         file={pickedFile('good.png')}
         uploading={false}
         error={null}
@@ -97,16 +100,17 @@ describe('AvatarCropDialog — an image the browser cannot decode', () => {
     );
 
     await waitFor(() =>
-      expect(screen.queryByTestId('avatar-crop-error')).not.toBeInTheDocument(),
+      expect(screen.queryByTestId('image-crop-error')).not.toBeInTheDocument(),
     );
   });
 });
 
-describe('AvatarCropDialog — closing while an upload is in flight', () => {
+describe('ImageCropDialog — closing while an upload is in flight', () => {
   it('refuses to close, since nothing would be listening for the result', () => {
     const onCancel = vi.fn();
     render(
-      <AvatarCropDialog
+      <ImageCropDialog
+        variant='avatar'
         file={pickedFile()}
         uploading={true}
         error={null}
@@ -123,7 +127,8 @@ describe('AvatarCropDialog — closing while an upload is in flight', () => {
   it('closes normally when idle', async () => {
     const onCancel = vi.fn();
     render(
-      <AvatarCropDialog
+      <ImageCropDialog
+        variant='avatar'
         file={pickedFile()}
         uploading={false}
         error={null}
@@ -138,10 +143,11 @@ describe('AvatarCropDialog — closing while an upload is in flight', () => {
   });
 });
 
-describe('AvatarCropDialog — upload failure', () => {
+describe('ImageCropDialog — upload failure', () => {
   it('keeps the dialog open and shows why, so the crop is not lost', () => {
     render(
-      <AvatarCropDialog
+      <ImageCropDialog
+        variant='avatar'
         file={pickedFile()}
         uploading={false}
         error='upload exploded'
@@ -150,17 +156,18 @@ describe('AvatarCropDialog — upload failure', () => {
       />,
     );
 
-    expect(screen.getByTestId('avatar-crop-dialog')).toBeInTheDocument();
-    expect(screen.getByTestId('avatar-crop-error')).toHaveTextContent(
+    expect(screen.getByTestId('image-crop-dialog')).toBeInTheDocument();
+    expect(screen.getByTestId('image-crop-error')).toHaveTextContent(
       'upload exploded',
     );
   });
 });
 
-describe('AvatarCropDialog — object URL lifetime', () => {
+describe('ImageCropDialog — object URL lifetime', () => {
   it('revokes the previous file\'s URL when another is picked', async () => {
     const { rerender } = render(
-      <AvatarCropDialog
+      <ImageCropDialog
+        variant='avatar'
         file={pickedFile('one.png')}
         uploading={false}
         error={null}
@@ -171,7 +178,8 @@ describe('AvatarCropDialog — object URL lifetime', () => {
     const first = objectUrls[0]!;
 
     rerender(
-      <AvatarCropDialog
+      <ImageCropDialog
+        variant='avatar'
         file={pickedFile('two.png')}
         uploading={false}
         error={null}
@@ -199,7 +207,8 @@ describe('AvatarCropDialog — object URL lifetime', () => {
     // So the assertion is about the URL actually in use, not about counts.
     render(
       <React.StrictMode>
-        <AvatarCropDialog
+        <ImageCropDialog
+          variant='avatar'
           file={pickedFile('strict.png')}
           uploading={false}
           error={null}
@@ -216,7 +225,7 @@ describe('AvatarCropDialog — object URL lifetime', () => {
   });
 });
 
-describe('AvatarCropDialog — a gesture interrupted by the dialog closing', () => {
+describe('ImageCropDialog — a gesture interrupted by the dialog closing', () => {
   /**
    * Give the image and its frame real layout boxes. jsdom reports every
    * element as 0x0, and the dialog deliberately refuses to draw a selection it
@@ -253,7 +262,8 @@ describe('AvatarCropDialog — a gesture interrupted by the dialog closing', () 
     // Carried into the next file, merely moving the pointer would drag the
     // selection with no button held.
     const { rerender } = render(
-      <AvatarCropDialog
+      <ImageCropDialog
+        variant='avatar'
         file={pickedFile('one.png')}
         uploading={false}
         error={null}
@@ -265,13 +275,14 @@ describe('AvatarCropDialog — a gesture interrupted by the dialog closing', () 
     giveLayout(img);
     fireEvent.load(img);
 
-    const selection = await screen.findByTestId('avatar-crop-selection');
+    const selection = await screen.findByTestId('image-crop-selection');
     selection.setPointerCapture = vi.fn();
     fireEvent.pointerDown(selection, { clientX: 50, clientY: 50, pointerId: 1 });
 
     // The dialog closes with the pointer still down, then a new file arrives.
     rerender(
-      <AvatarCropDialog
+      <ImageCropDialog
+        variant='avatar'
         file={pickedFile('two.png')}
         uploading={false}
         error={null}
@@ -283,10 +294,30 @@ describe('AvatarCropDialog — a gesture interrupted by the dialog closing', () 
     giveLayout(nextImg);
     fireEvent.load(nextImg);
 
-    const next = await screen.findByTestId('avatar-crop-selection');
+    const next = await screen.findByTestId('image-crop-selection');
     const before = next.style.left;
     fireEvent.pointerMove(next.parentElement!, { clientX: 150, clientY: 150 });
 
     expect(next.style.left).toBe(before);
+  });
+});
+
+describe('ImageCropDialog — the cover variant', () => {
+  it('asks for a cover crop in the cover wording', () => {
+    render(
+      <ImageCropDialog
+        variant='cover'
+        file={pickedFile()}
+        uploading={false}
+        error={null}
+        onCancel={vi.fn()}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('studio.container.cover.cropTitle')).toBeInTheDocument();
+    expect(screen.getByTestId('image-crop-confirm')).toHaveTextContent(
+      'studio.container.cover.upload',
+    );
   });
 });
