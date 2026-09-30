@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronRight, Circle } from 'lucide-react';
 
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { cn } from '@web/lib/utils';
 
 export const DropdownMenu = DropdownMenuPrimitive.Root;
@@ -11,30 +12,60 @@ export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 
+/** What every menu surface in this file and in `context-menu.tsx` shares. */
+export interface MenuSurfaceProps {
+  /** Classes for the element that holds the rows (how they stack and the gap between them). */
+  rowsClassName?: string;
+}
+
+/**
+ * The rows of a menu surface, inside a vertical scroller. The surface caps its
+ * height at the room Radix measured on its side of the trigger, so a menu
+ * taller than that room keeps every row reachable (#2243).
+ * @param props - The rows and their classes.
+ * @param props.rowsClassName - Classes for the element that holds the rows.
+ * @param props.children - The rows.
+ * @returns The scroller around the rows.
+ */
+export function MenuRows({
+  rowsClassName,
+  children,
+}: MenuSurfaceProps & { children?: ReactNode }): ReactNode {
+  return (
+    <ScrollArea scrollbars='vertical' className='min-h-0'>
+      <div className={cn('p-1', rowsClassName)}>{children}</div>
+    </ScrollArea>
+  );
+}
+
 /**
  * Dropdown menu surface — `bg-popover` + border + `shadow-md` at `z-popover`,
- * 4px inner padding. Items use the neutral hover fill (`bg-muted`) on focus,
- * matching the ghost-button hover.
- * @param props - Radix Content props (`sideOffset`, …).
+ * 4px inner padding around the rows. Items use the neutral hover fill
+ * (`bg-muted`) on focus, matching the ghost-button hover.
+ * @param props - Radix Content props (`sideOffset`, …) plus `rowsClassName`.
  * @returns The dropdown menu panel.
  */
 export function DropdownMenuContent({
   className,
+  rowsClassName,
+  children,
   sideOffset = 6,
   ...props
-}: ComponentProps<typeof DropdownMenuPrimitive.Content>): ReactNode {
+}: ComponentProps<typeof DropdownMenuPrimitive.Content> & MenuSurfaceProps): ReactNode {
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(
-          'z-[var(--z-popover)] min-w-[10rem] overflow-hidden rounded-overlay border border-border bg-popover p-1 text-popover-foreground shadow-md',
+          'z-[var(--z-popover)] grid max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[10rem] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-overlay border border-border bg-popover text-popover-foreground shadow-md',
           'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
           className,
         )}
         {...props}
-      />
+      >
+        <MenuRows rowsClassName={rowsClassName}>{children}</MenuRows>
+      </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
   );
 }
@@ -199,23 +230,27 @@ export function DropdownMenuSubTrigger({
 }
 
 /**
- * Submenu surface.
- * @param props - Radix SubContent props.
+ * Submenu surface, capped and scrolling like the menu it opens from.
+ * @param props - Radix SubContent props plus `rowsClassName`.
  * @returns The submenu panel.
  */
 export function DropdownMenuSubContent({
   className,
+  rowsClassName,
+  children,
   ...props
-}: ComponentProps<typeof DropdownMenuPrimitive.SubContent>): ReactNode {
+}: ComponentProps<typeof DropdownMenuPrimitive.SubContent> & MenuSurfaceProps): ReactNode {
   return (
     <DropdownMenuPrimitive.SubContent
       className={cn(
-        'z-[var(--z-popover)] min-w-[8rem] overflow-hidden rounded-overlay border border-border bg-popover p-1 text-popover-foreground shadow-md',
+        'z-[var(--z-popover)] grid max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-overlay border border-border bg-popover text-popover-foreground shadow-md',
         'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
         'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
         className,
       )}
       {...props}
-    />
+    >
+      <MenuRows rowsClassName={rowsClassName}>{children}</MenuRows>
+    </DropdownMenuPrimitive.SubContent>
   );
 }

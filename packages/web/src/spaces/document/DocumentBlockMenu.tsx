@@ -357,7 +357,7 @@ export function DocumentBlockMenu({
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
                 sideOffset={SUBMENU_SIDE_OFFSET}
-                className='flex flex-col gap-1'
+                rowsClassName='flex flex-col gap-1'
               >
                 {BLOCK_TYPE_ITEMS.map((item, index) => {
                   const ItemIcon = item.Icon;
@@ -405,7 +405,7 @@ export function DocumentBlockMenu({
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
                 sideOffset={SUBMENU_SIDE_OFFSET}
-                className='flex flex-col gap-1'
+                rowsClassName='flex flex-col gap-1'
               >
                 {INSERT_MENU_ROWS.map((id, index) => {
                   const item = blockTypeItem(id);
@@ -455,7 +455,7 @@ export function DocumentBlockMenu({
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
                 sideOffset={SUBMENU_SIDE_OFFSET}
-                className='flex flex-col gap-1'
+                rowsClassName='flex flex-col gap-1'
               >
                 {ALIGN_ITEMS.map((item) => {
                   const ItemIcon = item.Icon;
@@ -497,7 +497,7 @@ export function DocumentBlockMenu({
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
                 sideOffset={SUBMENU_SIDE_OFFSET}
-                className='py-2'
+                rowsClassName='py-2'
               >
                 <DocumentColourPanel
                   idStem='doc-block-color'

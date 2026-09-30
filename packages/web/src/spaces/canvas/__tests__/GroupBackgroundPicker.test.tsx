@@ -46,7 +46,8 @@ describe('GroupBackgroundPicker (#1549 seven-color palette)', () => {
   it('uses the 6px button radius on the trigger and lays swatches out vertically', () => {
     setup();
     expect(screen.getByTestId('group-bg-trigger')).toHaveClass('rounded-chrome');
-    expect(screen.getByTestId('group-bg-list')).toHaveClass('flex-col');
+    // The swatches stack in the element that holds the menu's rows.
+    expect(screen.getByTestId('group-bg-red').parentElement).toHaveClass('flex-col');
   });
 
   it('paints swatch dots with the SOLID identity color, not the tint (Chrome model)', () => {
