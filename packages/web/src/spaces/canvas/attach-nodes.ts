@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { ChatAttachedChip, GenerationNodeType, ModelCatalog, StoryboardKind } from '@breatic/shared';
+import { asStoryboardKind, type ChatAttachedChip, type GenerationNodeType, type ModelCatalog, type StoryboardKind } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import * as Y from 'yjs';
 
@@ -69,8 +69,7 @@ function plain(value: unknown): unknown {
  */
 function storedTier(data: Record<string, unknown>, mode: string): StoryboardKind | undefined {
   const boards = data.storyboards as Record<string, { kind?: unknown }> | undefined;
-  const kind = boards?.[mode]?.kind;
-  return kind === 'off' || kind === 'auto' || kind === 'custom' ? kind : undefined;
+  return asStoryboardKind(boards?.[mode]?.kind);
 }
 
 /**

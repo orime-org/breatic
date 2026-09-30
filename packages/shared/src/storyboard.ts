@@ -18,6 +18,15 @@ import type { ParamDescriptor } from "@shared/types/model-catalog.js";
 /** The three storyboard tiers: none, the model splits the shots, the reader writes each. */
 export type StoryboardKind = "off" | "auto" | "custom";
 
+/**
+ * A stored value read as a tier.
+ * @param value - What the node holds for a mode's tier.
+ * @returns The tier, or undefined for anything that is not one.
+ */
+export function asStoryboardKind(value: unknown): StoryboardKind | undefined {
+  return value === "off" || value === "auto" || value === "custom" ? value : undefined;
+}
+
 /** A model's storyboard, as its catalog entry declares it. */
 export interface StoryboardSpec {
   /** The list param the shots go out in. */

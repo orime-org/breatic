@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { effectiveStoryboardKind, storyboardParams, storyboardSpec } from "@shared/storyboard.js";
+import { asStoryboardKind, effectiveStoryboardKind, storyboardParams, storyboardSpec } from "@shared/storyboard.js";
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";
 
 const kling: Record<string, ParamDescriptor> = {
@@ -25,6 +25,18 @@ const kling: Record<string, ParamDescriptor> = {
 const other: Record<string, ParamDescriptor> = {
   duration: { description: "", default: 5, values: [5, 10], fill: "panel" },
 };
+
+describe("a stored storyboard tier", () => {
+  it("reads each of the three tiers as itself", () => {
+    expect(["off", "auto", "custom"].map(asStoryboardKind)).toEqual(["off", "auto", "custom"]);
+  });
+
+  it("reads anything else as no tier", () => {
+    expect([undefined, null, "", "Auto", 1, {}].map(asStoryboardKind)).toEqual([
+      undefined, undefined, undefined, undefined, undefined, undefined,
+    ]);
+  });
+});
 
 describe("the effective storyboard tier", () => {
   it("is the stored tier on a model that takes a storyboard", () => {

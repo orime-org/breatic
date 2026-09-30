@@ -16,6 +16,7 @@
 import * as Y from 'yjs';
 import {
   addShot,
+  asStoryboardKind,
   enterCustom,
   newId,
   removeShot,
@@ -108,9 +109,8 @@ export function readStoryboard(
 ): StoryboardView | null {
   const board = storyboardMapOf(projectId, spaceId, nodeId, mode);
   if (!board) return null;
-  const kind = board.get('kind');
   const shots = shotsOf(board)?.toArray().flatMap((shot) => shotView(shot) ?? []) ?? [];
-  return { kind: kind === 'auto' || kind === 'custom' ? kind : 'off', shots };
+  return { kind: asStoryboardKind(board.get('kind')) ?? 'off', shots };
 }
 
 /**
