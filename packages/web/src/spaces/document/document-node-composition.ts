@@ -31,22 +31,13 @@
  */
 
 import { createExtension } from '@blocknote/core';
-import { NodeSelection, Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
-import { ySyncPluginKey } from 'y-prosemirror';
+
+import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
 /** Whether a composition that began on a node selection is being held. */
 const KEY = new PluginKey<boolean>('documentNodeComposition');
-
-/**
- * Whether a transaction is a change that came in through Yjs.
- * @param tr - The transaction.
- * @returns True for a peer's edit or anything else the binding writes.
- */
-function fromYjs(tr: Transaction): boolean {
-  const sync = tr.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean } | undefined;
-  return sync?.isChangeOrigin === true;
-}
 
 /**
  * Throws away whatever the browser wrote into the DOM during the composition
