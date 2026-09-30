@@ -41,11 +41,8 @@
       "reset_link_sent": "如果该邮箱已注册,重置链接已发送。",
       "reset_success": "密码重置成功,请登录。",
       "reset_recovery_success": "密码重置成功,请保存新的恢复码。",
-      "email_verified": "邮箱已验证。",
-      "verify_email_sent": "验证邮件已发送,请查收。",
       "invalid_reset_token": "这个密码重置链接无效或已过期",
       "invalid_recovery_code": "邮箱或恢复码不正确",
-      "invalid_verification_token": "这个验证链接无效或已过期",
       "signup_code_invalid": "验证码不正确。",
       "signup_code_exhausted": "这个验证码已失效，请重新获取。",
       "signup_expired": "本次注册已过期。",
@@ -222,12 +219,6 @@
         "lead": "你申请了重置密码。",
         "action": "重置密码",
         "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，请忽略这封邮件。"
-      },
-      "email_verification": {
-        "subject": "验证你的邮箱",
-        "lead": "欢迎来到 Breatic。点击下面的按钮验证你的邮箱地址。",
-        "action": "验证邮箱地址",
-        "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，可以忽略这封邮件。"
       },
       "footer": "这是一封自动发送的邮件，回复不会被阅读。",
       "help": "需要帮助？查看<manual>用户手册</manual>，或发邮件到 <contact>{email}</contact>。",
@@ -818,19 +809,6 @@
       "success": "密码已更新,请登录。",
       "failed": "密码重置失败,请重试。",
       "backToSignIn": "返回登录"
-    },
-    "verify": {
-      "verifying": "正在验证你的邮箱...",
-      "pleaseWait": "请稍候。",
-      "successTitle": "邮箱已验证",
-      "successBody": "你的邮箱已确认,现在可以使用 breatic 的全部功能。",
-      "goToStudio": "进入 Studio",
-      "failedTitle": "邮箱验证失败",
-      "failedBody": "链接可能已过期或已使用。请登录后,在账号设置里重新发送验证邮件。",
-      "checkInboxTitle": "请查收邮件",
-      "checkInboxBody": "打开我们刚才发给你的验证链接。如果没收到,可以在账号设置里重新发送。",
-      "signIn": "登录",
-      "failed": "邮箱验证失败。"
     }
   },
   "roleTag": {

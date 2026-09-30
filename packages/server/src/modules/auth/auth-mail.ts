@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The two account mails that carry a one-time token link — password reset and
- * email verification — rendered in the recipient's language from the
- * `server.mail.*` catalog entries.
+ * The account mails: the password-reset mail, which carries a one-time token
+ * link, and the sign-up code mail (#287), which carries a six-digit code —
+ * both rendered in the recipient's language from the `server.mail.*` catalog
+ * entries.
  *
  * These are the primary delivery channel for their flows — there is no bell
  * row behind them — so the service sends them directly and reports the result
@@ -16,7 +17,7 @@ import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
 const SECONDS_PER_HOUR = 3600;
 
 /** Which token mail; also its `server.mail.*` catalog section. */
-export type TokenLinkMailKind = "password_reset" | "email_verification";
+export type TokenLinkMailKind = "password_reset";
 
 /** Fields for a token-link mail. */
 export interface TokenLinkMailInput {
@@ -30,10 +31,10 @@ export interface TokenLinkMailInput {
 }
 
 /**
- * Build a token-link mail. The button is labelled with words: Aliyun
+ * Build the password-reset mail. The button is labelled with words: Aliyun
  * DirectMail refuses a message whose link text is the bare address
  * ("554 Reject by content spam").
- * @param kind - Password reset or email verification.
+ * @param kind - Which token mail (the password reset).
  * @param input - The account's language and address, the token link, and its lifetime.
  * @returns The laid-out mail (to / subject / html / text) for `sendMail`.
  */

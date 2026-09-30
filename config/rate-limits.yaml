@@ -19,8 +19,6 @@ google:         { max: 10,  window_seconds: 60 }
 forgot:         { max: 3,   window_seconds: 3600 }
 reset:          { max: 5,   window_seconds: 3600 }
 reset-recovery: { max: 5,   window_seconds: 3600 }
-verify-email:   { max: 10,  window_seconds: 60 }
-resend-verify:  { max: 1,   window_seconds: 60 }
 
 # Studio (post-auth, user-keyed)
 slug-check:     { max: 60,  window_seconds: 60 }

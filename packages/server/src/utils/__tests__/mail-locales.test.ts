@@ -50,7 +50,7 @@ const LINK = "https://app.test/decision?token=t";
 const SLOGAN = "An AI operating system for content creators";
 const WITH_ACTION = [
   "studioInvite", "projectInvite", "studioTransfer", "projectTransfer",
-  "roleUpgrade", "projectJoin", "passwordReset", "emailVerification",
+  "roleUpgrade", "projectJoin", "passwordReset",
 ];
 
 /**
@@ -130,9 +130,6 @@ async function allMails(locale: string): Promise<Record<string, RenderedMail>> {
     passwordReset: buildTokenLinkMail("password_reset", {
       locale, to: "to@example.test", url: LINK, expiresInSeconds: 3600,
     }),
-    emailVerification: buildTokenLinkMail("email_verification", {
-      locale, to: "to@example.test", url: LINK, expiresInSeconds: 86400,
-    }),
     signupCode: buildSignupCodeMail({
       locale, to: "to@example.test", code: SIGNUP_CODE, expiresInSeconds: 600,
     }),
@@ -169,11 +166,10 @@ describe.each(LOCALES)("every mail in %s", (locale) => {
     if (mail.html.includes("A&")) expect(mail.html).toContain(ESCAPED);
   });
 
-  it("shows the sign-up code in both parts and its lifetime in minutes", () => {
+  it("shows the sign-up code in both the HTML and the text part", () => {
     const mail = mails.signupCode!;
     expect(mail.html).toContain(`>${SIGNUP_CODE}</div>`);
     expect(mail.text.split("\n")).toContain(SIGNUP_CODE);
-    expect(mail.text).toContain("10");
   });
 
   it("puts the links, bold names and roles where the catalog marks them", () => {
@@ -348,7 +344,7 @@ describe("the language actually changes", () => {
     const en = await allMails("en");
     expect(en.studioInvite!.html).toContain("expires in 3 days");
     expect(en.passwordReset!.html).toContain("expires in 1 hour.");
-    expect(en.emailVerification!.html).toContain("expires in 24 hours.");
+    expect(en.signupCode!.html).toContain("expires in 10 minutes.");
     expect((await allMails("zh-CN")).projectJoin!.html).toContain("3 天");
   });
 

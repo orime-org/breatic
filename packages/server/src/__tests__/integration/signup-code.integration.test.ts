@@ -13,10 +13,18 @@
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 
-const sent = vi.hoisted(() => ({
-  mails: [] as { to: string; subject: string; text: string }[],
-  result: { status: "sent" } as { status: string; reason?: string; to?: string; subject?: string },
-}));
+/** What the stubbed `sendMail` answers. */
+interface StubMailResult {
+  status: string;
+  reason?: string;
+  to?: string;
+  subject?: string;
+}
+
+const sent = vi.hoisted(() => {
+  const result: StubMailResult = { status: "sent" };
+  return { mails: [] as { to: string; subject: string; text: string }[], result };
+});
 
 vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => {
   const actual = await importOriginal();

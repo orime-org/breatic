@@ -148,7 +148,6 @@ describe('route table', () => {
         '/studio',
         '/studio/:slug',
         '/studio/:slug/:tab/*',
-        '/verify-email',
       ].sort(),
     );
   });

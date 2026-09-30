@@ -132,10 +132,4 @@ export const authApi = {
       body,
     );
   },
-  verifyEmail(body: { token: string }) {
-    return apiPost<void>('/auth/verify-email', body);
-  },
-  resendVerificationEmail() {
-    return apiPost<void>('/auth/resend-verification-email');
-  },
 };

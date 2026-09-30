@@ -111,7 +111,6 @@ function cooldownKey(email: string): string {
 /**
  * Refuse with the wait that is left.
  * @param ms - Milliseconds left on the wait.
- * @returns Never.
  * @throws {TooManyRequestsError} always.
  */
 function refuseUntil(ms: number): never {
@@ -122,7 +121,6 @@ function refuseUntil(ms: number): never {
 /**
  * Take the address's resend wait, or refuse with what is left of it.
  * @param email - The address as typed.
- * @returns nothing; the wait is held on return.
  * @throws {TooManyRequestsError} when the address is still waiting.
  */
 async function takeCooldown(email: string): Promise<void> {
@@ -172,8 +170,11 @@ async function sendCode(ticket: string, email: string, locale: string): Promise<
  * The same browser submitting the same address again keeps its ticket and,
  * inside the resend wait, its code; the password is replaced by the latest
  * one typed. Anything else starts a new pending sign-up under a new ticket.
- * @param input - The browser's ticket (if it has one), the address, the
- *   password and the language the request was made in.
+ * @param input - What the sign-up form sent, plus the browser's ticket.
+ * @param input.ticket - The browser's ticket, or `null` when it has none.
+ * @param input.email - The address as typed.
+ * @param input.password - The password as typed.
+ * @param input.locale - The language the request was made in; the mail is written in it.
  * @returns The ticket and the two timings the page shows.
  * @throws {ConflictError} when the address already has an account.
  * @throws {TooManyRequestsError} when the address is inside its resend wait.

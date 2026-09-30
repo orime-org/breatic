@@ -38,11 +38,8 @@
       "reset_link_sent": "If this email is registered, a reset link has been sent.",
       "reset_success": "Password reset successful. Please sign in.",
       "reset_recovery_success": "Password reset successful. Save your new recovery code.",
-      "email_verified": "Email verified.",
-      "verify_email_sent": "Verification email sent. Check your inbox.",
       "invalid_reset_token": "This password reset link is invalid or has expired",
       "invalid_recovery_code": "That email or recovery code is not correct",
-      "invalid_verification_token": "This verification link is invalid or has expired",
       "signup_code_invalid": "That code is incorrect.",
       "signup_code_exhausted": "This code can no longer be used. Request a new one.",
       "signup_expired": "This sign-up has expired.",
@@ -222,12 +219,6 @@
         "lead": "You requested a password reset.",
         "action": "Reset your password",
         "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, ignore this email."
-      },
-      "email_verification": {
-        "subject": "Verify your email",
-        "lead": "Welcome to Breatic. Click the button below to verify your email address.",
-        "action": "Verify your email address",
-        "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, you can ignore this email."
       },
       "footer": "This is an automated message; replies are not read.",
       "help": "Need help? Read the <manual>User manual</manual> or write to <contact>{email}</contact>.",
@@ -818,19 +809,6 @@
       "success": "Password updated. Please sign in.",
       "failed": "Could not reset your password. Please try again.",
       "backToSignIn": "Back to sign in"
-    },
-    "verify": {
-      "verifying": "Verifying your email...",
-      "pleaseWait": "One moment please.",
-      "successTitle": "Email verified",
-      "successBody": "Your email is confirmed. You can now use everything breatic has to offer.",
-      "goToStudio": "Go to Studio",
-      "failedTitle": "Could not verify your email",
-      "failedBody": "The link may have expired or already been used. Sign in and request a fresh verification email from your account settings.",
-      "checkInboxTitle": "Check your inbox",
-      "checkInboxBody": "Open the verify-email link we just sent you. If it didn't arrive, you can request a new one from your account settings.",
-      "signIn": "Sign in",
-      "failed": "Email verification failed."
     }
   },
   "roleTag": {

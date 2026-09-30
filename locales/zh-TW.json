@@ -38,11 +38,8 @@
       "reset_link_sent": "若該電子郵件已註冊,重設連結已寄送。",
       "reset_success": "密碼重設成功,請登入。",
       "reset_recovery_success": "密碼重設成功,請保存新的復原碼。",
-      "email_verified": "電子郵件已驗證。",
-      "verify_email_sent": "驗證郵件已寄送,請查收。",
       "invalid_reset_token": "這個密碼重設連結無效或已過期",
       "invalid_recovery_code": "電子郵件或復原碼不正確",
-      "invalid_verification_token": "這個驗證連結無效或已過期",
       "signup_code_invalid": "驗證碼不正確。",
       "signup_code_exhausted": "這個驗證碼已失效，請重新取得。",
       "signup_expired": "本次註冊已過期。",
@@ -222,12 +219,6 @@
         "lead": "你申請了重設密碼。",
         "action": "重設密碼",
         "footer": "連結將在 {hours, plural, other {# 小時}}後失效。如果不是你本人操作，請忽略這封郵件。"
-      },
-      "email_verification": {
-        "subject": "驗證你的電子郵件",
-        "lead": "歡迎來到 Breatic。點擊下方按鈕驗證你的電子郵件地址。",
-        "action": "驗證電子郵件地址",
-        "footer": "連結將在 {hours, plural, other {# 小時}}後失效。如果不是你本人操作，可以忽略這封郵件。"
       },
       "footer": "這是一封自動發送的郵件，回覆不會被閱讀。",
       "help": "需要協助？查看<manual>使用者手冊</manual>，或寄信到 <contact>{email}</contact>。",
@@ -818,19 +809,6 @@
       "success": "密碼已更新,請登入。",
       "failed": "密碼重設失敗,請重試。",
       "backToSignIn": "返回登入"
-    },
-    "verify": {
-      "verifying": "正在驗證你的電子郵件...",
-      "pleaseWait": "請稍候。",
-      "successTitle": "電子郵件已驗證",
-      "successBody": "你的電子郵件已確認,現在可以使用 breatic 的全部功能。",
-      "goToStudio": "進入 Studio",
-      "failedTitle": "電子郵件驗證失敗",
-      "failedBody": "連結可能已過期或已使用。請登入後,於帳號設定重新寄送驗證郵件。",
-      "checkInboxTitle": "請查收郵件",
-      "checkInboxBody": "開啟我們剛才寄給你的驗證連結。若未收到,可在帳號設定重新寄送。",
-      "signIn": "登入",
-      "failed": "電子郵件驗證失敗。"
     }
   },
   "roleTag": {
