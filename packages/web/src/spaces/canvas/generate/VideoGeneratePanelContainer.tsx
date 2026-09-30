@@ -486,40 +486,37 @@ function VideoGeneratePanelBody({
   // Storyboard writes (#2218). Each reads the mode and the total off live
   // Yjs at click time, for the reason the other writes do: a collaborator may
   // have switched either since this render.
+  const liveBoard = React.useCallback(() => {
+    const live = freshVm();
+    const spec = specOf(live.modelEntry);
+    return { mode: live.mode, spec, total: totalOf(spec, live.params) };
+  }, [freshVm]);
   const onToggleStoryboard = React.useCallback(
     (on: boolean) => setStoryboardKind(projectId, spaceId, nodeId, freshVm().mode, on ? 'auto' : 'off'),
     [projectId, spaceId, nodeId, freshVm],
   );
   const onEnterShots = React.useCallback(() => {
-    const live = freshVm();
-    enterStoryboardShots(projectId, spaceId, nodeId, live.mode, totalOf(specOf(live.modelEntry), live.params));
-  }, [projectId, spaceId, nodeId, freshVm]);
+    const { mode: liveMode, total: liveTotal } = liveBoard();
+    enterStoryboardShots(projectId, spaceId, nodeId, liveMode, liveTotal);
+  }, [projectId, spaceId, nodeId, liveBoard]);
   const onBackToAuto = React.useCallback(
     () => setStoryboardKind(projectId, spaceId, nodeId, freshVm().mode, 'auto'),
     [projectId, spaceId, nodeId, freshVm],
   );
   const onAddShot = React.useCallback(() => {
-    const live = freshVm();
-    const liveSpec = specOf(live.modelEntry);
-    addStoryboardShot(
-      projectId,
-      spaceId,
-      nodeId,
-      live.mode,
-      totalOf(liveSpec, live.params),
-      liveSpec?.maxShots ?? Number.POSITIVE_INFINITY,
-    );
-  }, [projectId, spaceId, nodeId, freshVm]);
+    const { mode: liveMode, spec: liveSpec, total: liveTotal } = liveBoard();
+    addStoryboardShot(projectId, spaceId, nodeId, liveMode, liveTotal, liveSpec?.maxShots ?? Number.POSITIVE_INFINITY);
+  }, [projectId, spaceId, nodeId, liveBoard]);
   const onStepShot = React.useCallback(
     (shotId: string, delta: 1 | -1) => stepStoryboardShot(projectId, spaceId, nodeId, freshVm().mode, shotId, delta),
     [projectId, spaceId, nodeId, freshVm],
   );
   const onRemoveShot = React.useCallback(
     (shotId: string) => {
-      const live = freshVm();
-      removeStoryboardShot(projectId, spaceId, nodeId, live.mode, shotId, totalOf(specOf(live.modelEntry), live.params));
+      const { mode: liveMode, total: liveTotal } = liveBoard();
+      removeStoryboardShot(projectId, spaceId, nodeId, liveMode, shotId, liveTotal);
     },
-    [projectId, spaceId, nodeId, freshVm],
+    [projectId, spaceId, nodeId, liveBoard],
   );
 
   // Reference and first frame are TOGGLES: start the pick when this node is not
