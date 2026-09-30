@@ -101,8 +101,10 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     const indented = tr.doc.resolve(bnBlock.beforePos).depth > 1;
 
     if (blockEmpty) {
-      // Every node that declares `quoted` is a textblock, so an empty one
-      // puts the caret at offset 0. `blocknote-schema.test.ts` holds that.
+      // An empty selection sits in a textblock, so the caret is at offset 0.
+      // The one carrier of `quoted` with no content, the divider, only ever
+      // holds a node selection, and Enter over that went to
+      // `handleWholeBlockEnter` above. `blocknote-schema.test.ts` holds that.
       if (indented) {
         // BlockNote lifts this one out a level, which creates no block and so
         // loses no props.

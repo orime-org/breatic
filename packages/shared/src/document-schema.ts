@@ -93,7 +93,7 @@ export interface DocumentSchema {
  * beside it, which decides who stops editing, is computed from the lists.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-09-22T00:00:00Z",
+  publishedAt: "2026-09-30T00:00:00Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -120,6 +120,7 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "textColor",
     ],
     codeBlock: ["language", "quoted"],
+    divider: ["quoted"],
     doc: [],
     hardBreak: [],
     heading: [

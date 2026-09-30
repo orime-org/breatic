@@ -38,6 +38,8 @@ import { withCollaboration } from '@blocknote/core/yjs';
 import type * as Y from 'yjs';
 
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
+import { documentDividerInputExtension } from '@web/spaces/document/document-divider';
+import { documentSelectionPaintExtension } from '@web/spaces/document/document-selection-paint';
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
@@ -128,6 +130,8 @@ export function buildDocumentEditor(
       documentKeyboardMoveExtension(),
       documentTrailingPressExtension(),
       documentQuoteInputExtension(),
+      documentDividerInputExtension(),
+      documentSelectionPaintExtension(),
       documentLinkEditMarkExtension(),
       documentDragDropExtension(),
       documentNoNodeClickExtension(),

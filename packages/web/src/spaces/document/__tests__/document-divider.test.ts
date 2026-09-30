@@ -263,17 +263,23 @@ describe('the handle menu Divider row (A2)', () => {
 
 describe('a no-text block inside the reader selection (A3 · A6)', () => {
   /**
-   * Whether the block's content element carries the band's class.
+   * Whether each block's own element carries the band's class.
    * @param editor - The editor.
-   * @param type - The content type to look for.
-   * @returns One entry per block of that type, in order.
+   * @param selector - How that block's element is found.
+   * @returns One entry per block found, in order.
    */
-  function painted(editor: Editor, type: string): boolean[] {
+  function painted(editor: Editor, selector: string): boolean[] {
     const dom = editor.prosemirrorView!.dom;
-    return [...dom.querySelectorAll(`[data-content-type="${type}"]`)].map(
-      (el) => el.classList.contains(IN_SELECTION_CLASS),
+    return [...dom.querySelectorAll(selector)].map((el) =>
+      el.classList.contains(IN_SELECTION_CLASS),
     );
   }
+
+  /** How a divider's element is found. */
+  const DIVIDER_EL = '[data-content-type="divider"]';
+
+  /** How a fallback block's element is found (`document-unsupported-blocknote.ts`). */
+  const FALLBACK_EL = '[data-unsupported-block]';
 
   /**
    * A three-block document with the divider in the middle, focused.
@@ -308,7 +314,7 @@ describe('a no-text block inside the reader selection (A3 · A6)', () => {
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, dividerPos(editor))));
 
-    expect(painted(editor, 'divider')).toEqual([true]);
+    expect(painted(editor, DIVIDER_EL)).toEqual([true]);
   });
 
   it('is painted when a text selection runs across it', () => {
@@ -319,7 +325,7 @@ describe('a no-text block inside the reader selection (A3 · A6)', () => {
       view.state.tr.setSelection(TextSelection.create(view.state.doc, 4, pos + 8)),
     );
 
-    expect(painted(editor, 'divider')).toEqual([true]);
+    expect(painted(editor, DIVIDER_EL)).toEqual([true]);
   });
 
   it('is painted under select-all', () => {
@@ -327,7 +333,7 @@ describe('a no-text block inside the reader selection (A3 · A6)', () => {
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
 
-    expect(painted(editor, 'divider')).toEqual([true]);
+    expect(painted(editor, DIVIDER_EL)).toEqual([true]);
   });
 
   it('is not painted for a caret', () => {
@@ -335,7 +341,7 @@ describe('a no-text block inside the reader selection (A3 · A6)', () => {
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 4)));
 
-    expect(painted(editor, 'divider')).toEqual([false]);
+    expect(painted(editor, DIVIDER_EL)).toEqual([false]);
   });
 
   it('is not painted while the editor does not hold the focus', () => {
@@ -345,7 +351,7 @@ describe('a no-text block inside the reader selection (A3 · A6)', () => {
     (view.dom as HTMLElement).blur();
     view.dispatch(view.state.tr);
 
-    expect(painted(editor, 'divider')).toEqual([false]);
+    expect(painted(editor, DIVIDER_EL)).toEqual([false]);
   });
 
   it('paints a fallback block inside a range, and not when it alone is node-selected', () => {
@@ -357,7 +363,7 @@ describe('a no-text block inside the reader selection (A3 · A6)', () => {
     const view = editor.prosemirrorView!;
     view.focus();
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
-    expect(painted(editor, 'unsupportedBlock')).toEqual([true]);
+    expect(painted(editor, FALLBACK_EL)).toEqual([true]);
 
     let at = -1;
     view.state.doc.descendants((node, pos) => {
@@ -365,7 +371,7 @@ describe('a no-text block inside the reader selection (A3 · A6)', () => {
       return at < 0;
     });
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
-    expect(painted(editor, 'unsupportedBlock')).toEqual([false]);
+    expect(painted(editor, FALLBACK_EL)).toEqual([false]);
   });
 });
 
