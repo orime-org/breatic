@@ -679,7 +679,11 @@ function checkGenerateNode(
  */
 function checkNodeRole(node: ProposalNode): ProposalVerdict {
   const configured =
-    node.mode !== undefined || node.model !== undefined || node.params !== undefined;
+    node.mode !== undefined ||
+    node.model !== undefined ||
+    node.params !== undefined ||
+    node.shots !== undefined ||
+    node.storyboard !== undefined;
   if (node.role === "source") {
     // Words are the one kind of material nobody has to go and find: an empty
     // text node is a click away, so proposing one asks for work rather than
@@ -693,7 +697,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
     if (configured || node.prompt !== undefined) {
       return {
         ok: false,
-        reason: `"${node.name}" is an empty node for the reader to fill, so it takes no mode, model, parameters or prompt.`,
+        reason: `"${node.name}" is an empty node for the reader to fill, so it takes no mode, model, parameters, storyboard or prompt.`,
       };
     }
     return { ok: true };
@@ -709,7 +713,7 @@ function checkNodeRole(node: ProposalNode): ProposalVerdict {
   if (configured) {
     return {
       ok: false,
-      reason: `"${node.name}" already holds its words, so it takes no mode and no model -- nothing is generated there.`,
+      reason: `"${node.name}" already holds its words, so it takes no mode, model or storyboard -- nothing is generated there.`,
     };
   }
   // Both marks that reach outside the words land as a mention, and a text

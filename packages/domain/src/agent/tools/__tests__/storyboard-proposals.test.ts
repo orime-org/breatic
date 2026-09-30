@@ -122,4 +122,23 @@ describe("a proposal with a storyboard", () => {
     );
     expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/set by the node's storyboard/) });
   });
+
+  it("refuses shots or a storyboard on a node that does not generate", () => {
+    const source = {
+      nodes: [{ role: "source", type: "image", name: "Your photo", shots: twoShots }],
+      edges: [],
+      modelNote: "",
+      rationale: "",
+      groupName: "Clip",
+    } as unknown as CanvasProposal;
+    expect(checkProposal(source)).toMatchObject({ ok: false, reason: expect.stringMatching(/storyboard/) });
+    const written = {
+      nodes: [{ role: "written", type: "text", name: "Copy", prompt: [{ text: "hi" }], storyboard: "auto" }],
+      edges: [],
+      modelNote: "",
+      rationale: "",
+      groupName: "Clip",
+    } as unknown as CanvasProposal;
+    expect(checkProposal(written)).toMatchObject({ ok: false });
+  });
 });
