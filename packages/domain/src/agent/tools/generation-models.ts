@@ -118,10 +118,10 @@ function renderModel(model: PricedModelInfo): string {
     if (spec.filledBySource) {
       // Which gesture fills it is said here, since the shape a proposal takes
       // depends on it; how to click through that gesture is said once, in the
-      // product guide. The pool is filled by an edge and a mention, and has no
-      // control of its own; a slot is picked on the canvas.
+      // product guide. The pool is filled by an edge or a focus crop, then a
+      // mention, and has no control of its own; a slot is picked on the canvas.
       const how = spec.fromReferencePool
-        ? `filled on the canvas, not typed here, by an edge into this node and a mention of it in the prompt; the steps are in ${GET_PRODUCT_GUIDE}`
+        ? `filled on the canvas, not typed here, by an edge into this node or a focus crop taken in its panel, then a mention of it in the prompt; the steps are in ${GET_PRODUCT_GUIDE}`
         : `filled from another node on the canvas through a source slot, not typed here; leave it unset; the steps are in ${GET_PRODUCT_GUIDE}`;
       return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
     }

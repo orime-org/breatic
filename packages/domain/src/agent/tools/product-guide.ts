@@ -24,7 +24,7 @@ import { canConnect, canGenerate, t, type NodeType } from "@breatic/shared";
 const inputSchema = z.object({}).strict();
 
 /** The node types a reader can create, in the order the create menus list them. */
-const CREATABLE: readonly NodeType[] = ["text", "image", "video", "audio"];
+const CREATABLE: readonly NodeType[] = ["text", "image", "audio", "video"];
 
 /**
  * A message as the reader's screen shows it, quoted.
@@ -63,13 +63,13 @@ export function renderProductGuide(): string {
     "## Spaces",
     "A project holds spaces, shown as tabs along the top. The + button at the right end of the tabs " +
       `opens a dialog: pick ${quoted(t("spaces.kind.canvas"))} or ${quoted(t("spaces.kind.document"))} ` +
-      `(Canvas is the one selected when it opens), type a name and press ${quoted(t("spaces.create.submit"))}. ` +
+      `(${quoted(t("spaces.kind.canvas"))} is the one selected when it opens), type a name and press ${quoted(t("spaces.create.submit"))}. ` +
       "This chat panel sits beside whichever space is open.",
     "",
     "## Making nodes",
     `- Right-click an empty spot on the canvas and pick ${quoted(t("canvas.handle.nodeText"))}, ` +
-      `${quoted(t("canvas.handle.nodeImage"))}, ${quoted(t("canvas.handle.nodeVideo"))} or ` +
-      `${quoted(t("canvas.handle.nodeAudio"))}; the node appears where you clicked.`,
+      `${quoted(t("canvas.handle.nodeImage"))}, ${quoted(t("canvas.handle.nodeAudio"))} or ` +
+      `${quoted(t("canvas.handle.nodeVideo"))}; the node appears where you clicked.`,
     `- Or open ${quoted(t("menu.item.nodes"))} in the floating menu along the left edge and pick a type; ` +
       "the node appears in the middle of the view.",
     `- Drop files onto the canvas, or use ${quoted(t("menu.item.upload"))} in the same menu: pictures, ` +
@@ -123,10 +123,18 @@ export function renderProductGuide(): string {
       "select it and press the scissors at its middle, or right-click it and choose " +
       `${quoted(t("canvas.edge.delete"))}.`,
     "",
+    "## Focus crops",
+    `In a picture or video panel, ${quoted(t("canvas.generatePanel.focus"))} takes a region of a picture or ` +
+      "video node as a reference: press it, click a node on the canvas, drag a box over the part you want and " +
+      `press ${quoted(t("canvas.generatePanel.focusConfirm"))}. The crop joins the strip of references above ` +
+      `the prompt, marked ${quoted(t("canvas.generatePanel.focusCropTag"))}. It is a copy: it needs no ` +
+      "connection, and it stays if the source node changes.",
+    "",
     "## Mentions",
-    "A node connected into this one is offered but not sent until the prompt mentions it. In the prompt, type " +
-      "@ and choose the node from the list that opens; only nodes connected into this one are listed. Clicking " +
-      "a row in the strip of references above the prompt inserts it too. Typing the name does not mention it.",
+    "Connected nodes and focus crops are offered but not sent until the prompt mentions them. In the prompt, " +
+      "type @ and choose from the list that opens: it holds the nodes connected into this one and this " +
+      "node's focus crops, less any the current mode and model cannot take. Clicking a row in the strip of " +
+      "references above the prompt inserts it too. Typing the name does not mention it.",
     "",
     "## Groups and undo",
     "Drag a box across empty canvas to select several nodes; the bar above them offers " +
@@ -137,32 +145,42 @@ export function renderProductGuide(): string {
     "## Proposal cards",
     `A proposal you make appears in this chat as a card. Pressing ${quoted(t("chat.proposal.use"))} places its ` +
       "nodes near the middle of the reader's view, wired and grouped, as one step undo reverses. A canvas has " +
-      `to be open: anywhere else the card only says ${quoted(t("chat.proposal.needCanvas"))} With one ` +
-      "generating node its panel opens by itself; with several, the reader right-clicks each and chooses " +
+      `to be open: anywhere else pressing it shows the message ${quoted(t("chat.proposal.needCanvas"))} and ` +
+      "places nothing. Each generating node arrives with its prompt already written, the mode and model already " +
+      "set, and the connections and mentions it needs already in place. A spot left for the reader shows in " +
+      "square brackets in the prompt, to be replaced with their own words; a spot for their own material also " +
+      "already mentions the empty node that material goes in. With one generating node its panel opens by " +
+      "itself; with several, the reader right-clicks each and chooses " +
       `${quoted(t("canvas.nodeMenu.generate"))}. An empty node in the proposal is for the reader's own ` +
       "material: they double-click it and pick a file.",
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; `1. ` numbered list; `- ` " +
-      "bulleted list; `[ ] ` to-do; three backticks for a code block; `> ` quote.",
+      "bulleted list; `[ ] ` to-do; three backticks then a space for a code block; `> ` quote.",
     "- Shortcuts, Cmd on a Mac and Ctrl elsewhere: Cmd+Alt+0 plain text, Cmd+Alt+1/2/3 headings, " +
       "Cmd+Shift+8 bulleted list, Cmd+Shift+7 numbered list, Cmd+Shift+9 to-do, Cmd+Alt+C code block, " +
       "Cmd+Shift+B quote; Cmd+B bold, Cmd+I italic, Cmd+U underline, Cmd+Shift+S strikethrough, Cmd+E " +
       "inline code.",
-    "- Selecting text shows a bar of icon buttons: block type, alignment, bold, italic, strikethrough, " +
-      "underline, link, inline code, and colour (shown as the letter A).",
+    "- Selecting text shows a bar of icon buttons, each naming itself when hovered: " +
+      `${quoted(t("spaces.document.commands.blockType"))}, ${quoted(t("spaces.document.commands.align"))}, ` +
+      `${quoted(t("spaces.document.commands.bold"))}, ${quoted(t("spaces.document.commands.italic"))}, ` +
+      `${quoted(t("spaces.document.commands.strike"))}, ${quoted(t("spaces.document.commands.underline"))}, ` +
+      `${quoted(t("spaces.document.commands.link"))}, ${quoted(t("spaces.document.commands.code"))}, and ` +
+      `${quoted(t("spaces.document.commands.color"))} (drawn as the letter A).`,
     "- Hovering a line shows a handle at its left. Drag it to move the block; click it for a menu with " +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
-      `${quoted(t("spaces.document.blockHandle.delete"))}, block type, alignment and colour.`,
+      `${quoted(t("spaces.document.blockHandle.delete"))}, ${quoted(t("spaces.document.commands.blockType"))}, ` +
+      `${quoted(t("spaces.document.commands.align"))} and ${quoted(t("spaces.document.commands.color"))}.`,
     "- There is no slash menu. Not available yet: comments, snapshots, images or other media in a document, " +
-      "and the AI menu on the selection bar, which looks active but does nothing.",
+      `and the ${quoted(t("spaces.document.commands.ai"))} menu on the selection bar, which looks active but ` +
+      "does nothing.",
   ].join("\n");
 }
 
 export const productGuide: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "How the reader operates our product, canvas and document spaces: making, filling and connecting nodes, " +
-    "opening the generation panel and what is in it, source slots, mentions, groups, placing a proposal card, " +
+    "opening the generation panel and what is in it, source slots, focus crops, mentions, groups, placing a proposal card, " +
     "and writing in a document. Read it before telling the reader how to do something here: you cannot see " +
     "their screen. Describe only what it says. Name a control with words on it by the quoted name it gives, " +
     "which is what the reader's screen shows; describe an icon-only control the way it describes it.",
