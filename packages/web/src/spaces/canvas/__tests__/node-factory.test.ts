@@ -62,7 +62,7 @@ describe('createEmptyNode — empty content node factory', () => {
     const node = createEmptyNode('image', pos, 'u');
     expect(node.data.content).toBeUndefined();
     expect(node.data.coverUrl).toBeUndefined();
-    expect(node.data.prompt).toBeUndefined();
+    expect(node.data.prompts).toBeUndefined();
     expect(node.data.model).toBeUndefined();
   });
 

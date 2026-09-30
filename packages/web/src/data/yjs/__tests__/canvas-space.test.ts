@@ -21,7 +21,6 @@ import {
   runCanvasUndoBatch,
   setGroupBackground,
   getLyricsFragment,
-  readNodeFragments,
   getPromptFragment,
   isNodeLocked,
   setNodeStyleImage,
@@ -122,11 +121,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
           // Eager-seeded at birth (concurrent-first-crop safety) — the
           // wire carries an empty array, inert for every reader.
           focusImages: [],
-          // Seeded at birth too (#1880): an empty prompt container, so two
-          // people opening the panel share one instead of each minting theirs.
-          // The view carries its serialized form; the editor binds to the live
-          // fragment through getPromptFragment, not through this projection.
-          prompt: '',
         },
       },
     ]);
@@ -178,7 +172,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       errorMessage: undefined,
       locked: false,
       focusImages: [],
-      prompt: '',
     });
   });
 
@@ -907,20 +900,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
 
   it('getLyricsFragment returns null for a missing node', () => {
     expect(getLyricsFragment(PID, SID, 'ghost', 't2m')).toBeNull();
-  });
-
-
-  it('readNodeFragments reads every fragment a node holds, by field', () => {
-    addNode(PID, SID, sampleFields('audio'));
-    const fragments = readNodeFragments(PID, SID, 'n1');
-    expect(fragments).toEqual({
-      prompt: getPromptFragment(PID, SID, 'n1'),
-      lyrics: getLyricsFragment(PID, SID, 'n1'),
-    });
-  });
-
-  it('readNodeFragments reads nothing for a missing node', () => {
-    expect(readNodeFragments(PID, SID, 'ghost')).toEqual({});
   });
 
   it('isNodeLocked reflects the live lock state (fresh Yjs read)', () => {

@@ -85,6 +85,9 @@ export function resolveParamsForModel(
   // model.params is trusted (the catalog is sanitized at the API boundary): it
   // is always a Record<string, ParamDescriptor>.
   for (const [key, descriptor] of Object.entries(model.params)) {
+    // The storyboard fills these from the node's shots at submit (#2218); a
+    // record value would be a second source for the same param.
+    if (descriptor.fill === 'storyboard') continue;
     // A param whose value can only come from a live upstream list keeps
     // nothing but what the user actually chose. Writing its yaml default into
     // the record makes "has a voice been chosen" answer yes for a picker the

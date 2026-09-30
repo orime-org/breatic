@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
-import type { ChatAttachedChip } from '@breatic/shared';
+import type { ChatAttachedChip, ModelCatalog } from '@breatic/shared';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { PREVIEW_ROWS, previewOf } from '@web/pages/project/chat/attachment-preview';
 import { itemForPick } from '@web/spaces/canvas/attach-nodes';
@@ -134,7 +134,9 @@ describe('what the card of a picked piece of the canvas previews', () => {
     data: data as unknown as CanvasNodeView['data'],
   });
   const doc = new Y.Doc();
-  const body = doc.getXmlFragment('t1.body');
+  const scriptData = doc.getMap<unknown>('t1');
+  const body = new Y.XmlFragment();
+  scriptData.set('body', body);
   const line = (text: string): Y.XmlElement => {
     const block = new Y.XmlElement('paragraph');
     block.insert(0, [new Y.XmlText(text)]);
@@ -150,7 +152,8 @@ describe('what the card of a picked piece of the canvas previews', () => {
     edges: [],
   };
   const readers = {
-    fragmentsOf: (id: string): Record<string, Y.XmlFragment> => (id === 't1' ? { body } : {}),
+    dataOf: (id: string): Y.Map<unknown> | null => (id === 't1' ? scriptData : null),
+    catalog: { image: [], video: [], audio: [], tts: [], three_d: [], total: 0, credit_multiplier: 1 } as unknown as ModelCatalog,
   };
   const pick = (ids: string[]) => previewOf(itemForPick(graph, ids, readers)?.chip);
 

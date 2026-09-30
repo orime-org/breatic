@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { ChatAttachedChip } from '@breatic/shared';
+import type { ChatAttachedChip, GenerationNodeType, ModelCatalog, StoryboardKind } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { ContentNodeView } from '@web/data/yjs/node-view';
 import { toAbsolutePosition } from '@web/spaces/canvas/group-geometry';
+import { currentGeneration } from '@web/spaces/canvas/generate/current-generation';
 import { REFERENCE_MENTION_NODE } from '@web/spaces/canvas/generate/at-reference';
 import {
   MENTION_KIND_ATTR,
@@ -20,10 +22,15 @@ const ATTACHABLE = new Set<string>(['text', 'image', 'audio', 'video', 'annotati
 /** How long a note's own words may run when they stand in for its name. */
 const NOTE_NAME_CHARS = 40;
 
-/** Reads what a node's view carries only as markup: the words in its fragments. */
-export interface NodeTextReaders {
-  /** Every fragment in a node's data, by the field it sits under. */
-  fragmentsOf: (nodeId: string) => Record<string, Y.XmlFragment>;
+/** The node kinds that generate, and so have a generation in effect. */
+const GENERATING = new Set<string>(['image', 'video', 'audio']);
+
+/** What the pick reads beyond the canvas view (#2218). */
+export interface NodeReaders {
+  /** A node's stored data map, or null for a node that is gone. */
+  dataOf: (nodeId: string) => Y.Map<unknown> | null;
+  /** The model catalog, to resolve what each node would run right now. */
+  catalog: ModelCatalog;
 }
 
 /**
@@ -38,14 +45,30 @@ function mentionText(element: Y.XmlElement): string | undefined {
 }
 
 /**
- * A node's fragments as plain text, by the field each sits under.
- * @param fragments - The fragments.
- * @returns Their words.
+ * A stored value as plain data: fragments become their words, maps objects
+ * and arrays arrays, all the way down.
+ * @param value - A value from a node's data map.
+ * @returns Its plain form.
  */
-function plainTexts(fragments: Record<string, Y.XmlFragment>): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(fragments).map(([key, fragment]) => [key, bodyToPlainText(fragment, mentionText)]),
-  );
+function plain(value: unknown): unknown {
+  if (value instanceof Y.XmlFragment) return bodyToPlainText(value, mentionText);
+  if (value instanceof Y.Map) {
+    return Object.fromEntries([...value.entries()].map(([key, inner]) => [key, plain(inner)]));
+  }
+  if (value instanceof Y.Array) return value.toArray().map(plain);
+  return value;
+}
+
+/**
+ * The tier stored for a mode, read off a node's plain data.
+ * @param data - The node's plain data.
+ * @param mode - The mode.
+ * @returns The stored tier, if any.
+ */
+function storedTier(data: Record<string, unknown>, mode: string): StoryboardKind | undefined {
+  const boards = data.storyboards as Record<string, { kind?: unknown }> | undefined;
+  const kind = boards?.[mode]?.kind;
+  return kind === 'off' || kind === 'auto' || kind === 'custom' ? kind : undefined;
 }
 
 /**
@@ -111,21 +134,23 @@ function pickId(ids: readonly string[]): string {
  * The item handed to the chat when a piece of the canvas is added to the agent.
  *
  * One press is one item: the picked nodes as they are -- each with where it
- * sits, the group it is in and its data -- and the links between them. A
- * fragment's field in the view holds its XML markup, so each is replaced by
- * its words as plain text. Named after the node or group when one was picked,
+ * sits, the group it is in and its data -- and the links between them. The
+ * data is everything the node stores -- every mode's prompt, lyrics and
+ * storyboard, whatever the model in use takes -- with fragments as plain
+ * text, and a generating node also says what it would run right now
+ * (#2218), so the agent can tell what is written from what is in effect. Named after the node or group when one was picked,
  * and left unnamed for several, which the card counts.
  * @param graph - The canvas, read fresh.
  * @param graph.nodes - Every node on it.
  * @param graph.edges - Every link on it.
  * @param picked - The ids that were picked.
- * @param readers - Reads the words the view does not carry.
+ * @param readers - Reads what the view does not carry.
  * @returns The ready item, or null when nothing picked can be handed over.
  */
 export function itemForPick(
   graph: { nodes: readonly CanvasNodeView[]; edges: readonly CanvasEdge[] },
   picked: readonly string[],
-  readers: NodeTextReaders,
+  readers: NodeReaders,
 ): TrayItem | null {
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   /**
@@ -144,17 +169,36 @@ export function itemForPick(
   });
   if (nodes.length === 0) return null;
   const ids = new Set(nodes.map((n) => n.id));
-  const snapshot = {
-    nodes: nodes.map((node) => ({
+  /**
+   * One node as handed over.
+   * @param node - The node.
+   * @returns Its snapshot entry.
+   */
+  const entry = (node: CanvasNodeView): Record<string, unknown> => {
+    const stored = readers.dataOf(node.id);
+    const data = {
+      ...(node.data as unknown as Record<string, unknown>),
+      ...(stored ? (plain(stored) as Record<string, unknown>) : {}),
+    };
+    const current = GENERATING.has(node.data.kind)
+      ? currentGeneration(
+          node.data.kind as GenerationNodeType,
+          data as unknown as ContentNodeView,
+          readers.catalog,
+          (mode) => storedTier(data, mode),
+      )
+      : null;
+    return {
       id: node.id,
       type: node.data.kind,
       position: canvasPosition(node),
       ...(node.parentId ? { parentId: node.parentId } : {}),
-      data: {
-        ...(node.data as unknown as Record<string, unknown>),
-        ...plainTexts(readers.fragmentsOf(node.id)),
-      },
-    })),
+      data,
+      ...(current ? { current } : {}),
+    };
+  };
+  const snapshot = {
+    nodes: nodes.map(entry),
     edges: graph.edges.filter((e) => ids.has(e.source) && ids.has(e.target)),
   };
   const lead = picked.length === 1 ? byId.get(picked[0] ?? '') : undefined;
