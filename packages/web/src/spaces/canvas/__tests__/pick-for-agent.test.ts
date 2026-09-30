@@ -16,7 +16,8 @@ import { addNode, setNodeMode } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { firstVoiceKey } from '@web/spaces/canvas/generate/first-voice-query';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { pickForAgent } from '@web/spaces/canvas/pick-for-agent';
+import { handToAgent, pickForAgent } from '@web/spaces/canvas/pick-for-agent';
+import * as attach from '@web/stores/attach-to-chat';
 
 const PID = 'p1';
 const SID = 's1';
@@ -40,13 +41,11 @@ const CATALOG = {
 } as unknown as ModelCatalog;
 
 /**
- * A client with the catalog already cached.
+ * A client with nothing cached.
  * @returns The client.
  */
 function client(): QueryClient {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  queryClient.setQueryData(modelCatalogQuery().queryKey, CATALOG);
-  return queryClient;
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
 /**
@@ -78,7 +77,7 @@ describe('handing an audio node to the agent', () => {
     const queryClient = client();
     queryClient.setQueryData(firstVoiceKey('speech'), { id: 'cached', name: 'Cached' });
 
-    const item = await pickForAgent(queryClient, PID, SID, ['a1']);
+    const item = await pickForAgent(queryClient, CATALOG, PID, SID, ['a1']);
 
     expect(list).not.toHaveBeenCalled();
     expect(speechEntry(item)?.current).toMatchObject({ params: { voice_id: 'cached' } });
@@ -87,7 +86,7 @@ describe('handing an audio node to the agent', () => {
   it('asks for the first voice when it is not cached, then names it', async () => {
     const list = vi.spyOn(voicesApi, 'list').mockResolvedValue({ voices: [{ id: 'first', name: 'First' }] } as never);
 
-    const item = await pickForAgent(client(), PID, SID, ['a1']);
+    const item = await pickForAgent(client(), CATALOG, PID, SID, ['a1']);
 
     expect(list).toHaveBeenCalledTimes(1);
     expect(speechEntry(item)?.current).toMatchObject({ params: { voice_id: 'first' } });
@@ -96,7 +95,7 @@ describe('handing an audio node to the agent', () => {
   it('leaves the voice out when the list cannot be read', async () => {
     vi.spyOn(voicesApi, 'list').mockRejectedValue(new Error('down'));
 
-    const item = await pickForAgent(client(), PID, SID, ['a1']);
+    const item = await pickForAgent(client(), CATALOG, PID, SID, ['a1']);
 
     expect(speechEntry(item)?.current).not.toHaveProperty('params.voice_id');
   });
@@ -108,16 +107,52 @@ describe('handing an audio node to the agent', () => {
       return { voices: [{ id: 'first', name: 'First' }] } as never;
     });
 
-    const entry = speechEntry(await pickForAgent(client(), PID, SID, ['a1']));
+    const entry = speechEntry(await pickForAgent(client(), CATALOG, PID, SID, ['a1']));
 
     expect(entry?.data).toMatchObject({ mode: 'sfx' });
     expect(entry?.current).toMatchObject({ mode: 'sfx' });
   });
+});
 
-  it('fails when the catalog cannot be read', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+describe('handing a pick over', () => {
+  beforeEach(() => {
+    _resetForTests();
+    addNode(PID, SID, {
+      id: 'a1',
+      type: 'audio',
+      position: { x: 0, y: 0 },
+      data: { name: 'Voice', createdAt: 1, createdBy: 'u1', locked: false, attachments: [] },
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('attaches the pick once the catalog is read', async () => {
+    const attached = vi.spyOn(attach, 'attachToChat').mockResolvedValue();
+    vi.spyOn(voicesApi, 'list').mockResolvedValue({ voices: [] } as never);
+    const queryClient = client();
+    queryClient.setQueryData(modelCatalogQuery().queryKey, CATALOG);
+
+    await expect(handToAgent(queryClient, PID, SID, ['a1'])).resolves.toBe('attached');
+    expect(attached).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the catalog is missing, and attaches nothing, when it cannot be read', async () => {
+    const attached = vi.spyOn(attach, 'attachToChat');
+    const queryClient = client();
     vi.spyOn(queryClient, 'ensureQueryData').mockRejectedValue(new Error('down'));
 
-    await expect(pickForAgent(queryClient, PID, SID, ['a1'])).rejects.toThrow('down');
+    await expect(handToAgent(queryClient, PID, SID, ['a1'])).resolves.toBe('no-catalog');
+    expect(attached).not.toHaveBeenCalled();
+  });
+
+  it('lets a failure while building the pick through as itself', async () => {
+    vi.spyOn(attach, 'attachToChat').mockRejectedValue(new Error('tray down'));
+    vi.spyOn(voicesApi, 'list').mockResolvedValue({ voices: [] } as never);
+    const queryClient = client();
+    queryClient.setQueryData(modelCatalogQuery().queryKey, CATALOG);
+
+    await expect(handToAgent(queryClient, PID, SID, ['a1'])).rejects.toThrow('tray down');
   });
 });

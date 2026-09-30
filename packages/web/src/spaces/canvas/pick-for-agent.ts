@@ -12,30 +12,32 @@
  */
 
 import type { QueryClient } from '@tanstack/react-query';
-import type { Voice } from '@breatic/shared';
+import type { ModelCatalog, Voice } from '@breatic/shared';
 
 import { nodeDataMap, readCanvasGraph } from '@web/data/yjs/canvas-space';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { itemForPick } from '@web/spaces/canvas/attach-nodes';
 import { firstVoiceKey, firstVoiceQuery } from '@web/spaces/canvas/generate/first-voice-query';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { attachToChat } from '@web/stores/attach-to-chat';
 
 /**
  * The picked piece of the canvas as one item for the agent.
- * @param queryClient - Holds the catalog and each model's first voice.
+ * @param queryClient - Holds each model's first voice.
+ * @param catalog - The model catalog, for what each node would run.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - The canvas space.
  * @param ids - The picked node ids; a group brings its members.
  * @returns The item, or null for nothing to hand over.
- * @throws {Error} When the catalog cannot be read.
+ * @throws {never} Never; a first voice that cannot be read is left out.
  */
 export async function pickForAgent(
   queryClient: QueryClient,
+  catalog: ModelCatalog,
   projectId: string,
   spaceId: string,
   ids: readonly string[],
 ): Promise<ReturnType<typeof itemForPick>> {
-  const catalog = await queryClient.ensureQueryData(modelCatalogQuery());
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const unknownVoices = new Set<string>();
   /**
@@ -59,4 +61,32 @@ export async function pickForAgent(
     [...unknownVoices].map((model) => queryClient.fetchQuery(firstVoiceQuery(queryClient, model))),
   );
   return pick();
+}
+
+/**
+ * Hand the picked piece of the canvas to the chat. Only a catalog that cannot
+ * be read is answered as such; anything else that fails while the pick is
+ * built rejects as itself.
+ * @param queryClient - Holds the catalog and each model's first voice.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - The canvas space.
+ * @param ids - The picked node ids; a group brings its members.
+ * @returns Whether it was handed over, or that the catalog could not be read.
+ * @throws {Error} When building or attaching the pick fails.
+ */
+export async function handToAgent(
+  queryClient: QueryClient,
+  projectId: string,
+  spaceId: string,
+  ids: readonly string[],
+): Promise<'attached' | 'no-catalog'> {
+  let catalog: ModelCatalog;
+  try {
+    catalog = await queryClient.ensureQueryData(modelCatalogQuery());
+  } catch {
+    return 'no-catalog';
+  }
+  const item = await pickForAgent(queryClient, catalog, projectId, spaceId, ids);
+  await attachToChat(projectId, item ? [item] : []);
+  return 'attached';
 }

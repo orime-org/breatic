@@ -93,8 +93,7 @@ import {
   readCanvasGraph,
   readTextBodies,
 } from '@web/data/yjs/canvas-space';
-import { pickForAgent } from '@web/spaces/canvas/pick-for-agent';
-import { attachToChat } from '@web/stores/attach-to-chat';
+import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
@@ -3362,14 +3361,12 @@ function CanvasSpaceInner({
    */
   const addToAgent = React.useCallback(
     (ids: readonly string[]): void => {
-      void pickForAgent(queryClient, projectId, spaceId, ids).then(
-        (item) => attachToChat(projectId, item ? [item] : []),
-        () => {
-          toast.error(t('canvas.generatePanel.catalogUnavailable'), {
-            id: 'generate-catalog-unavailable',
-          });
-        },
-      );
+      void handToAgent(queryClient, projectId, spaceId, ids).then((result) => {
+        if (result !== 'no-catalog') return;
+        toast.error(t('canvas.generatePanel.catalogUnavailable'), {
+          id: 'generate-catalog-unavailable',
+        });
+      });
     },
     [projectId, spaceId, queryClient, t],
   );
