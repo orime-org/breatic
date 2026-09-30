@@ -266,6 +266,23 @@ test('a drag that rests on the last line and then goes lower takes it in (A6)', 
   expect((await read(page)).head).toBe((await read(page)).size - 2);
 });
 
+test('a drag onto an empty last line, and one starting on it, take the line in (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_EMPTY);
+  const word = await wordBox(page, 'Above');
+  const last = await rowBox(page, -1);
+  const onLast = { x: word.x + 30, y: last.y + last.height / 2 };
+
+  await drag(page, { x: word.x + 2, y: word.y + word.height / 2 }, [onLast]);
+  const down = await read(page);
+  expect([down.kind, down.head === down.size - 2]).toEqual(['BodyEdgeSelectionClass', true]);
+
+  await drag(page, onLast, [{ x: word.x + 2, y: word.y + word.height / 2 }]);
+  const up = await read(page);
+  expect([up.kind, up.anchor === up.size - 2]).toEqual(['BodyEdgeSelectionClass', true]);
+  expect(up.domRects).toBeGreaterThanOrEqual(3);
+});
+
 test('a drag that goes below and comes back is a text selection again (A6)', async () => {
   await openFreshDocument(page);
   await setBlocks(page, WITH_DIVIDER);
