@@ -43,7 +43,7 @@ const KEY = new PluginKey<boolean>('documentNodeComposition');
  * @param tr - The transaction.
  * @returns True for a peer's edit or anything else the binding writes.
  */
-export function fromYjs(tr: Transaction): boolean {
+function fromYjs(tr: Transaction): boolean {
   const sync = tr.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean } | undefined;
   return sync?.isChangeOrigin === true;
 }

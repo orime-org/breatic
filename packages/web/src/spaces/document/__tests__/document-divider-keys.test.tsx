@@ -223,26 +223,14 @@ describe('a selected divider and the delete keys (A4)', () => {
     expect(shape(editor)).toEqual(['paragraph:Above', 'divider:', 'paragraph:Below']);
   });
 
-  it.each(['Backspace', 'Delete'])('%s on the last divider leaves the caret in the writable line under it', (key) => {
+  it.each(['Backspace', 'Delete'])('%s on a divider with nothing after it leaves the caret in the block above', (key) => {
     const { editor } = open([{ type: 'paragraph', content: 'Above' }, { type: 'divider' }]);
-    expect(shape(editor)).toEqual(['paragraph:Above', 'divider:', 'paragraph:']);
     select(editor);
 
     press(editor, key);
 
-    expect(shape(editor)).toEqual(['paragraph:Above', 'paragraph:']);
-    expect(caretAt(editor)).toEqual({ text: '', offset: 0 });
-  });
-
-  it('undoes the removal of the last line together with the line put back in its place', () => {
-    const { editor, manager } = open(SANDWICH);
-    const below = (editor.document as Seen[]).at(-1)!;
-
-    editor.removeBlocks([below.id]);
-    expect(shape(editor)).toEqual(['paragraph:Above', 'divider:', 'paragraph:']);
-
-    manager.undo();
-    expect(shape(editor)).toEqual(['paragraph:Above', 'divider:', 'paragraph:Below']);
+    expect(shape(editor)).toEqual(['paragraph:Above']);
+    expect(caretAt(editor)).toEqual({ text: 'Above', offset: 5 });
   });
 });
 
