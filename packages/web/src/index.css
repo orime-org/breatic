@@ -1838,6 +1838,13 @@ body {
   border-top-color: var(--color-border);
 }
 
+/* The caret ProseMirror draws in a gap no text caret can stand in — above a
+   divider that opens the document, say. The library's own is a fixed black
+   that vanishes on the dark theme (#101). */
+.doc-body .ProseMirror-gapcursor::after {
+  border-top-color: var(--color-foreground);
+}
+
 /* A block with no text inside the reader's selection, painted with the colour
    the browser paints selected text with (`document-selection-paint.ts`). One
    look however it got selected — a click, the arrows, a drag, select-all.

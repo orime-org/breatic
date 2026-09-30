@@ -53,6 +53,7 @@ import { DocumentColourPanel } from '@web/spaces/document/document-colour-panel'
 import { MenuTick } from '@web/spaces/document/document-menu-tick';
 import {
   DIMENSION_OF_ROW,
+  blocksUnder,
   tickedOver,
   type BlockTypeId,
 } from '@web/spaces/document/document-block-ticks';
@@ -187,6 +188,11 @@ interface StyleFaces {
   readonly colour: ColourFace;
   /** Whether this row holds words a comment could mark (A3). */
   readonly canComment: boolean;
+  /**
+   * Whether this row has words at all. A divider does not, and of the nine
+   * block type rows only Quote reaches it (#124, A8).
+   */
+  readonly holdsText: boolean;
 }
 
 /**
@@ -199,6 +205,7 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
   return (
     a.align === b.align &&
     a.canComment === b.canComment &&
+    a.holdsText === b.holdsText &&
     sameColours(a.colour, b.colour)
   );
 }
@@ -222,6 +229,7 @@ function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
       align: alignFaceOver(tr.doc, over),
       colour: colourFaceOver(tr.doc, over),
       canComment: canCommentOver(tr.doc, over),
+      holdsText: blocksUnder(tr.doc, over).length > 0,
     };
   });
 }
@@ -363,6 +371,7 @@ export function DocumentBlockMenu({
               >
                 {BLOCK_TYPE_ITEMS.map((item, index) => {
                   const ItemIcon = item.Icon;
+                  const reachable = faces.holdsText || item.id === 'quote';
                   const ruled = rulesAfter(
                     item.id,
                     BLOCK_TYPE_ITEMS[index + 1]?.id,
@@ -372,7 +381,20 @@ export function DocumentBlockMenu({
                       <DropdownMenuItem
                         data-testid={`doc-block-type-${item.id}`}
                         data-ticked={ticked.has(item.id) ? 'true' : undefined}
-                        onSelect={() => {
+                        {...(reachable
+                          ? {}
+                          : {
+                            'aria-disabled': 'true' as const,
+                            className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
+                            onPointerMove: (event: React.PointerEvent) => {
+                              event.preventDefault();
+                            },
+                          })}
+                        onSelect={(event) => {
+                          if (!reachable) {
+                            event.preventDefault();
+                            return;
+                          }
                           const live = rowNow();
                           if (live !== undefined) {
                             runBlockType(editor, item.id, live.id);
