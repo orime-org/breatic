@@ -25,7 +25,7 @@ import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { z } from "zod";
 import { validate } from "@server/middleware/validate.js";
 import { t } from "@breatic/shared";
-import { createTeamStudioSchema, updateStudioSchema } from "@breatic/shared";
+import { createTeamStudioSchema, emailSchema, updateStudioSchema } from "@breatic/shared";
 import { creditPageQuerySchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
@@ -46,7 +46,7 @@ import * as studioInviteService from "@server/modules/studio/studioInvite.servic
 
 /** Invite body — a registered email + the granted role (never admin). */
 const inviteMemberSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
   role: z.enum(["maintainer", "guest"]),
 });
 

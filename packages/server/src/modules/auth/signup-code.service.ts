@@ -32,7 +32,7 @@ import {
   logger,
   sendMail,
 } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { normalizeEmail, t } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 
 const CODE_SPACE = 1_000_000;
@@ -61,16 +61,6 @@ export interface SignupCodeSent {
  */
 export function emailVerificationEnabled(): boolean {
   return env.EMAIL_BACKEND !== "disabled";
-}
-
-/**
- * The form of an address two sign-ups are compared in: casing and
- * surrounding space do not change which mailbox receives the code.
- * @param email - The address as typed.
- * @returns The trimmed, lower-cased address.
- */
-export function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
 }
 
 /**

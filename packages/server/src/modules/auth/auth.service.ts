@@ -31,7 +31,7 @@ import {
   ConflictError,
   UnauthorizedError,
 } from "@breatic/core";
-import { getActiveLocale, t } from "@breatic/shared";
+import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
@@ -179,7 +179,7 @@ export async function loginOrCreateGoogle(
 
   // Google may attest a different address after the account's email changes.
   // It cannot verify the old address still stored on our account.
-  if (authoritativeEmail && user.email === email) {
+  if (authoritativeEmail && user.email === normalizeEmail(email)) {
     user = (await userRepo.updateUser(user.id, { emailVerified: true })) ?? user;
   }
 
