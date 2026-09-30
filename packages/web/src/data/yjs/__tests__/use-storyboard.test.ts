@@ -65,6 +65,21 @@ describe('following a storyboard', () => {
     expect(result.current).toBe(before);
   });
 
+  it('sees a change made after its read and before it subscribed', () => {
+    let changed = false;
+    const { result } = renderHook(() => {
+      const board = useStoryboard(PID, SID, 'v1', 't2v');
+      // A collaborator's write landing between the render-time read and the
+      // subscription in the effect.
+      if (!changed) {
+        changed = true;
+        setStoryboardKind(PID, SID, 'v1', 't2v', 'auto');
+      }
+      return board;
+    });
+    expect(result.current?.kind).toBe('auto');
+  });
+
   it('reads another mode on its own', () => {
     act(() => setStoryboardKind(PID, SID, 'v1', 't2v', 'auto'));
     const { result } = renderHook(() => useStoryboard(PID, SID, 'v1', 'i2v'));

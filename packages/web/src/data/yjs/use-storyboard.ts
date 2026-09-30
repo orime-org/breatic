@@ -44,6 +44,9 @@ export function useStoryboard(
       setVersion((v) => v + 1);
     };
     board.observeDeep(bump);
+    // Read again once subscribed: a change landing between the render-time
+    // read and this effect produced no event this hook heard.
+    setVersion((v) => v + 1);
     return () => board.unobserveDeep(bump);
   }, [projectId, spaceId, nodeId, mode]);
   return React.useMemo(
