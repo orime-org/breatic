@@ -34,7 +34,7 @@ const createdIds: string[] = [];
 
 beforeAll(async () => {
   initCore({ ...process.env, EMAIL_BACKEND: "disabled" });
-  sql = postgres(inject("DATABASE_URL"), { max: 2, prepare: false });
+  sql = postgres(inject("DATABASE_URL"), { max: 3, prepare: false });
   const { createApp } = await import("@server/app.js");
   app = createApp();
 });
@@ -128,6 +128,39 @@ describe("an address is one account whatever its case", () => {
     createdIds.push(result.user.id);
     expect(result.user.id).toBe(user.id);
     expect(result.user.emailVerified).toBe(true);
+  });
+});
+
+describe("two sign-ups for one mailbox at the same time", () => {
+  it("creates one account and tells the other it is already registered", async () => {
+    const { stored } = addressPair();
+    const { register } = await import("@server/modules/auth/auth.service.js");
+    const { ConflictError } = await import("@breatic/core");
+
+    // Hold inserts into users (reads still pass) so both sign-ups get past
+    // the "is it taken" lookup before either one writes.
+    const gate = await sql.reserve();
+    await gate`BEGIN`;
+    await gate`LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`;
+    const racing = Promise.allSettled([
+      register(stored, "password1"),
+      register(stored.toUpperCase(), "password1"),
+    ]);
+    for (let waiting = 0; waiting < 2; ) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const [row] = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE wait_event_type = 'Lock' AND query ILIKE 'insert into "users"%'`;
+      waiting = row!.n;
+    }
+    await gate`COMMIT`;
+    gate.release();
+
+    const results = await racing;
+    for (const r of results) if (r.status === "fulfilled") createdIds.push(r.value.user.id);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const refused = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(refused.reason).toBeInstanceOf(ConflictError);
   });
 });
 
