@@ -211,13 +211,8 @@ class PointerFollower {
     const zone = zoneAt(view, event.clientY);
     const at = { startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY };
     if (event.shiftKey) {
-      // The browser extends its own range from its own anchor, and an anchor
-      // on an edge is not one it can extend from: measured (probe18), a
-      // Shift+click on an earlier block left the range where it was. So a
-      // Shift+click is taken here when it lands past an edge, or when the
-      // anchor is already on one.
+      if (zone === 'body') return;
       const anchorEdge = bodyEdgeAt(view.state.doc, view.state.selection.anchor);
-      if (zone === 'body' && anchorEdge === null) return;
       this.begin({ ...at, zone: 'shift', anchorEdge, left: true, moved: false, onWidget: false });
       event.preventDefault();
       this.sync();
