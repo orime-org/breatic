@@ -509,7 +509,6 @@ const modelsAnswer: ModelsForMode = {
       name: "some-model",
       displayName: "Some Model",
       what: "does things",
-      credits: 4,
       seconds: 18,
       takesPrompt: true,
       params: {},

@@ -13,7 +13,7 @@
  * yjs guards that with a delete filter, and two things about it are ours:
  *
  * - **The set of protected names.** y-prosemirror defaults to one, `paragraph`
- *   (`undo-plugin.js:45`), because that default was written for documents made
+ *   (`undo-plugin.js:43`), because that default was written for documents made
  *   of paragraphs. Ours holds nine block types inside two container types.
  * - **The filter is wrapped**, because saving the container is not enough:
  *   upstream's never sees the container's ATTRIBUTES, so a heading came back
@@ -38,6 +38,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { isCommentMarkWrite } from '@web/spaces/document/document-comment-undo-filter';
 import { documentUndoSelectionPlugin } from '@web/spaces/document/document-undo-selection';
 
 /** Computed once; the schema is fixed for the lifetime of the bundle. */
@@ -130,8 +131,8 @@ export interface DocumentUndo {
  * (`sync-plugin.js:147` records it, `:228` writes it onto the Yjs transaction),
  * but `:147` OVERWRITES it on every ProseMirror transaction, and one dispatch
  * here is more than one transaction: a new block needs an id, and BlockNote's
- * `uniqueID` plugin stamps one from an `appendTransaction` that carries no meta
- * of its own. Measured: one dispatch marked `addToHistory: false` reaches Yjs
+ * `uniqueID` plugin stamps one from an `appendTransaction` that carries no
+ * `addToHistory` of its own (it sets a `uniqueID` meta and nothing else). Measured: one dispatch marked `addToHistory: false` reaches Yjs
  * as `addToHistory: true`, and the machine's edit lands on the user's stack.
  *
  * {@link documentUndoSelectionPlugin} answers the same upstream behaviour with
@@ -145,13 +146,17 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
   // Wrapped so `destroy()` also detaches the doc listener yjs leaks — see
   // `withDestroyListenerCleanup`; the canvas manager has the same problem and
   // the same wrapper.
-  const manager = withDestroyListenerCleanup(
+  const manager: Y.UndoManager = withDestroyListenerCleanup(
     doc,
     () =>
       new Y.UndoManager(documentBodyFragment(doc), {
         trackedOrigins: new Set([ySyncPluginKey]),
         deleteFilter: isDeletableByUndo,
-        captureTransaction: () => marker.userDriven,
+        // The marker answers for a ProseMirror dispatch, and the manager's
+        // own write-back is not one — it carries the content an undo took
+        // out, and asking a question about somebody else's dispatch keeps
+        // that content off the redo stack.
+        captureTransaction: (tr) => tr.origin === manager || marker.userDriven,
       }),
   );
   return { manager, extension: undoExtension(manager, marker) };
@@ -167,10 +172,19 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
  * the user's — the same behaviour `documentUndoSelectionPlugin` steps around.
  *
  * A transaction the sync binding built to bring Yjs's content into this view
- * is marked `addToHistory: false` by upstream (`sync-plugin.js:355`), and undo
+ * is marked `addToHistory: false` by upstream (`sync-plugin.js:385`, the `_tr` every write-back starts from), and undo
  * puts content back through exactly that path. Letting it answer leaves the
  * marker false for whatever comes next, and the redo that follows an undo is
  * refused. Upstream asks the same two questions together at `:214`.
+ *
+ * A third kind answers WRONGLY BY DEFAULT rather than by being let through,
+ * so it is named false instead of passed over: a transaction that only moves
+ * comment highlights. A comment is withdrawn from the card that holds it, so
+ * Cmd+Z is not the way back from one, and the library's own `orphan` rewrites
+ * are not the reader's doing at all — {@link isCommentMarkWrite} carries both
+ * halves of that reasoning. Passing over would not help: the marker would
+ * keep the `true` their last real edit left, and the highlight write would be
+ * captured anyway.
  * @param marker - The marker the manager reads.
  * @returns The ProseMirror plugin.
  */
@@ -185,7 +199,8 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
       init: (): null => null,
 
       /**
-       * Records the dispatch's own answer, passing over the two kinds above.
+       * Records the dispatch's own answer, passing over the two kinds above
+       * and naming the comments sync false.
        * @param tr - The transaction being applied.
        * @returns Null.
        */
@@ -198,7 +213,8 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
           tr.getMeta('appendedTransaction') === undefined &&
           sync?.isChangeOrigin !== true
         ) {
-          marker.userDriven = tr.getMeta('addToHistory') !== false;
+          marker.userDriven =
+            !isCommentMarkWrite(tr) && tr.getMeta('addToHistory') !== false;
         }
         return null;
       },

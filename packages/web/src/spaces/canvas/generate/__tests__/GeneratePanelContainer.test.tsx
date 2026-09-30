@@ -202,6 +202,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       tts: [],
       three_d: [],
       total: 0,
+      credit_multiplier: 1,
     });
     mountContainer();
     act(() => {
@@ -380,7 +381,6 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       description: '',
       guide: '',
       tier: 'optional',
-      cost_per_call: 5,
       generation_time: 10,
       takes_prompt: true,
       params: {
@@ -390,8 +390,6 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
           : {}),
       },
       providers: [],
-      sourcesByMode: { t2i: [] },
-      sourceRuleByMode: { t2i: 'all_of' as const },
     });
     const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
       image: [
@@ -403,6 +401,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
       tts: [],
       three_d: [],
       total: 2,
+      credit_multiplier: 1,
     });
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -494,6 +493,7 @@ describe('GeneratePanelContainer — body subscription set', () => {
       tts: [],
       three_d: [],
       total: 0,
+      credit_multiplier: 1,
     });
     mountContainer({
       nodes: [
@@ -542,15 +542,12 @@ const T2I_MODEL: ModelEntry = {
   description: '',
   guide: '',
   tier: 'recommended',
-  cost_per_call: 5,
   generation_time: 10,
   takes_prompt: true,
   params: {
     aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
   },
   providers: [],
-  sourcesByMode: { t2i: [] },
-  sourceRuleByMode: { t2i: 'all_of' as const },
 };
 
 /** An image-to-image model, so a switch to i2i has something to resolve to. */
@@ -561,9 +558,9 @@ const I2I_MODEL: ModelEntry = {
   mode: 'i2i',
   params: {
     aspect_ratio: { description: '', values: ['1:1', '4:3'], default: '4:3' },
+    // The reference pool it cannot run without, as the catalog declares it.
+    images: { description: '', default: null, type: 'list', fill: 'pool', accepts: 'image' },
   },
-  sourcesByMode: { i2i: ['image'] },
-  sourceRuleByMode: { i2i: 'all_of' as const },
 };
 
 /**
@@ -579,6 +576,7 @@ function imageCatalog(models: ModelEntry[] = [T2I_MODEL]): ModelCatalog {
     tts: [],
     three_d: [],
     total: models.length,
+    credit_multiplier: 1,
   };
 }
 
@@ -688,7 +686,7 @@ describe('GeneratePanelContainer — 参数编辑记在哪个模型名下 (#1948
       // 记录原样留着，切回去还是 16:9。
       expect(d.paramsByModel).toEqual({
         'nano-banana': { aspect_ratio: '16:9' },
-        'nano-edit': { aspect_ratio: '4:3' },
+        'nano-edit': { aspect_ratio: '4:3', images: null },
       });
     });
     listSpy.mockRestore();

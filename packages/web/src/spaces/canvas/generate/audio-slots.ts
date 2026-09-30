@@ -2,46 +2,51 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The source slots the audio panel offers (#1960).
+ * The source slots the audio panel offers (#1960, #2156).
  *
- * Four: the voice to clone, and the three references a song can be written
- * after. Their shape is {@link SlotSpec}, the same one the video registry uses
- * — a slot is a pick-time copy of one asset with a role, whichever panel
- * offers it, and two copies of that definition would be two places to remember
- * when a slot grows a field.
+ * Their shape is {@link SlotSpec}, the same one the video registry uses — a
+ * slot is a pick-time copy of one asset with a role, whichever panel offers
+ * it, and two copies of that definition would be two places to remember when
+ * a slot grows a field.
  *
- * Which of them a run collects is the model's to say (#269), read off its
- * `fill` and `modes` declarations by {@link audioSlotsForModel} below: this
- * table says what each slot IS, and a slot belongs to no mode by living in it.
+ * Which of them a mode can draw is its row in `AUDIO_MODE_OPTIONS`; which of
+ * those a run collects is the model's to say, read off its `fill` and `modes`
+ * declarations by {@link audioSlotsForModel} below. One param can be two
+ * places: `audio` is the voice sample under Voice Cloning and the song to
+ * cover under Reference to Music.
  *
  * The reference rail is a different thing and stays where it is: a reference
  * is an edge between two nodes, a slot is a value copied onto this one.
  */
 
-import { PANEL_EDITOR_PARAM } from '@breatic/shared';
-import type { ModelEntry } from '@breatic/shared';
-import { AudioLines, Disc3, Mic, Music4 } from 'lucide-react';
+import { PANEL_EDITOR_PARAM, missingSources } from '@breatic/shared';
+import type { MissingSource, ModelEntry } from '@breatic/shared';
+import { AudioLines, Clapperboard, Image, Mic, Music2, Music4 } from 'lucide-react';
 
+import { audioModeOption } from '@web/spaces/canvas/generate/audio-mode-options';
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { filledFromCanvas } from '@web/spaces/canvas/generate/canvas-filled';
 
 /** The source slots the audio panel knows how to offer. */
 export type AudioSlot =
   | 'refAudio'
+  | 'soundVideo'
+  | 'moodImage'
   | 'musicSong'
-  | 'musicVoice'
-  | 'musicInstrumental';
+  | 'coverSong'
+  | 'musicMelody'
+  | 'musicVocal';
+
+// Every slot taking something other than an image carries `storesCover`: an
+// audio or video node's poster is what the button paints, and an audio node
+// has none, so the stored value is `{url}` and the button keeps its own icon
+// and label and lights its border (#1946, user 2026-09-06).
 
 /** Every audio slot, by name. */
 export const AUDIO_SLOTS = {
   refAudio: {
     field: 'refAudio',
-    // `storesCover` because audio is not an image, which is the whole test
-    // this flag applies. An audio node carries no poster of its own, so the
-    // stored value is `{url}` and the button paints no thumbnail — it keeps its
-    // own icon and label and lights its border (#1946, user 2026-09-06).
     storesCover: true,
-    // qwen3-tts/voice-clone reads the reference URL as `audio`.
     param: 'audio',
     purpose: 'refAudio',
     accepts: 'audio',
@@ -52,17 +57,39 @@ export const AUDIO_SLOTS = {
     labelKey: 'canvas.generatePanel.refAudio',
     tipKey: 'canvas.generatePanel.refAudioTip',
     clearLabelKey: 'canvas.generatePanel.removeRefAudio',
-    // No `errorKey`: this panel reaches every refusal sentence through
-    // `refusalToastKey`, so a copy here would be a second place to change and
-    // a first place to forget.
+    errorKey: 'canvas.generatePanel.errorNoRefAudio',
   },
-  // The three below are what reference-to-music collects. They carry
-  // `storesCover` for the same reason the voice sample does — audio paints no
-  // thumbnail — and the vendor's own names for the params: minimax/music-01
-  // reads `song`, `voice` and `instrumental`. The names come from WaveSpeed's
-  // parameter page; `song` is the one that has been run against the gateway
-  // (2026-09-05), so a run carrying only `voice` or only `instrumental` is
-  // taken on the page's word.
+  // The picture a run is scored or sounded to: Sound Effects and Reference to
+  // Music both take `video`, and read it the same way, so one slot serves
+  // both rows. Its words are the video panel's source-video slot's.
+  soundVideo: {
+    field: 'soundVideo',
+    storesCover: true,
+    param: 'video',
+    purpose: 'soundVideo',
+    accepts: 'video',
+    Icon: Clapperboard,
+    testId: 'generate-audio-tool-sound-video',
+    thumbnailTestId: 'generate-audio-sound-video-thumbnail',
+    clearTestId: 'generate-audio-sound-video-clear',
+    labelKey: 'canvas.generatePanel.sourceVideo',
+    tipKey: 'canvas.generatePanel.sourceVideoTip',
+    clearLabelKey: 'canvas.generatePanel.removeSourceVideo',
+    errorKey: 'canvas.generatePanel.errorNoSourceVideo',
+  },
+  moodImage: {
+    field: 'moodImageUrl',
+    param: 'image',
+    purpose: 'moodImage',
+    accepts: 'image',
+    Icon: Image,
+    testId: 'generate-audio-tool-mood-image',
+    thumbnailTestId: 'generate-audio-mood-image-thumbnail',
+    clearTestId: 'generate-audio-mood-image-clear',
+    labelKey: 'canvas.generatePanel.moodImage',
+    tipKey: 'canvas.generatePanel.moodImageTip',
+    clearLabelKey: 'canvas.generatePanel.removeMoodImage',
+  },
   musicSong: {
     field: 'musicSong',
     storesCover: true,
@@ -76,34 +103,52 @@ export const AUDIO_SLOTS = {
     labelKey: 'canvas.generatePanel.musicSong',
     tipKey: 'canvas.generatePanel.musicSongTip',
     clearLabelKey: 'canvas.generatePanel.removeMusicSong',
+    errorKey: 'canvas.generatePanel.errorNoMusicSong',
   },
-  musicVoice: {
-    field: 'musicVoice',
+  // The song a cover is made of. Called what the reader calls it — a song —
+  // under the vendor's own name for the field, `audio`.
+  coverSong: {
+    field: 'coverSong',
     storesCover: true,
-    param: 'voice',
-    purpose: 'musicVoice',
+    param: 'audio',
+    purpose: 'coverSong',
+    accepts: 'audio',
+    Icon: Music4,
+    testId: 'generate-audio-tool-cover-song',
+    thumbnailTestId: 'generate-audio-cover-song-thumbnail',
+    clearTestId: 'generate-audio-cover-song-clear',
+    labelKey: 'canvas.generatePanel.musicSong',
+    tipKey: 'canvas.generatePanel.coverSongTip',
+    clearLabelKey: 'canvas.generatePanel.removeMusicSong',
+    errorKey: 'canvas.generatePanel.errorNoMusicSong',
+  },
+  musicMelody: {
+    field: 'musicMelody',
+    storesCover: true,
+    param: 'melody',
+    purpose: 'musicMelody',
+    accepts: 'audio',
+    Icon: Music2,
+    testId: 'generate-audio-tool-music-melody',
+    thumbnailTestId: 'generate-audio-music-melody-thumbnail',
+    clearTestId: 'generate-audio-music-melody-clear',
+    labelKey: 'canvas.generatePanel.musicMelody',
+    tipKey: 'canvas.generatePanel.musicMelodyTip',
+    clearLabelKey: 'canvas.generatePanel.removeMusicMelody',
+  },
+  musicVocal: {
+    field: 'musicVocal',
+    storesCover: true,
+    param: 'vocal',
+    purpose: 'musicVocal',
     accepts: 'audio',
     Icon: Mic,
-    testId: 'generate-audio-tool-music-voice',
-    thumbnailTestId: 'generate-audio-music-voice-thumbnail',
-    clearTestId: 'generate-audio-music-voice-clear',
-    labelKey: 'canvas.generatePanel.musicVoice',
-    tipKey: 'canvas.generatePanel.musicVoiceTip',
-    clearLabelKey: 'canvas.generatePanel.removeMusicVoice',
-  },
-  musicInstrumental: {
-    field: 'musicInstrumental',
-    storesCover: true,
-    param: 'instrumental',
-    purpose: 'musicInstrumental',
-    accepts: 'audio',
-    Icon: Disc3,
-    testId: 'generate-audio-tool-music-instrumental',
-    thumbnailTestId: 'generate-audio-music-instrumental-thumbnail',
-    clearTestId: 'generate-audio-music-instrumental-clear',
-    labelKey: 'canvas.generatePanel.musicInstrumental',
-    tipKey: 'canvas.generatePanel.musicInstrumentalTip',
-    clearLabelKey: 'canvas.generatePanel.removeMusicInstrumental',
+    testId: 'generate-audio-tool-music-vocal',
+    thumbnailTestId: 'generate-audio-music-vocal-thumbnail',
+    clearTestId: 'generate-audio-music-vocal-clear',
+    labelKey: 'canvas.generatePanel.musicVocal',
+    tipKey: 'canvas.generatePanel.musicVocalTip',
+    clearLabelKey: 'canvas.generatePanel.removeMusicVocal',
   },
 } as const satisfies Record<AudioSlot, SlotSpec>;
 
@@ -117,43 +162,46 @@ export type AudioSlotUrls = Partial<Record<AudioSlot, string>>;
 
 
 /**
- * The slots this model collects in this mode, in the order the toolbar shows.
+ * The slots this model draws in this mode, in the order the toolbar shows.
  *
- * Which of its parameters a reader fills off the canvas is the model's to say:
- * reference-to-music offers three places and text-to-speech none, and a second
- * vendor may offer a different set under the same mode.
+ * The mode's row lists every place it can take a source; the model draws the
+ * ones it declares (#2156, design §6).
  * @param model - The model the run names.
  * @param mode - The mode it is set to.
- * @returns Those slots, in this registry's order.
+ * @returns Those slots, in the row's order; none before a model resolves.
  */
 export function audioSlotsForModel(
   model: ModelEntry | undefined,
   mode: string,
 ): AudioSlot[] {
-  const params = model?.params ?? {};
-  return (Object.keys(AUDIO_SLOTS) as AudioSlot[]).filter((slot) =>
-    filledFromCanvas(params[AUDIO_SLOTS[slot].param], mode) !== undefined,
+  if (model === undefined) return [];
+  return audioModeOption(mode).slots.filter(
+    (slot) => filledFromCanvas(model.params[AUDIO_SLOTS[slot].param], mode) !== undefined,
   );
 }
 
 /**
- * The slots a run through this model in this mode cannot go without.
+ * What an audio run still needs, in the order the toolbar offers it.
  *
- * A place the model marks optional is drawn and may be left empty, so the
- * gate is told about the others: told about all of them, it refuses a
- * submission the model says is complete.
+ * Which of its places a run cannot go without is the model's to say, through
+ * `missingSources` — the rule the server re-checks before enqueue.
  * @param model - The model the run names.
  * @param mode - The mode it is set to.
- * @returns Those slots, in the order the toolbar shows them.
+ * @param slotUrls - What the node's slots hold.
+ * @returns Each unmet requirement; empty when the run has what it needs or no
+ *   model resolves.
  */
-export function audioRequiredSlots(
+export function audioMissing(
   model: ModelEntry | undefined,
   mode: string,
-): AudioSlot[] {
-  const params = model?.params ?? {};
-  return audioSlotsForModel(model, mode).filter(
-    (slot) => filledFromCanvas(params[AUDIO_SLOTS[slot].param], mode)?.optional === false,
-  );
+  slotUrls: AudioSlotUrls,
+): MissingSource[] {
+  if (model === undefined) return [];
+  const params: Record<string, unknown> = {};
+  for (const slot of audioSlotsForModel(model, mode)) {
+    params[AUDIO_SLOTS[slot].param] = slotUrls[slot];
+  }
+  return missingSources(model, mode, params);
 }
 
 /**
@@ -169,17 +217,4 @@ export function modelTakesLyrics(model: ModelEntry | undefined, mode: string): b
   const spec = model?.params?.[PANEL_EDITOR_PARAM];
   if (spec?.fill !== 'editor') return false;
   return spec.modes === undefined || spec.modes.includes(mode);
-}
-
-/**
- * The switch that takes the lyrics box away, when the model has one.
- *
- * A model marking a track vocal-free asks for no words, and it names the
- * switch on the box itself. Read here rather than written down, so a vendor
- * spelling it differently takes the box away all the same.
- * @param model - The selected model, or undefined before one is picked.
- * @returns The param name to read, or undefined when nothing silences the box.
- */
-export function lyricsSilencedBy(model: ModelEntry | undefined): string | undefined {
-  return model?.params?.[PANEL_EDITOR_PARAM]?.when?.flag_off;
 }

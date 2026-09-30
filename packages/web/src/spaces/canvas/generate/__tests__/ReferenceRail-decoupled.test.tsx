@@ -18,6 +18,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { ReferenceKind } from '@breatic/shared';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
@@ -83,7 +84,7 @@ const ALL_IDS = ['e-text', 'e-image', 'e-audio', 'e-video', 'focus:c1'];
  * @returns 两个回调的 spy。
  */
 function renderRail(opts: {
-  takesReferences: boolean;
+  referenceKinds: readonly ReferenceKind[];
   takesPrompt?: boolean;
 }): { onInsert: ReturnType<typeof vi.fn>; onRemove: ReturnType<typeof vi.fn> } {
   const onInsert = vi.fn();
@@ -93,7 +94,7 @@ function renderRail(opts: {
       references={ROWS}
       onInsert={onInsert}
       onRemove={onRemove}
-      modeTakesReferences={opts.takesReferences}
+      referenceKinds={opts.referenceKinds}
       modelTakesPrompt={opts.takesPrompt ?? true}
     />,
   );
@@ -121,15 +122,16 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-// 判据读两个布尔量，所以有四种输入组合，四格全列。第四格不是补齐用的：
-// 口播档（`video-mode-options.ts` 的 talking_head）`takesReferences: false`，
+// The verdict reads two dimensions (is the reference-kind list empty, does the
+// model take a prompt), so there are four combinations, all listed.第四格不是补齐用的：
+// 口播档（`video-mode-options.ts` 的 talking_head）`referenceKinds: []`，
 // 而它正是唯一一个模型不发提示词的档，两条约束同时成立的就是它。「✕ 在任何
 // 状态下可点」这条承诺，在真实产品里最需要它成立的那一格此前没有测试钉着。
 const MODES = [
-  { name: '吃参考的档', takesReferences: true, takesPrompt: true },
-  { name: '不吃参考的档', takesReferences: false, takesPrompt: true },
-  { name: '模型不发提示词的档', takesReferences: true, takesPrompt: false },
-  { name: '口播档：两条都不成立', takesReferences: false, takesPrompt: false },
+  { name: '吃参考的档', referenceKinds: ['image'], takesPrompt: true },
+  { name: '不吃参考的档', referenceKinds: [], takesPrompt: true },
+  { name: '模型不发提示词的档', referenceKinds: ['image'], takesPrompt: false },
+  { name: '口播档：两条都不成立', referenceKinds: [], takesPrompt: false },
 ] as const;
 
 describe('✕ 跟内容解耦：任何状态下都能删', () => {
@@ -162,7 +164,7 @@ describe('✕ 跟内容解耦：任何状态下都能删', () => {
 
 describe('内容的亮暗 = 这一行现在能不能用', () => {
   it('吃参考的档：图片和裁剪行亮，音频和视频行暗（它们插不进去）', () => {
-    renderRail({ takesReferences: true });
+    renderRail({ referenceKinds: ['image'] });
     for (const id of ['e-text', 'e-image', 'focus:c1']) {
       expect(dimmed(insertBtn(id))).toBe(false);
     }
@@ -171,8 +173,14 @@ describe('内容的亮暗 = 这一行现在能不能用', () => {
     }
   });
 
+  it('a pool that takes image and video lights the video row and dims the audio row', () => {
+    renderRail({ referenceKinds: ['image', 'video'] });
+    expect(dimmed(insertBtn('e-video'))).toBe(false);
+    expect(dimmed(insertBtn('e-audio'))).toBe(true);
+  });
+
   it('不吃参考的档：参考素材行全暗，文本行仍亮', () => {
-    renderRail({ takesReferences: false });
+    renderRail({ referenceKinds: [] });
     expect(dimmed(insertBtn('e-text'))).toBe(false);
     for (const id of ['e-image', 'e-audio', 'e-video', 'focus:c1']) {
       expect(dimmed(insertBtn(id))).toBe(true);
@@ -180,14 +188,14 @@ describe('内容的亮暗 = 这一行现在能不能用', () => {
   });
 
   it('模型不发提示词的档：每一行都暗，文本行也是（#1966）', () => {
-    renderRail({ takesReferences: true, takesPrompt: false });
+    renderRail({ referenceKinds: ['image'], takesPrompt: false });
     for (const id of ALL_IDS) {
       expect(dimmed(insertBtn(id))).toBe(true);
     }
   });
 
   it('口播档：两条都不成立时每一行都暗，而 ✕ 全部照旧可点', () => {
-    renderRail({ takesReferences: false, takesPrompt: false });
+    renderRail({ referenceKinds: [], takesPrompt: false });
     for (const id of ALL_IDS) {
       expect(dimmed(insertBtn(id))).toBe(true);
       expect(removeBtn(id).getAttribute('aria-disabled')).not.toBe('true');

@@ -2,39 +2,27 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * How many items a capped list param may carry for one submission — the
- * arithmetic all three gates read (#1928).
+ * How many items a capped list param may carry — the arithmetic all three
+ * gates read: the generate panel while picking, the server before enqueue, the
+ * worker before mapping params to vendor names.
  *
- * A model states a list's cap on {@link ParamDescriptor.max_items}, and may
- * state a lower one that takes over while another param carries a value
- * ({@link ParamDescriptor.max_items_when_present}): `kling-o3-pro-ref` takes
- * up to 7 reference images on its own and up to 4 alongside a reference
- * video. Three places enforce the number — the generate panel while picking,
- * the server before enqueue, the worker before mapping params to vendor
- * names — and a submission the panel allowed but the worker truncates is the
- * degraded result the pre-enqueue gate exists to prevent, so they read one
- * function rather than each reaching for `max_items`.
+ * "Uncapped" is 0 / negative / non-finite / absent, so a yaml typo lets
+ * submissions through rather than refusing every one of them.
  *
- * "Uncapped" is 0 / negative / non-finite / absent, which is what the server
- * gate read before it moved here (`limit < 1`). A yaml typo therefore lets
- * submissions through rather than refusing every one of them. The worker's
- * old guard was a truthy test on `max_items`, so it read a negative as a cap
- * and sliced against it; a negative now means uncapped on all three.
+ * Also which entries of a list count at all ({@link completeEntries}), which
+ * the worker and the panel both need to answer the same way.
  */
 
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";
 
 /**
- * The two fields this reads.
+ * The field this reads.
  *
  * Narrower than {@link ParamDescriptor} on purpose: the backend holds the same
  * param under its own yaml-side type, where every field is optional, and a
  * rule about caps has no business asking for a description as well.
  */
-export type CappedParam = Pick<
-  ParamDescriptor,
-  "max_items" | "max_items_when_present"
->;
+export type CappedParam = Pick<ParamDescriptor, "max_items">;
 
 /**
  * Whether a number can serve as a cap.
@@ -46,7 +34,8 @@ function usableCap(value: unknown): value is number {
 }
 
 /**
- * Whether a param carries a value, for the presence condition.
+ * Whether a param carries a value: for the price estimate and the worker's
+ * request body alike.
  *
  * Presence, never the value itself: a slot writes a URL and clears by
  * deleting the key, while a model's own declared default puts the key there
@@ -63,30 +52,41 @@ export function isPresent(value: unknown): boolean {
 }
 
 /**
- * The cap in force for one capped list param, given what the submission carries.
- *
- * The lowest applicable cap wins when several conditional params are present —
- * every one of them is a limit the vendor stated, so the submission has to be
- * inside all of them.
+ * The cap in force for one capped list param.
  * @param descriptor - The param's descriptor from the model catalog entry.
- * @param params - The submitted task params, read for the presence conditions.
  * @returns The cap, or undefined when this param is uncapped.
  */
-export function effectiveItemCap(
-  descriptor: CappedParam,
-  params: Readonly<Record<string, unknown>>,
-): number | undefined {
-  const base = descriptor.max_items;
-  if (!usableCap(base)) return undefined;
+export function itemCap(descriptor: CappedParam): number | undefined {
+  return usableCap(descriptor.max_items) ? descriptor.max_items : undefined;
+}
 
-  const conditional = descriptor.max_items_when_present;
-  if (!conditional) return base;
-
-  let cap = base;
-  for (const [name, limit] of Object.entries(conditional)) {
-    if (usableCap(limit) && isPresent(params[name])) {
-      cap = Math.min(cap, limit);
-    }
+/**
+ * The entries of a list param that fill every field it declares: a text field
+ * with something other than spaces, a choice with one of its values. An entry
+ * left half-filled in the editor names nothing the vendor can use, so the
+ * worker sends only these and the panel counts only these against a floor.
+ * @param value - What the run carries for the list; node data, untrusted.
+ * @param fields - The fields one entry declares.
+ * @returns The complete entries, each holding only its declared fields.
+ */
+export function completeEntries(
+  value: unknown,
+  fields: Readonly<Record<string, { values?: readonly unknown[] }>>,
+): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  const names = Object.keys(fields);
+  const complete: Record<string, unknown>[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+    const held = entry as Record<string, unknown>;
+    const filled = names.every((field) => {
+      const offered = fields[field]?.values;
+      const v = held[field];
+      return offered !== undefined
+        ? offered.some((option) => option === v)
+        : typeof v === "string" && v.trim() !== "";
+    });
+    if (filled) complete.push(Object.fromEntries(names.map((field) => [field, held[field]])));
   }
-  return cap;
+  return complete;
 }

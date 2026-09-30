@@ -556,6 +556,76 @@ export const tasks = pgTable(
   ],
 );
 
+// ── Task upstream steps ──────────────────────────────────────────────
+
+/**
+ * The upstream calls one task makes, in order (#2156): a Mureka upload, a
+ * cloned voice, vocal or element, then the model's own call, and for Voice
+ * Cloning the speech after it. Written by the worker on the task's first run
+ * and advanced only by its step executor, so a redelivered job resumes from
+ * the first step that is not done and never submits a step twice.
+ *
+ * The kind and status CHECKs live in migration 0085 only, as 0061 does for
+ * its tables.
+ */
+export const taskUpstreamSteps = pgTable(
+  "task_upstream_steps",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "restrict" }),
+    position: integer("position").notNull(),
+    /** What the step does, which decides what it reads off the answer. */
+    kind: varchar("kind", { length: 24 }).notNull(),
+    /** The WaveSpeed model path the step posts to. */
+    endpoint: varchar("endpoint", { length: 200 }).notNull(),
+    /** Which item of a list param the step serves (one element per image). */
+    itemIndex: integer("item_index"),
+    status: varchar("status", { length: 16 }).default("pending").notNull(),
+    /** The WaveSpeed prediction id, stored before polling. */
+    predictionId: text("prediction_id"),
+    /** What the step answered: an upload id, a clone id, an output url, a description. */
+    output: jsonb("output").$type<Record<string, unknown>>(),
+    /** What the step cost outside its prediction, in USD (the understand call of an element). */
+    inlineCostUsd: doublePrecision("inline_cost_usd").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex("task_upstream_steps_task_position_key").on(table.taskId, table.position)],
+);
+
+// ── Studio upstream clones ───────────────────────────────────────────
+
+/**
+ * The voices, vocals and elements a studio has had cloned upstream, by the
+ * source they were cloned from (#2156): the first run on a source clones it,
+ * every later run reuses the id. Read and written only by the worker.
+ *
+ * At most one live row per (studio, kind, source): the partial unique index
+ * is what settles two runs cloning the same source at once — the first insert
+ * wins and the second keeps its own id for its own run.
+ */
+export const studioUpstreamClones = pgTable(
+  "studio_upstream_clones",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    kind: varchar("kind", { length: 16 }).notNull(),
+    /** The source asset's sha256; an element adds its name after a colon. */
+    sourceKey: text("source_key").notNull(),
+    upstreamId: text("upstream_id").notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("studio_upstream_clones_live_key")
+      .on(table.studioId, table.kind, table.sourceKey)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
 // ── Node History ─────────────────────────────────────────────────────
 
 /**

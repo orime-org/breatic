@@ -41,6 +41,7 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
   it('renders a crop badge on focus rows only', () => {
     render(
       <ReferenceRail
+        referenceKinds={['image']}
         references={[...REFS, FOCUS_ROW]}
         onRemove={() => {}}
         onInsert={() => {}}
@@ -55,6 +56,7 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
   it('crop badge is the same colour as the name it prefixes, not muted grey (#1801)', () => {
     render(
       <ReferenceRail
+        referenceKinds={['image']}
         references={[FOCUS_ROW]}
         onRemove={() => {}}
         onInsert={() => {}}
@@ -74,6 +76,7 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
   it('focus row order is thumbnail → crop badge → name (user 2026-07-17 #4)', () => {
     render(
       <ReferenceRail
+        referenceKinds={['image']}
         references={[FOCUS_ROW]}
         onRemove={() => {}}
         onInsert={() => {}}
@@ -98,6 +101,7 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
     // punctuation) carrying the row name, plus the crop tag on focus rows.
     render(
       <ReferenceRail
+        referenceKinds={['image']}
         references={[REFS[0], FOCUS_ROW]}
         onRemove={() => {}}
         onInsert={() => {}}
@@ -124,6 +128,7 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
     // fall back — the rail labels must not degrade to a dangling separator.
     render(
       <ReferenceRail
+        referenceKinds={['image']}
         references={[{ ...REFS[0], sourceNodeName: '' }]}
         onRemove={() => {}}
         onInsert={() => {}}
@@ -139,6 +144,7 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
     const onRemove = vi.fn();
     render(
       <ReferenceRail
+        referenceKinds={['image']}
         references={[FOCUS_ROW]}
         onRemove={onRemove}
         onInsert={() => {}}
@@ -151,6 +157,7 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
   it('renders pending focus placeholders (dashed, non-interactive) and shows the rail with only them', () => {
     render(
       <ReferenceRail
+        referenceKinds={['image']}
         references={[]}
         onRemove={() => {}}
         onInsert={() => {}}
@@ -168,7 +175,7 @@ describe('ReferenceRail — focus rows and pending placeholders (#1782)', () => 
 describe('ReferenceRail — renders the derived reference rows with a remove control', () => {
   it('renders one row per reference with its source name', () => {
     render(
-      <ReferenceRail references={REFS} onRemove={() => {}} onInsert={() => {}} />,
+      <ReferenceRail referenceKinds={['image']} references={REFS} onRemove={() => {}} onInsert={() => {}} />,
     );
     expect(screen.getByText('Hero')).toBeInTheDocument();
     expect(screen.getByText('Notes')).toBeInTheDocument();
@@ -178,7 +185,7 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
   it('fires onRemove with the ROW when its ✕ is clicked (identity routing, adversarial R2)', () => {
     const onRemove = vi.fn();
     render(
-      <ReferenceRail references={REFS} onRemove={onRemove} onInsert={() => {}} />,
+      <ReferenceRail referenceKinds={['image']} references={REFS} onRemove={onRemove} onInsert={() => {}} />,
     );
     fireEvent.click(screen.getByTestId('generate-ref-remove-b->me'));
     expect(onRemove).toHaveBeenCalledWith(REFS[1]);
@@ -187,7 +194,7 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
   it('fires onInsert with the reference row when the chip body is clicked', () => {
     const onInsert = vi.fn();
     render(
-      <ReferenceRail references={REFS} onRemove={() => {}} onInsert={onInsert} />,
+      <ReferenceRail referenceKinds={['image']} references={REFS} onRemove={() => {}} onInsert={onInsert} />,
     );
     fireEvent.click(screen.getByTestId('generate-ref-insert-b->me'));
     expect(onInsert).toHaveBeenCalledWith(REFS[1]);
@@ -195,7 +202,7 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
 
   it('renders nothing when there are no references', () => {
     const { container } = render(
-      <ReferenceRail references={[]} onRemove={() => {}} onInsert={() => {}} />,
+      <ReferenceRail referenceKinds={['image']} references={[]} onRemove={() => {}} onInsert={() => {}} />,
     );
     expect(container).toBeEmptyDOMElement();
   });
@@ -222,7 +229,7 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
       },
     ];
     render(
-      <ReferenceRail references={refs} onRemove={() => {}} onInsert={() => {}} />,
+      <ReferenceRail referenceKinds={['image']} references={refs} onRemove={() => {}} onInsert={() => {}} />,
     );
     expect(screen.getByTestId('generate-ref-insert-txt->me')).toHaveAttribute(
       'data-state',
@@ -266,7 +273,7 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
         // could connect to an image NODE, which happened to give the right
         // answer on this panel and the wrong one on the video panel, where
         // `audio → video` is a live connection rather than a legacy edge.
-        modeTakesReferences
+        referenceKinds={['image']}
       />,
     );
     const legacyInsert = screen.getByTestId('generate-ref-insert-aud->me');
@@ -306,7 +313,7 @@ describe('ReferenceRail — renders the derived reference rows with a remove con
         references={REFS}
         onRemove={() => {}}
         onInsert={() => {}}
-        modeTakesReferences={false}
+        referenceKinds={[]}
       />,
     );
     // Both rows still render — the edges stay visible, they just cannot act.

@@ -17,7 +17,7 @@ import {
   resolveModel,
   acquireSemaphore,
   validateParams,
-  type ModelFamily,
+  type ThreeDFamily,
   type ResumeContext,
 } from "@worker/providers/shared.js";
 
@@ -32,13 +32,13 @@ import * as wavespeedTransport from "@worker/providers/three-d/transports/wavesp
 
 // ── Registry ────────────────────────────────────────────────────────
 
-const ALL_FAMILIES: readonly ModelFamily[] = [
+const ALL_FAMILIES: readonly ThreeDFamily[] = [
   meshy,
   hunyuan3d,
 ];
 
 /** Model name -> model family module. */
-const _MODEL_FAMILIES = new Map<string, ModelFamily>();
+const _MODEL_FAMILIES = new Map<string, ThreeDFamily>();
 for (const family of ALL_FAMILIES) {
   for (const name of family.MODELS) {
     _MODEL_FAMILIES.set(name, family);

@@ -22,15 +22,14 @@ import {
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import {
   evaluateExecute,
+  extractPromptText,
   refusalToastKey,
-  REFERENCE_POOL_PARAM,
 } from '@breatic/shared';
 import {
   CatalogGatedFrame,
@@ -62,6 +61,7 @@ import {
   selectModeModels,
   type GeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
+import { ownControlValues } from '@web/spaces/canvas/generate/model-controls';
 import {
   deriveReferences,
   focusToRailItem,
@@ -70,11 +70,14 @@ import {
 import {
   PromptEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
-import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
+import { buildGenerateTaskPayload, imageEstimateInput } from '@web/spaces/canvas/generate/task-payload';
+import { poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
+import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import { useCanvasStore } from '@web/stores';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
+import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 
 /**
@@ -185,7 +188,7 @@ function GeneratePanelBody({
   // prompt text: onExecute reads them SYNCHRONOUSLY so the i2i source subset is
   // the prompt's state at click time (state would lag a frame). No React state
   // mirror — nothing in the render tree depends on the picks (the rail shows the
-  // full pool; requiresSource is model-derived).
+  // full pool).
   const atMentionedRef = React.useRef<string[]>([]);
   const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
     atMentionedRef.current = sourceIds;
@@ -246,6 +249,11 @@ function GeneratePanelBody({
       buildGeneratePanelViewModel({ nodeId, nodes, edges, models, textById }),
     [nodeId, nodes, edges, models, textById],
   );
+  const creditText = useCreditText(
+    vm.modelEntry,
+    imageEstimateInput(vm, extractPromptText(promptText)),
+    catalog?.credit_multiplier ?? 1,
+  );
   // Stable model-list identity for the memo'd pickers: the vm rebuilds on
   // EVERY canvas graph mutation (nodes/edges deps), and its freshly-filtered
   // models array would defeat ModelPicker's React.memo each frame of any node
@@ -280,8 +288,11 @@ function GeneratePanelBody({
   const focalLength = asNum(vm.params.focal_length);
   const aperture = asStr(vm.params.aperture);
   const enableCamera = vm.params.enable_camera === true;
+  // The model's own controls (#2156), keyed on their values like the rest.
+  const ownKey = JSON.stringify(ownControlValues(vm.modelEntry, vm.params));
   const stableParams = React.useMemo(
     () => ({
+      ...(JSON.parse(ownKey) as Record<string, unknown>),
       aspect_ratio: aspectRatio,
       resolution,
       camera,
@@ -290,7 +301,7 @@ function GeneratePanelBody({
       aperture,
       enable_camera: enableCamera,
     }),
-    [aspectRatio, resolution, camera, lens, focalLength, aperture, enableCamera],
+    [ownKey, aspectRatio, resolution, camera, lens, focalLength, aperture, enableCamera],
   );
   // References change identity on every derive; key the memo on their CONTENT
   // (small array — a stringify key is cheap and exact). The pool the rail /
@@ -345,9 +356,8 @@ function GeneratePanelBody({
       // entry under `params` that no image model writes.
       promptRequired: vm.promptRequired,
       maxInputChars: vm.maxInputChars,
-      ...sourcePlaces(vm.requiresSource, vm.referenceUrls),
-      poolCount: vm.referenceUrls.length,
-      poolCap: vm.maxReferences,
+      missing: vm.missing,
+      pools: poolCounts(vm.pool, vm.referenceUrls),
     })?.refusal ?? null;
 
   const onSelectModel = React.useCallback(
@@ -406,7 +416,7 @@ function GeneratePanelBody({
   );
 
   const onChangeParams = React.useCallback(
-    (partial: { aspect_ratio?: string; resolution?: string } & CameraValue) => {
+    (partial: object) => {
       // The edit lands on the record of the model it was made on, so coming
       // back to that model finds it (#1948).
       // freshVm().model is the RESOLVED model — the one whose controls the
@@ -503,8 +513,9 @@ function GeneratePanelBody({
   }, [vm.mode, nodeId, endPick, t, getLastWriteWasLocal]);
   // Same zombie guard for the STYLE pick (adversarial 2026-07-16): switching to
   // a model without style capability (locally or via a collaborator's
-  // setNodeModel) DISABLES the Style trigger, so a running style pick would
-  // strand its banner + keyboard focus exactly like the t2i reference case.
+  // setNodeModel) takes the Style slot off the toolbar, so a running style
+  // pick would strand its banner + keyboard focus exactly like the t2i
+  // reference case.
   React.useEffect(() => {
     const session = useCanvasStore.getState().pickSession;
     if (
@@ -586,7 +597,7 @@ function GeneratePanelBody({
     // line a task for a model that wants no prompt would carry the last one's
     // words. Same line, same reason, as `VideoGeneratePanelContainer.tsx`.
     const freshPrompt = fresh.promptRequired
-      ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
+      ? (promptEditorRef.current?.serializePrompt(fresh.mentionTokens) ?? promptTextRef.current)
       : '';
     // One evaluation, its own inputs: the button asked the same question of
     // the RENDER-time view model, this asks it of live Yjs. Never reuse the
@@ -612,9 +623,8 @@ function GeneratePanelBody({
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
       maxInputChars,
-      ...sourcePlaces(fresh.requiresSource, fresh.referenceUrls),
-      poolCount: fresh.referenceUrls.length,
-      poolCap: fresh.maxReferences,
+      missing: fresh.missing,
+      pools: poolCounts(fresh.pool, fresh.referenceUrls),
     });
     if (verdict != null) {
       // Both keys are written out here so the check that every id reaches a
@@ -624,7 +634,7 @@ function GeneratePanelBody({
         return;
       }
       const key =
-        verdict.slot === REFERENCE_POOL_PARAM
+        poolKindOf(fresh.pool, verdict.slot) !== undefined
           ? 'canvas.generatePanel.errorNoSourceImage'
           : refusalToastKey(verdict.refusal);
       // `max` comes from the same value the gate judged by, so the sentence
@@ -645,7 +655,7 @@ function GeneratePanelBody({
         model: fresh.model,
         params: fresh.params,
         promptText: freshPrompt,
-        referenceUrls: fresh.referenceUrls,
+        poolParams: poolParams(fresh.pool, fresh.referenceUrls),
         // Capability gate (#1664): the style copy rides the payload ONLY when
         // the active model declares style_images — a stale copy under a
         // non-style model must not be sent (the server would reject or the
@@ -715,9 +725,12 @@ function GeneratePanelBody({
   const promptPlaceholder = t('canvas.generatePanel.promptPlaceholder');
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
   const mentionNoMatchLabel = t('canvas.generatePanel.mentionNoMatch');
-  // Text-to-image generates from scratch and ignores source images, so an
-  // image `@` chip contributes nothing and the editor greys it (§2.4 C).
-  const imageRefsOff = !imageModeTakesReferences(vm.mode);
+  // The model's pool says which `@` chips it uses; text-to-image models take
+  // none, so there every media chip contributes nothing and greys (§2.4 C).
+  const referenceKinds = useReferenceKinds(vm.pool);
+  // A media chip's words follow the pool, and a new record on every derive
+  // would rebuild the prompt slot each time the canvas moves.
+  const stableMentionTokens = useContentStable(vm.mentionTokens);
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
@@ -730,10 +743,11 @@ function GeneratePanelBody({
           onTextChange={onPromptChange}
           onAtMentionsChange={handleAtMentionsChange}
           references={stableReferences}
-          imageRefsDisabled={imageRefsOff}
+          referenceKinds={referenceKinds}
           mentionEmptyLabel={mentionEmptyLabel}
           mentionNoMatchLabel={mentionNoMatchLabel}
           caretProvider={caretProvider}
+          mentionTokens={stableMentionTokens}
         />
       ) : null,
     [
@@ -745,9 +759,10 @@ function GeneratePanelBody({
       onPromptChange,
       handleAtMentionsChange,
       stableReferences,
-      imageRefsOff,
+      referenceKinds,
       caretProvider,
       promptEditorRef,
+      stableMentionTokens,
     ],
   );
 
@@ -760,7 +775,8 @@ function GeneratePanelBody({
       promptRequired={vm.promptRequired}
       params={stableParams}
       references={stableReferences}
-      creditEstimate={vm.creditEstimate}
+      referenceKinds={referenceKinds}
+      creditText={creditText}
       executeRefusal={executeRefusal}
       promptSlot={promptSlot}
       onExit={closeActivePanel}
@@ -783,27 +799,6 @@ function GeneratePanelBody({
       onExecute={onExecute}
     />
   );
-}
-
-/**
- * Where an image mode takes material.
- *
- * One place, the reference pool: connecting an image offers it and naming it
- * in the prompt uses it. Whether the mode needs one is the catalog's answer,
- * read off the wire as `sourcesByMode`.
- * @param requiresSource - Whether the active mode needs material at all.
- * @param references - The references named in the prompt.
- * @returns The place, and whether it holds anything.
- */
-function sourcePlaces(
-  requiresSource: boolean,
-  references: readonly string[],
-): { requiredSlots: string[]; filledSlots: string[] } {
-  if (!requiresSource) return { requiredSlots: [], filledSlots: [] };
-  return {
-    requiredSlots: [REFERENCE_POOL_PARAM],
-    filledSlots: references.length > 0 ? [REFERENCE_POOL_PARAM] : [],
-  };
 }
 
 /**

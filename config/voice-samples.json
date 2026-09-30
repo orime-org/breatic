@@ -1,0 +1,183 @@
+{
+  "$comment": "Voice samples the catalog's tts voices play (#2156, #2239). `base_url` is the one public address every deployment plays them from; a sample key in config/models/tts/models.yaml is a path under it and names its language by the segment after the model (voice-samples/<model>/<lang>/<voice>.mp3; none means en). `languages` gives the sentence each language says; `extra_body` adds what one model takes beyond its text and voice, with {boost} standing for the language's `boost`. `pnpm voice-samples` makes the samples that address does not serve yet.",
+  "base_url": "https://resource-dev.breatic.cc",
+  "languages": {
+    "en": {
+      "text": "Hello, this is how I sound. I hope you like my voice.",
+      "boost": "English"
+    },
+    "en-IN": {
+      "text": "Hello, this is how I sound. I hope you like my voice."
+    },
+    "zh": {
+      "text": "你好，这就是我的声音。希望你喜欢。",
+      "boost": "Chinese"
+    },
+    "yue": {
+      "text": "你好，呢個就係我嘅聲音。希望你鍾意。",
+      "boost": "Chinese,Yue"
+    },
+    "ja": {
+      "text": "こんにちは、これが私の声です。気に入っていただけると嬉しいです。",
+      "boost": "Japanese"
+    },
+    "ko": {
+      "text": "안녕하세요, 이것이 제 목소리예요. 마음에 드셨으면 좋겠어요.",
+      "boost": "Korean"
+    },
+    "es": {
+      "text": "Hola, así suena mi voz. Espero que te guste.",
+      "boost": "Spanish"
+    },
+    "pt": {
+      "text": "Olá, esta é a minha voz. Espero que você goste.",
+      "boost": "Portuguese"
+    },
+    "fr": {
+      "text": "Bonjour, voici ma voix. J'espère qu'elle vous plaira.",
+      "boost": "French"
+    },
+    "id": {
+      "text": "Halo, beginilah suara saya. Semoga kamu menyukainya.",
+      "boost": "Indonesian"
+    },
+    "de": {
+      "text": "Hallo, so klingt meine Stimme. Ich hoffe, sie gefällt dir.",
+      "boost": "German"
+    },
+    "ru": {
+      "text": "Здравствуйте, вот так звучит мой голос. Надеюсь, он вам понравится.",
+      "boost": "Russian"
+    },
+    "it": {
+      "text": "Ciao, questa è la mia voce. Spero che ti piaccia.",
+      "boost": "Italian"
+    },
+    "nl": {
+      "text": "Hallo, zo klinkt mijn stem. Ik hoop dat je hem mooi vindt.",
+      "boost": "Dutch"
+    },
+    "vi": {
+      "text": "Xin chào, đây là giọng nói của tôi. Hy vọng bạn sẽ thích.",
+      "boost": "Vietnamese"
+    },
+    "ar": {
+      "text": "مرحبًا، هذا هو صوتي. أتمنى أن يعجبك.",
+      "boost": "Arabic"
+    },
+    "tr": {
+      "text": "Merhaba, sesim böyle. Umarım beğenirsin.",
+      "boost": "Turkish"
+    },
+    "uk": {
+      "text": "Привіт, ось так звучить мій голос. Сподіваюся, він вам сподобається.",
+      "boost": "Ukrainian"
+    },
+    "th": {
+      "text": "สวัสดี นี่คือเสียงของฉัน หวังว่าคุณจะชอบ",
+      "boost": "Thai"
+    },
+    "pl": {
+      "text": "Cześć, tak brzmi mój głos. Mam nadzieję, że ci się spodoba.",
+      "boost": "Polish"
+    },
+    "ro": {
+      "text": "Bună, așa sună vocea mea. Sper să-ți placă.",
+      "boost": "Romanian"
+    },
+    "el": {
+      "text": "Γεια σας, έτσι ακούγεται η φωνή μου. Ελπίζω να σας αρέσει.",
+      "boost": "Greek"
+    },
+    "cs": {
+      "text": "Ahoj, takhle zní můj hlas. Doufám, že se ti bude líbit.",
+      "boost": "Czech"
+    },
+    "fi": {
+      "text": "Hei, tältä ääneni kuulostaa. Toivottavasti pidät siitä.",
+      "boost": "Finnish"
+    },
+    "hi": {
+      "text": "नमस्ते, मेरी आवाज़ ऐसी है। मुझे उम्मीद है कि आपको पसंद आएगी।",
+      "boost": "Hindi"
+    },
+    "bg": {
+      "text": "Здравейте, така звучи гласът ми. Надявам се да ви хареса.",
+      "boost": "Bulgarian"
+    },
+    "da": {
+      "text": "Hej, sådan lyder min stemme. Jeg håber, du kan lide den.",
+      "boost": "Danish"
+    },
+    "he": {
+      "text": "שלום, כך נשמע הקול שלי. אני מקווה שתאהבו אותו.",
+      "boost": "Hebrew"
+    },
+    "ms": {
+      "text": "Helo, beginilah bunyi suara saya. Saya harap anda menyukainya.",
+      "boost": "Malay"
+    },
+    "fa": {
+      "text": "سلام، صدای من این\u200cطور است. امیدوارم خوشتان بیاید.",
+      "boost": "Persian"
+    },
+    "sk": {
+      "text": "Ahoj, takto znie môj hlas. Dúfam, že sa ti bude páčiť.",
+      "boost": "Slovak"
+    },
+    "sv": {
+      "text": "Hej, så här låter min röst. Jag hoppas att du gillar den.",
+      "boost": "Swedish"
+    },
+    "hr": {
+      "text": "Bok, ovako zvuči moj glas. Nadam se da će ti se svidjeti.",
+      "boost": "Croatian"
+    },
+    "fil": {
+      "text": "Kumusta, ganito ang boses ko. Sana magustuhan mo.",
+      "boost": "Filipino"
+    },
+    "hu": {
+      "text": "Szia, így hangzik a hangom. Remélem, tetszeni fog.",
+      "boost": "Hungarian"
+    },
+    "no": {
+      "text": "Hei, slik høres stemmen min ut. Jeg håper du liker den.",
+      "boost": "Norwegian"
+    },
+    "nn": {
+      "text": "Hei, slik høyrest stemma mi ut. Eg håpar du likar ho.",
+      "boost": "Nynorsk"
+    },
+    "sl": {
+      "text": "Pozdravljeni, tako zveni moj glas. Upam, da vam bo všeč.",
+      "boost": "Slovenian"
+    },
+    "ca": {
+      "text": "Hola, així sona la meva veu. Espero que t'agradi.",
+      "boost": "Catalan"
+    },
+    "ta": {
+      "text": "வணக்கம், இதுதான் என் குரல். உங்களுக்குப் பிடிக்கும் என்று நம்புகிறேன்.",
+      "boost": "Tamil"
+    },
+    "af": {
+      "text": "Hallo, so klink my stem. Ek hoop jy hou daarvan.",
+      "boost": "Afrikaans"
+    },
+    "bn": {
+      "text": "নমস্কার, আমার কণ্ঠস্বর এরকম। আশা করি আপনার ভালো লাগবে।"
+    },
+    "mr": {
+      "text": "नमस्कार, माझा आवाज असा आहे. तुम्हाला आवडेल अशी आशा आहे."
+    },
+    "te": {
+      "text": "నమస్కారం, నా గొంతు ఇలా ఉంటుంది. మీకు నచ్చుతుందని ఆశిస్తున్నాను."
+    }
+  },
+  "extra_body": {
+    "minimax-speech-2.8-hd": {
+      "language_boost": "{boost}"
+    }
+  }
+}

@@ -16,7 +16,7 @@
  * What this file pins is the SHELL: the slots, the shape of each, what each of
  * the four dropdowns holds, and the treatment carried by the items with no
  * command behind them (user 2026-08-23's rule, implemented in
- * `document-coming-tool.tsx`, kept by user 2026-08-26). Whether a command is
+ * `document-unavailable-control.ts`, kept by user 2026-08-26). Whether a command is
  * wired is a separate question — eight of the nine reach one; the task list
  * waits on a schema node it has not been given.
  *

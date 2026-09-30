@@ -241,7 +241,7 @@ function markupOf(): string {
 }
 
 describe('the selection bubble bar', () => {
-  it('appears on a selection, carrying those eight commands and the link', async () => {
+  it('appears on a selection, carrying those nine commands and the link', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 0, 5);
@@ -258,7 +258,7 @@ describe('the selection bubble bar', () => {
       // still work is pinned by `selection-bubble-shell.test.tsx`.
       [...MARK_TOOLS, ...INLINE_TOOLS]
         .map((t) => t.id)
-        .concat('link')
+        .concat('link', 'comment')
         .sort(),
     );
   });
@@ -293,7 +293,7 @@ describe('the selection bubble bar', () => {
       'doc-bubble-tool-link',
       'doc-bubble-tool-code',
       'doc-bubble-color',
-      'doc-bubble-coming-comment',
+      'doc-bubble-tool-comment',
       'doc-bubble-sep-ai',
       'doc-bubble-ai',
     ]);
@@ -319,50 +319,16 @@ describe('the selection bubble bar', () => {
     }
   });
 
-  // A9 / A10: the two entries whose commands are not open yet. They stand in
-  // the bar so the shape is whole, and say for themselves that they cannot be
-  // used — the same treatment the two snapshot commands got in the
-  // whole-document menu (task #129).
-  it.each([
-    ['comment'],
-  ])('shows %s as an entry that is not open yet', async (id) => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 0, 5);
-
-    const entry = screen.getByTestId(`doc-bubble-coming-${id}`);
-    expect(entry).toHaveAttribute('aria-disabled', 'true');
-    expect(entry.className).toContain('cursor-not-allowed');
-    expect(entry.className).toContain('opacity-50');
-  });
-
-  // A10: clicking one leaves the document exactly as it was.
-  it.each([
-    ['comment'],
-  ])('does nothing when %s is clicked', async (id) => {
-    const editor = open('<p>hello world</p>');
-    mount(editor);
-    await selectWithFocus(editor, 0, 5);
-    const before = markupOf();
-
-    act(() => {
-      screen.getByTestId(`doc-bubble-coming-${id}`).click();
-    });
-
-    expect(markupOf()).toBe(before);
-  });
-
   // A11: the whole bar stays out of the tab order (ruling R4), so the comment
-  // entry follows the command buttons beside it. What it carries is
-  // `aria-disabled` rather than HTML `disabled`: the first leaves it in the
-  // accessibility tree to be read, the second drops it out of it. The four
-  // dropdowns are held to the same rule by `selection-bubble-shell.test.tsx`.
+  // entry follows the command buttons beside it — it is one of them now
+  // (#18). The four dropdowns are held to the same rule by
+  // `selection-bubble-shell.test.tsx`.
   it('keeps comment out of the tab order, the way the bar does', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 0, 5);
 
-    const entry = screen.getByTestId('doc-bubble-coming-comment');
+    const entry = screen.getByTestId('doc-bubble-tool-comment');
     expect(entry.getAttribute('tabindex')).toBe('-1');
     expect(entry.hasAttribute('disabled')).toBe(false);
   });
@@ -416,7 +382,7 @@ describe('the selection bubble bar', () => {
     await selectWithFocus(editor, 0, 5);
 
     const ai = screen.getByTestId('doc-bubble-ai');
-    const comment = screen.getByTestId('doc-bubble-coming-comment');
+    const comment = screen.getByTestId('doc-bubble-tool-comment');
 
     expect(ai).toHaveTextContent('AI');
     // Icon plus chevron makes two svgs; the comment entry has only its icon.
@@ -439,7 +405,7 @@ describe('the selection bubble bar', () => {
   it.each([
     ['tool-underline', 'spaces.document.commands.underline'],
     ['tool-code', 'spaces.document.commands.code'],
-    ['coming-comment', 'spaces.document.commands.comment'],
+    ['tool-comment', 'spaces.document.commands.comment'],
     ['ai', 'spaces.document.commands.ai'],
   ])('gives %s a name that can be read out', async (id, key) => {
     const editor = open('<p>hello world</p>');
@@ -1408,11 +1374,11 @@ describe('the selection bubble bar', () => {
   // behaviours belong to acceptance items G2 / E5 and G1, whose verification
   // is written in §7 of the design record.
 
-  // With no selection the eight buttons are not built at all.
+  // With no selection the seven buttons are not built at all.
   //
   // Why they must not be: each of them runs its command's dry run (`canRun`)
   // on every transaction, and the bar spends almost all of its life away —
-  // leaving them mounted costs eight extra dry runs per keystroke for a
+  // leaving them mounted costs seven extra dry runs per keystroke for a
   // carrier nobody can see.
   it('builds none of the buttons while there is no selection', async () => {
     const editor = open('<p>hello world</p>');
@@ -1420,7 +1386,7 @@ describe('the selection bubble bar', () => {
     await selectWithFocus(editor, 0, 5);
     expect(
       document.querySelectorAll('[data-testid^="doc-bubble-tool-"]'),
-    ).toHaveLength(6);
+    ).toHaveLength(7);
 
     act(() => {
       selectTextRange(editor, 2, 2);
@@ -1489,7 +1455,7 @@ describe('the selection bubble bar', () => {
   // so the mouse still reaches it), pinned by `hasAttribute('tabindex')` in
   // the focusability test above. Reading `bar.tabIndex` here would tell
   // nothing apart — a div with no attribute answers -1 anyway.
-  it('keeps its six buttons out of the tab order', async () => {
+  it('keeps its seven buttons out of the tab order', async () => {
     const editor = open('<p>hello world</p>');
     mount(editor);
     await selectWithFocus(editor, 0, 5);
@@ -1498,12 +1464,12 @@ describe('the selection bubble bar', () => {
       document.querySelectorAll<HTMLElement>('[data-testid^="doc-bubble-tool-"]'),
     );
 
-    // Six: B I S U plus inline code plus the link. With the three block
-    // commands moved into the block type menu, this counts what is left on the
-    // bar; the four dropdown openers are pinned by
+    // Seven: B I S U plus inline code, the link, and the comment entry (#18).
+    // With the three block commands moved into the block type menu, this
+    // counts what is left on the bar; the four dropdown openers are pinned by
     // `selection-bubble-shell.test.tsx`'s "keeps the four new openers out of
     // the tab order".
-    expect(buttons).toHaveLength(6);
+    expect(buttons).toHaveLength(7);
     for (const button of buttons) {
       expect(button.tabIndex).toBe(-1);
     }

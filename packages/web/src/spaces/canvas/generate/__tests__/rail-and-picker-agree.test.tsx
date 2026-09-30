@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import type { ReferenceKind } from '@breatic/shared';
 import { render, screen } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import { Document } from '@tiptap/extension-document';
@@ -51,16 +52,16 @@ const ROWS: ReferenceRailItem[] = [
 
 /**
  * 弹层在这一档下会提供哪几行。
- * @param takesReferences - 这一档吃不吃参考素材。
+ * @param referenceKinds - The node kinds this mode's reference pool takes.
  * @param takesPrompt - 这个模型吃不吃提示词。
  * @returns 弹层交给列表的那些行的 refId。
  */
-function pickerOffers(takesReferences: boolean, takesPrompt: boolean): string[] {
+function pickerOffers(referenceKinds: readonly ReferenceKind[], takesPrompt: boolean): string[] {
   const suggestion = makeReferenceSuggestion({
     getPool: () => ROWS,
     emptyLabel: 'empty',
     noMatchLabel: 'no-match',
-    getUsabilityContext: () => ({ takesReferences, takesPrompt }),
+    getUsabilityContext: () => ({ referenceKinds, takesPrompt }),
   });
   const items = suggestion.items;
   if (!items) throw new Error('items resolver missing');
@@ -82,17 +83,17 @@ function pickerOffers(takesReferences: boolean, takesPrompt: boolean): string[] 
 
 /**
  * 轨道在这一档下哪几行的内容是活的（插入按钮不被拒）。
- * @param takesReferences - 这一档吃不吃参考素材。
+ * @param referenceKinds - The node kinds this mode's reference pool takes.
  * @param takesPrompt - 这个模型吃不吃提示词。
  * @returns 插入按钮没有被拒的那些行的 refId。
  */
-function railOffers(takesReferences: boolean, takesPrompt: boolean): string[] {
+function railOffers(referenceKinds: readonly ReferenceKind[], takesPrompt: boolean): string[] {
   const { unmount } = render(
     <ReferenceRail
       references={ROWS}
       onInsert={vi.fn()}
       onRemove={vi.fn()}
-      modeTakesReferences={takesReferences}
+      referenceKinds={referenceKinds}
       modelTakesPrompt={takesPrompt}
     />,
   );
@@ -109,17 +110,17 @@ function railOffers(takesReferences: boolean, takesPrompt: boolean): string[] {
 }
 
 const MODES = [
-  { name: '吃参考的档', takesReferences: true, takesPrompt: true },
-  { name: '不吃参考的档', takesReferences: false, takesPrompt: true },
-  { name: '模型不发提示词的档', takesReferences: true, takesPrompt: false },
-  { name: '两条都不成立的档', takesReferences: false, takesPrompt: false },
+  { name: '吃参考的档', referenceKinds: ['image'], takesPrompt: true },
+  { name: '不吃参考的档', referenceKinds: [], takesPrompt: true },
+  { name: '模型不发提示词的档', referenceKinds: ['image'], takesPrompt: false },
+  { name: '两条都不成立的档', referenceKinds: [], takesPrompt: false },
 ] as const;
 
 describe('轨道和 @ 弹层对同一行给出同一个答案', () => {
   for (const mode of MODES) {
     it(`${mode.name}：两边提供的是同一批行`, () => {
-      const picker = pickerOffers(mode.takesReferences, mode.takesPrompt);
-      const rail = railOffers(mode.takesReferences, mode.takesPrompt);
+      const picker = pickerOffers(mode.referenceKinds, mode.takesPrompt);
+      const rail = railOffers(mode.referenceKinds, mode.takesPrompt);
       expect(picker.slice().sort()).toEqual(rail.slice().sort());
     });
   }

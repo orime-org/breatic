@@ -379,16 +379,17 @@ test('the handle opens the menu, and Escape hands typing back to the body', asyn
   await expect(page.locator(EDITOR)).toContainText('first line more');
 });
 
-test('the comment row is drawn unusable and does nothing when pressed (A10)', async () => {
+test('the comment row is drawn unusable on a row without words and does nothing when pressed (A10)', async () => {
   // A10 asks for the row to stand in the menu so the shape is whole AND to
-  // look unusable. Only a browser answers the second half: the treatment is
-  // `hover:` classes cancelling what the ghost variant would otherwise paint,
-  // and whether they win is a question about twMerge and the cascade. Radix
-  // highlights the row under the pointer by MOVING FOCUS to it, so the pointer
-  // is put on the row before reading.
+  // look unusable where it cannot be used — which, since comments came in, is
+  // a row with no words to comment on. Only a browser answers the second
+  // half: the treatment is `hover:` classes cancelling what the ghost variant
+  // would otherwise paint, and whether they win is a question about twMerge
+  // and the cascade. Radix highlights the row under the pointer by MOVING
+  // FOCUS to it, so the pointer is put on the row before reading.
   await openFreshDocument(page);
-  await typeLines(page, ['a line to leave alone']);
-  await hoverRow(page, 0);
+  await typeLines(page, ['a line to leave alone', '']);
+  await hoverRow(page, 1);
   await page.getByTestId('doc-block-handle').click();
 
   const row = page.getByTestId('doc-block-row-comment');
@@ -1205,7 +1206,10 @@ test('rules the block type submenu where the bubble bar rules it', async () => {
       .querySelector('[data-testid="doc-block-type-heading-1"]')
       ?.closest('[role="menu"]');
     if (panel === null || panel === undefined) return null;
-    return [...panel.children].map((child) =>
+    // The rows sit in the element the menu primitive marks for them.
+    const rows = panel.querySelector('[data-menu-rows]');
+    if (rows === null) return null;
+    return [...rows.children].map((child) =>
       child.getAttribute('data-testid') ?? child.getAttribute('role') ?? '',
     );
   });
@@ -1321,7 +1325,10 @@ test('rules the insert submenu the same way', async () => {
       .querySelector('[data-testid="doc-block-insert-quote"]')
       ?.closest('[role="menu"]');
     if (panel === null || panel === undefined) return null;
-    return [...panel.children].map(
+    // The rows sit in the element the menu primitive marks for them.
+    const rows = panel.querySelector('[data-menu-rows]');
+    if (rows === null) return null;
+    return [...rows.children].map(
       (child) =>
         child.getAttribute('data-testid') ?? child.getAttribute('role') ?? '',
     );

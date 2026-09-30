@@ -65,6 +65,27 @@ export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
 }
 
 /**
+ * Top-level key holding a document Space's comment threads.
+ *
+ * Beside the body in the same doc, for the same reason the body's key is not
+ * exported past this module.
+ */
+const DOCUMENT_COMMENTS_KEY = "comments";
+
+/**
+ * Get a document Space's comment threads — what the thread store reads and
+ * writes.
+ *
+ * One doc carries both this and the body, so a thread cannot arrive without
+ * the text it points at, and one connection is enough for both.
+ * @param doc - The document Space's Y.Doc.
+ * @returns The threads map, created on first access.
+ */
+export function documentCommentThreads(doc: Y.Doc): Y.Map<unknown> {
+  return doc.getMap(DOCUMENT_COMMENTS_KEY);
+}
+
+/**
  * Build the one block a fresh document Space starts with.
  *
  * Node names are camelCase because that is what the editor registers them as.

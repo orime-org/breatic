@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { ReferenceKind } from '@breatic/shared';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
@@ -82,10 +83,10 @@ const KEY = {
 
 /**
  * Renders the rail under one mode.
- * @param takesReferences - Whether the mode consumes the reference pool.
+ * @param referenceKinds - The node kinds the mode's reference pool takes.
  * @returns The insert / remove spies.
  */
-function renderRail(takesReferences: boolean): {
+function renderRail(referenceKinds: readonly ReferenceKind[]): {
   onInsert: ReturnType<typeof vi.fn>;
   onRemove: ReturnType<typeof vi.fn>;
 } {
@@ -96,7 +97,7 @@ function renderRail(takesReferences: boolean): {
       references={ROWS}
       onInsert={onInsert}
       onRemove={onRemove}
-      modeTakesReferences={takesReferences}
+      referenceKinds={referenceKinds}
     />,
   );
   return { onInsert, onRemove };
@@ -121,7 +122,7 @@ describe('ReferenceRail — a mode that ignores references dims its reference ma
     // #1952 moved the dim off the row and onto its CONTENT button: the ✕ lives
     // on the row too and it stays usable in every state now, so a dim there
     // would have taken the delete control with it.
-    renderRail(false);
+    renderRail([]);
     for (const id of ['e-image', 'e-audio', 'e-video']) {
       expect(insertBtn(id), id).toHaveClass('opacity-50');
     }
@@ -131,7 +132,7 @@ describe('ReferenceRail — a mode that ignores references dims its reference ma
     // User 2026-08-13: "整行统一变暗" is about the reference material; a text
     // row is prompt material and never dims. Painting it half-strength said it
     // was unusable while this very mode was consuming it.
-    renderRail(false);
+    renderRail([]);
     expect(insertBtn('e-text')).not.toHaveClass('opacity-50');
   });
 
@@ -139,7 +140,7 @@ describe('ReferenceRail — a mode that ignores references dims its reference ma
     // 0.5 × 0.5 = 0.25 would make a dark row's controls read as broken rather
     // than inactive. Still one layer per row after #1952 — it just moved: the
     // CONTENT button owns it, so the row wrapper and the ✕ must carry none.
-    renderRail(false);
+    renderRail([]);
     expect(row('e-image')).not.toHaveClass('opacity-50');
     expect(removeBtn('e-image')).not.toHaveClass('opacity-50');
   });
@@ -150,7 +151,7 @@ describe('ReferenceRail — a mode that ignores references dims its reference ma
     // removes regardless, and `ReferenceRail-decoupled.test.tsx` already pins
     // that for every mode and every row. What is only here is the last line:
     // removing a text row raises NO refusal toast.
-    const { onRemove } = renderRail(false);
+    const { onRemove } = renderRail([]);
     expect(removeBtn('e-text')).not.toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(removeBtn('e-text'));
     expect(onRemove).toHaveBeenCalledTimes(1);
@@ -159,7 +160,7 @@ describe('ReferenceRail — a mode that ignores references dims its reference ma
   });
 
   it('keeps the TEXT row insertable — it feeds the prompt, not the references', () => {
-    const { onInsert } = renderRail(false);
+    const { onInsert } = renderRail([]);
     expect(insertBtn('e-text')).not.toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(insertBtn('e-text'));
     expect(onInsert).toHaveBeenCalledTimes(1);
@@ -168,7 +169,7 @@ describe('ReferenceRail — a mode that ignores references dims its reference ma
   });
 
   it('refuses the media rows with the mode reason, not the modality one', () => {
-    const { onInsert } = renderRail(false);
+    const { onInsert } = renderRail([]);
     for (const id of ['e-image', 'e-audio', 'e-video']) {
       fireEvent.click(insertBtn(id));
     }
@@ -182,7 +183,7 @@ describe('ReferenceRail — a mode that ignores references dims its reference ma
 
 describe('ReferenceRail — a mode that uses references lights the rail up', () => {
   it('leaves no row dimmed and every ✕ live, audio and video included (#1934)', () => {
-    const { onRemove } = renderRail(true);
+    const { onRemove } = renderRail(['image']);
     for (const id of ['e-text', 'e-image', 'e-audio', 'e-video']) {
       expect(row(id), id).not.toHaveClass('opacity-50');
       expect(removeBtn(id), id).not.toHaveAttribute('aria-disabled', 'true');
@@ -193,7 +194,7 @@ describe('ReferenceRail — a mode that uses references lights the rail up', () 
   });
 
   it('inserts the types this run consumes and explains the ones it does not', () => {
-    const { onInsert } = renderRail(true);
+    const { onInsert } = renderRail(['image']);
     fireEvent.click(insertBtn('e-text'));
     fireEvent.click(insertBtn('e-image'));
     expect(onInsert).toHaveBeenCalledTimes(2);
@@ -216,7 +217,7 @@ describe('ReferenceRail — an unusable control still answers', () => {
     // A disabled element dispatches neither click nor pointerenter, so it can
     // neither explain itself nor show its hover preview — measured 2026-08-13,
     // and the reason both requirements rule it out.
-    renderRail(false);
+    renderRail([]);
     for (const id of ['e-image', 'e-audio', 'e-video']) {
       expect(insertBtn(id), id).not.toBeDisabled();
       expect(removeBtn(id), id).not.toBeDisabled();
@@ -235,7 +236,7 @@ describe('ReferenceRail — an unusable control still answers', () => {
     // the test above, which pins the absent attribute; that is why this title
     // claims the class and not the rendered cursor. jsdom applies no Tailwind,
     // so the rendered cursor is not observable at this level either way.
-    renderRail(false);
+    renderRail([]);
     for (const btn of [insertBtn('e-image'), removeBtn('e-image')]) {
       const unconditional = btn.className
         .split(/\s+/)
@@ -252,7 +253,7 @@ describe('ReferenceRail — an unusable control still answers', () => {
     // `disabled`, `aria-disabled` leaves the button focusable and clickable,
     // so the keyboard path exists at all. That the keys really do reach it is
     // a browser behaviour, verified in the smoke run.
-    renderRail(false);
+    renderRail([]);
     const btn = insertBtn('e-image');
     expect(btn.tagName).toBe('BUTTON');
     expect(btn).not.toHaveAttribute('tabindex', '-1');
@@ -293,7 +294,7 @@ describe('ReferenceRail — the dim does not reach the hover preview', () => {
         ]}
         onInsert={vi.fn()}
         onRemove={vi.fn()}
-        modeTakesReferences={false}
+        referenceKinds={[]}
       />,
     );
     const dimmedRow = row('e-image');
@@ -327,7 +328,7 @@ describe('ReferenceRail — a model that sends no prompt (#1966)', () => {
         references={ROWS}
         onInsert={vi.fn()}
         onRemove={vi.fn()}
-        modeTakesReferences={false}
+        referenceKinds={[]}
         modelTakesPrompt={false}
       />,
     );

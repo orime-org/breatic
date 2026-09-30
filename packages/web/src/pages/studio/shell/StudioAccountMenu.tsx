@@ -244,7 +244,8 @@ export function StudioAccountMenu(): React.JSX.Element {
           // The rows carry their own highlight, so with nothing between them
           // two adjacent highlights touch and read as one block. The language
           // popover spaces its rows the same way.
-          className='flex w-60 flex-col gap-0.5'
+          className='w-60'
+          rowsClassName='flex flex-col gap-0.5'
           data-testid='account-menu'
         >
           <DropdownMenuLabel className='flex items-center gap-2'>

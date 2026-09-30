@@ -43,7 +43,12 @@ describe('DocumentEditor', () => {
     doc = new Y.Doc();
     awareness = new Awareness(doc);
     const { result } = renderHook(() =>
-      useDocumentEditor({ doc, name: NAME, caretProvider: { awareness } }),
+      useDocumentEditor({
+        doc,
+        name: NAME,
+        caretProvider: { awareness },
+        readWho: () => ({ role: 'editor', viewerId: 'u1' }),
+      }),
     );
     await waitFor(() => expect(result.current).not.toBeNull());
     handle = result.current!;
@@ -58,14 +63,19 @@ describe('DocumentEditor', () => {
   it('renders one chrome element beside the body: the scroller', () => {
     // The top toolbar is gone (task #129). This counts what the shell renders
     // rather than naming test ids the toolbar used to carry — those queries
-    // went vacuous the moment it was deleted. Anything new added as a direct
-    // child of the shell turns this red. Two things do NOT: the bubble bar,
-    // which only renders while a selection exists, and anything portalled out.
+    // went vacuous the moment it was deleted. Anything new added beside the
+    // body turns this red. Two things do NOT: the bubble bar, which only
+    // renders while a selection exists, and anything portalled out.
+    //
+    // The shell holds one row, and the row is where the columns go: the body
+    // and, once the reader opens it, the comment panel (#18, A18).
     const { container } = render(<DocumentEditor handle={handle} />);
-    const children = [...container.firstElementChild!.children];
+    const shell = [...container.firstElementChild!.children];
+    expect(shell).toHaveLength(1);
 
-    expect(children).toHaveLength(1);
-    expect(children[0]).toHaveClass(BODY_SCROLLER_CLASS);
+    const columns = [...shell[0]!.children];
+    expect(columns).toHaveLength(1);
+    expect(columns[0]).toHaveClass(BODY_SCROLLER_CLASS);
   });
 
   it('puts the whole-document entry inside the scroller, ahead of the page', () => {

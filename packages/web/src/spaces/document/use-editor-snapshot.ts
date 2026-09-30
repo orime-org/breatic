@@ -63,23 +63,42 @@ export function useEditorSnapshot<T>(
     (onStoreChange: () => void) => onEditorSettled(editor, onStoreChange),
     [editor],
   );
+  const readEditor = React.useCallback(() => read(editor), [read, editor]);
+  return useCachedSnapshot(subscribe, readEditor, isEqual);
+}
 
-  // Held in a ref rather than in state: `useSyncExternalStore` calls the
-  // snapshot during render and requires the same object back while nothing has
-  // moved, so the cache has to be written during that call.
+/**
+ * Follows a value derived from somewhere that announces its own changes.
+ *
+ * `useSyncExternalStore` calls the snapshot during render and needs the same
+ * object back while nothing has moved, so a reading that rebuilds its answer
+ * — a map, a list of cards — has to be cached against the last one or every
+ * render counts as a change. That cache is the whole of this.
+ * @param subscribe - Registers a listener, and hands back its removal.
+ * @param read - Derives the value. Called on every render and every change.
+ * @param isEqual - Whether two readings mean the same thing.
+ * @returns The latest value, stable while `isEqual` says nothing moved.
+ */
+export function useCachedSnapshot<T>(
+  subscribe: (onChange: () => void) => () => void,
+  read: () => T,
+  isEqual: (a: T, b: T) => boolean = Object.is,
+): T {
+  // Held in a ref rather than in state, because the snapshot is called
+  // during render and the cache has to be written in that call.
   const cache = React.useRef<{ value: T } | null>(null);
   const latest = React.useRef({ read, isEqual });
   latest.current = { read, isEqual };
 
   const snapshot = React.useCallback((): T => {
-    const next = latest.current.read(editor);
+    const next = latest.current.read();
     const held = cache.current;
     if (held !== null && latest.current.isEqual(held.value, next)) {
       return held.value;
     }
     cache.current = { value: next };
     return next;
-  }, [editor]);
+  }, []);
 
   return React.useSyncExternalStore(subscribe, snapshot, snapshot);
 }

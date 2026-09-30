@@ -10,7 +10,8 @@
     "test": "vitest run",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "voice-samples": "tsx src/voice-samples.ts"
   },
   "dependencies": {
     "@breatic/core": "workspace:*",

@@ -79,7 +79,7 @@ const EDITORS = [
         placeholder='p'
         mentionEmptyLabel='none'
         mentionNoMatchLabel='No matches'
-        imageRefsDisabled
+        referenceKinds={[]}
         references={[]}
         onTextChange={vi.fn()}
         onAtMentionsChange={vi.fn()}

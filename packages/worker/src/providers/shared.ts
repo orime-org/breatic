@@ -5,14 +5,14 @@
  * Shared AIGC provider utilities.
  *
  * Provides parameter validation, model resolution, and semaphore
- * management — shared across all 6 AIGC providers. Model config comes
+ * management — shared by the catalog generation path and 3D. Model config comes
  * from domain's getFullModelConfig (#1672): domain is the single
  * config/models YAML reader; this module only turns that config into
  * transport-ready connections.
  */
 
 import { logger } from "@breatic/core";
-import { effectiveItemCap } from "@breatic/shared";
+import { itemCap } from "@breatic/shared";
 import { getFullModelConfig, resolveActiveProvider } from "@breatic/domain";
 import type { FullModelEntry } from "@breatic/domain";
 
@@ -26,17 +26,27 @@ export interface ResolvedModel {
   baseUrl: string;
   apiKey: string;
   timeout: number;
-  costPerCall: number;
   maxConcurrency: number;
-  tokenPrice?: number;
-  creditPrice?: number;
-  extraParams?: Record<string, unknown>;
-  litellmModel?: string;
   mode?: string | string[];
 }
 
-/** Model family interface — one per model family file. */
+/**
+ * A catalog model whose request needs more than its declaration maps: the
+ * params it names in `CONSUMES` are left out of the upstream body, and
+ * `prepare` answers the prompt to send plus any upstream fields it writes
+ * itself (#2156).
+ */
 export interface ModelFamily {
+  MODELS: ReadonlySet<string>;
+  CONSUMES: ReadonlySet<string>;
+  prepare(
+    prompt: string,
+    params: Readonly<Record<string, unknown>>,
+  ): Promise<{ prompt: string; fields: Record<string, unknown> }>;
+}
+
+/** A 3D model family: rewrites the prompt and params before its transport. */
+export interface ThreeDFamily {
   MODELS: ReadonlySet<string>;
   buildRequest(
     prompt: string,
@@ -65,32 +75,6 @@ export interface ResumeContext {
    * identical submit is rejected as a duplicate instead of re-generating.
    */
   externalTaskId: string;
-}
-
-/** Transport interface — one per API provider adapter. */
-export interface Transport {
-  generate(
-    prompt: string,
-    resolved: ResolvedModel,
-    params: Record<string, unknown>,
-    resume?: ResumeContext,
-  ): Promise<TransportResult>;
-}
-
-/**
- * Transport result — either a URL (async providers) or raw bytes (sync providers).
- *
- * Sync transports (ElevenLabs, MiniMax, Fish) return `buffer` + `contentType`.
- * Async transports (WaveSpeed, Kling, etc.) return `url` (temporary CDN link).
- * The Worker handles all storage logic uniformly via `persistResultUrls`.
- */
-export interface TransportResult {
-  url?: string;
-  text?: string;
-  buffer?: Buffer;
-  contentType?: string;
-  model: string;
-  cost: number;
 }
 
 // ── Parameter Validation (Lenient) ───────────────────────────────────
@@ -139,14 +123,13 @@ export function validateParams(
       if (spec.default !== undefined) cleaned[key] = spec.default;
       continue;
     }
-    // The cap a model states may move with another param the submission
-    // carries (#1928), so read it through the one function the panel's picker
-    // gate and the server's pre-enqueue gate read. Judging a different number
-    // here is how a submission the server let through gets quietly cut.
-    const itemCap = effectiveItemCap(spec, provided);
-    if (itemCap !== undefined && Array.isArray(value) && value.length > itemCap) {
-      logger.warn({ model: name, param: key, count: value.length, maxItems: itemCap }, "list_param_truncated");
-      cleaned[key] = value.slice(0, itemCap);
+    // Read through the one function the panel's picker gate and the server's
+    // pre-enqueue gate read. Judging a different number here is how a
+    // submission the server let through gets quietly cut.
+    const cap = itemCap(spec);
+    if (cap !== undefined && Array.isArray(value) && value.length > cap) {
+      logger.warn({ model: name, param: key, count: value.length, maxItems: cap }, "list_param_truncated");
+      cleaned[key] = value.slice(0, cap);
       continue;
     }
     cleaned[key] = value;
@@ -186,12 +169,7 @@ export function resolveModel(modality: string, modelName: string | undefined): R
     baseUrl: active.baseUrl,
     apiKey: active.apiKey,
     timeout: active.timeout,
-    costPerCall: active.modelConfig.cost_per_call ?? 0,
     maxConcurrency: active.maxConcurrency,
-    tokenPrice: active.providerEntry.token_price,
-    creditPrice: active.providerEntry.credit_price,
-    extraParams: active.providerEntry.extra_params,
-    litellmModel: active.providerEntry.litellm_model,
     mode: active.modelConfig.mode,
   };
 }

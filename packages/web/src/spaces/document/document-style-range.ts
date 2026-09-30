@@ -305,3 +305,23 @@ export function firstRunValue<T>(
 export function reachesAnyRun(state: EditorState, mark: MarkType): boolean {
   return eachReachable(state, mark, () => false);
 }
+
+/**
+ * The same question over an explicit range, off the document alone.
+ *
+ * The block handle's form of a command reads this: it stands a row in for a
+ * range rather than dispatching a selection, so there is no state to ask.
+ * Being free of state is also what makes it structurally unable to answer
+ * about the reader's caret, which is elsewhere while the handle is on screen.
+ * @param doc - The document.
+ * @param over - The range standing for the row, or the reader's selection.
+ * @param mark - The mark type a press would write.
+ * @returns Whether a press would reach any run at all.
+ */
+export function reachesAnyRunOver(
+  doc: PMNode,
+  over: Selection,
+  mark: MarkType,
+): boolean {
+  return eachRunOver(doc, over, mark, () => false);
+}

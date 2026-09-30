@@ -10,9 +10,6 @@
  * fewer items than the user picked. That is the degraded result the
  * pre-enqueue gate exists to prevent — the two have to be judging the same
  * number, or a submission the server let through gets quietly cut here.
- *
- * The cap a model states may move with another param it carries: seven
- * reference images alone, four alongside a reference video.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -33,21 +30,14 @@ vi.mock("@breatic/domain", () => ({
 
 const { validateParams } = await import("@worker/providers/shared.js");
 
-/** A one-model catalog whose `images` cap moves with `video`. */
-function catalogWithConditionalCap(): unknown {
+/** A one-model catalog whose `images` list is capped at four. */
+function catalogWithCap(): unknown {
   return {
     models: [
       {
-        name: "kling-o3-pro-ref",
+        name: "capped-model",
         params: {
-          images: {
-            description: "Reference image URLs (1-7, or 1-4 with a video)",
-            type: "list",
-            max_items: 7,
-            max_items_when_present: { video: 4 },
-            default: null,
-          },
-          video: { description: "Reference video URL", default: null },
+          images: { description: "Reference image URLs", type: "list", max_items: 4, default: null },
         },
       },
     ],
@@ -56,39 +46,19 @@ function catalogWithConditionalCap(): unknown {
 
 beforeEach(() => {
   getFullModelConfig.mockReset();
-  getFullModelConfig.mockReturnValue(catalogWithConditionalCap());
+  getFullModelConfig.mockReturnValue(catalogWithCap());
 });
 
-describe("validateParams and a cap that moves with another param", () => {
-  it("keeps all seven images when no reference video came along", () => {
-    const [, cleaned] = validateParams("video", "kling-o3-pro-ref", {
-      images: ["a", "b", "c", "d", "e", "f", "g"],
-      video: null,
-    });
-    expect(cleaned.images).toHaveLength(7);
-  });
-
-  it("truncates to four once a reference video came along", () => {
-    const [, cleaned] = validateParams("video", "kling-o3-pro-ref", {
-      images: ["a", "b", "c", "d", "e", "f", "g"],
-      video: "https://cdn.example/clip.mp4",
+describe("validateParams and a capped list param", () => {
+  it("truncates a list past the cap to the cap", () => {
+    const [, cleaned] = validateParams("video", "capped-model", {
+      images: ["a", "b", "c", "d", "e", "f"],
     });
     expect(cleaned.images).toEqual(["a", "b", "c", "d"]);
   });
 
-  it("leaves four images alone alongside a reference video", () => {
-    const [, cleaned] = validateParams("video", "kling-o3-pro-ref", {
-      images: ["a", "b", "c", "d"],
-      video: "https://cdn.example/clip.mp4",
-    });
-    expect(cleaned.images).toEqual(["a", "b", "c", "d"]);
-  });
-
-  it("reads an empty video string as no video, so the plain cap holds", () => {
-    const [, cleaned] = validateParams("video", "kling-o3-pro-ref", {
-      images: ["a", "b", "c", "d", "e", "f", "g"],
-      video: "",
-    });
-    expect(cleaned.images).toHaveLength(7);
+  it("leaves a list within the cap alone", () => {
+    const [, cleaned] = validateParams("video", "capped-model", { images: ["a", "b"] });
+    expect(cleaned.images).toEqual(["a", "b"]);
   });
 });

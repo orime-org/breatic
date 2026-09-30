@@ -239,18 +239,6 @@ export const coreConfigSchema = z.object({
   GOOGLE_API_KEY: z.string().default(""),
   DEEPSEEK_API_KEY: z.string().default(""),
   WAVESPEED_API_KEY: z.string().default(""),
-  DASHSCOPE_API_KEY: z.string().default(""),
-  BYTEPLUS_API_KEY: z.string().default(""),
-  KLINGAI_ACCESS_KEY: z.string().default(""),
-  KLINGAI_SECRET_KEY: z.string().default(""),
-  MINIMAX_API_KEY: z.string().default(""),
-  ELEVENLABS_API_KEY: z.string().default(""),
-  FAL_API_KEY: z.string().default(""),
-  TOPAZ_API_KEY: z.string().default(""),
-  PIXVERSE_API_KEY: z.string().default(""),
-  VIDU_API_KEY: z.string().default(""),
-  LUMA_API_KEY: z.string().default(""),
-  FISH_API_KEY: z.string().default(""),
 
   // ── Agent Tools ───────────────────────────────────
   BRAVE_SEARCH_API_KEY: z.string().default(""),

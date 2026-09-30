@@ -27,6 +27,7 @@ const mockRecordFailure = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockInsertActivity = vi.hoisted(() => vi.fn());
 const mockPublishActivity = vi.hoisted(() => vi.fn());
+const mockFailOpenSteps = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", () => ({
   getStreamRedis: vi.fn(() => ({})),
@@ -50,6 +51,7 @@ vi.mock("@breatic/domain", () => ({
   getModel: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: { markFailed: mockMarkFailed },
+  upstreamStepRepo: { failOpenSteps: mockFailOpenSteps },
   assetService: {},
   creditLotService: {},
   resolveActiveProvider: vi.fn(),
@@ -103,6 +105,14 @@ describe("a failed run that is the last word", () => {
     );
   });
 
+  // A step still pending or submitted will not run again once the run is
+  // over, so it is closed with the run's own reason.
+  it("fails the upstream steps the run leaves open", async () => {
+    await finishFailedRun(END);
+
+    expect(mockFailOpenSteps).toHaveBeenCalledWith("task-1", "it broke");
+  });
+
   it("gives every target node a history entry", async () => {
     await finishFailedRun({ ...END, nodeIds: ["node-1", "node-2"] });
 
@@ -154,6 +164,14 @@ describe("a failed attempt with a retry still to come", () => {
     expect(mockRecordFailure).toHaveBeenCalledTimes(1);
     expect(mockSettleTaskForNode).not.toHaveBeenCalled();
     expect(mockInsertActivity).not.toHaveBeenCalled();
+  });
+
+  // The retry resumes from the steps: a submitted one keeps polling its
+  // prediction, a pending one is sent again.
+  it("leaves the upstream steps open for the retry", async () => {
+    await finishFailedRun({ ...END, settles: false });
+
+    expect(mockFailOpenSteps).not.toHaveBeenCalled();
   });
 });
 

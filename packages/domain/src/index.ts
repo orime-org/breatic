@@ -52,6 +52,8 @@ export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 // ── Task (+ markCompletedAndBill: task·credit cross-table atomic) ─
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
+export * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
+export * as upstreamCloneRepo from "@domain/task/upstreamClone.repo.js";
 
 // ── Node history (per-node content timeline, append-only) ────────
 export * as nodeHistoryService from "@domain/node-history/node-history.service.js";
@@ -125,6 +127,8 @@ export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provid
 
 // The voices a tts model offers, in one shape whichever vendor answers.
 export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";
+export { getVoiceSampleConfig, voiceSampleUrl } from "@domain/model-catalog/voice-sample-config.js";
+export type { VoiceSampleConfig } from "@domain/model-catalog/voice-sample-config.js";
 export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
 
 // ── Node tasks (one row per task on a node; the four counts the node shows) ──

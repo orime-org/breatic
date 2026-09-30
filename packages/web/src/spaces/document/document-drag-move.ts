@@ -68,7 +68,10 @@ export function landingFor(doc: PMNode, at: number, node: PMNode): number {
  * @param row - The row about to leave.
  * @returns The range to remove.
  */
-function rangeToLift(doc: PMNode, row: RowInDocument): { from: number; to: number } {
+export function rangeToLift(
+  doc: PMNode,
+  row: RowInDocument,
+): { from: number; to: number } {
   const $row = doc.resolve(row.from);
   if ($row.parent.childCount > 1 || $row.depth <= 1) {
     return { from: row.from, to: row.to };

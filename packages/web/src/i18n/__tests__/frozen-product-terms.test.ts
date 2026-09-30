@@ -76,9 +76,21 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
  * decisions and its role hints and per-kind request lines lost their reader.
  */
 const REMOVED_DEAD_KEYS: readonly string[] = [
+  // A comment is written in a card in the panel, where Save and Cancel are
+  // the pair every write box carries. The floating box that used to hold a
+  // Post button, and the notice it dismissed, are gone with it.
+  'spaces.document.comment.post',
+  'spaces.document.comment.dismissNotice',
+  // No model the catalog carries has a vocal-free switch any more (#2156).
+  'canvas.generatePanel.musicInstrumentalOnly',
+  'canvas.generatePanel.musicWithVocals',
   // Google now renders and localizes its official button; the placeholder is gone.
   'auth.login.continueWithGoogle',
   'auth.login.googleSoon',
+  // Voices come from the catalog alone since #2156: the two errors of the
+  // vendor voice lookups went with the lookups.
+  'server.canvas.voices_provider_unconfigured',
+  'server.canvas.voices_upstream_failed',
   // A node carries several tasks at once (#186), so nothing refuses a second
   // one and nothing aborts a task over a stream that would not take an event:
   // the lock that answered "busy", the error naming its holder, and the 503
@@ -133,7 +145,7 @@ describe('frozen product terms (#1336)', () => {
   beforeEach(() => {
     resetLocales();
     for (const [locale, catalog] of LOCALE_CATALOGS) {
-      setLocaleMessages(locale, catalog as Record<string, unknown>);
+      setLocaleMessages(locale, catalog);
     }
     setLocale('en');
   });

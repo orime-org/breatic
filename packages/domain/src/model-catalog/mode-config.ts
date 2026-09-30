@@ -2,27 +2,20 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What each mode declares about the material it needs (#269).
+ * What each mode is called and what it is for (#269).
  *
- * The source requirement is indexed by mode, not by model: one row says what
- * a first-and-last-frame run needs, and every model offering that mode is
- * held to it. Derived from each model's parameters instead, it would reach
- * only the models a generation panel reaches -- ten short of the models the
- * enqueue gate guards.
+ * The material a run needs is declared on each model (#2156), not here: two
+ * models in one mode can take different sources.
  *
- * Nothing here degrades to a default the way the wire schemas do. Those are
- * read by a browser that may be a version behind the catalog, so a field it
- * does not recognise is better absent than guessed; this one is read while
- * the catalog loads, on the machine that ships both, where a mode naming a
- * source type nothing can carry is a deployment that will refuse runs it
- * should accept. Loud on the way in beats quiet at request time.
+ * Nothing here degrades to a default the way the wire schemas do: it is read
+ * while the catalog loads, on the machine that ships both, where a malformed
+ * mode is better refused than guessed at.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { MONOREPO_ROOT } from "@breatic/core";
-import { SOURCE_RULES, type SourceRule } from "@breatic/shared";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 
@@ -40,10 +33,6 @@ export interface ModeDeclaration {
   readonly label: string;
   /** What it does, for the agent to read. */
   readonly description: string;
-  /** The kinds of node it needs; empty when it runs from words alone. */
-  readonly sources: readonly SourceType[];
-  /** Whether it takes every non-optional slot or any one of them. */
-  readonly sourceRule: SourceRule;
 }
 
 /** One catalog bucket's declarations. */
@@ -57,22 +46,11 @@ export interface BucketDeclaration {
 /** Every declared mode, by catalog bucket. */
 export type ModeConfig = Readonly<Record<string, BucketDeclaration>>;
 
-/**
- * One mode's row.
- *
- * `source_rule` quantifies over the mode's canvas slots, not over `sources`:
- * `a2m` needs one audio source and offers three slots to carry it, so a rule
- * read against the one-element `sources` list would answer the same either
- * way and say nothing.
- */
-// Strict: the key set is closed, and a misspelled one used to be dropped in
-// silence — a mode whose `sources` was misspelled then read as needing no
-// material, which takes the enqueue gate off every model declaring it.
+// Strict: the key set is closed, so a misspelled key is refused rather than
+// dropped in silence.
 const modeSchema = z.strictObject({
   label: z.string().min(1),
   description: z.string().default(""),
-  sources: z.array(z.enum(SOURCE_TYPES)).default([]),
-  source_rule: z.enum(SOURCE_RULES).default("all_of"),
 });
 
 const bucketSchema = z.strictObject({
@@ -87,7 +65,7 @@ const configSchema = z.record(z.string(), bucketSchema);
  * Read the parsed `modes.yaml` into declarations, refusing a malformed one.
  * @param raw - The yaml as parsed, before any shape is assumed of it.
  * @returns Every mode it declares, by bucket then mode code.
- * @throws {Error} when a mode names an unknown source type or rule, or has no label.
+ * @throws {Error} when a mode has no label or carries a key a mode does not have.
  */
 export function parseModeConfig(raw: unknown): ModeConfig {
   const parsed = configSchema.safeParse(raw ?? {});
@@ -102,8 +80,6 @@ export function parseModeConfig(raw: unknown): ModeConfig {
           {
             label: row.label,
             description: row.description,
-            sources: row.sources,
-            sourceRule: row.source_rule,
           },
         ]),
       ),
@@ -118,7 +94,7 @@ let cache: ModeConfig | null = null;
 /**
  * The declarations in `config/models/modes.yaml`, read once per process.
  * @returns Every mode it declares, by bucket then mode code.
- * @throws {Error} when a mode names an unknown source type or rule, or has no label.
+ * @throws {Error} when a mode has no label or carries a key a mode does not have.
  */
 export function getModeConfig(): ModeConfig {
   if (cache) return cache;

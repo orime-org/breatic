@@ -64,11 +64,13 @@ export function ParamOptionGroup({
   // max-w + truncate: catalog values carry no length cap at the sanitize
   // boundary — a verbose value must clip inside the popover, not overflow it.
   const optionClass =
-    // `grow basis-12` = flex: 1 1 3rem. Each row takes as many options as fit
-    // at that minimum and then stretches them to span the width, the last row
+    // Each row takes as many options as fit at their own text width (never
+    // under 3rem) and then stretches them to span the width, the last row
     // included — a group whose count does not divide evenly ends on a wide
-    // option rather than on a narrow one beside 177px of nothing.
-    'grow basis-12 ' +
+    // option rather than on a narrow one beside 177px of nothing. The basis is
+    // the text: `truncate` makes the minimum width 0, so a fixed basis packs
+    // a long label into a slot narrower than its text and cuts it.
+    'grow basis-auto min-w-12 ' +
     // The height is stated rather than left to the padding, so every option in
     // every params popover is one height and the next one added has a value to
     // copy. `--btn-compact` is the shortest rung the chrome ladder states.

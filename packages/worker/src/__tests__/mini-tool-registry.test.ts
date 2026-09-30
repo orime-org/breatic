@@ -13,23 +13,53 @@
  * No storage / HTTP / FFmpeg touched — pure map lookups.
  */
 
-import { describe, it, expect } from "vitest";
-import { resolveMiniToolEntry } from "../mini-tool-registry.js";
+import { initCore } from "@breatic/core";
+import { getFullModelConfig } from "@breatic/domain";
+import { beforeAll, describe, it, expect } from "vitest";
+
+import { MINI_TOOL_REGISTRY, resolveMiniToolEntry } from "../mini-tool-registry.js";
+
+beforeAll(() => {
+  // The catalog loads through core; nothing here opens the database.
+  initCore({ ...process.env, DATABASE_URL: process.env.DATABASE_URL ?? "postgres://localhost:5432/breatic_test" });
+});
+
+/** Each provider slot and the model the design fixes for it (#2156, design §7). */
+const PROVIDER_SLOTS: ReadonlyArray<readonly [string, string, string]> = [
+  ["image", "remove-bg", "bria-remove-background"],
+  ["image", "upscale", "crystal-upscaler"],
+  ["video", "upscale", "seedvr2-video"],
+  ["video", "interpolate", "rife-interpolation"],
+  ["video", "extend", "seedance-2.5-video-extend"],
+  ["video", "edit", "wan-3.0-video-edit"],
+  ["video", "motion", "kling-v3-pro-motion"],
+  ["video", "animate", "wan-2.2-animate-2"],
+  ["video", "talking-head", "omnihuman-1.5"],
+  ["audio", "sfx", "sfx-1.6-text-to-audio"],
+  ["audio", "separate", "vocal-remover"],
+  ["audio", "extend", "sfx-1.6-extend-audio"],
+  ["tts", "tts", "realtime-tts-2"],
+  ["tts", "voice-clone", "minimax-voice-clone"],
+];
 
 describe("mini-tool-registry", () => {
-  describe("V1 image roster", () => {
-    it("image.remove-bg resolves to bg-remover provider", () => {
-      expect(resolveMiniToolEntry("image", "remove-bg")).toEqual({
-        kind: "provider",
-        model: "bg-remover",
-      });
+  describe("provider slots", () => {
+    it.each(PROVIDER_SLOTS)("%s.%s runs on %s", (taskType, tool, model) => {
+      expect(resolveMiniToolEntry(taskType, tool)).toEqual({ kind: "provider", model });
     });
 
-    it("image.upscale resolves to topaz-upscale provider", () => {
-      expect(resolveMiniToolEntry("image", "upscale")).toEqual({
-        kind: "provider",
-        model: "topaz-upscale",
-      });
+    it("points every provider slot at a model the catalog serves", () => {
+      // A slot naming a model the catalog dropped fails on every call.
+      const served = new Set(
+        ["image", "video", "audio", "tts"].flatMap((bucket) =>
+          getFullModelConfig(bucket).models.map((m) => m.name),
+        ),
+      );
+      const named = Object.values(MINI_TOOL_REGISTRY).flatMap((tools) =>
+        Object.values(tools).flatMap((entry) => (entry.kind === "provider" ? [entry.model] : [])),
+      );
+      expect(named.filter((model) => !served.has(model))).toEqual([]);
+      expect(named).toHaveLength(PROVIDER_SLOTS.length);
     });
   });
 

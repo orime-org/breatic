@@ -93,13 +93,10 @@ function catalog(): ModelCatalog {
         description: '',
         guide: '',
         tier: 'optional',
-        cost_per_call: 5,
         generation_time: 10,
         takes_prompt: true,
         params: {},
         providers: [],
-        sourcesByMode: {},
-        sourceRuleByMode: {},
       },
     ],
     video: [],
@@ -107,6 +104,7 @@ function catalog(): ModelCatalog {
     tts: [],
     three_d: [],
     total: 1,
+    credit_multiplier: 1,
   };
 }
 

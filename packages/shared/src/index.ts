@@ -63,12 +63,14 @@ export type {
   ModelTier,
   ParamDescriptor,
   RemoteParamSource,
-  ModelRate,
   ModelProvider,
   ModelEntry,
+  PricingContract,
+  ExtraStep,
+  SourceGroup,
+  ItemField,
   ModelCatalog,
   SourceType,
-  SourceRule,
   ProjectRole,
   ProjectMember,
   Studio,
@@ -176,7 +178,6 @@ export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationSource } from "@shared/types/project-activity.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
-  MaterialPath,
   ReferenceRefusal,
   ReferenceUsabilityContext,
   PromptSegment,
@@ -196,7 +197,6 @@ export type {
 } from "@shared/types/index.js";
 
 export {
-  SOURCE_RULES,
   modelCatalogSchema,
   sanitizeModelCatalog,
   IMAGE_GENERATION_MODES,
@@ -205,12 +205,12 @@ export {
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   paramValues,
-  REFERENCE_POOL_PARAM,
   PANEL_EDITOR_PARAM,
   feedersOf,
   insertRefusal,
   isReferenceMaterial,
   layersOf,
+  markTargets,
   nameableFeeders,
   markText,
   promptPlainText,
@@ -330,6 +330,7 @@ export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export {
   documentBodyFragment,
+  documentCommentThreads,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
 
@@ -375,8 +376,11 @@ export { newId, deriveId } from "@shared/ids.js";
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
-export { effectiveItemCap, isPresent } from "@shared/item-cap.js";
+export { completeEntries, itemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
+export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
+export { formatCredits } from "@shared/format-credits.js";
+export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";
 
 // The tab bar belongs to one browser; these are the pure ordering rules the
 // reducer and the Space drawer call.
@@ -638,3 +642,11 @@ export {
 // How many references a model takes, read the same way by the panels that
 // draw the pool, the gate that refuses a submit over it, and the tool.
 export { positiveCap, referenceCapExceeded } from "@shared/reference-cap.js";
+export {
+  REFERENCE_KINDS,
+  referenceKinds,
+  referencePool,
+  type PoolPlace,
+  type ReferenceKind,
+  type ReferencePool,
+} from "@shared/reference-pool.js";

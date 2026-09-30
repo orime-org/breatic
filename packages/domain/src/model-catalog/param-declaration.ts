@@ -55,25 +55,44 @@ const declarationSchema = z.object({
   // silence — the control then read as waiting on nothing.
   when: z
     .strictObject({
-      source: z.string().optional(),
       flag_on: z.string().optional(),
-      flag_off: z.string().optional(),
     })
     .optional(),
   modes: z.array(z.string()).optional(),
   note: z.string().optional(),
-  // One spelling, because readers compare against this exact string: the
-  // source gate takes anything that is not `list` as a single URL, while the
-  // cap check and the transport iterate it. A capitalised spelling would pass
-  // a plain string check and flip both of those answers.
-  type: z.literal("list").optional(),
+  values: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
+  // What a new node stands on until the reader changes it (user 2026-09-29).
+  default: z.unknown().optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  // The value that is sent as nothing: choosing it leaves the param out of the
+  // request, for the upstream's own behaviour when it is absent ("auto").
+  absent_value: z.string().optional(),
+  // How a value reads on screen, when its own spelling is not that sentence
+  // (`left_right` reads "Left first"). English, like `label`.
+  value_labels: z.record(z.string(), z.string()).optional(),
+  // The BCP-47 tag each value is, in the order `values` lists them, so the
+  // panel can show a language in the reader's own words (#2156, design §16).
+  value_locales: z.array(z.string()).optional(),
+  // One spelling each, because readers compare against these exact strings:
+  // the source gate takes a `list` or `items` param as a list and anything
+  // else as a single URL, while the cap check and the transport iterate lists;
+  // `items` is a list editor whose entries carry `fields`; `text` is a free
+  // text control.
+  type: z.enum(["list", "items", "text"]).optional(),
   // Positive integers. A zero or a minus sign is read by every reader as no
   // cap at all, so it widens the limit the yaml meant to state; a fraction is
   // read as a cap and enforced, and there is no half a piece of material.
   max_items: z.number().int().positive().optional(),
-  max_items_when_present: z
-    .record(z.string(), z.number().int().positive())
-    .optional(),
+  // The fewest entries a run takes; the panel keeps adding rows up to it.
+  min_items: z.number().int().positive().optional(),
+  // Another param this one stands in for: when this one is sent, that one is
+  // not (Gemini's speakers make its single voice meaningless).
+  replaces: z.string().optional(),
+  // How a chip picked from this pool is written into the prompt the model
+  // reads (#2156, design §13.2): `{n}` counts the sent list of this kind from
+  // 1, `{i}` from 0.
+  mention: z.string().optional(),
 });
 
 /**
@@ -93,7 +112,8 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "note",
   "type",
   "max_items",
-  "max_items_when_present",
+  "min_items",
+  "replaces",
   "description",
   "default",
   "values",
@@ -101,6 +121,13 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "max",
   "step",
   "remote_source",
+  "upstream",
+  "absent_value",
+  "label",
+  "value_labels",
+  "value_locales",
+  "fields",
+  "mention",
 ]);
 
 /** One parameter's declaration, as these checks read it. */
@@ -186,9 +213,60 @@ function faultsOn(
 
   // A gate reads another parameter of the same model, so a name from some
   // other vendor's spelling leaves the control permanently shut.
-  for (const gate of [declared.when?.source, declared.when?.flag_on, declared.when?.flag_off]) {
-    if (gate !== undefined && !names.has(gate)) {
-      faults.push(`when names "${gate}", which this model does not declare`);
+  const gate = declared.when?.flag_on;
+  if (gate !== undefined && !names.has(gate)) {
+    faults.push(`when names "${gate}", which this model does not declare`);
+  }
+
+  // A label for a value the choice does not offer is a label for nothing, and
+  // usually a value renamed in one place and not the other.
+  const offered = new Set((declared.values ?? []).map(String));
+  for (const value of Object.keys(declared.value_labels ?? {})) {
+    if (!offered.has(value)) {
+      faults.push(`value_labels names "${value}", which values does not offer`);
+    }
+  }
+
+  // A control the panel draws always stands on a value, and a new node reads
+  // it here (user 2026-09-29): a choice on one of its values, a range on a
+  // number inside it. Lists and free text start empty by nature.
+  if (declared.fill === "panel" && declared.type === undefined) {
+    const fallback = declared.default;
+    if (declared.values !== undefined && declared.values.length > 0) {
+      if (!declared.values.some((value) => value === fallback)) {
+        faults.push("a panel choice has to default to one of its values");
+      }
+    } else if (declared.min !== undefined && declared.max !== undefined) {
+      if (typeof fallback !== "number" || fallback < declared.min || fallback > declared.max) {
+        faults.push("a panel range has to default to a number between its min and max");
+      }
+    }
+  }
+
+  // The payload leaves the param out when it holds this value, so a value the
+  // choice does not offer is never held and the param is always sent.
+  if (declared.absent_value !== undefined && !offered.has(declared.absent_value)) {
+    faults.push(`absent_value "${declared.absent_value}" is not one of the values offered`);
+  }
+
+  // One tag per value: the panel pairs them by position, so a short list
+  // names the wrong language for every value past the gap.
+  if (declared.value_locales !== undefined && declared.value_locales.length !== offered.size) {
+    faults.push("value_locales has to name one locale per value, in the order values lists them");
+  }
+
+  // The payload drops the replaced param by name, so a name the model does
+  // not declare drops nothing and both reach the upstream.
+  if (declared.replaces !== undefined && !names.has(declared.replaces)) {
+    faults.push(`replaces "${declared.replaces}", which this model does not declare`);
+  }
+
+  if (declared.min_items !== undefined) {
+    if (declared.type !== "list" && declared.type !== "items") {
+      faults.push("min_items counts entries, so this has to declare type: list or items");
+    }
+    if (declared.max_items !== undefined && declared.min_items > declared.max_items) {
+      faults.push("min_items sits above max_items, so no run can satisfy both");
     }
   }
 
@@ -210,30 +288,20 @@ function faultsOn(
   // while the cap check and the transport iterate it. A declaration carrying a
   // cap without the shape is read two ways at once, and the run it describes
   // is refused by one reader and iterated by the other.
-  const capped =
-    declared.max_items !== undefined || declared.max_items_when_present !== undefined;
-  if (capped && declared.type !== "list") {
-    const which = declared.max_items !== undefined ? "max_items" : "max_items_when_present";
-    faults.push(`${which} counts entries, so this has to declare type: list`);
+  if (declared.max_items !== undefined && declared.type !== "list" && declared.type !== "items") {
+    faults.push("max_items counts entries, so this has to declare type: list or items");
   }
 
-  // The conditional cap states a LOWER number that takes over while another
-  // param is filled, so it needs one to be lower than. The reader takes a
-  // param with no `max_items` as uncapped and stops there, which makes a
-  // declaration that states a cap and gets none.
-  if (declared.max_items_when_present !== undefined && declared.max_items === undefined) {
-    faults.push("max_items_when_present narrows a cap, so this has to declare max_items");
-  }
-
-  // Those keys name params of the same model, read by looking each one up
-  // among the submitted values. A name from some other vendor's spelling is
-  // never found, so the narrowing silently never applies and the wider cap
-  // stands — the same failure the gate above is checked for.
-  for (const named of Object.keys(declared.max_items_when_present ?? {})) {
-    if (!names.has(named)) {
-      faults.push(
-        `max_items_when_present names "${named}", which this model does not declare`,
-      );
+  if (declared.mention !== undefined) {
+    // Only a chip the pool fills is numbered in a sent list; anywhere else
+    // the spelling is read by nothing.
+    if (declared.fill !== "pool") {
+      faults.push("only a pool param writes its chips with a mention");
+    }
+    // One position per chip: none leaves every chip the same word, two make
+    // the number ambiguous.
+    if ((declared.mention.match(/\{[ni]\}/g) ?? []).length !== 1) {
+      faults.push("a mention holds exactly one {n} or {i}");
     }
   }
 

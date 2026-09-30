@@ -33,13 +33,10 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
     description: '',
     guide: '',
     tier: 'recommended',
-    cost_per_call: 7,
     generation_time: 30,
     takes_prompt: true,
     params,
     providers: [],
-    sourcesByMode: {},
-    sourceRuleByMode: {},
   };
 }
 

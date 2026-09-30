@@ -43,7 +43,7 @@ For batch generation (e.g. an album, a soundtrack suite, a set of sound effects)
   "plans": [
     {"task_type": "audio", "model": "<model>", "params": {"prompt": "Track 1: epic orchestral...", "lyrics": "..."}},
     {"task_type": "audio", "model": "<model>", "params": {"prompt": "Track 2: soft piano ballad...", "lyrics": "..."}},
-    {"task_type": "audio", "model": "<sfx_model>", "params": {"prompt": "rain on window with distant thunder", "duration_seconds": 10}}
+    {"task_type": "audio", "model": "<sfx_model>", "params": {"prompt": "rain on window with distant thunder", "duration": 10}}
   ]
 }
 ```

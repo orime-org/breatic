@@ -33,6 +33,7 @@
  */
 
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
+import { STAND_IN_ON, standInOf } from '@web/spaces/canvas/generate/stand-in';
 
 /** What {@link paramsStoreOf} reads off a node to get its per-model records. */
 export interface ParamsStoreSource {
@@ -92,6 +93,9 @@ export function resolveParamsForModel(
     if (descriptor.remote_source && current[key] === undefined) continue;
     next[key] = resolveParamValue(descriptor, current[key]);
   }
+  // Which side of a stand-in is in use is the reader's choice, not a catalog
+  // param, so it is kept by name rather than by declaration (stand-in.ts).
+  if (standInOf(model) && current[STAND_IN_ON] === true) next[STAND_IN_ON] = true;
   return next;
 }
 

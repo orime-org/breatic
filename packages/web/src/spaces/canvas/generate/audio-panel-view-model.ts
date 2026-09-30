@@ -14,20 +14,22 @@
  * The second reads the record rather than the resolved value on purpose —
  * resolving falls back to the yaml default, and neither vendor's default is a
  * value every deployment accepts, so a resolved read would call a voice chosen
- * that the user never saw.
+ * that the user never saw. The voice that stands in for an unpicked one is the
+ * first of the model's own list instead, applied by {@link withListDefaultVoice}.
  */
 
 import type { ModelEntry } from '@breatic/shared';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
-import type { AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
+import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
 import {
   filterModelsByMode,
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import {
   readSlotThumbnails,
+  readSlotDurations,
   readSlotUrls,
 } from '@web/spaces/canvas/generate/slots';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
@@ -36,6 +38,11 @@ import {
   voiceParamName,
 } from '@web/spaces/canvas/generate/voice-param';
 import { asContentView } from '@web/data/yjs/node-view';
+import {
+  isStandInOn,
+  speakersShort,
+  standInOf,
+} from '@web/spaces/canvas/generate/stand-in';
 
 /** Everything the audio panel and its submit read off the node. */
 export interface AudioPanelViewModel {
@@ -52,9 +59,14 @@ export interface AudioPanelViewModel {
   nodeStatus: string | undefined;
   /** Whether the active model consumes the prompt. */
   promptRequired: boolean;
-  /** Whether the active model takes a voice at all. */
+  /**
+   * Whether the active model takes a voice for this run: false on a model with
+   * none, and on the dialogue side of one whose speakers replace it.
+   */
   voiceRequired: boolean;
-  /** Whether the node's record for this model holds one. */
+  /** Whether a dialogue holds fewer complete speakers than the model takes. */
+  speakersShort: boolean;
+  /** Whether a voice will be sent: the node's record holds one, or the list's first stands in ({@link withListDefaultVoice}). */
   voiceChosen: boolean;
   /** The held voice id, or null when none is held (or none is taken). */
   voiceSelectedId: string | null;
@@ -67,6 +79,8 @@ export interface AudioPanelViewModel {
    * {@link AudioPanelViewModel.slotUrls}, never this.
    */
   slotThumbnails: AudioSlotUrls;
+  /** How long each slot's track runs, where its pick recorded it (#2156). */
+  slotDurations: Partial<Record<AudioSlot, number>>;
 }
 
 /**
@@ -101,6 +115,9 @@ export function buildAudioPanelViewModel(input: {
   // models reads that model's own (or nothing), never the outgoing one's.
   const params = current ? resolveModelSwitch(content, current).params : {};
 
+  const standIn = standInOf(current);
+  const replacedVoice =
+    standIn !== null && isStandInOn(params) ? standIn.replaces : null;
   const voiceParam = voiceParamName(current);
   const storedRecord = content?.paramsByModel?.[model];
   const voiceChosen =
@@ -112,12 +129,43 @@ export function buildAudioPanelViewModel(input: {
     params,
     nodeStatus: content?.status,
     promptRequired: current?.takes_prompt ?? true,
-    voiceRequired: voiceParam !== null,
+    voiceRequired: voiceParam !== null && voiceParam !== replacedVoice,
+    speakersShort: speakersShort(current, params),
     voiceChosen,
     voiceSelectedId: voiceChosen
       ? (storedRecord?.[voiceParam as string] as string)
       : null,
     slotUrls: readSlotUrls(AUDIO_SLOTS, content),
     slotThumbnails: readSlotThumbnails(AUDIO_SLOTS, content),
+    slotDurations: readSlotDurations(AUDIO_SLOTS, content),
+  };
+}
+
+/**
+ * The view model with the voice list's first entry standing in for a voice
+ * nobody picked (user 2026-09-29: with no voice chosen, the voice is the first
+ * one). The panel, the pill, the gate and the payload all read the result, so
+ * the voice the reader sees marked is the voice that is sent.
+ *
+ * Read, not written: the node's record keeps holding only what the reader
+ * chose, so a later reorder of the list moves the default with it rather than
+ * leaving a stale id behind.
+ * @param vm - The view model as the node alone gives it.
+ * @param first - The first voice of the model's unfiltered list; undefined
+ *   while it is being asked for, null when the list came back empty.
+ * @returns The view model with the default applied, or `vm` itself when there
+ *   is nothing to apply.
+ */
+export function withListDefaultVoice(
+  vm: AudioPanelViewModel,
+  first: { id: string } | null | undefined,
+): AudioPanelViewModel {
+  const name = voiceParamName(vm.modelEntry);
+  if (!first || name === null || !vm.voiceRequired || vm.voiceChosen) return vm;
+  return {
+    ...vm,
+    voiceChosen: true,
+    voiceSelectedId: first.id,
+    params: { ...vm.params, [name]: first.id },
   };
 }

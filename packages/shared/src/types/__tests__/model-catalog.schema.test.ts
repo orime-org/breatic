@@ -26,8 +26,8 @@ function entry(name: string, over: Record<string, unknown> = {}): Record<string,
     description: "",
     guide: "",
     tier: "optional",
-    cost_per_call: 5,
     generation_time: 10,
+    pricing: { base_price: 50_000, formula: "", discount_rate: 100 },
     params: {
       aspect_ratio: { description: "", values: ["1:1", "16:9"], default: "1:1" },
     },
@@ -49,6 +49,7 @@ function catalog(image: unknown[]): Record<string, unknown> {
     tts: [],
     three_d: [],
     total: image.length,
+    credit_multiplier: 1,
   };
 }
 
@@ -119,12 +120,29 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.image.map((m) => m.name)).toEqual(["good"]);
   });
 
-  it("coerces a non-number cost_per_call to 0 but keeps the entry", () => {
-    const raw = catalog([entry("flux", { cost_per_call: "7" })]);
-    const out = sanitizeModelCatalog(raw);
+  it("keeps a model's pricing contract, which the estimate reads", () => {
+    const out = sanitizeModelCatalog(catalog([entry("flux")]));
+    expect(out.image[0]?.pricing).toEqual({ base_price: 50_000, formula: "", discount_rate: 100 });
+  });
+
+  // A malformed contract degrades to absent: the panel then states no price,
+  // where a half-parsed one would state a wrong one.
+  it("drops a malformed pricing contract but keeps the entry", () => {
+    const out = sanitizeModelCatalog(catalog([entry("flux", { pricing: { base_price: "cheap" } })]));
     expect(out.image).toHaveLength(1);
-    expect(out.image[0]?.cost_per_call).toBe(0);
-    expect(typeof out.image[0]?.cost_per_call).toBe("number");
+    expect(out.image[0]?.pricing).toBeUndefined();
+  });
+
+  it("keeps the credit multiplier the estimate converts by", () => {
+    const raw = catalog([entry("flux")]);
+    raw.credit_multiplier = 1.5;
+    expect(sanitizeModelCatalog(raw).credit_multiplier).toBe(1.5);
+  });
+
+  it("falls back to a multiplier of 1 when the wire carries none", () => {
+    const raw = catalog([entry("flux")]);
+    delete raw.credit_multiplier;
+    expect(sanitizeModelCatalog(raw).credit_multiplier).toBe(1);
   });
 
   it("coerces a non-object params to an empty object but keeps the entry", () => {
@@ -219,13 +237,6 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
   // this boundary — a future change to z.number() or the params transform that
   // reintroduced a non-finite number or a prototype-pollution vector must fail.
 
-  it("coerces a non-finite cost_per_call (NaN / Infinity) to 0 — z.number() rejects non-finite", () => {
-    const nan = sanitizeModelCatalog(catalog([entry("a", { cost_per_call: NaN })]));
-    expect(nan.image[0]?.cost_per_call).toBe(0);
-    const inf = sanitizeModelCatalog(catalog([entry("b", { cost_per_call: Infinity })]));
-    expect(inf.image[0]?.cost_per_call).toBe(0);
-  });
-
   it("coerces a non-finite total to 0", () => {
     const raw = catalog([entry("a")]);
     raw.total = NaN;
@@ -295,36 +306,33 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
   // file never declares is stripped silently: the panel then renders without
   // it, typecheck stays green and no test elsewhere notices. These two cases
   // are the only place the wire→browser half of that chain is pinned.
-  it("keeps a model's rate, unit and all, so the panel can state a price", () => {
+  it("keeps the steps, the prompt field and the source groups the estimate and gate read", () => {
+    const steps = [
+      {
+        endpoint: "mureka-ai/vocal-clone",
+        at: "before",
+        for_param: "vocal",
+        reused: true,
+        pricing: { base_price: 7_500_000, formula: "", discount_rate: 100 },
+      },
+    ];
+    const groups = [{ mode: "a2m", any_of: ["song", "vocal", "melody"] }];
     const raw = catalog([
-      entry("fish-s2-pro", {
-        rate: { credits: 1.5, per: 1000, unit: "utf8_bytes" },
-      }),
+      entry("mureka", { extra_steps: steps, prompt_upstream: "text", reused_by: "audio", source_groups: groups }),
     ]);
-    const out = sanitizeModelCatalog(raw);
-    expect(out.image[0]?.rate).toEqual({
-      credits: 1.5,
-      per: 1000,
-      unit: "utf8_bytes",
-    });
+    const out = sanitizeModelCatalog(raw).image[0];
+    expect(out?.extra_steps).toEqual(steps);
+    expect(out?.prompt_upstream).toBe("text");
+    expect(out?.reused_by).toBe("audio");
+    expect(out?.source_groups).toEqual(groups);
   });
 
-  // A model billing by output length states `seconds` (#2088). The unit list
-  // here is a second, separate literal from the TypeScript one, and the rate
-  // object degrades to absent rather than throwing — so a unit missing from
-  // THIS list takes the whole rate with it, in silence, and the credit row
-  // simply never renders.
-  it("keeps a rate stated per second, which is how a sound effect is billed", () => {
-    const raw = catalog([
-      entry("sonilo-sfx-v1", { rate: { credits: 1, per: 5, unit: "seconds" } }),
-    ]);
-    const out = sanitizeModelCatalog(raw);
-    expect(out.image[0]?.rate).toEqual({ credits: 1, per: 5, unit: "seconds" });
-  });
-
-  it("leaves rate undefined on a model that declares none", () => {
-    const out = sanitizeModelCatalog(catalog([entry("flux")]));
-    expect(out.image[0]?.rate).toBeUndefined();
+  it("leaves the optional model fields undefined when a model declares none", () => {
+    const out = sanitizeModelCatalog(catalog([entry("flux")])).image[0];
+    expect(out?.extra_steps).toBeUndefined();
+    expect(out?.prompt_upstream).toBeUndefined();
+    expect(out?.reused_by).toBeUndefined();
+    expect(out?.source_groups).toBeUndefined();
   });
 
   it("keeps a model's input cap, which the panel refuses longer text by", () => {
@@ -362,7 +370,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
             description: "",
             default: true,
             fill: "panel",
-            when: { source: "video" },
+            when: { flag_on: "enable_audio" },
           },
         },
       }),
@@ -371,7 +379,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
 
     expect(params?.image).toMatchObject({ fill: "canvas", accepts: "image" });
     expect(params?.video).toMatchObject({ optional: true, modes: ["ref"] });
-    expect(params?.keep_original_sound?.when).toEqual({ source: "video" });
+    expect(params?.keep_original_sound?.when).toEqual({ flag_on: "enable_audio" });
   });
 
   it("draws no control for a fill it does not recognise", () => {
@@ -427,48 +435,64 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.image[0]?.params.similarity?.step).toBe(0.05);
   });
 
-  it("keeps a param's conditional caps, the number the three gates enforce", () => {
-    // #1928: a list's cap can drop while another param carries a value —
-    // `kling-o3-pro-ref` takes 7 reference images alone and 4 alongside a
-    // reference video. Stripped here, `effectiveItemCap` sees a plain cap on
-    // every gate: the panel offers 7 with a clip picked, the pick refusal can
-    // never fire, and the server accepts a submission the vendor rejects.
+  it("keeps a param's upstream name, English label, shape and list fields", () => {
+    const fields = { prompt: { type: "text" }, duration: { values: [1, 2, 3], default: 2 } };
     const raw = catalog([
-      entry("kling-o3-pro-ref", {
+      entry("kling", {
         params: {
-          images: {
+          multi_prompt: {
             description: "",
-            type: "list",
-            max_items: 7,
-            max_items_when_present: { video: 4 },
+            upstream: "multi_prompt",
+            label: "Storyboard",
+            type: "items",
+            max_items: 6,
+            fields,
             default: null,
           },
+          negative_prompt: { description: "", type: "text", default: null },
         },
       }),
     ]);
-    const out = sanitizeModelCatalog(raw);
-    expect(out.image[0]?.params.images?.max_items_when_present).toEqual({
-      video: 4,
+    const params = sanitizeModelCatalog(raw).image[0]?.params;
+    expect(params?.multi_prompt).toMatchObject({
+      upstream: "multi_prompt",
+      label: "Storyboard",
+      type: "items",
+      max_items: 6,
+      fields,
     });
+    expect(params?.negative_prompt?.type).toBe("text");
   });
 
-  it("drops a malformed conditional cap map but keeps the plain one", () => {
+  it("keeps how each value of a choice reads, and drops a malformed map", () => {
+    const labels = { meanwhile: "Together", left_right: "Left first" };
     const raw = catalog([
-      entry("kling-o3-pro-ref", {
+      entry("talk", {
         params: {
-          images: {
-            description: "",
-            type: "list",
-            max_items: 7,
-            max_items_when_present: { video: "four" },
-            default: null,
-          },
+          order: { description: "", values: ["meanwhile", "left_right"], value_labels: labels, default: "left_right" },
+          motion: { description: "", values: ["low"], value_labels: "Low", default: "low" },
         },
       }),
     ]);
-    const out = sanitizeModelCatalog(raw);
-    expect(out.image[0]?.params.images?.max_items_when_present).toBeUndefined();
-    expect(out.image[0]?.params.images?.max_items).toBe(7);
+    const params = sanitizeModelCatalog(raw).image[0]?.params;
+    expect(params?.order?.value_labels).toEqual(labels);
+    expect(params?.motion?.value_labels).toBeUndefined();
+    expect(params?.motion?.values).toEqual(["low"]);
+  });
+
+  it("keeps how a pool writes its chips, and drops a mention that is not text", () => {
+    const raw = catalog([
+      entry("seedance", {
+        params: {
+          images: { description: "", default: null, fill: "pool", accepts: "image", mention: "@image{n}" },
+          videos: { description: "", default: null, fill: "pool", accepts: "video", mention: 3 },
+        },
+      }),
+    ]);
+    const params = sanitizeModelCatalog(raw).image[0]?.params;
+    expect(params?.images?.mention).toBe("@image{n}");
+    expect(params?.videos?.mention).toBeUndefined();
+    expect(params?.videos?.accepts).toBe("video");
   });
 
   it("drops a non-numeric step but keeps the descriptor", () => {

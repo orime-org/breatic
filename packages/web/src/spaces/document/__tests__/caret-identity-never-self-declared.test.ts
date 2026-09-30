@@ -52,6 +52,7 @@ describe('our own caret identity', () => {
         doc,
         name: 'project-p/document-identity',
         caretProvider: { awareness },
+        readWho: () => ({ role: 'editor', viewerId: 'u1' }),
       }),
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
@@ -95,6 +96,7 @@ describe('our own caret identity', () => {
         doc,
         name: 'project-p/document-every-frame',
         caretProvider: { awareness },
+        readWho: () => ({ role: 'editor', viewerId: 'u1' }),
       }),
     );
     await waitFor(() => expect(rendered.result.current).not.toBeNull());

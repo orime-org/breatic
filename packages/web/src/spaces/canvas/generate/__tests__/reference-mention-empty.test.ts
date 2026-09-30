@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import type { ReferenceKind } from '@breatic/shared';
 import { Editor } from '@tiptap/core';
 import { Document } from '@tiptap/extension-document';
 import { Paragraph } from '@tiptap/extension-paragraph';
@@ -87,7 +88,7 @@ function props(editor: Editor, query = ''): StartProps {
  */
 function openPopup(opts: {
   pool: ReferenceRailItem[];
-  takesReferences?: boolean;
+  referenceKinds?: readonly ReferenceKind[];
   query?: string;
 }): {
   el: HTMLElement;
@@ -105,7 +106,7 @@ function openPopup(opts: {
     emptyLabel: EMPTY,
     noMatchLabel: NO_MATCH,
     getUsabilityContext: () => ({
-      takesReferences: opts.takesReferences ?? true,
+      referenceKinds: opts.referenceKinds ?? ['image'],
       takesPrompt: true,
     }),
     isLocalUserInput: () => true,
@@ -144,7 +145,7 @@ describe('弹层一律出现，零匹配也出现', () => {
   });
 
   it('池子非空但被模式滤光时，弹层也不藏起来', () => {
-    const p = openPopup({ pool: [imageRow], takesReferences: false });
+    const p = openPopup({ pool: [imageRow], referenceKinds: [] });
     try {
       expect(p.el.style.display).not.toBe('none');
     } finally {
@@ -164,7 +165,7 @@ describe('两句话：没得提供，还是你打的字筛掉了', () => {
   });
 
   it('池子非空、被模式滤光 —— 同一句，因为确实一项都用不了', () => {
-    const p = openPopup({ pool: [imageRow], takesReferences: false });
+    const p = openPopup({ pool: [imageRow], referenceKinds: [] });
     try {
       expect(p.lastProps()?.emptyLabel).toBe(EMPTY);
     } finally {

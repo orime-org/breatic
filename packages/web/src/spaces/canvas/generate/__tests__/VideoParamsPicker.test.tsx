@@ -3,10 +3,10 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import { VideoParamsPicker } from '@web/spaces/canvas/generate/VideoParamsPicker';
+import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 
 /**
  * Builds a video model carrying the given params.
@@ -22,13 +22,10 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
     description: '',
     guide: '',
     tier: 'recommended',
-    cost_per_call: 88,
     generation_time: 120,
     takes_prompt: true,
     params,
     providers: [],
-    sourcesByMode: { t2v: [] },
-    sourceRuleByMode: { t2v: 'all_of' as const },
   };
 }
 
@@ -60,19 +57,56 @@ const FULL = model({
 });
 
 describe('VideoParamsPicker', () => {
+  it('caps the pill at 150px, like the image and audio params pills', () => {
+    render(<VideoParamsPicker model={FULL} params={{ aspect_ratio: '16:9' }} onChange={() => {}} />);
+    expect(screen.getByTestId('generate-video-params-trigger').className).toContain('max-w-[150px]');
+  });
+
   it('shows ratio, resolution and duration on the trigger', () => {
     render(
       <VideoParamsPicker
         model={FULL}
         params={{ aspect_ratio: '16:9', resolution: '720p', duration: 6 }}
-        slots={[]}
-        slotUrls={{}}
         onChange={() => {}}
       />,
     );
     expect(screen.getByTestId('generate-video-params-trigger')).toHaveTextContent(
       '16:9 · 720p · 6s',
     );
+  });
+
+  it('says on the trigger what each of the model\'s own controls stands on', () => {
+    const own = model({
+      aspect_ratio: RATIO,
+      emotion: { description: '', label: 'Emotion', values: ['happy', 'neutral'], default: 'neutral', fill: 'panel' },
+    });
+    render(<VideoParamsPicker model={own} params={resolveParamsForModel(own, { aspect_ratio: '1:1' })} onChange={() => {}} />);
+    expect(screen.getByTestId('generate-video-params-trigger')).toHaveTextContent('1:1 · Neutral');
+  });
+
+  it('names generated audio while it is on, and a filled text param, after the rest in the popover\'s order', () => {
+    // User 2026-09-29: every param the popover sets shows on the pill.
+    const own = model({
+      ...FULL.params,
+      negative_prompt: { description: '', label: 'Negative prompt', type: 'text', default: null, fill: 'panel' },
+    });
+    const { rerender } = render(
+      <VideoParamsPicker
+        model={own}
+        params={{ aspect_ratio: '16:9', resolution: '720p', duration: 6, generate_audio: true, negative_prompt: 'blur' }}
+        onChange={() => {}}
+      />,
+    );
+    const trigger = screen.getByTestId('generate-video-params-trigger');
+    expect(trigger).toHaveTextContent('16:9 · 720p · 6s · Generate audio · Negative prompt');
+    rerender(
+      <VideoParamsPicker
+        model={own}
+        params={{ aspect_ratio: '16:9', resolution: '720p', duration: 6, generate_audio: false, negative_prompt: '' }}
+        onChange={() => {}}
+      />,
+    );
+    expect(trigger).toHaveTextContent(/^16:9 · 720p · 6s$/);
   });
 
   it('leaves out the parts the model does not declare', () => {
@@ -84,8 +118,6 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={noResolution}
         params={{ aspect_ratio: '9:16', resolution: '720p', duration: 4 }}
-        slots={[]}
-        slotUrls={{}}
         onChange={() => {}}
       />,
     );
@@ -99,8 +131,6 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={FULL}
         params={{ aspect_ratio: '16:9', resolution: '720p', duration: 6 }}
-        slots={[]}
-        slotUrls={{}}
         onChange={() => {}}
       />,
     );
@@ -121,7 +151,7 @@ describe('VideoParamsPicker', () => {
     // than offering a switch the model will ignore.
     const silent = model({ aspect_ratio: RATIO, duration: DURATION_LIST });
     render(
-      <VideoParamsPicker model={silent} params={{}} slots={[]} slotUrls={{}} onChange={() => {}} />,
+      <VideoParamsPicker model={silent} params={{}} onChange={() => {}} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     expect(screen.queryByTestId('generate-video-audio-toggle')).toBeNull();
@@ -140,8 +170,6 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={onlyResolution}
         params={{}}
-        slots={[]}
-        slotUrls={{}}
         onChange={() => {}}
       />,
     );
@@ -158,8 +186,6 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={FULL}
         params={{}}
-        slots={[]}
-        slotUrls={{}}
         onChange={() => {}}
       />,
     );
@@ -172,7 +198,7 @@ describe('VideoParamsPicker', () => {
   it('picking a ratio reports the aspect_ratio', () => {
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={FULL} params={{}} slots={[]} slotUrls={{}} onChange={onChange} />,
+      <VideoParamsPicker model={FULL} params={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(screen.getByTestId('generate-video-ratio-option-1:1'));
@@ -184,7 +210,7 @@ describe('VideoParamsPicker', () => {
     // string in the payload where the provider expects 6.
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={FULL} params={{}} slots={[]} slotUrls={{}} onChange={onChange} />,
+      <VideoParamsPicker model={FULL} params={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     fireEvent.click(screen.getByTestId('generate-video-duration-option-6'));
@@ -201,7 +227,7 @@ describe('VideoParamsPicker', () => {
     });
     const onChange = vi.fn();
     render(
-      <VideoParamsPicker model={ranged} params={{}} slots={[]} slotUrls={{}} onChange={onChange} />,
+      <VideoParamsPicker model={ranged} params={{}} onChange={onChange} />,
     );
     fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
     expect(screen.getByTestId('generate-video-duration-option-4')).toBeVisible();
@@ -217,8 +243,6 @@ describe('VideoParamsPicker', () => {
       <VideoParamsPicker
         model={FULL}
         params={{ generate_audio: true }}
-        slots={[]}
-        slotUrls={{}}
         onChange={onChange}
       />,
     );
@@ -228,352 +252,3 @@ describe('VideoParamsPicker', () => {
   });
 });
 
-/**
- * The reference video's own audio (#1928).
- *
- * Upstream keeps it by default, so a run with a clip carries that clip's
- * sound into the result unless the user says otherwise — the switch is how
- * they say it. It describes the clip, so it only means anything while one is
- * picked; without a clip there is nothing whose sound to keep.
- */
-describe('VideoParamsPicker and the reference clip\'s own sound', () => {
-  const KEEP: ParamDescriptor = {
-    description: '',
-    values: [true, false],
-    default: true,
-  };
-  const WITH_KEEP = model({
-    aspect_ratio: RATIO,
-    duration: DURATION_LIST,
-    // The model says which source the switch hangs on; the panel finds the
-    // slot carrying that param.
-    keep_original_sound: { ...KEEP, when: { source: 'video' } },
-    video: { description: '', default: null, fill: 'canvas', accepts: 'video' },
-  });
-
-  it('offers the switch while a reference clip is picked', async () => {
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={WITH_KEEP}
-        params={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
-        slots={['referenceVideo']}
-        slotUrls={{ referenceVideo: 'https://cdn/clip.mp4' }}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.getByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeInTheDocument();
-  });
-
-  it('leaves it out while no clip is picked', async () => {
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={WITH_KEEP}
-        params={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
-        slots={[]}
-        slotUrls={{}}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeNull();
-  });
-
-  it('leaves it out while the only clip sits in a slot this mode does not collect', async () => {
-    // Two slots carry the `video` param: the driving clip an animation takes
-    // and the reference clip this mode takes. A pick is kept when the reader
-    // switches modes, so one left behind by the other mode is still on the
-    // node while this mode collects nothing -- and the switch describes the
-    // audio of a clip that is not part of this run.
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={WITH_KEEP}
-        params={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
-        slots={['referenceVideo']}
-        slotUrls={{ drivingVideo: 'https://cdn/left-behind.mp4' }}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeNull();
-  });
-
-  it('leaves it out for a model that never reads a clip', async () => {
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={FULL}
-        params={{ aspect_ratio: '16:9', duration: 6 }}
-        slots={['referenceVideo']}
-        slotUrls={{ referenceVideo: 'https://cdn/clip.mp4' }}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeNull();
-  });
-
-  it('offers it unconditionally where the model names no source', async () => {
-    // The projection reads an absent `when` the same way: a control waiting on
-    // nothing is one the reader always has.
-    const ungated = model({
-      aspect_ratio: RATIO,
-      duration: DURATION_LIST,
-      keep_original_sound: KEEP,
-    });
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={ungated}
-        params={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
-        slots={[]}
-        slotUrls={{}}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.getByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeInTheDocument();
-  });
-
-  it('leaves it out while the filled slot is not the source it waits on', async () => {
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={WITH_KEEP}
-        params={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
-        slots={['firstFrame']}
-        slotUrls={{ firstFrame: 'https://cdn/frame.png' }}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeNull();
-  });
-
-  it('hangs the switch on whichever source the model names', async () => {
-    const onPicture = model({
-      aspect_ratio: RATIO,
-      duration: DURATION_LIST,
-      keep_original_sound: { ...KEEP, when: { source: 'image' } },
-      image: { description: '', default: null, fill: 'canvas', accepts: 'image' },
-    });
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={onPicture}
-        params={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
-        slots={['firstFrame']}
-        slotUrls={{ firstFrame: 'https://cdn/frame.png' }}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.getByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeInTheDocument();
-  });
-
-  it('reports the flip to the caller', async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    render(
-      <VideoParamsPicker
-        model={WITH_KEEP}
-        params={{ aspect_ratio: '16:9', duration: 6, keep_original_sound: true }}
-        slots={['referenceVideo']}
-        slotUrls={{ referenceVideo: 'https://cdn/clip.mp4' }}
-        onChange={onChange}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    await user.click(
-      screen.getByTestId('generate-video-keep-original-sound-toggle'),
-    );
-    expect(onChange).toHaveBeenCalledWith({ keep_original_sound: false });
-  });
-});
-
-describe('VideoParamsPicker and a control a switch gates', () => {
-  const KEEP: ParamDescriptor = {
-    description: '',
-    values: [true, false],
-    default: true,
-  };
-
-  /**
-   * Builds a model whose sound switch waits on the audio switch.
-   * @param gate - Which way it waits.
-   * @returns A model entry declaring that gate.
-   */
-  function gatedBy(gate: 'flag_on' | 'flag_off'): ModelEntry {
-    return model({
-      aspect_ratio: RATIO,
-      duration: DURATION_LIST,
-      generate_audio: AUDIO,
-      keep_original_sound: { ...KEEP, when: { [gate]: 'generate_audio' } },
-    });
-  }
-
-  it('offers a flag_on control while that switch is on', async () => {
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={gatedBy('flag_on')}
-        params={{ aspect_ratio: '16:9', duration: 6, generate_audio: true }}
-        slots={[]}
-        slotUrls={{}}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.getByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeInTheDocument();
-  });
-
-  it('leaves a flag_on control out while that switch is off', async () => {
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={gatedBy('flag_on')}
-        params={{ aspect_ratio: '16:9', duration: 6, generate_audio: false }}
-        slots={[]}
-        slotUrls={{}}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeNull();
-  });
-
-  it('leaves a flag_off control out while that switch is on', async () => {
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={gatedBy('flag_off')}
-        params={{ aspect_ratio: '16:9', duration: 6, generate_audio: true }}
-        slots={[]}
-        slotUrls={{}}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeNull();
-  });
-
-  it('reads a switch the record does not carry as the model defaults it', async () => {
-    // The container reconciles a node's params against the model before this
-    // renders, so every declared param has a key by then. This is the answer
-    // for a record that reaches here without one.
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={gatedBy('flag_off')}
-        params={{ aspect_ratio: '16:9', duration: 6 }}
-        slots={[]}
-        slotUrls={{}}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeNull();
-  });
-});
-
-describe('VideoParamsPicker and a condition naming a param outside its own controls', () => {
-  const KEEP: ParamDescriptor = {
-    description: '',
-    values: [true, false],
-    default: true,
-  };
-  const POOL_GATED = model({
-    aspect_ratio: RATIO,
-    duration: DURATION_LIST,
-    images: { description: '', default: null, fill: 'pool', accepts: 'image', type: 'list' },
-    keep_original_sound: { ...KEEP, when: { source: 'images' } },
-  });
-
-  it('offers the control while the named param holds something', async () => {
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={POOL_GATED}
-        params={{
-          aspect_ratio: '16:9',
-          duration: 6,
-          images: ['https://cdn/a.png'],
-          keep_original_sound: true,
-        }}
-        slots={[]}
-        slotUrls={{}}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.getByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeInTheDocument();
-  });
-
-  it('reads the pool from the value the run will carry', async () => {
-    // The container merges the references the prompt names under the pool's
-    // own name, which is what the payload builder writes at submit.
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={POOL_GATED}
-        params={{
-          aspect_ratio: '16:9',
-          duration: 6,
-          images: ['https://cdn/a.png', 'https://cdn/b.png'],
-          keep_original_sound: true,
-        }}
-        slots={[]}
-        slotUrls={{}}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.getByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeInTheDocument();
-  });
-
-  it('leaves it out while the named param holds nothing', async () => {
-    const user = userEvent.setup();
-    render(
-      <VideoParamsPicker
-        model={POOL_GATED}
-        params={{ aspect_ratio: '16:9', duration: 6, images: [], keep_original_sound: true }}
-        slots={[]}
-        slotUrls={{}}
-        onChange={() => {}}
-      />,
-    );
-    await user.click(screen.getByTestId('generate-video-params-trigger'));
-    expect(
-      screen.queryByTestId('generate-video-keep-original-sound-toggle'),
-    ).toBeNull();
-  });
-});

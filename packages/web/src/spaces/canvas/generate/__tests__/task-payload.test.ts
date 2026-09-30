@@ -3,7 +3,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { buildGenerateTaskPayload } from '@web/spaces/canvas/generate/task-payload';
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
+import { buildGenerateTaskPayload, imageEstimateInput } from '@web/spaces/canvas/generate/task-payload';
 
 const BASE = {
   nodeId: 'node-1',
@@ -12,7 +13,7 @@ const BASE = {
   model: 'nano_banana_pro',
   params: { aspect_ratio: '16:9', resolution: '2K' },
   promptText: 'a red bicycle',
-  referenceUrls: [] as string[],
+  poolParams: {} as Record<string, string[]>,
 };
 
 describe('buildGenerateTaskPayload — assembles the POST /canvas/tasks overwrite request', () => {
@@ -38,10 +39,10 @@ describe('buildGenerateTaskPayload — assembles the POST /canvas/tasks overwrit
     expect(out.params.prompt).toBe('a red bicycle'); // the user's prompt always wins
   });
 
-  it('puts the reference source URLs under params.images when references exist', () => {
+  it('puts the mentioned references under the params the model reads them from', () => {
     const out = buildGenerateTaskPayload({
       ...BASE,
-      referenceUrls: ['https://cdn/a.png', 'https://cdn/b.png'],
+      poolParams: { images: ['https://cdn/a.png', 'https://cdn/b.png'] },
     });
     expect(out.params.images).toEqual(['https://cdn/a.png', 'https://cdn/b.png']);
     expect(out.params.prompt).toBe('a red bicycle');
@@ -68,7 +69,7 @@ describe('buildGenerateTaskPayload — assembles the POST /canvas/tasks overwrit
   it('sends images (i2i sources) and style_images independently in one payload', () => {
     const out = buildGenerateTaskPayload({
       ...BASE,
-      referenceUrls: ['https://cdn/src.png'],
+      poolParams: { images: ['https://cdn/src.png'] },
       styleImageUrl: 'https://cdn/style.png',
     });
     expect(out.params.images).toEqual(['https://cdn/src.png']);
@@ -79,5 +80,42 @@ describe('buildGenerateTaskPayload — assembles the POST /canvas/tasks overwrit
     const out = buildGenerateTaskPayload(BASE);
     expect(out.mode).toBe('overwrite');
     expect(out.target_node_id).toBe('node-1');
+  });
+});
+
+describe('imageEstimateInput — the run the price is quoted for', () => {
+  it('carries the mentioned references and the style image, as the submit sends them', () => {
+    const input = imageEstimateInput(
+      {
+        params: { resolution: '2K' },
+        pool: { image: { param: 'images', cap: undefined } },
+        referenceUrls: { image: ['https://cdn/a.png', 'https://cdn/b.png'], video: [], audio: [] },
+        styleSupported: true,
+        styleImageUrl: 'https://cdn/style.png',
+      },
+      'put it on white',
+    );
+    expect(input).toEqual({
+      params: {
+        resolution: '2K',
+        images: ['https://cdn/a.png', 'https://cdn/b.png'],
+        [IMAGE_SLOTS.style.param]: ['https://cdn/style.png'],
+      },
+      prompt: 'put it on white',
+    });
+  });
+
+  it('leaves out a style image the model does not take', () => {
+    const input = imageEstimateInput(
+      {
+        params: {},
+        pool: {},
+        referenceUrls: { image: [], video: [], audio: [] },
+        styleSupported: false,
+        styleImageUrl: 'https://cdn/style.png',
+      },
+      '',
+    );
+    expect(input.params).toEqual({});
   });
 });

@@ -50,6 +50,7 @@ vi.mock("@breatic/domain", () => ({
     markFailed: mockMarkFailed,
     getByIdInternal: mockGetByIdInternal,
   },
+  upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: {},
   creditLotService: {},
   resolveActiveProvider: vi.fn(),

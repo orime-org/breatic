@@ -71,12 +71,12 @@ describe('a turn that proposed a group', () => {
         ...ACCEPTED,
         nodes: [
           ACCEPTED.nodes[0]!,
-          { ...ACCEPTED.nodes[1]!, takesFrom: 'slot' },
+          { ...ACCEPTED.nodes[1]!, poolKinds: [] },
         ],
       }),
     );
 
-    expect(message.proposals?.[0]?.nodes[1]?.takesFrom).toBe('slot');
+    expect(message.proposals?.[0]?.nodes[1]?.poolKinds).toEqual([]);
   });
 
   it('carries the name the group will land under', () => {
