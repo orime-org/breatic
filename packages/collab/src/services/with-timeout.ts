@@ -15,10 +15,10 @@
  * WHY THE ALERT IS DIFFERENT. It carries no content — the rescue file is
  * already on disk before it is sent — and its failure mode is nobody being
  * told, not anything being lost. What it must not do is hold the caller: the
- * gate awaits it inside `beforeUnloadDocument`, and the transport is built
- * without timeout options, so it inherits nodemailer's two-minute connection
- * timeout. An unreachable SMTP host during a database outage would hold every
- * unloading document in memory for two minutes each.
+ * gate awaits it inside `beforeUnloadDocument`, and the transport's own
+ * timeouts are not bound enough (`store_alert_timeout_ms` in
+ * `config/collab.yaml` says why). An unreachable SMTP host during a database
+ * outage would hold every unloading document in memory for that long each.
  *
  * WHAT IT DOES NOT DO. It does not cancel anything. Giving up here makes THIS
  * caller stop waiting and nothing else; the send may still complete afterwards.

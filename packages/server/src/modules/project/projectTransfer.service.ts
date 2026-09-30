@@ -206,6 +206,7 @@ export async function requestProjectTransfer(
         const recipient = await userRepo.getUserById(toUserId);
         if (!recipient) return null;
         return buildProjectTransferMail({
+          locale: recipient.locale,
           recipientEmail: recipient.email,
           initiatorName: from?.name ?? "",
           projectName: project.name,

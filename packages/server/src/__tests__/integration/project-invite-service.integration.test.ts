@@ -56,10 +56,25 @@ vi.mock("@server/config/limits.js", () => ({
   getDecisionWindowMs: () => decisionWindow.days * 24 * 60 * 60 * 1000,
   getDecisionWindowSeconds: () => decisionWindow.days * 24 * 60 * 60,
 }));
+// The invitation email is captured rather than sent, so a case can read the
+// letter the invitee would get and the log context it would be filed under.
+const mailCalls = vi.hoisted(
+  () => [] as Array<{ build: () => Promise<unknown>; ctx: { userId?: string } }>,
+);
+vi.mock("@server/utils/send-best-effort-mail.js", () => ({
+  sendBestEffortMail: async (
+    build: () => Promise<unknown>,
+    ctx: { userId?: string },
+  ): Promise<void> => {
+    mailCalls.push({ build, ctx });
+  },
+}));
+
 
 import { eq, and, isNull, sql } from "drizzle-orm";
 import {
   initCore,
+  loadLocales,
   schema,
   createTestDb,
   projectMembersRepo,
@@ -67,6 +82,7 @@ import {
 import { NotFoundError, ConflictError } from "@breatic/core";
 
 initCore(process.env);
+loadLocales();
 
 import * as inviteService from "../../modules/project-invite/projectInvite.service.js";
 import * as invitesRepo from "../../modules/project-invite/projectInvitations.repo.js";
@@ -560,3 +576,20 @@ describe("re-invite lifecycle (#1769)", () => {
   });
 });
 
+describe("the invitation email", () => {
+  it("is written in the invitee's language and filed under the invitee", async () => {
+    // The inviter stays on the default language, so the two differ.
+    await db.update(schema.users).set({ locale: "ja" }).where(eq(schema.users.id, INVITEE));
+    mailCalls.length = 0;
+    try {
+      await inviteService.createInvite(PROJECT, OWNER, INVITEE_EMAIL, "editor", "https://app.test");
+      expect(mailCalls).toHaveLength(1);
+      const mail = (await mailCalls[0]!.build()) as { to: string; html: string };
+      expect(mail.to).toBe(INVITEE_EMAIL);
+      expect(mail.html).toContain("招待");
+      expect(mailCalls[0]!.ctx.userId).toBe(INVITEE);
+    } finally {
+      await db.update(schema.users).set({ locale: "en" }).where(eq(schema.users.id, INVITEE));
+    }
+  });
+});

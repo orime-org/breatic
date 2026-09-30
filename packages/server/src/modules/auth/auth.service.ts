@@ -17,6 +17,7 @@ import {
   hashRecoveryCode,
   verifyRecoveryCode,
 } from "@server/modules/auth/recovery-code.service.js";
+import { buildTokenLinkMail } from "@server/modules/auth/auth-mail.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import { env } from "@breatic/core";
@@ -30,7 +31,7 @@ import {
   ConflictError,
   UnauthorizedError,
 } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { getActiveLocale, t } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
@@ -66,7 +67,7 @@ export async function register(
   }
 
   const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  const user = await userRepo.createUser({ email, hashedPassword });
+  const user = await userRepo.createUser({ email, hashedPassword, locale: getActiveLocale() });
 
   // Generate + store recovery code. Done after createUser so we have
   // a user.id to attach to. Failures here bubble up; the user row will
@@ -154,7 +155,7 @@ export async function loginOrCreateGoogle(
       if (!linked) throw new UnauthorizedError(t("server.auth.google_link_requires_email_login"));
       user = linked;
     } else {
-      user = await userRepo.createUser({ email, googleId });
+      user = await userRepo.createUser({ email, googleId, locale: getActiveLocale() });
     }
   }
 
@@ -181,6 +182,18 @@ export async function loginOrCreateGoogle(
  */
 export async function getUserById(userId: string): Promise<UserEntity | null> {
   return userRepo.getUserById(userId);
+}
+
+/**
+ * Record the account's language, which every later email to it is rendered in.
+ *
+ * Called when the user switches the interface language; the caller has
+ * already checked the value against the languages the product ships.
+ * @param userId - The account
+ * @param locale - One of the shipped locale codes
+ */
+export async function setLocale(userId: string, locale: string): Promise<void> {
+  await userRepo.updateUser(userId, { locale });
 }
 
 /**
@@ -227,7 +240,7 @@ export async function logoutAll(userId: string): Promise<void> {
   await deleteAllSessions(redis, userId);
 }
 
-const RESET_TOKEN_TTL = 3600; // 1 hour
+const RESET_TOKEN_TTL = 3600;
 
 /**
  * Discriminated outcome of {@link forgotPassword}. Per CLAUDE.md
@@ -266,16 +279,14 @@ export async function forgotPassword(
   const key = `${env.ENV}:password-reset:${token}`;
   await redis.set(key, user.id, "EX", RESET_TOKEN_TTL);
 
-  const resetUrl = `${resetBaseUrl}?token=${token}`;
-  const mailResult = await sendMail({
-    to: email,
-    subject: "Breatic - Reset your password",
-    html: `
-      <p>You requested a password reset.</p>
-      <p><a href="${resetUrl}">Click here to reset your password</a></p>
-      <p>This link expires in 1 hour. If you didn't request this, ignore this email.</p>
-    `,
-  });
+  const mailResult = await sendMail(
+    await buildTokenLinkMail("password_reset", {
+      locale: user.locale,
+      to: email,
+      url: `${resetBaseUrl}?token=${token}`,
+      expiresInSeconds: RESET_TOKEN_TTL,
+    }),
+  );
 
   return { status: "reset_email_sent", userId: user.id, mailResult };
 }
@@ -430,25 +441,25 @@ export async function verifyEmail(token: string): Promise<{ userId: string }> {
  * stored) but `sendMail` will no-op + return false in disabled mode.
  * @param userId - User the fresh verification token is issued for
  * @param email - Destination address for the verification email
+ * @param locale - The account's language, which the email is written in
  * @param verifyBaseUrl - Base URL the verify token is appended to in the email link
  * @returns `{ mailResult }` reporting whether the mailer dispatched the email
  */
 export async function resendVerificationEmail(
   userId: string,
   email: string,
+  locale: string,
   verifyBaseUrl: string,
 ): Promise<{ mailResult: SendMailResult }> {
   const token = await generateVerifyEmailToken(userId);
-  const verifyUrl = `${verifyBaseUrl}?token=${token}`;
-  const mailResult = await sendMail({
-    to: email,
-    subject: "Breatic - Verify your email",
-    html: `
-      <p>Welcome to Breatic. Click below to verify your email address:</p>
-      <p><a href="${verifyUrl}">${verifyUrl}</a></p>
-      <p>This link expires in 24 hours. If you didn't request this, you can ignore this email.</p>
-    `,
-  });
+  const mailResult = await sendMail(
+    await buildTokenLinkMail("email_verification", {
+      locale,
+      to: email,
+      url: `${verifyBaseUrl}?token=${token}`,
+      expiresInSeconds: EMAIL_VERIFY_TTL,
+    }),
+  );
   // Caller logs `verification_email_sent` + mail result audit line.
   return { mailResult };
 }

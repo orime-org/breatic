@@ -10,8 +10,8 @@
  *
  *   - backend_console        : info - dump full html to dev server log
  *   - skipped + smtp_not_configured : warn - ops sees the misconfig
- *   - sent / backend_disabled : no log (the caller-level audit line
- *     already covers them)
+ *   - sent / backend_disabled : no log (the caller writes its own line for a
+ *     sent mail)
  */
 
 import type { SendMailResult } from "@breatic/core";

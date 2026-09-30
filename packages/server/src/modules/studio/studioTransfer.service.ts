@@ -162,6 +162,7 @@ export async function requestTransfer(
         const recipient = await userRepo.getUserById(toUserId);
         if (!recipient) return null;
         return buildStudioTransferMail({
+          locale: recipient.locale,
           recipientEmail: recipient.email,
           initiatorName: from?.name ?? "",
           studioName: studio.name,

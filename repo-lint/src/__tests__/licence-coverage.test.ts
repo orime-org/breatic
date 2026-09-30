@@ -112,6 +112,25 @@ describe("licence-coverage", () => {
     expect(found).toEqual([]);
   });
 
+  it("passes a licence string that carries its URL in parentheses, stated as written", () => {
+    const reported = "MIT (http://example.test/license.txt)";
+    const notice = NOTICE.replace(
+      "## Build and development tools",
+      `| \`slick\` | \`1.12.2\` | Declared as \`${reported}\` |\n\n## Build and development tools`,
+    );
+    expect(licenceCoverage(groups({ [reported]: ["slick"] }), notice)).toEqual([]);
+  });
+
+  it("does not let a WITH expression pass on a prose mention of its words", () => {
+    const reported = "GPL-2.0-only WITH Classpath-exception-2.0";
+    const notice = NOTICE.replace(
+      "## Build and development tools",
+      "| `bar` | `1.0.0` | GPL-2.0-only with a note about the Classpath-exception-2.0 elsewhere |\n\n## Build and development tools",
+    );
+    const found = licenceCoverage(groups({ [reported]: ["bar"] }), notice);
+    expect(found.map((gap) => gap.reason)).toEqual(["licence-mismatch"]);
+  });
+
   it("reports a package the notice names under a different licence", () => {
     const found = licenceCoverage(groups({ "MIT-0": [] }), NOTICE).concat(
       licenceCoverage(groups({ "GPL-3.0-only": ["@blocknote/core"] }), NOTICE),

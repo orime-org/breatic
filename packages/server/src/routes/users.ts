@@ -23,6 +23,7 @@ import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { USER_LOOKUP_MAX_IDS } from "@breatic/shared";
+import { SUPPORTED } from "@server/middleware/i18n.js";
 
 import { authService, studioService } from "@server/modules";
 
@@ -74,6 +75,22 @@ users.get("/", validate("query", querySchema), async (c) => {
       };
     }),
   });
+});
+
+const localeSchema = z.object({ locale: z.enum(SUPPORTED) });
+
+/**
+ * `PATCH /api/v1/users/me/locale` — record the account's language.
+ *
+ * Sent when the user switches the interface language. Every later email to
+ * this account is rendered in it, and the interface switches to it at the next
+ * sign-in or page load. A language the product does not ship is refused with 422.
+ * @returns `200` with `{ data: { locale } }`
+ */
+users.patch("/me/locale", validate("json", localeSchema), async (c) => {
+  const { locale } = c.req.valid("json");
+  await authService.setLocale(c.get("user").id, locale);
+  return c.json({ data: { locale } });
 });
 
 export { users as usersRoute };

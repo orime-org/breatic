@@ -144,22 +144,93 @@
     "purchase_mail": {
       "subject": "點數已入帳",
       "intro": "感謝購買。以下是這筆購買的內容，請留存。",
-      "credits": "本次入帳：{credits} 點",
-      "balance": "目前餘額：{credits} 點",
-      "subtotal": "價格：{amount}",
-      "tax": "稅額：{amount}",
-      "total": "實付合計：{amount}",
-      "purchased_at": "購買時間：{when}",
-      "refund_by": "可退款截止：{when}",
-      "order_ref": "訂單編號：{ref}",
+      "label": {
+        "credits": "本次入帳",
+        "balance": "目前餘額",
+        "subtotal": "價格",
+        "tax": "稅額",
+        "total": "實付合計",
+        "purchased_at": "購買時間",
+        "refund_by": "可退款截止",
+        "order_ref": "訂單編號"
+      },
+      "credits_amount": "{credits} 點",
+      "fact_line": "{label}：{value}",
       "consent_heading": "你在購買時同意的內容",
       "refund_heading": "點數包退款規則",
-      "support": "對這筆購買有疑問，請寫信到 {email}。"
+      "support": "對這筆購買有疑問，請寫信到 <mailto>{email}</mailto>。"
     },
     "chat": {
       "message_too_long": "這則訊息太長了。最多 {limit, number} 個字元，這則有 {actual, number} 個。",
       "attachments_too_long": "附帶的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
       "attachments_too_many": "附帶的內容太多了。最多 {limit, number} 項，這則有 {actual, number} 項。"
+    },
+    "mail": {
+      "studio_invite": {
+        "subject": "{inviter} 邀請你加入 {studio}",
+        "lead": "<b>{inviter}</b> 邀請你以 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> 身分加入 Studio <b>{studio}</b>。",
+        "action": "開啟邀請"
+      },
+      "project_invite": {
+        "subject": "{inviter} 邀請你參與 {project}",
+        "lead": "<b>{inviter}</b> 邀請你以 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> 身分參與 Project <b>{project}</b>。",
+        "action": "開啟邀請"
+      },
+      "studio_transfer": {
+        "subject": "{initiator} 想把 {studio} 交給你",
+        "lead": "<b>{initiator}</b> 想讓你成為 Studio <b>{studio}</b> 的 <code>Admin</code>。",
+        "action": "查看這次轉讓"
+      },
+      "project_transfer": {
+        "subject": "{initiator} 想把 {project} 交給你",
+        "lead": "<b>{initiator}</b> 想把 Project <b>{project}</b> 的擁有權交給你。",
+        "action": "查看這次轉讓"
+      },
+      "role_upgrade": {
+        "subject": "{requester} 申請在 {project} 中取得更高的角色",
+        "lead": "<b>{requester}</b> 申請在 <b>{project}</b> 中成為 <code>{role, select, editor {Editor} viewer {Viewer} owner {Owner} other {{role}}}</code>。",
+        "action": "查看這則申請"
+      },
+      "project_join": {
+        "subject": "{requester} 申請加入 {project}",
+        "lead": "<b>{requester}</b> 申請加入 <b>{project}</b>。",
+        "action": "查看這則申請"
+      },
+      "reason": "附言：<em>{message}</em>",
+      "expiry": {
+        "invitation": "這則邀請將在 {days, plural, other {# 天}}後過期。如果你沒有預期收到它，可以忽略這封郵件。",
+        "transfer": "這則轉讓請求將在 {days, plural, other {# 天}}後過期。如果你沒有預期收到它，可以忽略這封郵件。",
+        "request": "這則申請將在 {days, plural, other {# 天}}後過期。如果你沒有預期收到它，可以忽略這封郵件。"
+      },
+      "membership_ended": {
+        "subject": "你的 {tier} 會員已結束",
+        "lead": "你的 <b>{tier}</b> 會員已結束，帳號已回到免費方案。",
+        "footer": "隨時可以在會員面板重新訂閱。"
+      },
+      "storage_full": {
+        "subject": "你的儲存空間已滿",
+        "lead": "你的儲存空間已滿，<b>{studio}</b> 中的上傳和生成被拒絕了。儲存空間按你管理的所有 Studio 合計，不只是這一個。",
+        "footer": "升級會員可以取得更多空間。"
+      },
+      "password_reset": {
+        "subject": "重設密碼",
+        "lead": "你申請了重設密碼。",
+        "action": "重設密碼",
+        "footer": "連結將在 {hours, plural, other {# 小時}}後失效。如果不是你本人操作，請忽略這封郵件。"
+      },
+      "email_verification": {
+        "subject": "驗證你的電子郵件",
+        "lead": "歡迎來到 Breatic。點擊下方按鈕驗證你的電子郵件地址。",
+        "action": "驗證電子郵件地址",
+        "footer": "連結將在 {hours, plural, other {# 小時}}後失效。如果不是你本人操作，可以忽略這封郵件。"
+      },
+      "footer": "這是一封自動發送的郵件，回覆不會被閱讀。",
+      "help": "需要協助？查看<manual>使用者手冊</manual>，或寄信到 <contact>{email}</contact>。",
+      "legal": {
+        "about": "關於我們",
+        "terms": "使用條款",
+        "privacy": "隱私政策"
+      }
     }
   },
   "chat": {
@@ -1402,7 +1473,8 @@
       "agentColumnWidth": "調整 Agent 面板寬度",
       "language": "語言：{name}",
       "theme": "主題：{theme}"
-    }
+    },
+    "languageNotSaved": "語言未儲存到帳號"
   },
   "projectJoin": {
     "title": "你還不是這個 Project 的成員",
