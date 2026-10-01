@@ -3,6 +3,8 @@
 
 /** Shared Zod schemas for API request validation. */
 export {
+  normalizeEmail,
+  emailSchema,
   registerSchema,
   signupVerifySchema,
   SIGNUP_CODE_REGEX,

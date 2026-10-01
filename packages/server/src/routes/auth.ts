@@ -21,7 +21,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { authService, signupCodeService, studioService } from "@server/modules";
 import { env, NotFoundError } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { getActiveLocale, t } from "@breatic/shared";
+import { emailSchema, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { PersonalStudioRef } from "@breatic/shared";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
@@ -327,10 +327,11 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
     return c.json({ error: { code: 401, message: t("server.auth.google_email_unverified") } }, 401);
   }
 
+  const email = normalizeEmail(payload.email);
   const { user, token } = await authService.loginOrCreateGoogle(
     payload.sub,
-    payload.email,
-    payload.email.endsWith("@gmail.com") || Boolean(payload.hd),
+    email,
+    email.endsWith("@gmail.com") || Boolean(payload.hd),
   );
 
   setSessionCookie(c, token);
@@ -373,7 +374,7 @@ auth.post("/logout", requireAuth, async (c) => {
 // ── Password Reset ───────────────────────────────────────────────
 
 const forgotPasswordSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
 });
 
 auth.post(
@@ -433,7 +434,7 @@ auth.post(
 // ── Recovery code reset (self-host, no SMTP needed) ──────────────
 
 const resetWithRecoveryCodeSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
   recoveryCode: z.string().min(1),
   newPassword: z.string().min(8),
 });

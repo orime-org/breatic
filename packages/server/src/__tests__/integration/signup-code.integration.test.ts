@@ -164,6 +164,14 @@ describe("starting a sign-up", () => {
     expect(sent.mails).toHaveLength(0);
   });
 
+  it("refuses an address that already has an account when it is typed in another case", async () => {
+    const email = freshEmail();
+    await sql`INSERT INTO users (email, membership_tier) VALUES (${email}, 'base')`;
+    const typed = ` ${email.toUpperCase()} `;
+    expect(await statusOf(startSignup({ ticket: null, email: typed, password: "password1", locale: "en" }))).toBe(409);
+    expect(sent.mails).toHaveLength(0);
+  });
+
   it("refuses a second browser inside the resend wait, saying how long to wait", async () => {
     const email = freshEmail();
     await startSignup({ ticket: null, email, password: "password1", locale: "en" });
