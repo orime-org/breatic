@@ -67,7 +67,6 @@ describe('placement mode and picking, which cannot both be on', () => {
   // tool is armed had its clicks swallowed and one Escape closed both modes.
   it.each([
     ['reference', () => useCanvasStore.getState().startReferencePick('n1')],
-    ['style', () => useCanvasStore.getState().startStylePick('n1')],
     ['first frame', () => useCanvasStore.getState().startFirstFramePick('n1')],
     ['end frame', () => useCanvasStore.getState().startEndFramePick('n1')],
   ])('starting a %s pick puts the note tool down', (_name, start) => {

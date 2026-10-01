@@ -41,7 +41,6 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
       'kling',
       'ltx',
       'meta',
-      'midjourney',
       'minimax',
       'mirelo',
       'mureka',
@@ -50,7 +49,6 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
       'openai',
       'qwen',
       'recraft',
-      'reve',
       'rife',
       'seedream',
       'sonilo',
@@ -98,8 +96,8 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
   });
 
   it('forwards a className onto the svg so the picker can size it', () => {
-    render(<ModelIcon name='midjourney' className='h-4 w-4' />);
-    const svg = screen.getByTestId('model-icon-midjourney');
+    render(<ModelIcon name='nano-banana' className='h-4 w-4' />);
+    const svg = screen.getByTestId('model-icon-nano-banana');
     expect(svg).toHaveClass('h-4', 'w-4');
   });
 });

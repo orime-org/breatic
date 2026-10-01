@@ -48,12 +48,12 @@ describe("takes_prompt is declared by every model (#1966)", () => {
     expect(missing).toEqual([]);
   });
 
-  it("covers all 62 catalogued models across the five modalities", () => {
+  it("covers all 59 catalogued models across the five modalities", () => {
     const total = MODALITIES.reduce(
       (sum, m) => sum + getFullModelConfig(m).models.length,
       0,
     );
-    expect(total).toBe(62);
+    expect(total).toBe(59);
   });
 });
 
@@ -97,10 +97,9 @@ describe("the values the panels will read (#1966)", () => {
 
   // Text-to-image models take a prompt without declaring a prompt param.
   it.each([
-    "midjourney",
     "nano-banana-2",
     "gpt-image-2.5-sunburst-text-to-image",
-    "reve-2.1-text-to-image",
+    "grok-imagine-image-v2.0-text-to-image",
   ])("%s takes one even though it never declared a prompt param", (name) => {
     expect(takesPromptOf(name)).toBe(true);
   });

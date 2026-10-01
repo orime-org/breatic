@@ -161,7 +161,7 @@ export interface AttachRef {
  * slice) — a standalone image cropped out of a source node's content at
  * creation time.
  *
- * COPY semantics (user decision 2026-07-16, mirroring `styleImageUrl`):
+ * COPY semantics (user decision 2026-07-16, the same as the source slots):
  * the crop is uploaded as its own asset and keeps ZERO relationship to
  * the node it was cropped from — deleting, renaming, or regenerating the
  * source never changes an existing focus image. `name` is a snapshot of
@@ -431,33 +431,20 @@ export interface CanvasNodeFields {
      *
      * The only place the panel's param CONTROLS write to: what the panel has
      * in effect is resolved from these on every render, so there is no second
-     * field to keep in step. Three keys a model may also declare under
+     * field to keep in step. Two keys a model may also declare under
      * `params` are not among them and live elsewhere on the node or on the
-     * prompt — `prompt`, `images` (the reference rail) and `style_images`
-     * (`data.styleImageUrl`); the execute payload spreads the records first
-     * and then overwrites those three. A node written before #1948 carries no
-     * records and gets none — Yjs data from before launch gets no
-     * compatibility handling (user 2026-08-15).
+     * prompt — `prompt` and `images` (the reference rail); the execute
+     * payload spreads the records first and then overwrites those two. A node
+     * written before #1948 carries no records and gets none — Yjs data from
+     * before launch gets no compatibility handling (user 2026-08-15).
      */
     paramsByModel?: Record<string, Record<string, unknown>>;
     /**
-     * Style-reference image URL (image-node style slice, #1664) — a COPY of
-     * the picked image's asset URL, snapshotted at pick time (user decision
-     * 2026-07-16: one style image max; stored as a copy, NO relationship to
-     * the upstream node — deleting or regenerating the source never changes
-     * this snapshot; assets are never deleted, so the URL stays valid).
-     * Frontend-owned like `model` / `paramsByModel` — the worker never writes it; at
-     * execute time the frontend sends it as `params.style_images` when the
-     * active model supports style references. Distinct from i2i source images
-     * (edges → the reference rail): style guides aesthetics and survives
-     * text-to-image. Scalar last-write-wins. Absent = none picked.
-     */
-    styleImageUrl?: string;
-    /**
      * First-frame image URL for a video node's image-to-video generation
-     * (#1896) — a pick-time COPY of the clicked image's URL, on the same
-     * terms as `styleImageUrl`: no relationship to the node it came from, so
-     * deleting or regenerating that node leaves this one alone. The video
+     * (#1896) — a pick-time COPY of the clicked image's URL (user decision
+     * 2026-07-16): no relationship to the node it came from, so deleting or
+     * regenerating that node leaves this one alone. Frontend-owned — the
+     * worker never writes it. The video
      * panel renders it in its first-frame slot and sends it as `params.image`
      * at execute time, which is what the backend source gate reads for `i2v`.
      *

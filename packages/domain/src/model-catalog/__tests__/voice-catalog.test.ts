@@ -124,7 +124,7 @@ describe("when there are no voices to answer with", () => {
   });
 
   it("answers 404 for a model whose params declare no voice source", async () => {
-    await expect(listVoices("midjourney", {})).rejects.toThrow(
+    await expect(listVoices("grok-imagine-image-v2.0-text-to-image", {})).rejects.toThrow(
       expect.objectContaining({ statusCode: 404 }),
     );
   });

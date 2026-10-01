@@ -8,7 +8,6 @@ import { toast } from '@web/lib/toast';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import {
-  clearNodeStyleImage,
   getPromptFragment,
   isNodeLocked,
   readCanvasGraph,
@@ -152,7 +151,6 @@ function GeneratePanelBody({
   const t = useTranslation();
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const startReferencePick = useCanvasStore((s) => s.startReferencePick);
-  const startStylePick = useCanvasStore((s) => s.startStylePick);
 
   // Collaborator carets (batch-2 item 14): the prompt fragment lives in the
   // canvas-space doc, so its provider's AWARENESS is the caret channel. The
@@ -431,7 +429,7 @@ function GeneratePanelBody({
     [projectId, spaceId, nodeId, freshVm, freshContent],
   );
 
-  // The Reference / Style buttons are TOGGLES (G, user 2026-07-12): start the
+  // The Reference / Focus buttons are TOGGLES (G, user 2026-07-12): start the
   // pick when this node isn't already in that pick, else exit it. Both flags are
   // read reactively so the button highlights while active and un-highlights when
   // a collaborator / mode-switch / Exit ends the pick — not just on local click.
@@ -439,9 +437,6 @@ function GeneratePanelBody({
   const endPick = useCanvasStore((s) => s.endPick);
   const referencePicking = useCanvasStore(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'reference',
-  );
-  const stylePicking = useCanvasStore(
-    (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'style',
   );
   const focusPicking = useCanvasStore(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'focus',
@@ -464,14 +459,6 @@ function GeneratePanelBody({
       startReferencePick(nodeId);
     }
   }, [startReferencePick, endPick, nodeId]);
-  const onStyle = React.useCallback(() => {
-    const session = useCanvasStore.getState().pickSession;
-    if (session?.nodeId === nodeId && session.purpose === 'style') {
-      endPick();
-    } else {
-      startStylePick(nodeId);
-    }
-  }, [startStylePick, endPick, nodeId]);
   const startFocusPick = useCanvasStore((s) => s.startFocusPick);
   const onFocus = React.useCallback(() => {
     const session = useCanvasStore.getState().pickSession;
@@ -489,9 +476,9 @@ function GeneratePanelBody({
   // (which strands keyboard focus). A REFERENCE pick is NOT ended here anymore:
   // t2i no longer disables references, it text-scopes them (image sources dim,
   // text stays pickable), so a reference pick started in i2i stays valid after a
-  // t2i flip — killing it would strand the user mid-pick. A STYLE pick is exempt
-  // too (style images survive t2i, #1664). The mode can flip locally or via a
-  // collaborator writing setNodeMode, so react to vm.mode, not just the toggle.
+  // t2i flip — killing it would strand the user mid-pick. The mode can flip
+  // locally or via a collaborator writing setNodeMode, so react to vm.mode,
+  // not just the toggle.
   React.useEffect(() => {
     const session = useCanvasStore.getState().pickSession;
     if (
@@ -509,38 +496,11 @@ function GeneratePanelBody({
       );
     }
   }, [vm.mode, nodeId, endPick, t, getLastWriteWasLocal]);
-  // Same zombie guard for the STYLE pick (adversarial 2026-07-16): switching to
-  // a model without style capability (locally or via a collaborator's
-  // setNodeModel) takes the Style slot off the toolbar, so a running style
-  // pick would strand its banner + keyboard focus exactly like the t2i
-  // reference case.
-  React.useEffect(() => {
-    const session = useCanvasStore.getState().pickSession;
-    if (
-      !vm.styleSupported &&
-      session?.nodeId === nodeId &&
-      session.purpose === 'style'
-    ) {
-      endPick();
-      toast.warning(
-        t(
-          pickEndToastKey(getLastWriteWasLocal()),
-        ),
-      );
-    }
-  }, [vm.styleSupported, nodeId, endPick, t, getLastWriteWasLocal]);
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {
       removeReferenceRow({ item, projectId, spaceId, nodeId });
     },
-    [projectId, spaceId, nodeId],
-  );
-  // The Style slot's ✕ (#1664): clears the node's pick-time copy. Always
-  // available — even when the active model gates picking off, a stale copy
-  // must be removable.
-  const onClearStyle = React.useCallback(
-    () => clearNodeStyleImage(projectId, spaceId, nodeId),
     [projectId, spaceId, nodeId],
   );
 
@@ -654,11 +614,6 @@ function GeneratePanelBody({
         params: fresh.params,
         promptText: freshPrompt,
         poolParams: poolParams(fresh.pool, fresh.referenceUrls),
-        // Capability gate (#1664): the style copy rides the payload ONLY when
-        // the active model declares style_images — a stale copy under a
-        // non-style model must not be sent (the server would reject or the
-        // worker silently drop it).
-        styleImageUrl: fresh.styleSupported ? fresh.styleImageUrl : undefined,
       });
       await canvasApi.createTask(payload);
       // Close only if THIS mount is still alive AND the panel is still on this
@@ -785,11 +740,6 @@ function GeneratePanelBody({
       referencePicking={referencePicking}
       onRemoveReference={onRemoveReference}
       onInsertReference={handleInsertReference}
-      onStyle={onStyle}
-      stylePicking={stylePicking}
-      styleImageUrl={vm.styleImageUrl}
-      onClearStyle={onClearStyle}
-      styleSupported={vm.styleSupported}
       cameraSupported={vm.cameraSupported}
       onFocus={onFocus}
       focusPicking={focusPicking}
