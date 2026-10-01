@@ -87,8 +87,8 @@ export async function resolveOwnerStudioId(projectId: string): Promise<string> {
  * @param input.sizeBytes - Byte size, as the ingest Worker measured it.
  * @param input.mimeType - MIME type.
  * @param input.kind - image | video | audio | document | file.
- * @param input.source - 'ai' | 'upload' | 'cover' (a first-class video cover
- *   row, #1826 §4.5 — counts toward storage like any other asset).
+ * @param input.source - What the asset is (see `StudioAssetEntity["source"]`);
+ *   every value counts toward storage like any other asset.
  * @param input.generationTaskId - Producing task (AI only), for cost link.
  * @param input.width - Pixel width the media container read, if any.
  * @param input.height - Pixel height the media container read, if any.
@@ -190,8 +190,8 @@ export async function register(input: {
       contentHash: input.contentHash,
       studioId,
       keptStorageKey: result.asset.storageKey,
-      // The asset's own source — 'ai' | 'upload' | 'cover' — so the offline
-      // job can tell a worker-produced duplicate from a browser-uploaded one
+      // The asset's own source, so the offline job can tell a
+      // worker-produced duplicate from a browser-uploaded one
       // (R5: mapping everything non-'ai' to 'upload' mislabelled worker
       // covers, which are 'cover').
       source: input.source,

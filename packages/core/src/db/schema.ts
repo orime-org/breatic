@@ -2481,10 +2481,8 @@ export const storageReclaimQueue = pgTable(
      */
     keptStorageKey: text("kept_storage_key").notNull(),
     /**
-     * Mirrors `studio_assets.source` exactly: 'upload' (browser) | 'ai'
-     * (worker) | 'cover' (a video's cover, from EITHER path). No other value
-     * is possible — the column is written straight from the registered
-     * asset's own source.
+     * Mirrors `studio_assets.source` exactly — the column is written straight
+     * from the registered asset's own source.
      */
     source: varchar("source", { length: 16 }).notNull(),
     /**
