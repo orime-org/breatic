@@ -73,6 +73,10 @@ describe("web_search says how to cite what it found", () => {
     expect(said()).toContain("[1]");
   });
 
+  it("says the sources are shown by the panel, so the reply does not list them", () => {
+    expect(said()).toMatch(/do not list their addresses/i);
+  });
+
   it("says what the numbers count, and that they do not carry across replies", () => {
     expect(said()).toMatch(/share one run of numbers/i);
     expect(said()).toMatch(/an earlier reply used stands for something else/i);
@@ -89,6 +93,10 @@ describe("propose_canvas_action says what the canvas is for", () => {
 
   it("keeps copy that belongs to a canvas job with the rest of it", () => {
     expect(said()).toMatch(/rather than half in your reply/i);
+  });
+
+  it("writes the steps after placing from the product guide", () => {
+    expect(said()).toMatch(/numbered steps[^.]*get_product_guide/i);
   });
 });
 

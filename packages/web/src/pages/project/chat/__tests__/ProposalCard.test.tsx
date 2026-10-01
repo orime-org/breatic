@@ -5,8 +5,8 @@
  * The card that turns an agent's proposal into one press (#229).
  *
  * The reader it exists for does not know the canvas, so the card has to answer
- * everything before the press: what gets built, what it costs, and what is
- * left for them afterwards. Pressing posts the group to the canvas, which is
+ * everything before the press: what gets built and what is left for them
+ * afterwards. Pressing posts the group to the canvas, which is
  * the only thing with a viewport to place it in -- and when no canvas is open
  * there is nobody holding that mailbox, which the reader has to be told rather
  * than left pressing a button that does nothing.
@@ -191,28 +191,15 @@ describe('what the card says before it is pressed', () => {
     ).toBeTruthy();
   });
 
-  it('quotes the price from the catalog, not from the model that proposed it', async () => {
+  it('shows neither a price nor a run time', async () => {
+    // The catalog says this model runs for 12 seconds; the card leaves that,
+    // and the credits, to the generation panel.
     listModels.mockResolvedValue(CATALOG);
-    renderCard();
-
-    // 4 and 12 are the catalog's numbers for this model; nothing in the
-    // proposal carries either, which is the point.
-    await waitFor(() => expect(screen.getByText('4')).toBeTruthy());
-    expect(screen.getByText('12s')).toBeTruthy();
-  });
-
-  it('omits the credits when the model states no pricing', async () => {
-    // A number the panel one press later would not show is worse than none.
-    listModels.mockResolvedValue({
-      ...CATALOG,
-      image: [{ name: 'some-model', takes_prompt: true, params: {}, generation_time: 12 }],
-    });
     const client = renderCard();
 
     await waitFor(() => expect(client.getQueryData(['models'])).toBeDefined());
-    expect(screen.queryByText('4')).toBeNull();
-    // The wait is a declared number either way, so it still shows.
-    expect(screen.getByText('12s')).toBeTruthy();
+    expect(screen.getByText('Some Model')).toBeTruthy();
+    expect(screen.queryByText(/12\s*s/)).toBeNull();
   });
 
   it('names the model the way the panel will name it', async () => {
@@ -237,17 +224,6 @@ describe('what the card says before it is pressed', () => {
     expect(screen.getByText('some-model')).toBeTruthy();
   });
 
-  it('omits the price when the catalog does not carry that model', async () => {
-    listModels.mockResolvedValue({ ...CATALOG, image: [] });
-    const client = renderCard();
-
-    // Wait for the catalog itself, not for the request: with this model
-    // missing the card looks exactly as it does while the catalog is still
-    // coming, so a test that only waited for the call would pass on a card
-    // that had not read it yet -- and on one that invented a price.
-    await waitFor(() => expect(client.getQueryData(['models'])).toBeDefined());
-    expect(screen.queryByText('12s')).toBeNull();
-  });
 });
 
 describe('a flow that is more than one thing', () => {
@@ -327,53 +303,6 @@ describe('a flow that is more than one thing', () => {
     await waitFor(() => expect(client.getQueryData(['models'])).toBeTruthy());
 
     expect(screen.queryByText(/Keeps the shape/)).toBeNull();
-  });
-
-  it('quotes what all of the generations cost, not one of them', async () => {
-    listModels.mockResolvedValue(CATALOG);
-    const three: CanvasProposal = {
-      ...PAIR,
-      nodes: [
-        PAIR.nodes[0]!,
-        PAIR.nodes[1]!,
-        { ...PAIR.nodes[1]!, name: 'At 45' },
-        { ...PAIR.nodes[1]!, name: 'Overhead' },
-      ],
-      edges: [
-        { fromIndex: 0, toIndex: 1 },
-        { fromIndex: 0, toIndex: 2 },
-        { fromIndex: 0, toIndex: 3 },
-      ],
-    };
-    renderCard(true, three);
-
-    // Three runs of a model the catalog prices at 4, so twelve -- and the
-    // wait is one run's, drawn as an each because all three take it.
-    await waitFor(() => expect(screen.getByText('12')).toBeTruthy());
-    expect(screen.getByText(/12s . 3/)).toBeTruthy();
-  });
-
-  it('quotes one number for the wait where the runs are not the same length', async () => {
-    // Twelve seconds beside thirty drawn as "30 s x 2" says the picture takes
-    // half a minute. With no per-run number to multiply, the longest stands
-    // on its own.
-    listModels.mockResolvedValue(CATALOG);
-    const mixed: CanvasProposal = {
-      ...PAIR,
-      nodes: [
-        PAIR.nodes[0]!,
-        PAIR.nodes[1]!,
-        { ...PAIR.nodes[1]!, name: 'The clip', model: 'slow-model' },
-      ],
-      edges: [
-        { fromIndex: 0, toIndex: 1 },
-        { fromIndex: 0, toIndex: 2 },
-      ],
-    };
-    renderCard(true, mixed);
-
-    await waitFor(() => expect(screen.getByText('30s')).toBeTruthy());
-    expect(screen.queryByText(/30 s . 2/)).toBeNull();
   });
 
   it('names the node a lone to-do belongs to when the group holds more', () => {

@@ -5,15 +5,13 @@
  * What a proposal card says before the reader presses it (#229, design §5.5).
  *
  * The card has to answer three things in the space of a chat column: what gets
- * built, which model it runs on and what it costs, and what is left for the
- * reader afterwards. All three are read off the proposal, except the price and
- * the wait -- those come from the catalog, because the model does not get to
- * quote its own price.
+ * built, which model it runs on, and what is left for the reader afterwards.
+ * All three are read off the proposal; the catalog only supplies the model's
+ * display name.
  */
 
-import { layersOf, markTargets, nameableFeeders, promptPlainText, proposalMarkSegments } from '@breatic/shared';
-import type { CanvasProposal, ModelCatalog, ModelEntry, ProposalNode } from '@breatic/shared';
-import type { CreditEstimate } from '@breatic/shared/pricing';
+import { layersOf, nameableFeeders, proposalMarkSegments } from '@breatic/shared';
+import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 /** What one node contributes to the little shape drawn on the card. */
 export interface ShapeChip {
@@ -64,22 +62,6 @@ export interface PanelLines {
   prompt: string;
   /** For one whose panel has no prompt box, or that carries no prompt. */
   settings: string;
-}
-
-/** What the card costs and how long it takes, when the catalog knows. */
-export interface ProposalPrice {
-  /** The longest of the runs. */
-  seconds: number;
-  /** How many generations the placed group will run. */
-  runs: number;
-  /**
-   * Whether every run takes the same time, which is what "each" needs.
-   *
-   * A picture at 25 seconds beside a video at 180 drawn as "180 s x 2" says
-   * the picture takes three minutes. Where the runs differ there is no per-run
-   * number to multiply, and the card draws the longest on its own.
-   */
-  sameLength: boolean;
 }
 
 /**
@@ -264,109 +246,6 @@ export function todosOf(proposal: CanvasProposal, lines: PanelLines): NodeTodos[
     else groups.push({ nodes: [node.name], notes: held });
   });
   return groups;
-}
-
-/**
- * How long this flow's generations take and how many there are, from the
- * catalog. What they cost is {@link creditsOf}.
- *
- * A model the catalog does not carry gives nothing rather than a zero, and
- * the card simply omits the line.
- * @param catalog - The model catalog, or undefined while it is being fetched.
- * @param proposal - The proposal the card draws.
- * @returns The wait and the run count, or undefined when the catalog cannot say.
- * @throws {never} Never.
- */
-export function costOf(
-  catalog: ModelCatalog | undefined,
-  proposal: CanvasProposal,
-): ProposalPrice | undefined {
-  const rows = proposal.nodes
-    .filter((node) => node.role === 'generate')
-    .map((node) => entryOf(catalog, node.model));
-  if (rows.length === 0 || rows.some((row) => row === undefined)) return undefined;
-  const known = rows.filter((row) => row !== undefined);
-  // The wait is the longest of them: the runs that can start together do, and
-  // a run waiting on the one before it is waiting on a press the reader has
-  // not made yet.
-  const times = known.map((row) => row.generation_time);
-  return {
-    seconds: Math.max(...times),
-    runs: known.length,
-    sameLength: new Set(times).size === 1,
-  };
-}
-
-/** What a sent source stands for in a price: it will be there, its length unknown. */
-const WIRED = 'wired';
-
-/**
- * The params one proposed run is priced with: its own, plus a stand-in in the
- * pool for each node a mark names, the way the canvas writes its mentions. A
- * node wired in and never marked is not sent; a required slot the reader
- * picks into is priced by the estimate as the one item the run needs.
- * @param entry - The run's catalog entry.
- * @param proposal - The proposal the card draws.
- * @param index - The run's node.
- * @returns The params, with the sent sources in place.
- * @throws {never} Never.
- */
-function wiredParams(
-  entry: ModelEntry,
-  proposal: CanvasProposal,
-  index: number,
-): Record<string, unknown> {
-  const params: Record<string, unknown> = { ...(proposal.nodes[index]?.params ?? {}) };
-  const specs = Object.entries(entry.params ?? {});
-  for (const i of markTargets(proposal, index)) {
-    const kind = proposal.nodes[i]?.type;
-    const pool = specs.find(([, spec]) => spec.fill === 'pool' && spec.accepts === kind);
-    if (!pool) continue;
-    const list = Array.isArray(params[pool[0]]) ? (params[pool[0]] as unknown[]) : [];
-    params[pool[0]] = [...list, WIRED];
-  }
-  return params;
-}
-
-/**
- * What one press of this flow costs, priced the way the panels price each run.
- *
- * The model proposed the model, not its price: a quote it wrote itself would
- * be a guess the reader had no way to check. The runs add up, and the total
- * keeps the weakest bound among them: a run whose source is not picked yet
- * makes the total a lower bound, a run that may reuse a clone an upper one.
- * Where both happen, or a run is priced per thousand characters of text it
- * does not have, there is no single number and the card omits the line.
- * @param catalog - The model catalog, or undefined while it is being fetched.
- * @param proposal - The proposal the card draws.
- * @returns The total, or undefined when the catalog cannot say.
- * @throws {Error} When a pricing formula does not produce a finite price.
- */
-export async function creditsOf(
-  catalog: ModelCatalog | undefined,
-  proposal: CanvasProposal,
-): Promise<CreditEstimate | undefined> {
-  const runs = proposal.nodes
-    .map((node, index) => ({ node, index, entry: entryOf(catalog, node.model) }))
-    .filter(({ node }) => node.role === 'generate');
-  if (!catalog || runs.length === 0) return undefined;
-  if (runs.some(({ entry }) => entry?.pricing === undefined)) return undefined;
-  const { estimateCredits } = await import('@breatic/shared/pricing');
-  const estimates = await Promise.all(
-    runs.map(({ node, entry, index }) =>
-      estimateCredits(
-        { ...entry!, pricing: entry!.pricing! },
-        { params: wiredParams(entry!, proposal, index), prompt: promptPlainText(proposalMarkSegments(node)) },
-        catalog.credit_multiplier,
-      ),
-    ),
-  );
-  const bounds = new Set(estimates.map((e) => e.bound));
-  if (bounds.has('per_thousand_chars')) return undefined;
-  if (bounds.has('at_least') && bounds.has('at_most')) return undefined;
-  const credits = estimates.reduce((sum, e) => sum + e.credits, 0);
-  const bound = bounds.has('at_least') ? 'at_least' : bounds.has('at_most') ? 'at_most' : 'exact';
-  return { credits, bound };
 }
 
 /**

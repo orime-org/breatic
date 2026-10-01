@@ -11,6 +11,7 @@ import { askUser } from "@domain/agent/tools/ask-user.js";
 import {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
+  GET_PRODUCT_GUIDE,
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
@@ -20,6 +21,7 @@ import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
 import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
 import { generationModels } from "@domain/agent/tools/generation-models.js";
+import { productGuide } from "@domain/agent/tools/product-guide.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 
@@ -51,6 +53,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // Read the catalog and hand back a value, so one object serves every turn.
   [GET_CANVAS_CAPABILITIES]: () => canvasCapabilities,
   [LIST_GENERATION_MODELS]: () => generationModels,
+  [GET_PRODUCT_GUIDE]: () => productGuide,
   [PROPOSE_CANVAS_ACTION]: () => proposeCanvasAction,
   // Holds nothing between calls, so one object serves every turn.
   [JUDGE_LIKELIHOOD]: () => judgeLikelihood,
@@ -90,7 +93,7 @@ export const BASELINE_TOOLS: readonly string[] = [
 export const INTERACTION_TOOLS: readonly string[] = [ASK_USER];
 
 /**
- * The tools that describe the canvas the reader is looking at.
+ * The tools that describe the spaces the reader is looking at.
  *
  * Separate from the baseline because the baseline is wider than they are: a
  * skill run takes the union of the baseline and its own tools, and a worker
@@ -99,19 +102,21 @@ export const INTERACTION_TOOLS: readonly string[] = [ASK_USER];
  * a skill whose own prompt already states which modes exist would be handed a
  * second answer to the same question.
  *
- * What makes a tool belong here is that its answer is about the canvas in
+ * What makes a tool belong here is that its answer is about the product in
  * front of someone, which is why the search tools are not in it even though
  * they too are drawn by the panel alone.
  */
 export const CANVAS_TOOLS: readonly string[] = [
   GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS,
+  GET_PRODUCT_GUIDE,
   PROPOSE_CANVAS_ACTION,
 ];
 
 export {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
+  GET_PRODUCT_GUIDE,
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
