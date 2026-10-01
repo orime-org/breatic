@@ -38,7 +38,6 @@ describe('GenerateToolbar — Reference / Focus are the live tools', () => {
     expect(screen.getByTestId('generate-tool-focus')).toBeInTheDocument();
     expect(screen.getByTestId('generate-tool-reference')).toBeInTheDocument();
     expect(screen.queryByTestId('generate-tool-mark')).toBeNull();
-    expect(screen.queryByTestId('generate-tool-sep')).toBeNull();
   });
 
   it('leaves Reference and Focus enabled (#1986)', () => {

@@ -94,18 +94,14 @@ test('a param is named in the reader\'s language, its options stay as the vendor
   await page.evaluate(() => localStorage.removeItem('breatic.locale'));
 });
 
-test('the image panel draws no Style slot for a model that takes none, and no unbuilt buttons', async ({ page }) => {
-  // User 2026-09-29: presets, translate and web search were placeholders; a
-  // model that cannot take a style image shows no Style slot at all.
+test('the image panel draws no unbuilt buttons', async ({ page }) => {
+  // User 2026-09-29: presets, translate and web search were placeholders.
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'image', undefined, -350);
   await openGenerate(nodeId, 'generate-execute');
   for (const gone of ['generate-presets', 'generate-translate', 'generate-online']) {
     await expect(page.getByTestId(gone)).toHaveCount(0);
   }
-  await page.getByTestId('generate-model-trigger').click();
-  await page.getByTestId('generate-model-option-gpt-image-2.5-sunburst-text-to-image').click();
-  await expect(page.getByTestId('generate-tool-style')).toHaveCount(0);
 });
 
 test('a video model that generates audio says so on its pill', async ({ page }) => {

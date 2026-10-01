@@ -652,7 +652,7 @@ export function computeDeletedAssetEntries(
 
 /**
  * Whether an asset URL is still referenced by any node — content, cover,
- * style slot (#333, round-12), focus crop (#1782), or anything held in a
+ * focus crop (#1782), or anything held in a
  * source slot on either generative panel (#1896 onward, read off the
  * registries rather than listed here). The rail's crop ✕ reports the asset deleted only when this is
  * false; call it AFTER the removal write so the removed instance is
