@@ -4,8 +4,23 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import { ApiException } from '@web/data/api/types';
-import { BytesNotDelivered } from '@web/data/upload/finish-upload';
-import { runMediaUpload } from '@web/data/upload/media-upload';
+import { assetsApi } from '@web/data/api/assets';
+import { BytesNotDelivered, sendFileAndFinish } from '@web/data/upload/finish-upload';
+import { hashFile } from '@web/data/upload/hash';
+import {
+  runMediaUpload,
+  uploadMedia,
+  UploadFailedError,
+} from '@web/data/upload/media-upload';
+
+vi.mock('@web/data/api/assets', () => ({
+  assetsApi: { fetchUploadConfig: vi.fn(), requestUploadTicket: vi.fn() },
+}));
+vi.mock('@web/data/upload/hash', () => ({ hashFile: vi.fn() }));
+vi.mock('@web/data/upload/finish-upload', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/upload/finish-upload')>()),
+  sendFileAndFinish: vi.fn(),
+}));
 
 /** The knob fixture threaded through the upload orchestration tests. */
 const CFG = {
@@ -264,5 +279,44 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       hash: HASH,
       derived: true,
     });
+  });
+});
+
+describe('uploadMedia — the pipeline wired to the real network, as a promise', () => {
+  const file = new File(['x'], 'photo.png', { type: 'image/png' });
+
+  /** Point the production deps at the fixtures. */
+  function wire(): void {
+    vi.mocked(assetsApi.fetchUploadConfig).mockResolvedValue(CFG);
+    vi.mocked(hashFile).mockResolvedValue(HASH);
+    vi.mocked(assetsApi.requestUploadTicket).mockResolvedValue(TICKET);
+    vi.mocked(sendFileAndFinish).mockResolvedValue({
+      assetId: 'asset-new',
+      fileUrl: 'https://cdn/p.png',
+      kind: 'image',
+    });
+  }
+
+  it('resolves with what the server filed the upload under', async () => {
+    wire();
+
+    await expect(uploadMedia(file, { projectId: 'p1', derived: true })).resolves.toEqual({
+      fileUrl: 'https://cdn/p.png',
+      assetId: 'asset-new',
+    });
+    expect(assetsApi.requestUploadTicket).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'p1', derived: true, hash: HASH }),
+    );
+  });
+
+  it('rejects with the pipeline\'s reason, readable as the message too', async () => {
+    wire();
+    vi.mocked(assetsApi.requestUploadTicket).mockRejectedValue(apiError(507));
+
+    const failure = await uploadMedia(file, { projectId: 'p1' }).catch((err: unknown) => err);
+
+    expect(failure).toBeInstanceOf(UploadFailedError);
+    expect((failure as UploadFailedError).reason).toBe('storage');
+    expect((failure as UploadFailedError).message).toBe('storage');
   });
 });

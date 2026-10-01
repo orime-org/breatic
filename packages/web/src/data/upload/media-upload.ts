@@ -3,8 +3,9 @@
 
 import {
   isAlreadyStored,
-  type UploadTargetParams,
+  type UploadContext,
   type UploadTicket,
+  type UploadTicketRequest,
   type UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
 import type { IngestOutcome, UploadClientConfig } from '@breatic/shared';
@@ -14,7 +15,9 @@ import {
   STORAGE_FULL_STATUS,
   UNSUPPORTED_TYPE_STATUS,
 } from '@web/data/upload/upload-retry';
-import { BytesNotDelivered } from '@web/data/upload/finish-upload';
+import { assetsApi } from '@web/data/api/assets';
+import { BytesNotDelivered, sendFileAndFinish } from '@web/data/upload/finish-upload';
+import { hashFile } from '@web/data/upload/hash';
 
 /**
  * The media upload orchestrator: ask for a ticket, send the bytes to the ingest
@@ -24,26 +27,6 @@ import { BytesNotDelivered } from '@web/data/upload/finish-upload';
  * project cover, a studio avatar — so it lives with the rest of the upload
  * transport rather than with any one of them.
  */
-
-/**
- * Where an upload lands and what it is for.
- *
- * All of it is checked against this user's access when the ticket is issued
- * and then stored on the grant, so what the Worker reports back is read
- * against context we hold rather than context a client could restate.
- */
-export type UploadContext = UploadTargetParams & {
-  /** The node the bytes land on, when this upload has one. */
-  nodeId?: string;
-  /** The space that node lives in. */
-  spaceId?: string;
-  /** `mini_tool` for a mini-tool product. */
-  source?: 'mini_tool';
-  /** The mini-tool's name when `source` says so. */
-  toolName?: string;
-  /** True for a byproduct, registered without an activity-feed row of its own. */
-  derived?: true;
-};
 
 /**
  * What the server filed a finished upload under, when it said: the address,
@@ -158,18 +141,7 @@ export interface MediaUploadDeps {
    */
   hashFile: (file: File) => Promise<string | null>;
   /** Ask for a ticket, or be told the studio already holds this content. */
-  requestTicket: (params: UploadTargetParams & {
-    filename: string;
-    contentType: string;
-    size: number;
-    /** Mandatory — a hashless upload is refused before it reaches here. */
-    hash: string;
-    nodeId?: string;
-    spaceId?: string;
-    source?: 'mini_tool';
-    toolName?: string;
-    derived?: true;
-  }) => Promise<UploadTicketResponse>;
+  requestTicket: (params: UploadTicketRequest) => Promise<UploadTicketResponse>;
   /** Send the bytes to the ingest Worker and finish the upload. */
   sendToIngest: (
     file: File,
@@ -237,21 +209,11 @@ export async function runMediaUpload(
     answer = await retryTransient(
       () =>
         deps.requestTicket({
+          ...context,
           filename: file.name,
           contentType: file.type,
-          ...(context.projectId !== undefined
-            ? {
-              projectId: context.projectId,
-              ...(context.purpose !== undefined && { purpose: context.purpose }),
-            }
-            : { studioId: context.studioId, purpose: context.purpose }),
           size: file.size,
           hash,
-          ...(context.nodeId !== undefined && { nodeId: context.nodeId }),
-          ...(context.spaceId !== undefined && { spaceId: context.spaceId }),
-          ...(context.source !== undefined && { source: context.source }),
-          ...(context.toolName !== undefined && { toolName: context.toolName }),
-          ...(context.derived !== undefined && { derived: context.derived }),
         }),
       {
         attempts: cfg.clientMaxAttempts,
@@ -283,4 +245,37 @@ export async function runMediaUpload(
       ...(answer.taskId !== undefined && { taskId: answer.taskId }),
     });
   }
+}
+
+/** Why an upload did not complete; the caller picks the message from it. */
+export class UploadFailedError extends Error {
+  /**
+   * Name the reason the upload did not complete.
+   * @param reason - The pipeline's verdict, also the message.
+   */
+  constructor(readonly reason: UploadFailureReason) {
+    super(reason);
+    this.name = 'UploadFailedError';
+  }
+}
+
+/**
+ * Run the pipeline against the real network, for an upload with no node
+ * behind it — it reads its result here rather than from Yjs.
+ * @param file - The file to upload.
+ * @param context - Where it lands and what it is for.
+ * @returns What the server filed the upload under.
+ * @throws {UploadFailedError} When the upload does not complete.
+ */
+export function uploadMedia(file: File, context: UploadContext): Promise<StoredUpload> {
+  return new Promise((resolve, reject) => {
+    void runMediaUpload(file, context, {
+      getUploadConfig: assetsApi.fetchUploadConfig,
+      hashFile,
+      requestTicket: assetsApi.requestUploadTicket,
+      sendToIngest: sendFileAndFinish,
+      onSuccess: resolve,
+      onFailure: (outcome) => reject(new UploadFailedError(outcome.reason)),
+    });
+  });
 }

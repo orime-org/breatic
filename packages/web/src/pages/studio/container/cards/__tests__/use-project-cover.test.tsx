@@ -20,7 +20,7 @@ const { setCover } = vi.hoisted(() => ({ setCover: vi.fn() }));
 vi.mock('@web/data/api/projects', () => ({ projectsApi: { setCover } }));
 
 import { useProjectCover } from '@web/pages/studio/container/cards/use-project-cover';
-import { PictureUploadError } from '@web/pages/studio/shared/upload-picture';
+import { UploadFailedError } from '@web/data/upload/media-upload';
 
 let qc: QueryClient;
 
@@ -64,7 +64,7 @@ describe('useProjectCover', () => {
   });
 
   it('says the storage is full when the account has no room, and leaves the cover alone', async () => {
-    uploadPicture.mockRejectedValue(new PictureUploadError('storage'));
+    uploadPicture.mockRejectedValue(new UploadFailedError('storage'));
     const { result } = setup();
 
     await act(async () => {
@@ -78,7 +78,7 @@ describe('useProjectCover', () => {
   });
 
   it('says the format is not taken when the edge refused the bytes', async () => {
-    uploadPicture.mockRejectedValue(new PictureUploadError('unsupportedType'));
+    uploadPicture.mockRejectedValue(new UploadFailedError('unsupportedType'));
     const { result } = setup();
 
     await act(async () => {

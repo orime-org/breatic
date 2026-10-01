@@ -6,11 +6,9 @@ import * as React from 'react';
 import { newId } from '@breatic/shared';
 
 import { assetsApi } from '@web/data/api';
-import { sendFileAndFinish } from '@web/data/upload/finish-upload';
-import { hashFile } from '@web/data/upload/hash';
 import { useTranslation } from '@web/i18n/use-translation';
 import { attachAccept, attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
-import { runMediaUpload } from '@web/data/upload/media-upload';
+import { uploadMedia } from '@web/data/upload/media-upload';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import { openTray } from '@web/stores/attach-to-chat';
 import { useTrayNotice, type TrayNotice } from '@web/stores/chat-attachments';
@@ -24,23 +22,10 @@ import { useTrayNotice, type TrayNotice } from '@web/stores/chat-attachments';
  * @param file - The file.
  * @param projectId - The project the chat is in.
  * @returns The address it was filed under, when the server said.
- * @throws {Error} When the upload could not complete.
+ * @throws {UploadFailedError} When the upload could not complete.
  */
-function uploadForChat(file: File, projectId: string): Promise<string | undefined> {
-  return new Promise((resolve, reject) => {
-    void runMediaUpload(
-      file,
-      { projectId, derived: true },
-      {
-        getUploadConfig: assetsApi.fetchUploadConfig,
-        hashFile,
-        requestTicket: assetsApi.requestUploadTicket,
-        sendToIngest: sendFileAndFinish,
-        onSuccess: ({ fileUrl }) => resolve(fileUrl),
-        onFailure: (outcome) => reject(new Error(outcome.reason)),
-      },
-    );
-  });
+async function uploadForChat(file: File, projectId: string): Promise<string | undefined> {
+  return (await uploadMedia(file, { projectId, derived: true })).fileUrl;
 }
 
 /**

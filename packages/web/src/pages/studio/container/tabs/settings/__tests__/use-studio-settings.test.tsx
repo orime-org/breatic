@@ -22,7 +22,7 @@ import {
 
 import { useStudioSettings } from '@web/pages/studio/container/tabs/settings/use-studio-settings';
 import { studiosApi } from '@web/data/api/studios';
-import { PictureUploadError } from '@web/pages/studio/shared/upload-picture';
+import { UploadFailedError } from '@web/data/upload/media-upload';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import type { Studio, StudioDetail } from '@breatic/shared';
 
@@ -358,7 +358,7 @@ describe('useStudioSettings — the avatar is an asset', () => {
   });
 
   it('says the storage is full when the account has no room', async () => {
-    uploadPicture.mockRejectedValue(new PictureUploadError('storage'));
+    uploadPicture.mockRejectedValue(new UploadFailedError('storage'));
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
 
     result.current.uploadAvatar(new Blob(['x'], { type: 'image/png' }));

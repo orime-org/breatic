@@ -4,7 +4,7 @@
 import { apiGet, apiPost } from '@web/data/api/request';
 import type { UploadClientConfig } from '@breatic/shared';
 import type {
-  UploadTargetParams,
+  UploadTicketRequest,
   UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
 
@@ -43,17 +43,7 @@ export const assetsApi = {
    *   the asset's source; a studio uploads only its avatar.
    * @returns The ticket to upload with, or the existing asset to reuse.
    */
-  requestUploadTicket(params: UploadTargetParams & {
-    filename: string;
-    contentType: string;
-    size: number;
-    hash: string;
-    nodeId?: string;
-    spaceId?: string;
-    source?: 'mini_tool';
-    toolName?: string;
-    derived?: true;
-  }): Promise<UploadTicketResponse> {
+  requestUploadTicket(params: UploadTicketRequest): Promise<UploadTicketResponse> {
     return apiPost<UploadTicketResponse>('/assets/upload-ticket', {
       filename: params.filename,
       content_type: params.contentType,

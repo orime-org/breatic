@@ -11,27 +11,9 @@
  * the row is the caller's next call.
  */
 
-import { assetsApi } from '@web/data/api/assets';
 import { ApiException } from '@web/data/api/types';
-import { sendFileAndFinish } from '@web/data/upload/finish-upload';
-import { hashFile } from '@web/data/upload/hash';
-import {
-  runMediaUpload,
-  type UploadContext,
-  type UploadFailureReason,
-} from '@web/data/upload/media-upload';
-
-/** Why a picture did not upload; the caller picks the message from it. */
-export class PictureUploadError extends Error {
-  /**
-   * Name the reason the picture did not upload.
-   * @param reason - The upload pipeline's verdict.
-   */
-  constructor(readonly reason: UploadFailureReason) {
-    super(reason);
-    this.name = 'PictureUploadError';
-  }
-}
+import type { UploadContext } from '@web/data/upload/ingest-upload';
+import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
 
 /**
  * What a failed picture upload tells the person: their account is full, the
@@ -46,7 +28,7 @@ export type PictureFailure = 'storage' | 'unsupportedType' | 'hash' | 'upload';
  * @returns The failure to show.
  */
 export function pictureFailureOf(err: unknown): PictureFailure {
-  if (!(err instanceof PictureUploadError)) return 'upload';
+  if (!(err instanceof UploadFailedError)) return 'upload';
   return err.reason === 'storage' || err.reason === 'unsupportedType' || err.reason === 'hash'
     ? err.reason
     : 'upload';
@@ -95,32 +77,19 @@ const EXTENSION: Readonly<Record<string, string>> = {
  * Upload the picture and resolve the ledger row it landed on.
  * @param picture - The encoded crop.
  * @param context - Where it lands and what it is for.
- * @param run - The upload pipeline; tests pass a stand-in.
+ * @param upload - The upload; tests pass a stand-in.
  * @returns The asset id to point the project or the studio at.
- * @throws {PictureUploadError} When the upload fails, or ends without naming a row.
+ * @throws {UploadFailedError} When the upload fails, or ends without naming a row.
  */
-export function uploadPicture(
+export async function uploadPicture(
   picture: Blob,
   context: UploadContext,
-  run: typeof runMediaUpload = runMediaUpload,
+  upload: typeof uploadMedia = uploadMedia,
 ): Promise<string> {
   const file = new File([picture], `picture.${EXTENSION[picture.type] ?? 'png'}`, {
     type: picture.type,
   });
-  return new Promise((resolve, reject) => {
-    void run(file, context, {
-      getUploadConfig: assetsApi.fetchUploadConfig,
-      hashFile,
-      requestTicket: assetsApi.requestUploadTicket,
-      sendToIngest: sendFileAndFinish,
-      onSuccess: ({ assetId }) => {
-        if (assetId === undefined) {
-          reject(new PictureUploadError('upload'));
-          return;
-        }
-        resolve(assetId);
-      },
-      onFailure: (outcome) => reject(new PictureUploadError(outcome.reason)),
-    });
-  });
+  const { assetId } = await upload(file, context);
+  if (assetId === undefined) throw new UploadFailedError('upload');
+  return assetId;
 }
