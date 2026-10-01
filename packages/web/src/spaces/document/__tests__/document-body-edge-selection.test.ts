@@ -8,7 +8,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
-import { AllSelection, Selection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -107,6 +107,17 @@ describe('which ends of the body need taking over', () => {
       { type: 'bulletListItem', content: 'Parent', children: [{ type: 'paragraph', content: '' }] },
     ]);
     expect(bodyEdgeNeedsTakeover(view.state.doc, 'end')).toBe(true);
+  });
+
+  it('takes over an empty line of any kind at either end', () => {
+    for (const empty of [
+      { type: 'heading', props: { level: 2 } },
+      { type: 'bulletListItem' },
+      { type: 'codeBlock' },
+    ]) {
+      const view = open([empty, { type: 'paragraph', content: 'Middle' }, empty]);
+      expect([bodyEdgeNeedsTakeover(view.state.doc, 'start'), bodyEdgeNeedsTakeover(view.state.doc, 'end')]).toEqual([true, true]);
+    }
   });
 });
 
@@ -259,11 +270,138 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
     expect(view.state.selection.head).toBe(text - 1);
   });
 
+  it('Shift+Right carries the text end over into the next block', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
+    const aboveEnd = textStart(view, 'Above') + 'Above'.length;
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'end', aboveEnd)));
+
+    press(view, 'ArrowRight');
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect(view.state.selection.head).toBe(textStart(view, 'Middle'));
+  });
+
+  it('Shift+Right past the last text onto the anchor edge collapses to a caret', () => {
+    const view = open(ABOVE_DIVIDER);
+    const aboveEnd = textStart(view, 'Above') + 'Above'.length;
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'end', aboveEnd)));
+
+    press(view, 'ArrowRight');
+
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([aboveEnd, aboveEnd]);
+  });
+
+  it('Shift+Left past the first text onto the other edge takes the whole document', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }]);
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'end', textStart(view, 'Mid'))));
+
+    press(view, 'ArrowLeft');
+
+    expect(view.state.selection).toBeInstanceOf(AllSelection);
+  });
+
+  it('Shift+Up from a selection anchored on the end reaches a leading divider', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }]);
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'end', textStart(view, 'Mid') + 1)));
+
+    expect(press(view, 'ArrowUp')).toBe(true);
+
+    expect(view.state.selection).toBeInstanceOf(AllSelection);
+  });
+
+  it('Shift+Up from the whole document lets go of the end and keeps the start', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }]);
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    expect(press(view, 'ArrowUp')).toBe(true);
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([
+      bodyEdgePos(view.state.doc, 'start'),
+      textStart(view, 'Mid') + 'Mid'.length,
+    ]);
+  });
+
   it('leaves Shift+Down to the browser when the body ends in words', () => {
     const view = open([{ type: 'paragraph', content: 'Only' }]);
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Only'))));
 
     expect(press(view, 'ArrowDown')).toBe(false);
+  });
+});
+
+describe('plain Left and Right on a selection that reaches past an end', () => {
+  it('collapse it to a caret at its start and at its end, both in text', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
+    const from = textStart(view, 'Middle') + 2;
+    const selection = BodyEdgeSelection.create(view.state.doc, from, 'end');
+    const caret = (): number[] => [view.state.selection.anchor, view.state.selection.head];
+
+    view.dispatch(view.state.tr.setSelection(selection));
+    expect(press(view, 'ArrowLeft', false)).toBe(true);
+    expect(caret()).toEqual([from, from]);
+
+    view.dispatch(view.state.tr.setSelection(selection));
+    expect(press(view, 'ArrowRight', false)).toBe(true);
+    const end = textStart(view, 'Middle') + 'Middle'.length;
+    expect(caret()).toEqual([end, end]);
+  });
+});
+
+describe('extending from a selected block that has no text', () => {
+  /**
+   * Selects the divider at a position.
+   * @param view - The view.
+   * @param index - Which divider, in document order.
+   */
+  function selectDivider(view: EditorView, index: number): void {
+    const found: number[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'divider') found.push(pos);
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, found[index]!)));
+  }
+
+  it('keeps a divider in the middle when Shift+Down or Shift+Right goes on from it', () => {
+    for (const key of ['ArrowDown', 'ArrowRight']) {
+      const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'divider' }, { type: 'paragraph', content: 'Below' }]);
+      selectDivider(view, 0);
+
+      expect(press(view, key)).toBe(true);
+
+      expect(view.state.selection).toBeInstanceOf(TextSelection);
+      expect([view.state.selection.anchor, view.state.selection.head]).toEqual([
+        textStart(view, 'Above') + 'Above'.length,
+        textStart(view, 'Below'),
+      ]);
+    }
+  });
+
+  it('anchors on the start when the divider is the first block', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Below' }]);
+    selectDivider(view, 0);
+
+    press(view, 'ArrowDown');
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([
+      bodyEdgePos(view.state.doc, 'start'),
+      textStart(view, 'Below'),
+    ]);
+  });
+
+  it('anchors on the end when Shift+Up goes on from the last block', () => {
+    const view = open(ABOVE_DIVIDER);
+    selectDivider(view, 0);
+
+    press(view, 'ArrowUp');
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([
+      bodyEdgePos(view.state.doc, 'end'),
+      textStart(view, 'Above') + 'Above'.length,
+    ]);
   });
 });
 
@@ -644,6 +782,24 @@ describe('an empty line at an end of the body, inside the selection', () => {
     view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Parent'), 'end')));
 
     expect(paragraphs(view)).toEqual([':true']);
+  });
+
+  it('is painted at both ends under a whole-document selection', () => {
+    const view = open([{ type: 'paragraph', content: '' }, { type: 'paragraph', content: 'Mid' }, { type: 'paragraph', content: '' }]);
+    view.focus();
+
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    expect(paragraphs(view)).toEqual([':true', 'Mid:false', ':true']);
+  });
+
+  it('is painted when the empty line at the end is a heading', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'heading', props: { level: 2 } }]);
+    view.focus();
+
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end')));
+
+    expect(view.dom.querySelector('[data-content-type="heading"]')?.classList.contains(EMPTY_LINE_CLASS)).toBe(true);
   });
 
   it('is left to the browser under a text selection', () => {

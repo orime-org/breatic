@@ -10,7 +10,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
-import { AllSelection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -395,6 +395,31 @@ describe('Shift+click past an end of the body', () => {
     expect(view.state.selection).toBeInstanceOf(AllSelection);
   });
 
+  it('keeps the whole document when it is past the end after select-all', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }]).prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    press(view, 150, { shiftKey: true });
+
+    expect(view.state.selection).toBeInstanceOf(AllSelection);
+  });
+
+  it('keeps a selected divider in when it lands in the body', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'divider' }, { type: 'paragraph', content: 'Below' }]).prosemirrorView!;
+    let divider = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'divider') divider = pos;
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, divider)));
+    const target = textStart(view, 'Below') + 2;
+    pointAt(view, target);
+
+    const event = press(view, 50, { shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([textStart(view, 'Above') + 'Above'.length, target]);
+  });
+
   it('leaves a Shift+click in the body to the browser', () => {
     const view = open(ABOVE_DIVIDER).prosemirrorView!;
     const at = textStart(view, 'Above');
@@ -431,6 +456,20 @@ describe('what ends a press, and what is never one', () => {
     move(150);
 
     expect(view.state.selection.head).toBe(at);
+  });
+
+  it('stops following once the browser starts dragging the selected words', () => {
+    const view = open(ABOVE_DIVIDER).prosemirrorView!;
+    const at = textStart(view, 'Above');
+    press(view, 10);
+    select(view, at, at + 3);
+    view.dom.dispatchEvent(new Event('dragstart', { bubbles: true }));
+
+    // The page scrolls under a native drag; no mousemove arrives during one.
+    layOut(view, 0);
+    document.dispatchEvent(new Event('scroll'));
+
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, at + 3]);
   });
 
   it('stops following once the window loses focus', () => {
