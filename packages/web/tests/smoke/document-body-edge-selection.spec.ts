@@ -596,6 +596,32 @@ test('a Shift+click on words below a range whose head is on the start reaches fr
   }
 });
 
+test('a Shift+click inside a range past the last block keeps the end the page keeps (A6)', async () => {
+  await openFreshDocument(page);
+  const long = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN';
+  const lines: BlockSpec[] = ['a', 'b', 'c', 'd', 'e'].map((content) => ({ type: 'paragraph', content }));
+  await setBlocks(page, [{ type: 'paragraph', content: long }, ...lines, { type: 'divider' }]);
+  const first = await rowBox(page, 0);
+  const last = await rowBox(page, -1);
+  await drag(page, { x: first.x + 1, y: first.y + first.height / 2 }, [{ x: first.x + 60, y: last.y + last.height + 60 }]);
+  const made = await read(page);
+  expect(made.head).toBe(made.size - 2);
+  const x30 = await page.evaluate((selector) => {
+    const words = document.querySelector(`${selector} .bn-inline-content`)!.firstChild!;
+    const range = document.createRange();
+    range.setStart(words, 30);
+    return range.getBoundingClientRect().x;
+  }, EDITOR);
+
+  await shiftClick(page, x30, first.y + first.height / 2);
+
+  // The start stays on every platform: it is the anchor, and on macOS it is
+  // also the end farther in text, 30 characters against about 20 (probe42:
+  // the same click with words last gives 3->33).
+  const reading = await read(page);
+  expect([reading.kind, reading.anchor, reading.head]).toEqual(['_TextSelection', made.anchor, made.anchor + 30]);
+});
+
 test('a selection anchored on the start moves its head a line at a time with Shift+Up and Shift+Down (A6)', async () => {
   await openFreshDocument(page);
   await setBlocks(page, [{ type: 'divider' }, { type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph', content: 'Last' }]);
