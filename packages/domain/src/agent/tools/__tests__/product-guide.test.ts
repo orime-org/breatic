@@ -655,7 +655,7 @@ describe("what the guide says about each surface", () => {
     const wrong = section("When something is wrong");
     expect(wrong).toMatch(/every browser tab that has the space open counts, the reader's own included/);
     expect(wrong).toMatch(/Closing or reloading the browser tab, including by the reload buttons above, shows the browser's own prompt/);
-    expect(wrong).toMatch(/the page still takes typing, but none of it is saved/);
+    expect(wrong).toMatch(/With a document open, "[^"]+" also shows for a moment; nothing typed after it is saved/);
     expect(wrong).toMatch(/until they upgrade/);
   });
 

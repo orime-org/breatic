@@ -133,7 +133,7 @@ export function renderProductGuide(): string {
       "bell, the email or that link. Otherwise the invitation is refused with a message such as " +
       `${quoted(t("server.project.email_not_registered"))} ${quoted(t("server.project.already_member"))} or ` +
       `${quoted(t("server.project.already_invited"))} (a full project says how many collaborators its plan ` +
-      "allows; upgrading the plan raises it). Last is a " +
+      "allows: the plan of the studio's admin, so only their upgrade raises it). Last is a " +
       `bell, with a red dot while anything in it is unread, which opens ${quoted(t("notifications.title"))}. ` +
       "An item someone is waiting on, such as an invitation or a transfer, shows how long is left and " +
       `${quoted(t("notifications.openDecision"))}, which leaves this page for a page where it is answered; it ` +
@@ -246,7 +246,8 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.conversation.gone"))} when the conversation was deleted elsewhere. A message needs ` +
       "credits in the project's studio to be answered; with none, the line reads " +
       `${quoted(t("server.credit.none"))} or names what stands in the way, such as credits not yet assigned to ` +
-      "a studio. Credits are bought and assigned from the account menu on the studio pages.",
+      "a studio. Only the studio's admin can assign credits to it, from the account menu on the studio pages; " +
+      "anyone else asks the admin.",
     `In ${quoted(t("chat.history.title"))}, ${quoted(t("chat.conversation.rename"))} turns the name into a box ` +
       `(${quoted(t("chat.conversation.renamePlaceholder"))} when empty); ` +
       `${quoted(t("chat.conversation.delete"))} asks ${quoted(t("chat.conversation.deleteTitle"))} with ` +
@@ -291,8 +292,9 @@ export function renderProductGuide(): string {
       `empty text node shows its icon, ${quoted(t("canvas.nodePlaceholder.text"))} and the same smaller line; ` +
       "double-clicking it, or the text of a text node that has some, lets you type (an empty one then shows " +
       `${quoted(t("canvas.textNode.editorPlaceholder"))}); Esc or clicking elsewhere ends typing. From the ` +
-      "keyboard, Tab moves onto the nodes; Enter on a text node starts typing in it, and Enter or Space on an " +
-      "empty picture, video or sound node opens the file picker. To replace " +
+      "keyboard, Tab moves onto a node, and Enter there only selects it, except on a text node, where it starts " +
+      "typing. On an empty picture, video or sound node, press Tab once more to reach its " +
+      `${quoted(t("canvas.nodePlaceholder.image"))} line, and Enter or Space there opens the file picker. To replace ` +
       `what a node holds, right-click it and choose ${quoted(t("canvas.nodeMenu.upload"))}. A picture, video or ` +
       "sound node takes a new file of its kind; a file of another kind is refused with " +
       `${quoted(t("canvas.upload.typeMismatch"))} A text node's picker lists text, Markdown, PDF, Word and ` +
@@ -422,8 +424,9 @@ export function renderProductGuide(): string {
     "Drag a node, a group or a note to move it; with snap to grid on, a dragged node lands on the grid. A " +
       `locked one does not move and shows ${quoted(t("canvas.gate.locked"))} Picture, video, sound and text ` +
       "nodes cannot be resized: zoom the canvas to see them larger. Only a group has resize handles.",
-    "Scroll to pan, or hold Space and drag (while typing in a text node, over an open panel or inside an open " +
-      "note, scrolling scrolls that instead). A text node whose words do not fit fades out at the bottom: " +
+    "Scroll to pan, or hold Space and drag (while typing in a text node, over the task list or the history " +
+      "panel, or inside an open note, scrolling scrolls that instead; over a generation panel only its prompt " +
+      "box keeps the scroll, and anywhere else on the panel scrolling pans the canvas, panel and all). A text node whose words do not fit fades out at the bottom: " +
       "double-click its words to type in it and scroll the rest into view (a locked text node does not open: " +
       "unlock it first). Pinch or hold Ctrl and scroll to " +
       "zoom. Cmd/Ctrl with plus or minus zooms the whole browser " +
@@ -441,7 +444,8 @@ export function renderProductGuide(): string {
       "generation panel opens just below the node. Clicking a node selects it without opening the " +
       "panel. The panel closes with the X at its top-right, once a run you started is accepted, when another " +
       "panel opens on the canvas, or when the node stops being selected; while you are picking nodes for it, " +
-      "clicking other nodes keeps it open. Esc does not close it. When the model list cannot be loaded, the panel " +
+      "clicking other nodes keeps it open. Esc inside the panel does not close it; right after the node itself " +
+      "was clicked, Esc deselects the node and the panel closes with it. When the model list cannot be loaded, the panel " +
       `does not open and a message says why: ${quoted(t("canvas.generatePanel.catalogUnavailable"))}, or ` +
       `${quoted(t("canvas.generatePanel.catalogOffline"))}`,
     "Fill in what the panel asks for, then press the round button with an upward arrow at the right end of the " +
@@ -593,7 +597,8 @@ export function renderProductGuide(): string {
       `to connect them; ${quoted(t("canvas.generatePanel.exitSelect"))} in the bar at the top, Esc, or pressing ` +
       `${quoted(t("canvas.generatePanel.reference"))} again stops. To remove a connection, select it and press the ` +
       `scissors at its middle, right-click it and choose ${quoted(t("canvas.edge.delete"))}, or press the X on ` +
-      "its chip in the panel. Removing a connection also removes every mention of that node from the prompt.",
+      "its chip in the panel. Removing a connection also removes every mention of that node from the prompt: at " +
+      "once while the panel is open, otherwise the next time it opens.",
     "",
     "## Focus crops",
     `In a picture or video panel, ${quoted(t("canvas.generatePanel.focus"))} takes a region of a picture or ` +
@@ -789,7 +794,8 @@ export function renderProductGuide(): string {
       `${quoted(t("connection.banner.authFailed.action"))} and ${quoted(t("connection.banner.reload"))}, and ` +
       "covers the work area the same way. It shows when the session ran out, and also when the reader was " +
       "removed from the project or the project was deleted: if signing in again does not let them back in, it " +
-      "is one of those, and the project's owner can say which.",
+      "is one of those, and the project's owner can say which. With a document open, " +
+      `${quoted(t("spaces.document.refusedNotice"))} also shows for a moment; nothing typed after it is saved.`,
     `- ${quoted(t("spaces.readOnlyNotice"))} at the top of a space, with ` +
       `${quoted(t("spaces.readOnlyReconnect"))}: the space already has as many open editing connections as the ` +
       "plan allows, and every browser tab that has the space open counts, the reader's own included. Closing " +
@@ -804,9 +810,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.schemaOutdated.headline"))} with ` +
       `${quoted(t("spaces.document.schemaOutdated.body"))} and ` +
       `${quoted(t("spaces.document.schemaOutdated.action"))}, and warns above the button that ` +
-      `${quoted(t("spaces.document.schemaOutdated.riskUploads"))} When the connection to an open document is ` +
-      `refused, ${quoted(t("spaces.document.refusedNotice"))} shows for a moment; the page still takes typing, ` +
-      "but none of it is saved: copy it out and reload. When someone deletes a space you have open, its tab " +
+      `${quoted(t("spaces.document.schemaOutdated.riskUploads"))} When someone deletes a space you have open, its tab ` +
       `closes; the project's owner can bring the space back from ${quoted(t("activity.header"))}.`,
     `- When this chat cannot load, it is covered with ${quoted(t("chat.load.failedTitle"))} or ` +
       `${quoted(t("chat.load.refusedTitle"))} and ${quoted(t("chat.load.retry"))}.`,

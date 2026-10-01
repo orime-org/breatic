@@ -7,8 +7,8 @@
  * The screens are what the project page renders: every web module reachable
  * by import from the app's entry and the project page (the route table that
  * would pull in every other page is left out), the shared rules those modules
- * use, the running lines of the agent's tools, and every message the server
- * writes for the reader, which the page shows as it comes. A message they show
+ * use, and the server, domain and core sources, whose messages the page shows
+ * as the server's answers. A message they show
  * is quoted by the guide, described by it, or left out for a stated reason in
  * `NOT_QUOTED`; one that is none of these fails here, so what a new screen
  * says cannot slip past the guide unnoticed.
@@ -44,10 +44,11 @@ const WEB = join(PACKAGES, "web/src");
 const WEB_ENTRIES = [join(WEB, "index.tsx"), join(WEB, "pages/project/ProjectPage.tsx")];
 /** The route table, which lazily imports every page of the app. */
 const ROUTE_TABLE = join(WEB, "app/route-imports.ts");
-/** Sources read whole, relative to `packages/`. */
-const WHOLE = ["shared/src", "domain/src/agent/tools"];
-/** Sources whose `server.*` messages reach the reader as the server's answers, relative to `packages/`. */
-const SERVER_SIDE = ["server/src", "domain/src", "core/src"];
+/**
+ * Sources read whole, relative to `packages/`: the shared rules, and the
+ * server side, whose messages the page shows as the server's answers.
+ */
+const WHOLE = ["shared/src", "server/src", "domain/src", "core/src"];
 
 const catalog = JSON.parse(
   readFileSync(resolve(PACKAGES, "../locales/en.json"), "utf8"),
@@ -145,11 +146,6 @@ function screenMessages(): Set<string> {
   for (const file of webSources()) for (const id of namedMessages(read(file))) ids.add(id);
   for (const path of WHOLE) {
     for (const file of sources(join(PACKAGES, path))) for (const id of namedMessages(read(file))) ids.add(id);
-  }
-  for (const path of SERVER_SIDE) {
-    for (const file of sources(join(PACKAGES, path))) {
-      for (const id of namedMessages(read(file))) if (id.startsWith("server.")) ids.add(id);
-    }
   }
   return ids;
 }
