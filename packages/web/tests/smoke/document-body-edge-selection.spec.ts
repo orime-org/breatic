@@ -70,8 +70,9 @@ async function openFreshDocument(p: Page): Promise<string> {
 
 /** A block to put in the body. */
 interface BlockSpec {
-  type: 'paragraph' | 'divider' | 'bulletListItem';
+  type: 'paragraph' | 'divider' | 'bulletListItem' | 'heading';
   content?: string;
+  props?: Record<string, unknown>;
   children?: BlockSpec[];
 }
 
@@ -87,7 +88,7 @@ async function setBlocks(p: Page, blocks: BlockSpec[]): Promise<void> {
       const el = document.querySelector(selector) as unknown as {
         editor: {
           state: {
-            schema: { nodes: Record<string, { create: (attrs: null, content?: PMNode | PMNode[]) => PMNode }>; text: (t: string) => PMNode };
+            schema: { nodes: Record<string, { create: (attrs: Record<string, unknown> | null, content?: PMNode | PMNode[]) => PMNode }>; text: (t: string) => PMNode };
             doc: { content: { size: number } };
             tr: { replaceWith: (from: number, to: number, nodes: PMNode[]) => unknown };
           };
@@ -97,7 +98,7 @@ async function setBlocks(p: Page, blocks: BlockSpec[]): Promise<void> {
       const { schema } = el.editor.state;
       const make = (block: BlockSpec): PMNode => {
         const words = block.content ? schema.text(block.content) : undefined;
-        const head = schema.nodes[block.type]!.create(null, words);
+        const head = schema.nodes[block.type]!.create(block.props ?? null, words);
         const kids = block.children?.length
           ? [head, schema.nodes.blockGroup!.create(null, block.children.map(make))]
           : [head];
@@ -421,6 +422,118 @@ test('a drag up from above the first block anchors on the start, and Shift+click
   await shiftClick(page, below.x + 20, below.y + below.height / 2);
   const reading = await read(page);
   expect(reading.anchor).toBe(2);
+  expect(reading.painted).toEqual(['divider']);
+});
+
+/**
+ * Whether each line wears the selected-empty-line mark.
+ * @param p - The page.
+ * @returns One flag per line, in order.
+ */
+async function linesMarked(p: Page): Promise<boolean[]> {
+  return p.evaluate((selector) => [...document.querySelectorAll(`${selector} .bn-block-content`)].map(
+    (line) => line.classList.contains('doc-empty-line-in-selection'),
+  ), EDITOR);
+}
+
+test('a drag from below an empty last line to above an empty first line marks both while it is on (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'paragraph' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph' }]);
+  const word = await wordBox(page, 'Middle');
+  const first = await rowBox(page, 0);
+  const last = await rowBox(page, -1);
+
+  await page.mouse.move(word.x + 30, last.y + last.height + 60);
+  await page.waitForTimeout(SETTLE_MS);
+  await page.mouse.down();
+  await page.mouse.move(word.x + 30, first.y - 6, { steps: 10 });
+  await expect.poll(() => linesMarked(page)).toEqual([true, false, true]);
+  await page.mouse.up();
+
+  expect((await read(page)).kind).toBe('_AllSelection');
+  expect(await linesMarked(page)).toEqual([true, false, true]);
+});
+
+test('an empty heading last is reached by a drag below it and marked (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'heading', props: { level: 2 } }]);
+  const word = await wordBox(page, 'Above');
+  const last = await rowBox(page, -1);
+
+  await drag(page, { x: word.x + 2, y: word.y + word.height / 2 }, [{ x: word.x + 40, y: last.y + last.height + 80 }]);
+
+  const reading = await read(page);
+  expect([reading.kind, reading.head === reading.size - 2]).toEqual(['BodyEdgeSelectionClass', true]);
+  expect(await linesMarked(page)).toEqual([false, false, true]);
+});
+
+test('Left and Right collapse a selection past the last block into its text ends (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_DIVIDER);
+  const word = await wordBox(page, 'Middle');
+  const last = await rowBox(page, -1);
+  const below = { x: word.x + 40, y: last.y + last.height + 80 };
+
+  await drag(page, { x: word.x + 2, y: word.y + word.height / 2 }, [below]);
+  const range = await read(page);
+  await page.keyboard.press('ArrowLeft');
+  const left = await read(page);
+  expect([left.anchor, left.head]).toEqual([range.anchor, range.anchor]);
+
+  await drag(page, { x: word.x + 2, y: word.y + word.height / 2 }, [below]);
+  await page.keyboard.press('ArrowRight');
+  const right = await read(page);
+  const middleEnd = range.anchor + 'Middle'.length;
+  expect([right.kind, right.anchor, right.head]).toEqual(['_TextSelection', middleEnd, middleEnd]);
+});
+
+test('from a drag up from below, Shift+Up reaches a leading divider and select-all keeps it on Shift+click (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'divider' }, { type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
+  const word = await wordBox(page, 'Middle');
+  const last = await rowBox(page, -1);
+  await drag(page, { x: word.x + 40, y: last.y + last.height + 60 }, [{ x: word.x + 2, y: word.y + word.height / 2 }]);
+
+  for (let i = 0; i < 2; i += 1) await page.keyboard.press('Shift+ArrowUp');
+  await expect.poll(async () => (await read(page)).kind).toBe('_AllSelection');
+  expect((await read(page)).painted).toEqual(['divider', 'divider']);
+
+  await shiftClick(page, word.x + 40, last.y + last.height + 60);
+  expect((await read(page)).kind).toBe('_AllSelection');
+});
+
+test('a selection anchored on the start moves its head a line at a time with Shift+Up and Shift+Down (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'divider' }, { type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph', content: 'Last' }]);
+  const middle = await wordBox(page, 'Middle');
+  const first = await rowBox(page, 0);
+  await drag(page, { x: middle.x + 20, y: first.y - 8 }, [{ x: middle.x + 2, y: middle.y + middle.height / 2 }]);
+
+  const heads: number[] = [];
+  for (const key of ['Shift+ArrowDown', 'Shift+ArrowUp', 'Shift+ArrowUp']) {
+    await page.keyboard.press(key);
+    await page.waitForTimeout(150);
+    const reading = await read(page);
+    expect(reading.anchor).toBe(2);
+    heads.push(reading.head);
+  }
+  expect(heads[0]).toBeGreaterThan(heads[1]!);
+  expect(heads[1]).toBeGreaterThan(heads[2]!);
+});
+
+test('Shift+Down from a clicked divider keeps the divider in the selection (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'paragraph', content: 'Above' }, { type: 'divider' }, { type: 'paragraph', content: 'Below' }]);
+  const divider = await rowBox(page, 1);
+
+  await page.mouse.move(divider.x + 100, divider.y + divider.height / 2);
+  await page.waitForTimeout(SETTLE_MS);
+  await page.mouse.click(divider.x + 100, divider.y + divider.height / 2);
+  expect((await read(page)).kind).toBe('_NodeSelection');
+  await page.keyboard.press('Shift+ArrowDown');
+
+  const reading = await read(page);
+  expect(reading.kind).toBe('_TextSelection');
   expect(reading.painted).toEqual(['divider']);
 });
 
