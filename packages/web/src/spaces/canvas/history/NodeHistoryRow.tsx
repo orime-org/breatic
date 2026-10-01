@@ -176,6 +176,12 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
   const credits = entryCredits(entry);
   const filename = entryFilename(entry);
   const restorable = isRestorable(entry);
+  // muted-foreground on either row fill measures under 4.5:1 (light 4.39 on
+  // the chosen fill, dark 3.73 / 4.46 on the chosen / hover fill), so text on
+  // a filled row takes foreground-secondary.
+  const secondaryText = isCurrent
+    ? 'text-foreground-secondary'
+    : 'text-muted-foreground group-hover:text-foreground-secondary';
 
   const thumb = (
     <div
@@ -211,7 +217,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
     <div
       data-testid='node-history-row'
       className={
-        'grid grid-cols-[46px_1fr_auto] items-center gap-2.5 rounded-content-sm px-1.5 py-1.5 transition-colors' +
+        'group grid grid-cols-[46px_1fr_auto] items-center gap-2.5 rounded-content-sm px-1.5 py-1.5 transition-colors' +
         (isCurrent ? ' bg-accent-strong' : ' hover:bg-accent') +
         (failed ? ' opacity-60' : '')
       }
@@ -243,7 +249,12 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
               never its success/failure — that is carried by the other fields
               (the red error message beside it, the "Can't restore" action
               slot). Type is type, independent of outcome (user 2026-07-22). */}
-          <span className='inline-flex shrink-0 items-center gap-1 rounded-content-sm border border-border px-1.5 py-px text-2xs font-semibold leading-tight text-muted-foreground'>
+          <span
+            className={
+              'inline-flex shrink-0 items-center gap-1 rounded-content-sm border border-border px-1.5 py-px text-2xs font-semibold leading-tight ' +
+              secondaryText
+            }
+          >
             {entry.entryType === 'generation' ? (
               <Sparkles className='h-2.5 w-2.5' aria-hidden='true' />
             ) : entry.entryType === 'snapshot' ? (
@@ -256,7 +267,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
           <span
             className={
               'min-w-0 flex-1 truncate text-xs ' +
-              (failed ? 'text-status-error' : 'text-muted-foreground')
+              (failed ? 'text-status-error' : secondaryText)
             }
           >
             {/* A cause this product knows becomes a sentence where the
@@ -266,7 +277,9 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
               ? failureSentence(entry.errorMessage, t, mediumOf(modality))
               : entry.entryType === 'upload'
                 ? (filename ?? t('canvas.history.typeUpload'))
-                : (model ?? null)}
+                : entry.entryType === 'snapshot'
+                  ? entry.content
+                  : (model ?? null)}
           </span>
           {!failed &&
           entry.entryType === 'generation' &&
@@ -283,7 +296,9 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
         {/* Time, then who did it (#1619): the operator's personal-studio
             display name, joined server-side. Shown only when resolved — a
             deleted studio yields null, so the row falls back to time alone. */}
-        <div className='flex min-w-0 items-center gap-1 text-2xs text-muted-foreground'>
+        <div
+          className={'flex min-w-0 items-center gap-1 text-2xs ' + secondaryText}
+        >
           <span className='shrink-0 tabular-nums'>
             {formatRelativeTime(entry.createdAt, t)}
           </span>
@@ -298,17 +313,17 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
 
       <div className='shrink-0'>
         {isCurrent ? (
-          <span className='rounded-content-sm border border-border px-2 py-1 text-2xs font-medium text-muted-foreground'>
+          <span className='rounded-content-sm border border-border px-2 py-1 text-2xs font-medium text-foreground-secondary'>
             {t('canvas.history.current')}
           </span>
         ) : restorable ? (
           <Button
             type='button'
-            variant={null}
+            variant='outline'
             size={null}
             data-testid='node-history-restore'
             onClick={() => onRestore(entry)}
-            className='rounded-content-sm bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            className='rounded-content-sm px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
           >
             {t('canvas.history.restore')}
           </Button>
