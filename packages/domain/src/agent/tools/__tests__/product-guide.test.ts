@@ -292,18 +292,26 @@ describe("what the guide says", () => {
 
   it("says when each storyboard control is greyed and what happens when the shots stop fitting", () => {
     const panel = section("Inside the generation panel");
-    expect(panel).toMatch(/puts it in the shot box last clicked into, or the first shot if none has been/);
+    // VideoGeneratePanelContainer.tsx: one lastFocusedBox, written by the shots and by the main prompt.
+    expect(panel).toMatch(/puts it in that shot box if the prompt box clicked into last was a shot/);
+    expect(panel).toMatch(/after clicking the main prompt box, it goes into the first shot/);
     expect(panel).toMatch(/minus is greyed at one second or when there is only one shot/);
     expect(panel).toMatch(/plus is greyed when no other shot has a second to spare/);
-    expect(panel).toMatch(/is greyed while only one shot is left/);
-    expect(panel).toMatch(/remove a shot or pick a longer duration/);
+    expect(panel).toMatch(/"Remove" is greyed while only one shot is left/);
+    // storyboard-durations.ts stepShot: later shots first, then earlier ones.
+    expect(panel).toMatch(/the minus gives one to the shot after it, or to the one before it on the last shot/);
+    // storyboard-durations.ts addShot: null when total <= shot count, whatever each shot holds.
+    expect(panel).toMatch(/"Lengthen the video to add a shot" when the video has no more seconds than there are shots/);
+    // storyboard-durations.ts removeShot: re-splits only once the shots fit the seconds.
+    expect(panel).toMatch(/remove shots until there are no more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number of shots/);
     expect(panel).not.toMatch(/always add up/);
   });
 
   it("says which comment controls depend on the thread or the panel being open", () => {
     const doc = section("Document spaces");
     expect(doc).toMatch(/a resolved card takes no replies until it is reopened/);
-    expect(doc).toMatch(/With nothing typed yet, clicking anywhere outside the box also drops it/);
+    // DocumentCommentDraftCard.tsx: the outside-press check is against the whole card.
+    expect(doc).toMatch(/With nothing typed yet, clicking anywhere outside its card also drops it/);
     expect(doc).toMatch(/The three dots are hidden while the comments panel is open/);
   });
 

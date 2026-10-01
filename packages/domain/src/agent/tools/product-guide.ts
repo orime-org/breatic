@@ -547,16 +547,20 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
       `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
       `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt; ` +
-      "clicking a chip in the strip puts it in the shot box last clicked into, or the first shot if none has " +
-      "been. While split by hand, the shots' seconds keep adding up to the video's length: the plus takes a " +
-      "second from another shot and the minus gives one to the next, so the minus is greyed at one second or " +
+      "clicking a chip in the strip puts it in that shot box if the prompt box clicked into last was a shot; " +
+      "otherwise, including after clicking the main prompt box, it goes into the first shot. While split by " +
+      "hand, the shots' seconds keep adding up to the video's length: the plus takes a second from another " +
+      "shot and the minus gives one to the shot after it, or to the one before it on the last shot, so the " +
+      "minus is greyed at one second or " +
       "when there is only one shot, and the plus is greyed when no other shot has a second to spare. In the " +
       "settings pill a duration shorter than the number of shots is greyed, and picking another one re-splits " +
       "the shots. A duration shortened while the shots were hidden can leave fewer seconds than shots; they " +
-      "then stay as they were and pressing generate says they do not add up: remove a shot or pick a longer " +
-      `duration. ${quoted(t("canvas.generatePanel.storyboard.addShot"))} is greyed with ` +
+      "then stay as they were and pressing generate says they do not add up: remove shots until there are no " +
+      "more shots than seconds, and the rest are re-split, or pick a duration at least as long as the number " +
+      `of shots. ${quoted(t("canvas.generatePanel.storyboard.addShot"))} is greyed with ` +
       `${quoted(t("canvas.generatePanel.storyboard.shotCapReached", { max: 6 }))} at the model's limit, or with ` +
-      `${quoted(t("canvas.generatePanel.storyboard.noSecondToSpare"))} when every shot is down to one second; ` +
+      `${quoted(t("canvas.generatePanel.storyboard.noSecondToSpare"))} when the video has no more seconds than ` +
+      "there are shots; " +
       `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} is greyed while only one shot is left. ` +
       `${quoted(t("canvas.generatePanel.storyboard.back"))}, or turning the switch off, brings the prompt box ` +
       "back with its words, and the shots are kept for next time. Split by hand, the run sends the shots and the " +
@@ -838,7 +842,7 @@ export function renderProductGuide(): string {
       `a highlight, and a box, ${quoted(t("spaces.document.comment.placeholder"))}, waits next to them. Enter ` +
       `or ${quoted(t("spaces.document.comment.save"))} posts it, Shift+Enter starts a new line, and Esc or ` +
       `${quoted(t("spaces.document.comment.cancel"))} drops it; both buttons appear once something is typed. ` +
-      "With nothing typed yet, clicking anywhere outside the box also drops it. A comment holds up to 300 " +
+      "With nothing typed yet, clicking anywhere outside its card also drops it. A comment holds up to 300 " +
       "characters. If the words are deleted before it is posted, the box turns " +
       `into ${quoted(t("spaces.document.comment.targetGone"))} If the reader can no longer edit, it turns into ` +
       `${quoted(t("spaces.document.comment.cannotWrite"))} The panel's header has ` +
