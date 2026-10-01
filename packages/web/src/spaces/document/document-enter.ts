@@ -313,6 +313,13 @@ export const documentEnterExtension = createExtension(() => {
         if (ended.justNow) {
           return true;
         }
+        // A range reaching past an end of the body goes as any range does;
+        // what is left is a caret in text, which takes the ordinary Enter
+        // below. Left to the library, the split is placed at the range's
+        // start, which can be the edge, outside any line (#124, A6).
+        if (editor.prosemirrorState.selection instanceof BodyEdgeSelection) {
+          editor.transact((tr) => tr.deleteSelection());
+        }
         const { selection } = editor.prosemirrorState;
         if (selection instanceof AllSelection) {
           return handleWholeDocumentEnter(editor);

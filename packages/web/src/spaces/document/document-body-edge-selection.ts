@@ -88,8 +88,19 @@ export function bodyEdgeBlockPos(doc: Node, edge: BodyEdge): number | null {
  * @returns True when a text selection cannot take that block in.
  */
 export function bodyEdgeNeedsTakeover(doc: Node, edge: BodyEdge): boolean {
+  const block = edgeBlock(doc, edge);
+  return block !== null && (!block.node.isTextblock || block.node.content.size === 0);
+}
+
+/**
+ * The content node of the block at one end of the body, and its position.
+ * @param doc - The document.
+ * @param edge - Which end.
+ * @returns The block, or null in an empty body.
+ */
+function edgeBlock(doc: Node, edge: BodyEdge): { pos: number; node: Node } | null {
   const pos = bodyEdgeBlockPos(doc, edge);
-  return pos !== null && (!doc.nodeAt(pos)!.isTextblock || emptyEdgeLinePos(doc, edge) !== null);
+  return pos === null ? null : { pos, node: doc.nodeAt(pos)! };
 }
 
 /**
@@ -110,9 +121,8 @@ function edgeOr(doc: Node, edge: BodyEdge, otherwise: number): number {
  * @returns The position of its node, or null when that block is not an empty line.
  */
 export function emptyEdgeLinePos(doc: Node, edge: BodyEdge): number | null {
-  const pos = bodyEdgeBlockPos(doc, edge);
-  const block = pos === null ? null : doc.nodeAt(pos);
-  return block?.isTextblock && block.content.size === 0 ? pos : null;
+  const block = edgeBlock(doc, edge);
+  return block?.node.isTextblock && block.node.content.size === 0 ? block.pos : null;
 }
 
 /**
@@ -126,6 +136,32 @@ export function textToward(doc: Node, pos: number, dir: 1 | -1): number {
   const $pos = doc.resolve(pos);
   if ($pos.parent.inlineContent) return pos;
   return (Selection.findFrom($pos, dir, true) ?? Selection.findFrom($pos, -dir, true))?.head ?? pos;
+}
+
+/**
+ * The text position past a position in one direction; when there is no text
+ * that way, the edge of the body there, if the block at that end needs one.
+ * @param doc - The document.
+ * @param pos - The position.
+ * @param dir - Which way.
+ * @param otherwise - What to give when there is neither: no text that way and
+ *   no edge to take.
+ * @returns The position.
+ */
+export function textOrEdge(doc: Node, pos: number, dir: 1 | -1, otherwise = pos): number {
+  const $pos = doc.resolve(pos);
+  if ($pos.parent.inlineContent) return pos;
+  return Selection.findFrom($pos, dir, true)?.head ?? edgeOr(doc, dir < 0 ? 'start' : 'end', otherwise);
+}
+
+/**
+ * The text position nearest to an edge of the body.
+ * @param doc - The document.
+ * @param edge - Which edge.
+ * @returns A position in text, or the edge itself when the body holds no text.
+ */
+function textNearEdge(doc: Node, edge: BodyEdge): number {
+  return textNear(doc, bodyEdgePos(doc, edge), edge);
 }
 
 /**
@@ -322,7 +358,7 @@ class BodyEdgeBookmark {
  *   holds no text.
  */
 function caretNear(doc: Node, edge: BodyEdge): Selection {
-  const pos = textNear(doc, bodyEdgePos(doc, edge), edge);
+  const pos = textNearEdge(doc, edge);
   const $pos = doc.resolve(pos);
   return $pos.parent.inlineContent ? TextSelection.create(doc, pos) : Selection.near($pos, edge === 'end' ? -1 : 1);
 }
@@ -367,7 +403,7 @@ export function textEnds(selection: Selection): { anchor: number; head: number }
    */
   const intoText = (pos: number): number => {
     const edge = bodyEdgeAt(doc, pos);
-    return edge === null ? pos : textNear(doc, pos, edge);
+    return edge === null ? pos : textNearEdge(doc, edge);
   };
   return { anchor: intoText(selection.anchor), head: intoText(selection.head) };
 }
@@ -379,8 +415,19 @@ export function textEnds(selection: Selection): { anchor: number; head: number }
  * @returns A text caret.
  */
 export function caretAtEnd(selection: Selection): Selection {
+  return caretAtSide(selection, 1);
+}
+
+/**
+ * A caret at one end of a selection, in the nearest text when that end is an
+ * edge of the body.
+ * @param selection - The selection.
+ * @param dir - Which end: -1 its start, 1 its end.
+ * @returns A text caret.
+ */
+function caretAtSide(selection: Selection, dir: 1 | -1): Selection {
   const { anchor, head } = textEnds(selection);
-  return TextSelection.create(selection.$head.doc, Math.max(anchor, head));
+  return TextSelection.create(selection.$head.doc, (dir < 0 ? Math.min : Math.max)(anchor, head));
 }
 
 /**
@@ -423,9 +470,9 @@ export function dragSelection(doc: Node, drag: EdgeDrag, zone: PointerZone, poin
   }
   if (drag.press === 'body' && !drag.left) return null;
   if (pointer === null) return null;
-  // A point over a block without text reads as a position beside it; lean it
-  // into the text past the block, so the block the pointer is on is held.
-  return bodyEdgeBetween(doc, drag.anchor, textToward(doc, pointer, pointer >= drag.anchor ? 1 : -1));
+  // A point over a block without text reads as a position beside it; carry it
+  // on past the block, so the block the pointer is on is held.
+  return bodyEdgeBetween(doc, drag.anchor, textOrEdge(doc, pointer, pointer >= drag.anchor ? 1 : -1));
 }
 
 /**
@@ -471,10 +518,11 @@ function readBackAtEdge(view: EditorView, $anchor: ResolvedPos, $head: ResolvedP
 /**
  * Whether a head is on the line of text nearest this edge, with the edge
  * block still outside the selection: the last line of the last text block for
- * the end, the first line of the first for the start. The line is measured for
- * a caret at the head: `endOfTextblock` measures the selection's `$from` going
- * up and its `$to` going down (prosemirror-view `domcoords.ts`
- * `endOfTextblockVertical`), which for a range is its other end.
+ * the end, the first line of the first for the start. The head's own line is
+ * measured from the page: `endOfTextblock` measures a range's `$from` going up
+ * and its `$to` going down (prosemirror-view `endOfTextblockVertical`), and
+ * asking it about a caret means swapping the view's state, which rewrites the
+ * page's range and resets the column the browser keeps for vertical moves.
  * @param view - The view.
  * @param head - The head.
  * @param edge - Which edge.
@@ -488,8 +536,11 @@ function atLastLineTowards(view: EditorView, head: number, edge: BodyEdge): bool
   const dir = edge === 'end' ? 1 : -1;
   const beyond = doc.resolve(dir > 0 ? $head.after() : $head.before());
   if (Selection.findFrom(beyond, dir, true) !== null) return false;
-  const caret = view.state.apply(view.state.tr.setSelection(TextSelection.create(doc, head)));
-  return view.endOfTextblock(edge === 'end' ? 'down' : 'up', caret);
+  const caret = view.coordsAtPos(head);
+  const middle = (caret.top + caret.bottom) / 2;
+  return edge === 'end'
+    ? middle >= view.coordsAtPos($head.end()).top
+    : middle <= view.coordsAtPos($head.start()).bottom;
 }
 
 /** The arrow keys: which way each goes, and whether it goes by lines. */
@@ -509,8 +560,7 @@ const ARROWS: Readonly<Record<string, { dir: 1 | -1; vertical: boolean }>> = {
  * @returns The position.
  */
 function besideBlock(doc: Node, selection: NodeSelection, side: 1 | -1): number {
-  const found = Selection.findFrom(side < 0 ? selection.$from : selection.$to, side, true);
-  return found?.head ?? bodyEdgePos(doc, side < 0 ? 'start' : 'end');
+  return textOrEdge(doc, side < 0 ? selection.from : selection.to, side);
 }
 
 /**
@@ -521,7 +571,7 @@ function besideBlock(doc: Node, selection: NodeSelection, side: 1 | -1): number 
  * @returns The position.
  */
 function wholeDocumentEnd(doc: Node, edge: BodyEdge): number {
-  return edgeOr(doc, edge, textNear(doc, bodyEdgePos(doc, edge), edge));
+  return edgeOr(doc, edge, textNearEdge(doc, edge));
 }
 
 /**
@@ -566,8 +616,7 @@ function stepFrom(doc: Node, head: number, dir: 1 | -1): number {
     const grapheme = line.containing(dir < 0 ? parentOffset - 1 : parentOffset)!;
     return head - parentOffset + grapheme.index + (dir < 0 ? 0 : grapheme.segment.length);
   }
-  const next = Selection.findFrom(doc.resolve(dir < 0 ? $head.before() : $head.after()), dir, true);
-  return next?.head ?? edgeOr(doc, dir < 0 ? 'start' : 'end', head);
+  return textOrEdge(doc, dir < 0 ? $head.before() : $head.after(), dir, head);
 }
 
 /**
@@ -634,9 +683,7 @@ function arrowOnEdge(view: EditorView, key: string): Selection | null {
 function collapseOnEdge(selection: Selection, key: string): Selection | null {
   const { dir, vertical } = ARROWS[key]!;
   if (!(selection instanceof BodyEdgeSelection) || vertical) return null;
-  if (dir > 0) return caretAtEnd(selection);
-  const { anchor, head } = textEnds(selection);
-  return TextSelection.create(selection.$head.doc, Math.min(anchor, head));
+  return caretAtSide(selection, dir);
 }
 
 /**

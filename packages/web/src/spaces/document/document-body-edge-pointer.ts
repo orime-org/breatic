@@ -225,8 +225,9 @@ class PointerFollower {
   /**
    * Answers a Shift+click that goes past an edge, or one in the body from a
    * selection the browser cannot extend without losing part of it: the whole
-   * document, or a selected block (design §5.10.5). Any other Shift+click in
-   * the body is the browser's.
+   * document, or a selected block (design §5.10.5). Any other Shift+press in
+   * the body is the browser's to extend, and is followed like a plain press,
+   * so a drag that goes on past an edge reaches it.
    * @param event - The press.
    * @param zone - Where it was pressed.
    * @param at - Where it was pressed, as the press records it.
@@ -239,9 +240,13 @@ class PointerFollower {
     const { view } = this;
     const { doc, selection } = view.state;
     const pointer = zone === 'body' ? positionAt(view, event.clientX, event.clientY) : null;
-    if (zone === 'body' && (pointer === null || extensionEnds(selection, 1) === null)) return;
-    const dir = zone === 'end' ? 1 : zone === 'start' ? -1 : pointer! >= selection.from ? 1 : -1;
-    const { anchor } = extensionEnds(selection, dir) ?? selection;
+    const dir = zone === 'end' ? 1 : zone === 'start' ? -1 : (pointer ?? selection.from) >= selection.from ? 1 : -1;
+    const ends = extensionEnds(selection, dir);
+    if (zone === 'body' && (ends === null || pointer === null)) {
+      this.begin({ ...at, zone: 'body', anchorEdge: bodyEdgeAt(doc, selection.anchor), left: false, moved: false, onWidget: false });
+      return;
+    }
+    const { anchor } = ends ?? selection;
     this.begin({ ...at, zone: 'shift', anchorEdge: bodyEdgeAt(doc, anchor), left: true, moved: false, onWidget: false });
     event.preventDefault();
     const next = dragSelection(doc, { press: 'shift', anchor, left: true }, zone, pointer);
