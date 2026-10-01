@@ -46,12 +46,15 @@ describe('RecentCard', () => {
     expect(screen.getByText(/^Opened\b/i)).toBeInTheDocument();
   });
 
-  it('puts the source studio, the opened time and the role on one meta line', () => {
+  it('gives the source studio a line of its own, above the opened time and the role', () => {
     setup();
+    const studio = screen.getByTestId('item-card-subtitle');
     const meta = screen.getByTestId('item-card-meta');
-    expect(meta).toContainElement(screen.getByText('Acme Studio'));
+    expect(studio).toHaveTextContent('Acme Studio');
+    expect(meta).not.toContainElement(screen.getByText('Acme Studio'));
     expect(meta).toContainElement(screen.getByText(/^Opened\b/));
     expect(meta).toContainElement(screen.getByText('Owner'));
+    expect(studio.compareDocumentPosition(meta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('shows the role as plain meta text, not a bordered badge', () => {

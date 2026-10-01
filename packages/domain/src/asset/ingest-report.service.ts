@@ -432,9 +432,8 @@ async function fileCover(
   const adapter = await getStorageAdapter();
   try {
     const registered = await assetService.register({
-      projectId: grant.projectId ?? "",
-      actingUserId: grant.userId,
       ownerStudioId: grant.studioId,
+      actingUserId: grant.userId,
       contentHash: cover.sha256,
       storageKey: cover.storageKey,
       fileUrl: adapter.publicUrl(cover.storageKey),
@@ -629,12 +628,8 @@ export async function applyIngestReport(
   // one names what is actually stored.
   const { asset, deduped, reclaimQueueFailed } = await assetService.register({
     ...(cover.id !== null && { coverAssetId: cover.id }),
-    projectId: grant.projectId ?? "",
-    actingUserId: grant.userId,
-    // Both come off the same row, and the row got its studio by resolving that
-    // very project — so this is the one already-known answer rather than a
-    // second, differing one. Passing it saves `register` the lookup.
     ownerStudioId: grant.studioId,
+    actingUserId: grant.userId,
     contentHash: report.sha256,
     storageKey: grant.storageKey,
     fileUrl: adapter.publicUrl(grant.storageKey),

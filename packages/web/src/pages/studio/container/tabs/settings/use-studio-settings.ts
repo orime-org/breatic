@@ -17,6 +17,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 
 import { studiosApi } from '@web/data/api/studios';
+import {
+  pictureErrorMessage,
+  uploadPicture,
+} from '@web/pages/studio/shared/upload-picture';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -144,7 +148,13 @@ export function useStudioSettings(
   });
 
   const avatarMutation = useMutation({
-    mutationFn: (image: Blob) => studiosApi.uploadAvatar(studio.slug, image),
+    mutationFn: async (image: Blob) => {
+      const assetId = await uploadPicture(image, {
+        studioId: studio.id,
+        purpose: 'studio_avatar',
+      });
+      return studiosApi.setAvatar(studio.slug, assetId);
+    },
     // Cleared when a new attempt starts, not only when one succeeds: otherwise
     // a failure leaves the message set for good, and the next crop dialog opens
     // already showing an error about an upload the user has moved on from.
@@ -156,7 +166,13 @@ export function useStudioSettings(
     // Kept in state rather than only a toast: the crop dialog stays open on
     // failure so the user can retry without redoing their crop, and the reason
     // belongs next to the retry button.
-    onError: (err) => setAvatarError(messageFor(err)),
+    onError: (err) =>
+      setAvatarError(
+        pictureErrorMessage(err, t, {
+          storage: 'studio.container.settings.avatarUploadError.storage',
+          upload: 'studio.container.settings.avatarUploadError.upload',
+        }),
+      ),
   });
 
   const removeAvatarMutation = useMutation({

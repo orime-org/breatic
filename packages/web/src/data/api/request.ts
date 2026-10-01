@@ -148,6 +148,23 @@ export async function apiPatch<T, B = unknown>(
 }
 
 /**
+ * Typed PUT helper — unwraps `{ data: T }` envelope.
+ * @param url - Resource path relative to the API base URL.
+ * @param body - Optional request body serialized as JSON.
+ * @param config - Optional axios request config (headers, signal).
+ * @returns The unwrapped response payload of type `T`.
+ * @throws {ApiException} When the request fails or the server returns an error envelope.
+ */
+export async function apiPut<T, B = unknown>(
+  url: string,
+  body?: B,
+  config?: AxiosRequestConfig,
+): Promise<T> {
+  const res = await request.put<ApiEnvelope<T>>(url, body, config);
+  return res.data.data;
+}
+
+/**
  * Typed DELETE helper — unwraps `{ data: T }` envelope.
  * @param url - Resource path relative to the API base URL.
  * @param config - Optional axios request config (headers, signal).

@@ -92,6 +92,31 @@ export async function findByStudioAndHash(
 }
 
 /**
+ * A live asset row by id, only when it belongs to `studioId`.
+ * @param studioId - The studio the row must belong to.
+ * @param assetId - The row's id.
+ * @returns The `StudioAssetEntity`, or null when there is no live row with
+ *   that id in that studio.
+ */
+export async function findLiveInStudio(
+  studioId: string,
+  assetId: string,
+): Promise<StudioAssetEntity | null> {
+  const rows = await db
+    .select()
+    .from(studioAssets)
+    .where(
+      and(
+        eq(studioAssets.id, assetId),
+        eq(studioAssets.studioId, studioId),
+        isNull(studioAssets.deletedAt),
+      ),
+    )
+    .limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
  * The content hash of the bytes stored under a key, from any studio's live
  * asset row. Storage keys are tenant-neutral, so every row under one key holds
  * the same hash.

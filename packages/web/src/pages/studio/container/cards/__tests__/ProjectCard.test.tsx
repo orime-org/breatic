@@ -38,7 +38,7 @@ function setup(p: ContainerProject = project) {
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <ProjectCard project={p} studioRole='admin' />
+        <ProjectCard project={p} studioSlug='acme' />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -76,11 +76,29 @@ describe('ProjectCard', () => {
     expect(role.className).not.toMatch(/\bbg-/);
   });
 
-  it('leaves the cover a plain block when the project has no cover', () => {
+  it('shows the built-in default cover when the project has no cover', () => {
     setup();
     const cover = screen.getByRole('link').firstElementChild;
-    expect(cover).not.toBeNull();
-    expect(cover?.querySelector('svg')).toBeNull();
+    expect(cover?.querySelector('[data-testid="default-project-cover"]')).not.toBeNull();
+    expect(cover?.querySelector('img')).toBeNull();
+  });
+
+  it('shows the uploaded cover instead of the default one', () => {
+    setup({ ...project, thumbnailUrl: 'https://cdn.test/cover.jpg' });
+    const cover = screen.getByRole('link').firstElementChild;
+    expect(cover?.querySelector('img')).toHaveAttribute('src', 'https://cdn.test/cover.jpg');
+    expect(cover?.querySelector('[data-testid="default-project-cover"]')).toBeNull();
+  });
+
+  it('offers the project owner an "Upload cover" entry behind the ⋯ menu', async () => {
+    setup();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'More actions' }));
+    expect(await screen.findByRole('menuitem', { name: 'Upload cover' })).toBeInTheDocument();
+  });
+
+  it('shows no ⋯ menu to a member who does not own the project', () => {
+    setup({ ...project, myRole: 'editor' });
+    expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
   });
 
   it('opens the join dialog in place for a project the viewer is not on', async () => {

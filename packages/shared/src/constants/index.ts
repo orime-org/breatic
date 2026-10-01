@@ -24,5 +24,4 @@ export const TaskStatus = {
 export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
 
 export { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT } from "@shared/constants/ports.js";
-export { AVATAR_OUTPUT_PX } from "@shared/constants/avatar.js";
 export { USER_LOOKUP_MAX_IDS } from "@shared/constants/user-lookup.js";

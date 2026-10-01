@@ -57,9 +57,8 @@ export interface UploadGrant {
   derived: boolean | null;
   filename: string | null;
   /**
-   * What the asset this grant produces is, in the ledger's three values
-   * (`upload` / `ai` / `cover`). Null on every browser-issued grant, which is
-   * an ordinary upload.
+   * What the asset this grant produces is, in the ledger's own values (see
+   * `StudioAssetEntity["source"]`). Null means an ordinary upload.
    */
   assetSource: StudioAssetEntity["source"] | null;
   /** The generation whose output these bytes are, when they are one. */
@@ -89,7 +88,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     toolName: row.toolName,
     derived: row.derived,
     filename: row.filename,
-    // Read back as the ledger's own three values. Only our own code writes
+    // Read back as the ledger's own values. Only our own code writes
     // this column, and it writes what `register` accepts.
     assetSource: row.assetSource as StudioAssetEntity["source"] | null,
     generationTaskId: row.generationTaskId,

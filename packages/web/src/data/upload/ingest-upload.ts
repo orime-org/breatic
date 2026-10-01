@@ -37,11 +37,51 @@ export interface UploadTicket {
 }
 
 /**
+ * Where an upload lands, and what a picture is uploaded to become (filed as
+ * the asset's source): a project, which may be uploading its cover, or a
+ * studio, which uploads nothing but its avatar.
+ */
+export type UploadTargetParams =
+  | { projectId: string; studioId?: never; purpose?: 'project_cover' }
+  | { studioId: string; projectId?: never; purpose: 'studio_avatar' };
+
+/**
+ * Where an upload lands and what it is for.
+ *
+ * All of it is checked against this user's access when the ticket is issued
+ * and then stored on the grant, so what the Worker reports back is read
+ * against context we hold rather than context a client could restate.
+ */
+export type UploadContext = UploadTargetParams & {
+  /** The node the bytes land on, when this upload has one. */
+  nodeId?: string;
+  /** The space that node lives in. */
+  spaceId?: string;
+  /** `mini_tool` for a mini-tool product. */
+  source?: 'mini_tool';
+  /** The mini-tool's name when `source` says so. */
+  toolName?: string;
+  /** True for a byproduct, registered without an activity-feed row of its own. */
+  derived?: true;
+};
+
+/** A ticket request: where the upload lands, and the file it is for. */
+export type UploadTicketRequest = UploadContext & {
+  filename: string;
+  contentType: string;
+  size: number;
+  /** Mandatory — a hashless upload is refused before it is asked for. */
+  hash: string;
+};
+
+/**
  * The ticket endpoint's other answer: this studio already holds this content,
  * so nothing moves and the existing URL is reused.
  */
 export interface UploadAlreadyStored {
   alreadyExists: true;
+  /** The ledger row being reused. */
+  assetId: string;
   fileUrl: string;
   kind: string;
 }
