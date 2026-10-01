@@ -971,6 +971,48 @@ describe('an empty line at an end of the body, inside the selection', () => {
     expect(paragraphs(view)).toEqual([':true']);
   });
 
+  it('is painted when a text range starts on an empty last line', () => {
+    const view = open([{ type: 'paragraph', content: 'One' }, { type: 'paragraph', content: 'Two' }, { type: 'paragraph', content: '' }]);
+    view.focus();
+    const empty = bodyEdgePos(view.state.doc, 'end') - 1;
+
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, empty, textStart(view, 'One') + 1)));
+
+    expect(paragraphs(view)).toEqual(['One:false', 'Two:false', ':true']);
+  });
+
+  it('is painted when either end of a text range sits on an empty line in the middle', () => {
+    const view = open([{ type: 'paragraph', content: 'One' }, { type: 'paragraph', content: '' }, { type: 'paragraph', content: 'Three' }]);
+    view.focus();
+    const empty = textStart(view, 'One') + 'One'.length + 3;
+
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, empty, textStart(view, 'One') + 1)));
+    const asAnchor = paragraphs(view);
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Three') + 2, empty)));
+    const asHead = paragraphs(view);
+
+    expect(asAnchor).toEqual(['One:false', ':true', 'Three:false']);
+    expect(asHead).toEqual(['One:false', ':true', 'Three:false']);
+  });
+
+  it('is painted when a text range starts on an empty first line and runs down', () => {
+    const view = open([{ type: 'paragraph', content: '' }, { type: 'paragraph', content: 'Two' }]);
+    view.focus();
+
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, textStart(view, 'Two') + 2)));
+
+    expect(paragraphs(view)).toEqual([':true', 'Two:false']);
+  });
+
+  it('is not painted for a caret on an empty line', () => {
+    const view = open([{ type: 'paragraph', content: 'One' }, { type: 'paragraph', content: '' }, { type: 'paragraph', content: 'Three' }]);
+    view.focus();
+
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'One') + 'One'.length + 3)));
+
+    expect(paragraphs(view)).toEqual(['One:false', ':false', 'Three:false']);
+  });
+
   it('is painted at both ends under a whole-document selection', () => {
     const view = open([{ type: 'paragraph', content: '' }, { type: 'paragraph', content: 'Mid' }, { type: 'paragraph', content: '' }]);
     view.focus();

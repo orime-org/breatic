@@ -542,65 +542,49 @@ describe('Shift+click past an end of the body', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([textStart(view, 'Below'), bodyEdgePos(view.state.doc, 'start')]);
   });
 
-  it('on macOS leaves a Shift+click inside a range to the page when the start is nearer in characters', () => {
-    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
-    // Forty characters, then five one-letter lines: the click after the 30th
-    // character is 30 characters from the start and about 20 from the end,
-    // counting one per line break, but further from the end in positions.
-    const lines = ['a', 'b', 'c', 'd', 'e'].map((content) => ({ type: 'paragraph', content }));
-    const view = open([{ type: 'paragraph', content: 'x'.repeat(40) }, ...lines, { type: 'divider' }]).prosemirrorView!;
-    const start = textStart(view, 'x'.repeat(40));
-    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, start, 'end')));
-    // The page shows the range; the distances are read from what it shows.
-    const shownFrom = view.domAtPos(start);
-    const shownTo = view.domAtPos(bodyEdgePos(view.state.doc, 'end'));
-    document.getSelection()!.setBaseAndExtent(shownFrom.node, shownFrom.offset, shownTo.node, shownTo.offset);
-    pointAt(view, start + 30);
+  it('keeps the longer part of a range when the Shift+click lands inside it, on every platform', () => {
+    for (const platform of ['MacIntel', 'Win32']) {
+      vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+      // Forty characters, then five one-letter lines: the click after the 30th
+      // character leaves 30 characters before it and about 15 after it.
+      const lines = ['a', 'b', 'c', 'd', 'e'].map((content) => ({ type: 'paragraph', content }));
+      const view = open([{ type: 'paragraph', content: 'x'.repeat(40) }, ...lines, { type: 'divider' }]).prosemirrorView!;
+      const start = textStart(view, 'x'.repeat(40));
+      view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, start, 'end')));
+      pointAt(view, start + 30);
 
-    const event = press(view, 50, { shiftKey: true });
+      const event = press(view, 50, { shiftKey: true });
 
-    expect(event.defaultPrevented).toBe(false);
-    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([start, bodyEdgePos(view.state.doc, 'end')]);
+      expect(event.defaultPrevented).toBe(true);
+      expect([view.state.selection.anchor, view.state.selection.head]).toEqual([start, start + 30]);
+    }
   });
 
-  it('on macOS keeps the start edge of a selected first divider when the Shift+click lands below it', () => {
-    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
-    const view = open(BELOW_DIVIDER).prosemirrorView!;
-    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, bodyEdgePos(view.state.doc, 'start'))));
-    const target = textStart(view, 'Below') + 2;
-    pointAt(view, target);
+  it('moves the anchor when the longer part lies past the head, on every platform', () => {
+    for (const platform of ['MacIntel', 'Win32']) {
+      vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+      const view = open([{ type: 'paragraph', content: 'One two three four five six' }, { type: 'paragraph', content: 'Tail' }]).prosemirrorView!;
+      const start = textStart(view, 'One two three four five six');
+      const end = textStart(view, 'Tail') + 'Tail'.length;
+      select(view, start, end);
+      pointAt(view, start + 2);
+
+      const event = press(view, 50, { shiftKey: true });
+
+      expect(event.defaultPrevented).toBe(true);
+      expect([view.state.selection.anchor, view.state.selection.head]).toEqual([end, start + 2]);
+    }
+  });
+
+  it('keeps the end when both parts are as long', () => {
+    const view = open([{ type: 'paragraph', content: 'abcdef' }, { type: 'paragraph', content: 'Tail' }]).prosemirrorView!;
+    const start = textStart(view, 'abcdef');
+    select(view, start, start + 6);
+    pointAt(view, start + 3);
 
     press(view, 50, { shiftKey: true });
 
-    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
-    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([bodyEdgePos(view.state.doc, 'start'), target]);
-  });
-
-  it('on macOS keeps a selection already past the last divider when the Shift+click is past the end again', () => {
-    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
-    const view = open(ABOVE_DIVIDER).prosemirrorView!;
-    const words = textStart(view, 'Above') + 'Above'.length;
-    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, words, 'end')));
-
-    press(view, 150, { shiftKey: true });
-
-    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
-    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([words, bodyEdgePos(view.state.doc, 'end')]);
-  });
-
-  it('on macOS keeps a selected last divider in when the Shift+click is past the end', () => {
-    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
-    const view = open(ABOVE_DIVIDER).prosemirrorView!;
-    let divider = -1;
-    view.state.doc.descendants((node, pos) => {
-      if (node.type.name === 'divider') divider = pos;
-    });
-    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, divider)));
-
-    press(view, 150, { shiftKey: true });
-
-    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
-    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([textStart(view, 'Above') + 'Above'.length, bodyEdgePos(view.state.doc, 'end')]);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([start + 6, start + 3]);
   });
 
   it('leaves a Shift+click in the body to the browser', () => {
