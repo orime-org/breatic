@@ -645,6 +645,23 @@ function lineFrom(view: EditorView, head: number, dir: 1 | -1): number | null {
 }
 
 /**
+ * Which end of a text selection a vertical Shift+arrow moves, as the page
+ * moves it. A range the reader made with the mouse has no direction on macOS
+ * (`Selection.direction` is `none`), and there Shift+Up moves its start and
+ * Shift+Down its end, whichever end the drag began at (probe33, probe34); a
+ * range with a direction moves its head.
+ * @param view - The view.
+ * @param dir - Which way the arrow goes.
+ * @returns The end that stays and the end that moves.
+ */
+function movingEnds(view: EditorView, dir: 1 | -1): { anchor: number; head: number } {
+  const { selection } = view.state;
+  const page = (view.root as Document).getSelection?.() as (globalThis.Selection & { direction?: string }) | null;
+  if (selection.empty || page?.direction !== 'none') return { anchor: selection.anchor, head: selection.head };
+  return dir < 0 ? { anchor: selection.to, head: selection.from } : { anchor: selection.from, head: selection.to };
+}
+
+/**
  * The selection a Shift+arrow gives (design §5.10.4) on a selection reaching
  * past an end, the whole document or a selected block, which ProseMirror
  * would collapse or lose (prosemirror-view `capturekeys.ts:19-55`); and on a
@@ -661,7 +678,9 @@ function arrowOnEdge(view: EditorView, key: string): Selection | null {
   const swapped = extensionEnds(selection, dir);
   if (swapped !== null && selection instanceof NodeSelection) return bodyEdgeBetween(doc, swapped.anchor, swapped.head);
   if (swapped === null && !(selection instanceof BodyEdgeSelection)) {
-    return vertical && atLastLineTowards(view, selection.head, edge) ? extendToBodyEdge(doc, selection.anchor, edge) : null;
+    if (!vertical) return null;
+    const { anchor: fixed, head: moving } = movingEnds(view, dir);
+    return atLastLineTowards(view, moving, edge) ? extendToBodyEdge(doc, fixed, edge) : null;
   }
   const { anchor, head } = swapped ?? selection;
   const headEdge = bodyEdgeAt(doc, head);

@@ -568,11 +568,19 @@ test('next to an edge block, Shift+Up and Shift+Down move the head of a wrapped 
   long = await rowBox(page, 1);
   await drag(page, { x: long.x + 40, y: long.y + 10 }, [{ x: long.x + 200, y: long.y + long.height - 10 }]);
   const inside = await read(page);
+  // A range made by the mouse has no direction on macOS, and there Shift+Up
+  // moves its start, already on the first line next to the divider; with a
+  // direction, Shift+Up moves the head a line.
+  const direction = await page.evaluate(() => (window.getSelection() as unknown as { direction?: string }).direction);
   await page.keyboard.press('Shift+ArrowUp');
   const up = await read(page);
-  expect([up.kind, up.anchor]).toEqual(['_TextSelection', inside.anchor]);
-  expect(up.head).toBeGreaterThan(inside.anchor);
-  expect(up.head).toBeLessThan(inside.head);
+  if (direction === 'none') {
+    expect([up.kind, up.anchor, up.head]).toEqual(['BodyEdgeSelectionClass', inside.head, 2]);
+  } else {
+    expect([up.kind, up.anchor]).toEqual(['_TextSelection', inside.anchor]);
+    expect(up.head).toBeGreaterThan(inside.anchor);
+    expect(up.head).toBeLessThan(inside.head);
+  }
 });
 
 test('an empty code block last shows the empty-line mark when a drag reaches past it (A6)', async () => {
