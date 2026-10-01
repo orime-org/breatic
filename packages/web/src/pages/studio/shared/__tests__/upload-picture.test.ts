@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import {
   PictureUploadError,
+  pictureFailureOf,
   uploadPicture,
 } from '@web/pages/studio/shared/upload-picture';
 import type { runMediaUpload } from '@web/spaces/canvas/canvas-upload';
@@ -32,7 +33,7 @@ describe('uploadPicture', () => {
 
     const assetId = await uploadPicture(
       blob,
-      { projectId: 'p1', purpose: 'project_cover', derived: true },
+      { projectId: 'p1', purpose: 'project_cover' },
       run,
     );
 
@@ -40,7 +41,7 @@ describe('uploadPicture', () => {
     const [file, context] = run.mock.calls[0]!;
     expect(file.type).toBe('image/jpeg');
     expect(file.name).toBe('picture.jpg');
-    expect(context).toEqual({ projectId: 'p1', purpose: 'project_cover', derived: true });
+    expect(context).toEqual({ projectId: 'p1', purpose: 'project_cover' });
   });
 
   it('fails with the pipeline\'s reason, so the caller can say why', async () => {
@@ -60,5 +61,15 @@ describe('uploadPicture', () => {
       .catch((err: unknown) => err);
 
     expect((failure as PictureUploadError).reason).toBe('upload');
+  });
+});
+
+describe('pictureFailureOf', () => {
+  it('names a full account and a refused format, and folds everything else into one retryable failure', () => {
+    expect(pictureFailureOf(new PictureUploadError('storage'))).toBe('storage');
+    expect(pictureFailureOf(new PictureUploadError('unsupportedType'))).toBe('unsupportedType');
+    expect(pictureFailureOf(new PictureUploadError('hash'))).toBe('upload');
+    expect(pictureFailureOf(new PictureUploadError('transfer'))).toBe('upload');
+    expect(pictureFailureOf(new Error('network'))).toBe('upload');
   });
 });

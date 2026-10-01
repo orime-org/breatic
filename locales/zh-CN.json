@@ -1449,7 +1449,6 @@
         "avatarUploading": "上传中…",
         "avatarUploadError": {
           "storage": "存储空间已满，头像没有上传。",
-          "unsupportedType": "这个文件的格式不支持。",
           "upload": "头像没有上传，请重试。"
         },
         "avatarCropTitle": "裁剪头像",
@@ -1508,7 +1507,8 @@
         "empty": "这个文件是空的。",
         "too_many_pixels": "这张图片太大了，请换一张每边都小于 8000 像素的。",
         "not_an_image": "无法把这个文件读成图片。",
-        "encode_failed": "无法处理这张图片，请换一张试试。"
+        "encode_failed": "无法处理这张图片，请换一张试试。",
+        "unsupported_type": "这个文件的格式不支持。"
       },
       "cropRegion": "裁剪区域 — 可用方向键移动",
       "cover": {
@@ -1519,7 +1519,6 @@
         "uploading": "上传中…",
         "error": {
           "storage": "存储空间已满，封面没有上传。",
-          "unsupportedType": "这个文件的格式不支持。",
           "upload": "封面没有上传，请重试。"
         }
       }

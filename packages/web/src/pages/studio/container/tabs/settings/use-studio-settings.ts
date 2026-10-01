@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { studiosApi } from '@web/data/api/studios';
 import {
   PictureUploadError,
+  pictureFailureOf,
   uploadPicture,
 } from '@web/pages/studio/shared/upload-picture';
 import { ApiException } from '@web/data/api/types';
@@ -166,16 +167,18 @@ export function useStudioSettings(
     // Kept in state rather than only a toast: the crop dialog stays open on
     // failure so the user can retry without redoing their crop, and the reason
     // belongs next to the retry button.
-    onError: (err) =>
+    onError: (err) => {
+      if (!(err instanceof PictureUploadError)) {
+        setAvatarError(messageFor(err));
+        return;
+      }
+      const failure = pictureFailureOf(err);
       setAvatarError(
-        err instanceof PictureUploadError
-          ? t(
-            err.reason === 'storage' || err.reason === 'unsupportedType'
-              ? `studio.container.settings.avatarUploadError.${err.reason}`
-              : 'studio.container.settings.avatarUploadError.upload',
-          )
-          : messageFor(err),
-      ),
+        failure === 'unsupportedType'
+          ? t('studio.container.imageError.unsupported_type')
+          : t(`studio.container.settings.avatarUploadError.${failure}`),
+      );
+    },
   });
 
   const removeAvatarMutation = useMutation({

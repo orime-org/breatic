@@ -1449,7 +1449,6 @@
         "avatarUploading": "Uploading…",
         "avatarUploadError": {
           "storage": "Storage is full. The avatar was not uploaded.",
-          "unsupportedType": "This file format is not supported.",
           "upload": "The avatar was not uploaded. Try again."
         },
         "avatarCropTitle": "Crop your avatar",
@@ -1508,7 +1507,8 @@
         "empty": "That file is empty.",
         "too_many_pixels": "That image is too large to work with. Try one under 8000 pixels on each side.",
         "not_an_image": "That file could not be read as an image.",
-        "encode_failed": "Could not prepare the image. Please try another one."
+        "encode_failed": "Could not prepare the image. Please try another one.",
+        "unsupported_type": "This file format is not supported."
       },
       "cropRegion": "Crop area — use the arrow keys to move it",
       "cover": {
@@ -1519,7 +1519,6 @@
         "uploading": "Uploading…",
         "error": {
           "storage": "Storage is full. The cover was not uploaded.",
-          "unsupportedType": "This file format is not supported.",
           "upload": "The cover was not uploaded. Try again."
         }
       }

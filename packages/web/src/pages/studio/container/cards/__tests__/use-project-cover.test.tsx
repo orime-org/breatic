@@ -56,7 +56,6 @@ describe('useProjectCover', () => {
     expect(uploadPicture).toHaveBeenCalledWith(blob, {
       projectId: 'p1',
       purpose: 'project_cover',
-      derived: true,
     });
     await waitFor(() => expect(result.current.done).toBe(true));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['studio', 'acme', 'projects'] });
@@ -87,7 +86,7 @@ describe('useProjectCover', () => {
     });
 
     await waitFor(() =>
-      expect(result.current.error).toBe('studio.container.cover.error.unsupportedType'),
+      expect(result.current.error).toBe('studio.container.imageError.unsupported_type'),
     );
   });
 

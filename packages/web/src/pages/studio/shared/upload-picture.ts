@@ -32,6 +32,24 @@ export class PictureUploadError extends Error {
   }
 }
 
+/**
+ * What a failed picture upload tells the person: their account is full, the
+ * format is not one we take, or something else that a retry may fix.
+ */
+export type PictureFailure = 'storage' | 'unsupportedType' | 'upload';
+
+/**
+ * Reduce whatever a picture upload threw to what the person is told.
+ * @param err - What the upload or the pointer call threw.
+ * @returns The failure to show.
+ */
+export function pictureFailureOf(err: unknown): PictureFailure {
+  if (!(err instanceof PictureUploadError)) return 'upload';
+  return err.reason === 'storage' || err.reason === 'unsupportedType'
+    ? err.reason
+    : 'upload';
+}
+
 /** The extension a picture's file is named with, by its type. */
 const EXTENSION: Readonly<Record<string, string>> = {
   'image/jpeg': 'jpg',
