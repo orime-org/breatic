@@ -171,37 +171,60 @@ function keptEnd(view: EditorView, { anchor, head }: { anchor: number; head: num
   const end = Math.max(anchor, head);
   if (target <= start) return end;
   if (target >= end) return start;
-  const [toStart, toEnd] = borrowPageSelection(view, (page) => [
-    textDistance(view, page, start, target),
-    textDistance(view, page, target, end),
-  ]) ?? [0, 0];
+  const [toStart, toEnd] = borrowPageSelection(view, (page) => {
+    // The page measures from the range it shows, which for an end on an edge
+    // is not a position the model can name.
+    const shown = page.rangeCount > 0 ? page.getRangeAt(0) : null;
+    const from = shown ? { node: shown.startContainer, offset: shown.startOffset } : view.domAtPos(start);
+    const to = shown ? { node: shown.endContainer, offset: shown.endOffset } : view.domAtPos(end);
+    const click = view.domAtPos(target);
+    return [
+      textBetween(page, from, click) + blocksWithoutText(view, start, target),
+      textBetween(page, click, to) + blocksWithoutText(view, target, end),
+    ];
+  }) ?? [0, 0];
   return toStart <= toEnd ? end : start;
 }
 
+/** A point in the page. */
+interface PagePoint {
+  /** The node. */
+  readonly node: globalThis.Node;
+  /** The offset in it. */
+  readonly offset: number;
+}
+
 /**
- * How far apart two positions are in text, counted as the page counts it: the
- * length of the page's own text between them (`Selection.toString`, which
- * gives a block boundary, a hard break and an empty line the characters the
- * page gives them; probe43), plus one for each block without text, which the
- * page's string leaves out as unselectable content and its distance counts
- * (`DOMSelection::toString` sets `SkipsUnselectableContent`;
- * `TextIterator::RangeLength` does not).
- * @param view - The view.
+ * The length of the page's own text between two points (`Selection.toString`,
+ * which gives a block boundary, a hard break and an empty line the characters
+ * the page gives them; probe43).
  * @param page - The page's selection, lent for the measurement.
+ * @param from - The earlier point.
+ * @param to - The later point.
+ * @returns The length.
+ */
+function textBetween(page: globalThis.Selection, from: PagePoint, to: PagePoint): number {
+  page.setBaseAndExtent(from.node, from.offset, to.node, to.offset);
+  return page.toString().length;
+}
+
+/**
+ * How many blocks without text lie wholly between two positions. The page's
+ * string leaves them out as unselectable content and its distance counts one
+ * for each (`DOMSelection::toString` sets `SkipsUnselectableContent`,
+ * `TextIterator::RangeLength` does not; probe43).
+ * @param view - The view.
  * @param from - The earlier position.
  * @param to - The later position.
- * @returns The distance.
+ * @returns The count.
  */
-function textDistance(view: EditorView, page: globalThis.Selection, from: number, to: number): number {
-  const a = view.domAtPos(from);
-  const b = view.domAtPos(to);
-  page.setBaseAndExtent(a.node, a.offset, b.node, b.offset);
-  let unselectable = 0;
+function blocksWithoutText(view: EditorView, from: number, to: number): number {
+  let count = 0;
   view.state.doc.nodesBetween(from, to, (node, pos) => {
-    if (node.isBlock && node.isLeaf && pos >= from && pos + node.nodeSize <= to) unselectable += 1;
+    if (node.isBlock && node.isLeaf && pos >= from && pos + node.nodeSize <= to) count += 1;
     return !node.isLeaf;
   });
-  return page.toString().length + unselectable;
+  return count;
 }
 
 /** What the plugin needs from the BlockNote editor. */

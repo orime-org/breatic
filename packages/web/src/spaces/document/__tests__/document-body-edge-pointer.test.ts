@@ -551,6 +551,10 @@ describe('Shift+click past an end of the body', () => {
     const view = open([{ type: 'paragraph', content: 'x'.repeat(40) }, ...lines, { type: 'divider' }]).prosemirrorView!;
     const start = textStart(view, 'x'.repeat(40));
     view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, start, 'end')));
+    // The page shows the range; the distances are read from what it shows.
+    const shownFrom = view.domAtPos(start);
+    const shownTo = view.domAtPos(bodyEdgePos(view.state.doc, 'end'));
+    document.getSelection()!.setBaseAndExtent(shownFrom.node, shownFrom.offset, shownTo.node, shownTo.offset);
     pointAt(view, start + 30);
 
     const event = press(view, 50, { shiftKey: true });
