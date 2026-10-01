@@ -479,6 +479,32 @@ describe('Shift+click past an end of the body', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, bodyEdgePos(view.state.doc, 'end')]);
   });
 
+  it('gives the body the focus when a Shift+click past the end lands while it has none', () => {
+    const view = open(ABOVE_DIVIDER).prosemirrorView!;
+    select(view, textStart(view, 'Above') + 1);
+    const other = document.createElement('input');
+    document.body.appendChild(other);
+    other.focus();
+
+    press(view, 150, { shiftKey: true });
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect(view.hasFocus()).toBe(true);
+    other.remove();
+  });
+
+  it('keeps an anchor on the edge past an empty last line when the Shift+click lands on words', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph' }]).prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'end', textStart(view, 'Middle') + 1)));
+    const target = textStart(view, 'Above') + 2;
+    pointAt(view, target);
+
+    const event = press(view, 50, { shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([bodyEdgePos(view.state.doc, 'end'), target]);
+  });
+
   it('leaves a Shift+click in the body to the browser', () => {
     const view = open(ABOVE_DIVIDER).prosemirrorView!;
     const at = textStart(view, 'Above');

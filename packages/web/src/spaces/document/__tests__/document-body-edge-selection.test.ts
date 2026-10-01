@@ -159,6 +159,16 @@ describe('BodyEdgeSelection', () => {
     }
   });
 
+  it('reads two ends on the same edge from JSON as the caret beside it, like every other path', () => {
+    const view = open(ABOVE_DIVIDER);
+    const { doc } = view.state;
+    const end = bodyEdgePos(doc, 'end');
+
+    const back = Selection.fromJSON(doc, { type: 'bodyEdge', anchor: end, head: end });
+
+    expect(back.eq(bodyEdgeBetween(doc, end, end))).toBe(true);
+  });
+
   it('puts a non-edge end that no longer sits in text back into text when read from JSON', () => {
     const view = open(ABOVE_DIVIDER);
     const { doc } = view.state;
@@ -384,6 +394,18 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
 
     expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([to, bodyEdgePos(view.state.doc, 'start')]);
+  });
+
+  it('takes a head at a line wrap as the line it ends, so Shift+Down from the end of the next-to-last line moves a line first', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
+    const head = textStart(view, 'Middle') + 3;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Above'), head)));
+    const $head = view.state.doc.resolve(head);
+    const line = (n: number): { left: number; right: number; top: number; bottom: number } => ({ left: 0, right: 10, top: n * 20, bottom: n * 20 + 20 });
+    // The wrap point reads as the end of line 0 leaning back and the start of line 1 leaning on.
+    vi.spyOn(view, 'coordsAtPos').mockImplementation((pos, side) => line(pos === head ? (side !== undefined && side < 0 ? 0 : 1) : pos === $head.end() ? 1 : 0));
+
+    expect(press(view, 'ArrowDown')).toBe(false);
   });
 
   it('measures the line without swapping the view state, which would reset the browser\'s goal column', () => {
@@ -844,6 +866,23 @@ describe('changing the block type under a selection that reaches past the last b
 });
 
 describe('moving rows under a selection that reaches past the last block', () => {
+  it('keeps a moved divider selected when only another divider lies outward', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Text' }, { type: 'divider' }, { type: 'paragraph', content: 'Tail' }]);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Text') + 2, 'start')));
+
+    moveRowsFromKeyboard(editors.get(view)! as never, 'down');
+
+    const { selection, doc } = view.state;
+    const dividers: number[] = [];
+    doc.descendants((node, pos) => {
+      if (node.type.name === 'divider') dividers.push(pos);
+    });
+    expect(selection.from).toBe(bodyEdgePos(doc, 'start'));
+    expect(dividers.every((pos) => pos >= selection.from && pos < selection.to)).toBe(true);
+    expect(selection.to).toBe(textStart(view, 'Text') + 2);
+  });
+
   it('keeps the same words and the divider selected', () => {
     const view = open([
       { type: 'paragraph', content: 'Above' },
