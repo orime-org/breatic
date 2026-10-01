@@ -27,7 +27,7 @@
  */
 
 import { createExtension } from '@blocknote/core';
-import { Plugin, PluginKey, type Selection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, Plugin, PluginKey, type Selection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import {
@@ -36,6 +36,7 @@ import {
   bodyEdgeNeedsTakeover,
   bodyEdgePos,
   dragSelection,
+  extensionEnds,
   type BodyEdge,
   type PointerZone,
 } from '@web/spaces/document/document-body-edge-selection';
@@ -171,6 +172,7 @@ class PointerFollower {
     private readonly opener: ParagraphOpener,
   ) {
     view.dom.addEventListener('mousedown', this.onDown, true);
+    view.dom.addEventListener('dragstart', this.onDragStart);
   }
 
   /**
@@ -200,6 +202,7 @@ class PointerFollower {
   destroy(): void {
     this.end();
     this.view.dom.removeEventListener('mousedown', this.onDown, true);
+    this.view.dom.removeEventListener('dragstart', this.onDragStart);
   }
 
   /**
@@ -212,16 +215,41 @@ class PointerFollower {
     const zone = zoneAt(view, event.clientY);
     const at = { startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY };
     if (event.shiftKey) {
-      if (zone === 'body') return;
-      const anchorEdge = bodyEdgeAt(view.state.doc, view.state.selection.anchor);
-      this.begin({ ...at, zone: 'shift', anchorEdge, left: true, moved: false, onWidget: false });
-      event.preventDefault();
-      this.sync();
+      this.extendFrom(event, zone, at);
       return;
     }
     const widget = zone === 'end' && onWidget(view, event.clientX, event.clientY);
     this.begin({ ...at, zone, anchorEdge: zone === 'body' ? null : zone, left: false, moved: false, onWidget: widget });
   };
+
+  /**
+   * Answers a Shift+click that goes past an edge, or one in the body from a
+   * selection the browser cannot extend without losing part of it: the whole
+   * document, or a selected block (design §5.10.5). Any other Shift+click in
+   * the body is the browser's.
+   * @param event - The press.
+   * @param zone - Where it was pressed.
+   * @param at - Where it was pressed, as the press records it.
+   * @param at.startX - Across.
+   * @param at.startY - Down.
+   * @param at.x - Across.
+   * @param at.y - Down.
+   */
+  private extendFrom(event: MouseEvent, zone: PointerZone, at: Pick<Press, 'startX' | 'startY' | 'x' | 'y'>): void {
+    const { view } = this;
+    const { doc, selection } = view.state;
+    const pointer = zone === 'body' ? positionAt(view, event.clientX, event.clientY) : null;
+    if (zone === 'body') {
+      const lossy = selection instanceof AllSelection || (selection instanceof NodeSelection && !selection.node.isInline);
+      if (!lossy || pointer === null) return;
+    }
+    const dir = zone === 'end' ? 1 : zone === 'start' ? -1 : pointer! >= selection.from ? 1 : -1;
+    const { anchor } = extensionEnds(selection, dir);
+    this.begin({ ...at, zone: 'shift', anchorEdge: bodyEdgeAt(doc, anchor), left: true, moved: false, onWidget: false });
+    event.preventDefault();
+    const next = dragSelection(doc, { press: 'shift', anchor, left: true }, zone, pointer);
+    if (next !== null && !next.eq(selection)) view.dispatch(view.state.tr.setSelection(next));
+  }
 
   /**
    * Follows the pointer.
@@ -251,6 +279,16 @@ class PointerFollower {
     if (press === null || press.zone !== 'end' || !press.onWidget) return;
     if (press.moved || travelled(press, event.clientX, event.clientY)) return;
     this.opener.openParagraphBelow(this.view);
+  };
+
+  /**
+   * Ends the press when the browser starts dragging the selected words: the
+   * selection then is what the drop moves (prosemirror-view `input.ts` drop,
+   * `tr.deleteSelection()`), and the page scrolling under the drag must not
+   * change it.
+   */
+  private readonly onDragStart = (): void => {
+    this.end();
   };
 
   /** Ends the press when the window loses focus. */

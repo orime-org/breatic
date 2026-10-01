@@ -31,14 +31,15 @@
 import { createExtension } from '@blocknote/core';
 import { ShowSelectionExtension } from '@blocknote/core/extensions';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState, Selection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import {
   BodyEdgeSelection,
   bodyEdgeAt,
-  bodyEdgeBlockPos,
+  emptyEdgeLinePos,
+  type BodyEdge,
 } from '@web/spaces/document/document-body-edge-selection';
 import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
 import { DIVIDER } from '@web/spaces/document/document-divider';
@@ -59,8 +60,8 @@ const NO_TEXT = new Set([DIVIDER, UNSUPPORTED_BLOCK]);
 const KEY = new PluginKey('documentSelectionPaint');
 
 /**
- * The empty line at an end of the body that a selection reaching past it holds
- * (#124). The browser marks an empty line inside a range with a sliver at its
+ * The empty line at an end of the body that a selection reaching past it, or
+ * one holding the whole document, holds (#124). The browser marks an empty line inside a range with a sliver at its
  * start, but the one at an end only once the range is written back to the
  * page, which during a drag in Chrome it is not. Marked here, `index.css` draws
  * that sliver itself from the first frame of the drag and clears the
@@ -71,17 +72,16 @@ const KEY = new PluginKey('documentSelectionPaint');
  * @returns A decoration per empty line on an edge the selection reaches.
  */
 function emptyEdgeLines(selection: Selection, doc: PMNode): Decoration[] {
-  if (!(selection instanceof BodyEdgeSelection)) return [];
-  const lines: Decoration[] = [];
-  for (const end of [selection.anchor, selection.head]) {
-    const edge = bodyEdgeAt(doc, end);
-    const pos = edge === null ? null : bodyEdgeBlockPos(doc, edge);
-    const node = pos === null ? null : doc.nodeAt(pos);
-    if (pos !== null && node !== null && node.isTextblock && node.content.size === 0) {
-      lines.push(Decoration.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));
-    }
-  }
-  return lines;
+  const edges: BodyEdge[] =
+    selection instanceof AllSelection
+      ? ['start', 'end']
+      : selection instanceof BodyEdgeSelection
+        ? [selection.anchor, selection.head].flatMap((end) => bodyEdgeAt(doc, end) ?? [])
+        : [];
+  return edges.flatMap((edge) => {
+    const pos = emptyEdgeLinePos(doc, edge);
+    return pos === null ? [] : [Decoration.node(pos, pos + doc.nodeAt(pos)!.nodeSize, { class: EMPTY_LINE_CLASS })];
+  });
 }
 
 /**

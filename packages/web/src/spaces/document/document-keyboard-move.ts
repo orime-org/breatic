@@ -26,8 +26,8 @@ import { createExtension } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import {
   NodeSelection,
-  Selection,
   TextSelection,
+  type Selection,
 } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -35,6 +35,7 @@ import {
   BodyEdgeSelection,
   bodyEdgeAt,
   bodyEdgeBetween,
+  textToward,
 } from '@web/spaces/document/document-body-edge-selection';
 import { rangeToLift } from '@web/spaces/document/document-drag-move';
 import { rowById } from '@web/spaces/document/document-row-by-id';
@@ -136,19 +137,11 @@ function edgeSelectionAfter(doc: PMNode, anchor: number, head: number): Selectio
   if (bodyEdgeAt(doc, anchor) !== null || bodyEdgeAt(doc, head) !== null) {
     return bodyEdgeBetween(doc, anchor, head);
   }
-  /**
-   * Moves an end that is not in text to the next text away from the other end.
-   * @param pos - The end.
-   * @param other - The other end.
-   * @returns A text position.
-   */
-  const outward = (pos: number, other: number): number => {
-    const $pos = doc.resolve(pos);
-    if ($pos.parent.inlineContent) return pos;
-    const dir = pos >= other ? 1 : -1;
-    return (Selection.findFrom($pos, dir, true) ?? Selection.findFrom($pos, -dir, true))?.head ?? pos;
-  };
-  return TextSelection.create(doc, outward(anchor, head), outward(head, anchor));
+  return TextSelection.create(
+    doc,
+    textToward(doc, anchor, anchor >= head ? 1 : -1),
+    textToward(doc, head, head >= anchor ? 1 : -1),
+  );
 }
 
 /**

@@ -1866,22 +1866,16 @@ body {
 }
 
 /* An empty line at an end of the body inside a selection that reaches past it
-   (`document-selection-paint.ts`). The browser marks a selected empty line with
+   or holds the whole document (`document-selection-paint.ts`). The browser marks a selected empty line with
    a sliver at its start, the width of a space and the height of the line; it
    draws that one only once the range is written back, which in Chrome is not
    until a drag ends. The sliver is drawn here from the same measures — a
-   no-break space, the line's own box — and the browser's is cleared, so the
-   line wears one mark from the first frame of the drag. */
-.doc-body .doc-empty-line-in-selection > .bn-inline-content {
-  position: relative;
-}
-
+   no-break space in the line's own flow, so it stands where the caret would
+   under the line's alignment — and the browser's is cleared, so the line
+   wears one mark from the first frame of the drag. */
 .doc-body .doc-empty-line-in-selection > .bn-inline-content::before {
   content: '\a0';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
+  display: inline-block;
   background-color: var(--color-selection);
   pointer-events: none;
 }
