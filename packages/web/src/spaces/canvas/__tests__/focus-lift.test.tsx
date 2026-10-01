@@ -148,7 +148,7 @@ describe('聚焦目标的抬升（#2000）', () => {
     clickNode('src');
     expect(zOf('src')).toBe('1002');
 
-    act(() => useCanvasStore.getState().startStylePick('host'));
+    act(() => useCanvasStore.getState().startReferencePick('host'));
     expect(zOf('src')).toBe('0');
   });
 

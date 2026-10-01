@@ -34,7 +34,7 @@ interface PickPurposeUi {
   /**
    * Test id of the tool that starts this pick, per panel. Focus returns there
    * when the banner unmounts. Partial on purpose: most purposes belong to one
-   * panel — style is the image panel's; the source slots split by panel, with
+   * panel — the source slots split by panel, with
    * both frames, the character image, the driving video and the driving audio
    * on the video panel and the voice sample and the three music references on
    * the audio one. Focus is the image and video panels'; reference is every
@@ -52,10 +52,6 @@ export const PICK_PURPOSE_UI = {
       generateVideo: 'generate-video-tool-reference',
       generateAudio: 'generate-audio-tool-reference',
     },
-  },
-  style: {
-    banner: 'canvas.generatePanel.selectStyleFromCanvas',
-    trigger: { generate: 'generate-tool-style' },
   },
   focus: {
     banner: 'canvas.generatePanel.selectFocusFromCanvas',

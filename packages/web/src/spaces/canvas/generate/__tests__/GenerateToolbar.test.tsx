@@ -21,8 +21,6 @@ function setup(
     <TooltipProvider delayDuration={100}>
       <GenerateToolbar
         onReference={() => {}}
-        onStyle={() => {}}
-        onClearStyle={() => {}}
         onFocus={() => {}}
         {...overrides}
       />
@@ -34,37 +32,20 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('GenerateToolbar — Style / Focus / Reference are the three live tools', () => {
-  it('renders exactly the three live tool buttons — Mark was cut (user 2026-07-17, decision C)', () => {
+describe('GenerateToolbar — Reference / Focus are the live tools', () => {
+  it('renders exactly the two live tool buttons — Mark was cut (user 2026-07-17, decision C)', () => {
     setup();
-    expect(screen.getByTestId('generate-tool-style')).toBeInTheDocument();
     expect(screen.getByTestId('generate-tool-focus')).toBeInTheDocument();
     expect(screen.getByTestId('generate-tool-reference')).toBeInTheDocument();
     expect(screen.queryByTestId('generate-tool-mark')).toBeNull();
+    expect(screen.queryByTestId('generate-tool-sep')).toBeNull();
   });
 
-  it('divides the two entries from the Style slot', () => {
-    // Reference and Focus collect into the rail below the row; Style collects
-    // onto itself. Same line the video and audio rows carry, unconditional
-    // here because this row's one slot always renders.
-    setup();
-    const sep = screen.getByTestId('generate-tool-sep');
-    const focus = screen.getByTestId('generate-tool-focus');
-    const style = screen.getByTestId('generate-tool-style');
-    expect(
-      focus.compareDocumentPosition(sep) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      sep.compareDocumentPosition(style) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it('leaves Reference and Focus enabled — only Style takes a disabled flag (#1986)', () => {
+  it('leaves Reference and Focus enabled (#1986)', () => {
     // Not a default the caller can flip: since #1986 the toolbar accepts no
     // flag for either of these two, so nothing it renders can turn them off.
     // The refusal for what a mode cannot use lives on the reference row.
     setup();
-    expect(screen.getByTestId('generate-tool-style')).not.toBeDisabled();
     expect(screen.getByTestId('generate-tool-focus')).not.toBeDisabled();
     expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
   });
@@ -83,13 +64,6 @@ describe('GenerateToolbar — Style / Focus / Reference are the three live tools
     setup({ onReference });
     fireEvent.click(screen.getByTestId('generate-tool-reference'));
     expect(onReference).toHaveBeenCalledTimes(1);
-  });
-
-  it('fires onStyle when Style is clicked (#1664)', () => {
-    const onStyle = vi.fn();
-    setup({ onStyle });
-    fireEvent.click(screen.getByTestId('generate-tool-style'));
-    expect(onStyle).toHaveBeenCalledTimes(1);
   });
 
   it('Reference is available in both modes — the button never disables (#1788 batch-3 #1)', () => {
@@ -112,8 +86,6 @@ describe('GenerateToolbar — Style / Focus / Reference are the three live tools
       <TooltipProvider delayDuration={5}>
         <GenerateToolbar
           onReference={() => {}}
-          onStyle={() => {}}
-          onClearStyle={() => {}}
           onFocus={() => {}}
         />
       </TooltipProvider>,
@@ -134,82 +106,11 @@ describe('GenerateToolbar — Style / Focus / Reference are the three live tools
     // tooltip-wrapped chrome button is suppressTooltipFocusOpen on the
     // trigger (ViewportToolbar & co) — hover still opens the tip.
     setup();
-    for (const id of [
-      'generate-tool-style',
-      'generate-tool-focus',
-      'generate-tool-reference',
-    ]) {
+    for (const id of ['generate-tool-focus', 'generate-tool-reference']) {
       fireEvent.focus(screen.getByTestId(id));
       expect(screen.queryByRole('tooltip')).toBeNull();
       expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
     }
-  });
-
-  it('draws no Style slot, and no divider before it, for a model that takes no style image', () => {
-    // Same as the video row: a slot the model cannot use is not drawn
-    // (user 2026-09-29). Reference and Focus stay.
-    setup({ styleSupported: false });
-    expect(screen.queryByTestId('generate-tool-style')).toBeNull();
-    expect(screen.queryByTestId('generate-tool-sep')).toBeNull();
-    expect(screen.getByTestId('generate-tool-reference')).not.toBeDisabled();
-    expect(screen.getByTestId('generate-tool-focus')).toBeInTheDocument();
-  });
-
-  // ── Style slot: picked thumbnail + ✕ badge (#1664, one style image max) ──
-  it('shows the picked style thumbnail in the Style slot with a ✕ badge', () => {
-    setup({ styleThumbnail: 'https://cdn/style.png' });
-    const img = screen.getByTestId('generate-style-thumbnail') as HTMLImageElement;
-    expect(img.src).toContain('style.png');
-    expect(screen.getByTestId('generate-style-clear')).toBeInTheDocument();
-  });
-
-  it('the FILLED slot covers the button with the image at the SAME footprint (no layout shift)', () => {
-    // User 2026-07-16: once picked, the whole button reads as the image — but
-    // the original icon + label keep laying out INVISIBLY underneath so the
-    // button footprint is identical in both states (no toolbar shift), and
-    // the a11y name stays via aria-label.
-    setup({ styleThumbnail: 'https://cdn/style.png' });
-    const btn = screen.getByTestId('generate-tool-style');
-    expect(btn).toHaveAttribute('aria-label');
-    // The image is an absolute cover, not an inline child (inline would resize).
-    const img = screen.getByTestId('generate-style-thumbnail');
-    expect(img.className).toContain('absolute');
-    expect(img.className).toContain('inset-0');
-    // The footprint-preserving label is still in the layout, just invisible.
-    const label = btn.querySelector('span');
-    expect(label?.className).toContain('invisible');
-  });
-
-  it('renders no thumbnail and no ✕ while the slot is empty', () => {
-    setup();
-    expect(screen.queryByTestId('generate-style-thumbnail')).toBeNull();
-    expect(screen.queryByTestId('generate-style-clear')).toBeNull();
-  });
-
-  it('✕ fires onClearStyle without firing onStyle (sibling, not nested)', () => {
-    // The ✕ must be a SIBLING of the slot button — nesting a button inside a
-    // button gets silently reparented by the browser (HTML validity trap).
-    const onStyle = vi.fn();
-    const onClearStyle = vi.fn();
-    setup({ styleThumbnail: 'https://cdn/style.png', onStyle, onClearStyle });
-    fireEvent.click(screen.getByTestId('generate-style-clear'));
-    expect(onClearStyle).toHaveBeenCalledTimes(1);
-    expect(onStyle).not.toHaveBeenCalled();
-  });
-
-  it('clicking a FILLED slot still fires onStyle (re-pick replaces the copy)', () => {
-    const onStyle = vi.fn();
-    setup({ styleThumbnail: 'https://cdn/style.png', onStyle });
-    fireEvent.click(screen.getByTestId('generate-tool-style'));
-    expect(onStyle).toHaveBeenCalledTimes(1);
-  });
-
-  it('renders the active Style in the minimap white-fill style', () => {
-    setup({ styleActive: true });
-    const btn = screen.getByTestId('generate-tool-style');
-    expect(btn.className).toContain('bg-foreground');
-    expect(btn.className).toContain('text-background');
-    expect(btn).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('renders the active Reference in the minimap white-fill style (not bg-accent)', () => {

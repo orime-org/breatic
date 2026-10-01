@@ -524,7 +524,6 @@ export interface AssetNodeLike {
     content?: unknown;
     coverUrl?: unknown;
     focusImages?: unknown;
-    styleImageUrl?: unknown;
   };
 }
 
@@ -611,13 +610,9 @@ export function computeDeletedAssetEntries(
     if (deletedIds.has(n.id)) continue;
     if (typeof n.data?.content === 'string') survivingUrls.add(n.data.content);
     if (typeof n.data?.coverUrl === 'string') survivingUrls.add(n.data.coverUrl);
-    // The style slot (#333) holds a copied URL — dedup can make it equal a
-    // crop's asset URL, so it keeps the asset alive too (round-12).
-    if (typeof n.data?.styleImageUrl === 'string') {
-      survivingUrls.add(n.data.styleImageUrl);
-    }
     // Every source slot on either generative panel (#1896 onward) holds a
-    // copied URL on the same terms as the style slot. Read off the registries
+    // copied URL — dedup can make it equal a crop's asset URL, so it keeps
+    // the asset alive too. Read off the registries
     // rather than listed here: the first two were added one PR at a time, and
     // a slot left out of a hand-kept list reports an asset the node is still
     // generating from — silently, until someone deletes the node it was
@@ -675,11 +670,7 @@ export function assetUrlSurvives(
 ): boolean {
   for (const n of nodes) {
     const data = n.data as AssetNodeLike['data'];
-    if (
-      data?.content === url ||
-      data?.coverUrl === url ||
-      data?.styleImageUrl === url
-    ) {
+    if (data?.content === url || data?.coverUrl === url) {
       return true;
     }
     // Same registry, same reason as the surviving-set above: the two lists

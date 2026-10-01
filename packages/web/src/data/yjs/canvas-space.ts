@@ -908,30 +908,10 @@ export function setNodeParams(
 }
 
 /**
- * Set a content node's style-reference image URL (image-node style slice
- * #1664) — a pick-time COPY of the chosen image's asset URL (one style image
- * max; no relationship to the upstream node). Scalar last-write-wins like
- * `model`. Setting overwrites any previous pick (re-pick replaces). No-op when
- * the node or its data map is missing.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the generative node whose style image to set.
- * @param url - The copied style image URL.
- */
-export function setNodeStyleImage(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  url: string,
-): void {
-  setNodeSlotValue(projectId, spaceId, nodeId, 'styleImageUrl', url);
-}
-
-/**
  * Write a slot's pick onto a node's data map — the whole pick, one key.
  *
- * Shared by every slot (style, first frame, end frame, character image,
- * driving video, driving audio): they differ only in which key they own,
+ * Shared by every slot (first frame, end frame, character image, driving
+ * video, driving audio): they differ only in which key they own,
  * and the guard
  * sequence around the write — resolve the doc, find the node, confirm the data
  * map is a `Y.Map` — is the same question every time.
@@ -972,22 +952,6 @@ export function setNodeSlotValue(
       data.set(key, value);
     }
   }, CANVAS_UNDO);
-}
-
-/**
- * Clear a content node's style-reference image (the Style slot's ✕). Deletes
- * the key so "no style" is the field's natural absent state. No-op when the
- * node / data map is missing or no style image is set.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - Id of the generative node whose style image to clear.
- */
-export function clearNodeStyleImage(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-): void {
-  setNodeSlotValue(projectId, spaceId, nodeId, 'styleImageUrl', null);
 }
 
 /**

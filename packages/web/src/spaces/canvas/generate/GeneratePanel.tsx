@@ -86,16 +86,6 @@ interface GeneratePanelProps {
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert a reference's @-mention into the prompt at the cursor (rail click). */
   onInsertReference: (item: ReferenceRailItem) => void;
-  /** Toggle the canvas style-pick mode (#1664 — enter, or exit when already picking). */
-  onStyle: () => void;
-  /** Whether THIS node's style pick is running — highlights the Style button. */
-  stylePicking: boolean;
-  /** The picked style image URL (pick-time copy) shown in the Style slot (#1664). */
-  styleImageUrl?: string;
-  /** Clear the picked style image (the Style slot's ✕ badge). */
-  onClearStyle: () => void;
-  /** Whether the active model takes a style reference (capability gate). */
-  styleSupported: boolean;
   /** Whether the active model declares the camera cluster (#1788) — the Camera control is hidden otherwise. */
   cameraSupported: boolean;
   /** Toggle the canvas focus-crop mode (#1782 — enter, or exit when already picking). */
@@ -144,11 +134,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   referencePicking,
   onRemoveReference,
   onInsertReference,
-  onStyle,
-  stylePicking,
-  styleImageUrl,
-  onClearStyle,
-  styleSupported,
   onFocus,
   focusPicking,
   pendingFocus,
@@ -172,11 +157,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         <GenerateToolbar
           onReference={onAddReference}
           referenceActive={referencePicking}
-          onStyle={onStyle}
-          styleActive={stylePicking}
-          styleThumbnail={styleImageUrl}
-          onClearStyle={onClearStyle}
-          styleSupported={styleSupported}
           onFocus={onFocus}
           focusActive={focusPicking}
         />

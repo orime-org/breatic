@@ -26,7 +26,6 @@ import {
   filterModelsByMode,
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
-import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
 import { missingSources, referenceKinds, referencePool, type ReferencePool } from '@breatic/shared';
 import {
@@ -63,22 +62,6 @@ export interface GeneratePanelViewModel {
   mentionTokens: MentionTokens;
   /** Where the active model's pool takes each kind in this mode, and how many (#2156). */
   pool: ReferencePool;
-  /**
-   * The node's style-reference image URL (#1664) — a pick-time COPY stored on
-   * the node (`data.styleImageUrl`, one max, no upstream relationship). Unlike
-   * `referenceUrls` (i2i only), style rides the payload in EVERY mode — but
-   * only when {@link GeneratePanelViewModel.styleSupported} (capability gate).
-   * Undefined when none picked or the stored value is malformed (untrusted Yjs).
-   */
-  styleImageUrl?: string;
-  /**
-   * Whether the ACTIVE model supports style-reference images — it declares the
-   * `style_images` param on the wire (capability gate, not a mode gate: config
-   * decides which models take style). Gates the Style tool button and whether
-   * `styleImageUrl` is sent in the execute payload. False when no model
-   * resolved (empty catalog).
-   */
-  styleSupported: boolean;
   /**
    * Whether the active model declares the `camera` param cluster on the wire
    * (#1788) → the Camera control is usable. Gates whether the footer Camera
@@ -206,9 +189,7 @@ export function buildGeneratePanelViewModel(input: {
   const references = deriveReferences(nodeId, nodes, edges, input.textById);
   // t2i generates from scratch and ignores source images (design §2.5): the
   // rail still renders (greyed in the panel) but contributes NO reference URLs
-  // to the execute payload. i2i sends them. (Style images are the exception
-  // that survives t2i — resolved 30 lines down from the node's own
-  // styleImageUrl, and they ride the payload in every mode.)
+  // to the execute payload. i2i sends them.
   // i2i sends ONLY the @-picked source images (design B): a reference that is
   // connected but not @-mentioned contributes nothing; no @ at all → empty, and
   // the #1675 execute gate then blocks submitting an i2i task with no source.
@@ -231,15 +212,6 @@ export function buildGeneratePanelViewModel(input: {
     ? mentionTokens(pool, { references, focusImages, atMentioned, nodes })
     : NO_MENTION_TOKENS;
 
-  // Style image (#1664): a pick-time URL copy stored on the node itself, so —
-  // unlike i2i references — it survives t2i and rides the payload in every
-  // mode (when the model supports it). The stored value is collaborative Yjs
-  // data — untrusted — so a malformed non-string resolves to undefined.
-  const rawStyle = content?.styleImageUrl;
-  const styleImageUrl =
-    typeof rawStyle === 'string' && rawStyle.length > 0 ? rawStyle : undefined;
-
-
   return {
     models,
     model,
@@ -248,16 +220,11 @@ export function buildGeneratePanelViewModel(input: {
     referenceUrls,
     mentionTokens: mentionTokenMap,
     pool,
-    styleImageUrl,
     focusImages,
-    // Capability gate (#1664): the model declares `style_images` on the wire →
-    // it can take a style reference. Config decides which models (t2i and/or
-    // edit) support style; the frontend only reads the capability.
-    styleSupported: current ? current.params[IMAGE_SLOTS.style.param] != null : false,
     // Capability gate (#1788): the model declares the `camera` cluster on the
     // wire → it can take camera/lens/focal/aperture simulation. Edit variants
     // omit it, so `params.camera` is undefined and the Camera control is hidden
-    // (rendered only when supported, like the Style slot).
+    // (rendered only when supported).
     cameraSupported: current ? current.params.camera != null : false,
     modelEntry: current,
     nodeStatus: content?.status,
@@ -265,10 +232,7 @@ export function buildGeneratePanelViewModel(input: {
     // Execute gate (#1675): the active panel mode and the model's own
     // declarations decide, through the same rule the server re-checks.
     missing: current
-      ? missingSources(current, mode, {
-        ...poolParams(pool, referenceUrls),
-        [IMAGE_SLOTS.style.param]: styleImageUrl === undefined ? [] : [styleImageUrl],
-      })
+      ? missingSources(current, mode, poolParams(pool, referenceUrls))
       : [],
     maxInputChars: current?.max_input_chars,
     promptRequired: current?.takes_prompt ?? true,

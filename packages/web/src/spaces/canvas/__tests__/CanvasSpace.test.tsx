@@ -1270,54 +1270,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     warnSpy.mockRestore();
   });
 
-  // Style pick (#1664): a style reference is a URL COPY of an image node's
-  // asset — so while style-picking only NON-EMPTY image nodes glow. Non-image
-  // nodes, empty images (nothing to copy), and the target itself are dimmed.
-  it('style pick keeps only non-empty image sources selectable; dims non-image + empty + target', () => {
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'target',
-            type: 'image',
-            position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
-          },
-          {
-            id: 'src-empty',
-            type: 'image',
-            position: { x: 300, y: 0 },
-            data: { kind: 'image', status: 'idle' }, // no content — nothing to copy
-          },
-          {
-            id: 'src-text',
-            type: 'text',
-            position: { x: 600, y: 0 },
-            data: { kind: 'text', status: 'idle' },
-          },
-          {
-            id: 'src-image',
-            type: 'image',
-            position: { x: 900, y: 0 },
-            data: { kind: 'image', content: 'x.png', status: 'idle' },
-          },
-        ],
-      }),
-    );
-    renderSpace();
-    act(() => {
-      useCanvasStore.getState().startStylePick('target');
-    });
-    const cls = (id: string): string =>
-      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
-      '';
-    expect(cls('target')).toContain('canvas-pick-dimmed');
-    expect(cls('src-empty')).toContain('canvas-pick-dimmed'); // empty image
-    expect(cls('src-text')).toContain('canvas-pick-dimmed'); // not an image
-    expect(cls('src-text')).not.toContain('canvas-pick-selectable');
-    expect(cls('src-image')).toContain('canvas-pick-selectable'); // has an asset
-  });
-
   // #1904 acceptance 3: an end-frame pick takes an image and nothing else.
   // The click handler dispatches on the pick's purpose and the branches carry
   // no exhaustive check, so a slot with no branch of its own falls through to
@@ -1652,8 +1604,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   });
 
   // Unified pick-session Esc (user 2026-07-17 #8): EVERY pick purpose exits on
-  // Escape with the same guard set — reference and style had no listener at
-  // all (only focus did), so their banners showed Exit but Esc was dead.
+  // Escape with the same guard set.
   // The generate panel stays on screen for the whole pick session and its
   // prompt box is a contenteditable inside the space column. Escape has no
   // native behaviour there for the field to keep, so abandoning the pick from
@@ -1721,7 +1672,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(useCanvasStore.getState().pickSession).toBeNull();
   });
 
-  it('Escape exits a STYLE pick session with the shared guards (#8)', () => {
+  it('Escape exits a pick session only past the shared guards (#8)', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -1736,7 +1687,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     );
     renderSpace();
     act(() => {
-      useCanvasStore.getState().startStylePick('target');
+      useCanvasStore.getState().startReferencePick('target');
     });
     // Guard set (mirrors the focus handler): a consumed Esc never exits.
     act(() => {
@@ -1840,125 +1791,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     } finally {
       alert.remove();
     }
-  });
-
-  // Style pick completion (#1664): clicking a non-empty image COPIES its asset
-  // URL onto the target (no upstream relationship) and AUTO-EXITS the session
-  // (one slot, one pick — unlike the continuous reference pick).
-  it('style pick click copies the image URL and auto-exits the session', async () => {
-    const setStyle = vi
-      .spyOn(canvasSpace, 'setNodeStyleImage')
-      .mockImplementation(() => {});
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'target',
-            type: 'image',
-            position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
-          },
-          {
-            id: 'src-image',
-            type: 'image',
-            position: { x: 600, y: 0 },
-            data: { kind: 'image', content: 'https://cdn/x.png', status: 'idle' },
-          },
-        ],
-      }),
-    );
-    renderSpace();
-    act(() => {
-      useCanvasStore.getState().startStylePick('target');
-    });
-    const candidate = document.querySelector(
-      '.react-flow__node[data-id="src-image"]',
-    );
-    expect(candidate).not.toBeNull();
-    act(() => {
-      candidate?.dispatchEvent(
-        new MouseEvent('click', { bubbles: true, cancelable: true }),
-      );
-    });
-    await waitFor(() =>
-      expect(setStyle).toHaveBeenCalledWith('p', 's', 'target', 'https://cdn/x.png'),
-    );
-    // One slot — the session ends on selection.
-    expect(useCanvasStore.getState().pickSession).toBeNull();
-    setStyle.mockRestore();
-  });
-
-  it('style pick click on an EMPTY image is a no-op (nothing to copy; stays picking)', () => {
-    const setStyle = vi
-      .spyOn(canvasSpace, 'setNodeStyleImage')
-      .mockImplementation(() => {});
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'target',
-            type: 'image',
-            position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
-          },
-          {
-            id: 'src-empty',
-            type: 'image',
-            position: { x: 600, y: 0 },
-            data: { kind: 'image', status: 'idle' },
-          },
-        ],
-      }),
-    );
-    renderSpace();
-    act(() => {
-      useCanvasStore.getState().startStylePick('target');
-    });
-    const candidate = document.querySelector(
-      '.react-flow__node[data-id="src-empty"]',
-    );
-    act(() => {
-      candidate?.dispatchEvent(
-        new MouseEvent('click', { bubbles: true, cancelable: true }),
-      );
-    });
-    expect(setStyle).not.toHaveBeenCalled();
-    expect(useCanvasStore.getState().pickSession).toEqual({
-      nodeId: 'target',
-      purpose: 'style',
-    });
-    setStyle.mockRestore();
-    act(() => {
-      useCanvasStore.setState({ pickSession: null });
-    });
-  });
-
-  // The pick banner explains the active purpose: style picks read differently
-  // from reference picks so the user knows what a click will wire (#1664).
-  it('shows the style-pick banner text during a style pick', () => {
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'target',
-            type: 'image',
-            position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
-          },
-        ],
-      }),
-    );
-    renderSpace();
-    act(() => {
-      useCanvasStore.getState().startStylePick('target');
-    });
-    // en fixture: "Select a style reference from the canvas".
-    expect(screen.getByTestId('reference-pick-banner').textContent).toContain(
-      'style reference',
-    );
-    act(() => {
-      useCanvasStore.setState({ pickSession: null });
-    });
   });
 
   // Pick-mode pane-click guard (spec §9.2, user-ratified): while picking
@@ -3408,41 +3240,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-video')).not.toContain('canvas-pick-dimmed');
     // 图片仍然是候选（这次是加类型，不是换类型）
     expect(cls('src-image')).toContain('canvas-pick-selectable');
-  });
-
-  it('风格挑选：视频节点仍然变暗，不受聚焦那次放宽影响（#1987 A6）', () => {
-    // 变暗规则那条分支里，style 和视频槽位共用一个回落值（`pickedNodes` 里
-    // 那句 `paintingSlot ? VIDEO_SLOTS[...].accepts : 'image'`，行号会漂、
-    // 按这个表达式找），而 style 的点击侧只认图片。照着那个回落值放宽
-    // 会让视频在风格挑选里变成「看着能选、点了没反应」—— 正是上面那条注释
-    // 记的病。所以放宽必须只作用于 focus 那一支。
-    mockUseCanvasSpace.mockReturnValue(
-      mockSpace({
-        nodes: [
-          {
-            id: 'target',
-            type: 'image',
-            position: { x: 0, y: 0 },
-            data: { kind: 'image', status: 'idle' },
-          },
-          {
-            id: 'src-video',
-            type: 'video',
-            position: { x: 300, y: 0 },
-            data: { kind: 'video', content: 'v.mp4', status: 'idle' },
-          },
-        ],
-      }),
-    );
-    renderSpace();
-    act(() => {
-      useCanvasStore.getState().startStylePick('target');
-    });
-    const cls = (id: string): string =>
-      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ??
-      '';
-    expect(cls('src-video')).toContain('canvas-pick-dimmed');
-    expect(cls('src-video')).not.toContain('canvas-pick-selectable');
   });
 
   it('聚焦挑选：点中视频节点之后裁剪浮层挂上（#1987 A1）', () => {

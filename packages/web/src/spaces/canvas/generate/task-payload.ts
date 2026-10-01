@@ -14,7 +14,6 @@
 import type { ReferencePool, TaskCreateInput } from '@breatic/shared';
 import type { EstimateInput } from '@breatic/shared/pricing';
 
-import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { buildOverwriteTaskPayload } from '@web/spaces/canvas/generate/overwrite-task-payload';
 import { poolParams, type ReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 
@@ -38,32 +37,6 @@ export interface GenerateTaskInput {
    * `poolParams` builds them (#2156) — empty when none are mentioned.
    */
   poolParams: Readonly<Record<string, readonly string[]>>;
-  /**
-   * Style-reference image URL (image-node style slice #1664) — the node's
-   * pick-time copy, included by the caller ONLY when the active model supports
-   * style references (capability gate). Sent as `params.style_images` (a
-   * one-element list — the wire param is list-typed; the product caps it at
-   * one). Absent → the key is omitted. Rides every mode (style survives t2i),
-   * distinct from the pool (the i2i source).
-   */
-  styleImageUrl?: string;
-}
-
-/**
- * The source params one run sends: the mentioned references and, when the
- * caller passes one, the style image as a one-element list.
- * @param pool - The mentioned references, under the params the model reads.
- * @param styleImageUrl - The style image, only when the model takes one.
- * @returns The source params, ready to merge into the payload.
- */
-function imageSourceParams(
-  pool: Readonly<Record<string, readonly string[]>>,
-  styleImageUrl: string | undefined,
-): Record<string, unknown> {
-  return {
-    ...pool,
-    ...(styleImageUrl ? { [IMAGE_SLOTS.style.param]: [styleImageUrl] } : {}),
-  };
 }
 
 /**
@@ -86,7 +59,7 @@ export function buildGenerateTaskPayload(
     params: {
       ...input.params,
       prompt: input.promptText,
-      ...imageSourceParams(input.poolParams, input.styleImageUrl),
+      ...input.poolParams,
     },
   });
 }
@@ -96,8 +69,6 @@ interface ImageEstimateSource {
   params: Readonly<Record<string, unknown>>;
   pool: ReferencePool;
   referenceUrls: ReferenceUrls;
-  styleSupported: boolean;
-  styleImageUrl?: string;
 }
 
 /**
@@ -108,9 +79,8 @@ interface ImageEstimateSource {
  * @returns The estimate input.
  */
 export function imageEstimateInput(vm: ImageEstimateSource, prompt: string): EstimateInput {
-  const style = vm.styleSupported ? vm.styleImageUrl : undefined;
   return {
-    params: { ...vm.params, ...imageSourceParams(poolParams(vm.pool, vm.referenceUrls), style) },
+    params: { ...vm.params, ...poolParams(vm.pool, vm.referenceUrls) },
     prompt,
   };
 }
