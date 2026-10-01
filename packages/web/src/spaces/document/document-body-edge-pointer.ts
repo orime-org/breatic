@@ -27,7 +27,7 @@
  */
 
 import { createExtension } from '@blocknote/core';
-import { AllSelection, NodeSelection, Plugin, PluginKey, type Selection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type Selection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import {
@@ -239,12 +239,9 @@ class PointerFollower {
     const { view } = this;
     const { doc, selection } = view.state;
     const pointer = zone === 'body' ? positionAt(view, event.clientX, event.clientY) : null;
-    if (zone === 'body') {
-      const lossy = selection instanceof AllSelection || (selection instanceof NodeSelection && !selection.node.isInline);
-      if (!lossy || pointer === null) return;
-    }
+    if (zone === 'body' && (pointer === null || extensionEnds(selection, 1) === null)) return;
     const dir = zone === 'end' ? 1 : zone === 'start' ? -1 : pointer! >= selection.from ? 1 : -1;
-    const { anchor } = extensionEnds(selection, dir);
+    const { anchor } = extensionEnds(selection, dir) ?? selection;
     this.begin({ ...at, zone: 'shift', anchorEdge: bodyEdgeAt(doc, anchor), left: true, moved: false, onWidget: false });
     event.preventDefault();
     const next = dragSelection(doc, { press: 'shift', anchor, left: true }, zone, pointer);

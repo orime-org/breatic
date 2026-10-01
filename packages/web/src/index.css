@@ -1873,7 +1873,7 @@ body {
    no-break space in the line's own flow, so it stands where the caret would
    under the line's alignment — and the browser's is cleared, so the line
    wears one mark from the first frame of the drag. */
-.doc-body .doc-empty-line-in-selection > .bn-inline-content::before {
+.doc-body .doc-empty-line-in-selection .bn-inline-content::before {
   content: '\a0';
   display: inline-block;
   background-color: var(--color-selection);
