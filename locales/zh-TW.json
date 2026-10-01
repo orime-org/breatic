@@ -435,10 +435,8 @@
       "sourceGone": "被讀取的節點已不存在。這次理解沒有連線。"
     },
     "generatePanel": {
-      "style": "風格",
       "focus": "聚焦",
       "reference": "參考",
-      "styleTip": "從畫布選一張圖作為風格參考",
       "focusTip": "取節點上的一塊區域作為參考",
       "referenceTip": "從畫布選圖作為參考",
       "referenceTipAudio": "從畫布選文字作為參考",
@@ -475,13 +473,11 @@
       "sfxDuration": "時長",
       "sfxDurationSeconds": "{n} 秒",
       "selectFromCanvas": "從畫布選擇參考",
-      "selectStyleFromCanvas": "從畫布選擇風格參考",
       "selectFirstFrameFromCanvas": "在畫布上選一張圖片作為首幀",
       "selectEndFrameFromCanvas": "在畫布上選一張圖片作為尾幀",
       "selectCharacterImageFromCanvas": "在畫布上選一張圖片作為角色",
       "selectDrivingVideoFromCanvas": "在畫布上選一段影片來驅動動作",
       "selectDrivingAudioFromCanvas": "在畫布上選一段音訊，口型跟著它動",
-      "removeStyle": "移除風格參考",
       "exitSelect": "退出",
       "locateSource": "定位到來源節點",
       "camera": "攝影機",
@@ -645,7 +641,24 @@
         "voice": "音色",
         "text": "文字",
         "pronunciation": "讀作"
-      }
+      },
+      "storyboard": {
+        "label": "分鏡",
+        "perShot": "逐鏡頭編輯",
+        "autoHint": "由模型拆分鏡頭",
+        "mainPromptKept": "主提示詞已保留",
+        "back": "返回自動分鏡",
+        "shot": "鏡頭 {n, number}",
+        "removeShot": "刪除",
+        "addShot": "新增鏡頭",
+        "shotPlaceholder": "描述這個鏡頭，@ 引用參考",
+        "shotCapReached": "最多 {max, number} 個鏡頭",
+        "noSecondToSpare": "加長總時長才能再加鏡頭"
+      },
+      "refuseStoryboardShotEmpty": "鏡頭 {shot, number} 沒有內容",
+      "refuseStoryboardTooMany": "最多 {limit, number} 個鏡頭",
+      "refuseStoryboardShotTooLong": "鏡頭 {shot, number} 超過 {limit, number} 字上限",
+      "refuseStoryboardDurationMismatch": "鏡頭時長合計 {shots, number} 秒，影片時長 {total, number} 秒"
     },
     "nodeMenu": {
       "generate": "生成",

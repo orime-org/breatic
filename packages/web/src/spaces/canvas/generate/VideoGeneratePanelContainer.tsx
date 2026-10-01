@@ -3,7 +3,6 @@
 
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
-import type * as Y from 'yjs';
 
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
@@ -13,11 +12,23 @@ import {
   readCanvasGraph,
   setNodeMode,
   setNodeModel,
+  runCanvasUndoBatch,
   setNodeParams,
   type CanvasEdge,
   type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
+import {
+  addStoryboardShot,
+  enterStoryboardShots,
+  readStoryboard,
+  removeStoryboardShot,
+  retotalStoryboard,
+  setStoryboardKind,
+  stepStoryboardShot,
+  type StoryboardShotView,
+} from '@web/data/yjs/node-storyboard';
+import { useStoryboard } from '@web/data/yjs/use-storyboard';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -25,8 +36,13 @@ import { useCanvasStore } from '@web/stores';
 import {
   evaluateExecute,
   extractPromptText,
+  effectiveStoryboardKind,
+  storyboardSpec,
   type ExecuteVerdict,
+  type ModelEntry,
   type ReferencePool,
+  type StoryboardKind,
+  type StoryboardSpec,
 } from '@breatic/shared';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
@@ -55,7 +71,11 @@ import {
 } from '@web/data/yjs/node-view';
 import {
   PromptEditor,
+  type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
+import { ShotList, StoryboardSwitchRow } from '@web/spaces/canvas/generate/StoryboardControls';
+import { mentionedSourceIds } from '@web/spaces/canvas/generate/fragment-prompt';
+import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 import {
   VIDEO_MODE_OPTIONS,
@@ -91,6 +111,34 @@ import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNo
  * anyway; nothing downstream writes to it, and the type says they may not.
  */
 const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
+
+/**
+ * What a shot box reports its words and mentions to: nobody, since they are
+ * read off its fragment at submit.
+ */
+function IGNORE(): void {
+  // Nothing to do.
+}
+
+/**
+ * A model's storyboard, when it has one.
+ * @param entry - The current model.
+ * @returns Its storyboard spec.
+ */
+function specOf(entry: ModelEntry | undefined): StoryboardSpec | undefined {
+  return entry ? storyboardSpec(entry.params) : undefined;
+}
+
+/**
+ * The total seconds a run's shots have to add up to.
+ * @param spec - The model's storyboard.
+ * @param params - The run's params.
+ * @returns The total, 0 when the model names none.
+ */
+function totalOf(spec: StoryboardSpec | undefined, params: Readonly<Record<string, unknown>>): number {
+  const raw = spec?.totalParam === undefined ? undefined : params[spec.totalParam];
+  return typeof raw === 'number' ? raw : 0;
+}
 
 interface VideoGeneratePanelContainerProps {
   /** Live canvas node views (target + reference sources). */
@@ -168,15 +216,6 @@ function VideoGeneratePanelBody({
     atMentionedRef.current = sourceIds;
   }, []);
 
-  // Resolved in an effect, not during render: the node id can change under a
-  // mounted panel and this keeps that transition in one place. Null means the
-  // node predates prompt seeding (see getPromptFragment) — the panel then
-  // renders without an editor rather than minting a fragment behind the user.
-  const [fragment, setFragment] = React.useState<Y.XmlFragment | null>(null);
-  React.useEffect(() => {
-    setFragment(getPromptFragment(projectId, spaceId, nodeId));
-  }, [projectId, spaceId, nodeId]);
-
   // The mode lives on the NODE, not in panel state: the switch is
   // collaborative, so a mode someone else picked has to show up here, and
   // reopening the panel has to land where it was left.
@@ -189,6 +228,16 @@ function VideoGeneratePanelBody({
     [models],
   );
   const mode = nodeVideoMode(nodes, nodeId, availableModes);
+
+  // Read during render: `getPromptFragment` is a synchronous document read with
+  // no side effect. Each mode keeps its own prompt (#2218), so a mode switch
+  // binds the editor to that mode's words. Null means the node has no seeded
+  // prompt for this mode (see getPromptFragment) — the panel then renders without a prompt
+  // editor rather than minting a fragment behind the user's back.
+  const fragment = React.useMemo(
+    () => getPromptFragment(projectId, spaceId, nodeId, mode),
+    [projectId, spaceId, nodeId, mode],
+  );
 
   // A referenced text node's body is a shared fragment the node view does not
   // carry (#1774), so the panel follows the ones it can reference. This is the
@@ -228,13 +277,34 @@ function VideoGeneratePanelBody({
     catalog?.credit_multiplier ?? 1,
   );
 
-  // The rail refuses this itself now (#1966): `takesPrompt` is one of the two
-  // booleans its context carries, so "can this row be inserted" is answered in
-  // one place instead of half here and half there. This callback is back to
-  // doing only what its name says.
+  // The mode's storyboard (#2218). Only a model declaring one can use it, so
+  // the tier in effect is the stored one on such a model and off on any other;
+  // the stored one stays as it is while the reader moves between models.
+  const spec = React.useMemo(() => specOf(vm.modelEntry), [vm.modelEntry]);
+  const storyboard = useStoryboard(projectId, spaceId, nodeId, mode);
+  const storedKind: StoryboardKind = storyboard?.kind ?? 'off';
+  const tier = effectiveStoryboardKind(vm.modelEntry?.params ?? {}, storyboard?.kind);
+  const total = totalOf(spec, vm.params);
+  // A fresh list only when a shot is added, removed, brought back or given
+  // other seconds; words typed in a shot leave it as it is (`useStoryboard`).
+  const shots = storyboard?.shots;
+
+  // The box the caret was last in, so the rail's insert button lands there:
+  // the main prompt, or one shot's box by its id. Same shape as the audio
+  // panel's `lastFocusedBox`.
+  const lastFocusedBox = React.useRef<string>('main');
+  const shotEditors = React.useRef(new Map<string, PromptEditorHandle>());
+  // The rail refuses a row the prompt cannot take itself (#1966), so this
+  // only routes the insert: the shot box the caret was last in, else the
+  // first shot box, else the main prompt. Shot boxes are mounted only in the
+  // per-shot tier and leave the map when they unmount.
   const handleInsertReference = React.useCallback(
     (item: ReferenceRailItem) => {
-      promptEditorRef.current?.insertReference(item);
+      (
+        shotEditors.current.get(lastFocusedBox.current) ??
+        shotEditors.current.values().next().value ??
+        promptEditorRef.current
+      )?.insertReference(item);
     },
     [promptEditorRef],
   );
@@ -314,6 +384,10 @@ function VideoGeneratePanelBody({
     ...references,
     ...vm.focusImages.map(focusToRailItem),
   ]);
+  // The submit serializes shots itself and needs what each text chip says:
+  // the latest rows the editors were handed.
+  const referencesRef = React.useRef(stableReferences);
+  referencesRef.current = stableReferences;
   // The picked slot URLs are a fresh object per view-model build, on the same
   // terms as the references above — at most one short string per slot, so a
   // stringify key is cheap and exact. Before the slots were collected into one
@@ -388,14 +462,61 @@ function VideoGeneratePanelBody({
       // user just used. The node's stored model can be absent (a node created
       // moments ago) or no longer offered under this mode, and keying the
       // record on that would write the edit where the panel never reads it.
+      const live = freshVm();
       const paramsByModel = resolveParamsEdit(
         freshContent(),
         partial,
-        freshVm().model,
+        live.model,
       );
-      setNodeParams(projectId, spaceId, nodeId, paramsByModel);
+      // A new total re-splits the shots in the per-shot tier (design §5.3);
+      // `retotalStoryboard` leaves the other tiers' shots alone. One gesture,
+      // so one undo takes back both.
+      const liveSpec = specOf(live.modelEntry);
+      const next = liveSpec?.totalParam === undefined
+        ? undefined
+        : (partial as Record<string, unknown>)[liveSpec.totalParam];
+      runCanvasUndoBatch(projectId, spaceId, () => {
+        setNodeParams(projectId, spaceId, nodeId, paramsByModel);
+        if (typeof next === 'number') retotalStoryboard(projectId, spaceId, nodeId, live.mode, next);
+      });
     },
     [projectId, spaceId, nodeId, freshVm, freshContent],
+  );
+
+  // Storyboard writes (#2218). Each reads the mode and the total off live
+  // Yjs at click time, for the reason the other writes do: a collaborator may
+  // have switched either since this render.
+  const liveBoard = React.useCallback(() => {
+    const live = freshVm();
+    const spec = specOf(live.modelEntry);
+    return { mode: live.mode, spec, total: totalOf(spec, live.params) };
+  }, [freshVm]);
+  const onToggleStoryboard = React.useCallback(
+    (on: boolean) => setStoryboardKind(projectId, spaceId, nodeId, freshVm().mode, on ? 'auto' : 'off'),
+    [projectId, spaceId, nodeId, freshVm],
+  );
+  const onEnterShots = React.useCallback(() => {
+    const { mode: liveMode, total: liveTotal } = liveBoard();
+    enterStoryboardShots(projectId, spaceId, nodeId, liveMode, liveTotal);
+  }, [projectId, spaceId, nodeId, liveBoard]);
+  const onBackToAuto = React.useCallback(
+    () => setStoryboardKind(projectId, spaceId, nodeId, freshVm().mode, 'auto'),
+    [projectId, spaceId, nodeId, freshVm],
+  );
+  const onAddShot = React.useCallback(() => {
+    const { mode: liveMode, spec: liveSpec, total: liveTotal } = liveBoard();
+    addStoryboardShot(projectId, spaceId, nodeId, liveMode, liveTotal, liveSpec?.maxShots ?? Number.POSITIVE_INFINITY);
+  }, [projectId, spaceId, nodeId, liveBoard]);
+  const onStepShot = React.useCallback(
+    (shotId: string, delta: 1 | -1) => stepStoryboardShot(projectId, spaceId, nodeId, freshVm().mode, shotId, delta),
+    [projectId, spaceId, nodeId, freshVm],
+  );
+  const onRemoveShot = React.useCallback(
+    (shotId: string) => {
+      const { mode: liveMode, total: liveTotal } = liveBoard();
+      removeStoryboardShot(projectId, spaceId, nodeId, liveMode, shotId, liveTotal);
+    },
+    [projectId, spaceId, nodeId, liveBoard],
   );
 
   // Reference and first frame are TOGGLES: start the pick when this node is not
@@ -554,7 +675,27 @@ function VideoGeneratePanelBody({
       warnNodeGate(t(gateBlock.toastKey));
       return;
     }
-    const fresh = freshVm(new Set(atMentionedRef.current));
+    // Which sources the run sends depends on the tier in effect (design
+    // §5.4): the main prompt's `@` under off and auto, the union of every
+    // shot's under the per-shot tier, read off the shots the node holds right
+    // now. The tier needs the model, so the model is read first.
+    const probe = freshVm();
+    const liveSpec = specOf(probe.modelEntry);
+    const board = readStoryboard(projectId, spaceId, nodeId, probe.mode);
+    const liveTier = effectiveStoryboardKind(probe.modelEntry?.params ?? {}, board?.kind);
+    const liveShots = board?.shots ?? [];
+    const mentioned = liveTier === 'custom'
+      ? liveShots.flatMap((shot) => mentionedSourceIds(shot.prompt))
+      : atMentionedRef.current;
+    const fresh = freshVm(new Set(mentioned));
+    const run = storyboardRun(
+      liveSpec,
+      liveTier,
+      liveShots,
+      totalOf(liveSpec, fresh.params),
+      referencesRef.current,
+      fresh.mentionTokens,
+    );
     // Serialize the backend prompt AT CLICK TIME: a text chip substitutes its
     // source node's CURRENT words, and that node may have been edited since
     // the last prompt keystroke — the ref would carry the stale substitution.
@@ -566,7 +707,7 @@ function VideoGeneratePanelBody({
     // previous mode — `onPromptChange` is the only writer and nothing
     // clears it, and the editor does not call back on unmount — so without
     // this line a talking-head task would carry the last mode's words.
-    const freshPrompt = fresh.promptRequired
+    const freshPrompt = fresh.promptRequired && run.sendsPrompt
       ? (promptEditorRef.current?.serializePrompt(fresh.mentionTokens) ?? promptTextRef.current)
       : '';
     // One evaluation, its own inputs: the button asked the same question of
@@ -601,6 +742,7 @@ function VideoGeneratePanelBody({
         fresh.referenceUrls,
       ),
       pools: poolCounts(fresh.pool, fresh.referenceUrls),
+      storyboard: run.gate,
     });
     if (verdict != null) {
       // The limit is written out here so the check that every id reaches a
@@ -617,6 +759,11 @@ function VideoGeneratePanelBody({
         toast.warning(t(key, {
           max: maxInputChars ?? 0,
           kind: poolKindOf(fresh.pool, verdict.slot) ?? 'other',
+          // The storyboard refusals name the shot, the cap or the seconds.
+          shot: verdict.shot ?? 0,
+          limit: verdict.limit ?? 0,
+          shots: verdict.seconds?.shots ?? 0,
+          total: verdict.seconds?.total ?? 0,
         }));
       }
       return;
@@ -632,7 +779,8 @@ function VideoGeneratePanelBody({
         spaceId,
         model: fresh.model,
         params: fresh.params,
-        promptText: freshPrompt,
+        promptText: run.sendsPrompt ? freshPrompt : undefined,
+        storyboardParams: run.params,
         // The payload's source fields are built FROM the drawn slots, so a
         // pick left behind by a mode or model switch has no way in.
         slots: fresh.slots,
@@ -721,17 +869,19 @@ function VideoGeneratePanelBody({
   // A media chip's words follow the pool, and a new record on every derive
   // would rebuild the prompt slot each time the canvas moves.
   const stableMentionTokens = useContentStable(vm.mentionTokens);
-  const promptSlot = React.useMemo(
+  const shotPlaceholder = t('canvas.generatePanel.storyboard.shotPlaceholder');
+  const mainEditor = React.useMemo(
     () =>
-      !vm.promptRequired ? (
-        <PromptNotUsedNotice />
-      ) : fragment ? (
+      fragment ? (
         <PromptEditor
           ref={promptEditorRef}
           fragment={fragment}
           placeholder={promptPlaceholder}
           onTextChange={onPromptChange}
           onAtMentionsChange={handleAtMentionsChange}
+          onFocus={() => {
+            lastFocusedBox.current = 'main';
+          }}
           references={stableReferences}
           // Same signal as the rail's: a media `@` chip is a model input only
           // where the model's pool takes its kind. Both outlets have to agree,
@@ -745,7 +895,6 @@ function VideoGeneratePanelBody({
         />
       ) : null,
     [
-      vm.promptRequired,
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
@@ -763,6 +912,87 @@ function VideoGeneratePanelBody({
       stableMentionTokens,
     ],
   );
+  // One shot's box: the same editor as the main prompt, bound to that shot's
+  // own fragment. Its words and mentions are read off the fragment at submit,
+  // so it reports them to nobody.
+  const renderShotEditor = React.useCallback(
+    (shot: StoryboardShotView, index: number) => (
+      <PromptEditor
+        ref={(handle) => {
+          if (handle) shotEditors.current.set(shot.id, handle);
+          else shotEditors.current.delete(shot.id);
+        }}
+        testId={`generate-storyboard-shot-${index + 1}-editor`}
+        startingHeight='half'
+        fragment={shot.prompt}
+        placeholder={shotPlaceholder}
+        onTextChange={IGNORE}
+        onAtMentionsChange={IGNORE}
+        onFocus={() => {
+          lastFocusedBox.current = shot.id;
+        }}
+        references={stableReferences}
+        referenceKinds={referenceKinds}
+        mentionEmptyLabel={mentionEmptyLabel}
+        mentionNoMatchLabel={mentionNoMatchLabel}
+        caretProvider={caretProvider}
+        mentionTokens={stableMentionTokens}
+      />
+    ),
+    [
+      shotPlaceholder,
+      stableReferences,
+      referenceKinds,
+      mentionEmptyLabel,
+      mentionNoMatchLabel,
+      caretProvider,
+      stableMentionTokens,
+    ],
+  );
+  const hasStoryboard = spec !== undefined;
+  const maxShots = spec?.maxShots;
+  const promptSlot = React.useMemo(() => {
+    if (!vm.promptRequired) return <PromptNotUsedNotice />;
+    const switchRow = hasStoryboard ? (
+      <StoryboardSwitchRow kind={storedKind} onToggle={onToggleStoryboard} onEnterShots={onEnterShots} />
+    ) : null;
+    return tier === 'custom' && shots ? (
+      <>
+        <ShotList
+          shots={shots}
+          total={total}
+          maxShots={maxShots}
+          onBack={onBackToAuto}
+          onStep={onStepShot}
+          onRemove={onRemoveShot}
+          onAdd={onAddShot}
+          renderEditor={renderShotEditor}
+        />
+        {switchRow}
+      </>
+    ) : (
+      <>
+        {mainEditor}
+        {switchRow}
+      </>
+    );
+  }, [
+    vm.promptRequired,
+    hasStoryboard,
+    storedKind,
+    tier,
+    shots,
+    total,
+    maxShots,
+    mainEditor,
+    renderShotEditor,
+    onToggleStoryboard,
+    onEnterShots,
+    onBackToAuto,
+    onStepShot,
+    onRemoveShot,
+    onAddShot,
+  ]);
 
   return (
     <VideoGeneratePanel
@@ -810,6 +1040,7 @@ function VideoGeneratePanelBody({
         })?.refusal ?? null
       }
       promptSlot={promptSlot}
+      durationFloor={tier === 'custom' ? shots?.length : undefined}
       onExit={closeActivePanel}
       onSelectModel={onSelectModel}
       onChangeParams={onChangeParams}

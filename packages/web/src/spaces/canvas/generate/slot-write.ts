@@ -14,8 +14,7 @@
  * Kept apart from the registry itself: that table is data every layer reads,
  * including the toolbar and the payload builder, while this reaches the
  * document. Kept apart from `slot-pick` too — that answers "can this node fill
- * the slot", which the image panel's style slot asks as well, and this writes
- * the field a slot registry names.
+ * the slot", and this writes the field a slot registry names.
  */
 
 import { setNodeSlotValue } from '@web/data/yjs/canvas-space';

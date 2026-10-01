@@ -86,14 +86,6 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
   ],
   "kwaivgi/kling-video-o3-4k/image-to-video": [{ input: { duration: 10 }, usd: 4.2 }],
   "meta/muse-image/edit": [{ input: {}, usd: 0.011 }],
-  "midjourney/image-to-video": [
-    { input: { resolution: "480p" }, usd: 0.35 },
-    { input: { resolution: "720p" }, usd: 1.1 },
-  ],
-  "midjourney/text-to-image": [
-    { input: { hd: false }, usd: 0.1 },
-    { input: { hd: true }, usd: 0.15 },
-  ],
   "minimax/h3/image-to-video": [
     { input: { resolution: "768p", duration: 5 }, usd: 0.5 },
     { input: { resolution: "2k", duration: 10 }, usd: 1.4 },
@@ -127,7 +119,6 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { quality: "max", resolution: "4k" }, usd: 1.0 },
   ],
   "recraft-ai/recraft-v4.1-pro/text-to-vector": [{ input: {}, usd: 0.3 }],
-  "reve/2.1/text-to-image": [{ input: {}, usd: 0.28 }],
   "sonilo/v1/text-to-sfx": [{ input: { duration: 60 }, usd: 0.12 }],
   "sonilo/video-to-music": [
     { input: { video: "v" }, durations: { video: [60] }, usd: 0.54 },
@@ -192,7 +183,7 @@ function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
 describe("WaveSpeed pricing contracts in the catalog", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 58 endpoints of the finalized catalog", () => {
+  it("covers exactly the 55 endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 

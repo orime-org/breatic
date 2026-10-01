@@ -292,9 +292,9 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     expect(v).not.toHaveProperty('handlingByUserId');
   });
 
-  it('projects Generate inputs (prompt/model/mode/modelByMode) onto a content view', () => {
+  it('projects Generate inputs (model/mode/modelByMode) onto a content view', () => {
     // Model revision 2026-06-15: Generate is a toolbar action; its inputs
-    // (prompt / model / mode / modelByMode / paramsByModel) live on the
+    // (model / mode / modelByMode / paramsByModel) live on the
     // content node and project onto the view. The panel reads them via the view
     // (panel-view-model consumes `CanvasNodeView.data` = this view) and writes
     // back to the wire through the canvas-space setters. `mode` is the
@@ -303,7 +303,6 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     const v = toNodeView(
       fields('image', {
         content: 'x.png',
-        prompt: 'a cat',
         model: 'flux-dev',
         mode: 't2i',
         modelByMode: { t2i: 'flux-dev', i2i: 'flux-redux' },
@@ -312,21 +311,10 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     expect(v).toMatchObject({
       kind: 'image',
       content: 'x.png',
-      prompt: 'a cat',
       model: 'flux-dev',
       mode: 't2i',
       modelByMode: { t2i: 'flux-dev', i2i: 'flux-redux' },
     });
-  });
-
-  it('projects the style image URL onto a content view (image-node style slice #1664)', () => {
-    // The style reference is a pick-time COPY of the source image URL stored on
-    // the node itself (no upstream relationship) — the panel reads it via the
-    // view for the Style tool slot + the execute payload's params.style_images.
-    const v = toNodeView(
-      fields('image', { styleImageUrl: 'https://cdn/style.png' }),
-    );
-    expect(v).toMatchObject({ kind: 'image', styleImageUrl: 'https://cdn/style.png' });
   });
 
   it('projects focus images onto a content view (#1782 focus slice)', () => {

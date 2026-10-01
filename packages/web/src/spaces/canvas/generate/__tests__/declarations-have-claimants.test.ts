@@ -37,8 +37,9 @@ import {
   GENERATION_NODE_MODES,
   PANEL_EDITOR_PARAM,
   REFERENCE_KINDS,
+  storyboardSpec,
 } from '@breatic/shared';
-import type { GenerationNodeType, ModelEntry } from '@breatic/shared';
+import type { GenerationNodeType, ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 
@@ -50,7 +51,6 @@ import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
-import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { modelControls } from '@web/spaces/canvas/generate/model-controls';
 import { RATIO_RESOLUTION_PARAMS } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import {
@@ -75,7 +75,7 @@ const LOCALE_FILES = ['en.json', 'ja.json', 'ko.json', 'zh-CN.json', 'zh-TW.json
 
 /** What one model declares about one of its parameters. */
 interface ParamDeclaration {
-  /** Who fills it: canvas, pool, editor, panel, remote, none. */
+  /** Who fills it: canvas, pool, editor, panel, remote, storyboard, none. */
   fill?: unknown;
   /** The node kind it takes, when something points at a node to fill it. */
   accepts?: unknown;
@@ -189,8 +189,8 @@ const PANEL: Readonly<
   >
 > = {
   image: {
-    // One slot, offered in every image mode.
-    slots: () => Object.values(IMAGE_SLOTS).map((spec) => spec.param),
+    // The image panel draws no slot: its sources come through the pool.
+    slots: () => [],
     controls: [...RATIO_RESOLUTION_PARAMS, ...CAMERA_PARAMS],
   },
   video: {
@@ -348,13 +348,8 @@ describe('what the catalog declares', () => {
     // Every slot drawing that param, not one of them: two video slots carry
     // `image` and two carry `video`, so a map keyed by the param name would
     // keep the last one written and hide a disagreement between them.
-    //
-    // The image panel's slot carries its kind in the canvas click handler
-    // rather than in its registry entry, so it is named here: a declaration
-    // saying that slot takes clips would light up a picture node all the same.
     const slotSpecs: Array<{ param: string; accepts: string; testId: string }> = [
       ...[VIDEO_SLOTS, AUDIO_SLOTS].flatMap((registry) => Object.values(registry)),
-      ...Object.values(IMAGE_SLOTS).map((spec) => ({ ...spec, accepts: 'image' })),
     ];
     expect(
       objections('canvas', (_model, param, spec) => {
@@ -441,6 +436,26 @@ describe('what the catalog declares', () => {
         : 'declares fill: remote without remote_source: voices, and the voice picker locates its param by that marker alone',
     );
     expect([...drawn, ...remote]).toEqual([]);
+  });
+
+  it('gives every storyboard-filled param its place in the storyboard controls', () => {
+    const found = objections('storyboard', (model, param) => {
+      if (!nodesOffering(model).includes('video')) {
+        return 'declares fill: storyboard while only the video panel draws the storyboard controls';
+      }
+      const spec = storyboardSpec(model.params as Record<string, ParamDescriptor>);
+      if (spec === undefined) return 'declares fill: storyboard without a fill: storyboard items param to hold the shots';
+      if (param !== spec.shotsParam && param !== spec.tierParam) {
+        return `is a third fill: storyboard param beside '${spec.shotsParam}' and '${String(spec.tierParam)}', and the controls write neither shots nor tier into it`;
+      }
+      if (spec.tierParam === undefined) return 'has shots but no fill: storyboard param naming the tier';
+      const fields = (model.params[spec.shotsParam] as { fields?: Record<string, unknown> }).fields ?? {};
+      if (!('prompt' in fields)) return `'${spec.shotsParam}' has no prompt field, and each shot's text box writes one`;
+      return spec.totalParam === undefined
+        ? `'${spec.shotsParam}' has no seconds field naming one of the model's params, so shot seconds cannot add up to the video's length`
+        : null;
+    });
+    expect(found).toEqual([]);
   });
 
   it('leaves every param that says it has no control unclaimed, and says why', () => {
@@ -531,7 +546,6 @@ describe('what the catalog declares', () => {
       clearLabelKey: string;
       errorKey?: string;
     }> = [
-      ...Object.values(IMAGE_SLOTS),
       ...Object.values(VIDEO_SLOTS),
       ...Object.values(AUDIO_SLOTS),
     ];

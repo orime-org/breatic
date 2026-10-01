@@ -11,7 +11,7 @@
  * quote its own price.
  */
 
-import { layersOf, markTargets, nameableFeeders, promptPlainText } from '@breatic/shared';
+import { layersOf, markTargets, nameableFeeders, promptPlainText, proposalMarkSegments } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ModelEntry, ProposalNode } from '@breatic/shared';
 import type { CreditEstimate } from '@breatic/shared/pricing';
 
@@ -223,7 +223,9 @@ export function todosOf(proposal: CanvasProposal, lines: PanelLines): NodeTodos[
   proposal.nodes.forEach((node, at) => {
     let assetsSeen = 0;
     const mine = empties[at] ?? [];
-    for (const segment of node.prompt ?? []) {
+    // The main prompt and then each shot, in the one order the marks are read
+    // in (#2218), so the k-th asset mark still points at the k-th empty node.
+    for (const segment of proposalMarkSegments(node)) {
       const slot = segment.slot;
       if (!slot) continue;
       if (slot.kind === 'ref') continue;
@@ -246,7 +248,7 @@ export function todosOf(proposal: CanvasProposal, lines: PanelLines): NodeTodos[
     // A model drawing no prompt box shows nothing the agent wrote, so saying
     // the prompt is written would send the reader looking for a box that is
     // not there. The check has already answered which kind this is.
-    const writtenPrompt = node.takesPrompt !== false && (node.prompt?.length ?? 0) > 0;
+    const writtenPrompt = node.takesPrompt !== false && proposalMarkSegments(node).length > 0;
     add(at, at, writtenPrompt ? lines.prompt : lines.settings);
   });
   const groups: NodeTodos[] = [];
@@ -354,7 +356,7 @@ export async function creditsOf(
     runs.map(({ node, entry, index }) =>
       estimateCredits(
         { ...entry!, pricing: entry!.pricing! },
-        { params: wiredParams(entry!, proposal, index), prompt: promptPlainText(node.prompt ?? []) },
+        { params: wiredParams(entry!, proposal, index), prompt: promptPlainText(proposalMarkSegments(node)) },
         catalog.credit_multiplier,
       ),
     ),

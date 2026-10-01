@@ -142,7 +142,7 @@ describe("CanvasNodeFields", () => {
         createdBy: "user-1",
         locked: false,
         attachments: [],
-        prompt: "a painting of a sunset",
+        prompts: { t2i: "a painting of a sunset" },
         mode: "t2i",
         model: "flux-dev",
         paramsByModel: { "flux-dev": { steps: 30, guidance: 7.5 } },

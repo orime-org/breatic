@@ -435,10 +435,8 @@
       "sourceGone": "読み取り元のノードがありません。この読み取りに線はつながっていません。"
     },
     "generatePanel": {
-      "style": "スタイル",
       "focus": "フォーカス",
       "reference": "参照",
-      "styleTip": "画像を1枚選んでスタイル参照にします",
       "focusTip": "ノードの一部の領域を参照にします",
       "referenceTip": "キャンバスから画像を選んで参照にします",
       "referenceTipAudio": "キャンバスから文字を選んで参照にします",
@@ -475,13 +473,11 @@
       "sfxDuration": "長さ",
       "sfxDurationSeconds": "{n}秒",
       "selectFromCanvas": "キャンバスから参照を選択",
-      "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
       "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
       "selectEndFrameFromCanvas": "キャンバスで最後のフレームにする画像を選択",
       "selectCharacterImageFromCanvas": "キャンバスでキャラクターにする画像を選択",
       "selectDrivingVideoFromCanvas": "キャンバスで動きの元にする動画を選択",
       "selectDrivingAudioFromCanvas": "キャンバスで口の動きに合わせる音声を選択",
-      "removeStyle": "スタイル参照を削除",
       "exitSelect": "終了",
       "locateSource": "ソースノードに移動",
       "camera": "カメラ",
@@ -645,7 +641,24 @@
         "voice": "音声",
         "text": "テキスト",
         "pronunciation": "読み"
-      }
+      },
+      "storyboard": {
+        "label": "ストーリーボード",
+        "perShot": "ショットごとに編集",
+        "autoHint": "モデルがショットを分割します",
+        "mainPromptKept": "メインプロンプトは保持されています",
+        "back": "自動ストーリーボードに戻る",
+        "shot": "ショット {n, number}",
+        "removeShot": "削除",
+        "addShot": "ショットを追加",
+        "shotPlaceholder": "このショットを説明してください。@ で参照を追加",
+        "shotCapReached": "最大 {max, number} ショット",
+        "noSecondToSpare": "ショットを追加するには動画を長くしてください"
+      },
+      "refuseStoryboardShotEmpty": "ショット {shot, number} が空です",
+      "refuseStoryboardTooMany": "最大 {limit, number} ショット",
+      "refuseStoryboardShotTooLong": "ショット {shot, number} が{limit, number}文字の上限を超えています",
+      "refuseStoryboardDurationMismatch": "ショットの合計は{shots, number}秒、動画は{total, number}秒です"
     },
     "nodeMenu": {
       "generate": "生成",

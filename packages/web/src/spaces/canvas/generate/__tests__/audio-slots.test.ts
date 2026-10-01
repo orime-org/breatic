@@ -75,7 +75,6 @@ describe('slotForPurpose reaches both registries', () => {
 
   it('answers undefined for a pick that fills no slot', () => {
     expect(slotForPurpose('reference')).toBeUndefined();
-    expect(slotForPurpose('style')).toBeUndefined();
   });
 });
 

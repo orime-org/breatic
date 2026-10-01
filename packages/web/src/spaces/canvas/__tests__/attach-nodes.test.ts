@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
+import type { ModelCatalog, ModelEntry } from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { itemForPick } from '@web/spaces/canvas/attach-nodes';
@@ -33,10 +34,11 @@ function node(id: string, data: Record<string, unknown>, parentId?: string): Can
 const IMAGE = node('i1', { kind: 'image', name: 'Cover', content: 'https://cdn.example/c.png' });
 const TEXT = node('t1', { kind: 'text', name: 'Script' });
 const GROUP = node('g1', { kind: 'group', name: 'Shots' });
-const IN_GROUP = node('v1', { kind: 'video', name: 'Opening' }, 'g1');
+const IN_GROUP = node('v1', { kind: 'video', name: 'Opening', mode: 't2v', model: 'kling' }, 'g1');
 const MODEL = node('m1', { kind: '3d', name: 'Model' });
 const NOTE = node('a1', { kind: 'annotation', content: 'Check the colours here', replies: [] });
-const ALL = [IMAGE, TEXT, GROUP, IN_GROUP, MODEL, NOTE];
+const SPEECH = node('s1', { kind: 'audio', name: 'Voice', mode: 'tts' });
+const ALL = [IMAGE, TEXT, GROUP, IN_GROUP, MODEL, NOTE, SPEECH];
 
 /**
  * A paragraph of text, as the editors write one.
@@ -62,34 +64,100 @@ function mention(label: string): Y.XmlElement {
 }
 
 /**
- * The fragments each node holds, attached to one document so they can be read.
- * @returns A reader by node id.
+ * A fragment holding some blocks.
+ * @param blocks - What it holds.
+ * @returns The fragment, not yet attached.
  */
-function fragments(): (id: string) => Record<string, Y.XmlFragment> {
-  const doc = new Y.Doc();
-  const byNode: Record<string, Record<string, Y.XmlFragment>> = {};
-  /**
-   * Attach a fragment holding some blocks.
-   * @param id - The node.
-   * @param key - The field it sits under.
-   * @param blocks - What it holds.
-   */
-  const put = (id: string, key: string, blocks: Y.XmlElement[]): void => {
-    const fragment = doc.getXmlFragment(`${id}.${key}`);
-    fragment.insert(0, blocks);
-    byNode[id] = { ...byNode[id], [key]: fragment };
-  };
-  put('i1', 'prompt', [paragraph('a red car at dusk')]);
-  put('t1', 'body', [paragraph('Line one'), paragraph('Line two')]);
-  put('t1', 'prompt', [paragraph()]);
-  const styled = paragraph('Use ');
-  styled.insert(1, [mention('Image 1'), new Y.XmlText(' as the style')]);
-  put('v1', 'prompt', [styled]);
-  put('v1', 'lyrics', [paragraph('La la')]);
-  return (id) => byNode[id] ?? {};
+function fragment(...blocks: Y.XmlElement[]): Y.XmlFragment {
+  const out = new Y.XmlFragment();
+  out.insert(0, blocks);
+  return out;
 }
 
-const readers = { fragmentsOf: fragments() };
+/**
+ * A map holding the given entries.
+ * @param entries - Its keys and values.
+ * @returns The map, not yet attached.
+ */
+function ymap(entries: Record<string, unknown>): Y.Map<unknown> {
+  const out = new Y.Map<unknown>();
+  for (const [key, value] of Object.entries(entries)) out.set(key, value);
+  return out;
+}
+
+/**
+ * Each node's stored data map, attached to one document so it can be read.
+ * @returns A reader by node id.
+ */
+function dataMaps(): (id: string) => Y.Map<unknown> | null {
+  const doc = new Y.Doc();
+  const root = doc.getMap<Y.Map<unknown>>('data');
+  const styled = paragraph('Use ');
+  styled.insert(1, [mention('Image 1'), new Y.XmlText(' as the style')]);
+  root.set('i1', ymap({
+    prompts: ymap({ t2i: fragment(paragraph('a red car at dusk')), i2i: fragment(paragraph('make it blue')) }),
+  }));
+  root.set('t1', ymap({ body: fragment(paragraph('Line one'), paragraph('Line two')) }));
+  const shots = new Y.Array<Y.Map<unknown>>();
+  shots.push([ymap({ id: 's1', prompt: fragment(paragraph('a paper boat')), duration: 3 })]);
+  root.set('v1', ymap({
+    mode: 't2v',
+    model: 'kling',
+    prompts: ymap({ t2v: fragment(styled) }),
+    storyboards: ymap({ t2v: ymap({ kind: 'custom', shots }) }),
+  }));
+  return (id) => root.get(id) ?? null;
+}
+
+/**
+ * A video model serving text to video, with or without a storyboard.
+ * @param name - Its id.
+ * @param storyboard - Whether it takes one.
+ * @returns The entry.
+ */
+function videoModel(name: string, storyboard: boolean): ModelEntry {
+  return {
+    name,
+    display_name: name,
+    modality: 'video',
+    mode: ['t2v'],
+    description: '',
+    guide: '',
+    tier: 'optional',
+    generation_time: 10,
+    takes_prompt: true,
+    params: {
+      duration: { description: '', default: 5, values: [3, 5], fill: 'panel' },
+      ...(storyboard
+        ? {
+          multi_prompt: {
+            description: '',
+            default: null,
+            type: 'items',
+            max_items: 6,
+            fill: 'storyboard',
+            fields: { prompt: { type: 'text' }, duration: { values: [1, 2, 3, 4, 5] } },
+          },
+          shot_type: { description: '', default: null, values: ['intelligence', 'customize'], fill: 'storyboard' },
+        }
+        : {}),
+    },
+    providers: [],
+  } as ModelEntry;
+}
+
+const SPEECH_MODEL = {
+  ...videoModel('speech', false),
+  modality: 'audio',
+  mode: ['tts'],
+  params: { voice_id: { description: '', default: null, remote_source: 'voices' } },
+} as ModelEntry;
+
+const CATALOG = {
+  image: [], video: [videoModel('kling', true)], audio: [SPEECH_MODEL], tts: [], three_d: [], total: 2, credit_multiplier: 1,
+} as unknown as ModelCatalog;
+
+const readers = { dataOf: dataMaps(), catalog: CATALOG, firstVoiceOf: () => undefined };
 
 const EDGES: CanvasEdge[] = [
   { id: 'e1', source: 'i1', target: 'v1' },
@@ -128,20 +196,54 @@ describe('a piece of the canvas handed to the agent', () => {
   it('carries each node its data with its words as plain text', () => {
     const [text] = snapshot(['t1']).nodes;
 
-    expect(text?.data).toEqual({ kind: 'text', name: 'Script', body: 'Line one\nLine two', prompt: '' });
+    expect(text?.data).toEqual({ kind: 'text', name: 'Script', body: 'Line one\nLine two' });
   });
 
   it('turns every fragment into plain text, mentions read as their label', () => {
-    const withMarkup = node('v1', {
-      kind: 'video',
-      name: 'Opening',
-      prompt: '<paragraph>stale</paragraph>',
-      lyrics: '<paragraph>stale</paragraph>',
-    });
-    const item = itemForPick({ nodes: [withMarkup], edges: [] }, ['v1'], readers);
+    const item = itemForPick(GRAPH, ['v1'], readers);
 
     expect(JSON.stringify(item?.chip?.data_snapshot)).not.toContain('<paragraph>');
     expect(JSON.stringify(item?.chip?.data_snapshot)).toContain('Use @Image 1 as the style');
+  });
+
+  it('gives the prompt of every mode, not only the one in use', () => {
+    const [image] = snapshot(['i1']).nodes;
+
+    expect(image?.data).toMatchObject({ prompts: { t2i: 'a red car at dusk', i2i: 'make it blue' } });
+  });
+
+  it('gives each mode storyboard with its shots', () => {
+    const [video] = snapshot(['v1']).nodes;
+
+    expect(video?.data).toMatchObject({
+      storyboards: { t2v: { kind: 'custom', shots: [{ id: 's1', prompt: 'a paper boat', duration: 3 }] } },
+    });
+  });
+
+  it('says what the node would run right now', () => {
+    const [video] = snapshot(['v1']).nodes;
+
+    expect(video?.current).toEqual({ mode: 't2v', model: 'kling', params: { duration: 5 }, storyboard: 'custom' });
+  });
+
+  it('says the storyboard is off on a model that takes none, whatever is stored', () => {
+    const plain = { ...readers, catalog: { ...CATALOG, video: [videoModel('kling', false)] } as ModelCatalog };
+    const item = itemForPick(GRAPH, ['v1'], plain);
+    const [video] = (item?.chip?.data_snapshot as { nodes: Array<Record<string, unknown>> }).nodes;
+
+    expect(video?.current).toMatchObject({ storyboard: 'off' });
+  });
+
+  it('says an audio node with no voice picked would send the first voice of its model', () => {
+    const voiced = { ...readers, firstVoiceOf: (model: string) => (model === 'speech' ? { id: 'first' } : undefined) };
+    const item = itemForPick(GRAPH, ['s1'], voiced);
+    const [speech] = (item?.chip?.data_snapshot as { nodes: Array<Record<string, unknown>> }).nodes;
+
+    expect(speech?.current).toMatchObject({ mode: 'tts', model: 'speech', params: { voice_id: 'first' } });
+  });
+
+  it('gives no current generation to a node that does not generate', () => {
+    expect(snapshot(['t1']).nodes[0]).not.toHaveProperty('current');
   });
 
   it('names a single node by its own name', () => {

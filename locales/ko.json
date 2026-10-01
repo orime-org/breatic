@@ -435,10 +435,8 @@
       "sourceGone": "읽어 들이던 노드가 없습니다. 이 읽기에는 연결선이 없습니다."
     },
     "generatePanel": {
-      "style": "스타일",
       "focus": "포커스",
       "reference": "참조",
-      "styleTip": "이미지 하나를 스타일 참조로 선택",
       "focusTip": "노드의 일부 영역을 참조로 지정",
       "referenceTip": "캔버스에서 이미지를 참조로 선택",
       "referenceTipAudio": "캔버스에서 텍스트를 참조로 선택",
@@ -475,13 +473,11 @@
       "sfxDuration": "길이",
       "sfxDurationSeconds": "{n}초",
       "selectFromCanvas": "캔버스에서 참조 선택",
-      "selectStyleFromCanvas": "캔버스에서 스타일 참조 선택",
       "selectFirstFrameFromCanvas": "캔버스에서 첫 프레임으로 쓸 이미지 선택",
       "selectEndFrameFromCanvas": "캔버스에서 마지막 프레임으로 쓸 이미지 선택",
       "selectCharacterImageFromCanvas": "캔버스에서 캐릭터로 쓸 이미지 선택",
       "selectDrivingVideoFromCanvas": "캔버스에서 동작을 가져올 영상 선택",
       "selectDrivingAudioFromCanvas": "캔버스에서 입 모양이 따라갈 음성 선택",
-      "removeStyle": "스타일 참조 제거",
       "exitSelect": "종료",
       "locateSource": "소스 노드로 이동",
       "camera": "카메라",
@@ -645,7 +641,24 @@
         "voice": "음성",
         "text": "텍스트",
         "pronunciation": "읽는 법"
-      }
+      },
+      "storyboard": {
+        "label": "스토리보드",
+        "perShot": "샷별 편집",
+        "autoHint": "모델이 샷을 나눕니다",
+        "mainPromptKept": "메인 프롬프트가 유지됩니다",
+        "back": "자동 스토리보드로 돌아가기",
+        "shot": "샷 {n, number}",
+        "removeShot": "삭제",
+        "addShot": "샷 추가",
+        "shotPlaceholder": "이 샷을 설명하세요. @ 로 참조 추가",
+        "shotCapReached": "최대 {max, number}개 샷",
+        "noSecondToSpare": "샷을 추가하려면 영상 길이를 늘리세요"
+      },
+      "refuseStoryboardShotEmpty": "샷 {shot, number}이(가) 비어 있습니다",
+      "refuseStoryboardTooMany": "최대 {limit, number}개 샷",
+      "refuseStoryboardShotTooLong": "샷 {shot, number}이(가) {limit, number}자 제한을 초과했습니다",
+      "refuseStoryboardDurationMismatch": "샷 합계 {shots, number}초, 영상 {total, number}초"
     },
     "nodeMenu": {
       "generate": "생성",

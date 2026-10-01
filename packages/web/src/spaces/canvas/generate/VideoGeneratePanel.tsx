@@ -114,6 +114,11 @@ interface VideoGeneratePanelProps {
   executeRefusal: ExecuteRefusal | null;
   /** The collaborative prompt editor, injected by the container (TipTap + Yjs). */
   promptSlot: React.ReactNode;
+  /**
+   * The fewest seconds the total may be set to, under the per-shot storyboard:
+   * one per shot (#2218, design §5.3). Undefined outside that tier.
+   */
+  durationFloor?: number;
   /** Close the panel without generating. */
   onExit: () => void;
   /** Pick a model. */
@@ -168,6 +173,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   onClearSlot,
   executeRefusal,
   promptSlot,
+  durationFloor,
   onExit,
   onSelectModel,
   onChangeParams,
@@ -236,6 +242,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
             model={currentModel}
             params={params}
             onChange={onChangeParams}
+            durationFloor={durationFloor}
           />
         ) : null}
 

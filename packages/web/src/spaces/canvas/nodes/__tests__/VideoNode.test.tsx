@@ -117,11 +117,11 @@ describe('VideoNode', () => {
       });
     });
     expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(true);
-    // A style pick is a different session: nothing about it makes a video's
+    // A reference pick is a different session: nothing about it makes a video's
     // own controls a problem.
     act(() => {
       useCanvasStore.setState({
-        pickSession: { nodeId: 'other-node', purpose: 'style' },
+        pickSession: { nodeId: 'other-node', purpose: 'reference' },
       });
     });
     expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);

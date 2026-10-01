@@ -343,7 +343,7 @@ describe("what the rendered answer tells the model", () => {
     // types @ over a node nothing points at; without the @ they wire and submit
     // a run with no source; told to type the name instead of choosing, they get
     // no mention at all, and a name with a space in it closes the list as they
-    // type it. Anchored to the line, since "style_images:" ends in this name.
+    // type it.
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     const rendered = renderGenerationModelsForModel(answer);
     expect(rendered).toMatch(/^ *images:.*draw an edge/m);

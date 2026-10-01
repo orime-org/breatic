@@ -25,10 +25,11 @@
  * `annotation`, and `group`); `toNodeView` returns `null` only for a dirty
  * or unknown `type`.
  *
- * Content views also project the Generate panel's inputs (prompt / model /
- * paramsByModel / mode / modelByMode). The Generate panel reads them via the view
- * (panel-view-model consumes `CanvasNodeView.data`, which IS this view), and
- * writes back to the wire through the canvas-space setters.
+ * Content views also project the Generate panel's inputs (model /
+ * paramsByModel / mode / modelByMode); the prompts are fragments, read
+ * through the canvas-space getters. The Generate panel reads the inputs via
+ * the view (panel-view-model consumes `CanvasNodeView.data`, which IS this
+ * view), and writes back to the wire through the canvas-space setters.
  */
 
 import type {
@@ -99,8 +100,6 @@ interface ContentNodeViewBase extends NodeViewCommon {
   // Generate panel inputs (model revision 2026-06-15) — a content node can
   // carry the Generate action's collaborative inputs. All optional: a node
   // with no Generate history simply omits them.
-  /** Rich-text prompt body (Y.XmlFragment at runtime). */
-  prompt?: unknown;
   /** Selected model id. */
   model?: string;
   /**
@@ -120,13 +119,6 @@ interface ContentNodeViewBase extends NodeViewCommon {
    * restores its own record rather than inheriting the outgoing model's.
    */
   paramsByModel?: Record<string, Record<string, unknown>>;
-  /**
-   * Style-reference image URL (image-node style slice #1664, wire
-   * `data.styleImageUrl`) — a pick-time COPY of the source image's URL, no
-   * relationship to the upstream node. The panel renders it in the Style tool
-   * slot and sends it as `params.style_images` at execute time.
-   */
-  styleImageUrl?: string;
   /**
    * First-frame image URL for image-to-video (#1896, wire
    * `data.firstFrameUrl`) — a pick-time COPY of the clicked image's URL, no
@@ -391,7 +383,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   const errorMessage = data.errorMessage;
   const locked = data.locked;
   // Common content-view fields: the editable name (node name header), the
-  // derived status, and the Generate panel inputs (prompt / model / mode /
+  // derived status, and the Generate panel inputs (model / mode /
   // modelByMode / paramsByModel) — the panel reads these via the view and
   // writes back to the wire through the canvas-space setters.
   const contentCommon = {
@@ -406,12 +398,10 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     restoredFromEntryId: data.restoredFromEntryId,
     errorMessage,
     locked,
-    prompt: data.prompt,
     model: data.model,
     mode: data.mode,
     modelByMode: data.modelByMode,
     paramsByModel: data.paramsByModel,
-    styleImageUrl: data.styleImageUrl,
     firstFrameUrl: data.firstFrameUrl,
     endFrameUrl: data.endFrameUrl,
     characterImageUrl: data.characterImageUrl,
