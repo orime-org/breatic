@@ -42,8 +42,8 @@ Canvas Space 是项目中的一块创作工作区，画布里的节点承载具�
 
 | 你的目标 | 指南 |
 | --- | --- |
-| 自己使用，或与局域网内的家庭成员、私密团队共享 | [个人与局域网部署](deploy/LOCAL-CN.md) |
-| 修改源码、调试或参与贡献 | [开发环境搭建](deploy/DEVELOPMENT-CN.md) |
+| 自己使用，或与局域网内的家庭成员、私密团队共享 | [个人与局域网部署](self-host/LOCAL-CN.md) |
+| 修改源码、调试或参与贡献 | [开发环境搭建](self-host/DEVELOPMENT-CN.md) |
 
 安装使用时，Web、API、后台任务和协作服务运行在已发布的 Docker 镜像中，依赖 PostgreSQL 与 Redis。文件上传通过部署到**你自己的 Cloudflare 账户**的 Ingest Worker 和媒体容器处理，文件保存在你的 R2 bucket 中；AI 调用使用你的供应商账户。这不是离线或完全本地化的部署。
 
@@ -137,7 +137,7 @@ Breatic 采用 [Breatic Source-Available License v1.0](LICENSE)，属于**源码
 
 Breatic 使用 TypeScript、React/Vite、Hono、PostgreSQL、Redis/BullMQ 与 Hocuspocus/Yjs，文件上传由独立的 Cloudflare Worker 处理。
 
-- [开发环境搭建](deploy/DEVELOPMENT-CN.md)：依赖、本地服务与测试。
+- [开发环境搭建](self-host/DEVELOPMENT-CN.md)：依赖、本地服务与测试。
 - [贡献指南](CONTRIBUTING.md)：贡献流程与约定。
 - [架构说明](docs/ARCHITECTURE.md)：包、服务、数据流与前端结构。
 - [测试说明](docs/TEST-MANDATE.md)：单测、集成测试与浏览器验证。
