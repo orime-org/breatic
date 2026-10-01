@@ -83,8 +83,7 @@ export async function assertStorageAllowance(
 }
 
 /**
- * The same gate for a write that belongs to a studio rather than to one of its
- * projects — the studio's avatar.
+ * The same gate, for a caller that already holds the studio the bytes land in.
  * @param studioId - The studio whose pool the bytes land in; its current admin
  *   is the account judged.
  * @param purpose - Upload or generate; only picks the wording of the refusal.
