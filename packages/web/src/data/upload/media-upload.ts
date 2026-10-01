@@ -54,8 +54,8 @@ export interface StoredUpload {
  * The bytes are what they are, so re-sending them meets the same refusal.
  * `transfer` — the transfer half ended without our server hearing anything:
  * the bytes never got out, or the edge turned them down (#237). Either way the
- * finish was never asked for, which makes this the one failure whose task row
- * nobody else will end.
+ * finish was never asked for, which makes this the one failure whose task row,
+ * when the upload has one, nobody else will end.
  * `upload` — anything else along the way: the knobs, the ticket request, or a
  * finish that failed. A retry can fix it, and the server settles the row
  * itself whenever it answered.
@@ -89,12 +89,13 @@ export function isUploadFailureReason(
  * How an upload ended badly, and whether the server knows about it (#186
  * §3.7.3).
  *
- * `taskId` is present exactly when the ticket was granted: past that point the
- * server holds a task row for this upload, carrying the budget it will be
- * judged against, so the browser leaves the outcome to that row and only keeps
- * the File for a retry, keyed by it. Absent, nothing on the server ever heard
- * of this upload — no row, no grant — so nobody is going to give it an ending
- * and the browser says so locally.
+ * `taskId` is present exactly when the ticket opened a task row, which only an
+ * upload with a node behind it does: the server then holds the row, carrying
+ * the budget it will be judged against, so the browser leaves the outcome to
+ * that row and only keeps the File for a retry, keyed by it. Absent — the
+ * ticket was refused, or the upload has no node (a focus crop, a chat
+ * attachment, a cover, an avatar) — no row exists, nobody on the server is
+ * going to give it an ending, and the browser says so locally.
  */
 export interface UploadFailure {
   reason: UploadFailureReason;
@@ -160,9 +161,9 @@ export interface MediaUploadDeps {
   onSuccess: (stored: StoredUpload) => void;
   /**
    * Called when the upload cannot complete. `reason` tells the caller which
-   * message to show: `hash` (we could not fingerprint the file — reload) vs
-   * `upload` (config / ticket / parts failed — retry). `taskId` says whether
-   * the server has a row for this upload; see {@link UploadFailure}.
+   * message to show; see {@link UPLOAD_FAILURE_REASONS} for what each one
+   * means. `taskId` says whether the server has a row for this upload; see
+   * {@link UploadFailure}.
    */
   onFailure: (outcome: UploadFailure) => void;
   /** Backoff sleep override (tests only — production uses real timers). */
@@ -227,8 +228,9 @@ export async function runMediaUpload(
   }
 
   if (isAlreadyStored(answer)) {
-    // Nothing moves. The server has already written the node's history and
-    // published what ends its handling.
+    // Nothing moves. When a node is behind this upload, the server has already
+    // written its history and published what ends its handling; an upload with
+    // no node reads what the answer names.
     deps.onSuccess({ fileUrl: answer.fileUrl, assetId: answer.assetId });
     return;
   }
