@@ -715,7 +715,7 @@ describe('the selection a drag gives, by where it was pressed and where the poin
     const view = open(BOTH_ENDS);
     const { doc } = view.state;
     const at = textStart(view, 'Mid');
-    const shift = { press: 'shift', anchor: at, left: true } as const;
+    const shift = { press: 'body', anchor: at, left: true } as const;
 
     const inBody = dragSelection(doc, shift, 'body', at + 2);
     const pastEnd = dragSelection(doc, shift, 'end', null);
@@ -729,7 +729,7 @@ describe('the selection a drag gives, by where it was pressed and where the poin
     const view = open(BOTH_ENDS);
     const { doc } = view.state;
 
-    expect(dragSelection(doc, { press: 'shift', anchor: bodyEdgePos(doc, 'start'), left: true }, 'end', null)).toBeInstanceOf(AllSelection);
+    expect(dragSelection(doc, { press: 'body', anchor: bodyEdgePos(doc, 'start'), left: true }, 'end', null)).toBeInstanceOf(AllSelection);
   });
 
   it('keeps the current selection when the pointer in the body lands on no position', () => {

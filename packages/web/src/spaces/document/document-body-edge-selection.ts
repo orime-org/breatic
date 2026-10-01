@@ -132,7 +132,7 @@ export function emptyEdgeLinePos(doc: Node, edge: BodyEdge): number | null {
  * @param dir - The way to look first: -1 back, 1 forward.
  * @returns A position in text, or the position itself when there is no text.
  */
-export function textToward(doc: Node, pos: number, dir: 1 | -1): number {
+function textToward(doc: Node, pos: number, dir: 1 | -1): number {
   const $pos = doc.resolve(pos);
   if ($pos.parent.inlineContent) return pos;
   return (Selection.findFrom($pos, dir, true) ?? Selection.findFrom($pos, -dir, true))?.head ?? pos;
@@ -435,8 +435,8 @@ export type PointerZone = 'body' | BodyEdge;
 
 /** A drag the pointer plugin is following. */
 interface EdgeDrag {
-  /** Where it was pressed; `shift` for a Shift+click the pointer plugin answers. */
-  readonly press: PointerZone | 'shift';
+  /** Where it was pressed. */
+  readonly press: PointerZone;
   /** The anchor the selection keeps. */
   readonly anchor: number;
   /** Whether the pointer has been anywhere but where it was pressed. */
@@ -527,12 +527,14 @@ function atLastLineTowards(view: EditorView, head: number, edge: BodyEdge): bool
   if (Selection.findFrom(beyond, dir, true) !== null) return false;
   // At a line wrap the head's one position is both the end of a line and the
   // start of the next; it is read as the line further from the edge, so the
-  // page moves it a line before the edge is taken.
+  // page moves it a line before the edge is taken. The block's own end is read
+  // as the page lays it out: a block ending in a line break ends on the empty
+  // line after it, which the head has still to reach.
   const caret = view.coordsAtPos(head, edge === 'end' ? -1 : 1);
   const middle = (caret.top + caret.bottom) / 2;
   return edge === 'end'
-    ? middle >= view.coordsAtPos($head.end(), -1).top
-    : middle <= view.coordsAtPos($head.start(), 1).bottom;
+    ? middle >= view.coordsAtPos($head.end()).top
+    : middle <= view.coordsAtPos($head.start()).bottom;
 }
 
 /** The arrow keys: which way each goes, and whether it goes by lines. */
@@ -657,6 +659,8 @@ function arrowOnEdge(view: EditorView, key: string): Selection | null {
   const { doc, selection } = view.state;
   const { dir, vertical } = ARROWS[key]!;
   const edge: BodyEdge = dir > 0 ? 'end' : 'start';
+  // The whole document already runs to the end; there is nothing past it.
+  if (selection instanceof AllSelection && dir > 0) return selection;
   const swapped = extensionEnds(selection, dir);
   if (swapped !== null && selection instanceof NodeSelection) return bodyEdgeBetween(doc, swapped.anchor, swapped.head);
   if (swapped === null && !(selection instanceof BodyEdgeSelection)) {

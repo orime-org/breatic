@@ -115,15 +115,15 @@ function anchor(doc: PMNode, pos: number): Anchored | undefined {
  */
 export function readerPlace(state: EditorState): ReaderPlace | undefined {
   const { selection, doc } = state;
-  const onEdges = selection instanceof BodyEdgeSelection;
-  if (!(selection instanceof TextSelection) && !onEdges) return undefined;
+  if (!(selection instanceof TextSelection) && !(selection instanceof BodyEdgeSelection)) return undefined;
   /**
-   * Addresses one end: by its edge when it is on one, else by its block.
+   * Addresses one end: by its edge when it is on one, else by its block. An
+   * edge sits between blocks, where no text selection's end can be.
    * @param pos - The end.
    * @returns The address, or undefined when it has none.
    */
   const read = (pos: number): End | undefined => {
-    const edge = onEdges ? bodyEdgeAt(doc, pos) : null;
+    const edge = bodyEdgeAt(doc, pos);
     return edge === null ? anchor(doc, pos) : { edge };
   };
   const anchorEnd = read(selection.anchor);
@@ -167,13 +167,8 @@ export function restoreReaderPlace(view: EditorView, place: ReaderPlace): void {
   const { doc } = view.state;
   const anchorPos = positionOf(doc, place.anchor);
   const headPos = positionOf(doc, place.head);
-  const onEdge = 'edge' in place.anchor || 'edge' in place.head;
   const asked =
-    anchorPos === undefined || headPos === undefined
-      ? undefined
-      : onEdge
-        ? bodyEdgeBetween(doc, anchorPos, headPos)
-        : TextSelection.create(doc, anchorPos, headPos);
+    anchorPos === undefined || headPos === undefined ? undefined : bodyEdgeBetween(doc, anchorPos, headPos);
 
   view.dispatch(
     view.state.tr.setSelection(

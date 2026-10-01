@@ -27,6 +27,7 @@
  */
 
 import { createExtension } from '@blocknote/core';
+import { isMacOS } from '@tiptap/core';
 import { Plugin, PluginKey, type Selection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -56,8 +57,8 @@ const TAKEOVER_ATTR = 'data-body-end-takeover';
 
 /** A press this plugin is following. */
 interface Press {
-  /** Where it was pressed; `shift` for a Shift+click this plugin answers. */
-  readonly zone: PointerZone | 'shift';
+  /** Where it was pressed. */
+  readonly zone: PointerZone;
   /** The anchor when it is an edge; otherwise the selection's own anchor is read. */
   readonly anchorEdge: BodyEdge | null;
   /** Where it was pressed. */
@@ -223,11 +224,14 @@ class PointerFollower {
   };
 
   /**
-   * Answers a Shift+click that goes past an edge, or one in the body from a
-   * selection the browser cannot extend without losing part of it: the whole
-   * document, or a selected block (design §5.10.5). Any other Shift+press in
-   * the body is the browser's to extend, and is followed like a plain press,
-   * so a drag that goes on past an edge reaches it.
+   * Answers a Shift+click (design §5.10.5). The end that stays is the one the
+   * page keeps: on macOS the end farther from the click, elsewhere the anchor
+   * (measured in Chrome, probe38 and probe39). The plugin takes the click when
+   * the page cannot extend the selection without losing part of it: a click
+   * past an edge, a selection over the whole document or a selected block, or
+   * an end that stays on an edge, which the page reads as the caret inside the
+   * edge block. Any other click is the page's, and is followed like a plain
+   * press, so a drag that goes on past an edge reaches it.
    * @param event - The press.
    * @param zone - Where it was pressed.
    * @param at - Where it was pressed, as the press records it.
@@ -240,23 +244,25 @@ class PointerFollower {
     const { view } = this;
     const { doc, selection } = view.state;
     const pointer = zone === 'body' ? positionAt(view, event.clientX, event.clientY) : null;
-    const dir = zone === 'end' ? 1 : zone === 'start' ? -1 : (pointer ?? selection.from) >= selection.from ? 1 : -1;
-    // A selection anchored on an edge is extended from that edge: the page
-    // would extend from its own anchor, which for an empty edge line is the
-    // caret inside it, off the edge.
-    const ends = extensionEnds(selection, dir) ?? (bodyEdgeAt(doc, selection.anchor) === null ? null : selection);
-    if (zone === 'body' && (ends === null || pointer === null)) {
-      this.begin({ ...at, zone: 'body', anchorEdge: bodyEdgeAt(doc, selection.anchor), left: false, moved: false, onWidget: false });
+    const target = zone === 'body' ? pointer : bodyEdgePos(doc, zone);
+    if (target === null) {
+      this.begin({ ...at, zone, anchorEdge: bodyEdgeAt(doc, selection.anchor), left: false, moved: false, onWidget: false });
       return;
     }
-    const { anchor } = ends ?? selection;
-    this.begin({ ...at, zone: 'shift', anchorEdge: bodyEdgeAt(doc, anchor), left: true, moved: false, onWidget: false });
+    const swapped = extensionEnds(selection, target >= selection.from ? 1 : -1);
+    const { anchor, head } = swapped ?? selection;
+    const fixed = isMacOS() && Math.abs(head - target) > Math.abs(anchor - target) ? head : anchor;
+    if (zone === 'body' && swapped === null && bodyEdgeAt(doc, fixed) === null) {
+      this.begin({ ...at, zone, anchorEdge: null, left: false, moved: false, onWidget: false });
+      return;
+    }
+    this.begin({ ...at, zone, anchorEdge: bodyEdgeAt(doc, fixed), left: true, moved: false, onWidget: false });
     // Taking the press from the browser takes its focus move with it, and
     // ProseMirror does not focus on a Shift press: a selection set in a body
     // without the focus is neither painted nor where the next keys go.
     event.preventDefault();
     if (!view.hasFocus()) view.focus();
-    const next = dragSelection(doc, { press: 'shift', anchor, left: true }, zone, pointer);
+    const next = dragSelection(doc, { press: zone, anchor: fixed, left: true }, zone, pointer);
     if (next !== null && !next.eq(selection)) view.dispatch(view.state.tr.setSelection(next));
   }
 
