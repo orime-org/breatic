@@ -92,9 +92,29 @@ export function takePromptAndValidate(
   // After validation, not before: a model that does not declare the field has
   // had it dropped by then, and cleaning a value nothing will send is work on
   // a key that no longer exists.
-  const cleaned =
+  const cleaned: Record<string, unknown> =
     typeof validated.lyrics === "string"
       ? { ...validated, lyrics: extractPromptText(validated.lyrics) }
-      : validated;
+      : { ...validated };
+  // A storyboard's shots are prompts too (#2218), one per editor, carried as
+  // entries of a list param. Each entry's `prompt` gets the same cleaning.
+  for (const [key, value] of Object.entries(cleaned)) {
+    if (!Array.isArray(value)) continue;
+    if (!value.some((entry) => isRecord(entry) && typeof entry.prompt === "string")) continue;
+    cleaned[key] = value.map((entry) =>
+      isRecord(entry) && typeof entry.prompt === "string"
+        ? { ...entry, prompt: extractPromptText(entry.prompt) }
+        : entry,
+    );
+  }
   return [prompt, resolvedModel, cleaned];
+}
+
+/**
+ * Whether a value is a plain object whose fields can be read by name.
+ * @param value - The value to test.
+ * @returns True for a non-null, non-array object.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

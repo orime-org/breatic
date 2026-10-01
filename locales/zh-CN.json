@@ -646,7 +646,24 @@
         "voice": "音色",
         "text": "文字",
         "pronunciation": "读作"
-      }
+      },
+      "storyboard": {
+        "label": "分镜",
+        "perShot": "逐镜头编辑",
+        "autoHint": "由模型拆分镜头",
+        "mainPromptKept": "主提示词已保留",
+        "back": "返回自动分镜",
+        "shot": "镜头 {n, number}",
+        "removeShot": "删除",
+        "addShot": "添加镜头",
+        "shotPlaceholder": "描述这个镜头，@ 引用参考",
+        "shotCapReached": "最多 {max, number} 个镜头",
+        "noSecondToSpare": "加长总时长才能再加镜头"
+      },
+      "refuseStoryboardShotEmpty": "镜头 {shot, number} 没有内容",
+      "refuseStoryboardTooMany": "最多 {limit, number} 个镜头",
+      "refuseStoryboardShotTooLong": "镜头 {shot, number} 超过 {limit, number} 字上限",
+      "refuseStoryboardDurationMismatch": "镜头时长合计 {shots, number} 秒，视频时长 {total, number} 秒"
     },
     "nodeMenu": {
       "generate": "生成",

@@ -65,10 +65,11 @@ function doc(): Y.Doc {
  * @param id - The node id to read.
  * @returns The raw value stored under the `prompt` key.
  */
-function rawPrompt(id = 'gen'): unknown {
+function rawPrompt(id = 'gen', mode = 't2i'): unknown {
   const node = doc().getMap('nodesMap').get(id) as Y.Map<unknown> | undefined;
   const data = node?.get('data') as Y.Map<unknown> | undefined;
-  return data?.get('prompt');
+  const prompts = data?.get('prompts');
+  return prompts instanceof Y.Map ? prompts.get(mode) : undefined;
 }
 
 /**
@@ -79,7 +80,7 @@ function rawPrompt(id = 'gen'): unknown {
  * @throws {Error} When the node has no prompt fragment to type into.
  */
 function typeInto(text: string, id = 'gen'): void {
-  const fragment = getPromptFragment(PID, SID, id);
+  const fragment = getPromptFragment(PID, SID, id, 't2i');
   if (!fragment) throw new Error(`node ${id} has no prompt fragment`);
   const paragraph = new Y.XmlElement('paragraph');
   paragraph.insert(0, [new Y.XmlText(text)]);
@@ -157,8 +158,8 @@ describe('prompt is born with the node (#1880)', () => {
     const data = (
       doc().getMap('nodesMap').get('gen') as Y.Map<unknown>
     ).get('data') as Y.Map<unknown>;
-    data.delete('prompt');
-    expect(getPromptFragment(PID, SID, 'gen')).toBeNull();
+    data.delete('prompts');
+    expect(getPromptFragment(PID, SID, 'gen', 't2i')).toBeNull();
     expect(rawPrompt()).toBeUndefined();
   });
 
@@ -174,7 +175,7 @@ describe('prompt is born with the node (#1880)', () => {
   });
 
   it('returns null for a node that does not exist', () => {
-    expect(getPromptFragment(PID, SID, 'nope')).toBeNull();
+    expect(getPromptFragment(PID, SID, 'nope', 't2i')).toBeNull();
   });
 });
 

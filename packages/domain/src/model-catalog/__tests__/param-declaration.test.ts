@@ -222,6 +222,23 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*image/s);
   });
 
+  it("lets a storyboard declare its shots and its tier (#2218)", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "video",
+        modelWith({
+          multi_prompt: {
+            fill: "storyboard",
+            type: "items",
+            max_items: 6,
+            fields: { prompt: { type: "text", max_chars: 512 }, duration: { values: [1, 2, 3] } },
+          },
+          shot_type: { fill: "storyboard", values: ["intelligence", "customize"] },
+        }),
+      ),
+    ).not.toThrow();
+  });
+
   it("lets a list editor state a floor and name the param it stands in for", () => {
     expect(() =>
       assertParamDeclarations(

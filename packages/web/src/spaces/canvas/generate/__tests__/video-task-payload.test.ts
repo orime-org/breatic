@@ -18,6 +18,8 @@ const BASE = {
   slotUrls: {},
   // Nothing mentioned, or a model that takes no pool: no pool params.
   poolParams: {},
+  // The storyboard off, or a model that takes none: no storyboard params.
+  storyboardParams: {},
 };
 
 describe('buildVideoTaskPayload', () => {
@@ -217,6 +219,24 @@ describe('buildVideoTaskPayload', () => {
  * before the builder (the view model's pool); the builder writes what it is
  * handed, so a reference connected for another mode has no way in.
  */
+describe('buildVideoTaskPayload — the storyboard (#2218)', () => {
+  it('sends the prompt beside the automatic tier', () => {
+    const out = buildVideoTaskPayload({ ...BASE, storyboardParams: { shot_type: 'intelligence' } });
+    expect(out.params).toMatchObject({ prompt: BASE.promptText, shot_type: 'intelligence' });
+  });
+
+  it('sends the shots and no main prompt under the per-shot tier', () => {
+    const shots = [{ prompt: 'a paper boat', duration: 5 }, { prompt: 'the pond', duration: 3 }];
+    const out = buildVideoTaskPayload({
+      ...BASE,
+      promptText: undefined,
+      storyboardParams: { shot_type: 'customize', multi_prompt: shots },
+    });
+    expect(out.params).toMatchObject({ shot_type: 'customize', multi_prompt: shots });
+    expect(out.params).not.toHaveProperty('prompt');
+  });
+});
+
 describe('buildVideoTaskPayload — the reference pool', () => {
   const REFS = ['https://cdn/a.png', 'https://cdn/b.png'];
   const CLIP = 'https://cdn/clip.mp4';

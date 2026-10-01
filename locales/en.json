@@ -658,7 +658,24 @@
         "voice": "Voice",
         "text": "Text",
         "pronunciation": "Read as"
-      }
+      },
+      "storyboard": {
+        "label": "Storyboard",
+        "perShot": "Edit per shot",
+        "autoHint": "The model splits the shots",
+        "mainPromptKept": "Main prompt kept",
+        "back": "Back to auto storyboard",
+        "shot": "Shot {n, number}",
+        "removeShot": "Remove",
+        "addShot": "Add shot",
+        "shotPlaceholder": "Describe this shot, @ to add a reference",
+        "shotCapReached": "Up to {max, number} shots",
+        "noSecondToSpare": "Lengthen the video to add a shot"
+      },
+      "refuseStoryboardShotEmpty": "Shot {shot, number} is empty",
+      "refuseStoryboardTooMany": "Up to {limit, number} shots",
+      "refuseStoryboardShotTooLong": "Shot {shot, number} is over the {limit, number}-character limit",
+      "refuseStoryboardDurationMismatch": "Shots add up to {shots, number}s, the video is {total, number}s"
     },
     "edge": {
       "delete": "Delete connection"

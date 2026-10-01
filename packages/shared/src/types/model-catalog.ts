@@ -82,10 +82,15 @@ export interface ItemField {
   readonly type?: "text";
   readonly values?: readonly (string | number | boolean)[];
   readonly default?: unknown;
+  /** The most characters a text field takes, counted on the cleaned text. */
+  readonly max_chars?: number;
 }
 
-/** How a parameter's value reaches the run (#269). */
-export type ParamFill = "canvas" | "pool" | "editor" | "panel" | "remote" | "none";
+/**
+ * How a parameter's value reaches the run (#269). `storyboard` is filled from
+ * the node's per-mode storyboard: its shots and its tier (#2218).
+ */
+export type ParamFill = "canvas" | "pool" | "editor" | "panel" | "remote" | "storyboard" | "none";
 
 /** What has to hold before a declared control counts for anything (#269). */
 export interface ParamGate {
@@ -366,6 +371,15 @@ export const GENERATION_NODE_MODES: Readonly<
   audio: AUDIO_GENERATION_MODES,
 };
 
+/**
+ * Whether a node type anchors a Generate panel.
+ * @param type - A node type.
+ * @returns True for image, video and audio.
+ */
+export function isGenerationNodeType(type: string): type is GenerationNodeType {
+  return Object.hasOwn(GENERATION_NODE_MODES, type);
+}
+
 // ── Boundary sanitizer ───────────────────────────────────────────────
 //
 // Lenient by design: an entry is only DROPPED when it lacks a usable identity
@@ -383,6 +397,7 @@ const itemFieldSchema = z.object({
   type: z.literal("text").optional(),
   values: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
   default: z.unknown().optional(),
+  max_chars: z.number().optional(),
 });
 
 const pricingContractSchema = z.object({
@@ -417,7 +432,7 @@ const paramDescriptorSchema = z
     // the panel then draws nothing for it, which is less than it could do
     // rather than a control whose value reaches nobody.
     fill: z
-      .enum(["canvas", "pool", "editor", "panel", "remote", "none"])
+      .enum(["canvas", "pool", "editor", "panel", "remote", "storyboard", "none"])
       .optional()
       .catch(undefined),
     accepts: z.enum(["image", "video", "audio"]).optional().catch(undefined),

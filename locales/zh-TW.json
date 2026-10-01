@@ -646,7 +646,24 @@
         "voice": "音色",
         "text": "文字",
         "pronunciation": "讀作"
-      }
+      },
+      "storyboard": {
+        "label": "分鏡",
+        "perShot": "逐鏡頭編輯",
+        "autoHint": "由模型拆分鏡頭",
+        "mainPromptKept": "主提示詞已保留",
+        "back": "返回自動分鏡",
+        "shot": "鏡頭 {n, number}",
+        "removeShot": "刪除",
+        "addShot": "新增鏡頭",
+        "shotPlaceholder": "描述這個鏡頭，@ 引用參考",
+        "shotCapReached": "最多 {max, number} 個鏡頭",
+        "noSecondToSpare": "加長總時長才能再加鏡頭"
+      },
+      "refuseStoryboardShotEmpty": "鏡頭 {shot, number} 沒有內容",
+      "refuseStoryboardTooMany": "最多 {limit, number} 個鏡頭",
+      "refuseStoryboardShotTooLong": "鏡頭 {shot, number} 超過 {limit, number} 字上限",
+      "refuseStoryboardDurationMismatch": "鏡頭時長合計 {shots, number} 秒，影片時長 {total, number} 秒"
     },
     "nodeMenu": {
       "generate": "生成",

@@ -35,8 +35,11 @@ export interface VideoTaskInput {
   model: string;
   /** Model params already reconciled for the model (ratio, resolution, duration, audio). */
   params: Record<string, unknown>;
-  /** Plain-text prompt (extracted from the rich-text prompt). */
-  promptText: string;
+  /**
+   * Plain-text prompt (extracted from the rich-text prompt); undefined under
+   * the per-shot storyboard, whose shots stand in for it (#2218).
+   */
+  promptText: string | undefined;
   /**
    * The slots the toolbar draws for this model in this mode — the source
    * fields that are built. Picks in any other slot stay on the node, where a
@@ -51,6 +54,8 @@ export interface VideoTaskInput {
    * model takes no pool, or when nothing is mentioned.
    */
   poolParams: Readonly<Record<string, readonly string[]>>;
+  /** What the effective storyboard tier adds, as `storyboardParams` builds it (#2218). */
+  storyboardParams: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -97,7 +102,7 @@ export function sourceParams(
 
 /**
  * Builds the overwrite-mode task payload for a video-node Generate.
- * @param input - The node, project/space, model, params, prompt, drawn slots, picks and references.
+ * @param input - The node, project/space, model, params, prompt, drawn slots, picks, references and storyboard.
  * @returns The `POST /canvas/tasks` request body, in overwrite mode.
  */
 export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
@@ -112,7 +117,8 @@ export function buildVideoTaskPayload(input: VideoTaskInput): TaskCreateInput {
     // never let model params silently overwrite what the user typed.
     params: {
       ...input.params,
-      prompt: input.promptText,
+      ...(input.promptText === undefined ? {} : { prompt: input.promptText }),
+      ...input.storyboardParams,
       ...sourceParams(
         input.slots,
         input.slotUrls,

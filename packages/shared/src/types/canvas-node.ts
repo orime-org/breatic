@@ -214,8 +214,8 @@ export interface AnnotationReply {
 // a reference (a canvas edge `source → target` means `source` is a reference
 // input for `target`), so the rail is derived live from the node's incoming
 // edges — single source of truth = the edges map, zero drift (see the web
-// `deriveReferences` helper). The prompt is stored as an opaque `Y.XmlFragment`
-// (`data.prompt`, typed `unknown` on the wire). Its structured shape is a
+// `deriveReferences` helper). The prompt is stored as opaque `Y.XmlFragment`s,
+// one per mode (`data.prompts`, typed `unknown` on the wire). Their structured shape is a
 // FRONTEND rendering concern that never crossed this boundary: the backend
 // only ever reads the prompt as plain text via `extractPromptText`, never the
 // chip structure. (Web once carried a `prompt-types` module describing that
@@ -227,7 +227,7 @@ export interface AnnotationReply {
 // A text node's words live in `data.body`, an opaque `Y.XmlFragment` seeded
 // when the node is created, so two people typing in one node merge character
 // by character instead of overwriting each other. It is absent from the
-// interface below for the same reason `prompt` carries no structured type: a
+// interface below for the same reason `prompts` carries no structured type: a
 // live collaborative object is not wire data, and this interface describes
 // what the wire carries. Read it through the web helpers `getTextBody` /
 // `bodyToPlainText`; the shape written into it is `writePlainTextIntoBody`,
@@ -400,8 +400,18 @@ export interface CanvasNodeFields {
      * 2026-07-09.)
      */
     mode?: string;
-    /** Rich text prompt — Y.XmlFragment at runtime (TipTap + y-prosemirror). */
-    prompt?: unknown;
+    /**
+     * The prompt of each mode (#2218) — `Y.Map<mode, Y.XmlFragment>` at
+     * runtime (TipTap + y-prosemirror), so switching mode keeps what was
+     * written under the other one.
+     */
+    prompts?: unknown;
+    /**
+     * The storyboard of each video mode (#2218) — `Y.Map<mode, Y.Map>` at
+     * runtime, each a tier (`kind`) and its shots (`shots`: `Y.Array` of
+     * `{ id, prompt: Y.XmlFragment, duration }`).
+     */
+    storyboards?: unknown;
     /** Model id from config/models/*.yaml. */
     model?: string;
     /**
@@ -550,11 +560,11 @@ export interface CanvasNodeFields {
      */
     moodImageUrl?: string;
     /**
-     * The words to sing, on an audio node (#1960, wire `data.lyrics`) — a
-     * `Y.XmlFragment` beside `prompt`, since two people may write lyrics at
-     * once the way they may write a prompt at once.
+     * The words to sing, on an audio node (#1960, wire `data.lyrics`) — one
+     * `Y.XmlFragment` per mode beside `prompts` (#2218), since two people may
+     * write lyrics at once the way they may write a prompt at once.
      *
-     * `unknown` for the same reason `prompt` is: the wire shape describes what
+     * `unknown` for the same reason `prompts` is: the wire shape describes what
      * the key holds, and a CRDT fragment has no plain-JSON form to state here.
      */
     lyrics?: unknown;

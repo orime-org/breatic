@@ -37,8 +37,9 @@ import {
   GENERATION_NODE_MODES,
   PANEL_EDITOR_PARAM,
   REFERENCE_KINDS,
+  storyboardSpec,
 } from '@breatic/shared';
-import type { GenerationNodeType, ModelEntry } from '@breatic/shared';
+import type { GenerationNodeType, ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 import { parse } from 'yaml';
 
@@ -75,7 +76,7 @@ const LOCALE_FILES = ['en.json', 'ja.json', 'ko.json', 'zh-CN.json', 'zh-TW.json
 
 /** What one model declares about one of its parameters. */
 interface ParamDeclaration {
-  /** Who fills it: canvas, pool, editor, panel, remote, none. */
+  /** Who fills it: canvas, pool, editor, panel, remote, storyboard, none. */
   fill?: unknown;
   /** The node kind it takes, when something points at a node to fill it. */
   accepts?: unknown;
@@ -441,6 +442,26 @@ describe('what the catalog declares', () => {
         : 'declares fill: remote without remote_source: voices, and the voice picker locates its param by that marker alone',
     );
     expect([...drawn, ...remote]).toEqual([]);
+  });
+
+  it('gives every storyboard-filled param its place in the storyboard controls', () => {
+    const found = objections('storyboard', (model, param) => {
+      if (!nodesOffering(model).includes('video')) {
+        return 'declares fill: storyboard while only the video panel draws the storyboard controls';
+      }
+      const spec = storyboardSpec(model.params as Record<string, ParamDescriptor>);
+      if (spec === undefined) return 'declares fill: storyboard without a fill: storyboard items param to hold the shots';
+      if (param !== spec.shotsParam && param !== spec.tierParam) {
+        return `is a third fill: storyboard param beside '${spec.shotsParam}' and '${String(spec.tierParam)}', and the controls write neither shots nor tier into it`;
+      }
+      if (spec.tierParam === undefined) return 'has shots but no fill: storyboard param naming the tier';
+      const fields = (model.params[spec.shotsParam] as { fields?: Record<string, unknown> }).fields ?? {};
+      if (!('prompt' in fields)) return `'${spec.shotsParam}' has no prompt field, and each shot's text box writes one`;
+      return spec.totalParam === undefined
+        ? `'${spec.shotsParam}' has no seconds field naming one of the model's params, so shot seconds cannot add up to the video's length`
+        : null;
+    });
+    expect(found).toEqual([]);
   });
 
   it('leaves every param that says it has no control unclaimed, and says why', () => {

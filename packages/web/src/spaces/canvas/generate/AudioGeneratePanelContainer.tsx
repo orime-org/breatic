@@ -21,6 +21,7 @@ import type { Voice } from '@breatic/shared';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { voicesApi } from '@web/data/api/voices';
+import { firstVoiceKey, firstVoiceQuery } from '@web/spaces/canvas/generate/first-voice-query';
 import {
   getLyricsFragment,
   getPromptFragment,
@@ -202,13 +203,15 @@ function AudioGeneratePanelBody({
   } = useGenerateSubmitState();
 
   // Read during render: `getPromptFragment` is a synchronous document read with
-  // no side effect, and null means the node predates prompt seeding — the panel
+  // no side effect, and null means the node has no seeded prompt for this mode — the panel
   // then says so instead of offering an editor that stores nothing. Resolving
   // it after the first commit would make that sentence the first thing every
   // modern node's panel renders.
+  // Each mode keeps its own prompt (#2218), so a mode switch binds the editor
+  // to that mode's words.
   const fragment = React.useMemo(
-    () => getPromptFragment(projectId, spaceId, nodeId),
-    [projectId, spaceId, nodeId],
+    () => getPromptFragment(projectId, spaceId, nodeId, mode),
+    [projectId, spaceId, nodeId, mode],
   );
 
   // The ids come off `deriveReferences` itself, so the followed set and the
@@ -235,15 +238,9 @@ function AudioGeneratePanelBody({
     [nodeId, nodes, models, mode],
   );
   // With no voice held, the first voice of the model's list is the voice
-  // (user 2026-09-29). Asked for only while it would be used; the row it
-  // brings back also seeds the by-id cache the pill reads its name from.
+  // (user 2026-09-29). Asked for only while it would be used.
   const { data: firstVoice } = useQuery({
-    queryKey: firstVoiceKey(nodeVm.model),
-    queryFn: async () => {
-      const first = (await voicesApi.list(nodeVm.model, { query: '' })).voices[0] ?? null;
-      if (first) queryClient.setQueryData(['voice', nodeVm.model, first.id], first);
-      return first;
-    },
+    ...firstVoiceQuery(queryClient, nodeVm.model),
     enabled: nodeVm.model !== '' && nodeVm.voiceRequired && !nodeVm.voiceChosen,
   });
   const vm = React.useMemo(
@@ -254,8 +251,8 @@ function AudioGeneratePanelBody({
   // Read during render for the same reason the prompt fragment is: a
   // synchronous document read, seeded with the node, never created here.
   const lyricsFragment = React.useMemo(
-    () => getLyricsFragment(projectId, spaceId, nodeId),
-    [projectId, spaceId, nodeId],
+    () => getLyricsFragment(projectId, spaceId, nodeId, mode),
+    [projectId, spaceId, nodeId, mode],
   );
   // What this mode's boxes are called, which is this panel's to word.
   const modeOption = audioModeOption(mode);
@@ -745,15 +742,6 @@ function AudioGeneratePanelBody({
  */
 function noop(): void {
   // Intentionally empty.
-}
-
-/**
- * Where a model's first listed voice is cached.
- * @param model - The model id.
- * @returns The query key.
- */
-function firstVoiceKey(model: string): readonly [string, string] {
-  return ['voice-default', model] as const;
 }
 
 /**

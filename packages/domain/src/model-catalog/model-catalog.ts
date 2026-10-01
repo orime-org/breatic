@@ -59,7 +59,7 @@ export interface FullParamSpec {
   description?: string;
   values?: unknown[];
   /** The fields of one entry of a list param (`type: items`). */
-  fields?: Record<string, { type?: string; values?: unknown[] }>;
+  fields?: Record<string, { type?: string; values?: unknown[]; max_chars?: number }>;
   default?: unknown;
   min?: number;
   max?: number;
