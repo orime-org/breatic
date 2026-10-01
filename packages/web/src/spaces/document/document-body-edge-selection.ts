@@ -389,7 +389,7 @@ export type PointerZone = 'body' | BodyEdge;
 
 /** A drag the pointer plugin is following. */
 export interface EdgeDrag {
-  /** Where it was pressed; `shift` for a Shift+click past an edge. */
+  /** Where it was pressed; `shift` for a Shift+click the pointer plugin answers. */
   readonly press: PointerZone | 'shift';
   /** The anchor the selection keeps. */
   readonly anchor: number;

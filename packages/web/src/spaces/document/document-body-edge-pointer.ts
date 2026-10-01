@@ -56,7 +56,7 @@ const TAKEOVER_ATTR = 'data-body-end-takeover';
 
 /** A press this plugin is following. */
 interface Press {
-  /** Where it was pressed; `shift` for a Shift+click past an edge. */
+  /** Where it was pressed; `shift` for a Shift+click this plugin answers. */
   readonly zone: PointerZone | 'shift';
   /** The anchor when it is an edge; otherwise the selection's own anchor is read. */
   readonly anchorEdge: BodyEdge | null;
@@ -206,7 +206,7 @@ class PointerFollower {
   }
 
   /**
-   * Starts following a press, or answers a Shift+click past an edge.
+   * Starts following a press, or answers a Shift+click this plugin takes.
    * @param event - The press.
    */
   private readonly onDown = (event: MouseEvent): void => {
