@@ -4,40 +4,50 @@
 /**
  * The product guide accounts for every message the reader's screens show.
  *
- * The screens are what the project page renders: the canvas and document
- * spaces, the space type picker, the project page itself (top bar, tabs,
- * drawer, chat), the features it mounts, the refusals the shared rules hand
- * the panels, the running lines of the agent's tools, and the server's
- * answers the top bar's dialogs show as they come. A message they show is
- * quoted by the guide, described by it, or left out for a stated reason in
+ * The screens are what the project page renders: every web module reachable
+ * by import from the app's entry and the project page (the route table that
+ * would pull in every other page is left out), the shared rules those modules
+ * use, the running lines of the agent's tools, and every message the server
+ * writes for the reader, which the page shows as it comes. A message they show
+ * is quoted by the guide, described by it, or left out for a stated reason in
  * `NOT_QUOTED`; one that is none of these fails here, so what a new screen
  * says cannot slip past the guide unnoticed.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { loadLocales, runWithLocale } from "@breatic/core";
+import type * as Shared from "@breatic/shared";
 
 import { renderProductGuide } from "@domain/agent/tools/product-guide.js";
 import { NOT_QUOTED, REASONS } from "./product-guide-coverage.js";
 
+/** Every message id the guide asked `t` for while rendering. */
+const rendered = new Set<string>();
+
+vi.mock("@breatic/shared", async (importOriginal) => {
+  const shared = await importOriginal<typeof Shared>();
+  return {
+    ...shared,
+    t: (id: string, values?: Record<string, unknown>): string => {
+      rendered.add(id);
+      return shared.t(id, values as Parameters<typeof shared.t>[1]);
+    },
+  };
+});
+
 const PACKAGES = resolve(import.meta.dirname, "../../../../..");
-/** Where the reader's screens take their messages from, relative to `packages/`. */
-const SCREENS = [
-  "web/src/spaces",
-  "web/src/pages/project",
-  "web/src/components/resource-load-error.tsx",
-  ...["active-region", "collab-editor", "exclusive-overlay", "notifications", "preferences", "project-join"].map(
-    (feature) => `web/src/features/${feature}`,
-  ),
-  "shared/src",
-  "domain/src/agent/tools",
-  "server/src/modules/project-invite/projectInvite.service.ts",
-  "server/src/modules/project/projectMembers.service.ts",
-  "server/src/modules/project/projectTransfer.service.ts",
-];
+const WEB = join(PACKAGES, "web/src");
+/** The web modules the reader's screens start from. */
+const WEB_ENTRIES = [join(WEB, "index.tsx"), join(WEB, "pages/project/ProjectPage.tsx")];
+/** The route table, which lazily imports every page of the app. */
+const ROUTE_TABLE = join(WEB, "app/route-imports.ts");
+/** Sources read whole, relative to `packages/`. */
+const WHOLE = ["shared/src", "domain/src/agent/tools"];
+/** Sources whose `server.*` messages reach the reader as the server's answers, relative to `packages/`. */
+const SERVER_SIDE = ["server/src", "domain/src", "core/src"];
 
 const catalog = JSON.parse(
   readFileSync(resolve(PACKAGES, "../locales/en.json"), "utf8"),
@@ -72,79 +82,101 @@ function sources(path: string): string[] {
 }
 
 /**
- * Every message id the screens can show: each written out as a string, and
- * every message under a prefix a template string completes at run time.
- * @returns The ids, each once.
+ * The web source file an import names, if it is one of ours.
+ * @param from - The importing file.
+ * @param spec - The import specifier.
+ * @returns The file, or undefined for a package or a non-source file.
  */
-function screenMessages(): Set<string> {
-  const ids = new Set<string>();
-  for (const screen of SCREENS) {
-    for (const file of sources(join(PACKAGES, screen))) {
-      const text = readFileSync(file, "utf8");
-      for (const match of text.matchAll(/['"`]([a-zA-Z][\w-]*(?:\.[\w-]+)+)['"`]/g)) {
-        if (messages.has(match[1] as string)) ids.add(match[1] as string);
-      }
-      for (const match of text.matchAll(/`([a-zA-Z][\w-]*(?:\.[\w-]+)*)\.\$\{/g)) {
-        const prefix = `${match[1] as string}.`;
-        for (const id of messages.keys()) if (id.startsWith(prefix)) ids.add(id);
-      }
+function resolveWebImport(from: string, spec: string): string | undefined {
+  const base = spec.startsWith("@web/")
+    ? join(WEB, spec.slice("@web/".length))
+    : spec.startsWith(".")
+      ? resolve(dirname(from), spec)
+      : undefined;
+  if (base === undefined) return undefined;
+  return [`${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx"), base].find(
+    (file) => /\.tsx?$/.test(file) && existsSync(file) && statSync(file).isFile(),
+  );
+}
+
+/**
+ * Every web module reachable by import from the entries, the route table left out.
+ * @returns Their paths.
+ */
+function webSources(): string[] {
+  const seen = new Set<string>();
+  const pending = [...WEB_ENTRIES];
+  for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+    if (seen.has(file) || file === ROUTE_TABLE) continue;
+    seen.add(file);
+    for (const match of readFileSync(file, "utf8").matchAll(/(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g)) {
+      const next = resolveWebImport(file, match[1] as string);
+      if (next !== undefined) pending.push(next);
     }
+  }
+  return [...seen];
+}
+
+/**
+ * The message ids a source names: each written out as a string, and every
+ * message under a prefix a template string completes at run time.
+ * @param text - The source.
+ * @returns The ids it names.
+ */
+function namedMessages(text: string): string[] {
+  const ids: string[] = [];
+  for (const match of text.matchAll(/['"`]([a-zA-Z][\w-]*(?:\.[\w-]+)+)['"`]/g)) {
+    if (messages.has(match[1] as string)) ids.push(match[1] as string);
+  }
+  for (const match of text.matchAll(/`([a-zA-Z][\w-]*(?:\.[\w-]+)*)\.\$\{/g)) {
+    const prefix = `${match[1] as string}.`;
+    for (const id of messages.keys()) if (id.startsWith(prefix)) ids.push(id);
   }
   return ids;
 }
 
 /**
- * Whether the rendered guide carries a message: every stretch of its text
- * between placeholders of four or more characters is in the guide, or, for a
- * message too short to have one, the whole message between quotes.
- * @param id - A message id.
- * @param text - The rendered guide.
- * @returns True when the guide shows it.
+ * Every message id the screens can show.
+ * @returns The ids, each once.
  */
-function shows(id: string, text: string): boolean {
-  const pieces = (messages.get(id) ?? "")
-    .split(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/)
-    .map((piece) => piece.trim())
-    .filter((piece) => piece.length >= 4);
-  if (pieces.length === 0) return text.includes(`"${messages.get(id) ?? ""}"`);
-  return pieces.every((piece) => text.includes(piece));
+function screenMessages(): Set<string> {
+  const ids = new Set<string>();
+  const read = (file: string): string => readFileSync(file, "utf8");
+  for (const file of webSources()) for (const id of namedMessages(read(file))) ids.add(id);
+  for (const path of WHOLE) {
+    for (const file of sources(join(PACKAGES, path))) for (const id of namedMessages(read(file))) ids.add(id);
+  }
+  for (const path of SERVER_SIDE) {
+    for (const file of sources(join(PACKAGES, path))) {
+      for (const id of namedMessages(read(file))) if (id.startsWith("server.")) ids.add(id);
+    }
+  }
+  return ids;
 }
-
-const guideSource = readFileSync(resolve(import.meta.dirname, "..", "product-guide.ts"), "utf8");
-const calledIds = new Set([...guideSource.matchAll(/\bt\("([\w.-]+)"/g)].map((m) => m[1] as string));
 
 let guide = "";
 beforeAll(() => {
   loadLocales();
+  rendered.clear();
   guide = runWithLocale("en", renderProductGuide);
 });
 
 describe("what the guide does with each message on the screens", () => {
   const shown = screenMessages();
 
-  let quotedIds = new Set<string>();
-  beforeAll(() => {
-    // Quoted means the rendered guide carries it, not that the source names it:
-    // a commented-out line or an uncalled helper still names the id.
-    quotedIds = new Set([...calledIds].filter((id) => shows(id, guide)));
-  });
-
   it("finds the screens' messages", () => {
     // A reading that finds nothing would pass every check below.
     expect(shown.size).toBeGreaterThan(700);
-  });
-
-  it("shows every message the guide's source calls for", () => {
-    expect([...calledIds].filter((id) => !quotedIds.has(id))).toEqual([]);
+    expect(rendered.size).toBeGreaterThan(300);
   });
 
   it("quotes, describes or leaves out every one of them", () => {
-    const unplaced = [...shown].filter((id) => !quotedIds.has(id) && !(id in NOT_QUOTED));
+    const unplaced = [...shown].filter((id) => !rendered.has(id) && !(id in NOT_QUOTED));
     expect(unplaced).toEqual([]);
   });
 
   it("lists only messages the screens still show and the guide does not quote", () => {
-    const stale = Object.keys(NOT_QUOTED).filter((id) => !shown.has(id) || quotedIds.has(id));
+    const stale = Object.keys(NOT_QUOTED).filter((id) => !shown.has(id) || rendered.has(id));
     expect(stale).toEqual([]);
   });
 

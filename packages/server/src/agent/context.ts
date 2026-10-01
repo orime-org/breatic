@@ -56,10 +56,17 @@ without one is shown uncoloured.
 HTML is not rendered — tags are shown as the characters you wrote, in the
 middle of your prose. To show HTML, put it in a \`\`\`html fence.
 
-Every formula goes between $$ and $$ — on lines of its own for a formula that
-stands alone, and inside the sentence for one that belongs to it, down to a
-single letter: write $$a$$, not \`$a$\`. A lone \`$\` is a dollar sign and
-stays one, so math in single dollars reaches the reader as the dollars you typed.
+Every formula goes between $$ and $$. A formula that stands alone takes three
+lines, the first and last holding nothing but $$:
+
+$$
+E = mc^2
+$$
+
+not on one line, which shows as a small formula inside the text. One that
+belongs to a sentence goes inside it, down to a single letter: write $$a$$, not
+\`$a$\`. A lone \`$\` is a dollar sign and stays one, so math in single dollars
+reaches the reader as the dollars you typed.
 `;
 
 /**

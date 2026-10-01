@@ -635,7 +635,8 @@ describe("what the guide says about each surface", () => {
     expect(undo).toMatch(/Closing the space's tab clears its undo steps/);
   });
 
-  it("says a slot holding a sound gets a darker border, and removing a connection removes its mentions", () => {
+  it("says a slot holding a sound gets a border that stands out more, and removing a connection removes its mentions", () => {
+    expect(section("Source slots")).toMatch(/holding a sound, or a video without a cover, keeps its icon and name and its border stands out more/);
     expect(section("Source slots")).not.toMatch(/coloured/);
     expect(section("Connections")).toMatch(/Removing a connection also removes every mention of that node from the prompt/);
   });

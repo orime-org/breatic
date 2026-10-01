@@ -108,6 +108,13 @@ describe("how the prompt says to write a reply", () => {
     expect(wording()).toMatch(/lone `\$` is a dollar sign/i);
   });
 
+  it("shows a formula that stands alone with each $$ on a line by itself", () => {
+    // remark-math renders `$$E=mc^2$$` on one line as inline math; only a line
+    // holding nothing but `$$` opens a display formula.
+    expect(buildSystemPrompt()).toMatch(/\n\$\$\n[^\n$]+\n\$\$\n/);
+    expect(wording()).toMatch(/not on one line/i);
+  });
+
   it("shows a single letter inside a sentence written with double dollars", () => {
     // A real turn wrote "where $a$ and $b$ are the legs" and the reader saw the
     // dollars: the rule alone did not reach the one-letter case.

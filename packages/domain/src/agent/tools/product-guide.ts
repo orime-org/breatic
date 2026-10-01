@@ -112,9 +112,13 @@ export function renderProductGuide(): string {
       `${quoted(t("members.modal.transferButton"))}: pick a member from ` +
       `${quoted(t("members.modal.transferSelectPlaceholder"))} and press ` +
       `${quoted(t("members.modal.transferSend"))}. Only a member who is also a member of the project's studio, ` +
-      `not a guest there, can be picked; with none, it says ${quoted(t("members.modal.transferNoCandidates"))} Nothing changes until that ` +
-      "member accepts: then they become the owner and the reader becomes an editor. Until then the section says " +
-      `it is waiting for them and offers ${quoted(t("members.modal.transferWithdraw"))}. Then a globe with the ` +
+      `not a guest there, can be picked; with none, it says ${quoted(t("members.modal.transferNoCandidates"))} A ` +
+      "project in a personal studio cannot be transferred, since a personal studio takes no other members. " +
+      "Nothing changes until that member accepts: then they become the owner and the reader becomes an editor. " +
+      "Until then the section says it is waiting for them, shows how long the request has left, such as " +
+      `${quoted(t("notifications.expiresLabel.days", { count: 6 }))}, and offers ` +
+      `${quoted(t("members.modal.transferWithdraw"))}; once it reads ` +
+      `${quoted(t("notifications.expiresLabel.expired"))} it can no longer be accepted. Then a globe with the ` +
       "current language, which lists the five languages; an icon for the theme, which offers " +
       `${quoted(t("preferences.themeMode.light"))}, ${quoted(t("preferences.themeMode.dark"))} and ` +
       `${quoted(t("preferences.themeMode.system"))}; and a star with the credits left in the studio this ` +
@@ -128,7 +132,8 @@ export function renderProductGuide(): string {
       "someone who already has an account can be invited, and they join only once they accept, from their " +
       "bell, the email or that link. Otherwise the invitation is refused with a message such as " +
       `${quoted(t("server.project.email_not_registered"))} ${quoted(t("server.project.already_member"))} or ` +
-      `${quoted(t("server.project.already_invited"))} (and a full project says it has no room). Last is a ` +
+      `${quoted(t("server.project.already_invited"))} (a full project says how many collaborators its plan ` +
+      "allows; upgrading the plan raises it). Last is a " +
       `bell, with a red dot while anything in it is unread, which opens ${quoted(t("notifications.title"))}. ` +
       "An item someone is waiting on, such as an invitation or a transfer, shows how long is left and " +
       `${quoted(t("notifications.openDecision"))}, which leaves this page for a page where it is answered; it ` +
@@ -219,9 +224,8 @@ export function renderProductGuide(): string {
       `that opens to show the thinking; it reads ${quoted(t("chat.thinkingNow"))} while the thinking runs, and ` +
       `afterwards how long it took, such as ${quoted(t("chat.thinkingFor", { m: 0, s: 12 }))}, or ` +
       `${quoted(t("chat.thinking"))} when that is not known. While the reply runs, a line may name what it is ` +
-      `doing, such as ${quoted(t("chat.tool.readingGuide"))}; a step that fails reads ` +
-      `${quoted(t("chat.tool.failure.generic"))}, and one cut short reads ${quoted(t("chat.tool.unfinished"))}. ` +
-      `${quoted(t("chat.message.consolidating"))} can show while a ` +
+      `doing, such as ${quoted(t("chat.tool.readingGuide"))}; it goes when that step ends, and a step that ` +
+      `failed leaves no line of its own. ${quoted(t("chat.message.consolidating"))} can show while a ` +
       "long conversation is tidied before the reply. Links in a reply open in a new tab. A code block shows a " +
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
       "circles in the text are sources: hovering one shows it and " +
@@ -239,7 +243,10 @@ export function renderProductGuide(): string {
     `When the conversation has older messages, ${quoted(t("chat.loadEarlier"))} at the top shows them. After ` +
       "scrolling up, a round button with a downward arrow at the bottom goes back to the latest. If sending fails, " +
       `a line above the box says so, such as ${quoted(t("chat.error.network"))}, or ` +
-      `${quoted(t("chat.conversation.gone"))} when the conversation was deleted elsewhere.`,
+      `${quoted(t("chat.conversation.gone"))} when the conversation was deleted elsewhere. A message needs ` +
+      "credits in the project's studio to be answered; with none, the line reads " +
+      `${quoted(t("server.credit.none"))} or names what stands in the way, such as credits not yet assigned to ` +
+      "a studio. Credits are bought and assigned from the account menu on the studio pages.",
     `In ${quoted(t("chat.history.title"))}, ${quoted(t("chat.conversation.rename"))} turns the name into a box ` +
       `(${quoted(t("chat.conversation.renamePlaceholder"))} when empty); ` +
       `${quoted(t("chat.conversation.delete"))} asks ${quoted(t("chat.conversation.deleteTitle"))} with ` +
@@ -271,9 +278,10 @@ export function renderProductGuide(): string {
     "- Drag from the dot on a node's right edge and let go on empty canvas: a menu lists the types that can take " +
       "that connection, and the one you pick appears there, already connected.",
     "- Paste with Cmd/Ctrl+V: a copied node, a file or screenshot, or plain text, which becomes a text node. " +
-      "The canvas's keys, this one included, act once the canvas was the last thing clicked and nothing is being " +
-      "typed in: after typing in this chat, click an empty spot on the canvas first, or Cmd/Ctrl+V pastes into " +
-      "the chat box.",
+      "The canvas's keys, this one included, act once the space was the last thing clicked and nothing is being " +
+      "typed in; after typing in this chat they go to the chat box. To hand them back, click one of the selected " +
+      "nodes or the space's tab, which keeps the selection; clicking an empty spot on the canvas also works but " +
+      "clears the selection.",
     `- Double-clicking empty canvas does nothing. An empty canvas shows ${quoted(t("canvas.emptyState.title"))} ` +
       `and ${quoted(t("canvas.emptyState.hint"))} in the middle.`,
     "",
@@ -282,7 +290,9 @@ export function renderProductGuide(): string {
       `in smaller text, ${quoted(t("canvas.nodePlaceholder.rightClickHint"))}: double-click it to pick a file. An ` +
       `empty text node shows its icon, ${quoted(t("canvas.nodePlaceholder.text"))} and the same smaller line; ` +
       "double-clicking it, or the text of a text node that has some, lets you type (an empty one then shows " +
-      `${quoted(t("canvas.textNode.editorPlaceholder"))}); Esc or clicking elsewhere ends typing. To replace ` +
+      `${quoted(t("canvas.textNode.editorPlaceholder"))}); Esc or clicking elsewhere ends typing. From the ` +
+      "keyboard, Tab moves onto the nodes; Enter on a text node starts typing in it, and Enter or Space on an " +
+      "empty picture, video or sound node opens the file picker. To replace " +
       `what a node holds, right-click it and choose ${quoted(t("canvas.nodeMenu.upload"))}. A picture, video or ` +
       "sound node takes a new file of its kind; a file of another kind is refused with " +
       `${quoted(t("canvas.upload.typeMismatch"))} A text node's picker lists text, Markdown, PDF, Word and ` +
@@ -414,11 +424,14 @@ export function renderProductGuide(): string {
       "nodes cannot be resized: zoom the canvas to see them larger. Only a group has resize handles.",
     "Scroll to pan, or hold Space and drag (while typing in a text node, over an open panel or inside an open " +
       "note, scrolling scrolls that instead). A text node whose words do not fit fades out at the bottom: " +
-      "double-click its words to type in it and scroll the rest into view. Pinch or hold Ctrl and scroll to " +
+      "double-click its words to type in it and scroll the rest into view (a locked text node does not open: " +
+      "unlock it first). Pinch or hold Ctrl and scroll to " +
       "zoom. Cmd/Ctrl with plus or minus zooms the whole browser " +
       "page, not the canvas. Except while nodes are being picked for a panel or a note is being placed, click a " +
       "node to select it and Cmd/Ctrl-click to add or remove one. Cmd/Ctrl+A does not select every node. " +
-      "Backspace or Delete, once the canvas was the last thing clicked and nothing is being typed in, removes the selected nodes and connections; locked ones, " +
+      "Backspace or Delete, once the space was the last thing clicked and nothing is being typed in (see " +
+      "pasting, above, for handing the keys back from this chat), removes the selected nodes and connections; " +
+      "locked ones, " +
       "ones with tasks still running and notes you may not delete stay, and a message says why. Other people in " +
       "the same space show as named pointers and as name tags on what they have selected.",
     "",
@@ -564,7 +577,8 @@ export function renderProductGuide(): string {
       "stays active. A slot holds a copy and needs no connection or mention. A node never takes its own " +
       "content: it stays unlit while its own panel is picking, and it cannot connect to itself. To work from a " +
       "node's picture, make a new node from it (drag from its right dot to empty canvas and pick the type), then " +
-      "open the new node's panel and mention the first one.",
+      "open the new node's panel: where the mode has a slot for it, such as a first frame, press that slot and " +
+      "click the first node; otherwise mention the first node in the prompt.",
     "",
     "## Connections",
     "Picture, video, sound and text nodes show a small dot on their left and right edges; groups and notes have " +
@@ -610,9 +624,11 @@ export function renderProductGuide(): string {
       "it too; a faded chip shows a message saying why instead, such as " +
       `${quoted(t("canvas.generatePanel.refuseInsertModeOff"))} or ` +
       `${quoted(t("canvas.generatePanel.refuseInsertNoPrompt"))}. Hovering the chip of a node that holds ` +
-      "nothing yet, in the strip above the prompt or in the prompt itself, shows " +
+      "nothing yet in the strip above the prompt shows " +
       `${quoted(t("canvas.generatePanel.emptyImageReference"))} (a picture, video or sound node) or ` +
-      `${quoted(t("canvas.generatePanel.emptyTextReference"))} (a text node) in place of a preview. Backspace removes a mention whole. ` +
+      `${quoted(t("canvas.generatePanel.emptyTextReference"))} (a text node) in place of a preview; in the ` +
+      "prompt itself a picture, video or text mention shows the same, and a sound mention shows nothing when " +
+      "hovered. Backspace removes a mention whole. " +
       "Enter in the prompt starts a new line and never generates.",
     "Some models need at least one connected node mentioned before they run: an image-to-image model answers " +
       `${quoted(t("canvas.generatePanel.errorNoSourceImage"))} A video model that needs one says what is still ` +
@@ -642,7 +658,9 @@ export function renderProductGuide(): string {
       "locks, a node's mode, model, settings and slots, and notes and their replies. It does not take back what " +
       "a generation or an upload put in a node (use the node's " +
       `${quoted(t("canvas.nodeMenu.history"))}), a focus crop (press the X on its chip), or other people's ` +
-      "changes; words typed in a text node or a prompt box are undone with Cmd/Ctrl+Z while the cursor is " +
+      "changes. Undoing a removed connection, or a deleted node with its connections, brings them back, but " +
+      "the mentions of that node already taken out of a prompt stay out: mention it again with @. Words typed " +
+      "in a text node or a prompt box are undone with Cmd/Ctrl+Z while the cursor is " +
       "still in that box. Closing the space's tab clears its undo steps.",
     "",
     "## Proposal cards",
@@ -729,8 +747,9 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.alignRight"))}. Hovering the speech bubble shows ` +
       `${quoted(t("spaces.document.commands.comment"))} marked not open yet. The AI menu's commands look ` +
       "available but do nothing yet. With the whole document selected there is no link icon. Inside a code " +
-      "block or on inline code the bold, italic, strikethrough, underline, code, link and colour buttons are " +
-      "greyed, and a code block cannot be aligned; on an empty line the colour menu is greyed.",
+      "block the bold, italic, strikethrough, underline, code, link and colour buttons are greyed, and a code " +
+      "block cannot be aligned. On inline code the same buttons are greyed except code, which shows as on; " +
+      "pressing it turns the inline code back into plain text. On an empty line the colour menu is greyed.",
     `- The link icon opens a box, ${quoted(t("spaces.document.link.placeholder"))}, with ` +
       `${quoted(t("spaces.document.link.confirm"))}; for an address that is not one, ` +
       `${quoted(t("spaces.document.link.confirm"))} looks greyed, and pressing it or Enter shows ` +
@@ -751,7 +770,9 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
       `${quoted(t("spaces.document.commands.paragraph"))} and puts a new line of the one picked below. For a ` +
-      "plain line below, press Enter at the end of the line.",
+      "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
+      "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
+      "takes the quote off.",
     `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open ` +
       `${quoted(t("spaces.document.docMenu.saveSnapshot"))} and ` +
       `${quoted(t("spaces.document.docMenu.restoreSnapshot"))}, both marked ` +
@@ -783,10 +804,10 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.schemaOutdated.headline"))} with ` +
       `${quoted(t("spaces.document.schemaOutdated.body"))} and ` +
       `${quoted(t("spaces.document.schemaOutdated.action"))}, and warns above the button that ` +
-      `${quoted(t("spaces.document.schemaOutdated.riskUploads"))} A document whose space was deleted after it ` +
-      "opened shows " +
-      `${quoted(t("spaces.document.refusedNotice"))} for a moment; the page still takes typing, but none of it ` +
-      "is saved: copy it out and reload.",
+      `${quoted(t("spaces.document.schemaOutdated.riskUploads"))} When the connection to an open document is ` +
+      `refused, ${quoted(t("spaces.document.refusedNotice"))} shows for a moment; the page still takes typing, ` +
+      "but none of it is saved: copy it out and reload. When someone deletes a space you have open, its tab " +
+      `closes; the project's owner can bring the space back from ${quoted(t("activity.header"))}.`,
     `- When this chat cannot load, it is covered with ${quoted(t("chat.load.failedTitle"))} or ` +
       `${quoted(t("chat.load.refusedTitle"))} and ${quoted(t("chat.load.retry"))}.`,
     `- ${quoted(t("canvas.upload.storageFull"))} when uploading, or ` +
