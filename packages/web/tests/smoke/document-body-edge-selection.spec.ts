@@ -514,6 +514,88 @@ test('from a drag up from below, Shift+Up reaches a leading divider; after selec
   expect([kept.kind, kept.anchor]).toEqual(['BodyEdgeSelectionClass', 2]);
 });
 
+test('Shift+Right and Shift+Down leave the whole document whole, and Backspace still asks first (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'paragraph', content: 'One' }, { type: 'paragraph', content: 'Two' }]);
+  const word = await wordBox(page, 'Two');
+  await page.mouse.click(word.x + 2, word.y + word.height / 2);
+  await expect.poll(async () => (await read(page)).kind).toBe('_TextSelection');
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.press('ControlOrMeta+a');
+  await expect.poll(async () => (await read(page)).kind).toBe('_AllSelection');
+
+  await page.keyboard.press('Shift+ArrowRight');
+  await page.keyboard.press('Shift+ArrowDown');
+  expect((await read(page)).kind).toBe('_AllSelection');
+
+  await page.keyboard.press('Backspace');
+  await expect(page.getByTestId('document-clear-confirm')).toBeVisible();
+  await page.keyboard.press('Escape');
+});
+
+test('Shift+Down from the last line of words in a code block ending in a line break stops on the empty line first (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'codeBlock', content: 'abc\ndef\n' }, { type: 'divider' }]);
+  const code = await rowBox(page, 0);
+  await page.mouse.click(code.x + 200, code.y + code.height / 2);
+  // The click's caret lands asynchronously, and a key before it is dropped.
+  await page.waitForTimeout(SETTLE_MS);
+  // The click past the end of the middle line puts the caret after "def".
+  const clicked = await read(page);
+  expect(clicked.text).toBe('');
+
+  await page.keyboard.press('Shift+ArrowDown');
+  const empty = await read(page);
+  expect(empty.kind).toBe('_TextSelection');
+  expect(empty.head).toBe(clicked.head + 1);
+
+  await page.keyboard.press('Shift+ArrowDown');
+  const edge = await read(page);
+  expect([edge.kind, edge.head]).toEqual(['BodyEdgeSelectionClass', edge.size - 2]);
+});
+
+test('a Shift+click past the end keeps the end of a range the page keeps (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph', content: 'Lower' }, { type: 'divider' }]);
+  const middle = await wordBox(page, 'Middle');
+  const lower = await wordBox(page, 'Lower');
+  const last = await rowBox(page, -1);
+  await drag(page, { x: lower.x + 30, y: lower.y + lower.height / 2 }, [{ x: middle.x + 20, y: middle.y + middle.height / 2 }]);
+  const made = await read(page);
+  // The page's own rule (probe38): on macOS the end farther from the click
+  // stays, which here is the top of the range; elsewhere the anchor stays.
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+
+  await shiftClick(page, middle.x + 20, last.y + last.height + 60);
+
+  const reading = await read(page);
+  expect([reading.kind, reading.head]).toEqual(['BodyEdgeSelectionClass', reading.size - 2]);
+  expect(reading.anchor).toBe(mac ? Math.min(made.anchor, made.head) : made.anchor);
+});
+
+test('a Shift+click on words below a range whose head is on the start reaches from the start (A6)', async () => {
+  await openFreshDocument(page);
+  // Lines between: the bubble bar stands over the rows under the head.
+  await setBlocks(page, [{ type: 'divider' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph', content: 'Gap' }, { type: 'paragraph', content: 'Gap' }, { type: 'paragraph', content: 'Tail' }]);
+  const middle = await wordBox(page, 'Middle');
+  const tail = await wordBox(page, 'Tail');
+  const first = await rowBox(page, 0);
+  await drag(page, { x: middle.x + 30, y: middle.y + middle.height / 2 }, [{ x: middle.x + 30, y: first.y - 30 }]);
+  expect((await read(page)).head).toBe(2);
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+
+  await shiftClick(page, tail.x + 10, tail.y + tail.height / 2);
+
+  const reading = await read(page);
+  if (mac) {
+    expect([reading.kind, reading.anchor]).toEqual(['BodyEdgeSelectionClass', 2]);
+    expect(reading.painted).toContain('divider');
+    expect(reading.text).toContain('Middle|Gap|Gap|T');
+  } else {
+    expect(reading.head).toBeGreaterThan(reading.anchor);
+  }
+});
+
 test('a selection anchored on the start moves its head a line at a time with Shift+Up and Shift+Down (A6)', async () => {
   await openFreshDocument(page);
   await setBlocks(page, [{ type: 'divider' }, { type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph', content: 'Last' }]);
@@ -710,8 +792,10 @@ test('a Shift+click on the first of two trailing dividers holds both (A6)', asyn
 
   await shiftClick(page, divider.x + 100, divider.y + divider.height / 2);
 
+  // Which end stays follows the page's rule, so either end may be on the edge.
   const reading = await read(page);
-  expect([reading.kind, reading.head === reading.size - 2]).toEqual(['BodyEdgeSelectionClass', true]);
+  expect(reading.kind).toBe('BodyEdgeSelectionClass');
+  expect([reading.anchor, reading.head]).toContain(reading.size - 2);
   expect(reading.painted).toEqual(['divider', 'divider']);
 });
 
