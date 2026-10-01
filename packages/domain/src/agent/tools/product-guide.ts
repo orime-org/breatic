@@ -246,8 +246,9 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.conversation.gone"))} when the conversation was deleted elsewhere. A message needs ` +
       "credits in the project's studio to be answered; with none, the line reads " +
       `${quoted(t("server.credit.none"))} or names what stands in the way, such as credits not yet assigned to ` +
-      "a studio. Only the studio's admin can assign credits to it, from the account menu on the studio pages; " +
-      "anyone else asks the admin.",
+      "a studio. Credits are bought from the account menu on the studio pages, under " +
+      `${quoted(t("studio.topBar.credits"))} then ${quoted(t("credits.section.buy"))}; only the studio's admin ` +
+      "can assign them to this studio, so anyone else asks the admin.",
     `In ${quoted(t("chat.history.title"))}, ${quoted(t("chat.conversation.rename"))} turns the name into a box ` +
       `(${quoted(t("chat.conversation.renamePlaceholder"))} when empty); ` +
       `${quoted(t("chat.conversation.delete"))} asks ${quoted(t("chat.conversation.deleteTitle"))} with ` +
@@ -795,11 +796,14 @@ export function renderProductGuide(): string {
       "covers the work area the same way. It shows when the session ran out, and also when the reader was " +
       "removed from the project or the project was deleted: if signing in again does not let them back in, it " +
       "is one of those, and the project's owner can say which. With a document open, " +
-      `${quoted(t("spaces.document.refusedNotice"))} also shows for a moment; nothing typed after it is saved.`,
+      `${quoted(t("spaces.document.refusedNotice"))} also shows for a moment; nothing typed after it is saved, ` +
+      "but the keyboard still reaches the document: press Cmd/Ctrl+A twice, then Cmd/Ctrl+C, to copy it out " +
+      "before signing in again or reloading.",
     `- ${quoted(t("spaces.readOnlyNotice"))} at the top of a space, with ` +
       `${quoted(t("spaces.readOnlyReconnect"))}: the space already has as many open editing connections as the ` +
-      "plan allows, and every browser tab that has the space open counts, the reader's own included. Closing " +
-      "other tabs on it and reconnecting, which reloads the page, can free one.",
+      "plan of the studio's admin allows (only their upgrade raises it), and every browser tab that has the " +
+      "space open counts, the reader's own included. Closing other tabs on it and reconnecting, which reloads " +
+      "the page, can free one.",
     "- Going elsewhere in the site while an upload, or a file being read into a text node, is unfinished asks " +
       `${quoted(t("project.leaveGuard.title"))} (${quoted(t("project.leaveGuard.description"))}) with ` +
       `${quoted(t("project.leaveGuard.stay"))} and ${quoted(t("project.leaveGuard.leave"))}. Closing or ` +

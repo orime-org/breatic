@@ -657,6 +657,14 @@ describe("what the guide says about each surface", () => {
     expect(wrong).toMatch(/Closing or reloading the browser tab, including by the reload buttons above, shows the browser's own prompt/);
     expect(wrong).toMatch(/With a document open, "[^"]+" also shows for a moment; nothing typed after it is saved/);
     expect(wrong).toMatch(/until they upgrade/);
+    expect(wrong).toMatch(/press Cmd\/Ctrl\+A twice, then Cmd\/Ctrl\+C, to copy it out before signing in again or reloading/);
+    expect(wrong).toMatch(/as many open editing connections as the plan of the studio's admin allows \(only their upgrade raises it\)/);
+  });
+
+  it("says where credits are bought and that only the studio's admin assigns them", () => {
+    const chat = section("The chat panel");
+    expect(chat).toContain(`"${t("studio.topBar.credits")}" then "${t("credits.section.buy")}"`);
+    expect(chat).toMatch(/only the studio's admin can assign them to this studio, so anyone else asks the admin/);
   });
 
   it("says a note's replies are posted with Save or Enter and deleting the note takes its replies", () => {
