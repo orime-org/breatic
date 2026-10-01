@@ -99,7 +99,7 @@ describe("POST /chat/message and the reader's time zone", () => {
   });
 
   it("refuses a zone longer than any IANA name", async () => {
-    expect(await post({ ...BODY, time_zone: "x".repeat(65) })).toBe(400);
+    expect(await post({ ...BODY, time_zone: "x".repeat(65) })).toBe(422);
     expect(handedZones).toEqual([]);
   });
 });

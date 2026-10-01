@@ -21,6 +21,7 @@ import {
 import type { AskUserPayload } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
+import { readerClockNote } from "@server/agent/reader-clock.js";
 import { getAgentConfig } from "@breatic/core";
 import { creditLotService, createUsageRecorder, usageContextFor } from "@breatic/domain";
 import { buildTurnContext } from "@server/agent/turn-context.js";
@@ -71,14 +72,16 @@ export class MainAgent {
    * @param signal - Raised when the user stops the turn or the client goes
    *   away. Absent means this caller has no way to stop the turn.
    * @param attached - What the user attached to the message, in order.
+   * @param timeZone - The zone the reader's browser reported, if any.
    * @returns The turn, as the SDK's own message chunks.
    */
   async chat(
     userMessage: string,
     signal?: AbortSignal,
     attached: readonly ChatAttachedChip[] = [],
+    timeZone?: string,
   ): Promise<ReadableStream<UIMessageChunk>> {
-    return this.runTurn(userMessage, attached, signal);
+    return this.runTurn(userMessage, attached, signal, timeZone);
   }
 
   /**
@@ -86,12 +89,14 @@ export class MainAgent {
    * @param said - What the user typed
    * @param attached - What the user attached, stored beside the typed words
    * @param signal - Raised when the user stops the turn or the client leaves
+   * @param timeZone - The zone the reader's browser reported, if any
    * @returns The turn, as the SDK's own message chunks.
    */
   private async runTurn(
     said: string,
     attached: readonly ChatAttachedChip[],
     signal: AbortSignal | undefined,
+    timeZone: string | undefined,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const { conversationId } = this.ctx;
 
@@ -121,7 +126,13 @@ export class MainAgent {
     // nothing of the turn could reach the reader until they were done, the
     // first word of the reply included, which is the one thing they were
     // waiting for.
-    return this.runStream(userTurnForModel(attached, said), turnIndex, title, signal);
+    // The reader's clock opens this turn's message, on its own line, ahead of
+    // any attached content, so it never sits under the "User message"
+    // heading. It is never stored: the history and the system prompt stay
+    // word for word what they were, which is what a provider's prefix cache
+    // matches on; only this last message changes from turn to turn.
+    const forModel = `${readerClockNote(new Date(), timeZone)}\n\n${userTurnForModel(attached, said)}`;
+    return this.runStream(forModel, turnIndex, title, signal);
   }
 
   /**
@@ -147,7 +158,8 @@ export class MainAgent {
    * reader spends in front of a screen where nothing has happened, and a
    * stream that exists already has somewhere to put the name in the meantime.
    * @param forModel - This turn's user message as the model is sent it: the
-   *   attachments, then the typed words. Put in front of the model on its own.
+   *   reader's clock, the attachments, then the typed words. Put in front of
+   *   the model on its own.
    * @param turnIndex - The turn this run answers. A parameter and not a
    *   context field: it is known one line before the call, both the reply and
    *   the charge are filed under it, and neither has anything sensible to do
