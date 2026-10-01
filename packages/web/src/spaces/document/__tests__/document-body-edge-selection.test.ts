@@ -329,19 +329,54 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
     ]);
   });
 
-  it('asks whether the head itself is on the line nearest the edge, not the other end', () => {
+  /**
+   * Lays out the lines of a block for coordsAtPos: the head on one line, the
+   * block's start and end on the first and the last.
+   * @param view - The view.
+   * @param head - The head.
+   * @param headLine - Which of three lines the head is on, 0 to 2.
+   */
+  function linesFor(view: EditorView, head: number, headLine: number): void {
+    const $head = view.state.doc.resolve(head);
+    const line = (n: number): { left: number; right: number; top: number; bottom: number } => ({ left: 0, right: 10, top: n * 20, bottom: n * 20 + 20 });
+    vi.spyOn(view, 'coordsAtPos').mockImplementation((pos) =>
+      line(pos === head ? headLine : pos === $head.start() ? 0 : pos === $head.end() ? 2 : headLine),
+    );
+  }
+
+  it('Shift+Down from a head on the first of three lines next to the end is not taken as the last line', () => {
     const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
     const head = textStart(view, 'Middle') + 2;
-    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'end', head)));
-    const asked: Selection[] = [];
-    vi.spyOn(view, 'endOfTextblock').mockImplementation((_dir, state) => {
-      asked.push((state ?? view.state).selection);
-      return false;
-    });
+    const selection = BodyEdgeSelection.fromEdge(view.state.doc, 'end', head);
+    view.dispatch(view.state.tr.setSelection(selection));
+    linesFor(view, head, 0);
 
     press(view, 'ArrowDown');
 
-    expect(asked.map((selection) => [selection.anchor, selection.head])).toEqual([[head, head]]);
+    expect(view.state.selection.eq(selection)).toBe(true);
+  });
+
+  it('Shift+Down from a head on the last of three lines next to the end takes the end in', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
+    const head = textStart(view, 'Middle') + 2;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Above'), head)));
+    linesFor(view, head, 2);
+
+    press(view, 'ArrowDown');
+
+    expect([view.state.selection.constructor, view.state.selection.head]).toEqual([BodyEdgeSelection, bodyEdgePos(view.state.doc, 'end')]);
+  });
+
+  it('measures the line without swapping the view state, which would reset the browser\'s goal column', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
+    const head = textStart(view, 'Middle') + 2;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Above'), head)));
+    linesFor(view, head, 0);
+    const updates = vi.spyOn(view, 'updateState');
+
+    expect(press(view, 'ArrowDown')).toBe(false);
+
+    expect(updates).not.toHaveBeenCalled();
   });
 
   it('Shift+Left steps over a whole emoji, not half of it', () => {
@@ -383,6 +418,41 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Only'))));
 
     expect(press(view, 'ArrowDown')).toBe(false);
+  });
+});
+
+describe('Enter on a selection that reaches past an end', () => {
+  /**
+   * The text of every text block, and whether a divider is left.
+   * @param view - The view.
+   * @returns The lines, then the dividers left.
+   */
+  function lines(view: EditorView): { texts: string[]; dividers: number } {
+    const texts: string[] = [];
+    let dividers = 0;
+    view.state.doc.descendants((node) => {
+      if (node.isTextblock) texts.push(node.textContent);
+      if (node.type.name === 'divider') dividers += 1;
+      return true;
+    });
+    return { texts, dividers };
+  }
+
+  it('replaces the range and breaks the line, whichever end is on which edge', () => {
+    const cases = [
+      { blocks: [{ type: 'divider' }, { type: 'paragraph', content: 'Below' }], make: (v: EditorView) => BodyEdgeSelection.create(v.state.doc, textStart(v, 'Below') + 2, 'start'), texts: ['', 'low'] },
+      { blocks: [{ type: 'divider' }, { type: 'paragraph', content: 'Below' }], make: (v: EditorView) => BodyEdgeSelection.fromEdge(v.state.doc, 'start', textStart(v, 'Below') + 2), texts: ['', 'low'] },
+      { blocks: ABOVE_DIVIDER, make: (v: EditorView) => BodyEdgeSelection.create(v.state.doc, textStart(v, 'Above') + 1, 'end'), texts: ['A', ''] },
+      { blocks: ABOVE_DIVIDER, make: (v: EditorView) => BodyEdgeSelection.fromEdge(v.state.doc, 'end', textStart(v, 'Above') + 1), texts: ['A', ''] },
+    ];
+    for (const { blocks, make, texts } of cases) {
+      const view = open(blocks);
+      view.dispatch(view.state.tr.setSelection(make(view)));
+
+      expect(press(view, 'Enter', false)).toBe(true);
+
+      expect(lines(view)).toEqual({ texts, dividers: 0 });
+    }
   });
 });
 

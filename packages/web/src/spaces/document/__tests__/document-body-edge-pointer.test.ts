@@ -450,6 +450,35 @@ describe('Shift+click past an end of the body', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([bodyEdgePos(view.state.doc, 'start'), target]);
   });
 
+  it('reaches the end edge past two dividers when the Shift+click lands on the first', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'divider' }, { type: 'divider' }]).prosemirrorView!;
+    let first = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'divider' && first < 0) first = pos;
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, first)));
+    pointAt(view, first);
+
+    press(view, 50, { shiftKey: true });
+
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([
+      textStart(view, 'Above') + 'Above'.length,
+      bodyEdgePos(view.state.doc, 'end'),
+    ]);
+  });
+
+  it('follows a Shift+drag from the body on past the end, leaving the press to the browser', () => {
+    const view = open([{ type: 'paragraph', content: 'One' }, { type: 'paragraph', content: 'Two' }, { type: 'paragraph' }]).prosemirrorView!;
+    const at = textStart(view, 'One') + 1;
+    select(view, at);
+
+    const event = press(view, 50, { shiftKey: true });
+    move(150);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, bodyEdgePos(view.state.doc, 'end')]);
+  });
+
   it('leaves a Shift+click in the body to the browser', () => {
     const view = open(ABOVE_DIVIDER).prosemirrorView!;
     const at = textStart(view, 'Above');
