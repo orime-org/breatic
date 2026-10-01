@@ -111,10 +111,10 @@ function hasNoNumbers(numbers: {
  * Four things have to hold: the upload deferred its read, it registered, the
  * row it registered is its own, and that row has no numbers. The third is
  * what keeps a cover whose bytes the studio already held off somebody else's
- * row. A re-delivered finish answers out of the row the first one wrote, so it
- * may queue again: while the first job is still kept the job id folds the two
- * into one, and once it is gone the second read finds the row measured and
- * leaves it.
+ * row. A re-delivered finish answers out of the row the first one wrote: once
+ * that row has numbers nothing is queued, and while it is still empty it
+ * queues again — the job id folds the two into one while the first job is
+ * kept, and after that a second read runs.
  * @param outcome - What the report handler decided.
  * @param assetSource - What the grant says the upload is.
  * @returns True when a job was queued.
@@ -165,6 +165,7 @@ export async function readAndFillMedia(assetId: string): Promise<MediaReadResult
   );
   if (hasNoNumbers(numbers)) return "nothing_found";
   // The write only lands on a live row that is still unmeasured, so losing it
-  // means something else got to the row first.
+  // means another write filled the row or it was deleted meanwhile; either
+  // way there is nothing left to write.
   return (await fillMediaNumbers(assetId, numbers)) ? "filled" : "already_measured";
 }

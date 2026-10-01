@@ -453,8 +453,8 @@ const mediaNumbers = z.object({
  *
  * The read a cover or an avatar skipped when it was finished, asked for by our
  * worker once the upload has returned. Nothing is written, so a repeat costs
- * one more container run and nothing else. No deadline of its own, for the
- * reason a finish has none: the wait is the container's, bounded by `limits`.
+ * one more container run and nothing else. No deadline of its own: the wait is
+ * the container's, and the Worker bounds it by `limits`.
  * @param uploadUrl - The ingest Worker's base address.
  * @param secret - The secret the Worker also holds.
  * @param about - The object to read.
