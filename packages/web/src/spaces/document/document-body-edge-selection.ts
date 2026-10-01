@@ -439,7 +439,7 @@ interface EdgeDrag {
   readonly press: PointerZone;
   /** The anchor the selection keeps. */
   readonly anchor: number;
-  /** Whether the pointer has been anywhere but where it was pressed. */
+  /** Whether the selection is this plugin's: the pointer has left where it was pressed, or a Shift+click was taken. */
   readonly left: boolean;
 }
 
@@ -615,17 +615,33 @@ function stepFrom(doc: Node, head: number, dir: 1 | -1): number {
  * @returns The position, or null when the page cannot move a caret by lines.
  */
 function lineFrom(view: EditorView, head: number, dir: 1 | -1): number | null {
-  const dom = (view.root as Document).getSelection?.();
-  if (!dom || typeof dom.modify !== 'function') return null;
-  const { anchorNode, anchorOffset, focusNode, focusOffset } = dom;
-  const at = view.domAtPos(head);
-  dom.collapse(at.node, at.offset);
-  dom.modify('move', dir < 0 ? 'backward' : 'forward', 'line');
-  const moved = dom.focusNode && view.dom.contains(dom.focusNode) ? view.posAtDOM(dom.focusNode, dom.focusOffset) : null;
-  // Put the page's range back: ProseMirror reads it on the next selection
-  // change, and a key that changes nothing dispatches nothing to overwrite it.
-  if (anchorNode && focusNode) dom.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset);
-  return moved === null ? null : textToward(view.state.doc, moved, dir);
+  const moved = borrowPageSelection(view, (page) => {
+    if (typeof page.modify !== 'function') return null;
+    const at = view.domAtPos(head);
+    page.collapse(at.node, at.offset);
+    page.modify('move', dir < 0 ? 'backward' : 'forward', 'line');
+    return page.focusNode && view.dom.contains(page.focusNode) ? view.posAtDOM(page.focusNode, page.focusOffset) : null;
+  });
+  return moved == null ? null : textToward(view.state.doc, moved, dir);
+}
+
+/**
+ * Lends the page's own selection to a measurement and puts the page's range
+ * back afterwards: ProseMirror reads the range on the next selection change,
+ * and a press or key that changes nothing dispatches nothing to overwrite it.
+ * @param view - The view.
+ * @param measure - What to do with the page's selection.
+ * @returns What the measurement gives, or null when the page has no selection.
+ */
+export function borrowPageSelection<T>(view: EditorView, measure: (page: globalThis.Selection) => T): T | null {
+  const page = (view.root as Document).getSelection?.();
+  if (!page) return null;
+  const { anchorNode, anchorOffset, focusNode, focusOffset } = page;
+  try {
+    return measure(page);
+  } finally {
+    if (anchorNode && focusNode) page.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset);
+  }
 }
 
 /**

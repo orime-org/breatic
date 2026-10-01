@@ -28,7 +28,6 @@
 
 import { createExtension } from '@blocknote/core';
 import { isMacOS } from '@tiptap/core';
-import type { Node } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type Selection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -37,6 +36,7 @@ import {
   bodyEdgeBlockPos,
   bodyEdgeNeedsTakeover,
   bodyEdgePos,
+  borrowPageSelection,
   dragSelection,
   extensionEnds,
   type BodyEdge,
@@ -68,7 +68,7 @@ interface Press {
   /** Where the pointer is now. */
   readonly x: number;
   readonly y: number;
-  /** Whether the pointer has been anywhere but where it was pressed. */
+  /** Whether the selection is this plugin's: the pointer has left where it was pressed, or a Shift+click was taken. */
   readonly left: boolean;
   /** Whether it has travelled further than a click. */
   readonly moved: boolean;
@@ -152,35 +152,56 @@ function isPlainPress(event: MouseEvent): boolean {
 }
 
 /**
- * The end of a selection a Shift+click keeps, as the page keeps it. On macOS
- * the selection has no direction: the end nearer the click in text moves, and
- * a tie moves the start (Chromium `ExtendSelectionAsNonDirectional`, which
- * measures with `TextIterator::RangeLength`: characters, one per line break,
- * none for a block without text; probe42). Elsewhere the anchor stays.
- * @param doc - The document.
+ * The end of a selection a Shift+click keeps, as the page keeps it. Off macOS
+ * the anchor stays. On macOS the selection has no direction (Chromium
+ * `selection_controller.cc`, `ExtendSelectionAsNonDirectional`): a click
+ * before the range keeps its end, one after it keeps its start, and one inside
+ * keeps the end farther from it in text, a tie keeping the end. A click past an
+ * edge stands on that edge, outside everything.
+ * @param view - The view.
  * @param ends - The selection's anchor and head.
  * @param ends.anchor - The anchor.
  * @param ends.head - The head.
  * @param target - Where the click lands.
  * @returns The position that stays.
  */
-function keptEnd(doc: Node, { anchor, head }: { anchor: number; head: number }, target: number): number {
+function keptEnd(view: EditorView, { anchor, head }: { anchor: number; head: number }, target: number): number {
   if (!isMacOS()) return anchor;
   const start = Math.min(anchor, head);
   const end = Math.max(anchor, head);
-  return textDistance(doc, start, target) <= textDistance(doc, target, end) ? end : start;
+  if (target <= start) return end;
+  if (target >= end) return start;
+  const [toStart, toEnd] = borrowPageSelection(view, (page) => [
+    textDistance(view, page, start, target),
+    textDistance(view, page, target, end),
+  ]) ?? [0, 0];
+  return toStart <= toEnd ? end : start;
 }
 
 /**
- * How far apart two positions are in what the page reads as text: characters,
- * one per line break between blocks, none for a block without text.
- * @param doc - The document.
- * @param a - One position.
- * @param b - The other.
+ * How far apart two positions are in text, counted as the page counts it: the
+ * length of the page's own text between them (`Selection.toString`, which
+ * gives a block boundary, a hard break and an empty line the characters the
+ * page gives them; probe43), plus one for each block without text, which the
+ * page's string leaves out as unselectable content and its distance counts
+ * (`DOMSelection::toString` sets `SkipsUnselectableContent`;
+ * `TextIterator::RangeLength` does not).
+ * @param view - The view.
+ * @param page - The page's selection, lent for the measurement.
+ * @param from - The earlier position.
+ * @param to - The later position.
  * @returns The distance.
  */
-function textDistance(doc: Node, a: number, b: number): number {
-  return doc.textBetween(Math.min(a, b), Math.max(a, b), '\n').length;
+function textDistance(view: EditorView, page: globalThis.Selection, from: number, to: number): number {
+  const a = view.domAtPos(from);
+  const b = view.domAtPos(to);
+  page.setBaseAndExtent(a.node, a.offset, b.node, b.offset);
+  let unselectable = 0;
+  view.state.doc.nodesBetween(from, to, (node, pos) => {
+    if (node.isBlock && node.isLeaf && pos >= from && pos + node.nodeSize <= to) unselectable += 1;
+    return !node.isLeaf;
+  });
+  return page.toString().length + unselectable;
 }
 
 /** What the plugin needs from the BlockNote editor. */
@@ -281,16 +302,14 @@ class PointerFollower {
       this.begin({ ...at, zone, anchorEdge: bodyEdgeAt(doc, selection.anchor), left: false, moved: false, onWidget: false });
       return;
     }
-    // Past an edge the selection grows towards it, even from a block selected
-    // at that very edge, whose position is the edge's own.
-    const dir = zone === 'end' ? 1 : zone === 'start' ? -1 : target >= selection.from ? 1 : -1;
+    // Past the start the selection grows backwards, even from a block selected
+    // at the start, whose position is the start edge's own.
+    const dir = zone === 'start' || (zone === 'body' && target < selection.from) ? -1 : 1;
     const swapped = extensionEnds(selection, dir);
-    const fixed = keptEnd(doc, swapped ?? selection, target);
-    if (zone === 'body' && swapped === null && bodyEdgeAt(doc, fixed) === null) {
-      this.begin({ ...at, zone, anchorEdge: null, left: false, moved: false, onWidget: false });
-      return;
-    }
-    this.begin({ ...at, zone, anchorEdge: bodyEdgeAt(doc, fixed), left: true, moved: false, onWidget: false });
+    const fixed = keptEnd(view, swapped ?? selection, target);
+    const takes = zone !== 'body' || swapped !== null || bodyEdgeAt(doc, fixed) !== null;
+    this.begin({ ...at, zone, anchorEdge: bodyEdgeAt(doc, fixed), left: takes, moved: false, onWidget: false });
+    if (!takes) return;
     // Taking the press from the browser takes its focus move with it, and
     // ProseMirror does not focus on a Shift press: a selection set in a body
     // without the focus is neither painted nor where the next keys go.
