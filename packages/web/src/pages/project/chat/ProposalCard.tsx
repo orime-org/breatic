@@ -213,19 +213,17 @@ export const ProposalCard = React.memo(function ProposalCard({
           {t('chat.proposal.failed')}
         </div>
       ) : null}
-      <div className='flex items-center justify-end border-t border-border pt-2'>
-        <Button
-          type='button'
-          variant='outline'
-          size='sm'
-          data-testid='proposal-use'
-          disabled={building}
-          onClick={onUse}
-          className='flex-none'
-        >
-          {building ? t('chat.proposal.building') : t('chat.proposal.use')}
-        </Button>
-      </div>
+      <Button
+        type='button'
+        variant='outline'
+        size='sm'
+        data-testid='proposal-use'
+        disabled={building}
+        onClick={onUse}
+        className='w-full'
+      >
+        {building ? t('chat.proposal.building') : t('chat.proposal.use')}
+      </Button>
     </div>
   );
 });
