@@ -227,8 +227,9 @@ assets.post(
         "upload_ticket_dedup_hit",
       );
       // No bytes move, but the node now shows something it did not show
-      // before: it gets its history row, and a task row opened and settled in
-      // the same pass.
+      // before: a task row is opened and settled in the same pass, pointing at
+      // the node's history row for this content (written now, or the one the
+      // node already holds).
       // The project activity feed gets nothing, because its only shape for
       // this is `asset:uploaded` and nothing was uploaded.
       await assetUploadService.settleDedupHit({

@@ -10,10 +10,6 @@
  * same bytes twice, leaves one row tagged current, every other row offers
  * Restore, and restoring moves the tag.
  *
- * Every action runs before the panel is first opened: an on-demand panel
- * reads a cached list for 30 seconds, so a second opening could show a list
- * from before the last action.
- *
  * Needs a running dev stack (`pnpm dev`):
  *
  *   pnpm --filter @breatic/web test:smoke:all
