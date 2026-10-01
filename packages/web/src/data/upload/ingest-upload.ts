@@ -36,13 +36,14 @@ export interface UploadTicket {
   taskId?: string;
 }
 
-/** Where an upload lands: a project, or a studio that has no project in it. */
+/**
+ * Where an upload lands, and what a picture is uploaded to become (filed as
+ * the asset's source): a project, which may be uploading its cover, or a
+ * studio, which uploads nothing but its avatar.
+ */
 export type UploadTargetParams =
-  | { projectId: string; studioId?: never }
-  | { studioId: string; projectId?: never };
-
-/** What a picture is uploaded to become, filed as the asset's source. */
-export type PicturePurpose = 'project_cover' | 'studio_avatar';
+  | { projectId: string; studioId?: never; purpose?: 'project_cover' }
+  | { studioId: string; projectId?: never; purpose: 'studio_avatar' };
 
 /**
  * The ticket endpoint's other answer: this studio already holds this content,

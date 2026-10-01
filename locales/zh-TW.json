@@ -1508,7 +1508,8 @@
         "too_many_pixels": "這張圖片太大了，請換一張每邊都小於 8000 像素的。",
         "not_an_image": "無法把這個檔案讀成圖片。",
         "encode_failed": "無法處理這張圖片，請換一張試試。",
-        "unsupported_type": "不支援這個檔案的格式。"
+        "unsupported_type": "不支援這個檔案的格式。",
+        "hash_unavailable": "無法驗證此檔案，請重新整理頁面後再試。"
       },
       "cropRegion": "裁切區域 — 可用方向鍵移動",
       "cover": {

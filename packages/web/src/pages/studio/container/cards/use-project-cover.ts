@@ -7,7 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '@web/data/api/projects';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
-  pictureFailureOf,
+  pictureErrorMessage,
   uploadPicture,
 } from '@web/pages/studio/shared/upload-picture';
 
@@ -56,10 +56,10 @@ export function useProjectCover(projectId: string, studioSlug: string): ProjectC
 
   const message = React.useMemo((): string | null => {
     if (error === null) return null;
-    const failure = pictureFailureOf(error);
-    return failure === 'unsupportedType'
-      ? t('studio.container.imageError.unsupported_type')
-      : t(`studio.container.cover.error.${failure}`);
+    return pictureErrorMessage(error, t, {
+      storage: 'studio.container.cover.error.storage',
+      upload: 'studio.container.cover.error.upload',
+    });
   }, [error, t]);
 
   const upload = React.useCallback((cover: Blob): void => mutate(cover), [mutate]);

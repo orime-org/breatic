@@ -8,7 +8,7 @@
  * effects (a toast, and keeping the File where a Retry can re-send it).
  */
 
-import type { UploadFailure } from '@web/spaces/canvas/canvas-upload';
+import type { UploadFailure } from '@web/data/upload/media-upload';
 
 /**
  * What to do about a failed upload.

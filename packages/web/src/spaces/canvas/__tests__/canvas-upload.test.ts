@@ -14,10 +14,10 @@ import {
   uploadAcceptFor,
   refusedFormatParams,
   fillNodeFromFile,
-  runMediaUpload,
   computeDeletedAssetEntries,
   assetUrlSurvives,
 } from '@web/spaces/canvas/canvas-upload';
+import { runMediaUpload } from '@web/data/upload/media-upload';
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';

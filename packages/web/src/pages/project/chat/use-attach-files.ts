@@ -10,7 +10,7 @@ import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import { hashFile } from '@web/data/upload/hash';
 import { useTranslation } from '@web/i18n/use-translation';
 import { attachAccept, attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
-import { runMediaUpload } from '@web/spaces/canvas/canvas-upload';
+import { runMediaUpload } from '@web/data/upload/media-upload';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import { openTray } from '@web/stores/attach-to-chat';
 import { useTrayNotice, type TrayNotice } from '@web/stores/chat-attachments';

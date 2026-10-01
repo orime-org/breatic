@@ -118,13 +118,15 @@ import {
   uploadAcceptFor,
   refusedFormatParams,
   fillNodeFromFile,
-  runMediaUpload,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
-  type UploadFailure,
   assetUrlSurvives,
   isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
+import {
+  runMediaUpload,
+  type UploadFailure,
+} from '@web/data/upload/media-upload';
 import { hashFile } from '@web/data/upload/hash';
 import {
   stashRetryFile,

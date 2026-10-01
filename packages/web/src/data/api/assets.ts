@@ -4,7 +4,6 @@
 import { apiGet, apiPost } from '@web/data/api/request';
 import type { UploadClientConfig } from '@breatic/shared';
 import type {
-  PicturePurpose,
   UploadTargetParams,
   UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
@@ -41,7 +40,7 @@ export const assetsApi = {
    * @param params.derived - True for a byproduct, which is registered without
    *   an activity-feed row of its own.
    * @param params.purpose - What the picture is uploaded to become, filed as
-   *   the asset's source.
+   *   the asset's source; a studio uploads only its avatar.
    * @returns The ticket to upload with, or the existing asset to reuse.
    */
   requestUploadTicket(params: UploadTargetParams & {
@@ -54,7 +53,6 @@ export const assetsApi = {
     source?: 'mini_tool';
     toolName?: string;
     derived?: true;
-    purpose?: PicturePurpose;
   }): Promise<UploadTicketResponse> {
     return apiPost<UploadTicketResponse>('/assets/upload-ticket', {
       filename: params.filename,

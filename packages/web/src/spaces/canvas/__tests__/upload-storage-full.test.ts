@@ -19,12 +19,14 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { ApiException } from '@web/data/api/types';
 import {
-  runMediaUpload,
   fillNodeFromFile,
-  type MediaUploadDeps,
   type FillNodeDeps,
-  type UploadFailure,
 } from '@web/spaces/canvas/canvas-upload';
+import {
+  runMediaUpload,
+  type MediaUploadDeps,
+  type UploadFailure,
+} from '@web/data/upload/media-upload';
 
 const CONFIG = {
   maxUploadBytes: 2147483648,
