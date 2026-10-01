@@ -480,6 +480,32 @@ assets.post(
         : c.json({ error: { message: t("server.error.conflict") } }, 409);
     }
 
+    /**
+     * Settle the grant and the task row as aborted, and answer the caller.
+     *
+     * The bytes stay in R2 for the sweep. A format we do not take came from
+     * the caller and answers 415; every other way this ends is our own side
+     * failing, which 502 is the honest answer for. The status is the part
+     * that carries it: 502 is retried by the client and 4xx is not, and
+     * retrying a format we do not take gets the same refusal every time. What
+     * a person reads is the task row, which the reason settles.
+     * @param reason - Why the upload stops here.
+     * @returns The 415 or 502 answer.
+     */
+    const refuse = async (reason: string): Promise<Response> => {
+      noteIngestSideEffects(
+        storageKey,
+        await ingestReportService.applyIngestReport({
+          storageKey,
+          outcome: "aborted",
+          reason,
+        }),
+      );
+      return reason === "unsupported_type"
+        ? c.json({ error: { message: t("server.error.validation") } }, 415)
+        : c.json({ error: { message: t("server.error.internal") } }, 502);
+    };
+
     // The Worker could not turn the parts into an object: it failed to
     // assemble them, or to read the result back to hash it. The bytes stay in
     // R2 for the sweep to collect, and the grant and the task row are ours to
@@ -520,23 +546,7 @@ assets.post(
           ? (err.code ?? INGEST_REFUSED_UNNAMED)
           : "aborted";
       logger.error({ err, key: storageKey, reason }, "upload_finish_failed");
-      noteIngestSideEffects(
-        storageKey,
-        await ingestReportService.applyIngestReport({
-          storageKey,
-          outcome: "aborted",
-          reason,
-        }),
-      );
-      // The bytes are what this refusal is about, and they came from the
-      // caller — every other way this ends is our own side failing, which 502
-      // is already the honest answer for. The status is the part that carries
-      // it: 502 is retried by the client and 4xx is not, and retrying a format
-      // we do not take gets the same refusal every time. What a person reads
-      // is the task row, which the reason above settles.
-      return reason === "unsupported_type"
-        ? c.json({ error: { message: t("server.error.validation") } }, 415)
-        : c.json({ error: { message: t("server.error.internal") } }, 502);
+      return refuse(reason);
     }
 
     // The ticket named a picture; this is what the bytes that landed are. A
@@ -547,15 +557,7 @@ assets.post(
         { key: storageKey, contentType: answered.contentType, source: claim.assetSource },
         "upload_purpose_type_refused",
       );
-      noteIngestSideEffects(
-        storageKey,
-        await ingestReportService.applyIngestReport({
-          storageKey,
-          outcome: "aborted",
-          reason: "unsupported_type",
-        }),
-      );
-      return c.json({ error: { message: t("server.error.validation") } }, 415);
+      return refuse("unsupported_type");
     }
 
     const outcome = await ingestReportService.applyIngestReport({

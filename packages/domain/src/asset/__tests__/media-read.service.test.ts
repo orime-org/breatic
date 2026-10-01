@@ -175,6 +175,15 @@ describe("whether a finished upload gets a read job", () => {
     expect(queueAdd).not.toHaveBeenCalled();
   });
 
+  it("queues none for a row that already has a duration", async () => {
+    const queued = await scheduleMediaRead(
+      registered({ durationSeconds: 3 }),
+      "project_cover",
+    );
+
+    expect(queued).toBe(false);
+  });
+
   it("queues none for a row that already has its numbers", async () => {
     const queued = await scheduleMediaRead(
       registered({ width: 800, height: 450 }),
@@ -248,6 +257,16 @@ describe("what a read job does with its row", () => {
 
     expect(result).toBe("already_measured");
     expect(readStoredMediaAtIngest).not.toHaveBeenCalled();
+  });
+
+  // Another delivery, or a soft delete, got to the row between the read and
+  // the write; the conditional write leaves it alone and says so.
+  it("reports the row as measured when the write found it already filled", async () => {
+    findById.mockResolvedValue(row());
+    readStoredMediaAtIngest.mockResolvedValue({ width: 800, height: 450, durationSeconds: null });
+    fillMediaNumbers.mockResolvedValue(false);
+
+    expect(await readAndFillMedia("asset-1")).toBe("already_measured");
   });
 
   // A6: nothing came back, and the row stays as a container timeout leaves it.

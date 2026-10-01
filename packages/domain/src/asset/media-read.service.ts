@@ -80,13 +80,30 @@ export function storedTypeAccepted(
   source: StudioAssetEntity["source"] | null,
   contentType: string,
 ): boolean {
-  if (source === "project_cover" || source === "studio_avatar") {
-    return purposeAccepts(contentType);
-  }
-  return true;
+  return readsMediaAtFinish(source) || purposeAccepts(contentType);
 }
 
 let queue: ReturnType<typeof createQueue> | undefined;
+
+/**
+ * Whether a row holds none of the three media numbers.
+ * @param numbers - The row's numbers.
+ * @param numbers.width - Pixel width, or null.
+ * @param numbers.height - Pixel height, or null.
+ * @param numbers.durationSeconds - Running time, or null.
+ * @returns True when all three are null.
+ */
+function hasNoNumbers(numbers: {
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+}): boolean {
+  return (
+    numbers.width === null &&
+    numbers.height === null &&
+    numbers.durationSeconds === null
+  );
+}
 
 /**
  * Queue a read for a finished upload, when it needs one.
@@ -95,7 +112,9 @@ let queue: ReturnType<typeof createQueue> | undefined;
  * row it registered is its own, and that row has no numbers. The third is
  * what keeps a cover whose bytes the studio already held off somebody else's
  * row. A re-delivered finish answers out of the row the first one wrote, so it
- * queues again; the job id makes that the same job.
+ * may queue again: while the first job is still kept the job id folds the two
+ * into one, and once it is gone the second read finds the row measured and
+ * leaves it.
  * @param outcome - What the report handler decided.
  * @param assetSource - What the grant says the upload is.
  * @returns True when a job was queued.
@@ -109,7 +128,7 @@ export async function scheduleMediaRead(
     return false;
   }
   if (!outcome.ownRow) return false;
-  if (outcome.width !== null || outcome.height !== null) return false;
+  if (!hasNoNumbers(outcome)) return false;
 
   queue ??= createQueue(MEDIA_READ_QUEUE);
   const job: MediaReadJob = { assetId: outcome.assetId };
@@ -133,9 +152,7 @@ export async function scheduleMediaRead(
 export async function readAndFillMedia(assetId: string): Promise<MediaReadResult> {
   const row = await findById(assetId);
   if (row === null || row.deletedAt !== null) return "gone";
-  if (row.width !== null || row.height !== null || row.durationSeconds !== null) {
-    return "already_measured";
-  }
+  if (!hasNoNumbers(row)) return "already_measured";
 
   const numbers = await readStoredMediaAtIngest(
     env.INGEST_BASE_URL,
@@ -146,13 +163,8 @@ export async function readAndFillMedia(assetId: string): Promise<MediaReadResult
       limits: mediaLimits(),
     },
   );
-  if (
-    numbers.width === null &&
-    numbers.height === null &&
-    numbers.durationSeconds === null
-  ) {
-    return "nothing_found";
-  }
-  await fillMediaNumbers(assetId, numbers);
-  return "filled";
+  if (hasNoNumbers(numbers)) return "nothing_found";
+  // The write only lands on a live row that is still unmeasured, so losing it
+  // means something else got to the row first.
+  return (await fillMediaNumbers(assetId, numbers)) ? "filled" : "already_measured";
 }
