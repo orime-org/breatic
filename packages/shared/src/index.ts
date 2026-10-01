@@ -211,7 +211,6 @@ export {
   insertRefusal,
   isReferenceMaterial,
   layersOf,
-  markTargets,
   proposalMarkSegments,
   nameableFeeders,
   markText,

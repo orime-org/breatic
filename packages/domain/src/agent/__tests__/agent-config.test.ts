@@ -100,13 +100,14 @@ describe("buildAgentConfig", () => {
     // constant would change both sides and stay green. This is the list, and
     // adding to it is supposed to require editing this line.
     //
-    // The two canvas tools are here and not in the baseline: this branch is
+    // The canvas tools are here and not in the baseline: this branch is
     // the plain chat turn, and the baseline also reaches skill runs and
     // worker jobs, which have no canvas (#261).
     const config = buildAgentConfig({ basePrompt: "base", interactive: true });
     expect(Object.keys(config.tools).sort()).toEqual([
       "ask_user",
       "get_canvas_capabilities",
+      "get_product_guide",
       "judge_likelihood",
       "list_generation_models",
       "propose_canvas_action",

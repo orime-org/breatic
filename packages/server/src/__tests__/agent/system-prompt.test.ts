@@ -75,6 +75,58 @@ describe("the system prompt", () => {
   });
 });
 
+describe("what the prompt says the model can do", () => {
+  const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
+
+  it("carries no written-out list of capabilities", () => {
+    // What the model can do is what its tools are, and each tool says so in
+    // its own description. A list written here is a second copy, and it had
+    // already drifted from the tools three times.
+    expect(buildSystemPrompt()).not.toMatch(/Capabilities/i);
+    expect(wording()).not.toMatch(/Search for reference materials/i);
+    expect(wording()).not.toMatch(/Analyze reference images/i);
+  });
+
+  it("says what the product is, and where the model sits in it", () => {
+    expect(wording()).toMatch(/project/i);
+    expect(wording()).toMatch(/canvas/i);
+    expect(wording()).toMatch(/document/i);
+    expect(wording()).toMatch(/cannot see the reader's screen/i);
+  });
+});
+
+describe("how the prompt says to write a reply", () => {
+  const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
+
+  it("says HTML is not rendered and goes in an html fence", () => {
+    expect(wording()).toMatch(/HTML is not rendered/i);
+    expect(wording()).toContain("```html");
+  });
+
+  it("says formulas go between double dollars, and a lone dollar is a dollar", () => {
+    expect(wording()).toContain("$$");
+    expect(wording()).toMatch(/lone `\$` is a dollar sign/i);
+  });
+
+  it("shows a formula that stands alone with each $$ on a line by itself", () => {
+    // remark-math renders `$$E=mc^2$$` on one line as inline math; only a line
+    // holding nothing but `$$` opens a display formula.
+    expect(buildSystemPrompt()).toMatch(/\n\$\$\n[^\n$]+\n\$\$\n/);
+    expect(wording()).toMatch(/not on one line/i);
+  });
+
+  it("shows a single letter inside a sentence written with double dollars", () => {
+    // A real turn wrote "where $a$ and $b$ are the legs" and the reader saw the
+    // dollars: the rule alone did not reach the one-letter case.
+    expect(wording()).toContain("$$a$$");
+    expect(wording()).toMatch(/not `\$a\$`/);
+  });
+
+  it("says a code fence names its language", () => {
+    expect(wording()).toMatch(/language on every code fence/i);
+  });
+});
+
 describe("the prompt says nothing about any one tool", () => {
   // What a tool is for and how to use it is said in its own description, and
   // only there. A second copy here drifts from the first -- the asking,

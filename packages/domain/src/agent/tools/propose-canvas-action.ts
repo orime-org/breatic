@@ -58,6 +58,7 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
+import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 import {
   modelsForMode,
   poolParams,
@@ -185,7 +186,7 @@ export const inputSchema = z
       .trim()
       .min(1)
       .optional()
-      .describe("What this model is for, and what it costs"),
+      .describe("What this model is for, in a few words; say nothing about credits or run time"),
     rationale: z.string().trim().min(1).describe("Why this shape, in a sentence or two"),
     groupName: z
       .string()
@@ -1018,8 +1019,8 @@ export const proposeCanvasAction: Tool<z.infer<typeof inputSchema>, ProposalAnsw
     "Ask get_canvas_capabilities and list_generation_models first, and " +
     "propose only a mode and model they returned. Fill in every setting you " +
     "can judge; the rest is theirs to run. Say in your reply, in numbered " +
-    "steps, what they do once it is placed -- what to put in, what to pick, " +
-    "what to press.",
+    `steps written from what ${GET_PRODUCT_GUIDE} says, what they do once it ` +
+    "is placed -- what to put in, what to pick, what to press.",
   inputSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),

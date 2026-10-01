@@ -176,7 +176,8 @@ function OpenNodeHistoryPanel({
         : null;
 
   // How many runs on this node have reached an end. A run that finishes
-  // while the panel is open wrote a row the list knows nothing about, and
+  // while the panel is open may have written a row the list knows nothing
+  // about (a failure, or a result the history did not hold yet), and
   // this count moving is what says so — the same signal for every modality,
   // where the node's content would not be: a text node's words are written
   // by the reader too, and a keystroke is not a new row.
@@ -189,18 +190,10 @@ function OpenNodeHistoryPanel({
       ? null
       : counts.done + counts.failed + counts.expired;
 
-  // The row a reader last put back on this node. "Current" names which row
-  // the node is on, and content cannot tell two rows holding the same thing
-  // apart — the reader picked one of them.
-  const restoredFrom =
-    hostNode !== undefined && 'restoredFromEntryId' in hostNode.data
-      ? hostNode.data.restoredFromEntryId
-      : undefined;
-
   const history = useNodeHistory(nodeId, projectId, settledRuns);
   const currentId = React.useMemo(
-    () => currentEntryId(history.entries, currentContent, restoredFrom),
-    [history.entries, currentContent, restoredFrom],
+    () => currentEntryId(history.entries, currentContent),
+    [history.entries, currentContent],
   );
   const handleRestore = React.useCallback(
     (entry: NodeHistoryEntry): void => {

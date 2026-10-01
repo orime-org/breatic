@@ -329,7 +329,9 @@ export function makeSearchTools(): {
       "[2][5]. Searches within one reply share one run of numbers, so use the number each " +
       "source arrived with in this reply. Every reply numbers its own sources from one, so a " +
       "number an earlier reply used stands for something else here: write about those " +
-      "sources in words. Never write a number no source arrived with in this reply.",
+      "sources in words. Never write a number no source arrived with in this reply. The " +
+      "panel shows the sources under your reply by themselves, so do not list their " +
+      "addresses in it.",
     inputSchema,
     contextSchema: usageContextSchema,
     // What the panel reads about a running call. The key is resolved by the web

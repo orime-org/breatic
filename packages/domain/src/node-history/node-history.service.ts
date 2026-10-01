@@ -31,7 +31,8 @@ import type { NodeHistoryEntity } from "@breatic/shared";
  *   dollars the service charged us: the row's chip is labelled in credits.
  * @param opts.metadata.durationMs - Provider call duration in milliseconds.
  * @param opts.metadata.params - Provider/tool parameters used for the generation.
- * @returns The created `NodeHistoryEntity`.
+ * @returns The row holding this result — new, or the one already there for
+ *   this task or this content.
  */
 export async function recordGenerationSuccess(opts: {
   projectId: string;
@@ -85,12 +86,10 @@ export async function recordGenerationFailure(opts: {
     params?: Record<string, unknown>;
   };
 }): Promise<NodeHistoryEntity> {
-  return repo.create({
+  return repo.createFailure({
     projectId: opts.projectId,
     nodeId: opts.nodeId,
     userId: opts.userId,
-    entryType: "generation",
-    status: "failed",
     errorMessage: opts.errorMessage,
     taskId: opts.taskId,
     metadata: opts.metadata ?? {},
@@ -101,8 +100,8 @@ export async function recordGenerationFailure(opts: {
  * Record a manual user upload that replaces node content.
  *
  * Called after the file is persisted to storage and registered in the ledger.
- * Idempotent on `storageKey` when one is given, so a report that arrives twice
- * writes one row per upload rather than one per arrival.
+ * A report that arrives twice writes one row, not one per arrival, and content
+ * this node's history already holds writes none (#2186).
  * @param opts - Fields describing the uploaded content.
  * @param opts.projectId - ID of the project owning the node.
  * @param opts.nodeId - ID of the canvas node the upload replaces content on.
@@ -116,8 +115,9 @@ export async function recordGenerationFailure(opts: {
  * @param opts.metadata.size - Size of the uploaded file in bytes.
  * @param opts.metadata.mimeType - MIME type of the uploaded file.
  * @returns The stored entry plus whether this call is the one that wrote it.
- *   The project activity feed, which has no key of its own, uses that flag
- *   to skip its write on a replay.
+ *   The flag is false on a replay and when the node's history already holds
+ *   this content; the project activity feed, which has no key of its own,
+ *   writes only when it is true.
  */
 export async function recordUpload(opts: {
   projectId: string;
@@ -149,13 +149,14 @@ export async function recordUpload(opts: {
  *
  * A text node's words live in the canvas document, where the next edit
  * replaces them. This row is what a reader comes back to when they want the
- * version they had.
+ * version they had. Words this node's history already holds are not kept a
+ * second time (#2186); the row holding them is returned.
  * @param opts - Whose node, and what it held.
  * @param opts.projectId - Owning project.
  * @param opts.nodeId - The node this is a copy of.
  * @param opts.userId - Who asked for it.
  * @param opts.content - What the node held.
- * @returns The row.
+ * @returns The row holding this content — new, or the one already there.
  */
 export async function recordSnapshot(opts: {
   projectId: string;
@@ -163,12 +164,10 @@ export async function recordSnapshot(opts: {
   userId: string;
   content: string;
 }): Promise<NodeHistoryEntity> {
-  return repo.create({
+  return repo.createSnapshotSuccessIfAbsent({
     projectId: opts.projectId,
     nodeId: opts.nodeId,
     userId: opts.userId,
-    entryType: "snapshot",
-    status: "success",
     content: opts.content,
   });
 }

@@ -2075,6 +2075,13 @@ describe("what the model itself settles", () => {
     expect(prompt.description).toMatch(/node wired in/);
     expect(prompt.description).toMatch(/in the order the nodes are listed/);
   });
+
+  it("keeps credits and run time out of the model note", () => {
+    const note = inputSchema.shape.modelNote.description ?? "";
+
+    expect(note).not.toMatch(/what it costs|how long/i);
+    expect(note).toMatch(/say nothing about credits or run time/);
+  });
 });
 
 describe("what an edge into a generation is worth", () => {

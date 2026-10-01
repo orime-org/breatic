@@ -116,7 +116,6 @@ export {
   feedersOf,
   layersOf,
   markText,
-  markTargets,
   proposalMarkSegments,
   nameableFeeders,
   promptPlainText,
