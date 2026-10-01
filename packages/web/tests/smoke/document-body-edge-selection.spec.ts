@@ -715,6 +715,63 @@ test('a Shift+click on the first of two trailing dividers holds both (A6)', asyn
   expect(reading.painted).toEqual(['divider', 'divider']);
 });
 
+test('a Shift+click below the last block made from outside the body focuses it and shows the selection (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_DIVIDER);
+  const word = await wordBox(page, 'Middle');
+  const last = await rowBox(page, -1);
+  await page.mouse.click(word.x + 2, word.y + word.height / 2);
+  await page.evaluate(() => {
+    const other = document.createElement('input');
+    other.id = 'edge-smoke-other';
+    other.style.position = 'fixed';
+    other.style.top = '0';
+    document.body.appendChild(other);
+    other.focus();
+  });
+
+  await shiftClick(page, word.x + 40, last.y + last.height + 60);
+
+  const reading = await read(page);
+  expect([reading.kind, reading.head === reading.size - 2, reading.painted]).toEqual(['BodyEdgeSelectionClass', true, ['divider']]);
+  expect(await page.evaluate((selector) => document.activeElement === document.querySelector(selector), EDITOR)).toBe(true);
+  await page.evaluate(() => document.getElementById('edge-smoke-other')?.remove());
+});
+
+test('Shift+Down from the end of the next-to-last line of a wrapped last paragraph moves a line before the edge (A6)', async () => {
+  await openFreshDocument(page);
+  const cjk = '中文段落'.repeat(60);
+  await setBlocks(page, [{ type: 'paragraph', content: 'Intro' }, { type: 'paragraph', content: cjk }, { type: 'divider' }]);
+  const box = (await page.locator(EDITOR).getByText(cjk).boundingBox())!;
+  await page.mouse.click(box.x + 30, box.y + box.height - 30);
+  await expect.poll(async () => (await read(page)).kind).toBe('_TextSelection');
+  await page.keyboard.press('Meta+ArrowRight');
+
+  await page.keyboard.press('Shift+ArrowDown');
+  const down = await read(page);
+  expect(down.kind).toBe('_TextSelection');
+
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect.poll(async () => (await read(page)).head).toBe((await read(page)).size - 2);
+});
+
+test('after a drag up from below an empty last line, a Shift+click on words keeps the line in (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Gap' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph' }]);
+  const word = await wordBox(page, 'Middle');
+  const above = await wordBox(page, 'Above');
+  const last = await rowBox(page, -1);
+  await drag(page, { x: word.x + 40, y: last.y + last.height + 60 }, [{ x: word.x + 2, y: word.y + word.height / 2 }]);
+
+  await shiftClick(page, above.x + 2, above.y + above.height / 2);
+
+  const reading = await read(page);
+  expect(reading.anchor).toBe(reading.size - 2);
+  expect(reading.text.startsWith('Above|Gap|Middle')).toBe(true);
+  expect(await linesMarked(page)).toEqual([false, false, false, true]);
+});
+
 test('with words last, dragging below the body is the plain text selection it always was (A6)', async () => {
   await openFreshDocument(page);
   await setBlocks(page, [{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Below' }]);
