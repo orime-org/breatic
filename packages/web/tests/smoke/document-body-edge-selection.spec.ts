@@ -620,7 +620,91 @@ test('a Shift+click on a clicked divider keeps it in the selection (A6)', async 
 
   const reading = await read(page);
   expect(reading.painted).toEqual(['divider']);
-  expect(reading.anchor).not.toBe(reading.head);
+  expect([reading.kind, reading.text]).toEqual(['_TextSelection', '|#|']);
+});
+
+test('Enter on a selection anchored past the last block replaces it and opens a line (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, WITH_DIVIDER);
+  const word = await wordBox(page, 'Middle');
+  const last = await rowBox(page, -1);
+  await drag(page, { x: word.x + 40, y: last.y + last.height + 60 }, [{ x: word.x + 2, y: word.y + word.height / 2 }]);
+  expect((await read(page)).anchor).toBe((await read(page)).size - 2);
+
+  await page.keyboard.press('Enter');
+
+  await expect.poll(async () => (await read(page)).rows).toEqual(['paragraph:Above', 'paragraph:', 'paragraph:']);
+});
+
+test('Shift+Down next to an edge keeps the column the browser remembers across a short line (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'paragraph', content: 'Intro' }, { type: 'paragraph', content: 'x' }, { type: 'divider' }]);
+  await page.locator(EDITOR).getByText('x', { exact: true }).click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('a'.repeat(40));
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('b');
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('c'.repeat(40));
+  const start = await page.evaluate((selector) => {
+    const el = document.querySelector(selector) as unknown as { editor: { state: { doc: { descendants: (f: (n: { isTextblock: boolean; textContent: string }, p: number) => boolean) => void } } } };
+    let at = -1;
+    el.editor.state.doc.descendants((n, p) => {
+      if (n.isTextblock && n.textContent.startsWith('aaaa')) at = p + 1;
+      return at < 0;
+    });
+    return at;
+  }, EDITOR);
+  // Twenty characters into the first line, set through the editor so the
+  // browser's own column starts there.
+  await page.evaluate(([selector, pos]) => {
+    const el = document.querySelector(selector) as unknown as { editor: { state: { doc: unknown; selection: { constructor: { create: (doc: unknown, pos: number) => unknown } }; tr: { setSelection: (s: unknown) => unknown } }; view: { dispatch: (tr: unknown) => void } } };
+    const { state } = el.editor;
+    el.editor.view.dispatch(state.tr.setSelection(state.selection.constructor.create(state.doc, pos)));
+  }, [EDITOR, start + 20] as const);
+
+  await page.keyboard.press('Shift+ArrowDown');
+  await page.keyboard.press('Shift+ArrowDown');
+
+  // Line one is 0-39, the break 40, 'b' 41, the break 42, line three from 43.
+  await expect.poll(async () => (await read(page)).head - start).toBe(43 + 20);
+});
+
+test('a Shift+drag from the body past an empty last line takes it in (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'paragraph', content: 'One' }, { type: 'paragraph', content: 'Two' }, { type: 'paragraph' }]);
+  const one = await wordBox(page, 'One');
+  const two = await wordBox(page, 'Two');
+  const last = await rowBox(page, -1);
+  await page.mouse.click(one.x + 2, one.y + one.height / 2);
+  await expect.poll(async () => (await read(page)).kind).toBe('_TextSelection');
+
+  await page.mouse.move(two.x + 10, two.y + two.height / 2);
+  await page.waitForTimeout(SETTLE_MS);
+  await page.keyboard.down('Shift');
+  await page.mouse.down();
+  await page.mouse.move(two.x + 10, last.y + last.height + 60, { steps: 10 });
+  await expect.poll(async () => (await read(page)).head).toBe((await read(page)).size - 2);
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+
+  expect(await linesMarked(page)).toEqual([false, false, true]);
+});
+
+test('a Shift+click on the first of two trailing dividers holds both (A6)', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'paragraph', content: 'Above' }, { type: 'divider' }, { type: 'divider' }]);
+  const divider = await rowBox(page, 1);
+  await page.mouse.move(divider.x + 100, divider.y + divider.height / 2);
+  await page.waitForTimeout(SETTLE_MS);
+  await page.mouse.click(divider.x + 100, divider.y + divider.height / 2);
+  expect((await read(page)).kind).toBe('_NodeSelection');
+
+  await shiftClick(page, divider.x + 100, divider.y + divider.height / 2);
+
+  const reading = await read(page);
+  expect([reading.kind, reading.head === reading.size - 2]).toEqual(['BodyEdgeSelectionClass', true]);
+  expect(reading.painted).toEqual(['divider', 'divider']);
 });
 
 test('with words last, dragging below the body is the plain text selection it always was (A6)', async () => {
