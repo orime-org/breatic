@@ -420,6 +420,36 @@ describe('Shift+click past an end of the body', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([textStart(view, 'Above') + 'Above'.length, target]);
   });
 
+  it('keeps a selected divider in when the Shift+click lands on that divider', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'divider' }, { type: 'paragraph', content: 'Below' }]).prosemirrorView!;
+    let divider = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'divider') divider = pos;
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, divider)));
+    pointAt(view, divider);
+
+    press(view, 50, { shiftKey: true });
+
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([
+      textStart(view, 'Above') + 'Above'.length,
+      textStart(view, 'Below'),
+    ]);
+  });
+
+  it('keeps the whole document anchored on the start when it lands on a word', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }]).prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    const target = textStart(view, 'Mid') + 2;
+    pointAt(view, target);
+
+    const event = press(view, 50, { shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([bodyEdgePos(view.state.doc, 'start'), target]);
+  });
+
   it('leaves a Shift+click in the body to the browser', () => {
     const view = open(ABOVE_DIVIDER).prosemirrorView!;
     const at = textStart(view, 'Above');

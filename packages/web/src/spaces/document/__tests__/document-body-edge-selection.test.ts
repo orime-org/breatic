@@ -17,6 +17,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { runBlockType } from '@web/spaces/document/document-block-run';
 import { moveRowsFromKeyboard } from '@web/spaces/document/document-keyboard-move';
 import { EMPTY_LINE_CLASS } from '@web/spaces/document/document-selection-paint';
+import { selectorEndingIn } from '@web/spaces/document/__tests__/index-css-rules';
 import {
   BodyEdgeSelection,
   bodyEdgeBetween,
@@ -326,6 +327,42 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
       bodyEdgePos(view.state.doc, 'start'),
       textStart(view, 'Above') + 3,
     ]);
+  });
+
+  it('asks whether the head itself is on the line nearest the edge, not the other end', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
+    const head = textStart(view, 'Middle') + 2;
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'end', head)));
+    const asked: Selection[] = [];
+    vi.spyOn(view, 'endOfTextblock').mockImplementation((_dir, state) => {
+      asked.push((state ?? view.state).selection);
+      return false;
+    });
+
+    press(view, 'ArrowDown');
+
+    expect(asked.map((selection) => [selection.anchor, selection.head])).toEqual([[head, head]]);
+  });
+
+  it('Shift+Left steps over a whole emoji, not half of it', () => {
+    const view = open([{ type: 'paragraph', content: 'Hi\u{1F600}' }, { type: 'divider' }]);
+    const after = textStart(view, 'Hi\u{1F600}') + 4;
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'end', after)));
+
+    press(view, 'ArrowLeft');
+
+    expect(view.state.selection.head).toBe(after - 2);
+  });
+
+  it('Shift+Right steps over a joined emoji sequence in one press', () => {
+    const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
+    const view = open([{ type: 'paragraph', content: `A${family}B` }, { type: 'divider' }]);
+    const start = textStart(view, `A${family}B`) + 1;
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'end', start)));
+
+    press(view, 'ArrowRight');
+
+    expect(view.state.selection.head).toBe(start + family.length);
   });
 
   it('Shift+Up from the whole document lets go of the end and keeps the start', () => {
@@ -818,6 +855,17 @@ describe('an empty line at an end of the body, inside the selection', () => {
     view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end')));
 
     expect(view.dom.querySelector('[data-content-type="heading"]')?.classList.contains(EMPTY_LINE_CLASS)).toBe(true);
+  });
+
+  it('is drawn in an empty code block, whose line sits deeper than a paragraph\'s', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'codeBlock' }]);
+    view.focus();
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end')));
+    const rule = selectorEndingIn('.bn-inline-content::before').replace('::before', '');
+
+    const drawn = view.dom.parentElement!.querySelector(rule);
+
+    expect(drawn?.tagName).toBe('CODE');
   });
 
   it('is left to the browser under a text selection', () => {
