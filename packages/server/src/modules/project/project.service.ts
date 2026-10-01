@@ -17,6 +17,7 @@
  */
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
+import { pictureUrl } from "@server/modules/asset/picture.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { projectAuthService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
@@ -294,8 +295,8 @@ export async function listByStudioSlug(
 /**
  * Update mutable project metadata.
  *
- * Requires at least `editor` on the project — name / description /
- * thumbnail are content edits, not just admin operations. The
+ * Requires at least `editor` on the project — name / description are content
+ * edits, not just admin operations. The
  * `requireRole('editor')` middleware on the PUT route enforces the
  * same; this service-side check is defense in depth for non-route
  * callers.
@@ -304,7 +305,6 @@ export async function listByStudioSlug(
  * @param patch - Fields to update
  * @param patch.name - New project name
  * @param patch.description - New description; `null` clears it
- * @param patch.thumbnailUrl - New thumbnail URL; `null` clears it
  * @returns The updated project entity
  * @throws {NotFoundError} if the project doesn't exist or the
  *   caller has no membership
@@ -316,11 +316,35 @@ export async function update(
   patch: {
     name?: string;
     description?: string | null;
-    thumbnailUrl?: string | null;
   },
 ): Promise<ProjectEntity> {
   await assertAccess(projectId, userId, "editor");
   const updated = await projectRepo.updateProjectMeta(projectId, patch);
+  if (!updated) throw new NotFoundError(t("server.error.not_found"));
+  return updated;
+}
+
+/**
+ * Point the project's cover at an uploaded picture.
+ *
+ * The URL is read off the ledger row, so the cover can only name an image the
+ * project's own studio stores. The picture it replaces stays in the ledger.
+ * The route gates this on `owner`; this is the only place `thumbnail_url` is
+ * written besides duplicating a project.
+ * @param projectId - Project UUID
+ * @param assetId - The uploaded picture's ledger row
+ * @returns The updated project entity
+ * @throws {NotFoundError} if the project is gone, or its studio holds no live
+ *   image row with that id
+ */
+export async function setCover(
+  projectId: string,
+  assetId: string,
+): Promise<ProjectEntity> {
+  const project = await projectRepo.getProjectById(projectId);
+  if (!project) throw new NotFoundError(t("server.error.not_found"));
+  const url = await pictureUrl(project.studioId, assetId);
+  const updated = await projectRepo.updateProjectMeta(projectId, { thumbnailUrl: url });
   if (!updated) throw new NotFoundError(t("server.error.not_found"));
   return updated;
 }

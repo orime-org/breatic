@@ -57,8 +57,7 @@
       "cannot_change_admin_role": "The admin role can only be changed by transferring it.",
       "member_limit_reached": "{limit, plural, =0 {This studio's plan does not allow adding members. Upgrade to add some.} one {This studio's plan allows 1 member. Upgrade to add more.} other {This studio's plan allows up to # members. Upgrade to add more.}}",
       "member_limit_reached_for_invitee": "This studio is full. Ask its Admin to make room.",
-      "leave_last_admin": "Transfer the admin role before leaving this Studio.",
-      "avatar_unsupported_type": "That file could not be read as an image. Try a different picture."
+      "leave_last_admin": "Transfer the admin role before leaving this Studio."
     },
     "project": {
       "join_already_member": "You're already a member of this project.",
@@ -1461,17 +1460,13 @@
         "avatarSaved": "Avatar updated",
         "avatarRemoved": "Avatar removed",
         "avatarUploading": "Uploading…",
+        "avatarUploadError": {
+          "storage": "Storage is full. The avatar was not uploaded.",
+          "upload": "The avatar was not changed. Try again."
+        },
         "avatarCropTitle": "Crop your avatar",
         "avatarCropHint": "Drag the square to reposition it, or drag a corner to resize.",
         "avatarCropConfirm": "Save avatar",
-        "avatarCropRegion": "Crop area — use the arrow keys to move it",
-        "avatarError": {
-          "too_large": "That file is over 20 MB — pick a smaller image.",
-          "empty": "That file is empty.",
-          "too_many_pixels": "That image is too large to work with. Try one under 8000 pixels on each side.",
-          "not_an_image": "That file could not be read as an image.",
-          "encode_failed": "Could not prepare the image. Please try another one."
-        },
         "slugChangeOpen": "Change Slug",
         "slugChangeTitle": "Change this Studio's Slug?",
         "slugChangeBody": "The address changes from /studio/{oldSlug} to /studio/{newSlug}.",
@@ -1519,6 +1514,27 @@
       "toolbar": {
         "sortLabel": "Sort",
         "sortValue": "Recently opened"
+      },
+      "imageError": {
+        "too_large": "That file is over 20 MB — pick a smaller image.",
+        "empty": "That file is empty.",
+        "too_many_pixels": "That image is too large to work with. Try one under 8000 pixels on each side.",
+        "not_an_image": "That file could not be read as an image.",
+        "encode_failed": "Could not prepare the image. Please try another one.",
+        "unsupported_type": "This file format is not supported.",
+        "hash_unavailable": "Couldn't verify this file. Reload the page and try again."
+      },
+      "cropRegion": "Crop area — use the arrow keys to move it",
+      "cover": {
+        "menuUpload": "Upload cover",
+        "cropTitle": "Crop the cover",
+        "cropHint": "Drag to choose the part shown on the project card.",
+        "upload": "Upload",
+        "uploading": "Uploading…",
+        "error": {
+          "storage": "Storage is full. The cover was not uploaded.",
+          "upload": "The cover was not changed. Try again."
+        }
       }
     },
     "rail": {

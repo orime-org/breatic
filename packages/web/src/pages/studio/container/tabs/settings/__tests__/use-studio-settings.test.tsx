@@ -22,6 +22,7 @@ import {
 
 import { useStudioSettings } from '@web/pages/studio/container/tabs/settings/use-studio-settings';
 import { studiosApi } from '@web/data/api/studios';
+import { UploadFailedError } from '@web/data/upload/media-upload';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import type { Studio, StudioDetail } from '@breatic/shared';
 
@@ -32,10 +33,15 @@ vi.mock('react-router-dom', () => ({
 vi.mock('@web/data/api/studios', () => ({
   studiosApi: {
     update: vi.fn(),
-    uploadAvatar: vi.fn(),
+    setAvatar: vi.fn(),
     removeAvatar: vi.fn(),
     leave: vi.fn(),
   },
+}));
+const { uploadPicture } = vi.hoisted(() => ({ uploadPicture: vi.fn() }));
+vi.mock('@web/pages/studio/shared/upload-picture', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  uploadPicture,
 }));
 vi.mock('@web/lib/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -304,6 +310,7 @@ describe('useStudioSettings — changing the slug', () => {
   });
 
   it('reflects a new avatar on the signed-in user too', async () => {
+    uploadPicture.mockResolvedValue('asset-1');
     useCurrentUserStore.getState().setUser({
       id: 'u1',
       name: 'Alice',
@@ -311,7 +318,7 @@ describe('useStudioSettings — changing the slug', () => {
       personalStudio: { name: 'Alice', slug: 'alice', avatarUrl: null },
       membershipTier: 'base',
     });
-    vi.mocked(studiosApi.uploadAvatar).mockResolvedValue(
+    vi.mocked(studiosApi.setAvatar).mockResolvedValue(
       updated(PERSONAL, { avatarUrl: 'https://cdn/a.webp' }),
     );
     const { result } = renderHook(() => useStudioSettings(PERSONAL), {
@@ -328,12 +335,54 @@ describe('useStudioSettings — changing the slug', () => {
   });
 });
 
+describe('useStudioSettings — the avatar is an asset', () => {
+  beforeEach(() => {
+    uploadPicture.mockReset();
+  });
+
+  it('uploads the crop to the studio\'s own assets and points the studio at the row', async () => {
+    uploadPicture.mockResolvedValue('asset-1');
+    vi.mocked(studiosApi.setAvatar).mockResolvedValue(
+      updated(TEAM, { avatarUrl: 'https://cdn/a.png' }),
+    );
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+    const image = new Blob(['x'], { type: 'image/png' });
+
+    result.current.uploadAvatar(image);
+
+    await waitFor(() => expect(studiosApi.setAvatar).toHaveBeenCalledWith('acme', 'asset-1'));
+    expect(uploadPicture).toHaveBeenCalledWith(image, {
+      studioId: 's1',
+      purpose: 'studio_avatar',
+    });
+  });
+
+  it('says the storage is full when the account has no room', async () => {
+    uploadPicture.mockRejectedValue(new UploadFailedError('storage'));
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.uploadAvatar(new Blob(['x'], { type: 'image/png' }));
+
+    await waitFor(() =>
+      expect(result.current.avatarError).toBe(
+        'Storage is full. The avatar was not uploaded.',
+      ),
+    );
+    expect(studiosApi.setAvatar).not.toHaveBeenCalled();
+  });
+});
+
 describe('useStudioSettings — avatar error lifetime', () => {
+  beforeEach(() => {
+    uploadPicture.mockReset();
+    uploadPicture.mockResolvedValue('asset-1');
+  });
+
   it('clears a previous failure when the next attempt starts', async () => {
     // Clearing only on success left the message set for good: the next crop
     // dialog opened already showing an error about an upload the user had
     // moved on from.
-    vi.mocked(studiosApi.uploadAvatar).mockRejectedValueOnce(
+    vi.mocked(studiosApi.setAvatar).mockRejectedValueOnce(
       new Error('boom'),
     );
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
@@ -341,7 +390,7 @@ describe('useStudioSettings — avatar error lifetime', () => {
     result.current.uploadAvatar(new Blob(['x'], { type: 'image/png' }));
     await waitFor(() => expect(result.current.avatarError).not.toBeNull());
 
-    vi.mocked(studiosApi.uploadAvatar).mockResolvedValueOnce(
+    vi.mocked(studiosApi.setAvatar).mockResolvedValueOnce(
       updated(TEAM, { avatarUrl: 'https://cdn/new.webp' }),
     );
     result.current.uploadAvatar(new Blob(['y'], { type: 'image/png' }));
@@ -355,7 +404,7 @@ describe('useStudioSettings — avatar error lifetime', () => {
     // different one, and is greeted by the old message — it survives until
     // they press Confirm, which is the one moment the bug never showed. The
     // error belongs to an attempt, and dismissing ends that attempt.
-    vi.mocked(studiosApi.uploadAvatar).mockRejectedValueOnce(new Error('boom'));
+    vi.mocked(studiosApi.setAvatar).mockRejectedValueOnce(new Error('boom'));
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
 
     result.current.uploadAvatar(new Blob(['x'], { type: 'image/png' }));

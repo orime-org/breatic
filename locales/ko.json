@@ -57,8 +57,7 @@
       "cannot_change_admin_role": "Admin 역할은 이전을 통해서만 변경할 수 있습니다.",
       "member_limit_reached": "{limit, plural, =0 {이 Studio의 요금제에서는 멤버를 추가할 수 없습니다. 업그레이드하면 추가할 수 있습니다.} other {이 Studio의 요금제에서는 멤버를 최대 #명까지 둘 수 있습니다. 업그레이드하면 더 추가할 수 있습니다.}}",
       "member_limit_reached_for_invitee": "이 Studio의 멤버 자리가 모두 찼습니다. Admin에게 자리를 비워 달라고 요청하세요.",
-      "leave_last_admin": "이 Studio를 나가기 전에 먼저 Admin을 이전하세요.",
-      "avatar_unsupported_type": "이 파일은 이미지로 읽을 수 없습니다. 다른 사진을 사용해 보세요."
+      "leave_last_admin": "이 Studio를 나가기 전에 먼저 Admin을 이전하세요."
     },
     "project": {
       "join_already_member": "이미 이 Project의 멤버입니다.",
@@ -1461,17 +1460,13 @@
         "avatarSaved": "아바타가 업데이트되었습니다",
         "avatarRemoved": "아바타가 제거되었습니다",
         "avatarUploading": "업로드 중…",
+        "avatarUploadError": {
+          "storage": "저장 공간이 가득 찼습니다. 아바타가 업로드되지 않았습니다.",
+          "upload": "아바타를 변경하지 못했습니다. 다시 시도하세요."
+        },
         "avatarCropTitle": "아바타 자르기",
         "avatarCropHint": "사각형을 끌어 위치를, 모서리를 끌어 크기를 조정하세요.",
         "avatarCropConfirm": "아바타 저장",
-        "avatarCropRegion": "자르기 영역 — 화살표 키로 이동할 수 있습니다",
-        "avatarError": {
-          "too_large": "파일이 20 MB를 넘습니다. 더 작은 이미지를 선택하세요.",
-          "empty": "파일이 비어 있습니다.",
-          "too_many_pixels": "이미지가 너무 큽니다. 각 변이 8000 픽셀 미만인 이미지를 사용해 보세요.",
-          "not_an_image": "해당 파일을 이미지로 읽을 수 없습니다.",
-          "encode_failed": "이미지를 준비하지 못했습니다. 다른 이미지를 시도해 주세요."
-        },
         "slugChangeOpen": "Slug 변경",
         "slugChangeTitle": "이 Studio의 Slug를 변경할까요?",
         "slugChangeBody": "주소가 /studio/{oldSlug} 에서 /studio/{newSlug} 로 바뀝니다.",
@@ -1519,6 +1514,27 @@
       "toolbar": {
         "sortLabel": "정렬",
         "sortValue": "최근 연 순"
+      },
+      "imageError": {
+        "too_large": "파일이 20 MB를 넘습니다. 더 작은 이미지를 선택하세요.",
+        "empty": "파일이 비어 있습니다.",
+        "too_many_pixels": "이미지가 너무 큽니다. 각 변이 8000 픽셀 미만인 이미지를 사용해 보세요.",
+        "not_an_image": "해당 파일을 이미지로 읽을 수 없습니다.",
+        "encode_failed": "이미지를 준비하지 못했습니다. 다른 이미지를 시도해 주세요.",
+        "unsupported_type": "지원하지 않는 파일 형식입니다.",
+        "hash_unavailable": "이 파일을 확인할 수 없습니다. 페이지를 새로 고친 후 다시 시도해 주세요."
+      },
+      "cropRegion": "자르기 영역 — 화살표 키로 이동할 수 있습니다",
+      "cover": {
+        "menuUpload": "커버 업로드",
+        "cropTitle": "커버 자르기",
+        "cropHint": "Project 카드에 표시할 영역을 드래그해서 선택하세요.",
+        "upload": "업로드",
+        "uploading": "업로드 중…",
+        "error": {
+          "storage": "저장 공간이 가득 찼습니다. 커버가 업로드되지 않았습니다.",
+          "upload": "커버를 변경하지 못했습니다. 다시 시도하세요."
+        }
       }
     },
     "rail": {

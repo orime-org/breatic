@@ -61,7 +61,10 @@ export interface OpenedUpload {
  * @returns The key, the studio, and the row's id.
  */
 export async function openUpload(
-  grant: GrantInput & { context: { nodeId: string; spaceId: string } },
+  grant: GrantInput & {
+    projectId: string;
+    context: { nodeId: string; spaceId: string };
+  },
   task: TaskRowRequest,
 ): Promise<OpenedUpload & { taskId: string }>;
 
@@ -79,8 +82,9 @@ export async function openUpload(
 /**
  * Open the grant, then the row on whatever node the grant named.
  *
- * An upload with no node behind it — a focus crop — opens the grant alone: the
- * counts live in a node's corner, and there is no corner. Both halves of where
+ * An upload with no node behind it — a focus crop, a project cover, a studio
+ * avatar — opens the grant alone: the counts live in a node's corner, and
+ * there is no corner. Both halves of where
  * a row would go have to be present, because the space is what names the
  * document the counts are published on.
  * @param grant - What the lane asks the grant for, passed through untouched.
@@ -96,7 +100,9 @@ export async function openUpload(
   const { key, studioId } = await uploadGrantService.issueUploadGrant(grant);
 
   const { nodeId, spaceId } = grant.context;
+  const { projectId } = grant;
   if (
+    projectId === undefined ||
     nodeId === undefined ||
     nodeId === null ||
     spaceId === undefined ||
@@ -106,7 +112,7 @@ export async function openUpload(
   }
 
   const opened = await nodeTaskService.open({
-    projectId: grant.projectId,
+    projectId,
     spaceId,
     nodeId,
     kind: "upload",
@@ -116,7 +122,7 @@ export async function openUpload(
     storageKey: key,
   });
   await publishCountsQuietly(
-    canvasSpaceDocName(grant.projectId, spaceId),
+    canvasSpaceDocName(projectId, spaceId),
     nodeId,
     opened.counts,
   );

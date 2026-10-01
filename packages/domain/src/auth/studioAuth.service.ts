@@ -20,6 +20,8 @@
  * that collab reads `project_members` and never recomputes studio/baseline.)
  */
 
+import { ForbiddenError } from "@breatic/core";
+import { t, STUDIO_ROLE_RANK } from "@breatic/shared";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import type { StudioRole } from "@breatic/shared";
 
@@ -35,4 +37,27 @@ export async function loadStudioRole(
   studioId: string,
 ): Promise<StudioRole | null> {
   return studioMembersRepo.getRole(studioId, userId);
+}
+
+/**
+ * Refuse unless the caller holds at least `min` on the studio.
+ *
+ * The same answer `requireStudioRole` gives for a route keyed by slug: a
+ * missing studio and a non-member are both a plain 403, so the refusal does
+ * not tell a stranger the studio exists.
+ * @param userId - Authenticated user UUID
+ * @param studioId - Studio UUID
+ * @param min - Lowest role that passes
+ * @returns Nothing when the caller passes
+ * @throws {ForbiddenError} When the caller's role is below `min`, or they have none
+ */
+export async function assertStudioRole(
+  userId: string,
+  studioId: string,
+  min: StudioRole,
+): Promise<void> {
+  const role = await loadStudioRole(userId, studioId);
+  if (role === null || STUDIO_ROLE_RANK[role] < STUDIO_ROLE_RANK[min]) {
+    throw new ForbiddenError(t("server.error.forbidden"));
+  }
 }

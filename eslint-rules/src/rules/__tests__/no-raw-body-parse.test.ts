@@ -14,7 +14,7 @@ ruleTester.run("no-raw-body-parse", noRawBodyParse, {
     // would destroy the thing being verified.
     { code: "const raw = await c.req.text();" },
     { code: "const buf = await c.req.arrayBuffer();" },
-    // Reading the underlying stream, which `readBoundedBody` does. Note this
+    // Reading the underlying stream directly. Note this
     // is `.raw.body`, a property — `c.req.raw.json()` is a body-parsing call
     // the rule also lets through, which is a gap in the matcher rather than a
     // decision. The rule's docstring lists it; widening is filed separately.

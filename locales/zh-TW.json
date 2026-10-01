@@ -57,8 +57,7 @@
       "cannot_change_admin_role": "Admin 角色只能透過轉讓變更。",
       "member_limit_reached": "{limit, plural, =0 {這個 Studio 的會員等級不支援新增成員，升級後即可新增。} other {這個 Studio 的會員等級最多可有 # 位成員，升級可新增更多。}}",
       "member_limit_reached_for_invitee": "這個 Studio 的成員名額已滿，請聯絡它的 Admin 騰出名額。",
-      "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
-      "avatar_unsupported_type": "這個檔案無法作為圖片讀取，請換一張試試。"
+      "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。"
     },
     "project": {
       "join_already_member": "你已經是這個 Project 的成員。",
@@ -1461,17 +1460,13 @@
         "avatarSaved": "頭像已更新",
         "avatarRemoved": "頭像已移除",
         "avatarUploading": "上傳中…",
+        "avatarUploadError": {
+          "storage": "儲存空間已滿，頭像沒有上傳。",
+          "upload": "頭像沒有更新，請再試一次。"
+        },
         "avatarCropTitle": "裁切頭像",
         "avatarCropHint": "拖曳方框調整位置，拖曳四角調整大小。",
         "avatarCropConfirm": "儲存頭像",
-        "avatarCropRegion": "裁切區域 — 可用方向鍵移動",
-        "avatarError": {
-          "too_large": "這個檔案超過 20 MB，請換一張小一點的圖片。",
-          "empty": "這個檔案是空的。",
-          "too_many_pixels": "這張圖片太大了，請換一張每邊都小於 8000 像素的。",
-          "not_an_image": "無法把這個檔案讀成圖片。",
-          "encode_failed": "無法處理這張圖片，請換一張試試。"
-        },
         "slugChangeOpen": "修改 Slug",
         "slugChangeTitle": "要修改這個 Studio 的 Slug 嗎？",
         "slugChangeBody": "網址會從 /studio/{oldSlug} 變成 /studio/{newSlug}。",
@@ -1519,6 +1514,27 @@
       "toolbar": {
         "sortLabel": "排序",
         "sortValue": "最近開啟"
+      },
+      "imageError": {
+        "too_large": "這個檔案超過 20 MB，請換一張小一點的圖片。",
+        "empty": "這個檔案是空的。",
+        "too_many_pixels": "這張圖片太大了，請換一張每邊都小於 8000 像素的。",
+        "not_an_image": "無法把這個檔案讀成圖片。",
+        "encode_failed": "無法處理這張圖片，請換一張試試。",
+        "unsupported_type": "不支援這個檔案的格式。",
+        "hash_unavailable": "無法驗證此檔案，請重新整理頁面後再試。"
+      },
+      "cropRegion": "裁切區域 — 可用方向鍵移動",
+      "cover": {
+        "menuUpload": "上傳封面",
+        "cropTitle": "裁切封面",
+        "cropHint": "拖曳選擇要顯示在 Project 卡片上的區域。",
+        "upload": "上傳",
+        "uploading": "上傳中…",
+        "error": {
+          "storage": "儲存空間已滿，封面沒有上傳。",
+          "upload": "封面沒有更新，請再試一次。"
+        }
       }
     },
     "rail": {

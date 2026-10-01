@@ -114,13 +114,17 @@ import {
   uploadAcceptFor,
   refusedFormatParams,
   fillNodeFromFile,
-  runMediaUpload,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
-  type UploadFailure,
   assetUrlSurvives,
   isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
+import {
+  runMediaUpload,
+  type UploadFailure,
+  uploadMedia,
+  UploadFailedError,
+} from '@web/data/upload/media-upload';
 import { hashFile } from '@web/data/upload/hash';
 import {
   stashRetryFile,
@@ -1080,41 +1084,25 @@ function CanvasSpaceInner({
         },
         {
           exportCrop: exportCropBlob,
-          uploadFile: (file, pid) =>
-            new Promise<string>((resolve, reject) => {
-              void runMediaUpload(
-                file,
-                {
-                  projectId: pid,
-                  spaceId,
-                  // No node: a crop is a pool entry, so there is no handling to
-                  // fence and nothing for the server to announce to. That is
-                  // also why this path reads its URL from the answer below
-                  // rather than from Yjs (design §9).
-                  // A byproduct: registered in the ledger for attribution and
-                  // dedup, without an activity-feed row of its own.
-                  derived: true,
-                },
-                {
-                  getUploadConfig: assetsApi.fetchUploadConfig,
-                  hashFile,
-                  requestTicket: assetsApi.requestUploadTicket,
-                  sendToIngest: sendFileAndFinish,
-                  onSuccess: (fileUrl) => {
-                    if (fileUrl === undefined) {
-                      reject(new Error('upload'));
-                      return;
-                    }
-                    resolve(fileUrl);
-                  },
-                  // Carry the REASON (Gate-2 R5): a hashing failure cannot be
-                  // fixed by retrying on this page, so the crop pipeline must
-                  // be able to say "reload" rather than the generic "try
-                  // again".
-                  onFailure: (outcome) => reject(new Error(outcome.reason)),
-                },
-              );
-            }),
+          uploadFile: async (file, pid) => {
+            const { fileUrl } = await uploadMedia(file, {
+              projectId: pid,
+              spaceId,
+              // No node: a crop is a pool entry, so there is no handling to
+              // fence and nothing for the server to announce to. That is
+              // also why this path reads its URL from the answer rather
+              // than from Yjs (design §9).
+              // A byproduct: registered in the ledger for attribution and
+              // dedup, without an activity-feed row of its own.
+              derived: true,
+            });
+            // The rejection carries the REASON as its message (Gate-2 R5): a
+            // hashing failure cannot be fixed by retrying on this page, so the
+            // crop pipeline must be able to say "reload" rather than the
+            // generic "try again".
+            if (fileUrl === undefined) throw new UploadFailedError('upload');
+            return fileUrl;
+          },
           addFocusImage: (image) => {
             useCanvasStore.getState().removePendingFocusUpload(pendingId);
             // A refused append must be SAID — the upload already succeeded,

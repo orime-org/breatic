@@ -13,9 +13,9 @@ import { describe, it, expect } from 'vitest';
 
 import {
   imageBoxWithin,
-  initialSquareCrop,
+  initialCrop,
   rescaleCrop,
-} from '@web/pages/studio/container/dialogs/avatar-crop';
+} from '@web/pages/studio/container/dialogs/crop-box';
 
 /**
  * Build the image's offset box, as the layout properties report it.
@@ -75,9 +75,9 @@ describe('imageBoxWithin', () => {
   });
 });
 
-describe('initialSquareCrop', () => {
+describe('initialCrop', () => {
   it('is the largest centred square inside a landscape image', () => {
-    expect(initialSquareCrop({ width: 400, height: 200 })).toEqual({
+    expect(initialCrop({ width: 400, height: 200 }, 1)).toEqual({
       x: 100,
       y: 0,
       width: 200,
@@ -86,7 +86,7 @@ describe('initialSquareCrop', () => {
   });
 
   it('is the largest centred square inside a portrait image', () => {
-    expect(initialSquareCrop({ width: 200, height: 400 })).toEqual({
+    expect(initialCrop({ width: 200, height: 400 }, 1)).toEqual({
       x: 0,
       y: 100,
       width: 200,
@@ -95,7 +95,7 @@ describe('initialSquareCrop', () => {
   });
 
   it('fills a square image completely', () => {
-    expect(initialSquareCrop({ width: 300, height: 300 })).toEqual({
+    expect(initialCrop({ width: 300, height: 300 }, 1)).toEqual({
       x: 0,
       y: 0,
       width: 300,
@@ -112,7 +112,7 @@ describe('initialSquareCrop', () => {
       { width: 243, height: 486 },
       { width: 300, height: 300 },
     ]) {
-      const crop = initialSquareCrop(box);
+      const crop = initialCrop(box, 1);
       expect(crop.x).toBeGreaterThanOrEqual(0);
       expect(crop.y).toBeGreaterThanOrEqual(0);
       expect(crop.x + crop.width).toBeLessThanOrEqual(box.width);
@@ -129,10 +129,32 @@ describe('initialSquareCrop', () => {
       { width: 400, height: 300 },
       offset(0, 50, 400, 200),
     )!;
-    const crop = initialSquareCrop(box);
+    const crop = initialCrop(box, 1);
     expect(crop.height).toBe(200);
     expect(crop.y + crop.height).toBeLessThanOrEqual(box.height);
     expect(crop.x + crop.width).toBeLessThanOrEqual(box.width);
+  });
+});
+
+describe('a 16:9 selection', () => {
+  it('starts as the largest centred 16:9 area inside a tall image', () => {
+    expect(initialCrop({ width: 320, height: 400 }, 16 / 9)).toEqual({
+      x: 0,
+      y: 110,
+      width: 320,
+      height: 180,
+    });
+  });
+
+  it('keeps 16:9 when the image is rescaled', () => {
+    const after = rescaleCrop(
+      { x: 0, y: 0, width: 160, height: 90 },
+      { width: 320, height: 180 },
+      { width: 640, height: 360 },
+      16 / 9,
+    );
+    expect(after.width / after.height).toBeCloseTo(16 / 9, 6);
+    expect(after.width).toBe(320);
   });
 });
 
@@ -147,8 +169,7 @@ describe('rescaleCrop', () => {
     const after = rescaleCrop(
       before,
       { width: 464, height: 232 },
-      { width: 486, height: 243 },
-    );
+      { width: 486, height: 243 }, 1);
     expect(after.width).toBeCloseTo(243, 0);
     expect(after.height).toBeCloseTo(243, 0);
   });
@@ -157,8 +178,7 @@ describe('rescaleCrop', () => {
     const after = rescaleCrop(
       { x: 100, y: 0, width: 200, height: 200 },
       { width: 400, height: 200 },
-      { width: 200, height: 100 },
-    );
+      { width: 200, height: 100 }, 1);
     expect(after.width).toBeCloseTo(100, 0);
     expect(after.x).toBeCloseTo(50, 0);
   });
@@ -167,8 +187,7 @@ describe('rescaleCrop', () => {
     const after = rescaleCrop(
       { x: 0, y: 0, width: 100, height: 100 },
       { width: 200, height: 200 },
-      { width: 300, height: 250 },
-    );
+      { width: 300, height: 250 }, 1);
     expect(after.width).toBe(after.height);
   });
 
@@ -176,8 +195,7 @@ describe('rescaleCrop', () => {
     const after = rescaleCrop(
       { x: 190, y: 0, width: 200, height: 200 },
       { width: 400, height: 200 },
-      { width: 200, height: 400 },
-    );
+      { width: 200, height: 400 }, 1);
     expect(after.x).toBeGreaterThanOrEqual(0);
     expect(after.y).toBeGreaterThanOrEqual(0);
     expect(after.x + after.width).toBeLessThanOrEqual(200);
@@ -187,14 +205,14 @@ describe('rescaleCrop', () => {
   it('returns the selection untouched when the box did not change', () => {
     const rect = { x: 10, y: 20, width: 100, height: 100 };
     expect(
-      rescaleCrop(rect, { width: 300, height: 300 }, { width: 300, height: 300 }),
+      rescaleCrop(rect, { width: 300, height: 300 }, { width: 300, height: 300 }, 1),
     ).toBe(rect);
   });
 
   it('leaves it alone rather than dividing by zero on a degenerate old box', () => {
     const rect = { x: 10, y: 20, width: 100, height: 100 };
     expect(
-      rescaleCrop(rect, { width: 0, height: 0 }, { width: 300, height: 300 }),
+      rescaleCrop(rect, { width: 0, height: 0 }, { width: 300, height: 300 }, 1),
     ).toBe(rect);
   });
 });

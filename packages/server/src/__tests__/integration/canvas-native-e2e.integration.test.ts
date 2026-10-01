@@ -201,7 +201,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     const key = `test/key-${++keySeq}.png`;
     keyToUrl.set(key, url);
     const { asset } = await orig.assetService.register({
-      projectId: ctx.projectId,
+      ownerStudioId: await orig.assetService.resolveOwnerStudioId(ctx.projectId),
       actingUserId: ctx.actingUserId,
       contentHash: createHash("sha256").update(hashInput).digest("hex"),
       storageKey: key,

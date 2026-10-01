@@ -41,7 +41,7 @@ const NOT_JOINED: ContainerProject = {
 describe('ProjectsTab', () => {
   it('shows a guest every project the server listed, including ones they are not on', () => {
     withQuery(
-      <ProjectsTab projects={[STUDIO_VISIBLE, NOT_JOINED]} studioRole='guest' />,
+      <ProjectsTab projects={[STUDIO_VISIBLE, NOT_JOINED]} studioRole='guest' studioSlug='acme' />,
     );
     expect(screen.getByText('Open Project')).toBeInTheDocument();
     expect(screen.getByText('Other Project')).toBeInTheDocument();
@@ -49,7 +49,7 @@ describe('ProjectsTab', () => {
 
   it('offers create to an admin/maintainer, never to a guest or non-member (spec §7.1)', () => {
     const admin = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='admin' />,
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='admin' studioSlug='acme' />,
     );
     expect(
       screen.getByRole('button', { name: 'New project' }),
@@ -57,7 +57,7 @@ describe('ProjectsTab', () => {
     admin.unmount();
 
     const maintainer = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='maintainer' />,
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='maintainer' studioSlug='acme' />,
     );
     expect(
       screen.getByRole('button', { name: 'New project' }),
@@ -67,13 +67,13 @@ describe('ProjectsTab', () => {
     // A plain guest cannot create — creating is limited to admin/maintainer
     // (spec §0.2 / §8.2).
     const guest = withRouter(
-      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='guest' />,
+      <ProjectsTab projects={[STUDIO_VISIBLE]} studioRole='guest' studioSlug='acme' />,
     );
     expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
     guest.unmount();
 
     // A non-member viewing the public shell never sees the create entry.
-    withRouter(<ProjectsTab projects={[STUDIO_VISIBLE]} studioRole={null} />);
+    withRouter(<ProjectsTab projects={[STUDIO_VISIBLE]} studioRole={null} studioSlug='acme' />);
     expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
   });
 });

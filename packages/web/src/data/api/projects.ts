@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { ProjectRole, SpaceType } from '@breatic/shared';
-import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@web/data/api/request';
 
 /**
  * Shared base shape for a single project (the fields `ProjectDetail` extends).
@@ -67,6 +67,16 @@ export const projectsApi = {
   },
   rename(id: string, name: string) {
     return apiPatch<ProjectDetail>(`/projects/${id}`, { name });
+  },
+  /**
+   * `PUT /api/v1/projects/:id/cover` — point the project's cover at an
+   * uploaded picture. Owner-only.
+   * @param id the bare project uuid.
+   * @param assetId the uploaded picture's ledger row.
+   * @returns the updated project.
+   */
+  setCover(id: string, assetId: string) {
+    return apiPut<ProjectDetail>(`/projects/${id}/cover`, { asset_id: assetId });
   },
   /**
    * `POST /api/v1/projects/:id/opened` — record that the caller just opened

@@ -29,6 +29,7 @@ import {
 import {
   assetService,
   ingestReportService,
+  studioAuthService,
   uploadTicketService,
 } from "@breatic/domain";
 import { downloadLink } from "@server/modules/asset/download-link.js";
@@ -39,7 +40,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
-  assertStorageAllowance,
+  assertStudioStorageAllowance,
   assetUploadService,
   projectService,
 } from "@server/modules";
@@ -125,7 +126,7 @@ assets.get(
 /** sha256 hex — the only hash shape the dedup ledger stores. */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
-const uploadTicketSchema = z.object({
+const uploadTicketFields = z.object({
   filename: z
     .string()
     .min(1)
@@ -156,7 +157,6 @@ const uploadTicketSchema = z.object({
     .max(100)
     .transform(reduceMediaType)
     .refine(isUploadableMediaType, "content_type is not an uploadable kind"),
-  project_id: z.string().uuid(),
   /** Declared byte size — the authoritative upload-cap gate input. */
   size: z.coerce.number().int().positive(),
   /**
@@ -180,6 +180,28 @@ const uploadTicketSchema = z.object({
 });
 
 /**
+ * Where the bytes land: a project, or — for its avatar — a studio, which is
+ * the only thing a studio uploads on its own account. `purpose` is what the
+ * picture is being uploaded to become; it is filed as the asset's source and
+ * grants nothing, since what makes a picture a cover or an avatar is the call
+ * that points at it afterwards.
+ */
+const uploadTicketSchema = z.union([
+  uploadTicketFields.extend({
+    project_id: z.string().uuid(),
+    studio_id: z.never().optional(),
+    purpose: z.literal("project_cover").optional(),
+  }),
+  uploadTicketFields.extend({
+    studio_id: z.string().uuid(),
+    project_id: z.never().optional(),
+    purpose: z.literal("studio_avatar"),
+    node_id: z.never().optional(),
+    space_id: z.never().optional(),
+  }),
+]);
+
+/**
  * `POST /assets/upload-ticket` — the permission slip the browser carries to
  * the ingest Worker (design §4.1).
  *
@@ -199,8 +221,17 @@ assets.post(
     const user = c.get("user");
     const body = c.req.valid("json");
 
-    // Upload is a write — edit-or-above can ask for a ticket.
-    await projectService.assertAccess(body.project_id, user.id, "editor");
+    // Upload is a write — edit-or-above can ask for a ticket. A studio's own
+    // picture is its admin's to change.
+    if (body.project_id !== undefined) {
+      await projectService.assertAccess(body.project_id, user.id, "editor");
+    } else {
+      await studioAuthService.assertStudioRole(user.id, body.studio_id, "admin");
+    }
+    const studioId =
+      body.project_id !== undefined
+        ? await assetService.resolveOwnerStudioId(body.project_id)
+        : body.studio_id;
 
     const { upload, ingest } = getStorageConfig();
     if (body.size > upload.max_upload_bytes) {
@@ -217,35 +248,40 @@ assets.post(
     // Dedup: the owner studio already holding this content (with a matching
     // size) skips the upload entirely — no key, no grant, no ticket.
     const dedupHit = await assetUploadService.checkUploadDedup({
-      projectId: body.project_id,
+      studioId,
       contentHash: body.client_hash,
       sizeBytes: body.size,
     });
     if (dedupHit) {
       logger.info(
-        { hash: body.client_hash, userId: user.id, projectId: body.project_id },
+        { hash: body.client_hash, userId: user.id, studioId, projectId: body.project_id },
         "upload_ticket_dedup_hit",
       );
       // No bytes move, but the node now shows something it did not show
       // before: it gets its history row, and a task row opened and settled in
       // the same pass.
       // The project activity feed gets nothing, because its only shape for
-      // this is `asset:uploaded` and nothing was uploaded.
-      await assetUploadService.settleDedupHit({
-        projectId: body.project_id,
-        hit: dedupHit,
-        userId: user.id,
-        metadata: {
-          filename: body.filename,
-          size: body.size,
-          mimeType: body.content_type,
-        },
-        nodeId: body.node_id,
-        spaceId: body.space_id,
-      });
+      // this is `asset:uploaded` and nothing was uploaded. A studio's avatar
+      // has no project and no node, so there is nothing to settle.
+      if (body.project_id !== undefined) {
+        await assetUploadService.settleDedupHit({
+          projectId: body.project_id,
+          hit: dedupHit,
+          userId: user.id,
+          metadata: {
+            filename: body.filename,
+            size: body.size,
+            mimeType: body.content_type,
+          },
+          nodeId: body.node_id,
+          spaceId: body.space_id,
+        });
+      }
       return c.json({
         data: {
           alreadyExists: true,
+          // The row a cover or an avatar is then pointed at.
+          assetId: dedupHit.assetId,
           fileUrl: dedupHit.fileUrl,
           kind: dedupHit.kind,
         },
@@ -253,7 +289,7 @@ assets.post(
     }
 
     // Storage gate, after the dedup return: that path consumes nothing.
-    await assertStorageAllowance(body.project_id, "upload");
+    await assertStudioStorageAllowance(studioId, "upload");
 
     // Both settings have to be present before a byte is authorised. Without
     // the secret the Worker would reject every ticket we sign; without the
@@ -285,9 +321,11 @@ assets.post(
     // opened before the ticket that starts it (#186, design §4.6.5). Nothing
     // schedules a deadline: the row carries its own budget, and whoever opens
     // this node's task list is what judges it against the clock.
-    const { key, studioId, taskId } = await openUpload(
+    const { key, taskId } = await openUpload(
       {
-        projectId: body.project_id,
+        ...(body.project_id !== undefined
+          ? { projectId: body.project_id }
+          : { studioId }),
         actingUserId: user.id,
         declaredSize: body.size,
         taskType: kind,
@@ -298,8 +336,11 @@ assets.post(
           spaceId: body.space_id ?? null,
           source: body.source ?? null,
           toolName: body.tool_name ?? null,
-          derived: body.derived ?? null,
+          // A cover is a byproduct: in the ledger, and not announced on the
+          // project feed as something uploaded to the canvas.
+          derived: body.purpose === "project_cover" ? true : (body.derived ?? null),
           filename: body.filename,
+          assetSource: body.purpose ?? null,
         },
       },
       {
