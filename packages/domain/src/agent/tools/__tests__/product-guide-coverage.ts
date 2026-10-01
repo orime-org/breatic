@@ -608,7 +608,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.storage.quota_exceeded_upload": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.studio.already_invited": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.studio.already_member": { excluded: REASONS.NOT_ON_THESE_SCREENS },
-  "server.studio.avatar_unsupported_type": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.studio.cannot_change_admin_role": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.studio.cannot_modify_personal": { described: /a personal studio takes no other members/ },
   "server.studio.email_not_registered": { excluded: REASONS.NOT_ON_THESE_SCREENS },
