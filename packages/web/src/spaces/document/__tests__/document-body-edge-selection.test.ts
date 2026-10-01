@@ -310,6 +310,24 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
     expect(view.state.selection).toBeInstanceOf(AllSelection);
   });
 
+  it('Shift+Up from a selection anchored on the start moves the head a line up, as the browser lays it out', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }]);
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.fromEdge(view.state.doc, 'start', textStart(view, 'Middle') + 2)));
+    const above = [...view.dom.querySelectorAll('.bn-inline-content')].find((el) => el.textContent === 'Above')!.firstChild!;
+    const dom = document.getSelection()!;
+    const modify = vi.fn(() => dom.collapse(above, 3));
+    Object.assign(dom, { modify });
+
+    expect(press(view, 'ArrowUp')).toBe(true);
+
+    expect(modify).toHaveBeenCalledWith('move', 'backward', 'line');
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([
+      bodyEdgePos(view.state.doc, 'start'),
+      textStart(view, 'Above') + 3,
+    ]);
+  });
+
   it('Shift+Up from the whole document lets go of the end and keeps the start', () => {
     const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }]);
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
