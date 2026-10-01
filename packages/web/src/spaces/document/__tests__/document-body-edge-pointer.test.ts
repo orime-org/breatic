@@ -559,6 +559,46 @@ describe('Shift+click past an end of the body', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([start, bodyEdgePos(view.state.doc, 'end')]);
   });
 
+  it('on macOS keeps the start edge of a selected first divider when the Shift+click lands below it', () => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+    const view = open(BELOW_DIVIDER).prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, bodyEdgePos(view.state.doc, 'start'))));
+    const target = textStart(view, 'Below') + 2;
+    pointAt(view, target);
+
+    press(view, 50, { shiftKey: true });
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([bodyEdgePos(view.state.doc, 'start'), target]);
+  });
+
+  it('on macOS keeps a selection already past the last divider when the Shift+click is past the end again', () => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+    const view = open(ABOVE_DIVIDER).prosemirrorView!;
+    const words = textStart(view, 'Above') + 'Above'.length;
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, words, 'end')));
+
+    press(view, 150, { shiftKey: true });
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([words, bodyEdgePos(view.state.doc, 'end')]);
+  });
+
+  it('on macOS keeps a selected last divider in when the Shift+click is past the end', () => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+    const view = open(ABOVE_DIVIDER).prosemirrorView!;
+    let divider = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'divider') divider = pos;
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, divider)));
+
+    press(view, 150, { shiftKey: true });
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([textStart(view, 'Above') + 'Above'.length, bodyEdgePos(view.state.doc, 'end')]);
+  });
+
   it('leaves a Shift+click in the body to the browser', () => {
     const view = open(ABOVE_DIVIDER).prosemirrorView!;
     const at = textStart(view, 'Above');
