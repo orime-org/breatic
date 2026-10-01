@@ -29,6 +29,7 @@ import {
 import {
   assetService,
   ingestReportService,
+  mediaReadService,
   studioAuthService,
   uploadTicketService,
 } from "@breatic/domain";
@@ -186,20 +187,41 @@ const uploadTicketFields = z.object({
  * grants nothing, since what makes a picture a cover or an avatar is the call
  * that points at it afterwards.
  */
-const uploadTicketSchema = z.union([
-  uploadTicketFields.extend({
-    project_id: z.string().uuid(),
-    studio_id: z.never().optional(),
-    purpose: z.literal("project_cover").optional(),
-  }),
-  uploadTicketFields.extend({
-    studio_id: z.string().uuid(),
-    project_id: z.never().optional(),
-    purpose: z.literal("studio_avatar"),
-    node_id: z.never().optional(),
-    space_id: z.never().optional(),
-  }),
-]);
+const uploadTicketSchema = z
+  .union([
+    uploadTicketFields.extend({
+      project_id: z.string().uuid(),
+      studio_id: z.never().optional(),
+      purpose: z.literal("project_cover").optional(),
+    }),
+    uploadTicketFields.extend({
+      studio_id: z.string().uuid(),
+      project_id: z.never().optional(),
+      purpose: z.literal("studio_avatar"),
+      node_id: z.never().optional(),
+      space_id: z.never().optional(),
+    }),
+  ])
+  // A cover or an avatar can only ever be pointed at a picture, and its media
+  // read is deferred on the strength of that (#299). So a purpose is taken for
+  // a picture alone, and a cover lands on no node.
+  .superRefine((body, ctx) => {
+    if (body.purpose === undefined) return;
+    if (!mediaReadService.purposeAccepts(body.content_type)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["content_type"],
+        message: "a purpose takes a picture only",
+      });
+    }
+    if (body.node_id !== undefined || body.space_id !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["node_id"],
+        message: "a picture uploaded for a purpose lands on no node",
+      });
+    }
+  });
 
 /**
  * `POST /assets/upload-ticket` — the permission slip the browser carries to
@@ -475,6 +497,7 @@ assets.post(
         // leaving a second frame behind.
         coverKeyFor(storageKey),
         assetService.mediaLimits(),
+        !mediaReadService.readsMediaAtFinish(claim.assetSource),
       );
     } catch (err) {
       // Both ways this can go wrong end here: the Worker refused, or it
@@ -516,12 +539,39 @@ assets.post(
         : c.json({ error: { message: t("server.error.internal") } }, 502);
     }
 
+    // The ticket named a picture; this is what the bytes that landed are. A
+    // cover or an avatar that turns out to be anything else is refused the way
+    // a format we do not take is, before a row is written for it.
+    if (!mediaReadService.storedTypeAccepted(claim.assetSource, answered.contentType)) {
+      logger.info(
+        { key: storageKey, contentType: answered.contentType, source: claim.assetSource },
+        "upload_purpose_type_refused",
+      );
+      noteIngestSideEffects(
+        storageKey,
+        await ingestReportService.applyIngestReport({
+          storageKey,
+          outcome: "aborted",
+          reason: "unsupported_type",
+        }),
+      );
+      return c.json({ error: { message: t("server.error.validation") } }, 415);
+    }
+
     const outcome = await ingestReportService.applyIngestReport({
       storageKey,
       outcome: "completed",
       ...answered,
     });
     noteIngestSideEffects(storageKey, outcome);
+
+    // The row stands either way; a read that could not be queued leaves it
+    // without numbers, which is how a read that failed leaves it too.
+    try {
+      await mediaReadService.scheduleMediaRead(outcome, claim.assetSource);
+    } catch (err) {
+      logger.error({ err, key: storageKey }, "media_read_enqueue_failed");
+    }
 
     if (outcome.status === "rejected") {
       logger.info(
