@@ -19,11 +19,9 @@
 
 import {
   assetRepo,
-  assetService,
   emitNodeTaskCounts,
   nodeHistoryService,
   nodeTaskService,
-  type uploadGrantService,
 } from "@breatic/domain";
 import { getStreamRedis, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
@@ -58,31 +56,25 @@ export interface DedupHit {
 }
 
 /**
- * Ticket-time dedup check: does the PROJECT's owner studio already hold this
- * content (#1839 — never the acting user's own studio)? A hit with a MATCHING
+ * Ticket-time dedup check: does the studio the upload is charged to already
+ * hold this content? A hit with a MATCHING
  * declared size skips the upload entirely; a size mismatch refuses dedup
  * (content claim not trusted) so the caller falls through to a real upload.
  * @param params - The dedup claim.
- * @param params.projectId - Project the upload targets; it alone decides the
- *   studio whose content is searched. Absent when the upload names a studio.
- * @param params.studioId - Studio searched when there is no project.
+ * @param params.studioId - The studio the upload is charged to (for a project,
+ *   its owner studio, #1839 — never the acting user's own); its content is
+ *   what is searched.
  * @param params.contentHash - Client-computed sha256 hex.
  * @param params.sizeBytes - Client-declared file size.
  * @returns The hit to reuse, or null (no row / size mismatch).
- * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  */
-export async function checkUploadDedup(
-  params: uploadGrantService.UploadTarget & {
-    contentHash: string;
-    sizeBytes: number;
-  },
-): Promise<DedupHit | null> {
-  const studioId =
-    params.projectId !== undefined
-      ? await assetService.resolveOwnerStudioId(params.projectId)
-      : params.studioId;
+export async function checkUploadDedup(params: {
+  studioId: string;
+  contentHash: string;
+  sizeBytes: number;
+}): Promise<DedupHit | null> {
   const existing = await assetRepo.findByStudioAndHash(
-    studioId,
+    params.studioId,
     params.contentHash,
   );
   if (!existing) return null;

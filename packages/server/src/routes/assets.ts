@@ -30,8 +30,8 @@ import {
   assetService,
   ingestReportService,
   studioAuthService,
+  uploadGrantService,
   uploadTicketService,
-  type uploadGrantService,
 } from "@breatic/domain";
 import { downloadLink } from "@server/modules/asset/download-link.js";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
@@ -41,7 +41,6 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
-  assertStorageAllowance,
   assertStudioStorageAllowance,
   assetUploadService,
   projectService,
@@ -128,7 +127,7 @@ assets.get(
 /** sha256 hex — the only hash shape the dedup ledger stores. */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
-const uploadTicketSchema = z.object({
+const uploadTicketFields = z.object({
   filename: z
     .string()
     .min(1)
@@ -159,15 +158,6 @@ const uploadTicketSchema = z.object({
     .max(100)
     .transform(reduceMediaType)
     .refine(isUploadableMediaType, "content_type is not an uploadable kind"),
-  /** Where the bytes land: a project, or — for its avatar — a studio. */
-  project_id: z.string().uuid().optional(),
-  studio_id: z.string().uuid().optional(),
-  /**
-   * What the picture is being uploaded to become. Filed as the asset's
-   * source; it grants nothing, since what makes a picture a cover or an avatar
-   * is the call that points at it afterwards.
-   */
-  purpose: z.enum(["project_cover", "studio_avatar"]).optional(),
   /** Declared byte size — the authoritative upload-cap gate input. */
   size: z.coerce.number().int().positive(),
   /**
@@ -188,18 +178,29 @@ const uploadTicketSchema = z.object({
   source: z.enum(["mini_tool"]).optional(),
   tool_name: z.string().max(100).optional(),
   derived: z.boolean().optional(),
-}).superRefine((v, ctx) => {
-  // A project upload, or a studio's avatar — one target, and the avatar is
-  // the only thing a studio uploads on its own account.
-  const ok =
-    v.project_id !== undefined
-      ? v.studio_id === undefined && v.purpose !== "studio_avatar"
-      : v.studio_id !== undefined &&
-        v.purpose === "studio_avatar" &&
-        v.node_id === undefined &&
-        v.space_id === undefined;
-  if (!ok) ctx.addIssue({ code: "custom", message: "invalid upload target" });
 });
+
+/**
+ * Where the bytes land: a project, or — for its avatar — a studio, which is
+ * the only thing a studio uploads on its own account. `purpose` is what the
+ * picture is being uploaded to become; it is filed as the asset's source and
+ * grants nothing, since what makes a picture a cover or an avatar is the call
+ * that points at it afterwards.
+ */
+const uploadTicketSchema = z.union([
+  uploadTicketFields.extend({
+    project_id: z.string().uuid(),
+    studio_id: z.never().optional(),
+    purpose: z.literal("project_cover").optional(),
+  }),
+  uploadTicketFields.extend({
+    studio_id: z.string().uuid(),
+    project_id: z.never().optional(),
+    purpose: z.literal("studio_avatar"),
+    node_id: z.never().optional(),
+    space_id: z.never().optional(),
+  }),
+]);
 
 /**
  * `POST /assets/upload-ticket` — the permission slip the browser carries to
@@ -223,15 +224,16 @@ assets.post(
 
     // Upload is a write — edit-or-above can ask for a ticket. A studio's own
     // picture is its admin's to change.
-    const uploadTarget: uploadGrantService.UploadTarget =
+    if (body.project_id !== undefined) {
+      await projectService.assertAccess(body.project_id, user.id, "editor");
+    } else {
+      await studioAuthService.assertStudioRole(user.id, body.studio_id, "admin");
+    }
+    const studioId = await uploadGrantService.resolveUploadStudioId(
       body.project_id !== undefined
         ? { projectId: body.project_id }
-        : { studioId: body.studio_id as string };
-    if (uploadTarget.projectId !== undefined) {
-      await projectService.assertAccess(uploadTarget.projectId, user.id, "editor");
-    } else {
-      await studioAuthService.assertStudioRole(user.id, uploadTarget.studioId, "admin");
-    }
+        : { studioId: body.studio_id },
+    );
 
     const { upload, ingest } = getStorageConfig();
     if (body.size > upload.max_upload_bytes) {
@@ -248,13 +250,13 @@ assets.post(
     // Dedup: the owner studio already holding this content (with a matching
     // size) skips the upload entirely — no key, no grant, no ticket.
     const dedupHit = await assetUploadService.checkUploadDedup({
-      ...uploadTarget,
+      studioId,
       contentHash: body.client_hash,
       sizeBytes: body.size,
     });
     if (dedupHit) {
       logger.info(
-        { hash: body.client_hash, userId: user.id, projectId: body.project_id },
+        { hash: body.client_hash, userId: user.id, studioId, projectId: body.project_id },
         "upload_ticket_dedup_hit",
       );
       // No bytes move, but the node now shows something it did not show
@@ -263,9 +265,9 @@ assets.post(
       // The project activity feed gets nothing, because its only shape for
       // this is `asset:uploaded` and nothing was uploaded. A studio's avatar
       // has no project and no node, so there is nothing to settle.
-      if (uploadTarget.projectId !== undefined) {
+      if (body.project_id !== undefined) {
         await assetUploadService.settleDedupHit({
-          projectId: uploadTarget.projectId,
+          projectId: body.project_id,
           hit: dedupHit,
           userId: user.id,
           metadata: {
@@ -289,11 +291,7 @@ assets.post(
     }
 
     // Storage gate, after the dedup return: that path consumes nothing.
-    if (uploadTarget.projectId !== undefined) {
-      await assertStorageAllowance(uploadTarget.projectId, "upload");
-    } else {
-      await assertStudioStorageAllowance(uploadTarget.studioId, "upload");
-    }
+    await assertStudioStorageAllowance(studioId, "upload");
 
     // Both settings have to be present before a byte is authorised. Without
     // the secret the Worker would reject every ticket we sign; without the
@@ -325,9 +323,11 @@ assets.post(
     // opened before the ticket that starts it (#186, design §4.6.5). Nothing
     // schedules a deadline: the row carries its own budget, and whoever opens
     // this node's task list is what judges it against the clock.
-    const { key, studioId, taskId } = await openUpload(
+    const { key, taskId } = await openUpload(
       {
-        ...uploadTarget,
+        ...(body.project_id !== undefined
+          ? { projectId: body.project_id, studioId }
+          : { studioId }),
         actingUserId: user.id,
         declaredSize: body.size,
         taskType: kind,
