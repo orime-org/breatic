@@ -3,7 +3,12 @@
 
 import { describe, it, expect } from "vitest";
 
-import { chatAttachedChipSchema, projectCreateSchema, taskCreateSchema } from "@shared/schemas/api.js";
+import {
+  chatAttachedChipSchema,
+  chatMessageSchema,
+  projectCreateSchema,
+  taskCreateSchema,
+} from "@shared/schemas/api.js";
 
 const base = {
   studioId: "11111111-1111-4111-8111-111111111111",
@@ -66,5 +71,27 @@ describe("chatAttachedChipSchema — id", () => {
 
   it("takes an id as long as a uuid", () => {
     expect(chatAttachedChipSchema.safeParse({ ...chip, id: "0".repeat(36) }).success).toBe(true);
+  });
+});
+
+describe("chatMessageSchema — time_zone", () => {
+  const message = {
+    message: "what time is it?",
+    project_id: "11111111-1111-4111-8111-111111111111",
+    conversation_id: "22222222-2222-4222-8222-222222222222",
+  };
+
+  it("takes the zone the browser reports", () => {
+    const parsed = chatMessageSchema.parse({ ...message, time_zone: "Asia/Shanghai" });
+    expect(parsed.time_zone).toBe("Asia/Shanghai");
+  });
+
+  it("takes a message without one", () => {
+    expect(chatMessageSchema.parse(message).time_zone).toBeUndefined();
+  });
+
+  it("refuses an empty zone and one longer than 64 characters", () => {
+    expect(chatMessageSchema.safeParse({ ...message, time_zone: "" }).success).toBe(false);
+    expect(chatMessageSchema.safeParse({ ...message, time_zone: "x".repeat(65) }).success).toBe(false);
   });
 });
