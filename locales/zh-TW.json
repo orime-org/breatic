@@ -1449,7 +1449,7 @@
         "avatarUploading": "上傳中…",
         "avatarUploadError": {
           "storage": "儲存空間已滿，頭像沒有上傳。",
-          "upload": "頭像沒有上傳，請再試一次。"
+          "upload": "頭像沒有更新，請再試一次。"
         },
         "avatarCropTitle": "裁切頭像",
         "avatarCropHint": "拖曳方框調整位置，拖曳四角調整大小。",
@@ -1520,7 +1520,7 @@
         "uploading": "上傳中…",
         "error": {
           "storage": "儲存空間已滿，封面沒有上傳。",
-          "upload": "封面沒有上傳，請再試一次。"
+          "upload": "封面沒有更新，請再試一次。"
         }
       }
     },
