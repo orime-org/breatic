@@ -211,7 +211,8 @@ export function renderProductGuide(): string {
     "The plus sign at the bottom left of the box attaches up to " +
       `${String(getAgentConfig().attachment_max_items)} pictures, videos, sounds, PDF, Word (.docx), Excel or ` +
       "plain text files to the next message. Canvas nodes are handed over with " +
-      `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu. Each attachment shows as a small ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu; if the model list cannot be read at that moment, nothing is attached and ` +
+      `${quoted(t("canvas.generatePanel.catalogUnavailable"))} shows. Each attachment shows as a small ` +
       "chip in the box above the text, with a type and a name and a spinner while it uploads; hovering it " +
       "previews it and its X removes it. A " +
       "chip that could not be uploaded or read shows a red mark and says why; it has to be removed with its X before " +
@@ -388,7 +389,7 @@ export function renderProductGuide(): string {
       `the note colour opens there with ${quoted(t("canvas.annotation.placeholder"))}. Shift+Enter starts a new ` +
       "line; Enter posts the note (with nothing typed it does nothing); Esc or clicking away drops it. Before " +
       "clicking a spot, Esc, a right-click or pressing the button again cancels. A posted note is a small round " +
-      "bubble showing its author's picture, or their initials, with a count of replies at its top right once " +
+      "bubble showing its author's picture, or the first letter of their name, with a count of replies at its top right once " +
       "anyone replies. Clicking it opens the note and its replies, with a " +
       `${quoted(t("canvas.annotation.replyPlaceholder"))} box under them unless the note is locked; clicking the ` +
       "bubble again, Esc or clicking elsewhere closes it. Typing a reply shows " +
@@ -457,7 +458,12 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.refuseExecuteNoVoice"))} or ` +
       `${quoted(t("canvas.generatePanel.errorNoSourceImage"))} The music modes may ask ` +
       `${quoted(t("canvas.generatePanel.refuseExecuteNoStyle"))}, ${quoted(t("canvas.generatePanel.lyricsMissing"))} ` +
-      `or ${quoted(t("canvas.generatePanel.refuseExecuteNoReference"))}. Each model also caps how long its text ` +
+      `or ${quoted(t("canvas.generatePanel.refuseExecuteNoReference"))}. When a storyboard is split into shots ` +
+      "(see the video panel below), the shots take the prompt's place, and pressing it may say " +
+      `${quoted(t("canvas.generatePanel.refuseStoryboardShotEmpty", { shot: 2 }))}, ` +
+      `${quoted(t("canvas.generatePanel.refuseStoryboardShotTooLong", { shot: 2, limit: 512 }))}, ` +
+      `${quoted(t("canvas.generatePanel.refuseStoryboardDurationMismatch", { shots: 6, total: 5 }))} or ` +
+      `${quoted(t("canvas.generatePanel.refuseStoryboardTooMany", { limit: 6 }))}. Each model also caps how long its text ` +
       "may be; past that, pressing it says the limit, and the panel shows no counter.",
     "Once pressed, the run can still be refused by the server with one of these (the star in the top bar " +
       "shows the credit balance):",
@@ -509,7 +515,9 @@ export function renderProductGuide(): string {
       "saying what it is good at; picking one switches to it. Mode and model together decide which slot buttons " +
       "and settings show. Each model keeps its own settings on the node: switching to another model shows that " +
       "model's settings (its defaults if never set, so a voice has to be picked again), and switching back " +
-      "brings the earlier ones back. Switching mode returns to the model last used in that mode.",
+      "brings the earlier ones back. Switching mode returns to the model last used in that mode, and to that " +
+      "mode's own prompt: each mode keeps its own words (and, for music, its own lyrics), so a mode never typed " +
+      "in shows an empty box.",
     `- Picture panel: tools ${quoted(t("canvas.generatePanel.reference"))}, ` +
       `${quoted(t("canvas.generatePanel.focus"))}, and ${quoted(t("canvas.generatePanel.style"))} when the model ` +
       "takes a style picture. Clicking the settings pill opens whichever of " +
@@ -527,6 +535,28 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.duration"))}, a ${quoted(t("canvas.generatePanel.generateAudio"))} ` +
       "switch on models that can, and any settings of the model's own. A setting the model does not have is left " +
       "out.",
+    `- Storyboard, on the video models that offer it: under the prompt box is a row with a ` +
+      `${quoted(t("canvas.generatePanel.storyboard.label"))} switch reading ` +
+      `${quoted(t("canvas.generatePanel.switchOff"))} or ${quoted(t("canvas.generatePanel.switchOn"))}. On, the ` +
+      `model splits the prompt into shots itself, and the row says ` +
+      `${quoted(t("canvas.generatePanel.storyboard.autoHint"))}. ` +
+      `${quoted(t("canvas.generatePanel.storyboard.perShot"))} in that row splits it by hand: the prompt box gives ` +
+      `way to ${quoted(t("canvas.generatePanel.storyboard.back"))}, one card per shot and ` +
+      `${quoted(t("canvas.generatePanel.storyboard.addShot"))}, and the row reads ` +
+      `${quoted(t("canvas.generatePanel.storyboard.mainPromptKept"))}. A card, such as ` +
+      `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
+      `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
+      `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt; ` +
+      "clicking a chip in the strip puts it in the shot box last typed in. The shots' seconds always add up to " +
+      "the video's length: the plus takes a second from another shot, the minus gives one away, and in the " +
+      "settings pill a duration shorter than the number of shots is greyed, while picking another one re-splits " +
+      `the shots. ${quoted(t("canvas.generatePanel.storyboard.addShot"))} is greyed with ` +
+      `${quoted(t("canvas.generatePanel.storyboard.shotCapReached", { max: 6 }))} at the model's limit, or with ` +
+      `${quoted(t("canvas.generatePanel.storyboard.noSecondToSpare"))} when every shot is down to one second; ` +
+      `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} is greyed on the last shot. ` +
+      `${quoted(t("canvas.generatePanel.storyboard.back"))}, or turning the switch off, brings the prompt box ` +
+      "back with its words, and the shots are kept for next time. Split by hand, the run sends the shots and the " +
+      "nodes mentioned in them, and the prompt box's words are not sent. Each mode keeps its own storyboard.",
     `- Sound panel: tool ${quoted(t("canvas.generatePanel.reference"))}, then the source slots. Here only a ` +
       "connected text node can be mentioned; a connected sound shows as a faded chip, and a sound goes in through " +
       "its slot. On a model with voices the settings pill shows a speaker icon and the current voice and " +
@@ -551,9 +581,10 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.audioSpeakersNote"))}: write the prompt that way. Pressing generate with ` +
       `the speakers not filled in shows ${quoted(t("canvas.generatePanel.refuseExecuteNoSpeakers"))}. On other ` +
       "models the pill shows only their settings. Picking a model that has just been taken away shows " +
-      `${quoted(t("canvas.generatePanel.modelUnavailable"))} A sound node made before sound generation existed ` +
-      "shows only " +
-      `${quoted(t("canvas.generatePanel.audioLegacyNoPrompt"))}`,
+      `${quoted(t("canvas.generatePanel.modelUnavailable"))} A sound node made by an older version of the ` +
+      "product shows only " +
+      `${quoted(t("canvas.generatePanel.audioLegacyNoPrompt"))} A picture or video node that old shows no ` +
+      "prompt box; make a new node instead.",
     "",
     "## Source slots",
     "Some modes and models take a particular source in a place of its own and show a button for each, after the " +
@@ -598,8 +629,9 @@ export function renderProductGuide(): string {
       `to connect them; ${quoted(t("canvas.generatePanel.exitSelect"))} in the bar at the top, Esc, or pressing ` +
       `${quoted(t("canvas.generatePanel.reference"))} again stops. To remove a connection, select it and press the ` +
       `scissors at its middle, right-click it and choose ${quoted(t("canvas.edge.delete"))}, or press the X on ` +
-      "its chip in the panel. Removing a connection also removes every mention of that node from the prompt: at " +
-      "once while the panel is open, otherwise the next time it opens.",
+      "its chip in the panel. Removing a connection also removes every mention of that node from the prompt: " +
+      "at once from the box on screen, and from another mode's prompt or a shot not on screen the next time " +
+      "that box is shown.",
     "",
     "## Focus crops",
     `In a picture or video panel, ${quoted(t("canvas.generatePanel.focus"))} takes a region of a picture or ` +
@@ -664,7 +696,7 @@ export function renderProductGuide(): string {
       "keys work when the canvas was the last thing clicked and no box is being typed in: after pressing a " +
       "button in this chat, click empty canvas first, or use the bar. Undo takes back only the reader's own " +
       "changes: adding, deleting and moving nodes, connections and groups, a group's size and colour, names, " +
-      "locks, a node's mode, model, settings and slots, and notes and their replies. It does not take back what " +
+      "locks, a node's mode, model, settings and slots, a video's storyboard and its shots, and notes and their replies. It does not take back what " +
       "a generation or an upload put in a node (use the node's " +
       `${quoted(t("canvas.nodeMenu.history"))}), a focus crop (press the X on its chip), or other people's ` +
       "changes. Undoing a removed connection, or a deleted node with its connections, brings them back, but " +
@@ -692,21 +724,24 @@ export function renderProductGuide(): string {
       "With one generating node its panel opens by itself; with several, the group is selected and the reader " +
       `right-clicks each node and chooses ${quoted(t("canvas.nodeMenu.generate"))}.`,
     "Each generating node arrives empty, with its mode, model and the settings the proposal chose already set " +
-      "and, when the model has a prompt box, its prompt written. Where the model has none, a picture or video " +
+      "and, when the model has a prompt box, its prompt written. A video node on a model with a storyboard may " +
+      "instead arrive with the storyboard switched on, or split into shots with each shot's words written and " +
+      "the prompt box empty; its panel then opens on the shots. The prompt and shots go into the proposal's " +
+      "mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
       `panel shows ${quoted(t("canvas.generatePanel.promptNotUsed"))} in place of the box, and a sound panel ` +
       "still shows a box that holds only the proposal's bracketed spots, if any; nothing typed there is sent. " +
       "The reader generates the nodes in the order the card's arrows run, and waits for each to show its result " +
       "before generating the node it feeds: a node still generating lends nothing, or its previous result, and " +
       "where that source is optional the run goes ahead without it.",
-    "Spots left for the reader are in square brackets, in a prompt or in a finished text node's words. A ✏️ spot " +
+    "Spots left for the reader are in square brackets, in a prompt, a shot or a finished text node's words. A ✏️ spot " +
       "is a phrase to replace with their own words, or a setting to pick in the panel. A 📎 spot is material only " +
       "the reader has; it usually goes in an empty node the proposal placed, which they double-click to pick a " +
       "file. Each spot's note is also a line on the card; where the panel shows no prompt box, that line is the " +
       "only place the spot appears. Whatever is left in a prompt is sent as it is, brackets included: once a spot " +
       "is done -- the words replaced, the setting picked, the file in its node -- the reader deletes its bracket " +
-      "from the prompt.",
+      "from the prompt or shot.",
     "How work reaches a node depends on where it goes:",
-    "- Into the reference list: the prompt mentions it where the proposal points at it, and a 📎 spot already " +
+    "- Into the reference list: the prompt, or a shot, mentions it where the proposal points at it, and a 📎 spot already " +
       "mentions its empty node.",
     "- Into one of the mode's source slots: it is not mentioned. The reader's own material still has its 📎 " +
       "note on the card; a generated result has no line. Once that node holds its file or its generated result, " +
@@ -753,8 +788,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.commands.taskList"))}, ${quoted(t("spaces.document.commands.orderedList"))} ` +
       `and ${quoted(t("spaces.document.commands.quote"))}; the alignment menu lists ` +
       `${quoted(t("spaces.document.commands.alignLeft"))}, ${quoted(t("spaces.document.commands.alignCenter"))} ` +
-      `and ${quoted(t("spaces.document.commands.alignRight"))}. Hovering the speech bubble shows ` +
-      `${quoted(t("spaces.document.commands.comment"))} marked not open yet. The AI menu's commands look ` +
+      `and ${quoted(t("spaces.document.commands.alignRight"))}. The speech bubble starts a comment (see ` +
+      "Comments below). The AI menu's commands look " +
       "available but do nothing yet. With the whole document selected there is no link icon. Inside a code " +
       "block the bold, italic, strikethrough, underline, code, link and colour buttons are greyed, and a code " +
       "block cannot be aligned. On inline code the same buttons are greyed except code, which shows as on; " +
@@ -772,8 +807,8 @@ export function renderProductGuide(): string {
       `block; click it for a menu with ${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ${quoted(t("spaces.document.commands.align"))}, ` +
-      `${quoted(t("spaces.document.commands.color"))}, ${quoted(t("spaces.document.commands.comment"))} (marked ` +
-      `not open yet) and ${quoted(t("spaces.document.blockHandle.delete"))}; it acts on that line. ` +
+      `${quoted(t("spaces.document.commands.color"))}, ${quoted(t("spaces.document.commands.comment"))} and ` +
+      `${quoted(t("spaces.document.blockHandle.delete"))}; it acts on that line. ` +
       `${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ${quoted(t("spaces.document.commands.align"))} ` +
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
@@ -782,13 +817,45 @@ export function renderProductGuide(): string {
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
-    `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open ` +
+    `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open a ` +
+      `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +
+      `${quoted(t("spaces.document.docMenu.commentsUnresolved", { count: 2 }))} or ` +
+      `${quoted(t("spaces.document.docMenu.commentsNone"))} and opens the comments panel, then ` +
       `${quoted(t("spaces.document.docMenu.saveSnapshot"))} and ` +
       `${quoted(t("spaces.document.docMenu.restoreSnapshot"))}, both marked ` +
-      `${quoted(t("spaces.document.docMenu.notOpenYet"))}. Other people in the document show as coloured carets ` +
+      `${quoted(t("spaces.document.docMenu.notOpenYet"))}. A dot on the three dots means some comments are ` +
+      "unresolved. Other people in the document show as coloured carets " +
       "with their names. Content written by a newer version of the editor shows as a box marked " +
       `${quoted(t("spaces.document.unsupported.label"))} and is kept as it is.`,
-    "- There is no slash menu. Not available yet: comments, the AI commands, snapshots, images or other media, " +
+    `- Comments: select text and press the speech bubble, or choose ` +
+      `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on a line with no ` +
+      `words). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
+      `a highlight, and a box, ${quoted(t("spaces.document.comment.placeholder"))}, waits next to them. Enter ` +
+      `or ${quoted(t("spaces.document.comment.save"))} posts it, Shift+Enter starts a new line, and Esc or ` +
+      `${quoted(t("spaces.document.comment.cancel"))} drops it; both buttons appear once something is typed, ` +
+      "and a comment holds up to 300 characters. If the words are deleted before it is posted, the box turns " +
+      `into ${quoted(t("spaces.document.comment.targetGone"))} If the reader can no longer edit, it turns into ` +
+      `${quoted(t("spaces.document.comment.cannotWrite"))} The panel's header has ` +
+      `${quoted(t("spaces.document.comment.filterOpen"))} (chosen at first), ` +
+      `${quoted(t("spaces.document.comment.filterAll"))} and an X that closes it; closing it drops anything not ` +
+      "yet posted. Each card sits level with its words and quotes them, then shows each comment's writer (" +
+      `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known), when, and what they wrote. ` +
+      "Clicking highlighted words opens the panel at their comment. Clicking a card opens it; a closed card " +
+      "with more than two comments shows the first and the latest, with " +
+      `${quoted(t("spaces.document.comment.folded", { count: 2 }))} between them. An open card has ` +
+      `${quoted(t("spaces.document.comment.reply"))} for an answer, ` +
+      `${quoted(t("spaces.document.comment.resolve"))}, and ` +
+      `${quoted(t("spaces.document.comment.deleteThread"))}, which removes the whole thread at once without ` +
+      "asking, for whoever wrote the first comment or a project owner; each later reply has a small X for its " +
+      `writer or an owner. ${quoted(t("spaces.document.comment.resolve"))} takes the highlight away and moves ` +
+      `the card under ${quoted(t("spaces.document.comment.filterAll"))}, where ` +
+      `${quoted(t("spaces.document.comment.reopen"))} brings it back. Viewers can open the panel and read, but ` +
+      "not comment, answer, resolve or delete. A card whose words are all deleted leaves the panel until undo " +
+      `brings them back. A change that fails shows ${quoted(t("spaces.document.comment.writeFailed"))} What ` +
+      `was typed is kept. With no comments the panel shows ${quoted(t("spaces.document.comment.empty"))} ` +
+      `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
+      `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
+    "- There is no slash menu. Not available yet: the AI commands, snapshots, images or other media, " +
       "tables, dividers, toggle lists, and headings below level 3.",
     "",
     "## When something is wrong",

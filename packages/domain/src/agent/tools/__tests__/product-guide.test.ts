@@ -264,8 +264,30 @@ describe("what the guide says", () => {
     const doc = section("Document spaces");
     expect(doc).toMatch(/The other buttons show no name on hover/);
     expect(doc).not.toMatch(/each nam(es|ing) itself when hovered/i);
-    expect(doc).toMatch(/speech bubble shows "[^"]+" marked not open yet/);
+    expect(doc).toMatch(/The speech bubble starts a comment/);
     expect(doc).toMatch(/AI menu's commands look available but do nothing yet/);
+  });
+
+  it("walks through comments in a document: start, post, the panel, resolve and who may delete", () => {
+    const doc = section("Document spaces");
+    expect(doc).toMatch(/- Comments: select text and press the speech bubble/);
+    expect(doc).toMatch(/"Comments" panel opens beside the text/);
+    expect(doc).toMatch(/"Resolve" takes the highlight away and moves the card under "All", where "Reopen" brings it back/);
+    expect(doc).toMatch(/for whoever wrote the first comment or a project owner/);
+    expect(doc).toMatch(/Viewers can open the panel and read/);
+    expect(doc).toMatch(/Not available yet: the AI commands/);
+    expect(doc).not.toMatch(/Not available yet: comments/);
+    expect(doc).not.toMatch(/marked not open yet\)/);
+  });
+
+  it("walks through a storyboard split into shots, and says each mode keeps its own prompt", () => {
+    const panel = section("Inside the generation panel");
+    expect(panel).toMatch(/- Storyboard, on the video models that offer it/);
+    expect(panel).toMatch(/"Edit per shot" in that row splits it by hand/);
+    expect(panel).toMatch(/The shots' seconds always add up to the video's length/);
+    expect(panel).toMatch(/each mode keeps its own words/);
+    expect(section("Generating")).toMatch(/"Shot 2 is empty"/);
+    expect(section("Groups and undo")).toMatch(/a video's storyboard and its shots/);
   });
 
   it("quotes no name the screen only gives a screen reader", () => {
