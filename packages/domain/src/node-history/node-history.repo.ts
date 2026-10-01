@@ -43,30 +43,25 @@ function toEntity(
 }
 
 /**
- * Create a new history entry.
- * @param data - Entry fields (projectId, nodeId, userId, entryType, status required)
+ * Record a failed generation. A failed row holds no content, so the
+ * one-row-per-content index never applies to it; every success row goes
+ * through one of the `*IfAbsent` writers, which resolve onto the row already
+ * holding that content.
+ * @param data - Entry fields.
  * @param data.projectId - ID of the project owning the node.
  * @param data.nodeId - ID of the canvas node this entry records a change for.
- * @param data.userId - ID of the user who triggered the change.
- * @param data.entryType - `"generation"` for AIGC output, `"upload"` for a file the user brought, or `"snapshot"` for a copy they asked to keep.
- * @param data.status - `"success"` or `"failed"`.
- * @param data.content - Resulting content reference (e.g. asset URL); null when absent.
- * @param data.thumbnailUrl - Thumbnail URL for previews; null when absent.
- * @param data.errorMessage - Failure reason when `status` is `"failed"`; null otherwise.
- * @param data.taskId - ID of the task that produced this entry, when applicable.
- * @param data.metadata - Arbitrary entry metadata (model, cost, params, etc.).
+ * @param data.userId - ID of the user who triggered the generation.
+ * @param data.errorMessage - Failure reason surfaced to the frontend.
+ * @param data.taskId - ID of the task that failed.
+ * @param data.metadata - Arbitrary entry metadata (model, params, etc.).
  * @returns The inserted entity
  */
-export async function create(data: {
+export async function createFailure(data: {
   projectId: string;
   nodeId: string;
   userId: string;
-  entryType: "generation" | "upload" | "snapshot";
-  status: "success" | "failed";
-  content?: string;
-  thumbnailUrl?: string;
-  errorMessage?: string;
-  taskId?: string;
+  errorMessage: string;
+  taskId: string;
   metadata?: Record<string, unknown>;
 }): Promise<NodeHistoryEntity> {
   const rows = await db
@@ -75,12 +70,10 @@ export async function create(data: {
       projectId: data.projectId,
       nodeId: data.nodeId,
       userId: data.userId,
-      entryType: data.entryType,
-      status: data.status,
-      content: data.content ?? null,
-      thumbnailUrl: data.thumbnailUrl ?? null,
-      errorMessage: data.errorMessage ?? null,
-      taskId: data.taskId ?? null,
+      entryType: "generation",
+      status: "failed",
+      errorMessage: data.errorMessage,
+      taskId: data.taskId,
       metadata: data.metadata ?? {},
     })
     .returning();

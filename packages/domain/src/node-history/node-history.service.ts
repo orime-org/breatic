@@ -86,12 +86,10 @@ export async function recordGenerationFailure(opts: {
     params?: Record<string, unknown>;
   };
 }): Promise<NodeHistoryEntity> {
-  return repo.create({
+  return repo.createFailure({
     projectId: opts.projectId,
     nodeId: opts.nodeId,
     userId: opts.userId,
-    entryType: "generation",
-    status: "failed",
     errorMessage: opts.errorMessage,
     taskId: opts.taskId,
     metadata: opts.metadata ?? {},
@@ -117,8 +115,9 @@ export async function recordGenerationFailure(opts: {
  * @param opts.metadata.size - Size of the uploaded file in bytes.
  * @param opts.metadata.mimeType - MIME type of the uploaded file.
  * @returns The stored entry plus whether this call is the one that wrote it.
- *   The project activity feed, which has no key of its own, uses that flag
- *   to skip its write on a replay.
+ *   The flag is false on a replay and when the node's history already holds
+ *   this content; the project activity feed, which has no key of its own,
+ *   writes only when it is true.
  */
 export async function recordUpload(opts: {
   projectId: string;
