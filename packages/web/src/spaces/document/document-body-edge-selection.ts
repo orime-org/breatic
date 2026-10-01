@@ -546,6 +546,31 @@ function stepFrom(doc: Node, head: number, dir: 1 | -1): number {
 }
 
 /**
+ * The text position a line up or down from a head in text, as the browser
+ * lays the lines out: a caret put at the head and moved by a line
+ * (`Selection.modify`). The browser does not extend a range anchored on the
+ * start edge itself — that anchor stands on no line (probe25) — so a selection
+ * with an end on an edge is moved here rather than left to it.
+ * @param view - The view.
+ * @param head - The head, in text.
+ * @param dir - Which way.
+ * @returns The position, or null when the page cannot move a caret by lines.
+ */
+function lineFrom(view: EditorView, head: number, dir: 1 | -1): number | null {
+  const dom = (view.root as Document).getSelection?.();
+  if (!dom || typeof dom.modify !== 'function') return null;
+  const { anchorNode, anchorOffset, focusNode, focusOffset } = dom;
+  const at = view.domAtPos(head);
+  dom.collapse(at.node, at.offset);
+  dom.modify('move', dir < 0 ? 'backward' : 'forward', 'line');
+  const moved = dom.focusNode && view.dom.contains(dom.focusNode) ? view.posAtDOM(dom.focusNode, dom.focusOffset) : null;
+  // Put the page's range back: ProseMirror reads it on the next selection
+  // change, and a key that changes nothing dispatches nothing to overwrite it.
+  if (anchorNode && focusNode) dom.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset);
+  return moved === null ? null : textToward(view.state.doc, moved, dir);
+}
+
+/**
  * The selection a Shift+arrow gives (design §5.10.4) on a selection reaching
  * past an end, the whole document or a selected block, which ProseMirror
  * would collapse or lose (prosemirror-view `capturekeys.ts:19-55`); and on a
@@ -571,7 +596,9 @@ function arrowOnEdge(view: EditorView, key: string): Selection | null {
   if (headEdge === edge) return selection;
   if (headEdge !== null) return bodyEdgeBetween(doc, anchor, textNear(doc, head, headEdge));
   if (!vertical) return bodyEdgeBetween(doc, anchor, stepFrom(doc, head, dir));
-  return atLastLineTowards(view, edge) ? bodyEdgeBetween(doc, anchor, bodyEdgePos(doc, edge)) : null;
+  if (atLastLineTowards(view, edge)) return bodyEdgeBetween(doc, anchor, bodyEdgePos(doc, edge));
+  const next = lineFrom(view, head, dir);
+  return next === null ? null : bodyEdgeBetween(doc, anchor, next);
 }
 
 /**
