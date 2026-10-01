@@ -578,6 +578,7 @@ export {
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
+  readStoredMediaAtIngest,
   computePutTimeoutMs,
   IngestAnswerError,
   UploadHttpError,
@@ -588,6 +589,7 @@ export {
   type PartReceipt,
   type IngestMeasurements,
   type MediaLimits,
+  type MediaNumbers,
 } from "@shared/upload/ingest-client.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,

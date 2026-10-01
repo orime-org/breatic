@@ -394,6 +394,10 @@ export async function sendBytesToIngest(
  *   the edge's to read off the stored bytes.
  * @param limits - How long the container's run and each tool inside it get,
  *   out of `config/storage.yaml`. The Worker reads no configuration of its own.
+ * @param deferMediaRead - True when the media numbers are read after this
+ *   upload returns rather than now (#299: covers and avatars). Its own field,
+ *   so a finish that lost its limits is still told apart from one that asked
+ *   for no read.
  * @returns What the Worker measured over the stored object.
  * @throws {UploadHttpError} When the upload did not become an object.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -405,6 +409,7 @@ export async function finishUploadAtIngest(
   secret: string,
   coverKey: string,
   limits: MediaLimits,
+  deferMediaRead = false,
 ): Promise<IngestMeasurements> {
   const answered = await askWorker<unknown>(
     `${uploadUrl}/uploads/${held.uploadId}/complete`,
@@ -419,6 +424,7 @@ export async function finishUploadAtIngest(
         parts: held.parts,
         coverKey,
         limits,
+        ...(deferMediaRead && { deferMediaRead: true }),
       }),
     },
     // The request names the upload it finishes, and a finished one is refused
@@ -427,6 +433,59 @@ export async function finishUploadAtIngest(
     { replaySafe: true },
   );
   return readMeasurements(answered);
+}
+
+/** What the media container measured over a stored object. */
+export interface MediaNumbers {
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+}
+
+const mediaNumbers = z.object({
+  width: pixels,
+  height: pixels,
+  durationSeconds: seconds,
+});
+
+/**
+ * Ask the Worker what an object already in storage measures (#299).
+ *
+ * The read a cover or an avatar skipped when it was finished, asked for by our
+ * worker once the upload has returned. Nothing is written, so a repeat costs
+ * one more container run and nothing else. No deadline of its own, for the
+ * reason a finish has none: the wait is the container's, bounded by `limits`.
+ * @param uploadUrl - The ingest Worker's base address.
+ * @param secret - The secret the Worker also holds.
+ * @param about - The object to read.
+ * @param about.storageKey - Its key.
+ * @param about.contentType - What the ledger recorded the bytes as, which says
+ *   whether there is anything for the container to read.
+ * @param about.limits - How long the run and each tool inside it get, out of
+ *   `config/storage.yaml`.
+ * @returns The three numbers, each unusable one as none.
+ * @throws {UploadHttpError} When the Worker refuses.
+ * @throws {unknown} The transport's own failure when no delivery produced a
+ *   response.
+ */
+export async function readStoredMediaAtIngest(
+  uploadUrl: string,
+  secret: string,
+  about: { storageKey: string; contentType: string; limits: MediaLimits },
+): Promise<MediaNumbers> {
+  const answered = await askWorker<unknown>(
+    `${uploadUrl}/media`,
+    {
+      method: "POST",
+      headers: {
+        "x-ingest-secret": secret,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(about),
+    },
+    { replaySafe: true },
+  );
+  return mediaNumbers.parse(answered ?? {});
 }
 
 /**
