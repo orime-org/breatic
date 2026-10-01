@@ -176,7 +176,8 @@ function OpenNodeHistoryPanel({
         : null;
 
   // How many runs on this node have reached an end. A run that finishes
-  // while the panel is open wrote a row the list knows nothing about, and
+  // while the panel is open may have written a row the list knows nothing
+  // about (a failure, or a result the history did not hold yet), and
   // this count moving is what says so — the same signal for every modality,
   // where the node's content would not be: a text node's words are written
   // by the reader too, and a keystroke is not a new row.

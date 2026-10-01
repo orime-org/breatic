@@ -151,8 +151,9 @@ function previewFor(
 
 /**
  * One node-history row (#1619): a thumbnail (image / video cover, or a modality
- * icon, or the words themselves for text), the type chip + model + credits
- * (generation) or filename (upload) on the top line, the relative time below,
+ * icon, or the words themselves for text), the type chip plus the model and
+ * credits (generation), the filename (upload) or the words (snapshot) on the
+ * top line, the relative time below,
  * and an action (Restore / Current tag /
  * "can't restore"). Failed rows are greyed and never restorable.
  * @param root0 - Component props.
@@ -176,9 +177,9 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
   const credits = entryCredits(entry);
   const filename = entryFilename(entry);
   const restorable = isRestorable(entry);
-  // muted-foreground on either row fill measures under 4.5:1 (light 4.39 on
-  // the chosen fill, dark 3.73 / 4.46 on the chosen / hover fill), so text on
-  // a filled row takes foreground-secondary.
+  // muted-foreground measures under 4.5:1 on the chosen fill in both themes
+  // (light 4.39, dark 3.73) and on the dark hover fill (4.46), so text on a
+  // filled row takes foreground-secondary; one rule covers both themes.
   const secondaryText = isCurrent
     ? 'text-foreground-secondary'
     : 'text-muted-foreground group-hover:text-foreground-secondary';

@@ -304,9 +304,9 @@ describe('a text node’s rows (#2175)', () => {
 });
 
 describe('reading a row against its fill (#2186)', () => {
-  // The chosen fill and the hover fill sit darker (light) or lighter (dark)
-  // than the panel, and muted-foreground on them measures under 4.5:1. The
-  // secondary text on a filled row takes foreground-secondary instead.
+  // muted-foreground measures under 4.5:1 on the chosen fill in both themes
+  // and on the dark hover fill. The secondary text on a filled row takes
+  // foreground-secondary instead.
   const SECONDARY = 'text-foreground-secondary';
   const MUTED = /(^|\s)text-muted-foreground(\s|$)/;
 

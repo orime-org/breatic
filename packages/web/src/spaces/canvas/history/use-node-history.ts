@@ -71,8 +71,9 @@ export interface UseNodeHistory {
  * run that landed while the panel was shut to be missing from them.
  *
  * While it is open, a run reaching its end invalidates the first page ONCE —
- * it wrote a row, that row belongs at the top, and the rows on screen are one
- * fetch that knows nothing about it. The effect keys ONLY on `settledRuns` and
+ * it may have written a row (a failure, or a result this node's history did
+ * not hold yet), and the rows on screen are one fetch that knows nothing
+ * about it. The effect keys ONLY on `settledRuns` and
  * never on the loaded data, so it fires once per run and never in a
  * refetch → new-data → effect-reruns loop (spec §4, Gate-1 R2 fix). Counting
  * settled runs rather than watching the node's content is what makes this the

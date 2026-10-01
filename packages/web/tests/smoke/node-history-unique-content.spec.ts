@@ -138,11 +138,12 @@ test('keeping the same words twice leaves one row, and Restore moves Current @ne
 
   await pickFromMenu(nodeId, 'node-menu-history');
   const rows = page.getByTestId('node-history-row');
-  // A snapshot row shows no words, so rows are told apart by order: newest
-  // first, and the second keep of the same words added none.
+  // The second keep of the same words added no row; a snapshot row shows
+  // its words, so each row is found by them.
   await expect(rows).toHaveCount(2, { timeout: 20_000 });
-  const second = rows.nth(0);
-  const first = rows.nth(1);
+  const first = rows.filter({ hasText: 'First words.' });
+  const second = rows.filter({ hasText: 'Second words.' });
+  await expect(first).toHaveCount(1);
   await expect(second).toContainText('Current');
   await expect(second.getByTestId('node-history-restore')).toHaveCount(0);
 
@@ -155,8 +156,8 @@ test('keeping the same words twice leaves one row, and Restore moves Current @ne
 
 test('uploading the same bytes twice leaves one row, and Restore moves Current @needs-ingest @needs-storage', async () => {
   // Fresh bytes per run: a fixed payload would already sit in the studio's
-  // assets from an earlier run, which is fine for dedup but hides the first
-  // upload's own row behind a past one.
+  // assets from an earlier run, so the first upload would take the dedup path
+  // (no key, no ingest) instead of a real upload.
   const same = Buffer.concat([TINY_PNG, randomBytes(16)]);
   const other = Buffer.concat([TINY_PNG, randomBytes(16)]);
 
