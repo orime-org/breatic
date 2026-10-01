@@ -408,6 +408,31 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
     expect(press(view, 'ArrowDown')).toBe(false);
   });
 
+  it('reads the last line of a block ending in a line break as that empty line, not the one above it', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
+    const head = textStart(view, 'Middle') + 2;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Above'), head)));
+    const $head = view.state.doc.resolve(head);
+    const line = (n: number): { left: number; right: number; top: number; bottom: number } => ({ left: 0, right: 10, top: n * 20, bottom: n * 20 + 20 });
+    // The block's end leaning back reads the break on the head's line; leaning on, the empty line below it.
+    vi.spyOn(view, 'coordsAtPos').mockImplementation((pos, side) =>
+      line(pos === $head.end() ? (side !== undefined && side < 0 ? 0 : 1) : 0),
+    );
+
+    expect(press(view, 'ArrowDown')).toBe(false);
+  });
+
+  it('leaves the whole document as it is on Shift+Right and Shift+Down when the body ends in words', () => {
+    for (const key of ['ArrowRight', 'ArrowDown']) {
+      const view = open([{ type: 'paragraph', content: 'One' }, { type: 'paragraph', content: 'Two' }]);
+      view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+      press(view, key);
+
+      expect(view.state.selection).toBeInstanceOf(AllSelection);
+    }
+  });
+
   it('measures the line without swapping the view state, which would reset the browser\'s goal column', () => {
     const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
     const head = textStart(view, 'Middle') + 2;
