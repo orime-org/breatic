@@ -89,7 +89,6 @@ describe('the shot list', () => {
     render(
       <ShotList
         shots={[{ id: 's0', duration: 2 }, { id: 's1', duration: 3 }]}
-        total={5}
         onStep={NOOP}
         onRemove={NOOP}
         renderEditor={() => null}

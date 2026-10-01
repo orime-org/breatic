@@ -541,10 +541,10 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.switchOff"))} or ${quoted(t("canvas.generatePanel.switchOn"))}. On, the ` +
       `model splits the prompt into shots itself, and the row says ` +
       `${quoted(t("canvas.generatePanel.storyboard.autoHint"))}. ` +
-      `${quoted(t("canvas.generatePanel.storyboard.perShot"))} in that row splits it by hand: the prompt box gives ` +
-      `way to ${quoted(t("canvas.generatePanel.storyboard.back"))}, one card per shot and ` +
-      `${quoted(t("canvas.generatePanel.storyboard.addShot"))}, and the row reads ` +
-      `${quoted(t("canvas.generatePanel.storyboard.mainPromptKept"))}. A card, such as ` +
+      `${quoted(t("canvas.generatePanel.storyboard.perShot"))} at the right end of that row splits it by hand: the ` +
+      "prompt box gives way to one card per shot, and the right end of the row reads " +
+      `${quoted(t("canvas.generatePanel.storyboard.addShot"))} then ` +
+      `${quoted(t("canvas.generatePanel.storyboard.back"))}. A card, such as ` +
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
       `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
       `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt; ` +

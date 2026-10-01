@@ -646,7 +646,6 @@
         "label": "分镜",
         "perShot": "逐镜头编辑",
         "autoHint": "由模型拆分镜头",
-        "mainPromptKept": "主提示词已保留",
         "back": "返回自动分镜",
         "shot": "镜头 {n, number}",
         "removeShot": "删除",
