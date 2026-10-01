@@ -670,7 +670,7 @@
         "addShot": "Add shot",
         "shotPlaceholder": "Describe this shot, @ to add a reference",
         "shotCapReached": "Up to {max, number} shots",
-        "noSecondToSpare": "Each shot needs at least 1 second"
+        "noSecondToSpare": "Lengthen the video to add a shot"
       },
       "refuseStoryboardShotEmpty": "Shot {shot, number} is empty",
       "refuseStoryboardTooMany": "Up to {limit, number} shots",

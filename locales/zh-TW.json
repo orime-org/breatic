@@ -658,7 +658,7 @@
         "addShot": "新增鏡頭",
         "shotPlaceholder": "描述這個鏡頭，@ 引用參考",
         "shotCapReached": "最多 {max, number} 個鏡頭",
-        "noSecondToSpare": "每個鏡頭至少 1 秒"
+        "noSecondToSpare": "加長總時長才能再加鏡頭"
       },
       "refuseStoryboardShotEmpty": "鏡頭 {shot, number} 沒有內容",
       "refuseStoryboardTooMany": "最多 {limit, number} 個鏡頭",

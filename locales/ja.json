@@ -658,7 +658,7 @@
         "addShot": "ショットを追加",
         "shotPlaceholder": "このショットを説明してください。@ で参照を追加",
         "shotCapReached": "最大 {max, number} ショット",
-        "noSecondToSpare": "各ショットは 1 秒以上必要です"
+        "noSecondToSpare": "ショットを追加するには動画を長くしてください"
       },
       "refuseStoryboardShotEmpty": "ショット {shot, number} が空です",
       "refuseStoryboardTooMany": "最大 {limit, number} ショット",

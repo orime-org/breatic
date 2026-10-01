@@ -658,7 +658,7 @@
         "addShot": "添加镜头",
         "shotPlaceholder": "描述这个镜头，@ 引用参考",
         "shotCapReached": "最多 {max, number} 个镜头",
-        "noSecondToSpare": "每个镜头至少 1 秒"
+        "noSecondToSpare": "加长总时长才能再加镜头"
       },
       "refuseStoryboardShotEmpty": "镜头 {shot, number} 没有内容",
       "refuseStoryboardTooMany": "最多 {limit, number} 个镜头",

@@ -53,6 +53,11 @@ export const StoryboardSwitchRow = React.memo(function StoryboardSwitchRow({
         <span className='text-xs font-medium text-foreground'>
           {t('canvas.generatePanel.storyboard.label')}
         </span>
+        {/* The track alone does not read as on or off against the panel, so
+            the state is said in words, as ParamToggleRow does. */}
+        <span aria-hidden='true' data-testid='generate-storyboard-state' className='text-xs text-muted-foreground'>
+          {kind === 'off' ? t('canvas.generatePanel.switchOff') : t('canvas.generatePanel.switchOn')}
+        </span>
       </label>
       {kind === 'custom' ? (
         <span className='text-xs text-muted-foreground'>
@@ -170,7 +175,7 @@ export function ShotList<Shot extends ShotRow>({
           className='flex flex-col gap-1.5 rounded-overlay border border-border p-2'
         >
           <div className='flex items-center gap-2'>
-            <span className='text-xs font-medium text-foreground'>
+            <span className='min-w-16 text-xs font-medium text-foreground'>
               {t('canvas.generatePanel.storyboard.shot', { n: index + 1 })}
             </span>
             <div className='flex items-center rounded-overlay border border-border'>
@@ -183,7 +188,7 @@ export function ShotList<Shot extends ShotRow>({
                 onClick={() => onStep(shot.id, -1)}
                 className='flex h-6 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-50'
               >
-                <Minus className='h-3 w-3' aria-hidden='true' />
+                <Minus className='h-3.5 w-3.5' aria-hidden='true' />
               </Button>
               <span
                 data-testid={`generate-storyboard-shot-${index + 1}-seconds`}
@@ -200,7 +205,7 @@ export function ShotList<Shot extends ShotRow>({
                 onClick={() => onStep(shot.id, 1)}
                 className='flex h-6 w-6 items-center justify-center disabled:cursor-not-allowed disabled:opacity-50'
               >
-                <Plus className='h-3 w-3' aria-hidden='true' />
+                <Plus className='h-3.5 w-3.5' aria-hidden='true' />
               </Button>
             </div>
             <Button
@@ -218,7 +223,7 @@ export function ShotList<Shot extends ShotRow>({
           {renderEditor(shot, index)}
         </div>
       ))}
-      <div className='flex items-center gap-2'>
+      <div className='flex flex-col items-start gap-1'>
         <Button
           type='button'
           variant='outline'
@@ -226,7 +231,7 @@ export function ShotList<Shot extends ShotRow>({
           data-testid='generate-storyboard-add'
           disabled={addBlocked !== undefined}
           onClick={onAdd}
-          className='flex-1 gap-1 text-xs disabled:cursor-not-allowed disabled:opacity-50'
+          className='gap-1 text-xs disabled:cursor-not-allowed disabled:opacity-50'
         >
           <Plus className='h-3.5 w-3.5' aria-hidden='true' />
           {t('canvas.generatePanel.storyboard.addShot')}
