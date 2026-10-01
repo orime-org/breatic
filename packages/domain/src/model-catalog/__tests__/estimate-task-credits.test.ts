@@ -65,7 +65,7 @@ describe("estimateTaskCredits", () => {
     initCore(env);
     resetModelCatalog();
     try {
-      expect(await estimateTaskCredits("midjourney", {})).toBeCloseTo(30, 6);
+      expect(await estimateTaskCredits("grok-imagine-image-v2.0-text-to-image", {})).toBeCloseTo(10, 6);
     } finally {
       useFullCatalog();
     }

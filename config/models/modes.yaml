@@ -35,9 +35,7 @@ image:
     t2i:
       label: Text to Image
       description: >
-        Generate a new image from a text description. May include style
-        reference images for consistent style, but the output is a new
-        creation — not a modification of the reference.
+        Generate a new image from a text description.
     i2i:
       label: Image to Image
       description: >
@@ -61,7 +59,7 @@ image:
         on a transparent background with precise alpha matting.
 
   selection_guide: |
-    - User wants to create something new (with or without style references) → t2i
+    - User wants to create something new from a text description → t2i
     - User wants to generate a new image based on a reference image → i2i
     - User wants to modify/edit specific parts of an existing image → edit
     - User wants to enlarge/upscale an image to higher resolution → upscale

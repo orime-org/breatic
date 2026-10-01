@@ -111,36 +111,6 @@ models:
           formula: ""
           discount_rate: 100
 
-  - name: "reve-2.1-text-to-image"
-    display_name: "Reve 2.1"
-    mode: "t2i"
-    takes_prompt: true
-    tier: "optional"
-    description: "Posters, labels, readable text"
-    guide: "The one for images that carry words — posters, labels, ads, anything where the typography and the layout have to come out right."
-    generation_time: 120
-    icon: "reve"
-    params:
-      aspect_ratio:
-        description: "Output aspect ratio"
-        default: "1:1"
-        values: ["4:1", "3:1", "21:9", "2:1", "17:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16", "1:2", "1:3", "1:4"]
-        fill: "panel"
-      output_format:
-        description: "Output file format"
-        default: "png"
-        values: ["png", "jpeg", "webp"]
-        fill: "none"
-        note: "our default: png (lossless, keeps alpha)"
-    providers:
-      - name: "wavespeed"
-        model_id: "reve/2.1/text-to-image"
-        priority: 1
-        pricing:
-          base_price: 280000
-          formula: ""
-          discount_rate: 100
-
   - name: "nano-banana-2"
     display_name: "Nano Banana 2"
     mode: "t2i"
@@ -214,73 +184,6 @@ models:
           base_price: 70000
           formula: "{\"total_price\": ((resolution = \"0.5k\" ? 45000 : base_price * (resolution = \"2k\" ? 1.5 : (resolution = \"4k\" ? 2 : 1))) + (enable_web_search ? 14000 : 0) + (enable_image_search ? 14000 : 0)) }"
           discount_rate: 90
-
-  - name: "midjourney"
-    display_name: "Midjourney"
-    mode: "t2i"
-    takes_prompt: true
-    tier: "optional"
-    description: "Stylize, chaos and weird dials"
-    guide: "The one for art direction rather than instruction-following — dials that steer taste, variance and strangeness instead of fidelity."
-    generation_time: 120
-    icon: "midjourney"
-    params:
-      aspect_ratio:
-        description: "Output aspect ratio"
-        default: "1:1"
-        values: ["1:1", "9:16", "16:9", "4:3", "3:4", "2:3", "3:2", "9:21", "21:9"]
-        fill: "panel"
-      chaos:
-        description: "Variation between 4 images (0-100)"
-        label: "Chaos"
-        default: 0
-        min: 0
-        max: 100
-        step: 1
-        fill: "panel"
-      hd:
-        description: "Render in HD"
-        default: true
-        fill: "none"
-        note: "our default: highest"
-      quality:
-        description: "Rendering quality"
-        default: 4
-        values: [1, 4]
-        fill: "none"
-        note: "our default: highest"
-      stylize:
-        description: "Artistic style strength (0-1000)"
-        label: "Stylize"
-        default: 0
-        min: 0
-        max: 1000
-        step: 1
-        fill: "panel"
-      weird:
-        description: "Surreal experimental level (0-3000)"
-        label: "Weird"
-        default: 0
-        min: 0
-        max: 3000
-        step: 1
-        fill: "panel"
-      style_images:
-        description: "Style reference image URL"
-        type: "list"
-        max_items: 1
-        default: null
-        fill: "canvas"
-        accepts: "image"
-        optional: true
-    providers:
-      - name: "wavespeed"
-        model_id: "midjourney/text-to-image"
-        priority: 1
-        pricing:
-          base_price: 100000
-          formula: "{\"total_price\": base_price * (hd ? 1.5 : 1)}"
-          discount_rate: 100
 
   - name: "recraft-v4.1-pro-text-to-vector"
     display_name: "Recraft V4.1 Pro Vector"

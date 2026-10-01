@@ -25,12 +25,12 @@ beforeAll(() => {
 });
 
 describe("resolveModel (#1672 behavior pins)", () => {
-  it("resolves every transport connection field for image/midjourney", () => {
-    const resolved = resolveModel("image", "midjourney");
+  it("resolves every transport connection field for image/grok-imagine-image-v2.0-text-to-image", () => {
+    const resolved = resolveModel("image", "grok-imagine-image-v2.0-text-to-image");
     expect(resolved).toMatchObject({
-      modelName: "midjourney",
+      modelName: "grok-imagine-image-v2.0-text-to-image",
       providerName: "wavespeed",
-      modelId: "midjourney/text-to-image",
+      modelId: "x-ai/grok-imagine-image-v2.0/text-to-image",
       baseUrl: "https://api.wavespeed.ai/api/v3",
       apiKey: "test-wavespeed-key",
       timeout: 120,
@@ -46,19 +46,18 @@ describe("resolveModel (#1672 behavior pins)", () => {
 
 describe("validateParams (#1672 behavior pins)", () => {
   it("drops unknown params, keeps valid ones, and fills defaults", () => {
-    const [name, cleaned] = validateParams("image", "midjourney", {
+    const [name, cleaned] = validateParams("image", "grok-imagine-image-v2.0-text-to-image", {
       aspect_ratio: "16:9",
       bogus_param: 1,
     });
-    expect(name).toBe("midjourney");
+    expect(name).toBe("grok-imagine-image-v2.0-text-to-image");
     expect(cleaned.aspect_ratio).toBe("16:9");
     expect("bogus_param" in cleaned).toBe(false);
-    expect(cleaned.stylize).toBe(0);
-    expect(cleaned.chaos).toBe(0);
+    expect(cleaned.resolution).toBe("2k");
   });
 
   it("replaces out-of-enum values with the default", () => {
-    const [, cleaned] = validateParams("image", "midjourney", {
+    const [, cleaned] = validateParams("image", "grok-imagine-image-v2.0-text-to-image", {
       aspect_ratio: "5:4",
     });
     expect(cleaned.aspect_ratio).toBe("1:1");
