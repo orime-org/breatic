@@ -25,6 +25,12 @@ export interface CropOutput {
   type: 'image/png' | 'image/jpeg';
   /** Encoder quality for a lossy type; absent for PNG, which has none. */
   quality?: number;
+  /**
+   * Colour laid under the picture before it is drawn. A format with no alpha
+   * channel flattens transparent pixels onto opaque black when it encodes, so
+   * a transparent logo would come out on black.
+   */
+  background?: string;
 }
 
 /**
@@ -50,6 +56,7 @@ export const COVER_OUTPUT: CropOutput = {
   height: 450,
   type: 'image/jpeg',
   quality: 0.85,
+  background: '#ffffff', // design-value: allow — image content, not a theme token
 };
 
 /**
@@ -157,6 +164,10 @@ export async function renderCropBlob(
   canvas.height = output.height;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('canvas 2d context unavailable');
+  if (output.background !== undefined) {
+    ctx.fillStyle = output.background;
+    ctx.fillRect(0, 0, output.width, output.height);
+  }
   ctx.drawImage(
     image,
     crop.x,

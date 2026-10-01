@@ -12,7 +12,7 @@
  * step, which asks once for the output's format and refuses anything else.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import {
   AVATAR_OUTPUT,
@@ -22,6 +22,7 @@ import {
   checkPickedFile,
   checkPickedPixels,
   encodeCropBlob,
+  renderCropBlob,
 } from '@web/pages/studio/container/dialogs/crop-image';
 
 describe('checkPickedFile', () => {
@@ -118,6 +119,55 @@ describe('encodeCropBlob', () => {
   });
 });
 
+describe('renderCropBlob', () => {
+  /**
+   * A canvas whose 2D context records what was drawn, in order.
+   * @param blobType - What `toBlob` answers with.
+   * @returns The calls the context received.
+   */
+  function stubCanvas(blobType: string): string[] {
+    const calls: string[] = [];
+    const ctx = {
+      set fillStyle(value: string) {
+        calls.push(`fillStyle:${value}`);
+      },
+      fillRect: (x: number, y: number, w: number, h: number) =>
+        calls.push(`fillRect:${x},${y},${w},${h}`),
+      drawImage: () => calls.push('drawImage'),
+    };
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ctx,
+      toBlob: (done: (b: Blob) => void) => done(new Blob(['x'], { type: blobType })),
+    };
+    vi.spyOn(document, 'createElement').mockReturnValue(
+      canvas as unknown as HTMLCanvasElement,
+    );
+    return calls;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('lays a cover on white before drawing, so transparent pixels do not turn black in JPEG', async () => {
+    const calls = stubCanvas('image/jpeg');
+
+    await renderCropBlob({} as CanvasImageSource, { x: 0, y: 0, width: 10, height: 10 }, COVER_OUTPUT);
+
+    expect(calls).toEqual(['fillStyle:#ffffff', 'fillRect:0,0,800,450', 'drawImage']);
+  });
+
+  it('keeps an avatar\'s transparency, since PNG carries it', async () => {
+    const calls = stubCanvas('image/png');
+
+    await renderCropBlob({} as CanvasImageSource, { x: 0, y: 0, width: 10, height: 10 }, AVATAR_OUTPUT);
+
+    expect(calls).toEqual(['drawImage']);
+  });
+});
+
 describe('the two outputs', () => {
   it('produces a 512 PNG square for an avatar and an 800×450 JPEG for a cover', () => {
     // The cover is sized to the card: a grid column never grows past ~392 CSS
@@ -128,6 +178,7 @@ describe('the two outputs', () => {
       height: 450,
       type: 'image/jpeg',
       quality: 0.85,
+      background: '#ffffff',
     });
   });
 });
