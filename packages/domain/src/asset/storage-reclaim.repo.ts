@@ -31,12 +31,11 @@ export interface ReclaimEntry {
   /** The key that WON dedup and stays live (the offline job's safety rail). */
   keptStorageKey: string;
   /**
-   * The asset's own source — mirrors `studio_assets.source`, so the offline job
-   * can tell a worker-produced duplicate from a browser-uploaded one. The three
-   * possible values are 'ai' (worker output), 'upload' (browser upload, which
-   * includes a frontend mini-tool product — the wire's `mini_tool` sub-type is
-   * an activity-feed distinction that never reaches this column) and 'cover'
-   * (a video's cover, reachable from BOTH paths).
+   * The asset's own source — mirrors `studio_assets.source` (see
+   * `StudioAssetEntity["source"]`), so the offline job can tell a
+   * worker-produced duplicate from a browser-uploaded one. A frontend
+   * mini-tool product is an 'upload': the wire's `mini_tool` sub-type is an
+   * activity-feed distinction that never reaches this column.
    */
   source: StudioAssetEntity["source"];
 }

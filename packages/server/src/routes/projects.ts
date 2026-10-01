@@ -237,7 +237,6 @@ const projectUpdateSchema = z
   .object({
     name: z.string().min(1).max(255).optional(),
     description: z.string().max(2000).nullable().optional(),
-    thumbnail_url: z.string().url().nullable().optional(),
   })
   .refine(
     (v) => Object.keys(v).length > 0,
@@ -245,7 +244,7 @@ const projectUpdateSchema = z
   );
 
 /**
- * `PATCH /projects/:id` — partial update of name / description / thumbnail.
+ * `PATCH /projects/:id` — partial update of name / description.
  *
  * PATCH semantic = client sends only fields to change (per the
  * access-permission design D1; aligns with `members.patch` precedent).
@@ -264,8 +263,28 @@ membershipScoped.patch(
     const updated = await projectService.update(id, user.id, {
       name: body.name,
       description: body.description,
-      thumbnailUrl: body.thumbnail_url,
     });
+    return c.json({ data: updated });
+  },
+);
+
+/** Body schema for `PUT /projects/:id/cover`. */
+const projectCoverSchema = z.object({ asset_id: z.string().uuid() });
+
+/**
+ * `PUT /projects/:id/cover` — point the project's cover at an uploaded
+ * picture. Owner-only.
+ * @returns `200` with `{ data: ProjectEntity }`; `404` when the project's
+ *   studio holds no live image row with that id
+ */
+membershipScoped.put(
+  "/:id/cover",
+  requireRoleOnParam("id", "owner"),
+  validate("json", projectCoverSchema),
+  async (c) => {
+    const id = c.req.param("id");
+    const { asset_id } = c.req.valid("json");
+    const updated = await projectService.setCover(id, asset_id);
     return c.json({ data: updated });
   },
 );

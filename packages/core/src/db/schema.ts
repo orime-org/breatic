@@ -2245,7 +2245,10 @@ export const studioAssets = pgTable(
     /**
      * 'ai' (worker-generated) | 'upload' (user upload) | 'cover' (#1826 §4.5:
      * a video's first-class cover asset — a normal row that counts toward
-     * storage, kind judged from the cover itself). varchar, no schema change.
+     * storage, kind judged from the cover itself) | 'project_cover' /
+     * 'studio_avatar' (a picture uploaded to be a project's cover or a
+     * studio's avatar). A dedup hit keeps the first uploader's value, so this
+     * does not say what a row is used as. varchar, no schema change.
      */
     source: varchar("source", { length: 20 }).notNull(),
     /**
@@ -2396,7 +2399,10 @@ export const uploadGrants = pgTable(
     finalizingUploadId: text("finalizing_upload_id"),
     /** Node these bytes land on. Absent for a focus crop, which has no node. */
     nodeId: uuid("node_id"),
-    /** Project the node belongs to, checked against the user's access at ticket time. */
+    /**
+     * Project the node belongs to, checked against the user's access at ticket
+     * time. Null for a studio's avatar, which belongs to no project.
+     */
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "restrict",
     }),
@@ -2411,9 +2417,10 @@ export const uploadGrants = pgTable(
     /** Original file name, shown in history. */
     filename: text("filename"),
     /**
-     * What the asset this grant produces is, in the ledger's own three values
-     * (`upload` / `ai` / `cover`, see `studio_assets.source`). Null means an
-     * ordinary upload, which is what every browser-issued grant is.
+     * What the asset this grant produces is, in the ledger's own values (see
+     * `studio_assets.source`). Null means an ordinary upload; a browser-issued
+     * grant carries `project_cover` or `studio_avatar` when it was asked for
+     * one of those pictures.
      *
      * Deliberately not named `source`: that column above is a different
      * vocabulary (it holds `mini_tool`, read by node_history and the activity
@@ -2480,10 +2487,8 @@ export const storageReclaimQueue = pgTable(
      */
     keptStorageKey: text("kept_storage_key").notNull(),
     /**
-     * Mirrors `studio_assets.source` exactly: 'upload' (browser) | 'ai'
-     * (worker) | 'cover' (a video's cover, from EITHER path). No other value
-     * is possible — the column is written straight from the registered
-     * asset's own source.
+     * Mirrors `studio_assets.source` exactly — the column is written straight
+     * from the registered asset's own source.
      */
     source: varchar("source", { length: 16 }).notNull(),
     /**

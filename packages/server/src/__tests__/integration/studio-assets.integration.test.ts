@@ -290,13 +290,13 @@ describe("asset service — resolveOwnerStudioId (#1839: the project's studio, a
     expect(await assetService.resolveOwnerStudioId(projectId)).toBe(teamStudioId);
   });
 
-  it("register() attributes a personal-project collaborator's asset to the PROJECT's studio", async () => {
+  it("a collaborator's upload into a personal project belongs to the PROJECT's studio", async () => {
     const owner = await insertUserWithPersonalStudio();
     const collaborator = await insertUserWithPersonalStudio();
     const projectId = await insertProjectInStudio(owner.personalStudioId, owner.userId);
 
     const { asset } = await assetService.register({
-      projectId,
+      ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: collaborator.userId,
       contentHash: fakeHash(),
       storageKey: "k",
@@ -319,7 +319,7 @@ describe("asset service — resolveOwnerStudioId (#1839: the project's studio, a
     const hash = fakeHash();
 
     const first = await assetService.register({
-      projectId,
+      ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: collaborator.userId,
       contentHash: hash,
       storageKey: "k1",
@@ -333,7 +333,7 @@ describe("asset service — resolveOwnerStudioId (#1839: the project's studio, a
 
     // Same bytes, same studio (because same project), different actor.
     const second = await assetService.register({
-      projectId,
+      ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: owner.userId,
       contentHash: hash,
       storageKey: "k2",
@@ -372,7 +372,7 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
     const hash = fakeHash();
 
     const first = await assetService.register({
-      projectId,
+      ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: hash,
       storageKey: "image/2026-07-26/winner.png",
@@ -388,7 +388,7 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
 
     // Same content, different key (a concurrent/retried upload).
     const second = await assetService.register({
-      projectId,
+      ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: hash,
       storageKey: "image/2026-07-26/loser.png",
@@ -426,7 +426,7 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
 
     // This key wins its own registration under hash A → it is LIVE.
     const live = await assetService.register({
-      projectId,
+      ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: fakeHash(),
       storageKey: sharedKey,
@@ -441,7 +441,7 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
     // Some other content already occupies hash B in this studio.
     const otherHash = fakeHash();
     await assetService.register({
-      projectId,
+      ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: otherHash,
       storageKey: "image/2026-07-26/unrelated-winner.png",
@@ -455,7 +455,7 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
     // Now register the SAME key against hash B → dedup hit → the queue would
     // normally take sharedKey as the loser. It must refuse: sharedKey is live.
     const dedupHit = await assetService.register({
-      projectId,
+      ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: otherHash,
       storageKey: sharedKey,
@@ -478,7 +478,7 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
     const projectId = await insertProjectInStudio(personalStudioId, userId);
     const hash = fakeHash();
     const base = {
-      projectId,
+      ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: hash,
       sizeBytes: 100,
@@ -516,7 +516,7 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
     const projectId = await insertProjectInStudio(personalStudioId, userId);
     const hash = fakeHash();
     const base = {
-      projectId,
+      ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: hash,
       sizeBytes: 100,
@@ -558,7 +558,7 @@ describe("storage reclaim queue — dedup losers are QUEUED, never deleted (#182
     const projectId = await insertProjectInStudio(personalStudioId, userId);
     const hash = fakeHash();
     const base = {
-      projectId,
+      ownerStudioId: await assetService.resolveOwnerStudioId(projectId),
       actingUserId: userId,
       contentHash: hash,
       sizeBytes: 100,

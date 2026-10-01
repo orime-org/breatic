@@ -227,13 +227,15 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **画布能力两个(`get_canvas_capabilities` / `list_generation_models`)—— 答的是「这个画布现在能生成什么」**。前者不带参数,答三种生成节点各自能选哪些模式,再加一段文本节点是什么、在提示词里提及一个节点会发生什么;后者带节点类型和模式,答那一档现在有哪些模型、每个的价钱、时长上限和每个参数怎么填。两个都只读,读的是按 provider key 过滤后的那份目录缓存。
 
-**`propose_canvas_action` —— 把一条完整的流程提议给读者去放**(#229 起,形状自由归 #263)。输入是一组节点、它们之间的接线(索引指向那批节点)、这个模型是干什么的和它多少钱、为什么是这个形状,以及两个节点以上时这一组叫什么。每个节点自报角色:`generate` 带着 agent 挑好的模式和模型,`source` 是空着的位子留给读者放自己的素材,`written` 是 agent 写下的正文。**它自己不放任何东西**:`execute` 跑一遍检查,过了就把**解析过目录事实的那一份**交回并标上 `placed: true`(读者按下「使用」时目录可能还没加载,那一刻再问会猜),没过就只答一句为什么;放节点是画布那边的事(`use-node-creation.ts` 的 `placeProposalAt`),而且要等读者按下那张卡。
+**`get_product_guide` —— 答的是「读者在屏幕上怎么操作我们的产品」**(#260)。不带参数,答顶栏、Space 标签与列表、聊天面板、画布上建节点和连线、节点菜单、生成面板、document 里写字和评论,以及出错时屏幕上显示什么。模型看不到读者的屏幕,所以要告诉读者怎么做之前先读它、只照它说的讲。正文由 `tools/product-guide.ts` 的 `renderProductGuide()` 拼成,**界面上的每个名字一律经 `t()` 取读者当前语言的原文**,所以指南说的按钮名就是读者屏幕上那几个字。守卫 `product-guide-covers-the-screen.test.ts`:项目页能显示的(从 web 的 `index.tsx` 和 `ProjectPage.tsx` 沿 import 能走到的模块,不经路由表)和后端能送上屏幕的每一个界面文字 id,要么被指南引用,要么在 `NOT_QUOTED` 里写明去向(用别的话描述了,或写明为什么不进指南)。
+
+**`propose_canvas_action` —— 把一条完整的流程提议给读者去放**(#229 起,形状自由归 #263)。输入是一组节点、它们之间的接线(索引指向那批节点)、这个模型是干什么的(只说用途,不写积分和执行时间)、为什么是这个形状,以及两个节点以上时这一组叫什么。每个节点自报角色:`generate` 带着 agent 挑好的模式和模型,`source` 是空着的位子留给读者放自己的素材,`written` 是 agent 写下的正文。**它自己不放任何东西**:`execute` 跑一遍检查,过了就把**解析过目录事实的那一份**交回并标上 `placed: true`(读者按下「使用」时目录可能还没加载,那一刻再问会猜),没过就只答一句为什么;放节点是画布那边的事(`use-node-creation.ts` 的 `placeProposalAt`),而且要等读者按下那张卡。
 
 **`checkProposal` 是纯函数,规则全部读自目录**(经 `entriesForNode` / `modelsForMode`,不读别的):边的两端要落在这一组里、不许自环、不许成环 · **这一组里至少有一个会生成的节点** · 每条边的终点都要是生成节点(两个空节点之间连一条线,画出来是说读者的两个文件互相喂)· 空节点不带模式、模型、参数和提示词(带了它就是第二次生成)· 提示词里每个指向上游的标记都要指得到一个存在、且带着它要的东西的节点 · **这一组摆的空节点,不能多于这一组的生成节点收得下的位子数**(槽位收一个,引用池收 `maxItems`,每个素材位收哪一种目录里写着)。**读者要补几件素材,由模型自己的声明给答案**(#269):哪些参数从画布填、哪些可以空着(`optional`),以及每个模式下「这几个里至少一个要有东西」的 `source_groups` —— 同一个模式下两个模型可以要不同的素材,所以这件事不写在模式上。判定只有一处:shared 的 `missingSources`,面板、server 入队前那道门、这里的提议检查读的都是它。
 
-**卡片走 SDK 的原生 tool part 到前端**,`to-chat-message.ts` 读成 `proposals`、`ProposalCard.tsx` 画成那张卡;**价钱和等多久由卡自己去目录取**(`proposal-card.ts`),模型报的价不算数。**每个生成节点的说明末尾有一行产品固定文案,说它的设置在哪看**(#289):agent 写的提示词在生成面板里,而面板要右键节点选「生成」才打开;节点的 `takesPrompt` 为 `false` 或没有提示词时,那一行说的是「设置已配好」。**模型读回的不是整份提议,而是一句话**(`toModelOutput`):它就是发提议的那一方,把整份重复进后面每一轮等于把整个载荷再付一遍。
+**卡片走 SDK 的原生 tool part 到前端**,`to-chat-message.ts` 读成 `proposals`、`ProposalCard.tsx` 画成那张卡;**卡上不显示积分和执行时间**:`proposal-card.ts` 从目录只取模型的显示名,卡片画的是节点的形状、用哪个模型、读者之后还要做什么,底部是一个撑满整行的「Use」按钮。**每个生成节点的说明末尾有一行产品固定文案,说它的设置在哪看**(#289):agent 写的提示词在生成面板里,而面板要右键节点选「生成」才打开;节点的 `takesPrompt` 为 `false` 或没有提示词时,那一行说的是「设置已配好」。**模型读回的不是整份提议,而是一句话**(`toModelOutput`):它就是发提议的那一方,把整份重复进后面每一轮等于把整个载荷再付一遍。
 
-**这三个只到普通聊天,不进 `BASELINE_TOOLS`**(`CANVAS_TOOLS`,`tools/index.ts`)。基线比它们宽:一次 skill 运行拿到的是基线并上自己声明的那些,而一个 worker 任务跑 skill 时既没有画布、也没有人去用它学到的东西 —— 两者都会把模型的一部分注意力花在一个它做不到的选项上,而一个自己的提示词里已经列了模式的 skill 会拿到同一个问题的第二份答案。判据是**这个工具答的是不是「某个人眼前那块画布」**:搜索那两个虽然也由面板独自画出来,答的却不是画布,所以不在其列。
+**这四个只到普通聊天,不进 `BASELINE_TOOLS`**(`CANVAS_TOOLS`,`tools/index.ts`)。基线比它们宽:一次 skill 运行拿到的是基线并上自己声明的那些,而一个 worker 任务跑 skill 时既没有画布、也没有人去用它学到的东西 —— 两者都会把模型的一部分注意力花在一个它做不到的选项上,而一个自己的提示词里已经列了模式的 skill 会拿到同一个问题的第二份答案。判据是**这个工具答的是不是「某个人眼前的我们的产品」**:搜索那两个虽然也由面板独自画出来,答的却不是画布,所以不在其列。
 
 **能力答复描述的是面板给什么,不是目录允许什么**(MANDATORY)。目录说得出「这个模型声明了 `camera`」,说不出「这个节点的面板画不画得出这个控件、画出来要等什么条件才算数、哪个参数由画布填而不该让人去打字」。这些事实现在由模型自己的 yaml 一词一答:每个参数写一个 `fill`(`canvas` · `pool` · `editor` · `panel` · `remote` · `storyboard` · `none`),等什么条件写 `when`,只在哪几个模式下算数写 `modes`;画法留在面板,而两边对不上的时候 `packages/web/src/spaces/canvas/generate/__tests__/declarations-have-claimants.test.ts` 的十三条守卫会点名是哪个模型的哪个参数。判定题:**我正要让答复说一句关于「用户能不能设这个」的话吗?那句话的出处必须是那个参数自己的声明。**
 
@@ -293,7 +295,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/membership.yaml` | **每个档位的上限值**(容量 / 协作规模)。每个值都是普通的非负整数、判定一律 `count >= limit`,**没有「无限制」哨兵**,想不设限就填一个够不着的数。加载器 `packages/core/src/config/membership.ts` |
 | `config/auth.yaml` | 启用邮件时注册验证码的三个旋钮:有效期 `ttl_seconds`、每个码最多比对几次 `max_attempts_per_code`、同一邮箱两次发码的最短间隔 `resend_cooldown_seconds`。加载器 `packages/server/src/config/auth.ts` |
 | `config/rate-limits.yaml` | 各动作的限流次数与窗口(Redis 滑动窗口)。加载器 `packages/server/src/config/rate-limits.ts`,中间件 `rateLimitFor(action, keyBy)`;**key 维度(IP 还是 user)按 action 写死在代码里**,只有次数进 yaml |
-| `config/storage.yaml` | 浏览器上传与头像:上传大小上限、客户端拿票据的重试次数与分片停滞判据、ingest Worker 的分片大小与两个窗口(票据有效期 / 会话令牌 TTL)、边缘容器探测的两个时限、一次「让 Worker 去拉这个地址」的上界、头像大小上限。**加载时就校验两件事**(`assertUploadWindows`):一片的截止时间不超过定时器能持有的上限、会话令牌盖得住分片与收尾两条重试链,填反了当场报错、不等用户传文件才发现。加载器 `packages/core/src/config/storage.ts` |
+| `config/storage.yaml` | 浏览器上传:上传大小上限、客户端拿票据的重试次数与分片停滞判据、ingest Worker 的分片大小与两个窗口(票据有效期 / 会话令牌 TTL)、边缘容器探测的两个时限、一次「让 Worker 去拉这个地址」的上界。**加载时就校验两件事**(`assertUploadWindows`):一片的截止时间不超过定时器能持有的上限、会话令牌盖得住分片与收尾两条重试链,填反了当场报错、不等用户传文件才发现。加载器 `packages/core/src/config/storage.ts` |
 | `config/skill-routing.yaml` | 哪个 skill 能在哪用、谁能调起(`surfaces` / `user_invocable` / `model_invocable`)。**缺了它每个 skill 都哪儿都不许用**,两个服务启动时读一次、读不了就 `exit(1)`。加载器 `packages/core/src/config/skill-routing.ts` |
 | `config/limits.yaml` | 分页大小 · 画布参考池上限 · 答复期限等业务旋钮。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)。**成员容量不在这儿** —— studio 成员数和 project 协作者数都按会员档位查 `config/membership.yaml`,键是该 studio 当前 admin 的档位 |
 | `config/models/<模态>/models.yaml` · `providers.yaml` · `config/models/modes.yaml` | AI 模型目录(按模态分目录):`models.yaml` 列这个模态的全部模型,每个带 WaveSpeed 定价契约(`base_price` / 公式 / `discount_rate`)、每个参数发往上游时叫什么(`upstream`)、额外的上游调用(`extra_steps`);`providers.yaml` 是上游的地址、key 名与并发;`modes.yaml` 是模式的名字与说明。字段说明写在各文件表头 |
@@ -329,7 +331,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Run
 
-用户安装与运行见 [个人 / 局域网部署](../deploy/LOCAL-CN.md)；源码调试见 [开发环境](../deploy/DEVELOPMENT-CN.md)。部署使用正式 Cloudflare Ingest 地址，本地 `8787` 仅用于调试。
+用户安装与运行见 [个人 / 局域网部署](../self-host/LOCAL-CN.md)；源码调试见 [开发环境](../self-host/DEVELOPMENT-CN.md)。部署使用正式 Cloudflare Ingest 地址，本地 `8787` 仅用于调试。
 
 ```bash
 # 本地:首次复制 .env.dev → .env,docker 起 PG+Redis,pnpm db:migrate;之后 pnpm dev
@@ -704,4 +706,4 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 
 ## Deployment connection configuration
 
-See [Frontend and managed Redis connections](../deploy/DEPLOYMENT-CONNECTIONS.md) for build-time API/WS endpoints, allowed frontend origins, host-only cookies, and authenticated TLS Redis URLs.
+See [Frontend and managed Redis connections](../self-host/DEPLOYMENT-CONNECTIONS.md) for build-time API/WS endpoints, allowed frontend origins, host-only cookies, and authenticated TLS Redis URLs.

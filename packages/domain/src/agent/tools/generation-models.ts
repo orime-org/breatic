@@ -18,6 +18,7 @@ import {
   type ModelsForMode,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 
 /** One model with what a run at its defaults costs, when the catalog prices it. */
 export type PricedModelInfo = ModelInfo & { price?: CreditEstimate };
@@ -112,7 +113,7 @@ function renderModel(model: PricedModelInfo): string {
   const pooled = poolParams(model).map((pool) => pool.kind);
   const shared = [...new Set(requiredSlotKinds(model).filter((kind) => pooled.includes(kind)))];
   const routing = shared
-    .map((kind) => ` The first ${String(kind)} node wired in fills its ${String(kind)} slot; later ones go to its pool.`)
+    .map((kind) => ` Of the ${String(kind)} nodes wired in, the first in the order the proposal lists its nodes is the one the reader picks into its ${String(kind)} slot; later ones go to its pool.`)
     .join("");
   const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderStoryboard(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
@@ -129,18 +130,13 @@ function renderModel(model: PricedModelInfo): string {
     // for neither, because the reader does neither -- it is the person at the
     // canvas who fills both.
     if (spec.filledBySource) {
-      // The pool takes two gestures where a slot takes one, and the first has
-      // no control anywhere: an image reaches the pool by an edge drawn on the
-      // canvas, or by a focus crop taken on this node -- neither is a field.
-      // The edge is the one named, since it is the route from another node,
-      // which is what a reader holding a picture somewhere else needs. The
-      // second gesture ends in a choice, never in typing -- only
-      // picking a row inserts the mention that carries the source id, and a
-      // node whose name has a space in it closes the picker the moment that
-      // space is typed.
+      // Which gesture fills it is said here, since the shape a proposal takes
+      // depends on it; how to click through that gesture is said once, in the
+      // product guide the description points at. The pool is filled by an
+      // edge and then a mention; a slot is picked on the canvas.
       const how = spec.fromReferencePool
-        ? "two gestures on the canvas, neither typed here: draw an edge from a node into this one to offer its image, then type @ in the prompt and choose that node from the list that opens"
-        : "filled from another node on the canvas, not typed here; leave it unset";
+        ? "filled on the canvas, not typed here, by an edge into this node, then a mention of it in the prompt"
+        : "filled from another node on the canvas through a source slot, not typed here; leave it unset";
       return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
     }
     // Nothing on screen sets it, so what the run uses is the default and the
@@ -192,7 +188,7 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     "is good at, what a call costs, how long it takes, and every parameter " +
     "with its default. Ask get_canvas_capabilities first for the node type " +
     "and mode to pass here. Propose only a model this returns, and only " +
-    "parameters it names.",
+    `parameters it names. How the reader fills a source parameter on screen is in ${GET_PRODUCT_GUIDE}.`,
   inputSchema,
   metadata: { runningLine: "chat.tool.checkingModels" },
   // The SDK's own conversion, which is what a running turn reaches -- the

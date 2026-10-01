@@ -13,6 +13,10 @@
  * rather than being asked of the ingest Worker's report, which knows only what
  * the ticket told it.
  *
+ * A studio's own picture — its avatar — belongs to no project, so its upload
+ * names the studio directly; access to that studio has already been checked
+ * by the entrance that asks.
+ *
  * The caps around it are not here. The upload size cap and the studio's storage
  * allowance are checked at each entrance (`routes/assets.ts` for the browser,
  * `routes/canvas.ts` for a generation) because what counts as too big and who
@@ -24,6 +28,11 @@ import type { StudioAssetEntity } from "@breatic/shared";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { issueGrant } from "@domain/asset/upload-grant.repo.js";
 
+/** Where an upload lands: a project, or a studio that has no project in it. */
+export type UploadTarget =
+  | { projectId: string; studioId?: never }
+  | { studioId: string; projectId?: never };
+
 /**
  * Mint a tenant-neutral storage key for an upload and record its grant.
  *
@@ -33,7 +42,10 @@ import { issueGrant } from "@domain/asset/upload-grant.repo.js";
  * does not exist until the edge computes it.
  * @param params - The upload claim + key components.
  * @param params.projectId - Project the upload targets; it alone decides the
- *   owner studio (#1839 — never the acting user's own).
+ *   owner studio (#1839 — never the acting user's own). Absent when the
+ *   upload names a studio instead.
+ * @param params.studioId - Studio the upload targets when there is no project;
+ *   absent for a project, whose owner studio is resolved here.
  * @param params.actingUserId - Who this upload is attributed to.
  * @param params.declaredSize - Byte size as declared (UX pre-check only).
  * @param params.taskType - The detected kind, used as the key's task segment.
@@ -54,8 +66,7 @@ import { issueGrant } from "@domain/asset/upload-grant.repo.js";
  * @returns The minted storage key K and the owner studio it was attributed to.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  */
-export async function issueUploadGrant(params: {
-  projectId: string;
+export async function issueUploadGrant(params: UploadTarget & {
   actingUserId: string;
   declaredSize: number;
   taskType: string;
@@ -72,7 +83,10 @@ export async function issueUploadGrant(params: {
     generationTaskId?: string | null;
   };
 }): Promise<{ key: string; studioId: string }> {
-  const studioId = await resolveOwnerStudioId(params.projectId);
+  const studioId =
+    params.projectId !== undefined
+      ? await resolveOwnerStudioId(params.projectId)
+      : params.studioId;
   const key = storageKey({ taskType: params.taskType, ext: params.ext });
   await issueGrant({
     userId: params.actingUserId,
@@ -80,7 +94,7 @@ export async function issueUploadGrant(params: {
     storageKey: key,
     declaredSize: params.declaredSize,
     expiresAt: params.expiresAt,
-    context: { ...params.context, projectId: params.projectId },
+    context: { ...params.context, projectId: params.projectId ?? null },
   });
   return { key, studioId };
 }

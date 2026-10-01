@@ -12,7 +12,6 @@ import type {
   ContainerCollection,
   ContainerProject,
 } from '@web/pages/studio/container/container-types';
-import type { StudioRole } from '@web/pages/studio/shared/studio-types';
 
 const OWNED: ContainerProject = {
   id: 'p1',
@@ -32,11 +31,11 @@ const SHARED_STUDIO: ContainerProject = {
   createdAt: '2026-06-01T00:00:00.000Z',
 };
 
-function renderProject(project: ContainerProject, studioRole: StudioRole) {
+function renderProject(project: ContainerProject) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
-        <ProjectCard project={project} studioRole={studioRole} />
+        <ProjectCard project={project} studioSlug='acme' />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -46,7 +45,7 @@ const MORE = { name: 'More actions' };
 
 describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
   it('renders the name and links to /project/{slug}-{uuid}', () => {
-    renderProject(SHARED_STUDIO, 'guest');
+    renderProject(SHARED_STUDIO);
     expect(screen.getByText('Shared Project')).toBeInTheDocument();
     expect(screen.getByRole('link')).toHaveAttribute(
       'href',
@@ -57,34 +56,31 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
   it('carries no visibility badge', () => {
     // Projects have no visibility; CollectionCard keeps its badge, which is
     // why the assertion is scoped to this card.
-    renderProject(SHARED_STUDIO, 'guest');
+    renderProject(SHARED_STUDIO);
     expect(screen.queryByText('Studio-visible')).toBeNull();
     expect(screen.queryByText('Private')).toBeNull();
   });
 
   it('shows the governance menu to the project owner', () => {
-    renderProject(OWNED, 'guest');
+    renderProject(OWNED);
     expect(screen.getByRole('button', MORE)).toBeInTheDocument();
   });
 
+  // The menu holds the cover upload only, which is the owner's (#21) — a
+  // studio admin who does not own the project does not get it either.
   it('hides the governance menu from a non-owner member', () => {
-    renderProject(SHARED_STUDIO, 'guest');
+    renderProject(SHARED_STUDIO);
     expect(screen.queryByRole('button', MORE)).toBeNull();
   });
 
-  it('shows the governance menu to a studio admin even when not owner', () => {
-    renderProject(SHARED_STUDIO, 'admin');
-    expect(screen.getByRole('button', MORE)).toBeInTheDocument();
-  });
-
   it('shows no role and no link for a project the viewer is not on', () => {
-    renderProject({ ...SHARED_STUDIO, myRole: null }, 'guest');
+    renderProject({ ...SHARED_STUDIO, myRole: null });
     expect(screen.queryByText('Viewer')).toBeNull();
     expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('cardmenu overlay matches the neutral mock (chrome radius, 7px inset, 70% black hover)', () => {
-    renderProject(OWNED, 'guest');
+    renderProject(OWNED);
     const menu = screen.getByRole('button', MORE);
     // Neutral mock `.cardmenu` was 2px; the design-system rebuild's unified
     // radius scale conforms all chrome affordances to --radius-chrome (6px) via

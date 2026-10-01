@@ -10,7 +10,7 @@
  * requires auth (the httpOnly session cookie rides along via `withCredentials`).
  */
 
-import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@web/data/api/request';
 // One shape for "a container has an outstanding ownership offer" — a project and
 // a studio differ in what changes hands, not in what the offer looks like.
 import type { LiveTransfer } from '@web/data/api/projects';
@@ -261,22 +261,14 @@ export const studiosApi = {
     return apiPatch<Studio, UpdateStudioInput>(`/studio/${slug}`, body);
   },
   /**
-   * `POST /api/v1/studio/:slug/avatar` — upload the studio's avatar.
-   * Admin-only.
-   *
-   * The body is the image bytes themselves rather than a multipart envelope:
-   * the server sniffs the type from the bytes, and a multipart wrapper's own
-   * bytes are what it would see. The `Content-Type` header is sent for
-   * courtesy only — the server ignores it, since it is the client's claim
-   * about content the client chose.
+   * `PUT /api/v1/studio/:slug/avatar` — point the studio's avatar at an
+   * uploaded picture. Admin-only.
    * @param slug the studio's URL handle.
-   * @param image the encoded avatar (512×512, produced by the crop dialog).
+   * @param assetId the uploaded picture's ledger row.
    * @returns the updated studio, carrying the new `avatarUrl`.
    */
-  uploadAvatar(slug: string, image: Blob): Promise<Studio> {
-    return apiPost<Studio, Blob>(`/studio/${slug}/avatar`, image, {
-      headers: { 'Content-Type': image.type },
-    });
+  setAvatar(slug: string, assetId: string): Promise<Studio> {
+    return apiPut<Studio>(`/studio/${slug}/avatar`, { asset_id: assetId });
   },
   /**
    * `DELETE /api/v1/studio/:slug/avatar` — drop the avatar, falling the UI

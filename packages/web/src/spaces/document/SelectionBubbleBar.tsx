@@ -150,15 +150,13 @@ interface BubbleGroup {
  * type | alignment |
  * bold italic strike underline | link inline-code colour comment | AI.
  *
- * Three of the five hold a slot that opens a menu on hover; the three block
+ * Four of the five hold a slot that opens a menu on hover; the three block
  * commands that used to sit flat in the first group now live inside the block
  * type menu, which is where the demo draws them.
  *
- * Alignment, colour, and every AI command stand here with no command behind
- * them — each needs schema or a model call that arrives with its own slice.
- * They carry the treatment `document-unavailable-control.ts` defines (user
- * 2026-08-23: a control that reads as available and answers a click with
- * nothing tells the reader it is broken).
+ * Block type, alignment, colour and comment all reach their commands. No AI
+ * command does yet: each needs schema or a model call that arrives with its
+ * own slice, and the AI slot is drawn the way the demo draws it.
  */
 const BUBBLE_GROUPS: BubbleGroup[] = [
   { key: 'blocks', tools: [], panels: [], slot: BlockTypeSlot },

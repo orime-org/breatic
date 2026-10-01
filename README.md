@@ -42,8 +42,8 @@ Invite collaborators with the project's access controls to work on the same prod
 
 | Your goal | Guide |
 | --- | --- |
-| Use it yourself, or share it with a household/private team on your LAN | [Personal and LAN deployment](deploy/LOCAL.md) |
-| Modify source code, debug or contribute | [Development setup](deploy/DEVELOPMENT.md) |
+| Use it yourself, or share it with a household/private team on your LAN | [Personal and LAN deployment](self-host/LOCAL.md) |
+| Modify source code, debug or contribute | [Development setup](self-host/DEVELOPMENT.md) |
 
 For installation, the application runs as published Docker images: web, API, background jobs and collaboration, backed by PostgreSQL and Redis. File uploads use an Ingest Worker and media container deployed to **your Cloudflare account**, with files stored in your R2 bucket. AI calls use your provider accounts. This is not an offline or wholly on-premises installation.
 
@@ -137,7 +137,7 @@ The license permits individual use, private groups that are not publicly adverti
 
 Breatic uses TypeScript, React/Vite, Hono, PostgreSQL, Redis/BullMQ and Hocuspocus/Yjs, with a separate Cloudflare Worker for uploads.
 
-- [Development setup](deploy/DEVELOPMENT.md): dependencies, local services and tests.
+- [Development setup](self-host/DEVELOPMENT.md): dependencies, local services and tests.
 - [Contributing](CONTRIBUTING.md): contribution workflow and conventions.
 - [Architecture](docs/ARCHITECTURE.md): packages, services, data flow and frontend structure.
 - [Testing](docs/TEST-MANDATE.md): unit, integration and browser verification.

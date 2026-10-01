@@ -119,7 +119,7 @@ export interface BackendUploadContext {
   /** Who this is attributed to. */
   actingUserId: string;
   /** What the resulting asset is: a generation's output, or a video's cover. */
-  assetSource: Exclude<StudioAssetEntity["source"], "upload">;
+  assetSource: Extract<StudioAssetEntity["source"], "ai" | "cover">;
   /** The generation that produced these bytes, when one did. */
   generationTaskId?: string;
   /** The key's task segment, which also decides its extension. */

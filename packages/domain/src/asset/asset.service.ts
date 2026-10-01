@@ -73,11 +73,11 @@ export async function resolveOwnerStudioId(projectId: string): Promise<string> {
 
 /**
  * Register an asset against its owner studio, with within-studio dedup.
- * Callers (server upload handshake, worker generation Stage 4) pass the
- * project + acting user: the project decides the OWNER studio, the acting
- * user is recorded as the PRODUCER (#1839).
- * @param input - Project + acting user + physical asset fields.
- * @param input.projectId - Project the asset was produced in.
+ * The caller passes the owner studio and the acting user: the studio owns the
+ * row, the acting user is recorded as the PRODUCER (#1839).
+ * @param input - Owner studio + acting user + physical asset fields.
+ * @param input.ownerStudioId - The studio the asset belongs to — the upload
+ *   grant's, which recorded where the key was issued (#1826 §2.2 v15).
  * @param input.actingUserId - User who uploaded / triggered generation.
  *   Stored as `produced_by_user_id`; does NOT affect which studio owns the
  *   asset. On a dedup hit the existing row's producer is kept.
@@ -87,21 +87,17 @@ export async function resolveOwnerStudioId(projectId: string): Promise<string> {
  * @param input.sizeBytes - Byte size, as the ingest Worker measured it.
  * @param input.mimeType - MIME type.
  * @param input.kind - image | video | audio | document | file.
- * @param input.source - 'ai' | 'upload' | 'cover' (a first-class video cover
- *   row, #1826 §4.5 — counts toward storage like any other asset).
+ * @param input.source - What the asset is (see `StudioAssetEntity["source"]`);
+ *   every value counts toward storage like any other asset.
  * @param input.generationTaskId - Producing task (AI only), for cost link.
  * @param input.width - Pixel width the media container read, if any.
  * @param input.height - Pixel height the media container read, if any.
  * @param input.durationSeconds - Running time the media container read, if any.
  * @param input.coverAssetId - The cover row this one points at, set on the
  *   insert so a video is never readable without it.
- * @param input.ownerStudioId - Authoritative owner studio when the caller
- *   already knows it (the upload grant's studio, #1826 §2.2 v15). Omit to
- *   resolve it from the project.
  * @returns The asset entity, whether it was a dedup hit, and — only when the
  *   reclaim-queue insert failed — a `reclaimQueueFailed` flag (the
  *   registration itself still succeeded).
- * @throws {NotFoundError} If the project does not exist or is soft-deleted.
  *
  * On a DEDUP HIT the ledger keeps the existing row, which makes the object the
  * caller just stored redundant. Runtime never deletes it (#1826 §0 rule 1 —
@@ -112,7 +108,7 @@ export async function resolveOwnerStudioId(projectId: string): Promise<string> {
  * re-implementing the rule.
  */
 export async function register(input: {
-  projectId: string;
+  ownerStudioId: string;
   actingUserId: string;
   contentHash: string;
   storageKey: string;
@@ -122,7 +118,6 @@ export async function register(input: {
   kind: StudioAssetEntity["kind"];
   source: StudioAssetEntity["source"];
   generationTaskId?: string;
-  ownerStudioId?: string;
   width?: number | null;
   height?: number | null;
   durationSeconds?: number | null;
@@ -138,15 +133,7 @@ export async function register(input: {
    */
   reclaimQueueFailed?: true;
 }> {
-  // `ownerStudioId` overrides attribution when the caller already holds the
-  // AUTHORITATIVE studio — the browser-upload path reads it off the upload
-  // grant (#1826 §2.2 v15), because the grant recorded where the key was
-  // actually issued, whereas the report's `project_id` is client input and a
-  // member of two studios could point it at the other one to shift storage
-  // cost. Paths with no grant (worker generation) omit it and resolve from the
-  // project as before.
-  const studioId =
-    input.ownerStudioId ?? (await resolveOwnerStudioId(input.projectId));
+  const studioId = input.ownerStudioId;
   const repoInput: RegisterAssetInput = {
     studioId,
     producedByUserId: input.actingUserId,
@@ -190,8 +177,8 @@ export async function register(input: {
       contentHash: input.contentHash,
       studioId,
       keptStorageKey: result.asset.storageKey,
-      // The asset's own source — 'ai' | 'upload' | 'cover' — so the offline
-      // job can tell a worker-produced duplicate from a browser-uploaded one
+      // The asset's own source, so the offline job can tell a
+      // worker-produced duplicate from a browser-uploaded one
       // (R5: mapping everything non-'ai' to 'upload' mislabelled worker
       // covers, which are 'cover').
       source: input.source,
