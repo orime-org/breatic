@@ -2261,7 +2261,7 @@ describe('the storyboard (#2218)', () => {
     vi.restoreAllMocks();
   });
 
-  it('offers the switch on a model that takes a storyboard, and not on one that does not', async () => {
+  it('offers the switch on a model that takes a storyboard', async () => {
     await openKling();
     expect(screen.getByTestId('generate-storyboard-switch')).toBeInTheDocument();
   });

@@ -231,8 +231,8 @@ function VideoGeneratePanelBody({
 
   // Read during render: `getPromptFragment` is a synchronous document read with
   // no side effect. Each mode keeps its own prompt (#2218), so a mode switch
-  // binds the editor to that mode's words. Null means the node predates prompt
-  // seeding (see getPromptFragment) — the panel then renders without a prompt
+  // binds the editor to that mode's words. Null means the node has no seeded
+  // prompt for this mode (see getPromptFragment) — the panel then renders without a prompt
   // editor rather than minting a fragment behind the user's back.
   const fragment = React.useMemo(
     () => getPromptFragment(projectId, spaceId, nodeId, mode),

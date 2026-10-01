@@ -1380,9 +1380,11 @@ export function ensureTextBody(
  * everything typed into it. The fragment is now born with the node, so by the
  * time anyone can open a panel it is already there and shared.
  *
- * Returns null for a node that is missing, or for one older than #1880 — those
- * predate the seeding and are deliberately not repaired (pre-launch legacy data
- * is not served). The panel renders without a prompt editor in that case.
+ * Returns null for a node that is missing, for one born before per-mode seeding
+ * (#2218: it has no `prompts` map, which covers every node from before #1880
+ * too), or for a mode that was not seeded when the node was born. None of these
+ * is repaired (pre-launch legacy data is not served). The panel renders without
+ * a prompt editor in that case.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the node whose prompt fragment to read.

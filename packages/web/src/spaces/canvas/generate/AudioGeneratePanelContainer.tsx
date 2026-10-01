@@ -203,7 +203,7 @@ function AudioGeneratePanelBody({
   } = useGenerateSubmitState();
 
   // Read during render: `getPromptFragment` is a synchronous document read with
-  // no side effect, and null means the node predates prompt seeding — the panel
+  // no side effect, and null means the node has no seeded prompt for this mode — the panel
   // then says so instead of offering an editor that stores nothing. Resolving
   // it after the first commit would make that sentence the first thing every
   // modern node's panel renders.
