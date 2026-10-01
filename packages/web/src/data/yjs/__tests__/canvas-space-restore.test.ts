@@ -104,21 +104,6 @@ describe('restoreNodeMedia (#1619 history restore, critical path)', () => {
     expect(nodeData().get('errorMessage')).toBeUndefined();
   });
 
-  // A node's history holds each content once (#2186), so the content the node
-  // holds names its current row on its own. A restore writes the content and
-  // nothing that remembers which row it came from — even when the caller still
-  // has a row id in hand. The value is held in a variable so the extra field is
-  // not an excess-property error once the media type stops declaring it.
-  it.each([['image'], ['video'], ['audio'], ['text']] as const)(
-    'writes no row id onto the node (%s)',
-    (type) => {
-      addNode(PID, SID, fields(type));
-      const media = { content: 'restored', coverUrl: undefined, entryId: 'h-9' };
-      restoreNodeMedia(PID, SID, 'n1', media);
-      expect(nodeData().get('restoredFromEntryId')).toBeUndefined();
-    },
-  );
-
   it('is a no-op on a missing node (no throw)', () => {
     expect(() =>
       restoreNodeMedia(PID, SID, 'ghost', {

@@ -33,9 +33,10 @@ vi.mock("ai", () => ({
 }));
 
 import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
-import { nodeHistoryService } from "@breatic/domain";
+import { nodeHistoryService, nodeTaskService } from "@breatic/domain";
 
 try {
   initCore(process.env);
@@ -155,6 +156,28 @@ describe("node_history generation idempotency (#1618 Y)", () => {
       nodeHistoryService.recordGenerationSuccess(opts),
     ]);
 
+    expect(await countRows(taskId, nodeId)).toBe(1);
+  });
+
+  it("a second live run of the same job with a different result resolves to the first row", async () => {
+    const userId = await insertUser("Two Runs Author");
+    const projectId = await insertProject(userId);
+    const taskId = await createTask(userId, projectId);
+    const nodeId = crypto.randomUUID();
+    const base = { projectId, nodeId, userId, taskId, metadata: { model: "m" } };
+
+    // Each live run persists its own output, so the two results differ and
+    // only (task_id, node_id) ties them together.
+    const first = await nodeHistoryService.recordGenerationSuccess({
+      ...base,
+      content: "https://cdn.example.com/run-1.png",
+    });
+    const second = await nodeHistoryService.recordGenerationSuccess({
+      ...base,
+      content: "https://cdn.example.com/run-2.png",
+    });
+
+    expect(second.id).toBe(first.id);
     expect(await countRows(taskId, nodeId)).toBe(1);
   });
 
@@ -669,5 +692,86 @@ describe("one history row per content per node (#2186)", () => {
 
     expect(second.id).not.toBe(first.id);
     expect(await liveSuccessRows(nodeId)).toHaveLength(1);
+  });
+});
+
+describe("migration 0087 on a history that already holds duplicates (#2186 A7)", () => {
+  const MIGRATION = new URL(
+    "../../../../core/src/db/migrations/0087_node_history_unique_content.sql",
+    import.meta.url,
+  );
+  const ROLLBACK = new Error("rollback");
+
+  it("keeps the earliest row of each content per node, and the index builds", async () => {
+    const userId = await insertUser("Migration Dedup");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const otherNode = crypto.randomUUID();
+    const [dedup, index] = readFileSync(MIGRATION, "utf8").split("--> statement-breakpoint");
+
+    // Everything runs in one transaction that is rolled back: the index is
+    // dropped only for its duration, so no other suite sees it missing.
+    await sql
+      .begin(async (tx) => {
+        await tx`DROP INDEX node_history_success_content_unique`;
+        const insert = async (node: string, content: string, at: string): Promise<string> => {
+          const rows = await tx<{ id: string }[]>`
+            INSERT INTO node_history
+              (project_id, node_id, user_id, entry_type, status, content, created_at)
+            VALUES (${projectId}, ${node}, ${userId}, 'snapshot', 'success', ${content}, ${at})
+            RETURNING id
+          `;
+          return rows[0]!.id;
+        };
+        const kept = await insert(nodeId, "same words", "2026-09-01T00:00:00Z");
+        await insert(nodeId, "same words", "2026-09-02T00:00:00Z");
+        await insert(nodeId, "same words", "2026-09-03T00:00:00Z");
+        const other = await insert(nodeId, "other words", "2026-09-02T12:00:00Z");
+        const elsewhere = await insert(otherNode, "same words", "2026-09-04T00:00:00Z");
+
+        await tx.unsafe(dedup!);
+        await tx.unsafe(index!);
+
+        const live = await tx<{ id: string }[]>`
+          SELECT id FROM node_history
+          WHERE node_id IN (${nodeId}, ${otherNode}) AND deleted_at IS NULL
+          ORDER BY created_at
+        `;
+        expect(live.map((r) => r.id)).toEqual([kept, other, elsewhere]);
+        const built = await tx`
+          SELECT 1 FROM pg_indexes WHERE indexname = 'node_history_success_content_unique'
+        `;
+        expect(built).toHaveLength(1);
+        throw ROLLBACK;
+      })
+      .catch((err: unknown) => {
+        if (err !== ROLLBACK) throw err;
+      });
+  });
+
+  it("a task row whose history row was soft-deleted still lists its content", async () => {
+    const userId = await insertUser("Soft Deleted Pointer");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const entry = await nodeHistoryService.recordSnapshot({
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/kept-by-task.png",
+    });
+    await sql`
+      INSERT INTO node_tasks
+        (project_id, space_id, node_id, kind, status,
+         started_by_user_id, started_at, budget_ms, label, node_history_id)
+      VALUES
+        (${projectId}, ${crypto.randomUUID()}, ${nodeId}, 'upload', 'done',
+         ${userId}, now(), 600000, 'pointer.png', ${entry.id})
+    `;
+    await sql`UPDATE node_history SET deleted_at = now() WHERE id = ${entry.id}`;
+
+    const [row] = await nodeTaskService.listLive({ projectId, nodeId });
+
+    expect(row?.nodeHistoryId).toBe(entry.id);
+    expect(row?.content).toBe("https://cdn.example.com/kept-by-task.png");
   });
 });
