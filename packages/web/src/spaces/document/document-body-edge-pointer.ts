@@ -28,6 +28,7 @@
 
 import { createExtension } from '@blocknote/core';
 import { isMacOS } from '@tiptap/core';
+import type { Node } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type Selection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -150,6 +151,38 @@ function isPlainPress(event: MouseEvent): boolean {
   return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.altKey;
 }
 
+/**
+ * The end of a selection a Shift+click keeps, as the page keeps it. On macOS
+ * the selection has no direction: the end nearer the click in text moves, and
+ * a tie moves the start (Chromium `ExtendSelectionAsNonDirectional`, which
+ * measures with `TextIterator::RangeLength`: characters, one per line break,
+ * none for a block without text; probe42). Elsewhere the anchor stays.
+ * @param doc - The document.
+ * @param ends - The selection's anchor and head.
+ * @param ends.anchor - The anchor.
+ * @param ends.head - The head.
+ * @param target - Where the click lands.
+ * @returns The position that stays.
+ */
+function keptEnd(doc: Node, { anchor, head }: { anchor: number; head: number }, target: number): number {
+  if (!isMacOS()) return anchor;
+  const start = Math.min(anchor, head);
+  const end = Math.max(anchor, head);
+  return textDistance(doc, start, target) <= textDistance(doc, target, end) ? end : start;
+}
+
+/**
+ * How far apart two positions are in what the page reads as text: characters,
+ * one per line break between blocks, none for a block without text.
+ * @param doc - The document.
+ * @param a - One position.
+ * @param b - The other.
+ * @returns The distance.
+ */
+function textDistance(doc: Node, a: number, b: number): number {
+  return doc.textBetween(Math.min(a, b), Math.max(a, b), '\n').length;
+}
+
 /** What the plugin needs from the BlockNote editor. */
 interface ParagraphOpener {
   /** Inserts a paragraph after the last root block and puts the caret in it. */
@@ -225,8 +258,7 @@ class PointerFollower {
 
   /**
    * Answers a Shift+click (design §5.10.5). The end that stays is the one the
-   * page keeps: on macOS the end farther from the click, elsewhere the anchor
-   * (measured in Chrome, probe38 and probe39). The plugin takes the click when
+   * page keeps ({@link keptEnd}). The plugin takes the click when
    * the page cannot extend the selection without losing part of it: a click
    * past an edge, a selection over the whole document or a selected block, or
    * an end that stays on an edge, which the page reads as the caret inside the
@@ -249,9 +281,11 @@ class PointerFollower {
       this.begin({ ...at, zone, anchorEdge: bodyEdgeAt(doc, selection.anchor), left: false, moved: false, onWidget: false });
       return;
     }
-    const swapped = extensionEnds(selection, target >= selection.from ? 1 : -1);
-    const { anchor, head } = swapped ?? selection;
-    const fixed = isMacOS() && Math.abs(head - target) > Math.abs(anchor - target) ? head : anchor;
+    // Past an edge the selection grows towards it, even from a block selected
+    // at that very edge, whose position is the edge's own.
+    const dir = zone === 'end' ? 1 : zone === 'start' ? -1 : target >= selection.from ? 1 : -1;
+    const swapped = extensionEnds(selection, dir);
+    const fixed = keptEnd(doc, swapped ?? selection, target);
     if (zone === 'body' && swapped === null && bodyEdgeAt(doc, fixed) === null) {
       this.begin({ ...at, zone, anchorEdge: null, left: false, moved: false, onWidget: false });
       return;

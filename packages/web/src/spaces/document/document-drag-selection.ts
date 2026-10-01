@@ -118,7 +118,8 @@ export function readerPlace(state: EditorState): ReaderPlace | undefined {
   if (!(selection instanceof TextSelection) && !(selection instanceof BodyEdgeSelection)) return undefined;
   /**
    * Addresses one end: by its edge when it is on one, else by its block. An
-   * edge sits between blocks, where no text selection's end can be.
+   * edge sits inside a root block but outside its content, where no text
+   * selection's end can be.
    * @param pos - The end.
    * @returns The address, or undefined when it has none.
    */

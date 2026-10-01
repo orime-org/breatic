@@ -221,7 +221,7 @@ function pickAnchorLine(
   view: EditorView,
   bounds: DOMRect,
 ): { top: number; bottom: number } {
-  // An end on an edge of the body sits between blocks, where the answer is the
+  // An end on an edge of the body sits outside any line, where the answer is the
   // zero-height separator described above; the nearest text stands in for it
   // (#124), the same place a collaborator's caret is drawn.
   const { anchor, head } = textEnds(view.state.selection);

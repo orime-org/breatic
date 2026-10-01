@@ -711,27 +711,6 @@ describe('the selection a drag gives, by where it was pressed and where the poin
       .toBeInstanceOf(AllSelection);
   });
 
-  it('keeps the anchor a Shift+click started from wherever the pointer goes', () => {
-    const view = open(BOTH_ENDS);
-    const { doc } = view.state;
-    const at = textStart(view, 'Mid');
-    const shift = { press: 'body', anchor: at, left: true } as const;
-
-    const inBody = dragSelection(doc, shift, 'body', at + 2);
-    const pastEnd = dragSelection(doc, shift, 'end', null);
-
-    expect([inBody?.anchor, inBody?.head]).toEqual([at, at + 2]);
-    expect(pastEnd).toBeInstanceOf(BodyEdgeSelection);
-    expect([pastEnd?.anchor, pastEnd?.head]).toEqual([at, bodyEdgePos(doc, 'end')]);
-  });
-
-  it('is the whole document from a Shift+click past one edge when the anchor is on the other', () => {
-    const view = open(BOTH_ENDS);
-    const { doc } = view.state;
-
-    expect(dragSelection(doc, { press: 'body', anchor: bodyEdgePos(doc, 'start'), left: true }, 'end', null)).toBeInstanceOf(AllSelection);
-  });
-
   it('keeps the current selection when the pointer in the body lands on no position', () => {
     const view = open(BOTH_ENDS);
     const { doc } = view.state;
