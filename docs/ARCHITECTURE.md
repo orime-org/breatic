@@ -329,7 +329,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### Run
 
-用户安装与运行见 [个人 / 局域网部署](../deploy/LOCAL-CN.md)；源码调试见 [开发环境](../deploy/DEVELOPMENT-CN.md)。部署使用正式 Cloudflare Ingest 地址，本地 `8787` 仅用于调试。
+用户安装与运行见 [个人 / 局域网部署](../self-host/LOCAL-CN.md)；源码调试见 [开发环境](../self-host/DEVELOPMENT-CN.md)。部署使用正式 Cloudflare Ingest 地址，本地 `8787` 仅用于调试。
 
 ```bash
 # 本地:首次复制 .env.dev → .env,docker 起 PG+Redis,pnpm db:migrate;之后 pnpm dev
@@ -704,4 +704,4 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 
 ## Deployment connection configuration
 
-See [Frontend and managed Redis connections](../deploy/DEPLOYMENT-CONNECTIONS.md) for build-time API/WS endpoints, allowed frontend origins, host-only cookies, and authenticated TLS Redis URLs.
+See [Frontend and managed Redis connections](../self-host/DEPLOYMENT-CONNECTIONS.md) for build-time API/WS endpoints, allowed frontend origins, host-only cookies, and authenticated TLS Redis URLs.
