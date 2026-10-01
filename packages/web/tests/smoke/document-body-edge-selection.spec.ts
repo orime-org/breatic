@@ -554,7 +554,7 @@ test('Shift+Down from the last line of words in a code block ending in a line br
   expect([edge.kind, edge.head]).toEqual(['BodyEdgeSelectionClass', edge.size - 2]);
 });
 
-test('a Shift+click past the end keeps the end of a range the page keeps (A6)', async () => {
+test('a Shift+click past the end keeps the start of the range (A6)', async () => {
   await openFreshDocument(page);
   await setBlocks(page, [{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph', content: 'Lower' }, { type: 'divider' }]);
   const middle = await wordBox(page, 'Middle');
@@ -562,15 +562,13 @@ test('a Shift+click past the end keeps the end of a range the page keeps (A6)', 
   const last = await rowBox(page, -1);
   await drag(page, { x: lower.x + 30, y: lower.y + lower.height / 2 }, [{ x: middle.x + 20, y: middle.y + middle.height / 2 }]);
   const made = await read(page);
-  // The page's own rule (probe38): on macOS the end farther from the click
-  // stays, which here is the top of the range; elsewhere the anchor stays.
-  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
 
   await shiftClick(page, middle.x + 20, last.y + last.height + 60);
 
+  // A click after the range keeps its start, whichever end the drag began at.
   const reading = await read(page);
   expect([reading.kind, reading.head]).toEqual(['BodyEdgeSelectionClass', reading.size - 2]);
-  expect(reading.anchor).toBe(mac ? Math.min(made.anchor, made.head) : made.anchor);
+  expect(reading.anchor).toBe(Math.min(made.anchor, made.head));
 });
 
 test('a Shift+click on words below a range whose head is on the start reaches from the start (A6)', async () => {
@@ -582,21 +580,16 @@ test('a Shift+click on words below a range whose head is on the start reaches fr
   const first = await rowBox(page, 0);
   await drag(page, { x: middle.x + 30, y: middle.y + middle.height / 2 }, [{ x: middle.x + 30, y: first.y - 30 }]);
   expect((await read(page)).head).toBe(2);
-  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
 
   await shiftClick(page, tail.x + 10, tail.y + tail.height / 2);
 
   const reading = await read(page);
-  if (mac) {
-    expect([reading.kind, reading.anchor]).toEqual(['BodyEdgeSelectionClass', 2]);
-    expect(reading.painted).toContain('divider');
-    expect(reading.text).toContain('Middle|Gap|Gap|T');
-  } else {
-    expect(reading.head).toBeGreaterThan(reading.anchor);
-  }
+  expect([reading.kind, reading.anchor]).toEqual(['BodyEdgeSelectionClass', 2]);
+  expect(reading.painted).toContain('divider');
+  expect(reading.text).toContain('Middle|Gap|Gap|T');
 });
 
-test('a Shift+click inside a range past the last block keeps the end the page keeps (A6)', async () => {
+test('a Shift+click inside a range past the last block keeps the longer part (A6)', async () => {
   await openFreshDocument(page);
   const long = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN';
   const lines: BlockSpec[] = ['a', 'b', 'c', 'd', 'e'].map((content) => ({ type: 'paragraph', content }));
@@ -615,11 +608,32 @@ test('a Shift+click inside a range past the last block keeps the end the page ke
 
   await shiftClick(page, x30, first.y + first.height / 2);
 
-  // The start stays on every platform: it is the anchor, and on macOS it is
-  // also the end farther in text, 30 characters against about 20 (probe42:
-  // the same click with words last gives 3->33).
+  // 30 characters lie before the click and about 15 after it: the start stays.
   const reading = await read(page);
   expect([reading.kind, reading.anchor, reading.head]).toEqual(['_TextSelection', made.anchor, made.anchor + 30]);
+});
+
+test('an empty line a range starts or ends on shows the empty-line mark, wherever it sits', async () => {
+  await openFreshDocument(page);
+  for (const blocks of [
+    [{ type: 'paragraph', content: 'Line one' }, { type: 'paragraph', content: 'Line two' }, { type: 'paragraph' }],
+    [{ type: 'paragraph', content: 'Line one' }, { type: 'paragraph' }, { type: 'paragraph', content: 'Line three' }],
+    [{ type: 'paragraph' }, { type: 'paragraph', content: 'Line two' }, { type: 'paragraph', content: 'Line three' }],
+  ] as BlockSpec[][]) {
+    await setBlocks(page, blocks);
+    const empty = blocks.findIndex((block) => block.content === undefined);
+    const target = empty === 0 ? 2 : 0;
+    const emptyRow = await rowBox(page, empty);
+    const targetRow = await rowBox(page, target);
+    await page.mouse.click(emptyRow.x + 20, emptyRow.y + emptyRow.height / 2);
+    await page.waitForTimeout(SETTLE_MS);
+
+    await shiftClick(page, targetRow.x + 30, targetRow.y + targetRow.height / 2);
+
+    const marks = await linesMarked(page);
+    expect(marks[empty]).toBe(true);
+    expect(marks.filter(Boolean)).toHaveLength(1);
+  }
 });
 
 test('a selection anchored on the start moves its head a line at a time with Shift+Up and Shift+Down (A6)', async () => {
