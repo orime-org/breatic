@@ -1519,8 +1519,6 @@ export function setNodeExtractionError(
  * @param media.content - The history row's asset URL.
  * @param media.coverUrl - Video: the row's cover (`null` clears a stale poster).
  *   image / audio: `undefined` — leave the field untouched.
- * @param media.entryId - The history row this came from, which the panel names
- *   "current". Absent for a caller with no row behind it.
  */
 export function restoreNodeMedia(
   projectId: string,
@@ -1529,7 +1527,6 @@ export function restoreNodeMedia(
   media: {
     content: string;
     coverUrl: string | null | undefined;
-    entryId?: string;
   },
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
@@ -1562,12 +1559,6 @@ export function restoreNodeMedia(
     data.delete('mimeType');
     data.delete('size');
     data.delete('errorMessage');
-    // Which row the node is on. The reader picked this one, and two rows can
-    // hold the same thing — content alone cannot name it afterwards. A caller
-    // with no row behind it (the task list's Replace) clears the memory, so
-    // the panel falls back to what the node holds.
-    if (media.entryId !== undefined) data.set('restoredFromEntryId', media.entryId);
-    else data.delete('restoredFromEntryId');
   }, CONTENT_WRITE);
 }
 
