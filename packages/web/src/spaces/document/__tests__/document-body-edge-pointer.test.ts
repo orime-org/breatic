@@ -431,7 +431,7 @@ describe('Shift+click past an end of the body', () => {
 
     press(view, 50, { shiftKey: true });
 
-    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([
+    expect([view.state.selection.from, view.state.selection.to]).toEqual([
       textStart(view, 'Above') + 'Above'.length,
       textStart(view, 'Below'),
     ]);
@@ -462,21 +462,22 @@ describe('Shift+click past an end of the body', () => {
 
     press(view, 50, { shiftKey: true });
 
-    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([
+    expect([view.state.selection.from, view.state.selection.to]).toEqual([
       textStart(view, 'Above') + 'Above'.length,
       bodyEdgePos(view.state.doc, 'end'),
     ]);
   });
 
-  it('follows a Shift+drag from the body on past the end, leaving the press to the browser', () => {
+  it('follows a Shift+drag from the body on past the end, from the end it keeps', () => {
     const view = open([{ type: 'paragraph', content: 'One' }, { type: 'paragraph', content: 'Two' }, { type: 'paragraph' }]).prosemirrorView!;
     const at = textStart(view, 'One') + 1;
     select(view, at);
+    pointAt(view, textStart(view, 'Two') + 1);
 
     const event = press(view, 50, { shiftKey: true });
     move(150);
 
-    expect(event.defaultPrevented).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, bodyEdgePos(view.state.doc, 'end')]);
   });
 
@@ -587,15 +588,16 @@ describe('Shift+click past an end of the body', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([start + 6, start + 3]);
   });
 
-  it('leaves a Shift+click in the body to the browser', () => {
+  it('takes a Shift+click in the body and extends a caret to it', () => {
     const view = open(ABOVE_DIVIDER).prosemirrorView!;
     const at = textStart(view, 'Above');
     select(view, at);
+    pointAt(view, at + 3);
 
     const event = press(view, 10, { shiftKey: true });
 
-    expect(event.defaultPrevented).toBe(false);
-    expect(view.state.selection.head).toBe(at);
+    expect(event.defaultPrevented).toBe(true);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, at + 3]);
   });
 });
 
