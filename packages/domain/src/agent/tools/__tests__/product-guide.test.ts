@@ -284,10 +284,27 @@ describe("what the guide says", () => {
     const panel = section("Inside the generation panel");
     expect(panel).toMatch(/- Storyboard, on the video models that offer it/);
     expect(panel).toMatch(/"Edit per shot" in that row splits it by hand/);
-    expect(panel).toMatch(/The shots' seconds always add up to the video's length/);
+    expect(panel).toMatch(/the shots' seconds keep adding up to the video's length/);
     expect(panel).toMatch(/each mode keeps its own words/);
     expect(section("Generating")).toMatch(/"Shot 2 is empty"/);
     expect(section("Groups and undo")).toMatch(/a video's storyboard and its shots/);
+  });
+
+  it("says when each storyboard control is greyed and what happens when the shots stop fitting", () => {
+    const panel = section("Inside the generation panel");
+    expect(panel).toMatch(/puts it in the shot box last clicked into, or the first shot if none has been/);
+    expect(panel).toMatch(/minus is greyed at one second or when there is only one shot/);
+    expect(panel).toMatch(/plus is greyed when no other shot has a second to spare/);
+    expect(panel).toMatch(/is greyed while only one shot is left/);
+    expect(panel).toMatch(/remove a shot or pick a longer duration/);
+    expect(panel).not.toMatch(/always add up/);
+  });
+
+  it("says which comment controls depend on the thread or the panel being open", () => {
+    const doc = section("Document spaces");
+    expect(doc).toMatch(/a resolved card takes no replies until it is reopened/);
+    expect(doc).toMatch(/With nothing typed yet, clicking anywhere outside the box also drops it/);
+    expect(doc).toMatch(/The three dots are hidden while the comments panel is open/);
   });
 
   it("quotes no name the screen only gives a screen reader", () => {

@@ -547,13 +547,17 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
       `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
       `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt; ` +
-      "clicking a chip in the strip puts it in the shot box last typed in. The shots' seconds always add up to " +
-      "the video's length: the plus takes a second from another shot, the minus gives one away, and in the " +
-      "settings pill a duration shorter than the number of shots is greyed, while picking another one re-splits " +
-      `the shots. ${quoted(t("canvas.generatePanel.storyboard.addShot"))} is greyed with ` +
+      "clicking a chip in the strip puts it in the shot box last clicked into, or the first shot if none has " +
+      "been. While split by hand, the shots' seconds keep adding up to the video's length: the plus takes a " +
+      "second from another shot and the minus gives one to the next, so the minus is greyed at one second or " +
+      "when there is only one shot, and the plus is greyed when no other shot has a second to spare. In the " +
+      "settings pill a duration shorter than the number of shots is greyed, and picking another one re-splits " +
+      "the shots. A duration shortened while the shots were hidden can leave fewer seconds than shots; they " +
+      "then stay as they were and pressing generate says they do not add up: remove a shot or pick a longer " +
+      `duration. ${quoted(t("canvas.generatePanel.storyboard.addShot"))} is greyed with ` +
       `${quoted(t("canvas.generatePanel.storyboard.shotCapReached", { max: 6 }))} at the model's limit, or with ` +
       `${quoted(t("canvas.generatePanel.storyboard.noSecondToSpare"))} when every shot is down to one second; ` +
-      `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} is greyed on the last shot. ` +
+      `${quoted(t("canvas.generatePanel.storyboard.removeShot"))} is greyed while only one shot is left. ` +
       `${quoted(t("canvas.generatePanel.storyboard.back"))}, or turning the switch off, brings the prompt box ` +
       "back with its words, and the shots are kept for next time. Split by hand, the run sends the shots and the " +
       "nodes mentioned in them, and the prompt box's words are not sent. Each mode keeps its own storyboard.",
@@ -823,7 +827,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.docMenu.commentsNone"))} and opens the comments panel, then ` +
       `${quoted(t("spaces.document.docMenu.saveSnapshot"))} and ` +
       `${quoted(t("spaces.document.docMenu.restoreSnapshot"))}, both marked ` +
-      `${quoted(t("spaces.document.docMenu.notOpenYet"))}. A dot on the three dots means some comments are ` +
+      `${quoted(t("spaces.document.docMenu.notOpenYet"))}. The three dots are hidden while the comments panel is ` +
+      "open; its X brings them back. A dot on the three dots means some comments are " +
       "unresolved. Other people in the document show as coloured carets " +
       "with their names. Content written by a newer version of the editor shows as a box marked " +
       `${quoted(t("spaces.document.unsupported.label"))} and is kept as it is.`,
@@ -832,8 +837,9 @@ export function renderProductGuide(): string {
       `words). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
       `a highlight, and a box, ${quoted(t("spaces.document.comment.placeholder"))}, waits next to them. Enter ` +
       `or ${quoted(t("spaces.document.comment.save"))} posts it, Shift+Enter starts a new line, and Esc or ` +
-      `${quoted(t("spaces.document.comment.cancel"))} drops it; both buttons appear once something is typed, ` +
-      "and a comment holds up to 300 characters. If the words are deleted before it is posted, the box turns " +
+      `${quoted(t("spaces.document.comment.cancel"))} drops it; both buttons appear once something is typed. ` +
+      "With nothing typed yet, clicking anywhere outside the box also drops it. A comment holds up to 300 " +
+      "characters. If the words are deleted before it is posted, the box turns " +
       `into ${quoted(t("spaces.document.comment.targetGone"))} If the reader can no longer edit, it turns into ` +
       `${quoted(t("spaces.document.comment.cannotWrite"))} The panel's header has ` +
       `${quoted(t("spaces.document.comment.filterOpen"))} (chosen at first), ` +
@@ -849,7 +855,7 @@ export function renderProductGuide(): string {
       "asking, for whoever wrote the first comment or a project owner; each later reply has a small X for its " +
       `writer or an owner. ${quoted(t("spaces.document.comment.resolve"))} takes the highlight away and moves ` +
       `the card under ${quoted(t("spaces.document.comment.filterAll"))}, where ` +
-      `${quoted(t("spaces.document.comment.reopen"))} brings it back. Viewers can open the panel and read, but ` +
+      `${quoted(t("spaces.document.comment.reopen"))} brings it back; a resolved card takes no replies until it is reopened. Viewers can open the panel and read, but ` +
       "not comment, answer, resolve or delete. A card whose words are all deleted leaves the panel until undo " +
       `brings them back. A change that fails shows ${quoted(t("spaces.document.comment.writeFailed"))} What ` +
       `was typed is kept. With no comments the panel shows ${quoted(t("spaces.document.comment.empty"))} ` +
