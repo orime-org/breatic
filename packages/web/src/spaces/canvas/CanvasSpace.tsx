@@ -3690,8 +3690,6 @@ function CanvasSpaceInner({
         restoreNodeMedia(projectId, spaceId, nodeId, {
           content: decision.content,
           coverUrl: decision.coverUrl,
-          // The row the reader picked, so the panel can name it afterwards.
-          entryId: entry.id,
         });
         // Keep the panel open after a restore (user 2026-07-23, reversing the
         // 2026-07-22 close-on-restore): users often restore / compare several
