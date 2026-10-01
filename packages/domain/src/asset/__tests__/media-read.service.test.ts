@@ -24,6 +24,12 @@ const LIMITS = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   createQueue: () => ({ add: queueAdd }),
+  defaultJobOpts: () => ({
+    attempts: 5,
+    backoff: { type: "jitter" },
+    removeOnComplete: { age: 3600, count: 1000 },
+    removeOnFail: { age: 86_400, count: 1000 },
+  }),
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
 }));
 vi.mock("@breatic/shared", async (importOriginal) => ({
@@ -133,6 +139,18 @@ describe("whether a finished upload gets a read job", () => {
       "read",
       { assetId: "asset-1" },
       expect.objectContaining({ jobId: "media-read-asset-1" }),
+    );
+  });
+
+  // A read that fails is thrown, and the queue's own retries are what try it
+  // again (A6): the shared attempts and backoff, not a one-off.
+  it("queues it with the shared retries", async () => {
+    await scheduleMediaRead(registered(), "studio_avatar");
+
+    expect(queueAdd).toHaveBeenCalledWith(
+      "read",
+      expect.anything(),
+      expect.objectContaining({ attempts: 5, backoff: { type: "jitter" } }),
     );
   });
 

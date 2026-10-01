@@ -14,7 +14,7 @@
  * hit has no container run of its own and reads them off this row.
  */
 
-import { createQueue, env } from "@breatic/core";
+import { createQueue, defaultJobOpts, env } from "@breatic/core";
 import { readStoredMediaAtIngest, type StudioAssetEntity } from "@breatic/shared";
 
 import { fillMediaNumbers, findById } from "@domain/asset/asset.repo.js";
@@ -113,10 +113,10 @@ export async function scheduleMediaRead(
 
   queue ??= createQueue(MEDIA_READ_QUEUE);
   const job: MediaReadJob = { assetId: outcome.assetId };
+  // BullMQ refuses a custom id that contains a colon.
   await queue.add("read", job, {
+    ...defaultJobOpts(),
     jobId: `media-read-${outcome.assetId}`,
-    removeOnComplete: { age: 3600, count: 1000 },
-    removeOnFail: { age: 86_400, count: 1000 },
   });
   return true;
 }
