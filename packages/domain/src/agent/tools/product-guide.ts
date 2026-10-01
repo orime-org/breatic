@@ -611,8 +611,11 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.focusConfirm"))}, the crop joins the strip above the prompt as a chip ` +
       "with a crop icon before the source node's name (a spinner shows while it uploads); if it cannot be made, " +
       `a message says so, such as ${quoted(t("canvas.generatePanel.focusExportFailed"))} If the source node ` +
-      "changes, is still processing or is deleted while you pick, the box is cleared and a message says what " +
-      `happened, such as ${quoted(t("canvas.generatePanel.focusSourceChanged"))} Picking goes on after ` +
+      "is replaced, starts processing, fails or is deleted while you crop it, the bar under it closes and a " +
+      `message says what happened, such as ${quoted(t("canvas.generatePanel.focusSourceDeleted"))} Picking goes ` +
+      "on: click a source node again. If the picture changed just as you pressed " +
+      `${quoted(t("canvas.generatePanel.focusConfirm"))}, only the box is cleared, with ` +
+      `${quoted(t("canvas.generatePanel.focusSourceChanged"))} Picking goes on after ` +
       `${quoted(t("canvas.generatePanel.focusConfirm"))} or ${quoted(t("canvas.generatePanel.focusCancel"))}, ` +
       `so another crop can be taken. Esc steps back one stage at a time: it clears a box being drawn, then ` +
       "closes the bar under the node, then stops picking; " +

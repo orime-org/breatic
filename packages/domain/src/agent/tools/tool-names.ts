@@ -44,9 +44,8 @@ export const LIST_GENERATION_MODELS = "list_generation_models";
 /**
  * Read how the reader operates our product (#260).
  *
- * Named here because other tools' descriptions and answers point the model at
- * it, and a pointer spelled out a second time can name a tool that is not
- * there.
+ * Named here because other tools' descriptions point the model at it, and a
+ * pointer spelled out a second time can name a tool that is not there.
  */
 export const GET_PRODUCT_GUIDE = "get_product_guide";
 

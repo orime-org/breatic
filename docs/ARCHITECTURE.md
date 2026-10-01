@@ -227,7 +227,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 **画布能力两个(`get_canvas_capabilities` / `list_generation_models`)—— 答的是「这个画布现在能生成什么」**。前者不带参数,答三种生成节点各自能选哪些模式,再加一段文本节点是什么、在提示词里提及一个节点会发生什么;后者带节点类型和模式,答那一档现在有哪些模型、每个的价钱、时长上限和每个参数怎么填。两个都只读,读的是按 provider key 过滤后的那份目录缓存。
 
-**`get_product_guide` —— 答的是「读者在屏幕上怎么操作我们的产品」**(#260)。不带参数,答顶栏、Space 标签与列表、聊天面板、画布上建节点和连线、节点菜单、生成面板、document 里写字,以及出错时屏幕上显示什么。模型看不到读者的屏幕,所以要告诉读者怎么做之前先读它、只照它说的讲。正文由 `tools/product-guide.ts` 的 `renderProductGuide()` 拼成,**界面上的每个名字一律经 `t()` 取读者当前语言的原文**,所以指南说的按钮名就是读者屏幕上那几个字。守卫 `product-guide-covers-the-screen.test.ts`:web 能显示的和后端能送上屏幕的每一个界面文字 id,要么被指南引用,要么在 `NOT_QUOTED` 里写明去向(用别的话描述了,或写明为什么不进指南)。
+**`get_product_guide` —— 答的是「读者在屏幕上怎么操作我们的产品」**(#260)。不带参数,答顶栏、Space 标签与列表、聊天面板、画布上建节点和连线、节点菜单、生成面板、document 里写字,以及出错时屏幕上显示什么。模型看不到读者的屏幕,所以要告诉读者怎么做之前先读它、只照它说的讲。正文由 `tools/product-guide.ts` 的 `renderProductGuide()` 拼成,**界面上的每个名字一律经 `t()` 取读者当前语言的原文**,所以指南说的按钮名就是读者屏幕上那几个字。守卫 `product-guide-covers-the-screen.test.ts`:项目页能显示的(从 web 的 `index.tsx` 和 `ProjectPage.tsx` 沿 import 能走到的模块,不经路由表)和后端能送上屏幕的每一个界面文字 id,要么被指南引用,要么在 `NOT_QUOTED` 里写明去向(用别的话描述了,或写明为什么不进指南)。
 
 **`propose_canvas_action` —— 把一条完整的流程提议给读者去放**(#229 起,形状自由归 #263)。输入是一组节点、它们之间的接线(索引指向那批节点)、这个模型是干什么的(只说用途,不写积分和执行时间)、为什么是这个形状,以及两个节点以上时这一组叫什么。每个节点自报角色:`generate` 带着 agent 挑好的模式和模型,`source` 是空着的位子留给读者放自己的素材,`written` 是 agent 写下的正文。**它自己不放任何东西**:`execute` 跑一遍检查,过了就把**解析过目录事实的那一份**交回并标上 `placed: true`(读者按下「使用」时目录可能还没加载,那一刻再问会猜),没过就只答一句为什么;放节点是画布那边的事(`use-node-creation.ts` 的 `placeProposalAt`),而且要等读者按下那张卡。
 

@@ -151,11 +151,12 @@ interface BubbleGroup {
  * commands that used to sit flat in the first group now live inside the block
  * type menu, which is where the demo draws them.
  *
- * Comment stands here with no command behind it (its function is task #18), as
- * does every AI command — each of those needs schema or a model call that
- * arrives with its own slice. They all carry the treatment
- * `document-coming-tool.tsx` defines (user 2026-08-23: a control that reads as
- * available and answers a click with nothing tells the reader it is broken).
+ * Comment stands here with no command behind it (its function is task #18)
+ * and carries the treatment `document-coming-tool.tsx` defines (user
+ * 2026-08-23: a control that reads as available and answers a click with
+ * nothing tells the reader it is broken). No AI command reaches anything yet
+ * either: each needs schema or a model call that arrives with its own slice.
+ * The AI slot is drawn the way the demo draws it and opens its menu as usual.
  */
 const BUBBLE_GROUPS: BubbleGroup[] = [
   { key: 'blocks', tools: [], coming: [], panels: [], slot: BlockTypeSlot },
