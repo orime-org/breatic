@@ -30,7 +30,6 @@ import {
   assetService,
   ingestReportService,
   studioAuthService,
-  uploadGrantService,
   uploadTicketService,
 } from "@breatic/domain";
 import { downloadLink } from "@server/modules/asset/download-link.js";
@@ -229,11 +228,10 @@ assets.post(
     } else {
       await studioAuthService.assertStudioRole(user.id, body.studio_id, "admin");
     }
-    const studioId = await uploadGrantService.resolveUploadStudioId(
+    const studioId =
       body.project_id !== undefined
-        ? { projectId: body.project_id }
-        : { studioId: body.studio_id },
-    );
+        ? await assetService.resolveOwnerStudioId(body.project_id)
+        : body.studio_id;
 
     const { upload, ingest } = getStorageConfig();
     if (body.size > upload.max_upload_bytes) {
@@ -326,7 +324,7 @@ assets.post(
     const { key, taskId } = await openUpload(
       {
         ...(body.project_id !== undefined
-          ? { projectId: body.project_id, studioId }
+          ? { projectId: body.project_id }
           : { studioId }),
         actingUserId: user.id,
         declaredSize: body.size,

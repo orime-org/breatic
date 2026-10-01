@@ -28,25 +28,10 @@ import type { StudioAssetEntity } from "@breatic/shared";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { issueGrant } from "@domain/asset/upload-grant.repo.js";
 
-/**
- * Where an upload lands: a project, or a studio that has no project in it.
- * A project target may carry its owner studio once an entrance has resolved
- * it, so the lookup is not repeated down the line.
- */
+/** Where an upload lands: a project, or a studio that has no project in it. */
 export type UploadTarget =
-  | { projectId: string; studioId?: string }
+  | { projectId: string; studioId?: never }
   | { studioId: string; projectId?: never };
-
-/**
- * The studio an upload is charged to.
- * @param target - The project, or the studio, the upload names.
- * @returns The studio's id — the project's owner studio for a project.
- * @throws {NotFoundError} When the project does not exist or is soft-deleted.
- */
-export async function resolveUploadStudioId(target: UploadTarget): Promise<string> {
-  if (target.projectId === undefined) return target.studioId;
-  return target.studioId ?? resolveOwnerStudioId(target.projectId);
-}
 
 /**
  * Mint a tenant-neutral storage key for an upload and record its grant.
@@ -59,7 +44,8 @@ export async function resolveUploadStudioId(target: UploadTarget): Promise<strin
  * @param params.projectId - Project the upload targets; it alone decides the
  *   owner studio (#1839 — never the acting user's own). Absent when the
  *   upload names a studio instead.
- * @param params.studioId - Studio the upload targets when there is no project.
+ * @param params.studioId - Studio the upload targets when there is no project;
+ *   absent for a project, whose owner studio is resolved here.
  * @param params.actingUserId - Who this upload is attributed to.
  * @param params.declaredSize - Byte size as declared (UX pre-check only).
  * @param params.taskType - The detected kind, used as the key's task segment.
@@ -97,7 +83,10 @@ export async function issueUploadGrant(params: UploadTarget & {
     generationTaskId?: string | null;
   };
 }): Promise<{ key: string; studioId: string }> {
-  const studioId = await resolveUploadStudioId(params);
+  const studioId =
+    params.projectId !== undefined
+      ? await resolveOwnerStudioId(params.projectId)
+      : params.studioId;
   const key = storageKey({ taskType: params.taskType, ext: params.ext });
   await issueGrant({
     userId: params.actingUserId,
