@@ -670,7 +670,7 @@ export const nodeHistory = pgTable(
      * replayed whole (design §6.4.1), so the write needs a key that identifies
      * the upload rather than the attempt. One upload is one storage key —
      * `upload_grants_storage_key_unique` already holds that — so it doubles as
-     * this one. The partial UNIQUE lives in migration 0069, like the
+     * this one. The partial UNIQUE lives in migration 0071, like the
      * generation key above.
      */
     uploadStorageKey: text("upload_storage_key"),
@@ -694,9 +694,15 @@ export const nodeHistory = pgTable(
     // WHERE entry_type='generation' AND status='success' AND deleted_at IS
     // NULL lives in migration 0036 (Drizzle's builder does not emit partial
     // unique indexes — same note as project_activities / project_invitations).
-    // createGenerationSuccessIfAbsent relies on it for ON CONFLICT DO NOTHING,
-    // so a billed generation lands in history exactly once (double-live +
-    // billed-redelivery re-record both collapse to one row).
+    // Double-live executions and a billed-redelivery re-record of one task
+    // collapse to one row through it.
+    //
+    // Content uniqueness (#2186): a partial UNIQUE (project_id, node_id,
+    // md5(content)) WHERE status='success' AND content IS NOT NULL AND
+    // deleted_at IS NULL lives in migration 0087, so a node's history holds
+    // each content once whichever entry point writes it. The repo's success
+    // inserts use a target-less ON CONFLICT DO NOTHING so either index
+    // resolves to the row already there.
   ],
 );
 
