@@ -77,8 +77,8 @@ import {
   type VirtualElement,
 } from '@floating-ui/react';
 
-import { MessageSquareText } from 'lucide-react';
 
+import { commentTool } from '@web/spaces/document/document-comment-entries';
 import {
   ToolButton,
   type ToolDef,
@@ -89,10 +89,6 @@ import {
   ColorSlot,
   AiSlot,
 } from '@web/spaces/document/document-bubble-slots';
-import {
-  ComingTool,
-  type ComingToolDef,
-} from '@web/spaces/document/document-coming-tool';
 import {
   MARK_TOOLS,
   INLINE_TOOLS,
@@ -111,7 +107,14 @@ interface BubbleGroup {
   /** Names the separator drawn before this group. */
   key: string;
   tools: ToolDef[];
-  coming: ComingToolDef[];
+  /**
+   * Tools drawn after the group's slot.
+   *
+   * The demo's order for the inline group is `link code A∨ comment`, and the
+   * slot sits third — so a tool that belongs last cannot go in `tools`, which
+   * is drawn before it.
+   */
+  after?: ToolDef[];
   /**
    * Controls that open a panel instead of running a command.
    *
@@ -151,31 +154,24 @@ interface BubbleGroup {
  * commands that used to sit flat in the first group now live inside the block
  * type menu, which is where the demo draws them.
  *
- * Comment stands here with no command behind it (its function is task #18)
- * and carries the treatment `document-coming-tool.tsx` defines (user
+ * Alignment, colour, and every AI command stand here with no command behind
+ * them — each needs schema or a model call that arrives with its own slice.
+ * They carry the treatment `document-unavailable-control.ts` defines (user
  * 2026-08-23: a control that reads as available and answers a click with
- * nothing tells the reader it is broken). No AI command reaches anything yet
- * either: each needs schema or a model call that arrives with its own slice.
- * The AI slot is drawn the way the demo draws it and opens its menu as usual.
+ * nothing tells the reader it is broken).
  */
 const BUBBLE_GROUPS: BubbleGroup[] = [
-  { key: 'blocks', tools: [], coming: [], panels: [], slot: BlockTypeSlot },
-  { key: 'align', tools: [], coming: [], panels: [], slot: AlignSlot },
-  { key: 'marks', tools: MARK_TOOLS, coming: [], panels: [] },
+  { key: 'blocks', tools: [], panels: [], slot: BlockTypeSlot },
+  { key: 'align', tools: [], panels: [], slot: AlignSlot },
+  { key: 'marks', tools: MARK_TOOLS, panels: [] },
   {
     key: 'inline',
     tools: INLINE_TOOLS,
     panels: [DocumentLinkPopover],
     slot: ColorSlot,
-    coming: [
-      {
-        id: 'comment',
-        labelKey: 'spaces.document.commands.comment',
-        Icon: MessageSquareText,
-      },
-    ],
+    after: [commentTool],
   },
-  { key: 'ai', tools: [], coming: [], panels: [], slot: AiSlot },
+  { key: 'ai', tools: [], panels: [], slot: AiSlot },
 ];
 
 /** How far from the selection the bar sits, per the ruling's visual spec. */
@@ -1130,8 +1126,8 @@ function BubbleBar({
                 onOpenChange={setMenuOpen}
               />
             ) : null}
-            {group.coming.map((tool) => (
-              <ComingTool key={tool.id} tool={tool} />
+            {(group.after ?? []).map((tool) => (
+              <ToolButton key={tool.id} tool={tool} editor={editor} />
             ))}
           </React.Fragment>
         ))}

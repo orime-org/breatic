@@ -36,7 +36,6 @@ const SlugSetupPage = lazyRoute(routeImports.slugSetupPage);
 const ForgotPasswordPage = lazyRoute(routeImports.forgotPasswordPage);
 const ResetPasswordPage = lazyRoute(routeImports.resetPasswordPage);
 const NotFoundPage = lazyRoute(routeImports.notFoundPage);
-const VerifyEmailPage = lazyRoute(routeImports.verifyEmailPage);
 
 /**
  * Top-level route table.
@@ -156,7 +155,6 @@ export const baseRoutes: RouteObject[] = [
   { path: '/recovery-code', element: <RecoveryCodePage /> },
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
-  { path: '/verify-email', element: <VerifyEmailPage /> },
   { path: '*', element: <NotFoundPage /> },
 ];
 

@@ -254,11 +254,17 @@ models:
         fields:
           prompt:
             type: "text"
+            max_chars: 512
           duration:
             values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
             default: 5
-        fill: "none"
-        note: "storyboard: built in its own task (#2218)"
+        fill: "storyboard"
+      shot_type:
+        description: "Who splits the storyboard into shots: the model (intelligence) or the reader, shot by shot (customize)"
+        label: "Storyboard tier"
+        default: null
+        values: ["intelligence", "customize"]
+        fill: "storyboard"
       negative_prompt:
         description: "What to keep out of the video"
         label: "Negative prompt"
@@ -460,11 +466,17 @@ models:
         fields:
           prompt:
             type: "text"
+            max_chars: 512
           duration:
             values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
             default: 5
-        fill: "none"
-        note: "storyboard: built in its own task (#2218)"
+        fill: "storyboard"
+      shot_type:
+        description: "Who splits the storyboard into shots: the model (intelligence) or the reader, shot by shot (customize)"
+        label: "Storyboard tier"
+        default: null
+        values: ["intelligence", "customize"]
+        fill: "storyboard"
       generate_audio:
         upstream: "sound"
         description: "Generate a soundtrack with the video"

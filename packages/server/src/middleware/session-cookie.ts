@@ -96,3 +96,57 @@ export function clearSessionCookie(c: Context): void {
     ...(domain ? { domain } : {}),
   });
 }
+
+/**
+ * The sign-up ticket's cookie is sent only to the three register routes;
+ * nothing else needs to see it.
+ */
+const SIGNUP_TICKET_PATH = "/api/v1/auth/register";
+
+/**
+ * Name of the cookie that carries a pending sign-up's ticket (#287). Prefixed
+ * like the session cookie so stacks on one host do not overwrite each other.
+ * @returns The cookie name.
+ */
+export function signupTicketCookieName(): string {
+  return `breatic_signup_${env.REDIS_KEY_PREFIX}`;
+}
+
+/**
+ * Write the sign-up ticket cookie for as long as the pending sign-up lives.
+ * @param c - The Hono request context whose response receives the cookie.
+ * @param ticket - The pending sign-up's ticket.
+ * @param maxAgeSeconds - How long the pending sign-up lives.
+ */
+export function setSignupTicketCookie(c: Context, ticket: string, maxAgeSeconds: number): void {
+  const { domain, secure } = baseOptions();
+  setCookie(c, signupTicketCookieName(), ticket, {
+    httpOnly: true,
+    secure,
+    sameSite: "Lax",
+    path: SIGNUP_TICKET_PATH,
+    maxAge: maxAgeSeconds,
+    ...(domain ? { domain } : {}),
+  });
+}
+
+/**
+ * Read the sign-up ticket from the request.
+ * @param c - The Hono request context whose cookies are read.
+ * @returns The ticket, or `null` when the browser has none.
+ */
+export function readSignupTicketCookie(c: Context): string | null {
+  return getCookie(c, signupTicketCookieName()) ?? null;
+}
+
+/**
+ * Clear the sign-up ticket cookie once the sign-up became an account.
+ * @param c - The Hono request context whose response clears the cookie.
+ */
+export function clearSignupTicketCookie(c: Context): void {
+  const { domain } = baseOptions();
+  deleteCookie(c, signupTicketCookieName(), {
+    path: SIGNUP_TICKET_PATH,
+    ...(domain ? { domain } : {}),
+  });
+}

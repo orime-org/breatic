@@ -327,6 +327,20 @@ describe('where each generation\'s prompt is found (#289)', () => {
     expect(todosOf(proposal, LINES)[0]?.notes.at(-1)).toBe('PROMPT READY');
   });
 
+  it('counts a storyboard\'s shots as the prompt the panel holds (#2218)', () => {
+    const shots = [{ prompt: [{ text: 'a boat' }], duration: 5 }];
+    const proposal = flow([{ ...generates('Clip'), prompt: [], shots }]);
+
+    expect(todosOf(proposal, LINES)).toEqual([{ nodes: ['Clip'], notes: ['PROMPT READY'] }]);
+  });
+
+  it('lists a to-do marked inside a shot (#2218)', () => {
+    const shots = [{ prompt: [{ slot: { kind: 'tweak' as const, label: 'a mood', note: 'Pick a mood' } }], duration: 5 }];
+    const proposal = flow([{ ...generates('Clip'), prompt: [], shots }]);
+
+    expect(todosOf(proposal, LINES)).toEqual([{ nodes: ['Clip'], notes: ['Pick a mood', 'PROMPT READY'] }]);
+  });
+
   it('gives an empty node and written words no such line', () => {
     const proposal = flow([empty('Your photo'), written('Your copy')]);
 

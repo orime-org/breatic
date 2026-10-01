@@ -76,6 +76,11 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
  * decisions and its role hints and per-kind request lines lost their reader.
  */
 const REMOVED_DEAD_KEYS: readonly string[] = [
+  // A comment is written in a card in the panel, where Save and Cancel are
+  // the pair every write box carries. The floating box that used to hold a
+  // Post button, and the notice it dismissed, are gone with it.
+  'spaces.document.comment.post',
+  'spaces.document.comment.dismissNotice',
   // No model the catalog carries has a vocal-free switch any more (#2156).
   'canvas.generatePanel.musicInstrumentalOnly',
   'canvas.generatePanel.musicWithVocals',

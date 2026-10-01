@@ -38,11 +38,13 @@
       "reset_link_sent": "そのメールアドレスに登録されたアカウントがあれば、リセットリンクをお送りしました。",
       "reset_success": "パスワードをリセットしました。サインインしてください。",
       "reset_recovery_success": "パスワードをリセットしました。新しいリカバリーコードを保存してください。",
-      "email_verified": "メールアドレスを確認しました。",
-      "verify_email_sent": "確認メールを送信しました。受信トレイをご確認ください。",
       "invalid_reset_token": "このパスワード再設定リンクは無効か、有効期限が切れています",
       "invalid_recovery_code": "メールアドレスまたはリカバリーコードが正しくありません",
-      "invalid_verification_token": "この確認リンクは無効か、有効期限が切れています"
+      "signup_code_invalid": "コードが正しくありません。",
+      "signup_code_exhausted": "このコードは使用できなくなりました。新しいコードを取得してください。",
+      "signup_expired": "この登録は期限切れです。",
+      "signup_resend_cooldown": "{seconds, plural, other {# 秒}}後に再度コードを取得してください。",
+      "signup_code_send_failed": "確認コードを送信できませんでした。もう一度お試しください。"
     },
     "studio": {
       "slug_taken": "その Slug はすでに使用されています。別のものを選んでください。",
@@ -216,18 +218,17 @@
         "action": "パスワードをリセット",
         "footer": "このリンクは {hours, plural, other {# 時間}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
       },
-      "email_verification": {
-        "subject": "メールアドレスの確認",
-        "lead": "Breatic へようこそ。下のボタンからメールアドレスを確認してください。",
-        "action": "メールアドレスを確認する",
-        "footer": "このリンクは {hours, plural, other {# 時間}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
-      },
       "footer": "このメールは自動送信です。返信は確認されません。",
       "help": "お困りですか？<manual>ユーザーマニュアル</manual>をご覧いただくか、<contact>{email}</contact> までご連絡ください。",
       "legal": {
         "about": "私たちについて",
         "terms": "利用規約",
         "privacy": "プライバシーポリシー"
+      },
+      "signup_code": {
+        "subject": "確認コード",
+        "lead": "登録ページで次のコードを入力して、アカウントの作成を完了してください。",
+        "footer": "このコードは {minutes, plural, other {# 分}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
       }
     }
   },
@@ -645,7 +646,24 @@
         "voice": "音声",
         "text": "テキスト",
         "pronunciation": "読み"
-      }
+      },
+      "storyboard": {
+        "label": "ストーリーボード",
+        "perShot": "ショットごとに編集",
+        "autoHint": "モデルがショットを分割します",
+        "mainPromptKept": "メインプロンプトは保持されています",
+        "back": "自動ストーリーボードに戻る",
+        "shot": "ショット {n, number}",
+        "removeShot": "削除",
+        "addShot": "ショットを追加",
+        "shotPlaceholder": "このショットを説明してください。@ で参照を追加",
+        "shotCapReached": "最大 {max, number} ショット",
+        "noSecondToSpare": "ショットを追加するには動画を長くしてください"
+      },
+      "refuseStoryboardShotEmpty": "ショット {shot, number} が空です",
+      "refuseStoryboardTooMany": "最大 {limit, number} ショット",
+      "refuseStoryboardShotTooLong": "ショット {shot, number} が{limit, number}文字の上限を超えています",
+      "refuseStoryboardDurationMismatch": "ショットの合計は{shots, number}秒、動画は{total, number}秒です"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -811,7 +829,16 @@
       "haveAccount": "すでにアカウントをお持ちですか?",
       "signIn": "サインイン",
       "passwordHint": "8 文字以上にしてください。",
-      "failed": "登録に失敗しました。もう一度お試しください。"
+      "failed": "登録に失敗しました。もう一度お試しください。",
+      "code": {
+        "title": "メールアドレスの確認",
+        "sentTo": "{email} に 6 桁のコードを送信しました",
+        "codeLabel": "確認コード",
+        "resend": "コードを再送信",
+        "resendIn": "{seconds} 秒後に再送信できます",
+        "changeEmail": "別のメールアドレスを使う",
+        "newCodeSent": "新しいコードを送信しました。"
+      }
     },
     "onboarding": {
       "title": "Slug を選択",
@@ -835,15 +862,17 @@
     },
     "forgot": {
       "title": "パスワードをお忘れですか?",
-      "subtitle": "リセットリンクをメールでお送りするか、リカバリーコードをお使いください。",
       "sendResetLink": "リセットリンクをメール送信",
       "sending": "送信中...",
       "useRecoveryCode": "リカバリーコードを使う",
       "sentTitle": "受信トレイをご確認ください",
       "sentSubtitle": "そのアドレスに登録されたアカウントがあれば、リセットリンクをお送りしました。",
-      "sentBody": "{email} にリセットリンクを送信しました。数分経っても届かない場合は、迷惑メールをご確認いただくか、リカバリーコードをご利用ください。",
+      "sentBody": "{email} に再設定リンクを送信しました。数分たっても届かない場合は、迷惑メールフォルダを確認してください。",
       "backToSignIn": "サインインに戻る",
-      "failed": "リセットリンクの送信に失敗しました。もう一度お試しください。"
+      "failed": "リセットリンクの送信に失敗しました。もう一度お試しください。",
+      "subtitleEmail": "パスワード再設定用のリンクをメールでお送りします。",
+      "subtitleRecovery": "登録時に保存したリカバリーコードを使ってください。",
+      "optionsFailed": "ページを読み込めませんでした。再読み込みしてください。"
     },
     "reset": {
       "titleToken": "新しいパスワードを設定",
@@ -858,19 +887,6 @@
       "success": "パスワードを更新しました。サインインしてください。",
       "failed": "パスワードのリセットに失敗しました。もう一度お試しください。",
       "backToSignIn": "サインインに戻る"
-    },
-    "verify": {
-      "verifying": "メールアドレスを確認中...",
-      "pleaseWait": "少々お待ちください。",
-      "successTitle": "メールアドレスが確認されました",
-      "successBody": "メールアドレスが確認されました。breatic のすべての機能をご利用いただけます。",
-      "goToStudio": "Studio へ",
-      "failedTitle": "メールアドレスの確認に失敗しました",
-      "failedBody": "リンクの有効期限が切れているか、既に使用済みの可能性があります。サインイン後、アカウント設定から新しい確認メールをリクエストしてください。",
-      "checkInboxTitle": "受信トレイをご確認ください",
-      "checkInboxBody": "先ほどお送りした確認リンクを開いてください。届いていない場合は、アカウント設定から再送できます。",
-      "signIn": "サインイン",
-      "failed": "メールアドレスの確認に失敗しました。"
     }
   },
   "roleTag": {
@@ -1105,6 +1121,27 @@
         "ai_illustrate": "この段落から図を作る",
         "ai_custom": "カスタム指示…"
       },
+      "comment": {
+        "placeholder": "コメントを書く",
+        "targetGone": "対象の文章は変更または削除されました。",
+        "cannotWrite": "ここには書き込めなくなりました。",
+        "railTitle": "コメント",
+        "filterOpen": "未解決",
+        "filterAll": "すべて",
+        "closeRail": "コメント欄を閉じる",
+        "empty": "このドキュメントにはまだコメントがありません。本文を選択するか、行の左からコメントを追加できます。",
+        "nothingUnresolved": "未解決のコメントはありません。",
+        "writeFailed": "この変更を保存できませんでした。",
+        "unknownAuthor": "不明",
+        "folded": "他 {count} 件",
+        "reply": "返信…",
+        "save": "保存",
+        "cancel": "キャンセル",
+        "resolve": "解決",
+        "reopen": "再開",
+        "deleteThread": "削除",
+        "deleteReply": "この返信を削除"
+      },
       "schemaOutdated": {
         "headline": "ドキュメントエディターが更新されました",
         "body": "このページは古いバージョンで動作しており、ここで編集すると他の人が書いた内容を壊してしまいます。",
@@ -1117,7 +1154,10 @@
         "label": "ドキュメント全体の操作",
         "saveSnapshot": "スナップショットを保存",
         "restoreSnapshot": "スナップショットを復元",
-        "notOpenYet": "未提供"
+        "notOpenYet": "未提供",
+        "comments": "コメント",
+        "commentsUnresolved": "未解決 {count} 件",
+        "commentsNone": "なし"
       },
       "link": {
         "placeholder": "URL を貼り付けるか入力",

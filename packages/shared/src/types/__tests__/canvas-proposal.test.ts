@@ -8,7 +8,7 @@
  * the reader fills belongs in the slot first: a run without it cannot go.
  */
 import { describe, expect, it } from "vitest";
-import { nameableFeeders, type CanvasProposal, type ProposalNode } from "@shared/types/canvas-proposal";
+import { nameableFeeders, proposalMarkSegments, type CanvasProposal, type ProposalNode } from "@shared/types/canvas-proposal";
 
 const photo = (name: string): ProposalNode => ({ role: "source", type: "image", name });
 
@@ -73,3 +73,19 @@ describe("nameableFeeders", () => {
   });
 });
 
+describe("the marks of a node with shots (#2218)", () => {
+  const pooled = { ...mixedRun, slotKinds: [] };
+  const asset = (label: string) => ({ slot: { kind: "asset" as const, label, note: "" } });
+
+  it("reads the main prompt first, then each shot in order", () => {
+    const node: ProposalNode = {
+      ...pooled,
+      prompt: [{ text: "a " }, asset("a")],
+      shots: [
+        { prompt: [asset("b")], duration: 2 },
+        { prompt: [{ text: "then " }, asset("c")], duration: 3 },
+      ],
+    };
+    expect(proposalMarkSegments(node).filter((s) => s.slot).map((s) => s.slot?.label)).toEqual(["a", "b", "c"]);
+  });
+});

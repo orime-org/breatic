@@ -33,7 +33,7 @@
 
 import type { ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { AppError } from "@breatic/core";
+import { AppError, TooManyRequestsError } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { t } from "@breatic/shared";
 
@@ -53,6 +53,19 @@ export const errorHandler: ErrorHandler = (err, c) => {
       logger.warn(
         { status: err.statusCode, name: err.name, path: c.req.path },
         "auth_rejected",
+      );
+    }
+    if (err instanceof TooManyRequestsError) {
+      return c.json(
+        {
+          error: {
+            code: err.statusCode,
+            message: err.message,
+            retryAfterSeconds: err.retryAfterSeconds,
+          },
+        },
+        429,
+        { "Retry-After": String(err.retryAfterSeconds) },
       );
     }
     return c.json(

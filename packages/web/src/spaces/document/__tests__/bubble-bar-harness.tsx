@@ -135,6 +135,7 @@ export function mountDocumentEditor(
       <DocumentEditor
         handle={{ editor, surface }}
         readOnly={readOnly}
+        myRole={readOnly ? 'viewer' : 'editor'}
       />
     </TooltipProvider>,
   );

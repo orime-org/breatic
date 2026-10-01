@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from "vitest";
-import type { FullModelEntry } from "@breatic/domain";
+import type { FullModelEntry, VoiceSampleConfig } from "@breatic/domain";
 
-import { planVoiceSamples, type VoiceSampleConfig } from "@worker/voice-samples/plan.js";
+import { planVoiceSamples } from "@worker/voice-samples/plan.js";
 
 const CONFIG: VoiceSampleConfig = {
+  base_url: "https://samples.test",
   languages: {
     en: { text: "Hello.", boost: "English" },
     zh: { text: "Ni hao.", boost: "Chinese" },

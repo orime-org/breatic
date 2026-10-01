@@ -222,13 +222,21 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
           // A menu whose contents are rows keeps a gap between them (user
           // 2026-08-27). The bubble bar's own menus are the family this one
           // joins, and theirs measures 4px.
-          className='flex flex-col gap-1'
+          rowsClassName='flex flex-col gap-1'
           // Back to the body, at the caret the reader left there: the strip is
           // not a place to be after the menu closes, and typing has to land in
-          // the document (A11).
+          // the document (A11). A row that took the focus somewhere on purpose
+          // keeps it there — the comment row's draft box focuses itself before
+          // this runs, and the reader is about to type into it (design §9.4.0).
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            editor.focus();
+            const holder = document.activeElement;
+            const unclaimed =
+              holder === null ||
+              holder === document.body ||
+              holder.closest('[role="menu"]') !== null ||
+              holder.closest(`[data-row-id="${block.id}"]`) !== null;
+            if (unclaimed) editor.focus();
           }}
         >
           <DocumentBlockMenu

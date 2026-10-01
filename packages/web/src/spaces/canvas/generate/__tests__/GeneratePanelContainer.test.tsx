@@ -80,13 +80,25 @@ import {
   readCanvasGraph,
   removeNode,
   setNodeModel,
+  nodeDataMap,
 } from '@web/data/yjs/canvas-space';
-import { _resetForTests } from '@web/data/yjs/manager';
+import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { useCanvasStore } from '@web/stores';
 import {
   LOCALE_CATALOGS,
   readPath,
 } from '@web/test-utils/locale-catalogs';
+
+/**
+ * The mode the panel binds its editors to: the node's stored mode, else the
+ * first mode this panel offers (#2218 keeps one prompt per mode).
+ * @returns The mode.
+ */
+function storedMode(): string {
+  const mode = nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.get('mode');
+  return typeof mode === 'string' ? mode : 't2i';
+}
+
 
 type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
 
@@ -582,7 +594,7 @@ function imageCatalog(models: ModelEntry[] = [T2I_MODEL]): ModelCatalog {
 
 /** 往节点的提示词片段里放一句话，编辑器 onCreate 时会把它回调进镜像。 */
 function seedPromptText(text: string): void {
-  const fragment = getPromptFragment('p', 's', 'target');
+  const fragment = getPromptFragment('p', 's', 'target', storedMode());
   if (!fragment) throw new Error('node has no prompt fragment');
   const paragraph = new Y.XmlElement('paragraph');
   const words = new Y.XmlText();
@@ -1084,7 +1096,7 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
       expect((btn as HTMLButtonElement).disabled).toBe(true);
     });
     // 请求还在飞的时候清空提示词。
-    const fragment = getPromptFragment('p', 's', 'target');
+    const fragment = getPromptFragment('p', 's', 'target', storedMode());
     act(() => {
       fragment?.delete(0, fragment.length);
     });

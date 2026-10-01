@@ -160,13 +160,6 @@ describe('routes', () => {
       await screen.findByRole('heading', { name: 'Forgot your password?' }),
     ).toBeInTheDocument();
   });
-
-  it('/verify-email (no token) renders the check-inbox state', async () => {
-    render(<AppRouter router={makeRouter('/verify-email')} />);
-    expect(
-      await screen.findByRole('heading', { name: 'Check your inbox' }),
-    ).toBeInTheDocument();
-  });
 });
 
 it.each([

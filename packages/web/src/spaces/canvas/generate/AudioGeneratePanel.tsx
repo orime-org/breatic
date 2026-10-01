@@ -39,7 +39,7 @@ const SHELL =
   'flex w-[min(600px,92vw)] flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md';
 
 interface AudioGeneratePanelProps {
-  /** The tts models this panel offers. */
+  /** The tts and audio models this panel offers. */
   models: ModelEntry[];
   /** The selected model id. */
   model: string;
@@ -144,7 +144,7 @@ interface AudioGeneratePanelProps {
  * Presentational throughout; every piece of node data and every Yjs write is
  * threaded in by the container.
  * @param root0 - Component props.
- * @param root0.models - The tts models to offer.
+ * @param root0.models - The tts and audio models to offer.
  * @param root0.model - The selected model id.
  * @param root0.currentModel - That model's catalog entry.
  * @param root0.creditText - The run's estimate as printed beside the star.

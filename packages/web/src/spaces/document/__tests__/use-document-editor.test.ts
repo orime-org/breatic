@@ -115,6 +115,7 @@ describe('useDocumentEditor', () => {
         doc,
         name,
         caretProvider: { awareness },
+        readWho: () => ({ role: 'editor', viewerId: 'u1' }),
       }),
     );
   }
@@ -216,6 +217,7 @@ describe('useDocumentEditor', () => {
           doc,
           name: NAME,
           caretProvider: null,
+          readWho: () => ({ role: 'editor', viewerId: 'u1' }),
         }),
       );
       expect(result.current).toBeNull();

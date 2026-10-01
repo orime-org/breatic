@@ -50,14 +50,14 @@ cp .env.docker .env
 
 Alternatively, extract the source ZIP and enter the directory containing `docker-compose.yml`, `Dockerfile` and `package.json`. Run subsequent commands from that root. Do not overwrite an existing `.env`.
 
-**Keep versions together.** Application images, Ingest source and deployment configuration should come from the same release. `BREATIC_TAG` selects both application image tags; confirm that both exist before selecting a release. Do not invent a version number. `main` and `latest` move over time and are suitable for evaluation, not a reproducible release. When evaluating branch images, record their actual digests and the source commit. Editing local configuration does not update files already baked into an image.
+**Keep versions together.** Images, Ingest source and configuration must match the selected release. Set `BREATIC_TAG` to an existing published full tag (for example `v0.2.0`, only an example). There is no floating default; `main` / `latest` are no longer updated. See [Versioned releases](RELEASE.md).
 
 ## 3. Configure the application
 
 Edit existing entries in `.env`, keeping one definition per key. For an initial HTTP installation accessible only from this computer:
 
 ```dotenv
-BREATIC_TAG=main
+BREATIC_TAG=<published-release-tag>
 WEB_BIND_ADDRESS=127.0.0.1
 ENV=dev
 COOKIE_DOMAIN=
@@ -205,9 +205,9 @@ docker compose ps -a
 docker compose logs --tail=100 migrate
 ```
 
-Startup order is infrastructure health, migrations for both databases, application services, then web. A successful `migrate` exit (`Exited (0)`) is expected; it is not a long-running service. `voice-samples` is another one-shot service: it makes the voice samples the catalog names that this deployment's storage bucket does not hold yet (`pnpm voice-samples` does the same outside Docker). Nothing waits on it; a non-zero exit means some samples are still missing, and the next deploy makes them. Other services should run, with server, collab, worker, postgres and redis healthy.
+Startup order is infrastructure health, migrations for both databases, application services, then web. A successful `migrate` exit (`Exited (0)`) is expected; it is not a long-running service. Other services should run, with server, collab, worker, postgres and redis healthy.
 
-Open **http://localhost**, register your own account, save the recovery code and complete your personal Studio setup. Do not bypass a failed migration to start the application.
+Open **http://localhost**, register your own account and complete your personal Studio setup. With `EMAIL_BACKEND=console` the six-digit sign-up code is printed in `docker compose logs server` (the `[console] email` line); with `EMAIL_BACKEND=disabled` you save the recovery code shown instead. Do not bypass a failed migration to start the application.
 
 For an older PostgreSQL volume missing the second database, confirm that it is absent before creating it:
 

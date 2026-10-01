@@ -106,22 +106,41 @@ export function serializePromptText(
   blockSeparator = '\n\n',
   tokens: MentionTokens = NO_MENTION_TOKENS,
 ): string {
+  const words = chipWordsReader(pool, tokens);
+  return editor.getText({
+    blockSeparator,
+    textSerializers: {
+      [REFERENCE_MENTION_NODE]: ({ node }): string =>
+        words(
+          node.attrs[MENTION_SOURCE_ID_ATTR] as string | null,
+          node.attrs[MENTION_KIND_ATTR] as string | null,
+        ),
+    },
+  });
+}
+
+/**
+ * What a chip reads as in the prompt the model gets: a text chip its source's
+ * words, any other chip its token. One rule for every reader of a prompt, the
+ * mounted editor and the fragment read at submit alike (#2218).
+ * @param pool - The node's reference rows, for what a text chip says.
+ * @param tokens - Each media chip's words, by source id.
+ * @returns Reads one chip, given its source id and kind.
+ */
+export function chipWordsReader(
+  pool: ReadonlyArray<ReferenceRailItem>,
+  tokens: MentionTokens,
+): (id: string | null, kind: string | null) => string {
   const textById = new Map(
     pool
       .filter((r) => r.sourceNodeType === 'text')
       .map((r) => [r.sourceNodeId, r.textContent ?? '']),
   );
-  return editor.getText({
-    blockSeparator,
-    textSerializers: {
-      [REFERENCE_MENTION_NODE]: ({ node }): string => {
-        const id = node.attrs[MENTION_SOURCE_ID_ATTR] as string | null;
-        if (id == null) return '';
-        if (node.attrs[MENTION_KIND_ATTR] !== 'text') return Object.hasOwn(tokens, id) ? tokens[id]! : '';
-        return textById.get(id) ?? '';
-      },
-    },
-  });
+  return (id, kind) => {
+    if (id == null) return '';
+    if (kind === 'text') return textById.get(id) ?? '';
+    return Object.hasOwn(tokens, id) ? tokens[id]! : '';
+  };
 }
 
 /**

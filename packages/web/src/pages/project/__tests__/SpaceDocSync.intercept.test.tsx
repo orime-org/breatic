@@ -86,6 +86,7 @@ describe('一个开着但没在看的 document tab', () => {
     // 挂在页面上 —— 销毁的是它的视图，没挂载就分辨不出前后。
     const handle = getDocumentEditor(bodyDoc, name, {
       caretProvider: { awareness: socketAwareness } as never,
+      readWho: () => ({ role: 'editor', viewerId: 'u1' }),
       editable: true,
     });
     show(handle);
@@ -112,6 +113,7 @@ describe('一个开着但没在看的 document tab', () => {
 
     const handle = getDocumentEditor(bodyDoc, name, {
       caretProvider: { awareness: socketAwareness } as never,
+      readWho: () => ({ role: 'editor', viewerId: 'u1' }),
       editable: true,
     });
     show(handle);

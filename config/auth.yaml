@@ -1,0 +1,13 @@
+# Sign-up with a code sent by email (#287). Read by the server only while
+# EMAIL_BACKEND is smtp or console; with email disabled an email sign-up
+# creates the account at once and none of this applies.
+
+signup_code:
+  # How long a code (and the pending sign-up behind it) lives.
+  ttl_seconds: 600
+  # Comparisons one code allows; the last wrong one retires it.
+  max_attempts_per_code: 5
+  # Shortest gap between two codes to the same address. Together with the
+  # per-code limit this bounds guesses at one address to
+  # 3600 / resend_cooldown_seconds * max_attempts_per_code an hour.
+  resend_cooldown_seconds: 60

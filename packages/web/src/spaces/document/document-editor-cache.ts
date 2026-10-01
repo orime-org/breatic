@@ -62,6 +62,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import type { DocumentCommentAuthInput } from '@web/spaces/document/document-comment-auth';
 import { viewOf } from '@web/spaces/document/document-editor-view';
 import { documentChordsExtension } from '@web/spaces/document/document-block-chords';
 import { documentCaretExtension } from '@web/spaces/document/document-caret';
@@ -122,6 +123,14 @@ export interface DocumentEditorInputs {
   /** Resolves collaborators' display names from the project roster (#1882). */
   resolveCollaboratorName?: ResolveCollaboratorName;
   /**
+   * Who is reading, for every question the comment store asks.
+   *
+   * A reading rather than a value, and it has to stay one: the editor is
+   * built once and this interface is ignored on a cache hit, so a role
+   * captured here would be the role this document was first opened with.
+   */
+  readWho: () => DocumentCommentAuthInput;
+  /**
    * Whether this client may type.
    *
    * Unlike the rest of this interface it is honoured on a cache HIT too — see
@@ -148,6 +157,7 @@ function createDocumentEditor(
 
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
+    comments: { doc, readWho: inputs.readWho },
     extensions: [
       // The awareness is withheld from BlockNote's own collaboration wiring and
       // handed to this plugin instead; `build-document-editor` carries why.

@@ -75,6 +75,7 @@
     "dayjs": "^1.11.21",
     "hash-wasm": "^4.12.0",
     "immer": "^11.1.16",
+    "input-otp": "1.5.0",
     "katex": "0.16.47",
     "keycon": "^1.4.0",
     "lib0": "catalog:",

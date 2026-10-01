@@ -110,6 +110,12 @@ export type ProposalRole = "source" | "generate" | "written";
 /** Every node kind a proposal can place: the three that generate, plus text. */
 export type ProposalNodeType = GenerationNodeType | "text";
 
+/** One shot of a proposed per-shot storyboard. */
+export interface ProposalShot {
+  prompt: PromptSegment[];
+  duration: number;
+}
+
 /** One node of a proposal, before anything is placed. */
 export interface ProposalNode {
   role: ProposalRole;
@@ -119,6 +125,17 @@ export interface ProposalNode {
   model?: string;
   params?: Record<string, unknown>;
   prompt?: PromptSegment[];
+  /**
+   * The storyboard tier to set (#2218): `auto` lets the model split the main
+   * prompt into shots. Absent means none, unless {@link ProposalNode.shots}
+   * sets the per-shot tier.
+   */
+  storyboard?: "auto";
+  /**
+   * The shots of a per-shot storyboard (#2218), each with its own prompt and
+   * whole seconds. Present means the node lands in the per-shot tier.
+   */
+  shots?: ProposalShot[];
   /**
    * The kinds this generation's reference pool takes, answered by the check,
    * not the model (#2156: a model takes pictures, clips and tracks each in a
@@ -304,6 +321,18 @@ export function nameableFeeders(
     upstream: keepingPlaces(held.upstream.filter((i) => !slotted.includes(i)), true),
     slotted,
   };
+}
+
+/**
+ * Every segment of a node that can carry a mark, in the one order the tool,
+ * the card and the canvas all pair marks with feeders by: the main prompt,
+ * then each shot in turn (#2218).
+ * @param node - The proposed node.
+ * @returns The segments in pairing order.
+ * @throws {never} Never.
+ */
+export function proposalMarkSegments(node: ProposalNode): PromptSegment[] {
+  return [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
 }
 
 /**

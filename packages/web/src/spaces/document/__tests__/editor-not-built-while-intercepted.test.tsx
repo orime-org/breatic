@@ -17,6 +17,8 @@ import { renderHook } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
+import type { ProjectRole } from '@breatic/shared';
+
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 
@@ -43,6 +45,7 @@ function make(): {
   doc: Y.Doc;
   name: string;
   caretProvider: { awareness: Awareness };
+  readWho: () => { role: ProjectRole; viewerId: string };
   } {
   const doc = new Y.Doc();
   docs.push(doc);
@@ -52,15 +55,16 @@ function make(): {
     doc,
     name: 'project.p1.space.s1.document',
     caretProvider: { awareness },
+    readWho: () => ({ role: 'editor', viewerId: 'u1' }),
   };
 }
 
 describe('拦截成立时', () => {
   it('一开始就成立 → 编辑器根本不被创建', () => {
-    const { doc, name, caretProvider } = make();
+    const { doc, name, caretProvider, readWho } = make();
 
     const { result } = renderHook(() =>
-      useDocumentEditor({ doc, name, caretProvider, enabled: false }),
+      useDocumentEditor({ doc, name, caretProvider, readWho, enabled: false }),
     );
 
     expect(result.current).toBeNull();
@@ -77,11 +81,11 @@ describe('拦截成立时', () => {
     //
     // 这个 hook 剩下的那一半仍然要成立：`enabled` 一旦为假，它不再把编辑器
     // 交给调用方，于是界面上不会再有一个能打字的东西。
-    const { doc, name, caretProvider } = make();
+    const { doc, name, caretProvider, readWho } = make();
 
     const { result, rerender } = renderHook(
       ({ enabled }: { enabled: boolean }) =>
-        useDocumentEditor({ doc, name, caretProvider, enabled }),
+        useDocumentEditor({ doc, name, caretProvider, readWho, enabled }),
       { initialProps: { enabled: true } },
     );
 
@@ -96,11 +100,11 @@ describe('拦截成立时', () => {
   });
 
   it('销毁之后再渲染，也不会又建一个出来', () => {
-    const { doc, name, caretProvider } = make();
+    const { doc, name, caretProvider, readWho } = make();
 
     const { result, rerender } = renderHook(
       ({ enabled }: { enabled: boolean }) =>
-        useDocumentEditor({ doc, name, caretProvider, enabled }),
+        useDocumentEditor({ doc, name, caretProvider, readWho, enabled }),
       { initialProps: { enabled: true } },
     );
     rerender({ enabled: false });
@@ -112,21 +116,21 @@ describe('拦截成立时', () => {
 
 describe('拦截不成立时', () => {
   it('照常创建', () => {
-    const { doc, name, caretProvider } = make();
+    const { doc, name, caretProvider, readWho } = make();
 
     const { result } = renderHook(() =>
-      useDocumentEditor({ doc, name, caretProvider, enabled: true }),
+      useDocumentEditor({ doc, name, caretProvider, readWho, enabled: true }),
     );
 
     expect(result.current?.editor).toBeDefined();
     expect(result.current?.editor.document).toHaveLength(1);
   });
 
-  it('不传这个参数就是照常创建——既有调用方一个字都不用改', () => {
-    const { doc, name, caretProvider } = make();
+  it('builds as usual when `enabled` is left out', () => {
+    const { doc, name, caretProvider, readWho } = make();
 
     const { result } = renderHook(() =>
-      useDocumentEditor({ doc, name, caretProvider }),
+      useDocumentEditor({ doc, name, caretProvider, readWho }),
     );
 
     expect(result.current?.editor).toBeDefined();

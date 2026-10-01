@@ -22,6 +22,39 @@ const css = readFileSync(
 ).replace(/\/\*[\s\S]*?\*\//g, '');
 
 /**
+ * Whether any selector in a list ends in the given text.
+ *
+ * A list is one rule reaching every one of its members, so a rule that also
+ * paints something else is still the rule for this.
+ * @param selector - A selector list, as written.
+ * @param endsWith - The tail of the selector.
+ * @returns True when one of its members ends in it.
+ */
+function endsIn(selector: string, endsWith: string): boolean {
+  return selector.split(',').some((member) => member.trim().endsWith(endsWith));
+}
+
+/**
+ * The selector of the one rule whose selector ends in the given text.
+ *
+ * For the cases that ask a real DOM whether a rule reaches it: read from here
+ * rather than retyped, so a selector edited in the stylesheet is the one being
+ * matched rather than a copy of what it used to say.
+ * @param endsWith - The tail of the selector.
+ * @returns That rule's selector, as written.
+ * @throws {Error} When no rule, or more than one, matches.
+ */
+export function selectorEndingIn(endsWith: string): string {
+  const found = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((match) =>
+    endsIn(match[1], endsWith),
+  );
+  if (found.length !== 1) {
+    throw new Error(`${String(found.length)} rules end in ${endsWith}`);
+  }
+  return found[0][1].trim();
+}
+
+/**
  * The body of the one rule whose selector ends in the given text.
  * @param endsWith - The tail of the selector.
  * @returns That rule's declarations.
@@ -29,7 +62,7 @@ const css = readFileSync(
  */
 export function ruleBody(endsWith: string): string {
   const found = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((match) =>
-    match[1].trim().endsWith(endsWith),
+    endsIn(match[1], endsWith),
   );
   if (found.length !== 1) {
     throw new Error(`${String(found.length)} rules end in ${endsWith}`);
@@ -55,7 +88,10 @@ export function declarationsOf(
   const found: { selector: string; value: string }[] = [];
   for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
     const selector = rule[1].trim();
-    if (!selector.includes(selectorContains)) continue;
+    // What a selector names inside `:not(...)` is what it refuses to reach,
+    // so a rule mentioning a class there is not a rule about that class.
+    const reaches = selector.replace(/:not\([^)]*\)/g, '');
+    if (!reaches.includes(selectorContains)) continue;
     for (const declaration of rule[2].matchAll(
       new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*([^;]+)`, 'g'),
     )) {

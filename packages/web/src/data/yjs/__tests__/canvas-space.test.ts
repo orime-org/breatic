@@ -21,7 +21,6 @@ import {
   runCanvasUndoBatch,
   setGroupBackground,
   getLyricsFragment,
-  readNodeFragments,
   getPromptFragment,
   isNodeLocked,
   setNodeStyleImage,
@@ -122,11 +121,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
           // Eager-seeded at birth (concurrent-first-crop safety) — the
           // wire carries an empty array, inert for every reader.
           focusImages: [],
-          // Seeded at birth too (#1880): an empty prompt container, so two
-          // people opening the panel share one instead of each minting theirs.
-          // The view carries its serialized form; the editor binds to the live
-          // fragment through getPromptFragment, not through this projection.
-          prompt: '',
         },
       },
     ]);
@@ -178,7 +172,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
       errorMessage: undefined,
       locked: false,
       focusImages: [],
-      prompt: '',
     });
   });
 
@@ -861,63 +854,52 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(removeNodeFocusImage(PID, SID, 'ghost-node', 'f1')).toBe(false);
   });
 
-  it('getPromptFragment reads the fragment the node was born with', () => {
+  it('getPromptFragment reads the fragment the node was born with, per mode', () => {
     addNode(PID, SID, sampleFields('image'));
-    const frag = getPromptFragment(PID, SID, 'n1');
+    const frag = getPromptFragment(PID, SID, 'n1', 't2i');
     expect(frag).toBeInstanceOf(Y.XmlFragment);
     const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
-    expect(data.get('prompt')).toBe(frag);
+    expect((data.get('prompts') as Y.Map<unknown>).get('t2i')).toBe(frag);
+    expect(getPromptFragment(PID, SID, 'n1', 'i2i')).not.toBe(frag);
   });
 
   it('getPromptFragment returns the same fragment on repeat calls', () => {
     addNode(PID, SID, sampleFields('image'));
-    expect(getPromptFragment(PID, SID, 'n1')).toBe(
-      getPromptFragment(PID, SID, 'n1'),
+    expect(getPromptFragment(PID, SID, 'n1', 't2i')).toBe(
+      getPromptFragment(PID, SID, 'n1', 't2i'),
     );
   });
 
-  it('getPromptFragment returns null for a missing node', () => {
-    expect(getPromptFragment(PID, SID, 'ghost')).toBeNull();
+  it('getPromptFragment returns null for a missing node or a mode it does not have', () => {
+    expect(getPromptFragment(PID, SID, 'ghost', 't2i')).toBeNull();
+    addNode(PID, SID, sampleFields('image'));
+    expect(getPromptFragment(PID, SID, 'n1', 't2v')).toBeNull();
   });
 
   // Born with the node, never created on demand (#1960). Lazy creation is what
   // lost content in #1880: two clients each making their own container merged
   // into one that kept a single client's words and dropped the other's.
-  it('getLyricsFragment reads the fragment an audio node was born with', () => {
+  it('getLyricsFragment reads the fragment an audio node was born with, per mode', () => {
     addNode(PID, SID, sampleFields('audio'));
-    const frag = getLyricsFragment(PID, SID, 'n1');
+    const frag = getLyricsFragment(PID, SID, 'n1', 't2m');
     expect(frag).toBeInstanceOf(Y.XmlFragment);
     const data = (doc().getMap('nodesMap').get('n1') as Y.Map<unknown>).get(
       'data',
     ) as Y.Map<unknown>;
-    expect(data.get('lyrics')).toBe(frag);
+    expect((data.get('lyrics') as Y.Map<unknown>).get('t2m')).toBe(frag);
   });
 
   it('getLyricsFragment reads nothing on a node that asks for no lyrics', () => {
-    // Only the two music modes collect words to sing, and they live on audio
-    // nodes alone — a container here would be one nothing ever reads.
+    // Words to sing live on audio nodes alone — a container here would be one
+    // nothing ever reads.
     addNode(PID, SID, sampleFields('image'));
-    expect(getLyricsFragment(PID, SID, 'n1')).toBeNull();
+    expect(getLyricsFragment(PID, SID, 'n1', 't2m')).toBeNull();
   });
 
   it('getLyricsFragment returns null for a missing node', () => {
-    expect(getLyricsFragment(PID, SID, 'ghost')).toBeNull();
-  });
-
-
-  it('readNodeFragments reads every fragment a node holds, by field', () => {
-    addNode(PID, SID, sampleFields('audio'));
-    const fragments = readNodeFragments(PID, SID, 'n1');
-    expect(fragments).toEqual({
-      prompt: getPromptFragment(PID, SID, 'n1'),
-      lyrics: getLyricsFragment(PID, SID, 'n1'),
-    });
-  });
-
-  it('readNodeFragments reads nothing for a missing node', () => {
-    expect(readNodeFragments(PID, SID, 'ghost')).toEqual({});
+    expect(getLyricsFragment(PID, SID, 'ghost', 't2m')).toBeNull();
   });
 
   it('isNodeLocked reflects the live lock state (fresh Yjs read)', () => {

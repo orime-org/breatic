@@ -66,8 +66,14 @@ const DARKEST = 18;
  * is a hue because that is what was measured on screen, and nothing derives
  * from it — it is read by the body's `::selection` and by the decoration
  * that stands in for one, and by nothing else.
+ *
+ * `comment` is the same shape: the wash over words somebody commented on.
+ * The chrome around a document stays neutral, and a mark inside the prose
+ * is the standing exception to that — a highlight the reader has to be able
+ * to pick out from the text it sits on. Only the two washes derive from it,
+ * both by mixing it with transparency.
  */
-const COLOURFUL = /(palette|status|note|selection)/i;
+const COLOURFUL = /(palette|status|note|selection|comment)/i;
 
 /**
  * Wraps one message as this check's single-finding result.

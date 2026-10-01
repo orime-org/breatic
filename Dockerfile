@@ -31,6 +31,11 @@ RUN pnpm install --offline --frozen-lockfile --ignore-scripts=false
 # Build backend packages (shared → core → server + collab + worker)
 RUN pnpm turbo build --filter=@breatic/server --filter=@breatic/collab --filter=@breatic/worker
 
+# Build metadata belongs to the artifact, not the operator's runtime .env.
+ARG RELEASE_VERSION=0.0.0-dev
+ARG VCS_REF=unknown
+RUN node scripts/release.mjs build-info "$RELEASE_VERSION" "$VCS_REF" /app/build-info.json
+
 # Deploy production-only deps for server, worker, and collab
 RUN pnpm deploy --filter=@breatic/server --prod /app/deploy/server
 RUN pnpm deploy --filter=@breatic/worker --prod /app/deploy/worker
@@ -81,6 +86,8 @@ COPY --from=builder /app/packages/domain/package.json ./packages/domain/
 # Shared: built output
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/
+
+COPY --from=builder /app/build-info.json ./build-info.json
 
 # Runtime config, skills, locales
 COPY config/ ./config/

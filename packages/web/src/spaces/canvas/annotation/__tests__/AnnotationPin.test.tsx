@@ -39,7 +39,7 @@ describe('the pin a collapsed annotation is', () => {
     // every reply, so the same pin would keep changing face (§8.7.1).
     drawPin();
     expect(screen.getByTestId('annotation-pin-avatar')).toBeInTheDocument();
-    expect(screen.getByText('AL')).toBeInTheDocument();
+    expect(screen.getByText('A')).toBeInTheDocument();
   });
 
   it('holds the face at one size whether or not the name has landed', () => {

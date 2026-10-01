@@ -18,6 +18,7 @@ import { toast } from '@web/lib/toast';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useCurrentUserStore } from '@web/stores/current-user';
 import type { SpaceBodyProps } from '@web/spaces';
 import { DocumentSchemaOutdated } from '@web/spaces/document/DocumentSchemaOutdated';
 import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-schema-intercept';
@@ -39,14 +40,27 @@ import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
  * @param root0.spaceId - ID of the document space.
  * @param root0.projectId - ID of the owning project.
  * @param root0.readOnly - True for a viewer; the body goes read-only.
+ * @param root0.myRole - This reader's role on the project.
  * @returns The document editor, or a loading placeholder while it mounts.
  */
 export function DocumentSpace({
   spaceId,
   projectId,
   readOnly = false,
+  myRole = 'viewer',
 }: SpaceBodyProps): React.JSX.Element {
   const t = useTranslation();
+  const viewerId = useCurrentUserStore((state) => state.user?.id);
+
+  // The comment store asks who is reading before every write it authorises,
+  // and it asks the editor — which is built once per document and kept across
+  // Space-tab switches. So what it gets is a reading off the latest render
+  // rather than the values this one happened to have: a reader demoted while
+  // the document is open stops being able to write (A17), and one promoted
+  // starts, neither of them needing the Space reopened.
+  const who = React.useRef({ role: myRole, viewerId });
+  who.current = { role: myRole, viewerId };
+  const readWho = React.useCallback(() => who.current, []);
   const name = docName.documentSpace(projectId, spaceId);
   const doc = React.useMemo(() => getDoc(name), [name]);
   // `hasEverSynced` rather than `synced`: the latter answers "is the socket in
@@ -109,6 +123,7 @@ export function DocumentSpace({
     doc,
     name,
     caretProvider: provider,
+    readWho,
     // Only the ROLE decides this. A refused or read-only connection is reported
     // to the user, not enforced against them — see above.
     editable: !readOnly,
@@ -205,7 +220,7 @@ export function DocumentSpace({
           </Button>
         </div>
       ) : shown ? (
-        <DocumentEditor handle={shown} readOnly={readOnly} />
+        <DocumentEditor handle={shown} readOnly={readOnly} myRole={myRole} />
       ) : (
         <div
           data-testid='document-space-loading'

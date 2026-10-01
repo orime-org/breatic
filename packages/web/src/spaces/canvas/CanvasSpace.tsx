@@ -92,10 +92,8 @@ import {
   type CanvasNodeView,
   readCanvasGraph,
   readTextBodies,
-  readNodeFragments,
 } from '@web/data/yjs/canvas-space';
-import { itemForPick } from '@web/spaces/canvas/attach-nodes';
-import { attachToChat } from '@web/stores/attach-to-chat';
+import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
@@ -3354,19 +3352,23 @@ function CanvasSpaceInner({
     (s) => s.navigatingByProject[projectId] === true,
   );
 
+  const queryClient = useQueryClient();
   /**
-   * Hand the picked piece of the canvas to the agent as one item, read fresh
-   * from the document at the press.
+   * Hand the picked piece of the canvas to the agent as one item. Without the
+   * catalog nothing is handed over and the reader hears why, as the panel
+   * says it.
    * @param ids - The picked node ids; a group brings its members.
    */
   const addToAgent = React.useCallback(
     (ids: readonly string[]): void => {
-      const item = itemForPick(readCanvasGraph(projectId, spaceId), ids, {
-        fragmentsOf: (id) => readNodeFragments(projectId, spaceId, id),
+      void handToAgent(queryClient, projectId, spaceId, ids).then((read) => {
+        if (read) return;
+        toast.error(t('canvas.generatePanel.catalogUnavailable'), {
+          id: 'generate-catalog-unavailable',
+        });
       });
-      void attachToChat(projectId, item ? [item] : []);
     },
-    [projectId, spaceId],
+    [projectId, spaceId, queryClient, t],
   );
   const addNodeToAgent = React.useCallback(
     (): void => addToAgent([nodeMenu.nodeId]),
@@ -3778,7 +3780,6 @@ function CanvasSpaceInner({
   // types or a reading lands, and what the reader asks to keep is what the
   // node says then. The whole `nodeMenu` is the dependency because its
   // identity changes exactly when the menu opens or closes.
-  const queryClient = useQueryClient();
   const menuHasWords = React.useMemo(() => {
     if (readOnly || !nodeMenu.isText) return false;
     const words = readTextBodies(projectId, spaceId, [nodeMenu.nodeId]).get(

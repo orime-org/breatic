@@ -21,7 +21,7 @@
  * a column of buttons would widen with every command added.
  */
 
-import { Camera, History, MoreHorizontal } from 'lucide-react';
+import { Camera, History, MessageSquareText, MoreHorizontal } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -29,6 +29,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -94,14 +95,54 @@ function ComingCommand({
   );
 }
 
+interface DocumentMenuEntryProps {
+  /** Whether the comment panel is on screen, which takes this row away. */
+  commentsOpen: boolean;
+  /** Opens the comment panel; closing it is the panel's own button. */
+  onOpenComments: () => void;
+  /**
+   * How many threads in this document are unresolved.
+   *
+   * It marks the button while the panel is shut, which is the only thing a
+   * comment arriving from a peer is allowed to change on screen (A5 · A15),
+   * and it is what the row says the panel holds.
+   */
+  unresolvedComments: number;
+}
+
 /**
  * The whole-document command entry.
+ * @param root0 - Entry props.
+ * @param root0.commentsOpen - Whether the comment panel is on screen.
+ * @param root0.onOpenComments - Opens it.
+ * @param root0.unresolvedComments - How many threads are unresolved.
  * @returns The trigger and its menu.
  */
 export const DocumentMenuEntry = React.memo(
-  function DocumentMenuEntry(): React.JSX.Element {
+  function DocumentMenuEntry({
+    commentsOpen,
+    onOpenComments,
+    unresolvedComments,
+  }: DocumentMenuEntryProps): React.JSX.Element | null {
     const t = useTranslation();
+    // The way in stands aside once what it opens is on screen. The room on a
+    // document page is finite: with the panel taking a column, a button
+    // offering to open it again is spending space on nothing. Reaching
+    // anything else in here means closing the panel first, which its own
+    // button does (user 2026-09-22) — and that holds however many commands
+    // this menu grows, the snapshot panel included.
+    if (commentsOpen) return null;
+
     const note = t('spaces.document.docMenu.notOpenYet');
+    // What the row says the panel holds: how much is waiting in it, else
+    // that there is nothing. The row is only drawn while the panel is shut,
+    // so it never has to say that it is open.
+    const tail =
+      unresolvedComments > 0
+        ? t('spaces.document.docMenu.commentsUnresolved', {
+          count: unresolvedComments,
+        })
+        : t('spaces.document.docMenu.commentsNone');
     return (
       // Sticky rather than absolute, and rendered inside the scroller: the
       // wheel then reaches the body the way the browser does it for everything
@@ -129,9 +170,41 @@ export const DocumentMenuEntry = React.memo(
               className='size-[var(--doc-entry-size)]'
             >
               <MoreHorizontal className='h-4 w-4' />
+              {/* The dot the panel's absence is announced with. Inside the
+                  button so it travels with it, and `pointer-events-none` so
+                  it never takes the press.
+
+                  `status-info` rather than the palette blue it aliases: the
+                  palette lives in `:root` rather than in `@theme`, so
+                  `bg-palette-blue` is not a class Tailwind generates and the
+                  dot came out transparent — measured in the browser, which is
+                  the only place a missing utility shows. The alias is the same
+                  colour and is what the status dots elsewhere already use. */}
+              {unresolvedComments > 0 && (
+                <span
+                  data-testid='doc-doc-menu-dot'
+                  className='pointer-events-none absolute right-1 top-1 size-1.5 rounded-full bg-status-info'
+                />
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end' className='min-w-[190px]'>
+            <DropdownMenuItem
+              data-testid='doc-doc-menu-comments'
+              onSelect={onOpenComments}
+            >
+              <span className='flex flex-1 items-center gap-2'>
+                <MessageSquareText className='h-4 w-4' />
+                {t('spaces.document.docMenu.comments')}
+                <span
+                  data-testid='doc-doc-menu-comments-tail'
+                  className='ml-auto text-2xs text-muted-foreground'
+                >
+                  {tail}
+                </span>
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             {ENTRIES.map((entry) => (
               <ComingCommand key={entry.id} entry={entry} note={note} />
             ))}

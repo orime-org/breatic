@@ -26,6 +26,7 @@ import {
   type Browser,
 } from 'playwright/test';
 import { newCredentials, readAccounts, rememberAccount } from '../helpers/credentials';
+import { registerAccount } from '../helpers/signup';
 import { PROJECTS_FILE, STATE_FILE, type Account } from '../helpers/project';
 import { REMOVALS_FILE } from '../helpers/space';
 
@@ -169,12 +170,9 @@ async function signInOrRegister(
   }
 
   const made = newCredentials(account);
-  const registered = await api.post('/api/v1/auth/register', { data: made });
-  if (!registered.ok()) {
-    throw new Error(
-      `Account ${account} could not be registered (${registered.status()}: ${(await registered.text()).slice(0, 160)}). A 429 is the ten-an-hour ceiling on registration (config/rate-limits.yaml).`,
-    );
-  }
+  // With email enabled a 2xx from register only means a code was mailed;
+  // the helper finishes the sign-up so `api` really holds a session.
+  await registerAccount(api, made);
   rememberAccount(account, made);
 }
 

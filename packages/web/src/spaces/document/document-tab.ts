@@ -41,7 +41,7 @@
  * and the browser answers it by moving focus out of the editor: measured,
  * focus went from the editor to `BODY` and the next characters the reader
  * typed reached nothing. BlockNote's own source says the same —
- * `KeyboardShortcutsExtension.ts:958`, "Always returning true for tab key
+ * upstream's `KeyboardShortcutsExtension.ts`, "Always returning true for tab key
  * presses ensures they're not captured by the browser. Otherwise, they blur
  * the editor".
  */

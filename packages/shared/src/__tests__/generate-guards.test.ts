@@ -523,3 +523,60 @@ describe('evaluateExecute — more references than the model takes', () => {
     );
   });
 });
+
+describe('evaluateExecute — the per-shot storyboard (#2218)', () => {
+  const shots = [
+    { text: 'a paper boat, close-up', duration: 2 },
+    { text: 'the pond at dusk', duration: 3 },
+  ];
+  const custom = { ...ok, promptText: '', storyboard: { shots, total: 5, maxShots: 6, maxChars: 512 } };
+
+  it('does not ask for the main prompt, which the per-shot tier does not send', () => {
+    expect(refusalOf(custom)).toBeNull();
+  });
+
+  it('still asks for the main prompt when no storyboard is in effect', () => {
+    expect(refusalOf({ ...ok, promptText: '' })).toBe('prompt-missing');
+  });
+
+  it('names the first shot with nothing in it', () => {
+    const verdict = evaluateExecute({
+      ...custom,
+      storyboard: { ...custom.storyboard, shots: [shots[0]!, { text: ' \u200b ', duration: 3 }] },
+    });
+    expect(verdict).toEqual({ refusal: 'storyboard-shot-empty', shot: 2 });
+  });
+
+  it('refuses more shots than the model takes', () => {
+    const seven = Array.from({ length: 7 }, () => ({ text: 'x', duration: 1 }));
+    expect(
+      evaluateExecute({ ...custom, storyboard: { ...custom.storyboard, shots: seven, total: 7 } }),
+    ).toEqual({ refusal: 'storyboard-too-many', limit: 6 });
+  });
+
+  it('names a shot longer than the model takes, counted on the cleaned text', () => {
+    const long = { text: 'a'.repeat(513), duration: 3 };
+    expect(
+      evaluateExecute({ ...custom, storyboard: { ...custom.storyboard, shots: [shots[0]!, long] } }),
+    ).toEqual({ refusal: 'storyboard-shot-too-long', shot: 2, limit: 512 });
+    const atCap = { text: `${'a'.repeat(512)} `, duration: 3 };
+    expect(refusalOf({ ...custom, storyboard: { ...custom.storyboard, shots: [shots[0]!, atCap] } })).toBeNull();
+  });
+
+  it('refuses shots that do not add up to the total, with both numbers', () => {
+    expect(
+      evaluateExecute({ ...custom, storyboard: { ...custom.storyboard, total: 3 } }),
+    ).toEqual({ refusal: 'storyboard-duration-mismatch', seconds: { shots: 5, total: 3 } });
+  });
+
+  it('gives every storyboard refusal a sentence', () => {
+    for (const refusal of [
+      'storyboard-shot-empty',
+      'storyboard-too-many',
+      'storyboard-shot-too-long',
+      'storyboard-duration-mismatch',
+    ] as const) {
+      expect(refusalToastKey(refusal)).toMatch(/^canvas\.generatePanel\./);
+    }
+  });
+});
