@@ -76,19 +76,15 @@ export type HistoryCommand = 'undo' | 'redo';
  * What a canvas node-pick session wires when the user clicks a node:
  *   - `reference` — an i2i source edge (clicked → target) feeding the reference
  *     rail (a connection IS a reference).
- *   - `style` — COPIES the clicked image node's asset URL into the target's
- *     `styleImageUrl` (image-node style slice #1664, one style image max): a
- *     pick-time snapshot with NO relationship to the source node, then the
- *     session auto-exits (single slot, unlike the continuous reference pick).
  *   - `focus` — opens a crop marquee on the clicked image node (#1782); each
  *     confirmed crop uploads a standalone copy and APPENDS it to the target's
  *     `focusImages` (no edge, no source relationship). Continuous like
  *     reference — the user may crop several regions on the SAME node and
  *     across nodes — until manual Exit.
  *   - `firstFrame` — COPIES the clicked image node's asset URL into a video
- *     node's `firstFrameUrl` (#1896), the image-to-video first frame. Same
- *     copy semantics and same single-slot auto-exit as `style`; they differ
- *     only in which field they fill and what it means to the model.
+ *     node's `firstFrameUrl` (#1896), the image-to-video first frame: a
+ *     pick-time snapshot with NO relationship to the source node, then the
+ *     session auto-exits (single slot, unlike the continuous reference pick).
  *   - `endFrame` — the same, into `endFrameUrl` (#1904): where the first-last
  *     frame mode ends. Independent of the first frame in every way — either
  *     one can be picked or replaced at any time, and only execute asks for
@@ -129,7 +125,6 @@ export type HistoryCommand = 'undo' | 'redo';
  */
 export type PickPurpose =
   | 'reference'
-  | 'style'
   | 'focus'
   | 'firstFrame'
   | 'endFrame'
@@ -156,7 +151,7 @@ export type PickPurpose =
 export interface PickSession {
   /** The generative node the pick feeds (the pick target). */
   nodeId: string;
-  /** What clicking a node wires — a reference edge, or a style source. */
+  /** What clicking a node wires — a reference edge, or a copied source. */
   purpose: PickPurpose;
 }
 
@@ -273,7 +268,7 @@ interface CanvasState {
    */
   taskPanelStatus: 'running' | 'done' | 'failed' | 'expired' | null;
   /**
-   * The in-progress canvas node-pick session (reference or style), or null.
+   * The in-progress canvas node-pick session, or null.
    * When set, the canvas is in pick mode for `pickSession.nodeId`: clicking
    * another node wires the pick per `pickSession.purpose`, staying in the
    * session (continuous select) until Exit. Local UI only (never Yjs).
@@ -366,8 +361,6 @@ interface CanvasState {
   closeActivePanel: () => void;
   /** Enter a REFERENCE pick (wires i2i source edges) for a generative node. */
   startReferencePick: (nodeId: string) => void;
-  /** Enter a STYLE pick (#1664, copies one image URL into the slot) for a generative node. */
-  startStylePick: (nodeId: string) => void;
   /** Enter the first-frame pick for a video node (#1896). */
   startFirstFramePick: (nodeId: string) => void;
   /** Enter the end-frame pick for a video node (#1904). */
@@ -664,7 +657,6 @@ export const useCanvasStore = create<CanvasState>()(
         s.pickSession = null;
       }),
     startReferencePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'reference' })),
-    startStylePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'style' })),
     startFirstFramePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'firstFrame' })),
     startEndFramePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'endFrame' })),
     startCharacterImagePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'characterImage' })),

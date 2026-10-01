@@ -18,14 +18,6 @@ import * as React from 'react';
  * ways.
  */
 const MARKS: Readonly<Record<string, React.JSX.Element>> = {
-  // Two billowing sails above a hull.
-  midjourney: (
-    <>
-      <path d='M11 3.2 11 13 5.4 13C6.4 9 8.4 5.4 11 3.2Z' />
-      <path d='M12.6 6 12.6 13 17.8 13C17 10 15.2 7.4 12.6 6Z' />
-      <path d='M3.6 15 20.4 15 17.8 19.6 6.2 19.6Z' />
-    </>
-  ),
   // A banana crescent.
   'nano-banana': (
     <path d='M5.6 4.7C5 11 9.2 16.6 16.7 17.7 18.2 17.9 18.6 16.5 17.2 16 11.7 13.9 9 9.6 8.1 4.6 7.8 3.2 6 3.3 5.6 4.7Z' />
@@ -84,10 +76,6 @@ const MARKS: Readonly<Record<string, React.JSX.Element>> = {
   // A pen nib: the vector work Recraft is known for.
   recraft: (
     <><path fillRule='evenodd' d='M12 2.5 18 11 15.6 17.4H8.4L6 11ZM11.2 10.4V14.4H12.8V10.4A1.5 1.5 0 1 0 11.2 10.4Z' /><rect x='8' y='18.6' width='8' height='2.9' rx='1' /></>
-  ),
-  // An R drawn in one stroke, for Reve.
-  reve: (
-    <g fill='none' stroke='currentColor' strokeWidth='2.6' strokeLinecap='round' strokeLinejoin='round'><path d='M7 20.5V3.5h5.5a4.6 4.6 0 0 1 0 9.2H7' /><path d='M12.4 12.7 18 20.5' /></g>
   ),
   // Three flowing lines, for Sourceful's Riverflow.
   sourceful: (

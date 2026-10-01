@@ -307,6 +307,11 @@ describe("what the guide says", () => {
     expect(panel).not.toMatch(/always add up/);
   });
 
+  it("gives the picture panel no source slot, since main removed the only one it had", () => {
+    expect(section("Inside the generation panel")).toMatch(/- Picture panel: tools "Reference" and "Focus", with no source slots/);
+    expect(section("Source slots")).toMatch(/The picture panel has none/);
+  });
+
   it("says which comment controls depend on the thread or the panel being open", () => {
     const doc = section("Document spaces");
     expect(doc).toMatch(/a resolved card takes no replies until it is reopened/);

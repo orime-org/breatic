@@ -51,7 +51,6 @@ import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
-import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { modelControls } from '@web/spaces/canvas/generate/model-controls';
 import { RATIO_RESOLUTION_PARAMS } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import {
@@ -190,8 +189,8 @@ const PANEL: Readonly<
   >
 > = {
   image: {
-    // One slot, offered in every image mode.
-    slots: () => Object.values(IMAGE_SLOTS).map((spec) => spec.param),
+    // The image panel draws no slot: its sources come through the pool.
+    slots: () => [],
     controls: [...RATIO_RESOLUTION_PARAMS, ...CAMERA_PARAMS],
   },
   video: {
@@ -349,13 +348,8 @@ describe('what the catalog declares', () => {
     // Every slot drawing that param, not one of them: two video slots carry
     // `image` and two carry `video`, so a map keyed by the param name would
     // keep the last one written and hide a disagreement between them.
-    //
-    // The image panel's slot carries its kind in the canvas click handler
-    // rather than in its registry entry, so it is named here: a declaration
-    // saying that slot takes clips would light up a picture node all the same.
     const slotSpecs: Array<{ param: string; accepts: string; testId: string }> = [
       ...[VIDEO_SLOTS, AUDIO_SLOTS].flatMap((registry) => Object.values(registry)),
-      ...Object.values(IMAGE_SLOTS).map((spec) => ({ ...spec, accepts: 'image' })),
     ];
     expect(
       objections('canvas', (_model, param, spec) => {
@@ -552,7 +546,6 @@ describe('what the catalog declares', () => {
       clearLabelKey: string;
       errorKey?: string;
     }> = [
-      ...Object.values(IMAGE_SLOTS),
       ...Object.values(VIDEO_SLOTS),
       ...Object.values(AUDIO_SLOTS),
     ];

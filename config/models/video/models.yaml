@@ -502,41 +502,6 @@ models:
           formula: "{\"total_price\": duration / 5 * base_price }"
           discount_rate: 100
 
-  - name: "midjourney-image-to-video"
-    display_name: "Midjourney Image-to-Video"
-    mode: "i2v"
-    takes_prompt: true
-    tier: "optional"
-    description: "Style-first motion, strength dial"
-    guide: "Style over fidelity: motion that reads as a visual choice, with a blunt strength dial instead of prose."
-    generation_time: 600
-    icon: "midjourney"
-    params:
-      image:
-        description: "Source image"
-        default: null
-        accepts: "image"
-        fill: "canvas"
-      motion:
-        description: "How much the scene moves"
-        label: "Motion"
-        default: "low"
-        values: ["low", "high"]
-        fill: "panel"
-      resolution:
-        description: "Output resolution"
-        default: "480p"
-        values: ["480p", "720p"]
-        fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "midjourney/image-to-video"
-        priority: 1
-        pricing:
-          base_price: 350000
-          formula: "{\"total_price\": (resolution = \"720p\") ? 1100000 : base_price}"
-          discount_rate: 100
-
   - name: "wan-2.2-animate-2"
     display_name: "Wan 2.2 Animate 2"
     mode: "animate"

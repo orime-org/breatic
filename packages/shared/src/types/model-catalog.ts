@@ -234,7 +234,7 @@ export interface ModelEntry {
   max_input_chars?: number;
   /**
    * Brand icon name for the Generate picker (mapped to an inline SVG on the
-   * frontend, e.g. `nano-banana` / `midjourney` / `seedream`). Optional only so
+   * frontend, e.g. `nano-banana` / `openai` / `seedream`). Optional only so
    * a malformed entry still parses: the picker draws nothing for a missing or
    * unmapped name, and every model a picker offers declares one.
    */

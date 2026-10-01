@@ -120,13 +120,6 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   paramsByModel?: Record<string, Record<string, unknown>>;
   /**
-   * Style-reference image URL (image-node style slice #1664, wire
-   * `data.styleImageUrl`) — a pick-time COPY of the source image's URL, no
-   * relationship to the upstream node. The panel renders it in the Style tool
-   * slot and sends it as `params.style_images` at execute time.
-   */
-  styleImageUrl?: string;
-  /**
    * First-frame image URL for image-to-video (#1896, wire
    * `data.firstFrameUrl`) — a pick-time COPY of the clicked image's URL, no
    * relationship to the upstream node. The video panel renders it in its
@@ -409,7 +402,6 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     mode: data.mode,
     modelByMode: data.modelByMode,
     paramsByModel: data.paramsByModel,
-    styleImageUrl: data.styleImageUrl,
     firstFrameUrl: data.firstFrameUrl,
     endFrameUrl: data.endFrameUrl,
     characterImageUrl: data.characterImageUrl,

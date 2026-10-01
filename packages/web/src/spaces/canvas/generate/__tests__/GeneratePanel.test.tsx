@@ -65,10 +65,6 @@ function setup(
       onAddReference={() => {}}
       referencePicking={false}
       onRemoveReference={() => {}}
-      onStyle={() => {}}
-      stylePicking={false}
-      onClearStyle={() => {}}
-      styleSupported
       cameraSupported={false}
       onFocus={() => {}}
       focusPicking={false}

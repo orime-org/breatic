@@ -155,18 +155,6 @@ describe("facts the catalog carries that change what to propose", () => {
     expect(capped.length, "a tts model states its input cap").toBeGreaterThan(0);
   });
 
-  it("marks a style reference as picked rather than typed", () => {
-    // The image panel draws no field for it: it is filled by clicking an
-    // image on the canvas, the same gesture that fills every other slot.
-    const answer = modelsForMode("image", "t2i");
-    if (!answer.available) throw new Error("t2i has models");
-    const styled = answer.models
-      .flatMap((model) => Object.entries(model.params))
-      .filter(([name]) => name === "style_images");
-    expect(styled.length, "some t2i model takes a style reference").toBeGreaterThan(0);
-    for (const [, spec] of styled) expect(spec.filledBySource).toBe(true);
-  });
-
   it("keeps the bounds of a parameter whose domain is a range", () => {
     // kling states 3-15 and seedance 4-12 for the same param name, so there is
     // nothing to infer: a duration reported without them reads as unbounded,
@@ -233,12 +221,12 @@ describe("facts the catalog carries that change what to propose", () => {
     // `output_format` is pinned on several image models and no panel offers
     // it: the run takes the default, and a reader told to set it has nothing
     // to set.
-    const answer = modelsForMode("image", "t2i");
-    if (!answer.available) throw new Error("t2i has models");
+    const answer = modelsForMode("image", "i2i");
+    if (!answer.available) throw new Error("i2i has models");
     const formats = answer.models
       .flatMap((model) => Object.entries(model.params))
       .filter(([name]) => name === "output_format");
-    expect(formats.length, "some t2i model declares output_format").toBeGreaterThan(0);
+    expect(formats.length, "some i2i model declares output_format").toBeGreaterThan(0);
     for (const [, spec] of formats) expect(spec.noControl).toBe(true);
   });
 

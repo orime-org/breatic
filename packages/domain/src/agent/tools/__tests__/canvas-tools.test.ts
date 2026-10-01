@@ -339,8 +339,7 @@ describe("what the rendered answer tells the model", () => {
   it("says a reference list is filled by an edge and a mention", async () => {
     // Which gesture fills the parameter belongs here, since the model picks a
     // shape out of it; how to click through that gesture is said once, in the
-    // product guide, whose own test pins its three halves. Anchored to the
-    // line, since "style_images:" ends in this name.
+    // product guide, whose own test pins its three halves.
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "i2i" });
     const rendered = renderGenerationModelsForModel(answer);
     expect(rendered).toMatch(/^ *images:.*an edge into this node, then a mention/m);

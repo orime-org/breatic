@@ -518,9 +518,9 @@ export function renderProductGuide(): string {
       "brings the earlier ones back. Switching mode returns to the model last used in that mode, and to that " +
       "mode's own prompt: each mode keeps its own words (and, for music, its own lyrics), so a mode never typed " +
       "in shows an empty box.",
-    `- Picture panel: tools ${quoted(t("canvas.generatePanel.reference"))}, ` +
-      `${quoted(t("canvas.generatePanel.focus"))}, and ${quoted(t("canvas.generatePanel.style"))} when the model ` +
-      "takes a style picture. Clicking the settings pill opens whichever of " +
+    `- Picture panel: tools ${quoted(t("canvas.generatePanel.reference"))} and ` +
+      `${quoted(t("canvas.generatePanel.focus"))}, with no source slots. Clicking the settings pill opens ` +
+      "whichever of " +
       `${quoted(t("canvas.generatePanel.resolution"))} and ${quoted(t("canvas.generatePanel.ratio"))} the model ` +
       "has, and any settings of the model's own, such as quality. The camera icon opens a panel headed " +
       `${quoted(t("canvas.generatePanel.camera"))} with a switch, ${quoted(t("canvas.generatePanel.switchOff"))} ` +
@@ -604,8 +604,8 @@ export function renderProductGuide(): string {
       `the sound panel: ${quoted(t("canvas.generatePanel.refAudio"))}, ` +
       `${quoted(t("canvas.generatePanel.sourceVideo"))}, ${quoted(t("canvas.generatePanel.moodImage"))}, ` +
       `${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicMelody"))} and ` +
-      `${quoted(t("canvas.generatePanel.musicVocal"))}. On the picture panel: ` +
-      `${quoted(t("canvas.generatePanel.style"))}. Which ones show depends on the mode and model. Some must be ` +
+      `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel has none. Which ones show depends on ` +
+      "the mode and model. Some must be " +
       "filled before a run; others are optional. Press a slot's button, then click a node on the canvas: the bar " +
       `at the top says what to pick, such as ${quoted(t("canvas.generatePanel.selectFirstFrameFromCanvas"))}, ` +
       "with a target-like icon beside the words that pans the view back to the node whose panel is picking, " +
