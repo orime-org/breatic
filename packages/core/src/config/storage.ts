@@ -22,11 +22,11 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
  * rather than `default({...})`, and the difference is not stylistic: zod's
  * `default` substitutes its value and hands it back, while `prefault`
  * substitutes and then parses, so an empty object flows through the key
- * defaults below. Measured, with `max_bytes` defaulting to 2097152:
+ * defaults below. Measured, with `max_upload_bytes` defaulting to 2147483648:
  *
  * ```
- * z.object({ … }).prefault({}) .parse({})  ->  { max_bytes: 2097152 }
- * z.object({ … }).default({})  .parse({})  ->  { }
+ * z.object({ … }).prefault({}) .parse(undefined)  ->  { max_upload_bytes: 2147483648 }
+ * z.object({ … }).default({})  .parse(undefined)  ->  { }
  * ```
  *
  * Repeating the numbers in a section-level `default` invites two failures.
