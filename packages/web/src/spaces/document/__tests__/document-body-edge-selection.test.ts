@@ -367,6 +367,25 @@ describe('Shift+Up and Shift+Down at the ends of the body', () => {
     expect([view.state.selection.constructor, view.state.selection.head]).toEqual([BodyEdgeSelection, bodyEdgePos(view.state.doc, 'end')]);
   });
 
+  it('moves the top of a range made by the mouse on Shift+Up, as the page does, and reaches a leading divider from it', () => {
+    const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Middle' }, { type: 'paragraph', content: 'Last' }]);
+    const from = textStart(view, 'Middle') + 1;
+    const to = textStart(view, 'Middle') + 5;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+    const $from = view.state.doc.resolve(from);
+    const line = (n: number): { left: number; right: number; top: number; bottom: number } => ({ left: 0, right: 10, top: n * 20, bottom: n * 20 + 20 });
+    vi.spyOn(view, 'coordsAtPos').mockImplementation((pos) => line(pos === to || pos === $from.end() ? 2 : 0));
+    Object.defineProperty(document.getSelection()!, 'direction', { value: 'none', configurable: true });
+    try {
+      expect(press(view, 'ArrowUp')).toBe(true);
+    } finally {
+      Reflect.deleteProperty(document.getSelection()!, 'direction');
+    }
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([to, bodyEdgePos(view.state.doc, 'start')]);
+  });
+
   it('measures the line without swapping the view state, which would reset the browser\'s goal column', () => {
     const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: 'Middle' }, { type: 'divider' }]);
     const head = textStart(view, 'Middle') + 2;
