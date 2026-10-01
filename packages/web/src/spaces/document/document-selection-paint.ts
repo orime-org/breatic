@@ -36,7 +36,6 @@ import type { EditorState, Selection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import {
-  BodyEdgeSelection,
   bodyEdgeAt,
   emptyEdgeLinePos,
   type BodyEdge,
@@ -60,28 +59,32 @@ const NO_TEXT = new Set([DIVIDER, UNSUPPORTED_BLOCK]);
 const KEY = new PluginKey('documentSelectionPaint');
 
 /**
- * The empty line at an end of the body that a selection reaching past it, or
- * one holding the whole document, holds (#124). The browser marks an empty line inside a range with a sliver at its
- * start, but the one at an end only once the range is written back to the
+ * The empty lines a range holds at its ends (#124): the empty line at an end
+ * of the body that a selection reaching past it, or one holding the whole
+ * document, holds; and any empty line an end of a text range sits on. An empty
+ * line has one position, so a range ending there holds the line — deleting the
+ * range takes it — yet the browser marks it only when the range runs over it,
+ * and the one at an end of the body only once the range is written back to the
  * page, which during a drag in Chrome it is not. Marked here, `index.css` draws
- * that sliver itself from the first frame of the drag and clears the
- * browser's, so the line shows one mark throughout, the same one any selected
- * empty line shows.
+ * the browser's sliver itself and clears the browser's own, so the line shows
+ * one mark throughout, the same one any selected empty line shows.
  * @param selection - The selection.
  * @param doc - The document.
- * @returns A decoration per empty line on an edge the selection reaches.
+ * @returns A decoration per empty line the selection holds at an end.
  */
-function emptyEdgeLines(selection: Selection, doc: PMNode): Decoration[] {
+function emptyLinesAtEnds(selection: Selection, doc: PMNode): Decoration[] {
   const edges: BodyEdge[] =
     selection instanceof AllSelection
       ? ['start', 'end']
-      : selection instanceof BodyEdgeSelection
-        ? [selection.anchor, selection.head].flatMap((end) => bodyEdgeAt(doc, end) ?? [])
-        : [];
-  return edges.flatMap((edge) => {
-    const pos = emptyEdgeLinePos(doc, edge);
-    return pos === null ? [] : [Decoration.node(pos, pos + doc.nodeAt(pos)!.nodeSize, { class: EMPTY_LINE_CLASS })];
+      : [selection.anchor, selection.head].flatMap((end) => bodyEdgeAt(doc, end) ?? []);
+  const atEdges = edges.flatMap((edge) => emptyEdgeLinePos(doc, edge) ?? []);
+  const atText = [selection.anchor, selection.head].flatMap((end) => {
+    const $end = doc.resolve(end);
+    return $end.parent.isTextblock && $end.parent.content.size === 0 ? [$end.before()] : [];
   });
+  return [...new Set([...atEdges, ...atText])].map((pos) =>
+    Decoration.node(pos, pos + doc.nodeAt(pos)!.nodeSize, { class: EMPTY_LINE_CLASS }),
+  );
 }
 
 /**
@@ -107,7 +110,7 @@ function paintFor(state: EditorState): DecorationSet {
       found.push(Decoration.node(pos, pos + node.nodeSize, { class: IN_SELECTION_CLASS }));
       return false;
     });
-    found.push(...emptyEdgeLines(selection, doc));
+    found.push(...emptyLinesAtEnds(selection, doc));
   }
   return found.length > 0 ? DecorationSet.create(doc, found) : DecorationSet.empty;
 }

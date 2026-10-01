@@ -984,7 +984,7 @@ describe('an empty line at an end of the body, inside the selection', () => {
   it('is painted when either end of a text range sits on an empty line in the middle', () => {
     const view = open([{ type: 'paragraph', content: 'One' }, { type: 'paragraph', content: '' }, { type: 'paragraph', content: 'Three' }]);
     view.focus();
-    const empty = textStart(view, 'One') + 'One'.length + 3;
+    const empty = textStart(view, '');
 
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, empty, textStart(view, 'One') + 1)));
     const asAnchor = paragraphs(view);
@@ -1008,7 +1008,7 @@ describe('an empty line at an end of the body, inside the selection', () => {
     const view = open([{ type: 'paragraph', content: 'One' }, { type: 'paragraph', content: '' }, { type: 'paragraph', content: 'Three' }]);
     view.focus();
 
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'One') + 'One'.length + 3)));
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, ''))));
 
     expect(paragraphs(view)).toEqual(['One:false', ':false', 'Three:false']);
   });
