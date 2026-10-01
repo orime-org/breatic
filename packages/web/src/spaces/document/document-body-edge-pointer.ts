@@ -241,14 +241,21 @@ class PointerFollower {
     const { doc, selection } = view.state;
     const pointer = zone === 'body' ? positionAt(view, event.clientX, event.clientY) : null;
     const dir = zone === 'end' ? 1 : zone === 'start' ? -1 : (pointer ?? selection.from) >= selection.from ? 1 : -1;
-    const ends = extensionEnds(selection, dir);
+    // A selection anchored on an edge is extended from that edge: the page
+    // would extend from its own anchor, which for an empty edge line is the
+    // caret inside it, off the edge.
+    const ends = extensionEnds(selection, dir) ?? (bodyEdgeAt(doc, selection.anchor) === null ? null : selection);
     if (zone === 'body' && (ends === null || pointer === null)) {
       this.begin({ ...at, zone: 'body', anchorEdge: bodyEdgeAt(doc, selection.anchor), left: false, moved: false, onWidget: false });
       return;
     }
     const { anchor } = ends ?? selection;
     this.begin({ ...at, zone: 'shift', anchorEdge: bodyEdgeAt(doc, anchor), left: true, moved: false, onWidget: false });
+    // Taking the press from the browser takes its focus move with it, and
+    // ProseMirror does not focus on a Shift press: a selection set in a body
+    // without the focus is neither painted nor where the next keys go.
     event.preventDefault();
+    if (!view.hasFocus()) view.focus();
     const next = dragSelection(doc, { press: 'shift', anchor, left: true }, zone, pointer);
     if (next !== null && !next.eq(selection)) view.dispatch(view.state.tr.setSelection(next));
   }

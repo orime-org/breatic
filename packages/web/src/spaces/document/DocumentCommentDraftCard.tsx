@@ -26,7 +26,7 @@
  * the body on every change.
  */
 
-import { caretAtEnd } from '@web/spaces/document/document-body-edge-selection';
+import { caretAt } from '@web/spaces/document/document-body-edge-selection';
 import { X } from 'lucide-react';
 import * as React from 'react';
 
@@ -131,7 +131,7 @@ export function DocumentCommentDraftCard({
       view.dispatch(
         view.state.tr
           .setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, command)
-          .setSelection(caretAtEnd(selection)),
+          .setSelection(caretAt(selection, 1)),
       );
     },
     [editor],

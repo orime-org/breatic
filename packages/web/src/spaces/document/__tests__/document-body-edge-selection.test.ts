@@ -23,7 +23,7 @@ import {
   bodyEdgeBetween,
   bodyEdgePos,
   bodyEdgeNeedsTakeover,
-  caretAtEnd,
+  caretAt,
   dragSelection,
   extendToBodyEdge,
 } from '@web/spaces/document/document-body-edge-selection';
@@ -825,7 +825,7 @@ describe('the caret a selection is dropped to', () => {
     const view = open(ABOVE_DIVIDER);
     const selection = BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end');
 
-    const caret = caretAtEnd(selection);
+    const caret = caretAt(selection, 1);
 
     expect(caret).toBeInstanceOf(TextSelection);
     expect(caret.empty).toBe(true);
@@ -836,14 +836,14 @@ describe('the caret a selection is dropped to', () => {
     const view = open(BELOW_DIVIDER_ROWS);
     const at = textStart(view, 'Below') + 3;
 
-    expect(caretAtEnd(BodyEdgeSelection.fromEdge(view.state.doc, 'start', at)).head).toBe(at);
+    expect(caretAt(BodyEdgeSelection.fromEdge(view.state.doc, 'start', at), 1).head).toBe(at);
   });
 
   it('sits at the end of any other selection', () => {
     const view = open(ABOVE_DIVIDER);
     const at = textStart(view, 'Above');
 
-    expect(caretAtEnd(TextSelection.create(view.state.doc, at, at + 3)).head).toBe(at + 3);
+    expect(caretAt(TextSelection.create(view.state.doc, at, at + 3), 1).head).toBe(at + 3);
   });
 });
 

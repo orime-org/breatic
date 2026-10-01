@@ -277,12 +277,10 @@ class BodyEdgeSelectionClass extends Selection {
    * @throws {RangeError} When neither end is an edge of the body.
    */
   static fromJSON(doc: Node, json: { anchor: number; head: number }): Selection {
-    const headEdge = bodyEdgeAt(doc, json.head);
-    const anchorEdge = bodyEdgeAt(doc, json.anchor);
-    if (headEdge !== null && anchorEdge !== null && headEdge !== anchorEdge) return new AllSelection(doc);
-    if (headEdge !== null) return BodyEdgeSelectionClass.create(doc, json.anchor, headEdge);
-    if (anchorEdge !== null) return BodyEdgeSelectionClass.fromEdge(doc, anchorEdge, json.head);
-    throw new RangeError('Invalid input for BodyEdgeSelectionClass.fromJSON');
+    if (bodyEdgeAt(doc, json.anchor) === null && bodyEdgeAt(doc, json.head) === null) {
+      throw new RangeError('Invalid input for BodyEdgeSelectionClass.fromJSON');
+    }
+    return bodyEdgeBetween(doc, json.anchor, json.head);
   }
 
   /**
@@ -409,23 +407,14 @@ export function textEnds(selection: Selection): { anchor: number; head: number }
 }
 
 /**
- * The caret a selection is dropped to when a panel acting on it closes: at its
- * end, in the nearest text when that end is an edge of the body.
- * @param selection - The selection.
- * @returns A text caret.
- */
-export function caretAtEnd(selection: Selection): Selection {
-  return caretAtSide(selection, 1);
-}
-
-/**
  * A caret at one end of a selection, in the nearest text when that end is an
- * edge of the body.
+ * edge of the body: where plain Left and Right leave an edge selection, and
+ * where a panel acting on a selection drops it when it closes (its end).
  * @param selection - The selection.
  * @param dir - Which end: -1 its start, 1 its end.
  * @returns A text caret.
  */
-function caretAtSide(selection: Selection, dir: 1 | -1): Selection {
+export function caretAt(selection: Selection, dir: 1 | -1): Selection {
   const { anchor, head } = textEnds(selection);
   return TextSelection.create(selection.$head.doc, (dir < 0 ? Math.min : Math.max)(anchor, head));
 }
@@ -445,7 +434,7 @@ export function extendToBodyEdge(doc: Node, anchor: number, edge: BodyEdge): Sel
 export type PointerZone = 'body' | BodyEdge;
 
 /** A drag the pointer plugin is following. */
-export interface EdgeDrag {
+interface EdgeDrag {
   /** Where it was pressed; `shift` for a Shift+click the pointer plugin answers. */
   readonly press: PointerZone | 'shift';
   /** The anchor the selection keeps. */
@@ -536,11 +525,14 @@ function atLastLineTowards(view: EditorView, head: number, edge: BodyEdge): bool
   const dir = edge === 'end' ? 1 : -1;
   const beyond = doc.resolve(dir > 0 ? $head.after() : $head.before());
   if (Selection.findFrom(beyond, dir, true) !== null) return false;
-  const caret = view.coordsAtPos(head);
+  // At a line wrap the head's one position is both the end of a line and the
+  // start of the next; it is read as the line further from the edge, so the
+  // page moves it a line before the edge is taken.
+  const caret = view.coordsAtPos(head, edge === 'end' ? -1 : 1);
   const middle = (caret.top + caret.bottom) / 2;
   return edge === 'end'
-    ? middle >= view.coordsAtPos($head.end()).top
-    : middle <= view.coordsAtPos($head.start()).bottom;
+    ? middle >= view.coordsAtPos($head.end(), -1).top
+    : middle <= view.coordsAtPos($head.start(), 1).bottom;
 }
 
 /** The arrow keys: which way each goes, and whether it goes by lines. */
@@ -550,18 +542,6 @@ const ARROWS: Readonly<Record<string, { dir: 1 | -1; vertical: boolean }>> = {
   ArrowLeft: { dir: -1, vertical: false },
   ArrowRight: { dir: 1, vertical: false },
 };
-
-/**
- * The text next to a selected block on one side, or the edge of the body when
- * there is no text that way.
- * @param doc - The document.
- * @param selection - The block's node selection.
- * @param side - Which side: -1 before it, 1 after it.
- * @returns The position.
- */
-function besideBlock(doc: Node, selection: NodeSelection, side: 1 | -1): number {
-  return textOrEdge(doc, side < 0 ? selection.from : selection.to, side);
-}
 
 /**
  * The end of the body a selection that holds the whole document stands on:
@@ -589,7 +569,9 @@ export function extensionEnds(selection: Selection, dir: 1 | -1): { anchor: numb
     return { anchor: wholeDocumentEnd(doc, 'start'), head: wholeDocumentEnd(doc, 'end') };
   }
   if (selection instanceof NodeSelection && !selection.node.isInline) {
-    return { anchor: besideBlock(doc, selection, dir < 0 ? 1 : -1), head: besideBlock(doc, selection, dir) };
+    // The text behind the block and past it, or the edge where there is none.
+    const [behind, past] = dir < 0 ? [selection.to, selection.from] : [selection.from, selection.to];
+    return { anchor: textOrEdge(doc, behind, -dir as 1 | -1), head: textOrEdge(doc, past, dir) };
   }
   return null;
 }
@@ -687,7 +669,7 @@ function arrowOnEdge(view: EditorView, key: string): Selection | null {
   if (headEdge === edge) return selection;
   if (headEdge !== null) return bodyEdgeBetween(doc, anchor, textNear(doc, head, headEdge));
   if (!vertical) return bodyEdgeBetween(doc, anchor, stepFrom(doc, head, dir));
-  if (atLastLineTowards(view, head, edge)) return bodyEdgeBetween(doc, anchor, bodyEdgePos(doc, edge));
+  if (atLastLineTowards(view, head, edge)) return extendToBodyEdge(doc, anchor, edge);
   const next = lineFrom(view, head, dir);
   return next === null ? null : bodyEdgeBetween(doc, anchor, next);
 }
@@ -702,7 +684,7 @@ function arrowOnEdge(view: EditorView, key: string): Selection | null {
 function collapseOnEdge(selection: Selection, key: string): Selection | null {
   const { dir, vertical } = ARROWS[key]!;
   if (!(selection instanceof BodyEdgeSelection) || vertical) return null;
-  return caretAtSide(selection, dir);
+  return caretAt(selection, dir);
 }
 
 /**

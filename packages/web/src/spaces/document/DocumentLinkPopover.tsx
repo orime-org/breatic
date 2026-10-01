@@ -18,7 +18,7 @@
 
 import * as React from 'react';
 import { Link as LinkIcon } from 'lucide-react';
-import { caretAtEnd } from '@web/spaces/document/document-body-edge-selection';
+import { caretAt } from '@web/spaces/document/document-body-edge-selection';
 import { ShowSelectionExtension } from '@blocknote/core/extensions';
 import {
   useFloating,
@@ -180,7 +180,7 @@ export function DocumentLinkPopover({
     // would put the bar back over text the reader has finished with.
     editor.exec((state, dispatch) => {
       dispatch?.(
-        state.tr.setSelection(caretAtEnd(state.selection)),
+        state.tr.setSelection(caretAt(state.selection, 1)),
       );
       return true;
     });
