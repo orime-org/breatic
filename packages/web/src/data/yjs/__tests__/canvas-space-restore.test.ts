@@ -182,9 +182,9 @@ describe('restoring a row with no type or byte count (#2175)', () => {
   });
 
   // The canvas refuses an Understand run by reading these two off the node,
-  // and prints the byte count it read in the refusal. A history row carries
-  // neither, so leaving the previous file's numbers there makes the gate
-  // judge the restored file by a file it no longer shows.
+  // and prints the byte count it read in the refusal. A row written before
+  // #2184 carries neither, so leaving the previous file's numbers there makes
+  // the gate judge the restored file by a file it no longer shows.
   it('clears the type and byte count the old result put there', () => {
     addNode(
       PID,
