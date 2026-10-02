@@ -221,12 +221,22 @@ describe("POST /confirm — the return from a membership checkout (#307 A5–A7)
     expect(res.status).toBe(404);
   });
 
-  it("answers 503 when Stripe could not be asked", async () => {
-    service.confirmCheckout.mockRejectedValue(new Error("Stripe is unreachable"));
+  it("passes the service's 503 through when Stripe could not be asked", async () => {
+    const { AppError } = await import("@breatic/core");
+    service.confirmCheckout.mockRejectedValue(new AppError(503, "not confirmed"));
 
     const res = await post("/confirm", { session_id: "cs_1" });
 
     expect(res.status).toBe(503);
+    expect(membership.readAccountMembership).not.toHaveBeenCalled();
+  });
+
+  it("answers a failure of our own as 500, not as Stripe being down", async () => {
+    service.confirmCheckout.mockRejectedValue(new Error("database is gone"));
+
+    const res = await post("/confirm", { session_id: "cs_1" });
+
+    expect(res.status).toBe(500);
     expect(membership.readAccountMembership).not.toHaveBeenCalled();
   });
 });

@@ -282,12 +282,12 @@ describe("confirmCheckout (#307 A5–A8)", () => {
     }
   });
 
-  it("lets a Stripe outage through for the route to answer (A6)", async () => {
+  it("answers 503 when Stripe cannot be asked (A6)", async () => {
     const { userId } = await makeAccount();
     try {
       stripe.checkout.sessions.retrieve.mockRejectedValueOnce(new Error("Stripe is unreachable"));
 
-      await expect(confirmCheckout(userId, "cs_down")).rejects.toThrow("Stripe is unreachable");
+      await expect(confirmCheckout(userId, "cs_down")).rejects.toMatchObject({ statusCode: 503 });
     } finally {
       await dropUser(userId);
     }
