@@ -99,7 +99,7 @@ const RETURN_URL = "https://app.example/studio/me";
 function situationIs(
   situation: string,
   record: unknown = null,
-  lapsed: unknown = null,
+  lapsed: readonly unknown[] = [],
 ): void {
   vi.mocked(listSubscriptions).mockResolvedValue([]);
   vi.mocked(subscriptionSituation).mockReturnValue({
@@ -1071,7 +1071,7 @@ describe("startCheckout — a subscription past its deadline is asked about firs
   const BUY = { userId: USER, tier: "pro", period: "month", returnUrl: RETURN_URL } as const;
 
   it("refuses a second subscription while Stripe still bills the first, and stores it", async () => {
-    situationIs("none", null, LAPSED);
+    situationIs("none", null, [LAPSED]);
     stripe.subscriptions.retrieve.mockResolvedValueOnce(atStripe("active"));
 
     await expect(service.startCheckout(BUY)).rejects.toBeInstanceOf(ConflictError);
@@ -1090,7 +1090,7 @@ describe("startCheckout — a subscription past its deadline is asked about firs
   });
 
   it("sells a new one when Stripe says the old one is over, and stores that", async () => {
-    situationIs("none", null, LAPSED);
+    situationIs("none", null, [LAPSED]);
     stripe.subscriptions.retrieve.mockResolvedValueOnce(atStripe("canceled"));
 
     await service.startCheckout(BUY);
@@ -1101,7 +1101,7 @@ describe("startCheckout — a subscription past its deadline is asked about firs
 
   it("decides by Stripe's status even when the answer cannot be priced", async () => {
     // A price taken off our list must not lock the account out of buying.
-    situationIs("none", null, LAPSED);
+    situationIs("none", null, [LAPSED]);
     stripe.subscriptions.retrieve.mockResolvedValueOnce(atStripe("canceled", "price_retired"));
 
     await service.startCheckout(BUY);
@@ -1111,7 +1111,7 @@ describe("startCheckout — a subscription past its deadline is asked about firs
   });
 
   it("starts nothing when Stripe cannot be asked", async () => {
-    situationIs("none", null, LAPSED);
+    situationIs("none", null, [LAPSED]);
     stripe.subscriptions.retrieve.mockRejectedValueOnce(new Error("Stripe is unreachable"));
 
     await expect(service.startCheckout(BUY)).rejects.toThrow("Stripe is unreachable");
@@ -1121,7 +1121,7 @@ describe("startCheckout — a subscription past its deadline is asked about firs
   it("sells a new one when Stripe has not yet ended a cancelled subscription past its period end", async () => {
     // Stripe still reports it active for a while after the boundary, but a
     // subscription set to end at its period end bills nothing more.
-    situationIs("none", null, LAPSED);
+    situationIs("none", null, [LAPSED]);
     const ended = Math.floor(Date.now() / 1000) - 60;
     stripe.subscriptions.retrieve.mockResolvedValueOnce(
       atStripe("active", "price_pro_month", true, ended),
@@ -1133,7 +1133,7 @@ describe("startCheckout — a subscription past its deadline is asked about firs
   });
 
   it("refuses while a cancelled subscription still has time left at Stripe", async () => {
-    situationIs("none", null, LAPSED);
+    situationIs("none", null, [LAPSED]);
     const later = Math.floor(Date.now() / 1000) + 3600;
     stripe.subscriptions.retrieve.mockResolvedValueOnce(
       atStripe("active", "price_pro_month", true, later),
@@ -1144,7 +1144,7 @@ describe("startCheckout — a subscription past its deadline is asked about firs
   });
 
   it("sells a new one when Stripe no longer knows the old subscription", async () => {
-    situationIs("none", null, LAPSED);
+    situationIs("none", null, [LAPSED]);
     stripe.subscriptions.retrieve.mockRejectedValueOnce(
       Object.assign(new Error("No such subscription"), { code: "resource_missing" }),
     );
@@ -1153,6 +1153,22 @@ describe("startCheckout — a subscription past its deadline is asked about firs
 
     expect(stripe.checkout.sessions.create).toHaveBeenCalledTimes(1);
     expect(applySubscriptionWrite).not.toHaveBeenCalled();
+  });
+
+  it("asks about every lapsed subscription and refuses if any is still billed", async () => {
+    const OTHER = { stripeSubscriptionId: "sub_other", tier: "pro", period: "month" };
+    situationIs("none", null, [LAPSED, OTHER]);
+    stripe.subscriptions.retrieve
+      .mockResolvedValueOnce(atStripe("canceled"))
+      .mockResolvedValueOnce({ ...atStripe("active"), id: "sub_other" });
+
+    await expect(service.startCheckout(BUY)).rejects.toBeInstanceOf(ConflictError);
+
+    expect(stripe.subscriptions.retrieve.mock.calls.map((c) => c[0])).toEqual([
+      "sub_old",
+      "sub_other",
+    ]);
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 
   it("asks nothing when no subscription lapsed", async () => {

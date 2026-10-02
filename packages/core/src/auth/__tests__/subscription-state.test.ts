@@ -119,7 +119,7 @@ describe("subscriptionSituation — a live row past its deadline counts as ended
       const reading = subscriptionSituation(rows, at(STALE_AFTER_MS + 1000));
       expect(reading.situation).toBe("active");
       expect(reading.record?.stripeSubscriptionId).toBe("sub_pro");
-      expect(reading.lapsed?.stripeSubscriptionId).toBe("sub_team");
+      expect(reading.lapsed.map((r) => r.stripeSubscriptionId)).toEqual(["sub_team"]);
     }
   });
 
@@ -132,8 +132,20 @@ describe("subscriptionSituation — a live row past its deadline counts as ended
   });
 
   it("reports no lapsed row when nothing lapsed", () => {
-    expect(situate([row()]).lapsed).toBeNull();
-    expect(situate([]).lapsed).toBeNull();
+    expect(situate([row()]).lapsed).toEqual([]);
+    expect(situate([]).lapsed).toEqual([]);
+  });
+
+  it("reports every lapsed row, highest-ranked first", () => {
+    // Stripe can hold two live subscriptions for one customer, and both can
+    // miss their webhooks; a checkout has to ask about each of them.
+    const lapsedPro = row({ stripeSubscriptionId: "sub_pro", tier: "pro", currentPeriodEnd: periodEnd });
+    const lapsedTeam = row({ stripeSubscriptionId: "sub_team", tier: "team", currentPeriodEnd: periodEnd });
+
+    const reading = subscriptionSituation([lapsedPro, lapsedTeam], at(STALE_AFTER_MS + 1000));
+
+    expect(reading.situation).toBe("none");
+    expect(reading.lapsed.map((r) => r.stripeSubscriptionId)).toEqual(["sub_team", "sub_pro"]);
   });
 });
 

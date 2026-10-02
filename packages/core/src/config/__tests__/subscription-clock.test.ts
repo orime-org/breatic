@@ -33,7 +33,7 @@ describe("subscriptionClock without config/subscription.yaml (#307)", () => {
     const reading = subscriptionSituation([], subscriptionClock());
 
     expect(reading.situation).toBe("none");
-    expect(reading.lapsed).toBeNull();
+    expect(reading.lapsed).toEqual([]);
     expect(readFileSync).not.toHaveBeenCalled();
   });
 
