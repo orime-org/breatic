@@ -24,6 +24,7 @@ import { useStudioSettings } from '@web/pages/studio/container/tabs/settings/use
 import { studiosApi } from '@web/data/api/studios';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { creditOverviewKey } from '@web/features/credits/use-credit-overview';
 import type { Studio, StudioDetail } from '@breatic/shared';
 
 const navigate = vi.fn();
@@ -204,6 +205,84 @@ describe('useStudioSettings — editing name and bio', () => {
       ).toBe(true),
     );
     expect(client.getQueryState(['studios', 'user'])?.isInvalidated).toBe(true);
+  });
+});
+
+describe('useStudioSettings — every other read that shows the studio', () => {
+  // Reads keyed outside `['studio', slug]` that carry this studio's name, slug
+  // or avatar: the recent page's project cards and the credits overlay's
+  // studio lists.
+  const ELSEWHERE = [
+    ['studios', 'recent'],
+    ['studios', 'mine', 'u1'],
+    creditOverviewKey('u1'),
+  ];
+
+  /**
+   * Seed the reads that live outside the studio's own keys.
+   */
+  function seedElsewhere(): void {
+    for (const key of ELSEWHERE) client.setQueryData(key, []);
+  }
+
+  /**
+   * Assert every seeded read was marked stale.
+   */
+  async function expectElsewhereStale(): Promise<void> {
+    await waitFor(() => {
+      for (const key of ELSEWHERE) {
+        expect(client.getQueryState(key)?.isInvalidated, String(key)).toBe(true);
+      }
+    });
+  }
+
+  it('marks them stale after a name save', async () => {
+    seedElsewhere();
+    vi.mocked(studiosApi.update).mockResolvedValue(
+      updated(TEAM, { name: 'Acme Inc' }),
+    );
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.save({ name: 'Acme Inc' });
+
+    await expectElsewhereStale();
+  });
+
+  it('marks them stale after a slug change', async () => {
+    seedElsewhere();
+    vi.mocked(studiosApi.update).mockResolvedValue(
+      updated(TEAM, { slug: 'acme-co' }),
+    );
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.save({ slug: 'acme-co' });
+
+    await expectElsewhereStale();
+  });
+
+  it('marks them stale after a new avatar', async () => {
+    seedElsewhere();
+    uploadPicture.mockResolvedValue('asset-1');
+    vi.mocked(studiosApi.setAvatar).mockResolvedValue(
+      updated(TEAM, { avatarUrl: 'https://cdn.test/a.png' }),
+    );
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.uploadAvatar(new Blob(['x']));
+
+    await expectElsewhereStale();
+  });
+
+  it('marks them stale after the avatar is removed', async () => {
+    seedElsewhere();
+    vi.mocked(studiosApi.removeAvatar).mockResolvedValue(
+      updated(TEAM, { avatarUrl: null }),
+    );
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.removeAvatar();
+
+    await expectElsewhereStale();
   });
 });
 

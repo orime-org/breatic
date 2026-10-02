@@ -106,12 +106,12 @@ export function useStudioSettings(
       if (renamed) {
         // Remove, never invalidate: the old slug is already gone server-side.
         queryClient.removeQueries({ queryKey: ['studio', studio.slug] });
-      } else {
-        void queryClient.invalidateQueries({
-          queryKey: ['studio', studio.slug],
-        });
       }
-      void queryClient.invalidateQueries({ queryKey: ['studios', 'user'] });
+      // A studio's name, slug and avatar ride along in reads keyed by things
+      // other than the studio (recent projects, the credits overlay's lists),
+      // so mark everything stale: mounted reads refetch now, the rest on their
+      // next mount.
+      void queryClient.invalidateQueries();
 
       const store = useCurrentUserStore.getState();
       const user = store.user;
