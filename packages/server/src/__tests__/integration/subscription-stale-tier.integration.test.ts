@@ -103,13 +103,15 @@ async function giveSubscription(
   userId: string,
   status: string,
   periodEnd: Date | null,
+  over: { tier?: string; cancelAtPeriodEnd?: boolean } = {},
 ): Promise<void> {
   seq += 1;
   await sql`
     INSERT INTO subscriptions
-      (user_id, stripe_subscription_id, tier, period, status, current_period_end)
-    VALUES (${userId}, ${`sub_stale_${Date.now()}_${seq}`}, 'pro', 'month', ${status},
-            ${periodEnd})
+      (user_id, stripe_subscription_id, tier, period, status, current_period_end,
+       cancel_at_period_end)
+    VALUES (${userId}, ${`sub_stale_${Date.now()}_${seq}`}, ${over.tier ?? "pro"},
+            'month', ${status}, ${periodEnd}, ${over.cancelAtPeriodEnd ?? false})
   `;
 }
 
@@ -171,6 +173,45 @@ describe("ceilings stop honouring a subscription nobody has heard from", () => {
     const userId = await makePaidUser("pro");
     try {
       await giveSubscription(userId, "canceled", daysAgo(staleDays + 30));
+      expect(await getLimitsForUser(userId)).toEqual(getMembershipLimits("pro"));
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("ends a cancelling subscription at its period end, without the renewal window", async () => {
+    // Nothing renews a subscription set to end, so the retry window that
+    // protects a renewing card has nothing to protect here (#307 §5.1).
+    const userId = await makePaidUser("pro");
+    try {
+      await giveSubscription(userId, "active", new Date(Date.now() - 60_000), {
+        cancelAtPeriodEnd: true,
+      });
+      expect(await getLimitsForUser(userId)).toEqual(getMembershipLimits("base"));
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("keeps a cancelling subscription's tier until its period end", async () => {
+    const userId = await makePaidUser("pro");
+    try {
+      await giveSubscription(userId, "active", new Date(Date.now() + DAY_MS), {
+        cancelAtPeriodEnd: true,
+      });
+      expect(await getLimitsForUser(userId)).toEqual(getMembershipLimits("pro"));
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("reads the fresh subscription when a lapsed higher tier is still stored", async () => {
+    // A lapsed Team row must not outrank the PRO bought after it, or the
+    // account reads as base while paying for PRO (#307 §5.1).
+    const userId = await makePaidUser("team");
+    try {
+      await giveSubscription(userId, "active", daysAgo(staleDays + 3), { tier: "team" });
+      await giveSubscription(userId, "active", new Date(Date.now() + 20 * DAY_MS));
       expect(await getLimitsForUser(userId)).toEqual(getMembershipLimits("pro"));
     } finally {
       await dropUser(userId);
