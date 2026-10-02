@@ -881,6 +881,11 @@
       "success": "Password updated. Please sign in.",
       "failed": "Could not reset your password. Please try again.",
       "backToSignIn": "Back to sign in"
+    },
+    "terms": {
+      "notice": "By continuing, you agree to our {terms} and acknowledge our {privacy}.",
+      "termsLink": "Terms of Service",
+      "privacyLink": "Privacy Policy"
     }
   },
   "roleTag": {

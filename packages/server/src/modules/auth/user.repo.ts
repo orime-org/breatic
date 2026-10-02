@@ -7,11 +7,12 @@
  * Handles CRUD operations and atomic credit modifications.
  */
 
-import { eq, and, or, isNull, inArray } from "drizzle-orm";
+import { eq, and, or, isNull, inArray, sql } from "drizzle-orm";
 import { db, getDefaultMembershipTier, asKnownTier } from "@breatic/core";
 import { users } from "@breatic/core";
 import { normalizeEmail } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
+import { getLegalConfig } from "@server/config/legal.js";
 
 /**
  * Convert a Drizzle row to a UserEntity (strips hashed_password).
@@ -151,6 +152,10 @@ export async function createUser(data: {
       locale: data.locale,
       emailVerified: data.emailVerified ?? false,
       membershipTier: getDefaultMembershipTier(),
+      // Every account is created by continuing from the sign-in or sign-up
+      // card, which carries the terms line (#302).
+      termsVersion: getLegalConfig().terms_version,
+      termsAcceptedAt: sql`now()`,
     })
     .returning();
   return toEntity(rows[0]!);
