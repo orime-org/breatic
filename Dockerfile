@@ -1,5 +1,5 @@
 # ── Stage 1: Install dependencies + Build ────────────────────────────
-FROM node:22-bookworm-slim AS builder
+FROM node:24-bookworm-slim AS builder
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
@@ -42,7 +42,7 @@ RUN pnpm deploy --filter=@breatic/worker --prod /app/deploy/worker
 RUN pnpm deploy --filter=@breatic/collab --prod /app/deploy/collab
 
 # ── Stage 2: Runtime (slim) ──────────────────────────────────────────
-FROM node:22-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 
 # ffmpeg for the worker's eight video mini-tools (crop, cut, speed, adjust,
 # stabilisation, scene extension, audio denoise, HDR conversion). Cover frames

@@ -15,9 +15,9 @@
 # repository root.
 
 # ── Bundle the service into one file ─────────────────────────────────────
-# The official Node image for this stage only: it carries npm, and nothing
-# from it reaches the image that runs.
-FROM node:22-alpine AS build
+# The official Node image, on the same Alpine release as the image that runs:
+# this stage bundles with its npm, and the runtime takes only its node binary.
+FROM node:24-alpine3.22 AS build
 WORKDIR /src
 COPY packages/ingest/tsconfig.json ./
 COPY packages/ingest/src ./src
@@ -30,7 +30,7 @@ COPY packages/ingest/container ./container
 # also the fourth GPL obligation below.
 RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
   && esbuild container/server.ts \
-    --bundle --platform=node --format=esm --target=node22 \
+    --bundle --platform=node --format=esm --target=node24 \
     --tsconfig=tsconfig.json \
     --outfile=/out/server.mjs
 
@@ -38,8 +38,12 @@ RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
 # Alpine rather than a Node base image: the service is that one bundled file,
 # so npm and the rest of a Node distribution would be weight with no reader,
 # and image size is what the cold start is paid in.
+# Alpine 3.22 packages Node 22 only, and the release that packages Node 24 also
+# moves ffmpeg to 8.0, so Node comes from the official image built on 3.22. The
+# binary links libstdc++ beside musl.
 FROM alpine:3.22
-RUN apk add --no-cache nodejs=~22 ffmpeg=~6.1
+RUN apk add --no-cache libstdc++ ffmpeg=~6.1
+COPY --from=build /usr/local/bin/node /usr/local/bin/node
 
 # ── ffmpeg is GPL-licensed (#178) ────────────────────────────────────────
 # Alpine builds ffmpeg with GPL components (x264 among them), so distributing
