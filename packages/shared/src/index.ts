@@ -382,6 +382,8 @@ export { newId, deriveId } from "@shared/ids.js";
 // so a submission the panel allowed is never the one the worker truncates.
 export { completeEntries, itemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
+export { joinSlotFiles } from "@shared/join-slot-files.js";
+export type { JoinedRun } from "@shared/join-slot-files.js";
 export {
   addShot,
   enterCustom,
