@@ -85,19 +85,18 @@ export function coverArgs(objectUrl: string): string[] {
 /**
  * How large a cut frame may be, on both edges.
  *
- * A PNG of a 4K frame runs past what the container may hand back — measured on
- * ffmpeg 7.1.1, a grainy 3840x2160 frame writes 14,052,786 bytes against a
- * 10 MiB ceiling, and a run that exceeds it produces no cover at all. Under
- * this filter the same source writes 2,652,027 on the binary that ships.
+ * A PNG of a 4K frame runs past what the container may hand back, and a run
+ * that exceeds the 10 MiB ceiling produces no cover at all. Measured on
+ * ffmpeg 8.0.1 — the `~8.0` the Dockerfile pins on alpine:3.23, which is what
+ * runs in the container — with grainy sources made by
+ * `testsrc2=s=<size>,noise=alls=80:allf=t`: a 3840x2160 frame writes
+ * 22,148,799 bytes unscaled and 5,269,284 under this filter.
  *
  * Both edges are bounded because bounding one leaves the other free, and with
- * it the frame's area. Measured on ffmpeg 6.1.2 — the `~6.1` the Dockerfile
- * pins on alpine:3.22, which is what runs in the container — with a grainy
- * source already 1920 wide, so nothing is resampled away: bounding only the
- * width, 1920x3840 writes 10,196,284 bytes and 1920x5000 writes 13,273,616 —
- * the second past the ceiling, the first within 289 KiB of it. Bounding both,
- * the same two write 2,359,871 and
- * 1,774,784. The developer machine's 7.1.1 answers within 0.01% of each.
+ * it the frame's area. On the same binary and sources, already 1920 wide so
+ * nothing is resampled away by a width bound: bounding only the width,
+ * 1920x3840 writes 19,711,839 bytes and 1920x5000 writes 25,668,806, both past
+ * the ceiling. Bounding both, the same two write 4,705,535 and 3,765,679.
  *
  * `force_original_aspect_ratio=decrease` fits the frame inside the box and
  * leaves anything already inside it alone.

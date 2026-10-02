@@ -68,7 +68,7 @@ export interface MediaMetadata {
  * writes. ffprobe reports the angle as a whole number while ffmpeg autorotates
  * on a one-degree tolerance around the real one, so the number that arrives
  * here is ambiguous in both directions — measured on the ffmpeg the container
- * ships (6.1.2, the `~6.1` the Dockerfile pins), 89.6° reports as 89 and IS
+ * ships (8.0.1, the `~8.0` the Dockerfile pins), 89.6° reports as 89 and IS
  * turned while 89.0° also reports as 89 and is not, and 90.4° reports as 90
  * and is turned while 90.6° also reports as 90 and is not. 7.1.1 reports the
  * same number for every one of them.

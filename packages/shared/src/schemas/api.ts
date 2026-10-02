@@ -217,6 +217,13 @@ export const chatMessageSchema = z.object({
    * agent config.
    */
   model: z.string().optional(),
+  /**
+   * The IANA time zone the reader's browser reports, so the agent can tell
+   * them what time it is where they are. Optional: a turn without one is told
+   * the time in UTC and that the zone is unknown. The length cap matches the
+   * credit purchase's `time_zone`.
+   */
+  time_zone: z.string().min(1).max(64).optional(),
 });
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 

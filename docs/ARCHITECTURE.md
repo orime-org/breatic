@@ -16,7 +16,7 @@ breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架�
 
 | Layer | Tech |
 |---|---|
-| Runtime | Node.js 22+ |
+| Runtime | Node.js 24 (24.15 or later) |
 | Language | TypeScript 5.x strict |
 | Monorepo | pnpm workspaces + Turborepo |
 | HTTP | Hono |

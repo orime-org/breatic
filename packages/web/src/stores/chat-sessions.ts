@@ -231,6 +231,9 @@ function transportFor(
           project_id: projectId,
           conversation_id: conversationId,
           attached_chips: attachedOn(last),
+          // Read on every send: the agent is told the time where the reader is
+          // now, and a laptop can change zones mid-session.
+          time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         },
       };
     },
