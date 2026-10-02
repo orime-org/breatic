@@ -336,8 +336,8 @@ export function renderProductGuide(): string {
       `height ${quoted(t("canvas.emptyImage.height"))}) and ${quoted(t("canvas.emptyImage.sections.color"))} ` +
       "with a set of swatches and a custom colour; the round button with an upward arrow replaces the picture " +
       "with a blank one of that size and colour, and the X closes the panel without a change.",
-    `- ${quoted(t("canvas.nodeMenu.history"))}: a panel listing every generation, upload and snapshot on the ` +
-      `node, each marked ${quoted(t("canvas.history.typeGeneration"))}, ` +
+    `- ${quoted(t("canvas.nodeMenu.history"))}: a panel listing what the node has held, each content once, ` +
+      `whether it came from a generation, an upload or a snapshot, each marked ${quoted(t("canvas.history.typeGeneration"))}, ` +
       `${quoted(t("canvas.history.typeUpload"))} or ${quoted(t("canvas.history.typeSnapshot"))}; the one it ` +
       `holds now is marked ${quoted(t("canvas.history.current"))}, ${quoted(t("canvas.history.restore"))} puts ` +
       `an earlier one back, and a failed attempt shows ${quoted(t("canvas.history.failed"))}. The panel is headed ` +
@@ -346,7 +346,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.history.empty.title"))} and ${quoted(t("canvas.history.empty.hint"))} If it cannot ` +
       `load it says ${quoted(t("canvas.history.loadError"))} with ${quoted(t("canvas.history.retry"))}.`,
     `- On a text node, ${quoted(t("canvas.nodeMenu.snapshot"))}, greyed while the node is empty: it keeps a copy ` +
-      `of the node's words in its history and shows ${quoted(t("canvas.history.snapshotKept"))}`,
+      `of the node's words in its history (words it already holds are not listed again; a snapshot row shows ` +
+      `its words) and shows ${quoted(t("canvas.history.snapshotKept"))}`,
     `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file, then ` +
       `${quoted(t("canvas.nodeMenu.understand"))}, which writes a description of what the node holds into a new ` +
       `text node connected to it, and ${quoted(t("canvas.nodeMenu.tools"))}, which is always greyed: it is not ` +

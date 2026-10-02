@@ -9,7 +9,7 @@
  * ordered by created_at desc.
  */
 
-import { and, desc, eq, getTableColumns, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { nodeHistory, studios } from "@breatic/core";
 import type { NodeHistoryEntity } from "@breatic/shared";
@@ -43,30 +43,25 @@ function toEntity(
 }
 
 /**
- * Create a new history entry.
- * @param data - Entry fields (projectId, nodeId, userId, entryType, status required)
+ * Record a failed generation. A failed row holds no content, so the
+ * one-row-per-content index never applies to it; every success row goes
+ * through one of the `*IfAbsent` writers, which resolve onto the row already
+ * holding that content.
+ * @param data - Entry fields.
  * @param data.projectId - ID of the project owning the node.
  * @param data.nodeId - ID of the canvas node this entry records a change for.
- * @param data.userId - ID of the user who triggered the change.
- * @param data.entryType - `"generation"` for AIGC output, `"upload"` for a file the user brought, or `"snapshot"` for a copy they asked to keep.
- * @param data.status - `"success"` or `"failed"`.
- * @param data.content - Resulting content reference (e.g. asset URL); null when absent.
- * @param data.thumbnailUrl - Thumbnail URL for previews; null when absent.
- * @param data.errorMessage - Failure reason when `status` is `"failed"`; null otherwise.
- * @param data.taskId - ID of the task that produced this entry, when applicable.
- * @param data.metadata - Arbitrary entry metadata (model, cost, params, etc.).
+ * @param data.userId - ID of the user who triggered the generation.
+ * @param data.errorMessage - Failure reason surfaced to the frontend.
+ * @param data.taskId - ID of the task that failed.
+ * @param data.metadata - Arbitrary entry metadata (model, params, etc.).
  * @returns The inserted entity
  */
-export async function create(data: {
+export async function createFailure(data: {
   projectId: string;
   nodeId: string;
   userId: string;
-  entryType: "generation" | "upload" | "snapshot";
-  status: "success" | "failed";
-  content?: string;
-  thumbnailUrl?: string;
-  errorMessage?: string;
-  taskId?: string;
+  errorMessage: string;
+  taskId: string;
   metadata?: Record<string, unknown>;
 }): Promise<NodeHistoryEntity> {
   const rows = await db
@@ -75,12 +70,10 @@ export async function create(data: {
       projectId: data.projectId,
       nodeId: data.nodeId,
       userId: data.userId,
-      entryType: data.entryType,
-      status: data.status,
-      content: data.content ?? null,
-      thumbnailUrl: data.thumbnailUrl ?? null,
-      errorMessage: data.errorMessage ?? null,
-      taskId: data.taskId ?? null,
+      entryType: "generation",
+      status: "failed",
+      errorMessage: data.errorMessage,
+      taskId: data.taskId,
       metadata: data.metadata ?? {},
     })
     .returning();
@@ -88,21 +81,76 @@ export async function create(data: {
 }
 
 /**
- * Idempotently record a successful AIGC generation. Backed by the partial
- * unique index from migration 0036 — (task_id, node_id) WHERE
- * entry_type='generation' AND status='success' AND deleted_at IS NULL — so
- * concurrent double-live executions and a billed-redelivery re-record all
- * collapse to a single row. On conflict no new row is inserted and the
- * pre-existing one is returned.
- * @param data - Generation fields; `taskId` is the idempotency key.
+ * Find the live successful row a node's history holds for this content — the
+ * row the partial UNIQUE from migration 0087 (project_id, node_id,
+ * md5(content)) WHERE status='success' AND content IS NOT NULL AND deleted_at
+ * IS NULL lets stand. The predicate repeats the index's word for word, so a
+ * success insert that conflicted on content always finds what it hit.
+ * @param projectId - ID of the project owning the node.
+ * @param nodeId - ID of the canvas node.
+ * @param content - The content to look up (URL or text).
+ * @returns The live success row holding this content, or null when none does.
+ */
+async function findLiveSuccessByContent(
+  projectId: string,
+  nodeId: string,
+  content: string,
+): Promise<typeof nodeHistory.$inferSelect | null> {
+  const rows = await db
+    .select()
+    .from(nodeHistory)
+    .where(
+      and(
+        eq(nodeHistory.projectId, projectId),
+        eq(nodeHistory.nodeId, nodeId),
+        sql`md5(${nodeHistory.content}) = md5(${content})`,
+        eq(nodeHistory.status, "success"),
+        isNotNull(nodeHistory.content),
+        isNull(nodeHistory.deletedAt),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Turn a success insert that wrote nothing into the row that blocked it.
+ * @param row - The row the follow-up lookup found, if any.
+ * @returns The row.
+ * @throws {Error} When no row was found — the insert conflicted on an index,
+ *   so a live row holding it must exist; reaching this means the lookup and
+ *   the index disagree.
+ */
+function conflictedRow(
+  row: typeof nodeHistory.$inferSelect | null,
+): typeof nodeHistory.$inferSelect {
+  if (!row) {
+    throw new Error("node_history insert conflicted but no live row matches it");
+  }
+  return row;
+}
+
+/**
+ * Idempotently record a successful AIGC generation. Two partial unique indexes
+ * can block the insert: (task_id, node_id) from migration 0036 — double-live
+ * executions and a billed-redelivery re-record of one task — and content per
+ * node from migration 0087 — a result this node's history already holds. The
+ * insert names neither (`ON CONFLICT DO NOTHING`), so either one resolves to
+ * the row already there, which is returned untouched.
+ *
+ * A billed task is recorded when its `node_tasks.node_history_id` is set: a
+ * result identical to one the node already holds points at that row and writes
+ * none of its own.
+ * @param data - Generation fields.
  * @param data.projectId - ID of the project owning the node.
  * @param data.nodeId - ID of the canvas node the generation targets.
  * @param data.userId - ID of the user who triggered the generation.
  * @param data.content - Reference to the generated content (e.g. asset URL).
  * @param data.thumbnailUrl - Thumbnail URL for previews, if available.
- * @param data.taskId - ID of the task that produced this result (idempotency key).
+ * @param data.taskId - ID of the task that produced this result.
  * @param data.metadata - Arbitrary generation metadata (model, cost, params, etc.).
  * @returns The inserted entity, or the pre-existing one on conflict.
+ * @throws {Error} When the insert conflicted yet no live row matches it.
  */
 export async function createGenerationSuccessIfAbsent(data: {
   projectId: string;
@@ -126,46 +174,42 @@ export async function createGenerationSuccessIfAbsent(data: {
       taskId: data.taskId,
       metadata: data.metadata ?? {},
     })
-    .onConflictDoNothing({
-      target: [nodeHistory.taskId, nodeHistory.nodeId],
-      where: sql`task_id IS NOT NULL AND entry_type = 'generation' AND status = 'success' AND deleted_at IS NULL`,
-    })
+    .onConflictDoNothing()
     .returning();
   if (inserted[0]) return toEntity(inserted[0]);
-  // Conflict — the success row already exists; fetch and return it so the
-  // caller still gets the canonical entity (idempotent from any path).
-  const existing = await db
+  const byTask = await db
     .select()
     .from(nodeHistory)
     .where(
       and(
         eq(nodeHistory.taskId, data.taskId),
         eq(nodeHistory.nodeId, data.nodeId),
+        eq(nodeHistory.entryType, "generation"),
         eq(nodeHistory.status, "success"),
         isNull(nodeHistory.deletedAt),
       ),
     )
     .limit(1);
-  return toEntity(existing[0]!);
+  return toEntity(
+    conflictedRow(
+      byTask[0] ??
+        (await findLiveSuccessByContent(data.projectId, data.nodeId, data.content)),
+    ),
+  );
 }
 
 /**
- * Idempotently record a successful upload, keyed on the granted storage key
- * (#173). Backed by the partial UNIQUE from migration 0071 — (upload_storage_key)
- * WHERE upload_storage_key IS NOT NULL AND entry_type='upload' AND deleted_at
- * IS NULL — so a report that arrives twice leaves one row rather than one per
- * arrival.
+ * Idempotently record a successful upload. Two partial unique indexes can
+ * block the insert: the granted storage key from migration 0071 — a report
+ * that arrives twice (#173) — and content per node from migration 0087 —
+ * content this node's history already holds, keyless or under another key
+ * (#2186). The insert names neither (`ON CONFLICT DO NOTHING`); the row that
+ * blocked it is looked up by the key first, then by content.
  *
- * A second arrival may carry a thumbnail the first did not have: a container
- * that timed out once still lets the upload land, and asking again can answer
- * a frame. So the conflict fills an empty thumbnail in. It never clears one:
- * `COALESCE` keeps whatever is already stored, which is what an arrival that
- * carries no cover would otherwise overwrite.
- *
- * Omitting `storageKey` skips the key entirely and every call inserts its own
- * row. That is the first-pass dedup hit, which records an upload without ever
- * issuing a grant; two of those are two user actions.
- * @param data - Upload fields; `storageKey` is the idempotency key.
+ * A later arrival may carry a thumbnail the row lacks: a container that timed
+ * out once still lets the upload land, and asking again can answer a frame.
+ * So a conflict fills an empty thumbnail in, and never clears one.
+ * @param data - Upload fields.
  * @param data.projectId - ID of the project owning the node.
  * @param data.nodeId - ID of the canvas node the upload targets.
  * @param data.userId - ID of the user who uploaded.
@@ -173,7 +217,9 @@ export async function createGenerationSuccessIfAbsent(data: {
  * @param data.thumbnailUrl - Cover URL for a video; the asset's own URL for an image.
  * @param data.storageKey - The granted storage key, when this upload has one.
  * @param data.metadata - Filename, byte size and mime type.
- * @returns The stored entry plus whether this call is the one that wrote it.
+ * @returns The stored entry plus whether this call is the one that wrote it —
+ *   true only when a new row went in.
+ * @throws {Error} When the insert conflicted yet no live row matches it.
  */
 export async function createUploadSuccessIfAbsent(data: {
   projectId: string;
@@ -197,29 +243,77 @@ export async function createUploadSuccessIfAbsent(data: {
       uploadStorageKey: data.storageKey ?? null,
       metadata: data.metadata ?? {},
     })
-    .onConflictDoUpdate({
-      target: [nodeHistory.uploadStorageKey],
-      // `targetWhere`, not the deprecated `where`: this predicate names the
-      // partial index the conflict resolves against. `where` emits it on the
-      // DO UPDATE instead, leaving `ON CONFLICT ("upload_storage_key")` with
-      // nothing to match the partial index against — verified by swapping the
-      // two, which made every insert on this path fail outright.
-      targetWhere: sql`upload_storage_key IS NOT NULL AND entry_type = 'upload' AND deleted_at IS NULL`,
-      set: {
-        thumbnailUrl: sql`COALESCE(${nodeHistory.thumbnailUrl}, EXCLUDED.thumbnail_url)`,
-      },
+    .onConflictDoNothing()
+    .returning();
+  if (rows[0]) return { entry: toEntity(rows[0]), inserted: true };
+
+  const byKey =
+    data.storageKey === undefined
+      ? []
+      : await db
+          .select()
+          .from(nodeHistory)
+          .where(
+            and(
+              eq(nodeHistory.uploadStorageKey, data.storageKey),
+              eq(nodeHistory.entryType, "upload"),
+              isNull(nodeHistory.deletedAt),
+            ),
+          )
+          .limit(1);
+  const existing = conflictedRow(
+    byKey[0] ??
+      (await findLiveSuccessByContent(data.projectId, data.nodeId, data.content)),
+  );
+  if (existing.thumbnailUrl !== null || data.thumbnailUrl === undefined) {
+    return { entry: toEntity(existing), inserted: false };
+  }
+  // Only fills an empty cover: the IS NULL guard leaves a cover another
+  // arrival wrote in the meantime alone.
+  const filled = await db
+    .update(nodeHistory)
+    .set({ thumbnailUrl: data.thumbnailUrl })
+    .where(and(eq(nodeHistory.id, existing.id), isNull(nodeHistory.thumbnailUrl)))
+    .returning();
+  return { entry: toEntity(filled[0] ?? existing), inserted: false };
+}
+
+/**
+ * Record a successful snapshot — a copy of what a node holds that somebody
+ * asked to keep (#2175). Content already in this node's history is not kept
+ * twice (#2186): the partial UNIQUE from migration 0087 blocks the insert and
+ * the row already holding it is returned untouched.
+ * @param data - Snapshot fields.
+ * @param data.projectId - ID of the project owning the node.
+ * @param data.nodeId - ID of the canvas node the snapshot is of.
+ * @param data.userId - ID of the user who asked for it.
+ * @param data.content - What the node held.
+ * @returns The inserted entity, or the pre-existing one holding this content.
+ * @throws {Error} When the insert conflicted yet no live row matches it.
+ */
+export async function createSnapshotSuccessIfAbsent(data: {
+  projectId: string;
+  nodeId: string;
+  userId: string;
+  content: string;
+}): Promise<NodeHistoryEntity> {
+  const inserted = await db
+    .insert(nodeHistory)
+    .values({
+      projectId: data.projectId,
+      nodeId: data.nodeId,
+      userId: data.userId,
+      entryType: "snapshot",
+      status: "success",
+      content: data.content,
+      metadata: {},
     })
-    // `xmax = 0` on a returned row means this statement inserted it; a row the
-    // DO UPDATE touched carries the updating transaction's id there instead.
-    // The caller needs this because the OTHER downstream of an upload — the
-    // project activity feed — has no key of its own to dedup on, and gets its
-    // answer from here rather than from a second idempotency column.
-    .returning({
-      ...getTableColumns(nodeHistory),
-      inserted: sql<boolean>`(xmax = 0)`,
-    });
-  const first = rows[0]!;
-  return { entry: toEntity(first), inserted: first.inserted };
+    .onConflictDoNothing()
+    .returning();
+  if (inserted[0]) return toEntity(inserted[0]);
+  return toEntity(
+    conflictedRow(await findLiveSuccessByContent(data.projectId, data.nodeId, data.content)),
+  );
 }
 
 /**

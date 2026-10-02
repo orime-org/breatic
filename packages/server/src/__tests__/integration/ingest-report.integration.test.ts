@@ -573,6 +573,31 @@ describe("a finish this server drove — a completed upload", () => {
     expect(queued[0]!.kept_storage_key).toBe(firstKey);
   });
 
+  // A node's history holds each content once (#2186), and the feed follows
+  // the history: bytes that resolve onto content this node already holds are
+  // not a second upload to announce.
+  it("adds no history or feed row when the same bytes land on the same node again", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    const firstKey = await mintTicket(seed, { node_id: nodeId });
+    expect((await report(completed(firstKey, { sha256: sha }))).status).toBe(200);
+    const secondKey = await mintTicket(seed, { node_id: nodeId });
+    expect((await report(completed(secondKey, { sha256: sha }))).status).toBe(200);
+
+    const history = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM node_history
+      WHERE node_id = ${nodeId} AND status = 'success' AND deleted_at IS NULL
+    `;
+    expect(history[0]!.n).toBe("1");
+    const feed = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM project_activities
+      WHERE project_id = ${seed.projectId} AND type = 'asset:uploaded'
+    `;
+    expect(feed[0]!.n).toBe("1");
+  });
+
   it("refuses bytes over the upload cap, and tells the node it failed", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();
@@ -983,6 +1008,13 @@ describe("a finish this server drove — the same report twice", () => {
       WHERE node_id = ${nodeId} AND deleted_at IS NULL
     `;
     expect(history[0]!.n).toBe("1");
+    // And one feed row: the replay writes no history row, so it announces
+    // nothing either (#2186 A5).
+    const feed = await sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM project_activities
+      WHERE project_id = ${seed.projectId} AND type = 'asset:uploaded'
+    `;
+    expect(feed[0]!.n).toBe("1");
 
     // The event goes out again on purpose. A repeated report means the browser
     // did not hear us the first time, and the likeliest reason is that the

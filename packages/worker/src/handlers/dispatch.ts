@@ -889,10 +889,12 @@ const NO_RESULT: TaskFailureReason = "no_result";
 /**
  * Record node_history AND emit the success write-back for each target node
  * (#1618). Shared by the Stage-4 success path and the billed-redelivery
- * re-record. Recording is idempotent (createGenerationSuccessIfAbsent backed
- * by the migration-0036 partial unique), so calling this more than once for a
- * task — double-live concurrent executions, or a redelivery — yields exactly
- * one history row per (task, node). On a live run a node that cannot be
+ * re-record. Recording is idempotent (createGenerationSuccessIfAbsent, backed
+ * by the migration-0036 (task, node) and migration-0087 content-per-node
+ * partial uniques), so calling this more than once for a task — double-live
+ * concurrent executions, or a redelivery — writes at most one history row per
+ * (task, node), and none when the node's history already holds the result. A
+ * billed task is recorded when its node_tasks.node_history_id is set. On a live run a node that cannot be
  * recorded or settled fails the job, so BullMQ redelivers and the remaining
  * nodes are reached on that pass; on the crash-net pass, where no delivery is
  * left, node K's failure neither skips K+1..N nor escapes. Outputs whose url
@@ -955,7 +957,7 @@ export async function recordGenerationForNodes(
 ): Promise<void> {
   for (const o of outputs) {
     const content = typeof o.content === "string" ? o.content : null;
-    /** The history row this pass wrote, which the task row points at. */
+    /** The history row holding this result, which the task row points at. */
     let historyId: string | undefined;
     if (content !== null) {
       try {

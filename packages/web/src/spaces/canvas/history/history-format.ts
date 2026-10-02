@@ -23,41 +23,22 @@ export function isRestorable(entry: NodeHistoryEntry): boolean {
 }
 
 /**
- * The id of the entry to mark "current" — WHICH ROW the node is on.
+ * The id of the entry to mark "current" — the row holding what the node holds.
  *
- * A reader who restores a row gets that row, so the node remembers which one
- * and this names it. Content cannot answer that on its own: two snapshots of
- * the same words are two rows a reader is allowed to keep, and asset dedup
- * yields several rows holding one URL. The remembered row is retired by the
- * content check — once the node holds something else, whether a run landed on
- * it or the reader typed, the row it came from is no longer what it is on.
- *
- * Rows that arrived on their own (a run, an upload) were never restored, and
- * for those the newest content match is the answer. Null-guarded on BOTH
- * sides so a node with only failed history (`currentContent == null`) never
- * matches a failed row (`content == null`) via `null === null`; newest-first
- * keeps the dedup case on the newest of the matching rows.
+ * A node's history holds each content once (#2186), so at most one successful
+ * row matches the node's content and it names the row the node is on, wherever
+ * it sits in the list. Null-guarded on BOTH sides so a node with only failed
+ * history (`currentContent == null`) never matches a failed row
+ * (`content == null`) via `null === null`.
  * @param entries - The loaded history rows, newest first.
  * @param currentContent - The node's live content (may be null).
- * @param restoredFromEntryId - The row the reader last restored onto this node, when one was.
  * @returns The current entry's id, or null.
  */
 export function currentEntryId(
   entries: ReadonlyArray<NodeHistoryEntry>,
   currentContent: string | null | undefined,
-  restoredFromEntryId?: string | null,
 ): string | null {
   if (currentContent == null) return null;
-  // A reader who restores a row gets THAT row, and the node remembers which
-  // one it was. Content cannot tell two rows apart when both hold the same
-  // thing — two snapshots of the same words are two rows a reader is allowed
-  // to keep (user 2026-09-20). The content check is what retires the memory:
-  // once the node holds something else, the row it came from is no longer
-  // what it is on.
-  if (restoredFromEntryId != null) {
-    const restored = entries.find((e) => e.id === restoredFromEntryId);
-    if (restored?.content === currentContent) return restored.id;
-  }
   for (const e of entries) {
     if (e.content != null && e.content === currentContent) return e.id;
   }
