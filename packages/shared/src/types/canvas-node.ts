@@ -625,6 +625,13 @@ export interface NodeTaskResult {
 }
 
 /**
+ * A result's media numbers: what it carries besides its content and cover.
+ * A history row keeps them (#2184) so a restore puts back what the settle put
+ * on the node.
+ */
+export type NodeMediaNumbers = Omit<NodeTaskResult, 'content' | 'coverUrl'>;
+
+/**
  * The server recounted a node's tasks (#186).
  *
  * One event type covers every state change, because the document holds only

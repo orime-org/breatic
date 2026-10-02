@@ -65,6 +65,16 @@ export interface NodeHistoryEntry {
     filename?: string;
     [k: string]: unknown;
   };
+  /**
+   * The media numbers this content landed on the node with (#2184), under the
+   * node's own field names; a restore writes them back. Null when the medium
+   * has no such number, and on rows written before they were kept.
+   */
+  mediaWidth: number | null;
+  mediaHeight: number | null;
+  duration: number | null;
+  mimeType: string | null;
+  size: number | null;
   createdAt: string;
 }
 
@@ -72,8 +82,9 @@ export interface NodeHistoryEntry {
  * One row of a node's task list (#186) — what `GET /canvas/nodes/:id/tasks`
  * hands back.
  *
- * `content` / `coverUrl` are what this task put on the node, read across
- * server-side from the history row it names. They are present on a task that
+ * `content`, `coverUrl` and the media numbers are read across server-side from
+ * the history row this task names. `coverUrl` is that row's thumbnail: a
+ * video's cover, or for an image a preview of the content. They are present on a task that
  * landed something, which includes one judged expired before its report
  * arrived; the user replaces the node's content from them without a second
  * request.
@@ -99,6 +110,16 @@ export interface NodeTaskEntry {
   nodeHistoryId: string | null;
   content: string | null;
   coverUrl: string | null;
+  /**
+   * The media numbers this content landed on the node with (#2184), under the
+   * node's own field names; a restore writes them back. Null when the medium
+   * has no such number, and on rows written before they were kept.
+   */
+  mediaWidth: number | null;
+  mediaHeight: number | null;
+  duration: number | null;
+  mimeType: string | null;
+  size: number | null;
 }
 
 let limitsCache: CanvasLimits | null = null;

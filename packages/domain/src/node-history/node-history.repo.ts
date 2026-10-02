@@ -12,7 +12,7 @@
 import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { nodeHistory, studios } from "@breatic/core";
-import type { NodeHistoryEntity } from "@breatic/shared";
+import type { NodeHistoryEntity, NodeMediaNumbers } from "@breatic/shared";
 
 /**
  * Convert a Drizzle row to a NodeHistoryEntity.
@@ -38,7 +38,33 @@ function toEntity(
     errorMessage: row.errorMessage,
     taskId: row.taskId,
     metadata: (row.metadata ?? {}),
+    mediaWidth: row.mediaWidth,
+    mediaHeight: row.mediaHeight,
+    duration: row.durationSeconds,
+    mimeType: row.mimeType,
+    size: row.sizeBytes,
     createdAt: row.createdAt,
+  };
+}
+
+/**
+ * The column values for a result's media numbers (#2184).
+ * @param media - The numbers the result landed on the node with.
+ * @returns The five columns.
+ */
+function mediaColumns(media: NodeMediaNumbers): {
+  mediaWidth: number | null;
+  mediaHeight: number | null;
+  durationSeconds: number | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+} {
+  return {
+    mediaWidth: media.width,
+    mediaHeight: media.height,
+    durationSeconds: media.duration,
+    mimeType: media.mimeType,
+    sizeBytes: media.size,
   };
 }
 
@@ -149,6 +175,7 @@ function conflictedRow(
  * @param data.thumbnailUrl - Thumbnail URL for previews, if available.
  * @param data.taskId - ID of the task that produced this result.
  * @param data.metadata - Arbitrary generation metadata (model, cost, params, etc.).
+ * @param data.media - The media numbers the result landed on the node with.
  * @returns The inserted entity, or the pre-existing one on conflict.
  * @throws {Error} When the insert conflicted yet no live row matches it.
  */
@@ -160,6 +187,7 @@ export async function createGenerationSuccessIfAbsent(data: {
   thumbnailUrl?: string;
   taskId: string;
   metadata?: Record<string, unknown>;
+  media: NodeMediaNumbers;
 }): Promise<NodeHistoryEntity> {
   const inserted = await db
     .insert(nodeHistory)
@@ -173,6 +201,7 @@ export async function createGenerationSuccessIfAbsent(data: {
       thumbnailUrl: data.thumbnailUrl ?? null,
       taskId: data.taskId,
       metadata: data.metadata ?? {},
+      ...mediaColumns(data.media),
     })
     .onConflictDoNothing()
     .returning();
@@ -217,6 +246,7 @@ export async function createGenerationSuccessIfAbsent(data: {
  * @param data.thumbnailUrl - Cover URL for a video; the asset's own URL for an image.
  * @param data.storageKey - The granted storage key, when this upload has one.
  * @param data.metadata - Filename, byte size and mime type.
+ * @param data.media - The media numbers the upload landed on the node with.
  * @returns The stored entry plus whether this call is the one that wrote it —
  *   true only when a new row went in.
  * @throws {Error} When the insert conflicted yet no live row matches it.
@@ -229,6 +259,7 @@ export async function createUploadSuccessIfAbsent(data: {
   thumbnailUrl?: string;
   storageKey?: string;
   metadata?: Record<string, unknown>;
+  media: NodeMediaNumbers;
 }): Promise<{ entry: NodeHistoryEntity; inserted: boolean }> {
   const rows = await db
     .insert(nodeHistory)
@@ -242,6 +273,7 @@ export async function createUploadSuccessIfAbsent(data: {
       thumbnailUrl: data.thumbnailUrl ?? null,
       uploadStorageKey: data.storageKey ?? null,
       metadata: data.metadata ?? {},
+      ...mediaColumns(data.media),
     })
     .onConflictDoNothing()
     .returning();
