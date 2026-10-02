@@ -1071,3 +1071,46 @@ describe('MembershipPanel', () => {
     expect(screen.getAllByText('Compare tiers')).toHaveLength(1);
   });
 });
+
+describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => {
+  /**
+   * Opens the panel for an account on `tier`, with the answer never arriving.
+   * @param tier - The tier the account was told it is on when it signed in.
+   */
+  function openPending(tier: 'base' | 'pro' | 'self_hosted' | 'enterprise'): void {
+    useCurrentUserStore.getState().setUser({
+      id: 'u-pending',
+      name: 'u-pending',
+      email: 'u-pending@x.test',
+      personalStudio: null,
+      membershipTier: tier,
+    });
+    membershipMock.mockReturnValue(new Promise(() => {}));
+    setup();
+  }
+
+  it('shows the headings and the tier name at once, with bars only where data goes', () => {
+    openPending('pro');
+
+    expect(screen.getByText('Current membership')).toBeInTheDocument();
+    expect(screen.getByText('My allowances')).toBeInTheDocument();
+    expect(screen.getByText('Choose a membership')).toBeInTheDocument();
+    expect(screen.getByTestId('current-tier-name')).toHaveTextContent('Pro');
+    // One placeholder under the tier name, one block each for the allowances
+    // and the table — and no whole-panel placeholder in their place.
+    expect(screen.getAllByTestId('section-skeleton')).toHaveLength(2);
+    expect(screen.getByTestId('current-tier-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('membership-skeleton')).toBeNull();
+  });
+
+  it.each(['self_hosted', 'enterprise'] as const)(
+    'leaves out the tier table for %s, as the loaded panel does',
+    (tier) => {
+      openPending(tier);
+
+      expect(screen.getByText('My allowances')).toBeInTheDocument();
+      expect(screen.queryByText('Choose a membership')).toBeNull();
+      expect(screen.getAllByTestId('section-skeleton')).toHaveLength(1);
+    },
+  );
+});
