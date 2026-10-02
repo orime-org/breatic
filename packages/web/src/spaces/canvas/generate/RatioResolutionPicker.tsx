@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
@@ -13,7 +13,6 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
-import { cn } from '@web/lib/utils';
 import {
   CameraPicker,
   cameraSummary,
@@ -29,7 +28,7 @@ import { PARAMS_PILL_CLASS } from '@web/spaces/canvas/generate/generate-tools';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { modelControls, optionLabel, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
-import { useSecondPanelSide } from '@web/spaces/canvas/generate/use-second-panel-side';
+import { SecondPanelFrame, SecondPanelRow, useSecondPanelSide } from '@web/spaces/canvas/generate/second-panel';
 
 /** The subset of generate params this picker edits. */
 interface RatioResolutionValue extends CameraValue {
@@ -43,14 +42,8 @@ const SECTION_BREAK = 'mt-3 border-t border-border pt-3';
 /** The key the camera panel opens under, for the side it opens on. */
 const CAMERA_PANEL = 'camera';
 
-/**
- * How far the camera panel reaches beside the popover: its
- * `w-[min(520px,88vw)]` plus the `ml-2` / `mr-2` gap, at the window's width now.
- * @returns The span in pixels.
- */
-function cameraPanelSpan(): number {
-  return Math.min(520, window.innerWidth * 0.88) + 8;
-}
+/** The camera panel's width in pixels, room for four wheels in a line. */
+const CAMERA_PANEL_WIDTH = 520;
 
 interface RatioResolutionPickerProps {
   /** The current model, whose params define the allowed ratios / resolutions. */
@@ -95,7 +88,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   const [cameraOpen, setCameraOpen] = React.useState(false);
   const [firstPanelRef, cameraOnLeft] = useSecondPanelSide(
     cameraOpen ? CAMERA_PANEL : null,
-    cameraPanelSpan(),
+    CAMERA_PANEL_WIDTH,
   );
   // A model without the camera omits its params, so `params.camera` is absent.
   const cameraSupported = model.params.camera != null;
@@ -194,48 +187,26 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
         {cameraSupported ? (
           // The camera sits in the model's own section, under its switches.
           <div className={hasOwn ? 'mt-3' : hasShared ? SECTION_BREAK : undefined}>
-            <Button
-              type='button'
-              variant='ghost'
-              size='menu-item'
-              aria-expanded={cameraOpen}
-              data-testid='generate-camera-row'
-              className={cn(
-                'grid w-full grid-cols-[72px_minmax(0,1fr)_16px] items-center gap-2 px-1',
-                cameraOpen && 'bg-accent',
-              )}
+            <SecondPanelRow
+              label={t('canvas.generatePanel.camera')}
+              value={cameraOn ? cameraSummary(value) : t('canvas.generatePanel.switchOff')}
+              valueMuted={!cameraOn}
+              open={cameraOpen}
+              onLeft={cameraOnLeft}
+              testId='generate-camera-row'
               onClick={() => setCameraOpen((was) => !was)}
-            >
-              <span
-                className={cn(
-                  'truncate text-left text-xs font-medium',
-                  cameraOpen ? 'text-foreground' : 'text-muted-foreground',
-                )}
-              >
-                {t('canvas.generatePanel.camera')}
-              </span>
-              <span className={cn('truncate text-left', !cameraOn && 'text-muted-foreground')}>
-                {cameraOn ? cameraSummary(value) : t('canvas.generatePanel.switchOff')}
-              </span>
-              {cameraOnLeft ? (
-                <ChevronLeft className='h-3.5 w-3.5 opacity-60' aria-hidden='true' />
-              ) : (
-                <ChevronRight className='h-3.5 w-3.5 opacity-60' aria-hidden='true' />
-              )}
-            </Button>
+            />
           </div>
         ) : null}
         {cameraSupported && cameraOpen ? (
-          <div
-            data-testid='generate-camera-panel'
-            data-side={cameraOnLeft ? 'left' : 'right'}
-            className={cn(
-              'absolute bottom-0 w-[min(520px,88vw)] rounded-overlay border border-border bg-popover p-4 text-popover-foreground shadow-md',
-              cameraOnLeft ? 'right-full mr-2' : 'left-full ml-2',
-            )}
+          <SecondPanelFrame
+            onLeft={cameraOnLeft}
+            maxWidth={CAMERA_PANEL_WIDTH}
+            testId='generate-camera-panel'
+            className='p-4'
           >
             <CameraPicker model={model} value={value} onChange={onChange} />
-          </div>
+          </SecondPanelFrame>
         ) : null}
       </PopoverContent>
     </Popover>

@@ -25,16 +25,16 @@ export interface CameraValue {
   enable_camera?: boolean;
 }
 
-/** Column config: which param each wheel edits + how its glyph renders. */
+/**
+ * Column config: which param each wheel edits, how its glyph renders, and the
+ * unit its values read with, on the wheel and on the params row.
+ */
 const COLUMNS = [
-  { key: 'camera', capKey: 'cameraBody', glyph: 'camera' },
-  { key: 'lens', capKey: 'lens', glyph: 'lens' },
-  { key: 'focal_length', capKey: 'focalLength', glyph: 'num' },
-  { key: 'aperture', capKey: 'aperture', glyph: 'iris' },
+  { key: 'camera', capKey: 'cameraBody', glyph: 'camera', unit: '' },
+  { key: 'lens', capKey: 'lens', glyph: 'lens', unit: '' },
+  { key: 'focal_length', capKey: 'focalLength', glyph: 'num', unit: ' mm' },
+  { key: 'aperture', capKey: 'aperture', glyph: 'iris', unit: '' },
 ] as const;
-
-/** What the focal length reads with, on the wheel and on the params row. */
-const FOCAL_UNIT = ' mm';
 
 /** The switch that opens this cluster. */
 export const CAMERA_SWITCH_PARAM = 'enable_camera';
@@ -277,7 +277,7 @@ export const CameraPicker = React.memo(function CameraPicker({
             0,
             values.findIndex((v) => v === current),
           );
-          const unit = col.key === 'focal_length' ? FOCAL_UNIT : '';
+          const unit = col.unit;
           return (
             <CameraWheel
               key={col.key}
@@ -306,8 +306,7 @@ export const CameraPicker = React.memo(function CameraPicker({
 export function cameraSummary(value: CameraValue): string {
   return COLUMNS.map((col) => {
     const held = value[col.key];
-    if (held === undefined) return '';
-    return col.key === 'focal_length' ? `${held}${FOCAL_UNIT}` : String(held);
+    return held === undefined ? '' : `${held}${col.unit}`;
   })
     .filter((part) => part !== '')
     .join(' · ');

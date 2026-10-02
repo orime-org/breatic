@@ -29,7 +29,8 @@ for (const width of [1280, 1920]) {
       await page.getByTestId('generate-model-trigger').click();
       await page.getByTestId('generate-model-option-nano-banana-2').click();
 
-      await expect(page.getByTestId('generate-camera')).toHaveCount(0);
+      // The bottom row has no camera button of its own.
+      await expect(page.getByRole('button', { name: 'Camera', exact: true })).toHaveCount(0);
 
       const pill = page.getByTestId('generate-ratio-trigger');
       await pill.click();
@@ -55,14 +56,11 @@ for (const width of [1280, 1920]) {
       const panel = page.getByTestId('generate-camera-panel');
       await expect(panel).toBeVisible();
       await expect(row).toHaveAttribute('aria-expanded', 'true');
-      // Beside the popover: on the right while there is room there, else on the
-      // left when the left has room — the rule the voice panel follows.
+      // Beside the popover: at 1280 the right has no room for the 520px panel
+      // and it opens on the left; at 1920 it opens on the right.
       const viewport = page.viewportSize()!;
-      const span = Math.min(520, viewport.width * 0.88) + 8;
-      const expected = pop.x + pop.width + span > viewport.width && pop.x >= span ? 'left' : 'right';
+      const expected = width === 1920 ? 'right' : 'left';
       await expect(panel).toHaveAttribute('data-side', expected);
-      // The wide window is there to walk the right-hand side.
-      expect(expected).toBe(width === 1920 ? 'right' : 'left');
       await panel.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
       const panelBox = (await panel.boundingBox())!;
       if (expected === 'right') expect(panelBox.x).toBeGreaterThanOrEqual(pop.x + pop.width);
