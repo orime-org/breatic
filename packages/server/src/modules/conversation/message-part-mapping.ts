@@ -18,7 +18,7 @@
  */
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
-import { NOTHING_SAID_WHY, attachmentPart } from "@breatic/shared";
+import { NOTHING_SAID_WHY, attachmentPart, wireLineOf } from "@breatic/shared";
 import type { MessageData, MessagePart, StoredMessageMetadata } from "@breatic/shared";
 
 /** What one message's parts look like on the wire. */
@@ -176,7 +176,7 @@ export function toUiParts(parts: MessagePart[]): UiParts {
       return {
         ...base,
         state: "output-error",
-        errorText: part.failure?.readerKey,
+        errorText: part.failure === undefined ? undefined : wireLineOf(part.failure),
         failureKind: part.failure?.kind,
       } as UiPart;
     }

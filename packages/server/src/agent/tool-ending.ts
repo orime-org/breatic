@@ -17,8 +17,35 @@
  * with no detail is a record that cannot say what happened, and the model
  * reads that record back next turn.
  */
+import { InvalidToolInputError, NoSuchToolError } from "ai";
 import { FAILURE_LINES, toolFailureOf } from "@breatic/shared";
 import type { ToolFailure } from "@breatic/shared";
+
+/**
+ * What the SDK names its two refusals, which is how the rendered form starts.
+ *
+ * `getErrorMessage` renders an error with `toString()`, so the string a refused
+ * call arrives as leads with the name the SDK set on the instance. Written out
+ * because the classes' own `name` is the class name, which is a different
+ * string.
+ */
+const SDK_REFUSALS = ["AI_InvalidToolInputError", "AI_NoSuchToolError"] as const;
+
+/**
+ * Whether the SDK refused this call before running it.
+ *
+ * The same refusal reaches a turn twice, once in each shape: as the SDK's own
+ * error on the chunk that says the call was invalid, then rendered as a string
+ * on the tool-error that follows it. Both are recognised, so both say the same
+ * thing. Anything else -- a tool's own exception, the stream itself failing --
+ * is not a refusal.
+ * @param err - Whatever the SDK reported the call failing with.
+ * @returns True for a refused call, in either shape.
+ */
+function refusedBySdk(err: unknown): boolean {
+  if (InvalidToolInputError.isInstance(err) || NoSuchToolError.isInstance(err)) return true;
+  return typeof err === "string" && SDK_REFUSALS.some((name) => err.startsWith(`${name}:`));
+}
 
 /**
  * What is left of a call the turn ended before running.
@@ -87,6 +114,10 @@ export function endingOf(err: unknown): ToolFailure {
   // which this does not replace. Where the sentence below is read is the next
   // turn, off the stored row.
   const said = err instanceof Error ? err.message : String(err);
+  // A refusal steers the model, and the reader is shown nothing for it.
+  if (refusedBySdk(err)) {
+    return { kind: "turned_away", forModel: `${said} Correct the call and try once more.` };
+  }
   return {
     kind: "tool_failed",
     forModel: `${said} Correct the call and try once more.`,

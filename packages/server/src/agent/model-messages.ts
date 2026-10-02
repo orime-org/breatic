@@ -85,8 +85,11 @@ export function reachesTheModel(part: ToolPart): boolean {
   // A question the model asked is in the reply as words, written there by the
   // turn from this call's own payload. Sending the call and its result too
   // would put the same question in the context twice, on this turn and every
-  // one after it, saying nothing the words do not.
-  if (part.toolName === ASK_USER) return false;
+  // one after it, saying nothing the words do not. A question turned away is
+  // the other way round: it is nowhere in the words, and the refusal is how
+  // the model learns it was not asked, so it can ask once the first one is
+  // answered.
+  if (part.toolName === ASK_USER) return part.failure?.kind === "turned_away";
   return part.status !== "pending" && part.argumentsIncomplete !== true;
 }
 

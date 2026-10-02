@@ -595,6 +595,37 @@ describe("the question a turn ended on", () => {
     expect(out).toEqual([{ role: "assistant", content: "哪一种？\n\n1. 一\n2. 二" }]);
   });
 
+  it("goes back as a refused call when it was turned away, so the model knows it was not asked", () => {
+    // One question a turn: a second one in the same step is turned away. The
+    // model reads that it was not put, so it can ask it once the first one is
+    // answered.
+    const out = toModelMessages([
+      stored("assistant", [
+        { type: "text", text: "先定节奏？" },
+        {
+          type: "tool",
+          toolCallId: "tc-11",
+          toolName: "ask_user",
+          input: { question: "再定时长？" },
+          status: "error",
+          failure: { kind: "turned_away", forModel: "This question was not put to the user." },
+        },
+      ]),
+    ]);
+
+    expect(out).toContainEqual(
+      expect.objectContaining({
+        role: "tool",
+        content: [
+          expect.objectContaining({
+            toolCallId: "tc-11",
+            output: { type: "error-text", value: "This question was not put to the user." },
+          }),
+        ],
+      }),
+    );
+  });
+
   it("leaves every other tool's call and result where they were", () => {
     const out = toModelMessages([
       stored("assistant", [
