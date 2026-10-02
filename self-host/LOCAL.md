@@ -25,7 +25,7 @@ This is not an offline installation: storage requires R2 and generation uses ext
 - Allow access to GitHub, GHCR, container registries, Cloudflare and the model providers you need.
 - Enable R2 and ensure your Cloudflare account can use Containers. Check the [Cloudflare prerequisites](https://developers.cloudflare.com/containers/get-started/) for plan and billing requirements.
 - Prepare your own model API keys and quota. Text chat needs a text provider; media generation needs the selected model's provider.
-- On the machine publishing cloud components, install Node.js 24.x and pnpm 9.15.0. This can be the application host or a separate computer. Docker must run while building the media container.
+- On the machine publishing cloud components, install Node.js 24.15 or later in the 24 line (the `engines` range in `package.json`) and pnpm 9.15.0. This can be the application host or a separate computer. Docker must run while building the media container.
 - Start single-computer use at `http://localhost`. For LAN sharing, use a fixed private IP and HTTPS trusted by every client; see section 7.
 
 Check your tools:
@@ -38,7 +38,7 @@ npm install --global pnpm@9.15.0
 pnpm --version
 ```
 
-Docker must report a Server, Node should report `v22...`, and pnpm must report `9.15.0`. The repository does not yet provide a verified minimum hardware specification. Monitor CPU and memory with `docker stats`, and size resources for your workload and concurrency.
+Docker must report a Server, Node should report `v24...` at 24.15 or later, and pnpm must report `9.15.0`. The repository does not yet provide a verified minimum hardware specification. Monitor CPU and memory with `docker stats`, and size resources for your workload and concurrency.
 
 Download the complete repository and enter its root:
 

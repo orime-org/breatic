@@ -25,7 +25,7 @@ API / 后台任务 ────→ Ingest Worker / AI 供应商
 - 能访问 GitHub、GHCR、Docker 镜像源、Cloudflare 和所需模型服务。
 - Cloudflare 账户已开通 R2，并具备 Containers 使用资格。按 [Cloudflare 前置条件](https://developers.cloudflare.com/containers/get-started/) 确认账户计划及计费。
 - 准备自己的模型 API 密钥和额度。至少配置文本模型才能使用 AI 聊天，媒体生成还需对应供应商。
-- 发布云端组件的机器安装 Node.js 24.x 和 pnpm 9.15.0。它可以是应用主机，也可以是另一台电脑；构建媒体容器时 Docker 必须运行。
+- 发布云端组件的机器安装 Node.js 24（24.15 或更新，即 `package.json` 里 `engines` 的范围）和 pnpm 9.15.0。它可以是应用主机，也可以是另一台电脑；构建媒体容器时 Docker 必须运行。
 - 单机首次体验使用 `http://localhost`；局域网共享使用固定内网 IP 和所有客户端信任的 HTTPS 证书，见第 7 节。
 
 检查：
@@ -38,7 +38,7 @@ npm install --global pnpm@9.15.0
 pnpm --version
 ```
 
-Docker 应有 Server 信息，Node 应为 `v22...`，pnpm 应为 `9.15.0`。当前仓库没有经过验证的硬件最低配置承诺；启动后用 `docker stats` 检查内存和 CPU，按实际并发和媒体任务增加资源。
+Docker 应有 Server 信息，Node 应为 `v24...` 且不低于 24.15，pnpm 应为 `9.15.0`。当前仓库没有经过验证的硬件最低配置承诺；启动后用 `docker stats` 检查内存和 CPU，按实际并发和媒体任务增加资源。
 
 下载完整仓库并进入根目录：
 

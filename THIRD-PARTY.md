@@ -19,7 +19,7 @@ We publish three images, and two of them carry FFmpeg:
 
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
-| `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-slim` (Debian bookworm) | yes |
+| `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-bookworm-slim` | yes |
 | the media container | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) | `alpine:3.23` | yes |
 | `ghcr.io/<owner>/breatic-web` | [Dockerfile.web](./Dockerfile.web) | `nginx:1.27-alpine` | no — it serves the built front-end and nothing else |
 
