@@ -11,6 +11,8 @@ import { describe, it, expect } from "vitest";
 import { toolFailureOf } from "@breatic/shared";
 
 import { makeAskUserTool } from "@domain/agent/tools/ask-user.js";
+import { TOOL_MAP } from "@domain/agent/tools/index.js";
+import { ASK_USER } from "@domain/agent/tools/tool-names.js";
 
 const asked = { question: "Which style do you want?", options: ["Ink", "Oil"] };
 const alsoAsked = { question: "How long should it be?" };
@@ -49,8 +51,11 @@ describe("one question a turn", () => {
   });
 
   it("gives every turn its own question", async () => {
-    await ask(makeAskUserTool(), asked);
-    expect(await ask(makeAskUserTool(), alsoAsked)).toStrictEqual(alsoAsked);
+    // Through the registry, which every turn builds its tools from: the
+    // one-question state is per turn only because each build is a new tool.
+    const build = TOOL_MAP[ASK_USER] as () => ReturnType<typeof makeAskUserTool>;
+    await ask(build(), asked);
+    expect(await ask(build(), alsoAsked)).toStrictEqual(alsoAsked);
   });
 
   it("lets the first of two calls started together through, and only that one", async () => {
