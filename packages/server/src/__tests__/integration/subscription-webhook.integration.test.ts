@@ -301,6 +301,42 @@ describe("handleSubscriptionEvent — idempotency (#106 §8)", () => {
   });
 });
 
+describe("handleSubscriptionEvent — the claim shares the write's transaction (#307 A8)", () => {
+  it("applies a redelivery after the first attempt rolled back", async () => {
+    // A failure after the event is claimed must take the claim with it;
+    // otherwise Stripe's redelivery is answered "replay" and the change is
+    // lost for good.
+    const { userId, customerId } = await makeCustomerAccount();
+    const fn = `fail_tier_change_${seq}`;
+    try {
+      await sql.unsafe(`
+        CREATE FUNCTION ${fn}() RETURNS trigger AS $$
+        BEGIN RAISE EXCEPTION 'injected failure'; END $$ LANGUAGE plpgsql
+      `);
+      await sql.unsafe(`
+        CREATE TRIGGER ${fn} BEFORE INSERT ON membership_tier_changes
+        FOR EACH ROW WHEN (NEW.user_id = '${userId}') EXECUTE FUNCTION ${fn}()
+      `);
+      const sub = stripeSub({ id: `sub_roll_${seq}`, customer: customerId });
+      stripe.subscriptions.retrieve.mockResolvedValue(sub);
+      const evt = event("customer.subscription.created", sub, `evt_roll_${Date.now()}`);
+
+      await expect(handleSubscriptionEvent(evt)).rejects.toThrow(/membership_tier_changes/);
+      expect(await getUserMembershipTier(userId)).toBe("base");
+
+      await sql.unsafe(`DROP TRIGGER ${fn} ON membership_tier_changes`);
+      const retried = await handleSubscriptionEvent(evt);
+
+      expect(retried.status).toBe("applied");
+      expect(await getUserMembershipTier(userId)).toBe("pro");
+    } finally {
+      await sql.unsafe(`DROP TRIGGER IF EXISTS ${fn} ON membership_tier_changes`);
+      await sql.unsafe(`DROP FUNCTION IF EXISTS ${fn}()`);
+      await dropUser(userId);
+    }
+  });
+});
+
 describe("handleSubscriptionEvent — out of order (#106 §8)", () => {
   it("writes what Stripe says now, not what the late event carried", async () => {
     // An event that arrives after a newer one still asks for the current

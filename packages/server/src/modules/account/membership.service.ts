@@ -10,17 +10,18 @@
  * itself against with their prices, and what its subscription is doing.
  *
  * It lives in a service rather than in the route because assembling that
- * answer is domain work — deciding which tiers are comparable, deciding what
- * an enterprise account gets instead of ceilings — and routes here translate
- * protocol only (prohibition #1). The subscription reading (#106) needs the
- * same "what is this account on, and what does it grant" answer, so it is
- * assembled here too rather than in a second request.
+ * answer is domain work — deciding which tiers are comparable and what each
+ * costs on this deployment — and routes here translate protocol only
+ * (prohibition #1).
+ *
+ * Everything here is read from our own data (#307): the tier through the same
+ * period-end check the ceilings use, so the panel never shows a tier the
+ * ceilings do not grant.
  */
 
 import {
   env,
-  getUserMembershipTier,
-  getLimitsForUser,
+  getMembershipForUser,
   getMembershipLimits,
   getSubscriptionPlan,
 } from "@breatic/core";
@@ -35,7 +36,7 @@ import {
 
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import { readSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
+import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 
 /**
  * Reads everything the membership panel needs for one account.
@@ -52,20 +53,10 @@ export async function readAccountMembership(
   // is a subscription to describe. A self-hosted install has neither.
   const selling = env.PAYMENT_ENABLED;
 
-  // Reconciling comes FIRST, because it can correct the tier. Reading the
-  // tier before it and reporting the correction afterwards would answer this
-  // request with the value the correction just replaced — the one request
-  // where being right matters most, since the reader opened the panel because
-  // their allowances looked wrong. It would also hand the front end two
-  // contradictory tiers in one response.
-  const subscription = selling ? await readSubscriptionSummary(userId) : null;
-
-  const tier = await getUserMembershipTier(userId);
-
-  // Asked before the ceilings, because asking for an enterprise account's
-  // ceilings throws by design. Going through `getLimitsForUser` first would
-  // turn a legitimate account into a 500.
-  const limits = tier === "enterprise" ? null : await getLimitsForUser(userId);
+  const subscription = selling
+    ? await readStoredSubscriptionSummary(userId)
+    : null;
+  const { tier, limits } = await getMembershipForUser(userId);
 
   const [teamStudios, storageBytes] = await Promise.all([
     studioRepo.countTeamStudiosAdministeredBy(userId),

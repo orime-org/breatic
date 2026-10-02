@@ -9,6 +9,7 @@ import type { PurchaseRow } from '@breatic/shared';
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
 import { paymentApi } from '@web/data/api/payment';
+import { SectionSkeleton } from '@web/components/section-skeleton';
 import {
   ScrollCard,
   ListEnd,
@@ -19,7 +20,6 @@ import {
   Section,
   SectionEmpty,
   SectionError,
-  SectionSkeleton,
   formatMoney,
 } from '@web/features/credits/section-chrome';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';

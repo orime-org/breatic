@@ -242,11 +242,14 @@ auth.post("/login", rateLimitFor("login"), validate("json", loginSchema), async 
   const { email, password } = c.req.valid("json");
   const { user, token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
-  const studio = await studioService.getPersonalStudio(user.id);
+  const [shown, studio] = await Promise.all([
+    authService.withTierInForce(user),
+    studioService.getPersonalStudio(user.id),
+  ]);
   // Audit log moved from auth.service.ts (17B mandate).
   logger.info({ userId: user.id, method: "email" }, "user_logged_in");
   return c.json({
-    data: { user: { ...user, personalStudio: toPersonalStudioRef(studio) } },
+    data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } },
   });
 });
 
@@ -335,11 +338,14 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
   );
 
   setSessionCookie(c, token);
-  const studio = await studioService.getPersonalStudio(user.id);
+  const [shown, studio] = await Promise.all([
+    authService.withTierInForce(user),
+    studioService.getPersonalStudio(user.id),
+  ]);
   // Audit log moved from auth.service.ts (17B mandate).
   logger.info({ userId: user.id, method: "google" }, "user_logged_in");
   return c.json({
-    data: { user: { ...user, personalStudio: toPersonalStudioRef(studio) } },
+    data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } },
   });
 });
 
@@ -358,8 +364,11 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
  */
 auth.get("/me", requireAuth, async (c) => {
   const user = c.get("user");
-  const studio = await studioService.getPersonalStudio(user.id);
-  return c.json({ data: { ...user, personalStudio: toPersonalStudioRef(studio) } });
+  const [shown, studio] = await Promise.all([
+    authService.withTierInForce(user),
+    studioService.getPersonalStudio(user.id),
+  ]);
+  return c.json({ data: { ...shown, personalStudio: toPersonalStudioRef(studio) } });
 });
 
 auth.post("/logout", requireAuth, async (c) => {

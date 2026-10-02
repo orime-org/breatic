@@ -548,6 +548,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.membership.already_subscribed": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.membership.change_not_offered": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.membership.change_unconfirmed": { excluded: REASONS.NOT_ON_THESE_SCREENS },
+  "server.membership.checkout_not_found": { excluded: REASONS.NOT_ON_THESE_SCREENS },
+  "server.membership.checkout_unconfirmed": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.membership.no_subscription": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.membership.not_cancelling": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.membership.payment_overdue": { excluded: REASONS.NOT_ON_THESE_SCREENS },

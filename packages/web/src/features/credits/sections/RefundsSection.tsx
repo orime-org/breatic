@@ -22,6 +22,7 @@ import {
   fetchCreditLots,
   requestCreditLotRefund,
 } from '@web/data/api/credits';
+import { SectionSkeleton } from '@web/components/section-skeleton';
 import {
   ScrollCard,
   ListEnd,
@@ -33,7 +34,6 @@ import {
   Section,
   SectionEmpty,
   SectionError,
-  SectionSkeleton,
   formatMoney,
 } from '@web/features/credits/section-chrome';
 import {

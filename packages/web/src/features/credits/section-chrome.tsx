@@ -6,7 +6,6 @@ import { Loader2 } from 'lucide-react';
 import { getLocale } from '@breatic/shared';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { cn } from '@web/lib/utils';
@@ -75,24 +74,6 @@ export function Section({
       {footer === undefined ? null : (
         <div className='px-7 pb-7 pt-5'>{footer}</div>
       )}
-    </div>
-  );
-}
-
-/**
- * What a section shows while its read is in flight.
- *
- * Bars rather than a spinner: the layout does not depend on the answer, so
- * the reader is already looking at the right place when it arrives.
- * @returns The placeholder.
- */
-export function SectionSkeleton(): React.JSX.Element {
-  return (
-    <div className='flex flex-col gap-3' data-testid='credits-skeleton'>
-      <Skeleton className='h-3.5 w-40' />
-      <Skeleton className='h-3.5 w-full' />
-      <Skeleton className='h-3.5 w-5/6' />
-      <Skeleton className='h-3.5 w-2/3' />
     </div>
   );
 }

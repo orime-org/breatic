@@ -28,6 +28,7 @@ import {
   type MembershipOffer,
   type SubscribableMembershipTier,
 } from "@breatic/shared";
+import type { SituationClock } from "@core/auth/subscription-state.js";
 import { env, MONOREPO_ROOT } from "@core/config/env.js";
 
 /** What one tier costs over one billing period, and which price sells it. */
@@ -188,6 +189,27 @@ export function getStripeCallTimeoutMs(): number {
  */
 export function getSubscriptionStaleAfterDays(): number {
   return readFile().stale_after_days;
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * The clock every reading of an account's subscriptions is taken against.
+ *
+ * The renewal window is read from the file when a reading first asks for it,
+ * which only a row with a period end does. An install with payments off has
+ * no copy of the file, and its accounts have no rows, so reading their tier
+ * never opens it.
+ * @param now - The moment to read at.
+ * @returns That moment with the configured renewal window.
+ */
+export function subscriptionClock(now: Date = new Date()): SituationClock {
+  return {
+    now,
+    get staleAfterMs(): number {
+      return getSubscriptionStaleAfterDays() * MS_PER_DAY;
+    },
+  };
 }
 
 /**
