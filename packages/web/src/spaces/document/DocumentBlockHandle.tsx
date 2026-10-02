@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The strip beside the row under the pointer: the drag handle, alone.
+ * The strip beside the row under the pointer: the drag handle, or a plus on
+ * an empty paragraph.
  *
  * Handed to `SideMenuController` in place of the library's own strip, which
  * cannot serve here for two reasons: its handle draws a `react-icons` glyph at
