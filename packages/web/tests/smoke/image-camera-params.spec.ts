@@ -51,6 +51,10 @@ for (const width of [1280, 1920]) {
       const rowBlock = row.locator('xpath=..');
       await expect(rowBlock).toHaveCSS('border-top-width', '0px');
       expect(Math.round(rowBox.y - (await rowBlock.boundingBox())!.y)).toBe(0);
+      // Its name starts on the same line as the names of the rows above.
+      const nameLeft = async (text: string): Promise<number> =>
+        Math.round((await popover.getByText(text, { exact: true }).first().boundingBox())!.x);
+      expect(await nameLeft('Camera')).toBe(await nameLeft('Image search'));
 
       await row.click();
       const panel = page.getByTestId('generate-camera-panel');

@@ -56,6 +56,8 @@ interface SecondPanelRowProps {
   testId: string;
   /** Opens or closes this row's second panel. */
   onClick: () => void;
+  /** Outer spacing, which depends on the popover's own padding. */
+  className?: string;
 }
 
 /**
@@ -69,6 +71,7 @@ interface SecondPanelRowProps {
  * @param root0.valueMuted - Draws the value muted.
  * @param root0.testId - The row's test id.
  * @param root0.onClick - Opens or closes the panel.
+ * @param root0.className - Outer spacing.
  * @returns The row.
  */
 export function SecondPanelRow({
@@ -79,6 +82,7 @@ export function SecondPanelRow({
   valueMuted = false,
   testId,
   onClick,
+  className,
 }: SecondPanelRowProps): React.JSX.Element {
   const Chevron = onLeft ? ChevronLeft : ChevronRight;
   return (
@@ -88,20 +92,31 @@ export function SecondPanelRow({
       size='menu-item'
       aria-expanded={open}
       data-testid={testId}
-      className={cn('grid w-full grid-cols-[72px_minmax(0,1fr)_16px] items-center gap-2 px-1', open && 'bg-accent')}
+      className={cn(
+        'group grid grid-cols-[72px_minmax(0,1fr)_16px] items-center gap-2 px-1',
+        open && 'bg-accent',
+        className,
+      )}
       onClick={onClick}
     >
-      {/* Muted text on the open row's accent fill is 4.46:1 in the dark
-          theme, under the 4.5:1 floor; that row names itself in full. */}
+      {/* Muted text on the accent fill, open or hovered, is 4.46:1 in the
+          dark theme, under the 4.5:1 floor; on the fill it reads in full. */}
       <span
         className={cn(
           'truncate text-left text-xs font-medium',
-          open ? 'text-foreground' : 'text-muted-foreground',
+          open ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground',
         )}
       >
         {label}
       </span>
-      <span className={cn('truncate text-left', valueMuted && 'text-muted-foreground')}>{value}</span>
+      <span
+        className={cn(
+          'truncate text-left text-xs',
+          valueMuted && !open && 'text-muted-foreground group-hover:text-foreground',
+        )}
+      >
+        {value}
+      </span>
       <Chevron className='h-3.5 w-3.5 opacity-60' aria-hidden='true' />
     </Button>
   );

@@ -194,6 +194,8 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
               open={cameraOpen}
               onLeft={cameraOnLeft}
               testId='generate-camera-row'
+              // Bleeds into the popover's padding so its text lines up with the rows above.
+              className='-mx-1'
               onClick={() => setCameraOpen((was) => !was)}
             />
           </div>

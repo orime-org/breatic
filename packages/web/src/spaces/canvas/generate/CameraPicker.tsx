@@ -188,17 +188,16 @@ function CameraWheel({
         type='button'
         variant={null}
         size={null}
-        // Icon-only, but a 20px sliver far shorter than the square icon size and
-        // wider than it is tall — the bespoke h-5 / w-auto / px-3 in className
-        // win over the size's, keeping the wheel's own proportions.
+        // Icon-only, a 24px-tall strip wider than it is tall — the bespoke
+        // h-6 / px-3 in className keep the wheel's own proportions.
         aria-label={`${cap} ▲`}
         disabled={idx <= 0}
         onClick={() => move(-1)}
-        className='rounded-content-xs px-3 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30'
+        className='h-6 rounded-content-xs px-3 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30'
       >
         <ChevronUp className='h-4 w-4' aria-hidden='true' />
       </Button>
-      <span className='h-[18px] max-w-full truncate text-2xs text-muted-foreground/70'>{prevLabel}</span>
+      <span className='h-[18px] max-w-full truncate text-2xs text-muted-foreground'>{prevLabel}</span>
       <div className='my-0.5 flex min-h-[112px] w-full flex-col items-center justify-center gap-2 rounded-content-sm border border-border bg-card px-2 py-3'>
         <span className='text-xs text-muted-foreground'>{cap}</span>
         {/* Fixed-height glyph box so every column's cap sits on the same
@@ -208,7 +207,7 @@ function CameraWheel({
           <Glyph glyph={glyph} value={value ?? ''} />
         </div>
       </div>
-      <span className='h-[18px] max-w-full truncate text-2xs text-muted-foreground/70'>{nextLabel}</span>
+      <span className='h-[18px] max-w-full truncate text-2xs text-muted-foreground'>{nextLabel}</span>
       <Button
         type='button'
         variant={null}
@@ -216,7 +215,7 @@ function CameraWheel({
         aria-label={`${cap} ▼`}
         disabled={idx >= values.length - 1}
         onClick={() => move(1)}
-        className='rounded-content-xs px-3 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30'
+        className='h-6 rounded-content-xs px-3 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30'
       >
         <ChevronDown className='h-4 w-4' aria-hidden='true' />
       </Button>
