@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Where the strip sits against the row it points at (A2).
+ * Where the strip sits against the row it points at: vertically on the row's
+ * first line (A2), horizontally on the body's left edge (#1097 A13, see
+ * `stripPlacement`).
  *
  * The strip is centred on the row's FIRST VISIBLE LINE, not on the row: a
  * heading is taller than the strip and a wrapped paragraph is several lines
@@ -26,13 +28,15 @@
  * `middleware` list without it leaves the carrier exactly on the row's top
  * edge and the strip does the rest itself.
  *
- * WHY THE STRIP AND NOT THE CARRIER. The carrier's position reference is a
+ * WHY THE STRIP AND NOT THE CARRIER, VERTICALLY. The carrier's position reference is a
  * VIRTUAL element — `GenericPopover` hands floating-ui a cached
  * `getBoundingClientRect` plus `contextElement`, the block container
  * (`GenericPopover.tsx:196-202`). A line box can only be measured on the
  * element the words are in, which is a descendant of that container and is
  * looked up by id anyway (a type change replaces it, see below), so the row is
- * reached here by its id and the strip shifts itself.
+ * reached here by its id and the strip shifts itself down. Sideways the carrier
+ * itself moves (`stripPlacement`): that needs no line box, only the body's
+ * edge.
  *
  * Measuring the line rather than tabulating it also means nothing here has to
  * be revisited when the type scale moves, when a block type is added, or when
