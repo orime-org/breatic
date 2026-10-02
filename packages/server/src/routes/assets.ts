@@ -29,6 +29,7 @@ import {
 import {
   assetService,
   ingestReportService,
+  mediaReadService,
   studioAuthService,
   uploadTicketService,
 } from "@breatic/domain";
@@ -186,20 +187,41 @@ const uploadTicketFields = z.object({
  * grants nothing, since what makes a picture a cover or an avatar is the call
  * that points at it afterwards.
  */
-const uploadTicketSchema = z.union([
-  uploadTicketFields.extend({
-    project_id: z.string().uuid(),
-    studio_id: z.never().optional(),
-    purpose: z.literal("project_cover").optional(),
-  }),
-  uploadTicketFields.extend({
-    studio_id: z.string().uuid(),
-    project_id: z.never().optional(),
-    purpose: z.literal("studio_avatar"),
-    node_id: z.never().optional(),
-    space_id: z.never().optional(),
-  }),
-]);
+const uploadTicketSchema = z
+  .union([
+    uploadTicketFields.extend({
+      project_id: z.string().uuid(),
+      studio_id: z.never().optional(),
+      purpose: z.literal("project_cover").optional(),
+    }),
+    uploadTicketFields.extend({
+      studio_id: z.string().uuid(),
+      project_id: z.never().optional(),
+      purpose: z.literal("studio_avatar"),
+      node_id: z.never().optional(),
+      space_id: z.never().optional(),
+    }),
+  ])
+  // A cover or an avatar can only ever be pointed at a picture, and its media
+  // read is deferred on the strength of that (#299). So a purpose is taken for
+  // a picture alone, and a cover lands on no node.
+  .superRefine((body, ctx) => {
+    if (body.purpose === undefined) return;
+    if (!mediaReadService.purposeAccepts(body.content_type)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["content_type"],
+        message: "a purpose takes a picture only",
+      });
+    }
+    if (body.node_id !== undefined || body.space_id !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["node_id"],
+        message: "a picture uploaded for a purpose lands on no node",
+      });
+    }
+  });
 
 /**
  * `POST /assets/upload-ticket` — the permission slip the browser carries to
@@ -459,6 +481,32 @@ assets.post(
         : c.json({ error: { message: t("server.error.conflict") } }, 409);
     }
 
+    /**
+     * Settle the grant and the task row as aborted, and answer the caller.
+     *
+     * The bytes stay in R2 for the sweep. A format we do not take came from
+     * the caller and answers 415; every other way this ends is our own side
+     * failing, which 502 is the honest answer for. The status is the part
+     * that carries it: 502 is retried by the client and 4xx is not, and
+     * retrying a format we do not take gets the same refusal every time. What
+     * a person reads is the task row, which the reason settles.
+     * @param reason - Why the upload stops here.
+     * @returns The 415 or 502 answer.
+     */
+    const refuse = async (reason: string): Promise<Response> => {
+      noteIngestSideEffects(
+        storageKey,
+        await ingestReportService.applyIngestReport({
+          storageKey,
+          outcome: "aborted",
+          reason,
+        }),
+      );
+      return reason === "unsupported_type"
+        ? c.json({ error: { message: t("server.error.validation") } }, 415)
+        : c.json({ error: { message: t("server.error.internal") } }, 502);
+    };
+
     // The Worker could not turn the parts into an object: it failed to
     // assemble them, or to read the result back to hash it. The bytes stay in
     // R2 for the sweep to collect, and the grant and the task row are ours to
@@ -476,6 +524,7 @@ assets.post(
         // leaving a second frame behind.
         coverKeyFor(storageKey),
         assetService.mediaLimits(),
+        !mediaReadService.readsMediaAtFinish(claim.assetSource),
       );
     } catch (err) {
       // Both ways this can go wrong end here: the Worker refused, or it
@@ -498,23 +547,18 @@ assets.post(
           ? (err.code ?? INGEST_REFUSED_UNNAMED)
           : "aborted";
       logger.error({ err, key: storageKey, reason }, "upload_finish_failed");
-      noteIngestSideEffects(
-        storageKey,
-        await ingestReportService.applyIngestReport({
-          storageKey,
-          outcome: "aborted",
-          reason,
-        }),
+      return refuse(reason);
+    }
+
+    // The ticket named a picture; this is what the bytes that landed are. A
+    // cover or an avatar that turns out to be anything else is refused the way
+    // a format we do not take is, before a row is written for it.
+    if (!mediaReadService.storedTypeAccepted(claim.assetSource, answered.contentType)) {
+      logger.info(
+        { key: storageKey, contentType: answered.contentType, source: claim.assetSource },
+        "upload_purpose_type_refused",
       );
-      // The bytes are what this refusal is about, and they came from the
-      // caller — every other way this ends is our own side failing, which 502
-      // is already the honest answer for. The status is the part that carries
-      // it: 502 is retried by the client and 4xx is not, and retrying a format
-      // we do not take gets the same refusal every time. What a person reads
-      // is the task row, which the reason above settles.
-      return reason === "unsupported_type"
-        ? c.json({ error: { message: t("server.error.validation") } }, 415)
-        : c.json({ error: { message: t("server.error.internal") } }, 502);
+      return refuse("unsupported_type");
     }
 
     const outcome = await ingestReportService.applyIngestReport({
@@ -523,6 +567,14 @@ assets.post(
       ...answered,
     });
     noteIngestSideEffects(storageKey, outcome);
+
+    // The row stands either way; a read that could not be queued leaves it
+    // without numbers, which is how a read that failed leaves it too.
+    try {
+      await mediaReadService.scheduleMediaRead(outcome, claim.assetSource);
+    } catch (err) {
+      logger.error({ err, key: storageKey }, "media_read_enqueue_failed");
+    }
 
     if (outcome.status === "rejected") {
       logger.info(

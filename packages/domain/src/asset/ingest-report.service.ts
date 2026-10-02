@@ -190,6 +190,12 @@ export type IngestReportOutcome = IngestSideEffects &
        * it through — a generation pins this on its own output.
        */
       coverUrl: string | null;
+      /**
+       * Whether the row is the one this upload wrote, rather than one the
+       * studio already held the same bytes as (#299). Only an upload's own
+       * row is read later.
+       */
+      ownRow: boolean;
     } & RegisteredMedia)
   | ({
       status: "already_registered";
@@ -198,6 +204,8 @@ export type IngestReportOutcome = IngestSideEffects &
       fileUrl: string;
       kind: string;
       coverUrl: string | null;
+      /** As on `registered`: whether the row found is the one this key wrote. */
+      ownRow: boolean;
     } & RegisteredMedia)
   | { status: "rejected"; reason: "over_cap" | "empty" }
   | { status: "voided" }
@@ -571,6 +579,7 @@ export async function applyIngestReport(
       assetId: existing.id,
       fileUrl,
       kind: settledKind,
+      ownRow: existing.storageKey === grant.storageKey,
       coverUrl: existingCover?.fileUrl ?? null,
       width: existing.width,
       height: existing.height,
@@ -744,6 +753,7 @@ export async function applyIngestReport(
     assetId: asset.id,
     fileUrl: asset.fileUrl,
     kind: asset.kind,
+    ownRow: asset.storageKey === grant.storageKey,
     coverUrl,
     width: asset.width,
     height: asset.height,

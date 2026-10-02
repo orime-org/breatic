@@ -25,7 +25,7 @@ import {
   createExecutionContext,
   waitOnExecutionContext,
 } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   signUploadTicket,
   type MediaLimits,
@@ -168,6 +168,7 @@ async function complete(
     limits?: MediaLimits;
     media?: Env["MEDIA"];
     bucket?: Env["BUCKET"];
+    deferMediaRead?: boolean;
   },
 ): Promise<Response> {
   const headers = new Headers({
@@ -184,6 +185,9 @@ async function complete(
         parts,
         ...(coverKey !== undefined && { coverKey }),
         ...(run?.limits !== undefined && { limits: run.limits }),
+        ...(run?.deferMediaRead !== undefined && {
+          deferMediaRead: run.deferMediaRead,
+        }),
       }),
     }),
     {
@@ -711,6 +715,53 @@ describe("an upload whose container answers", () => {
       cover: null,
     });
     expect(run.asked).toBeNull();
+  });
+
+  // The only record of a skipped read: a finish that lost its deadlines is a
+  // caller's mistake, and nothing else says the numbers will never come.
+  it("writes down a finish that names no deadline", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    const run = containerAnswering(FILM, null);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, undefined, {
+      media: run.media,
+    });
+
+    expect(errors).toHaveBeenCalledWith(
+      "ingest_media_limits_missing",
+      expect.anything(),
+    );
+    errors.mockRestore();
+  });
+
+  // A cover or an avatar is read after the upload returns (#299). The finish
+  // still carries its deadlines; what says "not now" is its own field, so the
+  // read is skipped without being written down as a mistake.
+  it("starts no run when the caller defers the read, and writes nothing down", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    const run = containerAnswering(FILM, null);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await complete(
+      uploadId,
+      token,
+      parts,
+      env.INGEST_SHARED_SECRET,
+      undefined,
+      { limits: LIMITS, media: run.media, deferMediaRead: true },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      width: null,
+      height: null,
+      durationSeconds: null,
+      cover: null,
+    });
+    expect(run.asked).toBeNull();
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
   });
 });
 
