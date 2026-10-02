@@ -13,6 +13,7 @@ import {
 } from '@web/components/ui/select';
 import { Badge } from '@web/components/ui/badge';
 import { fetchCreditLedger } from '@web/data/api/credits';
+import { SectionSkeleton } from '@web/components/section-skeleton';
 import {
   ScrollCard,
   ListEnd,
@@ -20,7 +21,6 @@ import {
   Footnote,
   SectionEmpty,
   SectionError,
-  SectionSkeleton,
   TableHead,
 } from '@web/features/credits/section-chrome';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';

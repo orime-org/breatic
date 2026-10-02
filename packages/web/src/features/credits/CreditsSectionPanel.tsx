@@ -4,9 +4,9 @@
 import * as React from 'react';
 import type { CreditsSectionId } from '@web/features/credits/credits-sections';
 import { useCreditOverview } from '@web/features/credits/use-credit-overview';
+import { SectionSkeleton } from '@web/components/section-skeleton';
 import {
   SectionError,
-  SectionSkeleton,
 } from '@web/features/credits/section-chrome';
 import { AssignSection } from '@web/features/credits/sections/AssignSection';
 import { BuySection } from '@web/features/credits/sections/BuySection';

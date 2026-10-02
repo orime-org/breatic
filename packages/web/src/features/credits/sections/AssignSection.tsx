@@ -15,6 +15,7 @@ import {
 } from '@web/components/ui/select';
 import { designateCreditLot, fetchCreditLots } from '@web/data/api/credits';
 import { studiosApi } from '@web/data/api/studios';
+import { SectionSkeleton } from '@web/components/section-skeleton';
 import {
   ScrollCard,
   ListEnd,
@@ -26,7 +27,6 @@ import {
   Footnote,
   SectionEmpty,
   SectionError,
-  SectionSkeleton,
   formatMoney,
 } from '@web/features/credits/section-chrome';
 import {
