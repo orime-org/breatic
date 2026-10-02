@@ -5,5 +5,5 @@ The web container selects HTTPS when both files are present. Restart `web` after
 installing or renewing them. These files are ignored by Git.
 
 The certificate must cover the exact hostname or IP users visit. nginx preserves
-that host; it does not add `www`. See [local and LAN deployment](../../deploy/LOCAL.md)
+that host; it does not add `www`. See [local and LAN deployment](../../self-host/LOCAL.md)
 for trusted local certificates and renewal instructions.

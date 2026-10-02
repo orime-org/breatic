@@ -5,8 +5,6 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { isUploadableMediaType } from '@breatic/shared';
 
-import { ApiException } from '@web/data/api/types';
-import { BytesNotDelivered } from '@web/data/upload/finish-upload';
 import {
   isReportableAssetUrl,
   fileToNodeSpec,
@@ -14,7 +12,6 @@ import {
   uploadAcceptFor,
   refusedFormatParams,
   fillNodeFromFile,
-  runMediaUpload,
   computeDeletedAssetEntries,
   assetUrlSurvives,
 } from '@web/spaces/canvas/canvas-upload';
@@ -187,15 +184,6 @@ const CFG = {
 
 const HASH = 'a'.repeat(64);
 
-/**
- * An error the API layer would have thrown for `status`.
- * @param status - The status the server answered with.
- * @returns The exception the caller sees.
- */
-function apiError(status: number): ApiException {
-  return new ApiException({ status, message: `HTTP ${status}` });
-}
-
 /** A ticket for a one-part upload. */
 const TICKET = {
   ticket: 'signed',
@@ -206,212 +194,6 @@ const TICKET = {
   totalParts: 1,
   taskId: 'task-row-1',
 };
-
-/** Shared orchestration deps (config + hash + network spies). */
-function makeUploadDeps(
-  over: Partial<Parameters<typeof runMediaUpload>[2]> = {},
-): Parameters<typeof runMediaUpload>[2] {
-  return {
-    getUploadConfig: vi.fn().mockResolvedValue(CFG),
-    hashFile: vi.fn().mockResolvedValue(HASH),
-    requestTicket: vi.fn().mockResolvedValue(TICKET),
-    sendToIngest: vi.fn().mockResolvedValue({
-      fileUrl: 'https://cdn/p.png',
-      kind: 'image',
-    }),
-    onSuccess: vi.fn(),
-    onFailure: vi.fn(),
-    sleep: () => Promise.resolve(),
-    ...over,
-  };
-}
-
-describe('runMediaUpload — ask for a ticket, send the bytes, hand back the outcome', () => {
-  const file = new File(['x'], 'photo.png', { type: 'image/png' });
-  const context = { projectId: 'p1', nodeId: 'n1', spaceId: 's1' };
-
-  it('asks with what the server signs a ticket from, then sends the file', async () => {
-    const deps = makeUploadDeps();
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.requestTicket).toHaveBeenCalledWith({
-      filename: 'photo.png',
-      contentType: 'image/png',
-      projectId: 'p1',
-      size: file.size,
-      hash: HASH,
-      nodeId: 'n1',
-      spaceId: 's1',
-    });
-    expect(deps.sendToIngest).toHaveBeenCalledWith(file, TICKET, CFG);
-    expect(deps.onFailure).not.toHaveBeenCalled();
-  });
-
-  // The node reads its result from Yjs and ignores this; an upload with no
-  // node behind it has no other channel and reads it here (design §9).
-  it('hands back what completing the upload said it became', async () => {
-    const deps = makeUploadDeps();
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith('https://cdn/p.png');
-  });
-
-  it('sends nothing when the studio already holds the content', async () => {
-    const deps = makeUploadDeps({
-      requestTicket: vi.fn().mockResolvedValue({
-        alreadyExists: true,
-        fileUrl: 'https://cdn/existing.png',
-        kind: 'image',
-      }),
-    });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.sendToIngest).not.toHaveBeenCalled();
-    expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(
-      'https://cdn/existing.png',
-    );
-  });
-
-  // No hash, no upload (user decision 2026-07-26): the ledger keys on content,
-  // and a file we cannot fingerprint has nothing to key on.
-  it('refuses before any network call when the file cannot be hashed', async () => {
-    const deps = makeUploadDeps({ hashFile: vi.fn().mockResolvedValue(null) });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.requestTicket).not.toHaveBeenCalled();
-    expect(deps.sendToIngest).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'hash' });
-  });
-
-  it('retries a transient ticket failure before succeeding', async () => {
-    const requestTicket = vi
-      .fn()
-      .mockRejectedValueOnce(apiError(503))
-      .mockResolvedValue(TICKET);
-    const deps = makeUploadDeps({ requestTicket });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(requestTicket).toHaveBeenCalledTimes(2);
-    expect(deps.onSuccess).toHaveBeenCalledOnce();
-  });
-
-  // No ticket means no grant, so nothing on the server knows this upload was
-  // ever attempted and nobody will announce how it ended.
-  it('sends nothing when the ticket request finally fails', async () => {
-    const deps = makeUploadDeps({
-      requestTicket: vi.fn().mockRejectedValue(apiError(503)),
-    });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.sendToIngest).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'upload' });
-  });
-
-  // Past the ticket, the server holds a task row for this upload and a timer
-  // that will judge it. The failure names that row, which is how the browser
-  // tells this apart from one where nothing on the server ever knew (#186
-  // §3.7.3) — and what it keys the retry file by.
-  it('names the task row when the bytes failed after the ticket was granted', async () => {
-    const deps = makeUploadDeps({
-      sendToIngest: vi.fn().mockRejectedValue(new Error('part refused')),
-    });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.onSuccess).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
-      reason: 'upload',
-      taskId: TICKET.taskId,
-    });
-  });
-
-  // Bytes that never reached the edge are the one failure nobody on the server
-  // is going to end (#237): the finish needs an upload id the transfer hands
-  // back, so it was never asked for and no row will be settled by anyone else.
-  // Every other failure past the ticket either reached the ledger — which
-  // settles the row before it replies — or left the browser unable to say
-  // whether it succeeded.
-  it('tells a transfer that never landed apart from a finish that failed', async () => {
-    const deps = makeUploadDeps({
-      sendToIngest: vi
-        .fn()
-        .mockRejectedValue(new BytesNotDelivered(new TypeError('Failed to fetch'))),
-    });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
-      reason: 'transfer',
-      taskId: TICKET.taskId,
-    });
-  });
-
-  // The edge read the stored bytes and turned them down. Nothing about sending
-  // them again changes what they are, so this is told apart from a transfer
-  // that broke: the same file re-sent meets the same refusal every time.
-  it('names a format the edge refused apart from a transfer that broke', async () => {
-    const deps = makeUploadDeps({
-      sendToIngest: vi.fn().mockRejectedValue(apiError(415)),
-    });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
-      reason: 'unsupportedType',
-      taskId: TICKET.taskId,
-    });
-  });
-
-  // A full account is not something a retry fixes, and the message the user
-  // needs is a different one.
-  it('names a full account apart from an ordinary failure', async () => {
-    const deps = makeUploadDeps({
-      requestTicket: vi.fn().mockRejectedValue(apiError(507)),
-    });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'storage' });
-  });
-
-  it('reports a failure when the knobs cannot be fetched', async () => {
-    const deps = makeUploadDeps({
-      getUploadConfig: vi.fn().mockRejectedValue(new Error('offline')),
-    });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.requestTicket).not.toHaveBeenCalled();
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'upload' });
-  });
-
-  // A crop is a byproduct with no node: registered for dedup, and told apart
-  // from a real upload in the feed.
-  it('carries the byproduct flag and leaves out the node context', async () => {
-    const deps = makeUploadDeps();
-
-    await runMediaUpload(
-      file,
-      { projectId: 'p1', derived: true },
-      deps,
-    );
-
-    expect(deps.requestTicket).toHaveBeenCalledWith({
-      filename: 'photo.png',
-      contentType: 'image/png',
-      projectId: 'p1',
-      size: file.size,
-      hash: HASH,
-      derived: true,
-    });
-  });
-});
 
 describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-click / Upload menu)', () => {
   /** Build the injected sinks + spies for a fill run. */
@@ -615,21 +397,6 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     expect(computeDeletedAssetEntries(deleted2, all2, 'sp-1')).toEqual([]);
   });
 
-  it('a crop URL held by a SURVIVOR\'s style slot keeps the asset alive (round-12)', () => {
-    // #333 style copies + dedup can make a node's styleImageUrl equal a
-    // crop's asset URL — the survivor set must see the style slot, or the
-    // ledger falsely reports the shared asset deleted.
-    const shared = url('style-shared');
-    const deleted = [
-      { id: 'a', type: 'image', data: { focusImages: [crop('f1', shared)] } },
-    ];
-    const all = [
-      ...deleted,
-      { id: 'b', type: 'image', data: { styleImageUrl: shared } },
-    ];
-    expect(computeDeletedAssetEntries(deleted, all, 'sp-1')).toEqual([]);
-  });
-
   it('isReportableAssetUrl mirrors the server parse contract (round-3)', () => {
     expect(isReportableAssetUrl('https://cdn/x.png')).toBe(true);
     expect(isReportableAssetUrl('http://cdn/x.png')).toBe(true);
@@ -642,21 +409,19 @@ describe('computeDeletedAssetEntries — asset-delete report accounting', () => 
     expect(isReportableAssetUrl('https://x/' + 'a'.repeat(2048))).toBe(false);
   });
 
-  it('assetUrlSurvives sees content, cover, focus crops, and the style slot (round-12)', () => {
+  it('assetUrlSurvives sees content and focus crops (round-12)', () => {
     const nodes = [
       { id: 'a', data: { content: url('c') } },
       { id: 'b', data: { focusImages: [crop('f1', url('f'))] } },
-      { id: 'c', data: { styleImageUrl: url('s') } },
     ];
     expect(assetUrlSurvives(url('c'), nodes)).toBe(true);
     expect(assetUrlSurvives(url('f'), nodes)).toBe(true);
-    expect(assetUrlSurvives(url('s'), nodes)).toBe(true);
     expect(assetUrlSurvives(url('ghost'), nodes)).toBe(false);
   });
 
   it('assetUrlSurvives sees the first-frame slot too (#1896 slice 2)', () => {
-    // The video panel's first frame is a pick-time COPY held on the node, the
-    // same shape as the style slot — and the survival set is a hand-kept list,
+    // The video panel's first frame is a pick-time COPY held on the node —
+    // and the survival set is a hand-kept list,
     // so a new slot does NOT get counted just by looking like an existing one.
     // Missing here, deleting the node the frame was picked FROM reports an
     // asset that is still in use.

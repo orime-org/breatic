@@ -265,25 +265,15 @@ describe('useCanvasStore', () => {
   });
 
   // A canvas node-pick is a single session (only one active at a time) that
-  // carries a PURPOSE: a reference pick wires an i2i-source edge; a style pick
-  // (#1664) copies the clicked image's URL into the node's styleImageUrl slot
-  // (one max, replace-on-repick, no source relationship). Same interaction,
-  // two completion targets — one `pickSession` source of truth, never two fields.
+  // carries a PURPOSE: a reference pick wires an i2i-source edge; a slot pick
+  // copies the clicked node's URL into one of the node's slots (one max,
+  // replace-on-repick, no source relationship). Same interaction, several
+  // completion targets — one `pickSession` source of truth, never two fields.
   it('startReferencePick enters a reference pick; endPick exits', () => {
     useCanvasStore.getState().startReferencePick('gen-1');
     expect(useCanvasStore.getState().pickSession).toEqual({
       nodeId: 'gen-1',
       purpose: 'reference',
-    });
-    useCanvasStore.getState().endPick();
-    expect(useCanvasStore.getState().pickSession).toBeNull();
-  });
-
-  it('startStylePick enters a style pick (#1664); endPick exits', () => {
-    useCanvasStore.getState().startStylePick('gen-1');
-    expect(useCanvasStore.getState().pickSession).toEqual({
-      nodeId: 'gen-1',
-      purpose: 'style',
     });
     useCanvasStore.getState().endPick();
     expect(useCanvasStore.getState().pickSession).toBeNull();
@@ -305,10 +295,10 @@ describe('useCanvasStore', () => {
 
   it('starting a pick replaces any in-progress pick (one session at a time)', () => {
     useCanvasStore.getState().startReferencePick('gen-1');
-    useCanvasStore.getState().startStylePick('gen-1');
+    useCanvasStore.getState().startFocusPick('gen-1');
     expect(useCanvasStore.getState().pickSession).toEqual({
       nodeId: 'gen-1',
-      purpose: 'style',
+      purpose: 'focus',
     });
   });
 
@@ -323,7 +313,7 @@ describe('useCanvasStore', () => {
 
   it('closeActivePanel also exits any in-progress pick', () => {
     useCanvasStore.getState().openGeneratePanel('gen-1', 'image');
-    useCanvasStore.getState().startStylePick('gen-1');
+    useCanvasStore.getState().startFocusPick('gen-1');
     useCanvasStore.getState().closeActivePanel();
     expect(useCanvasStore.getState().panelHostId).toBeNull();
     expect(useCanvasStore.getState().panelKind).toBeNull();

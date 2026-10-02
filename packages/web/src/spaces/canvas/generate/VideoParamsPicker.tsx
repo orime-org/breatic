@@ -45,6 +45,11 @@ interface VideoParamsPickerProps {
   params: Readonly<Record<string, unknown>>;
   /** Called with the changed field only. */
   onChange: (partial: object) => void;
+  /**
+   * Durations below this cannot be picked: under the per-shot storyboard
+   * every shot needs a second (#2218). Undefined when nothing is held back.
+   */
+  durationFloor?: number;
 }
 
 /**
@@ -159,12 +164,14 @@ export function videoParamsPickerHasOptions(model: ModelEntry): boolean {
  * @param root0.model - The current model.
  * @param root0.params - The node's params for this model.
  * @param root0.onChange - Called with the changed field.
+ * @param root0.durationFloor - The fewest seconds the duration may be set to.
  * @returns The video params picker.
  */
 export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   model,
   params,
   onChange,
+  durationFloor,
 }: VideoParamsPickerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -186,7 +193,11 @@ export const VideoParamsPicker = React.memo(function VideoParamsPicker({
   const durations: ParamOption[] = offers(model, 'duration')
     ? paramValues(model, 'duration')
       .filter((v): v is number => typeof v === 'number')
-      .map((v) => ({ value: v, label: t('canvas.generatePanel.durationSeconds', { n: v }) }))
+      .map((v) => ({
+        value: v,
+        label: t('canvas.generatePanel.durationSeconds', { n: v }),
+        disabled: durationFloor !== undefined && v < durationFloor,
+      }))
     : [];
   const audioSupported = offers(model, 'generate_audio');
 

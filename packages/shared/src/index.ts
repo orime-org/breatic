@@ -6,7 +6,6 @@ export {
   TaskStatus,
   DEFAULT_API_PORT,
   DEFAULT_COLLAB_PORT,
-  AVATAR_OUTPUT_PX,
   USER_LOOKUP_MAX_IDS,
 } from "@shared/constants/index.js";
 
@@ -182,6 +181,7 @@ export type {
   ReferenceUsabilityContext,
   PromptSegment,
   ProposalNode,
+  ProposalShot,
   ProposalNodeType,
   CanvasProposal,
   ProposalRefused,
@@ -204,13 +204,14 @@ export {
   AUDIO_GENERATION_MODES,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
+  isGenerationNodeType,
   paramValues,
   PANEL_EDITOR_PARAM,
   feedersOf,
   insertRefusal,
   isReferenceMaterial,
   layersOf,
-  markTargets,
+  proposalMarkSegments,
   nameableFeeders,
   markText,
   promptPlainText,
@@ -249,7 +250,11 @@ export type {
 
 // ── API Schemas ─────────────────────────────────────────────────────
 export {
+  normalizeEmail,
+  emailSchema,
   registerSchema,
+  signupVerifySchema,
+  SIGNUP_CODE_REGEX,
   setupStudioSchema,
   createTeamStudioSchema,
   updateStudioSchema,
@@ -281,6 +286,7 @@ export {
 
 export type {
   RegisterInput,
+  SignupVerifyInput,
   SetupStudioInput,
   CreateTeamStudioInput,
   UpdateStudioInput,
@@ -375,6 +381,15 @@ export { newId, deriveId } from "@shared/ids.js";
 // so a submission the panel allowed is never the one the worker truncates.
 export { completeEntries, itemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
+export {
+  addShot,
+  enterCustom,
+  removeShot,
+  retotal,
+  stepShot,
+} from "@shared/storyboard-durations.js";
+export { asStoryboardKind, effectiveStoryboardKind, storyboardParams, storyboardSpec } from "@shared/storyboard.js";
+export type { StoryboardKind, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
 export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
 export { formatCredits } from "@shared/format-credits.js";
 export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";
@@ -562,6 +577,7 @@ export {
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
+  readStoredMediaAtIngest,
   computePutTimeoutMs,
   IngestAnswerError,
   UploadHttpError,
@@ -572,6 +588,7 @@ export {
   type PartReceipt,
   type IngestMeasurements,
   type MediaLimits,
+  type MediaNumbers,
 } from "@shared/upload/ingest-client.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,

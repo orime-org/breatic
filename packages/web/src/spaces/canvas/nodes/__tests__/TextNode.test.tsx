@@ -313,7 +313,7 @@ describe('TextNode', () => {
       seedNode();
       renderNode();
       act(() => {
-        useCanvasStore.getState().startStylePick('other-node');
+        useCanvasStore.getState().startReferencePick('other-node');
       });
       fireEvent.click(screen.getByTestId('node-placeholder'), { detail: 0 });
       expect(editor()).toBeNull();

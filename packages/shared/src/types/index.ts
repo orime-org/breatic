@@ -93,6 +93,7 @@ export {
   AUDIO_GENERATION_MODES,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
+  isGenerationNodeType,
 } from "@shared/types/model-catalog.js";
 
 export { paramValues } from "@shared/types/param-values.js";
@@ -105,6 +106,7 @@ export type { ParamOptionValue } from "@shared/types/param-values.js";
 export type {
   PromptSegment,
   ProposalNode,
+  ProposalShot,
   ProposalNodeType,
   CanvasProposal,
   ProposalRefused,
@@ -114,7 +116,7 @@ export {
   feedersOf,
   layersOf,
   markText,
-  markTargets,
+  proposalMarkSegments,
   nameableFeeders,
   promptPlainText,
   promptTextOf,

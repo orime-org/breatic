@@ -190,6 +190,12 @@ export type IngestReportOutcome = IngestSideEffects &
        * it through — a generation pins this on its own output.
        */
       coverUrl: string | null;
+      /**
+       * Whether the row is the one this upload wrote, rather than one the
+       * studio already held the same bytes as (#299). Only an upload's own
+       * row is read later.
+       */
+      ownRow: boolean;
     } & RegisteredMedia)
   | ({
       status: "already_registered";
@@ -198,6 +204,8 @@ export type IngestReportOutcome = IngestSideEffects &
       fileUrl: string;
       kind: string;
       coverUrl: string | null;
+      /** As on `registered`: whether the row found is the one this key wrote. */
+      ownRow: boolean;
     } & RegisteredMedia)
   | { status: "rejected"; reason: "over_cap" | "empty" }
   | { status: "voided" }
@@ -432,9 +440,8 @@ async function fileCover(
   const adapter = await getStorageAdapter();
   try {
     const registered = await assetService.register({
-      projectId: grant.projectId ?? "",
-      actingUserId: grant.userId,
       ownerStudioId: grant.studioId,
+      actingUserId: grant.userId,
       contentHash: cover.sha256,
       storageKey: cover.storageKey,
       fileUrl: adapter.publicUrl(cover.storageKey),
@@ -572,6 +579,7 @@ export async function applyIngestReport(
       assetId: existing.id,
       fileUrl,
       kind: settledKind,
+      ownRow: existing.storageKey === grant.storageKey,
       coverUrl: existingCover?.fileUrl ?? null,
       width: existing.width,
       height: existing.height,
@@ -629,12 +637,8 @@ export async function applyIngestReport(
   // one names what is actually stored.
   const { asset, deduped, reclaimQueueFailed } = await assetService.register({
     ...(cover.id !== null && { coverAssetId: cover.id }),
-    projectId: grant.projectId ?? "",
-    actingUserId: grant.userId,
-    // Both come off the same row, and the row got its studio by resolving that
-    // very project — so this is the one already-known answer rather than a
-    // second, differing one. Passing it saves `register` the lookup.
     ownerStudioId: grant.studioId,
+    actingUserId: grant.userId,
     contentHash: report.sha256,
     storageKey: grant.storageKey,
     fileUrl: adapter.publicUrl(grant.storageKey),
@@ -749,6 +753,7 @@ export async function applyIngestReport(
     assetId: asset.id,
     fileUrl: asset.fileUrl,
     kind: asset.kind,
+    ownRow: asset.storageKey === grant.storageKey,
     coverUrl,
     width: asset.width,
     height: asset.height,

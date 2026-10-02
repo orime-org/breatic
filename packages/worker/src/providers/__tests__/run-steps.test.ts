@@ -362,16 +362,6 @@ describe("runCatalogTask", () => {
     expect(call(0).body).toMatchObject({ element_list: [{ element_id: "el-cached" }] });
   });
 
-  it("sends midjourney's one style reference as the single sref url", async () => {
-    const { deps } = stores();
-    answers(["https://cdn/fox.png"]);
-
-    await runCatalogTask(deps, CTX, "image", "a fox", "midjourney", { style_images: ["https://a/style.png"] });
-
-    expect(call(0).body).toMatchObject({ sref: "https://a/style.png", prompt: "a fox" });
-    expect(call(0).body).not.toHaveProperty("style_images");
-  });
-
   it("bills nothing for a prediction that answered without an id", async () => {
     const { deps } = stores();
     runPredictionMock.mockResolvedValueOnce({ outputs: ["https://cdn/out.mp3"], taskId: "" });

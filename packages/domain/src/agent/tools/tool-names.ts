@@ -41,6 +41,14 @@ export const GET_CANVAS_CAPABILITIES = "get_canvas_capabilities";
 /** Ask which models back one mode of one generation node. */
 export const LIST_GENERATION_MODELS = "list_generation_models";
 
+/**
+ * Read how the reader operates our product (#260).
+ *
+ * Named here because other tools' descriptions point the model at it, and a
+ * pointer spelled out a second time can name a tool that is not there.
+ */
+export const GET_PRODUCT_GUIDE = "get_product_guide";
+
 /** Proposes a wired group of nodes for the reader to place (#229). */
 export const PROPOSE_CANVAS_ACTION = "propose_canvas_action";
 

@@ -290,6 +290,12 @@ interface FinishBody {
   coverKey?: string;
   /** How long the media container gets, out of `config/storage.yaml`. */
   limits?: MediaLimits;
+  /**
+   * True when the caller reads the media numbers after this upload returns
+   * (#299: covers and avatars). Its own field: a finish whose limits are
+   * missing is a caller's mistake and is written down, this one is not.
+   */
+  deferMediaRead?: boolean;
 }
 
 /**
@@ -397,6 +403,7 @@ async function completeUpload(
     contentType: session.contentType,
     parts,
     limits: limitsOf(body.limits),
+    deferMediaRead: body.deferMediaRead === true,
     ...(typeof body.coverKey === "string" && { coverKey: body.coverKey }),
   });
 }
@@ -425,6 +432,10 @@ async function completeUpload(
  *   type until the transfer has already happened.
  * @param upload.limits - How long the media container gets. The Worker reads
  *   no configuration of its own, so these travel on the request.
+ * @param upload.deferMediaRead - True when the caller reads the numbers later,
+ *   so no container is started here.
+ * @param upload.answerBy - When this call has to be answered, or null when
+ *   nobody said.
  * @returns What the server registered, or why this could not finish.
  */
 async function finishUpload(
@@ -436,7 +447,7 @@ async function finishUpload(
     parts: RecordedPart[];
     coverKey?: string;
     limits: MediaLimits | null;
-    /** When this call has to be answered, or null when nobody said. */
+    deferMediaRead?: boolean;
     answerBy?: number | null;
   },
 ): Promise<Response> {
@@ -518,8 +529,9 @@ async function finishUpload(
   // Read here rather than at entry: the run may have whatever the transfer,
   // the assembly and the hash left of the caller's window, and nothing below
   // this line can unmake the object above it.
-  const measured =
-    (await measureMedia(env, {
+  const measured = upload.deferMediaRead === true
+    ? { media: NO_MEASUREMENT, cover: null, contentType: storedType }
+    : (await measureMedia(env, {
       storageKey,
       contentType: storedType,
       limits: runWindowLeft(limits, upload.answerBy ?? null, Date.now()),
@@ -944,6 +956,62 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
   });
 }
 
+/** What our worker hands us to read an object already in storage. */
+interface MediaReadBody {
+  storageKey?: unknown;
+  contentType?: unknown;
+  limits?: MediaLimits;
+}
+
+/**
+ * Read the media numbers of an object already in storage (#299).
+ *
+ * A project cover or a studio avatar is finished without a read, and our
+ * worker asks for one once the upload has returned. Nothing is written: the
+ * object stands, and the caller files what this answers on the ledger row.
+ *
+ * It takes the shared secret, because the key it names may be any key in the
+ * bucket and every run starts a container. The type comes from the caller —
+ * the one the ledger recorded off the stored bytes — because the object's own
+ * header is what the ticket signed, which may be a guess.
+ * @param request - The backend's request.
+ * @param env - The Worker's bindings.
+ * @returns The three numbers, each one this run could not read as null.
+ */
+async function readStoredMedia(request: Request, env: Env): Promise<Response> {
+  if (!fromOurBackend(request, env)) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  const body = await request.json<MediaReadBody>().catch(() => null);
+  const storageKey = body?.storageKey;
+  const contentType = body?.contentType;
+  const limits = limitsOf(body?.limits);
+  if (
+    typeof storageKey !== "string" ||
+    storageKey.length === 0 ||
+    typeof contentType !== "string" ||
+    contentType.length === 0 ||
+    limits === null
+  ) {
+    return new Response("storageKey, contentType and limits are required", {
+      status: 400,
+    });
+  }
+
+  const stored = await env.BUCKET.head(storageKey);
+  if (stored === null) return new Response("Not found", { status: 404 });
+
+  const read = await readMediaAtEdge(env, {
+    storageKey,
+    contentType,
+    wantCover: false,
+    limits,
+  });
+  return Response.json(
+    mediaNumbersFor(typeCorrectedByReport(contentType, read.report), read.report),
+  );
+}
+
 /**
  * The origin to echo back, or null when the caller is not one we serve.
  *
@@ -1075,6 +1143,10 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && pathname === "/fetch") {
     return fetchIntoUpload(request, env);
+  }
+
+  if (request.method === "POST" && pathname === "/media") {
+    return readStoredMedia(request, env);
   }
 
   const part = PART_PATH.exec(pathname);

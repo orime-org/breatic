@@ -17,6 +17,7 @@
 import { Hono } from "hono";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { z } from "zod";
+import { emailSchema } from "@breatic/shared";
 import { validate } from "@server/middleware/validate.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -26,7 +27,7 @@ import * as projectInviteService from "@server/modules/project-invite/projectInv
 
 /** Create-invite body — a registered email + the granted role (never owner). */
 const inviteCreateSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
   role: z.enum(["editor", "viewer"]),
 });
 

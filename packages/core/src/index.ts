@@ -215,4 +215,5 @@ export {
   ConflictError,
   ValidationError,
   UnauthorizedError,
+  TooManyRequestsError,
 } from "@core/app-errors.js";

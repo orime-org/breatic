@@ -12,11 +12,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
+import type { CanvasProposal, ProposalNode } from '@breatic/shared';
 
 import { nameableFeeders } from '@breatic/shared';
 
-import { costOf, creditsOf, shapeOf, todosOf } from '@web/pages/project/chat/proposal-card';
+import { shapeOf, todosOf } from '@web/pages/project/chat/proposal-card';
 
 /** An empty node waiting for the reader's material. */
 const empty = (name: string): ProposalNode => ({ role: 'source', type: 'image', name });
@@ -65,38 +65,8 @@ const flow = (
   rationale: '',
 });
 
-/** 4 credits a call, whatever the run. */
-const FLAT = { base_price: 40_000, formula: '', discount_rate: 100 };
-
 /** The two lines the card prints under a generation, as the caller passes them in. */
 const LINES = { prompt: 'PROMPT READY', settings: 'SETTINGS READY' };
-
-/** A catalog with two per-call models and one priced by its source's length. */
-const CATALOG = {
-  image: [
-    { name: 'flat-model', display_name: 'Flat', takes_prompt: true, params: {}, pricing: FLAT, generation_time: 12 },
-    { name: 'slow-model', display_name: 'Slow', takes_prompt: true, params: {}, pricing: FLAT, generation_time: 30 },
-    {
-      name: 'metered-model',
-      display_name: 'Metered',
-      takes_prompt: true,
-      params: { video: { description: '', default: null, fill: 'canvas', accepts: 'video' } },
-      pricing: {
-        base_price: 20_000,
-        formula: '{"total_price": base_price * $ceil(get_duration(video))}',
-        discount_rate: 100,
-      },
-      generation_time: 30,
-    },
-  ],
-  video: [],
-  audio: [],
-  tts: [],
-  three_d: [],
-  understand: [],
-  total: 3,
-  credit_multiplier: 1,
-} as unknown as ModelCatalog;
 
 describe('the little diagram of what gets built', () => {
   it('keeps a node wired to nothing out of the chain it is drawn beside', () => {
@@ -357,119 +327,24 @@ describe('where each generation\'s prompt is found (#289)', () => {
     expect(todosOf(proposal, LINES)[0]?.notes.at(-1)).toBe('PROMPT READY');
   });
 
+  it('counts a storyboard\'s shots as the prompt the panel holds (#2218)', () => {
+    const shots = [{ prompt: [{ text: 'a boat' }], duration: 5 }];
+    const proposal = flow([{ ...generates('Clip'), prompt: [], shots }]);
+
+    expect(todosOf(proposal, LINES)).toEqual([{ nodes: ['Clip'], notes: ['PROMPT READY'] }]);
+  });
+
+  it('lists a to-do marked inside a shot (#2218)', () => {
+    const shots = [{ prompt: [{ slot: { kind: 'tweak' as const, label: 'a mood', note: 'Pick a mood' } }], duration: 5 }];
+    const proposal = flow([{ ...generates('Clip'), prompt: [], shots }]);
+
+    expect(todosOf(proposal, LINES)).toEqual([{ nodes: ['Clip'], notes: ['Pick a mood', 'PROMPT READY'] }]);
+  });
+
   it('gives an empty node and written words no such line', () => {
     const proposal = flow([empty('Your photo'), written('Your copy')]);
 
     expect(todosOf(proposal, LINES)).toEqual([]);
-  });
-});
-
-describe('what one press costs', () => {
-  it('adds up every generation the placed group will run', async () => {
-    const proposal = flow([generates('Front'), generates('At 45'), generates('Overhead')]);
-
-    expect(costOf(CATALOG, proposal)).toEqual({ seconds: 12, runs: 3, sameLength: true });
-    expect(await creditsOf(CATALOG, proposal)).toEqual({ credits: 12, bound: 'exact' });
-  });
-
-  it('says the runs are not the same length when the models differ', () => {
-    // "12 s x 2" says both runs take twelve seconds, and one of them takes
-    // thirty. The card draws the multiplied form only where an "each" exists.
-    const proposal = flow([generates('Front'), generates('The clip', 'slow-model')]);
-
-    expect(costOf(CATALOG, proposal)).toEqual({ seconds: 30, runs: 2, sameLength: false });
-  });
-
-  it('gives a lower bound when a run is priced by a source not yet picked', async () => {
-    // The empty node's clip has no length yet, so its run prices at the least
-    // it can cost.
-    const proposal = flow([generates('Front'), generates('Long one', 'metered-model')]);
-
-    expect(await creditsOf(CATALOG, proposal)).toEqual({ credits: 4, bound: 'at_least' });
-  });
-
-  it('counts only what generates, not the words placed beside it', async () => {
-    const proposal = flow([written('Your copy'), generates('Front'), generates('At 45')]);
-
-    expect(costOf(CATALOG, proposal)).toEqual({ seconds: 12, runs: 2, sameLength: true });
-    expect(await creditsOf(CATALOG, proposal)).toEqual({ credits: 8, bound: 'exact' });
-  });
-
-  it('says nothing at all about a model the catalog does not carry', async () => {
-    const proposal = flow([generates('Front'), generates('Mystery', 'no-such-model')]);
-
-    expect(costOf(CATALOG, proposal)).toBeUndefined();
-    expect(await creditsOf(CATALOG, proposal)).toBeUndefined();
-  });
-
-  it('says nothing about a flow with nothing that generates', async () => {
-    // The check turns that shape away, so the card never draws one. Held here
-    // because the card does not re-check what it is handed, and a total of
-    // zero credits would read as free.
-    expect(costOf(CATALOG, flow([written('Your copy')]))).toBeUndefined();
-    expect(await creditsOf(CATALOG, flow([written('Your copy')]))).toBeUndefined();
-  });
-});
-
-describe('what a wired source does to the price', () => {
-  // Priced like Seedance: a run with a reference clip takes the other branch.
-  const BRANCHING = {
-    ...CATALOG,
-    video: [
-      {
-        name: 'branching-model',
-        display_name: 'Branching',
-        takes_prompt: true,
-        params: {
-          refs: {
-            description: '',
-            upstream: 'reference_videos',
-            default: null,
-            fill: 'pool',
-            type: 'list',
-            accepts: 'video',
-            optional: true,
-          },
-        },
-        pricing: {
-          base_price: 40_000,
-          formula: '{"total_price": $count(reference_videos) > 0 ? 100000 : base_price}',
-          discount_rate: 100,
-        },
-        generation_time: 30,
-      },
-    ],
-  } as unknown as ModelCatalog;
-
-  const clipRun: ProposalNode = {
-    role: 'generate',
-    type: 'video',
-    name: 'The clip',
-    mode: 't2v',
-    model: 'branching-model',
-    poolKinds: ['video'],
-    takesPrompt: true,
-    prompt: [{ text: 'follow it' }],
-  };
-
-  it('prices a run with the clip its prompt marks, as the run will be sent', async () => {
-    const marked: ProposalNode = {
-      ...clipRun,
-      prompt: [{ text: 'follow ' }, { slot: { kind: 'asset', label: 'your clip', note: 'Drop it in' } }],
-    };
-    const proposal = flow([{ role: 'source', type: 'video', name: 'Your clip' }, marked], [[0, 1]]);
-
-    expect(await creditsOf(BRANCHING, proposal)).toEqual({ credits: 10, bound: 'exact' });
-  });
-
-  it('prices a clip wired in but never marked as not sent', async () => {
-    const proposal = flow([{ role: 'source', type: 'video', name: 'Your clip' }, clipRun], [[0, 1]]);
-
-    expect(await creditsOf(BRANCHING, proposal)).toEqual({ credits: 4, bound: 'exact' });
-  });
-
-  it('prices the same run without the wire on the other branch', async () => {
-    expect(await creditsOf(BRANCHING, flow([clipRun]))).toEqual({ credits: 4, bound: 'exact' });
   });
 });
 

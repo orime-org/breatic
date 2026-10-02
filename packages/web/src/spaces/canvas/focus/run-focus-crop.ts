@@ -18,7 +18,7 @@ import type { FocusImage } from '@breatic/shared';
 import {
   isUploadFailureReason,
   type UploadFailureReason,
-} from '@web/spaces/canvas/canvas-upload';
+} from '@web/data/upload/media-upload';
 import type { CropRect } from '@web/lib/crop-math';
 import type { CropSource } from '@web/spaces/canvas/focus/crop-export';
 

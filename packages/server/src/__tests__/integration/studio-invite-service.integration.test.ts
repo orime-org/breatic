@@ -183,6 +183,11 @@ describe("createInvite", () => {
     expect(reqNotif?.payload).not.toHaveProperty("studioSlug");
   });
 
+  it("finds the invitee when the address is typed in another case", async () => {
+    const result = await inviteService.createInvite("svc-team", INVITER, ` ${INVITEE_EMAIL.toUpperCase()} `, "guest");
+    expect(result.inviteeUserId).toBe(INVITEE);
+  });
+
   it("rejects an unregistered email with NotFound", async () => {
     await expect(
       inviteService.createInvite("svc-team", INVITER, "nobody@svc-test.dev", "guest"),

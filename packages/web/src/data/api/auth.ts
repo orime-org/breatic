@@ -72,10 +72,32 @@ export function deriveDisplayName(u: {
  * never holds the token; subsequent calls authenticate via the
  * cookie automatically (axios `withCredentials: true`).
  */
-interface RegisterResponse {
+/** No email backend: the account exists and is signed in. */
+interface RegisterCreated {
+  status: 'created';
   user: AuthUser;
   /** One-time recovery code — shown ONCE on the registration confirm screen. */
   recoveryCode: string;
+}
+
+/**
+ * An email backend is enabled (#287): a code went to the address and the
+ * pending sign-up waits under a ticket cookie; nothing is created yet.
+ */
+export interface SignupCodeSent {
+  status: 'code_sent';
+  /** How long the code lives. */
+  expiresInSeconds: number;
+  /** How long until another code can be asked for. */
+  resendAfterSeconds: number;
+}
+
+type RegisterResponse = RegisterCreated | SignupCodeSent;
+
+/** What the sign-up and recovery pages need to know about this deployment. */
+export interface AuthOptions {
+  /** An email sign-up proves the address with a code; recovery goes by email. */
+  emailVerification: boolean;
 }
 
 interface LoginResponse {
@@ -98,8 +120,17 @@ interface ResetWithRecoveryCodeResponse {
 }
 
 export const authApi = {
+  options() {
+    return apiGet<AuthOptions>('/auth/options');
+  },
   register(body: { email: string; password: string }) {
     return apiPost<RegisterResponse>('/auth/register', body);
+  },
+  resendSignupCode() {
+    return apiPost<SignupCodeSent>('/auth/register/resend');
+  },
+  verifySignupCode(body: { code: string }) {
+    return apiPost<LoginResponse>('/auth/register/verify', body);
   },
   setupStudio(body: { slug: string }) {
     return apiPost<SetupStudioResponse>('/auth/setup-studio', body);
@@ -131,11 +162,5 @@ export const authApi = {
       '/auth/reset-password-with-recovery-code',
       body,
     );
-  },
-  verifyEmail(body: { token: string }) {
-    return apiPost<void>('/auth/verify-email', body);
-  },
-  resendVerificationEmail() {
-    return apiPost<void>('/auth/resend-verification-email');
   },
 };

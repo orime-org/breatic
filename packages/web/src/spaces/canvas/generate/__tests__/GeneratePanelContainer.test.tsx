@@ -80,13 +80,25 @@ import {
   readCanvasGraph,
   removeNode,
   setNodeModel,
+  nodeDataMap,
 } from '@web/data/yjs/canvas-space';
-import { _resetForTests } from '@web/data/yjs/manager';
+import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { useCanvasStore } from '@web/stores';
 import {
   LOCALE_CATALOGS,
   readPath,
 } from '@web/test-utils/locale-catalogs';
+
+/**
+ * The mode the panel binds its editors to: the node's stored mode, else the
+ * first mode this panel offers (#2218 keeps one prompt per mode).
+ * @returns The mode.
+ */
+function storedMode(): string {
+  const mode = nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.get('mode');
+  return typeof mode === 'string' ? mode : 't2i';
+}
+
 
 type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
 
@@ -351,125 +363,6 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     );
     listSpy.mockRestore();
   });
-
-  // Same zombie guard for the STYLE pick (adversarial 2026-07-16): a model
-  // switch to one WITHOUT style capability disables the Style trigger, so a
-  // running style pick would strand its banner + focus exactly like the t2i
-  // reference case. vm.styleSupported drives it, so a collaborator's
-  // setNodeModel ends it too — which is why the two cases below run the same
-  // sequence and differ only in who the document says made the write.
-  /**
-   * Starts a style pick, then flips the node's model to one without style
-   * capability so the panel ends the pick.
-   * @param author - Reads whether this client made the newest document write.
-   * @returns Nothing; the caller asserts on the toast that came out.
-   */
-  const endStylePickByModelChange = async (
-    author: () => boolean,
-  ): Promise<void> => {
-    /**
-     * Builds a minimal catalog image model.
-     * @param name - Model id.
-     * @param withStyle - Whether the model declares the style_images param.
-     * @returns A catalog ModelEntry.
-     */
-    const model = (name: string, withStyle: boolean): Record<string, unknown> => ({
-      name,
-      display_name: name,
-      modality: 'image',
-      mode: 't2i',
-      description: '',
-      guide: '',
-      tier: 'optional',
-      generation_time: 10,
-      takes_prompt: true,
-      params: {
-        aspect_ratio: { description: '', values: ['1:1'], default: '1:1' },
-        ...(withStyle
-          ? { style_images: { description: '', type: 'list', max_items: 1, default: null } }
-          : {}),
-      },
-      providers: [],
-    });
-    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue({
-      image: [
-        model('styled', true),
-        model('plain', false),
-      ] as unknown as Awaited<ReturnType<typeof modelsApi.list>>['image'],
-      video: [],
-      audio: [],
-      tts: [],
-      three_d: [],
-      total: 2,
-      credit_multiplier: 1,
-    });
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    /**
-     * Renders the container with the target node storing the given model.
-     * @param storedModel - The node's stored model id.
-     * @returns The render tree.
-     */
-    const tree = (storedModel: string): React.JSX.Element => (
-      <QueryClientProvider client={client}>
-        <ReactFlow
-          nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]}
-          edges={[]}
-        >
-          <GeneratePanelContainer
-            projectId='p'
-            spaceId='s'
-            nodes={[
-              {
-                id: 'target',
-                data: { kind: 'image', status: 'idle', model: storedModel },
-              },
-            ]}
-            edges={[]}
-            getLastWriteWasLocal={author}
-          />
-        </ReactFlow>
-      </QueryClientProvider>
-    );
-    const { rerender } = render(tree('styled'));
-    act(() => {
-      useCanvasStore.getState().openGeneratePanel('target', 'image');
-    });
-    // Wait for the catalog to resolve (Style button enabled = capability read).
-    await waitFor(() =>
-      expect(
-        screen.getByTestId('generate-tool-style').hasAttribute('disabled'),
-      ).toBe(false),
-    );
-    act(() => {
-      useCanvasStore.getState().startStylePick('target');
-    });
-    expect(useCanvasStore.getState().pickSession?.purpose).toBe('style');
-    // The model flips to one without style capability (local pick or a
-    // collaborator's setNodeModel).
-    rerender(tree('plain'));
-    await waitFor(() =>
-      expect(useCanvasStore.getState().pickSession).toBeNull(),
-    );
-    listSpy.mockRestore();
-  };
-
-  it('ends a running style pick when the model loses style capability', async () => {
-    await endStylePickByModelChange(LAST_WRITE_LOCAL);
-
-    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
-      en.canvas.generatePanel.pickEnded,
-    );
-  });
-
-  it('says a collaborator ended it when the model change was theirs', async () => {
-    await endStylePickByModelChange(() => false);
-
-    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
-      en.canvas.generatePanel.pickEndedByPeer,
-    );
-  });
 });
 
 // The subscription SET is the behaviour here (#1774 round-4): the panel's only
@@ -582,7 +475,7 @@ function imageCatalog(models: ModelEntry[] = [T2I_MODEL]): ModelCatalog {
 
 /** 往节点的提示词片段里放一句话，编辑器 onCreate 时会把它回调进镜像。 */
 function seedPromptText(text: string): void {
-  const fragment = getPromptFragment('p', 's', 'target');
+  const fragment = getPromptFragment('p', 's', 'target', storedMode());
   if (!fragment) throw new Error('node has no prompt fragment');
   const paragraph = new Y.XmlElement('paragraph');
   const words = new Y.XmlText();
@@ -1084,7 +977,7 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
       expect((btn as HTMLButtonElement).disabled).toBe(true);
     });
     // 请求还在飞的时候清空提示词。
-    const fragment = getPromptFragment('p', 's', 'target');
+    const fragment = getPromptFragment('p', 's', 'target', storedMode());
     act(() => {
       fragment?.delete(0, fragment.length);
     });

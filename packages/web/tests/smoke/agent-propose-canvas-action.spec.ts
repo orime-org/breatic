@@ -130,6 +130,11 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
     promptReady.some((line) => cardText.includes(line)),
     `the card says where the prompt is found. Read: "${cardText}"`,
   ).toBe(true);
+  // Credits and run time belong to the generation panel, not the card.
+  expect(
+    await card.locator('svg.lucide-star, svg.lucide-clock').count(),
+    `the card shows no credits and no run time. Read: "${cardText}"`,
+  ).toBe(0);
 
   const before = await page.locator('.react-flow__node').count();
   await card.getByTestId('proposal-use').click();
@@ -193,4 +198,41 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   await expect(page.locator('.react-flow__edge')).toHaveCount(0, {
     timeout: 20_000,
   });
+});
+
+test('proposes a storyboard, and the panel opens on its shots @needs-model', async () => {
+  // A13 (#2218): a proposal carrying shots lands with the storyboard on, in
+  // the per-shot tier, each shot holding the words the agent wrote.
+  test.setTimeout(240_000);
+  const composer = page.getByTestId('chat-composer-textarea');
+  await expect(composer).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('new-conversation').click();
+  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+
+  await composer.fill(
+    'Set up a 5-second text-to-video on Kling 3.0 4K as a storyboard of two shots: first a paper boat on a still pond, then the boat drifting into fog. Do not ask me anything, just propose it.',
+  );
+  await composer.press('Enter');
+
+  await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
+  const used = await toolsUsed(page);
+  expect(used, `the turn proposed a group. Tools used: ${used.join(', ')}`).toContain(
+    'propose_canvas_action',
+  );
+
+  const card = page.getByTestId('proposal-card').last();
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await card.getByTestId('proposal-use').click();
+
+  // The node that generates is selected with its panel open.
+  await expect(page.getByTestId('generate-storyboard-shots')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('generate-storyboard-switch')).toHaveAttribute(
+    'data-state',
+    'checked',
+  );
+  for (const shot of [1, 2]) {
+    const words = await page.getByTestId(`generate-storyboard-shot-${String(shot)}-editor`).innerText();
+    expect(words.trim().length, `shot ${String(shot)} is empty`).toBeGreaterThan(0);
+  }
 });

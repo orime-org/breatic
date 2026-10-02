@@ -57,9 +57,8 @@ export interface UploadGrant {
   derived: boolean | null;
   filename: string | null;
   /**
-   * What the asset this grant produces is, in the ledger's three values
-   * (`upload` / `ai` / `cover`). Null on every browser-issued grant, which is
-   * an ordinary upload.
+   * What the asset this grant produces is, in the ledger's own values (see
+   * `StudioAssetEntity["source"]`). Null means an ordinary upload.
    */
   assetSource: StudioAssetEntity["source"] | null;
   /** The generation whose output these bytes are, when they are one. */
@@ -89,7 +88,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     toolName: row.toolName,
     derived: row.derived,
     filename: row.filename,
-    // Read back as the ledger's own three values. Only our own code writes
+    // Read back as the ledger's own values. Only our own code writes
     // this column, and it writes what `register` accepts.
     assetSource: row.assetSource as StudioAssetEntity["source"] | null,
     generationTaskId: row.generationTaskId,
@@ -165,9 +164,14 @@ export async function issueGrant(input: {
 /** Why a key may not be finished right now. */
 export type FinalizeRefusal = "no_grant" | "in_flight" | "already_registered";
 
-/** The answer to "may this upload finish on this key". */
+/**
+ * The answer to "may this upload finish on this key".
+ *
+ * A granted claim carries what the grant says the upload is, because the
+ * finish that follows decides off it whether to read the media now (#299).
+ */
 export type FinalizeClaim =
-  | { granted: true }
+  | { granted: true; assetSource: StudioAssetEntity["source"] | null }
   | { granted: false; reason: FinalizeRefusal };
 
 /**
@@ -218,8 +222,13 @@ export async function claimFinalize(params: {
         ),
       ),
     )
-    .returning({ id: uploadGrants.id });
-  if (won.length === 1) return { granted: true };
+    .returning({ assetSource: uploadGrants.assetSource });
+  if (won.length === 1) {
+    return {
+      granted: true,
+      assetSource: (won[0]!.assetSource ?? null) as StudioAssetEntity["source"] | null,
+    };
+  }
 
   // Losing the CAS says only "not you". Which of the three reasons it was
   // decides what the Worker tells the browser, so the row is read back.

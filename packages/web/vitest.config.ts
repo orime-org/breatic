@@ -20,7 +20,7 @@ export default defineConfig({
     // Undo `vi.stubGlobal` after every test. A stubbed global is a
     // process-wide singleton, so with one process per package a file that
     // forgets to restore one hands the broken value to every file after it —
-    // AvatarCropDialog replaced `URL` with an object spread from the class,
+    // A crop-dialog test replaced `URL` with an object spread from the class,
     // which carries the static methods but cannot be constructed, so `new
     // URL(...)` threw for the rest of the run. Most files already call
     // `vi.unstubAllGlobals()` themselves; this makes forgetting impossible

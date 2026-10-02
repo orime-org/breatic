@@ -231,6 +231,7 @@ describe("upload-grant repo — the permission to finish an upload", () => {
 
     expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
       granted: true,
+      assetSource: null,
     });
     const rows = await sql<{ finalizing_upload_id: string | null }[]>`
       SELECT finalizing_upload_id FROM upload_grants WHERE storage_key = ${storageKey}
@@ -247,6 +248,7 @@ describe("upload-grant repo — the permission to finish an upload", () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
         granted: true,
+        assetSource: null,
       });
     }
   });
@@ -280,6 +282,24 @@ describe("upload-grant repo — the permission to finish an upload", () => {
     // instead of one guessed from the key.
     expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
       granted: true,
+      assetSource: null,
+    });
+  });
+
+  // The finish decides off it whether to read the media now (#299), and the
+  // grant is the one place it was written by our server.
+  it("hands back what the grant says the upload is", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant({
+      ...grantFields({ userId, studioId, storageKey, declaredSize: 1 }),
+      context: { assetSource: "project_cover" },
+    });
+
+    expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
+      granted: true,
+      assetSource: "project_cover",
     });
   });
 

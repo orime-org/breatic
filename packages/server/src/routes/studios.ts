@@ -25,7 +25,7 @@ import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { z } from "zod";
 import { validate } from "@server/middleware/validate.js";
 import { t } from "@breatic/shared";
-import { createTeamStudioSchema, updateStudioSchema } from "@breatic/shared";
+import { createTeamStudioSchema, emailSchema, updateStudioSchema } from "@breatic/shared";
 import { creditPageQuerySchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
@@ -37,8 +37,7 @@ import {
   recentService,
   creditViewService,
 } from "@server/modules";
-import { getStorageConfig, NotFoundError, ValidationError } from "@breatic/core";
-import { readBoundedBody } from "@server/utils/read-bounded-body.js";
+import { NotFoundError, ValidationError } from "@breatic/core";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioAvatarService from "@server/modules/studio/studioAvatar.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
@@ -46,7 +45,7 @@ import * as studioInviteService from "@server/modules/studio/studioInvite.servic
 
 /** Invite body — a registered email + the granted role (never admin). */
 const inviteMemberSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
   role: z.enum(["maintainer", "guest"]),
 });
 
@@ -197,44 +196,25 @@ studio.patch(
   },
 );
 
+/** Body schema for `PUT /api/v1/studio/:slug/avatar`. */
+const studioAvatarSchema = z.object({ asset_id: z.string().uuid() });
+
 /**
- * `POST /api/v1/studio/:slug/avatar` — upload the studio's avatar. Admin-only.
- *
- * The body is the image bytes themselves, not a multipart envelope. Multipart
- * would be a wrapper around a single file with no other fields, and its
- * envelope bytes (`--boundary…`) are what the sniffer would see — every valid
- * upload would be refused as "not an image" unless we first parsed the whole
- * body in memory or took on a streaming parser dependency the repo does not
- * have. One file, no envelope.
- *
- * The `Content-Type` header is ignored: the type is sniffed from the bytes,
- * because the header is the client's claim about content the client chose.
- *
- * Rate limited — every call permanently adds a storage object that runtime
- * never deletes, so an unthrottled admin could write to storage without bound.
- * The picture itself is not inspected. Two things happen to the bytes: they
- * are bounded, and their signature is read to decide the extension and content
- * type the stored object is served under. Bytes whose signature is not PNG
- * have nothing to be stored as and are refused — that is the whitelist holding
- * one entry, not a judgement about the image. What the pixels are is the
- * client's business: an avatar is one URL on one row, shown cropped into a
- * fixed-size element, and only an admin of the studio that displays it can
- * reach this at all.
+ * `PUT /api/v1/studio/:slug/avatar` — point the studio's avatar at an
+ * uploaded picture. Admin-only.
  * @returns `200` with `{ data: Studio }`; `403` not the admin — also when the
  *   slug matches no studio, since `requireStudioRole` hides existence rather
- *   than answering `404`; `413` over the byte cap, `415` bytes whose signature
- *   is not one this server has an extension for, `422` empty body, `429` rate
- *   limited
+ *   than answering `404`; `404` when the studio holds no live image row with
+ *   that id
  */
-studio.post(
+studio.put(
   "/:slug/avatar",
   requireStudioRole("admin"),
-  rateLimitFor("avatar-upload", "user"),
+  validate("json", studioAvatarSchema),
   async (c) => {
     const slug = c.req.param("slug");
-    const { avatar } = getStorageConfig();
-    const bytes = await readBoundedBody(c, avatar.max_bytes);
-    const data = await studioAvatarService.setAvatar(slug, bytes);
+    const { asset_id } = c.req.valid("json");
+    const data = await studioAvatarService.setAvatar(slug, asset_id);
     return c.json({ data });
   },
 );

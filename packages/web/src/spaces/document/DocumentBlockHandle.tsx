@@ -222,7 +222,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
           // A menu whose contents are rows keeps a gap between them (user
           // 2026-08-27). The bubble bar's own menus are the family this one
           // joins, and theirs measures 4px.
-          className='flex flex-col gap-1'
+          rowsClassName='flex flex-col gap-1'
           // Back to the body, at the caret the reader left there: the strip is
           // not a place to be after the menu closes, and typing has to land in
           // the document (A11). A row that took the focus somewhere on purpose

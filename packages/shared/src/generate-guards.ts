@@ -113,6 +113,19 @@ export interface ExecuteGateInput {
    * dialogue has speakers.
    */
   speakersShort?: boolean;
+  /**
+   * The shots of a run in the per-shot storyboard tier (#2218), present only
+   * when that tier is in effect. The main prompt is not sent then, so the
+   * prompt checks give way to these: every shot written, no more shots than
+   * the model takes, none longer than it takes, and shot seconds adding up to
+   * the total — Kling fails a run whose shots do not (probed 2026-09-30).
+   */
+  storyboard?: {
+    shots: ReadonlyArray<{ text: string; duration: number }>;
+    total: number;
+    maxShots?: number;
+    maxChars?: number;
+  };
 }
 
 /**
@@ -138,7 +151,11 @@ export type ExecuteRefusal =
   | 'source-missing'
   | 'sources-missing'
   | 'too-many-references'
-  | 'lyrics-missing';
+  | 'lyrics-missing'
+  | 'storyboard-shot-empty'
+  | 'storyboard-too-many'
+  | 'storyboard-shot-too-long'
+  | 'storyboard-duration-mismatch';
 
 /**
  * Why Generate cannot run, and the detail a sentence about it needs.
@@ -155,6 +172,12 @@ export interface ExecuteVerdict {
   readonly slot?: string;
   /** What the too-many sentence interpolates: the cap, and of which kind. */
   readonly over?: { limit: number; kind: ReferenceKind };
+  /** The shot a storyboard refusal is about, counted from 1. */
+  readonly shot?: number;
+  /** The cap a storyboard refusal names. */
+  readonly limit?: number;
+  /** The shot seconds and the total that do not match. */
+  readonly seconds?: { shots: number; total: number };
 }
 
 /**
@@ -197,7 +220,10 @@ export function evaluateExecute(
   //
   // Judged on the text the worker sends (`prompt-params.ts`): a box holding
   // only characters that function removes reaches the vendor empty.
-  if (input.promptRequired && extractPromptText(input.promptText).length === 0) {
+  if (input.storyboard !== undefined) {
+    const verdict = storyboardRefusal(input.storyboard);
+    if (verdict) return verdict;
+  } else if (input.promptRequired && extractPromptText(input.promptText).length === 0) {
     return { refusal: input.lyricsRequired ? 'style-missing' : 'prompt-missing' };
   }
   // Counted on the text the vendor will actually receive. The worker cleans
@@ -211,6 +237,7 @@ export function evaluateExecute(
   // per rarer CJK glyph — and would refuse a message half the length of the
   // one the vendor would take.
   if (
+    input.storyboard === undefined &&
     input.promptRequired &&
     input.maxInputChars !== undefined &&
     [...extractPromptText(input.promptText)].length > input.maxInputChars
@@ -252,6 +279,31 @@ export function evaluateExecute(
     const over = referenceCapExceeded(pool.count, pool.cap);
     if (over) return { refusal: 'too-many-references', over: { ...over, kind: pool.kind } };
   }
+  return null;
+}
+
+/**
+ * What is wrong with a per-shot storyboard, the first thing found, judged on
+ * the text the worker will send.
+ * @param storyboard - The shots, the total and the model's caps.
+ * @returns The refusal, or null when the shots can go.
+ */
+function storyboardRefusal(
+  storyboard: NonNullable<ExecuteGateInput["storyboard"]>,
+): ExecuteVerdict | null {
+  const { shots, total, maxShots, maxChars } = storyboard;
+  const texts = shots.map((shot) => extractPromptText(shot.text));
+  const empty = texts.findIndex((text) => text.length === 0);
+  if (empty !== -1) return { refusal: 'storyboard-shot-empty', shot: empty + 1 };
+  if (maxShots !== undefined && shots.length > maxShots) {
+    return { refusal: 'storyboard-too-many', limit: maxShots };
+  }
+  if (maxChars !== undefined) {
+    const long = texts.findIndex((text) => [...text].length > maxChars);
+    if (long !== -1) return { refusal: 'storyboard-shot-too-long', shot: long + 1, limit: maxChars };
+  }
+  const sum = shots.reduce((acc, shot) => acc + shot.duration, 0);
+  if (sum !== total) return { refusal: 'storyboard-duration-mismatch', seconds: { shots: sum, total } };
   return null;
 }
 
@@ -333,6 +385,10 @@ export const REFUSAL_TOAST_KEY: Record<ExecuteRefusal, string | null> = {
   'sources-missing': 'canvas.generatePanel.refuseExecuteNoReference',
   'too-many-references': 'canvas.generatePanel.errorTooManyReferences',
   'lyrics-missing': 'canvas.generatePanel.lyricsMissing',
+  'storyboard-shot-empty': 'canvas.generatePanel.refuseStoryboardShotEmpty',
+  'storyboard-too-many': 'canvas.generatePanel.refuseStoryboardTooMany',
+  'storyboard-shot-too-long': 'canvas.generatePanel.refuseStoryboardShotTooLong',
+  'storyboard-duration-mismatch': 'canvas.generatePanel.refuseStoryboardDurationMismatch',
 };
 
 /**

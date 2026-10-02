@@ -59,7 +59,7 @@ function slotsOffered(nodeType: GenerationNodeType, mode: string): string[] {
 
 /** Phrases a guide uses for a slot, and the parameters that slot arrives in. */
 const PROMISED_SLOT: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
-  [/reference images?/i, ["images", "style_images"]],
+  [/reference images?/i, ["images"]],
   [/end frames?/i, ["end_image"]],
 ];
 
@@ -70,7 +70,7 @@ const PROMISED_SLOT: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
  * image and audio" are both a claim about which slots the picker will offer.
  */
 const MODE_PROMISED_SOURCE: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
-  [/reference images?/i, ["images", "style_images"]],
+  [/reference images?/i, ["images"]],
   [/reference videos?|driving motion/i, ["video", "videos"]],
   [/reference audio|audio (sample|track)/i, ["audio", "audios", "song"]],
   [/first frame|portrait image|character image/i, ["image"]],

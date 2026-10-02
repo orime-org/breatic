@@ -4,10 +4,10 @@
 /**
  * The predicate every slot pick shares.
  *
- * A slot holds ONE pick copied off a canvas node at pick time — the image
- * panel's style reference (#1664), the video panel's first and end frames
- * (#1896 / #1904), its character image, its driving video (#1918) and its
- * driving audio (#1935). Asking the question in one place is what stops them
+ * A slot holds ONE pick copied off a canvas node at pick time — the video
+ * panel's first and end frames (#1896 / #1904), its character image, its
+ * driving video (#1918) and its driving audio (#1935), and the audio panel's
+ * slots. Asking the question in one place is what stops them
  * from drifting into different answers to "can I pick this", which is the
  * failure a second slot invites.
  *
@@ -15,15 +15,13 @@
  * `<img>` cannot paint copies the node's poster alongside it, which is what
  * {@link pickedSlotCover} is for.
  *
- * WHICH node type a slot takes is the caller's to state: a video slot reads it
- * off `VIDEO_SLOTS`, so the registry stays the one place a slot's accepted
- * type is written and the click path agrees with the candidate highlighting by
- * construction. Deliberately not imported here — the style slot uses this
- * predicate too and has nothing to do with the video registry.
+ * WHICH node type a slot takes is the caller's to state: it reads it off the
+ * slot's registry entry, so the registry stays the one place a slot's
+ * accepted type is written and the click path agrees with the candidate
+ * highlighting by construction.
  *
- * What it does NOT decide is what happens next: style and the frame slots
- * write different fields and mean different things to the model, so each pick
- * branch keeps its own write.
+ * What it does NOT decide is what happens next: the write lives in
+ * `slot-write`.
  */
 
 import type { NodeType } from '@breatic/shared';

@@ -50,7 +50,6 @@ import {
   type NodeTaskEntry,
 } from '@web/data/api/canvas';
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
-import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
 import { useQueryClient } from '@tanstack/react-query';
 import { historyKey } from '@web/spaces/canvas/history/use-node-history';
@@ -70,7 +69,6 @@ import {
   addEdge,
   addNodeFocusImage,
   addNode,
-  setNodeStyleImage,
   createGroup,
   expandGroup,
   removeEdge,
@@ -92,10 +90,8 @@ import {
   type CanvasNodeView,
   readCanvasGraph,
   readTextBodies,
-  readNodeFragments,
 } from '@web/data/yjs/canvas-space';
-import { itemForPick } from '@web/spaces/canvas/attach-nodes';
-import { attachToChat } from '@web/stores/attach-to-chat';
+import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceBodyProps } from '@web/spaces';
@@ -118,13 +114,17 @@ import {
   uploadAcceptFor,
   refusedFormatParams,
   fillNodeFromFile,
-  runMediaUpload,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
-  type UploadFailure,
   assetUrlSurvives,
   isReportableAssetUrl,
 } from '@web/spaces/canvas/canvas-upload';
+import {
+  runMediaUpload,
+  type UploadFailure,
+  uploadMedia,
+  UploadFailedError,
+} from '@web/data/upload/media-upload';
 import { hashFile } from '@web/data/upload/hash';
 import {
   stashRetryFile,
@@ -860,7 +860,7 @@ function CanvasSpaceInner({
   const closeActivePanel = useCanvasStore((s) => s.closeActivePanel);
   const panelHostId = useCanvasStore((s) => s.panelHostId);
   const pickSession = useCanvasStore((s) => s.pickSession);
-  // The node a pick (reference OR style) is running for, or null — stands in
+  // The node a pick is running for, or null — stands in
   // for the mechanical "is a pick active / which node" checks that don't care
   // about the purpose. The purpose is read separately where completion /
   // candidate-dimming / banner text branch on it (#1664).
@@ -910,7 +910,7 @@ function CanvasSpaceInner({
   // #1987), or null, together with the content it carried when the crop
   // opened. Local React state — it only exists while THIS user's focus pick
   // runs; the effect clears it whenever the session ends or changes purpose
-  // (Exit, zombie guards, a style/reference pick replacing it).
+  // (Exit, zombie guards, another pick replacing it).
   //
   // The id and the snapshot live in ONE object so they cannot describe
   // different nodes: the verdict below compares the snapshot against the
@@ -979,8 +979,7 @@ function CanvasSpaceInner({
   // yield rules as the overlay's handler (defaultPrevented + editor /
   // overlay-content focus win).
   // Unified pick-session Esc (user 2026-07-17 #8): EVERY pick purpose
-  // (reference / style / focus) exits on Escape — reference and style had
-  // no listener at all, so their banners showed Exit but Esc was dead.
+  // exits on Escape.
   // Active whenever a session runs WITHOUT the crop overlay mounted (the
   // overlay owns its own two-stage Esc while it is up; its stage two
   // peels back to this state, so the full chain is marquee → pick state →
@@ -1085,41 +1084,25 @@ function CanvasSpaceInner({
         },
         {
           exportCrop: exportCropBlob,
-          uploadFile: (file, pid) =>
-            new Promise<string>((resolve, reject) => {
-              void runMediaUpload(
-                file,
-                {
-                  projectId: pid,
-                  spaceId,
-                  // No node: a crop is a pool entry, so there is no handling to
-                  // fence and nothing for the server to announce to. That is
-                  // also why this path reads its URL from the answer below
-                  // rather than from Yjs (design §9).
-                  // A byproduct: registered in the ledger for attribution and
-                  // dedup, without an activity-feed row of its own.
-                  derived: true,
-                },
-                {
-                  getUploadConfig: assetsApi.fetchUploadConfig,
-                  hashFile,
-                  requestTicket: assetsApi.requestUploadTicket,
-                  sendToIngest: sendFileAndFinish,
-                  onSuccess: (fileUrl) => {
-                    if (fileUrl === undefined) {
-                      reject(new Error('upload'));
-                      return;
-                    }
-                    resolve(fileUrl);
-                  },
-                  // Carry the REASON (Gate-2 R5): a hashing failure cannot be
-                  // fixed by retrying on this page, so the crop pipeline must
-                  // be able to say "reload" rather than the generic "try
-                  // again".
-                  onFailure: (outcome) => reject(new Error(outcome.reason)),
-                },
-              );
-            }),
+          uploadFile: async (file, pid) => {
+            const { fileUrl } = await uploadMedia(file, {
+              projectId: pid,
+              spaceId,
+              // No node: a crop is a pool entry, so there is no handling to
+              // fence and nothing for the server to announce to. That is
+              // also why this path reads its URL from the answer rather
+              // than from Yjs (design §9).
+              // A byproduct: registered in the ledger for attribution and
+              // dedup, without an activity-feed row of its own.
+              derived: true,
+            });
+            // The rejection carries the REASON as its message (Gate-2 R5): a
+            // hashing failure cannot be fixed by retrying on this page, so the
+            // crop pipeline must be able to say "reload" rather than the
+            // generic "try again".
+            if (fileUrl === undefined) throw new UploadFailedError('upload');
+            return fileUrl;
+          },
           addFocusImage: (image) => {
             useCanvasStore.getState().removePendingFocusUpload(pendingId);
             // A refused append must be SAID — the upload already succeeded,
@@ -1953,7 +1936,7 @@ function CanvasSpaceInner({
       // Read the pick session FRESH from the store, not the render closure: if
       // the panel switched to another node between render and this click, the
       // closure would wire the pick to the PREVIOUS node. The purpose decides
-      // whether the click wires an i2i reference edge or a style source.
+      // whether the click wires an i2i reference edge or fills a source slot.
       const session = useCanvasStore.getState().pickSession;
       if (!session) return;
       const target = session.nodeId;
@@ -2001,7 +1984,7 @@ function CanvasSpaceInner({
         // A source slot on either generative panel (the video panel's first
         // frame, end frame, character image, driving video and driving audio;
         // the audio panel's reference audio): COPY the clicked node's asset
-        // onto the generating node, same terms as Style — a pick-time snapshot
+        // onto the generating node — a pick-time snapshot
         // with no relationship to the source, so deleting or regenerating that
         // node never changes what this one generates from.
         //
@@ -2019,32 +2002,6 @@ function CanvasSpaceInner({
         // fallthrough at the end) instead of filling the slot.
         if (!fillSlot(projectId, spaceId, target, pickedSlot, node)) return;
         // One slot, one pick — the session completes on selection.
-        endPick();
-        return;
-      }
-
-      if (session.purpose === 'style') {
-        // Copy semantics (#1664, user decision 2026-07-16): snapshot the
-        // clicked image's asset URL onto the target node — NO relationship to
-        // the source node (deleting / regenerating it never changes the copy).
-        // Only a non-empty image can be copied (dimming enforces it; this
-        // backstops an insisting click on a dimmed candidate) — the same
-        // predicate the video slots use, so "is there anything in it" is
-        // answered once for every slot. WHICH type is pickable is each
-        // slot's own to state, and this one states it below. The setter
-        // no-ops if the target vanished (the panel auto-closes on host
-        // deletion), so no failure toast is needed.
-        const picked = pickedSlotUrl(
-          { type: node.type, data: node.data },
-          // The style slot is not in the video registry; it states its own
-          // type here, which is the same thing a video slot does one branch
-          // up — just read off the registry there.
-          'image',
-        );
-        if (picked === null) return;
-        setNodeStyleImage(projectId, spaceId, target, picked);
-        // One slot, one pick: the session completes on selection (unlike the
-        // continuous reference pick, which runs until Exit).
         endPick();
         return;
       }
@@ -3354,19 +3311,23 @@ function CanvasSpaceInner({
     (s) => s.navigatingByProject[projectId] === true,
   );
 
+  const queryClient = useQueryClient();
   /**
-   * Hand the picked piece of the canvas to the agent as one item, read fresh
-   * from the document at the press.
+   * Hand the picked piece of the canvas to the agent as one item. Without the
+   * catalog nothing is handed over and the reader hears why, as the panel
+   * says it.
    * @param ids - The picked node ids; a group brings its members.
    */
   const addToAgent = React.useCallback(
     (ids: readonly string[]): void => {
-      const item = itemForPick(readCanvasGraph(projectId, spaceId), ids, {
-        fragmentsOf: (id) => readNodeFragments(projectId, spaceId, id),
+      void handToAgent(queryClient, projectId, spaceId, ids).then((read) => {
+        if (read) return;
+        toast.error(t('canvas.generatePanel.catalogUnavailable'), {
+          id: 'generate-catalog-unavailable',
+        });
       });
-      void attachToChat(projectId, item ? [item] : []);
     },
-    [projectId, spaceId],
+    [projectId, spaceId, queryClient, t],
   );
   const addNodeToAgent = React.useCallback(
     (): void => addToAgent([nodeMenu.nodeId]),
@@ -3729,8 +3690,6 @@ function CanvasSpaceInner({
         restoreNodeMedia(projectId, spaceId, nodeId, {
           content: decision.content,
           coverUrl: decision.coverUrl,
-          // The row the reader picked, so the panel can name it afterwards.
-          entryId: entry.id,
         });
         // Keep the panel open after a restore (user 2026-07-23, reversing the
         // 2026-07-22 close-on-restore): users often restore / compare several
@@ -3778,7 +3737,6 @@ function CanvasSpaceInner({
   // types or a reading lands, and what the reader asks to keep is what the
   // node says then. The whole `nodeMenu` is the dependency because its
   // identity changes exactly when the menu opens or closes.
-  const queryClient = useQueryClient();
   const menuHasWords = React.useMemo(() => {
     if (readOnly || !nodeMenu.isText) return false;
     const words = readTextBodies(projectId, spaceId, [nodeMenu.nodeId]).get(
@@ -4193,9 +4151,9 @@ function CanvasSpaceInner({
   // returns the same reference (no-op) so nothing re-renders.
   //   - reference: type-incompatible sources (connection rules, spec §9.1 —
   //     e.g. audio/video can't feed an image input) + already-wired nodes.
-  //   - style (#1664): non-image nodes + EMPTY images (copy semantics — the
-  //     pick snapshots the image URL, so a node with no asset has nothing to
-  //     copy).
+  //   - a source slot: nodes of another type than the slot accepts + EMPTY
+  //     ones (copy semantics — the pick snapshots the asset URL, so a node
+  //     with no asset has nothing to copy).
   const pickedNodes = React.useMemo<Node[]>(() => {
     if (pickSession == null) return renderNodes;
     const target = pickSession.nodeId;
@@ -4217,20 +4175,18 @@ function CanvasSpaceInner({
 
     if (pickSession.purpose === 'focus') {
       // Focus takes images AND videos (#1987), so it judges on its own rather
-      // than through the shared 'image' fallback below — widening that
-      // fallback would let a video look pickable during a STYLE pick, whose
-      // click side takes images only.
+      // than through the slot rule below.
       return paint((node) => !isFocusCandidate(node, target));
     }
 
     const paintingSlot = slotSpec(slotForPurpose(pickSession.purpose) ?? '');
-    if (pickSession.purpose === 'style' || paintingSlot) {
-      // Style and every source slot share the candidate rule: any non-empty
-      // node of the type the slot accepts, except the pick target itself
-      // (#1664 / #1896 / #1904). A slot states the type it takes, so a slot
-      // for another kind of asset — an audio one for voice cloning (#1960
-      // PR2) — dims the right nodes without another branch here.
-      const accepts = paintingSlot ? paintingSlot.accepts : 'image';
+    if (paintingSlot) {
+      // Every source slot shares the candidate rule: any non-empty node of
+      // the type the slot accepts, except the pick target itself (#1896 /
+      // #1904). A slot states the type it takes, so a slot for another kind
+      // of asset — an audio one for voice cloning (#1960 PR2) — dims the
+      // right nodes without another branch here.
+      const accepts = paintingSlot.accepts;
       return paint((node) => {
         const data = node.data as { content?: unknown; status?: unknown };
         return (
@@ -4610,7 +4566,7 @@ function CanvasSpaceInner({
             // extending under the banner made Exit dead (adversarial round-4).
             // z-20 and HIT-OPAQUE (round-10, reversing round-9's
             // pointer-events-none): a visually solid card must never let a
-            // click mutate hidden content beneath it (reference/style picks
+            // click mutate hidden content beneath it (reference picks
             // silently wired edges through the banner body). The crop
             // controls bar follows its node (user 2026-07-17) and may pass
             // beneath the banner like any node chrome — the banner wins the

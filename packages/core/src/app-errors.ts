@@ -85,3 +85,20 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+
+/** Refused until a known wait is over (429). */
+export class TooManyRequestsError extends AppError {
+  /** Whole seconds the caller must wait, rounded up so a retry never lands early. */
+  public readonly retryAfterSeconds: number;
+
+  /**
+   * Construct a 429 error that says how long to wait.
+   * @param message - human-readable description of why the request is refused
+   * @param retryAfterSeconds - how long until the same request will be accepted
+   */
+  constructor(message: string, retryAfterSeconds: number) {
+    super(429, message);
+    this.name = "TooManyRequestsError";
+    this.retryAfterSeconds = Math.ceil(retryAfterSeconds);
+  }
+}

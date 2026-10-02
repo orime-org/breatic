@@ -8,8 +8,9 @@
 --
 -- Null for generations, which key on (task_id, node_id) instead, and null for
 -- the first-pass dedup hit, which records an upload without issuing a grant.
--- Two such hits are two user actions and each keeps its own row, which the
--- partial predicate below allows by excluding nulls.
+-- The partial predicate below excludes nulls, so this index never joins two
+-- keyless rows; whether they may coexist is migration 0087's call (one row
+-- per content per node).
 ALTER TABLE "node_history" ADD COLUMN "upload_storage_key" text;--> statement-breakpoint
 
 CREATE UNIQUE INDEX IF NOT EXISTS "node_history_upload_key_unique"

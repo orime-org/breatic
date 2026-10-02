@@ -42,8 +42,8 @@ Invite collaborators with the project's access controls to work on the same prod
 
 | Your goal | Guide |
 | --- | --- |
-| Use it yourself, or share it with a household/private team on your LAN | [Personal and LAN deployment](deploy/LOCAL.md) |
-| Modify source code, debug or contribute | [Development setup](deploy/DEVELOPMENT.md) |
+| Use it yourself, or share it with a household/private team on your LAN | [Personal and LAN deployment](self-host/LOCAL.md) |
+| Modify source code, debug or contribute | [Development setup](self-host/DEVELOPMENT.md) |
 
 For installation, the application runs as published Docker images: web, API, background jobs and collaboration, backed by PostgreSQL and Redis. File uploads use an Ingest Worker and media container deployed to **your Cloudflare account**, with files stored in your R2 bucket. AI calls use your provider accounts. This is not an offline or wholly on-premises installation.
 
@@ -53,7 +53,7 @@ Start with the personal/LAN guide. It covers Cloudflare provisioning, secrets, a
 
 After completing installation:
 
-1. Open the instance in a desktop browser, register an account, save your recovery code and finish your personal Studio setup. There is no shared default password or login bypass.
+1. Open the instance in a desktop browser, register an account and finish your personal Studio setup. With email enabled you confirm the six-digit code mailed to you; with email disabled you save the recovery code shown after signing up. There is no shared default password or login bypass.
 2. Create a project for the work you want to make and choose its initial Space type.
 3. Use the **+** button in the project's Space bar to add a **Document** Space. Name it “Script and brief” and write the story or requirements. If you started with a Document Space, use that one.
 4. Add one or more **Canvas** Spaces for your scenes or creative directions. Give each a meaningful name, then upload references or add nodes to begin working.
@@ -137,7 +137,7 @@ The license permits individual use, private groups that are not publicly adverti
 
 Breatic uses TypeScript, React/Vite, Hono, PostgreSQL, Redis/BullMQ and Hocuspocus/Yjs, with a separate Cloudflare Worker for uploads.
 
-- [Development setup](deploy/DEVELOPMENT.md): dependencies, local services and tests.
+- [Development setup](self-host/DEVELOPMENT.md): dependencies, local services and tests.
 - [Contributing](CONTRIBUTING.md): contribution workflow and conventions.
 - [Architecture](docs/ARCHITECTURE.md): packages, services, data flow and frontend structure.
 - [Testing](docs/TEST-MANDATE.md): unit, integration and browser verification.

@@ -79,7 +79,7 @@ function normalizeError(err: unknown): ApiError {
   if (err instanceof AxiosError) {
     const status = err.response?.status ?? 0;
     const data = err.response?.data as
-      | { error?: { code?: string; message?: string } }
+      | { error?: { code?: string; message?: string; retryAfterSeconds?: number } }
       | undefined;
     const written = data?.error?.message;
     return {
@@ -87,6 +87,7 @@ function normalizeError(err: unknown): ApiError {
       message: written ?? err.message,
       code: data?.error?.code,
       fromServer: written !== undefined,
+      retryAfterSeconds: data?.error?.retryAfterSeconds,
     };
   }
   if (err instanceof Error) {
@@ -143,6 +144,23 @@ export async function apiPatch<T, B = unknown>(
   config?: AxiosRequestConfig,
 ): Promise<T> {
   const res = await request.patch<ApiEnvelope<T>>(url, body, config);
+  return res.data.data;
+}
+
+/**
+ * Typed PUT helper — unwraps `{ data: T }` envelope.
+ * @param url - Resource path relative to the API base URL.
+ * @param body - Optional request body serialized as JSON.
+ * @param config - Optional axios request config (headers, signal).
+ * @returns The unwrapped response payload of type `T`.
+ * @throws {ApiException} When the request fails or the server returns an error envelope.
+ */
+export async function apiPut<T, B = unknown>(
+  url: string,
+  body?: B,
+  config?: AxiosRequestConfig,
+): Promise<T> {
+  const res = await request.put<ApiEnvelope<T>>(url, body, config);
   return res.data.data;
 }
 

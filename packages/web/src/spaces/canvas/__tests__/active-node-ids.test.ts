@@ -58,7 +58,7 @@ describe('deriveActiveNodeIds', () => {
       expect(
         deriveActiveNodeIds({
           selectedIds: [],
-          pickSession: { nodeId: 'host', purpose: 'style' },
+          pickSession: { nodeId: 'host', purpose: 'reference' },
           focusTargetId: null,
         }),
       ).toEqual(['host']);

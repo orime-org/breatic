@@ -284,7 +284,7 @@ export function MembersTab({
                     <span className='flex items-center gap-3'>
                       {/* An invitee has no studio of their own here yet, but
                           they are still a person — same round avatar, same
-                          two-character initials as every other member row. */}
+                          initial as every other member row. */}
                       <StudioAvatar
                         name={inv.name}
                         type='personal'

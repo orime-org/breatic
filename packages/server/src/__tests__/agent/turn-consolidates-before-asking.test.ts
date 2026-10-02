@@ -16,18 +16,16 @@
  * against is the whole assembled request — see payload-size.test.ts.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
 import type { MessageData } from "@breatic/shared";
 import { finishedSpending } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
-// Above the fixed cost of an assembly — the three tool definitions this env
-// resolves come to about 2,400 characters on their own — so the fixtures
-// decide whether a turn is over the line, rather than the tool set doing it
-// for them. Mutable because one case needs the budget to land exactly on what
-// an assembly measures, and that figure moves whenever a tool is added.
+// Set per case from `fixedCost` (below), so the fixtures decide whether a turn
+// is over the line rather than the tool set doing it for them. Mutable
+// because every case moves them.
 const limits = vi.hoisted(() => ({ budget: 20_000, keep: 13_400 }));
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 9);
@@ -221,9 +219,24 @@ beforeEach(() => {
   // case: what the previous one handed the model would otherwise be read as
   // this one's, and read as a pass.
   thisCase.sent = null;
-  limits.budget = 20_000;
-  limits.keep = 15_000;
+  // Measured above the fixed cost, so a tool added or a description rewritten
+  // moves the lines with it. Under the budget: two 2,000-character turns.
+  // Over it: three of 6,000, or one tool result of 18,000. Under the keep
+  // line once the room for memory is taken: two 2,000-character turns.
+  limits.budget = fixedCost + 9_500;
+  limits.keep = fixedCost + 8_500;
   consolidateWindow.mockResolvedValue("written");
+});
+
+/**
+ * What an assembly with no history measures: the system prompt and the tool
+ * definitions, which every case carries on top of its fixtures.
+ */
+let fixedCost = 0;
+beforeAll(async () => {
+  contexts.queue = [context([])];
+  await runTurn();
+  fixedCost = await lastAssembledLength();
 });
 
 /**
@@ -336,16 +349,9 @@ describe("a turn that measured over the budget", () => {
     // memory. Two turns gone puts it under, so the third stays and the
     // boundary is turn 2.
     //
-    // The fixed cost is the system prompt and the tool definitions, so it
-    // moves whenever the tool set does -- a tool added, or one of their
-    // descriptions rewritten. The line below is set from the measured
-    // boundary rather than from the sizes `turn()` is asked for (a turn
-    // assembles larger than that, by the framing every message carries), and
-    // it has a few thousand characters of room on either side. That room is
-    // what decides how much the tool set can grow before this case moves;
-    // when it does, the line moves with it, and no figure is written here to
-    // go quietly false.
-    limits.keep = 19_000;
+    // The keep line, less the room for memory, sits between one 6,000-character
+    // turn and two of them above the fixed cost.
+    limits.keep = fixedCost + 13_000;
     contexts.queue = [
       context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)]),
       context([...turn(3, 6000)], "what turns 1 and 2 came to"),
@@ -499,16 +505,11 @@ describe("a turn that measured over the budget", () => {
     const { getAgentConfig } = await import("@breatic/core");
     const config = getAgentConfig();
     // Six small turns on a budget just over the keep line, so the loop stops
-    // with what remains
-    // just under the line rather than overshooting it. What goes out then
-    // carries the emoji memory in place of the plain one -- 4,000 code units
-    // where 2,000 were reserved -- which is the whole point of this case.
-    //
-    // No figures written here: what an assembly measures moves every time a
-    // tool is added or its description is rewritten, and a number in a comment
-    // goes quietly false the first time either happens. `limits.keep` above is
-    // the line, and it moves with them.
-    limits.budget = 16_000;
+    // with what remains just under the line rather than overshooting it. What
+    // goes out then carries the emoji memory in place of the plain one --
+    // 4,000 code units where 2,000 were reserved -- which is the whole point
+    // of this case.
+    limits.budget = limits.keep + 1_000;
     const history = [1, 2, 3, 4, 5, 6].flatMap((n) => turn(n, 2000));
     contexts.queue = [context(history)];
     contexts.later = () => {

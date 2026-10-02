@@ -302,3 +302,72 @@ describe('a text node’s rows (#2175)', () => {
     expect(screen.getByText('canvas.history.typeSnapshot')).toBeTruthy();
   });
 });
+
+describe('reading a row against its fill (#2186)', () => {
+  // muted-foreground measures under 4.5:1 on the chosen fill in both themes
+  // and on the dark hover fill. The secondary text on a filled row takes
+  // foreground-secondary instead.
+  const SECONDARY = 'text-foreground-secondary';
+  const MUTED = /(^|\s)text-muted-foreground(\s|$)/;
+
+  it('sets the chip, time, operator and Current tag in foreground-secondary on the current row', () => {
+    render(
+      <NodeHistoryRow
+        entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
+        modality='text'
+        isCurrent
+        onRestore={() => {}}
+      />,
+    );
+    const chip = screen.getByText('canvas.history.typeSnapshot');
+    const meta = screen.getByText('Lin').parentElement as HTMLElement;
+    const tag = screen.getByText('canvas.history.current');
+    for (const el of [chip, meta, tag]) {
+      expect(el.className).toContain(SECONDARY);
+      expect(el.className).not.toMatch(MUTED);
+    }
+  });
+
+  it('turns the same text foreground-secondary while the pointer is on another row', () => {
+    render(
+      <NodeHistoryRow
+        entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
+        modality='text'
+        isCurrent={false}
+        onRestore={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('node-history-row').className).toMatch(/(^|\s)group(\s|$)/);
+    const chip = screen.getByText('canvas.history.typeSnapshot');
+    const meta = screen.getByText('Lin').parentElement as HTMLElement;
+    for (const el of [chip, meta]) {
+      expect(el.className).toMatch(MUTED);
+      expect(el.className).toContain(`group-hover:${SECONDARY}`);
+    }
+  });
+});
+
+describe('the Restore action (#2186)', () => {
+  // One row carries the emphasis (the current one); Restore on every other
+  // row takes the outline weight the design system already defines.
+  it('renders Restore in the outline variant', () => {
+    renderRow(entry({ status: 'success', content: 'https://cdn.example.com/a.png' }));
+    const restore = screen.getByTestId('node-history-restore');
+    expect(restore.className).toContain('border-border');
+    expect(restore.className).toContain('bg-background');
+    expect(restore.className).not.toContain('bg-primary');
+  });
+});
+
+describe('a snapshot row names its words (#2186)', () => {
+  // A node's history holds each text once, so two snapshot rows always hold
+  // different words; the slot beside the chip shows them.
+  it('shows the snapshot text beside the chip', () => {
+    renderRow(
+      entry({ entryType: 'snapshot', status: 'success', content: 'Dawn, two boats in the harbour.' }),
+      'text',
+    );
+    const row = screen.getByTestId('node-history-row');
+    expect(within(row).getByText('Dawn, two boats in the harbour.').className).toContain('truncate');
+  });
+});

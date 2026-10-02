@@ -8,8 +8,8 @@ from a ticket our server signed: the storage key, the studio, the part layout
 and the size ceiling all travel inside one HMAC, so every check it performs is
 against values the browser cannot alter.
 
-For installation and a deployed Worker, start with [personal/LAN deployment](../../deploy/LOCAL.md).
-For source debugging, use [development setup](../../deploy/DEVELOPMENT.md).
+For installation and a deployed Worker, start with [personal/LAN deployment](../../self-host/LOCAL.md).
+For source debugging, use [development setup](../../self-host/DEVELOPMENT.md).
 The local Wrangler instructions below are for development, not normal product use.
 
 ## Setting it up

@@ -24,7 +24,7 @@
  * Not every key a model declares under `params` is one of these. A declared
  * param whose value lives elsewhere on the node gets no control: the prompt
  * and the lyrics are Yjs fragments, the reference rail is the node's incoming
- * edges, and every source slot (`style_images`, the video frames, the voice
+ * edges, and every source slot (the video frames, the voice
  * sample, the three music references) is a picked URL on the node. A record
  * still holds a key for each of them — {@link resolveParamsForModel} writes
  * every declared param it is not told to skip — and each panel's payload
@@ -85,6 +85,9 @@ export function resolveParamsForModel(
   // model.params is trusted (the catalog is sanitized at the API boundary): it
   // is always a Record<string, ParamDescriptor>.
   for (const [key, descriptor] of Object.entries(model.params)) {
+    // The storyboard fills these from the node's shots at submit (#2218); a
+    // record value would be a second source for the same param.
+    if (descriptor.fill === 'storyboard') continue;
     // A param whose value can only come from a live upstream list keeps
     // nothing but what the user actually chose. Writing its yaml default into
     // the record makes "has a voice been chosen" answer yes for a picker the

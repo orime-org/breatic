@@ -26,8 +26,8 @@ const SIZE_VAR: Readonly<Record<StudioAvatarSize, string>> = {
 };
 
 /**
- * Initials scale with the avatar; the two smallest share the smallest step
- * because there is no token below `2xs` and two characters still fit at 20px.
+ * The initial scales with the avatar; the two smallest share the smallest step
+ * because there is no token below `2xs`.
  */
 const SIZE_TEXT: Readonly<Record<StudioAvatarSize, string>> = {
   xs: 'text-2xs',
@@ -37,22 +37,18 @@ const SIZE_TEXT: Readonly<Record<StudioAvatarSize, string>> = {
   xl: 'text-lg',
 };
 
+/** Splits a name into user-perceived characters, so an emoji stays whole. */
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
 /**
- * Derive the two-character initials shown when there is no avatar.
- *
- * A multi-word name gives the first letter of its first and last word
- * ("Songxiu Lei" → SL), which distinguishes people far better than the first
- * two letters would; a single word gives its first two characters. This is the
- * rule the project member stack already used — kept and moved here rather than
- * replaced, so every site now agrees.
+ * Derive the single character shown when there is no avatar: the first
+ * character of the name, upper-cased.
  * @param name - The studio's display name.
- * @returns Two uppercase characters, or `?` when the name is blank.
+ * @returns One character, or `?` when the name is blank.
  */
 function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '?';
-  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
-  return (words[0]![0]! + words[words.length - 1]![0]!).toUpperCase();
+  const first = GRAPHEMES.segment(name.trim())[Symbol.iterator]().next();
+  return first.done === true ? '?' : first.value.segment.toUpperCase();
 }
 
 interface StudioAvatarProps {
@@ -87,9 +83,8 @@ interface StudioAvatarProps {
  * avatar is just their personal studio's avatar, round like any other
  * personal studio.
  *
- * Initials are always two characters (see `initialsOf`). They used to be one
- * in some places and two in others, which made the same person look like two
- * different people across screens.
+ * The fallback is one character everywhere (see `initialsOf`), so the same
+ * person looks the same on every screen.
  *
  * The radius is applied to the fallback as well as the root: the primitive
  * hardcodes `rounded-full` on that child, so a squared avatar whose fallback

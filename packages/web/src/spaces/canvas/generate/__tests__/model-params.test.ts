@@ -110,6 +110,20 @@ describe('resolveParamsForModel — keep valid, reset invalid, DROP undeclared',
   // states are not re-tested here.
 });
 
+describe('resolveParamsForModel — the storyboard fills its own params (#2218)', () => {
+  it('leaves out a param the storyboard fills, whatever the record holds', () => {
+    const shotType: ParamDescriptor = {
+      description: '',
+      default: null,
+      values: ['intelligence', 'customize'],
+      fill: 'storyboard',
+    };
+    expect(
+      resolveParamsForModel(model({ aspect_ratio: RATIO, shot_type: shotType }), { shot_type: 'customize' }),
+    ).toEqual({ aspect_ratio: RATIO.default });
+  });
+});
+
 describe('paramsStoreOf — 节点的按模型记录 (#1948)', () => {
   it('有记录就原样返回', () => {
     const stored = { banana: { aspect_ratio: '16:9' } };

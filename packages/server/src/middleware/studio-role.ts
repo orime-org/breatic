@@ -13,7 +13,7 @@ import type { MiddlewareHandler } from "hono";
 import { ForbiddenError } from "@breatic/core";
 import { studioAuthService } from "@breatic/domain";
 import { studioService } from "@server/modules";
-import { t, STUDIO_ROLE_RANK } from "@breatic/shared";
+import { t } from "@breatic/shared";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import type { StudioRole } from "@breatic/shared";
 
@@ -34,10 +34,7 @@ export function requireStudioRole(
     if (!slug) throw new ForbiddenError(t("server.error.forbidden"));
     const studio = await studioService.getStudioBySlug(slug);
     if (!studio) throw new ForbiddenError(t("server.error.forbidden"));
-    const role = await studioAuthService.loadStudioRole(userId, studio.id);
-    if (role === null || STUDIO_ROLE_RANK[role] < STUDIO_ROLE_RANK[min]) {
-      throw new ForbiddenError(t("server.error.forbidden"));
-    }
+    await studioAuthService.assertStudioRole(userId, studio.id, min);
     await next();
   };
 }

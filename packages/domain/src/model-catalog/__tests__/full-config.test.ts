@@ -37,10 +37,10 @@ describe("getFullModelConfig (#1672)", () => {
 
   it("keeps full per-provider model fields the catalog projection drops", () => {
     const config = getFullModelConfig("image");
-    const midjourney = config.models.find((m) => m.name === "midjourney");
-    expect(midjourney).toBeTruthy();
-    expect(midjourney!.providers?.[0]?.model_id).toBe("midjourney/text-to-image");
-    expect(midjourney!.providers?.[0]?.pricing).toMatchObject({ base_price: 100_000 });
+    const grok = config.models.find((m) => m.name === "grok-imagine-image-v2.0-text-to-image");
+    expect(grok).toBeTruthy();
+    expect(grok!.providers?.[0]?.model_id).toBe("x-ai/grok-imagine-image-v2.0/text-to-image");
+    expect(grok!.providers?.[0]?.pricing).toMatchObject({ base_price: 50_000 });
   });
 
   it("preserves array modes as authored in yaml", () => {
@@ -51,8 +51,8 @@ describe("getFullModelConfig (#1672)", () => {
 
   it("preserves param specs (values + default) the worker validates against", () => {
     const config = getFullModelConfig("image");
-    const midjourney = config.models.find((m) => m.name === "midjourney");
-    const aspect = midjourney?.params?.["aspect_ratio"];
+    const grok = config.models.find((m) => m.name === "grok-imagine-image-v2.0-text-to-image");
+    const aspect = grok?.params?.["aspect_ratio"];
     expect(aspect?.values).toContain("16:9");
     expect(aspect?.default).toBe("1:1");
   });

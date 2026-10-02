@@ -1,13 +1,14 @@
 # docker-compose.yml — deployment stack.
 #
 # Default: pulls pre-built images from GHCR. `BREATIC_TAG` in .env picks
-# which tag to pull (defaults to `:latest` = main branch). Deployers
+# which published version to pull (required, no floating default). Deployers
 # never build from source — that's CI's job.
 #
 # Developers contributing to breatic should use `pnpm dev` instead; this
 # compose file is not in the dev path. The only shared concern is the
 # postgres + redis pair below, which both dev and deploy can run via
-# `docker compose up -d postgres redis` (dev) or `up -d` (deploy).
+# `docker compose up -d postgres redis` (dev) or `up -d` (deploy). Dev can
+# add `mailpit` to that list to catch mail locally.
 #
 
 services:
@@ -47,9 +48,24 @@ services:
       timeout: 3s
       retries: 5
 
+  # Local mail catcher for development (dev profile: `up -d` alone never
+  # starts it). Every mail the server sends lands in its inbox at
+  # http://127.0.0.1:${MAILPIT_HTTP_PORT}; the smoke suite reads sign-up codes
+  # from it. It accepts any SMTP login, so SMTP_USER can be any value.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    profiles: ["dev"]
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_HTTP_PORT:-8025}:8025"
+
   # ── Frontend + Reverse Proxy ───────────────────
   web:
-    image: ghcr.io/orime-org/breatic-web:${BREATIC_TAG:-latest}
+    image: ghcr.io/orime-org/breatic-web:${BREATIC_TAG:?Set BREATIC_TAG to a published release tag such as v0.2.0}
     ports:
       - "${WEB_BIND_ADDRESS:-127.0.0.1}:80:80"
       - "${WEB_BIND_ADDRESS:-127.0.0.1}:443:443"
@@ -67,7 +83,7 @@ services:
   # Must run from packages/server so Node can resolve @breatic/core's
   # transitive deps (drizzle-orm, postgres) via server's node_modules.
   migrate:
-    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:?Set BREATIC_TAG to a published release tag such as v0.2.0}
     working_dir: /app/packages/server
     command: ["node", "-e", "import('@breatic/core').then(async m => { m.initCore(process.env); try { await m.runMigrations(); await m.runYjsMigrations(); } finally { await Promise.all([m.closeDb(), m.closeYjsDb()]); } }).catch(e => { console.error(e); process.exit(1); })"]
     env_file: .env
@@ -89,7 +105,7 @@ services:
   # here in the sense that it becomes VISIBLE, not that it is auto-repaired
   # (see CLAUDE.md "server-side industrial-grade standards" mandate).
   server:
-    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:?Set BREATIC_TAG to a published release tag such as v0.2.0}
     command: ["node", "packages/server/dist/index.js"]
     ports:
       - "127.0.0.1:3000:3000"
@@ -113,7 +129,7 @@ services:
     restart: unless-stopped
 
   collab:
-    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:?Set BREATIC_TAG to a published release tag such as v0.2.0}
     command: ["node", "packages/collab/dist/index.js"]
     # Deliberately not published. Browsers reach collab through nginx's /ws
     # location, and nginx is what sets the X-Real-IP the connection gate needs
@@ -137,7 +153,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:-latest}
+    image: ghcr.io/orime-org/breatic:${BREATIC_TAG:?Set BREATIC_TAG to a published release tag such as v0.2.0}
     command: ["node", "packages/worker/dist/index.js"]
     env_file: .env
     volumes:

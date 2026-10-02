@@ -500,17 +500,17 @@ describe('what a card lets a reader do', () => {
     await waitFor(() => {
       expect(
         screen.getAllByTestId('doc-comment-avatar').map((a) => a.textContent),
-      ).toEqual(['MC', 'MC']);
+      ).toEqual(['M', 'M']);
     });
   });
 
-  it('gives an author nobody can name the initials of that word', async () => {
+  it('gives an author nobody can name the first letter of that word', async () => {
     vi.spyOn(usersApi, 'getByIds').mockResolvedValue([]);
     await open();
     await comment('the first');
 
     await waitFor(() => {
-      expect(screen.getByTestId('doc-comment-avatar').textContent).toBe('UN');
+      expect(screen.getByTestId('doc-comment-avatar').textContent).toBe('U');
     });
   });
 

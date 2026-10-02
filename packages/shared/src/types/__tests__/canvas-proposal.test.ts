@@ -8,7 +8,7 @@
  * the reader fills belongs in the slot first: a run without it cannot go.
  */
 import { describe, expect, it } from "vitest";
-import { markTargets, nameableFeeders, type CanvasProposal, type ProposalNode } from "@shared/types/canvas-proposal";
+import { nameableFeeders, proposalMarkSegments, type CanvasProposal, type ProposalNode } from "@shared/types/canvas-proposal";
 
 const photo = (name: string): ProposalNode => ({ role: "source", type: "image", name });
 
@@ -73,37 +73,19 @@ describe("nameableFeeders", () => {
   });
 });
 
-describe("markTargets", () => {
+describe("the marks of a node with shots (#2218)", () => {
   const pooled = { ...mixedRun, slotKinds: [] };
+  const asset = (label: string) => ({ slot: { kind: "asset" as const, label, note: "" } });
 
-  it("sends the node each mark names and leaves an unmarked one out", () => {
-    const marked = {
+  it("reads the main prompt first, then each shot in order", () => {
+    const node: ProposalNode = {
       ...pooled,
-      prompt: [
-        { text: "walk with " },
-        { slot: { kind: "asset" as const, label: "hero", note: "Drop the hero in" } },
+      prompt: [{ text: "a " }, asset("a")],
+      shots: [
+        { prompt: [asset("b")], duration: 2 },
+        { prompt: [{ text: "then " }, asset("c")], duration: 3 },
       ],
     };
-    const proposal = into([photo("Hero"), photo("Extra"), marked]);
-
-    expect(markTargets(proposal, 2)).toEqual([0]);
-  });
-
-  // The slot's node is picked in the panel, so the first ref mark is about the
-  // next node of that kind, the one headed for the pool.
-  it("sends a ref mark past the generated work that fills the slot", () => {
-    const work = (name: string): ProposalNode => ({ role: "generate", type: "image", name, mode: "t2i", model: "m", poolKinds: [], takesPrompt: true });
-    const marked = { ...mixedRun, prompt: [{ text: "walk to " }, { slot: { kind: "ref" as const, label: "castle", note: "" } }] };
-    const proposal = into([work("Knight"), work("Castle"), marked]);
-
-    expect(nameableFeeders(proposal, 2)).toEqual({ sources: [], upstream: [1], slotted: [0] });
-    expect(markTargets(proposal, 2)).toEqual([1]);
-  });
-
-  it("sends the upstream node a ref mark names", () => {
-    const work: ProposalNode = { role: "generate", type: "image", name: "Knight", mode: "t2i", model: "m", poolKinds: [], takesPrompt: true };
-    const marked = { ...pooled, prompt: [{ slot: { kind: "ref" as const, label: "knight", note: "" } }, { text: " walks" }] };
-
-    expect(markTargets(into([work, marked]), 1)).toEqual([0]);
+    expect(proposalMarkSegments(node).filter((s) => s.slot).map((s) => s.slot?.label)).toEqual(["a", "b", "c"]);
   });
 });

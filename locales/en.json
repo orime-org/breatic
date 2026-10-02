@@ -38,11 +38,13 @@
       "reset_link_sent": "If this email is registered, a reset link has been sent.",
       "reset_success": "Password reset successful. Please sign in.",
       "reset_recovery_success": "Password reset successful. Save your new recovery code.",
-      "email_verified": "Email verified.",
-      "verify_email_sent": "Verification email sent. Check your inbox.",
       "invalid_reset_token": "This password reset link is invalid or has expired",
       "invalid_recovery_code": "That email or recovery code is not correct",
-      "invalid_verification_token": "This verification link is invalid or has expired"
+      "signup_code_invalid": "That code is incorrect.",
+      "signup_code_exhausted": "This code can no longer be used. Request a new one.",
+      "signup_expired": "This sign-up has expired.",
+      "signup_resend_cooldown": "Wait {seconds, plural, one {# second} other {# seconds}} before requesting another code.",
+      "signup_code_send_failed": "The verification code could not be sent. Try again."
     },
     "studio": {
       "slug_taken": "That Slug is already in use. Please choose another.",
@@ -55,8 +57,7 @@
       "cannot_change_admin_role": "The admin role can only be changed by transferring it.",
       "member_limit_reached": "{limit, plural, =0 {This studio's plan does not allow adding members. Upgrade to add some.} one {This studio's plan allows 1 member. Upgrade to add more.} other {This studio's plan allows up to # members. Upgrade to add more.}}",
       "member_limit_reached_for_invitee": "This studio is full. Ask its Admin to make room.",
-      "leave_last_admin": "Transfer the admin role before leaving this Studio.",
-      "avatar_unsupported_type": "That file could not be read as an image. Try a different picture."
+      "leave_last_admin": "Transfer the admin role before leaving this Studio."
     },
     "project": {
       "join_already_member": "You're already a member of this project.",
@@ -216,18 +217,17 @@
         "action": "Reset your password",
         "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, ignore this email."
       },
-      "email_verification": {
-        "subject": "Verify your email",
-        "lead": "Welcome to Breatic. Click the button below to verify your email address.",
-        "action": "Verify your email address",
-        "footer": "This link expires in {hours, plural, one {# hour} other {# hours}}. If you didn't request this, you can ignore this email."
-      },
       "footer": "This is an automated message; replies are not read.",
       "help": "Need help? Read the <manual>User manual</manual> or write to <contact>{email}</contact>.",
       "legal": {
         "about": "About",
         "terms": "Terms",
         "privacy": "Privacy"
+      },
+      "signup_code": {
+        "subject": "Your verification code",
+        "lead": "Enter this code on the sign-up page to finish creating your account.",
+        "footer": "This code expires in {minutes, plural, one {# minute} other {# minutes}}. If you didn't try to sign up, you can ignore this email."
       }
     }
   },
@@ -301,6 +301,7 @@
       "checkingCanvas": "Checking what the canvas can make",
       "proposingNodes": "Drafting a proposal",
       "checkingModels": "Looking up the models",
+      "readingGuide": "Reading how the product works",
       "understanding": "Looking at the media",
       "judging": "Weighing it up",
       "running": "Calling {tool}"
@@ -348,7 +349,6 @@
       "use": "Use",
       "building": "Creating…",
       "failed": "Could not create these nodes.",
-      "eachRun": "{s, number}s × {n, number}",
       "needCanvas": "Open a canvas first.",
       "promptReady": "Prompt ready. Right-click the node and choose Generate to open the generation panel and see it.",
       "settingsReady": "Settings ready. Right-click the node and choose Generate to open the generation panel and see them."
@@ -447,10 +447,8 @@
       "sourceGone": "The node being read is gone. This reading has no wire to it."
     },
     "generatePanel": {
-      "style": "Style",
       "focus": "Focus",
       "reference": "Reference",
-      "styleTip": "Pick an image as a style reference",
       "focusTip": "Crop a region of a node as a reference",
       "referenceTip": "Pick images from the canvas as references",
       "referenceTipAudio": "Pick text from the canvas as reference",
@@ -487,13 +485,11 @@
       "sfxDuration": "Duration",
       "sfxDurationSeconds": "{n}s",
       "selectFromCanvas": "Select a reference from the canvas",
-      "selectStyleFromCanvas": "Select a style reference from the canvas",
       "selectFirstFrameFromCanvas": "Pick an image on the canvas to be the first frame",
       "selectEndFrameFromCanvas": "Pick an image on the canvas to be the end frame",
       "selectCharacterImageFromCanvas": "Pick an image on the canvas to be the character",
       "selectDrivingVideoFromCanvas": "Pick a video on the canvas to drive the motion",
       "selectDrivingAudioFromCanvas": "Pick an audio track on the canvas for the lips to follow",
-      "removeStyle": "Remove style reference",
       "exitSelect": "Exit",
       "locateSource": "Recenter the source node",
       "camera": "Camera",
@@ -657,7 +653,23 @@
         "voice": "Voice",
         "text": "Text",
         "pronunciation": "Read as"
-      }
+      },
+      "storyboard": {
+        "label": "Storyboard",
+        "perShot": "Edit per shot",
+        "autoHint": "The model splits the shots",
+        "back": "Back to auto storyboard",
+        "shot": "Shot {n, number}",
+        "removeShot": "Remove",
+        "addShot": "Add shot",
+        "shotPlaceholder": "Describe this shot, @ to add a reference",
+        "shotCapReached": "Up to {max, number} shots",
+        "noSecondToSpare": "Lengthen the video to add a shot"
+      },
+      "refuseStoryboardShotEmpty": "Shot {shot, number} is empty",
+      "refuseStoryboardTooMany": "Up to {limit, number} shots",
+      "refuseStoryboardShotTooLong": "Shot {shot, number} is over the {limit, number}-character limit",
+      "refuseStoryboardDurationMismatch": "Shots add up to {shots, number}s, the video is {total, number}s"
     },
     "edge": {
       "delete": "Delete connection"
@@ -811,7 +823,16 @@
       "haveAccount": "Already have an account?",
       "signIn": "Sign in",
       "passwordHint": "At least 8 characters.",
-      "failed": "Registration failed. Please try again."
+      "failed": "Registration failed. Please try again.",
+      "code": {
+        "title": "Verify your email",
+        "sentTo": "We sent a 6-digit code to {email}",
+        "codeLabel": "Verification code",
+        "resend": "Resend code",
+        "resendIn": "Resend in {seconds}s",
+        "changeEmail": "Use a different email",
+        "newCodeSent": "We sent you a new code."
+      }
     },
     "onboarding": {
       "title": "Pick your Slug",
@@ -835,15 +856,17 @@
     },
     "forgot": {
       "title": "Forgot your password?",
-      "subtitle": "We can email you a reset link, or you can use your recovery code.",
       "sendResetLink": "Email me a reset link",
       "sending": "Sending...",
-      "useRecoveryCode": "Use recovery code instead",
+      "useRecoveryCode": "Use recovery code",
       "sentTitle": "Check your inbox",
       "sentSubtitle": "If an account exists for that address, a reset link is on its way.",
-      "sentBody": "We sent a reset link to {email}. If you don't see it within a few minutes, check spam or use the recovery code.",
+      "sentBody": "We sent a reset link to {email}. If you don't see it within a few minutes, check spam.",
       "backToSignIn": "Back to sign in",
-      "failed": "Could not send the reset link. Please try again."
+      "failed": "Could not send the reset link. Please try again.",
+      "subtitleEmail": "We'll email you a reset link.",
+      "subtitleRecovery": "Use the recovery code you saved when you signed up.",
+      "optionsFailed": "This page could not load. Refresh to try again."
     },
     "reset": {
       "titleToken": "Set a new password",
@@ -858,19 +881,6 @@
       "success": "Password updated. Please sign in.",
       "failed": "Could not reset your password. Please try again.",
       "backToSignIn": "Back to sign in"
-    },
-    "verify": {
-      "verifying": "Verifying your email...",
-      "pleaseWait": "One moment please.",
-      "successTitle": "Email verified",
-      "successBody": "Your email is confirmed. You can now use everything breatic has to offer.",
-      "goToStudio": "Go to Studio",
-      "failedTitle": "Could not verify your email",
-      "failedBody": "The link may have expired or already been used. Sign in and request a fresh verification email from your account settings.",
-      "checkInboxTitle": "Check your inbox",
-      "checkInboxBody": "Open the verify-email link we just sent you. If it didn't arrive, you can request a new one from your account settings.",
-      "signIn": "Sign in",
-      "failed": "Email verification failed."
     }
   },
   "roleTag": {
@@ -1450,17 +1460,13 @@
         "avatarSaved": "Avatar updated",
         "avatarRemoved": "Avatar removed",
         "avatarUploading": "Uploading…",
+        "avatarUploadError": {
+          "storage": "Storage is full. The avatar was not uploaded.",
+          "upload": "The avatar was not changed. Try again."
+        },
         "avatarCropTitle": "Crop your avatar",
         "avatarCropHint": "Drag the square to reposition it, or drag a corner to resize.",
         "avatarCropConfirm": "Save avatar",
-        "avatarCropRegion": "Crop area — use the arrow keys to move it",
-        "avatarError": {
-          "too_large": "That file is over 20 MB — pick a smaller image.",
-          "empty": "That file is empty.",
-          "too_many_pixels": "That image is too large to work with. Try one under 8000 pixels on each side.",
-          "not_an_image": "That file could not be read as an image.",
-          "encode_failed": "Could not prepare the image. Please try another one."
-        },
         "slugChangeOpen": "Change Slug",
         "slugChangeTitle": "Change this Studio's Slug?",
         "slugChangeBody": "The address changes from /studio/{oldSlug} to /studio/{newSlug}.",
@@ -1508,6 +1514,27 @@
       "toolbar": {
         "sortLabel": "Sort",
         "sortValue": "Recently opened"
+      },
+      "imageError": {
+        "too_large": "That file is over 20 MB — pick a smaller image.",
+        "empty": "That file is empty.",
+        "too_many_pixels": "That image is too large to work with. Try one under 8000 pixels on each side.",
+        "not_an_image": "That file could not be read as an image.",
+        "encode_failed": "Could not prepare the image. Please try another one.",
+        "unsupported_type": "This file format is not supported.",
+        "hash_unavailable": "Couldn't verify this file. Reload the page and try again."
+      },
+      "cropRegion": "Crop area — use the arrow keys to move it",
+      "cover": {
+        "menuUpload": "Upload cover",
+        "cropTitle": "Crop the cover",
+        "cropHint": "Drag to choose the part shown on the project card.",
+        "upload": "Upload",
+        "uploading": "Uploading…",
+        "error": {
+          "storage": "Storage is full. The cover was not uploaded.",
+          "upload": "The cover was not changed. Try again."
+        }
       }
     },
     "rail": {

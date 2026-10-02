@@ -65,6 +65,17 @@ import {
 import { useCanvasStore } from '@web/stores';
 
 /**
+ * The mode the panel binds its editors to: the node's stored mode, else the
+ * first mode this panel offers (#2218 keeps one prompt per mode).
+ * @returns The mode.
+ */
+function storedMode(): string {
+  const mode = nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.get('mode');
+  return typeof mode === 'string' ? mode : 'tts';
+}
+
+
+/**
  * Stands in for the canvas's "who made the newest write" getter.
  *
  * Module-level so its identity is stable across renders: the container lists
@@ -260,7 +271,7 @@ function typeInto(fragment: Y.XmlFragment | null, lines: string[]): void {
  * @param lines - The lines to speak.
  */
 function typePrompt(...lines: string[]): void {
-  typeInto(getPromptFragment('p', 's', 'target'), lines);
+  typeInto(getPromptFragment('p', 's', 'target', storedMode()), lines);
 }
 
 /**
@@ -268,7 +279,7 @@ function typePrompt(...lines: string[]): void {
  * @param lines - The words to sing, one line per paragraph.
  */
 function typeLyrics(...lines: string[]): void {
-  typeInto(getLyricsFragment('p', 's', 'target'), lines);
+  typeInto(getLyricsFragment('p', 's', 'target', storedMode()), lines);
 }
 
 /**
@@ -278,7 +289,7 @@ function typeLyrics(...lines: string[]): void {
  * @param sourceIds - The nodes the chips point at.
  */
 function typeLyricsMentioning(text: string, sourceIds: string[]): void {
-  const fragment = getLyricsFragment('p', 's', 'target');
+  const fragment = getLyricsFragment('p', 's', 'target', storedMode());
   if (!fragment) throw new Error('seedAudioNode must run first');
   const paragraph = new Y.XmlElement('paragraph');
   paragraph.insert(0, [new Y.XmlText(text)]);
@@ -441,7 +452,7 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
     // leaves the way out.
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     seedAudioNode({ model: 'elevenlabs-v3' });
-    nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.delete('prompt');
+    nodeDataMap(getDoc(docName.canvasSpace('p', 's')), 'target')?.delete('prompts');
     render(panelTree({ model: 'elevenlabs-v3' }));
     act(() => {
       useCanvasStore.getState().openGeneratePanel('target', 'audio');
@@ -947,11 +958,11 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     // Yjs lower-cases element names when it serializes, so the chip reads as
     // `referencemention` here; the source id is what says it is the right one.
     await waitFor(() =>
-      expect(getLyricsFragment('p', 's', 'target')?.toString()).toContain(
+      expect(getLyricsFragment('p', 's', 'target', storedMode())?.toString()).toContain(
         'sourceNodeId="src"',
       ),
     );
-    expect(getPromptFragment('p', 's', 'target')?.toString()).not.toContain(
+    expect(getPromptFragment('p', 's', 'target', storedMode())?.toString()).not.toContain(
       'sourceNodeId="src"',
     );
   });
@@ -977,11 +988,11 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
 
     await waitFor(() =>
-      expect(getPromptFragment('p', 's', 'target')?.toString()).toContain(
+      expect(getPromptFragment('p', 's', 'target', storedMode())?.toString()).toContain(
         'sourceNodeId="src"',
       ),
     );
-    expect(getLyricsFragment('p', 's', 'target')?.toString()).not.toContain(
+    expect(getLyricsFragment('p', 's', 'target', storedMode())?.toString()).not.toContain(
       'sourceNodeId="src"',
     );
   });
@@ -1013,7 +1024,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
 
     fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
     await waitFor(() =>
-      expect(getPromptFragment('p', 's', 'target')?.toString()).toContain(
+      expect(getPromptFragment('p', 's', 'target', 'tts')?.toString()).toContain(
         'sourceNodeId="src"',
       ),
     );

@@ -2,19 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Studio avatar upload E2E (#174) — the one path whose bytes still travel
- * through our own server into the storage adapter.
+ * Studio avatar upload E2E (#294) — the avatar is an ordinary asset.
  *
- * Everything else a user uploads goes to the ingest Worker, which writes R2
- * itself. An avatar does not: the route reads the body and hands it to
- * `getStorageAdapter().upload()`. Since R2 is the only provider, that call
- * needs live credentials and a reachable bucket, and nothing below a real
- * browser proves those are in place — a unit test doubles the adapter and an
- * integration test has no bucket to write into.
+ * The picture goes the way every asset goes: a studio-scoped ticket, the
+ * ingest Worker, a ledger row. `PUT /studio/:slug/avatar` then points the
+ * studio at that row. Nothing below a real browser proves the bytes really
+ * reach the bucket and come back under the public base.
  *
- * What it pins: a picked PNG survives the crop dialog, reaches storage, and
- * comes back as a URL under the configured public base that the browser can
- * actually fetch.
+ * What it pins: a picked PNG survives the crop dialog, is uploaded with a
+ * ticket that names the studio rather than a project, and comes back as a URL
+ * the browser can actually fetch.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
@@ -57,29 +54,36 @@ test('an avatar reaches storage and comes back as a fetchable URL @needs-storage
     buffer: SQUARE_PNG,
   });
 
-  await expect(page.getByTestId('avatar-crop-dialog')).toBeVisible({
+  await expect(page.getByTestId('image-crop-dialog')).toBeVisible({
     timeout: 10_000,
   });
 
-  // The response carries the URL the row now points at, which is what the
-  // adapter built out of the storage key it just wrote.
-  const [response] = await Promise.all([
-    page.waitForResponse(
-      (r) => r.url().includes('/avatar') && r.request().method() === 'POST',
-      { timeout: 30_000 },
+  // The response carries the URL the studio now points at, copied off the
+  // ledger row the upload landed on.
+  const [ticket, response] = await Promise.all([
+    page.waitForRequest(
+      (r) => r.url().includes('/assets/upload-ticket') && r.method() === 'POST',
     ),
-    page.getByTestId('avatar-crop-confirm').click(),
+    page.waitForResponse(
+      (r) => r.url().includes('/avatar') && r.request().method() === 'PUT',
+      { timeout: 60_000 },
+    ),
+    page.getByTestId('image-crop-confirm').click(),
   ]);
+
+  const sent = ticket.postDataJSON() as Record<string, unknown>;
+  expect(sent.studio_id).toBeDefined();
+  expect(sent.project_id).toBeUndefined();
+  expect(sent.purpose).toBe('studio_avatar');
 
   expect(response.status(), await response.text()).toBe(200);
   const body = (await response.json()) as { data: { avatarUrl: string } };
   const avatarUrl = body.data.avatarUrl;
   expect(avatarUrl).toMatch(/^https?:\/\//);
-  expect(avatarUrl).toContain('/avatar/');
 
   // The dialog closes on a finished upload, which is the app's own signal that
   // the round trip succeeded rather than left an error on screen.
-  await expect(page.getByTestId('avatar-crop-dialog')).toBeHidden({
+  await expect(page.getByTestId('image-crop-dialog')).toBeHidden({
     timeout: 15_000,
   });
 

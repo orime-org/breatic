@@ -31,16 +31,22 @@ vi.mock("@breatic/domain", () => ({
   getModel: (): undefined => undefined,
 }));
 
-import midjourney from "@worker/providers/families/midjourney.js";
 import nanoBanana from "@worker/providers/families/nano-banana.js";
 
 const CONFIG_MODELS_DIR = resolve(import.meta.dirname, "../../../../../config/models");
 
-/** WaveSpeed model ids confirmed delisted in the 2026-07-15 audit (#1683). */
+/**
+ * WaveSpeed model ids confirmed delisted: the 2026-07-15 audit (#1683), and
+ * the Midjourney and Reve endpoints gone from WaveSpeed's model list and API
+ * docs as of 2026-10-01 (#2248).
+ */
 const DELISTED_WAVESPEED_IDS: ReadonlySet<string> = new Set([
   "midjourney/image-to-image",
+  "midjourney/image-to-video",
   "midjourney/niji/image-to-image",
   "midjourney/niji/text-to-image",
+  "midjourney/text-to-image",
+  "reve/2.1/text-to-image",
   "topaz/image/enhance",
   "wavespeed-ai/rife/video-interpolation",
 ]);
@@ -109,7 +115,7 @@ describe("model config liveness (#1683)", () => {
 
   it("names only catalog models in the worker's model families", () => {
     const yamlNames = new Set(loadAllModelEntries().map((entry) => entry.model.name));
-    const orphans = [midjourney, nanoBanana]
+    const orphans = [nanoBanana]
       .flatMap((family) => [...family.MODELS])
       .filter((name) => !yamlNames.has(name));
     expect(orphans).toEqual([]);

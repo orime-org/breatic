@@ -4,11 +4,11 @@
 /**
  * The pieces every Generate panel's tool row is built from.
  *
- * Both panels carry a tool row and both rows are made of the same two things:
- * a toggle that enters a canvas pick, and a slot that holds one picked image.
- * They differ only in WHICH tools they show — reference and focus are on both,
- * style is the image panel's alone, and the video panel adds the source slots
- * its mode needs — so the tools themselves live here and each panel's row just
+ * The panels' tool rows are made of the same two things: a toggle that
+ * enters a canvas pick, and a slot that holds one picked source. They differ
+ * only in WHICH tools they show — reference and focus are on the image and
+ * video rows, and the video and audio panels add the source slots their mode
+ * needs — so the tools themselves live here and each panel's row just
  * arranges them.
  */
 
@@ -213,14 +213,14 @@ interface SlotToolProps {
   disabled: boolean;
   /** Localized ✕ aria-label. */
   clearLabel: string;
-  /** Localized tool label ("Style" / "First frame"). */
+  /** Localized tool label ("First frame"). */
   label: string;
   /** One line saying what to go pick — the hover card's hint while empty. */
   tip: string;
 }
 
 /**
- * A slot tool (#1664 style, #1896 first frame, #1918 driving video): an icon +
+ * A slot tool (#1896 first frame, #1918 driving video): an icon +
  * label button while empty (click enters the pick); once the slot holds a pick
  * WITH A PICTURE, that picture COVERS the button as an absolute overlay while
  * the original icon + label keep laying out invisibly underneath — so the
@@ -289,8 +289,8 @@ export function SlotTool({
   const painting = pick?.thumbnail;
   // A disabled button dispatches no pointerenter and takes no focus, so both of
   // the HoverCard's open paths are dead — declaring anything to show there
-  // promises something the user can never get (the style slot after switching
-  // to a model without style support).
+  // promises something the user can never get (a slot the active model or
+  // mode takes no source for).
   const hoverable = !disabled;
   const button = (
     <Button

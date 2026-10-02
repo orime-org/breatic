@@ -26,9 +26,9 @@ interface RecentCardProps {
  * Recent item tile — a single project / collection card on the cross-studio
  * "Recent" landing. Links to `/project/{slug}-{uuid}` or
  * `/collection/{slug}-{uuid}` (URL design §5.7). Because the landing spans
- * studios, the meta line reads "{studio} · opened {time}", with the viewer's
- * role as plain text at its right end; a long studio name truncates and the
- * time stays whole.
+ * studios, the studio's name has a line of its own under the item name, where
+ * a long one truncates; the meta line below reads "opened {time}", with the
+ * viewer's role as plain text at its right end.
  * @param root0 - component props
  * @param root0.item - the recent item to render
  * @returns a clickable tile linking to the item.
@@ -46,18 +46,13 @@ export function RecentCard({ item }: RecentCardProps): React.JSX.Element {
         thumbnailUrl={item.thumbnailUrl}
         name={item.name}
         role={t(ROLE_KEY[item.myRole])}
+        subtitle={item.studioName}
         meta={
-          <>
-            <span className='min-w-0 truncate'>{item.studioName}</span>
-            <span className='shrink-0' aria-hidden='true'>
-              ·
-            </span>
-            <span className='shrink-0'>
-              {t('studio.recent.openedAt', {
-                time: formatRelativeTime(item.lastOpenedAt, t),
-              })}
-            </span>
-          </>
+          <span className='shrink-0'>
+            {t('studio.recent.openedAt', {
+              time: formatRelativeTime(item.lastOpenedAt, t),
+            })}
+          </span>
         }
       />
     </Link>

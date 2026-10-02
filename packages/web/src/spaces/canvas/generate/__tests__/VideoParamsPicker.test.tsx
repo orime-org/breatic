@@ -146,6 +146,18 @@ describe('VideoParamsPicker', () => {
     ).toHaveAttribute('aria-current', 'true');
   });
 
+  it('holds back totals below one second per shot (#2218)', () => {
+    const onChange = vi.fn();
+    render(
+      <VideoParamsPicker model={FULL} params={{ duration: 6 }} onChange={onChange} durationFloor={5} />,
+    );
+    fireEvent.click(screen.getByTestId('generate-video-params-trigger'));
+    expect(screen.getByTestId('generate-video-duration-option-4')).toBeDisabled();
+    expect(screen.getByTestId('generate-video-duration-option-6')).toBeEnabled();
+    fireEvent.click(screen.getByTestId('generate-video-duration-option-4'));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('hides a group the model does not declare', () => {
     // Not every video model can generate sound — the group disappears rather
     // than offering a switch the model will ignore.

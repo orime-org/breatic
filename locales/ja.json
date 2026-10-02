@@ -38,11 +38,13 @@
       "reset_link_sent": "そのメールアドレスに登録されたアカウントがあれば、リセットリンクをお送りしました。",
       "reset_success": "パスワードをリセットしました。サインインしてください。",
       "reset_recovery_success": "パスワードをリセットしました。新しいリカバリーコードを保存してください。",
-      "email_verified": "メールアドレスを確認しました。",
-      "verify_email_sent": "確認メールを送信しました。受信トレイをご確認ください。",
       "invalid_reset_token": "このパスワード再設定リンクは無効か、有効期限が切れています",
       "invalid_recovery_code": "メールアドレスまたはリカバリーコードが正しくありません",
-      "invalid_verification_token": "この確認リンクは無効か、有効期限が切れています"
+      "signup_code_invalid": "コードが正しくありません。",
+      "signup_code_exhausted": "このコードは使用できなくなりました。新しいコードを取得してください。",
+      "signup_expired": "この登録は期限切れです。",
+      "signup_resend_cooldown": "{seconds, plural, other {# 秒}}後に再度コードを取得してください。",
+      "signup_code_send_failed": "確認コードを送信できませんでした。もう一度お試しください。"
     },
     "studio": {
       "slug_taken": "その Slug はすでに使用されています。別のものを選んでください。",
@@ -55,8 +57,7 @@
       "cannot_change_admin_role": "Admin ロールは譲渡によってのみ変更できます。",
       "member_limit_reached": "{limit, plural, =0 {この Studio のプランではメンバーを追加できません。アップグレードすると追加できます。} other {この Studio のプランのメンバーは最大 # 人です。アップグレードするとさらに追加できます。}}",
       "member_limit_reached_for_invitee": "この Studio のメンバー枠は満員です。Admin に空きを作ってもらってください。",
-      "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
-      "avatar_unsupported_type": "このファイルは画像として読み取れませんでした。別の画像をお試しください。"
+      "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。"
     },
     "project": {
       "join_already_member": "すでにこの Project のメンバーです。",
@@ -216,18 +217,17 @@
         "action": "パスワードをリセット",
         "footer": "このリンクは {hours, plural, other {# 時間}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
       },
-      "email_verification": {
-        "subject": "メールアドレスの確認",
-        "lead": "Breatic へようこそ。下のボタンからメールアドレスを確認してください。",
-        "action": "メールアドレスを確認する",
-        "footer": "このリンクは {hours, plural, other {# 時間}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
-      },
       "footer": "このメールは自動送信です。返信は確認されません。",
       "help": "お困りですか？<manual>ユーザーマニュアル</manual>をご覧いただくか、<contact>{email}</contact> までご連絡ください。",
       "legal": {
         "about": "私たちについて",
         "terms": "利用規約",
         "privacy": "プライバシーポリシー"
+      },
+      "signup_code": {
+        "subject": "確認コード",
+        "lead": "登録ページで次のコードを入力して、アカウントの作成を完了してください。",
+        "footer": "このコードは {minutes, plural, other {# 分}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
       }
     }
   },
@@ -301,6 +301,7 @@
       "checkingCanvas": "キャンバスでできることを確認中",
       "proposingNodes": "提案をまとめています",
       "checkingModels": "利用できるモデルを確認中",
+      "readingGuide": "製品の使い方を確認中",
       "understanding": "メディアを確認中",
       "judging": "検討中",
       "running": "{tool} を実行中"
@@ -348,7 +349,6 @@
       "use": "使う",
       "building": "作成中…",
       "failed": "作成できませんでした。",
-      "eachRun": "{s, number}秒 × {n, number}",
       "needCanvas": "先にキャンバスを開いてください。",
       "promptReady": "プロンプトは作成済みです。ノードを右クリックして「生成」を選ぶと、開いた生成パネルで確認できます。",
       "settingsReady": "設定は完了しています。ノードを右クリックして「生成」を選ぶと、開いた生成パネルで確認できます。"
@@ -435,10 +435,8 @@
       "sourceGone": "読み取り元のノードがありません。この読み取りに線はつながっていません。"
     },
     "generatePanel": {
-      "style": "スタイル",
       "focus": "フォーカス",
       "reference": "参照",
-      "styleTip": "画像を1枚選んでスタイル参照にします",
       "focusTip": "ノードの一部の領域を参照にします",
       "referenceTip": "キャンバスから画像を選んで参照にします",
       "referenceTipAudio": "キャンバスから文字を選んで参照にします",
@@ -475,13 +473,11 @@
       "sfxDuration": "長さ",
       "sfxDurationSeconds": "{n}秒",
       "selectFromCanvas": "キャンバスから参照を選択",
-      "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
       "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
       "selectEndFrameFromCanvas": "キャンバスで最後のフレームにする画像を選択",
       "selectCharacterImageFromCanvas": "キャンバスでキャラクターにする画像を選択",
       "selectDrivingVideoFromCanvas": "キャンバスで動きの元にする動画を選択",
       "selectDrivingAudioFromCanvas": "キャンバスで口の動きに合わせる音声を選択",
-      "removeStyle": "スタイル参照を削除",
       "exitSelect": "終了",
       "locateSource": "ソースノードに移動",
       "camera": "カメラ",
@@ -645,7 +641,23 @@
         "voice": "音声",
         "text": "テキスト",
         "pronunciation": "読み"
-      }
+      },
+      "storyboard": {
+        "label": "ストーリーボード",
+        "perShot": "ショットごとに編集",
+        "autoHint": "モデルがショットを分割します",
+        "back": "自動ストーリーボードに戻る",
+        "shot": "ショット {n, number}",
+        "removeShot": "削除",
+        "addShot": "ショットを追加",
+        "shotPlaceholder": "このショットを説明してください。@ で参照を追加",
+        "shotCapReached": "最大 {max, number} ショット",
+        "noSecondToSpare": "ショットを追加するには動画を長くしてください"
+      },
+      "refuseStoryboardShotEmpty": "ショット {shot, number} が空です",
+      "refuseStoryboardTooMany": "最大 {limit, number} ショット",
+      "refuseStoryboardShotTooLong": "ショット {shot, number} が{limit, number}文字の上限を超えています",
+      "refuseStoryboardDurationMismatch": "ショットの合計は{shots, number}秒、動画は{total, number}秒です"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -811,7 +823,16 @@
       "haveAccount": "すでにアカウントをお持ちですか?",
       "signIn": "サインイン",
       "passwordHint": "8 文字以上にしてください。",
-      "failed": "登録に失敗しました。もう一度お試しください。"
+      "failed": "登録に失敗しました。もう一度お試しください。",
+      "code": {
+        "title": "メールアドレスの確認",
+        "sentTo": "{email} に 6 桁のコードを送信しました",
+        "codeLabel": "確認コード",
+        "resend": "コードを再送信",
+        "resendIn": "{seconds} 秒後に再送信できます",
+        "changeEmail": "別のメールアドレスを使う",
+        "newCodeSent": "新しいコードを送信しました。"
+      }
     },
     "onboarding": {
       "title": "Slug を選択",
@@ -835,15 +856,17 @@
     },
     "forgot": {
       "title": "パスワードをお忘れですか?",
-      "subtitle": "リセットリンクをメールでお送りするか、リカバリーコードをお使いください。",
       "sendResetLink": "リセットリンクをメール送信",
       "sending": "送信中...",
       "useRecoveryCode": "リカバリーコードを使う",
       "sentTitle": "受信トレイをご確認ください",
       "sentSubtitle": "そのアドレスに登録されたアカウントがあれば、リセットリンクをお送りしました。",
-      "sentBody": "{email} にリセットリンクを送信しました。数分経っても届かない場合は、迷惑メールをご確認いただくか、リカバリーコードをご利用ください。",
+      "sentBody": "{email} に再設定リンクを送信しました。数分たっても届かない場合は、迷惑メールフォルダを確認してください。",
       "backToSignIn": "サインインに戻る",
-      "failed": "リセットリンクの送信に失敗しました。もう一度お試しください。"
+      "failed": "リセットリンクの送信に失敗しました。もう一度お試しください。",
+      "subtitleEmail": "パスワード再設定用のリンクをメールでお送りします。",
+      "subtitleRecovery": "登録時に保存したリカバリーコードを使ってください。",
+      "optionsFailed": "ページを読み込めませんでした。再読み込みしてください。"
     },
     "reset": {
       "titleToken": "新しいパスワードを設定",
@@ -858,19 +881,6 @@
       "success": "パスワードを更新しました。サインインしてください。",
       "failed": "パスワードのリセットに失敗しました。もう一度お試しください。",
       "backToSignIn": "サインインに戻る"
-    },
-    "verify": {
-      "verifying": "メールアドレスを確認中...",
-      "pleaseWait": "少々お待ちください。",
-      "successTitle": "メールアドレスが確認されました",
-      "successBody": "メールアドレスが確認されました。breatic のすべての機能をご利用いただけます。",
-      "goToStudio": "Studio へ",
-      "failedTitle": "メールアドレスの確認に失敗しました",
-      "failedBody": "リンクの有効期限が切れているか、既に使用済みの可能性があります。サインイン後、アカウント設定から新しい確認メールをリクエストしてください。",
-      "checkInboxTitle": "受信トレイをご確認ください",
-      "checkInboxBody": "先ほどお送りした確認リンクを開いてください。届いていない場合は、アカウント設定から再送できます。",
-      "signIn": "サインイン",
-      "failed": "メールアドレスの確認に失敗しました。"
     }
   },
   "roleTag": {
@@ -1450,17 +1460,13 @@
         "avatarSaved": "アバターを更新しました",
         "avatarRemoved": "アバターを削除しました",
         "avatarUploading": "アップロード中…",
+        "avatarUploadError": {
+          "storage": "ストレージがいっぱいです。アバターはアップロードされていません。",
+          "upload": "アバターを変更できませんでした。もう一度お試しください。"
+        },
         "avatarCropTitle": "アバターを切り抜く",
         "avatarCropHint": "四角をドラッグして位置を、角をドラッグして大きさを調整します。",
         "avatarCropConfirm": "アバターを保存",
-        "avatarCropRegion": "切り抜き範囲 — 矢印キーで移動できます",
-        "avatarError": {
-          "too_large": "そのファイルは 20 MB を超えています。もっと小さい画像を選んでください。",
-          "empty": "そのファイルは空です。",
-          "too_many_pixels": "その画像は大きすぎます。各辺 8000 ピクセル未満のものをお試しください。",
-          "not_an_image": "そのファイルは画像として読み取れませんでした。",
-          "encode_failed": "画像を準備できませんでした。別の画像をお試しください。"
-        },
         "slugChangeOpen": "Slug を変更",
         "slugChangeTitle": "この Studio の Slug を変更しますか？",
         "slugChangeBody": "アドレスが /studio/{oldSlug} から /studio/{newSlug} に変わります。",
@@ -1508,6 +1514,27 @@
       "toolbar": {
         "sortLabel": "並び替え",
         "sortValue": "最近開いた順"
+      },
+      "imageError": {
+        "too_large": "そのファイルは 20 MB を超えています。もっと小さい画像を選んでください。",
+        "empty": "そのファイルは空です。",
+        "too_many_pixels": "その画像は大きすぎます。各辺 8000 ピクセル未満のものをお試しください。",
+        "not_an_image": "そのファイルは画像として読み取れませんでした。",
+        "encode_failed": "画像を準備できませんでした。別の画像をお試しください。",
+        "unsupported_type": "このファイル形式には対応していません。",
+        "hash_unavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。"
+      },
+      "cropRegion": "切り抜き範囲 — 矢印キーで移動できます",
+      "cover": {
+        "menuUpload": "カバーをアップロード",
+        "cropTitle": "カバーをトリミング",
+        "cropHint": "Project カードに表示する範囲をドラッグで選んでください。",
+        "upload": "アップロード",
+        "uploading": "アップロード中…",
+        "error": {
+          "storage": "ストレージがいっぱいです。カバーはアップロードされていません。",
+          "upload": "カバーを変更できませんでした。もう一度お試しください。"
+        }
       }
     },
     "rail": {

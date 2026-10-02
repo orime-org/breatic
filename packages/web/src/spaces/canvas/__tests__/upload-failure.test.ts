@@ -50,7 +50,8 @@ describe('resolveUploadFailure', () => {
   // A transfer half that ended without our server hearing anything leaves a
   // row nobody else will end (#237): the finish was never asked for, so the
   // server was never told. Both ways that half can end are in here — the bytes
-  // never got out, and the edge turned them down (`canvas-upload.ts:190`). This is the
+  // never got out, and the edge turned them down (`UPLOAD_FAILURE_REASONS` in
+  // `media-upload.ts`). This is the
   // one plan that reports, and it carries no sentence — what the reader sees is
   // the row itself, in the failed count, where it survives them looking away.
   it('reports a transfer that never landed, and keeps its File', () => {

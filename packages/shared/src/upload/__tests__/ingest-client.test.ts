@@ -24,6 +24,7 @@ import {
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
+  readStoredMediaAtIngest,
   computePutTimeoutMs,
   type IngestTarget,
   type UploadClientConfig,
@@ -242,6 +243,22 @@ describe('finishing an upload', () => {
       // from the type, and the type is the edge's to read off the bytes — so
       // no caller knows yet whether this key will be written to.
       coverKey: COVER_KEY,
+    });
+  });
+
+  // A cover or an avatar is read after the upload returns (#299). The request
+  // still carries the deadlines: what says "not now" is its own field, so a
+  // lane that drops its limits by mistake is still told apart from this one.
+  it('asks for no media read when the caller defers it', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+
+    await finishUploadAtIngest(WORKER_URL, held, SECRET, COVER_KEY, LIMITS, true);
+
+    expect(JSON.parse(mockedRequest.mock.calls[0]?.[1]?.body as string)).toEqual({
+      parts: held.parts,
+      limits: LIMITS,
+      coverKey: COVER_KEY,
+      deferMediaRead: true,
     });
   });
 
@@ -538,6 +555,64 @@ describe('handing the Worker a URL to fetch', () => {
     await expect(
       fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, COVER_KEY, LIMITS, DEADLINE),
     ).rejects.toThrow();
+  });
+});
+
+// The read a cover or an avatar skipped at finish, asked for afterwards by our
+// worker (#299). The object already stands; this only asks what it measures.
+describe('reading a stored object', () => {
+  const ABOUT = {
+    storageKey: 'image/2026-10-01/1_cover.jpg',
+    contentType: 'image/jpeg',
+    limits: LIMITS,
+  };
+
+  it('names the media endpoint and presents the shared secret', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, { width: 800, height: 450 }));
+
+    await readStoredMediaAtIngest(WORKER_URL, SECRET, ABOUT);
+
+    expect(urlOf(0)).toBe(`${WORKER_URL}/media`);
+    expect(headersOf(0)).toMatchObject({
+      'x-ingest-secret': SECRET,
+      'content-type': 'application/json',
+    });
+  });
+
+  it('sends the key, the type the ledger recorded and the container deadlines', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, { width: 800, height: 450 }));
+
+    await readStoredMediaAtIngest(WORKER_URL, SECRET, ABOUT);
+
+    expect(JSON.parse(String(mockedRequest.mock.calls[0]?.[1]?.body))).toEqual(ABOUT);
+  });
+
+  // Reading writes nothing, so a repeat costs one more container run and
+  // nothing else.
+  it('tells the transport that sending it again is safe', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, { width: 800, height: 450 }));
+
+    await readStoredMediaAtIngest(WORKER_URL, SECRET, ABOUT);
+
+    expect(optionsOf(0).replaySafe).toBe(true);
+  });
+
+  it('answers the three numbers, each unusable one as none', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, { width: '800', height: -1, durationSeconds: null }),
+    );
+
+    const read = await readStoredMediaAtIngest(WORKER_URL, SECRET, ABOUT);
+
+    expect(read).toEqual({ width: 800, height: null, durationSeconds: null });
+  });
+
+  it('carries the status when the Worker refuses', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(404, {}));
+
+    await expect(
+      readStoredMediaAtIngest(WORKER_URL, SECRET, ABOUT),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });
 

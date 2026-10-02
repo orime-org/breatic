@@ -41,11 +41,13 @@
       "reset_link_sent": "如果该邮箱已注册,重置链接已发送。",
       "reset_success": "密码重置成功,请登录。",
       "reset_recovery_success": "密码重置成功,请保存新的恢复码。",
-      "email_verified": "邮箱已验证。",
-      "verify_email_sent": "验证邮件已发送,请查收。",
       "invalid_reset_token": "这个密码重置链接无效或已过期",
       "invalid_recovery_code": "邮箱或恢复码不正确",
-      "invalid_verification_token": "这个验证链接无效或已过期"
+      "signup_code_invalid": "验证码不正确。",
+      "signup_code_exhausted": "这个验证码已失效，请重新获取。",
+      "signup_expired": "本次注册已过期。",
+      "signup_resend_cooldown": "请 {seconds, plural, other {# 秒}}后再获取验证码。",
+      "signup_code_send_failed": "验证码发送失败，请重试。"
     },
     "studio": {
       "slug_taken": "该 Slug 已被使用，请换一个。",
@@ -58,8 +60,7 @@
       "cannot_change_admin_role": "Admin 角色只能通过转让变更。",
       "member_limit_reached": "{limit, plural, =0 {这个 Studio 的会员等级不支持添加成员，升级后即可添加。} other {这个 Studio 的会员等级最多可有 # 位成员，升级可添加更多。}}",
       "member_limit_reached_for_invitee": "这个 Studio 的成员名额已满，请联系它的 Admin 腾出名额。",
-      "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
-      "avatar_unsupported_type": "这个文件无法作为图片读取，换一张试试。"
+      "leave_last_admin": "离开这个 Studio 前请先转让 Admin。"
     },
     "project": {
       "join_already_member": "你已经是这个 Project 的成员。",
@@ -216,18 +217,17 @@
         "action": "重置密码",
         "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，请忽略这封邮件。"
       },
-      "email_verification": {
-        "subject": "验证你的邮箱",
-        "lead": "欢迎来到 Breatic。点击下面的按钮验证你的邮箱地址。",
-        "action": "验证邮箱地址",
-        "footer": "链接将在 {hours, plural, other {# 小时}}后失效。如果不是你本人操作，可以忽略这封邮件。"
-      },
       "footer": "这是一封自动发送的邮件，回复不会被阅读。",
       "help": "需要帮助？查看<manual>用户手册</manual>，或发邮件到 <contact>{email}</contact>。",
       "legal": {
         "about": "关于我们",
         "terms": "使用条款",
         "privacy": "隐私政策"
+      },
+      "signup_code": {
+        "subject": "你的验证码",
+        "lead": "在注册页面输入下面的验证码，完成创建账号。",
+        "footer": "验证码将在 {minutes, plural, other {# 分钟}}后失效。如果不是你本人操作，可以忽略这封邮件。"
       }
     }
   },
@@ -301,6 +301,7 @@
       "checkingCanvas": "正在查画布能做什么",
       "proposingNodes": "正在拟一份提议",
       "checkingModels": "正在查可用的模型",
+      "readingGuide": "正在查产品怎么用",
       "understanding": "正在查看媒体",
       "judging": "正在权衡",
       "running": "正在调用 {tool}"
@@ -348,7 +349,6 @@
       "use": "使用",
       "building": "正在建…",
       "failed": "没建成，可以再试一次。",
-      "eachRun": "{s, number} 秒 × {n, number}",
       "needCanvas": "先打开一个画布。",
       "promptReady": "提示词已写好，右键节点选「生成」，在打开的生成面板里查看",
       "settingsReady": "设置已配好，右键节点选「生成」，在打开的生成面板里查看"
@@ -435,10 +435,8 @@
       "sourceGone": "被读取的节点已不存在。这次理解没有连线。"
     },
     "generatePanel": {
-      "style": "风格",
       "focus": "聚焦",
       "reference": "参考",
-      "styleTip": "从画布选一张图作为风格参考",
       "focusTip": "取节点上的一块区域作为参考",
       "referenceTip": "从画布选图作为参考",
       "referenceTipAudio": "从画布选文字作为参考",
@@ -475,13 +473,11 @@
       "sfxDuration": "时长",
       "sfxDurationSeconds": "{n} 秒",
       "selectFromCanvas": "从画布选择参考",
-      "selectStyleFromCanvas": "从画布选择风格参考",
       "selectFirstFrameFromCanvas": "在画布上选一张图片作为首帧",
       "selectEndFrameFromCanvas": "在画布上选一张图片作为尾帧",
       "selectCharacterImageFromCanvas": "在画布上选一张图片作为角色",
       "selectDrivingVideoFromCanvas": "在画布上选一段视频来驱动动作",
       "selectDrivingAudioFromCanvas": "在画布上选一段音频，口型跟着它动",
-      "removeStyle": "移除风格参考",
       "exitSelect": "退出",
       "locateSource": "定位到源节点",
       "camera": "摄像机",
@@ -645,7 +641,23 @@
         "voice": "音色",
         "text": "文字",
         "pronunciation": "读作"
-      }
+      },
+      "storyboard": {
+        "label": "分镜",
+        "perShot": "逐镜头编辑",
+        "autoHint": "由模型拆分镜头",
+        "back": "返回自动分镜",
+        "shot": "镜头 {n, number}",
+        "removeShot": "删除",
+        "addShot": "添加镜头",
+        "shotPlaceholder": "描述这个镜头，@ 引用参考",
+        "shotCapReached": "最多 {max, number} 个镜头",
+        "noSecondToSpare": "加长总时长才能再加镜头"
+      },
+      "refuseStoryboardShotEmpty": "镜头 {shot, number} 没有内容",
+      "refuseStoryboardTooMany": "最多 {limit, number} 个镜头",
+      "refuseStoryboardShotTooLong": "镜头 {shot, number} 超过 {limit, number} 字上限",
+      "refuseStoryboardDurationMismatch": "镜头时长合计 {shots, number} 秒，视频时长 {total, number} 秒"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -811,7 +823,16 @@
       "haveAccount": "已有账号?",
       "signIn": "登录",
       "passwordHint": "至少 8 个字符。",
-      "failed": "注册失败,请重试。"
+      "failed": "注册失败,请重试。",
+      "code": {
+        "title": "验证邮箱",
+        "sentTo": "验证码已发送至 {email}",
+        "codeLabel": "验证码",
+        "resend": "重新发送",
+        "resendIn": "{seconds} 秒后可重新发送",
+        "changeEmail": "换一个邮箱",
+        "newCodeSent": "新验证码已发送。"
+      }
     },
     "onboarding": {
       "title": "选择你的 Slug",
@@ -835,15 +856,17 @@
     },
     "forgot": {
       "title": "忘记密码了?",
-      "subtitle": "我们可以给你的邮箱发重置链接,或者你也可以用恢复码。",
       "sendResetLink": "给我发重置链接",
       "sending": "发送中...",
-      "useRecoveryCode": "改用恢复码",
+      "useRecoveryCode": "使用恢复码",
       "sentTitle": "请查收邮件",
       "sentSubtitle": "如果该邮箱已注册账号,重置链接已在路上。",
-      "sentBody": "我们已经向 {email} 发送了重置链接。如果几分钟内没收到,请检查垃圾邮件,或者改用恢复码。",
+      "sentBody": "重置链接已发送至 {email}。几分钟后仍未收到，请检查垃圾邮件。",
       "backToSignIn": "返回登录",
-      "failed": "重置链接发送失败,请重试。"
+      "failed": "重置链接发送失败,请重试。",
+      "subtitleEmail": "我们会给你发一封重置密码的邮件。",
+      "subtitleRecovery": "使用你注册时保存的恢复码。",
+      "optionsFailed": "页面加载失败，请刷新后重试。"
     },
     "reset": {
       "titleToken": "设置新密码",
@@ -858,19 +881,6 @@
       "success": "密码已更新,请登录。",
       "failed": "密码重置失败,请重试。",
       "backToSignIn": "返回登录"
-    },
-    "verify": {
-      "verifying": "正在验证你的邮箱...",
-      "pleaseWait": "请稍候。",
-      "successTitle": "邮箱已验证",
-      "successBody": "你的邮箱已确认,现在可以使用 breatic 的全部功能。",
-      "goToStudio": "进入 Studio",
-      "failedTitle": "邮箱验证失败",
-      "failedBody": "链接可能已过期或已使用。请登录后,在账号设置里重新发送验证邮件。",
-      "checkInboxTitle": "请查收邮件",
-      "checkInboxBody": "打开我们刚才发给你的验证链接。如果没收到,可以在账号设置里重新发送。",
-      "signIn": "登录",
-      "failed": "邮箱验证失败。"
     }
   },
   "roleTag": {
@@ -1450,17 +1460,13 @@
         "avatarSaved": "头像已更新",
         "avatarRemoved": "头像已移除",
         "avatarUploading": "上传中…",
+        "avatarUploadError": {
+          "storage": "存储空间已满，头像没有上传。",
+          "upload": "头像没有更新，请重试。"
+        },
         "avatarCropTitle": "裁剪头像",
         "avatarCropHint": "拖动方框调整位置，拖动四角调整大小。",
         "avatarCropConfirm": "保存头像",
-        "avatarCropRegion": "裁剪区域 — 可用方向键移动",
-        "avatarError": {
-          "too_large": "这个文件超过 20 MB，请换一张小一点的图片。",
-          "empty": "这个文件是空的。",
-          "too_many_pixels": "这张图片太大了，请换一张每边都小于 8000 像素的。",
-          "not_an_image": "无法把这个文件读成图片。",
-          "encode_failed": "无法处理这张图片，请换一张试试。"
-        },
         "slugChangeOpen": "修改 Slug",
         "slugChangeTitle": "要修改这个 Studio 的 Slug 吗？",
         "slugChangeBody": "地址会从 /studio/{oldSlug} 变成 /studio/{newSlug}。",
@@ -1508,6 +1514,27 @@
       "toolbar": {
         "sortLabel": "排序",
         "sortValue": "最近打开"
+      },
+      "imageError": {
+        "too_large": "这个文件超过 20 MB，请换一张小一点的图片。",
+        "empty": "这个文件是空的。",
+        "too_many_pixels": "这张图片太大了，请换一张每边都小于 8000 像素的。",
+        "not_an_image": "无法把这个文件读成图片。",
+        "encode_failed": "无法处理这张图片，请换一张试试。",
+        "unsupported_type": "这个文件的格式不支持。",
+        "hash_unavailable": "无法校验此文件，请刷新页面后重试。"
+      },
+      "cropRegion": "裁剪区域 — 可用方向键移动",
+      "cover": {
+        "menuUpload": "上传封面",
+        "cropTitle": "裁剪封面",
+        "cropHint": "拖动选择要显示在 Project 卡片上的区域。",
+        "upload": "上传",
+        "uploading": "上传中…",
+        "error": {
+          "storage": "存储空间已满，封面没有上传。",
+          "upload": "封面没有更新，请重试。"
+        }
       }
     },
     "rail": {

@@ -34,7 +34,8 @@ export interface SnapshotPress {
  * when it opened, so a press that arrives here on an empty node is one the
  * reader made on a live item — and it is told what it found.
  * @param press - Where it happens and which node was pressed.
- * @returns Nothing; the outcome is a toast and, on success, a new row.
+ * @returns Nothing; the outcome is a toast and, on success, a row holding
+ *   these words: a new one, or the one the node's history already had.
  */
 export async function keepSnapshot(press: SnapshotPress): Promise<void> {
   const { projectId, spaceId, nodeId, onKept } = press;

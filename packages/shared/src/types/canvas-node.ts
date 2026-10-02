@@ -161,7 +161,7 @@ export interface AttachRef {
  * slice) — a standalone image cropped out of a source node's content at
  * creation time.
  *
- * COPY semantics (user decision 2026-07-16, mirroring `styleImageUrl`):
+ * COPY semantics (user decision 2026-07-16, the same as the source slots):
  * the crop is uploaded as its own asset and keeps ZERO relationship to
  * the node it was cropped from — deleting, renaming, or regenerating the
  * source never changes an existing focus image. `name` is a snapshot of
@@ -214,8 +214,8 @@ export interface AnnotationReply {
 // a reference (a canvas edge `source → target` means `source` is a reference
 // input for `target`), so the rail is derived live from the node's incoming
 // edges — single source of truth = the edges map, zero drift (see the web
-// `deriveReferences` helper). The prompt is stored as an opaque `Y.XmlFragment`
-// (`data.prompt`, typed `unknown` on the wire). Its structured shape is a
+// `deriveReferences` helper). The prompt is stored as opaque `Y.XmlFragment`s,
+// one per mode (`data.prompts`, typed `unknown` on the wire). Their structured shape is a
 // FRONTEND rendering concern that never crossed this boundary: the backend
 // only ever reads the prompt as plain text via `extractPromptText`, never the
 // chip structure. (Web once carried a `prompt-types` module describing that
@@ -227,7 +227,7 @@ export interface AnnotationReply {
 // A text node's words live in `data.body`, an opaque `Y.XmlFragment` seeded
 // when the node is created, so two people typing in one node merge character
 // by character instead of overwriting each other. It is absent from the
-// interface below for the same reason `prompt` carries no structured type: a
+// interface below for the same reason `prompts` carries no structured type: a
 // live collaborative object is not wire data, and this interface describes
 // what the wire carries. Read it through the web helpers `getTextBody` /
 // `bodyToPlainText`; the shape written into it is `writePlainTextIntoBody`,
@@ -285,21 +285,6 @@ export interface CanvasNodeFields {
      * undeletable and its `content` is immutable.
      */
     locked: boolean;
-
-    /**
-     * The history row a reader last put back onto this node, when one was.
-     *
-     * "Current" in the history panel names WHICH ROW the node is on, and
-     * content cannot answer that: two snapshots of the same words are two
-     * rows a reader is allowed to keep, and asset dedup yields several rows
-     * holding one URL. The reader who restores a row gets that row, so the
-     * node remembers it (user 2026-09-20).
-     *
-     * Absent on a node whose content arrived on its own — a run, an upload.
-     * Stale once the node holds something else, which the panel settles by
-     * checking the remembered row still holds what the node shows.
-     */
-    restoredFromEntryId?: string;
 
     // ─── Tasks (all node types) ─────────────────────────────
     /** Last failure message from whatever wrote this node's content. */
@@ -400,8 +385,18 @@ export interface CanvasNodeFields {
      * 2026-07-09.)
      */
     mode?: string;
-    /** Rich text prompt — Y.XmlFragment at runtime (TipTap + y-prosemirror). */
-    prompt?: unknown;
+    /**
+     * The prompt of each mode (#2218) — `Y.Map<mode, Y.XmlFragment>` at
+     * runtime (TipTap + y-prosemirror), so switching mode keeps what was
+     * written under the other one.
+     */
+    prompts?: unknown;
+    /**
+     * The storyboard of each video mode (#2218) — `Y.Map<mode, Y.Map>` at
+     * runtime, each a tier (`kind`) and its shots (`shots`: `Y.Array` of
+     * `{ id, prompt: Y.XmlFragment, duration }`).
+     */
+    storyboards?: unknown;
     /** Model id from config/models/*.yaml. */
     model?: string;
     /**
@@ -421,33 +416,20 @@ export interface CanvasNodeFields {
      *
      * The only place the panel's param CONTROLS write to: what the panel has
      * in effect is resolved from these on every render, so there is no second
-     * field to keep in step. Three keys a model may also declare under
+     * field to keep in step. Two keys a model may also declare under
      * `params` are not among them and live elsewhere on the node or on the
-     * prompt — `prompt`, `images` (the reference rail) and `style_images`
-     * (`data.styleImageUrl`); the execute payload spreads the records first
-     * and then overwrites those three. A node written before #1948 carries no
-     * records and gets none — Yjs data from before launch gets no
-     * compatibility handling (user 2026-08-15).
+     * prompt — `prompt` and `images` (the reference rail); the execute
+     * payload spreads the records first and then overwrites those two. A node
+     * written before #1948 carries no records and gets none — Yjs data from
+     * before launch gets no compatibility handling (user 2026-08-15).
      */
     paramsByModel?: Record<string, Record<string, unknown>>;
     /**
-     * Style-reference image URL (image-node style slice, #1664) — a COPY of
-     * the picked image's asset URL, snapshotted at pick time (user decision
-     * 2026-07-16: one style image max; stored as a copy, NO relationship to
-     * the upstream node — deleting or regenerating the source never changes
-     * this snapshot; assets are never deleted, so the URL stays valid).
-     * Frontend-owned like `model` / `paramsByModel` — the worker never writes it; at
-     * execute time the frontend sends it as `params.style_images` when the
-     * active model supports style references. Distinct from i2i source images
-     * (edges → the reference rail): style guides aesthetics and survives
-     * text-to-image. Scalar last-write-wins. Absent = none picked.
-     */
-    styleImageUrl?: string;
-    /**
      * First-frame image URL for a video node's image-to-video generation
-     * (#1896) — a pick-time COPY of the clicked image's URL, on the same
-     * terms as `styleImageUrl`: no relationship to the node it came from, so
-     * deleting or regenerating that node leaves this one alone. The video
+     * (#1896) — a pick-time COPY of the clicked image's URL (user decision
+     * 2026-07-16): no relationship to the node it came from, so deleting or
+     * regenerating that node leaves this one alone. Frontend-owned — the
+     * worker never writes it. The video
      * panel renders it in its first-frame slot and sends it as `params.image`
      * at execute time, which is what the backend source gate reads for `i2v`.
      *
@@ -550,11 +532,11 @@ export interface CanvasNodeFields {
      */
     moodImageUrl?: string;
     /**
-     * The words to sing, on an audio node (#1960, wire `data.lyrics`) — a
-     * `Y.XmlFragment` beside `prompt`, since two people may write lyrics at
-     * once the way they may write a prompt at once.
+     * The words to sing, on an audio node (#1960, wire `data.lyrics`) — one
+     * `Y.XmlFragment` per mode beside `prompts` (#2218), since two people may
+     * write lyrics at once the way they may write a prompt at once.
      *
-     * `unknown` for the same reason `prompt` is: the wire shape describes what
+     * `unknown` for the same reason `prompts` is: the wire shape describes what
      * the key holds, and a CRDT fragment has no plain-JSON form to state here.
      */
     lyrics?: unknown;

@@ -62,45 +62,30 @@ describe('history-format (#1619 pure derivations)', () => {
       const list = [entry({ id: 'f', status: 'failed', content: null })];
       expect(currentEntryId(list, null)).toBeNull();
     });
-    // "Current" names WHICH ROW the node is on, not which rows happen to hold
-    // the same thing (user 2026-09-20). A reader who restores a row gets that
-    // row, and two rows holding identical words are two rows a reader is
-    // allowed to keep — content alone cannot tell them apart.
-    it('names the row the reader restored, not the newest one matching it', () => {
-      const list = [
-        entry({ id: 'newer', content: 'same words' }),
-        entry({ id: 'older', content: 'same words' }),
-      ];
-      expect(currentEntryId(list, 'same words', 'older')).toBe('older');
-    });
-
-    // The node moved on: its content is no longer what that row holds, so the
-    // row it came from stops being current and the content match takes over.
-    it('drops a restored row once the node no longer holds what it held', () => {
+    // A node's history holds each content once (#2186), so the row holding
+    // what the node holds is the current one wherever it sits in the list —
+    // an older row the reader restored included.
+    it('names the older row once the node holds what that row holds', () => {
       const list = [
         entry({ id: 'newer', content: 'b' }),
         entry({ id: 'older', content: 'a' }),
       ];
-      expect(currentEntryId(list, 'b', 'older')).toBe('newer');
+      expect(currentEntryId(list, 'a')).toBe('older');
     });
 
-    // A node nobody has restored on — every row arrived by a run or an
-    // upload — still says which row it is on.
-    it('falls back to the content match when no row was restored', () => {
-      const list = [entry({ id: 'gen', content: 'x.png' })];
-      expect(currentEntryId(list, 'x.png', null)).toBe('gen');
-    });
-
-    // Nobody restored on this node — the same picture was uploaded twice and
-    // dedup gave both rows one URL. The newest is the one that landed, which
-    // is as close as content gets. A reader who then picks either row is
-    // answered by the row itself, above.
-    it('takes the newest of two same-URL rows when no row was restored', () => {
+    // Exactly one row is current; every other successful row stays a row the
+    // reader can restore.
+    it('marks exactly one of several successful rows', () => {
       const list = [
-        entry({ id: 'newer', content: 'dup.png' }),
-        entry({ id: 'older', content: 'dup.png' }),
+        entry({ id: 'c', content: 'third' }),
+        entry({ id: 'b', content: 'second' }),
+        entry({ id: 'f', status: 'failed', content: null }),
+        entry({ id: 'a', content: 'first' }),
       ];
-      expect(currentEntryId(list, 'dup.png')).toBe('newer');
+      const current = currentEntryId(list, 'second');
+      expect(current).toBe('b');
+      const restorable = list.filter((e) => isRestorable(e) && e.id !== current);
+      expect(restorable.map((e) => e.id)).toEqual(['c', 'a']);
     });
   });
 
