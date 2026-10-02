@@ -42,7 +42,7 @@ function readClock(now: Date, timeZone: string): Record<ClockPart, string> {
 /**
  * The zone's offset from UTC at that moment, as `GMT+HH:MM`. Worked out from
  * the clock rather than read from `Intl`, whose wording of it differs across
- * ICU releases (Node 22 writes `GMT+00:00` where Node 24 writes `GMT`).
+ * ICU releases (at a zero offset ICU 77.1 writes `GMT`, ICU 78.3 `GMT+00:00`).
  * @param now - The moment.
  * @param p - The parts of that moment on the zone's clock.
  * @returns The offset, signed, with hours and minutes.

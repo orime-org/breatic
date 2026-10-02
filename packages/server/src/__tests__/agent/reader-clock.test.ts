@@ -3,8 +3,8 @@
 
 /**
  * The note that tells the model when, on the reader's own clock, a message
- * was sent. Every expected line is written out in full, so the text the model
- * reads cannot change with the ICU data a Node release carries.
+ * was sent. Every expected line is written out in full, so a change an ICU
+ * release makes to the text the model reads fails here.
  */
 import { describe, expect, it } from "vitest";
 
