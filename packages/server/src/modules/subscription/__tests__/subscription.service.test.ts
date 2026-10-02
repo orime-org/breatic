@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const stripe = {
   customers: { create: vi.fn() },
-  checkout: { sessions: { create: vi.fn() } },
+  checkout: { sessions: { create: vi.fn(), retrieve: vi.fn() } },
   subscriptions: { update: vi.fn(), retrieve: vi.fn(), cancel: vi.fn() },
 };
 
@@ -84,6 +84,7 @@ import {
   subscriptionSituation,
   ConflictError,
   ValidationError,
+  logger,
 } from "@breatic/core";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import * as service from "@server/modules/subscription/subscription.service.js";
@@ -1196,5 +1197,20 @@ describe("startCheckout — a subscription past its deadline is asked about firs
     await service.startCheckout(BUY);
 
     expect(stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmCheckout — a Stripe failure is logged where it is answered (#307 A6)", () => {
+  it("logs the failed confirm with the account and session, and answers 503", async () => {
+    stripe.checkout.sessions.retrieve.mockRejectedValueOnce(new Error("Stripe is unreachable"));
+
+    await expect(service.confirmCheckout(USER, "cs_down")).rejects.toMatchObject({
+      statusCode: 503,
+    });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: USER, sessionId: "cs_down" }),
+      "subscription_confirm_failed",
+    );
   });
 });
