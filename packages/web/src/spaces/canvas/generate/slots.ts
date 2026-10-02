@@ -25,6 +25,7 @@ import type { LucideIcon } from 'lucide-react';
 // declared below, and `import type` is erased at compile time, so there is no
 // cycle at runtime.
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { usableDuration } from '@web/spaces/canvas/generate/slot-pick';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { PickPurpose } from '@web/stores/canvas';
@@ -43,6 +44,12 @@ export interface SlotSpec {
    * alongside the asset, inside the one field, so the pair converges as a unit.
    */
   storesCover?: true;
+  /**
+   * Whether this slot holds a list of files rather than one (inner#826: style
+   * images). The list is a plain array of URLs; how many it holds is the
+   * model's cap for the param, read where the pick starts.
+   */
+  multiple?: true;
   /** The param the URL travels as, under the vendor's own name. */
   param: string;
   /** The pick this slot starts; the canvas dispatches on it. */
@@ -140,6 +147,26 @@ export function readSlotPick(
     ...(cover ? { thumbnail: cover } : {}),
     ...(duration !== undefined ? { duration } : {}),
   };
+}
+
+/**
+ * Reads every file a slot holds, in order: the list of a slot holding several,
+ * or the one pick of any other. Collaborative data, so each entry is checked.
+ * @param spec - The slot being read.
+ * @param value - The raw node-data value for that slot's field.
+ * @returns The picks, empty when there are none.
+ */
+export function readSlotPicks(
+  spec: SlotSpec,
+  value: unknown,
+): Array<{ url: string; thumbnail?: string; duration?: number }> {
+  if (spec.multiple) {
+    if (!Array.isArray(value)) return [];
+    const urls = [...new Set(value.filter((v): v is string => typeof v === 'string' && v.length > 0))];
+    return urls.map((url) => ({ url, thumbnail: url }));
+  }
+  const pick = readSlotPick(spec, value);
+  return pick ? [pick] : [];
 }
 
 /**
@@ -263,7 +290,7 @@ export function slotRefusalKey<K extends string>(
 }
 
 /** Every registry a pick can fill a slot in. */
-const REGISTRIES: readonly SlotRegistry[] = [VIDEO_SLOTS, AUDIO_SLOTS];
+const REGISTRIES: readonly SlotRegistry[] = [VIDEO_SLOTS, AUDIO_SLOTS, IMAGE_SLOTS];
 
 /**
  * Finds the slot a pick is filling, if any.

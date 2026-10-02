@@ -664,7 +664,12 @@
       "refuseStoryboardShotEmpty": "ショット {shot, number} が空です",
       "refuseStoryboardTooMany": "最大 {limit, number} ショット",
       "refuseStoryboardShotTooLong": "ショット {shot, number} が{limit, number}文字の上限を超えています",
-      "refuseStoryboardDurationMismatch": "ショットの合計は{shots, number}秒、動画は{total, number}秒です"
+      "refuseStoryboardDurationMismatch": "ショットの合計は{shots, number}秒、動画は{total, number}秒です",
+      "style": "スタイル",
+      "styleTip": "画像を最大3枚選んでスタイル参照にします",
+      "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
+      "removeStyle": "スタイル参照を削除",
+      "errorNoStyleImage": "先にスタイル画像を選んでください"
     },
     "nodeMenu": {
       "generate": "生成",

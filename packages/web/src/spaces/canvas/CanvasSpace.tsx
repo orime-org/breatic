@@ -69,6 +69,7 @@ import {
   addEdge,
   addNodeFocusImage,
   addNode,
+  appendNodeSlotItem,
   createGroup,
   expandGroup,
   removeEdge,
@@ -179,7 +180,8 @@ import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
 import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
-import { slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
+import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
+import { readSlotPicks, slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
@@ -2000,6 +2002,21 @@ function CanvasSpaceInner({
         // branches below carry no exhaustive check, so a missing one does not
         // fail the build — it silently wires an EDGE (the reference
         // fallthrough at the end) instead of filling the slot.
+        if (pickedSlot.multiple && session.capacity !== undefined) {
+          // A slot holding several (inner#826): each click adds one and the
+          // pick runs on until the slot is full or the reader exits.
+          const url = pickedSlotUrl(node, pickedSlot.accepts);
+          if (url === null) return;
+          const held = readSlotPicks(
+            pickedSlot,
+            (useCanvasGraphStore.getState().flowNodes.find((n) => n.id === target)?.data as
+              | Record<string, unknown>
+              | undefined)?.[pickedSlot.field],
+          ).length;
+          const result = appendNodeSlotItem(projectId, spaceId, target, pickedSlot.field, url, session.capacity);
+          if (result === 'full' || (result === 'added' && held + 1 >= session.capacity)) endPick();
+          return;
+        }
         if (!fillSlot(projectId, spaceId, target, pickedSlot, node)) return;
         // One slot, one pick — the session completes on selection.
         endPick();

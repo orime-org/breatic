@@ -664,7 +664,12 @@
       "refuseStoryboardShotEmpty": "镜头 {shot, number} 没有内容",
       "refuseStoryboardTooMany": "最多 {limit, number} 个镜头",
       "refuseStoryboardShotTooLong": "镜头 {shot, number} 超过 {limit, number} 字上限",
-      "refuseStoryboardDurationMismatch": "镜头时长合计 {shots, number} 秒，视频时长 {total, number} 秒"
+      "refuseStoryboardDurationMismatch": "镜头时长合计 {shots, number} 秒，视频时长 {total, number} 秒",
+      "style": "风格",
+      "styleTip": "从画布选最多 3 张图作为风格参考",
+      "selectStyleFromCanvas": "从画布选择风格参考",
+      "removeStyle": "移除风格参考",
+      "errorNoStyleImage": "先挑一张风格图"
     },
     "nodeMenu": {
       "generate": "生成",
