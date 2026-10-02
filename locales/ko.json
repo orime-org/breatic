@@ -296,6 +296,7 @@
         "unreachable": "실행 오류",
         "generic": "실행 오류"
       },
+      "failureTimes": "{line} ×{count}",
       "searching": "“{query}” 검색 중",
       "searchingImages": "“{query}” 이미지 검색 중",
       "checkingCanvas": "캔버스로 만들 수 있는 것 확인 중",

@@ -19,6 +19,7 @@ import { describe, it, expect } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
+import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import type { ToolCall } from '@web/pages/project/chat/types';
 
 /**
@@ -220,6 +221,188 @@ describe('how a turn ended', () => {
     const line = screen.getByTestId('message-bubble-error');
     expect(line.className).not.toMatch(/\bborder\b|\bbg-/);
     expect(line.querySelector('svg')).not.toBeNull();
+  });
+});
+
+describe('the line a failed tool step leaves', () => {
+  /**
+   * A tool call that ended in an error.
+   * @param name - Which tool.
+   * @param extra - The ending's key and kind, as the call carries them.
+   * @returns The call.
+   */
+  const failedCall = (name: string, extra: Partial<ToolCall> = {}): ToolCall => ({
+    id: `c-${name}`,
+    name,
+    args: {},
+    status: 'error',
+    ...extra,
+  });
+
+  it('says a step failed, under the answer and above how the turn ended', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'carried on without it',
+          failed: true,
+          toolCalls: [failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' })],
+        }}
+      />,
+    );
+
+    const step = screen.getByTestId('message-bubble-tool-failed');
+    expect(step).toHaveTextContent('Execution error');
+    const content = screen.getByTestId('message-bubble-content');
+    const ending = screen.getByTestId('message-bubble-error');
+    expect(content.compareDocumentPosition(step) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(step.compareDocumentPosition(ending) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('folds steps that failed with the same words into one line that says how many', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'done',
+          toolCalls: [
+            failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' }),
+            { ...running('search_images'), status: 'success', result: {} },
+            failedCall('understand_media', { failureKey: 'chat.tool.failure.unreachable' }),
+          ],
+        }}
+      />,
+    );
+
+    const lines = screen.getAllByTestId('message-bubble-tool-failed');
+    expect(lines.map((line) => line.textContent)).toEqual(['Execution error ×2']);
+  });
+
+  it('gives each different line its own row, in the order each first appeared', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'done',
+          toolCalls: [
+            failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' }),
+            failedCall('search_images', { failureKey: 'chat.tool.unfinished' }),
+            failedCall('understand_media', { failureKey: 'chat.tool.failure.generic' }),
+          ],
+        }}
+      />,
+    );
+
+    const lines = screen.getAllByTestId('message-bubble-tool-failed');
+    expect(lines.map((line) => line.textContent)).toEqual(['Execution error ×2', 'Stopped']);
+  });
+
+  it('leaves the count off a line that happened once', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'done',
+          toolCalls: [failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' })],
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-tool-failed').textContent).toBe('Execution error');
+  });
+
+  it('falls back to the general line for a step that ended with no key of its own', () => {
+    render(
+      <MessageBubble
+        message={{ id: 'm', role: 'assistant', content: 'done', toolCalls: [failedCall('web_search')] }}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-tool-failed')).toHaveTextContent('Execution error');
+  });
+
+  it('draws nothing for a step the reader stopped, which the turn already says', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: '',
+          interrupted: true,
+          toolCalls: [failedCall('web_search', { failureKind: 'user_aborted' })],
+        }}
+      />,
+    );
+
+    expect(screen.queryByTestId('message-bubble-tool-failed')).not.toBeInTheDocument();
+    expect(screen.getByTestId('message-bubble-interrupted')).toBeInTheDocument();
+  });
+
+  it('draws nothing while the turn is still running', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: '',
+          streaming: true,
+          toolCalls: [failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' })],
+        }}
+      />,
+    );
+
+    expect(screen.queryByTestId('message-bubble-tool-failed')).not.toBeInTheDocument();
+  });
+});
+
+describe('how a stored turn reads when the conversation is reopened', () => {
+  // The shapes below are what `GET /chat/conversations/:id` answers with
+  // (`toUiMessages`), checked against a real store in the server's
+  // `turn-message-shape.integration.test.ts`.
+
+  it('says a turn that failed before its first word failed', () => {
+    render(
+      <MessageBubble
+        message={toChatMessage({ id: 'm', role: 'assistant', parts: [{ type: 'data-failed', data: {} }] })}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-error')).toBeInTheDocument();
+  });
+
+  it('says a turn that produced nothing produced nothing', () => {
+    render(<MessageBubble message={toChatMessage({ id: 'm', role: 'assistant', parts: [] })} />);
+
+    expect(screen.getByTestId('message-bubble-empty')).toHaveTextContent('No reply this turn');
+  });
+
+  it('says a step failed in a turn that carried on', () => {
+    render(
+      <MessageBubble
+        message={toChatMessage({
+          id: 'm',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'tool-always_fails',
+              toolCallId: 'tc-fail',
+              input: {},
+              state: 'output-error',
+              errorText: 'chat.tool.failure.generic',
+              failureKind: 'tool_failed',
+            } as never,
+            { type: 'text', text: 'Carrying on without it.' },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-tool-failed')).toHaveTextContent('Execution error');
+    expect(screen.getByTestId('message-bubble-content')).toHaveTextContent('Carrying on without it.');
   });
 });
 

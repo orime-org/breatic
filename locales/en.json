@@ -296,6 +296,7 @@
         "unreachable": "Execution error",
         "generic": "Execution error"
       },
+      "failureTimes": "{line} ×{count}",
       "searching": "Searching for “{query}”",
       "searchingImages": "Looking for pictures of “{query}”",
       "checkingCanvas": "Checking what the canvas can make",

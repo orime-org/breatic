@@ -225,8 +225,11 @@ export function renderProductGuide(): string {
       `that opens to show the thinking; it reads ${quoted(t("chat.thinkingNow"))} while the thinking runs, and ` +
       `afterwards how long it took, such as ${quoted(t("chat.thinkingFor", { m: 0, s: 12 }))}, or ` +
       `${quoted(t("chat.thinking"))} when that is not known. While the reply runs, a line may name what it is ` +
-      `doing, such as ${quoted(t("chat.tool.readingGuide"))}; it goes when that step ends, and a step that ` +
-      `failed leaves no line of its own. ${quoted(t("chat.message.consolidating"))} can show while a ` +
+      `doing, such as ${quoted(t("chat.tool.readingGuide"))}; it goes when that step ends. A step that failed ` +
+      `while the reply carried on leaves a red line under the reply, such as ` +
+      `${quoted(t("chat.tool.failure.generic"))}; steps that failed the same way share one line, followed by ` +
+      `a multiplication sign and how many times. ` +
+      `${quoted(t("chat.message.consolidating"))} can show while a ` +
       "long conversation is tidied before the reply. Links in a reply open in a new tab. A code block shows a " +
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
       "circles in the text are sources: hovering one shows it and " +

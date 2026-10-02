@@ -296,6 +296,7 @@
         "unreachable": "実行エラー",
         "generic": "実行エラー"
       },
+      "failureTimes": "{line} ×{count}",
       "searching": "「{query}」を検索中",
       "searchingImages": "「{query}」の画像を検索中",
       "checkingCanvas": "キャンバスでできることを確認中",

@@ -595,22 +595,17 @@ export class MainAgent {
         let creditsUsed = 0;
         const failures = await finalizeTurn({
           steps: {
-            // Anything at all to record means a message. A stopped turn
-            // always has something -- the mark above -- so it is stored
-            // whether or not it got a word out: a turn stopped after a tool
-            // call and before any prose would otherwise leave no trace, and
-            // coming back to the conversation would show no sign it had ever
-            // happened.
-            persist:
-              replyParts.length > 0
-                ? async () => {
-                    await messageRepo.addMessage(conversationId, {
-                      role: "assistant",
-                      parts: replyParts,
-                      turnIndex,
-                    });
-                  }
-                : undefined,
+            // Every turn that ran leaves a reply, even one with no parts: a
+            // turn that finished having produced nothing is read back as a
+            // reply with nothing in it, which is what draws "No reply this
+            // turn" when the conversation is opened again.
+            persist: async () => {
+              await messageRepo.addMessage(conversationId, {
+                role: "assistant",
+                parts: replyParts,
+                turnIndex,
+              });
+            },
             bill: async () => {
               // An OpenRouter call whose cost is not in hand is looked up and
               // charged later, under a key of its own.
