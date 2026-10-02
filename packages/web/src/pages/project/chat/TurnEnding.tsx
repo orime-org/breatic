@@ -4,6 +4,8 @@
 import * as React from 'react';
 import { CircleAlert, Info, TriangleAlert } from 'lucide-react';
 
+import { FAILURE_LINES } from '@breatic/shared';
+
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -140,4 +142,41 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
   }
 
   return null;
+}
+
+interface FailedStepsProps {
+  /** The message whose tool steps these are. */
+  message: ChatMessage;
+}
+
+/**
+ * A line for each tool step that failed while the turn carried on.
+ *
+ * Drawn once the turn has settled, in the order the steps ran. A step the
+ * reader stopped gets none: the turn's own "Stopped" line already says so.
+ * @param root0 - The component props.
+ * @param root0.message - The message whose tool steps these are.
+ * @returns The lines, or nothing when no step failed.
+ */
+export function FailedSteps({ message }: FailedStepsProps): React.JSX.Element | null {
+  const t = useTranslation();
+
+  if (message.streaming === true) return null;
+  const failed = message.toolCalls?.filter(
+    (call) => call.status === 'error' && call.failureKind !== 'user_aborted',
+  );
+  if (failed === undefined || failed.length === 0) return null;
+
+  return (
+    <>
+      {failed.map((call) => (
+        <EndingLine
+          key={call.id}
+          testId='message-bubble-tool-failed'
+          text={t(call.failureKey ?? FAILURE_LINES.generic)}
+          tone='error'
+        />
+      ))}
+    </>
+  );
 }

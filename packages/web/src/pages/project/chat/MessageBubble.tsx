@@ -12,7 +12,7 @@ import { AssetRow } from '@web/pages/project/chat/AssetRow';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
-import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
+import { FailedSteps, TurnEnding } from '@web/pages/project/chat/TurnEnding';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
@@ -186,6 +186,7 @@ export const MessageBubble = React.memo(function MessageBubble({
             is the line that says there is no more, so nothing may follow it.
             Each is a paragraph's distance from what it follows, which is what
             separates any two blocks in this scope. */}
+          {isUser ? null : <FailedSteps message={message} />}
           {isUser ? null : <TurnEnding message={message} />}
         </div>
         {/* Offered on a settled message only. A reply still arriving has
