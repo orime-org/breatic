@@ -19,7 +19,7 @@ describe("readerClockNote", () => {
     );
   });
 
-  it("follows daylight saving on the day itself", () => {
+  it("follows daylight saving on either side of the change", () => {
     expect(readerClockNote(new Date("2026-03-07T17:00:00Z"), "America/New_York")).toBe(
       "[The reader's local time when they sent this message: Saturday, 2026-03-07 12:00 (America/New_York, GMT-05:00).]",
     );

@@ -126,11 +126,13 @@ export class MainAgent {
     // nothing of the turn could reach the reader until they were done, the
     // first word of the reply included, which is the one thing they were
     // waiting for.
+    //
     // The reader's clock opens this turn's message, on its own line, ahead of
     // any attached content, so it never sits under the "User message"
-    // heading. It is never stored: the history and the system prompt stay
-    // word for word what they were, which is what a provider's prefix cache
-    // matches on; only this last message changes from turn to turn.
+    // heading. It is never stored, and the system prompt does not carry it,
+    // so a provider's prefix cache still matches everything up to the last
+    // turn's user message: that message went out with its note last time and
+    // goes out without it from here on.
     const forModel = `${readerClockNote(new Date(), timeZone)}\n\n${userTurnForModel(attached, said)}`;
     return this.runStream(forModel, turnIndex, title, signal);
   }

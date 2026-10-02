@@ -133,8 +133,8 @@ test('reads the clock again when the same conversation goes on elsewhere @needs-
   await shanghai.context().close();
 
   // The project reopens on the conversation it was left on.
-  // Fifteen hours from Shanghai, so a repeat of the earlier answer read on a
-  // 12-hour clock cannot pass for the new one.
+  // Fifteen or sixteen hours from Shanghai, by the season, so a repeat of the
+  // earlier answer read on a 12-hour clock cannot pass for the new one.
   const losAngeles = await pageIn(browser, 'America/Los_Angeles');
   await expect(losAngeles.getByTestId('message-bubble')).toHaveCount(2, { timeout: 30_000 });
   const asked = new Date();
