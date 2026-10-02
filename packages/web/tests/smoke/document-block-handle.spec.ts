@@ -750,6 +750,39 @@ test('the plus keeps the quote, and greys quote on a quoted line (#1097 A5)', as
   await expect(rows.nth(0)).toHaveAttribute('data-quoted-run', /.*/);
 });
 
+test('the plus menu ends with delete, which takes the empty line away (#1097 A12)', async () => {
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha', '', 'omega']);
+
+  await page.mouse.move(5, 5);
+  await hoverRow(page, 1);
+  // The grip menu's own delete row, for the label the plus menu must match.
+  await hoverRow(page, 0);
+  await page.getByTestId('doc-block-handle').click();
+  const gripLabel = await page.getByTestId('doc-block-row-delete').innerText();
+  await page.keyboard.press('Escape');
+
+  await page.mouse.move(5, 5);
+  await hoverRow(page, 1);
+  await page.getByTestId('doc-block-plus').click();
+  const remove = page.getByTestId('doc-block-plus-delete');
+  await expect(remove).toHaveText(gripLabel);
+  await remove.click();
+
+  await expect.poll(() => bodyOf(page)).toEqual(['alpha', 'omega']);
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect.poll(() => bodyOf(page)).toEqual(['alpha', '', 'omega']);
+});
+
+test('delete in the plus menu is out of reach on a document of one line (#1097 A12)', async () => {
+  await openFreshDocument(page);
+  await page.mouse.move(5, 5);
+  await hoverRow(page, 0);
+  await page.getByTestId('doc-block-plus').click();
+  await expect(page.getByTestId('doc-block-plus-delete')).toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press('Escape');
+});
+
 test('the plus follows the line as it is typed into and emptied (#1097 A9)', async () => {
   await openFreshDocument(page);
   await hoverRow(page, 0);
