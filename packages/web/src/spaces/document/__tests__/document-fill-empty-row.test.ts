@@ -6,7 +6,7 @@
  *
  * Which rows count as empty (A1), what each choice turns the line into in
  * place (A3, A4), that a quoted line stays quoted (A5), that the caret ends up
- * in the line wherever it was before (A4), that one undo takes it all back
+ * in the line wherever it was before (A3, A4), that one undo takes it all back
  * (A6).
  */
 

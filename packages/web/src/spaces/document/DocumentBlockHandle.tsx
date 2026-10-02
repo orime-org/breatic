@@ -16,7 +16,8 @@
  *
  * THE STRIP IS ONE BUTTON, and which one depends on the row (#1097, user
  * 2026-10-02). On an empty paragraph it is a plus: its menu lists what the
- * insert-below submenu lists, and the pick lands on that line itself. On every
+ * insert-below submenu lists, the pick landing on that line itself, and ends
+ * with the grip menu's delete entry, which takes the line away. On every
  * other row it is the drag handle, whose menu carries insert-below among its
  * rows. Neither takes a tooltip (user 2026-09-17) — the strip is pressed the
  * moment the pointer arrives, and a tip that fades in over the row is in the
