@@ -70,7 +70,7 @@ async function openFreshDocument(p: Page): Promise<string> {
 
 /** A block to put in the body. */
 interface BlockSpec {
-  type: 'paragraph' | 'divider' | 'bulletListItem' | 'heading' | 'codeBlock';
+  type: 'paragraph' | 'divider' | 'bulletListItem' | 'heading' | 'codeBlock' | 'checkListItem';
   content?: string;
   props?: Record<string, unknown>;
   children?: BlockSpec[];
