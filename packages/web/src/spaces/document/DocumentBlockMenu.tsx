@@ -13,6 +13,7 @@
  */
 
 import * as React from 'react';
+import { Minus } from 'lucide-react';
 import type { Selection } from '@tiptap/pm/state';
 
 import {
@@ -52,6 +53,8 @@ import { DocumentColourPanel } from '@web/spaces/document/document-colour-panel'
 import { MenuTick } from '@web/spaces/document/document-menu-tick';
 import {
   DIMENSION_OF_ROW,
+  blocksUnder,
+  blocksUnderFor,
   tickedOver,
   type BlockTypeId,
 } from '@web/spaces/document/document-block-ticks';
@@ -70,6 +73,7 @@ import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
 import { insertRowForMenu } from '@web/spaces/document/document-insert-row';
+import { DIVIDER } from '@web/spaces/document/document-divider';
 
 /**
  * How far from the menu's edge its submenus sit.
@@ -115,6 +119,19 @@ function rulesAfter(id: BlockTypeId, next: BlockTypeId | undefined): boolean {
 const OPENS_SUBMENU = new Set(['ArrowRight', 'Enter', ' ']);
 
 /**
+ * What every row out of reach carries, trigger or item: dimmed, reachable by
+ * the keyboard (`aria-disabled`, not Radix's `disabled`), and not lit up
+ * under the pointer.
+ */
+const GREYED = {
+  'aria-disabled': 'true',
+  className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
+  onPointerMove: (event: React.PointerEvent): void => {
+    event.preventDefault();
+  },
+} as const;
+
+/**
  * What a submenu trigger carries while the hovered row is out of the
  * command's reach.
  *
@@ -140,18 +157,41 @@ function whenOutOfReach(
     return {};
   }
   return {
-    'aria-disabled': 'true',
-    className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
+    ...GREYED,
     onClick: (event) => {
-      event.preventDefault();
-    },
-    onPointerMove: (event) => {
       event.preventDefault();
     },
     onKeyDown: (event) => {
       if (OPENS_SUBMENU.has(event.key)) {
         event.preventDefault();
       }
+    },
+  };
+}
+
+/**
+ * What a menu row carries, depending on whether its command reaches the
+ * hovered row.
+ *
+ * The item's version of {@link whenOutOfReach}. A row out of reach is dimmed,
+ * keeps the keyboard able to land on it (`aria-disabled`, not Radix's
+ * `disabled`), does not light up under the pointer, and does nothing when
+ * chosen.
+ * @param reachable - Whether the command reaches this row.
+ * @param run - What choosing the row does when it does.
+ * @returns Attributes to spread onto the item.
+ */
+function itemWithin(
+  reachable: boolean,
+  run: () => void,
+): React.ComponentProps<typeof DropdownMenuItem> {
+  if (reachable) {
+    return { onSelect: run };
+  }
+  return {
+    ...GREYED,
+    onSelect: (event) => {
+      event.preventDefault();
     },
   };
 }
@@ -185,6 +225,14 @@ interface StyleFaces {
   readonly colour: ColourFace;
   /** Whether this row holds words a comment could mark (A3). */
   readonly canComment: boolean;
+  /** Whether the eight rows that set a block's type reach this row. */
+  readonly holdsText: boolean;
+  /**
+   * Whether the Quote row reaches this row. It reads the quote's own working
+   * set, which also holds a divider (#124, A8), so the row greys exactly where
+   * pressing it would write nothing.
+   */
+  readonly quotable: boolean;
 }
 
 /**
@@ -197,6 +245,8 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
   return (
     a.align === b.align &&
     a.canComment === b.canComment &&
+    a.holdsText === b.holdsText &&
+    a.quotable === b.quotable &&
     sameColours(a.colour, b.colour)
   );
 }
@@ -220,6 +270,8 @@ function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
       align: alignFaceOver(tr.doc, over),
       colour: colourFaceOver(tr.doc, over),
       canComment: canCommentOver(tr.doc, over),
+      holdsText: blocksUnder(tr.doc, over).length > 0,
+      quotable: blocksUnderFor(tr.doc, over, 'quote').length > 0,
     };
   });
 }
@@ -361,6 +413,8 @@ export function DocumentBlockMenu({
               >
                 {BLOCK_TYPE_ITEMS.map((item, index) => {
                   const ItemIcon = item.Icon;
+                  const reachable =
+                    item.id === 'quote' ? faces.quotable : faces.holdsText;
                   const ruled = rulesAfter(
                     item.id,
                     BLOCK_TYPE_ITEMS[index + 1]?.id,
@@ -370,13 +424,13 @@ export function DocumentBlockMenu({
                       <DropdownMenuItem
                         data-testid={`doc-block-type-${item.id}`}
                         data-ticked={ticked.has(item.id) ? 'true' : undefined}
-                        onSelect={() => {
+                        {...itemWithin(reachable, () => {
                           const live = rowNow();
                           if (live !== undefined) {
                             runBlockType(editor, item.id, live.id);
                           }
                           close();
-                        }}
+                        })}
                       >
                         <ItemIcon />
                         <span className='flex-1 text-left'>{t(item.labelKey)}</span>
@@ -431,6 +485,21 @@ export function DocumentBlockMenu({
                     </React.Fragment>
                   );
                 })}
+                {/* Not a block type: a divider holds no text, so it has no
+                    row in the block type menu and sits in a group of its own
+                    here. */}
+                <DropdownMenuSeparator className='my-0' />
+                <DropdownMenuItem
+                  data-testid='doc-block-insert-divider'
+                  onSelect={() => {
+                    const live = rowNow();
+                    if (live !== undefined) insertRowForMenu(editor, live, [DIVIDER]);
+                    close();
+                  }}
+                >
+                  <Minus />
+                  {t('spaces.document.commands.divider')}
+                </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           );
@@ -517,8 +586,8 @@ export function DocumentBlockMenu({
           //
           // A row with no words in it covers no run, so there is nothing for
           // a press to mark and the entry says so rather than looking usable
-          // (A3, R7). The treatment is `whenOutOfReach`'s, which the colour
-          // row beside it already uses for the same reason.
+          // (A3, R7). The treatment is `itemWithin`'s, the menu-item side of
+          // the `whenOutOfReach` the colour row beside it uses.
           //
           // THE KEYBOARD STILL HAS TO SEE WHERE IT IS. `aria-disabled` rather
           // than Radix's `disabled` is what the ARIA authoring practices ask
@@ -530,17 +599,7 @@ export function DocumentBlockMenu({
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...(reachable
-                ? {}
-                : {
-                  'aria-disabled': 'true' as const,
-                  className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
-                })}
-              onSelect={(event) => {
-                if (!reachable) {
-                  event.preventDefault();
-                  return;
-                }
+              {...itemWithin(reachable, () => {
                 const over = rangeNow();
                 if (over === undefined) {
                   close();
@@ -551,14 +610,7 @@ export function DocumentBlockMenu({
                   to: over.to,
                 });
                 close();
-              }}
-              onPointerMove={
-                reachable
-                  ? undefined
-                  : (event) => {
-                    event.preventDefault();
-                  }
-              }
+              })}
             >
               <Icon />
               {label}

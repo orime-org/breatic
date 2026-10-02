@@ -1095,6 +1095,7 @@
         "heading3": "Heading 3",
         "codeBlock": "Code block",
         "taskList": "To-do list",
+        "divider": "Divider",
         "align": "Alignment",
         "alignLeft": "Left",
         "alignCenter": "Centre",

@@ -10,9 +10,11 @@
  * `inlineContentSpecs` takes `link` with it, and the whole address ruling
  * from #903 hangs off that node — hence the group that asserts it survives.
  *
- * The nine enabled types and the seven turned off are the block-type menu's
+ * The enabled types and the ones turned off are the block-type menu's
  * contract: anything still in the schema can be built by a chord or an input
- * rule, and the menu would then meet a block it cannot name.
+ * rule, and the menu would then meet a block it cannot name. The divider is
+ * the one enabled type the block-type menu does not offer: it is placed by
+ * `---` and by the insert-below menu (#124).
  */
 
 import { readFileSync } from 'node:fs';
@@ -23,7 +25,7 @@ import { describe, it, expect } from 'vitest';
 
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
 
-/** The nine types the block-type menu offers. */
+/** The types this Space builds. */
 const ENABLED = [
   'paragraph',
   'heading',
@@ -31,13 +33,13 @@ const ENABLED = [
   'bulletListItem',
   'numberedListItem',
   'checkListItem',
+  'divider',
 ] as const;
 
 /** Turned off this version, so they fall into the fallback path instead. */
 const DISABLED = [
   'quote',
   'toggleListItem',
-  'divider',
   'table',
   'image',
   'video',
@@ -86,21 +88,19 @@ describe('the document schema', () => {
     expect(props).toContain('number');
   });
 
-  it('gives every block that declares `quoted` somewhere to put a caret', () => {
+  it('lets the divider be the only block with no content that carries `quoted`', () => {
     // `handleQuotedEnter`'s empty branch reads the caret's offset off the
-    // block it is in, and reads it as 0 without asking. That holds while
-    // every carrier of `quoted` can hold a caret. A block with no content —
-    // the divider `#124` brings back is one, `content: 'none'` in BlockNote's
-    // own spec — would take the prop under this Space's "a quote sits on
-    // every block" rule and break it silently.
+    // block it is in, and reads it as 0 without asking. A block with no
+    // content never gets there: the only selection it can hold is a node
+    // selection, and Enter over one goes to `handleWholeBlockEnter` first
+    // (`document-enter.ts`). That was checked for the divider (#124). Another
+    // such block has to be checked the same way before it joins this list.
     const schema = buildDocumentSchema();
-    const carriers = Object.entries(schema.blockSchema).filter(
-      ([, config]) => 'quoted' in config.propSchema,
-    );
-    expect(carriers.length).toBeGreaterThan(0);
-    carriers.forEach(([type, config]) => {
-      expect(config.content, type).not.toBe('none');
-    });
+    const noContentCarriers = Object.entries(schema.blockSchema)
+      .filter(([, config]) => 'quoted' in config.propSchema)
+      .filter(([, config]) => config.content === 'none')
+      .map(([type]) => type);
+    expect(noContentCarriers).toEqual(['divider']);
   });
 
   it('gives a numbered list item the settable-number prop', () => {

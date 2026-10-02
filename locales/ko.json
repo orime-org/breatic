@@ -1095,6 +1095,7 @@
         "heading3": "제목 3",
         "codeBlock": "코드 블록",
         "taskList": "할 일 목록",
+        "divider": "구분선",
         "align": "정렬",
         "alignLeft": "왼쪽",
         "alignCenter": "가운데",

@@ -1095,6 +1095,7 @@
         "heading3": "標題 3",
         "codeBlock": "程式碼區塊",
         "taskList": "待辦清單",
+        "divider": "分隔線",
         "align": "對齊",
         "alignLeft": "靠左",
         "alignCenter": "置中",
