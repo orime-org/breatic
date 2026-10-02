@@ -107,6 +107,7 @@ function situationIs(situation: string, record: unknown = null): void {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  applySubscriptionWrite.mockResolvedValue({ tier: "pro", endedFrom: null });
   vi.mocked(userRepo.getStripeCustomerId).mockResolvedValue("cus_1");
   vi.mocked(userRepo.getUserById).mockResolvedValue({
     id: USER,
@@ -494,6 +495,7 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     expect(stripe.subscriptions.update).toHaveBeenCalledTimes(2);
     expect(stripe.subscriptions.update).toHaveBeenLastCalledWith("sub_1", {
       cancel_at_period_end: false,
+      expand: ["latest_invoice"],
     });
   });
 
@@ -526,6 +528,7 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     expect(stripe.subscriptions.update).toHaveBeenCalledTimes(2);
     expect(stripe.subscriptions.update).toHaveBeenLastCalledWith("sub_1", {
       cancel_at_period_end: false,
+      expand: ["latest_invoice"],
     });
   });
 
@@ -825,6 +828,7 @@ describe("cancel and resume (#106 §7.5)", () => {
 
     expect(stripe.subscriptions.update).toHaveBeenCalledWith("sub_1", {
       cancel_at_period_end: true,
+      expand: ["latest_invoice"],
     });
   });
 
@@ -845,6 +849,7 @@ describe("cancel and resume (#106 §7.5)", () => {
 
     expect(stripe.subscriptions.update).toHaveBeenCalledWith("sub_1", {
       cancel_at_period_end: false,
+      expand: ["latest_invoice"],
     });
   });
 
@@ -868,6 +873,7 @@ describe("cancel and resume (#106 §7.5)", () => {
 
     expect(stripe.subscriptions.update).toHaveBeenCalledWith("sub_1", {
       cancel_at_period_end: false,
+      expand: ["latest_invoice"],
     });
   });
 
@@ -879,5 +885,132 @@ describe("cancel and resume (#106 §7.5)", () => {
       cancelAtPeriodEnd: true,
     });
     await expect(service.cancel(USER)).rejects.toBeInstanceOf(ConflictError);
+  });
+});
+
+describe("the panel's own actions store what Stripe answered (#307 A10)", () => {
+  /**
+   * A subscription as Stripe returns it from an update.
+   * @param over - Fields this case changes.
+   * @returns A subscription object.
+   */
+  function answered(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: "sub_1",
+      status: "active",
+      cancel_at_period_end: false,
+      pending_update: null,
+      latest_invoice: null,
+      items: {
+        data: [
+          { id: "si_1", current_period_end: 1_789_000_000, price: { id: "price_team_month", unit_amount: 7999, currency: "usd", recurring: { interval: "month" } } },
+        ],
+      },
+      ...over,
+    };
+  }
+
+  const PRO = {
+    stripeSubscriptionId: "sub_1",
+    stripeItemId: "si_1",
+    tier: "pro",
+    period: "month",
+    cancelAtPeriodEnd: false,
+  };
+
+  /**
+   * What each store call wrote, in order.
+   * @returns The writes and reference ids.
+   */
+  function stored(): { referenceId: string; cancelAtPeriodEnd: boolean }[] {
+    return applySubscriptionWrite.mock.calls.map(([input]) => ({
+      referenceId: (input as { referenceId: string }).referenceId,
+      cancelAtPeriodEnd: (input as { write: { cancelAtPeriodEnd: boolean } }).write
+        .cancelAtPeriodEnd,
+    }));
+  }
+
+  it("stores the cancelled subscription without waiting for the webhook", async () => {
+    situationIs("active", PRO);
+    stripe.subscriptions.update.mockResolvedValueOnce(answered({ cancel_at_period_end: true }));
+
+    await service.cancel(USER);
+
+    expect(stored()).toEqual([{ referenceId: "action:cancel:sub_1", cancelAtPeriodEnd: true }]);
+  });
+
+  it("stores the resumed subscription without waiting for the webhook", async () => {
+    situationIs("cancelling", { ...PRO, cancelAtPeriodEnd: true });
+    stripe.subscriptions.update.mockResolvedValueOnce(answered());
+
+    await service.resume(USER);
+
+    expect(stored()).toEqual([{ referenceId: "action:resume:sub_1", cancelAtPeriodEnd: false }]);
+  });
+
+  it("keeps the payment link when a retried charge is cancelled", async () => {
+    situationIs("retrying", PRO);
+    stripe.subscriptions.update.mockResolvedValueOnce(
+      answered({
+        status: "past_due",
+        cancel_at_period_end: true,
+        latest_invoice: { status: "open", hosted_invoice_url: "https://invoice.example/pay" },
+      }),
+    );
+
+    await service.cancel(USER);
+
+    const [input] = applySubscriptionWrite.mock.calls[0] as [
+      { write: { payableInvoiceUrl: string | null } },
+    ];
+    expect(input.write.payableInvoiceUrl).toBe("https://invoice.example/pay");
+  });
+
+  it("stores the plan change, then the withdrawn cancellation after it", async () => {
+    situationIs("cancelling", { ...PRO, cancelAtPeriodEnd: true });
+    stripe.subscriptions.update
+      .mockResolvedValueOnce(answered({ cancel_at_period_end: true }))
+      .mockResolvedValueOnce(answered({ cancel_at_period_end: false }));
+
+    await service.changePlan({ userId: USER, tier: "team", period: "month" });
+
+    expect(stored()).toEqual([
+      { referenceId: "action:change:sub_1", cancelAtPeriodEnd: true },
+      { referenceId: "action:withdraw:sub_1", cancelAtPeriodEnd: false },
+    ]);
+  });
+
+  it("stores only the plan change when withdrawing the cancellation fails", async () => {
+    situationIs("cancelling", { ...PRO, cancelAtPeriodEnd: true });
+    stripe.subscriptions.update
+      .mockResolvedValueOnce(answered({ cancel_at_period_end: true }))
+      .mockRejectedValueOnce(new Error("Stripe is unreachable"));
+
+    await service.changePlan({ userId: USER, tier: "team", period: "month" });
+
+    expect(stored()).toEqual([{ referenceId: "action:change:sub_1", cancelAtPeriodEnd: true }]);
+  });
+
+  it("writes nothing when the plan change's answer cannot be read", async () => {
+    situationIs("active", PRO);
+    stripe.subscriptions.update.mockResolvedValueOnce(
+      answered({ items: { data: [{ id: "si_1", price: { id: "price_unknown" } }] } }),
+    );
+
+    await expect(
+      service.changePlan({ userId: USER, tier: "team", period: "month" }),
+    ).rejects.toMatchObject({ statusCode: 500 });
+    expect(applySubscriptionWrite).not.toHaveBeenCalled();
+  });
+
+  it("still answers a cancel whose answer cannot be read, and writes nothing", async () => {
+    situationIs("active", PRO);
+    stripe.subscriptions.update.mockResolvedValueOnce(
+      answered({ items: { data: [{ id: "si_1", price: { id: "price_unknown" } }] } }),
+    );
+
+    await service.cancel(USER);
+
+    expect(applySubscriptionWrite).not.toHaveBeenCalled();
   });
 });
