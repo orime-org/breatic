@@ -467,7 +467,7 @@ describe('StudioAccountMenu', () => {
     await user.click(screen.getByRole('menuitem', { name: /Membership/ }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('membership-skeleton')).toBeInTheDocument();
+      expect(screen.getByTestId('loading-tier-name')).toBeInTheDocument();
     });
     expect(screen.getByTestId('location')).toHaveTextContent('/studio');
   });
