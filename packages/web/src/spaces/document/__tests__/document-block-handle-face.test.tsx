@@ -145,3 +145,54 @@ describe('the strip follows the row, not the snapshot (A9)', () => {
     expect(screen.getByTestId('doc-block-plus')).toBeTruthy();
   });
 });
+
+describe('the strip keeps its face through what the reader started', () => {
+  it('stays the grip through a drag that leaves the row empty, then ends it', () => {
+    const editor = openOver([{ type: 'paragraph', content: 'x' }], 0);
+    render(<DocumentBlockHandle />);
+    const grip = screen.getByTestId('doc-block-handle');
+
+    fireEvent.dragStart(grip);
+    act(() => {
+      editor.updateBlock((editor.document[0] as unknown as { id: string }).id, { content: [] } as never);
+    });
+    // Mid-drag the row is empty, but the drag's source has to keep its end.
+    expect(screen.getByTestId('doc-block-handle')).toBe(grip);
+
+    fireEvent.dragEnd(grip);
+    expect(screen.getByTestId('doc-block-plus')).toBeTruthy();
+  });
+
+  it('keeps the menu it opened while the row changes under it', () => {
+    const editor = openOver([{ type: 'paragraph', content: 'x' }], 0);
+    render(<DocumentBlockHandle />);
+    fireEvent.click(screen.getByTestId('doc-block-handle'));
+    expect(screen.getByTestId('doc-block-row-duplicate')).toBeTruthy();
+
+    act(() => {
+      editor.updateBlock((editor.document[0] as unknown as { id: string }).id, { content: [] } as never);
+    });
+
+    expect(screen.getByTestId('doc-block-row-duplicate')).toBeTruthy();
+    expect(screen.queryByTestId('doc-block-insert-heading-1')).toBeNull();
+  });
+
+  it('greys quote as soon as the open line is quoted (A5)', () => {
+    const editor = openOver([{ type: 'paragraph' }], 0);
+    render(<DocumentBlockHandle />);
+    fireEvent.click(screen.getByTestId('doc-block-plus'));
+    expect(
+      screen.getByTestId('doc-block-insert-quote').getAttribute('aria-disabled'),
+    ).toBeNull();
+
+    act(() => {
+      editor.updateBlock((editor.document[0] as unknown as { id: string }).id, {
+        props: { quoted: true },
+      } as never);
+    });
+
+    expect(
+      screen.getByTestId('doc-block-insert-quote').getAttribute('aria-disabled'),
+    ).toBe('true');
+  });
+});
