@@ -22,7 +22,6 @@ import { renderSlottedText, slotMarker } from '@web/lib/slotted-text';
  * the locale-correct positions (no rich-text i18n engine needed).
  */
 
-
 /**
  * Read a string field off an opaque notification payload.
  * @param payload - The notification's opaque payload.
