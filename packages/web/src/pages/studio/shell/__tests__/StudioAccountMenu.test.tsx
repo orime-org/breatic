@@ -28,6 +28,12 @@ vi.mock('@web/data/api/account', () => ({
   accountApi: { membership: () => membershipMock() },
 }));
 
+const confirmMock = vi.fn();
+vi.mock('@web/data/api/subscription', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/subscription')>()),
+  confirmMembershipCheckout: (sessionId: string) => confirmMock(sessionId),
+}));
+
 // Hoisted, because `vi.mock` runs before the module body and a factory that
 // closed over an ordinary const would read it before it exists.
 const toastMock = vi.hoisted(() => ({
@@ -83,7 +89,12 @@ const ALEX = {
  */
 function LocationProbe(): React.JSX.Element {
   const location = useLocation();
-  return <div data-testid='location'>{location.pathname}</div>;
+  return (
+    <>
+      <div data-testid='location'>{location.pathname}</div>
+      <div data-testid='location-search'>{location.search}</div>
+    </>
+  );
 }
 
 /**
@@ -133,6 +144,7 @@ describe('StudioAccountMenu', () => {
     toastMock.info.mockReset();
     toastMock.warning.mockReset();
     membershipMock.mockReset();
+    confirmMock.mockReset();
     overviewMock.mockReset().mockResolvedValue(overview());
   });
 
@@ -297,8 +309,13 @@ describe('StudioAccountMenu', () => {
     ).toHaveTextContent('PRO');
   });
 
-  describe('coming back from a membership checkout', () => {
-    /** What the membership endpoint answers once the purchase has settled. */
+  describe('coming back from a membership checkout (#307 A5, A6, A9)', () => {
+    /**
+     * What the confirm endpoint answers once the purchase is stored.
+     * @param state - The subscription situation.
+     * @param tier - The tier in force.
+     * @returns The panel's answer.
+     */
     function settled(state: string, tier: string): unknown {
       return {
         tier,
@@ -312,25 +329,39 @@ describe('StudioAccountMenu', () => {
           cancelAtPeriodEnd: false,
           currentPeriodEnd: null,
           payableInvoiceUrl: null,
-          reconciled: true,
         },
       };
     }
 
-    it('names what the account now holds', async () => {
-      membershipMock.mockResolvedValue(settled('active', 'pro'));
+    const RETURNED = '/studio?membership=1&session_id=cs_1';
+
+    it('confirms the named checkout and names what the account now holds', async () => {
+      confirmMock.mockResolvedValue(settled('active', 'pro'));
       useCurrentUserStore.getState().setUser(ALEX);
-      setup(false, '/studio?membership=1');
+      setup(false, RETURNED);
 
       await waitFor(() => {
         expect(toastMock.success).toHaveBeenCalledWith('PRO · Yearly is active');
       });
+      expect(confirmMock).toHaveBeenCalledWith('cs_1');
+      expect(meMock).toHaveBeenCalled();
+      expect(membershipMock).not.toHaveBeenCalled();
+    });
+
+    it('leaves no checkout marks in the address', async () => {
+      confirmMock.mockResolvedValue(settled('active', 'pro'));
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup(false, `${RETURNED}&tab=projects`);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('location-search').textContent).toBe('?tab=projects');
+      });
     });
 
     it('says the payment is still going through when Stripe says so', async () => {
-      membershipMock.mockResolvedValue(settled('firstPaymentUnsettled', 'base'));
+      confirmMock.mockResolvedValue(settled('firstPaymentUnsettled', 'base'));
       useCurrentUserStore.getState().setUser(ALEX);
-      setup(false, '/studio?membership=1');
+      setup(false, RETURNED);
 
       await waitFor(() => {
         expect(toastMock.info).toHaveBeenCalledWith('Payment is still going through');
@@ -338,43 +369,22 @@ describe('StudioAccountMenu', () => {
       expect(toastMock.success).not.toHaveBeenCalled();
     });
 
-    it('says the membership was not activated when nothing came of it', async () => {
-      membershipMock.mockResolvedValue({
-        tier: 'base',
-        limits: {},
-        usage: {},
-        catalog: { selling: true, tiers: [] },
-        subscription: null,
-      });
+    it('says the membership was not activated when the checkout bought nothing', async () => {
+      confirmMock.mockResolvedValue(settled('none', 'base'));
       useCurrentUserStore.getState().setUser(ALEX);
-      setup(false, '/studio?membership=1');
+      setup(false, RETURNED);
 
       await waitFor(() => {
         expect(toastMock.error).toHaveBeenCalledWith('Membership not activated');
       });
     });
 
-    it('says it could not read the membership when Stripe could not be asked', async () => {
-      // The stored rows answer "no subscription" until the webhook lands. If
-      // the server could not check with Stripe either, that answer is not
-      // "nothing was bought", and saying so to someone who just paid is false.
-      membershipMock.mockResolvedValue({
-        tier: 'base',
-        limits: {},
-        usage: {},
-        catalog: { selling: true, tiers: [] },
-        subscription: {
-          state: 'none',
-          tier: 'base',
-          period: null,
-          cancelAtPeriodEnd: false,
-          currentPeriodEnd: null,
-          payableInvoiceUrl: null,
-          reconciled: false,
-        },
-      });
+    it('says it could not read the membership when the checkout could not be confirmed', async () => {
+      // The purchase may well have gone through; what failed is confirming it.
+      // Saying "not activated" to someone who just paid would be false.
+      confirmMock.mockRejectedValue(new Error('503'));
       useCurrentUserStore.getState().setUser(ALEX);
-      setup(false, '/studio?membership=1');
+      setup(false, RETURNED);
 
       await waitFor(() => {
         expect(toastMock.error).toHaveBeenCalledWith(
@@ -385,6 +395,18 @@ describe('StudioAccountMenu', () => {
       expect(meMock).not.toHaveBeenCalled();
     });
 
+    it('says it could not read the membership when the address names no checkout', async () => {
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup(false, '/studio?membership=1');
+
+      await waitFor(() => {
+        expect(toastMock.error).toHaveBeenCalledWith(
+          'We could not read your membership. It may be a network problem — try again in a moment.',
+        );
+      });
+      expect(confirmMock).not.toHaveBeenCalled();
+    });
+
     it('says nothing when the reader pressed back on Stripe', async () => {
       // Choosing not to buy is not an outcome to report. Telling somebody
       // they cancelled, right after they cancelled, is noise.
@@ -392,9 +414,9 @@ describe('StudioAccountMenu', () => {
       setup(false, '/studio?membership=1&cancelled=1');
 
       await waitFor(() => {
-        expect(screen.getByTestId('location')).toBeInTheDocument();
+        expect(screen.getByTestId('location-search').textContent).toBe('');
       });
-      expect(membershipMock).not.toHaveBeenCalled();
+      expect(confirmMock).not.toHaveBeenCalled();
       expect(toastMock.success).not.toHaveBeenCalled();
       expect(toastMock.info).not.toHaveBeenCalled();
       expect(toastMock.error).not.toHaveBeenCalled();
@@ -406,7 +428,7 @@ describe('StudioAccountMenu', () => {
       await waitFor(() => {
         expect(screen.getByTestId('location')).toBeInTheDocument();
       });
-      expect(membershipMock).not.toHaveBeenCalled();
+      expect(confirmMock).not.toHaveBeenCalled();
     });
   });
 
