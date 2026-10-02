@@ -1865,8 +1865,9 @@ body {
   background-clip: content-box;
 }
 
-/* An empty line at an end of the body inside a selection that reaches past it
-   or holds the whole document (`document-selection-paint.ts`). The browser marks a selected empty line with
+/* An empty line an end of a range sits on, or the empty line at an end of the
+   body that a selection past it or the whole document holds
+   (`document-selection-paint.ts`). The browser marks a selected empty line with
    a sliver at its start, the width of a space and the height of the line; it
    draws that one only once the range is written back, which in Chrome is not
    until a drag ends. The sliver is drawn here from the same measures — a

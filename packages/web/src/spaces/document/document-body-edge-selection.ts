@@ -485,8 +485,9 @@ function pageEdgeAt(doc: Node, pos: number): BodyEdge | null {
 /**
  * Keeps an end that sits on an edge when the browser's range is read back
  * (design §5.10.5): after a drag that anchored past the last block, a
- * Shift+click or a Shift+arrow extends the browser's range from there, and
- * `TextSelection.between` would pull that end back into text.
+ * Shift+key the browser handles (Shift+Option+arrow, Shift+Home/End) extends
+ * the browser's range from there, and `TextSelection.between` would pull that
+ * end back into text.
  * @param view - The view.
  * @param $anchor - The browser's anchor.
  * @param $head - The browser's head.
@@ -615,33 +616,17 @@ function stepFrom(doc: Node, head: number, dir: 1 | -1): number {
  * @returns The position, or null when the page cannot move a caret by lines.
  */
 function lineFrom(view: EditorView, head: number, dir: 1 | -1): number | null {
-  const moved = borrowPageSelection(view, (page) => {
-    if (typeof page.modify !== 'function') return null;
-    const at = view.domAtPos(head);
-    page.collapse(at.node, at.offset);
-    page.modify('move', dir < 0 ? 'backward' : 'forward', 'line');
-    return page.focusNode && view.dom.contains(page.focusNode) ? view.posAtDOM(page.focusNode, page.focusOffset) : null;
-  });
-  return moved == null ? null : textToward(view.state.doc, moved, dir);
-}
-
-/**
- * Lends the page's own selection to a measurement and puts the page's range
- * back afterwards: ProseMirror reads the range on the next selection change,
- * and a press or key that changes nothing dispatches nothing to overwrite it.
- * @param view - The view.
- * @param measure - What to do with the page's selection.
- * @returns What the measurement gives, or null when the page has no selection.
- */
-export function borrowPageSelection<T>(view: EditorView, measure: (page: globalThis.Selection) => T): T | null {
   const page = (view.root as Document).getSelection?.();
-  if (!page) return null;
+  if (!page || typeof page.modify !== 'function') return null;
   const { anchorNode, anchorOffset, focusNode, focusOffset } = page;
-  try {
-    return measure(page);
-  } finally {
-    if (anchorNode && focusNode) page.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset);
-  }
+  const at = view.domAtPos(head);
+  page.collapse(at.node, at.offset);
+  page.modify('move', dir < 0 ? 'backward' : 'forward', 'line');
+  const moved = page.focusNode && view.dom.contains(page.focusNode) ? view.posAtDOM(page.focusNode, page.focusOffset) : null;
+  // Put the page's range back: ProseMirror reads it on the next selection
+  // change, and a key that changes nothing dispatches nothing to overwrite it.
+  if (anchorNode && focusNode) page.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset);
+  return moved === null ? null : textToward(view.state.doc, moved, dir);
 }
 
 /**

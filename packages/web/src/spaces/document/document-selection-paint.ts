@@ -47,8 +47,9 @@ import { DIVIDER } from '@web/spaces/document/document-divider';
 export const IN_SELECTION_CLASS = 'doc-in-selection';
 
 /**
- * The class `index.css` marks an empty line at an end of the body with, when a
- * selection reaching past that end holds it.
+ * The class `index.css` marks an empty line with: an empty line an end of a
+ * range sits on, and the empty line at an end of the body that a selection
+ * past that end, or the whole document, holds.
  */
 export const EMPTY_LINE_CLASS = 'doc-empty-line-in-selection';
 
