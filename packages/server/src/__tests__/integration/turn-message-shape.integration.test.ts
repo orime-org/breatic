@@ -58,6 +58,15 @@ vi.mock("@breatic/domain", async (importOriginal) => {
           inputSchema: z.object({ sourceQuery: z.string() }),
           execute: async (input: { sourceQuery: string }) => input,
         }),
+        // Fails every time, so a turn can be run in which one step fails and
+        // the model carries on.
+        always_fails: tool({
+          description: "Never succeeds.",
+          inputSchema: z.object({}),
+          execute: async () => {
+            throw new Error("the far side refused");
+          },
+        }),
       },
     }),
     getModel: () =>
@@ -70,7 +79,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
-import { FINISHED_ASKING_FOR_A_TOOL, saying } from "../helpers/model-double.js";
+import { FINISHED, FINISHED_ASKING_FOR_A_TOOL, saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 import postgres from "postgres";
 import {
@@ -365,5 +374,68 @@ describe("the language an error about the request comes back in", () => {
     const body = (await res.json()) as { error?: { message?: string } };
     expect(res.status).toBe(422);
     expect(body.error?.message).toContain("这条消息太长了");
+  });
+});
+
+/**
+ * Read a conversation back the way a reopened panel does.
+ * @param conversationId - Conversation to read.
+ * @param cookie - Caller's session cookie.
+ * @returns The messages the read route answers with, oldest first.
+ * @throws {Error} When the route answers with anything but 200.
+ */
+async function readBack(
+  conversationId: string,
+  cookie: string,
+): Promise<Array<{ role: string; parts: Array<Record<string, unknown>> }>> {
+  const res = await app.request(`/api/v1/chat/conversations/${conversationId}`, {
+    headers: { Cookie: cookie },
+  });
+  if (res.status !== 200) throw new Error(`read failed: ${res.status}`);
+  const body = (await res.json()) as {
+    data: { messages: Array<{ role: string; parts: Array<Record<string, unknown>> }> };
+  };
+  return body.data.messages;
+}
+
+/**
+ * Run one turn on a fresh conversation and read it back.
+ * @param parts - What the model streams.
+ * @returns The reply the read route hands the panel.
+ * @throws {Error} When the read-back has no reply after the reader's message.
+ */
+async function replyReadBack(parts: ModelStreamPart[]): Promise<Record<string, unknown>[]> {
+  stream.parts = parts;
+  const { projectId, cookie } = await seedProject();
+  const conversationId = await openConversation(projectId, cookie);
+  await sendAndDrain(conversationId, projectId, cookie, "say something");
+  const messages = await readBack(conversationId, cookie);
+  expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+  return messages[1]!.parts;
+}
+
+describe("how a turn's ending reads back when the conversation is reopened", () => {
+  it("carries the failed mark for a turn that failed before its first word", async () => {
+    const parts = await replyReadBack([{ type: "error", error: new Error("provider down") }]);
+    expect(parts).toEqual([{ type: "data-failed", data: {} }]);
+  });
+
+  it("keeps a reply with no parts for a turn that finished having produced nothing", async () => {
+    const parts = await replyReadBack([FINISHED]);
+    expect(parts).toEqual([]);
+  });
+
+  it("carries a failed tool step with the reader's line and how it ended", async () => {
+    const parts = await replyReadBack([
+      { type: "tool-call", toolCallId: "tc-fail", toolName: "always_fails", input: "{}" },
+      FINISHED_ASKING_FOR_A_TOOL,
+      ...saying("Carrying on without it."),
+    ]);
+    expect(parts.find((p) => p.type === "tool-always_fails")).toMatchObject({
+      state: "output-error",
+      errorText: "chat.tool.failure.generic",
+      failureKind: "tool_failed",
+    });
+    expect(parts.find((p) => p.type === "text")).toMatchObject({ text: "Carrying on without it." });
   });
 });
