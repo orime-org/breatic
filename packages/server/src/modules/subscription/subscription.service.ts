@@ -196,6 +196,8 @@ function returnUrls(returnUrl: string): {
 } {
   const paid = new URL(returnUrl);
   paid.searchParams.set("membership", "1");
+  // The session id is appended as text, so a fragment would swallow it.
+  paid.hash = "";
 
   const left = new URL(returnUrl);
   left.searchParams.set("membership", "1");
