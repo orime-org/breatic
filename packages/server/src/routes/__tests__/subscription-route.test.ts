@@ -14,18 +14,21 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const { service, rateLimitFor, envRef } = vi.hoisted(() => ({
+const { service, membership, rateLimitFor, envRef } = vi.hoisted(() => ({
   service: {
     startCheckout: vi.fn(),
     changePlan: vi.fn(),
     cancel: vi.fn(),
     resume: vi.fn(),
+    confirmCheckout: vi.fn(),
   },
+  membership: { readAccountMembership: vi.fn() },
   rateLimitFor: vi.fn(),
   envRef: { PAYMENT_ENABLED: true },
 }));
 
 vi.mock("@server/modules/subscription/subscription.service.js", () => service);
+vi.mock("@server/modules/account/membership.service.js", () => membership);
 
 vi.mock("@server/middleware/rate-limit.js", () => ({
   rateLimitFor: (...args: unknown[]) => {
@@ -94,6 +97,8 @@ beforeEach(() => {
   service.changePlan.mockClear();
   service.cancel.mockClear();
   service.resume.mockClear();
+  service.confirmCheckout.mockReset();
+  membership.readAccountMembership.mockReset();
   envRef.PAYMENT_ENABLED = true;
   service.startCheckout.mockResolvedValue({ url: "https://checkout.example/s" });
   service.changePlan.mockResolvedValue({ status: "applied", payableInvoiceUrl: null });
@@ -107,6 +112,7 @@ describe("订阅路由 — 关掉支付时的四个闸门", () => {
     ["/change", { tier: "team", period: "year" }],
     ["/cancel", {}],
     ["/resume", {}],
+    ["/confirm", { session_id: "cs_1" }],
   ])("%s 在不卖东西的部署上答 404", async (path, body) => {
     // 404 而不是 403：自部署上这些端点不是「你没权限」，是根本不存在这个功能。
     envRef.PAYMENT_ENABLED = false;
@@ -118,6 +124,7 @@ describe("订阅路由 — 关掉支付时的四个闸门", () => {
     expect(service.changePlan).not.toHaveBeenCalled();
     expect(service.cancel).not.toHaveBeenCalled();
     expect(service.resume).not.toHaveBeenCalled();
+    expect(service.confirmCheckout).not.toHaveBeenCalled();
   });
 });
 
@@ -183,5 +190,43 @@ describe("订阅路由 — 把请求翻译成业务调用", () => {
 
     expect((await post("/resume")).status).toBe(200);
     expect(service.resume).toHaveBeenCalledWith("u-1");
+  });
+});
+
+describe("POST /confirm — the return from a membership checkout (#307 A5–A7)", () => {
+  it("refuses a body that names no session before the service sees it", async () => {
+    const res = await post("/confirm", {});
+
+    expect(res.status).toBe(400);
+    expect(service.confirmCheckout).not.toHaveBeenCalled();
+  });
+
+  it("confirms the named session for the signed-in account and answers with the panel", async () => {
+    service.confirmCheckout.mockResolvedValue(undefined);
+    membership.readAccountMembership.mockResolvedValue({ tier: "pro" });
+
+    const res = await post("/confirm", { session_id: "cs_1" });
+
+    expect(res.status).toBe(200);
+    expect(service.confirmCheckout).toHaveBeenCalledWith("u-1", "cs_1");
+    expect(await res.json()).toEqual({ data: { tier: "pro" } });
+  });
+
+  it("passes a refusal from the service through as it was", async () => {
+    const { NotFoundError } = await import("@breatic/core");
+    service.confirmCheckout.mockRejectedValue(new NotFoundError("not yours"));
+
+    const res = await post("/confirm", { session_id: "cs_1" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("answers 503 when Stripe could not be asked", async () => {
+    service.confirmCheckout.mockRejectedValue(new Error("Stripe is unreachable"));
+
+    const res = await post("/confirm", { session_id: "cs_1" });
+
+    expect(res.status).toBe(503);
+    expect(membership.readAccountMembership).not.toHaveBeenCalled();
   });
 });
