@@ -54,6 +54,11 @@ function setup(
       modeOptions={IMAGE_MODE_OPTIONS}
       params={{ aspect_ratio: '16:9', resolution: '2K' }}
       references={[]}
+      styleCap={undefined}
+      styleImages={[]}
+      onStylePick={() => {}}
+      stylePicking={false}
+      onRemoveStyle={() => {}}
       creditText='7'
       executeRefusal={null}
       promptSlot={<div data-testid='prompt-slot'>prompt</div>}

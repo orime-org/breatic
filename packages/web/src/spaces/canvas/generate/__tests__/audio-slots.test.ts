@@ -21,6 +21,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
 import {
   refusalToastKey,
@@ -79,12 +80,13 @@ describe('slotForPurpose reaches both registries', () => {
 });
 
 describe('allSlotSpecs', () => {
-  it('carries every slot from both registries', () => {
+  it('carries every slot from every registry', () => {
     const specs = allSlotSpecs();
     const fields = specs.map((s) => s.field).sort();
     const expected = [
       ...Object.values(VIDEO_SLOTS).map((s) => s.field),
       ...Object.values(AUDIO_SLOTS).map((s) => s.field),
+      ...Object.values(IMAGE_SLOTS).map((s) => s.field),
     ].sort();
     expect(fields).toEqual(expected);
   });

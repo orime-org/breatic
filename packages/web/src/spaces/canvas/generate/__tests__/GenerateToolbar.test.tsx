@@ -128,3 +128,40 @@ describe('GenerateToolbar — Reference / Focus are the live tools', () => {
     expect(btn).toHaveAttribute('aria-pressed', 'false');
   });
 });
+
+describe('GenerateToolbar — the style area (inner#826)', () => {
+  it('draws no style area for a model that takes no style images', () => {
+    setup({ styleCap: undefined, styleImages: [] });
+    expect(screen.queryByTestId('generate-tool-style')).toBeNull();
+  });
+
+  it('draws one Style button while the slot is empty', () => {
+    setup({ styleCap: 3, styleImages: [] });
+    expect(screen.getByTestId('generate-tool-style')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-style-thumbnail-0')).toBeNull();
+  });
+
+  it('draws each style image and one more place while there is room', () => {
+    const onStylePick = vi.fn();
+    setup({ styleCap: 3, styleImages: ['https://cdn/a.png', 'https://cdn/b.png'], onStylePick });
+    expect(screen.getByTestId('generate-style-thumbnail-0')).toHaveAttribute('src', 'https://cdn/a.png');
+    expect(screen.getByTestId('generate-style-thumbnail-1')).toHaveAttribute('src', 'https://cdn/b.png');
+    const add = screen.getByTestId('generate-tool-style');
+    expect(add).toHaveTextContent('2/3');
+    fireEvent.click(add);
+    expect(onStylePick).toHaveBeenCalled();
+  });
+
+  it('drops the extra place once the slot is full', () => {
+    setup({ styleCap: 3, styleImages: ['a', 'b', 'c'] });
+    expect(screen.queryByTestId('generate-tool-style')).toBeNull();
+    expect(screen.getByTestId('generate-style-thumbnail-2')).toBeInTheDocument();
+  });
+
+  it('removes exactly the image whose ✕ is pressed', () => {
+    const onRemoveStyle = vi.fn();
+    setup({ styleCap: 3, styleImages: ['a', 'b'], onRemoveStyle });
+    fireEvent.click(screen.getByTestId('generate-style-clear-1'));
+    expect(onRemoveStyle).toHaveBeenCalledWith('b');
+  });
+});

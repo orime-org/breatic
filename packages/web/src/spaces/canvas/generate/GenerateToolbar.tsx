@@ -5,7 +5,8 @@ import { Focus, Plus } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
-import { ToggleTool } from '@web/spaces/canvas/generate/generate-tools';
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
+import { SlotTool, ToggleTool, ToolRowDivider } from '@web/spaces/canvas/generate/generate-tools';
 
 interface GenerateToolbarProps {
   /** Toggle the "select a reference from the canvas" mode (enter, or exit while active). */
@@ -19,7 +20,26 @@ interface GenerateToolbarProps {
   onFocus: () => void;
   /** Whether the focus pick is running — highlights the Focus button. */
   focusActive?: boolean;
+  /**
+   * How many style images the model takes, or undefined when it takes none
+   * and no style area is drawn (inner#826).
+   */
+  styleCap?: number;
+  /** The node's style images, in pick order. */
+  styleImages?: readonly string[];
+  /** Enter / exit the style pick, which adds one image per click. */
+  onStylePick?: () => void;
+  /** Whether the style pick is running. */
+  styleActive?: boolean;
+  /** Take one style image out. */
+  onRemoveStyle?: (url: string) => void;
 }
+
+const NO_IMAGES: readonly string[] = [];
+/**
+ * The handler a style control gets when its panel wires none.
+ */
+const NOTHING = (): void => {};
 
 /**
  * The Generate panel's top tool row: Reference / Focus, both live canvas
@@ -42,8 +62,15 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
   referenceActive = false,
   onFocus,
   focusActive = false,
+  styleCap,
+  styleImages = NO_IMAGES,
+  onStylePick = NOTHING,
+  styleActive = false,
+  onRemoveStyle,
 }: GenerateToolbarProps): React.JSX.Element {
   const t = useTranslation();
+  const spec = IMAGE_SLOTS.style;
+  const shown = styleCap === undefined ? NO_IMAGES : styleImages.slice(0, styleCap);
   return (
     <div className='flex items-center gap-1' role='group'>
       <ToggleTool
@@ -62,6 +89,40 @@ export const GenerateToolbar = React.memo(function GenerateToolbar({
         onClick={onFocus}
         active={focusActive}
       />
+      {styleCap !== undefined && <ToolRowDivider testId='generate-tool-sep' />}
+      {shown.map((url, i) => (
+        <SlotTool
+          key={url}
+          testId={`${spec.testId}-item-${i}`}
+          thumbnailTestId={`${spec.thumbnailTestId}-${i}`}
+          clearTestId={`${spec.clearTestId}-${i}`}
+          Icon={spec.Icon}
+          onPick={onStylePick}
+          active={styleActive}
+          pick={{ kind: 'image', url, thumbnail: url }}
+          onClear={() => onRemoveStyle?.(url)}
+          disabled={false}
+          clearLabel={t(spec.clearLabelKey)}
+          label={t(spec.labelKey)}
+          tip={t(spec.tipKey)}
+        />
+      ))}
+      {styleCap !== undefined && shown.length < styleCap && (
+        <SlotTool
+          testId={spec.testId}
+          thumbnailTestId={spec.thumbnailTestId}
+          clearTestId={spec.clearTestId}
+          Icon={spec.Icon}
+          onPick={onStylePick}
+          active={styleActive}
+          pick={undefined}
+          onClear={NOTHING}
+          disabled={false}
+          clearLabel={t(spec.clearLabelKey)}
+          label={shown.length === 0 ? t(spec.labelKey) : `${shown.length}/${styleCap}`}
+          tip={t(spec.tipKey)}
+        />
+      )}
     </div>
   );
 });
