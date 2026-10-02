@@ -19,7 +19,7 @@ const { envRef } = vi.hoisted(() => ({ envRef: { PAYMENT_ENABLED: true } }));
 
 vi.mock("@breatic/core", () => ({
   env: envRef,
-  getUserMembershipTier: vi.fn(),
+  getHonouredTierForUser: vi.fn(),
   getLimitsForUser: vi.fn(),
   getSubscriptionPlan: (tier: string, period: string) => ({
     priceCents:
@@ -32,7 +32,7 @@ vi.mock("@breatic/core", () => ({
 }));
 
 vi.mock("@server/modules/subscription/subscription-panel.js", () => ({
-  readSubscriptionSummary: vi.fn(),
+  readStoredSubscriptionSummary: vi.fn(),
 }));
 
 vi.mock("@server/modules/asset/assetUsage.service.js", () => ({
@@ -44,10 +44,10 @@ vi.mock("@server/modules/studio/studio.repo.js", () => ({
 }));
 
 import {
-  getUserMembershipTier,
+  getHonouredTierForUser,
   getLimitsForUser,
 } from "@breatic/core";
-import { readSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
+import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
@@ -66,16 +66,15 @@ const USER = "u-1";
 beforeEach(() => {
   vi.clearAllMocks();
   envRef.PAYMENT_ENABLED = true;
-  vi.mocked(getUserMembershipTier).mockResolvedValue("pro");
+  vi.mocked(getHonouredTierForUser).mockResolvedValue("pro");
   vi.mocked(getLimitsForUser).mockResolvedValue(LIMITS);
-  vi.mocked(readSubscriptionSummary).mockResolvedValue({
+  vi.mocked(readStoredSubscriptionSummary).mockResolvedValue({
     state: "active",
     tier: "pro",
     period: "month",
     currentPeriodEnd: "2026-09-18T00:00:00.000Z",
     cancelAtPeriodEnd: false,
     payableInvoiceUrl: null,
-    reconciled: true,
   });
   vi.mocked(studioRepo.countTeamStudiosAdministeredBy).mockResolvedValue(1);
   vi.mocked(assetUsageService.accountStorageUsage).mockResolvedValue(0);
@@ -119,7 +118,7 @@ describe("readAccountMembership — 这个部署不卖东西时（验收 6）", 
     const result = await readAccountMembership(USER);
 
     expect(result.subscription).toBeNull();
-    expect(readSubscriptionSummary).not.toHaveBeenCalled();
+    expect(readStoredSubscriptionSummary).not.toHaveBeenCalled();
   });
 
   it("档位和额度照常，不受影响", async () => {
