@@ -30,6 +30,7 @@
 
 import { SideMenuExtension } from '@blocknote/core/extensions';
 import { GripVertical, Plus } from 'lucide-react';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import * as React from 'react';
 
 import {
@@ -154,14 +155,23 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   const rowNow = useRowNow(editor as never, block?.id);
   const row = useEditorSnapshot(
     editor as never,
-    React.useCallback((current: { document: readonly unknown[] }): RowReading => {
-      const live = rowNow();
-      return {
-        empty: isEmptyParagraph(live),
-        quoted: live?.props?.[QUOTED] === true,
-        lone: current.document.length === 1 && (live?.children?.length ?? 0) === 0,
-      };
-    }, [rowNow]),
+    React.useCallback(
+      (current: { prosemirrorState: { doc: PMNode } }): RowReading => {
+        const live = rowNow();
+        // The root group, read off ProseMirror: one block in it, and that block
+        // is this row with nothing nested under it.
+        const group = current.prosemirrorState.doc.firstChild;
+        return {
+          empty: isEmptyParagraph(live),
+          quoted: live?.props?.[QUOTED] === true,
+          lone:
+            group?.childCount === 1 &&
+            group.firstChild?.attrs.id === live?.id &&
+            (live?.children?.length ?? 0) === 0,
+        };
+      },
+      [rowNow],
+    ),
     sameReading,
   );
 
@@ -350,12 +360,9 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               <DropdownMenuSeparator className='my-0' />
               <DropdownMenuItem
                 data-testid='doc-block-plus-delete'
-                {...(row.lone
-                  ? itemWithin(false, onDelete)
-                  : {
-                    ...itemWithin(true, onDelete),
-                    className: 'text-status-error-foreground',
-                  })}
+                className='text-status-error-foreground'
+                // Out of reach, the greyed treatment's own class replaces the red.
+                {...itemWithin(!row.lone, onDelete)}
               >
                 <DELETE_ROW.Icon />
                 {t(DELETE_ROW.labelKey)}
