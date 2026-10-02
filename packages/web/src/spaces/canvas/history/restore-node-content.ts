@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { NodeMediaFields } from '@breatic/shared/canvas/node-media';
+
 import type { NodeHistoryEntry, NodeTaskEntry } from '@web/data/api/canvas';
 import {
   evaluateNodeGate,
@@ -19,7 +21,7 @@ export type RestoreDecision =
   | {
       readonly kind: 'write';
       readonly content: string;
-      readonly coverUrl: string | null | undefined;
+      readonly media: NodeMediaFields;
     };
 
 /**
@@ -31,9 +33,11 @@ export type RestoreDecision =
  *   on the node does not block: a node takes several tasks at once now, and
  *   the last write wins (#186).
  * - INV-8: video restores carry the cover (`thumbnailUrl`, `null` clears a
- *   stale poster); image / audio pass `undefined` so `coverUrl` is untouched
+ *   stale poster); image / audio carry `null`, as their settle does — their
+ *   row's `thumbnailUrl` is a preview of the content, never a node cover
  *   (writing it would leak an asset-GC phantom reference).
- * - INV-3: an allowed restore writes the entry's content back.
+ * - INV-3: an allowed restore writes the entry's content back, with the media
+ *   numbers it landed with (#2184).
  * @param opts - The restore inputs.
  * @param opts.readOnly - Whether the viewer is read-only.
  * @param opts.entry - The chosen history row.
@@ -43,7 +47,10 @@ export type RestoreDecision =
  */
 export function resolveRestore(opts: {
   readOnly: boolean;
-  entry: Pick<NodeHistoryEntry, 'status' | 'content' | 'thumbnailUrl'>;
+  entry: Pick<
+    NodeHistoryEntry,
+    'status' | 'content' | 'thumbnailUrl' | 'mediaWidth' | 'mediaHeight' | 'duration' | 'mimeType' | 'size'
+  >;
   modality: HistoryModality;
   gateState: NodeGateState;
 }): RestoreDecision {
@@ -56,8 +63,14 @@ export function resolveRestore(opts: {
   return {
     kind: 'write',
     content: opts.entry.content,
-    coverUrl:
-      opts.modality === 'video' ? (opts.entry.thumbnailUrl ?? null) : undefined,
+    media: {
+      coverUrl: opts.modality === 'video' ? (opts.entry.thumbnailUrl ?? null) : null,
+      width: opts.entry.mediaWidth,
+      height: opts.entry.mediaHeight,
+      duration: opts.entry.duration,
+      mimeType: opts.entry.mimeType,
+      size: opts.entry.size,
+    },
   };
 }
 
@@ -77,7 +90,10 @@ export function resolveRestore(opts: {
  */
 export function resolveTaskReplace(opts: {
   readOnly: boolean;
-  task: Pick<NodeTaskEntry, 'content' | 'coverUrl'>;
+  task: Pick<
+    NodeTaskEntry,
+    'content' | 'coverUrl' | 'mediaWidth' | 'mediaHeight' | 'duration' | 'mimeType' | 'size'
+  >;
   modality: HistoryModality;
   gateState: NodeGateState;
 }): RestoreDecision {
@@ -90,6 +106,11 @@ export function resolveTaskReplace(opts: {
       status: 'success',
       content: opts.task.content,
       thumbnailUrl: opts.task.coverUrl,
+      mediaWidth: opts.task.mediaWidth,
+      mediaHeight: opts.task.mediaHeight,
+      duration: opts.task.duration,
+      mimeType: opts.task.mimeType,
+      size: opts.task.size,
     },
     modality: opts.modality,
     gateState: opts.gateState,

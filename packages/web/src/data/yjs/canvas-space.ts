@@ -21,6 +21,7 @@ import {
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { writeNodeMedia, type NodeMediaFields } from '@breatic/shared/canvas/node-media';
 import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
@@ -1496,18 +1497,13 @@ export function setNodeExtractionError(
  * Re-points the node's content (and, for video, its cover poster) at an
  * already-existing history result.
  *
- * - Writes `content`; for a video (which carries a separate cover poster)
- *   writes `coverUrl` (`null` clears it so no stale poster survives). Pass
- *   `undefined` to leave `coverUrl` untouched — image / audio never carry a
- *   cover (image renders `content` directly, audio has none), and writing one
- *   would create a phantom asset reference the asset-GC treats as live,
- *   leaking the URL (Gate-1 R4 HIGH).
- * - Clears what described the previous file (`mediaWidth` / `mediaHeight` /
- *   `duration` / `mimeType` / `size`): a history row carries none of it, and
- *   both readers of these fields — the node, which prefers them over what the
- *   browser reads off the element, and the Understand gate, which refuses by
- *   the byte count it finds — would otherwise describe a file the node no
- *   longer shows.
+ * - Writes `content`, then the cover and media numbers (`coverUrl` /
+ *   `mediaWidth` / `mediaHeight` / `duration` / `mimeType` / `size`) through
+ *   `writeNodeMedia`, the function a settle writes them with (#2184). Each
+ *   value is set and each null removed, so nothing the previous result left
+ *   describes a file the node no longer shows. Only a video carries a cover;
+ *   image / audio pass null, and a cover URL written onto them would be a
+ *   phantom asset reference the asset-GC treats as live (Gate-1 R4 HIGH).
  * - Clears `errorMessage` (restoring a good result over a prior error state).
  * - Writes content and nothing else. A node's tasks are the server's to move
  *   (#186 §3.3), and a restore is the reader choosing which result the node
@@ -1515,18 +1511,18 @@ export function setNodeExtractionError(
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - Id of the node to restore onto.
- * @param media - The content to restore, plus the cover to write for video.
- * @param media.content - The history row's asset URL.
- * @param media.coverUrl - Video: the row's cover (`null` clears a stale poster).
- *   image / audio: `undefined` — leave the field untouched.
+ * @param restored - What to put back on the node.
+ * @param restored.content - The history row's content.
+ * @param restored.media - The cover and media numbers it landed with (#2184),
+ *   written the way a settle writes them: each value set, each null removed.
  */
 export function restoreNodeMedia(
   projectId: string,
   spaceId: string,
   nodeId: string,
-  media: {
+  restored: {
     content: string;
-    coverUrl: string | null | undefined;
+    media: NodeMediaFields;
   },
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
@@ -1539,25 +1535,12 @@ export function restoreNodeMedia(
     // Which field holds a node's content is decided by its type, once, in
     // `landHandlingContent` — a text node's words live in the body the editor
     // binds to and would be invisible in the plain field (#1774).
-    landHandlingContent(data, node.get('type'), media.content);
-    if (media.coverUrl !== undefined) {
-      if (media.coverUrl === null) data.delete('coverUrl');
-      else data.set('coverUrl', media.coverUrl);
-    }
-    // The numbers belong to whatever result landed last, and a history row
-    // carries none. Leaving them makes the badge describe a clip the node no
-    // longer shows, and the reader prefers them over the browser's own read —
-    // so clearing them is what puts the restored medium back in charge of its
-    // own measurement.
-    data.delete('mediaWidth');
-    data.delete('mediaHeight');
-    data.delete('duration');
-    // Same reason, one step further out: `mimeType` and `size` describe the
-    // file the previous result was, and the Understand gate reads both off the
-    // node — printing the byte count it read when it refuses. Leaving them
-    // makes that gate judge the restored file by a file it no longer shows.
-    data.delete('mimeType');
-    data.delete('size');
+    landHandlingContent(data, node.get('type'), restored.content);
+    // The same function a settle writes these through, so a restored node
+    // holds what the result held when it first landed. A row written before
+    // #2184 carries none, which removes the previous result's numbers rather
+    // than leaving them to describe a medium the node no longer shows.
+    writeNodeMedia(data, restored.media);
     data.delete('errorMessage');
   }, CONTENT_WRITE);
 }

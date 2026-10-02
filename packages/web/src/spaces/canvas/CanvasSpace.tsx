@@ -3689,7 +3689,7 @@ function CanvasSpaceInner({
       if (decision.kind === 'write') {
         restoreNodeMedia(projectId, spaceId, nodeId, {
           content: decision.content,
-          coverUrl: decision.coverUrl,
+          media: decision.media,
         });
         // Keep the panel open after a restore (user 2026-07-23, reversing the
         // 2026-07-22 close-on-restore): users often restore / compare several
@@ -3853,7 +3853,7 @@ function CanvasSpaceInner({
       if (decision.kind === 'write') {
         restoreNodeMedia(projectId, spaceId, nodeId, {
           content: decision.content,
-          coverUrl: decision.coverUrl,
+          media: decision.media,
         });
       }
     },
