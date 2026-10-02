@@ -93,7 +93,7 @@ export function SecondPanelRow({
       aria-expanded={open}
       data-testid={testId}
       className={cn(
-        'group grid grid-cols-[72px_minmax(0,1fr)_16px] items-center gap-2 px-1',
+        'group grid w-full grid-cols-[72px_minmax(0,1fr)_16px] items-center gap-2 px-1',
         open && 'bg-accent',
         className,
       )}
@@ -117,7 +117,7 @@ export function SecondPanelRow({
       >
         {value}
       </span>
-      <Chevron className='h-3.5 w-3.5 opacity-60' aria-hidden='true' />
+      <Chevron className='h-3.5 w-3.5 justify-self-end opacity-60' aria-hidden='true' />
     </Button>
   );
 }

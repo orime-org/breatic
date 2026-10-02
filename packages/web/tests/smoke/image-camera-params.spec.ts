@@ -55,6 +55,10 @@ for (const width of [1280, 1920]) {
       const nameLeft = async (text: string): Promise<number> =>
         Math.round((await popover.getByText(text, { exact: true }).first().boundingBox())!.x);
       expect(await nameLeft('Camera')).toBe(await nameLeft('Image search'));
+      // And it reaches across: its chevron ends where the switches above end.
+      const chevronRight = (await row.locator('svg').boundingBox())!;
+      const switchBox = (await page.getByTestId('generate-param-enable_web_search-toggle').boundingBox())!;
+      expect(Math.round(chevronRight.x + chevronRight.width)).toBe(Math.round(switchBox.x + switchBox.width));
 
       await row.click();
       const panel = page.getByTestId('generate-camera-panel');
