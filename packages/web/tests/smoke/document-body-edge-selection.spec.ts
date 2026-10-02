@@ -613,6 +613,24 @@ test('a Shift+click inside a range past the last block keeps the longer part (A6
   expect([reading.kind, reading.anchor, reading.head]).toEqual(['_TextSelection', made.anchor, made.anchor + 30]);
 });
 
+test('a Shift+click on a check-list checkbox ticks it and leaves the caret where it was', async () => {
+  await openFreshDocument(page);
+  await setBlocks(page, [{ type: 'paragraph', content: 'Alpha line' }, { type: 'paragraph', content: 'Beta line' }, { type: 'checkListItem', content: 'Task item' }, { type: 'divider' }]);
+  const first = await rowBox(page, 0);
+  await page.mouse.click(first.x + 2, first.y + first.height / 2);
+  await page.waitForTimeout(SETTLE_MS);
+  const before = await read(page);
+  const checkbox = page.locator(`${EDITOR} input[type="checkbox"]`).first();
+  const box = await checkbox.boundingBox();
+  if (box === null) throw new Error('the checkbox has no box');
+
+  await shiftClick(page, box.x + box.width / 2, box.y + box.height / 2);
+
+  await expect(checkbox).toBeChecked();
+  const after = await read(page);
+  expect([after.anchor, after.head]).toEqual([before.anchor, before.anchor]);
+});
+
 test('an empty line a range starts or ends on shows the empty-line mark, wherever it sits', async () => {
   await openFreshDocument(page);
   for (const blocks of [
