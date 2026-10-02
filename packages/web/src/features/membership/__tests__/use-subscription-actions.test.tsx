@@ -35,6 +35,7 @@ vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
 
+import { ApiException } from '@web/data/api/types';
 import { MEMBERSHIP_QUERY_ROOT } from '@web/features/membership/membership-query';
 import { useSubscriptionActions } from '@web/features/membership/use-subscription-actions';
 
@@ -69,11 +70,9 @@ beforeEach(() => {
 
 describe('useSubscriptionActions — a refusal re-reads the account (#307 A10b)', () => {
   it('re-reads the panel and the avatar menu when a checkout is refused as a conflict', async () => {
-    api.startSubscriptionCheckout.mockRejectedValue({
-      status: 409,
-      message: 'already subscribed',
-      fromServer: true,
-    });
+    api.startSubscriptionCheckout.mockRejectedValue(
+      new ApiException({ status: 409, message: 'already subscribed', fromServer: true }),
+    );
     const { result, client } = setup();
     const invalidate = vi.spyOn(client, 'invalidateQueries');
 
@@ -88,11 +87,9 @@ describe('useSubscriptionActions — a refusal re-reads the account (#307 A10b)'
   });
 
   it('leaves the account alone when a checkout fails for any other reason', async () => {
-    api.startSubscriptionCheckout.mockRejectedValue({
-      status: 503,
-      message: 'down',
-      fromServer: true,
-    });
+    api.startSubscriptionCheckout.mockRejectedValue(
+      new ApiException({ status: 503, message: 'down', fromServer: true }),
+    );
     const { result } = setup();
 
     act(() => {

@@ -28,6 +28,7 @@ import {
   resumeSubscription,
   startSubscriptionCheckout,
 } from '@web/data/api/subscription';
+import { ApiException } from '@web/data/api/types';
 import { MEMBERSHIP_QUERY_ROOT } from '@web/features/membership/membership-query';
 
 /** Which of the panel's actions is running. */
@@ -48,20 +49,6 @@ export interface SubscriptionActions {
   busy: boolean;
   /** The one that is running, so its own control can say so. */
   pending: PendingSubscriptionAction | null;
-}
-
-/**
- * Whether a failed request was refused as a conflict with the account's state.
- * @param err - What the request threw.
- * @returns Whether the server answered 409.
- */
-function isConflict(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'status' in err &&
-    (err as { status?: unknown }).status === 409
-  );
 }
 
 /**
@@ -123,7 +110,7 @@ export function useSubscriptionActions(
         // Before refusing a checkout the server may have asked Stripe and
         // stored a subscription it found still live, so the panel and the
         // avatar menu re-read rather than keep offering what it refused.
-        if (isConflict(err)) {
+        if (err instanceof ApiException && err.status === 409) {
           await Promise.all([refreshPanel(), refreshCurrentUser()]);
         }
       } finally {
