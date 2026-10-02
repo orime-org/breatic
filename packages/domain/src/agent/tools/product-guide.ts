@@ -522,7 +522,13 @@ export function renderProductGuide(): string {
       "mode's own prompt: each mode keeps its own words (and, for music, its own lyrics), so a mode never typed " +
       "in shows an empty box.",
     `- Picture panel: tools ${quoted(t("canvas.generatePanel.reference"))} and ` +
-      `${quoted(t("canvas.generatePanel.focus"))}, with no source slots. Clicking the settings pill opens ` +
+      `${quoted(t("canvas.generatePanel.focus"))}. A model that takes style images adds, after a thin divider, ` +
+      `a ${quoted(t("canvas.generatePanel.style"))} button: click it, then up to three pictures on the canvas, ` +
+      `while the banner reads ${quoted(t("canvas.generatePanel.selectStyleFromCanvas"))}. Each picked picture ` +
+      "shows as a small picture with an X that takes it out, and while there is room one more place counts " +
+      "them, such as 2/3; clicking it picks more. The pictures are copies, and the run follows their look. A " +
+      "model built around style images will not run with none and says " +
+      `${quoted(t("canvas.generatePanel.errorNoStyleImage"))}. Clicking the settings pill opens ` +
       "whichever of " +
       `${quoted(t("canvas.generatePanel.resolution"))} and ${quoted(t("canvas.generatePanel.ratio"))} the model ` +
       "has, and any settings of the model's own, such as quality. A model with camera settings adds, at the " +
@@ -615,7 +621,8 @@ export function renderProductGuide(): string {
       `the sound panel: ${quoted(t("canvas.generatePanel.refAudio"))}, ` +
       `${quoted(t("canvas.generatePanel.sourceVideo"))}, ${quoted(t("canvas.generatePanel.moodImage"))}, ` +
       `${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicMelody"))} and ` +
-      `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel has none. Which ones show depends on ` +
+      `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel's only one is its style area, which ` +
+      "holds up to three pictures (see the picture panel above). Which ones show depends on " +
       "the mode and model. Some must be " +
       "filled before a run; others are optional. Press a slot's button, then click a node on the canvas: the bar " +
       `at the top says what to pick, such as ${quoted(t("canvas.generatePanel.selectFirstFrameFromCanvas"))}, ` +
