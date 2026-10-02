@@ -613,6 +613,7 @@
       "audioReadingDialogue": "對話（{count} 人）",
       "audioDialogueSummary": "對話 · {count} 人",
       "audioSpeakersNote": "台詞寫成「名字：台詞」",
+      "audioSpeakerRow": "說話人 {n}",
       "audioLanguageSearch": "搜尋語言…",
       "audioOptionEmpty": "沒有符合項目",
       "param": {

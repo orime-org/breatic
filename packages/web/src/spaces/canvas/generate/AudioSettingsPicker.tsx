@@ -7,6 +7,7 @@ import * as React from 'react';
 import { getLocale, type ModelEntry, type Voice } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { Input } from '@web/components/ui/input';
 import {
   Popover,
   PopoverContent,
@@ -25,17 +26,16 @@ import {
   type SettingsRow,
 } from '@web/spaces/canvas/generate/audio-settings';
 import { PARAMS_PILL_CLASS } from '@web/spaces/canvas/generate/generate-tools';
+import { fixedEntries } from '@web/spaces/canvas/generate/fixed-entries';
 import { ItemsEditor } from '@web/spaces/canvas/generate/ItemsEditor';
 import { modelControls, ownControlSummary, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { OptionList } from '@web/spaces/canvas/generate/OptionList';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
-import { SampleButton } from '@web/spaces/canvas/generate/SampleButton';
 import { isStandInOn, STAND_IN_ON } from '@web/spaces/canvas/generate/stand-in';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import { useSamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
-import { sampleUrlFor } from '@web/spaces/canvas/generate/voice-param';
 import { VoiceList } from '@web/spaces/canvas/generate/VoiceList';
 import { SecondPanelFrame, SecondPanelRow, useSecondPanelSide } from '@web/spaces/canvas/generate/second-panel';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
@@ -100,7 +100,7 @@ function asChoice(held: unknown): string | number | undefined {
  * @returns The key.
  */
 function panelKey(row: SettingsRow): string {
-  return `${row.kind}:${row.name}`;
+  return row.kind === 'speaker' ? `speaker:${row.index}` : `${row.kind}:${row.name}`;
 }
 
 /**
@@ -147,18 +147,21 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
   // The voice list is fetched while a panel that reads it is showing: the
   // voice list itself, and the speakers, whose voices play their samples.
   const readsVoices = React.useCallback(
-    (key: string | null) => key !== null && (key.startsWith('voice:') || key === `items:${standIn?.name}`),
-    [standIn],
+    (key: string | null) => key !== null && (key.startsWith('voice:') || key.startsWith('speaker:')),
+    [],
   );
   const onVoiceOpenChange = voice.onOpenChange;
+  const onVoiceQueryChange = voice.onQueryChange;
   const stopSample = player.stop;
   const showPanel = React.useCallback(
     (next: string | null) => {
       if (readsVoices(panel) !== readsVoices(next)) onVoiceOpenChange(readsVoices(next));
+      // One speaker's search would hide the next speaker's voice from its list.
+      else if (readsVoices(next) && next !== panel) onVoiceQueryChange('');
       stopSample();
       setPanel(next);
     },
-    [panel, readsVoices, onVoiceOpenChange, stopSample],
+    [panel, readsVoices, onVoiceOpenChange, onVoiceQueryChange, stopSample],
   );
 
   const handleOpenChange = React.useCallback(
@@ -176,6 +179,45 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
     [layout],
   );
 
+  // The dialogue's speakers, one entry per speaker row, and which field of an
+  // entry is the name (the text field) and which the voice (the choice).
+  const speakerControl = standIn === null ? undefined : modelControls(model).find((c) => c.name === standIn.name);
+  const speakerFields = speakerControl?.kind === 'items' ? speakerControl.fields : [];
+  const nameField = speakerFields.find((f) => f.kind === 'text')?.name;
+  const voiceField = speakerFields.find((f) => f.kind === 'choice')?.name;
+  const speakers =
+    standIn === null
+      ? []
+      : fixedEntries(value[standIn.name], model.params[standIn.name]?.max_items ?? standIn.min, speakerFields);
+
+  /**
+   * Writes one field of one speaker, with the whole list as the node holds it.
+   * @param index - Which speaker.
+   * @param field - Which of its fields.
+   * @param next - The new value.
+   */
+  const writeSpeaker = (index: number, field: string | undefined, next: unknown): void => {
+    if (standIn === null || field === undefined) return;
+    onChange({ [standIn.name]: speakers.map((entry, i) => (i === index ? { ...entry, [field]: next } : entry)) });
+  };
+
+  /**
+   * A speaker's name, or its voice as the voice list names it.
+   * @param index - Which speaker.
+   * @param field - The field to read.
+   * @returns The text, empty when unset.
+   */
+  const speakerText = (index: number, field: string | undefined): string => {
+    const held = field === undefined ? undefined : speakers[index]?.[field];
+    return typeof held === 'string' ? held : '';
+  };
+  /**
+   * A voice as the voice list names it.
+   * @param id - The voice id the node holds.
+   * @returns Its name, or the id when the list does not carry it.
+   */
+  const voiceNameOf = (id: string): string => voice.list.voices.find((v) => v.id === id)?.name ?? id;
+
   if (!hasSettings(model)) return null;
 
   /**
@@ -184,6 +226,11 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
    * @returns The value as the reader reads it.
    */
   const rowValue = (row: SettingsRow): string => {
+    if (row.kind === 'speaker') {
+      return [speakerText(row.index, nameField), voiceNameOf(speakerText(row.index, voiceField))]
+        .filter((part) => part !== '')
+        .join(' · ');
+    }
     if (row.kind === 'voice') {
       return voice.selectedName ?? voice.selectedId ?? t('canvas.generatePanel.voicePlaceholder');
     }
@@ -206,10 +253,12 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
    * @returns The part, or undefined when the row has nothing to say.
    */
   const rowSummary = (row: SettingsRow): string | undefined => {
-    if (row.kind !== 'items') return rowValue(row);
-    if (dialogue && row.name === standIn.name) {
-      return t('canvas.generatePanel.audioDialogueSummary', { count: standIn.min });
+    if (row.kind === 'speaker') {
+      return row.index === 0 && standIn !== null
+        ? t('canvas.generatePanel.audioDialogueSummary', { count: standIn.min })
+        : undefined;
     }
+    if (row.kind !== 'items') return rowValue(row);
     const held = value[row.name];
     return Array.isArray(held) && held.length > 0 ? t(`canvas.generatePanel.param.${row.name}`) : undefined;
   };
@@ -282,17 +331,22 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
             <SecondPanelRow
               key={panelKey(row)}
               label={
-                row.kind === 'voice'
-                  ? t('canvas.generatePanel.audioVoice')
-                  : t(`canvas.generatePanel.param.${row.name}`)
+                row.kind === 'speaker'
+                  ? t('canvas.generatePanel.audioSpeakerRow', { n: row.index + 1 })
+                  : row.kind === 'voice'
+                    ? t('canvas.generatePanel.audioVoice')
+                    : t(`canvas.generatePanel.param.${row.name}`)
               }
               value={rowValue(row)}
               open={panel === panelKey(row)}
               onLeft={secondOnLeft}
-              testId={`generate-audio-row-${row.name}`}
+              testId={row.kind === 'speaker' ? `generate-audio-row-${row.name}-${row.index}` : `generate-audio-row-${row.name}`}
               onClick={() => showPanel(panel === panelKey(row) ? null : panelKey(row))}
             />
           ))}
+          {dialogue ? (
+            <p className='px-1 pt-1 text-xs text-muted-foreground'>{t('canvas.generatePanel.audioSpeakersNote')}</p>
+          ) : null}
           {(shared.length > 0 || layout.inline.length > 0) && layout.rows.length > 0 ? (
             <div className='mx-1 my-1 h-px bg-border' />
           ) : null}
@@ -355,17 +409,31 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                 }
                 testIdPrefix={`generate-audio-option-${openRow.name}`}
               />
+            ) : openRow.kind === 'speaker' ? (
+              <>
+                <SpeakerNameBox
+                  key={openRow.index}
+                  label={t('canvas.generatePanel.paramField.speaker')}
+                  placeholder={t('canvas.generatePanel.audioSpeakerRow', { n: openRow.index + 1 })}
+                  held={speakerText(openRow.index, nameField)}
+                  onCommit={(next) => writeSpeaker(openRow.index, nameField, next)}
+                />
+                <VoiceList
+                  list={voice.list}
+                  selectedId={speakerText(openRow.index, voiceField)}
+                  onQueryChange={voice.onQueryChange}
+                  onPick={(picked) => {
+                    writeSpeaker(openRow.index, voiceField, picked.id);
+                    showPanel(null);
+                  }}
+                  onLoadMore={voice.onLoadMore}
+                  onRetry={() => voice.onOpenChange(true)}
+                  player={player}
+                  language={language}
+                />
+              </>
             ) : (
-              <ItemsPanel
-                model={model}
-                name={openRow.name}
-                held={value[openRow.name]}
-                note={openRow.name === standIn?.name ? t('canvas.generatePanel.audioSpeakersNote') : undefined}
-                voices={voice.list.voices}
-                player={player}
-                language={language}
-                onChange={onChange}
-              />
+              <ItemsPanel model={model} name={openRow.name} held={value[openRow.name]} onChange={onChange} />
             )}
           </SecondPanelFrame>
         ) : null}
@@ -378,32 +446,19 @@ interface ItemsPanelProps {
   model: ModelEntry;
   name: string;
   held: unknown;
-  /** A line under the title, when the list needs one. */
-  note: string | undefined;
-  /** The voice list, whose samples a voice field plays. */
-  voices: readonly Voice[];
-  player: ReturnType<typeof useSamplePlayer>;
-  /** The language the reader picked, for a voice with a sample in each. */
-  language: unknown;
   onChange: (partial: Record<string, unknown>) => void;
 }
 
 /**
- * A list of entries in the second panel: Gemini's speakers, MiniMax's
- * pronunciations. A voice field plays its sample beside the choice, when the
- * voice list has one for it.
+ * A list of entries in the second panel: MiniMax's pronunciations.
  * @param root0 - Props.
  * @param root0.model - The active model.
  * @param root0.name - The list param's name.
  * @param root0.held - What the node holds for it.
- * @param root0.note - A line under the title.
- * @param root0.voices - The voice list.
- * @param root0.player - Plays the samples.
- * @param root0.language - The language picked, if the model takes one.
  * @param root0.onChange - Called with the new list.
  * @returns The panel.
  */
-function ItemsPanel({ model, name, held, note, voices, player, language, onChange }: ItemsPanelProps): React.JSX.Element | null {
+function ItemsPanel({ model, name, held, onChange }: ItemsPanelProps): React.JSX.Element | null {
   const t = useTranslation();
   const control = modelControls(model).find((c) => c.name === name);
   if (control?.kind !== 'items') return null;
@@ -417,24 +472,60 @@ function ItemsPanel({ model, name, held, note, voices, player, language, onChang
         min={spec?.min_items}
         fields={control.fields}
         fieldLabel={(field) => t(`canvas.generatePanel.paramField.${field}`)}
-        afterChoice={(field, chosen, index) => {
-          if (field !== 'voice' || typeof chosen !== 'string') return null;
-          const match = voices.find((v) => v.id === chosen || v.name === chosen);
-          const sample = match === undefined ? undefined : sampleUrlFor(match, language);
-          if (sample === undefined) return null;
-          return (
-            <SampleButton
-              name={chosen}
-              testId={`generate-param-${name}-${index}-sample`}
-              playing={player.playing === `${name}:${index}`}
-              onToggle={() => player.toggle(`${name}:${index}`, sample)}
-            />
-          );
-        }}
         held={held}
         onChange={onChange}
       />
-      {note !== undefined ? <p className='text-xs text-muted-foreground'>{note}</p> : null}
+    </div>
+  );
+}
+
+interface SpeakerNameBoxProps {
+  /** The box's name above it. */
+  label: string;
+  /** What the empty box says. */
+  placeholder: string;
+  /** The name the node holds. */
+  held: string;
+  /** Called with a changed name. */
+  onCommit: (next: string) => void;
+}
+
+/**
+ * A speaker's name, written when the reader leaves the box or presses Enter,
+ * so each edit is one canvas undo step. The Enter that confirms an IME word
+ * is not the reader finishing the name.
+ * @param root0 - Props.
+ * @param root0.label - The box's name.
+ * @param root0.placeholder - What the empty box says.
+ * @param root0.held - The name the node holds.
+ * @param root0.onCommit - Called with a changed name.
+ * @returns The box.
+ */
+function SpeakerNameBox({ label, placeholder, held, onCommit }: SpeakerNameBoxProps): React.JSX.Element {
+  const id = React.useId();
+  const [draft, setDraft] = React.useState<string | null>(null);
+  /** Writes the draft, when it differs from what the node holds, and drops it. */
+  const commit = (): void => {
+    if (draft !== null && draft !== held) onCommit(draft);
+    setDraft(null);
+  };
+  return (
+    <div className='border-b border-border p-3'>
+      <label htmlFor={id} className='mb-1.5 block text-xs font-medium text-muted-foreground'>
+        {label}
+      </label>
+      <Input
+        id={id}
+        data-testid='generate-audio-speaker-name'
+        placeholder={placeholder}
+        value={draft ?? held}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing) commit();
+        }}
+        className='h-8 text-xs'
+      />
     </div>
   );
 }

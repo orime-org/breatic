@@ -29,7 +29,8 @@ export const LONG_CHOICE = 8;
 export type SettingsRow =
   | { readonly kind: 'voice'; readonly name: string }
   | { readonly kind: 'choice'; readonly name: string }
-  | { readonly kind: 'items'; readonly name: string };
+  | { readonly kind: 'items'; readonly name: string }
+  | { readonly kind: 'speaker'; readonly name: string; readonly index: number };
 
 /** Everything the first panel shows for one model, in order. */
 export interface SettingsLayout {
@@ -68,7 +69,11 @@ export function settingsLayout(
     .filter((control) => control.name !== standIn?.name)
     .map((control) => ({ kind: control.kind === 'items' ? 'items' : 'choice', name: control.name }));
   const voice = voiceParamName(model);
-  if (on && standIn) rows.push({ kind: 'items', name: standIn.name });
+  if (on && standIn) {
+    // One row per speaker the dialogue holds, each opening that speaker.
+    const speakers = model.params[standIn.name]?.max_items ?? standIn.min;
+    for (let index = 0; index < speakers; index += 1) rows.push({ kind: 'speaker', name: standIn.name, index });
+  }
   else if (voice !== null) rows.push({ kind: 'voice', name: voice });
   return {
     standIn,
