@@ -159,6 +159,25 @@ function blocksOf(editor: Editor): ReadBlock[] {
   return editor.document as unknown as ReadBlock[];
 }
 
+/**
+ * Presses the main button on the first check-list checkbox, inside the body.
+ * @param view - The view.
+ * @param init - Extra fields for the event.
+ * @returns The event, to see whether it was prevented.
+ */
+function pressCheckbox(view: EditorView, init: MouseEventInit = {}): MouseEvent {
+  const event = new MouseEvent('mousedown', {
+    clientX: 50, clientY: 50, button: 0, buttons: 1, bubbles: true, cancelable: true, ...init,
+  });
+  view.dom.querySelector('input[type="checkbox"]')!.dispatchEvent(event);
+  return event;
+}
+
+const WITH_CHECKBOX = [
+  { type: 'paragraph', content: 'Alpha' },
+  { type: 'checkListItem', content: 'Task' },
+  { type: 'divider' },
+];
 const ABOVE_DIVIDER = [{ type: 'paragraph', content: 'Above' }, { type: 'divider' }];
 const BELOW_DIVIDER = [{ type: 'divider' }, { type: 'paragraph', content: 'Below' }];
 
@@ -591,23 +610,25 @@ describe('Shift+click past an end of the body', () => {
   });
 
   it('leaves a Shift+click on a check-list checkbox to the checkbox', () => {
-    const view = open([
-      { type: 'paragraph', content: 'Alpha' },
-      { type: 'checkListItem', content: 'Task' },
-      { type: 'divider' },
-    ]).prosemirrorView!;
+    const view = open(WITH_CHECKBOX).prosemirrorView!;
     const at = textStart(view, 'Alpha') + 1;
     select(view, at);
     pointAt(view, textStart(view, 'Task'));
-    const box = view.dom.querySelector('input[type="checkbox"]')!;
 
-    const event = new MouseEvent('mousedown', {
-      clientX: 50, clientY: 150, button: 0, buttons: 1, bubbles: true, cancelable: true, shiftKey: true,
-    });
-    box.dispatchEvent(event);
-    move(150);
+    const event = pressCheckbox(view, { shiftKey: true });
 
     expect(event.defaultPrevented).toBe(false);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, at]);
+  });
+
+  it('does not follow a drag that starts on a check-list checkbox', () => {
+    const view = open(WITH_CHECKBOX).prosemirrorView!;
+    const at = textStart(view, 'Alpha') + 1;
+    select(view, at);
+
+    pressCheckbox(view);
+    move(150);
+
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, at]);
   });
 });

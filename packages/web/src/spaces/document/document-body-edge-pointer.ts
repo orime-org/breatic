@@ -14,11 +14,12 @@
  * the block the pointer is on answers both, so this plugin follows the pointer
  * and dispatches the selection itself when that changes.
  *
- * A plain press is watched in the capture phase and left to go on: ProseMirror's
- * own `mousedown` still runs, and with it Chrome's protection of the selection
- * during a drag (`input.ts:396-398`, `selection.ts:62-72`). A Shift press is
- * taken ({@link PointerFollower.extendFrom}), and ProseMirror's `mousedown` does
- * not run for it.
+ * A press on a control a block draws is left to the control (`onControl`).
+ * A Shift press that lands on a position is taken
+ * ({@link PointerFollower.extendFrom}). Every other press is watched in the
+ * capture phase and goes on to ProseMirror's own `mousedown`, and with it
+ * Chrome's protection of the selection during a drag (`input.ts:396-398`,
+ * `selection.ts:62-72`).
  *
  * THE WIDGET BELOW. BlockNote draws a stand-in block under a last block that
  * is not an empty paragraph and inserts a paragraph on a press on it
@@ -153,13 +154,14 @@ function isPlainPress(event: MouseEvent): boolean {
 }
 
 /**
- * Whether a press lands on a control a block draws, such as a check-list
- * checkbox: the press is the control's, and the text selection stays as it is.
+ * Whether a press lands on a control a block draws, a check-list checkbox or a
+ * toggle heading's button: the press is the control's, and the text selection
+ * stays as it is.
  * @param event - The press.
  * @returns True for a press on such a control.
  */
 function onControl(event: MouseEvent): boolean {
-  return event.target instanceof Element && event.target.closest('input, button, select, textarea') !== null;
+  return event.target instanceof Element && event.target.closest('input, button') !== null;
 }
 
 /**
