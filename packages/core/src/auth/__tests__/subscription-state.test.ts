@@ -47,9 +47,99 @@ function row(over: Partial<SubscriptionRecord> = {}): SubscriptionRecord {
   };
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const STALE_AFTER_MS = 14 * DAY_MS;
+
+/**
+ * Reads rows at a moment before any period in these cases ends, so the
+ * period-end rule stays out of the cases that are about something else.
+ * @param rows - The rows to read.
+ * @returns The reading.
+ */
+function situate<T extends SubscriptionRecord>(
+  rows: readonly T[],
+): ReturnType<typeof subscriptionSituation<T>> {
+  return subscriptionSituation(rows, {
+    now: new Date("2026-09-01T00:00:00Z"),
+    staleAfterMs: STALE_AFTER_MS,
+  });
+}
+
+describe("subscriptionSituation — a live row past its deadline counts as ended (#307 §5.1)", () => {
+  const periodEnd = new Date("2026-09-17T00:00:00Z");
+  const at = (ms: number) => ({
+    now: new Date(periodEnd.getTime() + ms),
+    staleAfterMs: STALE_AFTER_MS,
+  });
+
+  it("a cancelling row ends at its period end", () => {
+    const cancelling = row({ cancelAtPeriodEnd: true, currentPeriodEnd: periodEnd });
+
+    expect(subscriptionSituation([cancelling], at(-1000)).situation).toBe("cancelling");
+
+    const after = subscriptionSituation([cancelling], at(1000));
+    expect(after).toEqual({ situation: "none", record: null, lapsed: cancelling });
+  });
+
+  it.each([
+    ["active", row({ currentPeriodEnd: periodEnd })],
+    ["retrying", row({ status: "past_due", currentPeriodEnd: periodEnd })],
+    ["upgradePending", row({ hasPendingUpdate: true, currentPeriodEnd: periodEnd })],
+  ] as const)("an %s row keeps the renewal grace before it ends", (situation, live) => {
+    expect(subscriptionSituation([live], at(STALE_AFTER_MS - 1000)).situation).toBe(
+      situation,
+    );
+    expect(subscriptionSituation([live], at(STALE_AFTER_MS + 1000))).toEqual({
+      situation: "none",
+      record: null,
+      lapsed: live,
+    });
+  });
+
+  it("a first payment that never settled has no period to judge", () => {
+    const unpaid = row({ status: "incomplete", currentPeriodEnd: null });
+    expect(subscriptionSituation([unpaid], at(365 * DAY_MS)).situation).toBe(
+      "firstPaymentUnsettled",
+    );
+  });
+
+  it("a lapsed higher tier does not outrank a fresh lower one", () => {
+    const lapsedTeam = row({
+      stripeSubscriptionId: "sub_team",
+      tier: "team",
+      currentPeriodEnd: periodEnd,
+    });
+    const freshPro = row({
+      stripeSubscriptionId: "sub_pro",
+      tier: "pro",
+      currentPeriodEnd: new Date(periodEnd.getTime() + 60 * DAY_MS),
+    });
+
+    for (const rows of [[lapsedTeam, freshPro], [freshPro, lapsedTeam]]) {
+      const reading = subscriptionSituation(rows, at(STALE_AFTER_MS + 1000));
+      expect(reading.situation).toBe("active");
+      expect(reading.record?.stripeSubscriptionId).toBe("sub_pro");
+      expect(reading.lapsed?.stripeSubscriptionId).toBe("sub_team");
+    }
+  });
+
+  it("a lapsed row is not read as unexpected", () => {
+    const lapsed = row({ currentPeriodEnd: periodEnd });
+    const ended = row({ stripeSubscriptionId: "sub_old", status: "canceled" });
+    expect(subscriptionSituation([lapsed, ended], at(STALE_AFTER_MS + 1000)).situation).toBe(
+      "none",
+    );
+  });
+
+  it("reports no lapsed row when nothing lapsed", () => {
+    expect(situate([row()]).lapsed).toBeNull();
+    expect(situate([]).lapsed).toBeNull();
+  });
+});
+
 describe("subscriptionSituation (#106 §6.5.1)", () => {
   it("reports no live subscription when the account has never had one", () => {
-    expect(subscriptionSituation([]).situation).toBe("none");
+    expect(situate([]).situation).toBe("none");
   });
 
   it("reports no live subscription when every row has ended", () => {
@@ -58,26 +148,26 @@ describe("subscriptionSituation (#106 §6.5.1)", () => {
       row({ stripeSubscriptionId: "sub_2", status: "incomplete_expired" }),
       row({ stripeSubscriptionId: "sub_3", status: "unpaid" }),
     ];
-    expect(subscriptionSituation(rows).situation).toBe("none");
+    expect(situate(rows).situation).toBe("none");
   });
 
   it("separates a scheduled cancellation from an ordinary active plan", () => {
-    expect(subscriptionSituation([row()]).situation).toBe("active");
+    expect(situate([row()]).situation).toBe("active");
     expect(
-      subscriptionSituation([row({ cancelAtPeriodEnd: true })]).situation,
+      situate([row({ cancelAtPeriodEnd: true })]).situation,
     ).toBe("cancelling");
   });
 
   it("separates an unpaid upgrade from an ordinary active plan", () => {
     expect(
-      subscriptionSituation([row({ hasPendingUpdate: true })]).situation,
+      situate([row({ hasPendingUpdate: true })]).situation,
     ).toBe("upgradePending");
   });
 
   it("reports both when a cancellation is scheduled and an upgrade is unpaid", () => {
     // Cancelling wins: the plan is ending, and that decides what the panel
     // offers. The unpaid upgrade is still visible through the row.
-    const { situation, record } = subscriptionSituation([
+    const { situation, record } = situate([
       row({ cancelAtPeriodEnd: true, hasPendingUpdate: true }),
     ]);
     expect(situation).toBe("cancelling");
@@ -85,13 +175,13 @@ describe("subscriptionSituation (#106 §6.5.1)", () => {
   });
 
   it("reports the first invoice as unsettled rather than as a live plan", () => {
-    expect(subscriptionSituation([row({ status: "incomplete" })]).situation).toBe(
+    expect(situate([row({ status: "incomplete" })]).situation).toBe(
       "firstPaymentUnsettled",
     );
   });
 
   it("reports a retrying charge", () => {
-    expect(subscriptionSituation([row({ status: "past_due" })]).situation).toBe(
+    expect(situate([row({ status: "past_due" })]).situation).toBe(
       "retrying",
     );
   });
@@ -99,10 +189,10 @@ describe("subscriptionSituation (#106 §6.5.1)", () => {
   it("reports states we never create as unexpected, not as live", () => {
     // We set no trial, so neither of these can arise from anything we do.
     // They must not block the account from subscribing.
-    expect(subscriptionSituation([row({ status: "trialing" })]).situation).toBe(
+    expect(situate([row({ status: "trialing" })]).situation).toBe(
       "unexpected",
     );
-    expect(subscriptionSituation([row({ status: "paused" })]).situation).toBe(
+    expect(situate([row({ status: "paused" })]).situation).toBe(
       "unexpected",
     );
   });
@@ -113,7 +203,7 @@ describe("subscriptionSituation (#106 §6.5.1)", () => {
     // it as `none` would be the harmful answer: the account is still being
     // billed, and the panel would offer to start a second subscription.
     expect(
-      subscriptionSituation([
+      situate([
         row({ status: "some_status_stripe_added" }),
       ]).situation,
     ).toBe("unexpected");
@@ -122,7 +212,7 @@ describe("subscriptionSituation (#106 §6.5.1)", () => {
   it("ignores ended rows when a live one is present", () => {
     // An account that cancelled and subscribed again keeps the old row as a
     // ledger entry; it must not be what decides the situation.
-    const { situation, record } = subscriptionSituation([
+    const { situation, record } = situate([
       row({ stripeSubscriptionId: "sub_old", status: "canceled", tier: "pro" }),
       row({ stripeSubscriptionId: "sub_new", status: "active", tier: "team" }),
     ]);
@@ -131,8 +221,8 @@ describe("subscriptionSituation (#106 §6.5.1)", () => {
   });
 
   it("returns the live record so callers need not search again", () => {
-    expect(subscriptionSituation([row()]).record?.tier).toBe("pro");
-    expect(subscriptionSituation([]).record).toBeNull();
+    expect(situate([row()]).record?.tier).toBe("pro");
+    expect(situate([]).record).toBeNull();
   });
 });
 
@@ -186,8 +276,8 @@ describe("subscriptionSituation — 两条都活着的时候挑哪一条", () =>
   const team = row({ stripeSubscriptionId: "sub_team", tier: "team" });
 
   it("给高的那一档：两份都在扣他的钱", () => {
-    expect(subscriptionSituation([pro, team]).record?.tier).toBe("team");
-    expect(subscriptionSituation([team, pro]).record?.tier).toBe("team");
+    expect(situate([pro, team]).record?.tier).toBe("team");
+    expect(situate([team, pro]).record?.tier).toBe("team");
   });
 
   it("同档时取付到更晚的那一条", () => {
@@ -199,8 +289,8 @@ describe("subscriptionSituation — 两条都活着的时候挑哪一条", () =>
       stripeSubscriptionId: "sub_b",
       currentPeriodEnd: new Date("2026-10-01T00:00:00Z"),
     });
-    expect(subscriptionSituation([early, late]).record?.stripeSubscriptionId).toBe("sub_b");
-    expect(subscriptionSituation([late, early]).record?.stripeSubscriptionId).toBe("sub_b");
+    expect(situate([early, late]).record?.stripeSubscriptionId).toBe("sub_b");
+    expect(situate([late, early]).record?.stripeSubscriptionId).toBe("sub_b");
   });
 
   it("档位和周期都一样时仍然只有一个答案", () => {
@@ -208,8 +298,8 @@ describe("subscriptionSituation — 两条都活着的时候挑哪一条", () =>
     // 不会随着调用方给的顺序变。
     const a = row({ stripeSubscriptionId: "sub_a" });
     const b = row({ stripeSubscriptionId: "sub_b" });
-    const one = subscriptionSituation([a, b]).record?.stripeSubscriptionId;
-    const other = subscriptionSituation([b, a]).record?.stripeSubscriptionId;
+    const one = situate([a, b]).record?.stripeSubscriptionId;
+    const other = situate([b, a]).record?.stripeSubscriptionId;
     expect(one).toBe(other);
   });
 
@@ -219,12 +309,12 @@ describe("subscriptionSituation — 两条都活着的时候挑哪一条", () =>
       tier: "team",
       status: "canceled",
     });
-    expect(subscriptionSituation([dead, pro]).record?.stripeSubscriptionId).toBe("sub_pro");
+    expect(situate([dead, pro]).record?.stripeSubscriptionId).toBe("sub_pro");
   });
 
   it("不改动调用方传进来的那个数组", () => {
     const rows = [pro, team];
-    subscriptionSituation(rows);
+    situate(rows);
     expect(rows[0]?.stripeSubscriptionId).toBe("sub_pro");
   });
 });
@@ -250,7 +340,7 @@ describe("subscriptionSituation — 没付成的那条不能压过正在生效�
     });
 
     for (const rows of [[activePro, unpaidTeam], [unpaidTeam, activePro]]) {
-      const reading = subscriptionSituation(rows);
+      const reading = situate(rows);
       expect(reading.record?.stripeSubscriptionId).toBe("sub_active_pro");
       expect(reading.situation).toBe("active");
       expect(tierForSituation(reading.situation, reading.record)).toBe("pro");
@@ -270,7 +360,7 @@ describe("subscriptionSituation — 没付成的那条不能压过正在生效�
       currentPeriodEnd: null,
     });
 
-    const reading = subscriptionSituation([unpaidTeam, retryingPro]);
+    const reading = situate([unpaidTeam, retryingPro]);
     expect(reading.situation).toBe("retrying");
     expect(tierForSituation(reading.situation, reading.record)).toBe("pro");
   });
@@ -281,7 +371,7 @@ describe("subscriptionSituation — 没付成的那条不能压过正在生效�
       status: "incomplete",
       currentPeriodEnd: null,
     });
-    expect(subscriptionSituation([unpaid]).situation).toBe(
+    expect(situate([unpaid]).situation).toBe(
       "firstPaymentUnsettled",
     );
   });
