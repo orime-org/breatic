@@ -39,7 +39,11 @@ import {
   subscriptionClock,
   subscriptionSituation,
 } from "@breatic/core";
-import type { SituationReading, StoredSubscription } from "@breatic/core";
+import type {
+  SituationReading,
+  StoredSubscription,
+  SubscriptionWrite,
+} from "@breatic/core";
 import type {
   BillingPeriod,
   SubscribableMembershipTier,
@@ -80,6 +84,64 @@ async function readSituation(
 ): Promise<SituationReading<StoredSubscription>> {
   const rows = await listSubscriptions(userId);
   return subscriptionSituation(rows, subscriptionClock());
+}
+
+/**
+ * Stores a subscription as Stripe described it in answer to one of the
+ * panel's own actions, so the next read shows it without waiting for the
+ * webhook (#307 A10).
+ *
+ * An answer that cannot be read against our price list is not written: the
+ * webhook carries the same change and answers that disagreement in its own
+ * way. The action itself already happened at Stripe, so the caller still
+ * reports it.
+ * @param input - What to store.
+ * @param input.userId - The account.
+ * @param input.subscription - Stripe's answer, with `latest_invoice` expanded.
+ * @param input.observedAt - When Stripe was asked.
+ * @param input.referenceId - Identifies the change in the tier ledger.
+ * @throws {Error} if the database fails.
+ */
+async function storeAnswer(input: {
+  userId: string;
+  subscription: Stripe.Subscription;
+  observedAt: Date;
+  referenceId: string;
+}): Promise<void> {
+  const read = readStripeSubscription(input.subscription, input.userId, input.observedAt);
+  if (!read.ok) {
+    logger.error(
+      {
+        userId: input.userId,
+        stripeSubscriptionId: input.subscription.id,
+        reason: read.reason,
+      },
+      "subscription_action_answer_unreadable",
+    );
+    return;
+  }
+  await writeSnapshot(input.userId, read.write, input.referenceId);
+}
+
+/**
+ * Stores one readable snapshot and sends the membership-ended email the change
+ * may owe, after the commit.
+ * @param userId - The account.
+ * @param write - The snapshot.
+ * @param referenceId - Identifies the change in the tier ledger.
+ * @throws {Error} if the database fails.
+ */
+async function writeSnapshot(
+  userId: string,
+  write: SubscriptionWrite,
+  referenceId: string,
+): Promise<void> {
+  const applied = await db.transaction((tx) =>
+    applySubscriptionWrite({ userId, write, referenceId, tx }),
+  );
+  // After the commit: an email about a change that then rolled back cannot be
+  // recalled.
+  if (applied.endedFrom) await sendMembershipEndedMail(userId, applied.endedFrom);
 }
 
 /**
@@ -253,17 +315,7 @@ export async function confirmCheckout(
     throw new AppError(503, t("server.membership.checkout_unconfirmed"));
   }
 
-  const applied = await db.transaction((tx) =>
-    applySubscriptionWrite({
-      userId,
-      write: read.write,
-      referenceId: `checkout:${sessionId}`,
-      tx,
-    }),
-  );
-  // After the commit: an email about a change that then rolled back cannot be
-  // recalled.
-  if (applied.endedFrom) await sendMembershipEndedMail(userId, applied.endedFrom);
+  await writeSnapshot(userId, read.write, `checkout:${sessionId}`);
 }
 
 /**
@@ -438,6 +490,7 @@ export async function changePlan(input: {
     throw new ConflictError(t("server.membership.payment_overdue"));
   }
 
+  const changedAt = new Date();
   const updated = await getStripeClient().subscriptions.update(
     record.stripeSubscriptionId,
     {
@@ -462,7 +515,7 @@ export async function changePlan(input: {
     },
   );
 
-  const read = readStripeSubscription(updated, input.userId);
+  const read = readStripeSubscription(updated, input.userId, changedAt);
   if (!read.ok) {
     // Stripe took the change and what came back does not agree with our price
     // list. Reporting "applied" here is the one answer that cannot be taken
@@ -471,9 +524,26 @@ export async function changePlan(input: {
     throw new AppError(500, t("server.membership.change_unconfirmed"));
   }
   const pending = read.write.hasPendingUpdate;
+  await writeSnapshot(
+    input.userId,
+    read.write,
+    `action:change:${record.stripeSubscriptionId}`,
+  );
 
   if (situation === "cancelling") {
-    await withdrawCancellation(record.stripeSubscriptionId, input.userId);
+    const withdrawnAt = new Date();
+    const withdrawn = await withdrawCancellation(
+      record.stripeSubscriptionId,
+      input.userId,
+    );
+    if (withdrawn) {
+      await storeAnswer({
+        userId: input.userId,
+        subscription: withdrawn,
+        observedAt: withdrawnAt,
+        referenceId: `action:withdraw:${record.stripeSubscriptionId}`,
+      });
+    }
   }
 
   return {
@@ -503,14 +573,17 @@ export async function changePlan(input: {
  * keep ends at the period boundary anyway.
  * @param subscriptionId - The subscription at Stripe.
  * @param userId - The account, for the log line if this fails.
+ * @returns The subscription as Stripe now describes it, or null when the call
+ *   failed.
  */
 async function withdrawCancellation(
   subscriptionId: string,
   userId: string,
-): Promise<void> {
+): Promise<Stripe.Subscription | null> {
   try {
-    await getStripeClient().subscriptions.update(subscriptionId, {
+    return await getStripeClient().subscriptions.update(subscriptionId, {
       cancel_at_period_end: false,
+      expand: ["latest_invoice"],
     });
   } catch (err) {
     // Not rethrown: the upgrade the caller asked for did happen, and
@@ -519,6 +592,7 @@ async function withdrawCancellation(
       { err, userId, subscriptionId },
       "subscription_cancellation_withdrawal_failed",
     );
+    return null;
   }
 }
 
@@ -537,9 +611,18 @@ export async function cancel(userId: string): Promise<Stripe.Subscription> {
   if (!record || !subscriptionActions(situation, record.cancelAtPeriodEnd).cancel) {
     throw new ConflictError(t("server.membership.no_subscription"));
   }
-  return getStripeClient().subscriptions.update(record.stripeSubscriptionId, {
-    cancel_at_period_end: true,
+  const askedAt = new Date();
+  const updated = await getStripeClient().subscriptions.update(
+    record.stripeSubscriptionId,
+    { cancel_at_period_end: true, expand: ["latest_invoice"] },
+  );
+  await storeAnswer({
+    userId,
+    subscription: updated,
+    observedAt: askedAt,
+    referenceId: `action:cancel:${record.stripeSubscriptionId}`,
   });
+  return updated;
 }
 
 /**
@@ -562,7 +645,16 @@ export async function resume(userId: string): Promise<Stripe.Subscription> {
   if (!record || !subscriptionActions(situation, record.cancelAtPeriodEnd).resume) {
     throw new ConflictError(t("server.membership.not_cancelling"));
   }
-  return getStripeClient().subscriptions.update(record.stripeSubscriptionId, {
-    cancel_at_period_end: false,
+  const askedAt = new Date();
+  const updated = await getStripeClient().subscriptions.update(
+    record.stripeSubscriptionId,
+    { cancel_at_period_end: false, expand: ["latest_invoice"] },
+  );
+  await storeAnswer({
+    userId,
+    subscription: updated,
+    observedAt: askedAt,
+    referenceId: `action:resume:${record.stripeSubscriptionId}`,
   });
+  return updated;
 }
