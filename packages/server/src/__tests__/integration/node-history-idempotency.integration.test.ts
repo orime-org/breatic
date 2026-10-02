@@ -831,7 +831,7 @@ describe("history rows carry the media a result landed with (#2184)", () => {
     expect(entries[0]).toMatchObject(onEntry);
   });
 
-  it("a medium with no such numbers reads back null for each", async () => {
+  it("a number the medium does not have reads back null (an image has no duration)", async () => {
     const userId = await insertUser("Media Empty");
     const projectId = await insertProject(userId);
     const nodeId = crypto.randomUUID();
@@ -855,7 +855,7 @@ describe("history rows carry the media a result landed with (#2184)", () => {
     });
   });
 
-  it("a row written before the media columns reads back null for all five", async () => {
+  it("a snapshot row, which carries no media, reads back null for all five", async () => {
     const userId = await insertUser("Media Old");
     const projectId = await insertProject(userId);
     const nodeId = crypto.randomUUID();

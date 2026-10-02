@@ -1505,7 +1505,7 @@ export function setNodeExtractionError(
  *   image / audio pass null, and a cover URL written onto them would be a
  *   phantom asset reference the asset-GC treats as live (Gate-1 R4 HIGH).
  * - Clears `errorMessage` (restoring a good result over a prior error state).
- * - Writes content and nothing else. A node's tasks are the server's to move
+ * - Leaves the node's tasks alone. A node's tasks are the server's to move
  *   (#186 §3.3), and a restore is the reader choosing which result the node
  *   shows — the later write wins, as it does between two finished tasks.
  * @param projectId - Project the canvas space belongs to.

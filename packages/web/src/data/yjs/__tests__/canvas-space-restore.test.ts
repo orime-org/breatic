@@ -54,7 +54,7 @@ function nodeData(id = 'n1'): Y.Map<unknown> {
   ).get('data') as Y.Map<unknown>;
 }
 
-/** What a row written before #2184 hands over: no cover, no numbers. */
+/** A row with none of the media fields: no cover, no numbers. */
 const NONE = { coverUrl: null, width: null, height: null, duration: null, mimeType: null, size: null };
 
 describe('restoreNodeMedia (#1619 history restore, critical path)', () => {

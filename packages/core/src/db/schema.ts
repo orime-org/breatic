@@ -679,7 +679,8 @@ export const nodeHistory = pgTable(
      * The media numbers this content landed on the node with (#2184), so a
      * restore can put back what the settle put there. Null when the medium has
      * no such number, and on every row written before 0088. Types follow the
-     * same-named columns on studio_assets.
+     * matching studio_assets columns (width / height, duration_seconds,
+     * mime_type, size_bytes).
      */
     mediaWidth: integer("media_width"),
     mediaHeight: integer("media_height"),

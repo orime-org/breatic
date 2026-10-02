@@ -82,8 +82,9 @@ export interface NodeHistoryEntry {
  * One row of a node's task list (#186) — what `GET /canvas/nodes/:id/tasks`
  * hands back.
  *
- * `content`, `coverUrl` and the media numbers are what this task put on the
- * node, read across server-side from the history row it names. They are present on a task that
+ * `content`, `coverUrl` and the media numbers are read across server-side from
+ * the history row this task names. `coverUrl` is that row's thumbnail: a
+ * video's cover, or for an image a preview of the content. They are present on a task that
  * landed something, which includes one judged expired before its report
  * arrived; the user replaces the node's content from them without a second
  * request.

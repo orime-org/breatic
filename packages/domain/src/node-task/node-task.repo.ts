@@ -52,9 +52,11 @@ export interface NodeTaskRow {
  * present on a task that landed something — which includes one judged expired
  * before its report arrived, since the bytes are real and the user must still
  * be able to pull them back (design §4.5). It rides on the list so replacing
- * the node's content costs no second request (design §3.5). These are what a
- * restore writes: the content, its cover, and the media numbers it landed on
- * the node with (#2184), under the node's own field names.
+ * the node's content costs no second request (design §3.5). It carries the
+ * content, the history row's thumbnail as `coverUrl`, and the media numbers
+ * the content landed on the node with (#2184), under the node's own field
+ * names. The thumbnail is a video's cover, which a restore writes; for an
+ * image it previews the content, and a restore writes null in its place.
  *
  * Every other read hands back the bare {@link NodeTaskRow}: settling a task
  * and clearing one have no use for what it landed, and a join they do not
