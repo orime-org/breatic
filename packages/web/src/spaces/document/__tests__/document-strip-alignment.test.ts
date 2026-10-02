@@ -100,7 +100,7 @@ async function placeAt(bodyLeft: number, rowLeft: number, x: number): Promise<un
     rects: { reference: { x: rowLeft - 300 } },
     elements: { reference },
   } as unknown as MiddlewareState;
-  const result = await edge!.fn(state);
+  const result = await edge.fn(state);
   return result;
 }
 
@@ -118,6 +118,6 @@ describe('the strip stays on the body\'s left edge (#1097 A13)', () => {
   it('leaves the carrier alone while there is no body to measure', async () => {
     const [edge] = stripPlacement(() => undefined).useFloatingOptions.middleware;
     const state = { x: 424, rects: { reference: { x: 448 } } } as unknown as MiddlewareState;
-    expect((await edge!.fn(state)).x).toBeUndefined();
+    expect((await edge.fn(state)).x).toBeUndefined();
   });
 });
