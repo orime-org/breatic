@@ -233,9 +233,10 @@ export async function startCheckout(input: {
   if (holdsActionableSubscription(situation)) {
     throw new ConflictError(t("server.membership.already_subscribed"));
   }
-  for (const row of lapsed) {
-    await recheckLapsed(row.stripeSubscriptionId, input.userId);
-  }
+  await recheckLapsed(
+    lapsed.map((row) => row.stripeSubscriptionId),
+    input.userId,
+  );
 
   if (situation === "firstPaymentUnsettled" && record) {
     // Stripe refuses to update a subscription whose first invoice has not
@@ -331,36 +332,60 @@ export async function confirmCheckout(
 }
 
 /**
- * Asks Stripe about a subscription we still have marked live past its
- * deadline, before selling a second one.
+ * Asks Stripe about every subscription we still have marked live past its
+ * deadline, before selling another one.
  *
- * Its deadline passing without a word from Stripe reads as ended everywhere
- * else, but checkout charges money and cannot be taken back: if Stripe is in
- * fact still billing it, selling another would bill the person twice. So the
- * decision follows Stripe's status, the same rule `voidUnpaidSubscription`
- * applies. What Stripe says is stored when it can be priced, which also puts
- * the tier back when the subscription turns out to be live.
- * @param subscriptionId - The lapsed subscription at Stripe.
+ * Their deadlines passing without a word from Stripe reads as ended
+ * everywhere else, but checkout charges money and cannot be taken back: if
+ * Stripe is in fact still billing one of them, selling another would bill
+ * the person twice. So the decision follows what Stripe says.
+ *
+ * Every one is asked before anything is stored, and the still-billed answers
+ * are stored first. Storing an ended answer while a still-billed one is not
+ * yet stored would settle the tier on base for a moment, and that move tells
+ * the person their membership ended. An answer that cannot be priced is not
+ * stored and still counts towards the decision.
+ * @param subscriptionIds - The lapsed subscriptions at Stripe.
  * @param userId - The account.
- * @throws {ConflictError} if Stripe says it is still live.
- * @throws {Error} if Stripe could not be asked.
+ * @throws {ConflictError} if Stripe still bills any of them.
+ * @throws {Error} if Stripe could not be asked about one of them.
  */
-async function recheckLapsed(subscriptionId: string, userId: string): Promise<void> {
+async function recheckLapsed(
+  subscriptionIds: readonly string[],
+  userId: string,
+): Promise<void> {
+  if (subscriptionIds.length === 0) return;
   const askedAt = new Date();
-  const fresh = await retrieveStoredSubscription(subscriptionId, ["latest_invoice"]);
-  if (!fresh) {
-    logger.warn({ userId, subscriptionId }, "subscription_lapsed_gone_at_stripe");
-    return;
-  }
-  await storeAnswer({
-    userId,
-    subscription: fresh,
-    observedAt: askedAt,
-    referenceId: `recheck:${subscriptionId}`,
+  const answers = await Promise.all(
+    subscriptionIds.map((id) => retrieveStoredSubscription(id, ["latest_invoice"])),
+  );
+
+  const found: Stripe.Subscription[] = [];
+  answers.forEach((fresh, i) => {
+    if (fresh) {
+      found.push(fresh);
+      return;
+    }
+    logger.warn(
+      { userId, subscriptionId: subscriptionIds[i] },
+      "subscription_lapsed_gone_at_stripe",
+    );
   });
-  if (stillBilledAtStripe(fresh, askedAt)) {
+  const billed = found.filter((fresh) => stillBilledAtStripe(fresh, askedAt));
+  const ended = found.filter((fresh) => !billed.includes(fresh));
+
+  for (const fresh of [...billed, ...ended]) {
+    await storeAnswer({
+      userId,
+      subscription: fresh,
+      observedAt: askedAt,
+      referenceId: `recheck:${fresh.id}`,
+    });
+  }
+
+  if (billed.length > 0) {
     logger.info(
-      { userId, subscriptionId, status: fresh.status },
+      { userId, subscriptionIds: billed.map((fresh) => fresh.id) },
       "subscription_lapsed_still_live_at_stripe",
     );
     throw new ConflictError(t("server.membership.already_subscribed"));
