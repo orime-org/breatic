@@ -20,7 +20,7 @@ We publish three images, and two of them carry FFmpeg:
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
 | `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-slim` (Debian bookworm) | yes |
-| the media container | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) | `alpine:3.22` | yes |
+| the media container | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) | `alpine:3.23` | yes |
 | `ghcr.io/<owner>/breatic-web` | [Dockerfile.web](./Dockerfile.web) | `nginx:1.27-alpine` | no — it serves the built front-end and nothing else |
 
 Breatic invokes the `ffmpeg` executable as a separate process and does not link
@@ -58,10 +58,10 @@ failure is the signal to update this entry alongside it.
 
 | | |
 |---|---|
-| Version | `6.1.2-r2` |
-| Origin | Alpine 3.22, installed with `apk add ffmpeg=~6.1` ([packages/ingest/Dockerfile](./packages/ingest/Dockerfile)) |
+| Version | `8.0.1-r1` |
+| Origin | Alpine 3.23, installed with `apk add ffmpeg=~8.0` ([packages/ingest/Dockerfile](./packages/ingest/Dockerfile)) |
 | Licence | **GPL-3.0-or-later** |
-| Source | `https://ffmpeg.org/releases/ffmpeg-6.1.2.tar.xz` for the program, and `https://gitlab.alpinelinux.org/alpine/aports/-/tree/19c99e366c9185609249108011f9f621c66f204e/community/ffmpeg` for the recipe Alpine built it with |
+| Source | `https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz` for the program, and `https://gitlab.alpinelinux.org/alpine/aports/-/tree/8623c9968f3fca48863eb9d3a355c2baaba7b20b/community/ffmpeg` for the recipe Alpine built it with |
 
 Version 3, not the 2 the Debian build above carries: Alpine configures this one
 with `--enable-gpl` **and** `--enable-version3`, and asked directly it answers
@@ -74,7 +74,7 @@ This image carries all four licence texts as upstream ships them, and a
 `SOURCE` file naming the version, both addresses, and both licence readings, at
 `/usr/share/ffmpeg-source/`. Every value in it is read out of the installed
 package and the binary while the image is built, so a rebuild that resolves
-`=~6.1` to a later release writes the later one rather than repeating what is
+`=~8.0` to a later release writes the later one rather than repeating what is
 written here. The aports commit above names the recipe exactly; a branch name
 would move on and stop describing this build.
 
