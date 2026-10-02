@@ -136,3 +136,80 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
     expect(screen.getByTestId('generate-resolution-option-1K')).toBeInTheDocument();
   });
 });
+
+describe('RatioResolutionPicker — the camera row (#2254)', () => {
+  const CAMERA = model({
+    aspect_ratio: RATIO,
+    resolution: RESOLUTION,
+    enable_camera: { description: '', values: [true, false], default: false, fill: 'panel' },
+    camera: { description: '', values: ['Canon EOS R5', 'Sony A7'], default: 'Canon EOS R5', fill: 'panel' },
+    lens: { description: '', values: ['Zeiss', 'Leica'], default: 'Zeiss', fill: 'panel' },
+    focal_length: { description: '', values: [35, 50, 85], default: 50, fill: 'panel' },
+    aperture: { description: '', values: ['f/1.4', 'f/2.8'], default: 'f/2.8', fill: 'panel' },
+  });
+  const SET = { aspect_ratio: '1:1', resolution: '1K', camera: 'Canon EOS R5', lens: 'Zeiss', focal_length: 50, aperture: 'f/2.8' };
+
+  it('draws no camera row for a model without the camera', () => {
+    render(<RatioResolutionPicker model={FULL} value={{ aspect_ratio: '1:1', resolution: '1K' }} onChange={() => {}} cameraSupported={false} />);
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    expect(screen.queryByTestId('generate-camera-row')).toBeNull();
+  });
+
+  it('reads Off on the row while the camera is off', () => {
+    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} cameraSupported />);
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    const row = screen.getByTestId('generate-camera-row');
+    expect(row).toHaveTextContent('Camera');
+    expect(row).toHaveTextContent('Off');
+  });
+
+  it('lists the four settings on the row while the camera is on', () => {
+    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: true }} onChange={() => {}} cameraSupported />);
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    expect(screen.getByTestId('generate-camera-row')).toHaveTextContent('Canon EOS R5 · Zeiss · 50 mm · f/2.8');
+  });
+
+  it('opens the camera panel from the row and closes it on a second click', () => {
+    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} cameraSupported />);
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    const row = screen.getByTestId('generate-camera-row');
+    expect(screen.queryByTestId('generate-camera-panel')).toBeNull();
+    expect(row).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(row);
+    expect(screen.getByTestId('generate-camera-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-camera-toggle')).toBeInTheDocument();
+    expect(screen.getByLabelText('Aperture ▼')).toBeInTheDocument();
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(row);
+    expect(screen.queryByTestId('generate-camera-panel')).toBeNull();
+  });
+
+  it('closes the camera panel with the popover, so it opens folded next time', () => {
+    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} cameraSupported />);
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    fireEvent.click(screen.getByTestId('generate-camera-row'));
+    fireEvent.keyDown(screen.getByTestId('generate-camera-panel'), { key: 'Escape' });
+    expect(screen.queryByTestId('generate-camera-row')).toBeNull();
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    expect(screen.getByTestId('generate-camera-row')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('generate-camera-panel')).toBeNull();
+  });
+
+  it('writes the switch and the wheels back from the panel', () => {
+    const onChange = vi.fn();
+    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={onChange} cameraSupported />);
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    fireEvent.click(screen.getByTestId('generate-camera-row'));
+    fireEvent.click(screen.getByTestId('generate-camera-toggle'));
+    expect(onChange).toHaveBeenCalledWith({ enable_camera: true });
+    fireEvent.click(screen.getByLabelText('Focal length ▼'));
+    expect(onChange).toHaveBeenCalledWith({ focal_length: 85 });
+  });
+
+  it('adds Camera to the pill only while the camera is on', () => {
+    const { rerender } = render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: true }} onChange={() => {}} cameraSupported />);
+    expect(screen.getByTestId('generate-ratio-trigger')).toHaveTextContent('1K · 1:1 · Camera');
+    rerender(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} cameraSupported />);
+    expect(screen.getByTestId('generate-ratio-trigger')).not.toHaveTextContent('Camera');
+  });
+});

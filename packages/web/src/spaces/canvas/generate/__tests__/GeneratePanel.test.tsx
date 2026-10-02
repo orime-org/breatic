@@ -104,14 +104,16 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.queryByTestId('generate-online')).toBeNull();
   });
 
-  it('hides the Camera control when the model omits the cluster (#1788 — unsupported → hidden, not greyed)', () => {
+  it('draws no camera button on the bottom row, with or without the camera (#2254)', () => {
     setup({ cameraSupported: false });
     expect(screen.queryByTestId('generate-camera')).toBeNull();
   });
 
-  it('renders the Camera control when the model declares the cluster (#1788)', () => {
+  it('puts the camera in the params popover when the model declares it (#2254)', () => {
     setup({ cameraSupported: true });
-    expect(screen.getByTestId('generate-camera')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-camera')).toBeNull();
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    expect(screen.getByTestId('generate-camera-row')).toBeInTheDocument();
   });
 
   it('fires onExit when the exit button is clicked', () => {

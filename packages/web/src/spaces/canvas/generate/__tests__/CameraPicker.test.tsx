@@ -4,18 +4,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
-import type * as React from 'react';
-
-// Pass the tooltip primitives through: real Radix Tooltip throws without the
-// app-level TooltipProvider (App.tsx mounts it) and the trigger nests inside
-// the Popover. The tooltip's on/off copy is also mirrored in the popover header
-// span, so state is asserted there — not via the (mocked-away) tooltip content.
-vi.mock('@web/components/ui/tooltip', () => ({
-  Tooltip: ({ children }: { children?: React.ReactNode }) => children,
-  TooltipTrigger: ({ children }: { children?: React.ReactNode }) => children,
-  TooltipContent: () => null,
-  TooltipProvider: ({ children }: { children?: React.ReactNode }) => children,
-}));
 
 import { CameraPicker } from '@web/spaces/canvas/generate/CameraPicker';
 
@@ -52,12 +40,11 @@ const FULL = model({
   aperture: { description: '', values: ['f/1.4', 'f/2.8'], default: 'f/2.8' },
 });
 
-describe('CameraPicker — model-capability-gated camera cluster control (#1788)', () => {
-  // Capability gating is the panel's job: when the model omits the cluster the
-  // panel does not render CameraPicker at all (unsupported → hidden, not
-  // greyed-out). CameraPicker itself is a pure control that assumes it is shown.
+describe('CameraPicker — the camera panel the params popover opens (#1788, #2254)', () => {
+  // Whether the model has a camera is the params popover's call: it draws the
+  // row that opens this panel only when the model declares the cluster.
 
-  it('opens a four-wheel popover with the master toggle when supported', () => {
+  it('draws four wheels and the master switch', () => {
     render(
       <CameraPicker
         model={FULL}
@@ -65,7 +52,6 @@ describe('CameraPicker — model-capability-gated camera cluster control (#1788)
         onChange={() => {}}
       />,
     );
-    fireEvent.click(screen.getByTestId('generate-camera'));
     // One chevron pair per column — camera / lens / focal / aperture.
     expect(screen.getByLabelText('Camera ▼')).toBeInTheDocument();
     expect(screen.getByLabelText('Lens ▼')).toBeInTheDocument();
@@ -83,7 +69,6 @@ describe('CameraPicker — model-capability-gated camera cluster control (#1788)
         onChange={onChange}
       />,
     );
-    fireEvent.click(screen.getByTestId('generate-camera'));
     fireEvent.click(screen.getByLabelText('Camera ▼'));
     expect(onChange).toHaveBeenCalledWith({ camera: 'Sony A7' });
   });
@@ -99,7 +84,6 @@ describe('CameraPicker — model-capability-gated camera cluster control (#1788)
         onChange={onChange}
       />,
     );
-    fireEvent.click(screen.getByTestId('generate-camera'));
     fireEvent.click(screen.getByLabelText('Focal length ▼'));
     expect(onChange).toHaveBeenCalledWith({ focal_length: 85 });
     const arg = onChange.mock.calls[0]![0] as { focal_length: unknown };
@@ -114,7 +98,6 @@ describe('CameraPicker — model-capability-gated camera cluster control (#1788)
         onChange={() => {}}
       />,
     );
-    fireEvent.click(screen.getByTestId('generate-camera'));
     expect(screen.getByLabelText('Focal length ▲')).toBeDisabled();
     expect(screen.getByLabelText('Focal length ▼')).not.toBeDisabled();
   });
@@ -128,12 +111,11 @@ describe('CameraPicker — model-capability-gated camera cluster control (#1788)
         onChange={onChange}
       />,
     );
-    fireEvent.click(screen.getByTestId('generate-camera'));
     fireEvent.click(screen.getByTestId('generate-camera-toggle'));
     expect(onChange).toHaveBeenCalledWith({ enable_camera: true });
   });
 
-  it('reflects the on/off state in the popover header copy', () => {
+  it('reflects the on/off state in the header copy', () => {
     const { rerender } = render(
       <CameraPicker
         model={FULL}
@@ -141,7 +123,6 @@ describe('CameraPicker — model-capability-gated camera cluster control (#1788)
         onChange={() => {}}
       />,
     );
-    fireEvent.click(screen.getByTestId('generate-camera'));
     expect(screen.getByText('On')).toBeInTheDocument();
     rerender(
       <CameraPicker
