@@ -1,0 +1,106 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * The camera of the image Generate panel, end to end (#2254).
+ *
+ * The camera is a row of the params popover, built like the audio panel's
+ * voice row: it reads what the camera stands on, and opens the camera panel
+ * beside the popover. The bottom row has no camera button of its own.
+ *
+ * Needs a running dev stack (`pnpm dev`) and a smoke account:
+ *
+ *   pnpm --filter @breatic/web test:smoke
+ */
+import { test, expect } from 'playwright/test';
+
+import { openGenerate, seedNode, registerCanvasStage } from '../helpers/audio-panel';
+
+registerCanvasStage();
+
+for (const width of [1280, 1920]) {
+  test.describe(`at ${width}px`, () => {
+    test.use({ viewport: { width, height: 1000 } });
+
+    test('Nano Banana 2 opens its camera from a row of the params popover', async ({ page }) => {
+      const nodeId = crypto.randomUUID();
+      await seedNode(nodeId, 'image', undefined, -350);
+      await openGenerate(nodeId, 'generate-execute');
+      await page.getByTestId('generate-model-trigger').click();
+      await page.getByTestId('generate-model-option-nano-banana-2').click();
+
+      await expect(page.getByTestId('generate-camera')).toHaveCount(0);
+
+      const pill = page.getByTestId('generate-ratio-trigger');
+      await pill.click();
+      const row = page.getByTestId('generate-camera-row');
+      await expect(row).toContainText('Camera');
+      await expect(row).toContainText('Off');
+      await expect(page.getByTestId('generate-camera-panel')).toHaveCount(0);
+
+      // The row is the last thing in the popover, and the popover keeps its width.
+      const popover = page.locator('[data-radix-popper-content-wrapper] [role="dialog"]').filter({ has: row });
+      // The popover opens with a zoom; measure after it settles.
+      await popover.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+      const pop = (await popover.boundingBox())!;
+      const rowBox = (await row.boundingBox())!;
+      expect(Math.round(pop.width)).toBe(256);
+      expect(pop.y + pop.height - (rowBox.y + rowBox.height)).toBeLessThan(16);
+
+      await row.click();
+      const panel = page.getByTestId('generate-camera-panel');
+      await expect(panel).toBeVisible();
+      await expect(row).toHaveAttribute('aria-expanded', 'true');
+      // Beside the popover: on the right while there is room there, else on the
+      // left when the left has room — the rule the voice panel follows.
+      const viewport = page.viewportSize()!;
+      const span = Math.min(520, viewport.width * 0.88) + 8;
+      const expected = pop.x + pop.width + span > viewport.width && pop.x >= span ? 'left' : 'right';
+      await expect(panel).toHaveAttribute('data-side', expected);
+      // The wide window is there to walk the right-hand side.
+      expect(expected).toBe(width === 1920 ? 'right' : 'left');
+      await panel.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+      const panelBox = (await panel.boundingBox())!;
+      if (expected === 'right') expect(panelBox.x).toBeGreaterThanOrEqual(pop.x + pop.width);
+      else expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(pop.x);
+      expect(panelBox.x).toBeGreaterThanOrEqual(0);
+      expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(viewport.width);
+      // Four wheels in one line.
+      const tops = await Promise.all(
+        ['Camera ▼', 'Lens ▼', 'Focal length ▼', 'Aperture ▼'].map(async (label) =>
+          Math.round((await panel.getByLabel(label).boundingBox())!.y),
+        ),
+      );
+      expect(new Set(tops).size).toBe(1);
+
+      await page.getByTestId('generate-camera-toggle').click();
+      await expect(row).toContainText('Canon EOS R5 · Zeiss Master Prime · 50 mm · f/2.8');
+      await expect(pill).toContainText('Camera');
+
+      await panel.getByLabel('Focal length ▼').click();
+      await expect(row).toContainText('85 mm');
+
+      await row.click();
+      await expect(panel).toHaveCount(0);
+
+      await row.click();
+      await expect(panel).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(row).toHaveCount(0);
+      await pill.click();
+      await expect(page.getByTestId('generate-camera-row')).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.getByTestId('generate-camera-panel')).toHaveCount(0);
+    });
+  });
+}
+
+test('a model without a camera has no camera row', async ({ page }) => {
+  const nodeId = crypto.randomUUID();
+  await seedNode(nodeId, 'image', undefined, -350);
+  await openGenerate(nodeId, 'generate-execute');
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-gpt-image-2.5-sunburst-text-to-image').click();
+  await page.getByTestId('generate-ratio-trigger').click();
+  await expect(page.getByTestId('generate-ratio-option-1:1')).toBeVisible();
+  await expect(page.getByTestId('generate-camera-row')).toHaveCount(0);
+});
