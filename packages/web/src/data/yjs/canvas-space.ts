@@ -956,6 +956,82 @@ export function setNodeSlotValue(
 }
 
 /**
+ * The usable files in a slot list, in order and once each. Collaborative
+ * data, so whatever the type says, every entry is checked.
+ * @param raw - The stored value.
+ * @returns Its non-empty string entries without repeats.
+ */
+function slotListOf(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.filter((v): v is string => typeof v === 'string' && v.length > 0))];
+}
+
+/**
+ * Adds one file to a slot that holds several (inner#826: style images). The
+ * list is one value, so it is read and written in one transaction; two
+ * readers appending at the same moment keep whichever write lands last.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The generative node whose slot gets the file.
+ * @param key - The node data field the slot owns.
+ * @param url - The picked file's URL.
+ * @param capacity - The most files the slot holds.
+ * @returns What happened: added, already there, full, or no such node.
+ */
+export function appendNodeSlotItem(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  key: string,
+  url: string,
+  capacity: number,
+): 'added' | 'present' | 'full' | 'node-missing' {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
+  if (!(data instanceof Y.Map)) return 'node-missing';
+  let result: 'added' | 'present' | 'full' = 'added';
+  doc.transact(() => {
+    const list = slotListOf(data.get(key));
+    if (list.includes(url)) {
+      result = 'present';
+      return;
+    }
+    if (list.length >= capacity) {
+      result = 'full';
+      return;
+    }
+    data.set(key, [...list, url]);
+  }, CANVAS_UNDO);
+  return result;
+}
+
+/**
+ * Takes one file out of a slot that holds several; the field goes with the
+ * last one, so an empty slot reads the same as one never filled.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The generative node whose slot loses the file.
+ * @param key - The node data field the slot owns.
+ * @param url - The file to take out.
+ */
+export function removeNodeSlotItem(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  key: string,
+  url: string,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => {
+    const next = slotListOf(data.get(key)).filter((u) => u !== url);
+    if (next.length === 0) data.delete(key);
+    else data.set(key, next);
+  }, CANVAS_UNDO);
+}
+
+/**
  * Read the focusImages value in either encoding — the CRDT `Y.Array`
  * (what the writers below maintain) or a plain array (a first-write-era
  * doc or forged wire data) — as a plain snapshot for the sanitizer.

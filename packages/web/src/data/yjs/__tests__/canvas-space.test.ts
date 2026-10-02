@@ -25,6 +25,8 @@ import {
   isNodeLocked,
   addNodeFocusImage,
   removeNodeFocusImage,
+  appendNodeSlotItem,
+  removeNodeSlotItem,
   readCanvasGraph,
   setNodeLocked,
   setNodeMode,
@@ -570,6 +572,52 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     expect(() => setNodeParams(PID, SID, 'ghost', {})).not.toThrow();
     expect(() => setNodeModel(PID, SID, 'ghost', 't2i', 'm', {})).not.toThrow();
     expect(() => setNodeMode(PID, SID, 'ghost', 't2i', 'm', {})).not.toThrow();
+  });
+
+  // ── A slot holding several files (inner#826): style images, up to a cap ──
+  const styleList = (): unknown =>
+    ((doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get('data') as Y.Map<unknown>).get('styleImageUrls');
+
+  it('appendNodeSlotItem adds files in the order they were picked', () => {
+    addNode(PID, SID, sampleFields('image', {}, { id: 'gen' }));
+    expect(appendNodeSlotItem(PID, SID, 'gen', 'styleImageUrls', 'https://cdn/a.png', 3)).toBe('added');
+    expect(appendNodeSlotItem(PID, SID, 'gen', 'styleImageUrls', 'https://cdn/b.png', 3)).toBe('added');
+    expect(styleList()).toEqual(['https://cdn/a.png', 'https://cdn/b.png']);
+  });
+
+  it('appendNodeSlotItem keeps one copy of a file picked twice', () => {
+    addNode(PID, SID, sampleFields('image', { styleImageUrls: ['https://cdn/a.png'] }, { id: 'gen' }));
+    expect(appendNodeSlotItem(PID, SID, 'gen', 'styleImageUrls', 'https://cdn/a.png', 3)).toBe('present');
+    expect(styleList()).toEqual(['https://cdn/a.png']);
+  });
+
+  it('appendNodeSlotItem refuses a file past the cap', () => {
+    addNode(PID, SID, sampleFields('image', { styleImageUrls: ['a', 'b', 'c'] }, { id: 'gen' }));
+    expect(appendNodeSlotItem(PID, SID, 'gen', 'styleImageUrls', 'd', 3)).toBe('full');
+    expect(styleList()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('appendNodeSlotItem reads past entries that are not usable URLs', () => {
+    addNode(PID, SID, sampleFields('image', { styleImageUrls: ['a', '', 7, 'a'] }, { id: 'gen' }));
+    expect(appendNodeSlotItem(PID, SID, 'gen', 'styleImageUrls', 'b', 3)).toBe('added');
+    expect(styleList()).toEqual(['a', 'b']);
+  });
+
+  it('removeNodeSlotItem takes out one file and keeps the order of the rest', () => {
+    addNode(PID, SID, sampleFields('image', { styleImageUrls: ['a', 'b', 'c'] }, { id: 'gen' }));
+    removeNodeSlotItem(PID, SID, 'gen', 'styleImageUrls', 'b');
+    expect(styleList()).toEqual(['a', 'c']);
+  });
+
+  it('removeNodeSlotItem deletes the key with the last file', () => {
+    addNode(PID, SID, sampleFields('image', { styleImageUrls: ['a'] }, { id: 'gen' }));
+    removeNodeSlotItem(PID, SID, 'gen', 'styleImageUrls', 'a');
+    expect(((doc().getMap('nodesMap').get('gen') as Y.Map<unknown>).get('data') as Y.Map<unknown>).has('styleImageUrls')).toBe(false);
+  });
+
+  it('the slot list writes are no-ops on a missing node', () => {
+    expect(appendNodeSlotItem(PID, SID, 'ghost', 'styleImageUrls', 'a', 3)).toBe('node-missing');
+    expect(() => removeNodeSlotItem(PID, SID, 'ghost', 'styleImageUrls', 'a')).not.toThrow();
   });
 
   // ── Focus images (#1782): frontend-owned crop copies, Y.Array CRDT ──
