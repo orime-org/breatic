@@ -7,7 +7,7 @@
 import type { Tool } from "ai";
 import { env } from "@breatic/core";
 
-import { askUser } from "@domain/agent/tools/ask-user.js";
+import { makeAskUserTool } from "@domain/agent/tools/ask-user.js";
 import {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
@@ -45,7 +45,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // than the string: the lists below and the turn's own test for whether to
   // wait for an answer read the same one, so there is no second spelling of
   // it to keep in step.
-  [ASK_USER]: () => askUser,
+  [ASK_USER]: () => makeAskUserTool(),
   // Searches for pictures and answers with the row the panel draws. It does
   // work of its own, so it is not one of the interaction tools below, even
   // though the panel is what draws its answer.
@@ -188,7 +188,7 @@ export function buildToolSet(toolNames: readonly string[]): Record<string, Tool>
 export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 
 export {
-  askUser,
+  makeAskUserTool,
   imageSearch,
   makeSearchTools,
   canvasCapabilities,
