@@ -818,7 +818,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.commands.quote"))} is greyed there on a line already in a quote. ` +
       `The menu ends with ${quoted(t("spaces.document.blockHandle.delete"))}, which removes that line; it is greyed ` +
       "when that line is the document's only block. Empty " +
-      "paragraphs have no six-dot handle, so they cannot be dragged, duplicated, aligned, coloured or commented on.",
+      "paragraphs have no six-dot handle, so its menu and dragging are not offered on them; a selection that takes " +
+      "in an empty paragraph acts on it as on any other paragraph.",
     "- Hovering any other line, with no text selected, shows a handle of six dots at its left. Drag it to move the " +
       `block; click it for a menu with ${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ` +

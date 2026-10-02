@@ -83,9 +83,9 @@ describe('where the strip stands', () => {
  * @param bodyLeft - The left edge of the body's root block group.
  * @param rowLeft - The row container's left edge.
  * @param x - Where floating-ui placed the carrier.
- * @returns The carrier's x after the middleware.
+ * @returns The middleware's whole result, so a y it should not set shows up.
  */
-async function placeAt(bodyLeft: number, rowLeft: number, x: number): Promise<number | undefined> {
+async function placeAt(bodyLeft: number, rowLeft: number, x: number): Promise<unknown> {
   const body = document.createElement('div');
   const root = document.createElement('div');
   body.appendChild(root);
@@ -101,18 +101,18 @@ async function placeAt(bodyLeft: number, rowLeft: number, x: number): Promise<nu
     elements: { reference },
   } as unknown as MiddlewareState;
   const result = await edge!.fn(state);
-  return result.x;
+  return result;
 }
 
 describe('the strip stays on the body\'s left edge (#1097 A13)', () => {
   it('puts a nested row\'s carrier where a top-level row\'s goes', async () => {
     // Body at 400, row indented to 448 (two levels), strip 24 wide: the
     // library's left-start put the carrier at 424.
-    expect(await placeAt(400, 448, 424)).toBe(376);
+    expect(await placeAt(400, 448, 424)).toEqual({ x: 376 });
   });
 
   it('leaves a top-level row\'s carrier where it is', async () => {
-    expect(await placeAt(400, 400, 376)).toBe(376);
+    expect(await placeAt(400, 400, 376)).toEqual({ x: 376 });
   });
 
   it('leaves the carrier alone while there is no body to measure', async () => {
