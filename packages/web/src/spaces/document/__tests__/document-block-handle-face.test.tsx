@@ -196,3 +196,25 @@ describe('the strip keeps its face through what the reader started', () => {
     ).toBe('true');
   });
 });
+
+describe('the plus menu removes the line (A12)', () => {
+  it('ends with a delete entry that takes the empty line away', () => {
+    const editor = openOver([{ type: 'paragraph', content: 'keep' }, { type: 'paragraph' }], 1);
+    render(<DocumentBlockHandle />);
+    fireEvent.click(screen.getByTestId('doc-block-plus'));
+
+    const remove = screen.getByTestId('doc-block-plus-delete');
+    expect(remove.textContent).toBe('spaces.document.blockHandle.delete');
+    fireEvent.click(remove);
+
+    expect(editor.document).toHaveLength(1);
+  });
+
+  it('greys delete on a document that holds only this line', () => {
+    openOver([{ type: 'paragraph' }], 0);
+    render(<DocumentBlockHandle />);
+    fireEvent.click(screen.getByTestId('doc-block-plus'));
+
+    expect(screen.getByTestId('doc-block-plus-delete').getAttribute('aria-disabled')).toBe('true');
+  });
+});
