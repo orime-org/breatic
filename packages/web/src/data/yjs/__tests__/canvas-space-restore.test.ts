@@ -54,6 +54,9 @@ function nodeData(id = 'n1'): Y.Map<unknown> {
   ).get('data') as Y.Map<unknown>;
 }
 
+/** What a row written before #2184 hands over: no cover, no numbers. */
+const NONE = { coverUrl: null, width: null, height: null, duration: null, mimeType: null, size: null };
+
 describe('restoreNodeMedia (#1619 history restore, critical path)', () => {
   beforeEach(() => {
     _resetForTests();
@@ -61,35 +64,26 @@ describe('restoreNodeMedia (#1619 history restore, critical path)', () => {
 
   it('INV-3: writes the restored content back to the node', () => {
     addNode(PID, SID, fields('image', { content: 'old.png' }));
-    restoreNodeMedia(PID, SID, 'n1', {
-      content: 'restored.png',
-      coverUrl: undefined,
-    });
+    restoreNodeMedia(PID, SID, 'n1', { content: 'restored.png', media: NONE });
     expect(nodeData().get('content')).toBe('restored.png');
   });
 
-  it('INV-8: image restore does NOT write coverUrl (asset-GC phantom-ref leak fix, Gate1-R4 HIGH)', () => {
+  it('INV-8: image restore leaves no coverUrl (asset-GC phantom-ref leak fix, Gate1-R4 HIGH)', () => {
     addNode(PID, SID, fields('image', { content: 'old.png' }));
-    restoreNodeMedia(PID, SID, 'n1', {
-      content: 'restored.png',
-      coverUrl: undefined,
-    });
+    restoreNodeMedia(PID, SID, 'n1', { content: 'restored.png', media: NONE });
     expect(nodeData().get('coverUrl')).toBeUndefined();
   });
 
   it('INV-8: video restore writes content + coverUrl in one transaction', () => {
     addNode(PID, SID, fields('video', { content: 'old.mp4', coverUrl: 'oldcover.jpg' }));
-    restoreNodeMedia(PID, SID, 'n1', {
-      content: 'restored.mp4',
-      coverUrl: 'newcover.jpg',
-    });
+    restoreNodeMedia(PID, SID, 'n1', { content: 'restored.mp4', media: { ...NONE, coverUrl: 'newcover.jpg' } });
     expect(nodeData().get('content')).toBe('restored.mp4');
     expect(nodeData().get('coverUrl')).toBe('newcover.jpg');
   });
 
   it('INV-8: video restore with coverUrl=null deletes coverUrl (no stale poster)', () => {
     addNode(PID, SID, fields('video', { content: 'old.mp4', coverUrl: 'oldcover.jpg' }));
-    restoreNodeMedia(PID, SID, 'n1', { content: 'restored.mp4', coverUrl: null });
+    restoreNodeMedia(PID, SID, 'n1', { content: 'restored.mp4', media: NONE });
     expect(nodeData().get('coverUrl')).toBeUndefined();
   });
 
@@ -97,29 +91,23 @@ describe('restoreNodeMedia (#1619 history restore, critical path)', () => {
     // A node whose last generation failed: no content, an error message
     // (state stays 'idle', deriveStatus → error).
     addNode(PID, SID, fields('image', { errorMessage: 'gen failed' }));
-    restoreNodeMedia(PID, SID, 'n1', {
-      content: 'restored.png',
-      coverUrl: undefined,
-    });
+    restoreNodeMedia(PID, SID, 'n1', { content: 'restored.png', media: NONE });
     expect(nodeData().get('errorMessage')).toBeUndefined();
   });
 
   it('is a no-op on a missing node (no throw)', () => {
     expect(() =>
-      restoreNodeMedia(PID, SID, 'ghost', {
-        content: 'x.png',
-        coverUrl: undefined,
-      }),
+      restoreNodeMedia(PID, SID, 'ghost', { content: 'x.png', media: NONE }),
     ).not.toThrow();
   });
 });
 
-// A history row carries a URL and, for a video, a poster — never a
-// measurement. The node's own mediaWidth/mediaHeight/duration belong to whatever result
-// landed last, and the reader now prefers them over what the browser measures
-// off the element, so leaving them behind makes the badge describe a clip that
-// is no longer on the node.
-describe('what a restore does with the numbers already on the node', () => {
+// A row written before #2184 carries no numbers. The node's own
+// mediaWidth/mediaHeight/duration belong to whatever result landed last, and
+// the reader prefers them over what the browser measures off the element, so
+// leaving them behind makes the badge describe a clip that is no longer on the
+// node.
+describe('restoring a row that carries no numbers', () => {
   beforeEach(() => {
     _resetForTests();
   });
@@ -132,10 +120,7 @@ describe('what a restore does with the numbers already on the node', () => {
       duration: 4,
     }));
 
-    restoreNodeMedia(PID, SID, 'n1', {
-      content: 'https://our-bucket/b.mp4',
-      coverUrl: 'https://our-bucket/b_cover.png',
-    });
+    restoreNodeMedia(PID, SID, 'n1', { content: 'https://our-bucket/b.mp4', media: { ...NONE, coverUrl: 'https://our-bucket/b_cover.png' } });
 
     const data = nodeData();
     expect(data.get('content')).toBe('https://our-bucket/b.mp4');
@@ -151,10 +136,7 @@ describe('what a restore does with the numbers already on the node', () => {
       mediaHeight: 1080,
     }));
 
-    restoreNodeMedia(PID, SID, 'n1', {
-      content: 'https://our-bucket/b.png',
-      coverUrl: undefined,
-    });
+    restoreNodeMedia(PID, SID, 'n1', { content: 'https://our-bucket/b.png', media: NONE });
 
     const data = nodeData();
     expect(data.has('mediaWidth')).toBe(false);
@@ -174,10 +156,7 @@ describe('restoring onto a text node (#2175)', () => {
   it('puts the words where the node reads them', () => {
     addNode(PID, SID, fields('text'));
 
-    restoreNodeMedia(PID, SID, 'n1', {
-      content: 'A red bicycle against a brick wall.',
-      coverUrl: undefined,
-    });
+    restoreNodeMedia(PID, SID, 'n1', { content: 'A red bicycle against a brick wall.', media: NONE });
 
     const body = nodeData().get('body');
     expect(body).toBeInstanceOf(Y.XmlFragment);
@@ -191,13 +170,13 @@ describe('restoring onto a text node (#2175)', () => {
   it('leaves the plain field alone', () => {
     addNode(PID, SID, fields('text'));
 
-    restoreNodeMedia(PID, SID, 'n1', { content: 'kept', coverUrl: undefined });
+    restoreNodeMedia(PID, SID, 'n1', { content: 'kept', media: NONE });
 
     expect(nodeData().get('content')).toBeUndefined();
   });
 });
 
-describe('what a restore takes away with the old result (#2175)', () => {
+describe('restoring a row with no type or byte count (#2175)', () => {
   beforeEach(() => {
     _resetForTests();
   });
@@ -217,12 +196,60 @@ describe('what a restore takes away with the old result (#2175)', () => {
       }),
     );
 
-    restoreNodeMedia(PID, SID, 'n1', {
-      content: 'https://cdn/small.png',
-      coverUrl: undefined,
-    });
+    restoreNodeMedia(PID, SID, 'n1', { content: 'https://cdn/small.png', media: NONE });
 
     expect(nodeData().get('mimeType')).toBeUndefined();
     expect(nodeData().get('size')).toBeUndefined();
+  });
+});
+
+describe('restoring a row that carries the numbers its result landed with (#2184)', () => {
+  beforeEach(() => {
+    _resetForTests();
+  });
+
+  it('puts every number back on the node', () => {
+    addNode(PID, SID, fields('video', {
+      content: 'https://our-bucket/a.mp4',
+      mediaWidth: 720,
+      mediaHeight: 1280,
+      duration: 4,
+      mimeType: 'video/webm',
+      size: 10,
+    }));
+
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'https://our-bucket/b.mp4',
+      media: {
+        coverUrl: 'https://our-bucket/b_cover.png',
+        width: 1920,
+        height: 1080,
+        duration: 5.04,
+        mimeType: 'video/mp4',
+        size: 734_003,
+      },
+    });
+
+    const data = nodeData();
+    expect(data.get('content')).toBe('https://our-bucket/b.mp4');
+    expect(data.get('coverUrl')).toBe('https://our-bucket/b_cover.png');
+    expect(data.get('mediaWidth')).toBe(1920);
+    expect(data.get('mediaHeight')).toBe(1080);
+    expect(data.get('duration')).toBe(5.04);
+    expect(data.get('mimeType')).toBe('video/mp4');
+    expect(data.get('size')).toBe(734_003);
+  });
+
+  it('takes away a number the restored medium does not have', () => {
+    addNode(PID, SID, fields('image', { content: 'https://our-bucket/a.mp4', duration: 4 }));
+
+    restoreNodeMedia(PID, SID, 'n1', {
+      content: 'https://our-bucket/b.png',
+      media: { ...NONE, width: 640, height: 480, mimeType: 'image/png', size: 1024 },
+    });
+
+    const data = nodeData();
+    expect(data.has('duration')).toBe(false);
+    expect(data.get('mediaWidth')).toBe(640);
   });
 });

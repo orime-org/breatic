@@ -775,3 +775,148 @@ describe("migration 0087 on a history that already holds duplicates (#2186 A7)",
     expect(row?.content).toBe("https://cdn.example.com/kept-by-task.png");
   });
 });
+
+describe("history rows carry the media a result landed with (#2184)", () => {
+  // What the node was given when this content first landed on it, so restoring
+  // the row can give it back the same seven fields.
+  const media = { width: 1920, height: 1080, duration: 5.04, mimeType: "video/mp4", size: 734_003 };
+  const onEntry = {
+    mediaWidth: 1920,
+    mediaHeight: 1080,
+    duration: 5.04,
+    mimeType: "video/mp4",
+    size: 734_003,
+  };
+
+  it("a generation row reads back the media it was written with", async () => {
+    const userId = await insertUser("Media Gen");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+
+    await nodeHistoryService.recordGenerationSuccess({
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/media-gen.mp4",
+      thumbnailUrl: "https://cdn.example.com/media-gen.jpg",
+      taskId: await createTask(userId, projectId),
+      metadata: { model: "m" },
+      media,
+    });
+
+    const { entries } = await nodeHistoryService.listByNode(projectId, nodeId, {});
+    expect(entries[0]).toMatchObject(onEntry);
+  });
+
+  it("an upload row reads back the media it was written with", async () => {
+    const userId = await insertUser("Media Upload");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+
+    await nodeHistoryService.recordUpload({
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/media-upload.mp4",
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+      media,
+    });
+
+    const { entries } = await nodeHistoryService.listByNode(projectId, nodeId, {});
+    expect(entries[0]).toMatchObject(onEntry);
+  });
+
+  it("a medium with no such numbers reads back null for each", async () => {
+    const userId = await insertUser("Media Empty");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+
+    await nodeHistoryService.recordUpload({
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/media-image.png",
+      storageKey: `uploads/${crypto.randomUUID()}.png`,
+      media: { width: 640, height: 480, duration: null, mimeType: "image/png", size: 1024 },
+    });
+
+    const { entries } = await nodeHistoryService.listByNode(projectId, nodeId, {});
+    expect(entries[0]).toMatchObject({
+      mediaWidth: 640,
+      mediaHeight: 480,
+      duration: null,
+      mimeType: "image/png",
+      size: 1024,
+    });
+  });
+
+  it("a row written before the media columns reads back null for all five", async () => {
+    const userId = await insertUser("Media Old");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+
+    await nodeHistoryService.recordSnapshot({
+      projectId,
+      nodeId,
+      userId,
+      content: "a snapshot has no media",
+    });
+
+    const { entries } = await nodeHistoryService.listByNode(projectId, nodeId, {});
+    expect(entries[0]).toMatchObject({
+      mediaWidth: null,
+      mediaHeight: null,
+      duration: null,
+      mimeType: null,
+      size: null,
+    });
+  });
+
+  it("the same content arriving again keeps the media the first arrival wrote", async () => {
+    const userId = await insertUser("Media Same");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const base = { projectId, nodeId, userId, content: "https://cdn.example.com/media-same.mp4" };
+
+    await nodeHistoryService.recordUpload({
+      ...base,
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+      media,
+    });
+    await nodeHistoryService.recordUpload({
+      ...base,
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+      media: { width: 1, height: 1, duration: 1, mimeType: "video/webm", size: 1 },
+    });
+
+    const { entries } = await nodeHistoryService.listByNode(projectId, nodeId, {});
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject(onEntry);
+  });
+
+  it("the task list hands back the media of the row its task points at", async () => {
+    const userId = await insertUser("Media Task List");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const recorded = await nodeHistoryService.recordUpload({
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/media-task.mp4",
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+      media,
+    });
+    await sql`
+      INSERT INTO node_tasks
+        (project_id, space_id, node_id, kind, status,
+         started_by_user_id, started_at, budget_ms, label, node_history_id)
+      VALUES
+        (${projectId}, ${crypto.randomUUID()}, ${nodeId}, 'upload', 'done',
+         ${userId}, now(), 600000, 'media-task.mp4', ${recorded.entry.id})
+    `;
+
+    const [row] = await nodeTaskService.listLive({ projectId, nodeId });
+
+    expect(row).toMatchObject(onEntry);
+  });
+});
