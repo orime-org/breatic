@@ -27,7 +27,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
@@ -1064,6 +1064,9 @@ describe('MembershipPanel', () => {
 });
 
 describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => {
+  /** The class that holds a priced tier's dialog at one height. */
+  const PINNED_PANEL_HEIGHT = 'h-[min(1000px,calc(100vh-80px))]';
+
   /**
    * Opens the panel for an account on `tier`, with the answer never arriving.
    * @param tier - The tier the account was told it is on when it signed in.
@@ -1087,11 +1090,60 @@ describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => 
     expect(screen.getByText('My allowances')).toBeInTheDocument();
     expect(screen.getByText('Choose a membership')).toBeInTheDocument();
     expect(screen.getByTestId('loading-tier-name')).toHaveTextContent('PRO');
-    // One placeholder under the tier name, one block each for the allowances
-    // and the table — and no whole-panel placeholder in their place.
-    expect(screen.getAllByTestId('section-skeleton')).toHaveLength(2);
+    // One placeholder under the tier name, one block for the allowances, the
+    // tier cards drawn as cards — and no whole-panel placeholder in their place.
+    expect(screen.getAllByTestId('section-skeleton')).toHaveLength(1);
     expect(screen.getByTestId('current-tier-skeleton')).toBeInTheDocument();
     expect(screen.queryByTestId('membership-skeleton')).toBeNull();
+  });
+
+  it('holds the billing line only for a tier that is paid for', () => {
+    // A paid tier is followed by its next-charge line once loaded; the free
+    // tier is followed by nothing, so a row held for it would close up later.
+    openPending('pro');
+    expect(screen.getByTestId('current-tier-line')).toContainElement(
+      screen.getByTestId('current-tier-skeleton'),
+    );
+    cleanup();
+
+    openPending('base');
+    expect(screen.queryByTestId('current-tier-line')).toBeNull();
+    expect(screen.queryByTestId('current-tier-skeleton')).toBeNull();
+  });
+
+  it('draws the tier choice as a period switch and one card per offer', () => {
+    openPending('base');
+
+    const choice = screen.getByTestId('choose-tier-skeleton');
+    expect(within(choice).getByTestId('period-switch-skeleton')).toBeInTheDocument();
+    expect(within(choice).getAllByTestId('tier-card-skeleton')).toHaveLength(4);
+  });
+
+  it.each([
+    ['pro', true],
+    ['base', true],
+    ['enterprise', false],
+    ['self_hosted', false],
+  ] as const)(
+    'keeps the dialog one height from loading to loaded for %s: %s',
+    (tier, pinned) => {
+      // The loaded panel of a priced tier runs past the viewport cap, so the
+      // loading frame takes that height too and nothing moves when the answer
+      // lands. The two unpriced tiers are short either way.
+      openPending(tier);
+      const hasPin = screen.getByRole('dialog').className.includes(
+        PINNED_PANEL_HEIGHT,
+      );
+      expect(hasPin).toBe(pinned);
+    },
+  );
+
+  it('keeps the pinned height once the answer arrives', async () => {
+    membershipMock.mockResolvedValue(answer());
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByRole('dialog').className).toContain(PINNED_PANEL_HEIGHT);
   });
 
   it.each(['self_hosted', 'enterprise'] as const)(
