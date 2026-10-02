@@ -386,6 +386,10 @@ test('Gemini keeps its reading mode, language and speakers in the settings pill'
   await secondSpeaker.click();
   await expect(page.getByTestId('generate-voice-search')).toHaveValue('');
   await expect(page.getByTestId('generate-audio-speaker-name')).toHaveValue('');
+  await expect(secondSpeaker).toHaveAttribute('aria-expanded', 'true');
+  await expect(first).toHaveAttribute('aria-expanded', 'false');
+  // The rows cross-fade their fill; shoot once the closed row has faded out.
+  await expect(first).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await page.screenshot({ path: test.info().outputPath('gemini-speakers.png') });
 
   // A speaker left unnamed is refused on submit, naming the speakers.
