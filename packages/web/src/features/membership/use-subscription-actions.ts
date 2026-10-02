@@ -28,6 +28,7 @@ import {
   resumeSubscription,
   startSubscriptionCheckout,
 } from '@web/data/api/subscription';
+import { MEMBERSHIP_QUERY_ROOT } from '@web/features/membership/membership-query';
 
 /** Which of the panel's actions is running. */
 export type PendingSubscriptionAction =
@@ -96,9 +97,7 @@ export function useSubscriptionActions(
   // was standing in, threw away whatever page was underneath it, and left no
   // sign that anything had happened.
   const refreshPanel = React.useCallback(async () => {
-    await queryClient.invalidateQueries({
-      queryKey: ['account', 'membership'],
-    });
+    await queryClient.invalidateQueries({ queryKey: MEMBERSHIP_QUERY_ROOT });
   }, [queryClient]);
 
   // `work` answers 'leaving' once it has sent the browser to another page.

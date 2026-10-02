@@ -35,6 +35,7 @@ vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
 
+import { MEMBERSHIP_QUERY_ROOT } from '@web/features/membership/membership-query';
 import { useSubscriptionActions } from '@web/features/membership/use-subscription-actions';
 
 /** The rendered hook and the client it reads through. */
@@ -83,7 +84,7 @@ describe('useSubscriptionActions — a refusal re-reads the account (#307 A10b)'
     await waitFor(() => {
       expect(refreshCurrentUser).toHaveBeenCalled();
     });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['account', 'membership'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: MEMBERSHIP_QUERY_ROOT });
   });
 
   it('leaves the account alone when a checkout fails for any other reason', async () => {

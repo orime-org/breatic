@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
+ * What every account's membership answer is cached under. Invalidating it
+ * refreshes the panel whichever account is signed in.
+ */
+export const MEMBERSHIP_QUERY_ROOT = ['account', 'membership'] as const;
+
+/**
  * The cache key the membership panel's answer lives under.
  *
  * Keyed on the account, the way the notification inbox is. Without it, one
@@ -14,6 +20,6 @@
  */
 export function membershipQueryKey(
   userId: string | null,
-): readonly ['account', 'membership', string | null] {
-  return ['account', 'membership', userId];
+): readonly [...typeof MEMBERSHIP_QUERY_ROOT, string | null] {
+  return [...MEMBERSHIP_QUERY_ROOT, userId];
 }
