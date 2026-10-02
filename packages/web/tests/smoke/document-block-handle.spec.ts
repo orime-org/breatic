@@ -325,6 +325,30 @@ test('the strip stays on the body\'s left edge for an indented row (#1097 A13)',
       .poll(async () => Math.abs(((await page.getByTestId(testId).boundingBox())?.x ?? 0) - top))
       .toBeLessThan(CENTRED_WITHIN);
   }
+
+  // The indent beside a nested row's first line is body, not strip: a click
+  // there reaches the editor while the strip stands at the body's edge.
+  await page.mouse.move(5, 5);
+  await hoverRow(page, 1);
+  const words = await page.locator(`${EDITOR} .bn-block-content`).nth(1).locator('.bn-inline-content').boundingBox();
+  if (words === null) throw new Error('no words on row 1');
+  const inIndent = await page.evaluate(
+    ([x, y]) => document.elementFromPoint(x, y)?.closest('.ProseMirror') !== null,
+    [words.x - 10, words.y + 4],
+  );
+  expect(inIndent).toBe(true);
+
+  // A list item two levels down stands on the same line.
+  await page.locator(`${EDITOR} .bn-block-content`).nth(1).click();
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('- deep');
+  await page.keyboard.press('Tab');
+  await page.mouse.move(5, 5);
+  await hoverRow(page, 2);
+  await expect
+    .poll(async () => Math.abs(((await page.getByTestId('doc-block-handle').boundingBox())?.x ?? 0) - top))
+    .toBeLessThan(CENTRED_WITHIN);
 });
 
 test('the menus listing block types are drawn at least 10rem wide (#1097 A11)', async () => {
