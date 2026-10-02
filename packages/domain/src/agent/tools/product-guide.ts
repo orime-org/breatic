@@ -505,8 +505,7 @@ export function renderProductGuide(): string {
     "The bottom row, left to right: the mode, named in English on every screen (for example Text to Image); the " +
       "model's maker icon and name; a pill showing the current settings (for example 1k · 1:1 · Medium, or " +
       `${quoted(t("canvas.generatePanel.videoParams"))} or ${quoted(t("canvas.generatePanel.audioSettings"))} ` +
-      "when there is nothing to list yet); on the " +
-      "picture panel, a camera icon when the model has camera settings; then at the right end the credit " +
+      "when there is nothing to list yet); then at the right end the credit " +
       "estimate, a star with a number that may read ≥ or ≤ a number, or so much per 1K characters, and is missing " +
       "when no estimate is available; and the round button with an upward arrow. On the picture panel a model " +
       `with no settings shows the pill as ${quoted(t("canvas.generatePanel.imageParams"))}; on the video and ` +
@@ -523,9 +522,12 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.focus"))}, with no source slots. Clicking the settings pill opens ` +
       "whichever of " +
       `${quoted(t("canvas.generatePanel.resolution"))} and ${quoted(t("canvas.generatePanel.ratio"))} the model ` +
-      "has, and any settings of the model's own, such as quality. The camera icon opens a panel headed " +
-      `${quoted(t("canvas.generatePanel.camera"))} with a switch, ${quoted(t("canvas.generatePanel.switchOff"))} ` +
-      `at first, and wheels for ${quoted(t("canvas.generatePanel.lens"))}, ` +
+      "has, and any settings of the model's own, such as quality. A model with camera settings adds, at the " +
+      `bottom of that popover, a row named ${quoted(t("canvas.generatePanel.camera"))}: it reads ` +
+      `${quoted(t("canvas.generatePanel.switchOff"))} while the camera is off and lists the four settings while ` +
+      "it is on, and the pill then ends in the same word. Clicking the row opens a panel beside the popover, " +
+      `headed ${quoted(t("canvas.generatePanel.camera"))} with a switch, ` +
+      `${quoted(t("canvas.generatePanel.switchOff"))} at first, and wheels for ${quoted(t("canvas.generatePanel.lens"))}, ` +
       `${quoted(t("canvas.generatePanel.focalLength"))} and ${quoted(t("canvas.generatePanel.aperture"))} as ` +
       "well as the camera itself; the wheels only apply while the switch reads " +
       `${quoted(t("canvas.generatePanel.switchOn"))}.`,

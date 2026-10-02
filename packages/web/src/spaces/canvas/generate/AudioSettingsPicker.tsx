@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ChevronDown, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react';
+import { ChevronDown, Volume2 } from 'lucide-react';
 import * as React from 'react';
 
 import { getLocale, type ModelEntry, type Voice } from '@breatic/shared';
@@ -13,7 +13,6 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
-import { cn } from '@web/lib/utils';
 import {
   audioParamControls,
   formatAudioParam,
@@ -38,14 +37,12 @@ import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-
 import { useSamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
 import { sampleUrlFor } from '@web/spaces/canvas/generate/voice-param';
 import { VoiceList } from '@web/spaces/canvas/generate/VoiceList';
+import { SecondPanelFrame, SecondPanelRow, useSecondPanelSide } from '@web/spaces/canvas/generate/second-panel';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 
-/**
- * How far the second panel reaches beside the first: its `w-72` plus the
- * `ml-2` / `mr-2` gap, in pixels. Read when deciding which side it opens on.
- */
-const SECOND_PANEL_SPAN = 288 + 8;
+/** The second panel's width in pixels. */
+const SECOND_PANEL_WIDTH = 288;
 
 /** What this picker's shared controls edit, by the catalog's own param names. */
 export type AudioParamsValue = Record<string, number>;
@@ -172,17 +169,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
     [showPanel],
   );
 
-  // The second panel opens to the right (design §16.1); when the pill sits
-  // near the right edge and there is no room there, it opens to the left
-  // instead, rather than being cut off by the window.
-  const firstPanelRef = React.useRef<HTMLDivElement>(null);
-  const [secondOnLeft, setSecondOnLeft] = React.useState(false);
-  React.useLayoutEffect(() => {
-    const el = firstPanelRef.current;
-    if (panel === null || !el) return;
-    const box = el.getBoundingClientRect();
-    setSecondOnLeft(box.right + SECOND_PANEL_SPAN > window.innerWidth && box.left >= SECOND_PANEL_SPAN);
-  }, [panel]);
+  const [firstPanelRef, secondOnLeft] = useSecondPanelSide(panel, SECOND_PANEL_WIDTH);
 
   const inlineOnly = React.useCallback(
     (control: ModelControl) => layout.inline.some((c) => c.name === control.name),
@@ -292,38 +279,19 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
             />
           ) : null}
           {layout.rows.map((row) => (
-            <Button
+            <SecondPanelRow
               key={panelKey(row)}
-              type='button'
-              variant='ghost'
-              size='menu-item'
-              aria-expanded={panel === panelKey(row)}
-              data-testid={`generate-audio-row-${row.name}`}
-              className={cn(
-                'grid grid-cols-[72px_minmax(0,1fr)_16px] items-center gap-2 px-1',
-                panel === panelKey(row) && 'bg-accent',
-              )}
-              onClick={() => showPanel(panel === panelKey(row) ? null : panelKey(row))}
-            >
-              {/* Muted text on the open row's accent fill is 4.46:1 in the dark
-                  theme, under the 4.5:1 floor; that row names itself in full. */}
-              <span
-                className={cn(
-                  'truncate text-left text-xs font-medium',
-                  panel === panelKey(row) ? 'text-foreground' : 'text-muted-foreground',
-                )}
-              >
-                {row.kind === 'voice'
+              label={
+                row.kind === 'voice'
                   ? t('canvas.generatePanel.audioVoice')
-                  : t(`canvas.generatePanel.param.${row.name}`)}
-              </span>
-              <span className='truncate text-left'>{rowValue(row)}</span>
-              {secondOnLeft ? (
-                <ChevronLeft className='h-3.5 w-3.5 opacity-60' aria-hidden='true' />
-              ) : (
-                <ChevronRight className='h-3.5 w-3.5 opacity-60' aria-hidden='true' />
-              )}
-            </Button>
+                  : t(`canvas.generatePanel.param.${row.name}`)
+              }
+              value={rowValue(row)}
+              open={panel === panelKey(row)}
+              onLeft={secondOnLeft}
+              testId={`generate-audio-row-${row.name}`}
+              onClick={() => showPanel(panel === panelKey(row) ? null : panelKey(row))}
+            />
           ))}
           {(shared.length > 0 || layout.inline.length > 0) && layout.rows.length > 0 ? (
             <div className='mx-1 my-1 h-px bg-border' />
@@ -350,13 +318,11 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
         </div>
 
         {openRow !== undefined ? (
-          <div
-            data-testid='generate-audio-second-panel'
-            data-side={secondOnLeft ? 'left' : 'right'}
-            className={cn(
-              'absolute bottom-0 w-72 overflow-hidden rounded-overlay border border-border bg-popover text-popover-foreground shadow-md',
-              secondOnLeft ? 'right-full mr-2' : 'left-full ml-2',
-            )}
+          <SecondPanelFrame
+            onLeft={secondOnLeft}
+            maxWidth={SECOND_PANEL_WIDTH}
+            testId='generate-audio-second-panel'
+            className='overflow-hidden'
           >
             {openRow.kind === 'voice' ? (
               <VoiceList
@@ -401,7 +367,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                 onChange={onChange}
               />
             )}
-          </div>
+          </SecondPanelFrame>
         ) : null}
       </PopoverContent>
     </Popover>
