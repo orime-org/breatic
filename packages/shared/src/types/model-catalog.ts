@@ -118,6 +118,18 @@ export interface ParamDescriptor {
    * from 1, `{i}` counted from 0. Absent, the chip adds nothing to the text.
    */
   mention?: string;
+  /**
+   * The key each entry of this list travels under upstream, when the upstream
+   * takes objects rather than bare URLs (Krea's `reference: [{ image }]`).
+   */
+  item_key?: string;
+  /**
+   * The pool this slot's files are appended to on their way upstream, for a
+   * model with no field of its own for them (inner#826).
+   */
+  joins?: string;
+  /** The sentence appended to the prompt for a joining slot; `{list}` names its files. */
+  prompt_note?: string;
   /** Whether a run can go out with this slot empty. */
   optional?: boolean;
   /** What has to hold before this control counts. */
@@ -437,6 +449,9 @@ const paramDescriptorSchema = z
       .catch(undefined),
     accepts: z.enum(["image", "video", "audio"]).optional().catch(undefined),
     mention: z.string().optional().catch(undefined),
+    item_key: z.string().optional().catch(undefined),
+    joins: z.string().optional().catch(undefined),
+    prompt_note: z.string().optional().catch(undefined),
     optional: z.boolean().optional().catch(undefined),
     when: z
       .object({
