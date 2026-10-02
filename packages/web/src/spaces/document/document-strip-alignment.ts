@@ -22,9 +22,9 @@
  * −6.94 on level two, −8.48 on level three and +1.81 / +2.22 on paragraphs —
  * the reader's report was that it sat above the line on a heading. The table is
  * replaced rather than adjusted: `floatingUIOptions.useFloatingOptions` is
- * spread after the library's defaults (`SideMenuController.tsx:120-129`), so an
- * empty `middleware` leaves the carrier exactly on the row's top edge and the
- * strip does the rest itself.
+ * spread after the library's defaults (`SideMenuController.tsx:120-129`), so a
+ * `middleware` list without it leaves the carrier exactly on the row's top
+ * edge and the strip does the rest itself.
  *
  * WHY THE STRIP AND NOT THE CARRIER. The carrier's position reference is a
  * VIRTUAL element — `GenericPopover` hands floating-ui a cached
@@ -39,14 +39,45 @@
  * a reader's own font size differs.
  */
 
+import type { Middleware } from '@floating-ui/react';
 import * as React from 'react';
 
-/** The library's table of per-type offsets, replaced by this module. */
-export const NO_LIBRARY_OFFSET: {
-  useFloatingOptions: { middleware: [] };
-} = {
-  useFloatingOptions: { middleware: [] },
-};
+/**
+ * The carrier's placement: the library's left-start against the row, with its
+ * table of per-type offsets replaced by one sideways move.
+ *
+ * The move puts the carrier on the body's left edge whatever the row's
+ * nesting (#1097 A13, user 2026-10-01): the reference is the row's own
+ * container, which a nested row has indented with it. The body's edge is the
+ * root block group, the element the library itself takes the side menu's x
+ * from (`SideMenu.ts:257-266`). Moving the carrier rather than the strip
+ * inside it leaves nothing of it in the indent, where a click has to reach
+ * the row; and the x comes from the same reference rect floating-ui placed
+ * with, so a stale reference after a move still lands on the edge.
+ * @param bodyOf - Reads the editable element, undefined before it mounts.
+ * @returns The options to hand `SideMenuController`.
+ */
+export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
+  useFloatingOptions: { middleware: Middleware[] };
+} {
+  return {
+    useFloatingOptions: {
+      middleware: [
+        {
+          name: 'bodyEdge',
+          // Both lefts are read in viewport coordinates: floating-ui's own
+          // `rects` are in the carrier's offset-parent coordinates.
+          fn: ({ x, elements }) => {
+            const root = bodyOf()?.firstElementChild;
+            if (root == null) return {};
+            const rowLeft = elements.reference.getBoundingClientRect().left;
+            return { x: x + root.getBoundingClientRect().left - rowLeft };
+          },
+        },
+      ],
+    },
+  };
+}
 
 /**
  * How far down from where the carrier was placed the strip has to go.
@@ -102,21 +133,6 @@ function firstLineOf(row: Element): DOMRect | undefined {
 }
 
 /**
- * How far sideways the strip has to go to stand on the body's left edge.
- *
- * The placement puts the strip against the row's own container, and a row
- * nested under another (Tab) has its container indented with it. The strip
- * stays on the one vertical line at the body's left edge whatever the nesting
- * (#1097 A13, user 2026-10-01), so the indent is taken back out.
- * @param rowLeft - The row container's left edge.
- * @param bodyLeft - The left edge of the body's outermost block group.
- * @returns The horizontal shift in pixels; zero for a top-level row.
- */
-export function stripShiftFromRowLeft(rowLeft: number, bodyLeft: number): number {
-  return bodyLeft - rowLeft;
-}
-
-/**
  * The strip's own vertical shift, for the row it currently points at.
  *
  * Measured against the ROW rather than against the strip's current position:
@@ -125,7 +141,7 @@ export function stripShiftFromRowLeft(rowLeft: number, bodyLeft: number): number
  * behind whenever the two land in the same frame.
  * @param blockId - The row the strip points at, or undefined while none.
  * @param body - The editable element the row lives in.
- * @returns The ref to put on the strip, and the shift to apply to it.
+ * @returns The ref to put on the strip, and the vertical shift to apply to it.
  */
 export function useStripOnFirstLine(
   blockId: string | undefined,
@@ -133,10 +149,8 @@ export function useStripOnFirstLine(
 ): {
   readonly ref: (strip: HTMLDivElement | null) => void;
   readonly offset: number;
-  readonly shift: number;
 } {
   const [offset, setOffset] = React.useState(0);
-  const [shift, setShift] = React.useState(0);
   // The two watchers outlive a render but not the elements they watch, so they
   // are held here and dropped by the ref below — on detach, and on the way to
   // watching a different row.
@@ -182,7 +196,6 @@ export function useStripOnFirstLine(
       watching.current = undefined;
       if (strip === null || blockId === undefined || body === undefined) {
         setOffset(0);
-        setShift(0);
         return;
       }
       const selector = `[data-id="${CSS.escape(blockId)}"]`;
@@ -206,12 +219,6 @@ export function useStripOnFirstLine(
             box.top,
             strip.getBoundingClientRect().height,
           ),
-        );
-        const outermost = body.querySelector('.bn-block-group');
-        setShift(
-          outermost === null
-            ? 0
-            : stripShiftFromRowLeft(box.left, outermost.getBoundingClientRect().left),
         );
       };
       // `ResizeObserver` calls back once on observe, which is the first
@@ -242,5 +249,5 @@ export function useStripOnFirstLine(
     [blockId, body],
   );
 
-  return { ref, offset, shift };
+  return { ref, offset };
 }

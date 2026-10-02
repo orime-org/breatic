@@ -315,6 +315,13 @@ test('the strip stays on the body\'s left edge for an indented row (#1097 A13)',
     return box.x;
   };
   const top = await xOf(0, 'doc-block-handle');
+  // And that line is the body's edge: the strip's right side meets the root
+  // block group's left, as it does where the library places it.
+  const bodyLeft = await page.evaluate(
+    (editor) => document.querySelector(editor)?.firstElementChild?.getBoundingClientRect().left ?? Number.NaN,
+    EDITOR,
+  );
+  expect(Math.abs(top + 24 - bodyLeft)).toBeLessThan(CENTRED_WITHIN);
   // Row 1 is nested under row 0, row 2 is an empty paragraph nested beside it.
   // Within a pixel, as A2 holds the vertical: the shift lands on subpixels.
   // Polled: the shift is measured by an observer just after the strip lands.

@@ -79,7 +79,7 @@ describe('where the strip stands', () => {
 
 /**
  * Runs the placement's middleware for a carrier floating-ui put at `x`
- * against a row container whose left edge is `rowLeft`.
+ * against a row container whose viewport left edge is `rowLeft`.
  * @param bodyLeft - The left edge of the body's root block group.
  * @param rowLeft - The row container's left edge.
  * @param x - Where floating-ui placed the carrier.
@@ -91,7 +91,15 @@ async function placeAt(bodyLeft: number, rowLeft: number, x: number): Promise<nu
   body.appendChild(root);
   root.getBoundingClientRect = (): DOMRect => ({ left: bodyLeft }) as DOMRect;
   const [edge] = stripPlacement(() => body).useFloatingOptions.middleware;
-  const state = { x, rects: { reference: { x: rowLeft } } } as unknown as MiddlewareState;
+  // floating-ui's own `rects` are in the carrier's offset-parent coordinates,
+  // so they are set apart from the viewport here: only the reference
+  // element's viewport box may be compared with the body's.
+  const reference = { getBoundingClientRect: (): DOMRect => ({ left: rowLeft }) as DOMRect };
+  const state = {
+    x,
+    rects: { reference: { x: rowLeft - 300 } },
+    elements: { reference },
+  } as unknown as MiddlewareState;
   const result = await edge!.fn(state);
   return result.x;
 }

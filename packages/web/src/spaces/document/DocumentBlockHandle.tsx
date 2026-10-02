@@ -159,15 +159,13 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       (current: { prosemirrorState: { doc: PMNode } }): RowReading => {
         const live = rowNow();
         // The root group, read off ProseMirror: one block in it, and that block
-        // is this row with nothing nested under it.
+        // is this row holding its content alone, no nested group after it.
         const group = current.prosemirrorState.doc.firstChild;
+        const only = group?.childCount === 1 ? group.firstChild : null;
         return {
           empty: isEmptyParagraph(live),
           quoted: live?.props?.[QUOTED] === true,
-          lone:
-            group?.childCount === 1 &&
-            group.firstChild?.attrs.id === live?.id &&
-            (live?.children?.length ?? 0) === 0,
+          lone: only != null && only.attrs.id === live?.id && only.childCount === 1,
         };
       },
       [rowNow],
@@ -177,7 +175,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
 
   // The carrier is placed on the row's top edge; this brings the handle down
   // onto the middle of the row's first line (A2).
-  const { ref: strip, offset, shift } = useStripOnFirstLine(
+  const { ref: strip, offset } = useStripOnFirstLine(
     block?.id,
     editor.prosemirrorView?.dom,
   );
@@ -256,9 +254,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       // `.bn-toggle-button`). The handle's own half is also covered by the UA
       // style on `[draggable=true]`; this reaches the rest of the strip.
       className='flex select-none items-center gap-0.5'
-      style={{
-        transform: `translate(${String(shift)}px, ${String(offset)}px)`,
-      }}
+      style={{ transform: `translateY(${String(offset)}px)` }}
     >
       <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
         {/* `flex`, so this wrapper is exactly as tall as the handle. As a
@@ -362,8 +358,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               <DropdownMenuSeparator className='my-0' />
               <DropdownMenuItem
                 data-testid='doc-block-plus-delete'
-                className='text-status-error-foreground'
-                // Out of reach, the greyed treatment's own class replaces the red.
+                className={row.lone ? undefined : 'text-status-error-foreground'}
                 {...itemWithin(!row.lone, onDelete)}
               >
                 <DELETE_ROW.Icon />
