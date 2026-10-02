@@ -336,18 +336,18 @@ export async function confirmCheckout(
  */
 async function recheckLapsed(subscriptionId: string, userId: string): Promise<void> {
   const askedAt = new Date();
-  const fresh = await getStripeClient().subscriptions.retrieve(
-    subscriptionId,
-    { expand: ["latest_invoice"] },
-    { timeout: getStripeCallTimeoutMs(), maxNetworkRetries: 0 },
-  );
+  const fresh = await retrieveStoredSubscription(subscriptionId, ["latest_invoice"]);
+  if (!fresh) {
+    logger.warn({ userId, subscriptionId }, "subscription_lapsed_gone_at_stripe");
+    return;
+  }
   await storeAnswer({
     userId,
     subscription: fresh,
     observedAt: askedAt,
     referenceId: `recheck:${subscriptionId}`,
   });
-  if (LIVE_SUBSCRIPTION_STATUSES.includes(fresh.status as never)) {
+  if (stillBilledAtStripe(fresh, askedAt)) {
     logger.info(
       { userId, subscriptionId, status: fresh.status },
       "subscription_lapsed_still_live_at_stripe",
@@ -421,14 +421,8 @@ async function voidUnpaidSubscription(
   subscriptionId: string,
   userId: string,
 ): Promise<void> {
-  let fresh: Stripe.Subscription;
-  try {
-    fresh = await getStripeClient().subscriptions.retrieve(subscriptionId, {
-      timeout: getStripeCallTimeoutMs(),
-      maxNetworkRetries: 0,
-    });
-  } catch (err) {
-    if (!subscriptionGoneAtStripe(err)) throw err;
+  const fresh = await retrieveStoredSubscription(subscriptionId);
+  if (!fresh) {
     // No such subscription. Nothing to void, so nothing stands in the way.
     logger.warn(
       { userId, subscriptionId },
@@ -460,6 +454,50 @@ async function voidUnpaidSubscription(
       "subscription_unpaid_expired_before_cancel",
     );
   }
+}
+
+/**
+ * Reads, as Stripe has it now, a subscription we hold a row for.
+ * @param subscriptionId - The subscription at Stripe.
+ * @param expand - Fields to expand on the answer.
+ * @returns The subscription, or null when Stripe has no such subscription —
+ *   an id from another Stripe account or mode, or test data that was wiped.
+ * @throws {Error} if Stripe failed for any reason other than it being gone.
+ */
+async function retrieveStoredSubscription(
+  subscriptionId: string,
+  expand: string[] = [],
+): Promise<Stripe.Subscription | null> {
+  try {
+    return await getStripeClient().subscriptions.retrieve(
+      subscriptionId,
+      expand.length > 0 ? { expand } : {},
+      { timeout: getStripeCallTimeoutMs(), maxNetworkRetries: 0 },
+    );
+  } catch (err) {
+    if (!subscriptionGoneAtStripe(err)) throw err;
+    return null;
+  }
+}
+
+/**
+ * Whether Stripe will bill this subscription again.
+ *
+ * A subscription set to end at its period end bills nothing after that
+ * boundary, though Stripe reports it `active` until it gets round to ending
+ * it. Selling another one in that window charges the person once.
+ * @param subscription - Stripe's answer.
+ * @param at - The moment to judge at.
+ * @returns Whether a second subscription would be billed alongside it.
+ */
+function stillBilledAtStripe(subscription: Stripe.Subscription, at: Date): boolean {
+  if (!LIVE_SUBSCRIPTION_STATUSES.includes(subscription.status as never)) return false;
+  const periodEnd = subscription.items.data[0]?.current_period_end;
+  const pastFinalPeriod =
+    subscription.cancel_at_period_end &&
+    periodEnd !== undefined &&
+    periodEnd * 1000 <= at.getTime();
+  return !pastFinalPeriod;
 }
 
 /**
