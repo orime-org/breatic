@@ -59,12 +59,16 @@ export function useMembershipCheckoutReturn(): void {
 
     if (cancelled) return;
 
+    // An address with no checkout named cannot be confirmed, which is the
+    // same unknown as a failed request and gets the same words.
+    if (!sessionId) {
+      toast.error(t('membership.loadFailed'));
+      return;
+    }
+
     void (async () => {
       let membership;
       try {
-        // An address with no checkout named cannot be confirmed, which is the
-        // same unknown as a failed request and gets the same words.
-        if (!sessionId) throw new Error('No checkout named on the return');
         membership = await confirmMembershipCheckout(sessionId);
       } catch {
         // The purchase may well have gone through; what failed is confirming
