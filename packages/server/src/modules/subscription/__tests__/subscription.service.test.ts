@@ -1026,18 +1026,25 @@ describe("startCheckout — a subscription past its deadline is asked about firs
    * The lapsed subscription as Stripe describes it now.
    * @param status - Stripe's status for it.
    * @param priceId - The price it sells.
+   * @param cancelAtPeriodEnd - Whether it is set to end at its period end.
+   * @param periodEnd - Its current period end, in Unix seconds.
    * @returns A subscription object.
    */
-  function atStripe(status: string, priceId = "price_pro_month"): Record<string, unknown> {
+  function atStripe(
+    status: string,
+    priceId = "price_pro_month",
+    cancelAtPeriodEnd = false,
+    periodEnd = 1_789_000_000,
+  ): Record<string, unknown> {
     return {
       id: "sub_old",
       status,
-      cancel_at_period_end: false,
+      cancel_at_period_end: cancelAtPeriodEnd,
       pending_update: null,
       latest_invoice: null,
       items: {
         data: [
-          { id: "si_1", current_period_end: 1_789_000_000, price: { id: priceId, unit_amount: 1999, currency: "usd", recurring: { interval: "month" } } },
+          { id: "si_1", current_period_end: periodEnd, price: { id: priceId, unit_amount: 1999, currency: "usd", recurring: { interval: "month" } } },
         ],
       },
     };
@@ -1091,6 +1098,43 @@ describe("startCheckout — a subscription past its deadline is asked about firs
 
     await expect(service.startCheckout(BUY)).rejects.toThrow("Stripe is unreachable");
     expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("sells a new one when Stripe has not yet ended a cancelled subscription past its period end", async () => {
+    // Stripe still reports it active for a while after the boundary, but a
+    // subscription set to end at its period end bills nothing more.
+    situationIs("none", null, LAPSED);
+    const ended = Math.floor(Date.now() / 1000) - 60;
+    stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      atStripe("active", "price_pro_month", true, ended),
+    );
+
+    await service.startCheckout(BUY);
+
+    expect(stripe.checkout.sessions.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses while a cancelled subscription still has time left at Stripe", async () => {
+    situationIs("none", null, LAPSED);
+    const later = Math.floor(Date.now() / 1000) + 3600;
+    stripe.subscriptions.retrieve.mockResolvedValueOnce(
+      atStripe("active", "price_pro_month", true, later),
+    );
+
+    await expect(service.startCheckout(BUY)).rejects.toBeInstanceOf(ConflictError);
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("sells a new one when Stripe no longer knows the old subscription", async () => {
+    situationIs("none", null, LAPSED);
+    stripe.subscriptions.retrieve.mockRejectedValueOnce(
+      Object.assign(new Error("No such subscription"), { code: "resource_missing" }),
+    );
+
+    await service.startCheckout(BUY);
+
+    expect(stripe.checkout.sessions.create).toHaveBeenCalledTimes(1);
+    expect(applySubscriptionWrite).not.toHaveBeenCalled();
   });
 
   it("asks nothing when no subscription lapsed", async () => {
