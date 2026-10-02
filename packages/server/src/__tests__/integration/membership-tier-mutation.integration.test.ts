@@ -58,9 +58,11 @@ import {
   loadLocales,
   changeMembershipTier,
   getUserMembershipTier,
-  getLimitsForUser,
+  getMembershipForUser,
   getLimitsForStudio,
   getMembershipLimits,
+  db,
+  lockLimitsForUser,
 } from "@breatic/core";
 import { MEMBERSHIP_TIERS } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
@@ -156,13 +158,13 @@ describe("changeMembershipTier", () => {
     // moment an action happens, so a change to the column IS the change to
     // what the account may do — no restart, no cache, no second write.
     const userId = await insertUser("base");
-    await expect(getLimitsForUser(userId)).resolves.toEqual(
+    expect((await getMembershipForUser(userId)).limits).toEqual(
       getMembershipLimits("base"),
     );
 
     await changeMembershipTier(userId, "team", "subscription_activated");
 
-    await expect(getLimitsForUser(userId)).resolves.toEqual(
+    expect((await getMembershipForUser(userId)).limits).toEqual(
       getMembershipLimits("team"),
     );
   });
@@ -403,7 +405,7 @@ describe("the enterprise tier, which has no ceilings to give", () => {
     // the lookup fails, naming the account so it can be fixed.
     const userId = await insertUser("enterprise");
 
-    const err = await getLimitsForUser(userId).then(
+    const err = await db.transaction((tx) => lockLimitsForUser(userId, tx)).then(
       () => null,
       (e: unknown) => e as Error,
     );

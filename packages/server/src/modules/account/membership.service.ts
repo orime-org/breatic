@@ -21,7 +21,7 @@
 
 import {
   env,
-  getHonouredTierForUser,
+  getMembershipForUser,
   getMembershipLimits,
   getSubscriptionPlan,
 } from "@breatic/core";
@@ -56,11 +56,7 @@ export async function readAccountMembership(
   const subscription = selling
     ? await readStoredSubscriptionSummary(userId)
     : null;
-  const tier = await getHonouredTierForUser(userId);
-
-  // Enterprise ceilings are negotiated per customer and have no source here,
-  // so that tier gets none.
-  const limits = tier === "enterprise" ? null : getMembershipLimits(tier);
+  const { tier, limits } = await getMembershipForUser(userId);
 
   const [teamStudios, storageBytes] = await Promise.all([
     studioRepo.countTeamStudiosAdministeredBy(userId),

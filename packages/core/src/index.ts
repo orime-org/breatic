@@ -171,7 +171,7 @@ export {
   getUserMembershipTier,
   getHonouredTierForUser,
   getStudioStorageQuota,
-  getLimitsForUser,
+  getMembershipForUser,
   getLimitsForStudio,
   getProjectConcurrentEditorLimit,
   lockLimitsForUser,

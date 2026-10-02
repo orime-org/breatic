@@ -37,7 +37,7 @@ import {
   initCore,
   loadLocales,
   db,
-  getLimitsForUser,
+  getMembershipForUser,
   getLimitsForStudio,
   lockLimitsForUser,
   getMembershipLimits,
@@ -134,7 +134,7 @@ describe("ceilings stop honouring a subscription nobody has heard from", () => {
     const userId = await makePaidUser("pro");
     try {
       await giveSubscription(userId, "active", daysAgo(staleDays + 3));
-      expect(await getLimitsForUser(userId)).toEqual(
+      expect((await getMembershipForUser(userId)).limits).toEqual(
         getMembershipLimits("base"),
       );
     } finally {
@@ -149,7 +149,7 @@ describe("ceilings stop honouring a subscription nobody has heard from", () => {
     const userId = await makePaidUser("pro");
     try {
       await giveSubscription(userId, "past_due", daysAgo(staleDays - 2));
-      expect(await getLimitsForUser(userId)).toEqual(getMembershipLimits("pro"));
+      expect((await getMembershipForUser(userId)).limits).toEqual(getMembershipLimits("pro"));
     } finally {
       await dropUser(userId);
     }
@@ -161,7 +161,7 @@ describe("ceilings stop honouring a subscription nobody has heard from", () => {
     // an account moved by hand.
     const userId = await makePaidUser("pro");
     try {
-      expect(await getLimitsForUser(userId)).toEqual(getMembershipLimits("pro"));
+      expect((await getMembershipForUser(userId)).limits).toEqual(getMembershipLimits("pro"));
     } finally {
       await dropUser(userId);
     }
@@ -173,7 +173,7 @@ describe("ceilings stop honouring a subscription nobody has heard from", () => {
     const userId = await makePaidUser("pro");
     try {
       await giveSubscription(userId, "canceled", daysAgo(staleDays + 30));
-      expect(await getLimitsForUser(userId)).toEqual(getMembershipLimits("pro"));
+      expect((await getMembershipForUser(userId)).limits).toEqual(getMembershipLimits("pro"));
     } finally {
       await dropUser(userId);
     }
@@ -187,7 +187,7 @@ describe("ceilings stop honouring a subscription nobody has heard from", () => {
       await giveSubscription(userId, "active", new Date(Date.now() - 60_000), {
         cancelAtPeriodEnd: true,
       });
-      expect(await getLimitsForUser(userId)).toEqual(getMembershipLimits("base"));
+      expect((await getMembershipForUser(userId)).limits).toEqual(getMembershipLimits("base"));
     } finally {
       await dropUser(userId);
     }
@@ -199,7 +199,7 @@ describe("ceilings stop honouring a subscription nobody has heard from", () => {
       await giveSubscription(userId, "active", new Date(Date.now() + DAY_MS), {
         cancelAtPeriodEnd: true,
       });
-      expect(await getLimitsForUser(userId)).toEqual(getMembershipLimits("pro"));
+      expect((await getMembershipForUser(userId)).limits).toEqual(getMembershipLimits("pro"));
     } finally {
       await dropUser(userId);
     }
@@ -212,7 +212,7 @@ describe("ceilings stop honouring a subscription nobody has heard from", () => {
     try {
       await giveSubscription(userId, "active", daysAgo(staleDays + 3), { tier: "team" });
       await giveSubscription(userId, "active", new Date(Date.now() + 20 * DAY_MS));
-      expect(await getLimitsForUser(userId)).toEqual(getMembershipLimits("pro"));
+      expect((await getMembershipForUser(userId)).limits).toEqual(getMembershipLimits("pro"));
     } finally {
       await dropUser(userId);
     }
@@ -241,7 +241,7 @@ describe("ceilings stop honouring a subscription nobody has heard from", () => {
     const userId = await makePaidUser("self_hosted");
     try {
       await giveSubscription(userId, "active", daysAgo(staleDays + 3));
-      expect(await getLimitsForUser(userId)).toEqual(
+      expect((await getMembershipForUser(userId)).limits).toEqual(
         getMembershipLimits("self_hosted"),
       );
     } finally {

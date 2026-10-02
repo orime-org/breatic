@@ -18,7 +18,8 @@
  * They call one of the four exported lookups below, which differ in what they
  * start from, whether they lock, and how many ceilings they answer with:
  *
- *   - `getLimitsForUser`  — an account, no lock. For reads.
+ *   - `getMembershipForUser` — an account, no lock. For showing a plan: the
+ *     tier in force and its ceilings, none for an enterprise account.
  *   - `lockLimitsForUser` — an account, row locked. For the one ceiling whose
  *     counted set belongs to the account: how many team studios it administers.
  *   - `getLimitsForStudio`— a studio, resolved through its current admin. No
@@ -323,26 +324,36 @@ async function readStudioAdmin(
   };
 }
 
+/** An account's tier in force, and the ceilings it carries. */
+export interface AccountMembershipReading {
+  /** The tier the account's ceilings are read from. */
+  readonly tier: MembershipTier;
+  /** Its six ceilings; null for `enterprise`, whose ceilings are negotiated. */
+  readonly limits: MembershipLimits | null;
+}
+
 /**
- * The ceilings that apply to an account: its own tier's.
+ * What an account's plan allows, for showing it: its tier in force and that
+ * tier's ceilings, from one reading.
  *
- * The one entry point for "what may this account do", together with
- * {@link getLimitsForStudio}. See this file's header for why call points do
- * not run the two steps themselves.
- * @param userId - The account whose ceilings to resolve
+ * An enterprise account answers with its tier and no ceilings. Showing one is
+ * a legitimate read, and its ceilings live in an agreement this build cannot
+ * read; the lookups that enforce a ceiling still refuse that tier.
+ * @param userId - The account.
  * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
- * @returns That tier's six ceilings
+ * @returns Its tier in force and that tier's ceilings.
  * @throws {Error} if no live account has that id, or its stored tier is not
  *   one this build knows
  */
-export async function getLimitsForUser(
+export async function getMembershipForUser(
   userId: string,
   tx?: DbTx,
-): Promise<MembershipLimits> {
-  const tier = await readUserTier(userId, tx, false);
-  return limitsFor(await honouredTier(userId, tier, tx), {
-    accountId: userId,
-  });
+): Promise<AccountMembershipReading> {
+  const tier = await honouredTier(userId, await readUserTier(userId, tx, false), tx);
+  return {
+    tier,
+    limits: tier === "enterprise" ? null : limitsFor(tier, { accountId: userId }),
+  };
 }
 
 /**
@@ -465,7 +476,7 @@ export async function getLimitsForStudio(
  *
  * Call this when the thing being counted BELONGS TO THE ACCOUNT — today that
  * is exactly one ceiling, how many team studios this account administers.
- * {@link getLimitsForUser} answers the same question without the lock and is
+ * {@link getMembershipForUser} answers the same question without the lock and is
  * for reads — showing somebody what their plan allows.
  *
  * **Do not reach for this just because something is about to be created.** The
