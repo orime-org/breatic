@@ -582,14 +582,19 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.voiceStabilityCreative"))}, ` +
       `${quoted(t("canvas.generatePanel.voiceStabilityNatural"))} and ` +
       `${quoted(t("canvas.generatePanel.voiceStabilityRobust"))} along it) when the model has them; a sound ` +
-      `effect's ${quoted(t("canvas.generatePanel.sfxDuration"))}; and any settings of the model's own. When ` +
+      `effect's ${quoted(t("canvas.generatePanel.sfxDuration"))}; and any settings of the model's own, where a ` +
+      `setting that is a list opens beside it with ${quoted(t("canvas.generatePanel.itemsAdd"))} for another ` +
+      "entry and an X on each to remove it. When " +
       `voices cannot be loaded the list shows ${quoted(t("canvas.generatePanel.voiceError"))} with ` +
       `${quoted(t("canvas.generatePanel.voiceRetry"))}.`,
     `On models that can read a dialogue, ${quoted(t("canvas.generatePanel.audioReadingMode"))} offers ` +
       `${quoted(t("canvas.generatePanel.audioReadingSingle"))} or a dialogue for a number of speakers. Picking ` +
-      "the dialogue turns the voice row into a speakers row: open it to give each speaker a name and a voice, " +
-      `with ${quoted(t("canvas.generatePanel.itemsAdd"))} for another and an X on each to remove it. Its note says ` +
-      `${quoted(t("canvas.generatePanel.audioSpeakersNote"))}: write the prompt that way. Pressing generate with ` +
+      "the dialogue turns the voice row into one row per speaker, " +
+      `${quoted(t("canvas.generatePanel.audioSpeakerRow", { n: 1 }))}, ` +
+      `${quoted(t("canvas.generatePanel.audioSpeakerRow", { n: 2 }))} and so on, each showing that speaker's ` +
+      "name and voice. Opening a speaker's row shows a box for the speaker's name at the top and the same voice " +
+      "list as the single voice below it; picking a voice sets it and closes the list. The note under the rows " +
+      `says ${quoted(t("canvas.generatePanel.audioSpeakersNote"))}: write the prompt that way. Pressing generate with ` +
       `the speakers not filled in shows ${quoted(t("canvas.generatePanel.refuseExecuteNoSpeakers"))}. On other ` +
       "models the pill shows only their settings. Picking a model that has just been taken away shows " +
       `${quoted(t("canvas.generatePanel.modelUnavailable"))} A sound node made by an older version of the ` +
