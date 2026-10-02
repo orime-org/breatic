@@ -189,7 +189,9 @@ export function useStudioSettings(
     onSuccess: () => {
       // Every page of this studio would now answer 403.
       queryClient.removeQueries({ queryKey: ['studio', studio.slug] });
-      void queryClient.invalidateQueries({ queryKey: ['studios', 'user'] });
+      // Its projects also sit in reads keyed elsewhere (recent projects, the
+      // credits overlay's lists).
+      void queryClient.invalidateQueries();
       const home = useCurrentUserStore.getState().user?.personalStudio?.slug;
       navigate(home === undefined ? '/studio' : `/studio/${home}`, {
         replace: true,

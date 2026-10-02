@@ -284,6 +284,18 @@ describe('useStudioSettings — every other read that shows the studio', () => {
 
     await expectElsewhereStale();
   });
+
+  it('marks them stale after leaving the studio', async () => {
+    // The recent page would otherwise keep offering the left studio's
+    // projects, each of which now answers 403.
+    seedElsewhere();
+    vi.mocked(studiosApi.leave).mockResolvedValue({ ok: true });
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.leave();
+
+    await expectElsewhereStale();
+  });
 });
 
 describe('useStudioSettings — changing the slug', () => {
