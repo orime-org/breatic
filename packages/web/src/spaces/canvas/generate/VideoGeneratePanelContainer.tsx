@@ -73,7 +73,7 @@ import {
   PromptEditor,
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
-import { ShotList, StoryboardSwitchRow } from '@web/spaces/canvas/generate/StoryboardControls';
+import { ShotList, StoryboardSwitchRow, addBlockedKey } from '@web/spaces/canvas/generate/StoryboardControls';
 import { mentionedSourceIds } from '@web/spaces/canvas/generate/fragment-prompt';
 import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
@@ -951,21 +951,29 @@ function VideoGeneratePanelBody({
   );
   const hasStoryboard = spec !== undefined;
   const maxShots = spec?.maxShots;
+  const addBlocked = React.useMemo(
+    () => (shots ? addBlockedKey(shots.map((shot) => shot.duration), total, maxShots) : undefined),
+    [shots, total, maxShots],
+  );
   const promptSlot = React.useMemo(() => {
     if (!vm.promptRequired) return <PromptNotUsedNotice />;
     const switchRow = hasStoryboard ? (
-      <StoryboardSwitchRow kind={storedKind} onToggle={onToggleStoryboard} onEnterShots={onEnterShots} />
+      <StoryboardSwitchRow
+        kind={storedKind}
+        maxShots={maxShots}
+        addBlocked={addBlocked}
+        onToggle={onToggleStoryboard}
+        onEnterShots={onEnterShots}
+        onBack={onBackToAuto}
+        onAdd={onAddShot}
+      />
     ) : null;
     return tier === 'custom' && shots ? (
       <>
         <ShotList
           shots={shots}
-          total={total}
-          maxShots={maxShots}
-          onBack={onBackToAuto}
           onStep={onStepShot}
           onRemove={onRemoveShot}
-          onAdd={onAddShot}
           renderEditor={renderShotEditor}
         />
         {switchRow}
@@ -982,8 +990,8 @@ function VideoGeneratePanelBody({
     storedKind,
     tier,
     shots,
-    total,
     maxShots,
+    addBlocked,
     mainEditor,
     renderShotEditor,
     onToggleStoryboard,

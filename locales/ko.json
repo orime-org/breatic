@@ -646,7 +646,6 @@
         "label": "스토리보드",
         "perShot": "샷별 편집",
         "autoHint": "모델이 샷을 나눕니다",
-        "mainPromptKept": "메인 프롬프트가 유지됩니다",
         "back": "자동 스토리보드로 돌아가기",
         "shot": "샷 {n, number}",
         "removeShot": "삭제",

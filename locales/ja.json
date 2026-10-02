@@ -646,7 +646,6 @@
         "label": "ストーリーボード",
         "perShot": "ショットごとに編集",
         "autoHint": "モデルがショットを分割します",
-        "mainPromptKept": "メインプロンプトは保持されています",
         "back": "自動ストーリーボードに戻る",
         "shot": "ショット {n, number}",
         "removeShot": "削除",
