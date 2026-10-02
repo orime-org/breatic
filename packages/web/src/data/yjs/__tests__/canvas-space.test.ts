@@ -598,7 +598,7 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
   });
 
   it('appendNodeSlotItem reads past entries that are not usable URLs', () => {
-    addNode(PID, SID, sampleFields('image', { styleImageUrls: ['a', '', 7, 'a'] }, { id: 'gen' }));
+    addNode(PID, SID, sampleFields('image', { styleImageUrls: ['a', '', 7, 'a'] as unknown as string[] }, { id: 'gen' }));
     expect(appendNodeSlotItem(PID, SID, 'gen', 'styleImageUrls', 'b', 3)).toBe('added');
     expect(styleList()).toEqual(['a', 'b']);
   });
