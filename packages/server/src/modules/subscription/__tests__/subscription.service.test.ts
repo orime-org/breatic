@@ -96,12 +96,16 @@ const RETURN_URL = "https://app.example/studio/me";
  * @param situation - What the account's situation is.
  * @param record - The live row, when there is one.
  */
-function situationIs(situation: string, record: unknown = null): void {
+function situationIs(
+  situation: string,
+  record: unknown = null,
+  lapsed: unknown = null,
+): void {
   vi.mocked(listSubscriptions).mockResolvedValue([]);
   vi.mocked(subscriptionSituation).mockReturnValue({
     situation,
     record,
-    lapsed: null,
+    lapsed,
   } as never);
 }
 
@@ -1012,5 +1016,88 @@ describe("the panel's own actions store what Stripe answered (#307 A10)", () => 
     await service.cancel(USER);
 
     expect(applySubscriptionWrite).not.toHaveBeenCalled();
+  });
+});
+
+describe("startCheckout — a subscription past its deadline is asked about first (#307 §5.1)", () => {
+  const LAPSED = { stripeSubscriptionId: "sub_old", tier: "pro", period: "month" };
+
+  /**
+   * The lapsed subscription as Stripe describes it now.
+   * @param status - Stripe's status for it.
+   * @param priceId - The price it sells.
+   * @returns A subscription object.
+   */
+  function atStripe(status: string, priceId = "price_pro_month"): Record<string, unknown> {
+    return {
+      id: "sub_old",
+      status,
+      cancel_at_period_end: false,
+      pending_update: null,
+      latest_invoice: null,
+      items: {
+        data: [
+          { id: "si_1", current_period_end: 1_789_000_000, price: { id: priceId, unit_amount: 1999, currency: "usd", recurring: { interval: "month" } } },
+        ],
+      },
+    };
+  }
+
+  const BUY = { userId: USER, tier: "pro", period: "month", returnUrl: RETURN_URL } as const;
+
+  it("refuses a second subscription while Stripe still bills the first, and stores it", async () => {
+    situationIs("none", null, LAPSED);
+    stripe.subscriptions.retrieve.mockResolvedValueOnce(atStripe("active"));
+
+    await expect(service.startCheckout(BUY)).rejects.toBeInstanceOf(ConflictError);
+
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    const [id, params, options] = stripe.subscriptions.retrieve.mock.calls[0] as [
+      string,
+      { expand?: string[] },
+      { timeout?: number; maxNetworkRetries?: number },
+    ];
+    expect(id).toBe("sub_old");
+    expect(params.expand).toEqual(["latest_invoice"]);
+    expect(options).toEqual({ timeout: 5000, maxNetworkRetries: 0 });
+    const [input] = applySubscriptionWrite.mock.calls[0] as [{ referenceId: string }];
+    expect(input.referenceId).toBe("recheck:sub_old");
+  });
+
+  it("sells a new one when Stripe says the old one is over, and stores that", async () => {
+    situationIs("none", null, LAPSED);
+    stripe.subscriptions.retrieve.mockResolvedValueOnce(atStripe("canceled"));
+
+    await service.startCheckout(BUY);
+
+    expect(stripe.checkout.sessions.create).toHaveBeenCalledTimes(1);
+    expect(applySubscriptionWrite).toHaveBeenCalledTimes(1);
+  });
+
+  it("decides by Stripe's status even when the answer cannot be priced", async () => {
+    // A price taken off our list must not lock the account out of buying.
+    situationIs("none", null, LAPSED);
+    stripe.subscriptions.retrieve.mockResolvedValueOnce(atStripe("canceled", "price_retired"));
+
+    await service.startCheckout(BUY);
+
+    expect(stripe.checkout.sessions.create).toHaveBeenCalledTimes(1);
+    expect(applySubscriptionWrite).not.toHaveBeenCalled();
+  });
+
+  it("starts nothing when Stripe cannot be asked", async () => {
+    situationIs("none", null, LAPSED);
+    stripe.subscriptions.retrieve.mockRejectedValueOnce(new Error("Stripe is unreachable"));
+
+    await expect(service.startCheckout(BUY)).rejects.toThrow("Stripe is unreachable");
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("asks nothing when no subscription lapsed", async () => {
+    situationIs("none");
+
+    await service.startCheckout(BUY);
+
+    expect(stripe.subscriptions.retrieve).not.toHaveBeenCalled();
   });
 });
