@@ -49,6 +49,9 @@ export default defineConfig({
       // e.g. `@worker/mini-tool-registry.js` fails with "Does the file exist?".
       "@worker": resolve(__dirname, "../worker/src"),
       "@collab": resolve(__dirname, "../collab/src"),
+      // The same for a test that reaches for a real tool: it imports the domain
+      // source directly, and that source uses domain's own alias.
+      "@domain": resolve(__dirname, "../domain/src"),
     },
   },
 });
