@@ -11,10 +11,12 @@ import {
   DialogContent,
   DialogTitle,
 } from '@web/components/ui/dialog';
-import { Skeleton } from '@web/components/ui/skeleton';
 import { accountApi } from '@web/data/api/account';
 import { membershipQueryKey } from '@web/features/membership/membership-query';
-import { MembershipContent } from '@web/features/membership/MembershipContent';
+import {
+  MembershipContent,
+  MembershipLoading,
+} from '@web/features/membership/MembershipContent';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
@@ -50,6 +52,7 @@ export function MembershipPanel({
 }: MembershipPanelProps): React.JSX.Element {
   const t = useTranslation();
   const userId = useCurrentUserStore((s) => s.user?.id ?? null);
+  const knownTier = useCurrentUserStore((s) => s.user?.membershipTier ?? null);
   const query = useQuery({
     queryKey: membershipQueryKey(userId),
     queryFn: () => accountApi.membership(),
@@ -78,9 +81,7 @@ export function MembershipPanel({
           <X className='h-[18px] w-[18px]' />
         </DialogClose>
         {query.isPending ? (
-          <div className='p-8'>
-            <MembershipSkeleton />
-          </div>
+          <MembershipLoading tier={knownTier} />
         ) : query.isError ? (
           // One line, the way the sibling studio pages report a failed read
           // (StudioContainerPage / StudioRecentPage). No retry button:
@@ -96,34 +97,5 @@ export function MembershipPanel({
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * The panel's shape while its one request is in flight.
- *
- * A skeleton and not a spinner: the layout does not depend on the answer, so
- * showing it early means the reader is already looking at the right place
- * when the numbers arrive.
- * @returns The placeholder.
- */
-function MembershipSkeleton(): React.JSX.Element {
-  return (
-    <div className='flex flex-col gap-8' data-testid='membership-skeleton'>
-      <section className='flex flex-col gap-4'>
-        <Skeleton className='h-3 w-20' />
-        <Skeleton className='h-7 w-36' />
-        <Skeleton className='h-3.5 w-full' />
-      </section>
-      <section className='flex flex-col gap-4'>
-        <Skeleton className='h-3 w-20' />
-        <Skeleton className='h-8 w-full' />
-        <Skeleton className='h-8 w-full' />
-      </section>
-      <section className='flex flex-col gap-4'>
-        <Skeleton className='h-3 w-20' />
-        <Skeleton className='h-56 w-full' />
-      </section>
-    </div>
   );
 }

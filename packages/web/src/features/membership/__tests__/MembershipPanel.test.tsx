@@ -771,15 +771,6 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('over-limit-storage')).toBeInTheDocument();
   });
 
-  it('加载中显示骨架，不是 spinner', async () => {
-    membershipMock.mockReturnValue(new Promise(() => {}));
-    setup();
-
-    await waitFor(() => {
-      expect(screen.getByTestId('membership-skeleton')).toBeInTheDocument();
-    });
-  });
-
   it('加载失败显示一行错误文案', async () => {
     membershipMock.mockRejectedValue(new Error('network'));
     setup();
@@ -1095,7 +1086,7 @@ describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => 
     expect(screen.getByText('Current membership')).toBeInTheDocument();
     expect(screen.getByText('My allowances')).toBeInTheDocument();
     expect(screen.getByText('Choose a membership')).toBeInTheDocument();
-    expect(screen.getByTestId('current-tier-name')).toHaveTextContent('Pro');
+    expect(screen.getByTestId('loading-tier-name')).toHaveTextContent('PRO');
     // One placeholder under the tier name, one block each for the allowances
     // and the table — and no whole-panel placeholder in their place.
     expect(screen.getAllByTestId('section-skeleton')).toHaveLength(2);

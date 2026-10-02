@@ -11,10 +11,13 @@ import {
   type AccountMembership,
   type BillingPeriod,
   type ComparableMembershipTier,
+  type MembershipTier,
 } from '@breatic/shared';
 
+import { SectionSkeleton } from '@web/components/section-skeleton';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Skeleton } from '@web/components/ui/skeleton';
 import { formatBytes } from '@web/lib/format-bytes';
 import { QuotaRow } from '@web/features/membership/QuotaRow';
 import { SALES_EMAIL } from '@web/features/membership/pricing';
@@ -473,5 +476,62 @@ function SelfHostedRow({
       <span>{label}</span>
       <span className='tabular-nums text-foreground-secondary'>{value}</span>
     </div>
+  );
+}
+
+/**
+ * The panel while its one request is in flight.
+ *
+ * The same rows as the loaded panel, with bars only where the answer goes:
+ * the headings never depend on it, and the tier name is already known — the
+ * server checked it when it last answered `/auth/me`. Which sections appear
+ * follows the same rule as the loaded panel, so a self-hosted or enterprise
+ * account does not see a tier table appear and then vanish.
+ * @param props - The tier the account is on.
+ * @param props.tier - The tier from the signed-in account, when there is one.
+ * @returns The panel's body, waiting.
+ */
+export function MembershipLoading({
+  tier,
+}: {
+  tier: MembershipTier | null;
+}): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <>
+      <section className='flex flex-col gap-1.5 p-8'>
+        <SectionHeading>{t('membership.currentTier')}</SectionHeading>
+        <div className='flex flex-col gap-1'>
+          <div className='text-2xl font-bold' data-testid='loading-tier-name'>
+            {tier === null ? (
+              <Skeleton className='h-7 w-36' />
+            ) : (
+              t(`membership.tier.${tier}`)
+            )}
+          </div>
+          <Skeleton
+            className='h-3.5 w-40'
+            data-testid='current-tier-skeleton'
+          />
+        </div>
+        <p className='text-sm text-foreground-secondary'>
+          {t('membership.tierNote')}
+        </p>
+      </section>
+      <ScrollArea viewportClassName='px-8 pb-8'>
+        <div className='flex flex-col gap-8'>
+          <section className='flex flex-col gap-4'>
+            <SectionHeading>{t('membership.myQuota')}</SectionHeading>
+            <SectionSkeleton />
+          </section>
+          {tier !== null && isComparableMembershipTier(tier) ? (
+            <section className='flex flex-col gap-4'>
+              <SectionHeading>{t('membership.chooseTier')}</SectionHeading>
+              <SectionSkeleton />
+            </section>
+          ) : null}
+        </div>
+      </ScrollArea>
+    </>
   );
 }
