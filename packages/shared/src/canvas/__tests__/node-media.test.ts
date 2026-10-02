@@ -12,7 +12,7 @@
 import * as Y from 'yjs';
 import { describe, expect, it } from 'vitest';
 
-import { writeNodeMedia } from '../node-media';
+import { writeNodeMedia } from '@shared/canvas/node-media.js';
 
 /**
  * A node's data map, attached to a document so writes behave as in the app.
