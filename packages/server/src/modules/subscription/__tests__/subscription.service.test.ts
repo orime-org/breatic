@@ -1170,12 +1170,26 @@ describe("startCheckout — a subscription past its deadline is asked about firs
       "sub_other",
     ]);
     expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
-    // The still-billed answer is stored first, so the tier never passes
-    // through base on the way and nobody is told a paid membership ended.
+    // Only the still-billed answer is stored: the checkout is refused anyway,
+    // and storing the ended one could drop the tier to base and tell a paying
+    // account its membership ended.
     const stored = applySubscriptionWrite.mock.calls.map(
       ([input]) => (input as { referenceId: string }).referenceId,
     );
-    expect(stored).toEqual(["recheck:sub_other", "recheck:sub_old"]);
+    expect(stored).toEqual(["recheck:sub_other"]);
+  });
+
+  it("stores no ended answer when a still-billed one cannot be priced", async () => {
+    const OTHER = { stripeSubscriptionId: "sub_other", tier: "pro", period: "month" };
+    situationIs("none", null, [LAPSED, OTHER]);
+    stripe.subscriptions.retrieve
+      .mockResolvedValueOnce(atStripe("canceled"))
+      .mockResolvedValueOnce({ ...atStripe("active", "price_retired"), id: "sub_other" });
+
+    await expect(service.startCheckout(BUY)).rejects.toBeInstanceOf(ConflictError);
+
+    expect(applySubscriptionWrite).not.toHaveBeenCalled();
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 
   it("writes nothing when Stripe cannot be asked about one of several lapsed subscriptions", async () => {
