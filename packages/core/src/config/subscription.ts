@@ -195,12 +195,21 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
  * The clock every reading of an account's subscriptions is taken against.
+ *
+ * The renewal window is read from the file when a reading first asks for it,
+ * which only a row with a period end does. An install with payments off has
+ * no copy of the file, and its accounts have no rows, so reading their tier
+ * never opens it.
  * @param now - The moment to read at.
  * @returns That moment with the configured renewal window.
- * @throws {Error} When the file is missing or malformed.
  */
 export function subscriptionClock(now: Date = new Date()): SituationClock {
-  return { now, staleAfterMs: getSubscriptionStaleAfterDays() * MS_PER_DAY };
+  return {
+    now,
+    get staleAfterMs(): number {
+      return getSubscriptionStaleAfterDays() * MS_PER_DAY;
+    },
+  };
 }
 
 /**

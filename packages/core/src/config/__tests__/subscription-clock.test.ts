@@ -21,7 +21,7 @@ const readFileSync = vi.hoisted(() =>
   }),
 );
 vi.mock("node:fs", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node:fs")>()),
+  ...(await importOriginal<object>()),
   readFileSync,
 }));
 
