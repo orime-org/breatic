@@ -10,7 +10,7 @@
  * (A6), and which choice would change nothing and so is drawn out of reach.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
@@ -148,7 +148,7 @@ describe('a block type lands on the line itself (A3)', () => {
 
     fillEmptyRow(editor, rowAt(editor, 1), 'heading-1');
 
-    expect(editor.getTextCursorPosition().block.id).toBe(rowAt(editor, 1).id);
+    expect((editor.getTextCursorPosition().block as unknown as Seen).id).toBe(rowAt(editor, 1).id);
   });
 });
 
@@ -167,7 +167,7 @@ describe('the divider goes above the line (A4)', () => {
       'paragraph:Below',
     ]);
     expect(rowAt(editor, 2).id).toBe(line.id);
-    expect(editor.getTextCursorPosition().block.id).toBe(line.id);
+    expect((editor.getTextCursorPosition().block as unknown as Seen).id).toBe(line.id);
   });
 });
 
@@ -193,6 +193,27 @@ describe('one undo takes it back (A6)', () => {
     manager.undo();
 
     expect(shape(editor)).toEqual(['paragraph:Above', 'paragraph:', 'paragraph:Below']);
+  });
+});
+
+describe('one pick, one transaction', () => {
+  // Y.UndoManager merges edits that land close together, so the undo case
+  // above stays green even when the pick is split; counting what reaches the
+  // view is what pins it down.
+  it.each<InsertChoice>(['heading-1', 'quote', 'divider'])('%s dispatches once', (choice) => {
+    const { editor } = open(AROUND_EMPTY);
+    editor.setTextCursorPosition(rowAt(editor, 0).id, 'end');
+    const view = editor.prosemirrorView!;
+    let dispatches = 0;
+    const original = view.dispatch.bind(view);
+    vi.spyOn(view, 'dispatch').mockImplementation((tr) => {
+      dispatches += 1;
+      original(tr);
+    });
+
+    fillEmptyRow(editor, rowAt(editor, 1), choice);
+
+    expect(dispatches).toBe(1);
   });
 });
 

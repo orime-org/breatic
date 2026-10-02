@@ -1163,6 +1163,7 @@
       },
       "blockHandle": {
         "dragTip": "拖动换位 · 点击出菜单",
+        "insertHere": "在此插入",
         "duplicate": "复制副本",
         "insertBelow": "在下方插入",
         "delete": "删除这个块"

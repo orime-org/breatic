@@ -630,6 +630,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.create.typeAria": { excluded: REASONS.SCREEN_READER, look: /card \(/ },
   "spaces.create.typeLabel": { excluded: REASONS.FILLS_A_VALUE },
   "spaces.document.blockHandle.dragTip": { excluded: REASONS.SCREEN_READER, look: /a handle of six dots/ },
+  "spaces.document.blockHandle.insertHere": { excluded: REASONS.SCREEN_READER, look: /shows a plus at its left/ },
   "spaces.document.commands.aiOtherGroup": { excluded: REASONS.NOT_OPEN },
   "spaces.document.commands.aiProduceGroup": { excluded: REASONS.NOT_OPEN },
   "spaces.document.commands.aiRewriteGroup": { excluded: REASONS.NOT_OPEN },

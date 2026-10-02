@@ -13,11 +13,13 @@
  * `preventDefault()` on `onPointerDown`, which stops the browser from ever
  * starting a drag (A11) — hence the arrangement below.
  *
- * THE HANDLE IS THE WHOLE STRIP (user 2026-09-18): everything the plus offered
- * is in this handle's own menu, as its insert-below row. It takes no tooltip
- * either (user 2026-09-17) — it is pressed the moment the pointer arrives, and
- * a tip that fades in over the row is in the way of the very gesture it
- * describes. The name stays as `aria-label`.
+ * THE STRIP IS ONE BUTTON, and which one depends on the row (#1097, user
+ * 2026-10-02). On an empty paragraph it is a plus: its menu lists what the
+ * insert-below submenu lists, and the pick lands on that line itself. On every
+ * other row it is the drag handle, whose menu carries insert-below among its
+ * rows. Neither takes a tooltip (user 2026-09-17) — the strip is pressed the
+ * moment the pointer arrives, and a tip that fades in over the row is in the
+ * way of the very gesture it describes. The name stays as `aria-label`.
  *
  * The handle carries both of its gestures by keeping them apart: a
  * `pointer-events-none` span is the menu's anchor and receives nothing, while
@@ -27,7 +29,7 @@
  */
 
 import { SideMenuExtension } from '@blocknote/core/extensions';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Plus } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -53,8 +55,15 @@ import {
   restoreReaderPlace,
   type ReaderPlace,
 } from '@web/spaces/document/document-drag-selection';
+import {
+  fillChangesRow,
+  fillEmptyRow,
+  isEmptyParagraph,
+  type InsertChoice,
+} from '@web/spaces/document/document-insert-row';
 import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignment';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
+import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import type { PressedBlock } from '@web/spaces/document/document-handle-commands';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
@@ -101,6 +110,21 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     (current) => !current.prosemirrorState.selection.empty,
   );
 
+  // Read off the document on every change rather than off the snapshot the
+  // side menu hands over: that snapshot is not refreshed while the pointer
+  // stays on the same row (`SideMenu.ts:229-236`), so a line typed into, or
+  // emptied, would keep showing the strip it had.
+  const blockId = block?.id;
+  const emptyLine = useEditorSnapshot(
+    editor as never,
+    React.useCallback(
+      (current: { getBlock: (id: string) => unknown }): boolean =>
+        blockId !== undefined &&
+        isEmptyParagraph(current.getBlock(blockId) as PressedBlock | undefined),
+      [blockId],
+    ),
+  );
+
   // The carrier is placed on the row's top edge; this brings the handle down
   // onto the middle of the row's first line (A2).
   const { ref: strip, offset } = useStripOnFirstLine(
@@ -128,6 +152,30 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   const closeMenu = React.useCallback((): void => {
     onMenuOpenChange(false);
   }, [onMenuOpenChange]);
+
+  // The plus menu's pick, on the row as the document holds it at the press:
+  // the menu stays open as long as the reader takes, and a co-editor can take
+  // the row away meanwhile.
+  const onFill = React.useCallback(
+    (choice: InsertChoice): void => {
+      if (blockId === undefined) return;
+      const live = editor.getBlock(blockId) as PressedBlock | undefined;
+      if (live !== undefined) fillEmptyRow(editor as never, live, choice);
+      closeMenu();
+    },
+    [editor, blockId, closeMenu],
+  );
+
+  // An entry that would leave the line as it is draws out of reach (quote on a
+  // line already in a quote).
+  const fillReaches = React.useCallback(
+    (choice: InsertChoice): boolean => {
+      if (blockId === undefined) return false;
+      const live = editor.getBlock(blockId) as PressedBlock | undefined;
+      return live !== undefined && fillChangesRow(live, choice);
+    },
+    [editor, blockId],
+  );
 
   if (block === undefined || (holdsSelection && !dragging.current)) {
     return null;
@@ -169,52 +217,67 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
           <DropdownMenuTrigger asChild>
             <span aria-hidden className='pointer-events-none absolute inset-0' />
           </DropdownMenuTrigger>
-          <Button
-            variant='ghost'
-            size={null}
-            aria-label={t('spaces.document.blockHandle.dragTip')}
-            data-testid='doc-block-handle'
-            className={`${STRIP_BUTTON} cursor-grab`}
-            draggable
-            onDragStart={(event) => {
-              // Read before the library takes the selection for its own
-              // (`blockDragStart` puts a node selection on the row).
-              dragging.current = true;
-              place.current = readerPlace(editor.prosemirrorView.state);
-              // Which row is in flight, for the drop to read out of the
-              // document rather than out of the payload (§8).
-              rowIsFlying(block.id, place.current);
-              sideMenu.blockDragStart(event, block as never);
-            }}
-            onDragEnd={() => {
-              dragging.current = false;
-              rowHasLanded();
-              sideMenu.blockDragEnd();
-              const held = place.current;
-              place.current = undefined;
-              // A text selection goes back whatever the reader had: the node
-              // selection the library put on the row at dragstart is still
-              // there when the drag ends, and the bubble bar comes up for any
-              // selection that is not empty — so a row nobody selected would
-              // carry the bar. The reader's own place when there
-              // was one; the caret in the row that moved when there was not
-              // (`readerPlace` declines anything that is not a text selection,
-              // and a gap cursor is one of those).
-              restoreReaderPlace(
-                editor.prosemirrorView,
-                held ?? caretAtStartOf(block.id),
-              );
-              // The press that started the drag took the focus to this button,
-              // and a key pressed after the drag has to land in the document —
-              // the same reason the menu hands focus back when it closes.
-              editor.focus();
-            }}
-            onClick={() => {
-              onMenuOpenChange(!menuOpen);
-            }}
-          >
-            <GripVertical />
-          </Button>
+          {emptyLine ? (
+            <Button
+              variant='ghost'
+              size={null}
+              aria-label={t('spaces.document.blockHandle.insertHere')}
+              data-testid='doc-block-plus'
+              className={STRIP_BUTTON}
+              onClick={() => {
+                onMenuOpenChange(!menuOpen);
+              }}
+            >
+              <Plus />
+            </Button>
+          ) : (
+            <Button
+              variant='ghost'
+              size={null}
+              aria-label={t('spaces.document.blockHandle.dragTip')}
+              data-testid='doc-block-handle'
+              className={`${STRIP_BUTTON} cursor-grab`}
+              draggable
+              onDragStart={(event) => {
+                // Read before the library takes the selection for its own
+                // (`blockDragStart` puts a node selection on the row).
+                dragging.current = true;
+                place.current = readerPlace(editor.prosemirrorView.state);
+                // Which row is in flight, for the drop to read out of the
+                // document rather than out of the payload (§8).
+                rowIsFlying(block.id, place.current);
+                sideMenu.blockDragStart(event, block as never);
+              }}
+              onDragEnd={() => {
+                dragging.current = false;
+                rowHasLanded();
+                sideMenu.blockDragEnd();
+                const held = place.current;
+                place.current = undefined;
+                // A text selection goes back whatever the reader had: the node
+                // selection the library put on the row at dragstart is still
+                // there when the drag ends, and the bubble bar comes up for any
+                // selection that is not empty — so a row nobody selected would
+                // carry the bar. The reader's own place when there
+                // was one; the caret in the row that moved when there was not
+                // (`readerPlace` declines anything that is not a text selection,
+                // and a gap cursor is one of those).
+                restoreReaderPlace(
+                  editor.prosemirrorView,
+                  held ?? caretAtStartOf(block.id),
+                );
+                // The press that started the drag took the focus to this button,
+                // and a key pressed after the drag has to land in the document —
+                // the same reason the menu hands focus back when it closes.
+                editor.focus();
+              }}
+              onClick={() => {
+                onMenuOpenChange(!menuOpen);
+              }}
+            >
+              <GripVertical />
+            </Button>
+          )}
         </div>
         <DropdownMenuContent
           side='bottom'
@@ -239,11 +302,15 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
             if (unclaimed) editor.focus();
           }}
         >
-          <DocumentBlockMenu
-            editor={editor as never}
-            block={block}
-            close={closeMenu}
-          />
+          {emptyLine ? (
+            <DocumentInsertChoices onPick={onFill} reachable={fillReaches} />
+          ) : (
+            <DocumentBlockMenu
+              editor={editor as never}
+              block={block}
+              close={closeMenu}
+            />
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

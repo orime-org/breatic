@@ -1163,6 +1163,7 @@
       },
       "blockHandle": {
         "dragTip": "拖曳換位 · 點擊開選單",
+        "insertHere": "在此插入",
         "duplicate": "複製副本",
         "insertBelow": "在下方插入",
         "delete": "刪除這個區塊"
