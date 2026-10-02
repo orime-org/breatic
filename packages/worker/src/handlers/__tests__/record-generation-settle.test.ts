@@ -95,6 +95,40 @@ describe("recordGenerationForNodes, the settle that carries the result", () => {
     );
   });
 
+  it("keeps on the history row the same media the node is handed (#2184)", async () => {
+    mockSettleTaskForNode.mockResolvedValue(undefined);
+    const output = {
+      nodeId: "node-1",
+      content: "https://cdn/video/result.mp4",
+      coverUrl: "https://cdn/video/result.jpg",
+      width: 1920,
+      height: 1080,
+      duration: 5.04,
+      mimeType: "video/mp4",
+      size: 734_003,
+    };
+
+    await recordGenerationForNodes(
+      {} as never,
+      "project-proj-1/canvas-space-1",
+      CTX,
+      [output],
+      {},
+    );
+
+    const handed = mockSettleTaskForNode.mock.calls[0]?.[2].result;
+    expect(handed).toEqual({
+      content: output.content,
+      coverUrl: output.coverUrl,
+      width: 1920,
+      height: 1080,
+      duration: 5.04,
+      mimeType: "video/mp4",
+      size: 734_003,
+    });
+    expect(mockRecordSuccess.mock.calls[0]?.[0].media).toEqual(handed);
+  });
+
   it("settles an output that produced no content as failed, saying so (#196)", async () => {
     // Stage 3 has already charged for this run by the time this is reached
     // (`dispatch.ts` bills before it settles), so leaving the row alone costs

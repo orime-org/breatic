@@ -56,6 +56,7 @@ export type {
   CanvasNodeFields,
   NodeTaskCounts,
   NodeTaskResult,
+  NodeMediaNumbers,
   NodeTaskCountsEvent,
   NodeEvent,
   ModelModality,

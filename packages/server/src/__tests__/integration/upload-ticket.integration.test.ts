@@ -444,6 +444,40 @@ describe("POST /assets/upload-ticket", () => {
     expect(rows[0]!.content).toBe(`https://cdn.test.invalid/${hash}.mp4`);
   });
 
+  it("keeps the registered row's numbers on the dedup hit's history row (#2184)", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const size = 40 * 1024 * 1024;
+    const nodeId = crypto.randomUUID();
+    await registerAsset(studioId, userId, hash, size);
+
+    await requestTicket(
+      cookie,
+      body({ project_id: projectId, client_hash: hash, size, node_id: nodeId }),
+    );
+
+    const [asset] = await sql<
+      { width: number | null; height: number | null; duration_seconds: string | null; mime_type: string; size_bytes: string }[]
+    >`
+      SELECT width, height, duration_seconds, mime_type, size_bytes FROM studio_assets
+      WHERE studio_id = ${studioId} AND content_hash = ${hash}
+    `;
+    const [row] = await sql<
+      { media_width: number | null; media_height: number | null; duration_seconds: string | null; mime_type: string | null; size_bytes: string | null }[]
+    >`
+      SELECT media_width, media_height, duration_seconds, mime_type, size_bytes FROM node_history
+      WHERE node_id = ${nodeId} AND deleted_at IS NULL
+    `;
+    expect(row).toEqual({
+      media_width: asset!.width,
+      media_height: asset!.height,
+      duration_seconds: asset!.duration_seconds,
+      mime_type: asset!.mime_type,
+      size_bytes: asset!.size_bytes,
+    });
+    expect(Number(row!.size_bytes)).toBe(size);
+  });
+
   it("points the dedup hit's task row at the history row it landed", async () => {
     // Design §4.3: a hit is a task that finished before it started, and the
     // user "可以点替换、点完成，跟别的完成态一样". Replace renders only for a
