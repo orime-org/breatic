@@ -63,7 +63,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         always_fails: tool({
           description: "Never succeeds.",
           inputSchema: z.object({}),
-          execute: async () => {
+          execute: async (): Promise<string> => {
             throw new Error("the far side refused");
           },
         }),
