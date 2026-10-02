@@ -168,8 +168,9 @@ export function toUiParts(parts: MessagePart[]): UiParts {
     if (part.status === "error") {
       // Two fields, and neither of them is the reason. `errorText` carries a
       // key for the panel to translate -- a key rather than a sentence
-      // because the row outlives the language it was written in -- and
-      // `failureKind` says which of the two endings this was, which is a
+      // because the row outlives the language it was written in -- or, for a
+      // call turned away, the marker that says to draw nothing; and
+      // `failureKind` says which of the three endings this was, which is a
       // different question from what to say about it. The model's copy of
       // the reason names hosts, statuses and, for a refused fetch, addresses
       // inside the network, and it stops here.

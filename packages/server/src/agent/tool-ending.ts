@@ -8,10 +8,10 @@
  * the reason, one for the model and a key for the panel. Not every failed call
  * comes from one of them, though. Input the model shaped wrongly is rejected
  * before `execute` runs, and a tool name that no longer exists never reaches
- * one at all. Both arrive here with nothing of ours on them, and both arrive
- * as a rendered string rather than an error object: `parseToolCall` catches
- * either one into the same `{ invalid: true, error }` shape, and the one site
- * that puts it on the stream renders it with `getErrorMessage`.
+ * one at all. Both arrive here with nothing of ours on them: `parseToolCall`
+ * catches either one into the same `{ invalid: true, error }` shape, and the
+ * refusal then reaches this file in two forms -- the SDK's error object, and
+ * the same error rendered as a string with `getErrorMessage`.
  *
  * Those still have to be recorded as something, because a stored `error` part
  * with no detail is a record that cannot say what happened, and the model

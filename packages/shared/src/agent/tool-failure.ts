@@ -103,10 +103,10 @@ export type ToolFailureKind =
   | "turned_away";
 
 /**
- * What both endings say, apart from which line the reader is shown.
+ * What every ending says, apart from which line the reader is shown.
  *
- * Split out so the two fields that vary together are the only ones written
- * twice below.
+ * Split out so the fields that vary with the kind are the only ones written
+ * in each arm below.
  */
 interface FailureDetail {
   /**
@@ -121,9 +121,10 @@ interface FailureDetail {
 /**
  * Why a use of a tool ended without a result.
  *
- * The two fields go together: the line about being stopped belongs to the
- * ending that was a stop, and the lines about a failure belong to the ending
- * that was one. Written as one type with a `readerKey` of its own, the pair
+ * The kind and the reader's line go together: the line about being stopped
+ * belongs to the ending that was a stop, the lines about a failure belong to
+ * the ending that was one, and a call turned away carries no line at all.
+ * Written as one type with a `readerKey` of its own, the pair
  * "stopped by the user" and "could not run" type-checks, and the panel then
  * tells a reader their own button press was something going wrong.
  *
