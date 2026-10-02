@@ -151,9 +151,6 @@ function hasLapsed(record: SubscriptionRecord, clock: SituationClock): boolean {
 /**
  * The statuses under which a subscription is still ours to act on.
  *
- * The same three the panel's reconciliation and the situation reading treat as
- * still ours to act on.
- *
  * `trialing` and `paused` are absent although Stripe considers them current:
  * we set no trial, so neither can arise from anything we do, and treating one
  * as live would leave a state we never produce standing between an account

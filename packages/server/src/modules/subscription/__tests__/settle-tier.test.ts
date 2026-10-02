@@ -2,15 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 档位落地的唯一出口（#106 §9）。
+ * The one door a subscription's tier goes through (#106 §9).
  *
- * 「掉回免费档要通知用户」这件事挂在**结果**上，不挂在事件类型上：`unpaid` 和
- * `incomplete_expired` 走的是 `customer.subscription.updated`，压根不产生
- * `deleted`，而对账那条路一个 Stripe 事件都没有。挂事件类型的话，四条回落路径
- * 只有一条会通知。
+ * The "you are back on the free tier" notice hangs on the RESULT, not on an
+ * event type: `unpaid` and `incomplete_expired` arrive as
+ * `customer.subscription.updated` and produce no `deleted`, and the paths that
+ * store Stripe's answer to our own calls produce no Stripe event at all.
+ * Hanging it on an event type would notify only some of them.
  *
- * 铃铛是保底通道、邮件是可选增强（`notification-mail.ts` 文件头的契约，
- * `EMAIL_BACKEND` 默认就是 `disabled`），所以两个都要有，且铃铛在事务里。
+ * The bell is the channel that always arrives and the email is optional (the
+ * contract at the top of `notification-mail.ts`; `EMAIL_BACKEND` defaults to
+ * `disabled`), so both are sent and the bell is written in the transaction.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -39,16 +41,15 @@ describe("settleTier — 订阅只管它自己给出的那些档位", () => {
   it.each(["enterprise", "self_hosted"] as const)(
     "不碰 %s：那不是订阅给的",
     async (stored) => {
-      // 一个谈下来的企业账号、或者部署形态就是自部署的账号，只要它在 Stripe
-      // 那边有过一次 customer（点过一次订阅按钮就有），打开会员面板就会走到
-      // 对账。对账问 Stripe「有活订阅吗」，答案是没有，于是这里被要求写
-      // base —— 而那个档位根本不是订阅给的，订阅无权收回。
+      // A negotiated enterprise account, or one whose deployment is
+      // self-hosted, was not given its tier by a subscription, so a
+      // subscription write asking for `base` must not take it away.
       vi.mocked(getUserMembershipTier).mockResolvedValue(stored);
 
       const result = await settleTier({
         userId: USER,
         toTier: "base",
-        referenceId: "reconcile:cus_1",
+        referenceId: "checkout:cs_1",
       });
 
       expect(changeMembershipTier).not.toHaveBeenCalled();
@@ -81,9 +82,8 @@ describe("settleTier — 订阅只管它自己给出的那些档位", () => {
 });
 
 describe("settleTier — 账本记的原因由落点决定", () => {
-  // 这个判断此前在两个调用方各写一遍，而两遍问的不是同一个问题：webhook 问
-  // 档位是不是 base，对账问处境是不是 none —— 对「唯一那条活订阅还没付成」
-  // 的账号，两者答案相反。收回来一处算之后，两半都要有人钉着。
+  // The reason follows from where the tier lands, worked out in one place;
+  // both halves of that rule are pinned here.
 
   it.each([
     ["base", "subscription_ended"],

@@ -4,14 +4,16 @@
 /**
  * The one door a subscription's tier goes through (task #106, design §9).
  *
- * Every path that can move an account's tier because of Stripe comes here: the
- * webhook, and the reconciliation that runs when somebody opens the membership
- * panel. That matters for the notice attached to it, which is owed whenever the
- * account lands back on the free tier — and the four ways that happens do not
- * share an event. `unpaid` and `incomplete_expired` arrive as
+ * Every path that can move an account's tier because of Stripe comes here
+ * through `applySubscriptionWrite`: the webhook, the checkout-return confirm,
+ * the panel's own cancel / resume / plan change, and the re-check before a
+ * second checkout. That matters for the notice attached to it, which is owed
+ * whenever the account lands back on the free tier — and the ways that happens
+ * do not share an event. `unpaid` and `incomplete_expired` arrive as
  * `customer.subscription.updated` and produce no `deleted` at all, and the
- * reconciliation produces no Stripe event whatsoever. Hanging the notice on an
- * event type would cover one of the four.
+ * paths that store Stripe's answer to our own call produce no Stripe event
+ * whatsoever. Hanging the notice on an event type would cover only some of
+ * them.
  *
  * So it hangs on the RESULT: the tier moved, and where it landed is `base`.
  */
@@ -60,13 +62,8 @@ export interface SettleTierResult {
  * The bell is written inside the caller's transaction on purpose: it is the
  * always-delivered channel, so if the tier change is abandoned the notice about
  * it has to be abandoned too.
- * The ledger reason is worked out here rather than passed in. It follows
- * entirely from where the tier lands, so a caller supplying it is a second
- * copy of one rule — and the two copies had already diverged: the webhook
- * asked whether the tier was `base` while the reconciliation asked whether
- * the situation was `none`, which disagree for an account whose only live
- * subscription has an unsettled first invoice. Same event, two different
- * words in the same ledger column.
+ * The ledger reason is worked out here. It follows entirely from where the
+ * tier lands, so a caller supplying it would be a second copy of one rule.
  * @param input - Who, where to, and the transaction to do it in.
  * @param input.userId - The account whose tier is settling.
  * @param input.toTier - The tier it should be on now.
@@ -86,11 +83,8 @@ export async function settleTier(input: {
     // Stripe has no say over this account's tier. `enterprise` is negotiated
     // and `self_hosted` is a deployment shape; neither was ever sold as a
     // subscription, so "there is no live subscription" says nothing about
-    // them. Without this the reconciliation writes `base` over both — and it
-    // runs for any account that ever had a Stripe customer, which one press
-    // of the subscribe button is enough to create. The read side already
-    // refuses to touch these (`honouredTier`); this is the same refusal on
-    // the write side, where it was missing.
+    // them, and a subscription write must not land `base` on either. The
+    // read side refuses to touch these the same way (`honouredTier`).
     return { changed: false, fromTier: stored, endedFrom: null };
   }
 

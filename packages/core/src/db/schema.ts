@@ -1110,11 +1110,12 @@ export const subscriptions = pgTable(
     payableInvoiceUrl: text("payable_invoice_url"),
     // When the snapshot this row was written from was taken (0058).
     //
-    // Two paths write here — the webhook and the panel's reconciliation — and
-    // both ask Stripe first and write second, so the one that asked first can
-    // still commit last while holding the older answer. Comparing this decides
-    // which view is newer, which is what lets both of them fetch outside any
-    // lock: whoever saw Stripe more recently wins, whatever the commit order.
+    // Several paths write here — the webhook and our own calls to Stripe —
+    // and each asks Stripe first and writes second, so the one that asked
+    // first can still commit last while holding the older answer. Comparing
+    // this decides which view is newer, which is what lets them fetch outside
+    // any lock: whoever saw Stripe more recently wins, whatever the commit
+    // order.
     observedAt: timestamp("observed_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

@@ -64,10 +64,10 @@ node-history-snapshot: { max: 60,  window_seconds: 60 }
 # 30/60s, which is where the two neighbouring write routes sit.
 understand:     { max: 30,  window_seconds: 60 }
 
-# Reading the membership panel. It reconciles with Stripe on every read
-# (#106 §10.2), so an unthrottled reader is an unthrottled caller of somebody
-# else's API. Sixty a minute leaves the panel feeling instant while capping
-# what one account can send outward.
+# Reading the membership panel. Answered from our own database (#307), and
+# each read sums the storage of every studio the account administers. Sixty a
+# minute leaves the panel feeling instant while capping what one account can
+# make that sum cost.
 membership-read: { max: 60, window_seconds: 60 }
 
 # Reading the credits overlay. It reconciles unsettled payments with Stripe on

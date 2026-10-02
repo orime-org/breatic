@@ -68,7 +68,7 @@ function isConflict(err: unknown): boolean {
  * Wires the panel's buttons to the subscription endpoints.
  *
  * None of them patch state in place: what the panel should show afterwards is
- * a server fact, settled by Stripe and told to us by a webhook.
+ * a server fact, settled by Stripe and stored from its answer or its webhook.
  *
  * How much gets re-read differs, because how much changed differs. Choosing a
  * tier moves the tier itself, which the top bar renders out of the session

@@ -122,7 +122,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
   });
 
   it("converges on one row per Stripe subscription", async () => {
-    // The webhook, the reconciliation and a redelivery of the same event all
+    // The webhook, our own calls to Stripe and a redelivery of the same event all
     // arrive here. A second row would read as a second membership.
     const userId = await makeUser();
     const stripeId = `sub_conv_${Date.now()}`;

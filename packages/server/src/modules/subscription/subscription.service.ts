@@ -392,7 +392,7 @@ function itemToReplace(record: StoredSubscription): string {
  *
  * The one irreversible call on this path, so it asks Stripe first rather than
  * acting on the stored row. That row is a snapshot from whichever wrote it
- * last, the webhook or the panel's reconciliation, and one of the ways it goes
+ * last, the webhook or one of our own calls to Stripe, and one of the ways it goes
  * out of date is the one that matters most here: the reader paid. The panel hands an account in this state a
  * payment link that opens in a NEW tab, so the tab they came from keeps
  * showing the old state and never refetches on focus; paying there and coming

@@ -161,8 +161,8 @@ function customerIdOf(subscription: Stripe.Subscription): string | null {
  *
  * Which tier it was for comes from the EVENT, not from the stored row. The
  * event is Stripe's own record of the update that lapsed and carries the items
- * it would have applied; the stored row is a shared piece of state that the
- * reconciliation or a sibling event may already have cleared, and reading it
+ * it would have applied; the stored row is a shared piece of state that
+ * another writer or a sibling event may already have cleared, and reading it
  * would make the notice vanish exactly when something else got there first.
  * @param event - The event being handled.
  * @param userId - The account.
@@ -248,7 +248,7 @@ export async function handleSubscriptionEvent(
   const fresh = await getStripeClient().subscriptions.retrieve(
     subscription.id,
     { expand: ["latest_invoice"] },
-    // Bounded and not retried, the same as the panel's reconciliation. The
+    // Bounded and not retried, the same as every other Stripe read here. The
     // SDK's default is 80 seconds twice retried, and this handler has to
     // answer before Stripe decides the delivery failed — after which it is
     // holding a request nobody is waiting for while a redelivery is already
