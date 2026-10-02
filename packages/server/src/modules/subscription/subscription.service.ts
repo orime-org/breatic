@@ -222,10 +222,11 @@ export async function startCheckout(input: {
   period: BillingPeriod;
   returnUrl: string;
 }): Promise<CheckoutStart> {
-  const { situation, record } = await readSituation(input.userId);
+  const { situation, record, lapsed } = await readSituation(input.userId);
   if (holdsActionableSubscription(situation)) {
     throw new ConflictError(t("server.membership.already_subscribed"));
   }
+  if (lapsed) await recheckLapsed(lapsed.stripeSubscriptionId, input.userId);
 
   if (situation === "firstPaymentUnsettled" && record) {
     // Stripe refuses to update a subscription whose first invoice has not
@@ -316,6 +317,43 @@ export async function confirmCheckout(
   }
 
   await writeSnapshot(userId, read.write, `checkout:${sessionId}`);
+}
+
+/**
+ * Asks Stripe about a subscription we still have marked live past its
+ * deadline, before selling a second one.
+ *
+ * Its deadline passing without a word from Stripe reads as ended everywhere
+ * else, but checkout charges money and cannot be taken back: if Stripe is in
+ * fact still billing it, selling another would bill the person twice. So the
+ * decision follows Stripe's status, the same rule `voidUnpaidSubscription`
+ * applies. What Stripe says is stored when it can be priced, which also puts
+ * the tier back when the subscription turns out to be live.
+ * @param subscriptionId - The lapsed subscription at Stripe.
+ * @param userId - The account.
+ * @throws {ConflictError} if Stripe says it is still live.
+ * @throws {Error} if Stripe could not be asked.
+ */
+async function recheckLapsed(subscriptionId: string, userId: string): Promise<void> {
+  const askedAt = new Date();
+  const fresh = await getStripeClient().subscriptions.retrieve(
+    subscriptionId,
+    { expand: ["latest_invoice"] },
+    { timeout: getStripeCallTimeoutMs(), maxNetworkRetries: 0 },
+  );
+  await storeAnswer({
+    userId,
+    subscription: fresh,
+    observedAt: askedAt,
+    referenceId: `recheck:${subscriptionId}`,
+  });
+  if (LIVE_SUBSCRIPTION_STATUSES.includes(fresh.status as never)) {
+    logger.info(
+      { userId, subscriptionId, status: fresh.status },
+      "subscription_lapsed_still_live_at_stripe",
+    );
+    throw new ConflictError(t("server.membership.already_subscribed"));
+  }
 }
 
 /**
