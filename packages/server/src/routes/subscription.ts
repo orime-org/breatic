@@ -14,16 +14,19 @@
  */
 
 import { Hono } from "hono";
-import { logger } from "@breatic/core";
+import { AppError, logger } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
 import { assertPaymentsEnabled } from "@server/middleware/require-payments.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { validate } from "@server/middleware/validate.js";
 import {
+  paymentConfirmSchema,
   subscriptionChangeSchema,
   subscriptionPlanSchema,
+  t,
 } from "@breatic/shared";
+import { readAccountMembership } from "@server/modules/account/membership.service.js";
 import * as subscriptionService from "@server/modules/subscription/subscription.service.js";
 
 const subscription = new Hono<{ Variables: AuthVariables }>();
@@ -119,5 +122,37 @@ subscription.post("/resume", async (c) => {
   logger.info({ userId: user.id }, "subscription_resumed");
   return c.json({ data: { ok: true } });
 });
+
+/**
+ * `POST /account/subscription/confirm` — the buyer is back from a membership
+ * checkout.
+ *
+ * Settles that checkout there and then rather than waiting for the webhook,
+ * so the person who just paid sees the tier they bought. The webhook still
+ * arrives and finds the work done.
+ * @returns `200` with the membership panel's answer; `404` when the session
+ *   is not a membership checkout of theirs; `503` when it could not be
+ *   confirmed yet.
+ */
+subscription.post(
+  "/confirm",
+  validate("json", paymentConfirmSchema),
+  async (c) => {
+    assertPaymentsEnabled();
+    const user = c.get("user");
+    const { session_id: sessionId } = c.req.valid("json");
+    try {
+      await subscriptionService.confirmCheckout(user.id, sessionId);
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      // Stripe could not be asked. The webhook still records the purchase;
+      // what failed is only this early look at it.
+      logger.error({ err, userId: user.id, sessionId }, "subscription_confirm_failed");
+      throw new AppError(503, t("server.membership.checkout_unconfirmed"));
+    }
+    logger.info({ userId: user.id, sessionId }, "subscription_checkout_confirmed");
+    return c.json({ data: await readAccountMembership(user.id) });
+  },
+);
 
 export { subscription as subscriptionRoute };

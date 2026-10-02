@@ -197,7 +197,7 @@ describe("POST /confirm — the return from a membership checkout (#307 A5–A7)
   it("refuses a body that names no session before the service sees it", async () => {
     const res = await post("/confirm", {});
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     expect(service.confirmCheckout).not.toHaveBeenCalled();
   });
 
