@@ -182,6 +182,24 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     expect(call.cancel_url).not.toContain("session_id");
   });
 
+  it("keeps the checkout in the query when the page left had a fragment (#307 A5)", async () => {
+    // The return reads the query string only. A fragment left on the address
+    // would swallow whatever is appended after it.
+    situationIs("none");
+    await service.startCheckout({
+      userId: USER,
+      tier: "pro",
+      period: "month",
+      returnUrl: `${RETURN_URL}#projects`,
+    });
+
+    const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
+    const back = new URL(String(call.success_url));
+    expect(back.searchParams.get("session_id")).toBe("{CHECKOUT_SESSION_ID}");
+    expect(back.searchParams.get("membership")).toBe("1");
+    expect(back.hash).toBe("");
+  });
+
   it("reuses the stored customer rather than making a second one", async () => {
     situationIs("none");
     await service.startCheckout({
