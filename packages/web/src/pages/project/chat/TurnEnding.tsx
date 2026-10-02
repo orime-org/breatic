@@ -156,7 +156,9 @@ interface FailedStepsProps {
  * one line, with how many when there was more than one, in the order each line
  * first appeared: two identical lines one above the other tell the reader
  * nothing the second time. A step the reader stopped gets none: the turn's own
- * "Stopped" line already says so.
+ * "Stopped" line already says so. Nor does a step turned away to steer the
+ * model -- a second question, a second media call while one runs, input the
+ * SDK refused -- since nothing failed.
  * @param root0 - The component props.
  * @param root0.message - The message whose tool steps these are.
  * @returns The lines, or nothing when no step failed.
@@ -167,7 +169,10 @@ export function FailedSteps({ message }: FailedStepsProps): React.JSX.Element | 
   const lines = React.useMemo(() => {
     const counts = new Map<string, number>();
     for (const call of message.toolCalls ?? []) {
-      if (call.status !== 'error' || call.failureKind === 'user_aborted') continue;
+      // A step the reader stopped is said by the turn's own line; one turned
+      // away to steer the model is not a failure at all.
+      if (call.status !== 'error') continue;
+      if (call.failureKind === 'user_aborted' || call.failureKind === 'turned_away') continue;
       const line = t(call.failureKey ?? FAILURE_LINES.generic);
       counts.set(line, (counts.get(line) ?? 0) + 1);
     }

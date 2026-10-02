@@ -16,7 +16,7 @@
  */
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
-import { chipOfPart, isReaderLine } from '@breatic/shared';
+import { chipOfPart, isReaderLine, TURNED_AWAY } from '@breatic/shared';
 import type { CanvasProposal, ChatAttachedChip } from '@breatic/shared';
 import type { ChatAsset, ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
@@ -230,6 +230,11 @@ export function toChatMessage(
         status,
         ...(status === 'success' ? { result: part.output as string } : {}),
         ...cutShort,
+        // Turned away to steer the model: the wire's one error field says so
+        // while the turn runs, and a replayed part says so in its kind below.
+        ...(status === 'error' && 'errorText' in part && part.errorText === TURNED_AWAY
+          ? ({ failureKind: 'turned_away' } as const)
+          : {}),
         // Declared by the tool, carried by the SDK. Read off whatever the
         // part has: a replayed call has no metadata at all, and the line it
         // would name is not drawn on one anyway.
