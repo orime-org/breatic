@@ -204,7 +204,7 @@ export const VoiceList = React.memo(function VoiceList({
                   <div
                     key={voice.id}
                     className={cn(
-                      'flex items-center gap-1 rounded-chrome',
+                      'group flex items-center gap-1 rounded-chrome',
                       chosen ? 'bg-accent-strong' : 'hover:bg-accent',
                     )}
                   >
@@ -222,7 +222,13 @@ export const VoiceList = React.memo(function VoiceList({
                           {voice.name}
                         </span>
                         {voice.description !== undefined && (
-                          <span className='w-full truncate text-left text-xs text-muted-foreground'>
+                          // Muted text on the chosen or hovered fill falls under 4.5:1.
+                          <span
+                            className={cn(
+                              'w-full truncate text-left text-xs',
+                              chosen ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground',
+                            )}
+                          >
                             {voice.description}
                           </span>
                         )}

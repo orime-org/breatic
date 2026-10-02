@@ -298,6 +298,7 @@
         "unreachable": "実行エラー",
         "generic": "実行エラー"
       },
+      "failureTimes": "{line} ×{count}",
       "searching": "「{query}」を検索中",
       "searchingImages": "「{query}」の画像を検索中",
       "checkingCanvas": "キャンバスでできることを確認中",
@@ -615,6 +616,7 @@
       "audioReadingDialogue": "対話（{count} 人）",
       "audioDialogueSummary": "対話 · {count} 人",
       "audioSpeakersNote": "セリフは「名前：セリフ」と書きます",
+      "audioSpeakerRow": "話者 {n}",
       "audioLanguageSearch": "言語を検索…",
       "audioOptionEmpty": "一致する項目がありません",
       "param": {
