@@ -46,6 +46,10 @@ for (const width of [1280, 1920]) {
       const rowBox = (await row.boundingBox())!;
       expect(Math.round(pop.width)).toBe(256);
       expect(pop.y + pop.height - (rowBox.y + rowBox.height)).toBeLessThan(16);
+      // It sits in the model's own section, under Image search / Web search, with no line between.
+      const rowBlock = row.locator('xpath=..');
+      await expect(rowBlock).toHaveCSS('border-top-width', '0px');
+      expect(Math.round(rowBox.y - (await rowBlock.boundingBox())!.y)).toBe(0);
 
       await row.click();
       const panel = page.getByTestId('generate-camera-panel');

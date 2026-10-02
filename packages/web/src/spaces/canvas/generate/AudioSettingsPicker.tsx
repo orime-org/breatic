@@ -48,14 +48,6 @@ import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-stat
  */
 const SECOND_PANEL_SPAN = 288 + 8;
 
-/**
- * How far the second panel reaches; a constant, as its width is fixed.
- * @returns The span in pixels.
- */
-function secondPanelSpan(): number {
-  return SECOND_PANEL_SPAN;
-}
-
 /** What this picker's shared controls edit, by the catalog's own param names. */
 export type AudioParamsValue = Record<string, number>;
 
@@ -181,7 +173,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
     [showPanel],
   );
 
-  const [firstPanelRef, secondOnLeft] = useSecondPanelSide(panel, secondPanelSpan);
+  const [firstPanelRef, secondOnLeft] = useSecondPanelSide(panel, SECOND_PANEL_SPAN);
 
   const inlineOnly = React.useCallback(
     (control: ModelControl) => layout.inline.some((c) => c.name === control.name),

@@ -65,7 +65,6 @@ function setup(
       onAddReference={() => {}}
       referencePicking={false}
       onRemoveReference={() => {}}
-      cameraSupported={false}
       onFocus={() => {}}
       focusPicking={false}
       onExecute={() => {}}
@@ -104,14 +103,17 @@ describe('GeneratePanel — the collaborative image-node Generate panel shell (s
     expect(screen.queryByTestId('generate-online')).toBeNull();
   });
 
-  it('draws no camera button on the bottom row, with or without the camera (#2254)', () => {
-    setup({ cameraSupported: false });
-    expect(screen.queryByTestId('generate-camera')).toBeNull();
-  });
-
-  it('puts the camera in the params popover when the model declares it (#2254)', () => {
-    setup({ cameraSupported: true });
-    expect(screen.queryByTestId('generate-camera')).toBeNull();
+  it('draws no camera button on the bottom row; the camera is a row of the params popover (#2254)', () => {
+    const camera: ModelEntry = {
+      ...MODEL,
+      params: {
+        ...MODEL.params,
+        enable_camera: { description: '', values: [true, false], default: false, fill: 'panel' },
+        camera: { description: '', values: ['Canon EOS R5'], default: 'Canon EOS R5', fill: 'panel' },
+      },
+    };
+    setup({ models: [camera] });
+    expect(screen.queryByRole('button', { name: 'Camera' })).toBeNull();
     fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
     expect(screen.getByTestId('generate-camera-row')).toBeInTheDocument();
   });

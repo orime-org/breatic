@@ -740,7 +740,6 @@ function GeneratePanelBody({
       referencePicking={referencePicking}
       onRemoveReference={onRemoveReference}
       onInsertReference={handleInsertReference}
-      cameraSupported={vm.cameraSupported}
       onFocus={onFocus}
       focusPicking={focusPicking}
       pendingFocus={pendingFocus}

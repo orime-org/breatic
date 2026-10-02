@@ -48,7 +48,6 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       <RatioResolutionPicker
         model={FULL}
         value={{ aspect_ratio: '16:9', resolution: '2K' }}
-        cameraSupported={false}
         onChange={() => {}}
       />,
     );
@@ -64,12 +63,12 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       resolution: RESOLUTION,
       quality: { description: '', label: 'Quality', values: ['low', 'max'], default: 'max', fill: 'panel' },
     });
-    render(<RatioResolutionPicker model={own} value={resolveParamsForModel(own, { aspect_ratio: 'auto', resolution: '1K' })} cameraSupported={false} onChange={() => {}} />);
+    render(<RatioResolutionPicker model={own} value={resolveParamsForModel(own, { aspect_ratio: 'auto', resolution: '1K' })} onChange={() => {}} />);
     expect(screen.getByTestId('generate-ratio-trigger')).toHaveTextContent('1K · Auto · Max');
   });
 
   it('caps the pill at 150px, like the video and audio params pills', () => {
-    render(<RatioResolutionPicker model={FULL} value={{ aspect_ratio: '16:9', resolution: '2K' }} cameraSupported={false} onChange={() => {}} />);
+    render(<RatioResolutionPicker model={FULL} value={{ aspect_ratio: '16:9', resolution: '2K' }} onChange={() => {}} />);
     expect(screen.getByTestId('generate-ratio-trigger').className).toContain('max-w-[150px]');
   });
 
@@ -79,7 +78,6 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       <RatioResolutionPicker
         model={FULL}
         value={{ aspect_ratio: '1:1', resolution: '1K' }}
-        cameraSupported={false}
         onChange={onChange}
       />,
     );
@@ -93,7 +91,6 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       <RatioResolutionPicker
         model={FULL}
         value={{ aspect_ratio: '1:1', resolution: '1K' }}
-        cameraSupported={false}
         onChange={() => {}}
       />,
     );
@@ -118,7 +115,6 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       <RatioResolutionPicker
         model={FULL}
         value={{ aspect_ratio: '1:1', resolution: '1K' }}
-        cameraSupported={false}
         onChange={onChange}
       />,
     );
@@ -132,7 +128,6 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       <RatioResolutionPicker
         model={model({ resolution: RESOLUTION })}
         value={{ resolution: '2K' }}
-        cameraSupported={false}
         onChange={() => {}}
       />,
     );
@@ -155,13 +150,13 @@ describe('RatioResolutionPicker — the camera row (#2254)', () => {
   const SET = { aspect_ratio: '1:1', resolution: '1K', camera: 'Canon EOS R5', lens: 'Zeiss', focal_length: 50, aperture: 'f/2.8' };
 
   it('draws no camera row for a model without the camera', () => {
-    render(<RatioResolutionPicker model={FULL} value={{ aspect_ratio: '1:1', resolution: '1K' }} onChange={() => {}} cameraSupported={false} />);
+    render(<RatioResolutionPicker model={FULL} value={{ aspect_ratio: '1:1', resolution: '1K' }} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
     expect(screen.queryByTestId('generate-camera-row')).toBeNull();
   });
 
   it('reads Off on the row while the camera is off', () => {
-    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} cameraSupported />);
+    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
     const row = screen.getByTestId('generate-camera-row');
     expect(row).toHaveTextContent('Camera');
@@ -169,13 +164,13 @@ describe('RatioResolutionPicker — the camera row (#2254)', () => {
   });
 
   it('lists the four settings on the row while the camera is on', () => {
-    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: true }} onChange={() => {}} cameraSupported />);
+    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: true }} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
     expect(screen.getByTestId('generate-camera-row')).toHaveTextContent('Canon EOS R5 · Zeiss · 50 mm · f/2.8');
   });
 
   it('opens the camera panel from the row and closes it on a second click', () => {
-    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} cameraSupported />);
+    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
     const row = screen.getByTestId('generate-camera-row');
     expect(screen.queryByTestId('generate-camera-panel')).toBeNull();
@@ -190,7 +185,7 @@ describe('RatioResolutionPicker — the camera row (#2254)', () => {
   });
 
   it('closes the camera panel with the popover, so it opens folded next time', () => {
-    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} cameraSupported />);
+    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
     fireEvent.click(screen.getByTestId('generate-camera-row'));
     fireEvent.keyDown(screen.getByTestId('generate-camera-panel'), { key: 'Escape' });
@@ -202,7 +197,7 @@ describe('RatioResolutionPicker — the camera row (#2254)', () => {
 
   it('writes the switch and the wheels back from the panel', () => {
     const onChange = vi.fn();
-    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={onChange} cameraSupported />);
+    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
     fireEvent.click(screen.getByTestId('generate-camera-row'));
     fireEvent.click(screen.getByTestId('generate-camera-toggle'));
@@ -211,10 +206,45 @@ describe('RatioResolutionPicker — the camera row (#2254)', () => {
     expect(onChange).toHaveBeenCalledWith({ focal_length: 85 });
   });
 
+  it('puts the camera row in the same section as the model\'s own switches', () => {
+    const own = model({
+      ...CAMERA.params,
+      enable_web_search: { description: '', label: 'Web search', values: [true, false], default: false, fill: 'panel' },
+    });
+    render(<RatioResolutionPicker model={own} value={{ ...SET, enable_camera: false }} onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    expect(screen.getByTestId('generate-camera-row').parentElement!.className).not.toContain('border-t');
+  });
+
+  it('sets the camera row off with a line when nothing of the model\'s own sits above it', () => {
+    render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    expect(screen.getByTestId('generate-camera-row').parentElement!.className).toContain('border-t');
+  });
+
+  it('opens the panel on the left when a narrow window caps it at 88vw and only the left has room', () => {
+    // 500px window: the panel is 440px wide plus the 8px gap. The popover's left
+    // edge at 460 leaves room there and none on the right; a fixed 520px panel
+    // would fit on neither side and stay right.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 460, right: 460, top: 0, bottom: 0, width: 0, height: 0, x: 460, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+    vi.stubGlobal('innerWidth', 500);
+    try {
+      render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} />);
+      fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+      fireEvent.click(screen.getByTestId('generate-camera-row'));
+      expect(screen.getByTestId('generate-camera-panel')).toHaveAttribute('data-side', 'left');
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('adds Camera to the pill only while the camera is on', () => {
-    const { rerender } = render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: true }} onChange={() => {}} cameraSupported />);
+    const { rerender } = render(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: true }} onChange={() => {}} />);
     expect(screen.getByTestId('generate-ratio-trigger')).toHaveTextContent('1K · 1:1 · Camera');
-    rerender(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} cameraSupported />);
+    rerender(<RatioResolutionPicker model={CAMERA} value={{ ...SET, enable_camera: false }} onChange={() => {}} />);
     expect(screen.getByTestId('generate-ratio-trigger')).not.toHaveTextContent('Camera');
   });
 });

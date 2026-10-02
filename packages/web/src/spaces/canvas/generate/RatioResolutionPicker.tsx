@@ -27,7 +27,7 @@ import {
 import { paramValues } from '@breatic/shared';
 import { PARAMS_PILL_CLASS } from '@web/spaces/canvas/generate/generate-tools';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
-import { optionLabel, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
+import { modelControls, optionLabel, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import { useSecondPanelSide } from '@web/spaces/canvas/generate/use-second-panel-side';
 
@@ -36,6 +36,9 @@ interface RatioResolutionValue extends CameraValue {
   aspect_ratio?: string;
   resolution?: string;
 }
+
+/** A line under the shared ratio / resolution, before the model's own section. */
+const SECTION_BREAK = 'mt-3 border-t border-border pt-3';
 
 /** The key the camera panel opens under, for the side it opens on. */
 const CAMERA_PANEL = 'camera';
@@ -56,8 +59,6 @@ interface RatioResolutionPickerProps {
   value: RatioResolutionValue & Readonly<Record<string, unknown>>;
   /** Called with the changed field only. */
   onChange: (partial: object) => void;
-  /** Whether the model has the camera, which adds the row that opens its panel. */
-  cameraSupported: boolean;
 }
 
 /**
@@ -82,22 +83,22 @@ export const RATIO_RESOLUTION_PARAMS = ['aspect_ratio', 'resolution'] as const;
  * @param root0.model - The current model.
  * @param root0.value - The current ratio + resolution.
  * @param root0.onChange - Called with the changed field.
- * @param root0.cameraSupported - Whether to draw the camera row.
  * @returns The ratio + resolution picker.
  */
 export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
   model,
   value,
   onChange,
-  cameraSupported,
 }: RatioResolutionPickerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
   const [cameraOpen, setCameraOpen] = React.useState(false);
   const [firstPanelRef, cameraOnLeft] = useSecondPanelSide(
     cameraOpen ? CAMERA_PANEL : null,
-    cameraPanelSpan,
+    cameraPanelSpan(),
   );
+  // A model without the camera omits its params, so `params.camera` is absent.
+  const cameraSupported = model.params.camera != null;
   const cameraOn = value[CAMERA_SWITCH_PARAM] === true;
   const handleOpenChange = React.useCallback((next: boolean) => {
     setOpen(next);
@@ -117,6 +118,8 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
     value: String(v),
     label: String(v),
   }));
+  const hasShared = ratios.length + resolutions.length > 0;
+  const hasOwn = modelControls(model).length > 0;
   // A model with none of the shared two still has its own controls to open.
   // The pill reads in the popover's order, top to bottom.
   const label =
@@ -186,10 +189,11 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
           model={model}
           value={value}
           onChange={onChange}
-          className={ratios.length + resolutions.length > 0 ? 'mt-3 border-t border-border pt-3' : undefined}
+          className={hasShared ? SECTION_BREAK : undefined}
         />
         {cameraSupported ? (
-          <div className={ratios.length + resolutions.length > 0 ? 'mt-3 border-t border-border pt-2' : undefined}>
+          // The camera sits in the model's own section, under its switches.
+          <div className={hasOwn ? 'mt-3' : hasShared ? SECTION_BREAK : undefined}>
             <Button
               type='button'
               variant='ghost'

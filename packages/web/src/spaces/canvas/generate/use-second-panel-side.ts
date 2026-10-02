@@ -12,24 +12,21 @@ import * as React from 'react';
  * different second panel opens, because the first panel follows the canvas
  * and can have moved since the last one.
  * @param openKey - Which second panel is open, or null when none is.
- * @param spanOf - How far the second panel reaches beside the first, its width
- *   plus the gap, read at the moment of measuring.
+ * @param span - How far the second panel reaches beside the first: its width
+ *   plus the gap.
  * @returns A ref for the first panel, and whether the second opens on the left.
  */
 export function useSecondPanelSide(
   openKey: string | null,
-  spanOf: () => number,
+  span: number,
 ): [React.RefObject<HTMLDivElement | null>, boolean] {
   const firstPanelRef = React.useRef<HTMLDivElement>(null);
   const [onLeft, setOnLeft] = React.useState(false);
-  const spanRef = React.useRef(spanOf);
-  spanRef.current = spanOf;
   React.useLayoutEffect(() => {
     const el = firstPanelRef.current;
     if (openKey === null || !el) return;
     const box = el.getBoundingClientRect();
-    const span = spanRef.current();
     setOnLeft(box.right + span > window.innerWidth && box.left >= span);
-  }, [openKey]);
+  }, [openKey, span]);
   return [firstPanelRef, onLeft];
 }

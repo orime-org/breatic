@@ -83,8 +83,6 @@ interface GeneratePanelProps {
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert a reference's @-mention into the prompt at the cursor (rail click). */
   onInsertReference: (item: ReferenceRailItem) => void;
-  /** Whether the active model declares the camera cluster (#1788) — the params popover draws its camera row only then (#2254). */
-  cameraSupported: boolean;
   /** Toggle the canvas focus-crop mode (#1782 — enter, or exit when already picking). */
   onFocus: () => void;
   /** Whether THIS node's focus pick is running — highlights the Focus button. */
@@ -126,7 +124,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   onSelectModel,
   onToggleMode,
   onChangeParams,
-  cameraSupported,
   onAddReference,
   referencePicking,
   onRemoveReference,
@@ -204,7 +201,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
             model={currentModel}
             value={params}
             onChange={onChangeParams}
-            cameraSupported={cameraSupported}
           />
         ) : null}
 
