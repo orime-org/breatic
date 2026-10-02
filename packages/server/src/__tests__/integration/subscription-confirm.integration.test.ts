@@ -30,6 +30,7 @@ vi.mock("ai", () => ({
 
 const stripe = {
   checkout: { sessions: { retrieve: vi.fn() } },
+  subscriptions: { retrieve: vi.fn() },
 };
 
 vi.mock("@server/infra/stripe.js", () => ({
@@ -47,7 +48,9 @@ import {
   getSubscriptionPlan,
   getUserMembershipTier,
 } from "@breatic/core";
+import type Stripe from "stripe";
 import { confirmCheckout } from "@server/modules/subscription/subscription.service.js";
+import { handleSubscriptionEvent } from "@server/modules/subscription/subscription-events.js";
 
 try {
   initCore(process.env);
@@ -71,7 +74,12 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+const eventIds: string[] = [];
+
 afterAll(async () => {
+  if (eventIds.length > 0) {
+    await sql`DELETE FROM stripe_webhook_events WHERE event_id IN ${sql(eventIds)}`;
+  }
   await sql?.end({ timeout: 1 });
 });
 
@@ -280,6 +288,101 @@ describe("confirmCheckout (#307 A5–A8)", () => {
       stripe.checkout.sessions.retrieve.mockRejectedValueOnce(new Error("Stripe is unreachable"));
 
       await expect(confirmCheckout(userId, "cs_down")).rejects.toThrow("Stripe is unreachable");
+    } finally {
+      await dropUser(userId);
+    }
+  });
+});
+
+describe("confirmCheckout and the webhook arriving in either order (#307 A8)", () => {
+  /**
+   * The subscription as Stripe describes it at one moment.
+   * @param userId - Whose it is.
+   * @param customerId - The Stripe customer.
+   * @param tier - Which tier its price sells.
+   * @returns A subscription object.
+   */
+  function subscriptionOn(
+    userId: string,
+    customerId: string,
+    tier: "pro" | "team",
+  ): Record<string, unknown> {
+    return {
+      id: `sub_confirm_${seq}`,
+      customer: customerId,
+      status: "active",
+      cancel_at_period_end: false,
+      pending_update: null,
+      latest_invoice: null,
+      items: { data: [{ id: "si_1", current_period_end: PERIOD_END, price: proMonthly(tier) }] },
+      metadata: { userId },
+    };
+  }
+
+  /**
+   * A promise and the function that settles it, so one call can be held open.
+   * @returns The promise and its resolver.
+   */
+  function held<T>(): { promise: Promise<T>; release: (value: T) => void } {
+    let release!: (value: T) => void;
+    const promise = new Promise<T>((resolve) => {
+      release = resolve;
+    });
+    return { promise, release };
+  }
+
+  /**
+   * A webhook event naming the subscription.
+   * @param subscription - The subscription the event carries.
+   * @returns A Stripe event.
+   */
+  function updated(subscription: Record<string, unknown>): Stripe.Event {
+    const id = `evt_confirm_${seq}_${Date.now()}`;
+    eventIds.push(id);
+    return {
+      id,
+      type: "customer.subscription.updated",
+      data: { object: subscription },
+    } as unknown as Stripe.Event;
+  }
+
+  it("keeps the webhook's newer answer when the confirm that asked first commits last", async () => {
+    const { userId, customerId } = await makeAccount();
+    try {
+      const stale = held<unknown>();
+      stripe.checkout.sessions.retrieve.mockReturnValueOnce(stale.promise);
+      const confirming = confirmCheckout(userId, `cs_${seq}`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      stripe.subscriptions.retrieve.mockResolvedValueOnce(subscriptionOn(userId, customerId, "team"));
+      await handleSubscriptionEvent(updated(subscriptionOn(userId, customerId, "team")));
+
+      stale.release(session(userId, customerId));
+      await confirming;
+
+      expect(await getUserMembershipTier(userId)).toBe("team");
+      expect(await storedRows(userId)).toBe(1);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("keeps the confirm's newer answer when the webhook that asked first commits last", async () => {
+    const { userId, customerId } = await makeAccount();
+    try {
+      const stale = held<unknown>();
+      stripe.subscriptions.retrieve.mockReturnValueOnce(stale.promise);
+      const webhook = handleSubscriptionEvent(updated(subscriptionOn(userId, customerId, "team")));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      stripe.checkout.sessions.retrieve.mockResolvedValueOnce(session(userId, customerId));
+      await confirmCheckout(userId, `cs_${seq}`);
+
+      stale.release(subscriptionOn(userId, customerId, "team"));
+      await webhook;
+
+      expect(await getUserMembershipTier(userId)).toBe("pro");
+      expect(await storedRows(userId)).toBe(1);
     } finally {
       await dropUser(userId);
     }
