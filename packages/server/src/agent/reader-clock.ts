@@ -7,7 +7,7 @@
  *
  * The model has no clock of its own, and the server runs on UTC, so the
  * reader's zone comes from their browser with each message. The note opens
- * that turn's user message only; see `MainAgent.chat` for why it stays out of
+ * that turn's user message only; see `MainAgent.runTurn` for why it stays out of
  * the system prompt and the stored history.
  */
 
@@ -21,6 +21,7 @@ type ClockPart = "weekday" | "year" | "month" | "day" | "hour" | "minute" | "tim
  * @param now - The moment.
  * @param timeZone - A zone `Intl` knows.
  * @returns Each part of the moment in that zone, and the zone's resolved name.
+ * @throws {RangeError} When timeZone is not a zone Intl knows.
  */
 function readClock(now: Date, timeZone: string): { parts: Record<ClockPart, string>; zone: string } {
   const format = new Intl.DateTimeFormat("en-US", {

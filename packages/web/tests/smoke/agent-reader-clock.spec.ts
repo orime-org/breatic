@@ -133,16 +133,18 @@ test('reads the clock again when the same conversation goes on elsewhere @needs-
   await shanghai.context().close();
 
   // The project reopens on the conversation it was left on.
-  const newYork = await pageIn(browser, 'America/New_York');
-  await expect(newYork.getByTestId('message-bubble')).toHaveCount(2, { timeout: 30_000 });
+  // Fifteen hours from Shanghai, so a repeat of the earlier answer read on a
+  // 12-hour clock cannot pass for the new one.
+  const losAngeles = await pageIn(browser, 'America/Los_Angeles');
+  await expect(losAngeles.getByTestId('message-bubble')).toHaveCount(2, { timeout: 30_000 });
   const asked = new Date();
-  const text = await askHere(newYork, '现在几点？只回答 HH:MM');
+  const text = await askHere(losAngeles, '现在几点？只回答 HH:MM');
 
   expect(
-    statesTimeNear(text, clockIn(asked, 'America/New_York').minutes),
+    statesTimeNear(text, clockIn(asked, 'America/Los_Angeles').minutes),
     `the reply: ${text}`,
   ).toBe(true);
-  await newYork.context().close();
+  await losAngeles.context().close();
 });
 
 test('answers from the clock, not as words the reader said, with a file attached @needs-model', async ({
