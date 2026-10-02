@@ -125,7 +125,7 @@ describe('the strip follows the row, not the snapshot (A9)', () => {
     expect(screen.getByTestId('doc-block-plus')).toBeTruthy();
 
     act(() => {
-      editor.setTextCursorPosition(editor.document[0]!.id, 'start');
+      editor.setTextCursorPosition((editor.document[0] as unknown as { id: string }).id, 'start');
       editor.insertInlineContent('x');
     });
 
@@ -139,7 +139,7 @@ describe('the strip follows the row, not the snapshot (A9)', () => {
     expect(screen.getByTestId('doc-block-handle')).toBeTruthy();
 
     act(() => {
-      editor.updateBlock(editor.document[0]!.id, { content: [] } as never);
+      editor.updateBlock((editor.document[0] as unknown as { id: string }).id, { content: [] } as never);
     });
 
     expect(screen.getByTestId('doc-block-plus')).toBeTruthy();
