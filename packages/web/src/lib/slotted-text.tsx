@@ -16,7 +16,7 @@ const SLOT_PATTERN = new RegExp(`${SLOT_DELIM}(\\w+)${SLOT_DELIM}`);
 
 /**
  * Build the marker `t()` interpolates for a slot — split back out at render.
- * @param name - The slot name, matching the `{placeholder}` in the translated string.
+ * @param name - The key of this slot's node in the `nodes` map passed to `renderSlottedText`.
  * @returns The delimited marker string.
  */
 export function slotMarker(name: string): string {
