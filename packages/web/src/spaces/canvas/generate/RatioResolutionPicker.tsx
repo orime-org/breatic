@@ -14,20 +14,36 @@ import {
 } from '@web/components/ui/popover';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
+  CameraPicker,
+  cameraSummary,
+  CAMERA_SWITCH_PARAM,
+  type CameraValue,
+} from '@web/spaces/canvas/generate/CameraPicker';
+import {
   ParamOptionGroup,
   type ParamOption,
 } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { paramValues } from '@breatic/shared';
 import { PARAMS_PILL_CLASS } from '@web/spaces/canvas/generate/generate-tools';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
-import { optionLabel, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
+import { modelControls, optionLabel, ownControlSummary } from '@web/spaces/canvas/generate/model-controls';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
+import { SecondPanelFrame, SecondPanelRow, useSecondPanelSide } from '@web/spaces/canvas/generate/second-panel';
 
 /** The subset of generate params this picker edits. */
-interface RatioResolutionValue {
+interface RatioResolutionValue extends CameraValue {
   aspect_ratio?: string;
   resolution?: string;
 }
+
+/** A line under the shared ratio / resolution, before the model's own section. */
+const SECTION_BREAK = 'mt-3 border-t border-border pt-3';
+
+/** The key the camera panel opens under, for the side it opens on. */
+const CAMERA_PANEL = 'camera';
+
+/** The camera panel's width in pixels, room for four wheels in a line. */
+const CAMERA_PANEL_WIDTH = 520;
 
 interface RatioResolutionPickerProps {
   /** The current model, whose params define the allowed ratios / resolutions. */
@@ -53,7 +69,9 @@ export const RATIO_RESOLUTION_PARAMS = ['aspect_ratio', 'resolution'] as const;
  * The Generate panel's ratio + resolution picker: a pill showing the current
  * `ratio · resolution` that opens a popover with a resolution segmented row and
  * a ratio grid, both sourced from the current model's params (a model without a
- * given param omits that section). Closes on Escape or an outside click.
+ * given param omits that section). A model with the camera adds a row that
+ * opens the camera panel beside the popover, like the audio panel's voice row
+ * (#2254). Closes on Escape or an outside click.
  * @param root0 - Component props.
  * @param root0.model - The current model.
  * @param root0.value - The current ratio + resolution.
@@ -67,6 +85,18 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
 }: RatioResolutionPickerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
+  const [cameraOpen, setCameraOpen] = React.useState(false);
+  const [firstPanelRef, cameraOnLeft] = useSecondPanelSide(
+    cameraOpen ? CAMERA_PANEL : null,
+    CAMERA_PANEL_WIDTH,
+  );
+  // A model without the camera omits its params, so `params.camera` is absent.
+  const cameraSupported = model.params.camera != null;
+  const cameraOn = value[CAMERA_SWITCH_PARAM] === true;
+  const handleOpenChange = React.useCallback((next: boolean) => {
+    setOpen(next);
+    if (!next) setCameraOpen(false);
+  }, []);
   // Keep the popover glued to its trigger as the canvas pans / zooms, matching
   // the generate panel (a ReactFlow NodeToolbar that tracks its node).
   useFollowCanvasViewport(open);
@@ -81,6 +111,8 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
     value: String(v),
     label: String(v),
   }));
+  const hasShared = ratios.length + resolutions.length > 0;
+  const hasOwn = modelControls(model).length > 0;
   // A model with none of the shared two still has its own controls to open.
   // The pill reads in the popover's order, top to bottom.
   const label =
@@ -88,6 +120,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
       value.resolution,
       value.aspect_ratio === undefined ? undefined : optionLabel({}, value.aspect_ratio),
       ...ownControlSummary(model, value, (name) => t(`canvas.generatePanel.param.${name}`)),
+      cameraSupported && cameraOn ? t('canvas.generatePanel.camera') : undefined,
     ]
       .filter(Boolean)
       .join(' · ') || t('canvas.generatePanel.imageParams');
@@ -100,7 +133,7 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
     [onChange],
   );
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           type='button'
@@ -121,13 +154,14 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        ref={firstPanelRef}
         side='top'
         align='center'
         // Freeze on open (user 2026-07-18): no collision flip/shift — clips at
         // the screen edge like the generate panel instead of jumping near a border.
         avoidCollisions={false}
         aria-label={t('canvas.generatePanel.ratio')}
-        className='w-64 p-3 shadow-md'
+        className='relative w-64 p-3 shadow-md'
       >
         <ParamOptionGroup
           label={t('canvas.generatePanel.resolution')}
@@ -148,8 +182,35 @@ export const RatioResolutionPicker = React.memo(function RatioResolutionPicker({
           model={model}
           value={value}
           onChange={onChange}
-          className={ratios.length + resolutions.length > 0 ? 'mt-3 border-t border-border pt-3' : undefined}
+          className={hasShared ? SECTION_BREAK : undefined}
         />
+        {cameraSupported ? (
+          // The camera sits in the model's own section, under its switches.
+          <div className={hasOwn ? 'mt-3' : hasShared ? SECTION_BREAK : undefined}>
+            <SecondPanelRow
+              label={t('canvas.generatePanel.camera')}
+              value={cameraOn ? cameraSummary(value) : t('canvas.generatePanel.switchOff')}
+              valueMuted={!cameraOn}
+              open={cameraOpen}
+              onLeft={cameraOnLeft}
+              testId='generate-camera-row'
+              // Bleeds 4px into the popover's padding on each side, so its name and
+              // chevron line up with the names and switches of the rows above.
+              className='-mx-1 w-[calc(100%+0.5rem)]'
+              onClick={() => setCameraOpen((was) => !was)}
+            />
+          </div>
+        ) : null}
+        {cameraSupported && cameraOpen ? (
+          <SecondPanelFrame
+            onLeft={cameraOnLeft}
+            maxWidth={CAMERA_PANEL_WIDTH}
+            testId='generate-camera-panel'
+            className='p-4'
+          >
+            <CameraPicker model={model} value={value} onChange={onChange} />
+          </SecondPanelFrame>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

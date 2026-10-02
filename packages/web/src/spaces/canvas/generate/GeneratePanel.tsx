@@ -12,10 +12,7 @@ import {
   isExecuteButtonDisabled,
   type ExecuteRefusal,
 } from '@breatic/shared';
-import {
-  CameraPicker,
-  type CameraValue,
-} from '@web/spaces/canvas/generate/CameraPicker';
+import type { CameraValue } from '@web/spaces/canvas/generate/CameraPicker';
 import { GenerateToolbar } from '@web/spaces/canvas/generate/GenerateToolbar';
 import { ImageModeToggle } from '@web/spaces/canvas/generate/ImageModeToggle';
 import type { ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
@@ -86,8 +83,6 @@ interface GeneratePanelProps {
   onRemoveReference: (item: ReferenceRailItem) => void;
   /** Insert a reference's @-mention into the prompt at the cursor (rail click). */
   onInsertReference: (item: ReferenceRailItem) => void;
-  /** Whether the active model declares the camera cluster (#1788) — the Camera control is hidden otherwise. */
-  cameraSupported: boolean;
   /** Toggle the canvas focus-crop mode (#1782 — enter, or exit when already picking). */
   onFocus: () => void;
   /** Whether THIS node's focus pick is running — highlights the Focus button. */
@@ -129,7 +124,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   onSelectModel,
   onToggleMode,
   onChangeParams,
-  cameraSupported,
   onAddReference,
   referencePicking,
   onRemoveReference,
@@ -204,13 +198,6 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         <ModelPicker models={models} value={model} onChange={onSelectModel} />
         {currentModel ? (
           <RatioResolutionPicker
-            model={currentModel}
-            value={params}
-            onChange={onChangeParams}
-          />
-        ) : null}
-        {currentModel && cameraSupported ? (
-          <CameraPicker
             model={currentModel}
             value={params}
             onChange={onChangeParams}

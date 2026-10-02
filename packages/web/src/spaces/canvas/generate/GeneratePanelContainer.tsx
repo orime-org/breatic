@@ -278,7 +278,7 @@ function GeneratePanelBody({
   const resolution = asStr(vm.params.resolution);
   // Camera cluster (#1788) rides the same stable-identity discipline: key the
   // memo on the primitives so a canvas mutation doesn't rebuild the params
-  // object and defeat CameraPicker's React.memo each drag frame.
+  // object and defeat RatioResolutionPicker's React.memo each drag frame.
   const camera = asStr(vm.params.camera);
   const lens = asStr(vm.params.lens);
   const focalLength = asNum(vm.params.focal_length);
@@ -740,7 +740,6 @@ function GeneratePanelBody({
       referencePicking={referencePicking}
       onRemoveReference={onRemoveReference}
       onInsertReference={handleInsertReference}
-      cameraSupported={vm.cameraSupported}
       onFocus={onFocus}
       focusPicking={focusPicking}
       pendingFocus={pendingFocus}
