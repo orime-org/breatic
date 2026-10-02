@@ -30,6 +30,8 @@ vi.mock("@breatic/core", () => ({
   listSubscriptions: vi.fn(),
   upsertSubscription: vi.fn(),
   subscriptionSituation: vi.fn(),
+  subscriptionClock: () => ({ now: new Date(), staleAfterMs: 0 }),
+  db: { transaction: async (fn: (tx: unknown) => unknown) => fn({}) },
   // Keyed by both halves, because a price now sells a tier AND a period.
   getSubscriptionPlan: (tier: string, period: string) => ({
     priceCents: (tier === "pro" ? 1999 : 7999) * (period === "year" ? 10 : 1),
@@ -55,6 +57,19 @@ vi.mock("@breatic/core", () => ({
   getStripeCallTimeoutMs: () => 5000,
   LIVE_SUBSCRIPTION_STATUSES: ["incomplete", "active", "past_due"],
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+const { applySubscriptionWrite, sendMembershipEndedMail } = vi.hoisted(() => ({
+  applySubscriptionWrite: vi.fn(),
+  sendMembershipEndedMail: vi.fn(),
+}));
+
+vi.mock("@server/modules/subscription/apply-subscription.js", () => ({
+  applySubscriptionWrite,
+}));
+
+vi.mock("@server/modules/subscription/settle-tier.js", () => ({
+  sendMembershipEndedMail,
 }));
 
 vi.mock("@server/modules/auth/user.repo.js", () => ({
@@ -86,6 +101,7 @@ function situationIs(situation: string, record: unknown = null): void {
   vi.mocked(subscriptionSituation).mockReturnValue({
     situation,
     record,
+    lapsed: null,
   } as never);
 }
 

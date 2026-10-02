@@ -115,11 +115,11 @@ async function ensureCustomer(userId: string): Promise<string> {
  * completed payment from somebody pressing Stripe's back link — and a page
  * that cannot tell them apart cannot report either one.
  *
- * No session id on the paid one. What the account now holds is read by
- * reconciling it, which happens anyway and answers for a webhook that has not
- * landed yet; a session id would only name a second way to ask the same
- * question. It would also collide with the credits return, which gates on
- * that very parameter.
+ * The paid one also names the checkout, so the page can confirm that one
+ * purchase straight away rather than wait for its webhook (#307). Stripe fills
+ * `{CHECKOUT_SESSION_ID}` in on its way out, so the braces are appended after
+ * the URL is built: passing them through `URL` would encode them and leave the
+ * placeholder unfilled.
  * @param returnUrl - The page the purchase was started from.
  * @returns The two URLs, named as Stripe's own fields.
  */
@@ -134,7 +134,10 @@ function returnUrls(returnUrl: string): {
   left.searchParams.set("membership", "1");
   left.searchParams.set("cancelled", "1");
 
-  return { success_url: paid.toString(), cancel_url: left.toString() };
+  return {
+    success_url: `${paid.toString()}&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: left.toString(),
+  };
 }
 
 /**
