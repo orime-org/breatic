@@ -357,16 +357,38 @@ test('Gemini keeps its reading mode, language and speakers in the settings pill'
   await options.nth(10).click();
   await expect(second).toBeHidden();
 
-  // Dialogue: the voice row gives way to two fixed speakers.
+  // Dialogue: the voice row gives way to one voice row per speaker (#2256).
   await page.getByTestId('generate-audio-reading-dialogue').click();
   await expect(page.getByTestId('generate-audio-row-voice_id')).toHaveCount(0);
-  await page.getByTestId('generate-audio-row-speakers').click();
-  await expect(page.getByTestId('generate-param-speakers-1-speaker')).toBeVisible();
-  await expect(page.getByTestId('generate-param-speakers-2-speaker')).toHaveCount(0);
-  await expect(page.getByTestId('generate-param-speakers-add')).toHaveCount(0);
+  const first = page.getByTestId('generate-audio-row-speakers-0');
+  const secondSpeaker = page.getByTestId('generate-audio-row-speakers-1');
+  await expect(first).toContainText('Speaker 1');
+  await expect(secondSpeaker).toContainText('Speaker 2');
+  await expect(page.getByTestId('generate-audio-row-speakers-2')).toHaveCount(0);
+
+  // A speaker opens its name over the same voice list the single voice uses.
+  await first.click();
+  await expect(second).toBeVisible();
+  const name = page.getByTestId('generate-audio-speaker-name');
+  await name.fill('Ada');
+  await name.press('Enter');
+  await expect(first).toContainText('Ada');
+  const voices = page.locator('[data-testid^="generate-voice-option-"]');
+  await expect(voices.first()).toBeVisible({ timeout: 15_000 });
+  const picked = await voices.nth(1).innerText();
+  await voices.nth(1).click();
+  await expect(second).toBeHidden();
+  await expect(first).toContainText(`Ada · ${picked.trim()}`);
+
+  // The other speaker opens on a clean search.
+  await first.click();
+  await page.getByTestId('generate-voice-search').fill('zzz');
+  await secondSpeaker.click();
+  await expect(page.getByTestId('generate-voice-search')).toHaveValue('');
+  await expect(page.getByTestId('generate-audio-speaker-name')).toHaveValue('');
   await page.screenshot({ path: test.info().outputPath('gemini-speakers.png') });
 
-  // Two speakers left unnamed are refused on submit, naming the speakers.
+  // A speaker left unnamed is refused on submit, naming the speakers.
   await page.keyboard.press('Escape');
   await page.getByTestId('generate-prompt-editor').click();
   await page.keyboard.type('Ada: Hello. Bo: Hi.');
