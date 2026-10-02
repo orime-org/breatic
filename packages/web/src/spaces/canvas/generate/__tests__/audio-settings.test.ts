@@ -75,7 +75,8 @@ describe('settingsLayout', () => {
   it('swaps the voice row for the speakers in a dialogue', () => {
     expect(settingsLayout(GEMINI, { [STAND_IN_ON]: true }).rows).toEqual([
       { kind: 'choice', name: 'language' },
-      { kind: 'items', name: 'speakers' },
+      { kind: 'speaker', name: 'speakers', index: 0 },
+      { kind: 'speaker', name: 'speakers', index: 1 },
     ]);
   });
 
