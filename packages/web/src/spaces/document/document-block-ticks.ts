@@ -23,6 +23,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
 
 import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
+import { DIVIDER } from '@web/spaces/document/document-divider';
 
 /** The nine rows the menu offers. */
 export type BlockTypeId =
@@ -186,25 +187,70 @@ export interface BlockUnder {
 }
 
 /**
- * Every block the selection covers, in document order.
+ * Every block with words in it the selection covers, in document order.
  *
  * Which blocks a selection covers answers two questions in this Space — which
  * rows tick, and which blocks a command writes to — and the two have to agree.
  * Read separately they can drift apart, and `runBlockType` reads both within
- * one call: it takes the positions from here and asks `tickedOver` whether the
- * row it is about to set is already on.
+ * one call: it takes the positions from {@link blocksUnderFor} and asks
+ * `tickedOver`, which runs the same walk (`blocksOf`) with the same rule for
+ * dividers, whether the row it is about to
+ * set is already on. This one is what the rows that are not about block type
+ * read — alignment, and whether the menu has anything to act on.
  * @param doc - The document.
  * @param selection - The selection over it.
  * @returns Those blocks, in document order.
  */
 export function blocksUnder(doc: PMNode, selection: Selection): BlockUnder[] {
+  return blocksOf(doc, selection, false);
+}
+
+/**
+ * The blocks one row acts on and ticks over.
+ *
+ * Quote is the one row a divider can carry (#124, A10): it sits across block
+ * types, and a divider inside a quote draws the quote's rule like any other
+ * block. So the quote row's blocks are the words plus the dividers in the
+ * range, and every other row's are the words alone — a divider is not a
+ * heading, and counting it would untick a heading row over two headings with a
+ * divider between them.
+ *
+ * The fallback block is left out on purpose. It stands in for an element a
+ * newer build wrote, and the binding builds it from the element's name alone
+ * (the `y-prosemirror` patch), so it has no `quoted` to write — and writing one
+ * would mean writing into content this build cannot read.
+ * @param doc - The document.
+ * @param selection - The selection over it.
+ * @param id - Which row.
+ * @returns Those blocks, in document order.
+ */
+export function blocksUnderFor(
+  doc: PMNode,
+  selection: Selection,
+  id: BlockTypeId,
+): BlockUnder[] {
+  return blocksOf(doc, selection, id === 'quote');
+}
+
+/**
+ * The walk both readings share.
+ * @param doc - The document.
+ * @param selection - The selection over it.
+ * @param withDividers - Whether dividers count.
+ * @returns The blocks, in document order.
+ */
+function blocksOf(
+  doc: PMNode,
+  selection: Selection,
+  withDividers: boolean,
+): BlockUnder[] {
   const found: BlockUnder[] = [];
   doc.nodesBetween(selection.from, selection.to, (node, pos) => {
-    if (!node.isTextblock) {
-      return true;
+    if (node.isTextblock || (withDividers && node.type.name === DIVIDER)) {
+      found.push({ node, pos });
+      return false;
     }
-    found.push({ node, pos });
-    return false;
+    return true;
   });
   return found;
 }
@@ -216,11 +262,16 @@ export function blocksUnder(doc: PMNode, selection: Selection): BlockUnder[] {
  * @returns The ticked rows.
  */
 export function tickedOver(doc: PMNode, selection: Selection): Set<BlockTypeId> {
-  const blocks = blocksUnder(doc, selection);
-  if (blocks.length === 0) {
-    return new Set();
-  }
-  return new Set(ROWS.filter((id) => blocks.every(({ node }) => isRow(node, id))));
+  // One walk: the quote row reads the words and the dividers, every other row
+  // the words alone (see {@link blocksUnderFor}).
+  const withDividers = blocksOf(doc, selection, true);
+  const words = withDividers.filter(({ node }) => node.isTextblock);
+  return new Set(
+    ROWS.filter((id) => {
+      const blocks = id === 'quote' ? withDividers : words;
+      return blocks.length > 0 && blocks.every(({ node }) => isRow(node, id));
+    }),
+  );
 }
 
 /**

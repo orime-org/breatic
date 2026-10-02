@@ -16,6 +16,7 @@ import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
+import { TermsNotice } from '@web/pages/auth/_shared/TermsNotice';
 import { FieldError } from '@web/pages/auth/_shared/FieldError';
 
 /**
@@ -137,6 +138,7 @@ export default function LoginPage(): React.JSX.Element {
   return (
     <AuthCardShell
       title={t('auth.login.title')}
+      notice={<TermsNotice />}
       subtitle={t('auth.login.subtitle')}
       footer={
         <>

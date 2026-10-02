@@ -21,9 +21,11 @@
  */
 
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
+import type { EditorState } from '@tiptap/pm/state';
 import { yCursorPlugin } from 'y-prosemirror';
 import type { Awareness } from 'y-protocols/awareness';
 
+import { textEnds } from '@web/spaces/document/document-body-edge-selection';
 import {
   renderCollabCaret,
   renderCollabSelection,
@@ -52,6 +54,10 @@ export function documentCaretExtension(
           renderCollabCaret(user as CaretUser, clientId, resolveCollaboratorName),
         selectionBuilder: (user: unknown) =>
           renderCollabSelection(user as CaretUser),
+        // A selection reaching past the first or last block has an end on an
+        // edge of the body, inside that block but outside its content (#124);
+        // collaborators get the nearest text there, where a caret can be drawn.
+        getSelection: (state: EditorState) => textEnds(state.selection),
       }),
     ],
   }) as never)();

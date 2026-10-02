@@ -11,6 +11,7 @@
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 import { creditLotService, creditSourceRepo } from "@breatic/domain";
 import { getStripeClient } from "@server/infra/stripe.js";
+import { isKnownTimeZone } from "@server/utils/time-zone.js";
 import {
   findTierByPriceCents,
   getPricingTiers,
@@ -498,23 +499,13 @@ function returnUrls(
 }
 
 /**
- * The buyer's time zone, or UTC when it is not one we recognise.
- *
- * It is reported by their browser and reaches us in a request body, so it is
- * checked before being stored. The check asks the one thing that matters
- * downstream — whether `Intl` will format a time in it — since that is what
- * the confirmation email does with it. Asking a list of canonical names
- * instead would turn away the legacy links `Intl` still accepts.
+ * The buyer's time zone, or UTC when it is not one we recognise. The
+ * confirmation email prints its times in the zone kept here.
  * @param timeZone - What the client said.
  * @returns An IANA zone name.
  */
 function knownTimeZone(timeZone: string): string {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone });
-    return timeZone;
-  } catch {
-    return "UTC";
-  }
+  return isKnownTimeZone(timeZone) ? timeZone : "UTC";
 }
 
 /**

@@ -38,6 +38,7 @@ import {
   LEVEL_OF_ROW,
   TYPE_OF_ROW,
   blocksUnder,
+  blocksUnderFor,
   tickedOver,
   type BlockTypeId,
   type TypeRow,
@@ -157,7 +158,7 @@ export function runBlockType(
       overBlockId === undefined
         ? tr.selection
         : selectionOverBlockContent(tr.doc, overBlockId);
-    const covered = blocksUnder(tr.doc, target);
+    const covered = blocksUnderFor(tr.doc, target, id);
     const cancelling = cancels && tickedOver(tr.doc, target).has(id);
     const before = selectionBefore(tr);
     writeToBlocks(tr, covered, (content) => updateFor(content, id, cancelling));

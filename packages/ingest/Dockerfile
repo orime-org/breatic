@@ -17,7 +17,7 @@
 # ── Bundle the service into one file ─────────────────────────────────────
 # The official Node image for this stage only: it carries npm, and nothing
 # from it reaches the image that runs.
-FROM node:22-alpine AS build
+FROM node:24-alpine3.23 AS build
 WORKDIR /src
 COPY packages/ingest/tsconfig.json ./
 COPY packages/ingest/src ./src
@@ -30,7 +30,7 @@ COPY packages/ingest/container ./container
 # also the fourth GPL obligation below.
 RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
   && esbuild container/server.ts \
-    --bundle --platform=node --format=esm --target=node22 \
+    --bundle --platform=node --format=esm --target=node24 \
     --tsconfig=tsconfig.json \
     --outfile=/out/server.mjs
 
@@ -38,8 +38,8 @@ RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
 # Alpine rather than a Node base image: the service is that one bundled file,
 # so npm and the rest of a Node distribution would be weight with no reader,
 # and image size is what the cold start is paid in.
-FROM alpine:3.22
-RUN apk add --no-cache nodejs=~22 ffmpeg=~6.1
+FROM alpine:3.23
+RUN apk add --no-cache nodejs=~24 ffmpeg=~8.0
 
 # ── ffmpeg is GPL-licensed (#178) ────────────────────────────────────────
 # Alpine builds ffmpeg with GPL components (x264 among them), so distributing

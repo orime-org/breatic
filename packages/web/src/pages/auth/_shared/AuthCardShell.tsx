@@ -18,6 +18,8 @@ interface AuthCardShellProps {
   title: string;
   subtitle?: React.ReactNode;
   footer?: React.ReactNode;
+  /** A line under the footer — the terms line on the sign-in and sign-up cards. */
+  notice?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -27,6 +29,7 @@ interface AuthCardShellProps {
  * @param root0.title - heading shown at the top of the card
  * @param root0.subtitle - optional supporting line beneath the title
  * @param root0.footer - optional footer slot for cross-page links
+ * @param root0.notice - optional line rendered under the footer
  * @param root0.children - the form (or other body content) inside the card
  * @returns a centered auth card framing the given title, body, and footer.
  */
@@ -34,6 +37,7 @@ export function AuthCardShell({
   title,
   subtitle,
   footer,
+  notice,
   children,
 }: AuthCardShellProps): React.JSX.Element {
   return (
@@ -51,6 +55,7 @@ export function AuthCardShell({
             {footer}
           </footer>
         ) : null}
+        {notice}
       </div>
     </main>
   );

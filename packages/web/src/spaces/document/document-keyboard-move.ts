@@ -31,6 +31,11 @@ import {
 } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
+import {
+  BodyEdgeSelection,
+  bodyEdgeBetween,
+  textOrEdge,
+} from '@web/spaces/document/document-body-edge-selection';
 import { rangeToLift } from '@web/spaces/document/document-drag-move';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 
@@ -117,6 +122,25 @@ function carried(
 }
 
 /**
+ * A selection that reached past the first or last block, after its rows moved
+ * (#124). An end still on an edge stays one. An end the move took off the edge
+ * sits beside a block without text, and is carried on outward to the next text,
+ * or to the edge when there is none that way, so that block stays inside;
+ * `TextSelection.between` would pull it back past that block.
+ * @param doc - The document after the move.
+ * @param anchor - The anchor, carried.
+ * @param head - The head, carried.
+ * @returns The selection.
+ */
+function edgeSelectionAfter(doc: PMNode, anchor: number, head: number): Selection {
+  return bodyEdgeBetween(
+    doc,
+    textOrEdge(doc, anchor, anchor >= head ? 1 : -1),
+    textOrEdge(doc, head, head >= anchor ? 1 : -1),
+  );
+}
+
+/**
  * The selection over the moved rows, on the same letters.
  * @param doc - The document after the move.
  * @param selection - The selection before it.
@@ -133,6 +157,7 @@ function selectionAfter(
   const anchor = carried(selection.anchor, rows, at);
   const head = carried(selection.head, rows, at);
   if (anchor === null || head === null) return null;
+  if (selection instanceof BodyEdgeSelection) return edgeSelectionAfter(doc, anchor, head);
   return selection instanceof NodeSelection
     ? NodeSelection.create(doc, anchor)
     : TextSelection.between(doc.resolve(anchor), doc.resolve(head));

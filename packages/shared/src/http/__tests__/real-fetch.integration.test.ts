@@ -358,18 +358,21 @@ describe("item 2 — decide whether a replay is warranted", () => {
     // delivered even once.
     const buffer = new ArrayBuffer(8);
     structuredClone(buffer, { transfer: [buffer] });
-    const stub = await stubServer([{ kind: "status", status: 503 }, { kind: "status", status: 200 }]);
+    const stub = await stubServer([
+      { kind: "status", status: 503 },
+      { kind: "status", status: 503 },
+      { kind: "status", status: 503 },
+    ]);
 
-    const thrown = await httpRequest(stub.url, { method: "POST", body: buffer }, REPLAYABLE).catch(
+    const outcome = await httpRequest(stub.url, { method: "POST", body: buffer }, REPLAYABLE).catch(
       (e: unknown) => e,
     );
 
-    // fetch cannot even read it, so the first delivery fails outright — and
-    // because no replay is warranted, that failure arrives unwrapped rather
-    // than as a count-carrying error after three futile attempts.
-    expect(thrown).toBeInstanceOf(Error);
-    expect(thrown).not.toBeInstanceOf(HttpRetryError);
-    expect(stub.hits()).toBe(0);
+    // What fetch does with the empty buffer depends on the Node release: one
+    // throws before sending, a later one sends it as an empty body. Either
+    // way there is at most one delivery, and it is not wrapped as a retry.
+    expect(stub.hits()).toBeLessThanOrEqual(1);
+    expect(outcome).not.toBeInstanceOf(HttpRetryError);
   });
 
   it("does not replay a streamed body, which the first delivery consumed", async () => {

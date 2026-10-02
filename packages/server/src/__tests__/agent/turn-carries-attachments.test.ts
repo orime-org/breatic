@@ -6,9 +6,10 @@
  *
  * They are stored beside the typed words rather than folded into them, so the
  * bubble shows what the reader typed and the conversation is named after it.
- * The model is sent both, attachments first, on the very turn they came with.
+ * The model is sent both, attachments first, on the very turn they came with,
+ * after the note that says when the reader sent it.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import { userTurnForModel } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
@@ -60,6 +61,7 @@ vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget: vi.fn(async (
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
+const { readerClockNote } = await import("@server/agent/reader-clock.js");
 const { runWithContext } = await import("@breatic/core");
 
 const image: ChatAttachedChip = {
@@ -94,9 +96,15 @@ function lastUserTextSent(): string {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-01T09:27:00Z"));
   addMessage.mockClear();
   titleForTurn.mockClear();
   modelSays.prompts = [];
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("a turn opened by a message with attachments", () => {
@@ -121,7 +129,9 @@ describe("a turn opened by a message with attachments", () => {
   it("sends the model the attachments and the words on this same turn", async () => {
     await runOneTurn("what is in this?", [image]);
 
-    expect(lastUserTextSent()).toBe(userTurnForModel([image], "what is in this?"));
+    expect(lastUserTextSent()).toBe(
+      `${readerClockNote(new Date(), undefined)}\n\n${userTurnForModel([image], "what is in this?")}`,
+    );
   });
 
   it("stores and sends only the words when nothing is attached", async () => {
@@ -131,6 +141,6 @@ describe("a turn opened by a message with attachments", () => {
       role: "user",
       parts: [{ type: "text", text: "hello" }],
     });
-    expect(lastUserTextSent()).toBe("hello");
+    expect(lastUserTextSent()).toBe(`${readerClockNote(new Date(), undefined)}\n\nhello`);
   });
 });

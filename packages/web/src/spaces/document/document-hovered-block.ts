@@ -9,7 +9,7 @@
  * give it.
  */
 
-import { TextSelection, type Selection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection, type Selection } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import {
@@ -38,8 +38,14 @@ import {
 export function selectionOverBlockContent(doc: PMNode, blockId: string): Selection {
   const row = rowById(doc, blockId);
   const content = row === undefined ? undefined : contentRangeOf(row);
-  if (content === undefined) {
+  if (row === undefined || content === undefined) {
     throw new Error(`no block carries the id ${blockId}`);
+  }
+  // A block with no text — a divider — has no inside for a text range to
+  // cover, so the row stands for itself: the same node selection a click on
+  // it makes, which the quote row reaches (#124, A8).
+  if (row.node.firstChild?.isTextblock === false) {
+    return NodeSelection.create(doc, row.from + 1);
   }
   return TextSelection.create(doc, content.from, content.to);
 }

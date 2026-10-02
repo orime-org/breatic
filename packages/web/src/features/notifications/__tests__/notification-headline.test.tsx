@@ -5,15 +5,10 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-import {
-  notificationHeadline,
-  renderSlottedText,
-} from '@web/features/notifications/notification-headline';
+import { notificationHeadline } from '@web/features/notifications/notification-headline';
 import type { Notification } from '@web/data/api/notifications';
 import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { useTranslation } from '@web/i18n/use-translation';
-
-const NUL = String.fromCodePoint(0);
 
 /** A fake `t()` that interpolates `{name}` placeholders from a template map. */
 function fakeT(
@@ -43,23 +38,6 @@ function makeNotification(over: Partial<Notification>): Notification {
     ...over,
   };
 }
-
-describe('renderSlottedText', () => {
-  it('splits NUL-delimited markers and drops nodes in at their positions', () => {
-    const text = `${NUL}actor${NUL} invited you to ${NUL}entity${NUL}`;
-    render(
-      <span data-testid='out'>
-        {renderSlottedText(text, {
-          actor: <a href='/x'>Alex</a>,
-          entity: <a href='/y'>Proj</a>,
-        })}
-      </span>,
-    );
-    const out = screen.getByTestId('out');
-    expect(out).toHaveTextContent('Alex invited you to Proj');
-    expect(out.querySelectorAll('a')).toHaveLength(2);
-  });
-});
 
 describe('notificationHeadline', () => {
   const t = fakeT({

@@ -26,7 +26,7 @@ index 3f484971b5daae6d81b17afb01e238b170d0b03b..334e9e7435a6f26cb85a412782970207
          tr.setMeta(key, val)
        })
 diff --git a/src/plugins/sync-plugin.js b/src/plugins/sync-plugin.js
-index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..75219e004fc8fd940717555d94cf11034bf7bcc7 100644
+index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..2410594769f3ddde2fb8104341c86b18154d028a 100644
 --- a/src/plugins/sync-plugin.js
 +++ b/src/plugins/sync-plugin.js
 @@ -4,7 +4,7 @@
@@ -77,7 +77,34 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..75219e004fc8fd940717555d94cf1103
      } else {
        const anchor = relativePositionToAbsolutePosition(
          binding.doc,
-@@ -730,6 +760,161 @@ export const createNodeFromYElement = (
+@@ -272,8 +302,24 @@ const restoreRelativeSelection = (tr, relSel, binding) => {
+         binding.mapping
+       )
+       if (anchor !== null && head !== null) {
+-        const sel = TextSelection.between(tr.doc.resolve(anchor), tr.doc.resolve(head))
+-        tr.setSelection(sel)
++        // PATCH: rebuild a selection type this binding does not know through
++        // the type's own `fromJSON`, the way ProseMirror restores any
++        // registered selection, instead of turning it into a text selection.
++        // `TextSelection.between` pulls each end back to the nearest text, so a
++        // selection a plugin defined to reach past text lost that reach on
++        // every remote change and every undo. A type that cannot be rebuilt
++        // from these two positions throws, and falls back to the text
++        // selection this branch always gave. `text` itself stays on that path:
++        // `TextSelection.fromJSON` does not pull its ends into text.
++        let sel = null
++        if (relSel.type !== 'text') {
++          try {
++            sel = Selection.fromJSON(tr.doc, { type: relSel.type, anchor, head })
++          } catch (_) {
++            sel = null
++          }
++        }
++        tr.setSelection(sel ?? TextSelection.between(tr.doc.resolve(anchor), tr.doc.resolve(head)))
+       }
+     }
+   }
+@@ -730,6 +776,161 @@ export const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -239,7 +266,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..75219e004fc8fd940717555d94cf1103
    const children = []
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -1109,7 +1294,25 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1109,7 +1310,25 @@ export const attributesToMarks = (attrs, schema) => {
    const marks = []
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -266,7 +293,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..75219e004fc8fd940717555d94cf1103
    }
    return marks
  }
-@@ -1121,6 +1324,11 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1121,6 +1340,11 @@ export const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {}
    marks.forEach((mark) => {

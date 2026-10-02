@@ -13,7 +13,7 @@ This guide is for changing source code, debugging and contributing. To install a
 | Requirement | Purpose |
 | --- | --- |
 | Git | Clone the repository; extracting a full source ZIP also works |
-| Node.js | Use 22.x, matching the Docker build's major version |
+| Node.js | Use 24.15 or later in the 24 line, the `engines` range in `package.json` |
 | pnpm | **9.15.0**, as specified by the root `packageManager`; do not use an arbitrary global version |
 | Docker | Running Engine/Desktop with Compose v2 |
 | FFmpeg | Both `ffmpeg` and `ffprobe` must be available on the host for background video tools; the copy inside the media container does not replace them |
@@ -34,7 +34,7 @@ ffmpeg -version
 ffprobe -version
 ```
 
-Expect Node `v22...`, pnpm `9.15.0`, and both Docker Client and Server information. If global installation fails on permissions, correct your Node installation permissions or use a user-level Node version manager first.
+Expect Node `v24...` at 24.15 or later, pnpm `9.15.0`, and both Docker Client and Server information. If global installation fails on permissions, correct your Node installation permissions or use a user-level Node version manager first.
 
 ## 2. Get the source and environment file
 

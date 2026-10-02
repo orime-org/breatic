@@ -151,7 +151,7 @@ describe("a report with nothing in it", () => {
 // A portrait video shot on a phone is stored landscape with a display matrix
 // saying to turn it. ffprobe's `stream=width,height` reports the stored pair;
 // ffmpeg autorotates on decode, so the cover cut in the same run comes out the
-// other way round. Measured on ffmpeg 6.1.2 — what the container ships — with
+// other way round. Measured on ffmpeg 8.0.1 — what the container ships — with
 // the production argument list: a 320x240 stream with rotation 90 yields a
 // 240x320 PNG.
 describe("a stream the display matrix says to turn", () => {
@@ -168,7 +168,7 @@ describe("a stream the display matrix says to turn", () => {
   });
 
   // An angle off a right angle cannot be judged from what ffprobe reports.
-  // Measured on ffmpeg 6.1.2 — what the container ships — with fixtures made
+  // Measured on ffmpeg 8.0.1 — what the container ships — with fixtures made
   // by `ffmpeg -display_rotation <deg> -i base.mp4 -c copy`, read with the
   // production argument lists: 89.6 reports 89 and the cover comes out turned,
   // while 89.0 also reports 89 and the cover comes out unturned; 90.4 reports
@@ -193,7 +193,7 @@ describe("a stream the display matrix says to turn", () => {
 
 // ffprobe answers a still photograph with the duration of one frame at the
 // demuxer's default rate, and which demuxer it picks varies with the file:
-// measured on ffmpeg 6.1.2 — what the container ships — one JPEG read as
+// measured on ffmpeg 8.0.1 — what the container ships — one JPEG read as
 // `image2` with duration 0.040000 and another as `jpeg_pipe` with none. The ticket's content type says what the
 // bytes are, and it is the same authority that decides whether to cut a cover.
 describe("how long the media runs", () => {

@@ -40,6 +40,7 @@ import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { isCommentMarkWrite } from '@web/spaces/document/document-comment-undo-filter';
 import { documentUndoSelectionPlugin } from '@web/spaces/document/document-undo-selection';
+import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
 /** Computed once; the schema is fixed for the lifetime of the bundle. */
 let protectedNodesCache: Set<string> | null = null;
@@ -205,13 +206,10 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
        * @returns Null.
        */
       apply: (tr): null => {
-        const sync = tr.getMeta(ySyncPluginKey) as
-          | { isChangeOrigin?: boolean }
-          | undefined;
         if (
           tr.docChanged &&
           tr.getMeta('appendedTransaction') === undefined &&
-          sync?.isChangeOrigin !== true
+          !fromYjs(tr)
         ) {
           marker.userDriven =
             !isCommentMarkWrite(tr) && tr.getMeta('addToHistory') !== false;
