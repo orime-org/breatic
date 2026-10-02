@@ -304,7 +304,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/models/<模态>/models.yaml` · `providers.yaml` · `config/models/modes.yaml` | AI 模型目录(按模态分目录):`models.yaml` 列这个模态的全部模型,每个带 WaveSpeed 定价契约(`base_price` / 公式 / `discount_rate`)、每个参数发往上游时叫什么(`upstream`)、额外的上游调用(`extra_steps`);`providers.yaml` 是上游的地址、key 名与并发;`modes.yaml` 是模式的名字与说明。字段说明写在各文件表头 |
 | `config/voice-samples.json` | 音色样音的固定公开地址 `base_url`(所有部署都从这里播,`sample_key` 是它下面的路径;读者是 domain 的 `voice-sample-config.ts`)、每种语言念的那句话,以及个别模型要多带的参数。目录新增音色时,维护样音的人用指向这个地址的存储设置跑一次 `pnpm voice-samples`(`packages/worker/src/voice-samples.ts`),把 `config/models/tts/models.yaml` 里 `sample_key` 点名、这个地址还没有的样音生成上去 |
 
-**`config/subscription.yaml` 和 `config/pricing.yaml` 两份不随仓库分发** —— 它们写的是某个部署收多少钱、卖的是哪几个 Stripe 对象。仓里跟着的是各自的 `.template`(价格 0、price id 空串),照着填自己的;两份 schema 都要求正整数,所以没改过的模板一读就被拒。**`PAYMENT_ENABLED=true` 时 server 启动预检这两份,读不出来就退出**;之后 `subscription.yaml` 还会在读档位上限时被打开一次(判一条过了付费期的订阅还认不认它的档,读 `stale_after_days`),没有订阅行的部署走不到那一步。
+**`config/subscription.yaml` 和 `config/pricing.yaml` 两份不随仓库分发** —— 它们写的是某个部署收多少钱、卖的是哪几个 Stripe 对象。仓里跟着的是各自的 `.template`(价格 0、price id 空串),照着填自己的;两份 schema 都要求正整数,所以没改过的模板一读就被拒。**`PAYMENT_ENABLED=true` 时 server 启动预检这两份,读不出来就退出**;之后 `subscription.yaml` 还会在读生效档位时被打开一次(档位上限、`/auth/me` 与登录下发的档位、会员面板都要判一条过了付费期的订阅还认不认它的档,读 `stale_after_days`),没有订阅行的账号走不到那一步。
 
 ### Logging
 
