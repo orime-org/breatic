@@ -61,6 +61,7 @@ vi.mock("@server/config/auth.js", () => ({
 }));
 
 import crypto from "node:crypto";
+import { getLegalConfig } from "@server/config/legal.js";
 import bcrypt from "bcryptjs";
 import postgres from "postgres";
 import { initCore, loadLocales, AppError, TooManyRequestsError, env, getRedis } from "@breatic/core";
@@ -234,6 +235,20 @@ describe("verifying the code", () => {
     expect(await bcrypt.compare("password1", row!.hashed_password)).toBe(true);
     // The pending sign-up is gone once it became an account.
     expect(await statusOf(verifySignupCode(ticket, lastCode()))).toBe(410);
+  });
+
+  // #302: the account records the terms it was created under.
+  it("records the terms version and the moment the account was made", async () => {
+    const email = freshEmail();
+    const { ticket } = await startSignup({ ticket: null, email, password: "password1", locale: "en" });
+    const before = Date.now();
+    await verifySignupCode(ticket, lastCode());
+
+    const [row] = await sql<{ terms_accepted_at: Date | null; terms_version: string | null }[]>`
+      SELECT terms_accepted_at, terms_version FROM users WHERE email = ${email} AND deleted_at IS NULL
+    `;
+    expect(row?.terms_version).toBe(getLegalConfig().terms_version);
+    expect(row?.terms_accepted_at?.getTime()).toBeGreaterThanOrEqual(before - 1000);
   });
 
   it("answers 400 to a wrong code and 422 once the code has taken its fifth wrong try", async () => {
