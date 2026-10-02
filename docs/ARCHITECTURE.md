@@ -294,7 +294,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | `config/subscription.yaml` | **会员订阅**计划:每个可订阅档位**每个计费周期**(月 / 年)各一个价 + test/live Stripe Price ID + 订阅状态过期判据 + 问 Stripe 现状的超时。加载器 `packages/core/src/config/subscription.ts`。跟 `pricing.yaml`(积分包,买断不是订阅)、`membership.yaml`(那一档的上限)是三件事 |
 | `config/membership.yaml` | **每个档位的上限值**(容量 / 协作规模)。每个值都是普通的非负整数、判定一律 `count >= limit`,**没有「无限制」哨兵**,想不设限就填一个够不着的数。加载器 `packages/core/src/config/membership.ts` |
 | `config/auth.yaml` | 启用邮件时注册验证码的三个旋钮:有效期 `ttl_seconds`、每个码最多比对几次 `max_attempts_per_code`、同一邮箱两次发码的最短间隔 `resend_cooldown_seconds`。加载器 `packages/server/src/config/auth.ts` |
-| `config/legal.yaml` | 当前生效的使用条款版本 `terms_version`。登录和注册两张卡片底部那行条款小字之下建的每个新账号,在 `users` 上记下这个版本和建号时刻(`terms_version` / `terms_accepted_at`,建号前的老账号两列为空)。breatic.ai 上的条款改版时改它。加载器 `packages/server/src/config/legal.ts` |
+| `config/legal.yaml` | 当前生效的使用条款版本 `terms_version`。登录和注册两张卡片底部那行条款小字之下建的每个新账号,在 `users` 上记下这个版本和建号时刻(`terms_version` / `terms_accepted_at`;migration 0089 之前建的账号两列为空)。breatic.ai 上的条款改版时改它。加载器 `packages/server/src/config/legal.ts` |
 | `config/rate-limits.yaml` | 各动作的限流次数与窗口(Redis 滑动窗口)。加载器 `packages/server/src/config/rate-limits.ts`,中间件 `rateLimitFor(action, keyBy)`;**key 维度(IP 还是 user)按 action 写死在代码里**,只有次数进 yaml |
 | `config/storage.yaml` | 浏览器上传:上传大小上限、客户端拿票据的重试次数与分片停滞判据、ingest Worker 的分片大小与两个窗口(票据有效期 / 会话令牌 TTL)、边缘容器探测的两个时限、一次「让 Worker 去拉这个地址」的上界。**加载时就校验两件事**(`assertUploadWindows`):一片的截止时间不超过定时器能持有的上限、会话令牌盖得住分片与收尾两条重试链,填反了当场报错、不等用户传文件才发现。加载器 `packages/core/src/config/storage.ts` |
 | `config/skill-routing.yaml` | 哪个 skill 能在哪用、谁能调起(`surfaces` / `user_invocable` / `model_invocable`)。**缺了它每个 skill 都哪儿都不许用**,两个服务启动时读一次、读不了就 `exit(1)`。加载器 `packages/core/src/config/skill-routing.ts` |
