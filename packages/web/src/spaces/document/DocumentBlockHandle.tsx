@@ -177,7 +177,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
 
   // The carrier is placed on the row's top edge; this brings the handle down
   // onto the middle of the row's first line (A2).
-  const { ref: strip, offset } = useStripOnFirstLine(
+  const { ref: strip, offset, shift } = useStripOnFirstLine(
     block?.id,
     editor.prosemirrorView?.dom,
   );
@@ -256,7 +256,9 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       // `.bn-toggle-button`). The handle's own half is also covered by the UA
       // style on `[draggable=true]`; this reaches the rest of the strip.
       className='flex select-none items-center gap-0.5'
-      style={{ transform: `translateY(${String(offset)}px)` }}
+      style={{
+        transform: `translate(${String(shift)}px, ${String(offset)}px)`,
+      }}
     >
       <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
         {/* `flex`, so this wrapper is exactly as tall as the handle. As a

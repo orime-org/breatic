@@ -316,8 +316,15 @@ test('the strip stays on the body\'s left edge for an indented row (#1097 A13)',
   };
   const top = await xOf(0, 'doc-block-handle');
   // Row 1 is nested under row 0, row 2 is an empty paragraph nested beside it.
-  expect(await xOf(1, 'doc-block-handle')).toBe(top);
-  expect(await xOf(2, 'doc-block-plus')).toBe(top);
+  // Within a pixel, as A2 holds the vertical: the shift lands on subpixels.
+  // Polled: the shift is measured by an observer just after the strip lands.
+  for (const [index, testId] of [[1, 'doc-block-handle'], [2, 'doc-block-plus']] as const) {
+    await page.mouse.move(5, 5);
+    await hoverRow(page, index);
+    await expect
+      .poll(async () => Math.abs(((await page.getByTestId(testId).boundingBox())?.x ?? 0) - top))
+      .toBeLessThan(CENTRED_WITHIN);
+  }
 });
 
 test('the menus listing block types are drawn at least 10rem wide (#1097 A11)', async () => {

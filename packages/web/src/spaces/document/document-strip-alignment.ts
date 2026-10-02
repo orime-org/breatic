@@ -102,6 +102,21 @@ function firstLineOf(row: Element): DOMRect | undefined {
 }
 
 /**
+ * How far sideways the strip has to go to stand on the body's left edge.
+ *
+ * The placement puts the strip against the row's own container, and a row
+ * nested under another (Tab) has its container indented with it. The strip
+ * stays on the one vertical line at the body's left edge whatever the nesting
+ * (#1097 A13, user 2026-10-01), so the indent is taken back out.
+ * @param rowLeft - The row container's left edge.
+ * @param bodyLeft - The left edge of the body's outermost block group.
+ * @returns The horizontal shift in pixels; zero for a top-level row.
+ */
+export function stripShiftFromRowLeft(rowLeft: number, bodyLeft: number): number {
+  return bodyLeft - rowLeft;
+}
+
+/**
  * The strip's own vertical shift, for the row it currently points at.
  *
  * Measured against the ROW rather than against the strip's current position:
@@ -118,8 +133,10 @@ export function useStripOnFirstLine(
 ): {
   readonly ref: (strip: HTMLDivElement | null) => void;
   readonly offset: number;
+  readonly shift: number;
 } {
   const [offset, setOffset] = React.useState(0);
+  const [shift, setShift] = React.useState(0);
   // The two watchers outlive a render but not the elements they watch, so they
   // are held here and dropped by the ref below — on detach, and on the way to
   // watching a different row.
@@ -165,6 +182,7 @@ export function useStripOnFirstLine(
       watching.current = undefined;
       if (strip === null || blockId === undefined || body === undefined) {
         setOffset(0);
+        setShift(0);
         return;
       }
       const selector = `[data-id="${CSS.escape(blockId)}"]`;
@@ -181,12 +199,19 @@ export function useStripOnFirstLine(
           setOffset(0);
           return;
         }
+        const box = container.getBoundingClientRect();
         setOffset(
           stripOffsetFromRowTop(
             firstLineOf(row),
-            container.getBoundingClientRect().top,
+            box.top,
             strip.getBoundingClientRect().height,
           ),
+        );
+        const outermost = body.querySelector('.bn-block-group');
+        setShift(
+          outermost === null
+            ? 0
+            : stripShiftFromRowLeft(box.left, outermost.getBoundingClientRect().left),
         );
       };
       // `ResizeObserver` calls back once on observe, which is the first
@@ -217,5 +242,5 @@ export function useStripOnFirstLine(
     [blockId, body],
   );
 
-  return { ref, offset };
+  return { ref, offset, shift };
 }
