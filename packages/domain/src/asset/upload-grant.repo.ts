@@ -164,9 +164,14 @@ export async function issueGrant(input: {
 /** Why a key may not be finished right now. */
 export type FinalizeRefusal = "no_grant" | "in_flight" | "already_registered";
 
-/** The answer to "may this upload finish on this key". */
+/**
+ * The answer to "may this upload finish on this key".
+ *
+ * A granted claim carries what the grant says the upload is, because the
+ * finish that follows decides off it whether to read the media now (#299).
+ */
 export type FinalizeClaim =
-  | { granted: true }
+  | { granted: true; assetSource: StudioAssetEntity["source"] | null }
   | { granted: false; reason: FinalizeRefusal };
 
 /**
@@ -217,8 +222,13 @@ export async function claimFinalize(params: {
         ),
       ),
     )
-    .returning({ id: uploadGrants.id });
-  if (won.length === 1) return { granted: true };
+    .returning({ assetSource: uploadGrants.assetSource });
+  if (won.length === 1) {
+    return {
+      granted: true,
+      assetSource: (won[0]!.assetSource ?? null) as StudioAssetEntity["source"] | null,
+    };
+  }
 
   // Losing the CAS says only "not you". Which of the three reasons it was
   // decides what the Worker tells the browser, so the row is read back.

@@ -283,7 +283,8 @@ describe("what the guide says", () => {
   it("walks through a storyboard split into shots, and says each mode keeps its own prompt", () => {
     const panel = section("Inside the generation panel");
     expect(panel).toMatch(/- Storyboard, on the video models that offer it/);
-    expect(panel).toMatch(/"Edit per shot" in that row splits it by hand/);
+    expect(panel).toMatch(/"Edit per shot" at the right end of that row splits it by hand/);
+    expect(panel).toMatch(/the right end of the row reads "Add shot" then "Back to auto storyboard"/);
     expect(panel).toMatch(/the shots' seconds keep adding up to the video's length/);
     expect(panel).toMatch(/each mode keeps its own words/);
     expect(section("Generating")).toMatch(/"Shot 2 is empty"/);

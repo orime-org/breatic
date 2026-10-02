@@ -36,6 +36,8 @@ import {
   assertModelsPriced,
   modelCatalog,
   USAGE_LOOKUP_QUEUE,
+  MEDIA_READ_QUEUE,
+  type MediaReadJob,
   type UsageLookupJob,
 } from "@breatic/domain";
 
@@ -116,6 +118,7 @@ import {
   type UrlIngestJobData,
 } from "@worker/handlers/url-ingest.js";
 import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
+import { runMediaRead } from "@worker/handlers/media-read.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
@@ -183,6 +186,23 @@ export function startWorker(): void {
     );
   });
 
+  // A cover's or an avatar's media numbers, read after its upload returned
+  // (#299). Its retries are the shared ones; what is left after the last is a
+  // row with no numbers, which is what a container timeout leaves too.
+  const mediaRead = createWorker<MediaReadJob>(MEDIA_READ_QUEUE, (job) => runMediaRead(job));
+
+  mediaRead.on("failed", (job, err) => {
+    logger.error(
+      {
+        err,
+        assetId: job?.data.assetId,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "media_read_job_failed",
+    );
+  });
+
   worker.on("completed", (job) => {
     logger.info({ jobId: job.id, taskId: job.data.taskId }, "job_completed");
   });
@@ -234,7 +254,7 @@ export function startWorker(): void {
 
 
   logger.info(
-    { queues: ["tasks", "url-ingest", USAGE_LOOKUP_QUEUE] },
+    { queues: ["tasks", "url-ingest", USAGE_LOOKUP_QUEUE, MEDIA_READ_QUEUE] },
     "BullMQ workers started",
   );
 
@@ -313,7 +333,12 @@ export function startWorker(): void {
     await health.stop();
     await runGracefulShutdown({
       releaseListenSocket: () => {},
-      drains: [() => worker.close(), () => urlIngest.close(), () => usageLookup.close()],
+      drains: [
+        () => worker.close(),
+        () => urlIngest.close(),
+        () => usageLookup.close(),
+        () => mediaRead.close(),
+      ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });
     logger.info("worker_shutdown_complete");

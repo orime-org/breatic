@@ -646,7 +646,6 @@
         "label": "分鏡",
         "perShot": "逐鏡頭編輯",
         "autoHint": "由模型拆分鏡頭",
-        "mainPromptKept": "主提示詞已保留",
         "back": "返回自動分鏡",
         "shot": "鏡頭 {n, number}",
         "removeShot": "刪除",
@@ -882,6 +881,11 @@
       "success": "密碼已更新,請登入。",
       "failed": "密碼重設失敗,請重試。",
       "backToSignIn": "返回登入"
+    },
+    "terms": {
+      "notice": "繼續即表示你同意{terms}，並已閱讀{privacy}。",
+      "termsLink": "使用條款",
+      "privacyLink": "隱私權政策"
     }
   },
   "roleTag": {
@@ -1096,6 +1100,7 @@
         "heading3": "標題 3",
         "codeBlock": "程式碼區塊",
         "taskList": "待辦清單",
+        "divider": "分隔線",
         "align": "對齊",
         "alignLeft": "靠左",
         "alignCenter": "置中",

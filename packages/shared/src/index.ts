@@ -56,6 +56,7 @@ export type {
   CanvasNodeFields,
   NodeTaskCounts,
   NodeTaskResult,
+  NodeMediaNumbers,
   NodeTaskCountsEvent,
   NodeEvent,
   ModelModality,
@@ -555,6 +556,9 @@ export {
 // What a stored asset is called, which is the last segment of the address it
 // is stored at — read by both ends that name a file while refusing it.
 export { assetNameFromUrl } from "@shared/media/asset-name.js";
+// The media fields a result puts on a node, written the same way by collab
+// when a task settles and by the canvas when a reader restores one.
+export { writeNodeMedia, type NodeMediaFields } from "@shared/canvas/node-media.js";
 // Plain text in and out of a text node's body ships at
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
 
@@ -577,6 +581,7 @@ export {
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
+  readStoredMediaAtIngest,
   computePutTimeoutMs,
   IngestAnswerError,
   UploadHttpError,
@@ -587,6 +592,7 @@ export {
   type PartReceipt,
   type IngestMeasurements,
   type MediaLimits,
+  type MediaNumbers,
 } from "@shared/upload/ingest-client.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,

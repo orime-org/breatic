@@ -38,6 +38,7 @@ import {
 } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 
+import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import {
   QUOTED,
   splitCarryingQuote,
@@ -101,8 +102,10 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     const indented = tr.doc.resolve(bnBlock.beforePos).depth > 1;
 
     if (blockEmpty) {
-      // Every node that declares `quoted` is a textblock, so an empty one
-      // puts the caret at offset 0. `blocknote-schema.test.ts` holds that.
+      // An empty selection sits in a textblock, so the caret is at offset 0.
+      // The one carrier of `quoted` with no content, the divider, only ever
+      // holds a node selection, and Enter over that went to
+      // `handleWholeBlockEnter` above. `blocknote-schema.test.ts` holds that.
       if (indented) {
         // BlockNote lifts this one out a level, which creates no block and so
         // loses no props.
@@ -310,6 +313,13 @@ export const documentEnterExtension = createExtension(() => {
         if (ended.justNow) {
           return true;
         }
+        // A range reaching past an end of the body goes as any range does;
+        // what is left is a caret in text, which takes the ordinary Enter
+        // below. Left to the library, the split is placed at the range's
+        // start, which can be the edge, outside any line (#124, A6).
+        if (editor.prosemirrorState.selection instanceof BodyEdgeSelection) {
+          editor.transact((tr) => tr.deleteSelection());
+        }
         const { selection } = editor.prosemirrorState;
         if (selection instanceof AllSelection) {
           return handleWholeDocumentEnter(editor);
@@ -323,6 +333,20 @@ export const documentEnterExtension = createExtension(() => {
           return handleWholeBlockEnter(editor);
         }
         return handleQuotedEnter(editor);
+      },
+      // A line break belongs inside a line. A whole selected block has none to
+      // break, and neither has the end of a selection reaching past the first or
+      // last block, which is where the library puts the break: the key does
+      // nothing there, the same as a typed character or an input method on a
+      // selected divider (#124, A5).
+      // Left to the library, it nests an empty child holding a hard break
+      // under the block and leaves the selection where it was.
+      'Shift-Enter': ({ editor }: { editor: ListEditor }) => {
+        const { selection } = editor.prosemirrorState;
+        return (
+          (selection instanceof NodeSelection && !selection.node.isInline) ||
+          selection instanceof BodyEdgeSelection
+        );
       },
     },
   } as never;

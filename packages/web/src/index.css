@@ -565,7 +565,10 @@ body {
    machinery makes for itself: the one `blockDragStart` puts on a row it
    carries, and the one ProseMirror falls back to when no plugin answers a
    modifier-click in a read-only body. Both framed a block the reader never
-   selected.
+   selected. A divider is the one exception: it has no text, so clicking it or
+   walking onto it with the arrows node-selects it, and that selection IS the
+   reader's. It is painted by `.doc-in-selection` further down, the same band a
+   drag across it gets (#124).
 
    The rule below stays because the library draws a marker of its own over the
    same block — a `#64a0ff` wash with a 4px inset ring, a fixed value that
@@ -1193,6 +1196,14 @@ body {
 .doc-body .bn-trailing-block {
   flex-grow: 1;
   height: auto;
+}
+
+/* While the last block is one a drag has to reach past (a divider, a fallback
+   block or an empty line), presses go through the widget to the surface, so a
+   press below the last block can start a drag that reaches it; a click there
+   still opens a paragraph (`document-body-edge-pointer.ts`). */
+.doc-body[data-body-end-takeover] .bn-trailing-block {
+  pointer-events: none;
 }
 
 /* The body is set in our own stack at our own size. BlockNote's
@@ -1826,6 +1837,52 @@ body {
 /* The words themselves, on the content element BlockNote marks. */
 .doc-body [data-quoted='true'] {
   color: var(--color-muted-foreground);
+}
+
+/* A divider is one hairline in the border colour, the same token a rule in a
+   chat reply uses (`.chat-markdown hr`). BlockNote's own grey is a fixed
+   rgb() that does not follow the theme. */
+.doc-body [data-content-type='divider'] hr {
+  border-top-color: var(--color-border);
+}
+
+/* The caret ProseMirror draws in a gap no text caret can stand in — above a
+   divider that opens the document, say. The library's own is a fixed black
+   that vanishes on the dark theme (#101). */
+.doc-body .ProseMirror-gapcursor::after {
+  border-top-color: var(--color-foreground);
+}
+
+/* A block with no text inside the reader's selection, painted with the colour
+   the browser paints selected text with (`document-selection-paint.ts`). One
+   look however it got selected — a click, the arrows, a drag, select-all.
+
+   `content-box` so the band starts where the row's words would: inside a quote
+   the row's start padding is the indent and the space that clears the rule
+   (`[data-quoted-run]` above), and a text selection there starts after both. */
+.doc-body .doc-in-selection {
+  background-color: var(--color-selection);
+  background-clip: content-box;
+}
+
+/* An empty line an end of a range sits on, or the empty line at an end of the
+   body that a selection past it or the whole document holds
+   (`document-selection-paint.ts`). The browser marks a selected empty line with
+   a sliver at its start, the width of a space and the height of the line; it
+   draws that one only once the range is written back, which in Chrome is not
+   until a drag ends. The sliver is drawn here from the same measures — a
+   no-break space in the line's own flow, so it stands where the caret would
+   under the line's alignment — and the browser's is cleared, so the line
+   wears one mark from the first frame of the drag. */
+.doc-body .doc-empty-line-in-selection .bn-inline-content::before {
+  content: '\a0';
+  display: inline-block;
+  background-color: var(--color-selection);
+  pointer-events: none;
+}
+
+.doc-body .doc-empty-line-in-selection ::selection {
+  background-color: transparent;
 }
 
 /* QUOTING CHANGES NOTHING IN THE VERTICAL. A block keeps the distance it had

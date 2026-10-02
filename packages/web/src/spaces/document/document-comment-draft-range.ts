@@ -123,6 +123,7 @@ import {
   contentRangeOf,
   rowById,
 } from '@web/spaces/document/document-row-by-id';
+import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
 /**
  * The draft's name wherever a comment is named by id: the panel's column and
@@ -527,19 +528,6 @@ export function mapDraftRange(
   const from = carry(range.from, 1);
   const to = carry(range.to, -1);
   return to <= from ? null : { from, to };
-}
-
-/**
- * Whether a transaction is a change that came in through Yjs.
- * @param tr - The transaction.
- * @returns True for a peer's edit, an undo, or anything else the binding
- *   writes into the body.
- */
-function fromYjs(tr: Transaction): boolean {
-  const sync = tr.getMeta(ySyncPluginKey) as
-    | { isChangeOrigin?: boolean }
-    | undefined;
-  return sync?.isChangeOrigin === true;
 }
 
 /**

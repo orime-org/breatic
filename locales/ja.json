@@ -646,7 +646,6 @@
         "label": "ストーリーボード",
         "perShot": "ショットごとに編集",
         "autoHint": "モデルがショットを分割します",
-        "mainPromptKept": "メインプロンプトは保持されています",
         "back": "自動ストーリーボードに戻る",
         "shot": "ショット {n, number}",
         "removeShot": "削除",
@@ -882,6 +881,11 @@
       "success": "パスワードを更新しました。サインインしてください。",
       "failed": "パスワードのリセットに失敗しました。もう一度お試しください。",
       "backToSignIn": "サインインに戻る"
+    },
+    "terms": {
+      "notice": "続行すると、{terms}に同意し、{privacy}を確認したものとみなされます。",
+      "termsLink": "利用規約",
+      "privacyLink": "プライバシーポリシー"
     }
   },
   "roleTag": {
@@ -1096,6 +1100,7 @@
         "heading3": "見出し 3",
         "codeBlock": "コードブロック",
         "taskList": "タスクリスト",
+        "divider": "区切り線",
         "align": "配置",
         "alignLeft": "左揃え",
         "alignCenter": "中央揃え",

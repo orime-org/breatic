@@ -9,15 +9,41 @@ import {
   resolveTaskReplace,
 } from '@web/spaces/canvas/history/restore-node-content';
 
+type EntrySlice = Pick<
+  NodeHistoryEntry,
+  'status' | 'content' | 'thumbnailUrl' | 'mediaWidth' | 'mediaHeight' | 'duration' | 'mimeType' | 'size'
+>;
+
 /**
  * Builds the restorable slice of a history entry.
  * @param over - Field overrides.
  * @returns The entry slice consumed by resolveRestore.
  */
-function entry(
-  over: Partial<Pick<NodeHistoryEntry, 'status' | 'content' | 'thumbnailUrl'>> = {},
-): Pick<NodeHistoryEntry, 'status' | 'content' | 'thumbnailUrl'> {
-  return { status: 'success', content: 'result.png', thumbnailUrl: null, ...over };
+function entry(over: Partial<EntrySlice> = {}): EntrySlice {
+  return {
+    status: 'success',
+    content: 'result.png',
+    thumbnailUrl: null,
+    mediaWidth: null,
+    mediaHeight: null,
+    duration: null,
+    mimeType: null,
+    size: null,
+    ...over,
+  };
+}
+
+/** A row written before #2184, or a medium with none of the numbers. */
+const NO_NUMBERS = { width: null, height: null, duration: null, mimeType: null, size: null };
+
+/**
+ * The task-list slice for a finished result.
+ * @param content - The result's content.
+ * @param coverUrl - The result's cover.
+ * @returns The task slice consumed by resolveTaskReplace.
+ */
+function task(content: string | null, coverUrl: string | null) {
+  return { content, coverUrl, mediaWidth: null, mediaHeight: null, duration: null, mimeType: null, size: null };
 }
 
 describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
@@ -67,7 +93,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
     expect(d).toMatchObject({ kind: 'write', content: 'result.png' });
   });
 
-  it('INV-3 + INV-8: image restore writes content, no coverUrl', () => {
+  it('INV-3 + INV-8: image restore takes the cover off, as a landed image result does', () => {
     expect(
       resolveRestore({
         readOnly: false,
@@ -75,7 +101,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         modality: 'image',
         gateState: { locked: false },
       }),
-    ).toEqual({ kind: 'write', content: 'img.png', coverUrl: undefined });
+    ).toEqual({ kind: 'write', content: 'img.png', media: { coverUrl: null, ...NO_NUMBERS } });
   });
 
   it('INV-8: video restore writes content + coverUrl from the thumbnail', () => {
@@ -86,7 +112,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         modality: 'video',
         gateState: { locked: false },
       }),
-    ).toEqual({ kind: 'write', content: 'clip.mp4', coverUrl: 'cover.jpg' });
+    ).toEqual({ kind: 'write', content: 'clip.mp4', media: { coverUrl: 'cover.jpg', ...NO_NUMBERS } });
   });
 
   it('INV-8: video restore with no thumbnail → coverUrl null (clears stale poster)', () => {
@@ -97,10 +123,10 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         modality: 'video',
         gateState: { locked: false },
       }),
-    ).toEqual({ kind: 'write', content: 'clip.mp4', coverUrl: null });
+    ).toEqual({ kind: 'write', content: 'clip.mp4', media: { coverUrl: null, ...NO_NUMBERS } });
   });
 
-  it('audio restore writes content, coverUrl untouched (undefined)', () => {
+  it('audio restore takes the cover off, as a landed audio result does', () => {
     expect(
       resolveRestore({
         readOnly: false,
@@ -108,7 +134,7 @@ describe('resolveRestore (#1619 restore invariants, 关键路径)', () => {
         modality: 'audio',
         gateState: { locked: false },
       }),
-    ).toEqual({ kind: 'write', content: 'song.mp3', coverUrl: undefined });
+    ).toEqual({ kind: 'write', content: 'song.mp3', media: { coverUrl: null, ...NO_NUMBERS } });
   });
 });
 
@@ -120,14 +146,14 @@ describe('resolveTaskReplace — the task list puts one result back', () => {
     expect(
       resolveTaskReplace({
         readOnly: false,
-        task: { content: 'https://cdn.invalid/b.mp4', coverUrl: null },
+        task: task('https://cdn.invalid/b.mp4', null),
         modality: 'video',
         gateState: { locked: false },
       }),
     ).toEqual({
       kind: 'write',
       content: 'https://cdn.invalid/b.mp4',
-      coverUrl: null,
+      media: { coverUrl: null, ...NO_NUMBERS },
     });
   });
 
@@ -135,32 +161,29 @@ describe('resolveTaskReplace — the task list puts one result back', () => {
     expect(
       resolveTaskReplace({
         readOnly: false,
-        task: {
-          content: 'https://cdn.invalid/b.mp4',
-          coverUrl: 'https://cdn.invalid/b.png',
-        },
+        task: task('https://cdn.invalid/b.mp4', 'https://cdn.invalid/b.png'),
         modality: 'video',
         gateState: { locked: false },
       }),
-    ).toMatchObject({ coverUrl: 'https://cdn.invalid/b.png' });
+    ).toMatchObject({ media: { coverUrl: 'https://cdn.invalid/b.png' } });
   });
 
-  it('leaves an image node its cover field, which nothing there writes', () => {
+  it('takes the cover off an image node, as a landed image result does', () => {
     expect(
       resolveTaskReplace({
         readOnly: false,
-        task: { content: 'https://cdn.invalid/b.png', coverUrl: null },
+        task: task('https://cdn.invalid/b.png', 'https://cdn.invalid/b.png'),
         modality: 'image',
         gateState: { locked: false },
       }),
-    ).toMatchObject({ coverUrl: undefined });
+    ).toMatchObject({ media: { coverUrl: null } });
   });
 
   it('refuses a row with no result', () => {
     expect(
       resolveTaskReplace({
         readOnly: false,
-        task: { content: null, coverUrl: null },
+        task: task(null, null),
         modality: 'video',
         gateState: { locked: false },
       }),
@@ -171,10 +194,50 @@ describe('resolveTaskReplace — the task list puts one result back', () => {
     expect(
       resolveTaskReplace({
         readOnly: false,
-        task: { content: 'https://cdn.invalid/b.mp4', coverUrl: null },
+        task: task('https://cdn.invalid/b.mp4', null),
         modality: 'video',
         gateState: { locked: true },
       }),
     ).toMatchObject({ kind: 'blocked' });
+  });
+});
+
+describe('restore carries the numbers the result landed with (#2184)', () => {
+  const NUMBERS = {
+    mediaWidth: 1920,
+    mediaHeight: 1080,
+    duration: 5.04,
+    mimeType: 'video/mp4',
+    size: 734_003,
+  };
+  const ON_NODE = { width: 1920, height: 1080, duration: 5.04, mimeType: 'video/mp4', size: 734_003 };
+
+  it('a history row hands its numbers to the node', () => {
+    expect(
+      resolveRestore({
+        readOnly: false,
+        entry: entry({ content: 'clip.mp4', thumbnailUrl: 'cover.jpg', ...NUMBERS }),
+        modality: 'video',
+        gateState: { locked: false },
+      }),
+    ).toEqual({ kind: 'write', content: 'clip.mp4', media: { coverUrl: 'cover.jpg', ...ON_NODE } });
+  });
+
+  it('the task list hands over the same numbers for the same row', () => {
+    expect(
+      resolveTaskReplace({
+        readOnly: false,
+        task: { ...task('clip.mp4', 'cover.jpg'), ...NUMBERS },
+        modality: 'video',
+        gateState: { locked: false },
+      }),
+    ).toEqual(
+      resolveRestore({
+        readOnly: false,
+        entry: entry({ content: 'clip.mp4', thumbnailUrl: 'cover.jpg', ...NUMBERS }),
+        modality: 'video',
+        gateState: { locked: false },
+      }),
+    );
   });
 });

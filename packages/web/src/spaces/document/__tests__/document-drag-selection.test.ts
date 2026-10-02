@@ -29,6 +29,7 @@ import {
   restoreReaderPlace,
 } from '@web/spaces/document/document-drag-selection';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
+import { BodyEdgeSelection, bodyEdgePos } from '@web/spaces/document/document-body-edge-selection';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -109,5 +110,36 @@ describe('putting the reader back after a drag', () => {
 
     expect(view.state.selection).toBeInstanceOf(TextSelection);
     expect(view.state.selection.empty).toBe(true);
+  });
+});
+
+describe('putting back a selection that reaches past the last block', () => {
+  it('keeps it reaching the end after a row moved', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'alpha' },
+      { type: 'paragraph', content: 'beta' },
+      { type: 'divider' },
+    ] as never);
+    const view = editor.prosemirrorView;
+    const alphaText = 3;
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, alphaText + 1, 'end')));
+    const held = readerPlace(view.state);
+    if (held === undefined) throw new Error('no place');
+
+    // The drag: `beta` goes to the top.
+    const group = view.state.doc.firstChild!;
+    const beta = group.child(1);
+    const betaPos = 1 + group.child(0).nodeSize;
+    view.dispatch(view.state.tr.delete(betaPos, betaPos + beta.nodeSize).insert(1, beta));
+    selectTheRow(editor);
+
+    restoreReaderPlace(view, held);
+
+    const { selection, doc } = view.state;
+    expect(selection).toBeInstanceOf(BodyEdgeSelection);
+    expect(doc.resolve(selection.anchor).parent.textContent).toBe('alpha');
+    expect(selection.anchor - doc.resolve(selection.anchor).start()).toBe(1);
+    expect(selection.head).toBe(bodyEdgePos(doc, 'end'));
   });
 });

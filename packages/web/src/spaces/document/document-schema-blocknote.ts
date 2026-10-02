@@ -84,7 +84,7 @@ function withProps<T extends SpecWithProps>(
 }
 
 /**
- * Builds the schema: nine types, three added props, the rest turned off.
+ * Builds the schema: ten types, three added props, the rest turned off.
  * @returns The schema to hand `BlockNoteEditor.create`.
  * @throws {Error} Whatever BlockNote throws while validating the specs.
  */
@@ -96,7 +96,6 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // make the coexistence rule false for whichever came in as a container.
     quote: _quote,
     toggleListItem: _toggleListItem,
-    divider: _divider,
     table: _table,
     image: _image,
     video: _video,
@@ -131,6 +130,12 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
       ...NUMBER_PROP,
     }),
     checkListItem: withProps(lists.checkListItem, QUOTED_PROP),
+    // The library's own `---` rule is dropped: its wrapper always ends by
+    // putting the caret at the start of the new block, which for a block with
+    // no text is a node selection the reader cannot type into
+    // (`ExtensionManager/index.ts:565-583`). `documentDividerInputExtension`
+    // places the divider and the caret in one transaction instead.
+    divider: { ...withProps(enabled.divider, QUOTED_PROP), extensions: [] },
     unsupportedBlock: unsupportedBlockSpec,
   };
 

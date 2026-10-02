@@ -646,7 +646,6 @@
         "label": "分镜",
         "perShot": "逐镜头编辑",
         "autoHint": "由模型拆分镜头",
-        "mainPromptKept": "主提示词已保留",
         "back": "返回自动分镜",
         "shot": "镜头 {n, number}",
         "removeShot": "删除",
@@ -882,6 +881,11 @@
       "success": "密码已更新,请登录。",
       "failed": "密码重置失败,请重试。",
       "backToSignIn": "返回登录"
+    },
+    "terms": {
+      "notice": "继续即表示你同意{terms}，并已阅读{privacy}。",
+      "termsLink": "使用条款",
+      "privacyLink": "隐私政策"
     }
   },
   "roleTag": {
@@ -1096,6 +1100,7 @@
         "heading3": "标题 3",
         "codeBlock": "代码块",
         "taskList": "任务列表",
+        "divider": "分割线",
         "align": "对齐",
         "alignLeft": "靠左",
         "alignCenter": "居中",

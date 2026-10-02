@@ -11,7 +11,7 @@
 import * as repo from "@domain/node-history/node-history.repo.js";
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
-import type { NodeHistoryEntity } from "@breatic/shared";
+import type { NodeHistoryEntity, NodeMediaNumbers } from "@breatic/shared";
 
 /**
  * Record a successful AIGC generation.
@@ -31,6 +31,8 @@ import type { NodeHistoryEntity } from "@breatic/shared";
  *   dollars the service charged us: the row's chip is labelled in credits.
  * @param opts.metadata.durationMs - Provider call duration in milliseconds.
  * @param opts.metadata.params - Provider/tool parameters used for the generation.
+ * @param opts.media - The media numbers the result landed on the node with
+ *   (#2184).
  * @returns The row holding this result — new, or the one already there for
  *   this task or this content.
  */
@@ -47,6 +49,7 @@ export async function recordGenerationSuccess(opts: {
     durationMs?: number;
     params?: Record<string, unknown>;
   };
+  media: NodeMediaNumbers;
 }): Promise<NodeHistoryEntity> {
   return repo.createGenerationSuccessIfAbsent({
     projectId: opts.projectId,
@@ -56,6 +59,7 @@ export async function recordGenerationSuccess(opts: {
     thumbnailUrl: opts.thumbnailUrl,
     taskId: opts.taskId,
     metadata: opts.metadata,
+    media: opts.media,
   });
 }
 
@@ -114,6 +118,7 @@ export async function recordGenerationFailure(opts: {
  * @param opts.metadata.filename - Original filename of the upload.
  * @param opts.metadata.size - Size of the uploaded file in bytes.
  * @param opts.metadata.mimeType - MIME type of the uploaded file.
+ * @param opts.media - The media numbers the upload landed on the node with (#2184).
  * @returns The stored entry plus whether this call is the one that wrote it.
  *   The flag is false on a replay and when the node's history already holds
  *   this content; the project activity feed, which has no key of its own,
@@ -131,6 +136,7 @@ export async function recordUpload(opts: {
     size?: number;
     mimeType?: string;
   };
+  media: NodeMediaNumbers;
 }): Promise<{ entry: NodeHistoryEntity; inserted: boolean }> {
   return repo.createUploadSuccessIfAbsent({
     projectId: opts.projectId,
@@ -140,6 +146,7 @@ export async function recordUpload(opts: {
     ...(opts.thumbnailUrl !== undefined && { thumbnailUrl: opts.thumbnailUrl }),
     ...(opts.storageKey !== undefined && { storageKey: opts.storageKey }),
     metadata: opts.metadata ?? {},
+    media: opts.media,
   });
 }
 

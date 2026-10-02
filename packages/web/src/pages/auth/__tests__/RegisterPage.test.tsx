@@ -303,4 +303,13 @@ describe('RegisterPage with email (code step, #287)', () => {
     expect(screen.getByLabelText('Email')).toHaveValue('foo@bar.com');
     expect(screen.getByLabelText('Password')).toHaveValue('supersecret');
   });
+
+  // #302: the terms line sits at the foot of the card, after the cross-link.
+  it('shows the terms line under the footer', () => {
+    setup();
+    const notice = screen.getByTestId('auth-terms-notice');
+    expect(notice.previousElementSibling?.tagName).toBe('FOOTER');
+    expect(notice.previousElementSibling).toHaveTextContent('Already have an account?');
+    expect(screen.getByRole('link', { name: 'Terms of Service' })).toBeInTheDocument();
+  });
 });

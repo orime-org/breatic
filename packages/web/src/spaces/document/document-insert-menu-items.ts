@@ -13,10 +13,14 @@
  * paragraph, so "make this a paragraph" is the one choice that would do
  * nothing.
  *
- * Everything the product has not built yet — the divider (#124), tables (#15),
- * uploaded media (#16 / #17), generated media (#20) — is absent by not being
- * here (A15). A row is added to this list when the thing behind it exists, so
- * the menu never offers something that cannot happen.
+ * The divider is offered too, but not from this list: it is not a block type
+ * (it holds no text, so there is nothing to turn into one), and the submenu
+ * draws it after these, in a group of its own (`DocumentBlockMenu.tsx`).
+ *
+ * Everything the product has not built yet — tables (#15), uploaded media
+ * (#16 / #17), generated media (#20) — is absent by not being here (A15). A
+ * row is added when the thing behind it exists, so the menu never offers
+ * something that cannot happen.
  */
 
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';

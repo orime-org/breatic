@@ -658,7 +658,6 @@
         "label": "Storyboard",
         "perShot": "Edit per shot",
         "autoHint": "The model splits the shots",
-        "mainPromptKept": "Main prompt kept",
         "back": "Back to auto storyboard",
         "shot": "Shot {n, number}",
         "removeShot": "Remove",
@@ -882,6 +881,11 @@
       "success": "Password updated. Please sign in.",
       "failed": "Could not reset your password. Please try again.",
       "backToSignIn": "Back to sign in"
+    },
+    "terms": {
+      "notice": "By continuing, you agree to our {terms} and acknowledge our {privacy}.",
+      "termsLink": "Terms of Service",
+      "privacyLink": "Privacy Policy"
     }
   },
   "roleTag": {
@@ -1096,6 +1100,7 @@
         "heading3": "Heading 3",
         "codeBlock": "Code block",
         "taskList": "To-do list",
+        "divider": "Divider",
         "align": "Alignment",
         "alignLeft": "Left",
         "alignCenter": "Centre",

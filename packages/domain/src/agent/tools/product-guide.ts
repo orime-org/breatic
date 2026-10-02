@@ -541,10 +541,10 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.switchOff"))} or ${quoted(t("canvas.generatePanel.switchOn"))}. On, the ` +
       `model splits the prompt into shots itself, and the row says ` +
       `${quoted(t("canvas.generatePanel.storyboard.autoHint"))}. ` +
-      `${quoted(t("canvas.generatePanel.storyboard.perShot"))} in that row splits it by hand: the prompt box gives ` +
-      `way to ${quoted(t("canvas.generatePanel.storyboard.back"))}, one card per shot and ` +
-      `${quoted(t("canvas.generatePanel.storyboard.addShot"))}, and the row reads ` +
-      `${quoted(t("canvas.generatePanel.storyboard.mainPromptKept"))}. A card, such as ` +
+      `${quoted(t("canvas.generatePanel.storyboard.perShot"))} at the right end of that row splits it by hand: the ` +
+      "prompt box gives way to one card per shot, and the right end of the row reads " +
+      `${quoted(t("canvas.generatePanel.storyboard.addShot"))} then ` +
+      `${quoted(t("canvas.generatePanel.storyboard.back"))}. A card, such as ` +
       `${quoted(t("canvas.generatePanel.storyboard.shot", { n: 1 }))}, has a minus and a plus around its ` +
       `seconds, ${quoted(t("canvas.generatePanel.storyboard.removeShot"))}, and a box, ` +
       `${quoted(t("canvas.generatePanel.storyboard.shotPlaceholder"))}, that takes @ mentions like the prompt; ` +
@@ -822,7 +822,14 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ${quoted(t("spaces.document.commands.align"))} ` +
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
-      `${quoted(t("spaces.document.commands.paragraph"))} and puts a new line of the one picked below. For a ` +
+      `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))} ` +
+      "on its own, and puts a new line of the one picked below; the divider comes with an empty line under it. " +
+      "Typing --- at the start of a line puts a divider above that line. Clicking a divider selects it, and " +
+      "Backspace or Delete removes it. On a divider's handle menu, " +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.commands.color"))} and ` +
+      `${quoted(t("spaces.document.commands.comment"))} are greyed, and in ` +
+      `${quoted(t("spaces.document.commands.blockType"))} only ` +
+      `${quoted(t("spaces.document.commands.quote"))} can be picked. For a ` +
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
@@ -867,7 +874,7 @@ export function renderProductGuide(): string {
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
     "- There is no slash menu. Not available yet: the AI commands, snapshots, images or other media, " +
-      "tables, dividers, toggle lists, and headings below level 3.",
+      "tables, toggle lists, and headings below level 3.",
     "",
     "## When something is wrong",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +
