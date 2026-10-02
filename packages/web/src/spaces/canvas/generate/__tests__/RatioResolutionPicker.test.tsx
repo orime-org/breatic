@@ -48,6 +48,7 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       <RatioResolutionPicker
         model={FULL}
         value={{ aspect_ratio: '16:9', resolution: '2K' }}
+        cameraSupported={false}
         onChange={() => {}}
       />,
     );
@@ -63,12 +64,12 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       resolution: RESOLUTION,
       quality: { description: '', label: 'Quality', values: ['low', 'max'], default: 'max', fill: 'panel' },
     });
-    render(<RatioResolutionPicker model={own} value={resolveParamsForModel(own, { aspect_ratio: 'auto', resolution: '1K' })} onChange={() => {}} />);
+    render(<RatioResolutionPicker model={own} value={resolveParamsForModel(own, { aspect_ratio: 'auto', resolution: '1K' })} cameraSupported={false} onChange={() => {}} />);
     expect(screen.getByTestId('generate-ratio-trigger')).toHaveTextContent('1K · Auto · Max');
   });
 
   it('caps the pill at 150px, like the video and audio params pills', () => {
-    render(<RatioResolutionPicker model={FULL} value={{ aspect_ratio: '16:9', resolution: '2K' }} onChange={() => {}} />);
+    render(<RatioResolutionPicker model={FULL} value={{ aspect_ratio: '16:9', resolution: '2K' }} cameraSupported={false} onChange={() => {}} />);
     expect(screen.getByTestId('generate-ratio-trigger').className).toContain('max-w-[150px]');
   });
 
@@ -78,6 +79,7 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       <RatioResolutionPicker
         model={FULL}
         value={{ aspect_ratio: '1:1', resolution: '1K' }}
+        cameraSupported={false}
         onChange={onChange}
       />,
     );
@@ -91,6 +93,7 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       <RatioResolutionPicker
         model={FULL}
         value={{ aspect_ratio: '1:1', resolution: '1K' }}
+        cameraSupported={false}
         onChange={() => {}}
       />,
     );
@@ -115,6 +118,7 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       <RatioResolutionPicker
         model={FULL}
         value={{ aspect_ratio: '1:1', resolution: '1K' }}
+        cameraSupported={false}
         onChange={onChange}
       />,
     );
@@ -128,6 +132,7 @@ describe('RatioResolutionPicker — ratio + resolution from the current model pa
       <RatioResolutionPicker
         model={model({ resolution: RESOLUTION })}
         value={{ resolution: '2K' }}
+        cameraSupported={false}
         onChange={() => {}}
       />,
     );

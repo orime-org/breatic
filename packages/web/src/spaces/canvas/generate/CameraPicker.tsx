@@ -1,22 +1,18 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Camera, ChevronUp, ChevronDown } from 'lucide-react';
+import { ChevronUp, ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
 import type { ModelEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { Switch } from '@web/components/ui/switch';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
-import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   paramValues,
   type ParamOptionValue,
 } from '@breatic/shared';
-import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 /** The camera-cluster params this control edits (all declared by the model, #1788). */
 export interface CameraValue {
@@ -36,6 +32,9 @@ const COLUMNS = [
   { key: 'focal_length', capKey: 'focalLength', glyph: 'num' },
   { key: 'aperture', capKey: 'aperture', glyph: 'iris' },
 ] as const;
+
+/** What the focal length reads with, on the wheel and on the params row. */
+const FOCAL_UNIT = ' mm';
 
 /** The switch that opens this cluster. */
 export const CAMERA_SWITCH_PARAM = 'enable_camera';
@@ -236,21 +235,17 @@ interface CameraPickerProps {
 }
 
 /**
- * The Generate panel's Camera control (#1788): a footer icon button that opens
- * a four-wheel popover (camera / lens / focal length / aperture) sourced from
- * the active model's catalog enums. A top-right switch is the master
- * `enable_camera` opt-in gate (replaces a close ×; the popover closes on
- * outside click / Escape like the ratio picker); the trigger's tooltip reports
- * the on/off state. The control is only rendered when the active model declares
- * the cluster — the panel hides it otherwise (unsupported models show nothing,
- * not a greyed-out control). Focal length round-trips as a NUMBER (the catalog
- * values are numeric — a string would fail the worker's enum check and silently
- * reset to the default).
+ * The camera panel (#1788) the params popover opens beside itself (#2254): a
+ * header with the master `enable_camera` switch, and four wheels (camera /
+ * lens / focal length / aperture) sourced from the active model's catalog
+ * enums. Focal length round-trips as a NUMBER (the catalog values are numeric
+ * — a string would fail the worker's enum check and silently reset to the
+ * default).
  * @param root0 - Component props.
  * @param root0.model - The current model.
  * @param root0.value - The current camera-cluster selection.
  * @param root0.onChange - Merge a changed param into the model's record.
- * @returns The camera control.
+ * @returns The camera panel's content.
  */
 export const CameraPicker = React.memo(function CameraPicker({
   model,
@@ -258,92 +253,62 @@ export const CameraPicker = React.memo(function CameraPicker({
   onChange,
 }: CameraPickerProps): React.JSX.Element {
   const t = useTranslation();
-  const [open, setOpen] = React.useState(false);
-  // Keep the popover glued to its trigger as the canvas pans / zooms, matching
-  // the generate panel (a ReactFlow NodeToolbar that tracks its node).
-  useFollowCanvasViewport(open);
   const enabled = value[CAMERA_SWITCH_PARAM] === true;
-
-  const triggerClass =
-    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border transition-colors ' +
-    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ' +
-    (enabled ? ' text-foreground hover:bg-accent' : ' text-muted-foreground hover:bg-accent hover:text-foreground');
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              type='button'
-              variant={null}
-              size={null}
-              data-testid='generate-camera'
-              aria-label={t('canvas.generatePanel.camera')}
-              // This button is BOTH a TooltipTrigger and a PopoverTrigger:
-              // suppress the tooltip's focus-open so closing the popover (Escape
-              // returns focus here) doesn't pop a stray tooltip (web-frontend
-              // traps: a Tooltip wrapping an overlay trigger pops a stray tip
-              // when Escape returns focus after closing the overlay).
-              onFocusCapture={suppressTooltipFocusOpen}
-              className={triggerClass}
-            >
-              <Camera className='h-4 w-4' aria-hidden='true' />
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent side='top'>
-          {enabled ? t('canvas.generatePanel.switchOn') : t('canvas.generatePanel.switchOff')}
-        </TooltipContent>
-      </Tooltip>
-      <PopoverContent
-        side='top'
-        align='center'
-        // Freeze on open (user 2026-07-18): no collision flip/shift — the popover
-        // stays put and clips at the screen edge like the generate panel, instead
-        // of jumping when it nears a viewport border.
-        avoidCollisions={false}
-        aria-label={t('canvas.generatePanel.camera')}
-        className='w-[min(520px,88vw)] p-4 shadow-md'
-      >
-        <div className='mb-2 flex items-center justify-between'>
-          <span className='text-xs text-muted-foreground'>{t('canvas.generatePanel.camera')}</span>
-          <label className='flex cursor-pointer items-center gap-2'>
-            <span className='text-xs text-muted-foreground'>
-              {enabled ? t('canvas.generatePanel.switchOn') : t('canvas.generatePanel.switchOff')}
-            </span>
-            <Switch
-              data-testid='generate-camera-toggle'
-              checked={enabled}
-              onCheckedChange={(checked) => onChange({ [CAMERA_SWITCH_PARAM]: checked })}
+    <div>
+      <div className='mb-2 flex items-center justify-between'>
+        <span className='text-xs text-muted-foreground'>{t('canvas.generatePanel.camera')}</span>
+        <label className='flex cursor-pointer items-center gap-2'>
+          <span className='text-xs text-muted-foreground'>
+            {enabled ? t('canvas.generatePanel.switchOn') : t('canvas.generatePanel.switchOff')}
+          </span>
+          <Switch
+            data-testid='generate-camera-toggle'
+            checked={enabled}
+            onCheckedChange={(checked) => onChange({ [CAMERA_SWITCH_PARAM]: checked })}
+          />
+        </label>
+      </div>
+      <div className='grid grid-cols-4 gap-2.5'>
+        {COLUMNS.map((col) => {
+          const values = paramValues(model, col.key);
+          const current = value[col.key];
+          const idx = Math.max(
+            0,
+            values.findIndex((v) => v === current),
+          );
+          const unit = col.key === 'focal_length' ? FOCAL_UNIT : '';
+          return (
+            <CameraWheel
+              key={col.key}
+              cap={t(`canvas.generatePanel.${col.capKey}`)}
+              glyph={col.glyph}
+              values={values}
+              value={current}
+              unit={unit}
+              prevLabel={idx > 0 ? `${values[idx - 1]}${unit}` : ''}
+              nextLabel={idx < values.length - 1 ? `${values[idx + 1]}${unit}` : ''}
+              onSelect={(v) => onChange({ [col.key]: v })}
             />
-          </label>
-        </div>
-        <div className='grid grid-cols-4 gap-2.5'>
-          {COLUMNS.map((col) => {
-            const values = paramValues(model, col.key);
-            const current = value[col.key];
-            const idx = Math.max(
-              0,
-              values.findIndex((v) => v === current),
-            );
-            const unit = col.key === 'focal_length' ? ' mm' : '';
-            return (
-              <CameraWheel
-                key={col.key}
-                cap={t(`canvas.generatePanel.${col.capKey}`)}
-                glyph={col.glyph}
-                values={values}
-                value={current}
-                unit={unit}
-                prevLabel={idx > 0 ? `${values[idx - 1]}${unit}` : ''}
-                nextLabel={idx < values.length - 1 ? `${values[idx + 1]}${unit}` : ''}
-                onSelect={(v) => onChange({ [col.key]: v })}
-              />
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
+          );
+        })}
+      </div>
+    </div>
   );
 });
+
+/**
+ * The four camera settings as the params popover's row reads them while the
+ * camera is on: camera · lens · focal length · aperture, in the wheels' order.
+ * @param value - The current camera-cluster selection.
+ * @returns The settings joined, skipping any the node does not hold.
+ */
+export function cameraSummary(value: CameraValue): string {
+  return COLUMNS.map((col) => {
+    const held = value[col.key];
+    if (held === undefined) return '';
+    return col.key === 'focal_length' ? `${held}${FOCAL_UNIT}` : String(held);
+  })
+    .filter((part) => part !== '')
+    .join(' · ');
+}

@@ -38,6 +38,7 @@ import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-
 import { useSamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
 import { sampleUrlFor } from '@web/spaces/canvas/generate/voice-param';
 import { VoiceList } from '@web/spaces/canvas/generate/VoiceList';
+import { useSecondPanelSide } from '@web/spaces/canvas/generate/use-second-panel-side';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 
@@ -46,6 +47,14 @@ import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-stat
  * `ml-2` / `mr-2` gap, in pixels. Read when deciding which side it opens on.
  */
 const SECOND_PANEL_SPAN = 288 + 8;
+
+/**
+ * How far the second panel reaches; a constant, as its width is fixed.
+ * @returns The span in pixels.
+ */
+function secondPanelSpan(): number {
+  return SECOND_PANEL_SPAN;
+}
 
 /** What this picker's shared controls edit, by the catalog's own param names. */
 export type AudioParamsValue = Record<string, number>;
@@ -172,17 +181,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
     [showPanel],
   );
 
-  // The second panel opens to the right (design §16.1); when the pill sits
-  // near the right edge and there is no room there, it opens to the left
-  // instead, rather than being cut off by the window.
-  const firstPanelRef = React.useRef<HTMLDivElement>(null);
-  const [secondOnLeft, setSecondOnLeft] = React.useState(false);
-  React.useLayoutEffect(() => {
-    const el = firstPanelRef.current;
-    if (panel === null || !el) return;
-    const box = el.getBoundingClientRect();
-    setSecondOnLeft(box.right + SECOND_PANEL_SPAN > window.innerWidth && box.left >= SECOND_PANEL_SPAN);
-  }, [panel]);
+  const [firstPanelRef, secondOnLeft] = useSecondPanelSide(panel, secondPanelSpan);
 
   const inlineOnly = React.useCallback(
     (control: ModelControl) => layout.inline.some((c) => c.name === control.name),
