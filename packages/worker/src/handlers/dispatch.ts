@@ -51,7 +51,7 @@ import {
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName, type GenerationSource } from "@breatic/shared";
-import type { TaskFailureReason } from "@breatic/shared";
+import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
@@ -957,18 +957,33 @@ export async function recordGenerationForNodes(
 ): Promise<void> {
   for (const o of outputs) {
     const content = typeof o.content === "string" ? o.content : null;
+    // What the node is handed, and what the history row keeps so a restore
+    // can hand it back (#2184).
+    const result: NodeTaskResult | null =
+      content === null
+        ? null
+        : {
+            content,
+            coverUrl: o.coverUrl ?? null,
+            width: o.width ?? null,
+            height: o.height ?? null,
+            duration: o.duration ?? null,
+            mimeType: o.mimeType ?? null,
+            size: o.size ?? null,
+          };
     /** The history row holding this result, which the task row points at. */
     let historyId: string | undefined;
-    if (content !== null) {
+    if (result !== null) {
       try {
         const entry = await nodeHistoryService.recordGenerationSuccess({
           projectId: ctx.projectId,
           nodeId: o.nodeId,
           userId: ctx.userId,
-          content,
-          thumbnailUrl: o.coverUrl ?? (ctx.taskType === "image" ? content : undefined),
+          content: result.content,
+          thumbnailUrl: o.coverUrl ?? (ctx.taskType === "image" ? result.content : undefined),
           taskId: ctx.taskId,
           metadata: ctx.metadata,
+          media: result,
         });
         historyId = entry.id;
       } catch (err) {
@@ -987,7 +1002,7 @@ export async function recordGenerationForNodes(
     // passed. The cause is one we author, so it travels as a code and becomes
     // a sentence in the reader's language (§7.1).
     const ending: Parameters<typeof settleTaskForNode>[2] =
-      content === null
+      result === null
         ? {
             taskId: ctx.taskId,
             nodeId: o.nodeId,
@@ -999,15 +1014,7 @@ export async function recordGenerationForNodes(
             nodeId: o.nodeId,
             outcome: "done",
             ...(historyId !== undefined && { nodeHistoryId: historyId }),
-            result: {
-              content,
-              coverUrl: o.coverUrl ?? null,
-              width: o.width ?? null,
-              height: o.height ?? null,
-              duration: o.duration ?? null,
-              mimeType: o.mimeType ?? null,
-              size: o.size ?? null,
-            },
+            result,
           };
     try {
       await settleTaskForNode(streamRedis, docName, ending);

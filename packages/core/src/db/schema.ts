@@ -675,6 +675,18 @@ export const nodeHistory = pgTable(
      */
     uploadStorageKey: text("upload_storage_key"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+    /**
+     * The media numbers this content landed on the node with (#2184), so a
+     * restore can put back what the settle put there. Null when the medium has
+     * no such number, and on every row written before 0088. Types follow the
+     * matching studio_assets columns (width / height, duration_seconds,
+     * mime_type, size_bytes).
+     */
+    mediaWidth: integer("media_width"),
+    mediaHeight: integer("media_height"),
+    durationSeconds: numeric("duration_seconds", { precision: 12, scale: 3, mode: "number" }),
+    mimeType: varchar("mime_type", { length: 100 }),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

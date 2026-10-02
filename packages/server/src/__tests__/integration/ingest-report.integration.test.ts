@@ -520,6 +520,42 @@ describe("a finish this server drove — a completed upload", () => {
     expect(results.at(-1)).toMatchObject({ width: 1280, height: 720 });
   });
 
+  it("keeps on the history row the numbers the node was handed (#2184)", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
+
+    await report(completed(key, { width: 1280, height: 720 }));
+
+    const handed = (await eventsFor(docName))
+      .filter((e) => e.nodeId === nodeId)
+      .map((e) => e.result)
+      .filter((r): r is Record<string, unknown> => r !== undefined)
+      .at(-1);
+    const rows = await sql<
+      { media_width: number | null; media_height: number | null; duration_seconds: string | null; mime_type: string | null; size_bytes: string | null }[]
+    >`
+      SELECT media_width, media_height, duration_seconds, mime_type, size_bytes FROM node_history
+      WHERE node_id = ${nodeId} AND deleted_at IS NULL
+    `;
+    expect(rows).toHaveLength(1);
+    expect({
+      width: rows[0]!.media_width,
+      height: rows[0]!.media_height,
+      duration: rows[0]!.duration_seconds === null ? null : Number(rows[0]!.duration_seconds),
+      mimeType: rows[0]!.mime_type,
+      size: rows[0]!.size_bytes === null ? null : Number(rows[0]!.size_bytes),
+    }).toEqual({
+      width: handed?.width,
+      height: handed?.height,
+      duration: handed?.duration,
+      mimeType: handed?.mimeType,
+      size: handed?.size,
+    });
+    expect(rows[0]!.media_width).toBe(1280);
+  });
+
   it("records the upload in the node's history and in the project's feed", async () => {
     const seed = await seedEditor();
     const nodeId = crypto.randomUUID();

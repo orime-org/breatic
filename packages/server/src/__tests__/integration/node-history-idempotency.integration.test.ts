@@ -58,6 +58,11 @@ afterAll(async () => {
   await sql?.end({ timeout: 1 });
 });
 
+/** The numbers an upload lands with, for tests about something else. */
+const UPLOAD_MEDIA = { width: 1, height: 1, duration: null, mimeType: "image/png", size: 1 };
+// What a text result lands with: it has none of the five numbers.
+const NO_MEDIA = { width: null, height: null, duration: null, mimeType: null, size: null };
+
 let seq = 0;
 
 /** Insert a user + personal studio; returns the user id. */
@@ -129,8 +134,8 @@ describe("node_history generation idempotency (#1618 Y)", () => {
 
     // Two records for the same generation (double-live or billed-redelivery
     // re-record). The idempotent path collapses them to a single row.
-    await nodeHistoryService.recordGenerationSuccess(opts);
-    await nodeHistoryService.recordGenerationSuccess(opts);
+    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA });
+    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA });
 
     expect(await countRows(taskId, nodeId)).toBe(1);
   });
@@ -152,8 +157,8 @@ describe("node_history generation idempotency (#1618 Y)", () => {
 
     // Two executions of the SAME job hit the record path concurrently.
     await Promise.all([
-      nodeHistoryService.recordGenerationSuccess(opts),
-      nodeHistoryService.recordGenerationSuccess(opts),
+      nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA }),
+      nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA }),
     ]);
 
     expect(await countRows(taskId, nodeId)).toBe(1);
@@ -168,11 +173,11 @@ describe("node_history generation idempotency (#1618 Y)", () => {
 
     // Each live run persists its own output, so the two results differ and
     // only (task_id, node_id) ties them together.
-    const first = await nodeHistoryService.recordGenerationSuccess({
+    const first = await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       ...base,
       content: "https://cdn.example.com/run-1.png",
     });
-    const second = await nodeHistoryService.recordGenerationSuccess({
+    const second = await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       ...base,
       content: "https://cdn.example.com/run-2.png",
     });
@@ -195,8 +200,8 @@ describe("node_history generation idempotency (#1618 Y)", () => {
       taskId,
       metadata: { model: "test-model", params: {} },
     };
-    await nodeHistoryService.recordGenerationSuccess({ ...base, nodeId: nodeA });
-    await nodeHistoryService.recordGenerationSuccess({ ...base, nodeId: nodeB });
+    await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA, ...base, nodeId: nodeA });
+    await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA, ...base, nodeId: nodeB });
 
     expect(await countRows(taskId, nodeA)).toBe(1);
     expect(await countRows(taskId, nodeB)).toBe(1);
@@ -216,8 +221,8 @@ describe("node_history generation idempotency (#1618 Y)", () => {
       taskId,
       metadata: { model: "test-model", params: {} },
     };
-    await nodeHistoryService.recordGenerationSuccess(opts);
-    await nodeHistoryService.recordGenerationSuccess(opts);
+    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA });
+    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA });
 
     const page = await nodeHistoryService.listByNode(projectId, nodeId, {
       status: "success",
@@ -237,7 +242,7 @@ describe("node_history generation idempotency (#1618 Y)", () => {
     const taskId = await createTask(userId, projectId);
     const nodeId = crypto.randomUUID();
 
-    await nodeHistoryService.recordGenerationSuccess({
+    await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       projectId,
       nodeId,
       userId,
@@ -283,8 +288,8 @@ describe("node_history upload idempotency (#173)", () => {
       metadata: { filename: "clip.mp4", size: 4096, mimeType: "video/mp4" },
     };
 
-    await nodeHistoryService.recordUpload(opts);
-    await nodeHistoryService.recordUpload(opts);
+    await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA });
+    await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA });
 
     expect(await countUploads(nodeId)).toBe(1);
   });
@@ -302,8 +307,8 @@ describe("node_history upload idempotency (#173)", () => {
     };
 
     await Promise.all([
-      nodeHistoryService.recordUpload(opts),
-      nodeHistoryService.recordUpload(opts),
+      nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA }),
+      nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA }),
     ]);
 
     expect(await countUploads(nodeId)).toBe(1);
@@ -321,8 +326,8 @@ describe("node_history upload idempotency (#173)", () => {
       storageKey: `uploads/${crypto.randomUUID()}.mp4`,
     };
 
-    const first = await nodeHistoryService.recordUpload(opts);
-    const second = await nodeHistoryService.recordUpload(opts);
+    const first = await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA });
+    const second = await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA });
 
     expect(second.entry.id).toBe(first.entry.id);
   });
@@ -343,8 +348,8 @@ describe("node_history upload idempotency (#173)", () => {
       storageKey,
     };
 
-    await nodeHistoryService.recordUpload(base);
-    await nodeHistoryService.recordUpload({
+    await nodeHistoryService.recordUpload({ ...base, media: UPLOAD_MEDIA });
+    await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA,
       ...base,
       thumbnailUrl: "https://cdn.example.com/late_cover.png",
     });
@@ -370,8 +375,8 @@ describe("node_history upload idempotency (#173)", () => {
       content: "https://cdn.example.com/existing.png",
     };
 
-    await nodeHistoryService.recordUpload(opts);
-    await nodeHistoryService.recordUpload(opts);
+    await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA });
+    await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA });
 
     expect(await countUploads(nodeId)).toBe(1);
   });
@@ -382,12 +387,12 @@ describe("node_history upload idempotency (#173)", () => {
     const nodeId = crypto.randomUUID();
     const base = { projectId, nodeId, userId };
 
-    await nodeHistoryService.recordUpload({
+    await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA,
       ...base,
       content: "https://cdn.example.com/a.png",
       storageKey: `uploads/${crypto.randomUUID()}.png`,
     });
-    await nodeHistoryService.recordUpload({
+    await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA,
       ...base,
       content: "https://cdn.example.com/b.png",
       storageKey: `uploads/${crypto.randomUUID()}.png`,
@@ -414,8 +419,8 @@ describe("knowing whether the upload row was newly written (#173)", () => {
       storageKey: `uploads/${crypto.randomUUID()}.mp4`,
     };
 
-    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(true);
-    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(false);
+    expect((await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA })).inserted).toBe(true);
+    expect((await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA })).inserted).toBe(false);
   });
 
   // The feed follows the history (#2186): content already in this node's
@@ -431,8 +436,8 @@ describe("knowing whether the upload row was newly written (#173)", () => {
       content: "https://cdn.example.com/keyless.png",
     };
 
-    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(true);
-    expect((await nodeHistoryService.recordUpload(opts)).inserted).toBe(false);
+    expect((await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA })).inserted).toBe(true);
+    expect((await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA })).inserted).toBe(false);
   });
 
   it("reports an upload under a new key of content already in the history as not inserted", async () => {
@@ -446,11 +451,11 @@ describe("knowing whether the upload row was newly written (#173)", () => {
       content: "https://cdn.example.com/same-bytes.png",
     };
 
-    const first = await nodeHistoryService.recordUpload({
+    const first = await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA,
       ...base,
       storageKey: `uploads/${crypto.randomUUID()}.png`,
     });
-    const second = await nodeHistoryService.recordUpload({
+    const second = await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA,
       ...base,
       storageKey: `uploads/${crypto.randomUUID()}.png`,
     });
@@ -483,11 +488,11 @@ describe("one history row per content per node (#2186)", () => {
     const content = "https://cdn.example.com/same-result.png";
     const base = { projectId, nodeId, userId, content, metadata: { model: "m" } };
 
-    const first = await nodeHistoryService.recordGenerationSuccess({
+    const first = await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       ...base,
       taskId: await createTask(userId, projectId),
     });
-    const second = await nodeHistoryService.recordGenerationSuccess({
+    const second = await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       ...base,
       taskId: await createTask(userId, projectId),
     });
@@ -510,11 +515,11 @@ describe("one history row per content per node (#2186)", () => {
       content: "https://cdn.example.com/same-upload.png",
     };
 
-    const first = await nodeHistoryService.recordUpload({
+    const first = await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA,
       ...base,
       storageKey: `uploads/${crypto.randomUUID()}.png`,
     });
-    const second = await nodeHistoryService.recordUpload({
+    const second = await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA,
       ...base,
       storageKey: `uploads/${crypto.randomUUID()}.png`,
     });
@@ -536,8 +541,8 @@ describe("one history row per content per node (#2186)", () => {
       content: "https://cdn.example.com/same-dedup.png",
     };
 
-    const first = await nodeHistoryService.recordUpload(opts);
-    const second = await nodeHistoryService.recordUpload(opts);
+    const first = await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA });
+    const second = await nodeHistoryService.recordUpload({ ...opts, media: UPLOAD_MEDIA });
 
     const rows = await liveSuccessRows(nodeId);
     expect(rows).toHaveLength(1);
@@ -568,13 +573,13 @@ describe("one history row per content per node (#2186)", () => {
     const nodeId = crypto.randomUUID();
     const content = "https://cdn.example.com/cross.png";
 
-    const upload = await nodeHistoryService.recordUpload({
+    const upload = await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA,
       projectId,
       nodeId,
       userId,
       content,
     });
-    const generated = await nodeHistoryService.recordGenerationSuccess({
+    const generated = await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       projectId,
       nodeId,
       userId,
@@ -594,8 +599,8 @@ describe("one history row per content per node (#2186)", () => {
     const nodeB = crypto.randomUUID();
     const content = "https://cdn.example.com/shared.png";
 
-    await nodeHistoryService.recordUpload({ projectId, nodeId: nodeA, userId, content });
-    await nodeHistoryService.recordUpload({ projectId, nodeId: nodeB, userId, content });
+    await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA, projectId, nodeId: nodeA, userId, content });
+    await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA, projectId, nodeId: nodeB, userId, content });
 
     expect(await liveSuccessRows(nodeA)).toHaveLength(1);
     expect(await liveSuccessRows(nodeB)).toHaveLength(1);
@@ -614,11 +619,11 @@ describe("one history row per content per node (#2186)", () => {
       content: "https://cdn.example.com/cover-later.mp4",
     };
 
-    await nodeHistoryService.recordUpload({
+    await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA,
       ...base,
       storageKey: `uploads/${crypto.randomUUID()}.mp4`,
     });
-    await nodeHistoryService.recordUpload({
+    await nodeHistoryService.recordUpload({ media: UPLOAD_MEDIA,
       ...base,
       storageKey: `uploads/${crypto.randomUUID()}.mp4`,
       thumbnailUrl: "https://cdn.example.com/cover-later_cover.png",
@@ -773,5 +778,150 @@ describe("migration 0087 on a history that already holds duplicates (#2186 A7)",
 
     expect(row?.nodeHistoryId).toBe(entry.id);
     expect(row?.content).toBe("https://cdn.example.com/kept-by-task.png");
+  });
+});
+
+describe("history rows carry the media a result landed with (#2184)", () => {
+  // What the node was given when this content first landed on it, so restoring
+  // the row can give it back the same seven fields.
+  const media = { width: 1920, height: 1080, duration: 5.04, mimeType: "video/mp4", size: 734_003 };
+  const onEntry = {
+    mediaWidth: 1920,
+    mediaHeight: 1080,
+    duration: 5.04,
+    mimeType: "video/mp4",
+    size: 734_003,
+  };
+
+  it("a generation row reads back the media it was written with", async () => {
+    const userId = await insertUser("Media Gen");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+
+    await nodeHistoryService.recordGenerationSuccess({
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/media-gen.mp4",
+      thumbnailUrl: "https://cdn.example.com/media-gen.jpg",
+      taskId: await createTask(userId, projectId),
+      metadata: { model: "m" },
+      media,
+    });
+
+    const { entries } = await nodeHistoryService.listByNode(projectId, nodeId, {});
+    expect(entries[0]).toMatchObject(onEntry);
+  });
+
+  it("an upload row reads back the media it was written with", async () => {
+    const userId = await insertUser("Media Upload");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+
+    await nodeHistoryService.recordUpload({
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/media-upload.mp4",
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+      media,
+    });
+
+    const { entries } = await nodeHistoryService.listByNode(projectId, nodeId, {});
+    expect(entries[0]).toMatchObject(onEntry);
+  });
+
+  it("a number the medium does not have reads back null (an image has no duration)", async () => {
+    const userId = await insertUser("Media Empty");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+
+    await nodeHistoryService.recordUpload({
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/media-image.png",
+      storageKey: `uploads/${crypto.randomUUID()}.png`,
+      media: { width: 640, height: 480, duration: null, mimeType: "image/png", size: 1024 },
+    });
+
+    const { entries } = await nodeHistoryService.listByNode(projectId, nodeId, {});
+    expect(entries[0]).toMatchObject({
+      mediaWidth: 640,
+      mediaHeight: 480,
+      duration: null,
+      mimeType: "image/png",
+      size: 1024,
+    });
+  });
+
+  it("a snapshot row, which carries no media, reads back null for all five", async () => {
+    const userId = await insertUser("Media Old");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+
+    await nodeHistoryService.recordSnapshot({
+      projectId,
+      nodeId,
+      userId,
+      content: "a snapshot has no media",
+    });
+
+    const { entries } = await nodeHistoryService.listByNode(projectId, nodeId, {});
+    expect(entries[0]).toMatchObject({
+      mediaWidth: null,
+      mediaHeight: null,
+      duration: null,
+      mimeType: null,
+      size: null,
+    });
+  });
+
+  it("the same content arriving again keeps the media the first arrival wrote", async () => {
+    const userId = await insertUser("Media Same");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const base = { projectId, nodeId, userId, content: "https://cdn.example.com/media-same.mp4" };
+
+    await nodeHistoryService.recordUpload({
+      ...base,
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+      media,
+    });
+    await nodeHistoryService.recordUpload({
+      ...base,
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+      media: { width: 1, height: 1, duration: 1, mimeType: "video/webm", size: 1 },
+    });
+
+    const { entries } = await nodeHistoryService.listByNode(projectId, nodeId, {});
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject(onEntry);
+  });
+
+  it("the task list hands back the media of the row its task points at", async () => {
+    const userId = await insertUser("Media Task List");
+    const projectId = await insertProject(userId);
+    const nodeId = crypto.randomUUID();
+    const recorded = await nodeHistoryService.recordUpload({
+      projectId,
+      nodeId,
+      userId,
+      content: "https://cdn.example.com/media-task.mp4",
+      storageKey: `uploads/${crypto.randomUUID()}.mp4`,
+      media,
+    });
+    await sql`
+      INSERT INTO node_tasks
+        (project_id, space_id, node_id, kind, status,
+         started_by_user_id, started_at, budget_ms, label, node_history_id)
+      VALUES
+        (${projectId}, ${crypto.randomUUID()}, ${nodeId}, 'upload', 'done',
+         ${userId}, now(), 600000, 'media-task.mp4', ${recorded.entry.id})
+    `;
+
+    const [row] = await nodeTaskService.listLive({ projectId, nodeId });
+
+    expect(row).toMatchObject(onEntry);
   });
 });
