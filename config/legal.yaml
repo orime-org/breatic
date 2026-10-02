@@ -1,0 +1,8 @@
+# Terms an account agrees to when it is created (#302). The sign-in and
+# sign-up cards say "By continuing, you agree to our Terms of Service and
+# acknowledge our Privacy Policy"; every new account records this version and
+# the moment it was created.
+#
+# The terms live on the marketing site (https://breatic.ai/terms/), outside
+# this repository. Change this value when they are republished.
+terms_version: "2026-10-02"
