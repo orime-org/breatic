@@ -78,7 +78,7 @@ describe("subscriptionSituation — a live row past its deadline counts as ended
     expect(subscriptionSituation([cancelling], at(-1000)).situation).toBe("cancelling");
 
     const after = subscriptionSituation([cancelling], at(1000));
-    expect(after).toEqual({ situation: "none", record: null, lapsed: cancelling });
+    expect(after).toEqual({ situation: "none", record: null, lapsed: [cancelling] });
   });
 
   it.each([
@@ -92,7 +92,7 @@ describe("subscriptionSituation — a live row past its deadline counts as ended
     expect(subscriptionSituation([live], at(STALE_AFTER_MS + 1000))).toEqual({
       situation: "none",
       record: null,
-      lapsed: live,
+      lapsed: [live],
     });
   });
 

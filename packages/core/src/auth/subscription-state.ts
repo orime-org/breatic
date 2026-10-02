@@ -108,15 +108,15 @@ export interface SituationReading<T extends SubscriptionRecord = SubscriptionRec
   /** The row the situation was read from, or null when there is none. */
   readonly record: T | null;
   /**
-   * The highest-ranked row that is still marked live but is past its deadline,
-   * or null when none is.
+   * Every row still marked live but past its deadline, highest-ranked first;
+   * empty when none is.
    *
    * Such a row is read as ended — its deadline passing without a word from
    * Stripe means the event that ended it never reached us — but it is reported
    * here because what Stripe actually holds is still unknown, and an action
-   * that charges money asks Stripe about it before selling a second one.
+   * that charges money asks Stripe about each of them before selling another.
    */
-  readonly lapsed: T | null;
+  readonly lapsed: readonly T[];
 }
 
 /** The moment a reading is taken at, and how long a renewing row is trusted. */
@@ -219,18 +219,19 @@ function situationOfLiveRecord(
  * as base while paying for PRO.
  * @param records - Every subscription row stored for the account.
  * @param clock - The moment the rows are read at, and the renewal window.
- * @returns The situation, the row it was read from, and any lapsed row.
+ * @returns The situation, the row it was read from, and the lapsed rows.
  */
 export function subscriptionSituation<T extends SubscriptionRecord>(
   records: readonly T[],
   clock: SituationClock,
 ): SituationReading<T> {
   const liveRows = records.filter((record) => LIVE_STATUSES.has(record.status));
-  const lapsedRows = liveRows.filter((record) => hasLapsed(record, clock));
-  const lapsed = [...lapsedRows].sort(compareLive)[0] ?? null;
+  const lapsed = liveRows
+    .filter((record) => hasLapsed(record, clock))
+    .sort(compareLive);
 
   const live = liveRows
-    .filter((record) => !lapsedRows.includes(record))
+    .filter((record) => !lapsed.includes(record))
     .sort(compareLive)[0];
   if (live) {
     return { situation: situationOfLiveRecord(live), record: live, lapsed };
@@ -238,7 +239,7 @@ export function subscriptionSituation<T extends SubscriptionRecord>(
 
   const unexpected = records.find(
     (record) =>
-      !ENDED_STATUSES.has(record.status) && !lapsedRows.includes(record),
+      !ENDED_STATUSES.has(record.status) && !lapsed.includes(record),
   );
   if (unexpected) return { situation: "unexpected", record: unexpected, lapsed };
 

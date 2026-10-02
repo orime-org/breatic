@@ -382,7 +382,7 @@ async function honouredTier(
     await listSubscriptions(userId, tx),
     subscriptionClock(),
   );
-  return lapsed ? tierForSituation(situation, record) : stored;
+  return lapsed.length > 0 ? tierForSituation(situation, record) : stored;
 }
 
 /**

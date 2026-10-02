@@ -233,7 +233,9 @@ export async function startCheckout(input: {
   if (holdsActionableSubscription(situation)) {
     throw new ConflictError(t("server.membership.already_subscribed"));
   }
-  if (lapsed) await recheckLapsed(lapsed.stripeSubscriptionId, input.userId);
+  for (const row of lapsed) {
+    await recheckLapsed(row.stripeSubscriptionId, input.userId);
+  }
 
   if (situation === "firstPaymentUnsettled" && record) {
     // Stripe refuses to update a subscription whose first invoice has not
