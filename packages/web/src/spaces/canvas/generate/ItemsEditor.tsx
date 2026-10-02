@@ -14,10 +14,8 @@ import {
   SelectValue,
 } from '@web/components/ui/select';
 import { useTranslation } from '@web/i18n/use-translation';
+import { blankEntry, entriesOf, fixedEntries } from '@web/spaces/canvas/generate/fixed-entries';
 import type { ItemFieldControl } from '@web/spaces/canvas/generate/model-controls';
-
-/** One stored entry: field name to value. */
-type Entry = Readonly<Record<string, unknown>>;
 
 interface ItemsEditorProps {
   /** The param name, for the change and the test ids. */
@@ -33,8 +31,6 @@ interface ItemsEditorProps {
   min?: number;
   /** How a field is named in its empty box; the field's own name when absent. */
   fieldLabel?: (field: string) => string;
-  /** What to put after a choice field's value, such as a sample of that voice. */
-  afterChoice?: (field: string, value: unknown, index: number) => React.ReactNode;
   /** The fields of one entry, in the order the model declares them. */
   fields: readonly ItemFieldControl[];
   /** What the node holds; anything that is not a list reads as none. */
@@ -43,42 +39,6 @@ interface ItemsEditorProps {
   onChange: (partial: Record<string, unknown>) => void;
 }
 
-/**
- * The entries a stored value holds, keeping only object-shaped ones: node
- * data is collaborative and untrusted.
- * @param held - What the node holds.
- * @returns The entries.
- */
-function entriesOf(held: unknown): Entry[] {
-  return Array.isArray(held)
-    ? held.filter((e): e is Entry => typeof e === 'object' && e !== null && !Array.isArray(e))
-    : [];
-}
-
-/**
- * A new entry: text fields empty, choices at their first option.
- * @param fields - The entry's fields.
- * @returns The entry.
- */
-function blankEntry(fields: readonly ItemFieldControl[]): Entry {
-  return Object.fromEntries(
-    fields.map((f) => [f.name, f.kind === 'choice' ? (f.options[0]?.value ?? '') : '']),
-  );
-}
-
-/**
- * The entries a fixed-size list shows: what it holds, padded with blank rows
- * up to its size, so every row it takes is on screen to fill in.
- * @param entries - What the node holds.
- * @param size - How many rows the list always has.
- * @param fields - The entry's fields.
- * @returns The rows to show.
- */
-function padTo(entries: Entry[], size: number, fields: readonly ItemFieldControl[]): Entry[] {
-  return entries.length >= size
-    ? entries.slice(0, size)
-    : [...entries, ...Array.from({ length: size - entries.length }, () => blankEntry(fields))];
-}
 
 /**
  * A list param's editor (#2156, design §13): one row per entry, one cell per
@@ -89,7 +49,6 @@ function padTo(entries: Entry[], size: number, fields: readonly ItemFieldControl
  * @param root0.max - The most entries the model takes.
  * @param root0.min - The fewest it takes.
  * @param root0.fieldLabel - How a field is named in its empty box.
- * @param root0.afterChoice - What follows a choice field's value.
  * @param root0.fields - The fields of one entry.
  * @param root0.held - What the node holds.
  * @param root0.onChange - Called with the new list.
@@ -101,14 +60,13 @@ export function ItemsEditor({
   max,
   min,
   fieldLabel,
-  afterChoice,
   fields,
   held,
   onChange,
 }: ItemsEditorProps): React.JSX.Element {
   const t = useTranslation();
   const fixed = max !== undefined && min === max;
-  const entries = fixed ? padTo(entriesOf(held), max, fields) : entriesOf(held);
+  const entries = fixed ? fixedEntries(held, max, fields) : entriesOf(held);
   const full = max !== undefined && entries.length >= max;
   /**
    * Writes the list with one entry's field changed.
@@ -141,7 +99,6 @@ export function ItemsEditor({
                   value={entry[field.name]}
                   onCommit={(value) => setField(index, field.name, value)}
                 />
-                {field.kind === 'choice' ? afterChoice?.(field.name, entry[field.name], index) : null}
               </React.Fragment>
             ))}
             {fixed ? null : (

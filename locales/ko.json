@@ -614,6 +614,7 @@
       "audioReadingDialogue": "대화 ({count}인)",
       "audioDialogueSummary": "대화 · {count}인",
       "audioSpeakersNote": "대사는 \"이름: 대사\"로 적습니다",
+      "audioSpeakerRow": "화자 {n}",
       "audioLanguageSearch": "언어 검색…",
       "audioOptionEmpty": "일치하는 항목이 없습니다",
       "param": {

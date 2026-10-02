@@ -626,6 +626,7 @@
       "audioReadingDialogue": "Dialogue ({count})",
       "audioDialogueSummary": "Dialogue · {count}",
       "audioSpeakersNote": "Write each line as \"Name: line\"",
+      "audioSpeakerRow": "Speaker {n}",
       "audioLanguageSearch": "Search languages…",
       "audioOptionEmpty": "No matches",
       "param": {

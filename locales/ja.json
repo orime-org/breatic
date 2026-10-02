@@ -614,6 +614,7 @@
       "audioReadingDialogue": "対話（{count} 人）",
       "audioDialogueSummary": "対話 · {count} 人",
       "audioSpeakersNote": "セリフは「名前：セリフ」と書きます",
+      "audioSpeakerRow": "話者 {n}",
       "audioLanguageSearch": "言語を検索…",
       "audioOptionEmpty": "一致する項目がありません",
       "param": {
