@@ -284,7 +284,8 @@ export async function startCheckout(input: {
  *   account's, or Stripe has no such session.
  * @throws {AppError} `503` if the session holds no subscription yet, or holds
  *   one whose price this deployment cannot confirm.
- * @throws {Error} if Stripe failed for any other reason.
+ * @throws {AppError} `503` if Stripe could not be asked.
+ * @throws {Error} if the database fails.
  */
 export async function confirmCheckout(
   userId: string,
@@ -304,7 +305,10 @@ export async function confirmCheckout(
     if (subscriptionGoneAtStripe(err)) {
       throw new NotFoundError(t("server.membership.checkout_not_found"));
     }
-    throw err;
+    // Stripe could not be asked. The webhook still records the purchase;
+    // what failed is only this early look at it.
+    logger.error({ err, userId, sessionId }, "subscription_confirm_failed");
+    throw new AppError(503, t("server.membership.checkout_unconfirmed"));
   }
 
   if (session.mode !== "subscription" || session.client_reference_id !== userId) {
