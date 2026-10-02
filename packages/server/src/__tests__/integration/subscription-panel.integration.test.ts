@@ -52,6 +52,7 @@ import {
   getSubscriptionStaleAfterDays,
   upsertSubscription,
 } from "@breatic/core";
+import type { StripeSubscriptionStatus } from "@breatic/core";
 import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
 
@@ -137,7 +138,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 async function storeRow(
   userId: string,
   over: {
-    status?: string;
+    status?: StripeSubscriptionStatus;
     currentPeriodEnd?: Date;
     cancelAtPeriodEnd?: boolean;
     payableInvoiceUrl?: string | null;

@@ -216,6 +216,25 @@ export async function getUserMembershipTier(
 }
 
 /**
+ * Read the tier an account is actually entitled to right now.
+ *
+ * The stored tier, unless a subscription still marked live has passed its
+ * deadline (see {@link honouredTier}). This is the tier to show the account:
+ * the one its ceilings are read from, so the two never disagree.
+ * @param userId - The account to look up
+ * @param tx - Transaction handle, if the caller is inside one
+ * @returns The tier in force
+ * @throws {Error} if no live account has that id, or its stored tier is not
+ *   one this build knows
+ */
+export async function getHonouredTierForUser(
+  userId: string,
+  tx?: DbTx,
+): Promise<MembershipTier> {
+  return honouredTier(userId, await readUserTier(userId, tx, false), tx);
+}
+
+/**
  * Read one account's tier, optionally taking a row lock on the way.
  * @param userId - The account to look up
  * @param tx - Transaction handle, if the caller is inside one
