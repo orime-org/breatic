@@ -80,7 +80,6 @@ function subscription(
     currentPeriodEnd: '2026-09-18T00:00:00.000Z',
     cancelAtPeriodEnd: false,
     payableInvoiceUrl: null,
-    reconciled: true,
     ...over,
   };
 }
