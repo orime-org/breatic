@@ -3,6 +3,7 @@
 
 import type { ExtraStep, PricingContract } from "@shared/types/model-catalog";
 import { isPresent } from "@shared/item-cap";
+import { joinSlotFiles } from "@shared/join-slot-files";
 import { upstreamPriceUsd } from "@shared/pricing/upstream-price";
 
 /** What the estimate reads off one declared param. */
@@ -12,6 +13,12 @@ export interface PricedParam {
   readonly fill?: string;
   readonly type?: string;
   readonly optional?: boolean;
+  /** The pool a style slot's files travel in, for a model with no field for them. */
+  readonly joins?: string;
+  /** The sentence naming a joining slot's files in the prompt. */
+  readonly prompt_note?: string;
+  /** How a pool names its files in the prompt. */
+  readonly mention?: string;
 }
 
 /** What the estimate reads off one catalog model. */
@@ -112,13 +119,16 @@ export async function estimateCredits(
   const formulas = [model.pricing.formula, ...steps.map((s) => s.pricing.formula)];
   const promptField = model.prompt_upstream ?? "prompt";
 
-  const params: Record<string, unknown> = { ...input.params };
+  // Priced as sent: a joining slot's files are counted inside their pool.
+  const joined = joinSlotFiles(model.params, input.params, input.prompt ?? "");
+  const params: Record<string, unknown> = { ...joined.params };
   const upstream: Record<string, unknown> = {};
   const durations: Record<string, readonly number[]> = {};
   let unknown = false;
   for (const [name, spec] of Object.entries(model.params)) {
     const field = spec.upstream ?? name;
-    let value = input.params[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
+    if (spec.joins !== undefined) continue;
+    let value = joined.params[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
     const source = spec.fill === "canvas" || spec.fill === "pool";
     if (source && !isPresent(value) && spec.optional !== true) {
       value = spec.type === "list" ? [UNPICKED] : UNPICKED;

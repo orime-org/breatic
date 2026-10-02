@@ -122,7 +122,28 @@ const EDIT_POOL: PricedModel = {
   pricing: { base_price: 0, formula: '{"total_price": 39000 + (($count(images) - 1) * 15000)}', discount_rate: 100 },
 };
 
+const EDIT_WITH_STYLE: PricedModel = {
+  ...EDIT_POOL,
+  params: {
+    images: { fill: "pool", type: "list", default: null },
+    style_images: {
+      fill: "canvas",
+      type: "list",
+      optional: true,
+      default: null,
+      joins: "images",
+      prompt_note: "Style references: {list}.",
+    },
+  },
+};
+
 describe("estimateCredits", () => {
+  it("counts a joining style slot's files inside the pool they join", async () => {
+    const joined = await estimateCredits(EDIT_WITH_STYLE, { params: { images: ["a"], style_images: ["s1", "s2"] } }, 1);
+    const plain = await estimateCredits(EDIT_POOL, { params: { images: ["a", "s1", "s2"] } }, 1);
+    expect(joined).toEqual(plain);
+  });
+
   it("prices the params the reader set, in credits after the discount", async () => {
     const estimate = await estimateCredits(WAN_T2V, { params: { resolution: "1080p", duration: 10 } }, 1);
     expect(estimate.bound).toBe("exact");
