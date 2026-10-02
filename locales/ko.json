@@ -638,7 +638,10 @@
         "negative_prompt": "네거티브 프롬프트",
         "motion": "움직임 정도",
         "order": "순서",
-        "model_mode": "영역"
+        "model_mode": "영역",
+        "creativity": "창의성",
+        "rendering": "렌더링",
+        "style_match": "스타일 일치도"
       },
       "paramField": {
         "speaker": "이름",

@@ -638,7 +638,10 @@
         "negative_prompt": "反向提示詞",
         "motion": "運動幅度",
         "order": "順序",
-        "model_mode": "區域"
+        "model_mode": "區域",
+        "creativity": "創造力",
+        "rendering": "渲染類型",
+        "style_match": "風格貼合"
       },
       "paramField": {
         "speaker": "名字",

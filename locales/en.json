@@ -650,7 +650,10 @@
         "negative_prompt": "Negative prompt",
         "motion": "Motion",
         "order": "Order",
-        "model_mode": "Region"
+        "model_mode": "Region",
+        "creativity": "Creativity",
+        "rendering": "Rendering",
+        "style_match": "Style match"
       },
       "paramField": {
         "speaker": "Name",

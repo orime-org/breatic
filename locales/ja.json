@@ -638,7 +638,10 @@
         "negative_prompt": "ネガティブプロンプト",
         "motion": "動きの大きさ",
         "order": "順序",
-        "model_mode": "範囲"
+        "model_mode": "範囲",
+        "creativity": "創造性",
+        "rendering": "レンダリング",
+        "style_match": "スタイル一致度"
       },
       "paramField": {
         "speaker": "名前",
