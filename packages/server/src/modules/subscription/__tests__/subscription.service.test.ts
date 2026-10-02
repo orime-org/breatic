@@ -144,6 +144,23 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     expect(call.cancel_url).toContain("cancelled=1");
   });
 
+  it("names the checkout on the way back, so the return can confirm it (#307 A5)", async () => {
+    // Stripe fills `{CHECKOUT_SESSION_ID}` in on its way out, so the braces
+    // must reach it untouched; URL-encoding them leaves the literal text in
+    // the address and the return has nothing to confirm.
+    situationIs("none");
+    await service.startCheckout({
+      userId: USER,
+      tier: "pro",
+      period: "month",
+      returnUrl: RETURN_URL,
+    });
+
+    const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
+    expect(call.success_url).toMatch(/[?&]session_id=\{CHECKOUT_SESSION_ID\}$/);
+    expect(call.cancel_url).not.toContain("session_id");
+  });
+
   it("reuses the stored customer rather than making a second one", async () => {
     situationIs("none");
     await service.startCheckout({
