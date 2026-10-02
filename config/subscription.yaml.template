@@ -6,11 +6,10 @@
 # neither belongs to anybody but the deployment that holds them.
 #
 # The server checks this file at startup when PAYMENT_ENABLED=true and
-# refuses to start without it. It is opened once more afterwards, on the
-# ceiling read: an account holding a subscription whose paid period has
-# ended is judged against `stale_after_days`. A deployment with no
-# subscription rows never reaches that, so an install with payments off
-# needs no copy.
+# refuses to start without it. It is opened once more afterwards, the first
+# time a reading meets a live subscription with a period end, to judge it
+# against `stale_after_days`. A deployment with no subscription rows never
+# reaches that, so an install with payments off needs no copy.
 #
 # Every `price_cents` below is 0, which the loader's schema rejects
 # (`z.number().int().positive()`). Copying this file without editing it is
