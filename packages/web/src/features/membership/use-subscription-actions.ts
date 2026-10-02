@@ -14,6 +14,7 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
+import { refreshCurrentUser } from '@web/stores/current-user';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   holdsActionableSubscription,
@@ -27,6 +28,8 @@ import {
   resumeSubscription,
   startSubscriptionCheckout,
 } from '@web/data/api/subscription';
+import { ApiException } from '@web/data/api/types';
+import { MEMBERSHIP_QUERY_ROOT } from '@web/features/membership/membership-query';
 
 /** Which of the panel's actions is running. */
 export type PendingSubscriptionAction =
@@ -52,7 +55,7 @@ export interface SubscriptionActions {
  * Wires the panel's buttons to the subscription endpoints.
  *
  * None of them patch state in place: what the panel should show afterwards is
- * a server fact, settled by Stripe and told to us by a webhook.
+ * a server fact, settled by Stripe and stored from its answer or its webhook.
  *
  * How much gets re-read differs, because how much changed differs. Choosing a
  * tier moves the tier itself, which the top bar renders out of the session
@@ -81,9 +84,7 @@ export function useSubscriptionActions(
   // was standing in, threw away whatever page was underneath it, and left no
   // sign that anything had happened.
   const refreshPanel = React.useCallback(async () => {
-    await queryClient.invalidateQueries({
-      queryKey: ['account', 'membership'],
-    });
+    await queryClient.invalidateQueries({ queryKey: MEMBERSHIP_QUERY_ROOT });
   }, [queryClient]);
 
   // `work` answers 'leaving' once it has sent the browser to another page.
@@ -105,11 +106,18 @@ export function useSubscriptionActions(
         // message, no explanation, the button simply came back — and the
         // reader had no way to tell a refusal from a dead app.
         toast.error(serverMessage(err, t('membership.actionFailed')));
+        // A conflict means the account is not in the state this panel showed.
+        // Before refusing a checkout the server may have asked Stripe and
+        // stored a subscription it found still live, so the panel and the
+        // avatar menu re-read rather than keep offering what it refused.
+        if (err instanceof ApiException && err.status === 409) {
+          await Promise.all([refreshPanel(), refreshCurrentUser()]);
+        }
       } finally {
         if (!leaving) setPending(null);
       }
     },
-    [t],
+    [t, refreshPanel],
   );
 
   const choose = React.useCallback(

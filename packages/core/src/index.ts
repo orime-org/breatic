@@ -78,6 +78,7 @@ export {
   getSubscriptionPlan,
   findOfferByPriceId,
   getSubscriptionStaleAfterDays,
+  subscriptionClock,
   getStripeCallTimeoutMs,
   resetSubscriptionConfigCache,
 } from "@core/config/subscription.js";
@@ -168,8 +169,9 @@ export * as projectAuthService from "@core/auth/projectAuth.service.js";
 export {
   asKnownTier,
   getUserMembershipTier,
+  getHonouredTierForUser,
   getStudioStorageQuota,
-  getLimitsForUser,
+  getMembershipForUser,
   getLimitsForStudio,
   getProjectConcurrentEditorLimit,
   lockLimitsForUser,
@@ -201,6 +203,7 @@ export type {
   SubscriptionRecord,
   SubscriptionSituation,
   SituationReading,
+  SituationClock,
 } from "@core/auth/subscription-state.js";
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──

@@ -35,7 +35,7 @@ async function openCredits(page: Page, section: string): Promise<void> {
   if (section !== 'overview') {
     await page.locator(`#credits-tab-${section}`).click();
   }
-  await expect(page.locator('[data-testid="credits-skeleton"]')).toHaveCount(0, {
+  await expect(page.locator('[data-testid="section-skeleton"]')).toHaveCount(0, {
     timeout: 15_000,
   });
 }

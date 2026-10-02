@@ -21,7 +21,7 @@ import { buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
-import { env } from "@breatic/core";
+import { env, getHonouredTierForUser } from "@breatic/core";
 import {
   setSession,
   getSession,
@@ -122,6 +122,20 @@ export async function createSession(userId: string): Promise<string> {
   const token = crypto.randomUUID();
   await setSession(getRedis(), token, userId);
   return token;
+}
+
+/**
+ * The account as it is shown to the person signed in: with the tier actually
+ * in force rather than the one stored, so the avatar menu names the tier the
+ * ceilings grant (#307).
+ * @param user - The account as stored.
+ * @returns The same account carrying the tier in force.
+ * @throws {Error} if the tier or the subscriptions cannot be read.
+ */
+export async function withTierInForce<
+  T extends { readonly id: string; readonly membershipTier: UserEntity["membershipTier"] },
+>(user: T): Promise<T> {
+  return { ...user, membershipTier: await getHonouredTierForUser(user.id) };
 }
 
 /**

@@ -2,16 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * 打开会员面板时跟 Stripe 对一次账（#106 §10.2、§11）—— 真 PG，Stripe 替身。
+ * What the membership panel is told, read from our own data (#106 §11, #307) —
+ * real PG, Stripe double.
  *
- * 档位物化在 `users.membership_tier` 上、只有 webhook 会改它，而 Stripe 的事件
- * 重试最多三天就放弃。丢一个事件，用户要么白拿会员、要么被误降，两侧各有各的
- * 兜底：白拿那侧由取上限时的过期检查抓（`subscription-stale-tier`），被误降这侧
- * 由这里抓 —— 额度不对的人第一件事就是打开面板。
- *
- * **必须同时回写订阅表，不能只改档位**：分流读的是那张表，只修档位会留下「档位
- * 对了但本地没有活订阅行」，用户下次点升级会被判成没订阅，于是在 Stripe 开出
- * 第二份订阅。
+ * Opening the panel never calls Stripe. A subscription still marked live but
+ * past its deadline reads as ended in every part of the answer: the tier, the
+ * ceilings and the subscription lines.
  */
 
 import {
@@ -43,25 +39,21 @@ const stripe = {
   subscriptions: { list: vi.fn() },
 };
 
-// 邮件那一半的替身，好让测试断言它真被调了。对账这条路径的调用点此前零
-// 覆盖：删掉它全仓一条都不红。铃铛保底、邮件增强，同属一条验收。
-const sentMail = vi.fn();
-
-vi.mock("@server/utils/send-best-effort-mail.js", () => ({
-  sendBestEffortMail: (
-    build: () => Promise<unknown>,
-    ctx: Record<string, unknown>,
-  ) => sentMail(build, ctx),
-}));
-
 vi.mock("@server/infra/stripe.js", () => ({
   getStripeClient: () => stripe,
 }));
 
-import type Stripe from "stripe";
 import postgres from "postgres";
-import { env, initCore, loadLocales, getUserMembershipTier, getSubscriptionPlan } from "@breatic/core";
-import { readSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
+import {
+  env,
+  initCore,
+  loadLocales,
+  getMembershipLimits,
+  getSubscriptionStaleAfterDays,
+  upsertSubscription,
+} from "@breatic/core";
+import type { StripeSubscriptionStatus } from "@breatic/core";
+import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
 
 try {
@@ -106,28 +98,6 @@ afterAll(async () => {
 const PERIOD_END = Math.floor(Date.now() / 1000) + 30 * 24 * 3600;
 
 /**
- * A price object as Stripe expands it, built from the list we sell.
- *
- * All four fields, because the read compares three of them against our own
- * plan before it will say what tier a subscription buys. A stub carrying only
- * an id reads as a price charging an unknown amount, which is the one thing
- * that answer is for.
- * @param tier - Which tier this price sells.
- * @param period - Which period it is billed over.
- * @returns The price, expanded.
- */
-function priceOf(tier: "pro" | "team", period: "month" | "year"): unknown {
-  const plan = getSubscriptionPlan(tier, period);
-  return {
-    id: plan.stripePriceId,
-    unit_amount: plan.priceCents,
-    currency: plan.currency,
-    recurring: { interval: period },
-  };
-}
-
-
-/**
  * Creates an account.
  * @param tier - The tier its row carries.
  * @param customerId - Its Stripe customer, or null for one that never paid.
@@ -158,29 +128,41 @@ async function dropUser(userId: string): Promise<void> {
   await sql`DELETE FROM users WHERE id = ${userId}`;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
- * A subscription as the Stripe SDK returns it.
+ * Stores a subscription row the way the webhook would.
+ * @param userId - Whose subscription it is.
  * @param over - The fields one case cares about.
- * @returns A subscription object.
  */
-function stripeSub(over: Record<string, unknown> = {}): Stripe.Subscription {
-  return {
-    id: `sub_panel_${seq}`,
-    customer: "cus_x",
-    status: "active",
-    cancel_at_period_end: false,
-    pending_update: null,
-    latest_invoice: null,
-    items: {
-      data: [
-        { id: "si_1", current_period_end: PERIOD_END, price: priceOf("pro", "month") },
-      ],
-    },
-    ...over,
-  } as unknown as Stripe.Subscription;
+async function storeRow(
+  userId: string,
+  over: {
+    status?: StripeSubscriptionStatus;
+    currentPeriodEnd?: Date;
+    cancelAtPeriodEnd?: boolean;
+    payableInvoiceUrl?: string | null;
+  } = {},
+): Promise<void> {
+  seq += 1;
+  await upsertSubscription({
+    userId,
+    stripeSubscriptionId: `sub_panel_row_${Date.now()}_${seq}`,
+    tier: "pro",
+    period: "month",
+    status: over.status ?? "active",
+    currentPeriodEnd: over.currentPeriodEnd ?? new Date(PERIOD_END * 1000),
+    cancelAtPeriodEnd: over.cancelAtPeriodEnd ?? false,
+    stripeItemId: "si_1",
+    hasPendingUpdate: false,
+    pendingTier: null,
+    pendingPeriod: null,
+    payableInvoiceUrl: over.payableInvoiceUrl ?? null,
+    observedAt: new Date(),
+  });
 }
 
-describe("readSubscriptionSummary — an account that never paid (#106 §11)", () => {
+describe("readStoredSubscriptionSummary — an account that never paid (#106 §11)", () => {
   it("says it has no subscription, rather than saying nothing", async () => {
     // Null means "this deployment sells no subscriptions" and nothing else.
     // An account that simply has not bought one is in the state the offers
@@ -188,147 +170,28 @@ describe("readSubscriptionSummary — an account that never paid (#106 §11)", (
     // exactly the people who need them.
     const userId = await makeUser("base", null);
     try {
-      const summary = await readSubscriptionSummary(userId);
-      expect(summary?.state).toBe("none");
-      expect(summary?.tier).toBe("base");
-      // Nothing to reconcile against: no customer, so no Stripe call.
-      expect(stripe.subscriptions.list).not.toHaveBeenCalled();
+      const summary = await readStoredSubscriptionSummary(userId);
+      expect(summary.state).toBe("none");
+      expect(summary.tier).toBe("base");
     } finally {
       await dropUser(userId);
     }
   });
 });
 
-describe("readSubscriptionSummary — reconciling (#106 §10.2)", () => {
-  it("puts back a tier a lost event never granted", async () => {
-    const userId = await makeUser("base", `cus_panel_a_${Date.now()}`);
-    try {
-      stripe.subscriptions.list.mockResolvedValueOnce({
-        data: [stripeSub({ id: `sub_lost_${seq}` })],
-      });
-
-      const summary = await readSubscriptionSummary(userId);
-
-      expect(await getUserMembershipTier(userId)).toBe("pro");
-      expect(summary?.state).toBe("active");
-      expect(summary?.tier).toBe("pro");
-    } finally {
-      await dropUser(userId);
-    }
-  });
-
-  it("writes the subscription row too, not only the tier", async () => {
-    // Only fixing the tier leaves "on PRO but with no live subscription
-    // stored", and the next upgrade click is judged as having no subscription
-    // — which opens a SECOND subscription at Stripe.
-    const userId = await makeUser("base", `cus_panel_b_${Date.now()}`);
-    try {
-      stripe.subscriptions.list.mockResolvedValueOnce({
-        data: [stripeSub({ id: `sub_row_${seq}` })],
-      });
-
-      await readSubscriptionSummary(userId);
-
-      const rows = await sql<{ status: string; tier: string }[]>`
-        SELECT status, tier FROM subscriptions WHERE user_id = ${userId}
-      `;
-      expect(rows).toHaveLength(1);
-      expect(rows[0]).toEqual({ status: "active", tier: "pro" });
-    } finally {
-      await dropUser(userId);
-    }
-  });
-
-  it("takes a tier away when Stripe says the subscription is over", async () => {
-    const userId = await makeUser("pro", `cus_panel_c_${Date.now()}`);
-    try {
-      stripe.subscriptions.list.mockResolvedValueOnce({
-        data: [stripeSub({ id: `sub_gone_${seq}`, status: "canceled" })],
-      });
-
-      const summary = await readSubscriptionSummary(userId);
-
-      expect(await getUserMembershipTier(userId)).toBe("base");
-      expect(summary?.state).toBe("none");
-      const bells = await sql<{ type: string }[]>`
-        SELECT type FROM notifications WHERE user_id = ${userId}
-      `;
-      expect(bells.map((b) => b.type)).toEqual(["membership.ended"]);
-      // 邮件在事务提交之后发 —— 一封讲了一件随后被回滚的事的邮件收不回来。
-      expect(sentMail).toHaveBeenCalledWith(
-        expect.any(Function),
-        expect.objectContaining({ userId, subject: "membership_ended" }),
-      );
-    } finally {
-      await dropUser(userId);
-    }
-  });
-
-  it("问 Stripe 时带着上限，而且不重试", async () => {
-    // 不带的话走 SDK 默认：80 秒、重试两次，一次调用最长约四分钟，而这四
-    // 分钟里用户就盯着面板。对账本来就是增强 —— 失败了退回本地数据即可，
-    // 所以超时只是又一种失败；重试更没必要，下次开面板会再修一遍。
-    const userId = await makeUser("pro", `cus_panel_t_${Date.now()}`);
-    try {
-      stripe.subscriptions.list.mockResolvedValueOnce({
-        data: [stripeSub({ id: `sub_timeout_${seq}` })],
-      });
-
-      await readSubscriptionSummary(userId);
-
-      const [, options] = stripe.subscriptions.list.mock.calls[0] as [
-        unknown,
-        { timeout?: number; maxNetworkRetries?: number } | undefined,
-      ];
-      expect(options?.timeout).toBeGreaterThan(0);
-      expect(options?.timeout).toBeLessThanOrEqual(10_000);
-      expect(options?.maxNetworkRetries).toBe(0);
-    } finally {
-      await dropUser(userId);
-    }
-  });
-
-  it("leaves everything alone when Stripe agrees with us", async () => {
-    const userId = await makeUser("pro", `cus_panel_d_${Date.now()}`);
-    try {
-      stripe.subscriptions.list.mockResolvedValue({
-        data: [stripeSub({ id: `sub_same_${seq}` })],
-      });
-      await readSubscriptionSummary(userId);
-      await readSubscriptionSummary(userId);
-
-      const ledger = await sql<{ count: string }[]>`
-        SELECT count(*)::text AS count FROM membership_tier_changes
-        WHERE user_id = ${userId}
-      `;
-      // One move: base was never involved, and the second read changed nothing.
-      expect(ledger[0]?.count).toBe("0");
-      expect(await getUserMembershipTier(userId)).toBe("pro");
-    } finally {
-      await dropUser(userId);
-    }
-  });
-});
-
-describe("readSubscriptionSummary — what the panel is told (#106 §11)", () => {
+describe("readStoredSubscriptionSummary — what the panel is told (#106 §11)", () => {
   it("gives the situation rather than Stripe's raw status", async () => {
     // `active` alone cannot tell "running", "ending" and "upgrade unpaid"
     // apart, and the panel shows something different for each.
     const userId = await makeUser("pro", `cus_panel_e_${Date.now()}`);
     try {
-      stripe.subscriptions.list.mockResolvedValueOnce({
-        data: [
-          stripeSub({ id: `sub_cancel_${seq}`, cancel_at_period_end: true }),
-        ],
-      });
+      await storeRow(userId, { cancelAtPeriodEnd: true });
 
-      const summary = await readSubscriptionSummary(userId);
+      const summary = await readStoredSubscriptionSummary(userId);
 
-      expect(summary?.state).toBe("cancelling");
-      expect(summary?.cancelAtPeriodEnd).toBe(true);
-      expect(summary?.currentPeriodEnd).toBe(
-        new Date(PERIOD_END * 1000).toISOString(),
-      );
+      expect(summary.state).toBe("cancelling");
+      expect(summary.cancelAtPeriodEnd).toBe(true);
+      expect(summary.currentPeriodEnd).toBe(new Date(PERIOD_END * 1000).toISOString());
     } finally {
       await dropUser(userId);
     }
@@ -339,68 +202,76 @@ describe("readSubscriptionSummary — what the panel is told (#106 §11)", () =>
     // be able to see what happened and pay it themselves.
     const userId = await makeUser("pro", `cus_panel_f_${Date.now()}`);
     try {
-      stripe.subscriptions.list.mockResolvedValueOnce({
-        data: [
-          stripeSub({
-            id: `sub_due_${seq}`,
-            status: "past_due",
-            latest_invoice: {
-              status: "open",
-              hosted_invoice_url: "https://invoice.example/pay",
-            },
-          }),
-        ],
+      await storeRow(userId, {
+        status: "past_due",
+        payableInvoiceUrl: "https://invoice.example/pay",
       });
 
-      const summary = await readSubscriptionSummary(userId);
+      const summary = await readStoredSubscriptionSummary(userId);
 
-      expect(summary?.state).toBe("retrying");
-      expect(summary?.payableInvoiceUrl).toBe("https://invoice.example/pay");
-      expect(await getUserMembershipTier(userId)).toBe("pro");
+      expect(summary.state).toBe("retrying");
+      expect(summary.payableInvoiceUrl).toBe("https://invoice.example/pay");
     } finally {
       await dropUser(userId);
     }
   });
 });
 
-describe("readAccountMembership —— 面板这一次的答案 (#106 §10.2、§11)", () => {
-  it("返回的是对账之后的档位和上限，不是纠正前的旧值", async () => {
-    // 前置断言：flag 没落住的话下面整条断言链都测不到要测的分支，会变成
-    // 一条假绿。这一行让那种情况当场失败，而不是悄悄通过。
-    expect(env.PAYMENT_ENABLED, "本套件需要支付开关是开的").toBe(true);
-    // 第 13 条要的是「就地纠正」。纠正只改了库、这一次的响应仍是旧值的话，
-    // 用户这一次看到的还是错的档位，而且据此点出去的按钮必然被服务端拒。
-    const userId = await makeUser("base", `cus_order_${Date.now()}`);
+describe("readAccountMembership — answered from our own data (#307)", () => {
+  it("never calls Stripe, even for an account Stripe knows (A1)", async () => {
+    // Precondition: without the flag the selling branch is not exercised and
+    // every assertion below would pass for the wrong reason.
+    expect(env.PAYMENT_ENABLED, "this suite needs payments switched on").toBe(true);
+    const userId = await makeUser("pro", `cus_local_${Date.now()}`);
     try {
-      stripe.subscriptions.list.mockResolvedValueOnce({
-        data: [stripeSub({ id: `sub_order_${seq}` })],
-      });
+      await storeRow(userId);
 
       const membership = await readAccountMembership(userId);
 
+      expect(stripe.subscriptions.list).not.toHaveBeenCalled();
       expect(membership.tier).toBe("pro");
-      expect(membership.subscription?.tier).toBe("pro");
-      // 上限也得是纠正之后那一档的：PRO 的团队 studio 上限不是 base 的 0。
-      expect(membership.limits?.team_studios).toBeGreaterThan(0);
+      expect(membership.subscription?.state).toBe("active");
+      expect(membership.limits).toEqual(getMembershipLimits("pro"));
     } finally {
       await dropUser(userId);
     }
   });
 
-  it("Stripe 打不通时面板照常打开，只是订阅那部分退回本地已知的状态", async () => {
-    expect(env.PAYMENT_ENABLED, "本套件需要支付开关是开的").toBe(true);
-    // 档位、额度、对比表跟 Stripe 毫无关系。对账是增强，不该把整张面板拖下水。
-    const userId = await makeUser("pro", `cus_down_${Date.now()}`);
+  it("reads a subscription nobody heard from past its window as ended, everywhere (A2)", async () => {
+    expect(env.PAYMENT_ENABLED, "this suite needs payments switched on").toBe(true);
+    const userId = await makeUser("pro", `cus_lapsed_${Date.now()}`);
     try {
-      stripe.subscriptions.list.mockRejectedValueOnce(
-        new Error("Stripe is unreachable"),
-      );
+      await storeRow(userId, {
+        currentPeriodEnd: new Date(
+          Date.now() - (getSubscriptionStaleAfterDays() + 1) * DAY_MS,
+        ),
+      });
 
       const membership = await readAccountMembership(userId);
 
-      expect(membership.tier).toBe("pro");
-      expect(membership.limits?.team_studios).toBeGreaterThan(0);
-      expect(membership.catalog).toHaveLength(3);
+      expect(membership.tier).toBe("base");
+      expect(membership.limits).toEqual(getMembershipLimits("base"));
+      expect(membership.subscription?.state).toBe("none");
+      expect(membership.subscription?.tier).toBe("base");
+      expect(membership.subscription?.period).toBeNull();
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("reads a cancelling subscription as ended right after its period end (A3)", async () => {
+    expect(env.PAYMENT_ENABLED, "this suite needs payments switched on").toBe(true);
+    const userId = await makeUser("pro", `cus_cancelled_${Date.now()}`);
+    try {
+      await storeRow(userId, {
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: new Date(Date.now() - 60_000),
+      });
+
+      const membership = await readAccountMembership(userId);
+
+      expect(membership.tier).toBe("base");
+      expect(membership.subscription?.state).toBe("none");
     } finally {
       await dropUser(userId);
     }

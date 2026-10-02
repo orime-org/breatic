@@ -36,6 +36,7 @@ import {
   initCore,
   listSubscriptions,
   upsertSubscription,
+  subscriptionClock,
   subscriptionSituation,
   tierForSituation,
 } from "@breatic/core";
@@ -45,6 +46,10 @@ try {
 } catch {
   // already initialised by a sibling suite in this worker — fine.
 }
+
+// The fixtures below end their paid periods on fixed dates; reading them at a
+// moment before those dates keeps the period-end rule out of these cases.
+const BEFORE_FIXTURE_PERIODS = subscriptionClock(new Date("2026-08-01T00:00:00Z"));
 
 let sql: ReturnType<typeof postgres>;
 let seq = 0;
@@ -117,7 +122,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
   });
 
   it("converges on one row per Stripe subscription", async () => {
-    // The webhook, the reconciliation and a redelivery of the same event all
+    // The webhook, our own calls to Stripe and a redelivery of the same event all
     // arrive here. A second row would read as a second membership.
     const userId = await makeUser();
     const stripeId = `sub_conv_${Date.now()}`;
@@ -320,6 +325,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
 
       const { situation, record } = subscriptionSituation(
         await listSubscriptions(userId),
+        BEFORE_FIXTURE_PERIODS,
       );
       expect(situation).toBe("cancelling");
       expect(tierForSituation(situation, record)).toBe("team");
@@ -376,7 +382,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
           tx,
         );
         const rows = await listSubscriptions(userId, tx);
-        const { situation, record } = subscriptionSituation(rows);
+        const { situation, record } = subscriptionSituation(rows, BEFORE_FIXTURE_PERIODS);
         expect(situation).toBe("active");
         expect(record?.stripeSubscriptionId).toBe(newer);
       });
@@ -389,7 +395,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
     const userId = await makeUser();
     try {
       expect(await listSubscriptions(userId)).toEqual([]);
-      expect(subscriptionSituation(await listSubscriptions(userId)).situation).toBe(
+      expect(subscriptionSituation(await listSubscriptions(userId), BEFORE_FIXTURE_PERIODS).situation).toBe(
         "none",
       );
     } finally {
@@ -467,7 +473,7 @@ describe("两条活订阅同时存在时 (#106 §6.5.5)", () => {
 
       const stored = await listSubscriptions(userId);
       expect(stored).toHaveLength(2);
-      const reading = subscriptionSituation(stored);
+      const reading = subscriptionSituation(stored, BEFORE_FIXTURE_PERIODS);
       expect(reading.situation).toBe("active");
       expect(reading.record?.stripeSubscriptionId).toBe(teamId);
     } finally {

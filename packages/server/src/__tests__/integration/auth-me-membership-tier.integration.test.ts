@@ -44,7 +44,9 @@ import {
   setSession,
   sessionCookieName,
   loadLocales,
+  getSubscriptionStaleAfterDays,
 } from "@breatic/core";
+import { hashPassword } from "@server/modules/auth/auth.service.js";
 import type { Hono } from "hono";
 
 try {
@@ -151,5 +153,56 @@ describe("GET /auth/me — membership tier in the session payload", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { membershipTier: string } };
     expect(body.data.membershipTier).toBe("enterprise");
+  });
+});
+
+/**
+ * Gives an account a subscription still marked live whose paid period ended
+ * long enough ago that nobody can still be renewing it.
+ * @param userId - Whose subscription it is.
+ */
+async function giveLapsedSubscription(userId: string): Promise<void> {
+  const ended = new Date(
+    Date.now() - (getSubscriptionStaleAfterDays() + 1) * 24 * 60 * 60 * 1000,
+  );
+  await sql`
+    INSERT INTO subscriptions
+      (user_id, stripe_subscription_id, tier, period, status, current_period_end)
+    VALUES (${userId}, ${`sub_auth_tier_${seq++}`}, 'pro', 'month', 'active', ${ended})
+  `;
+}
+
+describe("the session payload reports the tier in force, not the stored one (#307 A2)", () => {
+  it("/auth/me reports base once a subscription nobody heard from has lapsed", async () => {
+    const userId = await insertUser("pro");
+    await giveLapsedSubscription(userId);
+
+    const res = await app.request("/api/v1/auth/me", {
+      headers: { Cookie: await loginCookie(userId) },
+    });
+
+    const body = (await res.json()) as { data: { membershipTier: string } };
+    expect(body.data.membershipTier).toBe("base");
+  });
+
+  it("signing in with email reports base for the same account", async () => {
+    const userId = await insertUser("pro");
+    await giveLapsedSubscription(userId);
+    const password = "correct horse battery staple";
+    await sql`
+      UPDATE users SET hashed_password = ${await hashPassword(password)}
+      WHERE id = ${userId}
+    `;
+    const [row] = await sql<{ email: string }[]>`SELECT email FROM users WHERE id = ${userId}`;
+
+    const res = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: row!.email, password }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { user: { membershipTier: string } } };
+    expect(body.data.user.membershipTier).toBe("base");
   });
 });

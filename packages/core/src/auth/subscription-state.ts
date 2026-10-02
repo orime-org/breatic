@@ -107,13 +107,49 @@ export interface SituationReading<T extends SubscriptionRecord = SubscriptionRec
   readonly situation: SubscriptionSituation;
   /** The row the situation was read from, or null when there is none. */
   readonly record: T | null;
+  /**
+   * Every row still marked live but past its deadline, highest-ranked first;
+   * empty when none is.
+   *
+   * Such a row is read as ended — its deadline passing without a word from
+   * Stripe means the event that ended it never reached us — but it is reported
+   * here because what Stripe actually holds is still unknown, and an action
+   * that charges money asks Stripe about each of them before selling another.
+   */
+  readonly lapsed: readonly T[];
+}
+
+/** The moment a reading is taken at, and how long a renewing row is trusted. */
+export interface SituationClock {
+  /** The moment the rows are read at. */
+  readonly now: Date;
+  /**
+   * How long after its period end a row that may still be renewing keeps
+   * counting as live: Stripe retries a failed renewal for this long.
+   */
+  readonly staleAfterMs: number;
+}
+
+/**
+ * Whether a live row is past the moment its silence means it has ended.
+ *
+ * A cancelling row ends at its period end: nothing renews it. A row that may
+ * still renew gets the retry window first, because Stripe is collecting for it
+ * the whole time. An unsettled first invoice has no period to judge.
+ * @param record - A row whose status is in {@link LIVE_STATUSES}.
+ * @param clock - The moment and the renewal window.
+ * @returns Whether the row is past its deadline.
+ */
+function hasLapsed(record: SubscriptionRecord, clock: SituationClock): boolean {
+  if (record.status === "incomplete" || record.currentPeriodEnd === null) {
+    return false;
+  }
+  const grace = record.cancelAtPeriodEnd ? 0 : clock.staleAfterMs;
+  return clock.now.getTime() > record.currentPeriodEnd.getTime() + grace;
 }
 
 /**
  * The statuses under which a subscription is still ours to act on.
- *
- * The same three the panel's reconciliation and the situation reading treat as
- * still ours to act on.
  *
  * `trialing` and `paused` are absent although Stripe considers them current:
  * we set no trial, so neither can arise from anything we do, and treating one
@@ -176,23 +212,38 @@ function situationOfLiveRecord(
  * pass rows "newest first" was not an order at all: `created_at` defaults to
  * `now()`, which in PostgreSQL is the TRANSACTION's start time, so rows
  * written together tie, and a random-UUID primary key breaks no tie either.
+ *
+ * A live row past its deadline ({@link hasLapsed}) is set aside before the
+ * choice and read as ended. Judging it after the choice would let a lapsed
+ * Team row outrank the PRO bought to replace it, and the account would read
+ * as base while paying for PRO.
  * @param records - Every subscription row stored for the account.
- * @returns The situation and the row it was read from.
+ * @param clock - The moment the rows are read at, and the renewal window.
+ * @returns The situation, the row it was read from, and the lapsed rows.
  */
 export function subscriptionSituation<T extends SubscriptionRecord>(
   records: readonly T[],
+  clock: SituationClock,
 ): SituationReading<T> {
-  const live = records
-    .filter((record) => LIVE_STATUSES.has(record.status))
+  const liveRows = records.filter((record) => LIVE_STATUSES.has(record.status));
+  const lapsed = liveRows
+    .filter((record) => hasLapsed(record, clock))
+    .sort(compareLive);
+
+  const live = liveRows
+    .filter((record) => !lapsed.includes(record))
     .sort(compareLive)[0];
-  if (live) return { situation: situationOfLiveRecord(live), record: live };
+  if (live) {
+    return { situation: situationOfLiveRecord(live), record: live, lapsed };
+  }
 
   const unexpected = records.find(
-    (record) => !ENDED_STATUSES.has(record.status),
+    (record) =>
+      !ENDED_STATUSES.has(record.status) && !lapsed.includes(record),
   );
-  if (unexpected) return { situation: "unexpected", record: unexpected };
+  if (unexpected) return { situation: "unexpected", record: unexpected, lapsed };
 
-  return { situation: "none", record: null };
+  return { situation: "none", record: null, lapsed };
 }
 
 /**

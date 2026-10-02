@@ -54,7 +54,7 @@ import { initCore, loadLocales } from "@breatic/core";
 import {
   getUserMembershipTier,
   getStudioStorageQuota,
-  getLimitsForUser,
+  getMembershipForUser,
   getLimitsForStudio,
   getProjectConcurrentEditorLimit,
   getMembershipLimits,
@@ -368,12 +368,21 @@ describe("getStudioStorageQuota", () => {
  * to be threaded through every copy. Miss one and that customer is quietly
  * held to the standard tier on that one path, with no error.
  */
-describe("getLimitsForUser", () => {
-  it("returns that account's own tier's six ceilings", async () => {
+describe("getMembershipForUser", () => {
+  it("returns that account's own tier and its six ceilings from one reading", async () => {
     const { userId } = await insertUser("pro");
-    await expect(getLimitsForUser(userId)).resolves.toEqual(
-      getMembershipLimits("pro"),
-    );
+    await expect(getMembershipForUser(userId)).resolves.toEqual({
+      tier: "pro",
+      limits: getMembershipLimits("pro"),
+    });
+  });
+
+  it("names an enterprise account's tier and gives no ceilings, which are negotiated", async () => {
+    const { userId } = await insertUser("enterprise");
+    await expect(getMembershipForUser(userId)).resolves.toEqual({
+      tier: "enterprise",
+      limits: null,
+    });
   });
 
   it("names the account and the value when the column holds a tier we do not have", async () => {
@@ -383,7 +392,7 @@ describe("getLimitsForUser", () => {
     // returned undefined and the next property access threw a TypeError naming
     // neither the account nor the value — which is what used to happen.
     const userId = await insertUserWithBadTier("Pro");
-    await expect(getLimitsForUser(userId)).rejects.toThrow(
+    await expect(getMembershipForUser(userId)).rejects.toThrow(
       new RegExp(`${userId}[\\s\\S]*Pro|Pro[\\s\\S]*${userId}`),
     );
   });

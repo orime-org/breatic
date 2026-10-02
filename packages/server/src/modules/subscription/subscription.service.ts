@@ -29,16 +29,20 @@ import {
   AppError,
   ConflictError,
   LIVE_SUBSCRIPTION_STATUSES,
+  NotFoundError,
   ValidationError,
+  db,
   getStripeCallTimeoutMs,
   getSubscriptionPlan,
   listSubscriptions,
   logger,
+  subscriptionClock,
   subscriptionSituation,
 } from "@breatic/core";
 import type {
+  SituationReading,
   StoredSubscription,
-  SubscriptionSituation,
+  SubscriptionWrite,
 } from "@breatic/core";
 import type {
   BillingPeriod,
@@ -52,7 +56,9 @@ import {
 } from "@breatic/shared";
 import { getStripeClient } from "@server/infra/stripe.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
+import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
+import { sendMembershipEndedMail } from "@server/modules/subscription/settle-tier.js";
 
 /** Where a checkout ends up, and whether it needs paying. */
 export interface CheckoutStart {
@@ -73,12 +79,74 @@ export interface PlanChange {
  * @param userId - The account.
  * @returns The situation and the live row, if any.
  */
-async function readSituation(userId: string): Promise<{
-  situation: SubscriptionSituation;
-  record: StoredSubscription | null;
-}> {
+async function readSituation(
+  userId: string,
+): Promise<SituationReading<StoredSubscription>> {
   const rows = await listSubscriptions(userId);
-  return subscriptionSituation(rows);
+  return subscriptionSituation(rows, subscriptionClock());
+}
+
+/**
+ * Stores a subscription as Stripe described it when we asked, so the next
+ * read shows it without waiting for the webhook (#307 A5, A10): the checkout
+ * return, the panel's own actions, and the re-check before a second checkout.
+ *
+ * An answer that cannot be read against our price list is not written: the
+ * webhook carries the same change and answers that disagreement in its own
+ * way. Each caller decides what not storing means for its own answer.
+ * @param input - What to store.
+ * @param input.userId - The account.
+ * @param input.subscription - Stripe's answer, with `latest_invoice` expanded.
+ * @param input.observedAt - When Stripe was asked.
+ * @param input.referenceId - Identifies the change in the tier ledger.
+ * @param input.logContext - Fields the caller adds to the log line when the
+ *   answer cannot be read.
+ * @returns The snapshot stored, or null when the answer was not stored.
+ * @throws {Error} if the database fails.
+ */
+async function storeAnswer(input: {
+  userId: string;
+  subscription: Stripe.Subscription;
+  observedAt: Date;
+  referenceId: string;
+  logContext?: Record<string, unknown>;
+}): Promise<SubscriptionWrite | null> {
+  const read = readStripeSubscription(input.subscription, input.userId, input.observedAt);
+  if (!read.ok) {
+    logger.error(
+      {
+        ...input.logContext,
+        userId: input.userId,
+        stripeSubscriptionId: input.subscription.id,
+        reason: read.reason,
+      },
+      "subscription_answer_unreadable",
+    );
+    return null;
+  }
+  await writeSnapshot(input.userId, read.write, input.referenceId);
+  return read.write;
+}
+
+/**
+ * Stores one readable snapshot and sends the membership-ended email the change
+ * may owe, after the commit.
+ * @param userId - The account.
+ * @param write - The snapshot.
+ * @param referenceId - Identifies the change in the tier ledger.
+ * @throws {Error} if the database fails.
+ */
+async function writeSnapshot(
+  userId: string,
+  write: SubscriptionWrite,
+  referenceId: string,
+): Promise<void> {
+  const applied = await db.transaction((tx) =>
+    applySubscriptionWrite({ userId, write, referenceId, tx }),
+  );
+  // After the commit: an email about a change that then rolled back cannot be
+  // recalled.
+  if (applied.endedFrom) await sendMembershipEndedMail(userId, applied.endedFrom);
 }
 
 /**
@@ -114,11 +182,11 @@ async function ensureCustomer(userId: string): Promise<string> {
  * completed payment from somebody pressing Stripe's back link — and a page
  * that cannot tell them apart cannot report either one.
  *
- * No session id on the paid one. What the account now holds is read by
- * reconciling it, which happens anyway and answers for a webhook that has not
- * landed yet; a session id would only name a second way to ask the same
- * question. It would also collide with the credits return, which gates on
- * that very parameter.
+ * The paid one also names the checkout, so the page can confirm that one
+ * purchase straight away rather than wait for its webhook (#307). Stripe fills
+ * `{CHECKOUT_SESSION_ID}` in on its way out, so the braces are appended after
+ * the URL is built: passing them through `URL` would encode them and leave the
+ * placeholder unfilled.
  * @param returnUrl - The page the purchase was started from.
  * @returns The two URLs, named as Stripe's own fields.
  */
@@ -128,12 +196,17 @@ function returnUrls(returnUrl: string): {
 } {
   const paid = new URL(returnUrl);
   paid.searchParams.set("membership", "1");
+  // The session id is appended as text, so a fragment would swallow it.
+  paid.hash = "";
 
   const left = new URL(returnUrl);
   left.searchParams.set("membership", "1");
   left.searchParams.set("cancelled", "1");
 
-  return { success_url: paid.toString(), cancel_url: left.toString() };
+  return {
+    success_url: `${paid.toString()}&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: left.toString(),
+  };
 }
 
 /**
@@ -156,10 +229,14 @@ export async function startCheckout(input: {
   period: BillingPeriod;
   returnUrl: string;
 }): Promise<CheckoutStart> {
-  const { situation, record } = await readSituation(input.userId);
+  const { situation, record, lapsed } = await readSituation(input.userId);
   if (holdsActionableSubscription(situation)) {
     throw new ConflictError(t("server.membership.already_subscribed"));
   }
+  await recheckLapsed(
+    lapsed.map((row) => row.stripeSubscriptionId),
+    input.userId,
+  );
 
   if (situation === "firstPaymentUnsettled" && record) {
     // Stripe refuses to update a subscription whose first invoice has not
@@ -195,6 +272,128 @@ export async function startCheckout(input: {
 
 
 /**
+ * Stores what one membership checkout came to, when the buyer comes back.
+ *
+ * Stripe sends the buyer home as soon as the payment is submitted, which is
+ * often before the webhook that records it. Asking about this one Checkout
+ * Session lets the page show the tier that was bought straight away; the
+ * webhook still arrives and finds the same snapshot, or an older one that the
+ * stored `observedAt` keeps from winning.
+ * @param userId - The account the buyer is signed in as.
+ * @param sessionId - The Checkout Session the return address named.
+ * @throws {NotFoundError} if the session is not a membership checkout of this
+ *   account's, or Stripe has no such session.
+ * @throws {AppError} `503` if the session holds no subscription yet, or holds
+ *   one whose price this deployment cannot confirm.
+ * @throws {AppError} `503` if Stripe could not be asked.
+ * @throws {Error} if the database fails.
+ */
+export async function confirmCheckout(
+  userId: string,
+  sessionId: string,
+): Promise<void> {
+  // Stamped before the call: the moment that decides which of two writers
+  // holds the newer view is when each of them asked.
+  const observedAt = new Date();
+  let session: Stripe.Checkout.Session;
+  try {
+    session = await getStripeClient().checkout.sessions.retrieve(
+      sessionId,
+      { expand: ["subscription.latest_invoice"] },
+      { timeout: getStripeCallTimeoutMs(), maxNetworkRetries: 0 },
+    );
+  } catch (err) {
+    if (subscriptionGoneAtStripe(err)) {
+      throw new NotFoundError(t("server.membership.checkout_not_found"));
+    }
+    // Stripe could not be asked. The webhook still records the purchase;
+    // what failed is only this early look at it.
+    logger.error({ err, userId, sessionId }, "subscription_confirm_failed");
+    throw new AppError(503, t("server.membership.checkout_unconfirmed"));
+  }
+
+  if (session.mode !== "subscription" || session.client_reference_id !== userId) {
+    throw new NotFoundError(t("server.membership.checkout_not_found"));
+  }
+
+  const subscription = session.subscription;
+  if (!subscription || typeof subscription === "string") {
+    throw new AppError(503, t("server.membership.checkout_unconfirmed"));
+  }
+
+  const stored = await storeAnswer({
+    userId,
+    subscription,
+    observedAt,
+    referenceId: `checkout:${sessionId}`,
+    logContext: { sessionId },
+  });
+  if (stored === null) throw new AppError(503, t("server.membership.checkout_unconfirmed"));
+}
+
+/**
+ * Asks Stripe about every subscription we still have marked live past its
+ * deadline, before selling another one.
+ *
+ * Their deadlines passing without a word from Stripe reads as ended
+ * everywhere else, but checkout charges money and cannot be taken back: if
+ * Stripe is in fact still billing one of them, selling another would bill
+ * the person twice. So the decision follows what Stripe says.
+ *
+ * Every one is asked before anything is stored. When any is still billed,
+ * only those answers are stored and the checkout is refused: an ended answer
+ * stored next to a still-billed one that could not be stored settles the tier
+ * on base, and that move tells a paying person their membership ended. An
+ * answer that cannot be priced is not stored and still counts towards the
+ * decision.
+ * @param subscriptionIds - The lapsed subscriptions at Stripe.
+ * @param userId - The account.
+ * @throws {ConflictError} if Stripe still bills any of them.
+ * @throws {Error} if Stripe could not be asked about one of them.
+ */
+async function recheckLapsed(
+  subscriptionIds: readonly string[],
+  userId: string,
+): Promise<void> {
+  if (subscriptionIds.length === 0) return;
+  const askedAt = new Date();
+  const answers = await Promise.all(
+    subscriptionIds.map((id) => retrieveStoredSubscription(id, ["latest_invoice"])),
+  );
+
+  const found: Stripe.Subscription[] = [];
+  answers.forEach((fresh, i) => {
+    if (fresh) {
+      found.push(fresh);
+      return;
+    }
+    logger.warn(
+      { userId, subscriptionId: subscriptionIds[i] },
+      "subscription_lapsed_gone_at_stripe",
+    );
+  });
+  const billed = found.filter((fresh) => stillBilledAtStripe(fresh, askedAt));
+  const ended = found.filter((fresh) => !billed.includes(fresh));
+
+  for (const fresh of billed.length > 0 ? billed : ended) {
+    await storeAnswer({
+      userId,
+      subscription: fresh,
+      observedAt: askedAt,
+      referenceId: `recheck:${fresh.id}`,
+    });
+  }
+
+  if (billed.length > 0) {
+    logger.info(
+      { userId, subscriptionIds: billed.map((fresh) => fresh.id) },
+      "subscription_lapsed_still_live_at_stripe",
+    );
+    throw new ConflictError(t("server.membership.already_subscribed"));
+  }
+}
+
+/**
  * The subscription item whose price an upgrade replaces.
  *
  * Never `undefined`. Stripe reads an item with no id as a NEW item, so the
@@ -227,7 +426,7 @@ function itemToReplace(record: StoredSubscription): string {
  *
  * The one irreversible call on this path, so it asks Stripe first rather than
  * acting on the stored row. That row is a snapshot from whichever wrote it
- * last, the webhook or the panel's reconciliation, and one of the ways it goes
+ * last, the webhook or one of our own calls to Stripe, and one of the ways it goes
  * out of date is the one that matters most here: the reader paid. The panel hands an account in this state a
  * payment link that opens in a NEW tab, so the tab they came from keeps
  * showing the old state and never refetches on focus; paying there and coming
@@ -259,14 +458,8 @@ async function voidUnpaidSubscription(
   subscriptionId: string,
   userId: string,
 ): Promise<void> {
-  let fresh: Stripe.Subscription;
-  try {
-    fresh = await getStripeClient().subscriptions.retrieve(subscriptionId, {
-      timeout: getStripeCallTimeoutMs(),
-      maxNetworkRetries: 0,
-    });
-  } catch (err) {
-    if (!subscriptionGoneAtStripe(err)) throw err;
+  const fresh = await retrieveStoredSubscription(subscriptionId);
+  if (!fresh) {
     // No such subscription. Nothing to void, so nothing stands in the way.
     logger.warn(
       { userId, subscriptionId },
@@ -298,6 +491,50 @@ async function voidUnpaidSubscription(
       "subscription_unpaid_expired_before_cancel",
     );
   }
+}
+
+/**
+ * Reads, as Stripe has it now, a subscription we hold a row for.
+ * @param subscriptionId - The subscription at Stripe.
+ * @param expand - Fields to expand on the answer.
+ * @returns The subscription, or null when Stripe has no such subscription —
+ *   an id from another Stripe account or mode, or test data that was wiped.
+ * @throws {Error} if Stripe failed for any reason other than it being gone.
+ */
+async function retrieveStoredSubscription(
+  subscriptionId: string,
+  expand: string[] = [],
+): Promise<Stripe.Subscription | null> {
+  try {
+    return await getStripeClient().subscriptions.retrieve(
+      subscriptionId,
+      expand.length > 0 ? { expand } : {},
+      { timeout: getStripeCallTimeoutMs(), maxNetworkRetries: 0 },
+    );
+  } catch (err) {
+    if (!subscriptionGoneAtStripe(err)) throw err;
+    return null;
+  }
+}
+
+/**
+ * Whether Stripe will bill this subscription again.
+ *
+ * A subscription set to end at its period end bills nothing after that
+ * boundary, though Stripe reports it `active` until it gets round to ending
+ * it. Selling another one in that window charges the person once.
+ * @param subscription - Stripe's answer.
+ * @param at - The moment to judge at.
+ * @returns Whether a second subscription would be billed alongside it.
+ */
+function stillBilledAtStripe(subscription: Stripe.Subscription, at: Date): boolean {
+  if (!LIVE_SUBSCRIPTION_STATUSES.includes(subscription.status as never)) return false;
+  const periodEnd = subscription.items.data[0]?.current_period_end;
+  const pastFinalPeriod =
+    subscription.cancel_at_period_end &&
+    periodEnd !== undefined &&
+    periodEnd * 1000 <= at.getTime();
+  return !pastFinalPeriod;
 }
 
 /**
@@ -366,6 +603,7 @@ export async function changePlan(input: {
     throw new ConflictError(t("server.membership.payment_overdue"));
   }
 
+  const changedAt = new Date();
   const updated = await getStripeClient().subscriptions.update(
     record.stripeSubscriptionId,
     {
@@ -390,23 +628,40 @@ export async function changePlan(input: {
     },
   );
 
-  const read = readStripeSubscription(updated, input.userId);
-  if (!read.ok) {
+  const stored = await storeAnswer({
+    userId: input.userId,
+    subscription: updated,
+    observedAt: changedAt,
+    referenceId: `action:change:${record.stripeSubscriptionId}`,
+  });
+  if (stored === null) {
     // Stripe took the change and what came back does not agree with our price
     // list. Reporting "applied" here is the one answer that cannot be taken
     // back: the reader is told their plan changed while the row still holds
     // the old one, and nothing later contradicts it.
     throw new AppError(500, t("server.membership.change_unconfirmed"));
   }
-  const pending = read.write.hasPendingUpdate;
+  const pending = stored.hasPendingUpdate;
 
   if (situation === "cancelling") {
-    await withdrawCancellation(record.stripeSubscriptionId, input.userId);
+    const withdrawnAt = new Date();
+    const withdrawn = await withdrawCancellation(
+      record.stripeSubscriptionId,
+      input.userId,
+    );
+    if (withdrawn) {
+      await storeAnswer({
+        userId: input.userId,
+        subscription: withdrawn,
+        observedAt: withdrawnAt,
+        referenceId: `action:withdraw:${record.stripeSubscriptionId}`,
+      });
+    }
   }
 
   return {
     status: pending ? "pendingPayment" : "applied",
-    payableInvoiceUrl: read.write.payableInvoiceUrl,
+    payableInvoiceUrl: stored.payableInvoiceUrl,
   };
 }
 
@@ -431,14 +686,17 @@ export async function changePlan(input: {
  * keep ends at the period boundary anyway.
  * @param subscriptionId - The subscription at Stripe.
  * @param userId - The account, for the log line if this fails.
+ * @returns The subscription as Stripe now describes it, or null when the call
+ *   failed.
  */
 async function withdrawCancellation(
   subscriptionId: string,
   userId: string,
-): Promise<void> {
+): Promise<Stripe.Subscription | null> {
   try {
-    await getStripeClient().subscriptions.update(subscriptionId, {
+    return await getStripeClient().subscriptions.update(subscriptionId, {
       cancel_at_period_end: false,
+      expand: ["latest_invoice"],
     });
   } catch (err) {
     // Not rethrown: the upgrade the caller asked for did happen, and
@@ -447,6 +705,7 @@ async function withdrawCancellation(
       { err, userId, subscriptionId },
       "subscription_cancellation_withdrawal_failed",
     );
+    return null;
   }
 }
 
@@ -465,9 +724,18 @@ export async function cancel(userId: string): Promise<Stripe.Subscription> {
   if (!record || !subscriptionActions(situation, record.cancelAtPeriodEnd).cancel) {
     throw new ConflictError(t("server.membership.no_subscription"));
   }
-  return getStripeClient().subscriptions.update(record.stripeSubscriptionId, {
-    cancel_at_period_end: true,
+  const askedAt = new Date();
+  const updated = await getStripeClient().subscriptions.update(
+    record.stripeSubscriptionId,
+    { cancel_at_period_end: true, expand: ["latest_invoice"] },
+  );
+  await storeAnswer({
+    userId,
+    subscription: updated,
+    observedAt: askedAt,
+    referenceId: `action:cancel:${record.stripeSubscriptionId}`,
   });
+  return updated;
 }
 
 /**
@@ -490,7 +758,16 @@ export async function resume(userId: string): Promise<Stripe.Subscription> {
   if (!record || !subscriptionActions(situation, record.cancelAtPeriodEnd).resume) {
     throw new ConflictError(t("server.membership.not_cancelling"));
   }
-  return getStripeClient().subscriptions.update(record.stripeSubscriptionId, {
-    cancel_at_period_end: false,
+  const askedAt = new Date();
+  const updated = await getStripeClient().subscriptions.update(
+    record.stripeSubscriptionId,
+    { cancel_at_period_end: false, expand: ["latest_invoice"] },
+  );
+  await storeAnswer({
+    userId,
+    subscription: updated,
+    observedAt: askedAt,
+    referenceId: `action:resume:${record.stripeSubscriptionId}`,
   });
+  return updated;
 }

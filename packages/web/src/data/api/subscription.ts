@@ -11,7 +11,7 @@
  */
 
 import { apiPost } from '@web/data/api/request';
-import type { MembershipOffer } from '@breatic/shared';
+import type { AccountMembership, MembershipOffer } from '@breatic/shared';
 
 /** Where Stripe's hosted checkout page is. */
 export interface CheckoutStart {
@@ -66,4 +66,18 @@ export async function cancelSubscription(): Promise<void> {
 /** Takes back a scheduled cancellation. */
 export async function resumeSubscription(): Promise<void> {
   await apiPost('/account/subscription/resume');
+}
+
+/**
+ * Confirms the membership checkout the browser just came back from, so the
+ * page shows what was bought before the webhook that records it arrives.
+ * @param sessionId - The Checkout Session the return address named.
+ * @returns The membership panel's answer, after the purchase was stored.
+ */
+export async function confirmMembershipCheckout(
+  sessionId: string,
+): Promise<AccountMembership> {
+  return apiPost<AccountMembership>('/account/subscription/confirm', {
+    session_id: sessionId,
+  });
 }
