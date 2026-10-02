@@ -112,10 +112,10 @@ describe('the row insert-below makes', () => {
   });
 
   it('goes below a pressed row that has nothing on it', () => {
-    // A7's amended half (user 2026-09-18): the command is named for where it
-    // puts the row, so an empty row gets one under it rather than becoming
-    // the thing the reader chose — that is what the block type command is.
-    const editor = open([{ type: 'paragraph' }]);
+    // Insert-below is named for where it puts the row, so an empty row the
+    // grip serves — any but an empty paragraph, which shows the plus instead
+    // (#1097) — gets one under it rather than becoming the thing picked.
+    const editor = open([{ type: 'heading', props: { level: 2 } }]);
 
     const made = insertRowForMenu(editor, editor.document[0] as never);
 

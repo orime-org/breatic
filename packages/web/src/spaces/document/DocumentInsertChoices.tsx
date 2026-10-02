@@ -31,22 +31,22 @@ interface DocumentInsertChoicesProps {
   /** What picking an entry does. */
   onPick: (choice: InsertChoice) => void;
   /**
-   * Whether an entry would do anything here; an entry it answers false for is
-   * drawn out of reach. Every entry is reachable when it is left out.
+   * Entries that would do nothing here, drawn out of reach. Every entry is
+   * reachable when it is left out.
    */
-  reachable?: (choice: InsertChoice) => boolean;
+  unreachable?: ReadonlySet<InsertChoice>;
 }
 
 /**
  * The rows, each running `onPick` with what it stands for.
  * @param props - See {@link DocumentInsertChoicesProps}.
  * @param props.onPick - What picking an entry does.
- * @param props.reachable - Whether an entry would do anything here.
+ * @param props.unreachable - Entries that would do nothing here.
  * @returns The rows.
  */
 export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
   onPick,
-  reachable,
+  unreachable,
 }: DocumentInsertChoicesProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -59,7 +59,7 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
           <React.Fragment key={id}>
             <DropdownMenuItem
               data-testid={`doc-block-insert-${id}`}
-              {...itemWithin(reachable?.(id) ?? true, () => {
+              {...itemWithin(unreachable?.has(id) !== true, () => {
                 onPick(id);
               })}
             >
@@ -75,7 +75,7 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
       <DropdownMenuSeparator className='my-0' />
       <DropdownMenuItem
         data-testid='doc-block-insert-divider'
-        {...itemWithin(reachable?.(DIVIDER) ?? true, () => {
+        {...itemWithin(unreachable?.has(DIVIDER) !== true, () => {
           onPick(DIVIDER);
         })}
       >

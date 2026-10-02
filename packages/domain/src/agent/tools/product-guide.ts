@@ -816,8 +816,8 @@ export function renderProductGuide(): string {
       `same entries as ${quoted(t("spaces.document.blockHandle.insertBelow"))}, and the one picked turns that ` +
       "line itself into it (a divider goes above the line, which stays empty). " +
       `${quoted(t("spaces.document.commands.quote"))} is greyed there on a line already in a quote. ` +
-      "Empty paragraphs have no six-dot handle, so they cannot be dragged, duplicated, " +
-      "aligned or deleted from a menu; Backspace removes them.",
+      "Empty paragraphs have no six-dot handle, so they cannot be dragged, duplicated, aligned, coloured, " +
+      "commented on or deleted from a menu; Delete removes one, and so does Backspace except on the first line.",
     "- Hovering any other line, with no text selected, shows a handle of six dots at its left. Drag it to move the " +
       `block; click it for a menu with ${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ` +

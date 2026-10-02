@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The row the handle menu's insert-below command makes (A7).
+ * What the insert menu does to the row it was opened on.
  *
- * One transaction's worth of work: a paragraph directly under the pressed row,
- * carrying that row's own quoting, with the caret in it so the reader can type
- * straight away. What kind of row it becomes is the caller's next step
+ * Two entries open that menu. The grip menu's insert-below makes a new row
+ * under the pressed one (#113, A7): a paragraph carrying that row's quoting,
+ * with the caret in it, which the caller then turns into the type picked
  * (`runBlockType`), so the document never holds a half-made row waiting on a
- * decision — which is why nothing here has to be taken back.
+ * decision. The plus on an empty paragraph puts the pick on that row itself
+ * (#1097): the row keeps its id and becomes the type, or gets a divider above
+ * it.
  */
 
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
