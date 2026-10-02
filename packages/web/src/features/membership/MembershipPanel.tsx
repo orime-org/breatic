@@ -4,6 +4,7 @@
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 import { X } from 'lucide-react';
+import { isComparableMembershipTier } from '@breatic/shared';
 
 import {
   Dialog,
@@ -18,6 +19,7 @@ import {
   MembershipLoading,
 } from '@web/features/membership/MembershipContent';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 /** Whether the panel is open, and how it reports being closed. */
@@ -58,16 +60,27 @@ export function MembershipPanel({
     queryFn: () => accountApi.membership(),
     enabled: open && userId !== null,
   });
+  // A priced tier's loaded panel runs to about 1000px (measured: PRO yearly,
+  // English, 1005px uncapped), so the dialog takes that height from the first
+  // frame and keeps it: nothing moves when the answer lands. The unpriced
+  // tiers are short either way and size to their content.
+  const shownTier = query.data?.tier ?? knownTier;
+  const pinned = shownTier !== null && isComparableMembershipTier(shownTier);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Two rows: the current tier, which stays put, and everything under
           it, which scrolls. Grid rather than the flex column the primitive
-          ships as, because the ceiling is a `max-height`: a flex column under
-          one leaves its items at `height: auto`, the viewport grows to its
+          ships as, because an unpriced tier's ceiling is a `max-height`: a
+          flex column under one leaves its items at `height: auto`, the viewport grows to its
           content, and the panel clips instead of scrolling. Grid tracks are
           definite either way (`MembersModal` measured the same trap). */}
-      <DialogContent className='grid max-h-[calc(100vh-80px)] w-[min(880px,calc(100vw-80px))] max-w-none grid-rows-[auto_minmax(0,1fr)] bg-background p-0'>
+      <DialogContent
+        className={cn(
+          'grid w-[min(880px,calc(100vw-80px))] max-w-none grid-rows-[auto_minmax(0,1fr)] bg-background p-0',
+          pinned ? 'h-[min(1000px,calc(100vh-80px))]' : 'max-h-[calc(100vh-80px)]',
+        )}
+      >
         {/* The panel's own heading is the tier itself, which is why there is
             no visible title bar; the accessible name still has to exist, and
             Radix requires it. */}

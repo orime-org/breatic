@@ -182,11 +182,11 @@ describe('MembershipPanel', () => {
     expect(viewport.contains(screen.getByTestId('current-tier-name'))).toBe(false);
     expect(viewport.contains(screen.getByTestId('quota-storage'))).toBe(true);
 
-    // The ceiling goes on the dialog, and its rows are a grid: under a
+    // The height goes on the dialog, and its rows are a grid: under a
     // `max-height` a flex column leaves its items at `height: auto`, the
     // viewport grows to its content and the dialog clips instead of
     // scrolling. Grid tracks are definite either way.
-    expect(dialog.className).toContain('max-h-[calc(100vh-80px)]');
+    expect(dialog.className).toContain('h-[min(1000px,calc(100vh-80px))]');
     expect(dialog.className).toContain('grid-rows-[auto_minmax(0,1fr)]');
   });
 

@@ -5,6 +5,7 @@ import * as React from 'react';
 import { Loader2 } from 'lucide-react';
 import {
   BILLING_PERIODS,
+  COMPARABLE_MEMBERSHIP_TIERS,
   holdsActionableSubscription,
   isComparableMembershipTier,
   subscriptionActions,
@@ -479,6 +480,9 @@ function SelfHostedRow({
   );
 }
 
+/** One placeholder per card the loaded section draws: each priced tier and the enterprise card. */
+const TIER_CARD_SKELETONS = [...COMPARABLE_MEMBERSHIP_TIERS, 'enterprise'] as const;
+
 /**
  * The panel while its one request is in flight.
  *
@@ -509,10 +513,17 @@ export function MembershipLoading({
               t(`membership.tier.${tier}`)
             )}
           </div>
-          <Skeleton
-            className='h-3.5 w-40'
-            data-testid='current-tier-skeleton'
-          />
+          {/* A paid tier is followed by its billing line once loaded, so the
+              bar stands in a row of that line's height; the free tier is
+              followed by nothing. */}
+          {tier !== null && isComparableMembershipTier(tier) && tier !== 'base' ? (
+            <div className='flex h-lh items-center text-sm' data-testid='current-tier-line'>
+              <Skeleton
+                className='h-3.5 w-40'
+                data-testid='current-tier-skeleton'
+              />
+            </div>
+          ) : null}
         </div>
         <p className='text-sm text-foreground-secondary'>
           {t('membership.tierNote')}
@@ -525,9 +536,25 @@ export function MembershipLoading({
             <SectionSkeleton />
           </section>
           {tier !== null && isComparableMembershipTier(tier) ? (
-            <section className='flex flex-col gap-4'>
-              <SectionHeading>{t('membership.chooseTier')}</SectionHeading>
-              <SectionSkeleton />
+            <section className='flex flex-col gap-4' data-testid='choose-tier-skeleton'>
+              {/* The loaded section's shape: the heading with the period
+                  switch at the other end, then one card per offer. */}
+              <div className='flex flex-wrap items-center justify-between gap-3'>
+                <SectionHeading>{t('membership.chooseTier')}</SectionHeading>
+                <Skeleton
+                  className='h-7.5 w-36 rounded-chrome'
+                  data-testid='period-switch-skeleton'
+                />
+              </div>
+              <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+                {TIER_CARD_SKELETONS.map((key) => (
+                  <Skeleton
+                    key={key}
+                    className='h-[250px] rounded-chrome'
+                    data-testid='tier-card-skeleton'
+                  />
+                ))}
+              </div>
             </section>
           ) : null}
         </div>
