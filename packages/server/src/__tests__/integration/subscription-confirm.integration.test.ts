@@ -211,7 +211,7 @@ describe("confirmCheckout (#307 A5–A8)", () => {
         session("someone-else", customerId),
       );
 
-      await expect(confirmCheckout(userId, `cs_${seq}`)).rejects.toMatchObject({ status: 404 });
+      await expect(confirmCheckout(userId, `cs_${seq}`)).rejects.toMatchObject({ statusCode: 404 });
       expect(await storedRows(userId)).toBe(0);
     } finally {
       await dropUser(userId);
@@ -225,7 +225,7 @@ describe("confirmCheckout (#307 A5–A8)", () => {
         session(userId, customerId, { mode: "payment", subscription: null }),
       );
 
-      await expect(confirmCheckout(userId, `cs_${seq}`)).rejects.toMatchObject({ status: 404 });
+      await expect(confirmCheckout(userId, `cs_${seq}`)).rejects.toMatchObject({ statusCode: 404 });
       expect(await storedRows(userId)).toBe(0);
     } finally {
       await dropUser(userId);
@@ -239,7 +239,7 @@ describe("confirmCheckout (#307 A5–A8)", () => {
         Object.assign(new Error("No such checkout.session"), { code: "resource_missing" }),
       );
 
-      await expect(confirmCheckout(userId, "cs_unknown")).rejects.toMatchObject({ status: 404 });
+      await expect(confirmCheckout(userId, "cs_unknown")).rejects.toMatchObject({ statusCode: 404 });
     } finally {
       await dropUser(userId);
     }
@@ -252,7 +252,7 @@ describe("confirmCheckout (#307 A5–A8)", () => {
         session(userId, customerId, { subscription: null }),
       );
 
-      await expect(confirmCheckout(userId, `cs_${seq}`)).rejects.toMatchObject({ status: 503 });
+      await expect(confirmCheckout(userId, `cs_${seq}`)).rejects.toMatchObject({ statusCode: 503 });
       expect(await storedRows(userId)).toBe(0);
     } finally {
       await dropUser(userId);
@@ -266,7 +266,7 @@ describe("confirmCheckout (#307 A5–A8)", () => {
       odd.subscription.items.data[0]!.price.unit_amount += 1;
       stripe.checkout.sessions.retrieve.mockResolvedValueOnce(odd);
 
-      await expect(confirmCheckout(userId, `cs_${seq}`)).rejects.toMatchObject({ status: 503 });
+      await expect(confirmCheckout(userId, `cs_${seq}`)).rejects.toMatchObject({ statusCode: 503 });
       expect(await storedRows(userId)).toBe(0);
       expect(await getUserMembershipTier(userId)).toBe("base");
     } finally {

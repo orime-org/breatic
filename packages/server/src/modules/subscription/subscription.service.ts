@@ -29,7 +29,9 @@ import {
   AppError,
   ConflictError,
   LIVE_SUBSCRIPTION_STATUSES,
+  NotFoundError,
   ValidationError,
+  db,
   getStripeCallTimeoutMs,
   getSubscriptionPlan,
   listSubscriptions,
@@ -50,7 +52,9 @@ import {
 } from "@breatic/shared";
 import { getStripeClient } from "@server/infra/stripe.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
+import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
+import { sendMembershipEndedMail } from "@server/modules/subscription/settle-tier.js";
 
 /** Where a checkout ends up, and whether it needs paying. */
 export interface CheckoutStart {
@@ -190,6 +194,74 @@ export async function startCheckout(input: {
   return { url: session.url };
 }
 
+
+/**
+ * Stores what one membership checkout came to, when the buyer comes back.
+ *
+ * Stripe sends the buyer home as soon as the payment is submitted, which is
+ * often before the webhook that records it. Asking about this one Checkout
+ * Session lets the page show the tier that was bought straight away; the
+ * webhook still arrives and finds the same snapshot, or an older one that the
+ * stored `observedAt` keeps from winning.
+ * @param userId - The account the buyer is signed in as.
+ * @param sessionId - The Checkout Session the return address named.
+ * @throws {NotFoundError} if the session is not a membership checkout of this
+ *   account's, or Stripe has no such session.
+ * @throws {AppError} `503` if the session holds no subscription yet, or holds
+ *   one whose price this deployment cannot confirm.
+ * @throws {Error} if Stripe failed for any other reason.
+ */
+export async function confirmCheckout(
+  userId: string,
+  sessionId: string,
+): Promise<void> {
+  // Stamped before the call: the moment that decides which of two writers
+  // holds the newer view is when each of them asked.
+  const observedAt = new Date();
+  let session: Stripe.Checkout.Session;
+  try {
+    session = await getStripeClient().checkout.sessions.retrieve(
+      sessionId,
+      { expand: ["subscription.latest_invoice"] },
+      { timeout: getStripeCallTimeoutMs(), maxNetworkRetries: 0 },
+    );
+  } catch (err) {
+    if (subscriptionGoneAtStripe(err)) {
+      throw new NotFoundError(t("server.membership.checkout_not_found"));
+    }
+    throw err;
+  }
+
+  if (session.mode !== "subscription" || session.client_reference_id !== userId) {
+    throw new NotFoundError(t("server.membership.checkout_not_found"));
+  }
+
+  const subscription = session.subscription;
+  if (!subscription || typeof subscription === "string") {
+    throw new AppError(503, t("server.membership.checkout_unconfirmed"));
+  }
+
+  const read = readStripeSubscription(subscription, userId, observedAt);
+  if (!read.ok) {
+    logger.error(
+      { userId, sessionId, stripeSubscriptionId: subscription.id, reason: read.reason },
+      "subscription_checkout_unreadable",
+    );
+    throw new AppError(503, t("server.membership.checkout_unconfirmed"));
+  }
+
+  const applied = await db.transaction((tx) =>
+    applySubscriptionWrite({
+      userId,
+      write: read.write,
+      referenceId: `checkout:${sessionId}`,
+      tx,
+    }),
+  );
+  // After the commit: an email about a change that then rolled back cannot be
+  // recalled.
+  if (applied.endedFrom) await sendMembershipEndedMail(userId, applied.endedFrom);
+}
 
 /**
  * The subscription item whose price an upgrade replaces.
