@@ -480,6 +480,9 @@ function SelfHostedRow({
   );
 }
 
+/** One placeholder per allowance a priced tier lists: team studios and storage. */
+const QUOTA_ROW_SKELETONS = ['team-studios', 'storage'] as const;
+
 /** One placeholder per card the loaded section draws: each priced tier and the enterprise card. */
 const TIER_CARD_SKELETONS = [...COMPARABLE_MEMBERSHIP_TIERS, 'enterprise'] as const;
 
@@ -533,7 +536,21 @@ export function MembershipLoading({
         <div className='flex flex-col gap-8'>
           <section className='flex flex-col gap-4'>
             <SectionHeading>{t('membership.myQuota')}</SectionHeading>
-            <SectionSkeleton />
+            {tier !== null && isComparableMembershipTier(tier) ? (
+              // A priced tier lists the two account-wide allowances, each a
+              // text line over a meter, so the bars take those two rows' shape.
+              QUOTA_ROW_SKELETONS.map((key) => (
+                <div key={key} className='flex flex-col gap-1.5' data-testid='quota-row-skeleton'>
+                  <div className='flex h-lh items-center justify-between text-sm'>
+                    <Skeleton className='h-3.5 w-24' />
+                    <Skeleton className='h-3.5 w-20' />
+                  </div>
+                  <Skeleton className='h-1 rounded-full' />
+                </div>
+              ))
+            ) : (
+              <SectionSkeleton />
+            )}
           </section>
           {tier !== null && isComparableMembershipTier(tier) ? (
             <section className='flex flex-col gap-4' data-testid='choose-tier-skeleton'>

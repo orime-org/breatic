@@ -1090,9 +1090,10 @@ describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => 
     expect(screen.getByText('My allowances')).toBeInTheDocument();
     expect(screen.getByText('Choose a membership')).toBeInTheDocument();
     expect(screen.getByTestId('loading-tier-name')).toHaveTextContent('PRO');
-    // One placeholder under the tier name, one block for the allowances, the
-    // tier cards drawn as cards — and no whole-panel placeholder in their place.
-    expect(screen.getAllByTestId('section-skeleton')).toHaveLength(1);
+    // One placeholder under the tier name, the two allowance rows drawn as
+    // rows, the tier cards drawn as cards — and no whole-panel placeholder.
+    expect(screen.queryByTestId('section-skeleton')).toBeNull();
+    expect(screen.getAllByTestId('quota-row-skeleton')).toHaveLength(2);
     expect(screen.getByTestId('current-tier-skeleton')).toBeInTheDocument();
     expect(screen.queryByTestId('membership-skeleton')).toBeNull();
   });
