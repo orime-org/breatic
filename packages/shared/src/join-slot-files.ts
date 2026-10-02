@@ -11,7 +11,18 @@
  * same params, so what is quoted is what is sent.
  */
 
-import type { ParamDescriptor } from "@shared/types/model-catalog.js";
+/**
+ * The three fields this reads off each declaration. Loose on purpose: the
+ * worker hands in the yaml-shaped entry and the panel the wire descriptor.
+ */
+export type JoinDeclarations = Readonly<Record<string, object>>;
+
+/** The fields read off one declaration. */
+interface JoinFields {
+  readonly joins?: unknown;
+  readonly prompt_note?: unknown;
+  readonly mention?: unknown;
+}
 
 /** A run's params and prompt after its joining slots are folded in. */
 export interface JoinedRun {
@@ -48,26 +59,28 @@ function listPhrase(names: readonly string[]): string {
  * @returns The params and prompt to send.
  */
 export function joinSlotFiles(
-  declared: Readonly<Record<string, ParamDescriptor>>,
+  declared: JoinDeclarations,
   params: Readonly<Record<string, unknown>>,
   prompt: string,
 ): JoinedRun {
   const out: Record<string, unknown> = { ...params };
   let text = prompt;
   for (const [name, spec] of Object.entries(declared)) {
-    if (spec.joins === undefined || spec.prompt_note === undefined) continue;
+    const { joins, prompt_note: note } = spec as JoinFields;
+    if (typeof joins !== "string" || typeof note !== "string") continue;
     const files = urlsOf(out[name]);
     delete out[name];
     if (files.length === 0) continue;
-    const pool = urlsOf(out[spec.joins]);
-    const mention = declared[spec.joins]?.mention ?? "image {n}";
+    const pool = urlsOf(out[joins]);
+    const declaredMention = (declared[joins] as JoinFields | undefined)?.mention;
+    const mention = typeof declaredMention === "string" ? declaredMention : "image {n}";
     const names = files.map((_, k) => {
       const index = pool.length + k;
       return mention.replace("{n}", String(index + 1)).replace("{i}", String(index));
     });
-    out[spec.joins] = [...pool, ...files];
-    const note = spec.prompt_note.replace("{list}", listPhrase(names));
-    text = text.length > 0 ? `${text} ${note}` : note;
+    out[joins] = [...pool, ...files];
+    const said = note.replace("{list}", listPhrase(names));
+    text = text.length > 0 ? `${text} ${said}` : said;
   }
   return { params: out, prompt: text };
 }

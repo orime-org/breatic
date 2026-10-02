@@ -383,7 +383,7 @@ export { newId, deriveId } from "@shared/ids.js";
 export { completeEntries, itemCap, isPresent } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 export { joinSlotFiles } from "@shared/join-slot-files.js";
-export type { JoinedRun } from "@shared/join-slot-files.js";
+export type { JoinDeclarations, JoinedRun } from "@shared/join-slot-files.js";
 export {
   addShot,
   enterCustom,
