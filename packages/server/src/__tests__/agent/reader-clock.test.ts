@@ -3,8 +3,8 @@
 
 /**
  * The note that tells the model when, on the reader's own clock, a message
- * was sent. Every expected line here is what Node 24's Intl produces for that
- * instant and zone.
+ * was sent. Every expected line is written out in full, so the text the model
+ * reads cannot change with the ICU data a Node release carries.
  */
 import { describe, expect, it } from "vitest";
 
@@ -28,12 +28,27 @@ describe("readerClockNote", () => {
     );
   });
 
-  it("names a zero offset as GMT, the way Intl writes it", () => {
+  it("writes a zero offset with its hours and minutes", () => {
     expect(readerClockNote(AT, "UTC")).toBe(
-      "[The reader's local time when they sent this message: Thursday, 2026-10-01 09:27 (UTC, GMT).]",
+      "[The reader's local time when they sent this message: Thursday, 2026-10-01 09:27 (UTC, GMT+00:00).]",
     );
     expect(readerClockNote(new Date("2026-01-15T00:05:00Z"), "Europe/London")).toBe(
-      "[The reader's local time when they sent this message: Thursday, 2026-01-15 00:05 (Europe/London, GMT).]",
+      "[The reader's local time when they sent this message: Thursday, 2026-01-15 00:05 (Europe/London, GMT+00:00).]",
+    );
+  });
+
+  it("writes an offset that is not a whole hour", () => {
+    expect(readerClockNote(AT, "Asia/Kolkata")).toBe(
+      "[The reader's local time when they sent this message: Thursday, 2026-10-01 14:57 (Asia/Kolkata, GMT+05:30).]",
+    );
+    expect(readerClockNote(AT, "America/St_Johns")).toBe(
+      "[The reader's local time when they sent this message: Thursday, 2026-10-01 06:57 (America/St_Johns, GMT-02:30).]",
+    );
+  });
+
+  it("keeps the offset whole late in a minute", () => {
+    expect(readerClockNote(new Date("2026-10-01T09:27:59.900Z"), "Asia/Shanghai")).toBe(
+      "[The reader's local time when they sent this message: Thursday, 2026-10-01 17:27 (Asia/Shanghai, GMT+08:00).]",
     );
   });
 
@@ -43,9 +58,9 @@ describe("readerClockNote", () => {
     );
   });
 
-  it("writes the zone under the name Intl resolves it to", () => {
-    expect(readerClockNote(AT, "asia/shanghai")).toBe(
-      "[The reader's local time when they sent this message: Thursday, 2026-10-01 17:27 (Asia/Shanghai, GMT+08:00).]",
+  it("writes the zone as the browser reported it", () => {
+    expect(readerClockNote(AT, "Asia/Calcutta")).toBe(
+      "[The reader's local time when they sent this message: Thursday, 2026-10-01 14:57 (Asia/Calcutta, GMT+05:30).]",
     );
   });
 

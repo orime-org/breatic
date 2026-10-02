@@ -14,16 +14,16 @@
 import { isKnownTimeZone } from "@server/utils/time-zone.js";
 
 /** The parts of a moment the note is built from, as `Intl` names them. */
-type ClockPart = "weekday" | "year" | "month" | "day" | "hour" | "minute" | "timeZoneName";
+type ClockPart = "weekday" | "year" | "month" | "day" | "hour" | "minute";
 
 /**
  * Read a moment in one zone, part by part.
  * @param now - The moment.
  * @param timeZone - A zone `Intl` knows.
- * @returns Each part of the moment in that zone, and the zone's resolved name.
+ * @returns Each part of the moment on that zone's clock.
  * @throws {RangeError} When timeZone is not a zone Intl knows.
  */
-function readClock(now: Date, timeZone: string): { parts: Record<ClockPart, string>; zone: string } {
+function readClock(now: Date, timeZone: string): Record<ClockPart, string> {
   const format = new Intl.DateTimeFormat("en-US", {
     timeZone,
     weekday: "long",
@@ -33,13 +33,29 @@ function readClock(now: Date, timeZone: string): { parts: Record<ClockPart, stri
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-    // `GMT+08:00`, and plain `GMT` at a zero offset.
-    timeZoneName: "longOffset",
   });
-  const parts = Object.fromEntries(
+  return Object.fromEntries(
     format.formatToParts(now).map((part) => [part.type, part.value]),
   ) as Record<ClockPart, string>;
-  return { parts, zone: format.resolvedOptions().timeZone };
+}
+
+/**
+ * The zone's offset from UTC at that moment, as `GMT+HH:MM`. Worked out from
+ * the clock rather than read from `Intl`, whose wording of it differs across
+ * ICU releases (Node 22 writes `GMT+00:00` where Node 24 writes `GMT`).
+ * @param now - The moment.
+ * @param p - The parts of that moment on the zone's clock.
+ * @returns The offset, signed, with hours and minutes.
+ */
+function offsetOf(now: Date, p: Record<ClockPart, string>): string {
+  const wall = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute);
+  // The parts stop at the minute, so the moment is cut to its minute as well.
+  const minutes = (wall - Math.floor(now.getTime() / 60_000) * 60_000) / 60_000;
+  const sign = minutes < 0 ? "-" : "+";
+  const abs = Math.abs(minutes);
+  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const mm = String(abs % 60).padStart(2, "0");
+  return `GMT${sign}${hh}:${mm}`;
 }
 
 /**
@@ -50,9 +66,9 @@ function readClock(now: Date, timeZone: string): { parts: Record<ClockPart, stri
  */
 export function readerClockNote(now: Date, timeZone: string | undefined): string {
   const known = timeZone !== undefined && isKnownTimeZone(timeZone);
-  const { parts: p, zone } = readClock(now, known ? timeZone : "UTC");
+  const p = readClock(now, known ? timeZone : "UTC");
   const when = `${p.weekday}, ${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
   return known
-    ? `[The reader's local time when they sent this message: ${when} (${zone}, ${p.timeZoneName}).]`
+    ? `[The reader's local time when they sent this message: ${when} (${timeZone}, ${offsetOf(now, p)}).]`
     : `[The time when the reader sent this message: ${when} UTC. Their time zone is unknown.]`;
 }
