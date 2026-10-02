@@ -32,7 +32,7 @@ import type { NodeHistoryEntity, NodeMediaNumbers } from "@breatic/shared";
  * @param opts.metadata.durationMs - Provider call duration in milliseconds.
  * @param opts.metadata.params - Provider/tool parameters used for the generation.
  * @param opts.media - The media numbers the result landed on the node with
- *   (#2184), null for a result that has none (a text read).
+ *   (#2184).
  * @returns The row holding this result — new, or the one already there for
  *   this task or this content.
  */
@@ -49,7 +49,7 @@ export async function recordGenerationSuccess(opts: {
     durationMs?: number;
     params?: Record<string, unknown>;
   };
-  media: NodeMediaNumbers | null;
+  media: NodeMediaNumbers;
 }): Promise<NodeHistoryEntity> {
   return repo.createGenerationSuccessIfAbsent({
     projectId: opts.projectId,
@@ -59,7 +59,7 @@ export async function recordGenerationSuccess(opts: {
     thumbnailUrl: opts.thumbnailUrl,
     taskId: opts.taskId,
     metadata: opts.metadata,
-    ...(opts.media !== null && { media: opts.media }),
+    media: opts.media,
   });
 }
 

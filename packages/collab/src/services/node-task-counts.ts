@@ -18,7 +18,7 @@
 import * as Y from "yjs";
 import type { NodeTaskCounts, NodeTaskResult } from "@breatic/shared";
 import { CANVAS_NODES_KEY } from "@breatic/shared";
-import { writeNodeMedia } from "@breatic/shared/canvas/node-media";
+import { writeNodeMedia } from "@breatic/shared";
 import { writePlainTextIntoBody } from "@breatic/shared/canvas/text-body";
 
 /**

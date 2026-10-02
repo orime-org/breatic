@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { NodeMediaFields } from '@breatic/shared/canvas/node-media';
+import type { NodeMediaFields } from '@breatic/shared';
 
 import type { NodeHistoryEntry, NodeTaskEntry } from '@web/data/api/canvas';
 import {

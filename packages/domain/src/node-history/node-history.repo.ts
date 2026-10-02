@@ -48,12 +48,11 @@ function toEntity(
 }
 
 /**
- * The column values for a result's media numbers (#2184). A writer with none
- * (a snapshot, a text read) stores null in each.
+ * The column values for a result's media numbers (#2184).
  * @param media - The numbers the result landed on the node with.
  * @returns The five columns.
  */
-function mediaColumns(media: NodeMediaNumbers | undefined): {
+function mediaColumns(media: NodeMediaNumbers): {
   mediaWidth: number | null;
   mediaHeight: number | null;
   durationSeconds: number | null;
@@ -61,11 +60,11 @@ function mediaColumns(media: NodeMediaNumbers | undefined): {
   sizeBytes: number | null;
 } {
   return {
-    mediaWidth: media?.width ?? null,
-    mediaHeight: media?.height ?? null,
-    durationSeconds: media?.duration ?? null,
-    mimeType: media?.mimeType ?? null,
-    sizeBytes: media?.size ?? null,
+    mediaWidth: media.width,
+    mediaHeight: media.height,
+    durationSeconds: media.duration,
+    mimeType: media.mimeType,
+    sizeBytes: media.size,
   };
 }
 
@@ -188,7 +187,7 @@ export async function createGenerationSuccessIfAbsent(data: {
   thumbnailUrl?: string;
   taskId: string;
   metadata?: Record<string, unknown>;
-  media?: NodeMediaNumbers;
+  media: NodeMediaNumbers;
 }): Promise<NodeHistoryEntity> {
   const inserted = await db
     .insert(nodeHistory)
@@ -260,7 +259,7 @@ export async function createUploadSuccessIfAbsent(data: {
   thumbnailUrl?: string;
   storageKey?: string;
   metadata?: Record<string, unknown>;
-  media?: NodeMediaNumbers;
+  media: NodeMediaNumbers;
 }): Promise<{ entry: NodeHistoryEntity; inserted: boolean }> {
   const rows = await db
     .insert(nodeHistory)

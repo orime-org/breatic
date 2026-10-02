@@ -60,6 +60,8 @@ afterAll(async () => {
 
 /** The numbers an upload lands with, for tests about something else. */
 const UPLOAD_MEDIA = { width: 1, height: 1, duration: null, mimeType: "image/png", size: 1 };
+// What a text result lands with: it has none of the five numbers.
+const NO_MEDIA = { width: null, height: null, duration: null, mimeType: null, size: null };
 
 let seq = 0;
 
@@ -132,8 +134,8 @@ describe("node_history generation idempotency (#1618 Y)", () => {
 
     // Two records for the same generation (double-live or billed-redelivery
     // re-record). The idempotent path collapses them to a single row.
-    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: null });
-    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: null });
+    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA });
+    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA });
 
     expect(await countRows(taskId, nodeId)).toBe(1);
   });
@@ -155,8 +157,8 @@ describe("node_history generation idempotency (#1618 Y)", () => {
 
     // Two executions of the SAME job hit the record path concurrently.
     await Promise.all([
-      nodeHistoryService.recordGenerationSuccess({ ...opts, media: null }),
-      nodeHistoryService.recordGenerationSuccess({ ...opts, media: null }),
+      nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA }),
+      nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA }),
     ]);
 
     expect(await countRows(taskId, nodeId)).toBe(1);
@@ -171,11 +173,11 @@ describe("node_history generation idempotency (#1618 Y)", () => {
 
     // Each live run persists its own output, so the two results differ and
     // only (task_id, node_id) ties them together.
-    const first = await nodeHistoryService.recordGenerationSuccess({ media: null,
+    const first = await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       ...base,
       content: "https://cdn.example.com/run-1.png",
     });
-    const second = await nodeHistoryService.recordGenerationSuccess({ media: null,
+    const second = await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       ...base,
       content: "https://cdn.example.com/run-2.png",
     });
@@ -198,8 +200,8 @@ describe("node_history generation idempotency (#1618 Y)", () => {
       taskId,
       metadata: { model: "test-model", params: {} },
     };
-    await nodeHistoryService.recordGenerationSuccess({ media: null, ...base, nodeId: nodeA });
-    await nodeHistoryService.recordGenerationSuccess({ media: null, ...base, nodeId: nodeB });
+    await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA, ...base, nodeId: nodeA });
+    await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA, ...base, nodeId: nodeB });
 
     expect(await countRows(taskId, nodeA)).toBe(1);
     expect(await countRows(taskId, nodeB)).toBe(1);
@@ -219,8 +221,8 @@ describe("node_history generation idempotency (#1618 Y)", () => {
       taskId,
       metadata: { model: "test-model", params: {} },
     };
-    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: null });
-    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: null });
+    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA });
+    await nodeHistoryService.recordGenerationSuccess({ ...opts, media: NO_MEDIA });
 
     const page = await nodeHistoryService.listByNode(projectId, nodeId, {
       status: "success",
@@ -240,7 +242,7 @@ describe("node_history generation idempotency (#1618 Y)", () => {
     const taskId = await createTask(userId, projectId);
     const nodeId = crypto.randomUUID();
 
-    await nodeHistoryService.recordGenerationSuccess({ media: null,
+    await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       projectId,
       nodeId,
       userId,
@@ -486,11 +488,11 @@ describe("one history row per content per node (#2186)", () => {
     const content = "https://cdn.example.com/same-result.png";
     const base = { projectId, nodeId, userId, content, metadata: { model: "m" } };
 
-    const first = await nodeHistoryService.recordGenerationSuccess({ media: null,
+    const first = await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       ...base,
       taskId: await createTask(userId, projectId),
     });
-    const second = await nodeHistoryService.recordGenerationSuccess({ media: null,
+    const second = await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       ...base,
       taskId: await createTask(userId, projectId),
     });
@@ -577,7 +579,7 @@ describe("one history row per content per node (#2186)", () => {
       userId,
       content,
     });
-    const generated = await nodeHistoryService.recordGenerationSuccess({ media: null,
+    const generated = await nodeHistoryService.recordGenerationSuccess({ media: NO_MEDIA,
       projectId,
       nodeId,
       userId,

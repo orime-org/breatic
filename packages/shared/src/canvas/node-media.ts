@@ -8,9 +8,6 @@
  * canvas when a reader restores a history row or replaces from the task list.
  * Both go through this function, so the same result leaves the node holding
  * the same fields whichever way it arrived.
- *
- * It ships as its own entry point, `@breatic/shared/canvas/node-media`, for
- * the reason `canvas/text-body.ts` gives: it takes a Yjs map.
  */
 
 import type * as Y from 'yjs';
