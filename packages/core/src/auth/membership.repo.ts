@@ -349,7 +349,7 @@ export async function getMembershipForUser(
   userId: string,
   tx?: DbTx,
 ): Promise<AccountMembershipReading> {
-  const tier = await honouredTier(userId, await readUserTier(userId, tx, false), tx);
+  const tier = await getHonouredTierForUser(userId, tx);
   return {
     tier,
     limits: tier === "enterprise" ? null : limitsFor(tier, { accountId: userId }),
@@ -476,8 +476,9 @@ export async function getLimitsForStudio(
  *
  * Call this when the thing being counted BELONGS TO THE ACCOUNT — today that
  * is exactly one ceiling, how many team studios this account administers.
- * {@link getMembershipForUser} answers the same question without the lock and is
- * for reads — showing somebody what their plan allows.
+ * {@link getMembershipForUser} reads the same tier without the lock, for showing
+ * somebody what their plan allows; it answers an enterprise account with no
+ * ceilings instead of refusing it.
  *
  * **Do not reach for this just because something is about to be created.** The
  * row a quota check locks is the row the COUNTED SET belongs to, which is not
