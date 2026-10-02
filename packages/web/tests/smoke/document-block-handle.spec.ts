@@ -301,6 +301,25 @@ test('the plus stands where the handle stands, at the handle’s size (#1097 A8)
   expect(Math.abs(await gapToFirstLine(page))).toBeLessThan(CENTRED_WITHIN);
 });
 
+test('the strip stays on the body\'s left edge for an indented row (#1097 A13)', async () => {
+  await openFreshDocument(page);
+  await typeLines(page, ['top', 'nested']);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+
+  const xOf = async (index: number, testId: string): Promise<number> => {
+    await page.mouse.move(5, 5);
+    await hoverRow(page, index);
+    const box = await page.getByTestId(testId).boundingBox();
+    if (box === null) throw new Error(`no ${testId} on row ${String(index)}`);
+    return box.x;
+  };
+  const top = await xOf(0, 'doc-block-handle');
+  // Row 1 is nested under row 0, row 2 is an empty paragraph nested beside it.
+  expect(await xOf(1, 'doc-block-handle')).toBe(top);
+  expect(await xOf(2, 'doc-block-plus')).toBe(top);
+});
+
 test('the menus listing block types are drawn at least 10rem wide (#1097 A11)', async () => {
   await openFreshDocument(page);
   await typeLines(page, ['words']);

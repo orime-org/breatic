@@ -14,6 +14,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  stripShiftFromRowLeft,
   NO_LIBRARY_OFFSET,
   stripOffsetFromRowTop,
 } from '@web/spaces/document/document-strip-alignment';
@@ -70,5 +71,15 @@ describe('where the strip stands', () => {
     // module's own comment. An empty middleware list is what leaves the
     // carrier on the container's top edge for the strip to measure from.
     expect(NO_LIBRARY_OFFSET.useFloatingOptions.middleware).toHaveLength(0);
+  });
+});
+
+describe('the strip stays on the body\'s left edge (#1097 A13)', () => {
+  it('cancels a nested row\'s indent', () => {
+    expect(stripShiftFromRowLeft(424, 400)).toBe(-24);
+  });
+
+  it('leaves a top-level row where it is', () => {
+    expect(stripShiftFromRowLeft(400, 400)).toBe(0);
   });
 });
