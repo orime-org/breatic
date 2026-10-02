@@ -296,6 +296,7 @@
         "unreachable": "Execution error",
         "generic": "Execution error"
       },
+      "failureTimes": "{line} ×{count}",
       "searching": "Searching for “{query}”",
       "searchingImages": "Looking for pictures of “{query}”",
       "checkingCanvas": "Checking what the canvas can make",
@@ -625,6 +626,7 @@
       "audioReadingDialogue": "Dialogue ({count})",
       "audioDialogueSummary": "Dialogue · {count}",
       "audioSpeakersNote": "Write each line as \"Name: line\"",
+      "audioSpeakerRow": "Speaker {n}",
       "audioLanguageSearch": "Search languages…",
       "audioOptionEmpty": "No matches",
       "param": {
@@ -881,6 +883,11 @@
       "success": "Password updated. Please sign in.",
       "failed": "Could not reset your password. Please try again.",
       "backToSignIn": "Back to sign in"
+    },
+    "terms": {
+      "notice": "By continuing, you agree to our {terms} and acknowledge our {privacy}.",
+      "termsLink": "Terms of Service",
+      "privacyLink": "Privacy Policy"
     }
   },
   "roleTag": {

@@ -104,7 +104,7 @@ afterEach(() => {
 });
 
 describe('发一条消息', () => {
-  it('走的是聊天端点，带上服务器要的那四个字段', async () => {
+  it('posts to the chat endpoint with exactly the fields the server reads', async () => {
     const panel = render();
     await waitFor(() => {
       expect(panel.result.current.status).toBe('ready');
@@ -128,6 +128,7 @@ describe('发一条消息', () => {
       project_id: 'p-1',
       conversation_id: 'c-1',
       attached_chips: [],
+      time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   });
 

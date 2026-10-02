@@ -16,7 +16,7 @@
  * against is the whole assembled request — see payload-size.test.ts.
  */
 
-import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, vi, afterAll, beforeAll, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
 import type { MessageData } from "@breatic/shared";
@@ -234,9 +234,17 @@ beforeEach(() => {
  */
 let fixedCost = 0;
 beforeAll(async () => {
+  // One instant for the whole file, so the reader's clock note that opens
+  // every turn's message is the same length in every assembly measured here.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-01T09:27:00Z"));
   contexts.queue = [context([])];
   await runTurn();
   fixedCost = await lastAssembledLength();
+});
+
+afterAll(() => {
+  vi.useRealTimers();
 });
 
 /**
@@ -258,10 +266,11 @@ async function lastAssembledLength(): Promise<number> {
   const sent = (
     await import("@server/agent/model-messages.js")
   ).toModelMessages(contexts.lastHistory);
+  const { readerClockNote } = await import("@server/agent/reader-clock.js");
   return measurePayload({
     instructions: resolved.instructions,
     tools: resolved.tools,
-    messages: [...sent, { role: "user", content: "hi" }],
+    messages: [...sent, { role: "user", content: `${readerClockNote(new Date(), undefined)}\n\nhi` }],
   });
 }
 

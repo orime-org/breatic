@@ -13,7 +13,7 @@
 | 准备项 | 要求 / 用途 |
 | --- | --- |
 | Git | 获取代码；也可以下载并解压完整源码 ZIP |
-| Node.js | 使用 22.x，与仓库 Docker 构建主版本一致 |
+| Node.js | 使用 24（24.15 或更新），即 `package.json` 里 `engines` 的范围 |
 | pnpm | **9.15.0**，与根目录 `packageManager` 一致；不要直接使用其他全局版本 |
 | Docker | Docker Engine / Docker Desktop，并带 Compose v2；必须已启动 |
 | FFmpeg | 本机需能运行 `ffmpeg` 和 `ffprobe`；后台视频工具使用它们，媒体容器内的 FFmpeg 不能代替本机安装 |
@@ -34,7 +34,7 @@ ffmpeg -version
 ffprobe -version
 ```
 
-应看到 Node `v22...`、pnpm `9.15.0`，且 `docker version` 同时有 Client 和 Server 信息。若全局安装提示权限错误，先修正 Node 安装目录权限或使用用户级 Node 版本管理器，再执行安装。
+应看到 Node `v24...` 且不低于 24.15、pnpm `9.15.0`，且 `docker version` 同时有 Client 和 Server 信息。若全局安装提示权限错误，先修正 Node 安装目录权限或使用用户级 Node 版本管理器，再执行安装。
 
 ## 2. 下载代码并准备环境文件
 

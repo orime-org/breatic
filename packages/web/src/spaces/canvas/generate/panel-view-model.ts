@@ -63,13 +63,6 @@ export interface GeneratePanelViewModel {
   /** Where the active model's pool takes each kind in this mode, and how many (#2156). */
   pool: ReferencePool;
   /**
-   * Whether the active model declares the `camera` param cluster on the wire
-   * (#1788) → the Camera control is usable. Gates whether the footer Camera
-   * button is RENDERED (hidden when false, not greyed — GeneratePanel renders
-   * it only when true). False when no model resolved.
-   */
-  cameraSupported: boolean;
-  /**
    * The node's focus crops (#1782) — standalone copies stored on the node
    * (`data.focusImages`, zero upstream relationship). Rendered as the rail's
    * focus entries and offered in the @ mention pool; a crop reaches the
@@ -221,11 +214,6 @@ export function buildGeneratePanelViewModel(input: {
     mentionTokens: mentionTokenMap,
     pool,
     focusImages,
-    // Capability gate (#1788): the model declares the `camera` cluster on the
-    // wire → it can take camera/lens/focal/aperture simulation. Edit variants
-    // omit it, so `params.camera` is undefined and the Camera control is hidden
-    // (rendered only when supported).
-    cameraSupported: current ? current.params.camera != null : false,
     modelEntry: current,
     nodeStatus: content?.status,
     mode,

@@ -733,4 +733,10 @@ describe("what the guide says about each surface", () => {
   it("says the camera switch starts off and gates the wheels", () => {
     expect(section("Inside the generation panel")).toMatch(/the wheels only apply while the switch reads/);
   });
+
+  it("puts the camera in the picture panel's settings popover, not on the bottom row (#2254)", () => {
+    const panel = section("Inside the generation panel");
+    expect(panel).not.toMatch(/camera icon/);
+    expect(panel).toContain(`a row named ${'"'}${t("canvas.generatePanel.camera")}${'"'}`);
+  });
 });

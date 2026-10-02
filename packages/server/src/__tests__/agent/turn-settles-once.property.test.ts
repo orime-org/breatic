@@ -19,10 +19,10 @@
  * part way through.
  *
  * The count of stored replies is stated as an equality rather than as "at
- * most one", because how many a turn owes follows from rules that hold for
- * any stream: one if it produced anything or failed, none otherwise. `≤ 1`
- * would be satisfied by a turn that stored nothing at all, which is the very
- * defect the failed-turn path exists to prevent.
+ * most one", because how many a turn owes follows from a rule that holds for
+ * any stream: exactly one. `≤ 1` would be satisfied by a turn that stored
+ * nothing at all, which is the very defect the failed-turn path exists to
+ * prevent.
  *
  * A turn the user stopped is not generated here. Stopping is driven by a
  * signal rather than by anything the model says, so it has no counterpart
@@ -143,23 +143,6 @@ const unitArbitrary = fc.oneof(
 );
 
 /**
- * What the rules say this turn owes, worked out independently of the code.
- *
- * A stored reply is owed when there is anything to say about the turn: prose
- * it wrote, a tool it called, or the mark a failure leaves. A turn that
- * produced none of those has nothing to record, and storing an empty message
- * for it would put a blank reply in the reader's conversation.
- *
- * Deriving the expectation rather than reading it off the run is what makes
- * the assertion a check instead of a restatement.
- * @param units - What the model did.
- * @returns How many stored replies the turn owes.
- */
-function storedRepliesOwed(units: readonly Unit[]): number {
-  return units.length > 0 ? 1 : 0;
-}
-
-/**
  * Run one turn over the given model output.
  * @param units - What the model does, in order.
  * @param letGoAfter - Read this many chunks and then walk away; read to the
@@ -208,7 +191,7 @@ describe("whatever the model says, the turn settles up once", () => {
           m.mockClear();
         });
         const { storedReplies, charges } = await settle(units);
-        expect(storedReplies).toBe(storedRepliesOwed(units));
+        expect(storedReplies).toBe(1);
         // At most one, not exactly one: a turn where no step finished spent
         // nothing and owes nothing. What must never happen is two.
         expect(charges).toBeLessThanOrEqual(1);

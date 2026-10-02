@@ -296,6 +296,7 @@
         "unreachable": "执行错误",
         "generic": "执行错误"
       },
+      "failureTimes": "{line} ×{count}",
       "searching": "正在搜索「{query}」",
       "searchingImages": "正在找「{query}」的图片",
       "checkingCanvas": "正在查画布能做什么",
@@ -613,6 +614,7 @@
       "audioReadingDialogue": "对话（{count} 人）",
       "audioDialogueSummary": "对话 · {count} 人",
       "audioSpeakersNote": "台词写成「名字：台词」",
+      "audioSpeakerRow": "说话人 {n}",
       "audioLanguageSearch": "搜索语言…",
       "audioOptionEmpty": "没有匹配项",
       "param": {
@@ -881,6 +883,11 @@
       "success": "密码已更新,请登录。",
       "failed": "密码重置失败,请重试。",
       "backToSignIn": "返回登录"
+    },
+    "terms": {
+      "notice": "继续即表示你同意{terms}，并已阅读{privacy}。",
+      "termsLink": "使用条款",
+      "privacyLink": "隐私政策"
     }
   },
   "roleTag": {

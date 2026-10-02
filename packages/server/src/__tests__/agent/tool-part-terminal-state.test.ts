@@ -39,10 +39,11 @@ const thisCase = vi.hoisted(() => ({
   modelCalls: 0,
   /** What the model produces from the second ask on, when a case sets it. */
   laterParts: undefined as unknown[] | undefined,
-  /** Stop the turn once the model has produced its parts, before any tool runs. */
-  stopAfterProducing: false,
-  /** Held back from the stream until after the stop above, when a case sets it. */
-  heldBack: undefined as unknown[] | undefined,
+  /**
+   * Stop the turn when a chunk of this type comes out of it, with the model's
+   * stream left open so the stop is the only way the model call ends.
+   */
+  stopOnChunk: undefined as string | undefined,
 }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
@@ -154,13 +155,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         return thisCase.parts as ModelStreamPart[];
       },
       undefined,
-      (controller) => {
-        // Every part is in the SDK's hands and no tool has run: the calls are
-        // sitting in the queue that the end of the model call executes.
-        if (thisCase.stopAfterProducing) thisCase.stopper?.abort();
-        const held = thisCase.heldBack as ModelStreamPart[] | undefined;
-        if (held !== undefined) for (const part of held) controller.enqueue(part);
-      }),
+      thisCase.stopOnChunk !== undefined),
   };
 });
 
@@ -253,8 +248,7 @@ beforeEach(() => {
   thisCase.stopper = undefined;
   thisCase.toolDoes = "answers";
   thisCase.parts = [];
-  thisCase.stopAfterProducing = false;
-  thisCase.heldBack = undefined;
+  thisCase.stopOnChunk = undefined;
 });
 
 describe("一次问用户的调用,参数没过 schema 的时候", () => {
@@ -442,17 +436,16 @@ describe("how a tool use is recorded when it does not come back", () => {
     thisCase.parts = [
       { type: "tool-input-start", id: "tc-2", toolName: "web_search" },
       { type: "tool-input-delta", id: "tc-2", delta: '{"url":"https://exa' },
-      FINISHED_ASKING_FOR_A_TOOL,
     ];
-    thisCase.stopAfterProducing = true;
+    thisCase.stopOnChunk = "tool-input-delta";
     const stopper = new AbortController();
     thisCase.stopper = stopper;
     addMessage.mockClear();
 
     await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
       const turn = await new MainAgent().chat("do something", stopper.signal);
-      for await (const _chunk of turn) {
-        // drained
+      for await (const chunk of turn) {
+        if (chunk.type === thisCase.stopOnChunk) stopper.abort();
       }
     });
 
@@ -493,16 +486,15 @@ describe("how a tool use is recorded when it does not come back", () => {
       { type: "text-delta", id: "t1", delta: "让我查一下" },
       { type: "text-end", id: "t1" },
     ];
-    thisCase.heldBack = [];
-    thisCase.stopAfterProducing = true;
+    thisCase.stopOnChunk = "text-delta";
     const stopper = new AbortController();
     thisCase.stopper = stopper;
     addMessage.mockClear();
 
     await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
       const turn = await new MainAgent().chat("do something", stopper.signal);
-      for await (const _chunk of turn) {
-        // drained
+      for await (const chunk of turn) {
+        if (chunk.type === thisCase.stopOnChunk) stopper.abort();
       }
     });
 

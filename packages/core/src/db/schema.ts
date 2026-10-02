@@ -66,6 +66,11 @@ export const users = pgTable(
     hashedPassword: varchar("hashed_password", { length: 255 }),
     emailVerified: boolean("email_verified").default(false).notNull(),
     googleId: varchar("google_id", { length: 255 }),
+    // The terms this account agreed to when it was created (0089, #302): the
+    // version from `config/legal.yaml` and the moment of creation. Accounts
+    // made before the columns existed hold null.
+    termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+    termsVersion: varchar("terms_version", { length: 32 }),
     // Membership tier (0052). One of the five in `MEMBERSHIP_TIERS`, and a
     // CHECK constraint in the database lists exactly those five — added by
     // hand in migration 0053, when the column gained a writer. It is not

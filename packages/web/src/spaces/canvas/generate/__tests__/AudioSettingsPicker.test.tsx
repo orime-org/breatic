@@ -476,7 +476,8 @@ describe('AudioSettingsPicker — a model that reads a dialogue (#2156, design �
     rerender(
       <AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{ _stand_in_on: true }} onChange={onChange} />,
     );
-    expect(screen.getByTestId('generate-audio-row-speakers')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-row-speakers-0')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-row-speakers-1')).toBeInTheDocument();
     expect(screen.queryByTestId('generate-audio-row-voice_id')).toBeNull();
   });
 
@@ -510,17 +511,83 @@ describe('AudioSettingsPicker — a model that reads a dialogue (#2156, design �
     expect(nameIn('voice_id')).toHaveClass('text-muted-foreground');
   });
 
-  it('edits exactly two speakers, with nothing to add or remove', () => {
+  const SPEAKER_VOICES = {
+    ...NO_VOICE,
+    list: { ...initialVoiceListState, status: 'ready' as const, voices: [{ id: 'Kore', name: 'Kore' }, { id: 'Puck', name: 'Puck' }] },
+  };
+  const DIALOGUE = { _stand_in_on: true, speakers: [{ speaker: 'Ana', voice: 'Kore' }, { speaker: '', voice: 'Puck' }] };
+
+  it('gives each speaker a row reading the name and the voice, with the script hint under them (#2256)', () => {
+    render(<AudioSettingsPicker voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    expect(screen.getByTestId('generate-audio-row-speakers-0')).toHaveTextContent('Speaker 1');
+    expect(screen.getByTestId('generate-audio-row-speakers-0')).toHaveTextContent('Ana · Kore');
+    expect(screen.getByTestId('generate-audio-row-speakers-1')).toHaveTextContent('Speaker 2');
+    expect(screen.getByTestId('generate-audio-row-speakers-1').textContent).not.toContain('·');
+    expect(screen.queryByTestId('generate-audio-row-speakers-2')).toBeNull();
+    expect(screen.getByText('Write each line as "Name: line"')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toHaveTextContent('Dialogue · 2');
+  });
+
+  it('opens a speaker with a name box over the same voice list, the speaker\'s voice chosen (#2256)', () => {
+    render(<AudioSettingsPicker voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-speakers-1'));
+    const panel = screen.getByTestId('generate-audio-second-panel');
+    expect(screen.getByTestId('generate-audio-speaker-name')).toHaveValue('');
+    expect(panel).toContainElement(screen.getByTestId('generate-voice-search'));
+    expect(screen.getByTestId('generate-voice-option-Puck')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('generate-voice-option-Kore')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('writes the name on Enter and on leaving the box, but not on the Enter that confirms an IME word (#2256)', () => {
+    const onChange = vi.fn();
+    render(<AudioSettingsPicker voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={onChange} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-speakers-1'));
+    const box = screen.getByTestId('generate-audio-speaker-name');
+    fireEvent.change(box, { target: { value: 'Ben' } });
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith({ speakers: [{ speaker: 'Ana', voice: 'Kore' }, { speaker: 'Ben', voice: 'Puck' }] });
+    onChange.mockClear();
+    fireEvent.change(box, { target: { value: 'Cy' } });
+    fireEvent.blur(box);
+    expect(onChange).toHaveBeenCalledWith({ speakers: [{ speaker: 'Ana', voice: 'Kore' }, { speaker: 'Cy', voice: 'Puck' }] });
+  });
+
+  it('picks a speaker\'s voice from the list and folds the panel (#2256)', () => {
+    const onChange = vi.fn();
+    render(<AudioSettingsPicker voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={onChange} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(screen.getByTestId('generate-audio-row-speakers-0'));
+    fireEvent.click(screen.getByTestId('generate-voice-option-Puck'));
+    expect(onChange).toHaveBeenCalledWith({ speakers: [{ speaker: 'Ana', voice: 'Puck' }, { speaker: '', voice: 'Puck' }] });
+    expect(screen.queryByTestId('generate-audio-second-panel')).toBeNull();
+  });
+
+  it('fills an unset dialogue to two speakers with no name and the first voice (#2256)', () => {
+    const onChange = vi.fn();
+    render(<AudioSettingsPicker voice={SPEAKER_VOICES} model={GEMINI} value={{ _stand_in_on: true }} onChange={onChange} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    expect(screen.getByTestId('generate-audio-row-speakers-0')).toHaveTextContent('Kore');
+    fireEvent.click(screen.getByTestId('generate-audio-row-speakers-1'));
+    fireEvent.click(screen.getByTestId('generate-voice-option-Puck'));
+    expect(onChange).toHaveBeenCalledWith({ speakers: [{ speaker: '', voice: 'Kore' }, { speaker: '', voice: 'Puck' }] });
+  });
+
+  it('clears the voice search when moving from one speaker to the other (#2256)', () => {
+    const onQueryChange = vi.fn();
     render(
-      <AudioSettingsPicker voice={NO_VOICE} model={GEMINI} value={{ _stand_in_on: true }} onChange={() => {}} />,
+      <AudioSettingsPicker voice={{ ...SPEAKER_VOICES, onQueryChange }} model={GEMINI} value={DIALOGUE} onChange={() => {}} />,
     );
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
-    fireEvent.click(screen.getByTestId('generate-audio-row-speakers'));
-    expect(screen.getByTestId('generate-param-speakers-0-speaker')).toBeInTheDocument();
-    expect(screen.getByTestId('generate-param-speakers-1-speaker')).toBeInTheDocument();
-    expect(screen.queryByTestId('generate-param-speakers-2-speaker')).toBeNull();
-    expect(screen.queryByTestId('generate-param-speakers-add')).toBeNull();
-    expect(screen.queryByTestId('generate-param-speakers-0-remove')).toBeNull();
+    fireEvent.click(screen.getByTestId('generate-audio-row-speakers-0'));
+    onQueryChange.mockClear();
+    fireEvent.click(screen.getByTestId('generate-audio-row-speakers-1'));
+    expect(onQueryChange).toHaveBeenCalledWith('');
+    expect(screen.getByTestId('generate-audio-speaker-name')).toHaveValue('');
   });
 
   it('prints a short choice the panel draws in place, the declared default where the node holds none', () => {

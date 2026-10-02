@@ -225,8 +225,11 @@ export function renderProductGuide(): string {
       `that opens to show the thinking; it reads ${quoted(t("chat.thinkingNow"))} while the thinking runs, and ` +
       `afterwards how long it took, such as ${quoted(t("chat.thinkingFor", { m: 0, s: 12 }))}, or ` +
       `${quoted(t("chat.thinking"))} when that is not known. While the reply runs, a line may name what it is ` +
-      `doing, such as ${quoted(t("chat.tool.readingGuide"))}; it goes when that step ends, and a step that ` +
-      `failed leaves no line of its own. ${quoted(t("chat.message.consolidating"))} can show while a ` +
+      `doing, such as ${quoted(t("chat.tool.readingGuide"))}; it goes when that step ends. A step that failed ` +
+      `while the reply carried on leaves a red line under the reply, such as ` +
+      `${quoted(t("chat.tool.failure.generic"))}; steps that failed the same way share one line, followed by ` +
+      `a multiplication sign and how many times. ` +
+      `${quoted(t("chat.message.consolidating"))} can show while a ` +
       "long conversation is tidied before the reply. Links in a reply open in a new tab. A code block shows a " +
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
       "circles in the text are sources: hovering one shows it and " +
@@ -505,8 +508,7 @@ export function renderProductGuide(): string {
     "The bottom row, left to right: the mode, named in English on every screen (for example Text to Image); the " +
       "model's maker icon and name; a pill showing the current settings (for example 1k · 1:1 · Medium, or " +
       `${quoted(t("canvas.generatePanel.videoParams"))} or ${quoted(t("canvas.generatePanel.audioSettings"))} ` +
-      "when there is nothing to list yet); on the " +
-      "picture panel, a camera icon when the model has camera settings; then at the right end the credit " +
+      "when there is nothing to list yet); then at the right end the credit " +
       "estimate, a star with a number that may read ≥ or ≤ a number, or so much per 1K characters, and is missing " +
       "when no estimate is available; and the round button with an upward arrow. On the picture panel a model " +
       `with no settings shows the pill as ${quoted(t("canvas.generatePanel.imageParams"))}; on the video and ` +
@@ -523,9 +525,12 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.focus"))}, with no source slots. Clicking the settings pill opens ` +
       "whichever of " +
       `${quoted(t("canvas.generatePanel.resolution"))} and ${quoted(t("canvas.generatePanel.ratio"))} the model ` +
-      "has, and any settings of the model's own, such as quality. The camera icon opens a panel headed " +
-      `${quoted(t("canvas.generatePanel.camera"))} with a switch, ${quoted(t("canvas.generatePanel.switchOff"))} ` +
-      `at first, and wheels for ${quoted(t("canvas.generatePanel.lens"))}, ` +
+      "has, and any settings of the model's own, such as quality. A model with camera settings adds, at the " +
+      `bottom of that popover, a row named ${quoted(t("canvas.generatePanel.camera"))}: it reads ` +
+      `${quoted(t("canvas.generatePanel.switchOff"))} while the camera is off and lists the four settings while ` +
+      "it is on, and the pill then ends in the same word. Clicking the row opens a panel beside the popover, " +
+      `headed ${quoted(t("canvas.generatePanel.camera"))} with a switch, ` +
+      `${quoted(t("canvas.generatePanel.switchOff"))} at first, and wheels for ${quoted(t("canvas.generatePanel.lens"))}, ` +
       `${quoted(t("canvas.generatePanel.focalLength"))} and ${quoted(t("canvas.generatePanel.aperture"))} as ` +
       "well as the camera itself; the wheels only apply while the switch reads " +
       `${quoted(t("canvas.generatePanel.switchOn"))}.`,
@@ -580,14 +585,19 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.voiceStabilityCreative"))}, ` +
       `${quoted(t("canvas.generatePanel.voiceStabilityNatural"))} and ` +
       `${quoted(t("canvas.generatePanel.voiceStabilityRobust"))} along it) when the model has them; a sound ` +
-      `effect's ${quoted(t("canvas.generatePanel.sfxDuration"))}; and any settings of the model's own. When ` +
+      `effect's ${quoted(t("canvas.generatePanel.sfxDuration"))}; and any settings of the model's own, where a ` +
+      `setting that is a list opens beside it with ${quoted(t("canvas.generatePanel.itemsAdd"))} for another ` +
+      "entry and an X on each to remove it. When " +
       `voices cannot be loaded the list shows ${quoted(t("canvas.generatePanel.voiceError"))} with ` +
       `${quoted(t("canvas.generatePanel.voiceRetry"))}.`,
     `On models that can read a dialogue, ${quoted(t("canvas.generatePanel.audioReadingMode"))} offers ` +
       `${quoted(t("canvas.generatePanel.audioReadingSingle"))} or a dialogue for a number of speakers. Picking ` +
-      "the dialogue turns the voice row into a speakers row: open it to give each speaker a name and a voice, " +
-      `with ${quoted(t("canvas.generatePanel.itemsAdd"))} for another and an X on each to remove it. Its note says ` +
-      `${quoted(t("canvas.generatePanel.audioSpeakersNote"))}: write the prompt that way. Pressing generate with ` +
+      "the dialogue turns the voice row into one row per speaker, " +
+      `${quoted(t("canvas.generatePanel.audioSpeakerRow", { n: 1 }))}, ` +
+      `${quoted(t("canvas.generatePanel.audioSpeakerRow", { n: 2 }))} and so on, each showing that speaker's ` +
+      "name and voice. Opening a speaker's row shows a box for the speaker's name at the top and the same voice " +
+      "list as the single voice below it; picking a voice sets it and closes the list. The note under the rows " +
+      `says ${quoted(t("canvas.generatePanel.audioSpeakersNote"))}: write the prompt that way. Pressing generate with ` +
       `the speakers not filled in shows ${quoted(t("canvas.generatePanel.refuseExecuteNoSpeakers"))}. On other ` +
       "models the pill shows only their settings. Picking a model that has just been taken away shows " +
       `${quoted(t("canvas.generatePanel.modelUnavailable"))} A sound node made by an older version of the ` +

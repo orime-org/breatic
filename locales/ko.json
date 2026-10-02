@@ -296,6 +296,7 @@
         "unreachable": "실행 오류",
         "generic": "실행 오류"
       },
+      "failureTimes": "{line} ×{count}",
       "searching": "“{query}” 검색 중",
       "searchingImages": "“{query}” 이미지 검색 중",
       "checkingCanvas": "캔버스로 만들 수 있는 것 확인 중",
@@ -613,6 +614,7 @@
       "audioReadingDialogue": "대화 ({count}인)",
       "audioDialogueSummary": "대화 · {count}인",
       "audioSpeakersNote": "대사는 \"이름: 대사\"로 적습니다",
+      "audioSpeakerRow": "화자 {n}",
       "audioLanguageSearch": "언어 검색…",
       "audioOptionEmpty": "일치하는 항목이 없습니다",
       "param": {
@@ -881,6 +883,11 @@
       "success": "비밀번호를 업데이트했습니다. 로그인해 주세요.",
       "failed": "비밀번호를 재설정하지 못했습니다. 다시 시도해 주세요.",
       "backToSignIn": "로그인으로 돌아가기"
+    },
+    "terms": {
+      "notice": "계속하면 {terms}에 동의하고 {privacy}을 확인한 것으로 간주됩니다.",
+      "termsLink": "이용약관",
+      "privacyLink": "개인정보처리방침"
     }
   },
   "roleTag": {
