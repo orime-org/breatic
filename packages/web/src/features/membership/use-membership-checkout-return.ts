@@ -72,8 +72,8 @@ export function useMembershipCheckoutReturn(): void {
         membership = await confirmMembershipCheckout(sessionId);
       } catch {
         // The purchase may well have gone through; what failed is confirming
-        // it. Saying it did not would be worse than saying nothing, and the
-        // panel answers the question properly when it is opened.
+        // it. Saying it did not would be worse than saying nothing. The
+        // webhook still records it, and the panel shows it once that arrives.
         toast.error(t('membership.loadFailed'));
         return;
       }

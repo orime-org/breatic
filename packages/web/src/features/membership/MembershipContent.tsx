@@ -518,7 +518,7 @@ export function MembershipLoading({
           </div>
           {/* A paid tier is followed by its billing line once loaded, so the
               bar stands in a row of that line's height; the free tier is
-              followed by nothing. */}
+              followed by nothing unless a first payment is still unsettled. */}
           {tier !== null && isComparableMembershipTier(tier) && tier !== 'base' ? (
             <div className='flex h-lh items-center text-sm' data-testid='current-tier-line'>
               <Skeleton

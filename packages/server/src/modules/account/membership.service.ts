@@ -10,9 +10,9 @@
  * itself against with their prices, and what its subscription is doing.
  *
  * It lives in a service rather than in the route because assembling that
- * answer is domain work — deciding which tiers are comparable, deciding what
- * an enterprise account gets instead of ceilings — and routes here translate
- * protocol only (prohibition #1).
+ * answer is domain work — deciding which tiers are comparable and what each
+ * costs on this deployment — and routes here translate protocol only
+ * (prohibition #1).
  *
  * Everything here is read from our own data (#307): the tier through the same
  * period-end check the ceilings use, so the panel never shows a tier the

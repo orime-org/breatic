@@ -11,9 +11,9 @@
  * whenever the account lands back on the free tier — and the ways that happens
  * do not share an event. `unpaid` and `incomplete_expired` arrive as
  * `customer.subscription.updated` and produce no `deleted` at all, and the
- * paths that store Stripe's answer to our own call produce no Stripe event
- * whatsoever. Hanging the notice on an event type would cover only some of
- * them.
+ * paths that store Stripe's answer to our own call settle the tier without
+ * handling any Stripe event. Hanging the notice on an event type would cover
+ * only some of them.
  *
  * So it hangs on the RESULT: the tier moved, and where it landed is `base`.
  */

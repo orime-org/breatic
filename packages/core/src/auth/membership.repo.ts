@@ -45,9 +45,9 @@
  * database once they are negotiable. Saying "there is one seam" would be
  * tidier and it would be false. Two other places already know that the
  * enterprise tier has no configured ceiling and answer null rather than let it
- * throw: `getStudioStorageQuota` below (#89) and the membership panel's read
- * (`server/src/modules/account/membership.service.ts`). All three change when
- * those ceilings become readable.
+ * throw, both in this file: `getStudioStorageQuota` (#89) and
+ * `getMembershipForUser`, which the membership panel reads. All three change
+ * when those ceilings become readable.
  *
  * Two lookups because the ratified rule has two halves. How many team studios
  * an account may administer is decided by that account's own tier. Everything

@@ -1100,7 +1100,8 @@ describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => 
 
   it('holds the billing line only for a tier that is paid for', () => {
     // A paid tier is followed by its next-charge line once loaded; the free
-    // tier is followed by nothing, so a row held for it would close up later.
+    // tier is followed by nothing unless a first payment is still unsettled,
+    // so a row held for it would close up later.
     openPending('pro');
     expect(screen.getByTestId('current-tier-line')).toContainElement(
       screen.getByTestId('current-tier-skeleton'),
@@ -1126,11 +1127,11 @@ describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => 
     ['enterprise', false],
     ['self_hosted', false],
   ] as const)(
-    'keeps the dialog one height from loading to loaded for %s: %s',
+    'pins the dialog to the priced-panel height for %s: %s',
     (tier, pinned) => {
-      // The loaded panel of a priced tier runs past the viewport cap, so the
-      // loading frame takes that height too and nothing moves when the answer
-      // lands. The two unpriced tiers are short either way.
+      // The loaded panel of a priced tier runs to about 1000px, so the loading
+      // frame takes that height (capped by the viewport) too and nothing moves
+      // when the answer lands. The two unpriced tiers are short either way.
       openPending(tier);
       const hasPin = screen.getByRole('dialog').className.includes(
         PINNED_PANEL_HEIGHT,

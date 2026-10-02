@@ -86,8 +86,8 @@ stale_after_days: 14
 # Five seconds is long enough for a healthy call (Stripe answers in well under
 # one) and short enough that no waiter notices. The callers that pass it also
 # turn retries off, for the same reason: each already has a better recovery
-# than retrying inside one request — a checkout return or a panel action is
-# settled later by the webhook for the same change, a re-check before checkout
+# than retrying inside one request — a checkout return is settled later by the
+# webhook for the same purchase, a re-check before checkout
 # runs again on the next press, and Stripe redelivers a failed webhook for
 # three days with exponential backoff.
 stripe_call_timeout_ms: 5000
