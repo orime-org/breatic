@@ -219,3 +219,18 @@ describe('the plus menu removes the line (A12)', () => {
     expect(screen.getByTestId('doc-block-plus-delete').getAttribute('aria-disabled')).toBe('true');
   });
 });
+
+describe('delete is greyed only on the document\'s only block (A12)', () => {
+  it('stays reachable on an empty line nested under the one top-level block', () => {
+    const editor = openOver([{ type: 'paragraph', content: 'x', children: [{ type: 'paragraph' }] }], 0);
+    side.block = (editor.document[0] as unknown as { children: unknown[] }).children[0];
+    render(<DocumentBlockHandle />);
+    fireEvent.click(screen.getByTestId('doc-block-plus'));
+
+    const remove = screen.getByTestId('doc-block-plus-delete');
+    expect(remove.getAttribute('aria-disabled')).toBeNull();
+    fireEvent.click(remove);
+
+    expect((editor.document[0] as unknown as { children: unknown[] }).children).toHaveLength(0);
+  });
+});
