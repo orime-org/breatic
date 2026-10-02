@@ -108,8 +108,9 @@ function anchor(doc: PMNode, pos: number): Anchored | undefined {
  * Where the reader's text selection is, if they have one; an end of a
  * selection that reaches past the first or last block is kept as that edge.
  *
- * A node selection is not read: the only one that can be current when a drag
- * starts is the one the drag itself just made.
+ * A node selection is not read: the one current when a drag starts is a
+ * divider the reader selected, which has no text place to hand back, and the
+ * drag then ends with a caret at the start of the moved row.
  * @param state - The editor's state.
  * @returns The place, or undefined when there is nothing to hand back.
  */

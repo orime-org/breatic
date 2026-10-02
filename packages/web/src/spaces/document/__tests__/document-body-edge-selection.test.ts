@@ -930,7 +930,7 @@ describe('Shift+Enter on a selection that reaches past the last block', () => {
   });
 });
 
-describe('an empty line at an end of the body, inside the selection', () => {
+describe('an empty line an end of the selection sits on, or one at an end of the body it reaches past', () => {
   /**
    * Whether each paragraph's element carries the empty-line mark's class, by its text.
    * @param view - The view.
@@ -1042,7 +1042,7 @@ describe('an empty line at an end of the body, inside the selection', () => {
     expect(drawn?.tagName).toBe('CODE');
   });
 
-  it('is left to the browser under a text selection', () => {
+  it('leaves an empty line unmarked when no end of a text range sits in it', () => {
     const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: '' }]);
     view.focus();
     const at = textStart(view, 'Above');

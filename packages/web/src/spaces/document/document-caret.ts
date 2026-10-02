@@ -54,9 +54,9 @@ export function documentCaretExtension(
           renderCollabCaret(user as CaretUser, clientId, resolveCollaboratorName),
         selectionBuilder: (user: unknown) =>
           renderCollabSelection(user as CaretUser),
-        // A selection reaching past the last block has an end between that
-        // block's content and its end (#124); collaborators get the nearest
-        // text there, which is where a caret can be drawn.
+        // A selection reaching past the first or last block has an end on an
+        // edge of the body, inside that block but outside its content (#124);
+        // collaborators get the nearest text there, where a caret can be drawn.
         getSelection: (state: EditorState) => textEnds(state.selection),
       }),
     ],

@@ -48,7 +48,7 @@ import {
 /**
  * How far the pointer can travel before a press is a drag rather than a click:
  * ProseMirror's own threshold (`LeftMouseDown.updateAllowDefault`,
- * `input.ts:452-456`), so both sides agree on which presses were clicks.
+ * `input.ts:442-446`), so both sides agree on which presses were clicks.
  */
 const CLICK_SLOP = 4;
 

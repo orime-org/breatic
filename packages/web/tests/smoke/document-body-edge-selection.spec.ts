@@ -608,7 +608,7 @@ test('a Shift+click inside a range past the last block keeps the longer part (A6
 
   await shiftClick(page, x30, first.y + first.height / 2);
 
-  // 30 characters lie before the click and about 15 after it: the start stays.
+  // 30 characters lie before the click and 22 after it: the start stays.
   const reading = await read(page);
   expect([reading.kind, reading.anchor, reading.head]).toEqual(['_TextSelection', made.anchor, made.anchor + 30]);
 });

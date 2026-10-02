@@ -273,7 +273,8 @@ class BodyEdgeSelectionClass extends Selection {
    * @param json - The JSON form.
    * @param json.anchor - The anchor.
    * @param json.head - The head.
-   * @returns The selection, or a whole-document selection when both ends are edges.
+   * @returns The selection: a caret beside the edge when both ends are the same
+   *   edge, the whole document when they are the two edges.
    * @throws {RangeError} When neither end is an edge of the body.
    */
   static fromJSON(doc: Node, json: { anchor: number; head: number }): Selection {

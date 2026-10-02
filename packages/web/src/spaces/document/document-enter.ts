@@ -335,9 +335,10 @@ export const documentEnterExtension = createExtension(() => {
         return handleQuotedEnter(editor);
       },
       // A line break belongs inside a line. A whole selected block has none to
-      // break, and neither has the end of a selection reaching past the last
-      // block, which is where the library puts the break: the key does
-      // nothing there, like every other key on a selected divider (#124, A5).
+      // break, and neither has the end of a selection reaching past the first or
+      // last block, which is where the library puts the break: the key does
+      // nothing there, the same as a typed character or an input method on a
+      // selected divider (#124, A5).
       // Left to the library, it nests an empty child holding a hard break
       // under the block and leaves the selection where it was.
       'Shift-Enter': ({ editor }: { editor: ListEditor }) => {

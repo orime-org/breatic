@@ -193,7 +193,8 @@ export interface BlockUnder {
  * rows tick, and which blocks a command writes to — and the two have to agree.
  * Read separately they can drift apart, and `runBlockType` reads both within
  * one call: it takes the positions from {@link blocksUnderFor} and asks
- * `tickedOver`, which reads the same function, whether the row it is about to
+ * `tickedOver`, which runs the same walk (`blocksOf`) with the same rule for
+ * dividers, whether the row it is about to
  * set is already on. This one is what the rows that are not about block type
  * read — alignment, and whether the menu has anything to act on.
  * @param doc - The document.

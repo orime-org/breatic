@@ -392,7 +392,7 @@ describe('a drag that starts past an end of the body', () => {
   });
 });
 
-describe('Shift+click past an end of the body', () => {
+describe('Shift+click on the body, and past either end of it', () => {
   it('extends from the current anchor to the end and keeps the browser out', () => {
     const view = open(ABOVE_DIVIDER).prosemirrorView!;
     const at = textStart(view, 'Above') + 1;
@@ -560,7 +560,8 @@ describe('Shift+click past an end of the body', () => {
 
   it('keeps the longer part of a range when the Shift+click lands inside it', () => {
     // Forty characters, then five one-letter lines: the click after the 30th
-    // character leaves 30 characters before it and about 15 after it.
+    // character leaves 30 characters before it and 22 after it (ten x, five
+    // lines at two each, the divider at two).
     const lines = ['a', 'b', 'c', 'd', 'e'].map((content) => ({ type: 'paragraph', content }));
     const view = open([{ type: 'paragraph', content: 'x'.repeat(40) }, ...lines, { type: 'divider' }]).prosemirrorView!;
     const start = textStart(view, 'x'.repeat(40));
