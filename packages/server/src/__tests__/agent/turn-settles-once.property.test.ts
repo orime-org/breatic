@@ -143,21 +143,6 @@ const unitArbitrary = fc.oneof(
 );
 
 /**
- * What the rules say this turn owes, worked out independently of the code.
- *
- * Every turn read to the end owes one stored reply, whatever the model did. A
- * turn that produced nothing is stored as a reply with no parts, which is what
- * a reopened conversation draws "No reply this turn" from.
- *
- * Deriving the expectation rather than reading it off the run is what makes
- * the assertion a check instead of a restatement.
- * @returns How many stored replies the turn owes.
- */
-function storedRepliesOwed(): number {
-  return 1;
-}
-
-/**
  * Run one turn over the given model output.
  * @param units - What the model does, in order.
  * @param letGoAfter - Read this many chunks and then walk away; read to the
@@ -206,7 +191,7 @@ describe("whatever the model says, the turn settles up once", () => {
           m.mockClear();
         });
         const { storedReplies, charges } = await settle(units);
-        expect(storedReplies).toBe(storedRepliesOwed());
+        expect(storedReplies).toBe(1);
         // At most one, not exactly one: a turn where no step finished spent
         // nothing and owes nothing. What must never happen is two.
         expect(charges).toBeLessThanOrEqual(1);

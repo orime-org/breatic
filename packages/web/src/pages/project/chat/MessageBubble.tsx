@@ -182,11 +182,13 @@ export const MessageBubble = React.memo(function MessageBubble({
             : message.proposals.map((proposal, i) => (
               <ProposalCard key={`${proposal.rationale}-${String(i)}`} proposal={proposal} />
             ))}
+          {/* Each step that failed while the turn carried on, after what the
+            turn produced and before how it ended. */}
+          {isUser ? null : <FailedSteps message={message} />}
           {/* How the turn ended goes last, after everything it produced: this
             is the line that says there is no more, so nothing may follow it.
             Each is a paragraph's distance from what it follows, which is what
             separates any two blocks in this scope. */}
-          {isUser ? null : <FailedSteps message={message} />}
           {isUser ? null : <TurnEnding message={message} />}
         </div>
         {/* Offered on a settled message only. A reply still arriving has

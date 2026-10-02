@@ -40,7 +40,7 @@ export interface ToolCall {
    *
    * Never the reason itself. That names hosts, statuses and, for a refused
    * fetch, addresses inside the network; it goes to the model, which is what
-   * acts on it, and the user learns what happened from the reply.
+   * acts on it. The reader is shown the line this key names, under the reply.
    */
   failureKey?: string;
   /**
@@ -190,8 +190,8 @@ export interface ChatMessage {
    * Read off the mark the server writes, never off the tool names: which
    * tools block is a list in `@breatic/domain`, which this package may not
    * import. Without it this ending is an empty reply, which is also what a
-   * turn that produced nothing looks like -- and that one is drawn as a
-   * failure with a retry.
+   * turn that produced nothing looks like -- and that one is drawn as the
+   * neutral "No reply this turn" line.
    *
    * Only ever `true`; its absence is the ordinary case.
    */

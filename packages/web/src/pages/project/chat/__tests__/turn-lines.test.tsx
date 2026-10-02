@@ -260,7 +260,7 @@ describe('the line a failed tool step leaves', () => {
     expect(step.compareDocumentPosition(ending) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('gives each failed step a line of its own, in the order they ran', () => {
+  it('gives each failed step a line of its own', () => {
     render(
       <MessageBubble
         message={{
