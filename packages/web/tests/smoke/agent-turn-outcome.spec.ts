@@ -123,7 +123,7 @@ test('calls turned away to steer the model draw no line, and only one question i
       toolCallId: 'bad',
       toolName: 'web_search',
       input: { query: 5 },
-      errorText: 'chat.tool.failure.generic',
+      errorText: 'turned_away',
     },
     { type: 'tool-output-error', toolCallId: 'bad', errorText: 'turned_away' },
     { type: 'tool-input-available', toolCallId: 'm2', toolName: 'understand_media', input: { url: 'https://example.com/b.mp4' } },
