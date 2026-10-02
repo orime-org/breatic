@@ -14,6 +14,7 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
+import { refreshCurrentUser } from '@web/stores/current-user';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   holdsActionableSubscription,
@@ -46,6 +47,20 @@ export interface SubscriptionActions {
   busy: boolean;
   /** The one that is running, so its own control can say so. */
   pending: PendingSubscriptionAction | null;
+}
+
+/**
+ * Whether a failed request was refused as a conflict with the account's state.
+ * @param err - What the request threw.
+ * @returns Whether the server answered 409.
+ */
+function isConflict(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'status' in err &&
+    (err as { status?: unknown }).status === 409
+  );
 }
 
 /**
@@ -105,11 +120,18 @@ export function useSubscriptionActions(
         // message, no explanation, the button simply came back — and the
         // reader had no way to tell a refusal from a dead app.
         toast.error(serverMessage(err, t('membership.actionFailed')));
+        // A conflict means the account is not in the state this panel showed.
+        // Before refusing a checkout the server may have asked Stripe and
+        // stored a subscription it found still live, so the panel and the
+        // avatar menu re-read rather than keep offering what it refused.
+        if (isConflict(err)) {
+          await Promise.all([refreshPanel(), refreshCurrentUser()]);
+        }
       } finally {
         if (!leaving) setPending(null);
       }
     },
-    [t],
+    [t, refreshPanel],
   );
 
   const choose = React.useCallback(
