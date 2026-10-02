@@ -59,6 +59,9 @@ for (const width of [1280, 1920]) {
       const chevronRight = (await row.locator('svg').boundingBox())!;
       const switchBox = (await page.getByTestId('generate-param-enable_web_search-toggle').boundingBox())!;
       expect(Math.round(chevronRight.x + chevronRight.width)).toBe(Math.round(switchBox.x + switchBox.width));
+      // The value sits against the chevron, the way the switches' state words sit against the switches.
+      const valueBox = (await row.getByText('Off', { exact: true }).boundingBox())!;
+      expect(Math.round(chevronRight.x - (valueBox.x + valueBox.width))).toBeLessThanOrEqual(10);
 
       await row.click();
       const panel = page.getByTestId('generate-camera-panel');

@@ -111,7 +111,7 @@ export function SecondPanelRow({
       </span>
       <span
         className={cn(
-          'truncate text-left text-xs',
+          'truncate text-right text-xs',
           valueMuted && !open && 'text-muted-foreground group-hover:text-foreground',
         )}
       >
