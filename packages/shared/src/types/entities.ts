@@ -370,6 +370,16 @@ export interface NodeHistoryEntity {
   errorMessage: string | null;
   taskId: string | null;
   metadata: Record<string, unknown>;
+  /**
+   * The media numbers the content landed on the node with (#2184), under the
+   * node's own field names. Null when the medium has no such number, and on
+   * rows written before they were kept.
+   */
+  mediaWidth: number | null;
+  mediaHeight: number | null;
+  duration: number | null;
+  mimeType: string | null;
+  size: number | null;
   createdAt: Date;
 }
 

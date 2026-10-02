@@ -46,6 +46,11 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
     nodeHistoryId: null,
     content: null,
     coverUrl: null,
+    mediaWidth: null,
+    mediaHeight: null,
+    duration: null,
+    mimeType: null,
+    size: null,
     ...over,
   };
 }

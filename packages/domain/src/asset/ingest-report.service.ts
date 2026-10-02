@@ -243,52 +243,52 @@ function hasNode(grant: UploadGrant): grant is GrantWithNode {
 }
 
 /**
- * What the node is handed when an upload settles as done.
- *
- * Every field spelled out rather than defaulted, so a caller that reaches a
- * new way of settling has to say what the node shows — the three numbers went
- * out as null from every path for as long as they had a default.
+ * What the node is handed when an upload settles as done, read off the
+ * registered row. Every field is spelled out, so a new way of settling has to
+ * say what the node shows; the history row keeps the same object (#2184).
+ * @param row - The registered row.
+ * @param row.fileUrl - Its canonical URL.
+ * @param row.width - Intrinsic pixel width, null when the medium has none.
+ * @param row.height - Intrinsic pixel height, null when the medium has none.
+ * @param row.durationSeconds - Playing time, null when the medium has none.
+ * @param row.mimeType - What the ledger judged it to be off the bytes.
+ * @param row.sizeBytes - What the ledger counted the bytes at.
+ * @param coverUrl - The video's cover, once one is registered against the row.
+ * @returns The result as the node and the history row hold it.
  */
-interface SettledAsset {
-  /** The registered row's canonical URL. */
-  fileUrl: string;
-  /** The video's cover, once one is registered against the row. */
-  coverUrl: string | null;
-  width: number | null;
-  height: number | null;
-  durationSeconds: number | null;
-  /** What the ledger judged this file to be, off the bytes that landed. */
-  mimeType: string | null;
-  /** What the ledger counted the bytes at. */
-  sizeBytes: number | null;
+function resultOf(
+  row: Pick<StudioAssetEntity, "fileUrl" | "width" | "height" | "durationSeconds" | "mimeType" | "sizeBytes">,
+  coverUrl: string | null,
+): NodeTaskResult {
+  return {
+    content: row.fileUrl,
+    coverUrl,
+    width: row.width,
+    height: row.height,
+    duration: row.durationSeconds,
+    mimeType: row.mimeType,
+    size: row.sizeBytes,
+  };
 }
 
 /**
  * Tell the node this upload succeeded, and hand it what to draw.
  * @param grant - The grant, which carries where the node lives.
- * @param settled - The registered row, as the node needs to see it.
+ * @param result - What the node is handed.
  * @param nodeHistoryId - The history row holding the result, when one was
  *   written on this pass.
  * @returns Whether publishing the node's numbers failed.
  */
 async function announceSuccess(
   grant: UploadGrant,
-  settled: SettledAsset,
+  result: NodeTaskResult,
   nodeHistoryId?: string,
 ): Promise<boolean> {
   if (!hasNode(grant)) return false;
   return settleUploadTask(grant, {
     outcome: "done",
     ...(nodeHistoryId !== undefined && { nodeHistoryId }),
-    result: {
-      content: settled.fileUrl,
-      coverUrl: settled.coverUrl,
-      width: settled.width,
-      height: settled.height,
-      duration: settled.durationSeconds,
-      mimeType: settled.mimeType,
-      size: settled.sizeBytes,
-    },
+    result,
   });
 }
 
@@ -565,15 +565,10 @@ export async function applyIngestReport(
     // is about to remove.
     const existingCover =
       settledKind === "video" ? await assetRepo.findCoverOf(existing.id) : null;
-    const countsPublishFailed = await announceSuccess(grant, {
-      fileUrl,
-      coverUrl: existingCover?.fileUrl ?? null,
-      width: existing.width,
-      height: existing.height,
-      durationSeconds: existing.durationSeconds,
-      mimeType: existing.mimeType,
-      sizeBytes: existing.sizeBytes,
-    });
+    const countsPublishFailed = await announceSuccess(
+      grant,
+      resultOf(existing, existingCover?.fileUrl ?? null),
+    );
     return {
       status: "already_registered",
       assetId: existing.id,
@@ -671,6 +666,7 @@ export async function applyIngestReport(
   // the reclaim job's list rather than lost (storage rule ①).
   const settled = deduped ? await settleDedupedCover(asset, cover) : null;
   const coverUrl = settled === null ? cover.url : settled.url;
+  const result = resultOf(asset, coverUrl);
 
   // Whether the node history row is new. It gates the feed write below, which
   // has no key of its own. A retry does reach here — the grant is consumed at
@@ -695,6 +691,7 @@ export async function applyIngestReport(
       // restoring an entry writes what it holds back onto the node — so an
       // entry with no thumbnail takes the node's cover away when restored.
       ...(coverUrl !== null && { thumbnailUrl: coverUrl }),
+      media: result,
     });
     historyIsNew = recorded.inserted;
     historyEntryId = recorded.entry.id;
@@ -725,19 +722,7 @@ export async function applyIngestReport(
     activityAppendFailed = !appended.ok;
   }
 
-  const countsPublishFailed = await announceSuccess(
-    grant,
-    {
-      fileUrl: asset.fileUrl,
-      coverUrl,
-      width: asset.width,
-      height: asset.height,
-      durationSeconds: asset.durationSeconds,
-      mimeType: asset.mimeType,
-      sizeBytes: asset.sizeBytes,
-    },
-    historyEntryId,
-  );
+  const countsPublishFailed = await announceSuccess(grant, result, historyEntryId);
 
   // Last, because the grant is what tells a repeat report from a first one: an
   // interruption anywhere above leaves it unconsumed, and the retry runs the

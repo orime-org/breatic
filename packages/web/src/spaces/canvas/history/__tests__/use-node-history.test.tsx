@@ -64,6 +64,11 @@ function e(id: string, content: string | null = `${id}.png`): NodeHistoryEntry {
     thumbnailUrl: null,
     errorMessage: null,
     metadata: {},
+    mediaWidth: null,
+    mediaHeight: null,
+    duration: null,
+    mimeType: null,
+    size: null,
     createdAt: '2026-07-21T00:00:00.000Z',
   };
 }

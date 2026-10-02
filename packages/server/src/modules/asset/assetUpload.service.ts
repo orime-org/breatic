@@ -25,6 +25,7 @@ import {
 } from "@breatic/domain";
 import { getStreamRedis, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
+import type { NodeTaskResult } from "@breatic/shared";
 
 /** A dedup hit: the canonical asset the client should reuse. */
 export interface DedupHit {
@@ -138,6 +139,17 @@ export async function settleDedupHit(params: {
     params.hit.kind === "video"
       ? await assetRepo.findCoverOf(params.hit.assetId)
       : null;
+  // What the node is handed, and what the history row keeps so a restore can
+  // hand it back (#2184).
+  const result: NodeTaskResult = {
+    content: params.hit.fileUrl,
+    coverUrl: cover?.fileUrl ?? null,
+    width: params.hit.width,
+    height: params.hit.height,
+    duration: params.hit.durationSeconds,
+    mimeType: params.hit.mimeType,
+    size: params.hit.sizeBytes,
+  };
 
   // The row the task points at, so the list can read this hit's result back
   // and offer Replace on it the way it does for every other finished task
@@ -153,6 +165,7 @@ export async function settleDedupHit(params: {
         content: params.hit.fileUrl,
         ...(cover !== null && { thumbnailUrl: cover.fileUrl }),
         metadata: params.metadata,
+        media: result,
       });
       historyEntryId = recorded.entry.id;
     } catch (err) {
@@ -190,15 +203,7 @@ export async function settleDedupHit(params: {
     canvasSpaceDocName(params.projectId, params.spaceId),
     params.nodeId,
     settled.counts,
-    {
-      content: params.hit.fileUrl,
-      coverUrl: cover?.fileUrl ?? null,
-      width: params.hit.width,
-      height: params.hit.height,
-      duration: params.hit.durationSeconds,
-      mimeType: params.hit.mimeType,
-      size: params.hit.sizeBytes,
-    },
+    result,
   );
 }
 

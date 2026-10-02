@@ -66,6 +66,7 @@ export type {
   CanvasNodeFields,
   NodeTaskCounts,
   NodeTaskResult,
+  NodeMediaNumbers,
   NodeTaskCountsEvent,
   NodeEvent,
 } from "@shared/types/canvas-node.js";

@@ -228,6 +228,11 @@ describe('NodeTaskPanelContainer, the clock', () => {
         nodeHistoryId: null,
         content: null,
         coverUrl: null,
+        mediaWidth: null,
+        mediaHeight: null,
+        duration: null,
+        mimeType: null,
+        size: null,
       },
     ]);
     mount(nodes(1));
