@@ -87,19 +87,21 @@ async function readSituation(
 }
 
 /**
- * Stores a subscription as Stripe described it in answer to one of the
- * panel's own actions, so the next read shows it without waiting for the
- * webhook (#307 A10).
+ * Stores a subscription as Stripe described it when we asked, so the next
+ * read shows it without waiting for the webhook (#307 A5, A10): the checkout
+ * return, the panel's own actions, and the re-check before a second checkout.
  *
  * An answer that cannot be read against our price list is not written: the
  * webhook carries the same change and answers that disagreement in its own
- * way. The action itself already happened at Stripe, so the caller still
- * reports it.
+ * way. Each caller decides what not storing means for its own answer.
  * @param input - What to store.
  * @param input.userId - The account.
  * @param input.subscription - Stripe's answer, with `latest_invoice` expanded.
  * @param input.observedAt - When Stripe was asked.
  * @param input.referenceId - Identifies the change in the tier ledger.
+ * @param input.logContext - Fields the caller adds to the log line when the
+ *   answer cannot be read.
+ * @returns The snapshot stored, or null when the answer was not stored.
  * @throws {Error} if the database fails.
  */
 async function storeAnswer(input: {
@@ -107,20 +109,23 @@ async function storeAnswer(input: {
   subscription: Stripe.Subscription;
   observedAt: Date;
   referenceId: string;
-}): Promise<void> {
+  logContext?: Record<string, unknown>;
+}): Promise<SubscriptionWrite | null> {
   const read = readStripeSubscription(input.subscription, input.userId, input.observedAt);
   if (!read.ok) {
     logger.error(
       {
+        ...input.logContext,
         userId: input.userId,
         stripeSubscriptionId: input.subscription.id,
         reason: read.reason,
       },
-      "subscription_action_answer_unreadable",
+      "subscription_answer_unreadable",
     );
-    return;
+    return null;
   }
   await writeSnapshot(input.userId, read.write, input.referenceId);
+  return read.write;
 }
 
 /**
@@ -307,16 +312,14 @@ export async function confirmCheckout(
     throw new AppError(503, t("server.membership.checkout_unconfirmed"));
   }
 
-  const read = readStripeSubscription(subscription, userId, observedAt);
-  if (!read.ok) {
-    logger.error(
-      { userId, sessionId, stripeSubscriptionId: subscription.id, reason: read.reason },
-      "subscription_checkout_unreadable",
-    );
-    throw new AppError(503, t("server.membership.checkout_unconfirmed"));
-  }
-
-  await writeSnapshot(userId, read.write, `checkout:${sessionId}`);
+  const stored = await storeAnswer({
+    userId,
+    subscription,
+    observedAt,
+    referenceId: `checkout:${sessionId}`,
+    logContext: { sessionId },
+  });
+  if (stored === null) throw new AppError(503, t("server.membership.checkout_unconfirmed"));
 }
 
 /**
@@ -591,20 +594,20 @@ export async function changePlan(input: {
     },
   );
 
-  const read = readStripeSubscription(updated, input.userId, changedAt);
-  if (!read.ok) {
+  const stored = await storeAnswer({
+    userId: input.userId,
+    subscription: updated,
+    observedAt: changedAt,
+    referenceId: `action:change:${record.stripeSubscriptionId}`,
+  });
+  if (stored === null) {
     // Stripe took the change and what came back does not agree with our price
     // list. Reporting "applied" here is the one answer that cannot be taken
     // back: the reader is told their plan changed while the row still holds
     // the old one, and nothing later contradicts it.
     throw new AppError(500, t("server.membership.change_unconfirmed"));
   }
-  const pending = read.write.hasPendingUpdate;
-  await writeSnapshot(
-    input.userId,
-    read.write,
-    `action:change:${record.stripeSubscriptionId}`,
-  );
+  const pending = stored.hasPendingUpdate;
 
   if (situation === "cancelling") {
     const withdrawnAt = new Date();
@@ -624,7 +627,7 @@ export async function changePlan(input: {
 
   return {
     status: pending ? "pendingPayment" : "applied",
-    payableInvoiceUrl: read.write.payableInvoiceUrl,
+    payableInvoiceUrl: stored.payableInvoiceUrl,
   };
 }
 
