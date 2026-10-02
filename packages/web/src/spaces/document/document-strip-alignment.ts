@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Where the strip sits against the row it points at (A2).
+ * Where the strip sits against the row it points at: vertically on the row's
+ * first line (A2), horizontally on the body's left edge (#1097 A13, see
+ * `stripPlacement`).
  *
  * The strip is centred on the row's FIRST VISIBLE LINE, not on the row: a
  * heading is taller than the strip and a wrapped paragraph is several lines
@@ -22,31 +24,64 @@
  * −6.94 on level two, −8.48 on level three and +1.81 / +2.22 on paragraphs —
  * the reader's report was that it sat above the line on a heading. The table is
  * replaced rather than adjusted: `floatingUIOptions.useFloatingOptions` is
- * spread after the library's defaults (`SideMenuController.tsx:120-129`), so an
- * empty `middleware` leaves the carrier exactly on the row's top edge and the
- * strip does the rest itself.
+ * spread after the library's defaults (`SideMenuController.tsx:120-129`), so a
+ * `middleware` list without it leaves the carrier exactly on the row's top
+ * edge and the strip does the rest itself.
  *
- * WHY THE STRIP AND NOT THE CARRIER. The carrier's position reference is a
+ * WHY THE STRIP AND NOT THE CARRIER, VERTICALLY. The carrier's position reference is a
  * VIRTUAL element — `GenericPopover` hands floating-ui a cached
  * `getBoundingClientRect` plus `contextElement`, the block container
  * (`GenericPopover.tsx:196-202`). A line box can only be measured on the
  * element the words are in, which is a descendant of that container and is
  * looked up by id anyway (a type change replaces it, see below), so the row is
- * reached here by its id and the strip shifts itself.
+ * reached here by its id and the strip shifts itself down. Sideways the carrier
+ * itself moves (`stripPlacement`): that needs no line box, only the body's
+ * edge.
  *
  * Measuring the line rather than tabulating it also means nothing here has to
  * be revisited when the type scale moves, when a block type is added, or when
  * a reader's own font size differs.
  */
 
+import type { Middleware } from '@floating-ui/react';
 import * as React from 'react';
 
-/** The library's table of per-type offsets, replaced by this module. */
-export const NO_LIBRARY_OFFSET: {
-  useFloatingOptions: { middleware: [] };
-} = {
-  useFloatingOptions: { middleware: [] },
-};
+/**
+ * The carrier's placement: the library's left-start against the row, with its
+ * table of per-type offsets replaced by one sideways move.
+ *
+ * The move puts the carrier on the body's left edge whatever the row's
+ * nesting (#1097 A13, user 2026-10-01): the reference is the row's own
+ * container, which a nested row has indented with it. The body's edge is the
+ * root block group, the element the library itself takes the side menu's x
+ * from (`SideMenu.ts:257-266`). Moving the carrier rather than the strip
+ * inside it leaves nothing of it in the indent, where a click has to reach
+ * the row; and the x comes from the same reference rect floating-ui placed
+ * with, so a stale reference after a move still lands on the edge.
+ * @param bodyOf - Reads the editable element, undefined before it mounts.
+ * @returns The options to hand `SideMenuController`.
+ */
+export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
+  useFloatingOptions: { middleware: Middleware[] };
+} {
+  return {
+    useFloatingOptions: {
+      middleware: [
+        {
+          name: 'bodyEdge',
+          // Both lefts are read in viewport coordinates: floating-ui's own
+          // `rects` are in the carrier's offset-parent coordinates.
+          fn: ({ x, elements }) => {
+            const root = bodyOf()?.firstElementChild;
+            if (root == null) return {};
+            const rowLeft = elements.reference.getBoundingClientRect().left;
+            return { x: x + root.getBoundingClientRect().left - rowLeft };
+          },
+        },
+      ],
+    },
+  };
+}
 
 /**
  * How far down from where the carrier was placed the strip has to go.
@@ -110,7 +145,7 @@ function firstLineOf(row: Element): DOMRect | undefined {
  * behind whenever the two land in the same frame.
  * @param blockId - The row the strip points at, or undefined while none.
  * @param body - The editable element the row lives in.
- * @returns The ref to put on the strip, and the shift to apply to it.
+ * @returns The ref to put on the strip, and the vertical shift to apply to it.
  */
 export function useStripOnFirstLine(
   blockId: string | undefined,
@@ -181,10 +216,11 @@ export function useStripOnFirstLine(
           setOffset(0);
           return;
         }
+        const box = container.getBoundingClientRect();
         setOffset(
           stripOffsetFromRowTop(
             firstLineOf(row),
-            container.getBoundingClientRect().top,
+            box.top,
             strip.getBoundingClientRect().height,
           ),
         );

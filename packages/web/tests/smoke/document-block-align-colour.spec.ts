@@ -45,7 +45,7 @@ const ROW = `${EDITOR} .bn-block-content`;
 const ROWS = {
   paragraph: 0,
   listItem: 1,
-  emptyParagraph: 2,
+  emptyHeading: 2,
   codeBlock: 3,
 } as const;
 
@@ -79,6 +79,21 @@ async function openBody(p: Page): Promise<void> {
     'data-content-type',
     'codeBlock',
   );
+  // An empty paragraph shows the plus rather than the handle (#1097), so the
+  // row with no words in it is made an empty heading, off that plus.
+  const empty = await p.locator(ROW).nth(ROWS.emptyHeading).boundingBox();
+  if (empty === null) throw new Error('the empty row has no box');
+  await p.mouse.move(empty.x + 40, empty.y + 11);
+  await p.getByTestId('doc-block-plus').click();
+  await p.getByTestId('doc-block-insert-heading-2').click();
+  await expect(p.locator(ROW).nth(ROWS.emptyHeading)).toHaveAttribute(
+    'data-content-type',
+    'heading',
+  );
+  // The plus leaves the caret in the line it filled; the body is handed over
+  // with it back in the code block, where typing left it before.
+  await p.locator(ROW).nth(ROWS.codeBlock).click();
+  await expect(p.locator(EDITOR)).toBeFocused();
 }
 
 /**
@@ -182,13 +197,13 @@ test('each row says which of the two commands can reach it', async () => {
     await page.keyboard.press('Escape');
   }
 
-  // [alignment greyed, colour greyed]. An empty paragraph can be centred —
+  // [alignment greyed, colour greyed]. An empty heading can be centred —
   // the caret goes with it — but holds no run to colour; a code block takes
   // no marks at all, and alignment reaches neither it nor a list item.
   expect(reach).toEqual({
     paragraph: [false, false],
     listItem: [true, false],
-    emptyParagraph: [false, true],
+    emptyHeading: [false, true],
     codeBlock: [true, true],
   });
 });

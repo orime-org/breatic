@@ -1172,6 +1172,7 @@
       },
       "blockHandle": {
         "dragTip": "Drag to move · click for menu",
+        "insertHere": "Insert here",
         "duplicate": "Duplicate block",
         "insertBelow": "Insert below",
         "delete": "Delete block"

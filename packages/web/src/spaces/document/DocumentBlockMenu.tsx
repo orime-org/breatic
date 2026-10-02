@@ -13,7 +13,6 @@
  */
 
 import * as React from 'react';
-import { Minus } from 'lucide-react';
 import type { Selection } from '@tiptap/pm/state';
 
 import {
@@ -24,7 +23,6 @@ import {
   DropdownMenuSubTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
-import { UNAVAILABLE_KEYBOARD_FOCUS_ONLY } from '@web/spaces/document/document-unavailable-control';
 import {
   BLOCK_MENU_ROWS,
   type BlockMenuRow,
@@ -52,7 +50,12 @@ import {
 import { DocumentColourPanel } from '@web/spaces/document/document-colour-panel';
 import { MenuTick } from '@web/spaces/document/document-menu-tick';
 import {
-  DIMENSION_OF_ROW,
+  TYPE_MENU_WIDTH,
+  itemWithin,
+  rulesAfter,
+  whenOutOfReach,
+} from '@web/spaces/document/document-block-menu-parts';
+import {
   blocksUnder,
   blocksUnderFor,
   tickedOver,
@@ -60,7 +63,6 @@ import {
 } from '@web/spaces/document/document-block-ticks';
 import {
   BLOCK_TYPE_ITEMS,
-  blockTypeItem,
 } from '@web/spaces/document/document-block-type';
 import {
   deleteRow,
@@ -71,8 +73,12 @@ import {
 import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
-import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
-import { insertRowForMenu } from '@web/spaces/document/document-insert-row';
+import {
+  insertRowForMenu,
+  type InsertChoice,
+} from '@web/spaces/document/document-insert-row';
+import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
+import { useRowNow } from '@web/spaces/document/use-row-now';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 
 /**
@@ -90,111 +96,6 @@ import { DIVIDER } from '@web/spaces/document/document-divider';
  * the same way (`document-bubble-menu.tsx`).
  */
 const SUBMENU_SIDE_OFFSET = 4 + 5;
-
-/**
- * Whether a rule goes after this row.
- *
- * Drawn wherever the order crosses from one of the three dimensions to the
- * next, which is how the bubble bar's own type menu groups the same rows. Read
- * off `DIMENSION_OF_ROW` so a row added to a group lands inside its rules by
- * saying which group it is in — the one place that already has to say so.
- * @param id - The row being drawn.
- * @param next - The row after it, or undefined at the end of the list.
- * @returns True when a rule belongs between the two.
- */
-function rulesAfter(id: BlockTypeId, next: BlockTypeId | undefined): boolean {
-  return next !== undefined && DIMENSION_OF_ROW[id] !== DIMENSION_OF_ROW[next];
-}
-
-/**
- * The keys Radix opens a submenu with, reading left to right.
- *
- * `MenuSubTrigger`'s own handler opens on these three and cancels the event;
- * cancelling them first is what keeps a row out of reach from opening. Every
- * other key is left alone, so arrowing up and down the menu still works on a
- * greyed row — which is the whole reason it is `aria-disabled` rather than
- * Radix's `disabled` (the ARIA authoring practices: "Disabled menu items are
- * focusable but cannot be activated").
- */
-const OPENS_SUBMENU = new Set(['ArrowRight', 'Enter', ' ']);
-
-/**
- * What every row out of reach carries, trigger or item: dimmed, reachable by
- * the keyboard (`aria-disabled`, not Radix's `disabled`), and not lit up
- * under the pointer.
- */
-const GREYED = {
-  'aria-disabled': 'true',
-  className: UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
-  onPointerMove: (event: React.PointerEvent): void => {
-    event.preventDefault();
-  },
-} as const;
-
-/**
- * What a submenu trigger carries while the hovered row is out of the
- * command's reach.
- *
- * A row that greys owes three things (`document-bubble-slots.tsx`), and in a
- * menu the first of them — take the menu away — means this one must not open
- * at all. GREYING ALONE DOES NOT DO THAT: Radix's `MenuSubTrigger` hands
- * `MenuItemImpl` its own `onClick` and `onPointerMove`, and those consult
- * `props.disabled` and `event.defaultPrevented` and nothing else, so
- * `aria-disabled` and a class are invisible to them. Cancelling the event is
- * what they read.
- *
- * The third thing — say so — is the treatment itself, the same dimming the
- * reader has already met on the bubble bar's own two slots when the selection
- * moved out of reach. No extra words: the commands ARE built, so a "not open
- * yet" note would say something false here.
- * @param unavailable - Whether the command is out of reach on this row.
- * @returns Attributes to spread onto the trigger, empty where it can act.
- */
-function whenOutOfReach(
-  unavailable: boolean,
-): React.ComponentProps<typeof DropdownMenuSubTrigger> {
-  if (!unavailable) {
-    return {};
-  }
-  return {
-    ...GREYED,
-    onClick: (event) => {
-      event.preventDefault();
-    },
-    onKeyDown: (event) => {
-      if (OPENS_SUBMENU.has(event.key)) {
-        event.preventDefault();
-      }
-    },
-  };
-}
-
-/**
- * What a menu row carries, depending on whether its command reaches the
- * hovered row.
- *
- * The item's version of {@link whenOutOfReach}. A row out of reach is dimmed,
- * keeps the keyboard able to land on it (`aria-disabled`, not Radix's
- * `disabled`), does not light up under the pointer, and does nothing when
- * chosen.
- * @param reachable - Whether the command reaches this row.
- * @param run - What choosing the row does when it does.
- * @returns Attributes to spread onto the item.
- */
-function itemWithin(
-  reachable: boolean,
-  run: () => void,
-): React.ComponentProps<typeof DropdownMenuItem> {
-  if (reachable) {
-    return { onSelect: run };
-  }
-  return {
-    ...GREYED,
-    onSelect: (event) => {
-      event.preventDefault();
-    },
-  };
-}
 
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
@@ -314,26 +215,7 @@ export function DocumentBlockMenu({
   const ticked = ticksFor(editor, block.id);
   const faces = useFacesOf(editor, block.id);
 
-  /**
-   * The row this menu is about, as the document holds it right now.
-   *
-   * The block the strip hands over is a snapshot taken when the pointer
-   * arrived: the library refreshes its state on a document change
-   * (`SideMenu.ts:683-688`) but `updateStateFromMousePos` returns early while
-   * the hovered element still carries the same `data-id` (`:229-236`). The
-   * menu meanwhile stays open however long the reader takes, and a co-editor
-   * can change that row or take it away. So every command reads the row again
-   * here, by the one thing that does not go stale — its id.
-   *
-   * Measured 2026-09-18: with the snapshot, a row reading `alpha PLUS` on
-   * screen was duplicated as `alpha`.
-   * @returns The row, or undefined once it is gone.
-   */
-  const rowNow = React.useCallback(
-    (): PressedBlock | undefined =>
-      editor.getBlock(block.id) as PressedBlock | undefined,
-    [editor, block.id],
-  );
+  const rowNow = useRowNow(editor, block.id);
 
   /**
    * The range standing for this row, read off the document as it is now.
@@ -374,6 +256,25 @@ export function DocumentBlockMenu({
   );
 
   /**
+   * The insert-below submenu's pick: a row under this one, made into what was
+   * picked. Held so the memoised list keeps one `onPick` across renders.
+   */
+  const onInsertBelow = React.useCallback(
+    (choice: InsertChoice): void => {
+      const live = rowNow();
+      if (live !== undefined) {
+        if (choice === DIVIDER) {
+          insertRowForMenu(editor, live, [DIVIDER]);
+        } else {
+          runBlockType(editor, choice, insertRowForMenu(editor, live), false);
+        }
+      }
+      close();
+    },
+    [editor, rowNow, close],
+  );
+
+  /**
    * Runs one row and closes the menu.
    *
    * Nothing is the right answer to a command whose subject is gone: the reader
@@ -409,6 +310,7 @@ export function DocumentBlockMenu({
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
                 sideOffset={SUBMENU_SIDE_OFFSET}
+                className={TYPE_MENU_WIDTH}
                 rowsClassName='flex flex-col gap-1'
               >
                 {BLOCK_TYPE_ITEMS.map((item, index) => {
@@ -459,47 +361,10 @@ export function DocumentBlockMenu({
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
                 sideOffset={SUBMENU_SIDE_OFFSET}
+                className={TYPE_MENU_WIDTH}
                 rowsClassName='flex flex-col gap-1'
               >
-                {INSERT_MENU_ROWS.map((id, index) => {
-                  const item = blockTypeItem(id);
-                  const ItemIcon = item.Icon;
-                  const ruled = rulesAfter(id, INSERT_MENU_ROWS[index + 1]);
-                  return (
-                    <React.Fragment key={id}>
-                      <DropdownMenuItem
-                        data-testid={`doc-block-insert-${id}`}
-                        onSelect={() => {
-                          const live = rowNow();
-                          if (live !== undefined) {
-                            const made = insertRowForMenu(editor, live);
-                            runBlockType(editor, id, made, false);
-                          }
-                          close();
-                        }}
-                      >
-                        <ItemIcon />
-                        {t(item.labelKey)}
-                      </DropdownMenuItem>
-                      {ruled ? <DropdownMenuSeparator className='my-0' /> : null}
-                    </React.Fragment>
-                  );
-                })}
-                {/* Not a block type: a divider holds no text, so it has no
-                    row in the block type menu and sits in a group of its own
-                    here. */}
-                <DropdownMenuSeparator className='my-0' />
-                <DropdownMenuItem
-                  data-testid='doc-block-insert-divider'
-                  onSelect={() => {
-                    const live = rowNow();
-                    if (live !== undefined) insertRowForMenu(editor, live, [DIVIDER]);
-                    close();
-                  }}
-                >
-                  <Minus />
-                  {t('spaces.document.commands.divider')}
-                </DropdownMenuItem>
+                <DocumentInsertChoices onPick={onInsertBelow} />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           );

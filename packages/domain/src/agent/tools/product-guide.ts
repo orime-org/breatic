@@ -822,7 +822,15 @@ export function renderProductGuide(): string {
       `menu has a ${quoted(t("spaces.document.commands.textColor"))} row, a ` +
       `${quoted(t("spaces.document.commands.fillColor"))} row and ` +
       `${quoted(t("spaces.document.commands.colorReset"))}.`,
-    "- Hovering a line, with no text selected, shows a handle of six dots at its left. Drag it to move the " +
+    "- Hovering an empty paragraph, with no text selected, shows a plus at its left; clicking it lists the " +
+      `same entries as ${quoted(t("spaces.document.blockHandle.insertBelow"))}, and the one picked turns that ` +
+      "line itself into it (a divider goes above the line, which stays empty). " +
+      `${quoted(t("spaces.document.commands.quote"))} is greyed there on a line already in a quote. ` +
+      `The menu ends with ${quoted(t("spaces.document.blockHandle.delete"))}, which removes that line; it is greyed ` +
+      "when that line is the document's only block. Empty " +
+      "paragraphs have no six-dot handle, so its menu and dragging are not offered on them; a selection that takes " +
+      "in an empty paragraph acts on it as on any other paragraph.",
+    "- Hovering any other line, with no text selected, shows a handle of six dots at its left. Drag it to move the " +
       `block; click it for a menu with ${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ${quoted(t("spaces.document.commands.align"))}, ` +
