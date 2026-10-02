@@ -821,6 +821,29 @@ test('the handle still drags the block it belongs to', async () => {
   expect(text.indexOf('alpha')).toBeGreaterThan(text.indexOf('beta'));
 });
 
+test('a drag that leaves an empty line under the grip still ends cleanly (#1097)', async () => {
+  // On drop the side menu re-reads the row under the pointer's start point,
+  // which is now the empty line that slid up. The grip the drag began on has
+  // to stay the grip until the drag's own end has run.
+  await openFreshDocument(page);
+  await typeLines(page, ['alpha', 'beta', '', 'delta']);
+  await page.mouse.move(5, 5);
+  await hoverRow(page, 1);
+  const grip = await page.getByTestId('doc-block-handle').boundingBox();
+  const delta = await page.locator(`${EDITOR} .bn-block-content`).nth(3).boundingBox();
+  if (grip === null || delta === null) throw new Error('nothing to drag');
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 10, grip.y + 10, { steps: 3 });
+  await page.mouse.move(delta.x + 40, delta.y + delta.height - 3, { steps: 10 });
+  await page.mouse.up();
+
+  await expect.poll(() => bodyOf(page)).toEqual(['alpha', '', 'delta', 'beta']);
+  await expect(page.locator(EDITOR)).toBeFocused();
+  await page.keyboard.type('X');
+  await expect.poll(async () => (await bodyOf(page)).join('|')).toContain('X');
+});
+
 test('dragging the one row a fresh Space has leaves it one row', async () => {
   // A11. Removing the row emptied the only group the document has, and
   // `BlockGroup.ts:11` is `blockGroupChild+`, so the schema put an empty
