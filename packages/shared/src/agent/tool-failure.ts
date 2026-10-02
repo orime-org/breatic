@@ -93,7 +93,14 @@ export type ToolFailureKind =
   /** The tool ran and could not do what it was asked. */
   | "tool_failed"
   /** The user stopped the turn while the tool was still running. */
-  | "user_aborted";
+  | "user_aborted"
+  /**
+   * The call was turned away to steer the model: a second question in one
+   * turn, a second media call while one is running, input the SDK refused.
+   * Nothing failed; the model reads why and carries on, and the reader is
+   * shown nothing.
+   */
+  | "turned_away";
 
 /**
  * What both endings say, apart from which line the reader is shown.
@@ -127,7 +134,25 @@ interface FailureDetail {
  */
 export type ToolFailure =
   | (FailureDetail & { kind: "tool_failed"; readerKey: FailureLine })
-  | (FailureDetail & { kind: "user_aborted"; readerKey: StoppedLine });
+  | (FailureDetail & { kind: "user_aborted"; readerKey: StoppedLine })
+  | (FailureDetail & { kind: "turned_away" });
+
+/**
+ * What a turned-away call puts on the wire where a reader line would go.
+ *
+ * Not a reader line: it has no text in any locale, because there is nothing
+ * for the reader to read. The panel takes it as "draw nothing for this call".
+ */
+export const TURNED_AWAY = "turned_away";
+
+/**
+ * The value an ending puts in the wire's single error field.
+ * @param failure - How the call ended.
+ * @returns The reader line to draw, or the marker that says draw nothing.
+ */
+export function wireLineOf(failure: ToolFailure): FailureLine | StoppedLine | typeof TURNED_AWAY {
+  return failure.kind === "turned_away" ? TURNED_AWAY : failure.readerKey;
+}
 
 /**
  * A call that failed with nothing on record saying why.
@@ -171,6 +196,9 @@ export function toolFailureOf(err: unknown): ToolFailure | undefined {
   if (typeof carried !== "object" || carried === null) return undefined;
   const { kind, forModel, readerKey } = carried as Record<string, unknown>;
   if (typeof forModel !== "string") return undefined;
+  // The one ending with no line for the reader. Carrying one anyway is a pair
+  // that does not belong together, the same as the two checks below.
+  if (kind === "turned_away") return readerKey === undefined ? { kind, forModel } : undefined;
   // Checked against the table rather than merely for being a string. What the
   // table settles is that this key is one of the ones written above, which is
   // the set the locale files are kept in step with; a key from anywhere else
