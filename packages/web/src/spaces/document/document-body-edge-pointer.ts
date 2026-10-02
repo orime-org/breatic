@@ -14,9 +14,11 @@
  * the block the pointer is on answers both, so this plugin follows the pointer
  * and dispatches the selection itself when that changes.
  *
- * The press is watched in the capture phase and left to go on: ProseMirror's
+ * A plain press is watched in the capture phase and left to go on: ProseMirror's
  * own `mousedown` still runs, and with it Chrome's protection of the selection
- * during a drag (`input.ts:396-398`, `selection.ts:62-72`).
+ * during a drag (`input.ts:396-398`, `selection.ts:62-72`). A Shift press is
+ * taken ({@link PointerFollower.extendFrom}), and ProseMirror's `mousedown` does
+ * not run for it.
  *
  * THE WIDGET BELOW. BlockNote draws a stand-in block under a last block that
  * is not an empty paragraph and inserts a paragraph on a press on it
@@ -151,6 +153,16 @@ function isPlainPress(event: MouseEvent): boolean {
 }
 
 /**
+ * Whether a press lands on a control a block draws, such as a check-list
+ * checkbox: the press is the control's, and the text selection stays as it is.
+ * @param event - The press.
+ * @returns True for a press on such a control.
+ */
+function onControl(event: MouseEvent): boolean {
+  return event.target instanceof Element && event.target.closest('input, button, select, textarea') !== null;
+}
+
+/**
  * The end of a selection a Shift+click keeps: the part with more text. A
  * click before the range keeps its end, one after it keeps its start, and one
  * inside keeps whichever side of it holds more text, the end when both hold as
@@ -247,7 +259,7 @@ class PointerFollower {
    */
   private readonly onDown = (event: MouseEvent): void => {
     const { view } = this;
-    if (!view.editable || !isPlainPress(event)) return;
+    if (!view.editable || !isPlainPress(event) || onControl(event)) return;
     const zone = zoneAt(view, event.clientY);
     const at = { startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY };
     if (event.shiftKey) {

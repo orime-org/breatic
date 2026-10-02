@@ -437,8 +437,7 @@ describe('Shift+click past an end of the body', () => {
     ]);
   });
 
-  it('off macOS keeps the whole document anchored on the start when it lands on a word', () => {
-    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32');
+  it('keeps the whole document anchored on the start when the Shift+click lands on a word', () => {
     const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Mid' }, { type: 'divider' }]).prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
     const target = textStart(view, 'Mid') + 2;
@@ -507,8 +506,7 @@ describe('Shift+click past an end of the body', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([bodyEdgePos(view.state.doc, 'end'), target]);
   });
 
-  it('on macOS keeps the end of a range farther from a Shift+click past the end, as the page does', () => {
-    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+  it('keeps the start of a range when the Shift+click lands past the end', () => {
     const view = open([{ type: 'paragraph', content: 'Line one' }, { type: 'paragraph', content: 'Line two' }, { type: 'paragraph', content: 'Line three' }, { type: 'divider' }]).prosemirrorView!;
     const top = textStart(view, 'Line two') + 2;
     select(view, textStart(view, 'Line three') + 4, top);
@@ -518,8 +516,7 @@ describe('Shift+click past an end of the body', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([top, bodyEdgePos(view.state.doc, 'end')]);
   });
 
-  it('on macOS extends from a head on the start edge when the Shift+click lands below the anchor', () => {
-    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+  it('extends from a head on the start edge when the Shift+click lands below the anchor', () => {
     const view = open([{ type: 'divider' }, { type: 'paragraph', content: 'Line one' }, { type: 'paragraph', content: 'Tail' }]).prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Line one') + 3, 'start')));
     const target = textStart(view, 'Tail') + 2;
@@ -531,8 +528,7 @@ describe('Shift+click past an end of the body', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([bodyEdgePos(view.state.doc, 'start'), target]);
   });
 
-  it('off macOS keeps a selected first divider in when the Shift+click lands on it', () => {
-    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32');
+  it('keeps a selected first divider in when the Shift+click lands on it', () => {
     const view = open(BELOW_DIVIDER).prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, bodyEdgePos(view.state.doc, 'start'))));
 
@@ -543,38 +539,32 @@ describe('Shift+click past an end of the body', () => {
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([textStart(view, 'Below'), bodyEdgePos(view.state.doc, 'start')]);
   });
 
-  it('keeps the longer part of a range when the Shift+click lands inside it, on every platform', () => {
-    for (const platform of ['MacIntel', 'Win32']) {
-      vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
-      // Forty characters, then five one-letter lines: the click after the 30th
-      // character leaves 30 characters before it and about 15 after it.
-      const lines = ['a', 'b', 'c', 'd', 'e'].map((content) => ({ type: 'paragraph', content }));
-      const view = open([{ type: 'paragraph', content: 'x'.repeat(40) }, ...lines, { type: 'divider' }]).prosemirrorView!;
-      const start = textStart(view, 'x'.repeat(40));
-      view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, start, 'end')));
-      pointAt(view, start + 30);
+  it('keeps the longer part of a range when the Shift+click lands inside it', () => {
+    // Forty characters, then five one-letter lines: the click after the 30th
+    // character leaves 30 characters before it and about 15 after it.
+    const lines = ['a', 'b', 'c', 'd', 'e'].map((content) => ({ type: 'paragraph', content }));
+    const view = open([{ type: 'paragraph', content: 'x'.repeat(40) }, ...lines, { type: 'divider' }]).prosemirrorView!;
+    const start = textStart(view, 'x'.repeat(40));
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, start, 'end')));
+    pointAt(view, start + 30);
 
-      const event = press(view, 50, { shiftKey: true });
+    const event = press(view, 50, { shiftKey: true });
 
-      expect(event.defaultPrevented).toBe(true);
-      expect([view.state.selection.anchor, view.state.selection.head]).toEqual([start, start + 30]);
-    }
+    expect(event.defaultPrevented).toBe(true);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([start, start + 30]);
   });
 
-  it('moves the anchor when the longer part lies past the head, on every platform', () => {
-    for (const platform of ['MacIntel', 'Win32']) {
-      vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
-      const view = open([{ type: 'paragraph', content: 'One two three four five six' }, { type: 'paragraph', content: 'Tail' }]).prosemirrorView!;
-      const start = textStart(view, 'One two three four five six');
-      const end = textStart(view, 'Tail') + 'Tail'.length;
-      select(view, start, end);
-      pointAt(view, start + 2);
+  it('moves the anchor when the longer part lies past the head', () => {
+    const view = open([{ type: 'paragraph', content: 'One two three four five six' }, { type: 'paragraph', content: 'Tail' }]).prosemirrorView!;
+    const start = textStart(view, 'One two three four five six');
+    const end = textStart(view, 'Tail') + 'Tail'.length;
+    select(view, start, end);
+    pointAt(view, start + 2);
 
-      const event = press(view, 50, { shiftKey: true });
+    const event = press(view, 50, { shiftKey: true });
 
-      expect(event.defaultPrevented).toBe(true);
-      expect([view.state.selection.anchor, view.state.selection.head]).toEqual([end, start + 2]);
-    }
+    expect(event.defaultPrevented).toBe(true);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([end, start + 2]);
   });
 
   it('keeps the end when both parts are as long', () => {
@@ -598,6 +588,27 @@ describe('Shift+click past an end of the body', () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, at + 3]);
+  });
+
+  it('leaves a Shift+click on a check-list checkbox to the checkbox', () => {
+    const view = open([
+      { type: 'paragraph', content: 'Alpha' },
+      { type: 'checkListItem', content: 'Task' },
+      { type: 'divider' },
+    ]).prosemirrorView!;
+    const at = textStart(view, 'Alpha') + 1;
+    select(view, at);
+    pointAt(view, textStart(view, 'Task'));
+    const box = view.dom.querySelector('input[type="checkbox"]')!;
+
+    const event = new MouseEvent('mousedown', {
+      clientX: 50, clientY: 150, button: 0, buttons: 1, bubbles: true, cancelable: true, shiftKey: true,
+    });
+    box.dispatchEvent(event);
+    move(150);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect([view.state.selection.anchor, view.state.selection.head]).toEqual([at, at]);
   });
 });
 
