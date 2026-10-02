@@ -881,6 +881,11 @@
       "success": "密碼已更新,請登入。",
       "failed": "密碼重設失敗,請重試。",
       "backToSignIn": "返回登入"
+    },
+    "terms": {
+      "notice": "繼續即表示你同意{terms}，並已閱讀{privacy}。",
+      "termsLink": "使用條款",
+      "privacyLink": "隱私權政策"
     }
   },
   "roleTag": {
