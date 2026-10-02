@@ -150,10 +150,13 @@ interface FailedStepsProps {
 }
 
 /**
- * A line for each tool step that failed while the turn carried on.
+ * A line for each different thing the turn's failed tool steps said.
  *
- * Drawn once the turn has settled, in the order the steps ran. A step the
- * reader stopped gets none: the turn's own "Stopped" line already says so.
+ * Drawn once the turn has settled. Steps that failed with the same words share
+ * one line, with how many when there was more than one, in the order each line
+ * first appeared: two identical lines one above the other tell the reader
+ * nothing the second time. A step the reader stopped gets none: the turn's own
+ * "Stopped" line already says so.
  * @param root0 - The component props.
  * @param root0.message - The message whose tool steps these are.
  * @returns The lines, or nothing when no step failed.
@@ -161,19 +164,25 @@ interface FailedStepsProps {
 export function FailedSteps({ message }: FailedStepsProps): React.JSX.Element | null {
   const t = useTranslation();
 
-  if (message.streaming === true) return null;
-  const failed = message.toolCalls?.filter(
-    (call) => call.status === 'error' && call.failureKind !== 'user_aborted',
-  );
-  if (failed === undefined || failed.length === 0) return null;
+  const lines = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const call of message.toolCalls ?? []) {
+      if (call.status !== 'error' || call.failureKind === 'user_aborted') continue;
+      const line = t(call.failureKey ?? FAILURE_LINES.generic);
+      counts.set(line, (counts.get(line) ?? 0) + 1);
+    }
+    return [...counts];
+  }, [message.toolCalls, t]);
+
+  if (message.streaming === true || lines.length === 0) return null;
 
   return (
     <>
-      {failed.map((call) => (
+      {lines.map(([line, count]) => (
         <EndingLine
-          key={call.id}
+          key={line}
           testId='message-bubble-tool-failed'
-          text={t(call.failureKey ?? FAILURE_LINES.generic)}
+          text={count === 1 ? line : t('chat.tool.failureTimes', { line, count })}
           tone='error'
         />
       ))}

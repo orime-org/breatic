@@ -75,13 +75,15 @@ test('a turn that produced nothing says so', async ({ page }) => {
   await expect(page.getByTestId('message-bubble-empty')).toHaveText('No reply this turn');
 });
 
-test('a tool step that failed while the turn carried on gets a line of its own', async ({
+test('tool steps that failed the same way while the turn carried on share one line', async ({
   page,
 }) => {
   await answerWith(page, [
     { type: 'start-step' },
     { type: 'tool-input-available', toolCallId: 'c1', toolName: 'web_search', input: { query: 'cats' } },
     { type: 'tool-output-error', toolCallId: 'c1', errorText: 'chat.tool.failure.upstream' },
+    { type: 'tool-input-available', toolCallId: 'c2', toolName: 'web_search', input: { query: 'dogs' } },
+    { type: 'tool-output-error', toolCallId: 'c2', errorText: 'chat.tool.failure.unreachable' },
     { type: 'finish-step' },
     { type: 'start-step' },
     { type: 'text-start', id: 't' },
@@ -93,7 +95,7 @@ test('a tool step that failed while the turn carried on gets a line of its own',
   await sendOne(page);
 
   await page.waitForTimeout(PAST_THE_NOTICE_MS);
-  await expect(page.getByTestId('message-bubble-tool-failed')).toHaveText('Execution error');
+  await expect(page.getByTestId('message-bubble-tool-failed')).toHaveText(['Execution error ×2']);
   await expect(page.getByTestId('message-bubble-content').last()).toHaveText(
     'Carrying on without it.',
   );

@@ -260,7 +260,7 @@ describe('the line a failed tool step leaves', () => {
     expect(step.compareDocumentPosition(ending) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('gives each failed step a line of its own', () => {
+  it('folds steps that failed with the same words into one line that says how many', () => {
     render(
       <MessageBubble
         message={{
@@ -276,7 +276,43 @@ describe('the line a failed tool step leaves', () => {
       />,
     );
 
-    expect(screen.getAllByTestId('message-bubble-tool-failed')).toHaveLength(2);
+    const lines = screen.getAllByTestId('message-bubble-tool-failed');
+    expect(lines.map((line) => line.textContent)).toEqual(['Execution error ×2']);
+  });
+
+  it('gives each different line its own row, in the order each first appeared', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'done',
+          toolCalls: [
+            failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' }),
+            failedCall('search_images', { failureKey: 'chat.tool.unfinished' }),
+            failedCall('understand_media', { failureKey: 'chat.tool.failure.generic' }),
+          ],
+        }}
+      />,
+    );
+
+    const lines = screen.getAllByTestId('message-bubble-tool-failed');
+    expect(lines.map((line) => line.textContent)).toEqual(['Execution error ×2', 'Stopped']);
+  });
+
+  it('leaves the count off a line that happened once', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'done',
+          toolCalls: [failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' })],
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-tool-failed').textContent).toBe('Execution error');
   });
 
   it('falls back to the general line for a step that ended with no key of its own', () => {
