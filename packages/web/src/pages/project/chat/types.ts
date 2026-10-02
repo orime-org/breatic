@@ -40,7 +40,8 @@ export interface ToolCall {
    *
    * Never the reason itself. That names hosts, statuses and, for a refused
    * fetch, addresses inside the network; it goes to the model, which is what
-   * acts on it. The reader is shown the line this key names, under the reply.
+   * acts on it. For a step that failed, the reader is shown the line this key
+   * names, under the reply; a step the reader stopped draws no line of its own.
    */
   failureKey?: string;
   /**

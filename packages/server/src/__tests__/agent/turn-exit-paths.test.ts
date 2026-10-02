@@ -279,9 +279,9 @@ describe("a turn that failed", () => {
   });
 
   it("stores a turn that failed before the model said anything", async () => {
-    // Nothing was written, so there is nothing but the mark -- and without it
-    // no message is stored at all, leaving what the user said sitting alone
-    // with no answer and no explanation.
+    // Nothing was written, so the mark is the whole reply -- and it is what
+    // makes the stored reply read as a failure rather than as a turn that
+    // simply had nothing to say.
     await runTurn([{ type: "error", error: new Error("401 expired key") }, FINISHED]);
 
     expect(wrapUpMessages()).toHaveLength(1);
