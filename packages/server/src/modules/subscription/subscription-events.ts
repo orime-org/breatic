@@ -30,13 +30,8 @@ import {
   db,
   findOfferByPriceId,
   getStripeCallTimeoutMs,
-  listSubscriptions,
-  lockAccountRow,
-  subscriptionSituation,
-  tierForSituation,
-  upsertSubscription,
 } from "@breatic/core";
-import type { DbTx, SubscriptionWrite } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import type { MembershipTier } from "@breatic/shared";
 import { getStripeClient } from "@server/infra/stripe.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
@@ -46,11 +41,9 @@ import type {
   ActualPrice,
   ExpectedPrice,
 } from "@server/modules/subscription/read-stripe-subscription.js";
+import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
 import { claimWebhookEvent } from "@server/modules/subscription/webhook-events.repo.js";
-import {
-  settleTier,
-  sendMembershipEndedMail,
-} from "@server/modules/subscription/settle-tier.js";
+import { sendMembershipEndedMail } from "@server/modules/subscription/settle-tier.js";
 
 /**
  * What handling one event came to.
@@ -161,34 +154,6 @@ function customerIdOf(subscription: Stripe.Subscription): string | null {
   const customer = subscription.customer;
   if (!customer) return null;
   return typeof customer === "string" ? customer : customer.id;
-}
-
-/**
- * Writes what Stripe currently says, and settles the tier that follows.
- * @param event - The event that prompted this.
- * @param userId - The account it belongs to.
- * @param write - What Stripe said, already fetched outside the transaction.
- * @param tx - The transaction it all shares.
- * @returns The tier now in force, and whether an email is owed.
- */
-async function applyCurrentState(
-  event: Stripe.Event,
-  userId: string,
-  write: SubscriptionWrite,
-  tx: DbTx,
-): Promise<{ tier: MembershipTier; endedFrom: MembershipTier | null }> {
-  await upsertSubscription(write, tx);
-  await notifyIfUpgradeLapsed(event, userId, tx);
-
-  const reading = subscriptionSituation(await listSubscriptions(userId, tx));
-  const tier = tierForSituation(reading.situation, reading.record);
-  const settled = await settleTier({
-    userId,
-    toTier: tier,
-    referenceId: event.id,
-    tx,
-  });
-  return { tier, endedFrom: settled.endedFrom };
 }
 
 /**
@@ -324,8 +289,15 @@ export async function handleSubscriptionEvent(
 
   await db.transaction(async (tx) => {
     if (!(await claimWebhookEvent(event.id, event.type, tx))) return;
-    await lockAccountRow(userId, tx);
-    const applied = await applyCurrentState(event, userId, write, tx);
+    const applied = await applySubscriptionWrite({
+      userId,
+      write,
+      referenceId: event.id,
+      tx,
+    });
+    // Reads only the event, so where it sits in this transaction changes
+    // nothing it writes.
+    await notifyIfUpgradeLapsed(event, userId, tx);
     endedFrom = applied.endedFrom;
     outcome = { status: "applied", userId, tier: applied.tier };
   });

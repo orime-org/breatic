@@ -34,12 +34,10 @@ import {
   getSubscriptionPlan,
   listSubscriptions,
   logger,
+  subscriptionClock,
   subscriptionSituation,
 } from "@breatic/core";
-import type {
-  StoredSubscription,
-  SubscriptionSituation,
-} from "@breatic/core";
+import type { SituationReading, StoredSubscription } from "@breatic/core";
 import type {
   BillingPeriod,
   SubscribableMembershipTier,
@@ -73,12 +71,11 @@ export interface PlanChange {
  * @param userId - The account.
  * @returns The situation and the live row, if any.
  */
-async function readSituation(userId: string): Promise<{
-  situation: SubscriptionSituation;
-  record: StoredSubscription | null;
-}> {
+async function readSituation(
+  userId: string,
+): Promise<SituationReading<StoredSubscription>> {
   const rows = await listSubscriptions(userId);
-  return subscriptionSituation(rows);
+  return subscriptionSituation(rows, subscriptionClock());
 }
 
 /**
