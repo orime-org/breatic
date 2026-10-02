@@ -22,7 +22,6 @@
 import {
   env,
   getHonouredTierForUser,
-  getLimitsForUser,
   getMembershipLimits,
   getSubscriptionPlan,
 } from "@breatic/core";
@@ -59,10 +58,9 @@ export async function readAccountMembership(
     : null;
   const tier = await getHonouredTierForUser(userId);
 
-  // Asked before the ceilings, because asking for an enterprise account's
-  // ceilings throws by design. Going through `getLimitsForUser` first would
-  // turn a legitimate account into a 500.
-  const limits = tier === "enterprise" ? null : await getLimitsForUser(userId);
+  // Enterprise ceilings are negotiated per customer and have no source here,
+  // so that tier gets none.
+  const limits = tier === "enterprise" ? null : getMembershipLimits(tier);
 
   const [teamStudios, storageBytes] = await Promise.all([
     studioRepo.countTeamStudiosAdministeredBy(userId),
