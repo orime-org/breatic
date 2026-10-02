@@ -340,11 +340,12 @@ export async function confirmCheckout(
  * Stripe is in fact still billing one of them, selling another would bill
  * the person twice. So the decision follows what Stripe says.
  *
- * Every one is asked before anything is stored, and the still-billed answers
- * are stored first. Storing an ended answer while a still-billed one is not
- * yet stored would settle the tier on base for a moment, and that move tells
- * the person their membership ended. An answer that cannot be priced is not
- * stored and still counts towards the decision.
+ * Every one is asked before anything is stored. When any is still billed,
+ * only those answers are stored and the checkout is refused: an ended answer
+ * stored next to a still-billed one that could not be stored settles the tier
+ * on base, and that move tells a paying person their membership ended. An
+ * answer that cannot be priced is not stored and still counts towards the
+ * decision.
  * @param subscriptionIds - The lapsed subscriptions at Stripe.
  * @param userId - The account.
  * @throws {ConflictError} if Stripe still bills any of them.
@@ -374,7 +375,7 @@ async function recheckLapsed(
   const billed = found.filter((fresh) => stillBilledAtStripe(fresh, askedAt));
   const ended = found.filter((fresh) => !billed.includes(fresh));
 
-  for (const fresh of [...billed, ...ended]) {
+  for (const fresh of billed.length > 0 ? billed : ended) {
     await storeAnswer({
       userId,
       subscription: fresh,
