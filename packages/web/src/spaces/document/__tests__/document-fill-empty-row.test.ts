@@ -7,7 +7,7 @@
  * Which rows count as empty (A1), what each choice turns the line into in
  * place (A3, A4), that a quoted line stays quoted (A5), that the caret ends up
  * in the line wherever it was before (A4), that one undo takes it all back
- * (A6), and which choice would change nothing and so is drawn out of reach.
+ * (A6).
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -17,7 +17,6 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
-  fillChangesRow,
   fillEmptyRow,
   isEmptyParagraph,
   type InsertChoice,
@@ -214,31 +213,5 @@ describe('one pick, one transaction', () => {
     fillEmptyRow(editor, rowAt(editor, 1), choice);
 
     expect(dispatches).toBe(1);
-  });
-});
-
-describe('which choices would change the line', () => {
-  it('quote changes nothing on a line already in a quote', () => {
-    const { editor } = open([{ type: 'paragraph', props: { quoted: true } }]);
-    expect(fillChangesRow(rowAt(editor, 0), 'quote')).toBe(false);
-  });
-
-  it.each<InsertChoice>([
-    'heading-1',
-    'heading-2',
-    'heading-3',
-    'code-block',
-    'bullet-list',
-    'task-list',
-    'ordered-list',
-    'divider',
-  ])('%s changes a line already in a quote', (choice) => {
-    const { editor } = open([{ type: 'paragraph', props: { quoted: true } }]);
-    expect(fillChangesRow(rowAt(editor, 0), choice)).toBe(true);
-  });
-
-  it('quote changes a line that is not in a quote', () => {
-    const { editor } = open([{ type: 'paragraph' }]);
-    expect(fillChangesRow(rowAt(editor, 0), 'quote')).toBe(true);
   });
 });

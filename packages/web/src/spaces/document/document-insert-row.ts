@@ -87,18 +87,6 @@ export function isEmptyParagraph(row: PressedBlock | undefined): boolean {
 }
 
 /**
- * Whether picking this entry from the plus menu would change the row. Quote is
- * a prop the row may already carry, and asking for it again writes nothing
- * (`updateFor` in `document-block-run.ts`).
- * @param row - The empty paragraph the plus is on.
- * @param choice - The entry.
- * @returns False only where the pick would leave the row as it is.
- */
-export function fillChangesRow(row: PressedBlock, choice: InsertChoice): boolean {
-  return choice !== 'quote' || row.props?.[QUOTED] !== true;
-}
-
-/**
  * Puts the chosen block on the empty paragraph itself (#1097, A3/A4).
  *
  * A block type becomes the row's own type, so the row keeps its id. The

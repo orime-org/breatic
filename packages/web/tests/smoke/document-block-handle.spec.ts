@@ -1195,7 +1195,7 @@ test('the menu reads in the language the switch is set to', async () => {
   try {
     await hoverRow(page, 0);
     await page.getByTestId('doc-block-handle').click();
-    await expect(page.getByTestId('doc-block-row-delete')).toHaveText('删除这个块');
+    await expect(page.getByTestId('doc-block-row-delete')).toHaveText('删除块');
     await expect(page.getByTestId('doc-block-row-duplicate')).toHaveText(
       '复制副本',
     );

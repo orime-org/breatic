@@ -1166,7 +1166,7 @@
         "insertHere": "在此插入",
         "duplicate": "复制副本",
         "insertBelow": "在下方插入",
-        "delete": "删除这个块"
+        "delete": "删除块"
       }
     },
     "readOnlyReconnect": "重新连接"

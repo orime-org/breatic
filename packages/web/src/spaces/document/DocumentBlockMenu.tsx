@@ -78,6 +78,7 @@ import {
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
+import { useRowNow } from '@web/spaces/document/use-row-now';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 
 /**
@@ -214,26 +215,7 @@ export function DocumentBlockMenu({
   const ticked = ticksFor(editor, block.id);
   const faces = useFacesOf(editor, block.id);
 
-  /**
-   * The row this menu is about, as the document holds it right now.
-   *
-   * The block the strip hands over is a snapshot taken when the pointer
-   * arrived: the library refreshes its state on a document change
-   * (`SideMenu.ts:683-688`) but `updateStateFromMousePos` returns early while
-   * the hovered element still carries the same `data-id` (`:229-236`). The
-   * menu meanwhile stays open however long the reader takes, and a co-editor
-   * can change that row or take it away. So every command reads the row again
-   * here, by the one thing that does not go stale — its id.
-   *
-   * Measured 2026-09-18: with the snapshot, a row reading `alpha PLUS` on
-   * screen was duplicated as `alpha`.
-   * @returns The row, or undefined once it is gone.
-   */
-  const rowNow = React.useCallback(
-    (): PressedBlock | undefined =>
-      editor.getBlock(block.id) as PressedBlock | undefined,
-    [editor, block.id],
-  );
+  const rowNow = useRowNow(editor, block.id);
 
   /**
    * The range standing for this row, read off the document as it is now.

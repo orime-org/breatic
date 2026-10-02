@@ -1166,7 +1166,7 @@
         "insertHere": "ここに挿入",
         "duplicate": "このブロックを複製",
         "insertBelow": "下に挿入",
-        "delete": "このブロックを削除"
+        "delete": "ブロックを削除"
       }
     },
     "readOnlyReconnect": "再接続"

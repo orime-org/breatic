@@ -42,6 +42,8 @@ import { Button } from '@web/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -55,17 +57,21 @@ import {
   restoreReaderPlace,
   type ReaderPlace,
 } from '@web/spaces/document/document-drag-selection';
+import { deleteRow } from '@web/spaces/document/document-handle-commands';
+import { BLOCK_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
+import { itemWithin } from '@web/spaces/document/document-block-menu-parts';
 import {
-  fillChangesRow,
   fillEmptyRow,
   isEmptyParagraph,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
+import { QUOTED } from '@web/spaces/document/document-list-block';
 import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignment';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import type { PressedBlock } from '@web/spaces/document/document-handle-commands';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
+import { useRowNow } from '@web/spaces/document/use-row-now';
 
 /**
  * The handle: 24 square, which is the smallest a pointer target may be
@@ -76,11 +82,31 @@ const STRIP_BUTTON = 'size-6 shrink-0 [&_svg]:size-4 text-muted-foreground';
 /** Which button the strip shows: the drag handle, or the plus (#1097). */
 type StripFace = 'grip' | 'plus';
 
-/** No insert entry is out of reach. Module-level so the memo sees one set. */
-const NOTHING_GREYED: ReadonlySet<InsertChoice> = new Set();
-
-/** Quote is out of reach: the line is already in a quote. */
+/** Quote is out of reach: the line is already in a quote. Module-level so the memo sees one set. */
 const QUOTE_GREYED: ReadonlySet<InsertChoice> = new Set<InsertChoice>(['quote']);
+
+/** The grip menu's delete row, whose icon and label the plus menu shows too. */
+const DELETE_ROW = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!;
+
+/** What the strip needs to know about its row, read in one pass. */
+interface RowReading {
+  /** The row is an empty paragraph, so the strip shows the plus. */
+  readonly empty: boolean;
+  /** The row is in a quote, so the plus menu greys Quote. */
+  readonly quoted: boolean;
+  /** The row is the document's only block, so deleting it changes nothing. */
+  readonly lone: boolean;
+}
+
+/**
+ * Whether two readings say the same thing.
+ * @param a - One reading.
+ * @param b - The other.
+ * @returns True when every field matches.
+ */
+function sameReading(a: RowReading, b: RowReading): boolean {
+  return a.empty === b.empty && a.quoted === b.quoted && a.lone === b.lone;
+}
 
 /**
  * The strip, for the block the side menu currently points at.
@@ -104,9 +130,6 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   // source element, so it cannot leave the document while the drag is on —
   // and the drag's own first act is to select the row it moves, which is what
   // the gate below would otherwise read as the reader having a selection.
-  const dragging = React.useRef(false);
-  // The same fact for the face below, which has to re-render when the drag
-  // ends; the ref above is what the gate reads inside the drag's own events.
   const [dragActive, setDragActive] = React.useState(false);
 
   // A1: a reader holding a selection is served by the bubble bar, and the two
@@ -126,31 +149,21 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     (current) => !current.prosemirrorState.selection.empty,
   );
 
-  // The row as the document holds it now, by the one thing that does not go
-  // stale — its id. The side menu's own snapshot is not refreshed while the
-  // pointer stays on the same row (`SideMenu.ts:229-236`), and a menu stays
-  // open however long the reader takes.
-  const blockId = block?.id;
-  const rowNow = React.useCallback(
-    (): PressedBlock | undefined =>
-      blockId === undefined
-        ? undefined
-        : (editor.getBlock(blockId) as PressedBlock | undefined),
-    [editor, blockId],
-  );
-  const emptyLine = useEditorSnapshot(
+  // Read off the document on every change: the side menu's own snapshot is not
+  // refreshed while the pointer stays on the same row.
+  const rowNow = useRowNow(editor as never, block?.id);
+  const row = useEditorSnapshot(
     editor as never,
-    React.useCallback((): boolean => isEmptyParagraph(rowNow()), [rowNow]),
-  );
-  // Quote is the one entry that can leave the line as it is (A5).
-  const quoteChangesLine = useEditorSnapshot(
-    editor as never,
-    React.useCallback((): boolean => {
+    React.useCallback((current: { document: readonly unknown[] }): RowReading => {
       const live = rowNow();
-      return live === undefined || fillChangesRow(live, 'quote');
+      return {
+        empty: isEmptyParagraph(live),
+        quoted: live?.props?.[QUOTED] === true,
+        lone: current.document.length === 1 && (live?.children?.length ?? 0) === 0,
+      };
     }, [rowNow]),
+    sameReading,
   );
-  const unreachable = quoteChangesLine ? NOTHING_GREYED : QUOTE_GREYED;
 
   // The carrier is placed on the row's top edge; this brings the handle down
   // onto the middle of the row's first line (A2).
@@ -190,7 +203,14 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     [editor, rowNow, closeMenu],
   );
 
-  if (block === undefined || (holdsSelection && !dragging.current)) {
+  // The plus menu's last entry: the empty line itself goes.
+  const onDelete = React.useCallback((): void => {
+    const live = rowNow();
+    if (live !== undefined) deleteRow(editor as never, live.id);
+    closeMenu();
+  }, [editor, rowNow, closeMenu]);
+
+  if (block === undefined || (holdsSelection && !dragActive)) {
     return null;
   }
 
@@ -202,7 +222,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     ? 'grip'
     : menuOpen
       ? menuFace
-      : emptyLine
+      : row.empty
         ? 'plus'
         : 'grip';
   const grip = face === 'grip';
@@ -254,50 +274,39 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
             data-testid={grip ? 'doc-block-handle' : 'doc-block-plus'}
             className={grip ? `${STRIP_BUTTON} cursor-grab` : STRIP_BUTTON}
             draggable={grip ? true : undefined}
-            onDragStart={
-              grip
-                ? (event) => {
-                  // Read before the library takes the selection for its own
-                  // (`blockDragStart` puts a node selection on the row).
-                  dragging.current = true;
-                  setDragActive(true);
-                  place.current = readerPlace(editor.prosemirrorView.state);
-                  // Which row is in flight, for the drop to read out of the
-                  // document rather than out of the payload (§8).
-                  rowIsFlying(block.id, place.current);
-                  sideMenu.blockDragStart(event, block as never);
-                }
-                : undefined
-            }
-            onDragEnd={
-              grip
-                ? () => {
-                  dragging.current = false;
-                  setDragActive(false);
-                  rowHasLanded();
-                  sideMenu.blockDragEnd();
-                  const held = place.current;
-                  place.current = undefined;
-                  // A text selection goes back whatever the reader had: the
-                  // node selection the library put on the row at dragstart is
-                  // still there when the drag ends, and the bubble bar comes
-                  // up for any selection that is not empty — so a row nobody
-                  // selected would carry the bar. The reader's own place when
-                  // there was one; the caret in the row that moved when there
-                  // was not (`readerPlace` declines anything that is not a
-                  // text selection, and a gap cursor is one of those).
-                  restoreReaderPlace(
-                    editor.prosemirrorView,
-                    held ?? caretAtStartOf(block.id),
-                  );
-                  // The press that started the drag took the focus to this
-                  // button, and a key pressed after the drag has to land in
-                  // the document — the same reason the menu hands focus back
-                  // when it closes.
-                  editor.focus();
-                }
-                : undefined
-            }
+            onDragStart={(event) => {
+              // Read before the library takes the selection for its own
+              // (`blockDragStart` puts a node selection on the row).
+              setDragActive(true);
+              place.current = readerPlace(editor.prosemirrorView.state);
+              // Which row is in flight, for the drop to read out of the
+              // document rather than out of the payload (§8).
+              rowIsFlying(block.id, place.current);
+              sideMenu.blockDragStart(event, block as never);
+            }}
+            onDragEnd={() => {
+              setDragActive(false);
+              rowHasLanded();
+              sideMenu.blockDragEnd();
+              const held = place.current;
+              place.current = undefined;
+              // A text selection goes back whatever the reader had: the node
+              // selection the library put on the row at dragstart is still
+              // there when the drag ends, and the bubble bar comes up for any
+              // selection that is not empty — so a row nobody selected would
+              // carry the bar. The reader's own place when there was one; the
+              // caret in the row that moved when there was not (`readerPlace`
+              // declines anything that is not a text selection, and a gap
+              // cursor is one of those).
+              restoreReaderPlace(
+                editor.prosemirrorView,
+                held ?? caretAtStartOf(block.id),
+              );
+              // The press that started the drag took the focus to this button,
+              // and a key pressed after the drag has to land in the document —
+              // the same reason the menu hands focus back when it closes.
+              editor.focus();
+            }}
             onClick={() => {
               if (!menuOpen) setMenuFace(face);
               onMenuOpenChange(!menuOpen);
@@ -330,7 +339,28 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
           }}
         >
           {menuFace === 'plus' ? (
-            <DocumentInsertChoices onPick={onFill} unreachable={unreachable} />
+            <>
+              <DocumentInsertChoices
+                onPick={onFill}
+                unreachable={row.quoted ? QUOTE_GREYED : undefined}
+              />
+              {/* The grip menu's delete row, the one command an empty line
+                  still needs (A12). Drawn out of reach on the document's only
+                  block, which the schema puts straight back. */}
+              <DropdownMenuSeparator className='my-0' />
+              <DropdownMenuItem
+                data-testid='doc-block-plus-delete'
+                {...(row.lone
+                  ? itemWithin(false, onDelete)
+                  : {
+                    ...itemWithin(true, onDelete),
+                    className: 'text-status-error-foreground',
+                  })}
+              >
+                <DELETE_ROW.Icon />
+                {t(DELETE_ROW.labelKey)}
+              </DropdownMenuItem>
+            </>
           ) : (
             <DocumentBlockMenu
               editor={editor as never}

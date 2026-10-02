@@ -1166,7 +1166,7 @@
         "insertHere": "여기에 삽입",
         "duplicate": "이 블록 복제",
         "insertBelow": "아래에 삽입",
-        "delete": "이 블록 삭제"
+        "delete": "블록 삭제"
       }
     },
     "readOnlyReconnect": "다시 연결"

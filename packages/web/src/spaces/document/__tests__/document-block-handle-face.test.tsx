@@ -204,7 +204,8 @@ describe('the plus menu removes the line (A12)', () => {
     fireEvent.click(screen.getByTestId('doc-block-plus'));
 
     const remove = screen.getByTestId('doc-block-plus-delete');
-    expect(remove.textContent).toBe('spaces.document.blockHandle.delete');
+    // The grip menu's own delete label, from the same message.
+    expect(remove.textContent).toBe('Delete block');
     fireEvent.click(remove);
 
     expect(editor.document).toHaveLength(1);

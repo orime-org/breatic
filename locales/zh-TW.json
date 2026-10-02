@@ -1166,7 +1166,7 @@
         "insertHere": "在此插入",
         "duplicate": "複製副本",
         "insertBelow": "在下方插入",
-        "delete": "刪除這個區塊"
+        "delete": "刪除區塊"
       }
     },
     "readOnlyReconnect": "重新連線"
