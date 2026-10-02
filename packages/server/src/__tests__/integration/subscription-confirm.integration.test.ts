@@ -127,6 +127,30 @@ async function dropUser(userId: string): Promise<void> {
 }
 
 /**
+ * The subscription as Stripe describes it at one moment.
+ * @param userId - Whose it is.
+ * @param customerId - The Stripe customer.
+ * @param tier - Which tier its price sells.
+ * @returns A subscription object.
+ */
+function subscriptionOn(
+  userId: string,
+  customerId: string,
+  tier: "pro" | "team" = "pro",
+): Record<string, unknown> {
+  return {
+    id: `sub_confirm_${seq}`,
+    customer: customerId,
+    status: "active",
+    cancel_at_period_end: false,
+    pending_update: null,
+    latest_invoice: null,
+    items: { data: [{ id: "si_1", current_period_end: PERIOD_END, price: proMonthly(tier) }] },
+    metadata: { userId },
+  };
+}
+
+/**
  * A Checkout Session as Stripe returns it with the subscription expanded.
  * @param userId - Whose checkout it was.
  * @param customerId - The Stripe customer.
@@ -142,16 +166,7 @@ function session(
     id: `cs_${seq}`,
     mode: "subscription",
     client_reference_id: userId,
-    subscription: {
-      id: `sub_confirm_${seq}`,
-      customer: customerId,
-      status: "active",
-      cancel_at_period_end: false,
-      pending_update: null,
-      latest_invoice: null,
-      items: { data: [{ id: "si_1", current_period_end: PERIOD_END, price: proMonthly() }] },
-      metadata: { userId },
-    },
+    subscription: subscriptionOn(userId, customerId),
     ...over,
   };
 }
@@ -295,30 +310,6 @@ describe("confirmCheckout (#307 A5–A8)", () => {
 });
 
 describe("confirmCheckout and the webhook arriving in either order (#307 A8)", () => {
-  /**
-   * The subscription as Stripe describes it at one moment.
-   * @param userId - Whose it is.
-   * @param customerId - The Stripe customer.
-   * @param tier - Which tier its price sells.
-   * @returns A subscription object.
-   */
-  function subscriptionOn(
-    userId: string,
-    customerId: string,
-    tier: "pro" | "team",
-  ): Record<string, unknown> {
-    return {
-      id: `sub_confirm_${seq}`,
-      customer: customerId,
-      status: "active",
-      cancel_at_period_end: false,
-      pending_update: null,
-      latest_invoice: null,
-      items: { data: [{ id: "si_1", current_period_end: PERIOD_END, price: proMonthly(tier) }] },
-      metadata: { userId },
-    };
-  }
-
   /**
    * A promise and the function that settles it, so one call can be held open.
    * @returns The promise and its resolver.

@@ -56,7 +56,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 import { Hono } from "hono";
-import { initCore, loadLocales } from "@breatic/core";
+import { AppError, initCore, loadLocales } from "@breatic/core";
 import { errorHandler } from "@server/middleware/error-handler.js";
 import { subscriptionRoute } from "@server/routes/subscription.js";
 
@@ -222,7 +222,6 @@ describe("POST /confirm — the return from a membership checkout (#307 A5–A7)
   });
 
   it("passes the service's 503 through when Stripe could not be asked", async () => {
-    const { AppError } = await import("@breatic/core");
     service.confirmCheckout.mockRejectedValue(new AppError(503, "not confirmed"));
 
     const res = await post("/confirm", { session_id: "cs_1" });
