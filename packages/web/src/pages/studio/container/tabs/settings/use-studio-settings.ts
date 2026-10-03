@@ -143,12 +143,33 @@ export function useStudioSettings(
     [navigate, queryClient, studio.slug, studio.type],
   );
 
+  // The slug field's check for the save in flight. Kept beside the mutation
+  // because its onError has to run even after the settings tab unmounts,
+  // which per-call `mutate` callbacks do not.
+  const slugFieldShownRef = React.useRef<(() => boolean) | undefined>(
+    undefined,
+  );
   const updateMutation = useMutation({
     mutationFn: (patch: UpdateStudioInput) =>
       studiosApi.update(studio.slug, patch),
     onSuccess: (next) => {
       absorb(next);
       toast.success(t('studio.container.settings.saved'));
+    },
+    onError: async (err, patch) => {
+      const slugFieldShown = slugFieldShownRef.current;
+      const shownByField =
+        patch.slug !== undefined &&
+        slugFieldShown !== undefined &&
+        (await slugFieldShowsConflict(
+          queryClient,
+          err,
+          patch.slug,
+          slugFieldShown,
+        ));
+      if (!shownByField) {
+        toast.error(messageFor(err));
+      }
     },
   });
 
@@ -217,24 +238,11 @@ export function useStudioSettings(
   const { mutate: mutateLeave } = leaveMutation;
 
   const save = React.useCallback(
-    (patch: UpdateStudioInput, slugFieldShown?: () => boolean): void =>
-      mutateUpdate(patch, {
-        onError: async (err) => {
-          const shownByField =
-            patch.slug !== undefined &&
-            slugFieldShown !== undefined &&
-            (await slugFieldShowsConflict(
-              queryClient,
-              err,
-              patch.slug,
-              slugFieldShown,
-            ));
-          if (!shownByField) {
-            toast.error(messageFor(err));
-          }
-        },
-      }),
-    [mutateUpdate, queryClient, messageFor],
+    (patch: UpdateStudioInput, slugFieldShown?: () => boolean): void => {
+      slugFieldShownRef.current = slugFieldShown;
+      mutateUpdate(patch);
+    },
+    [mutateUpdate],
   );
   const uploadAvatar = React.useCallback(
     (image: Blob): void => mutateAvatar(image),

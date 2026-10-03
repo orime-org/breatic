@@ -18,6 +18,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   slugFieldShowsConflict,
   useSlugAvailability,
+  useSlugFieldShown,
 } from '@web/pages/studio/container/dialogs/use-slug-availability';
 import { ApiException } from '@web/data/api/types';
 import { useDebounce } from '@web/lib/use-debounce';
@@ -48,7 +49,7 @@ beforeEach(() => {
 });
 
 describe('useSlugAvailability', () => {
-  it('is idle for an empty slug and never calls the server', () => {
+  it('is empty for an empty slug and never calls the server', () => {
     const { result } = renderHook(() => useSlugAvailability(''), { wrapper });
     expect(result.current.state).toBe('empty');
     expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalled();
@@ -119,7 +120,7 @@ describe('useSlugAvailability', () => {
   it('reports checking while the debounced value lags the live input (skew guard)', () => {
     // Simulate the 300ms debounce window: the live input is 'new-slug' but
     // useDebounce still returns the previous 'old-slug'. The gate must see
-    // `checking`, not a stale `available`, so a half-typed slug can't be
+    // `checking`, not a stale `valid`, so a half-typed slug can't be
     // submitted with the previous slug's verdict.
     vi.mocked(useDebounce).mockReturnValueOnce('old-slug');
     vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValue({ available: true });
@@ -267,5 +268,24 @@ describe('slugFieldShowsConflict', () => {
       ),
     ).resolves.toBe(false);
     expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalled();
+  });
+});
+
+describe('useSlugFieldShown', () => {
+  it('answers for the trimmed slug in an open field, and not once it closes or unmounts', () => {
+    const { result, rerender, unmount } = renderHook(
+      ({ open, slug }: { open: boolean; slug: string }) =>
+        useSlugFieldShown(open, slug),
+      { initialProps: { open: true, slug: ' nova-lab ' } },
+    );
+    const shows = result.current;
+    expect(shows('nova-lab')).toBe(true);
+    expect(shows('other-lab')).toBe(false);
+    rerender({ open: false, slug: ' nova-lab ' });
+    expect(shows('nova-lab')).toBe(false);
+    rerender({ open: true, slug: 'nova-lab' });
+    expect(shows('nova-lab')).toBe(true);
+    unmount();
+    expect(shows('nova-lab')).toBe(false);
   });
 });

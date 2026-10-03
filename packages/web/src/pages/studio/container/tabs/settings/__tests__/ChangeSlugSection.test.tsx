@@ -4,9 +4,9 @@
 /**
  * The danger zone's slug entry: a button, and a dialog that holds the input.
  *
- * The gate is written as "only when the check says available" rather than
+ * The gate is written as "only when the check says valid" rather than
  * "unless the check says invalid", because an emptied field reports neither —
- * it reports idle. The version of this gate that lived in the basic-info form
+ * it reports empty. The version of this gate that lived in the basic-info form
  * had to be corrected for exactly that, and the correction travels with the
  * feature.
  *
@@ -219,7 +219,7 @@ describe('ChangeSlugSection — the confirm gate', () => {
     expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled();
   });
 
-  it('refuses an emptied field, which reports idle rather than invalid', async () => {
+  it('refuses an emptied field, which reports empty rather than invalid', async () => {
     renderSection();
     const input = await openDialog();
     fireEvent.change(input, { target: { value: '' } });

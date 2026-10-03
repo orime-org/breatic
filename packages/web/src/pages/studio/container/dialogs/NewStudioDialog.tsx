@@ -23,6 +23,7 @@ import { useCreateStudio } from '@web/pages/studio/container/dialogs/use-create-
 import {
   slugFieldShowsConflict,
   useSlugAvailability,
+  useSlugFieldShown,
 } from '@web/pages/studio/container/dialogs/use-slug-availability';
 
 interface NewStudioDialogProps {
@@ -35,7 +36,7 @@ interface NewStudioDialogProps {
  * hand-typed fields — display name + globally-unique slug (option C) — with the
  * slug checked live (debounced) via `useSlugAvailability`: the SlugField shows
  * checking / available / format / length / reserved / taken as you type. Submit
- * is gated on a non-empty name + an `available` slug. On submit `useCreateStudio`
+ * is gated on a non-empty name + a `valid` slug. On submit `useCreateStudio`
  * creates the studio, refreshes the rail list and navigates into it; a server
  * error (taken slug lost a race, per-user limit, rate limit) surfaces inline.
  * The personal/team type radio and the synchronous `takenSlugs` set the old stub
@@ -57,12 +58,7 @@ export function NewStudioDialog({
   const availability = useSlugAvailability(slug);
   const createStudio = useCreateStudio();
   const queryClient = useQueryClient();
-  // The slug the field shows right now, or null while the dialog is closed;
-  // read after the 409 re-ask returns, by which time either may have changed.
-  const shownSlugRef = React.useRef<string | null>(null);
-  React.useEffect(() => {
-    shownSlugRef.current = open ? slug.trim() : null;
-  }, [open, slug]);
+  const fieldShows = useSlugFieldShown(open, slug);
 
   /** Clear the form back to empty (on close). */
   const reset = (): void => {
@@ -99,11 +95,8 @@ export function NewStudioDialog({
     submitted: string,
   ): Promise<void> => {
     if (
-      await slugFieldShowsConflict(
-        queryClient,
-        err,
-        submitted,
-        () => shownSlugRef.current === submitted,
+      await slugFieldShowsConflict(queryClient, err, submitted, () =>
+        fieldShows(submitted),
       )
     ) {
       return;
@@ -116,7 +109,7 @@ export function NewStudioDialog({
   };
 
   /**
-   * Validate (slug must already be `available`) and create the studio.
+   * Create the studio once the slug is `valid` and a name is given.
    * @param event the form submit event.
    */
   const submit = (event: React.FormEvent): void => {

@@ -32,9 +32,8 @@ vi.mock('@web/data/api/auth', async () => {
   };
 });
 
-// Mock the shared live-availability hook so the page renders without a
-// QueryClientProvider (the real hook calls `useQuery`) and so each test can
-// pin the slug status precisely. The hook's own race-safety / debounce logic
+// Mock the shared live-availability hook so each test can pin the slug check
+// precisely. The hook's own race-safety / debounce logic
 // is covered by use-slug-availability.test.tsx.
 vi.mock('@web/pages/studio/container/dialogs/use-slug-availability');
 
@@ -74,7 +73,7 @@ function setup(strict = false): ReturnType<typeof render> {
 describe('SlugSetupPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default to `available` so the form is interactive (submit enabled);
+    // Default to `valid` so the form is interactive (submit enabled);
     // individual tests override via `setAvailability`.
     setAvailability({ state: 'valid' });
     // A signed-in but not-yet-onboarded user (the state that reaches
@@ -90,19 +89,19 @@ describe('SlugSetupPage', () => {
   it('renders the slug form with an enabled submit and the available line when available', () => {
     setup();
     expect(screen.getByLabelText('Slug')).toBeInTheDocument();
-    // When the live check reports `available`, the helper line shows the
+    // When the live check reports `valid`, the helper line shows the
     // availability confirmation (it replaces the default URL helper).
     expect(screen.getByText('Slug is available')).toHaveClass(
       'text-status-success-foreground',
     );
     const submit = screen.getByRole('button', { name: 'Continue' });
     expect(submit).toBeInTheDocument();
-    // Availability is `available`, so submit is enabled.
+    // The check is `valid`, so submit is enabled.
     expect(submit).toBeEnabled();
   });
 
-  it('shows the default URL helper line when the input is idle', () => {
-    // Empty input → idle status → the page shows where the handle will live.
+  it('shows the default URL helper line when the input is empty', () => {
+    // Empty input → empty check → the page shows where the handle will live.
     setAvailability({ state: 'empty' });
     setup();
     const hint = screen.getByTestId('onboarding-slug-hint');
@@ -110,7 +109,7 @@ describe('SlugSetupPage', () => {
       'Your home will live at /studio/…. 6–39 characters',
     );
     expect(hint).toHaveClass('text-muted-foreground');
-    // Idle is not `available`, so submit is disabled.
+    // Empty is not `valid`, so submit is disabled.
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
   });
 
@@ -163,7 +162,7 @@ describe('SlugSetupPage', () => {
     expect(authApi.setupStudio).not.toHaveBeenCalled();
   });
 
-  it('shows the "checking availability" line while the live check is in flight', async () => {
+  it('shows the "checking" line while the live check is in flight', async () => {
     setAvailability({ state: 'checking' });
     const user = userEvent.setup();
     setup();

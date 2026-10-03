@@ -615,6 +615,41 @@ describe('useStudioSettings — a slug save the server refuses with 409', () => 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Conflict'));
   });
 
+  it('still says what went wrong when the settings tab is gone before the answer', async () => {
+    let reject: (err: unknown) => void = () => {};
+    vi.mocked(studiosApi.update).mockReturnValue(
+      new Promise((_resolve, rej) => {
+        reject = rej;
+      }),
+    );
+    const { result, unmount } = renderHook(() => useStudioSettings(TEAM), {
+      wrapper,
+    });
+    // The field reports itself gone once its tab has unmounted.
+    let fieldUp = true;
+    result.current.save({ slug: 'acme-renamed' }, () => fieldUp);
+    unmount();
+    fieldUp = false;
+    reject(conflict());
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Conflict'));
+  });
+
+  it('still reports a failed name save after the settings tab is gone', async () => {
+    let reject: (err: unknown) => void = () => {};
+    vi.mocked(studiosApi.update).mockReturnValue(
+      new Promise((_resolve, rej) => {
+        reject = rej;
+      }),
+    );
+    const { result, unmount } = renderHook(() => useStudioSettings(TEAM), {
+      wrapper,
+    });
+    result.current.save({ name: 'Acme 2' });
+    unmount();
+    reject(new ApiException({ status: 500, message: 'Boom', fromServer: true }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Boom'));
+  });
+
   it('does not re-ask for a save that left the slug alone', async () => {
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
     result.current.save({ name: 'Acme 2' });

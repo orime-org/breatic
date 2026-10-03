@@ -16,7 +16,10 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
 import { STUDIO_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
-import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
+import {
+  useSlugAvailability,
+  useSlugFieldShown,
+} from '@web/pages/studio/container/dialogs/use-slug-availability';
 import { DANGER_BUTTON } from '@web/pages/studio/container/tabs/settings/danger-button';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
 import type { UpdateStudioInput } from '@breatic/shared';
@@ -88,8 +91,8 @@ export function ChangeSlugSection({
   const availability = useSlugAvailability(slug, { ownSlug: studio.slug });
   const next = slug.trim();
   const changed = next !== studio.slug;
-  // Written as "only when available", never as "unless invalid": an emptied
-  // field reports neither, it reports `idle`, and a gate phrased the other way
+  // Written as "only when valid", never as "unless invalid": an emptied
+  // field reports neither, it reports `empty`, and a gate phrased the other way
   // walks the user through a destructive confirmation the server then refuses.
   const canConfirm = changed && availability.state === 'valid' && !saving;
   // The sentence in the header names both ends of the move. Until there is a
@@ -108,13 +111,7 @@ export function ChangeSlugSection({
     setSlug(studio.slug);
   }, [studio.slug]);
 
-  // The slug the field shows right now, or null while the dialog is closed;
-  // read after a refused save has been re-asked, by which time either may
-  // have changed.
-  const shownSlugRef = React.useRef<string | null>(null);
-  React.useEffect(() => {
-    shownSlugRef.current = open ? next : null;
-  }, [open, next]);
+  const fieldShows = useSlugFieldShown(open, slug);
 
   const onOpenChange = React.useCallback(
     (nextOpen: boolean): void => {
@@ -138,8 +135,8 @@ export function ChangeSlugSection({
     // a key with nothing cached, and its pending branch replaces the whole tab
     // area. A future change that keeps the old data on screen during that
     // switch would leave this dialog standing open over a successful rename.
-    onSave({ slug: next }, () => shownSlugRef.current === next);
-  }, [next, onSave]);
+    onSave({ slug: next }, () => fieldShows(next));
+  }, [next, onSave, fieldShows]);
 
   return (
     <>
@@ -176,7 +173,7 @@ export function ChangeSlugSection({
               value={slug}
               onChange={setSlug}
               disabled={saving}
-              // The hook answers `available` for the studio's own slug; here
+              // The hook answers `valid` for the studio's own slug; here
               // that is no news, so the field goes back to its description.
               check={changed ? availability : { state: 'empty' }}
               bounds={STUDIO_SLUG_BOUNDS}

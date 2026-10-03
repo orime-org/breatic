@@ -17,7 +17,15 @@ import { useCreateStudio } from '@web/pages/studio/container/dialogs/use-create-
 import { ApiException } from '@web/data/api/types';
 import type { SlugCheck } from '@web/pages/studio/container/dialogs/slug-util';
 
-vi.mock('@web/pages/studio/container/dialogs/use-slug-availability');
+// The field-shown tracker stays real: it is what decides where a refused
+// create is reported.
+vi.mock('@web/pages/studio/container/dialogs/use-slug-availability', async (importOriginal) => ({
+  useSlugAvailability: vi.fn(),
+  slugFieldShowsConflict: vi.fn(),
+  useSlugFieldShown: (await importOriginal<
+    typeof import('@web/pages/studio/container/dialogs/use-slug-availability')
+  >()).useSlugFieldShown,
+}));
 vi.mock('@web/pages/studio/container/dialogs/use-create-studio');
 
 type User = ReturnType<typeof userEvent.setup>;

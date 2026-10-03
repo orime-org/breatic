@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import * as React from 'react';
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 
 import { studiosApi } from '@web/data/api/studios';
@@ -64,7 +65,7 @@ function slugAvailabilityKey(slug: string): readonly unknown[] {
  * stored under its own key and never overwrites the current input's status; the
  * `AbortSignal` cancels the superseded in-flight request. The server check is a
  * UX helper only — the authoritative uniqueness guard is the insert-time unique
- * index, so a slug shown `available` can still lose a race and 409 on submit.
+ * index, so a slug shown `valid` can still lose a race and 409 on submit.
  * @param rawSlug the current (un-debounced) slug input value.
  * @param options extra context — notably the caller's own slug, for renaming.
  * @returns where the slug stands, in the slug field's own terms.
@@ -150,4 +151,29 @@ export async function slugFieldShowsConflict(
     .then((answer) => !answer.available)
     .catch(() => false);
   return taken && fieldShown();
+}
+
+/**
+ * Track which slug a dialog's slug field shows, for the 409 re-ask to read
+ * once it has come back: by then the dialog may have closed, been reopened on
+ * a reset field, or unmounted with its page.
+ * @param open - Whether the dialog holding the field is open.
+ * @param slug - The field's current value.
+ * @returns A stable check: does the field show this trimmed slug right now?
+ */
+export function useSlugFieldShown(
+  open: boolean,
+  slug: string,
+): (submitted: string) => boolean {
+  const shownRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    shownRef.current = open ? slug.trim() : null;
+    return () => {
+      shownRef.current = null;
+    };
+  }, [open, slug]);
+  return React.useCallback(
+    (submitted: string): boolean => shownRef.current === submitted,
+    [],
+  );
 }

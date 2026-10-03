@@ -138,7 +138,7 @@ export function NewItemDialog({
     !submitting && name.trim() !== '' && slugCheck.state === 'valid';
 
   /**
-   * Validate the form and report the values on a successful submit.
+   * Report the values once the form can be submitted.
    * @param event the form submit event.
    */
   const submit = (event: React.FormEvent): void => {
