@@ -17,6 +17,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { commentTool } from '@web/spaces/document/document-comment-entries';
 import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
 import { postComment } from '@web/spaces/document/document-comment-post';
+import { deleteRowAt } from '@web/spaces/document/document-table-run';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -119,5 +120,21 @@ describe('a comment on a column of cells', () => {
     await postComment(editor, 'about the first column');
 
     expect(commented(editor)).toEqual(['a1', 'a2']);
+  });
+
+  it('stays on the cells left when one of them is deleted', () => {
+    const editor = open();
+    const view = editor.prosemirrorView!;
+    view.dispatch(
+      view.state.tr.setSelection(
+        CellSelection.create(view.state.doc, cellOf(editor, 'a1'), cellOf(editor, 'a2')),
+      ),
+    );
+    commentTool.run(editor);
+
+    deleteRowAt(editor, cellOf(editor, 'a2'));
+
+    const aim = draftRangeIn(editor.prosemirrorState)!;
+    expect(aim.segments.map(({ from, to }) => editor.prosemirrorState.doc.textBetween(from, to))).toEqual(['a1']);
   });
 });

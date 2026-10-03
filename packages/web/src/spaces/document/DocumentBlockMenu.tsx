@@ -498,10 +498,9 @@ export function DocumentBlockMenu({
                   close();
                   return;
                 }
-                openCommentDraft(editor as never, {
-                  from: over.from,
-                  to: over.to,
-                });
+                openCommentDraft(editor as never, [
+                  { from: over.from, to: over.to },
+                ]);
                 close();
               })}
             >

@@ -258,7 +258,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const column = React.useRef<HTMLDivElement>(null);
   // Keyed on the start alone, which is all the hook measures: the card sits
   // level with where the words begin.
-  const draftFrom = draft?.kind === 'aimed' ? draft.from : null;
+  const draftFrom = draft?.kind === 'aimed' ? draft.segments[0]!.from : null;
   const draftAnchor = React.useMemo(
     () => (draftFrom === null ? null : { id: DRAFT_THREAD_ID, from: draftFrom }),
     [draftFrom],

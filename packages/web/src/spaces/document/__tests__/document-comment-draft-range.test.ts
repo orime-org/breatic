@@ -161,9 +161,9 @@ describe('the draft range plugin', () => {
     const run = firstRun(editor);
     const target = { from: run.from, to: run.from + 5 };
 
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, target));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [target]));
 
-    expect(draftRangeIn(view.state)).toMatchObject(target);
+    expect(draftRangeIn(view.state)).toMatchObject({ segments: [target] });
   });
 
   it('moves the range as the body is edited under it', () => {
@@ -172,12 +172,11 @@ describe('the draft range plugin', () => {
     const run = firstRun(editor);
     const target = { from: run.from + 6, to: run.from + 11 };
 
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, target));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [target]));
     view.dispatch(view.state.tr.insertText('xx', run.from));
 
     expect(draftRangeIn(view.state)).toMatchObject({
-      from: target.from + 2,
-      to: target.to + 2,
+      segments: [{ from: target.from + 2, to: target.to + 2 }],
     });
   });
 
@@ -187,7 +186,7 @@ describe('the draft range plugin', () => {
     const run = firstRun(editor);
     const target = { from: run.from, to: run.from + 5 };
 
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, target));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [target]));
     view.dispatch(view.state.tr.delete(target.from, target.to));
 
     expect(draftRangeIn(view.state)).toBeNull();
@@ -199,10 +198,10 @@ describe('the draft range plugin', () => {
     const run = firstRun(editor);
 
     view.dispatch(
-      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [{
         from: run.from,
         to: run.from + 5,
-      }),
+      }]),
     );
     view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null));
 
@@ -218,10 +217,10 @@ describe('the draft range plugin', () => {
     const run = firstRun(editor);
 
     view.dispatch(
-      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [{
         from: run.from,
         to: run.from + 5,
-      }),
+      }]),
     );
     const first = draftRangeIn(view.state);
     view.dispatch(view.state.tr.insertText('x', run.to - 1));
@@ -241,10 +240,10 @@ describe('the draft range plugin', () => {
     });
 
     view.dispatch(
-      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [{
         from: run.from + 6,
         to: run.from + 11,
-      }),
+      }]),
     );
     expect(heard).toBe(1);
 
@@ -256,10 +255,10 @@ describe('the draft range plugin', () => {
 
     stop();
     view.dispatch(
-      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [{
         from: run.from,
         to: run.from + 5,
-      }),
+      }]),
     );
     expect(heard).toBe(3);
   });
@@ -269,10 +268,10 @@ describe('the draft range plugin', () => {
     const view = editor.prosemirrorView!;
     const run = firstRun(editor);
     view.dispatch(
-      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [{
         from: run.from,
         to: run.from + 5,
-      }),
+      }]),
     );
 
     let heard = 0;
@@ -295,10 +294,10 @@ describe('the draft range plugin', () => {
     const run = firstRun(editor);
 
     view.dispatch(
-      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [{
         from: run.from,
         to: run.from,
-      }),
+      }]),
     );
 
     expect(draftRangeIn(view.state)).toBeNull();
@@ -310,10 +309,10 @@ describe('the draft range plugin', () => {
     const run = firstRun(editor);
 
     view.dispatch(
-      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, {
+      view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [{
         from: run.from + 5,
         to: run.from,
-      }),
+      }]),
     );
 
     expect(draftRangeIn(view.state)).toBeNull();
@@ -327,13 +326,13 @@ describe('the draft range plugin', () => {
     const run = firstRun(editor);
     const target = { from: run.from, to: run.from + 5 };
 
-    view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, target));
+    view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [target]));
     view.dispatch(
       view.state.tr.setSelection(
         TextSelection.create(view.state.doc, run.to - 1),
       ),
     );
 
-    expect(draftRangeIn(view.state)).toMatchObject(target);
+    expect(draftRangeIn(view.state)).toMatchObject({ segments: [target] });
   });
 });

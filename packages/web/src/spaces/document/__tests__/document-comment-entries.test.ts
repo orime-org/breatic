@@ -139,7 +139,7 @@ describe('the bubble bar entry', () => {
 
     commentTool.run(editor);
 
-    expect(draftRangeIn(editor.prosemirrorState)).toMatchObject(chosen);
+    expect(draftRangeIn(editor.prosemirrorState)).toMatchObject({ segments: [chosen] });
   });
 });
 
@@ -150,10 +150,9 @@ describe('openCommentDraft', () => {
     const editor = open();
     const row = overRow(editor, 0);
 
-    expect(openCommentDraft(editor, row)).toBe(true);
+    expect(openCommentDraft(editor, [row])).toBe(true);
     expect(draftRangeIn(editor.prosemirrorState)).toMatchObject({
-      from: row.from,
-      to: row.to,
+      segments: [{ from: row.from, to: row.to }],
     });
   });
 
@@ -165,7 +164,7 @@ describe('openCommentDraft', () => {
     select(editor, { from: run.to - 1, to: run.to - 1 });
     const before = editor.prosemirrorState.selection;
 
-    openCommentDraft(editor, overRow(editor, 0));
+    openCommentDraft(editor, [overRow(editor, 0)]);
 
     const after = editor.prosemirrorState.selection;
     expect(after.from).toBe(before.from);
@@ -176,7 +175,7 @@ describe('openCommentDraft', () => {
     // A3: the empty row's range covers no run, so there is nothing to mark.
     const editor = open();
 
-    expect(openCommentDraft(editor, overRow(editor, 1))).toBe(false);
+    expect(openCommentDraft(editor, [overRow(editor, 1)])).toBe(false);
     expect(draftRangeIn(editor.prosemirrorState)).toBeNull();
   });
 
@@ -186,9 +185,9 @@ describe('openCommentDraft', () => {
     const first = { from: run.from, to: run.from + 5 };
     const second = { from: run.from + 6, to: run.from + 11 };
 
-    openCommentDraft(editor, first);
-    openCommentDraft(editor, second);
+    openCommentDraft(editor, [first]);
+    openCommentDraft(editor, [second]);
 
-    expect(draftRangeIn(editor.prosemirrorState)).toMatchObject(second);
+    expect(draftRangeIn(editor.prosemirrorState)).toMatchObject({ segments: [second] });
   });
 });

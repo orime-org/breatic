@@ -87,7 +87,9 @@ export async function postComment(
     threadId: thread.id,
     orphan: false,
   });
-  view.dispatch(view.state.tr.addMark(landing.from, landing.to, mark));
+  const tr = view.state.tr;
+  for (const { from, to } of landing.segments) tr.addMark(from, to, mark);
+  view.dispatch(tr);
 
   return thread;
 }
