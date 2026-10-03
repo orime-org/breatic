@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@integration-tests/*": ["./src/*"],
+      "@shared/*": ["../shared/src/*"],
+      "@core/*": ["../core/src/*"],
+      "@domain/*": ["../domain/src/*"],
+      "@server/*": ["../server/src/*"],
+      "@worker/*": ["../worker/src/*"],
+      "@collab/*": ["../collab/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "vitest.integration.config.ts"]
+}

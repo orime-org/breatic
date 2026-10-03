@@ -4,8 +4,9 @@
 /**
  * Role-upgrade request service — a viewer asks the owner for editor rights.
  *
- * Four operations: `request` files one, `approve` / `reject` answer it, and
- * `cancel` withdraws it. The request itself lives in `role_upgrade_requests`;
+ * Five operations: `request` files one, `approve` / `reject` answer it,
+ * `cancel` withdraws it, and `readdressOnOwnerChange` moves it to a project's
+ * new owner. The request itself lives in `role_upgrade_requests`;
  * the bell entry in `notifications` only ANNOUNCES it.
  *
  * That split is the point of this module's shape. The request used to BE the
@@ -40,6 +41,7 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as requestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
@@ -56,13 +58,12 @@ import {
 } from "@server/utils/deferred-decision.js";
 import type { Refused } from "@server/utils/deferred-decision.js";
 import { projectMembersRepo } from "@breatic/core";
-import { ConflictError } from "@breatic/core";
+import { ConflictError, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { NotificationEntity } from "@breatic/shared";
 
 interface RoleUpgradeRequestInput {
-  ownerUserId: string;
   requesterUserId: string;
   projectId: string;
   projectName: string;
@@ -81,14 +82,20 @@ export interface FiledRequest {
  * File a request: one row in `role_upgrade_requests`, one bell entry for the
  * owner, both in a single transaction.
  *
+ * The owner is read under the project lock, the same lock every owner change
+ * holds while it re-addresses pending requests. Read before the lock, a filing
+ * that raced a transfer would ring the previous owner, after the re-address
+ * that could have moved it had already run.
+ *
  * The two carry the SAME `expires_at`, because they are two projections of one
  * fact and a viewer must never see them disagree. `createPending` reaps any
  * timed-out request on this key first, so a viewer whose earlier request was
  * never answered can file again rather than being locked out by their own
  * silence.
- * @param input - Owner, requester, project, and the optional note.
+ * @param input - Requester, project, and the optional note.
  * @returns The new request's id and the bell entry announcing it.
  * @throws {ConflictError} when this viewer already has a live request here.
+ * @throws {NotFoundError} when the project is gone or has no active owner.
  */
 export async function request(
   input: RoleUpgradeRequestInput,
@@ -97,7 +104,9 @@ export async function request(
   const expiresAt = new Date(Date.now() + getDecisionWindowMs());
   try {
     const filedRequest = await db.transaction<
-      (FiledRequest & { shareToken: string }) | { refusal: "not_found" }
+      | (FiledRequest & { shareToken: string; ownerUserId: string })
+      | { refusal: "not_found" }
+      | { noOwner: true }
     >(async (tx) => {
       // Locks the project for the length of this transaction and refuses if it
       // is already gone. Without it the row commits after the delete cascade
@@ -106,6 +115,8 @@ export async function request(
       if (!(await projectRepo.lockLiveProject(input.projectId, tx))) {
         return { refusal: "not_found" as const };
       }
+      const ownerUserId = await projectMembersRepo.getOwner(input.projectId, tx);
+      if (ownerUserId === null) return { noOwner: true as const };
       const filed = await requestsRepo.createPending({
         projectId: input.projectId,
         requesterUserId: input.requesterUserId,
@@ -124,7 +135,7 @@ export async function request(
         ),
       );
       const notification = await notificationService.createRoleUpgradeRequest({
-        ownerUserId: input.ownerUserId,
+        ownerUserId,
         projectId: input.projectId,
         expiresAt,
         payload: {
@@ -140,9 +151,12 @@ export async function request(
         tx,
       });
       await requestsRepo.attachNotification(requestId, notification.id, tx);
-      return { requestId, notification, shareToken: filed.shareToken };
+      return { requestId, notification, shareToken: filed.shareToken, ownerUserId };
     });
     if ("refusal" in filedRequest) throw refusalError(filedRequest.refusal);
+    if ("noOwner" in filedRequest) {
+      throw new NotFoundError(t("server.project.no_active_owner"));
+    }
 
     // Best-effort email — the bell entry above is the always-delivered path.
     // Without this the owner has to be in the app that week to learn a decision
@@ -153,7 +167,7 @@ export async function request(
         async () => {
           // Resolve the recipient INSIDE the best-effort boundary: a DB read
           // blip must not fail this request, which already committed.
-          const owner = await userRepo.getUserById(input.ownerUserId);
+          const owner = await userRepo.getUserById(filedRequest.ownerUserId);
           if (!owner) return null;
           return buildRoleUpgradeRequestMail({
             locale: owner.locale,
@@ -165,7 +179,7 @@ export async function request(
             decisionLink: decisionLink(origin, filedRequest.shareToken),
           });
         },
-        { userId: input.ownerUserId, subject: "role_upgrade_request" },
+        { userId: filedRequest.ownerUserId, subject: "role_upgrade_request" },
       );
     }
 
@@ -345,6 +359,13 @@ export async function cancel(
   requesterUserId: string,
 ): Promise<void> {
   const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
+    // The project first, as every write to this table takes it: an owner
+    // change re-addresses pending requests under that lock, and a withdrawal
+    // slipping in between its read and its write would leave the new owner a
+    // bell for a request that no longer exists.
+    const projectId = await requestsRepo.getProjectIdOf(requestId, tx);
+    if (projectId === null) return { refusal: "not_found" };
+    await projectRepo.lockLiveProject(projectId, tx);
     const cancelled = await requestsRepo.cancelIfPending(
       requestId,
       requesterUserId,
@@ -357,6 +378,60 @@ export async function cancel(
     return { done: true };
   });
   if (isRefused(outcome)) throw refusalError(outcome.refusal);
+}
+
+/**
+ * A project changed owner: move each pending request's bell entry to the new
+ * owner, keeping the same decision token and deadline.
+ *
+ * The new owner's own pending request is settled first: they own the project
+ * now, so there is nothing left for them to ask, and it must not land in their
+ * own bell. Called through `onProjectOwnerChanged`, inside the transaction that
+ * wrote the owner row and under its project lock.
+ * @param projectId - The project.
+ * @param newOwnerUserId - Its owner now.
+ * @param tx - The transaction that wrote the owner row.
+ */
+export async function readdressOnOwnerChange(
+  projectId: string,
+  newOwnerUserId: string,
+  tx: DbTx,
+): Promise<void> {
+  const pending = await requestsRepo.listLivePendingForProject(projectId, tx);
+  const others: requestsRepo.PendingRoleUpgradeRequest[] = [];
+  for (const req of pending) {
+    if (req.notificationId !== null) await notificationRepo.retire(req.notificationId, tx);
+    if (req.requesterUserId === newOwnerUserId) {
+      await requestsRepo.settleIfPending(req.id, "expired", null, tx);
+    } else {
+      others.push(req);
+    }
+  }
+  if (others.length === 0) return;
+  const project = await projectRepo.getProjectById(projectId, tx);
+  const profiles = await studioRepo.getPersonalProfilesByCreators(
+    others.map((r) => r.requesterUserId),
+    tx,
+  );
+  for (const req of others) {
+    const entry = await notificationService.createRoleUpgradeRequest({
+      ownerUserId: newOwnerUserId,
+      projectId,
+      expiresAt: req.expiresAt,
+      payload: {
+        requestId: req.id,
+        shareToken: req.shareToken,
+        requesterUserId: req.requesterUserId,
+        requesterName: profiles.get(req.requesterUserId)?.name ?? "",
+        projectId,
+        projectName: project?.name ?? "",
+        requestedRole: "editor",
+        message: req.message,
+      },
+      tx,
+    });
+    await requestsRepo.attachNotification(req.id, entry.id, tx);
+  }
 }
 
 /**

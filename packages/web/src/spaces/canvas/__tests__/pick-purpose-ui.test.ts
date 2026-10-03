@@ -80,16 +80,17 @@ describe('聚焦这个挑选在表里两个面板都有触发器（#1978）', ()
     );
   });
 
-  // style 是图片面板独有，五个源槽位（两个帧、人物图、驱动视频、驱动音频）
-  // 是视频面板独有。把这条数出来钉住，防止将来给某个单面板的 purpose 顺手
-  // 补上另一个面板的入口。
-  it('恰好这两个 purpose 是图片和视频面板共有的', () => {
+  // Reference, Focus and Style sit on both the image and the video tool rows
+  // (Style since inner#828); the source slots are the video panel's alone.
+  // Counted here so a single-panel purpose does not quietly gain the other
+  // panel's trigger.
+  it('names exactly the purposes the image and video panels share', () => {
     const both = (Object.keys(PICK_PURPOSE_UI) as PickPurpose[]).filter((p) => {
-      // 先加宽成普通字典再读：每一行的 trigger 被收窄成它自己点名的那几个
-      // 面板，直接读一个它没有的键是类型错误。
+      // Widened first: each row's trigger is narrowed to the panels it names,
+      // so reading a key it lacks is a type error.
       const t: Record<string, string> = PICK_PURPOSE_UI[p].trigger;
       return t.generate !== undefined && t.generateVideo !== undefined;
     });
-    expect(both.sort()).toEqual(['focus', 'reference']);
+    expect(both.sort()).toEqual(['focus', 'reference', 'style']);
   });
 });

@@ -45,7 +45,7 @@
  *      for a studio, and reading a studio's ledger. Their absence is a
  *      sequential scan on the hot path of every generation.
  *
- * Runs against the testcontainer Postgres started by global-setup.ts, so what
+ * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers, so what
  * it reads is the schema the migration actually produced.
  */
 

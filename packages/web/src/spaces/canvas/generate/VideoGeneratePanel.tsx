@@ -102,6 +102,16 @@ interface VideoGeneratePanelProps {
   onPickSlot: (slot: VideoSlot) => void;
   /** Clear a slot. */
   onClearSlot: (slot: VideoSlot) => void;
+  /** How many style images the model takes, or undefined for none (inner#828). */
+  styleCap: number | undefined;
+  /** The node's style images, in pick order. */
+  styleImages: readonly string[];
+  /** Enter / exit the style pick. */
+  onStylePick: () => void;
+  /** Whether THIS node's style pick is running. */
+  stylePicking: boolean;
+  /** Take one style image out. */
+  onRemoveStyle: (url: string) => void;
   /**
    * Which execute precondition fails, or null when Generate may proceed.
    *
@@ -171,6 +181,11 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   activeSlot,
   onPickSlot,
   onClearSlot,
+  styleCap,
+  styleImages,
+  onStylePick,
+  stylePicking,
+  onRemoveStyle,
   executeRefusal,
   promptSlot,
   durationFloor,
@@ -195,6 +210,11 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
           activeSlot={activeSlot}
           onPickSlot={onPickSlot}
           onClearSlot={onClearSlot}
+          styleCap={styleCap}
+          styleImages={styleImages}
+          onStylePick={onStylePick}
+          styleActive={stylePicking}
+          onRemoveStyle={onRemoveStyle}
         />
         <Button
           type='button'

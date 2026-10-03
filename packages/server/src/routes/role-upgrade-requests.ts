@@ -38,9 +38,8 @@ import type { AuthRoleVariables } from "@server/middleware/role.js";
 import {
   roleUpgradeRequestService,
   projectService,
-  projectMembersService,
 } from "@server/modules";
-import { ForbiddenError, NotFoundError } from "@breatic/core";
+import { ForbiddenError } from "@breatic/core";
 import { t } from "@breatic/shared";
 
 // ── Per-project endpoints (the requester's side) ───────────────────
@@ -74,18 +73,11 @@ projectRoleUpgradeRequests.post(
     const projectId = getProjectId(c);
     const body = c.req.valid("json");
 
-    const [project, ownerUserId] = await Promise.all([
-      projectService.get(projectId, user.id),
-      projectMembersService.getOwner(projectId),
-    ]);
-    if (!ownerUserId) {
-      throw new NotFoundError(t("server.project.no_active_owner"));
-    }
+    const project = await projectService.get(projectId, user.id);
 
     // The service sends the best-effort email itself (it needs the owner + the
     // request's token); the route only forwards the Origin for the link.
     const filed = await roleUpgradeRequestService.request({
-      ownerUserId,
       requesterUserId: user.id,
       projectId,
       projectName: project.name,

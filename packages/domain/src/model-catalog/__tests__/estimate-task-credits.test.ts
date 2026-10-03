@@ -95,3 +95,20 @@ describe("estimateTaskCredits", () => {
     expect(MIN_TASK_CREDIT_COST).toBeGreaterThan(0);
   });
 });
+
+describe("style images on a model that prices each picture (inner#828)", () => {
+  it("prices MiniMax H3's style images as pictures in its reference list", async () => {
+    const set = { duration: 6, resolution: "1080p" };
+    const withStyle = await estimateModelCredits("minimax-h3-reference-to-video", {
+      params: { ...set, images: ["a", "b", "c", "d"], style_images: ["s1", "s2", "s3"] },
+    });
+    const sevenPictures = await estimateModelCredits("minimax-h3-reference-to-video", {
+      params: { ...set, images: ["a", "b", "c", "d", "s1", "s2", "s3"] },
+    });
+    const fourPictures = await estimateModelCredits("minimax-h3-reference-to-video", {
+      params: { ...set, images: ["a", "b", "c", "d"] },
+    });
+    expect(withStyle).toEqual(sevenPictures);
+    expect(withStyle?.credits).toBeGreaterThan(fourPictures?.credits ?? Infinity);
+  });
+});

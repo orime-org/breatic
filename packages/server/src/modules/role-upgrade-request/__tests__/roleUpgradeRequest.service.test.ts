@@ -64,6 +64,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     },
     projectMembersRepo: {
       getRole: vi.fn(),
+      getOwner: vi.fn(),
       updateRoleUnderOwner: vi.fn(),
     },
     NotFoundError,
@@ -155,6 +156,7 @@ beforeEach(() => {
     studioService.getPersonalStudioProfilesByUserIds,
   ).mockResolvedValue(new Map());
   vi.mocked(projectRepo.lockLiveProject).mockResolvedValue(true);
+  vi.mocked(projectMembersRepo.getOwner).mockResolvedValue(OWNER);
   vi.mocked(requestsRepo.getProjectIdOf).mockResolvedValue(PID);
   vi.mocked(userRepo.getUserById).mockResolvedValue({
     id: OWNER,
@@ -232,7 +234,6 @@ describe("request", () => {
 
     const before = Date.now();
     const out = await roleUpgradeRequestService.request({
-      ownerUserId: OWNER,
       requesterUserId: VIEWER,
       projectId: PID,
       projectName: "Demo",
@@ -283,7 +284,6 @@ describe("request", () => {
     ).mockResolvedValueOnce(fakeNotification());
 
     await roleUpgradeRequestService.request({
-      ownerUserId: OWNER,
       requesterUserId: VIEWER,
       projectId: PID,
       projectName: "Demo",
@@ -316,7 +316,6 @@ describe("request", () => {
     ).mockResolvedValueOnce(fakeNotification());
 
     await roleUpgradeRequestService.request({
-      ownerUserId: OWNER,
       requesterUserId: VIEWER,
       projectId: PID,
       projectName: "Demo",
@@ -338,7 +337,6 @@ describe("request", () => {
     ).mockResolvedValueOnce(fakeNotification());
 
     await roleUpgradeRequestService.request({
-      ownerUserId: OWNER,
       requesterUserId: VIEWER,
       projectId: PID,
       projectName: "Demo",
@@ -367,7 +365,6 @@ describe("request", () => {
 
     await expect(
       roleUpgradeRequestService.request({
-        ownerUserId: OWNER,
         requesterUserId: VIEWER,
         projectId: PID,
         projectName: "Demo",
@@ -381,7 +378,6 @@ describe("request", () => {
 
     await expect(
       roleUpgradeRequestService.request({
-        ownerUserId: OWNER,
         requesterUserId: VIEWER,
         projectId: PID,
         projectName: "Demo",

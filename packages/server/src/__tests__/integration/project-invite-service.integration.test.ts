@@ -88,12 +88,6 @@ import * as inviteService from "../../modules/project-invite/projectInvite.servi
 import * as invitesRepo from "../../modules/project-invite/projectInvitations.repo.js";
 import * as membersService from "../../modules/project/projectMembers.service.js";
 
-declare module "vitest" {
-  export interface ProvidedContext {
-    DATABASE_URL: string;
-  }
-}
-
 const OWNER = "00000000-0000-0000-0000-0000000c0001";
 const INVITEE = "00000000-0000-0000-0000-0000000c0002";
 const STRANGER = "00000000-0000-0000-0000-0000000c0003";

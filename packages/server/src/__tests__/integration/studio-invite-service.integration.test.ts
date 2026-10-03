@@ -76,12 +76,6 @@ import { studioMembersRepo } from "@breatic/domain";
 import * as inviteService from "../../modules/studio/studioInvite.service.js";
 import * as invitesRepo from "../../modules/studio/studioInvitations.repo.js";
 
-declare module "vitest" {
-  export interface ProvidedContext {
-    DATABASE_URL: string;
-  }
-}
-
 const INVITER = "00000000-0000-0000-0000-0000000b0001";
 const INVITEE = "00000000-0000-0000-0000-0000000b0002";
 const STRANGER = "00000000-0000-0000-0000-0000000b0003";

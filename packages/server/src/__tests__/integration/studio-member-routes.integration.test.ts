@@ -64,7 +64,7 @@ import {
 import { studioMembersRepo } from "@breatic/domain";
 import type { Hono } from "hono";
 
-// integration-setup.ts injects the container URLs into process.env but
+// @breatic/integration-tests/env injects the container URLs into process.env but
 // deliberately does not call initCore itself — a setup file runs for every
 // suite, so importing the core barrel there would pull the application into
 // every module graph.

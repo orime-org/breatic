@@ -7,6 +7,7 @@ import * as React from 'react';
 import { useTranslation } from '@web/i18n/use-translation';
 import {
   SlotTool,
+  StyleArea,
   ToggleTool,
   ToolRowDivider,
 } from '@web/spaces/canvas/generate/generate-tools';
@@ -43,6 +44,19 @@ interface VideoGenerateToolbarProps {
   onPickSlot: (slot: VideoSlot) => void;
   /** Clear a slot (its ✕ badge). */
   onClearSlot: (slot: VideoSlot) => void;
+  /**
+   * How many style images the model takes, or undefined when it takes none
+   * and no style area is drawn (inner#828).
+   */
+  styleCap: number | undefined;
+  /** The node's style images, in pick order. */
+  styleImages: readonly string[];
+  /** Enter / exit the style pick, which adds one image per click. */
+  onStylePick: () => void;
+  /** Whether the style pick is running. */
+  styleActive: boolean;
+  /** Take one style image out. */
+  onRemoveStyle: (url: string) => void;
 }
 
 /**
@@ -57,11 +71,12 @@ interface VideoGenerateToolbarProps {
  * one here" never moves; the refusal belongs on the row, where it can explain
  * itself. The slots come from the mode, so a mode that takes no source shows
  * no slot rather than offering a pick the submit then ignores, and a new slot
- * is a registry entry rather than another branch here.
+ * is a registry entry rather than another branch here. The style area follows
+ * for a model that takes style images (inner#828), behind its own divider.
  *
- * Its own row rather than a mode of the image toolbar: Style is the image
- * panel's alone, and the slots are this panel's alone. What the two rows are
- * built FROM is shared — {@link ToggleTool} and {@link SlotTool}.
+ * Its own row rather than a mode of the image toolbar: the source slots are
+ * this panel's alone. What the two rows are built FROM is shared —
+ * {@link ToggleTool}, {@link SlotTool} and {@link StyleArea}.
  * @param root0 - Component props.
  * @param root0.onReference - Enter / exit the reference pick.
  * @param root0.onFocus - Enter / exit the focus crop pick.
@@ -73,6 +88,11 @@ interface VideoGenerateToolbarProps {
  * @param root0.activeSlot - The slot whose pick is running.
  * @param root0.onPickSlot - Enter / exit a slot's pick.
  * @param root0.onClearSlot - Clear a slot.
+ * @param root0.styleCap - How many style images the model takes; undefined draws no style area.
+ * @param root0.styleImages - The node's style images, in pick order.
+ * @param root0.onStylePick - Enter / exit the style pick.
+ * @param root0.styleActive - Whether the style pick is running.
+ * @param root0.onRemoveStyle - Take one style image out.
  * @returns The tool row.
  */
 export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
@@ -86,6 +106,11 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
   activeSlot,
   onPickSlot,
   onClearSlot,
+  styleCap,
+  styleImages,
+  onStylePick,
+  styleActive,
+  onRemoveStyle,
 }: VideoGenerateToolbarProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -137,8 +162,7 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
             onClear={() => onClearSlot(slot)}
             // Never gated once shown: a slot only renders for the modes that
             // collect it, so there is no state where it is visible but
-            // unpickable (Style needs that gate because it renders in both
-            // image modes and only some models accept it).
+            // unpickable.
             disabled={false}
             clearLabel={t(spec.clearLabelKey)}
             label={t(spec.labelKey)}
@@ -146,6 +170,14 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
           />
         );
       })}
+      <StyleArea
+        dividerTestId='generate-video-tool-style-sep'
+        cap={styleCap}
+        images={styleImages}
+        onPick={onStylePick}
+        active={styleActive}
+        onRemove={onRemoveStyle}
+      />
     </div>
   );
 });

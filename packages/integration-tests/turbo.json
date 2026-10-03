@@ -1,0 +1,22 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "typecheck": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/server/src/**",
+        "$TURBO_ROOT$/packages/worker/src/**",
+        "$TURBO_ROOT$/packages/collab/src/**"
+      ]
+    },
+    "lint": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/server/src/**",
+        "$TURBO_ROOT$/packages/worker/src/**",
+        "$TURBO_ROOT$/packages/collab/src/**"
+      ]
+    }
+  }
+}

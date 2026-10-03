@@ -145,7 +145,7 @@ const PERSONAL: StudioDetail = {
 };
 
 describe('SettingsTab — the danger zone, wired up', () => {
-  it('shows transfer / delete for a team studio Admin', () => {
+  it('shows the danger zone to a team studio Admin', () => {
     withQuery(<SettingsTab studio={TEAM} members={[]} />);
     expect(screen.getByText('Danger zone')).toBeInTheDocument();
   });
@@ -153,8 +153,8 @@ describe('SettingsTab — the danger zone, wired up', () => {
   // A personal studio gets the box too, holding the one action that is
   // destructive for one. Its slug is its owner's handle: changing it frees
   // that name for the next claimant and 404s every link pointing at them.
-  // Transfer, delete and leave are the three that mean nothing for a personal
-  // studio, and that is a fact about them, not about the box.
+  // Transfer and leave are the two that mean nothing for a personal studio,
+  // and that is a fact about them, not about the box.
   it('shows a personal studio the danger zone, holding only the slug action', () => {
     withQuery(<SettingsTab studio={PERSONAL} members={[]} />);
     expect(screen.getByText('Danger zone')).toBeInTheDocument();
@@ -173,14 +173,14 @@ describe('SettingsTab — the danger zone, wired up', () => {
     );
     expect(screen.getByText('Danger zone')).toBeInTheDocument();
     expect(screen.getByTestId('settings-leave-open')).toBeInTheDocument();
-    // Transfer and delete belong to the admin.
+    // Transfer belongs to the admin.
     expect(screen.queryByTestId('settings-transfer-open')).toBeNull();
   });
 
-  it('shows the Admin transfer / delete / slug, and no leave action', () => {
+  it('shows the Admin transfer / slug, and no delete or leave action', () => {
     withQuery(<SettingsTab studio={TEAM} members={[]} />);
     expect(screen.getByTestId('settings-transfer-open')).toBeInTheDocument();
-    expect(screen.getByTestId('settings-delete')).toBeInTheDocument();
+    expect(screen.queryByTestId('settings-delete')).toBeNull();
     expect(screen.getByTestId('settings-slug-open')).toBeInTheDocument();
     expect(screen.queryByTestId('settings-leave-open')).toBeNull();
   });

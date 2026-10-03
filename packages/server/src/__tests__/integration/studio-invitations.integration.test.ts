@@ -48,12 +48,6 @@ initCore(process.env);
 
 import * as invitesRepo from "../../modules/studio/studioInvitations.repo.js";
 
-declare module "vitest" {
-  export interface ProvidedContext {
-    DATABASE_URL: string;
-  }
-}
-
 // Fixture IDs — inserted once, reused across tests.
 const INVITER = "00000000-0000-0000-0000-0000000a0001";
 const INVITEE = "00000000-0000-0000-0000-0000000a0002";

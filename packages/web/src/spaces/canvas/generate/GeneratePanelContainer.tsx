@@ -11,7 +11,6 @@ import {
   getPromptFragment,
   isNodeLocked,
   readCanvasGraph,
-  removeNodeSlotItem,
   setNodeMode,
   setNodeModel,
   setNodeParams,
@@ -22,6 +21,7 @@ import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { slotRefusalKey } from '@web/spaces/canvas/generate/slots';
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
+import { useStyleSlot } from '@web/spaces/canvas/generate/use-style-slot';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
@@ -463,28 +463,12 @@ function GeneratePanelBody({
       startReferencePick(nodeId);
     }
   }, [startReferencePick, endPick, nodeId]);
-  const stylePicking = useCanvasStore(
-    (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'style',
-  );
-  const startStylePick = useCanvasStore((s) => s.startStylePick);
-  const styleCap = vm.styleCap;
-  const styleHeld = vm.styleImages.length;
-  // Each click on the canvas adds one style image; the cap rides the session
-  // so the canvas knows when the slot is full (inner#826). A full slot opens
-  // no pick: every click would add nothing.
-  const onStylePick = React.useCallback(() => {
-    const session = useCanvasStore.getState().pickSession;
-    if (session?.nodeId === nodeId && session.purpose === 'style') {
-      endPick();
-    } else if (styleCap !== undefined && styleHeld < styleCap) {
-      startStylePick(nodeId, styleCap);
-    }
-  }, [startStylePick, endPick, nodeId, styleCap, styleHeld]);
-  const onRemoveStyle = React.useCallback(
-    (url: string) => {
-      removeNodeSlotItem(projectId, spaceId, nodeId, IMAGE_SLOTS.style.field, url);
-    },
-    [projectId, spaceId, nodeId],
+  const { stylePicking, onStylePick, onRemoveStyle } = useStyleSlot(
+    projectId,
+    spaceId,
+    nodeId,
+    vm.styleCap,
+    vm.styleImages.length,
   );
   useEndPickWhenSlotGone(nodeId, vm.slots, getLastWriteWasLocal);
   const startFocusPick = useCanvasStore((s) => s.startFocusPick);

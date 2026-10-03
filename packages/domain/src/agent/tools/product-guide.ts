@@ -552,7 +552,10 @@ export function renderProductGuide(): string {
       "well as the camera itself; the wheels only apply while the switch reads " +
       `${quoted(t("canvas.generatePanel.switchOn"))}.`,
     `- Video panel: tools ${quoted(t("canvas.generatePanel.reference"))} and ` +
-      `${quoted(t("canvas.generatePanel.focus"))}, then after a thin divider one button for each source slot. The ` +
+      `${quoted(t("canvas.generatePanel.focus"))}, then after a thin divider one button for each source slot. ` +
+      "A model that takes style images adds the same style area at the end, after its own thin divider, and it " +
+      "works as on the picture panel. Style pictures never count as a reference the model needs: a model that " +
+      "will not run without one still needs it mentioned with @. The " +
       "settings pill shows values such as 16:9 · 720p · 8s; clicking it opens " +
       `${quoted(t("canvas.generatePanel.ratio"))}, ${quoted(t("canvas.generatePanel.resolution"))}, ` +
       `${quoted(t("canvas.generatePanel.duration"))}, a ${quoted(t("canvas.generatePanel.generateAudio"))} ` +
@@ -633,7 +636,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.sourceVideo"))}, ${quoted(t("canvas.generatePanel.moodImage"))}, ` +
       `${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicMelody"))} and ` +
       `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel's only one is its style area, which ` +
-      "holds up to three pictures and works its own way (see the picture panel above): each click adds one, " +
+      "holds up to three pictures and works its own way (see the picture panel above), and the video panel shows " +
+      "the same area for a model that takes style images: each click adds one, " +
       "and a picture is taken out with its X, never replaced. Every other slot holds one node, as follows. " +
       "Which ones show depends on " +
       "the mode and model. Some must be " +

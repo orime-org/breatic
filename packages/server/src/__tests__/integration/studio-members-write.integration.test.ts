@@ -17,7 +17,7 @@
  *     demotes-then-promotes in one tx, so the repo must not silently allow two
  *     active admins).
  *
- * Runs against the testcontainer Postgres started by global-setup.ts. Seeding
+ * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers. Seeding
  * uses a narrow raw `postgres` client; assertions call the real repo.
  */
 

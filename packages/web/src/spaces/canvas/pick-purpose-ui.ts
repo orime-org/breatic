@@ -22,7 +22,7 @@
  */
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
-import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
+import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { PickPurpose } from '@web/stores/canvas';
 
@@ -123,6 +123,6 @@ export const PICK_PURPOSE_UI = {
   },
   style: {
     banner: 'canvas.generatePanel.selectStyleFromCanvas',
-    trigger: { generate: IMAGE_SLOTS.style.testId },
+    trigger: { generate: STYLE_SLOT.testId, generateVideo: STYLE_SLOT.testId },
   },
 } as const satisfies Record<PickPurpose, PickPurposeUi>;

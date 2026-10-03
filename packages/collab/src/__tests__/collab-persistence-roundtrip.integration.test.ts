@@ -31,13 +31,13 @@ import * as Y from "yjs";
 import { eq } from "drizzle-orm";
 
 import { initCore, yjsDocuments, createTestDb } from "@breatic/core";
-import * as yjsRepo from "@breatic/collab/src/services/yjs-documents.repo.js";
+import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import {
   createPersistenceExtension,
   storeDocumentNow,
-} from "@breatic/collab/src/services/persistence.js";
-import { createUnloadGate } from "@breatic/collab/src/hooks/unload-gate.js";
-import { createChangeTrackingExtension } from "@breatic/collab/src/services/change-tracking.js";
+} from "@collab/services/persistence.js";
+import { createUnloadGate } from "@collab/hooks/unload-gate.js";
+import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 
 initCore(process.env);
 

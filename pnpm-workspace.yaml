@@ -65,6 +65,13 @@ catalog:
   "y-protocols": ^1.0.7
   "yjs": ^13.6.32
 
+  # The PostgreSQL and Redis containers every package's integration suite
+  # starts through @breatic/integration-tests. Each of those packages declares
+  # them, because Vite resolves the shared setup file's imports from the
+  # running package's root.
+  "@testcontainers/postgresql": ^11.14.0
+  "testcontainers": ^11.14.0
+
   # Backend infrastructure every service reaches for.
   "@types/nodemailer": ^8.0.1
   "bcryptjs": ^3.0.3
