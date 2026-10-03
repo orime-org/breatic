@@ -36,6 +36,8 @@ interface ReplyBoxProps {
   children: React.ReactNode;
   /** An optional strip along the bottom. */
   footer?: React.ReactNode;
+  /** Controls for what is showing, at the right of the header beside the close button. */
+  actions?: React.ReactNode;
 }
 
 /**
@@ -57,6 +59,7 @@ interface ReplyBoxProps {
  * @param root0.testId - Marks the box for the tests.
  * @param root0.children - The body.
  * @param root0.footer - An optional strip along the bottom.
+ * @param root0.actions - Controls at the right of the header.
  * @returns The box.
  */
 export function ReplyBox({
@@ -66,6 +69,7 @@ export function ReplyBox({
   testId,
   children,
   footer,
+  actions,
 }: ReplyBoxProps): React.JSX.Element {
   const returnFocus = useReturnFocus(open);
   return (
@@ -75,8 +79,18 @@ export function ReplyBox({
         onCloseAutoFocus={returnFocus}
         className={BOX_SIZE}
       >
-        <DialogHeader>
-          <DialogTitle className='truncate text-sm font-medium'>{title}</DialogTitle>
+        {/* The header's left column only holds the title, so it is made to
+          take the row: the actions then sit at its right edge, beside the
+          close button the header draws. */}
+        <DialogHeader className={actions === undefined ? undefined : '[&>div:first-child]:flex-1'}>
+          {actions === undefined ? (
+            <DialogTitle className='truncate text-sm font-medium'>{title}</DialogTitle>
+          ) : (
+            <div className='flex min-w-0 items-center justify-between gap-2'>
+              <DialogTitle className='min-w-0 truncate text-sm font-medium'>{title}</DialogTitle>
+              {actions}
+            </div>
+          )}
         </DialogHeader>
         {children}
         {footer}

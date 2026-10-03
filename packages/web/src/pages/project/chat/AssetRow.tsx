@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { Check, Copy } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
+import { CopyAnswerLabel } from '@web/pages/project/chat/copy-answer';
+import { isCopied, useCopyAsset, type CopyAsset } from '@web/pages/project/chat/copy-asset';
 import { ReplyBox } from '@web/pages/project/chat/ReplyBox';
 import { planRow, useRowMeasure } from '@web/pages/project/chat/row-fit';
 import type { ChatAsset } from '@web/pages/project/chat/types';
@@ -35,6 +38,7 @@ export const AssetRow = React.memo(function AssetRow({
   const t = useTranslation();
   const [openAt, setOpenAt] = React.useState<number | null>(null);
   const close = React.useCallback(() => setOpenAt(null), []);
+  const copying = useCopyAsset();
 
   const { room, rowPx } = useRowMeasure();
   const { sizePx, shown, hidden } = planRow(assets.length, rowPx, GAP_PX);
@@ -57,6 +61,7 @@ export const AssetRow = React.memo(function AssetRow({
             label={asset.title}
             size={square}
             onOpen={() => setOpenAt(i)}
+            copy={<CopyAssetButton copying={copying} asset={asset} />}
           />
         ))}
         {behind === undefined ? null : (
@@ -79,7 +84,13 @@ export const AssetRow = React.memo(function AssetRow({
           </AssetSquare>
         )}
       </div>
-      <AssetBox assets={assets} at={openAt} onMove={setOpenAt} onClose={close} />
+      <AssetBox
+        assets={assets}
+        at={openAt}
+        onMove={setOpenAt}
+        onClose={close}
+        copying={copying}
+      />
     </>
   );
 });
@@ -101,6 +112,8 @@ interface AssetSquareProps {
   onOpen: () => void;
   /** Drawn over the picture, for a square that says something as well. */
   children?: React.ReactNode;
+  /** A copy button for the picture, in the square's top-right corner. */
+  copy?: React.ReactNode;
 }
 
 /**
@@ -116,6 +129,7 @@ interface AssetSquareProps {
  * @param root0.size - How large to draw it.
  * @param root0.onOpen - Open it for a proper look.
  * @param root0.children - Drawn over the picture.
+ * @param root0.copy - A copy button for the picture.
  * @returns The square.
  */
 function AssetSquare({
@@ -125,20 +139,77 @@ function AssetSquare({
   size,
   onOpen,
   children,
+  copy,
 }: AssetSquareProps): React.JSX.Element {
+  // The copy button sits beside the open button rather than inside it: a
+  // button in a button is not valid markup, and the outer one would take the
+  // inner one's name and keys. The hover belongs to the cell, so it holds
+  // while the pointer is on either of them.
   return (
-    <Button
-      data-testid={testId}
-      variant={null}
-      size={null}
-      style={size}
-      onClick={onOpen}
-      aria-label={label}
-      className='relative shrink-0 overflow-hidden rounded-content-sm border border-border bg-muted'
-    >
-      <img src={src} alt='' className='size-full object-cover' loading='lazy' />
-      {children}
-    </Button>
+    <div className='group relative shrink-0'>
+      <Button
+        data-testid={testId}
+        variant={null}
+        size={null}
+        style={size}
+        onClick={onOpen}
+        aria-label={label}
+        className={cn(
+          'relative overflow-hidden rounded-content-sm border border-border bg-muted transition-colors',
+          'group-hover:border-active-border',
+          'after:pointer-events-none after:absolute after:inset-0 after:bg-white/0 after:transition-colors group-hover:after:bg-white/[0.08]',
+        )}
+      >
+        <img src={src} alt='' className='size-full object-cover' loading='lazy' />
+        {children}
+      </Button>
+      {copy}
+    </div>
+  );
+}
+
+interface CopyAssetButtonProps {
+  /** The row's copy state. */
+  copying: CopyAsset;
+  /** The picture it copies. */
+  asset: ChatAsset;
+}
+
+/**
+ * The copy button in a square's top-right corner.
+ *
+ * Shown while the square is hovered or the button has the keyboard, and kept
+ * up while it says copied. Hidden, it takes neither clicks nor a tab stop.
+ * @param root0 - The component props.
+ * @param root0.copying - The row's copy state.
+ * @param root0.asset - The picture it copies.
+ * @returns The button.
+ */
+function CopyAssetButton({ copying, asset }: CopyAssetButtonProps): React.JSX.Element {
+  const t = useTranslation();
+  const copied = isCopied(copying, asset);
+  return (
+    <span className='absolute right-1 top-1 inline-flex'>
+      <Button
+        data-testid='asset-copy'
+        variant={null}
+        size={null}
+        aria-label={t('chat.action.copy')}
+        onClick={() => copying.copy(asset)}
+        className={cn(
+          'inline-flex size-[18px] items-center justify-center rounded-chrome-sm border border-border bg-background text-foreground transition-opacity',
+          !copied &&
+            'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto',
+        )}
+      >
+        {copied ? (
+          <Check className='size-3' aria-hidden='true' />
+        ) : (
+          <Copy className='size-3' aria-hidden='true' />
+        )}
+      </Button>
+      {copied ? <CopyAnswerLabel side='right' /> : null}
+    </span>
   );
 }
 
@@ -151,6 +222,8 @@ interface AssetBoxProps {
   onMove: (at: number) => void;
   /** Shut the box. */
   onClose: () => void;
+  /** The row's copy state, shared with the squares' copy buttons. */
+  copying: CopyAsset;
 }
 
 /**
@@ -160,16 +233,35 @@ interface AssetBoxProps {
  * @param root0.at - Which one is on the stage.
  * @param root0.onMove - Put another one on the stage.
  * @param root0.onClose - Shut the box.
+ * @param root0.copying - The row's copy state.
  * @returns The box.
  */
-function AssetBox({ assets, at, onMove, onClose }: AssetBoxProps): React.JSX.Element {
+function AssetBox({ assets, at, onMove, onClose, copying }: AssetBoxProps): React.JSX.Element {
+  const t = useTranslation();
   const current = at === null ? undefined : assets[Math.min(at, assets.length - 1)];
+  const copied = current !== undefined && isCopied(copying, current);
   return (
     <ReplyBox
       open={at !== null}
       onOpenChange={onClose}
       testId='asset-box'
       title={current === undefined ? null : <span className='truncate'>{current.title}</span>}
+      actions={
+        current === undefined ? undefined : (
+          <span className='relative inline-flex shrink-0'>
+            <Button
+              data-testid='asset-box-copy'
+              variant='outline'
+              size='sm'
+              onClick={() => copying.copy(current)}
+            >
+              {copied ? <Check aria-hidden='true' /> : <Copy aria-hidden='true' />}
+              {t('chat.action.copy')}
+            </Button>
+            {copied ? <CopyAnswerLabel side='right' /> : null}
+          </span>
+        )
+      }
       footer={
         // Its own scroller rather than a row that runs off the edge: a turn
         // can find more of these than the column is wide, and the ones past

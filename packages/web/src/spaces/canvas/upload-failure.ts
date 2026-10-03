@@ -9,6 +9,7 @@
  */
 
 import type { UploadFailure } from '@web/data/upload/media-upload';
+import { STORAGE_FULL_STATUS } from '@web/data/upload/upload-retry';
 
 /**
  * What to do about a failed upload.
@@ -87,6 +88,18 @@ const TOAST_KEY: Readonly<
   unsupportedType: 'canvas.upload.unsupportedType',
   upload: 'canvas.upload.failed',
 };
+
+/**
+ * What a refused request to fetch an address into a node says.
+ *
+ * The refusal arrives before any task row is opened, so the node has no
+ * failure of its own to show and a toast is the only place it can be said.
+ * @param status - The refusal's HTTP status, when the server answered.
+ * @returns The toast's message key.
+ */
+export function ingestRefusalToastKey(status: number | undefined): string {
+  return status === STORAGE_FULL_STATUS ? TOAST_KEY.storage : TOAST_KEY.upload;
+}
 
 /**
  * Decide what a failed upload leaves behind.

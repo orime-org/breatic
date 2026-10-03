@@ -81,6 +81,12 @@ export interface ClipboardNode {
   id?: string;
   /** Source parent Group id (members only). */
   parentId?: string;
+  /**
+   * `content` is an address outside our storage. A paste never pins it on the
+   * node: it creates an empty node and has the server fetch the address into
+   * storage, which then writes the stored address onto the node.
+   */
+  external?: boolean;
 }
 
 /** The minimal shape {@link captureClipboard} / {@link externalParentAbs} read off a canvas node. */
@@ -270,6 +276,20 @@ export function parseClipboardNodes(text: string): ClipboardNode[] | null {
 }
 
 /**
+ * Whether a paste belongs to the canvas.
+ *
+ * The canvas takes a paste while the space holds the keyboard. Its own nodes
+ * it takes regardless: copying a picture in the agent column leaves the
+ * keyboard there, and canvas nodes have nowhere else to go.
+ * @param ownsKeyboard - Whether the space holds the keyboard.
+ * @param text - The clipboard's plain text.
+ * @returns Whether the canvas handles this paste.
+ */
+export function canvasTakesPaste(ownsKeyboard: boolean, text: string): boolean {
+  return ownsKeyboard || text.startsWith(CLIPBOARD_MARKER);
+}
+
+/**
  * Clone clipboard nodes into fresh wire nodes — Group-aware: new unique ids,
  * positions shifted by `offset` (so relative layout is preserved), carried name
  * / content / size, and fresh metadata (createdBy / createdAt / idle state). A
@@ -350,6 +370,15 @@ export function cloneForPaste(
       };
     }
     const fresh = createEmptyNode(node.type, position, createdBy);
+    if (node.external === true) {
+      // Not a copy of a node, so no COPY- prefix; and not our address, so the
+      // node stays empty until the fetch into storage writes one.
+      return {
+        ...fresh,
+        id: freshId,
+        data: { ...fresh.data, ...(node.name !== undefined ? { name: node.name } : {}) },
+      };
+    }
     const baseName = node.name ?? fresh.data.name;
     // A "following member" (its Group is cloned in this payload) keeps its name;
     // every other clone is a root → COPY- prefixed (R2-C).
