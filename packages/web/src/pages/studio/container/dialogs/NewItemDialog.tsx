@@ -73,7 +73,8 @@ interface NewItemDialogProps {
  * slug + optional description) parameterized by kind. Project / collection
  * slugs are not unique, so the slug is checked for shape alone, live as it is
  * typed (`useItemSlugCheck`); Create waits for a name and a slug that passed.
- * A submit reports the values and closes once the caller's create settles.
+ * A submit reports the values and closes once the caller's create succeeds;
+ * a rejected create leaves the dialog open with what was typed.
  * @param props the kind, open state and create callback.
  * @param props.kind the dialog / collection kind.
  * @param props.open whether the dialog is open.
