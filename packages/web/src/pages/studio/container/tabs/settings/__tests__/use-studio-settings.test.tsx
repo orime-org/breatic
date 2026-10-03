@@ -24,6 +24,8 @@ import { useStudioSettings } from '@web/pages/studio/container/tabs/settings/use
 import { studiosApi } from '@web/data/api/studios';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { ApiException } from '@web/data/api/types';
+import { toast } from '@web/lib/toast';
 import { creditOverviewKey } from '@web/features/credits/use-credit-overview';
 import type { Studio, StudioDetail } from '@breatic/shared';
 
@@ -43,6 +45,12 @@ const { uploadPicture } = vi.hoisted(() => ({ uploadPicture: vi.fn() }));
 vi.mock('@web/pages/studio/shared/upload-picture', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   uploadPicture,
+}));
+const { slugFieldShowsConflict } = vi.hoisted(() => ({
+  slugFieldShowsConflict: vi.fn(),
+}));
+vi.mock('@web/pages/studio/container/dialogs/use-slug-availability', () => ({
+  slugFieldShowsConflict,
 }));
 vi.mock('@web/lib/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -564,5 +572,113 @@ describe('useStudioSettings — leaving', () => {
     await waitFor(() =>
       expect(navigate).toHaveBeenCalledWith('/studio', { replace: true }),
     );
+  });
+});
+
+describe('useStudioSettings — a slug save the server refuses with 409', () => {
+  const conflict = (): ApiException =>
+    new ApiException({ status: 409, message: 'Conflict', fromServer: true });
+
+  beforeEach(() => {
+    vi.mocked(studiosApi.update).mockRejectedValue(conflict());
+    // A taken slug, shown only while the caller says the field is up.
+    slugFieldShowsConflict.mockImplementation(
+      async (_client, _err, _slug, fieldShown: () => boolean) => fieldShown(),
+    );
+  });
+
+  it('leaves a taken slug to the field that shows it, with no toast', async () => {
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+    result.current.save({ slug: 'acme-renamed' }, () => true);
+    await waitFor(() =>
+      expect(slugFieldShowsConflict).toHaveBeenCalledWith(
+        client,
+        expect.any(ApiException),
+        'acme-renamed',
+        expect.any(Function),
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('still says what went wrong once the field is gone', async () => {
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+    result.current.save({ slug: 'acme-renamed' }, () => false);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Conflict'));
+  });
+
+  it('still says what went wrong when the conflict is not the slug', async () => {
+    slugFieldShowsConflict.mockResolvedValue(false);
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+    result.current.save({ slug: 'acme-renamed' }, () => true);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Conflict'));
+  });
+
+  it('still says what went wrong when the settings tab is gone before the answer', async () => {
+    let reject: (err: unknown) => void = () => {};
+    vi.mocked(studiosApi.update).mockReturnValue(
+      new Promise((_resolve, rej) => {
+        reject = rej;
+      }),
+    );
+    const { result, unmount } = renderHook(() => useStudioSettings(TEAM), {
+      wrapper,
+    });
+    // The field reports itself gone once its tab has unmounted.
+    let fieldUp = true;
+    result.current.save({ slug: 'acme-renamed' }, () => fieldUp);
+    unmount();
+    fieldUp = false;
+    reject(conflict());
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Conflict'));
+  });
+
+  it('still reports a failed name save after the settings tab is gone', async () => {
+    let reject: (err: unknown) => void = () => {};
+    vi.mocked(studiosApi.update).mockReturnValue(
+      new Promise((_resolve, rej) => {
+        reject = rej;
+      }),
+    );
+    const { result, unmount } = renderHook(() => useStudioSettings(TEAM), {
+      wrapper,
+    });
+    result.current.save({ name: 'Acme 2' });
+    unmount();
+    reject(new ApiException({ status: 500, message: 'Boom', fromServer: true }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Boom'));
+  });
+
+  it('judges each save with its own field check, even when a later save starts first', async () => {
+    let rejectRename: (err: unknown) => void = () => {};
+    vi.mocked(studiosApi.update)
+      .mockReturnValueOnce(
+        new Promise((_resolve, rej) => {
+          rejectRename = rej;
+        }),
+      )
+      .mockReturnValueOnce(new Promise(() => {}));
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+    result.current.save({ slug: 'acme-renamed' }, () => true);
+    result.current.save({ name: 'Acme 2' });
+    rejectRename(conflict());
+    await waitFor(() =>
+      expect(slugFieldShowsConflict).toHaveBeenCalledWith(
+        client,
+        expect.any(ApiException),
+        'acme-renamed',
+        expect.any(Function),
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('does not re-ask for a save that left the slug alone', async () => {
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+    result.current.save({ name: 'Acme 2' });
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Conflict'));
+    expect(slugFieldShowsConflict).not.toHaveBeenCalled();
   });
 });

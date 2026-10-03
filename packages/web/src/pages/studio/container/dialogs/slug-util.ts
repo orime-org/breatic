@@ -29,6 +29,16 @@ export const ITEM_SLUG_BOUNDS = { min: 6, max: 50 } as const;
 /** A slug validation failure reason, or `null` when the slug is acceptable. */
 export type SlugError = 'format' | 'length' | 'reserved' | 'taken' | null;
 
+/**
+ * What the one hint line under a slug input says: the field's description
+ * while it is empty, a pending line while a check runs, then the outcome.
+ */
+export type SlugCheck =
+  | { state: 'empty' }
+  | { state: 'checking' }
+  | { state: 'invalid'; reason: Exclude<SlugError, null> }
+  | { state: 'valid' };
+
 interface SlugBounds {
   min: number;
   max: number;

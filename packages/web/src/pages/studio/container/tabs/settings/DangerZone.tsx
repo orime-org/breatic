@@ -31,7 +31,7 @@ interface DangerZoneProps {
   saving: boolean;
   /** Whether a SLUG change in particular is in flight — draws its spinner. */
   renaming: boolean;
-  onSave: (patch: UpdateStudioInput) => void;
+  onSave: (patch: UpdateStudioInput, slugFieldShown?: () => boolean) => void;
 }
 
 /**

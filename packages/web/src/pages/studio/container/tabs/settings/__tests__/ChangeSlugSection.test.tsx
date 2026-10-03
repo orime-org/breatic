@@ -4,9 +4,9 @@
 /**
  * The danger zone's slug entry: a button, and a dialog that holds the input.
  *
- * The gate is written as "only when the check says available" rather than
+ * The gate is written as "only when the check says valid" rather than
  * "unless the check says invalid", because an emptied field reports neither —
- * it reports idle. The version of this gate that lived in the basic-info form
+ * it reports empty. The version of this gate that lived in the basic-info form
  * had to be corrected for exactly that, and the correction travels with the
  * feature.
  *
@@ -219,7 +219,7 @@ describe('ChangeSlugSection — the confirm gate', () => {
     expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled();
   });
 
-  it('refuses an emptied field, which reports idle rather than invalid', async () => {
+  it('refuses an emptied field, which reports empty rather than invalid', async () => {
     renderSection();
     const input = await openDialog();
     fireEvent.change(input, { target: { value: '' } });
@@ -287,7 +287,33 @@ describe('ChangeSlugSection — the confirm gate', () => {
     );
 
     fireEvent.click(screen.getByTestId('settings-slug-confirm'));
-    expect(onSave).toHaveBeenCalledWith({ slug: 'acme-renamed' });
+    expect(onSave).toHaveBeenCalledWith(
+      { slug: 'acme-renamed' },
+      expect.any(Function),
+    );
+  });
+
+  it('tells the save whether the field still shows the slug it sent', async () => {
+    const onSave = vi.fn();
+    renderSection({ onSave });
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByTestId('settings-slug-confirm'));
+    const fieldShown = onSave.mock.calls[0][1] as () => boolean;
+    expect(fieldShown()).toBe(true);
+
+    fireEvent.click(screen.getByTestId('settings-slug-cancel'));
+    await waitFor(() =>
+      expect(screen.queryByTestId('settings-slug-dialog')).not.toBeInTheDocument(),
+    );
+    expect(fieldShown()).toBe(false);
+
+    // Reopened, the field is back on the studio's own slug.
+    await openDialog();
+    expect(fieldShown()).toBe(false);
   });
 
   it('shuts the moment ANY settings save goes out, so two cannot ride at once', async () => {
@@ -423,5 +449,42 @@ describe('ChangeSlugSection — after confirming', () => {
     );
     const reopened = await openDialog();
     expect(reopened).toHaveValue(STUDIO.slug);
+  });
+});
+
+describe('ChangeSlugSection — the hint under the slug', () => {
+  const HELPER = 'studio.container.dialog.slugHelperStudio';
+
+  it('describes the slug while the field holds the current one', async () => {
+    renderSection();
+    await openDialog();
+    const hint = screen.getByTestId('danger-slug-hint');
+    expect(hint).toHaveTextContent(HELPER);
+    expect(hint).toHaveTextContent('"min":6');
+    expect(hint).not.toHaveTextContent('studio.container.dialog.slugAvailable');
+  });
+
+  it('goes back to the description when the slug is changed back', async () => {
+    renderSection();
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugAvailable',
+      ),
+    );
+    fireEvent.change(input, { target: { value: STUDIO.slug } });
+    expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(HELPER);
+  });
+
+  it('shows a free new slug in green', async () => {
+    renderSection();
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('danger-slug-hint')).toHaveClass(
+        'text-status-success-foreground',
+      ),
+    );
   });
 });

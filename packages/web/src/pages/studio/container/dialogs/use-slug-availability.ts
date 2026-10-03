@@ -1,31 +1,19 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { useQuery } from '@tanstack/react-query';
+import * as React from 'react';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 
-import { studiosApi } from '@web/data/api/studios';
+import { studiosApi, type SlugAvailability } from '@web/data/api/studios';
 import { useDebounce } from '@web/lib/use-debounce';
+import { ApiException } from '@web/data/api/types';
 import {
   RESERVED_STUDIO_SLUGS,
   STUDIO_SLUG_BOUNDS,
   validateSlugShape,
+  type SlugCheck,
   type SlugError,
 } from '@web/pages/studio/container/dialogs/slug-util';
-
-/** The derived live-availability status of a slug input. */
-export type SlugStatus =
-  | 'idle'
-  | 'invalid'
-  | 'checking'
-  | 'available'
-  | 'taken';
-
-/** The result of a live slug-availability check. */
-export interface SlugAvailabilityResult {
-  status: SlugStatus;
-  /** The failure reason when `status` is `'invalid'` or `'taken'`. */
-  reason?: SlugError;
-}
 
 /** Extra context for the check. */
 export interface SlugAvailabilityOptions {
@@ -57,8 +45,25 @@ function validateLocally(value: string): SlugError {
 }
 
 /**
+ * The availability query for one slug, shared by the live check and the 409
+ * re-ask so the re-ask refreshes the very answer the field reads.
+ * @param slug - The trimmed slug.
+ * @returns The query key and fetcher.
+ */
+function slugAvailabilityQuery(slug: string): {
+  queryKey: readonly unknown[];
+  queryFn: (context: { signal: AbortSignal }) => Promise<SlugAvailability>;
+} {
+  return {
+    queryKey: ['studio-slug-available', slug],
+    queryFn: ({ signal }) => studiosApi.checkSlugAvailable(slug, signal),
+  };
+}
+
+/**
  * Live (debounced) studio-slug availability — shared by the create-studio
- * dialog and the onboarding slug page so both behave identically.
+ * dialog, the rename-slug dialog and the onboarding slug page so all three
+ * behave identically.
  *
  * Local shape/length/reserved checks run first (no request for an
  * obviously-invalid slug); a well-formed slug is checked against the server.
@@ -67,15 +72,15 @@ function validateLocally(value: string): SlugError {
  * stored under its own key and never overwrites the current input's status; the
  * `AbortSignal` cancels the superseded in-flight request. The server check is a
  * UX helper only — the authoritative uniqueness guard is the insert-time unique
- * index, so a slug shown `available` can still lose a race and 409 on submit.
+ * index, so a slug shown `valid` can still lose a race and 409 on submit.
  * @param rawSlug the current (un-debounced) slug input value.
  * @param options extra context — notably the caller's own slug, for renaming.
- * @returns the derived status + the failure reason when not available.
+ * @returns where the slug stands, in the slug field's own terms.
  */
 export function useSlugAvailability(
   rawSlug: string,
   options?: SlugAvailabilityOptions,
-): SlugAvailabilityResult {
+): SlugCheck {
   const trimmed = rawSlug.trim();
   const slug = useDebounce(trimmed, 300);
   const localError = validateLocally(slug);
@@ -86,35 +91,94 @@ export function useSlugAvailability(
   const enabled = slug.length > 0 && localError === null && !isOwn;
 
   const query = useQuery({
-    queryKey: ['studio-slug-available', slug],
-    queryFn: ({ signal }) => studiosApi.checkSlugAvailable(slug, signal),
+    ...slugAvailabilityQuery(slug),
     enabled,
     staleTime: 30_000,
   });
 
   if (trimmed.length === 0) {
-    return { status: 'idle' };
+    return { state: 'empty' };
   }
   // Debounce-skew guard: while the live input has not yet settled into the
   // debounced value, the query still reflects the OLD slug — report `checking`
-  // so the submit gate never treats a stale `available` as valid for the new
+  // so the submit gate never treats a stale `valid` as valid for the new
   // input (the gate and the submitted slug stay consistent).
   if (trimmed !== slug) {
-    return { status: 'checking' };
+    return { state: 'checking' };
   }
   if (localError !== null) {
-    return { status: 'invalid', reason: localError };
+    return { state: 'invalid', reason: localError };
   }
   // Checked after the local rules so the exemption cannot smuggle through a
   // slug that is no longer valid at all.
   if (isOwn) {
-    return { status: 'available' };
+    return { state: 'valid' };
   }
   if (query.isFetching || query.data === undefined) {
-    return { status: 'checking' };
+    return { state: 'checking' };
   }
   if (query.data.available) {
-    return { status: 'available' };
+    return { state: 'valid' };
   }
-  return { status: 'taken', reason: query.data.reason ?? 'taken' };
+  return { state: 'invalid', reason: query.data.reason ?? 'taken' };
+}
+
+/**
+ * Decide whether a refused submit is already being shown by the slug field.
+ *
+ * A 409 does not always mean the slug: creating a team studio also answers 409
+ * when the account is at its team-studio cap. Re-asking the server refreshes
+ * the cached answer the field reads, so a taken slug turns the field red on
+ * its own. That only tells the reader something while the field is on screen
+ * and holds the submitted slug; the caller says whether it still does, after
+ * the re-ask has come back.
+ * @param client - The query client holding the availability answers.
+ * @param err - What the submit threw.
+ * @param slug - The trimmed slug that was submitted.
+ * @param fieldShown - Whether the field holding `slug` is still on screen.
+ * @returns Whether the field now shows the conflict, so the caller's own
+ *   error exit has nothing to add.
+ */
+export async function slugFieldShowsConflict(
+  client: QueryClient,
+  err: unknown,
+  slug: string,
+  fieldShown: () => boolean,
+): Promise<boolean> {
+  if (!(err instanceof ApiException) || err.status !== 409) {
+    return false;
+  }
+  const taken = await client
+    .fetchQuery({
+      ...slugAvailabilityQuery(slug),
+      staleTime: 0,
+    })
+    .then((answer) => !answer.available)
+    .catch(() => false);
+  return taken && fieldShown();
+}
+
+/**
+ * Track which slug a dialog's slug field shows, for the 409 re-ask to read
+ * once it has come back: by then the dialog may have closed, been reopened on
+ * a reset field, or unmounted with its page.
+ * @param open - Whether the dialog holding the field is open.
+ * @param slug - The field's current value.
+ * @returns A stable check: does the field show this trimmed slug right now?
+ */
+export function useSlugFieldShown(
+  open: boolean,
+  slug: string,
+): (submitted: string) => boolean {
+  const shownRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    shownRef.current = open ? slug.trim() : null;
+    return () => {
+      shownRef.current = null;
+    };
+  }, [open, slug]);
+  return React.useCallback(
+    (submitted: string): boolean => shownRef.current === submitted,
+    [],
+  );
 }
