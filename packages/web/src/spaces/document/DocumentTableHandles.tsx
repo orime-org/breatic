@@ -35,6 +35,7 @@ import {
   PanelTop,
   Plus,
 } from 'lucide-react';
+import type { EditorView } from '@tiptap/pm/view';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -100,6 +101,22 @@ const TABLE_LINE_TYPE = 'application/x-doc-table-line';
 
 /** The delete row's icon, shared with the block handle's menu. */
 const DeleteIcon = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!.Icon;
+
+/**
+ * How far a table's left edge is scrolled out of its frame. The controller
+ * places the row handle at the table's own left edge
+ * (`TableHandlesController.tsx:108-122`), which a table scrolled sideways
+ * has carried out of sight.
+ * @param view - The editor view.
+ * @param blockId - The table block's id.
+ * @returns The hidden width, 0 when none is hidden.
+ */
+function hiddenLeftOf(view: EditorView | undefined, blockId: string): number {
+  const table = view?.dom.querySelector(`[data-id="${CSS.escape(blockId)}"] table`);
+  const frame = table?.closest('[data-radix-scroll-area-viewport]');
+  if (table === null || table === undefined || frame === null || frame === undefined) return 0;
+  return Math.max(0, frame.getBoundingClientRect().left - table.getBoundingClientRect().left);
+}
 
 /** The handle menu's own reading of its target cell. */
 interface HeaderFaces {
@@ -264,13 +281,25 @@ export function DocumentTableHandle({
   }, [onOpenChange]);
   useCloseWhenTargetGone(editor, open, close);
 
+  // The row handle moves back into the frame by the width scrolled out of it;
+  // the controller hides the handles on a scroll and this is read again when
+  // they next appear.
+  const [shift, setShift] = React.useState(0);
+  React.useLayoutEffect(() => {
+    setShift(row && state !== undefined ? hiddenLeftOf(editor.prosemirrorView, state.block.id) : 0);
+  }, [editor, row, state]);
+  const shiftStyle = React.useMemo<React.CSSProperties | undefined>(
+    () => (shift > 0 ? { transform: `translateX(${shift}px)` } : undefined),
+    [shift],
+  );
+
   if (state === undefined || (holdsSelection && !open)) return null;
   const index = row ? state.rowIndex : state.colIndex;
   if (index === undefined) return null;
 
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <div className='relative flex'>
+      <div className='relative flex' style={shiftStyle}>
         {/* The anchor, and nothing else, as on the block handle: it answers
             no pointer events, so Radix's trigger handlers never run on the
             button beside it. */}

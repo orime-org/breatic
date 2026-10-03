@@ -15,6 +15,7 @@
 import {
   autoUpdate,
   FloatingPortal,
+  hide,
   offset,
   useFloating,
 } from '@floating-ui/react';
@@ -95,11 +96,18 @@ export function DocumentTableCellButton({
       cellPos !== null && isMerged(current.prosemirrorState.doc, cellPos),
   );
 
-  const { refs, floatingStyles } = useFloating({
+  // `hide` reads the cell's clipping ancestors, the table's scroll frame among
+  // them: a cell scrolled out of the frame takes its button with it.
+  const { refs, floatingStyles, middlewareData } = useFloating({
     placement: 'top-end',
-    middleware: [offset({ mainAxis: -(BUTTON + INSET), crossAxis: -INSET })],
+    middleware: [offset({ mainAxis: -(BUTTON + INSET), crossAxis: -INSET }), hide()],
     whileElementsMounted: autoUpdate,
   });
+  const hidden = middlewareData.hide?.referenceHidden === true;
+  const style = React.useMemo<React.CSSProperties>(
+    () => (hidden ? { ...floatingStyles, visibility: 'hidden' } : floatingStyles),
+    [floatingStyles, hidden],
+  );
 
   React.useLayoutEffect(() => {
     const view = editor.prosemirrorView;
@@ -131,7 +139,7 @@ export function DocumentTableCellButton({
 
   return (
     <FloatingPortal root={viewport}>
-      <div ref={refs.setFloating} style={floatingStyles}>
+      <div ref={refs.setFloating} style={style}>
         <DropdownMenu open={open} onOpenChange={onOpenChange}>
           <div className='relative flex'>
             {/* The anchor, and nothing else, as on the handles. */}
