@@ -7,6 +7,8 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
+import { turnedAway } from "@domain/agent/tools/failure.js";
+
 /**
  * One line, counting every character a line can end on.
  *
@@ -55,23 +57,56 @@ const inputSchema = z
  */
 export type AskUserPayload = z.infer<typeof inputSchema>;
 
-export const askUser: Tool<z.infer<typeof inputSchema>, AskUserPayload> = tool({
-  description:
-    "Ask the user a clarifying question. It ends your turn there, so use it " +
-    "when you genuinely need an answer to continue, not to fill a pause. Put " +
-    "the question here rather than writing it yourself, and put every answer " +
-    "you are offering in `options` -- both are drawn for you, the options " +
-    "numbered from one. A question you also write out arrives twice, and " +
-    "answers listed in your own prose arrive as a run-on sentence with nothing " +
-    "to pick from. Keep each option to one line saying what it is, with no " +
-    "argument for or against it. Nothing is written for you beyond the " +
-    "numbering: what the reader is told about answering is `howToAnswer`.",
-  inputSchema,
-  execute: async (
-    input: z.infer<typeof inputSchema>,
-    // Unused: this tool assembles a value and returns it, so there is nothing
-    // to abandon. Declared so the shape is the same across every tool — the
-    // reasoning lives in tools/__tests__/tool-cancellation.test.ts.
-    _options: { abortSignal?: AbortSignal },
-  ): Promise<AskUserPayload> => input,
-});
+/**
+ * The ask-user tool, as a turn receives it.
+ *
+ * A fresh one per turn, because it carries a turn's worth of state: whether a
+ * question has been put yet. A reader is put one question a turn, so that
+ * they can think it through and talk about it before the next one comes.
+ * Holding that line here rather than in the description is what makes it
+ * hold: a model can call this twice in one step, and `ai@7.0.68` starts a
+ * step's calls in the order they were sent, so the first one to start is the
+ * one the reader sees and every later one is turned away.
+ * @returns The tool.
+ * @throws {Error} From `execute`, a turned-away failure for any call after
+ *   the turn's first.
+ */
+export function makeAskUserTool(): Tool<z.infer<typeof inputSchema>, AskUserPayload> {
+  let asked = false;
+
+  return tool({
+    description:
+      "Ask the user a clarifying question. It ends your turn there, so use it " +
+      "when you genuinely need an answer to continue, not to fill a pause. Ask " +
+      "one question at a time, and call this once a turn: the user answers one " +
+      "thing before the next is put to them. If there is more than one thing " +
+      "you need to know, ask the most important one first. Put the question " +
+      "here rather than writing it yourself, and put every answer you are " +
+      "offering in `options` -- both are drawn for you, the options numbered " +
+      "from one. A question you also write out arrives twice, and answers " +
+      "listed in your own prose arrive as a run-on sentence with nothing to " +
+      "pick from. Keep each option to one line saying what it is, with no " +
+      "argument for or against it. Nothing is written for you beyond the " +
+      "numbering: what the reader is told about answering is `howToAnswer`.",
+    inputSchema,
+    execute: async (
+      input: z.infer<typeof inputSchema>,
+      // Unused: this tool assembles a value and returns it, so there is nothing
+      // to abandon. Declared so the shape is the same across every tool — the
+      // reasoning lives in tools/__tests__/tool-cancellation.test.ts.
+      _options: { abortSignal?: AbortSignal },
+    ): Promise<AskUserPayload> => {
+      if (asked) {
+        // Past tense: the next turn reads this, when the first question has
+        // its answer.
+        throw turnedAway(
+          "This question was not put to the user: one question a turn, and " +
+            "another one was asked first. Ask it once the first one is answered, " +
+            "if you still need to.",
+        );
+      }
+      asked = true;
+      return input;
+    },
+  });
+}

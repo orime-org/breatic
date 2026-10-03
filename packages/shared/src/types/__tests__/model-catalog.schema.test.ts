@@ -518,6 +518,28 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(params?.videos?.accepts).toBe("video");
   });
 
+  it("keeps how a style slot reaches the upstream, and drops fields that are not text", () => {
+    const raw = catalog([
+      entry("gpt-edit", {
+        params: {
+          style_images: {
+            description: "", default: null, fill: "canvas", accepts: "image", type: "list", max_items: 3,
+            joins: "images", prompt_note: "{list} are style references.",
+          },
+          refs: { description: "", default: null, fill: "canvas", accepts: "image", type: "list", max_items: 3, item_key: "image" },
+          broken: { description: "", default: null, fill: "canvas", accepts: "image", item_key: 1, joins: [], prompt_note: false },
+        },
+      }),
+    ]);
+    const params = sanitizeModelCatalog(raw).image[0]?.params;
+    expect(params?.style_images?.joins).toBe("images");
+    expect(params?.style_images?.prompt_note).toBe("{list} are style references.");
+    expect(params?.refs?.item_key).toBe("image");
+    expect(params?.broken?.item_key).toBeUndefined();
+    expect(params?.broken?.joins).toBeUndefined();
+    expect(params?.broken?.prompt_note).toBeUndefined();
+  });
+
   it("drops a non-numeric step but keeps the descriptor", () => {
     const raw = catalog([
       entry("flux", {

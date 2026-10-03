@@ -522,7 +522,17 @@ export function renderProductGuide(): string {
       "mode's own prompt: each mode keeps its own words (and, for music, its own lyrics), so a mode never typed " +
       "in shows an empty box.",
     `- Picture panel: tools ${quoted(t("canvas.generatePanel.reference"))} and ` +
-      `${quoted(t("canvas.generatePanel.focus"))}, with no source slots. Clicking the settings pill opens ` +
+      `${quoted(t("canvas.generatePanel.focus"))}. A model that takes style images adds, after a thin divider, ` +
+      `a ${quoted(t("canvas.generatePanel.style"))} button: click it, then up to three pictures on the canvas, ` +
+      `while the banner reads ${quoted(t("canvas.generatePanel.selectStyleFromCanvas"))}; each click adds one ` +
+      "and picking ends by itself with the third. A picture already in the area stays dim and cannot be " +
+      "picked twice. Each picked picture shows as a small picture with an X that takes it out, and while " +
+      "there is room one more place, a plus over a count such as 2/3, picks more. Once three are in, " +
+      "there is no room: take one out with its X before picking another. The pictures are copies, and the " +
+      "run follows their look. Switching to a model that takes no style images hides the area; the pictures " +
+      "stay on the node and come back with a model that takes them. A " +
+      "model built around style images will not run with none and says " +
+      `${quoted(t("canvas.generatePanel.errorNoStyleImage"))}. Clicking the settings pill opens ` +
       "whichever of " +
       `${quoted(t("canvas.generatePanel.resolution"))} and ${quoted(t("canvas.generatePanel.ratio"))} the model ` +
       "has, and any settings of the model's own, such as quality. A model with camera settings adds, at the " +
@@ -615,7 +625,10 @@ export function renderProductGuide(): string {
       `the sound panel: ${quoted(t("canvas.generatePanel.refAudio"))}, ` +
       `${quoted(t("canvas.generatePanel.sourceVideo"))}, ${quoted(t("canvas.generatePanel.moodImage"))}, ` +
       `${quoted(t("canvas.generatePanel.musicSong"))}, ${quoted(t("canvas.generatePanel.musicMelody"))} and ` +
-      `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel has none. Which ones show depends on ` +
+      `${quoted(t("canvas.generatePanel.musicVocal"))}. The picture panel's only one is its style area, which ` +
+      "holds up to three pictures and works its own way (see the picture panel above): each click adds one, " +
+      "and a picture is taken out with its X, never replaced. Every other slot holds one node, as follows. " +
+      "Which ones show depends on " +
       "the mode and model. Some must be " +
       "filled before a run; others are optional. Press a slot's button, then click a node on the canvas: the bar " +
       `at the top says what to pick, such as ${quoted(t("canvas.generatePanel.selectFirstFrameFromCanvas"))}, ` +
@@ -623,7 +636,7 @@ export function renderProductGuide(): string {
       "and only nodes that fit stay lit. The node's content is copied into the slot and picking ends. A slot " +
       "holding a picture, or a video with a cover, shows that picture in place of its icon and name; a slot " +
       "holding a sound, or a video without a cover, keeps its icon and name and its border stands out more. To " +
-      "replace it, press the filled slot and click another node. If the mode changes while picking and the " +
+      "replace it, press the filled slot and click another node. If the mode or model changes while picking and the " +
       `slot is no longer shown, picking ends with ${quoted(t("canvas.generatePanel.pickEnded"))} ` +
       `(${quoted(t("canvas.generatePanel.pickEndedByPeer"))} when someone else changed it). Pressing the slot again ` +
       `while picking, Esc, or ${quoted(t("canvas.generatePanel.exitSelect"))} in the bar at the top stops picking ` +

@@ -140,7 +140,8 @@ export type PickPurpose =
   | 'musicMelody'
   | 'musicVocal'
   | 'soundVideo'
-  | 'moodImage';
+  | 'moodImage'
+  | 'style';
 
 /**
  * An in-progress "pick a node from the canvas" session. Only one is active at a
@@ -153,6 +154,12 @@ export interface PickSession {
   nodeId: string;
   /** What clicking a node wires — a reference edge, or a copied source. */
   purpose: PickPurpose;
+  /**
+   * How many files the slot being filled holds, for a slot holding several
+   * (inner#826): the pick keeps going until the slot is full or the reader
+   * exits. Absent for every one-file slot, whose pick ends on the first click.
+   */
+  capacity?: number;
 }
 
 /**
@@ -391,6 +398,8 @@ interface CanvasState {
   startSoundVideoPick: (nodeId: string) => void;
   /** Enter the mood-image pick for an audio node (#2156). */
   startMoodImagePick: (nodeId: string) => void;
+  /** Start picking style images for a node; `capacity` is the model's cap (inner#826). */
+  startStylePick: (nodeId: string, capacity: number) => void;
   /** Enter a FOCUS pick (#1782, crop marquee → focusImages append) for a generative node. */
   startFocusPick: (nodeId: string) => void;
   /** Add a rail placeholder for an in-flight focus-crop upload (#1782). */
@@ -672,6 +681,7 @@ export const useCanvasStore = create<CanvasState>()(
     startMusicVocalPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'musicVocal' })),
     startSoundVideoPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'soundVideo' })),
     startMoodImagePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'moodImage' })),
+    startStylePick: (nodeId, capacity) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'style', capacity })),
     startFocusPick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'focus' })),
     addPendingFocusUpload: (entry) =>
       set((s) => {

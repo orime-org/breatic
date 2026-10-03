@@ -311,9 +311,9 @@ describe("what the guide says", () => {
     expect(panel).not.toMatch(/always add up/);
   });
 
-  it("gives the picture panel no source slot, since main removed the only one it had", () => {
-    expect(section("Inside the generation panel")).toMatch(/- Picture panel: tools "Reference" and "Focus", with no source slots/);
-    expect(section("Source slots")).toMatch(/The picture panel has none/);
+  it("gives the picture panel one source slot, the style area holding up to three pictures (inner#826)", () => {
+    expect(section("Inside the generation panel")).toMatch(/- Picture panel: tools "Reference" and "Focus"\. A model that takes style images adds/);
+    expect(section("Source slots")).toMatch(/The picture panel's only one is its style area, which holds up to three pictures/);
   });
 
   it("says which comment controls depend on the thread or the panel being open", () => {

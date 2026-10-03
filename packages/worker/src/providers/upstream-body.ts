@@ -8,22 +8,25 @@
  */
 
 import type { FullModelEntry } from "@breatic/domain";
-import { completeEntries, isPresent } from "@breatic/shared";
+import { completeEntries, isPresent, joinSlotFiles } from "@breatic/shared";
 
 /**
  * Builds the upstream request body for one run.
  * @param entry - The model's catalog entry.
- * @param params - The run's params under our names, validated and defaulted.
- * @param prompt - The prompt as the model's family formatted it.
+ * @param given - The run's params under our names, validated and defaulted.
+ * @param written - The prompt as the model's family formatted it.
  * @param consumed - Params the model's family reads itself and keeps off the wire.
  * @returns The body, keyed by the endpoint's field names.
  */
 export function upstreamBody(
   entry: FullModelEntry,
-  params: Readonly<Record<string, unknown>>,
-  prompt: string,
+  given: Readonly<Record<string, unknown>>,
+  written: string,
   consumed: ReadonlySet<string> = new Set(),
 ): Record<string, unknown> {
+  // A slot the upstream has no field for travels inside the pool it joins,
+  // named by the prompt (inner#826).
+  const { params, prompt } = joinSlotFiles(entry.params ?? {}, given, written);
   const sent = new Map<string, unknown>();
   for (const [name, spec] of Object.entries(entry.params ?? {})) {
     if (consumed.has(name)) continue;
@@ -39,7 +42,11 @@ export function upstreamBody(
   const body: Record<string, unknown> = {};
   for (const [name, value] of sent) {
     if (replaced.has(name)) continue;
-    body[entry.params?.[name]?.upstream ?? name] = value;
+    const spec = entry.params?.[name];
+    // An upstream taking objects gets each URL under the key it names.
+    const itemKey = typeof spec?.item_key === "string" ? spec.item_key : undefined;
+    body[spec?.upstream ?? name] =
+      itemKey !== undefined && Array.isArray(value) ? value.map((url: unknown) => ({ [itemKey]: url })) : value;
   }
   if (entry.takes_prompt === true && prompt !== "") {
     body[entry.prompt_upstream ?? "prompt"] = prompt;

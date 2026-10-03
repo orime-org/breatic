@@ -27,7 +27,7 @@ import { creditLotService, createUsageRecorder, usageContextFor } from "@breatic
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
-import { userTurnForModel } from "@breatic/shared";
+import { userTurnForModel, wireLineOf } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -402,6 +402,19 @@ export class MainAgent {
           else if (chunk.type === "reasoning-end" && thinkingOpenedAt !== undefined) {
             thoughtForMs += Date.now() - thinkingOpenedAt;
             thinkingOpenedAt = undefined;
+          } else if (chunk.type === "tool-error" && !howToolEnded.has(chunk.toolCallId)) {
+            // Recorded as it arrives rather than at the end of the step. A
+            // call whose arguments the model shaped wrongly is refused at the
+            // door: the SDK never runs it, so `onToolExecutionEnd` never fires,
+            // and a turn stopped before the step ends never reaches
+            // `onStepFinish` -- left to that, the refusal would be stored as a
+            // failure with nothing said why. What arrives is a string -- the
+            // SDK renders the error with `toString()` -- reading
+            // `AI_InvalidToolInputError: ...` with the schema complaint after
+            // it, which is what the model needs to send the call again. First
+            // account of a call wins, here and below, so which of the two ran
+            // first stops mattering.
+            howToolEnded.set(chunk.toolCallId, endingOf(chunk.error));
           }
         },
         // Fires when a model response is parsed, before the tools it asked
@@ -410,25 +423,12 @@ export class MainAgent {
         onLanguageModelCallEnd: (event) => watch.callEnded(event),
         onStepFinish: ({ content }) => {
           for (const part of content) {
-            // A call whose arguments the model shaped wrongly is refused at the
-            // door: the SDK never runs it, so `onToolExecutionEnd` never fires
-            // and this is the only place its reason is readable. What arrives
-            // is a string -- the SDK renders the error with `toString()` before
-            // putting it on the part -- so it reads as `AI_InvalidToolInputError:
-            // ...` with the schema complaint after it, which is what the model
-            // needs to send the call again. First account of a call wins, here
-            // and below, so which of the two ran first stops mattering.
-            if (part.type === "tool-error") {
-              if (!howToolEnded.has(part.toolCallId)) {
-                howToolEnded.set(part.toolCallId, endingOf(part.error));
-              }
-              // A question, reaching the reader as words rather than as a
-              // payload on a tool part, and written here rather than inside the
-              // tool because the stream is on this side of it. One call, one
-              // paragraph, in the order the calls came back -- a model may ask
-              // twice in a step, and drawing one of them leaves the reader
-              // answering a question that is not on screen.
-            } else if (part.type === "tool-result" && part.toolName === ASK_USER) {
+            // A question, reaching the reader as words rather than as a payload
+            // on a tool part, and written here rather than inside the tool
+            // because the stream is on this side of it. A turn asks one
+            // question: the tool answers its first call and turns every later
+            // one away, so at most one `tool-result` arrives here.
+            if (part.type === "tool-result" && part.toolName === ASK_USER) {
               writeAskUserText(writer, part.toolCallId, part.output as AskUserPayload);
             }
           }
@@ -493,7 +493,9 @@ export class MainAgent {
       // this the panel has nothing to go on until the turn is stored and read
       // back, so the same failure reads one way while it happens and another
       // after a reload.
-      return result.toUIMessageStream({ onError: (err) => endingOf(err).readerKey });
+      // A call turned away to steer the model has no line; what goes out for
+      // it says so, and the panel draws nothing.
+      return result.toUIMessageStream({ onError: (err) => wireLineOf(endingOf(err)) });
     };
 
     return createUIMessageStream({

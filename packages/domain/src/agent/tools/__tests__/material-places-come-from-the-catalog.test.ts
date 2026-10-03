@@ -91,3 +91,62 @@ describe("where the tool thinks a run takes its material", () => {
     expect(checkProposal(wiredGroup())).toEqual({ ok: true });
   });
 });
+
+const IMAGE = [
+  "models:",
+  '  - name: "style-model"',
+  '    display_name: "Style Model"',
+  '    mode: "t2i"',
+  "    takes_prompt: true",
+  "    cost_per_call: 1",
+  "    generation_time: 10",
+  "    providers:",
+  "      - name: wavespeed",
+  '        model_id: "style"',
+  "        priority: 1",
+  "    params:",
+  "      style_images:",
+  '        fill: "canvas"',
+  '        accepts: "image"',
+  '        type: "list"',
+  "        max_items: 3",
+  "        optional: true",
+  '        description: "style references"',
+  "        default: null",
+].join("\n");
+
+const IMAGE_MODES = ["image:", "  modes:", "    t2i:", "      label: Text to Image"].join("\n");
+
+/**
+ * Three pictures wired into one image node whose model holds them in its style slot.
+ * @param count - How many source pictures to wire.
+ * @returns The proposal.
+ */
+function styleGroup(count: number): CanvasProposal {
+  return {
+    nodes: [
+      ...Array.from({ length: count }, (_, i) => ({ role: "source" as const, type: "image" as const, name: `Style ${i + 1}` })),
+      { role: "generate", type: "image", name: "Result", mode: "t2i", model: "style-model", params: {}, prompt: [{ text: "a lighthouse" }] },
+    ],
+    edges: Array.from({ length: count }, (_, i) => ({ fromIndex: i, toIndex: count })),
+    modelNote: "",
+    rationale: "",
+    groupName: "Your group",
+  };
+}
+
+describe("a slot holding several files (inner#826)", () => {
+  afterEach(restoreRealCatalog);
+
+  it("takes as many pictures as the slot declares", async () => {
+    await useFixtureCatalog({ modes: IMAGE_MODES, buckets: { image: IMAGE } });
+    const { checkProposal } = await import("../propose-canvas-action.js");
+    expect(checkProposal(styleGroup(3))).toEqual({ ok: true });
+  });
+
+  it("refuses more pictures than the slot holds", async () => {
+    await useFixtureCatalog({ modes: IMAGE_MODES, buckets: { image: IMAGE } });
+    const { checkProposal } = await import("../propose-canvas-action.js");
+    expect(checkProposal(styleGroup(4))).toMatchObject({ ok: false });
+  });
+});

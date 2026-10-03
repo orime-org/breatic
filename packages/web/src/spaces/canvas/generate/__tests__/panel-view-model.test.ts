@@ -756,3 +756,46 @@ describe('promptRequired 读模型自己的声明 (#1966)', () => {
     expect(buildVm({ nodeId: 'n1', nodes, edges: [], models: [] }).promptRequired).toBe(true);
   });
 });
+
+describe('the style slot (inner#826)', () => {
+  const style = (optional: boolean) => ({
+    description: '',
+    default: null,
+    type: 'list' as const,
+    max_items: 3,
+    fill: 'canvas' as const,
+    accepts: 'image' as const,
+    ...(optional ? { optional: true } : {}),
+  });
+  const krea = makeModel('krea', { params: { style_images: style(true) } });
+  const recraft = makeModel('recraft', { params: { style_images: style(false) } });
+  const plain = makeModel('plain');
+
+  it('puts the node\'s style images into the params every reader takes', () => {
+    const nodes = [node('n1', imageView({ model: 'krea', styleImageUrls: ['s1', 's2'] }))];
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [krea] });
+    expect(vm.params.style_images).toEqual(['s1', 's2']);
+    expect(vm.styleCap).toBe(3);
+    expect(vm.slots).toEqual(['style']);
+  });
+
+  it('leaves style images out for a model that declares no style slot', () => {
+    const nodes = [node('n1', imageView({ model: 'plain', styleImageUrls: ['s1'] }))];
+    const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [plain] });
+    expect(vm.params.style_images).toBeUndefined();
+    expect(vm.styleCap).toBeUndefined();
+    expect(vm.slots).toEqual([]);
+  });
+
+  it('counts a required style slot as missing until an image is in it', () => {
+    const empty = buildVm({ nodeId: 'n1', nodes: [node('n1', imageView({ model: 'recraft' }))], edges: [], models: [recraft] });
+    expect(empty.missing).toEqual([['style_images']]);
+    const filled = buildVm({
+      nodeId: 'n1',
+      nodes: [node('n1', imageView({ model: 'recraft', styleImageUrls: ['s1'] }))],
+      edges: [],
+      models: [recraft],
+    });
+    expect(filled.missing).toEqual([]);
+  });
+});

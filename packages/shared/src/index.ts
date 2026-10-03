@@ -380,8 +380,10 @@ export { newId, deriveId } from "@shared/ids.js";
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
-export { completeEntries, itemCap, isPresent } from "@shared/item-cap.js";
+export { completeEntries, itemCap, isPresent, usableUrls } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
+export { joinSlotFiles } from "@shared/join-slot-files.js";
+export type { JoinDeclarations, JoinedRun } from "@shared/join-slot-files.js";
 export {
   addShot,
   enterCustom,
@@ -425,6 +427,8 @@ export {
   isReaderLine,
   NOTHING_SAID_WHY,
   toolFailureOf,
+  TURNED_AWAY,
+  wireLineOf,
 } from "@shared/agent/tool-failure.js";
 export type {
   FailureLine,

@@ -107,16 +107,108 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*end_image.*first_last/s);
   });
 
-  it("is refused when a slot is capped above the one file it can carry", () => {
+  it("passes a style slot that holds three files", () => {
     expect(() =>
       assertParamDeclarations(
         "image",
         modelWith(
-          { style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3 } },
+          { style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, optional: true } },
+          "t2i",
+        ),
+      ),
+    ).not.toThrow();
+  });
+
+  it("is refused when the style slot holds anything but three files", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "image",
+        modelWith(
+          { style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 2 } },
+          "t2i",
+        ),
+      ),
+    ).toThrow(/a-model.*style_images.*3/s);
+  });
+
+  it("passes a style slot that joins the model's own pool with a prompt note", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "image",
+        modelWith(
+          {
+            images: { fill: "pool", accepts: "image", type: "list", max_items: 13, mention: "image {n}" },
+            style_images: {
+              fill: "canvas",
+              accepts: "image",
+              type: "list",
+              max_items: 3,
+              optional: true,
+              joins: "images",
+              prompt_note: "{list} are style references.",
+            },
+          },
           "i2i",
         ),
       ),
-    ).toThrow(/a-model.*style_images.*max_items/s);
+    ).not.toThrow();
+  });
+
+  it("is refused when a slot joins a param that is not one of the model's pools", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "image",
+        modelWith(
+          {
+            ratio: { fill: "panel", values: ["1:1"], default: "1:1" },
+            style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, joins: "ratio", prompt_note: "{list}" },
+          },
+          "i2i",
+        ),
+      ),
+    ).toThrow(/a-model.*style_images.*joins/s);
+  });
+
+  it("is refused when a slot joins a pool that does not say how its files are named", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "image",
+        modelWith(
+          {
+            images: { fill: "pool", accepts: "image", type: "list", max_items: 13 },
+            style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, joins: "images", prompt_note: "{list}" },
+          },
+          "i2i",
+        ),
+      ),
+    ).toThrow(/a-model.*style_images.*mention/s);
+  });
+
+  it("is refused when a joining slot has no prompt note naming the list", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "image",
+        modelWith(
+          {
+            images: { fill: "pool", accepts: "image", type: "list", max_items: 13, mention: "image {n}" },
+            style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, joins: "images", prompt_note: "Use the style." },
+          },
+          "i2i",
+        ),
+      ),
+    ).toThrow(/a-model.*style_images.*\{list\}/s);
+  });
+
+  it("passes an item_key that wraps each entry of a list", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "image",
+        modelWith(
+          { style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, upstream: "reference", item_key: "image" } },
+          "t2i",
+        ),
+      ),
+    ).not.toThrow();
   });
 
   it("is refused when it caps how many it takes without saying it takes a list", () => {
@@ -200,9 +292,9 @@ describe("a parameter declaration", () => {
     }
   });
 
-  it("is refused when a list slot does not cap itself at the one file it carries", () => {
-    // The payload builders write a single string into a slot, so a list slot
-    // without a cap states a limit no reader can use.
+  it("is refused when a list slot does not say how many files it holds", () => {
+    // The slot's thumbnails, its "+ N/max" and the gate all read the cap, so a
+    // list slot without one has no limit any of them can show.
     expect(() =>
       assertParamDeclarations(
         "video",

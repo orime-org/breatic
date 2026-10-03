@@ -156,4 +156,37 @@ describe("upstreamBody", () => {
       prompt: "hi",
     });
   });
+
+  it("wraps each entry of a list under its item_key", () => {
+    const krea: FullModelEntry = {
+      name: "krea",
+      takes_prompt: true,
+      params: { style_images: { upstream: "reference", item_key: "image", fill: "canvas", type: "list", default: null } },
+    };
+    expect(upstreamBody(krea, { style_images: ["s1", "s2"] }, "A lighthouse.")).toEqual({
+      prompt: "A lighthouse.",
+      reference: [{ image: "s1" }, { image: "s2" }],
+    });
+  });
+
+  it("folds a joining style slot into its pool and names it in the prompt", () => {
+    const edit: FullModelEntry = {
+      name: "edit",
+      takes_prompt: true,
+      params: {
+        images: { upstream: "images", fill: "pool", type: "list", mention: "image {n}", default: null },
+        style_images: {
+          fill: "canvas",
+          type: "list",
+          joins: "images",
+          prompt_note: "Style references: {list}. Apply their style to the result.",
+          default: null,
+        },
+      },
+    };
+    expect(upstreamBody(edit, { images: ["a"], style_images: ["s1"] }, "Turn image 1 into a poster.")).toEqual({
+      images: ["a", "s1"],
+      prompt: "Turn image 1 into a poster. Style references: image 2. Apply their style to the result.",
+    });
+  });
 });

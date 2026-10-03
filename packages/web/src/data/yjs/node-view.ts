@@ -114,6 +114,11 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   paramsByModel?: Record<string, Record<string, unknown>>;
   /**
+   * Style images of an image node (inner#826, wire `data.styleImageUrls`):
+   * pick-time copies in pick order; read through `readSlotPicks`.
+   */
+  styleImageUrls?: string[];
+  /**
    * First-frame image URL for image-to-video (#1896, wire
    * `data.firstFrameUrl`) — a pick-time COPY of the clicked image's URL, no
    * relationship to the upstream node. The video panel renders it in its
@@ -395,6 +400,7 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
     mode: data.mode,
     modelByMode: data.modelByMode,
     paramsByModel: data.paramsByModel,
+    styleImageUrls: data.styleImageUrls,
     firstFrameUrl: data.firstFrameUrl,
     endFrameUrl: data.endFrameUrl,
     characterImageUrl: data.characterImageUrl,

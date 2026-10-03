@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { askUser } from "@domain/agent/tools/ask-user.js";
+import { makeAskUserTool } from "@domain/agent/tools/ask-user.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
@@ -41,6 +41,7 @@ function flat(description: unknown): string {
 }
 
 describe("ask_user says how to ask", () => {
+  const askUser = makeAskUserTool();
   const said = (): string => flat(askUser.description);
 
   it("says it ends the turn, and when that is worth it", () => {
@@ -55,6 +56,12 @@ describe("ask_user says how to ask", () => {
 
   it("points at the field that tells the reader how to answer", () => {
     expect(said()).toMatch(/howToAnswer/);
+  });
+
+  it("says one question at a time, once a turn, and which one to ask first", () => {
+    expect(said()).toMatch(/one question at a time/i);
+    expect(said()).toMatch(/once a turn/i);
+    expect(said()).toMatch(/most important/i);
   });
 
   it("says in that field what the line tells the reader, whose words and whose language", () => {

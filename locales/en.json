@@ -650,7 +650,10 @@
         "negative_prompt": "Negative prompt",
         "motion": "Motion",
         "order": "Order",
-        "model_mode": "Region"
+        "model_mode": "Region",
+        "creativity": "Creativity",
+        "rendering": "Rendering",
+        "style_match": "Style match"
       },
       "paramField": {
         "speaker": "Name",
@@ -673,7 +676,12 @@
       "refuseStoryboardShotEmpty": "Shot {shot, number} is empty",
       "refuseStoryboardTooMany": "Up to {limit, number} shots",
       "refuseStoryboardShotTooLong": "Shot {shot, number} is over the {limit, number}-character limit",
-      "refuseStoryboardDurationMismatch": "Shots add up to {shots, number}s, the video is {total, number}s"
+      "refuseStoryboardDurationMismatch": "Shots add up to {shots, number}s, the video is {total, number}s",
+      "style": "Style",
+      "styleTip": "Pick up to 3 images as style references",
+      "selectStyleFromCanvas": "Select style references from the canvas",
+      "removeStyle": "Remove style reference",
+      "errorNoStyleImage": "Pick a style image first"
     },
     "edge": {
       "delete": "Delete connection"

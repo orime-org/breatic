@@ -259,6 +259,7 @@ export function SpaceTab({
       />
       {editing ? (
         <input
+          autoComplete='off'
           ref={inputRef}
           value={draft}
           maxLength={SPACE_NAME_MAX_LEN}

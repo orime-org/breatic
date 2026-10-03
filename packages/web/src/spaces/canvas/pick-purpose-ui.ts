@@ -22,6 +22,7 @@
  */
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { PickPurpose } from '@web/stores/canvas';
 
@@ -119,5 +120,9 @@ export const PICK_PURPOSE_UI = {
   moodImage: {
     banner: 'canvas.generatePanel.selectMoodImageFromCanvas',
     trigger: { generateAudio: AUDIO_SLOTS.moodImage.testId },
+  },
+  style: {
+    banner: 'canvas.generatePanel.selectStyleFromCanvas',
+    trigger: { generate: IMAGE_SLOTS.style.testId },
   },
 } as const satisfies Record<PickPurpose, PickPurposeUi>;

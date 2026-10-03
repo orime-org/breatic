@@ -111,11 +111,16 @@ async function run(
  * @returns The failure detail the thrown error carried.
  * @throws {Error} When the call returned, or threw without any detail.
  */
-async function failureFrom(fn: () => Promise<unknown>): Promise<ToolFailure> {
+async function failureFrom(
+  fn: () => Promise<unknown>,
+): Promise<Exclude<ToolFailure, { kind: "turned_away" }>> {
   try {
     await fn();
   } catch (err: unknown) {
     const failure = toolFailureOf(err);
+    // This tool turns nothing away: every throw is a failure with a line for
+    // the reader.
+    if (failure?.kind === "turned_away") throw new Error("turned away rather than failed");
     if (failure !== undefined) return failure;
     throw new Error(
       `threw without failure detail: ${err instanceof Error ? err.message : String(err)}`,

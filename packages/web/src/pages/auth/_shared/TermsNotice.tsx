@@ -7,8 +7,8 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
 import { renderSlottedText, slotMarker } from '@web/lib/slotted-text';
 
-/** In-sentence links are told apart from the words around them by colour and underline. */
-const LINK_CLASS = 'text-content-link underline underline-offset-2';
+/** The same treatment as the card's own footer link (`AuthLink`), at this line's size. */
+const LINK_CLASS = 'font-medium text-foreground underline-offset-4 hover:underline';
 
 /**
  * The terms line at the foot of the sign-in and sign-up cards (#302).

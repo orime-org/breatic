@@ -342,6 +342,30 @@ describe('the line a failed tool step leaves', () => {
     expect(screen.getByTestId('message-bubble-interrupted')).toBeInTheDocument();
   });
 
+  it('draws nothing for a call turned away to steer the model, and still draws a real failure', () => {
+    // A second question, a second media call while one runs, input the SDK
+    // refused: nothing went wrong, so nothing is drawn for them.
+    render(
+      <MessageBubble
+        message={{
+          id: 'm',
+          role: 'assistant',
+          content: 'asked one thing',
+          toolCalls: [
+            failedCall('ask_user', { failureKind: 'turned_away' }),
+            failedCall('understand_media', { failureKind: 'turned_away' }),
+            failedCall('web_search', { failureKey: 'chat.tool.failure.upstream' }),
+          ],
+        }}
+      />,
+    );
+
+    // Exactly the one real failure: counted in with it, the two turned away
+    // would fold into "Execution error ×3".
+    expect(screen.getAllByTestId('message-bubble-tool-failed')).toHaveLength(1);
+    expect(screen.getByTestId('message-bubble-tool-failed')).toHaveTextContent(/^Execution error$/);
+  });
+
   it('draws nothing while the turn is still running', () => {
     render(
       <MessageBubble

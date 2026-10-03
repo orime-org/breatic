@@ -638,7 +638,10 @@
         "negative_prompt": "네거티브 프롬프트",
         "motion": "움직임 정도",
         "order": "순서",
-        "model_mode": "영역"
+        "model_mode": "영역",
+        "creativity": "창의성",
+        "rendering": "렌더링",
+        "style_match": "스타일 일치도"
       },
       "paramField": {
         "speaker": "이름",
@@ -661,7 +664,12 @@
       "refuseStoryboardShotEmpty": "샷 {shot, number}이(가) 비어 있습니다",
       "refuseStoryboardTooMany": "최대 {limit, number}개 샷",
       "refuseStoryboardShotTooLong": "샷 {shot, number}이(가) {limit, number}자 제한을 초과했습니다",
-      "refuseStoryboardDurationMismatch": "샷 합계 {shots, number}초, 영상 {total, number}초"
+      "refuseStoryboardDurationMismatch": "샷 합계 {shots, number}초, 영상 {total, number}초",
+      "style": "스타일",
+      "styleTip": "이미지를 최대 3장 스타일 참조로 선택",
+      "selectStyleFromCanvas": "캔버스에서 스타일 참조 선택",
+      "removeStyle": "스타일 참조 제거",
+      "errorNoStyleImage": "먼저 스타일 이미지를 선택하세요"
     },
     "nodeMenu": {
       "generate": "생성",

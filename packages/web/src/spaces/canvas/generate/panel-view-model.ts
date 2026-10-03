@@ -27,7 +27,7 @@ import {
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import { missingSources, referenceKinds, referencePool, type ReferencePool } from '@breatic/shared';
+import { itemCap, missingSources, referenceKinds, referencePool, type ReferencePool } from '@breatic/shared';
 import {
   mentionTokens,
   mentionedReferenceUrls,
@@ -38,6 +38,8 @@ import {
   type ReferenceUrls,
 } from '@web/spaces/canvas/generate/reference-urls';
 import { asContentView } from '@web/data/yjs/node-view';
+import { IMAGE_SLOTS, imageSlotsForModel, type ImageSlot } from '@web/spaces/canvas/generate/image-slots';
+import { readSlotPicks } from '@web/spaces/canvas/generate/slots';
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
@@ -48,8 +50,21 @@ export interface GeneratePanelViewModel {
   models: ModelEntry[];
   /** Effective model id (stored, else the catalog default). */
   model: string;
-  /** Effective params, reconciled against the current model. */
+  /**
+   * Effective params, reconciled against the current model, plus the node's
+   * style images as `style_images` when the model takes them (inner#826):
+   * the payload, the estimate and the gate all read this one record.
+   */
   params: Record<string, unknown>;
+  /** The source slots the current model fills off the canvas in this mode. */
+  slots: readonly ImageSlot[];
+  /**
+   * How many style images the current model takes in this mode, or undefined
+   * when it takes none and the toolbar draws no style area (inner#826).
+   */
+  styleCap: number | undefined;
+  /** Every style image the node holds, in pick order; at most `styleCap` are sent. */
+  styleImages: readonly string[];
   /** Reference rail rows derived from incoming edges. */
   references: ReferenceRailItem[];
   /** The `@`-mentioned reference URLs, by kind, snapshotted for the execute payload. */
@@ -177,7 +192,14 @@ export function buildGeneratePanelViewModel(input: {
   // Resolved from the model's OWN record, the same way a switch resolves it
   // (#1948). The records this returns are dropped — rendering reads, it does
   // not persist.
-  const params = current ? resolveModelSwitch(content, current).params : {};
+  const modelParams = current ? resolveModelSwitch(content, current).params : {};
+  // The style slot is the model's to declare, per mode (inner#826).
+  const slots = imageSlotsForModel(current, mode);
+  const styleSpec = current?.params[IMAGE_SLOTS.style.param];
+  const styleCap = styleSpec !== undefined && slots.includes('style') ? itemCap(styleSpec) : undefined;
+  const styleImages = readSlotPicks(IMAGE_SLOTS.style, content?.styleImageUrls).map((p) => p.url);
+  const sentStyle = styleCap === undefined ? [] : styleImages.slice(0, styleCap);
+  const params = sentStyle.length > 0 ? { ...modelParams, [IMAGE_SLOTS.style.param]: sentStyle } : modelParams;
 
   const references = deriveReferences(nodeId, nodes, edges, input.textById);
   // t2i generates from scratch and ignores source images (design §2.5): the
@@ -209,6 +231,9 @@ export function buildGeneratePanelViewModel(input: {
     models,
     model,
     params,
+    slots,
+    styleCap,
+    styleImages,
     references,
     referenceUrls,
     mentionTokens: mentionTokenMap,
@@ -220,7 +245,7 @@ export function buildGeneratePanelViewModel(input: {
     // Execute gate (#1675): the active panel mode and the model's own
     // declarations decide, through the same rule the server re-checks.
     missing: current
-      ? missingSources(current, mode, poolParams(pool, referenceUrls))
+      ? missingSources(current, mode, { ...params, ...poolParams(pool, referenceUrls) })
       : [],
     maxInputChars: current?.max_input_chars,
     promptRequired: current?.takes_prompt ?? true,

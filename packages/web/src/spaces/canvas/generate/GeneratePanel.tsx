@@ -87,6 +87,16 @@ interface GeneratePanelProps {
   onFocus: () => void;
   /** Whether THIS node's focus pick is running — highlights the Focus button. */
   focusPicking: boolean;
+  /** How many style images the model takes, or undefined for none (inner#826). */
+  styleCap: number | undefined;
+  /** The node's style images, in pick order. */
+  styleImages: readonly string[];
+  /** Enter / exit the style pick. */
+  onStylePick: () => void;
+  /** Whether THIS node's style pick is running. */
+  stylePicking: boolean;
+  /** Take one style image out. */
+  onRemoveStyle: (url: string) => void;
   /** In-flight focus-crop uploads shown as rail placeholders (#1782). */
   pendingFocus?: ReadonlyArray<{ id: string; name: string }>;
   /**
@@ -130,6 +140,11 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   onInsertReference,
   onFocus,
   focusPicking,
+  styleCap,
+  styleImages,
+  onStylePick,
+  stylePicking,
+  onRemoveStyle,
   pendingFocus,
   onExecute,
 }: GeneratePanelProps): React.JSX.Element {
@@ -153,6 +168,11 @@ export const GeneratePanel = React.memo(function GeneratePanel({
           referenceActive={referencePicking}
           onFocus={onFocus}
           focusActive={focusPicking}
+          styleCap={styleCap}
+          styleImages={styleImages}
+          onStylePick={onStylePick}
+          styleActive={stylePicking}
+          onRemoveStyle={onRemoveStyle}
         />
         <div className='flex items-center gap-1.5'>
           <Button

@@ -832,8 +832,10 @@ function placesByKind(proposal: CanvasProposal): Map<string, number> {
     for (const info of Object.values(chosen.params)) {
       if (info.filledBySource !== true || info.accepts === undefined) continue;
       // The pool holds several of its kind and says how many; a slot holds the
-      // one node the reader picks into it.
-      const takes = info.fromReferencePool === true ? (info.maxItems ?? Number.MAX_SAFE_INTEGER) : 1;
+      // one node the reader picks into it, or as many as it declares when it
+      // holds several (inner#826: style images).
+      const takes =
+        info.fromReferencePool === true ? (info.maxItems ?? Number.MAX_SAFE_INTEGER) : (info.maxItems ?? 1);
       room.set(info.accepts, (room.get(info.accepts) ?? 0) + takes);
     }
   }

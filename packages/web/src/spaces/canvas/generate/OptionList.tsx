@@ -55,6 +55,7 @@ export function OptionList({
     <div className='flex flex-col'>
       <div className='border-b border-border p-2'>
         <Input
+          autoComplete='off'
           data-testid={`${testIdPrefix}-search`}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
