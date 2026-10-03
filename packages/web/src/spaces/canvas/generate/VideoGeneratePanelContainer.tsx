@@ -45,7 +45,6 @@ import {
   type StoryboardSpec,
 } from '@breatic/shared';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
-import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -82,6 +81,7 @@ import {
 } from '@web/spaces/canvas/generate/video-mode-options';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
+import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import {
@@ -612,28 +612,7 @@ function VideoGeneratePanelBody({
     },
     [startSlotPick, endPick, nodeId],
   );
-  // A running slot pick outlives the control that started it when the mode
-  // changes (locally or via a collaborator's setNodeMode): the slot stops
-  // rendering, so the pick loses the control that started it — the banner's
-  // Exit would be the only way out, while the canvas kept dimming candidates
-  // for a slot that is gone. Keyed on the mode's slot list, so it covers every
-  // slot rather than the one it was first written for.
-  const slotsKey = vm.slots.join(',');
-  React.useEffect(() => {
-    const session = useCanvasStore.getState().pickSession;
-    if (!session || session.nodeId !== nodeId) return;
-    const running = slotForPurpose(session.purpose);
-    if (running && !slotsKey.split(',').includes(running)) {
-      endPick();
-      // The slot list comes from the mode, so this is a mode change reaching
-      // the pick — and the write may well have been a collaborator's.
-      toast.warning(
-        t(
-          pickEndToastKey(getLastWriteWasLocal()),
-        ),
-      );
-    }
-  }, [slotsKey, nodeId, endPick, t, getLastWriteWasLocal]);
+  useEndPickWhenSlotGone(nodeId, vm.slots, getLastWriteWasLocal);
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {

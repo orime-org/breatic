@@ -20,7 +20,8 @@ import {
 } from '@web/data/yjs/canvas-space';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
-import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
+import { slotRefusalKey } from '@web/spaces/canvas/generate/slots';
+import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
@@ -485,19 +486,7 @@ function GeneratePanelBody({
     },
     [projectId, spaceId, nodeId],
   );
-  // A running slot pick outlives its slot when the model or mode changes
-  // (locally or by a collaborator): the slot stops rendering while the canvas
-  // keeps writing into it. Same ending as the video panel's.
-  const slotsKey = vm.slots.join(',');
-  React.useEffect(() => {
-    const session = useCanvasStore.getState().pickSession;
-    if (!session || session.nodeId !== nodeId) return;
-    const running = slotForPurpose(session.purpose);
-    if (running !== undefined && running in IMAGE_SLOTS && !slotsKey.split(',').includes(running)) {
-      endPick();
-      toast.warning(t(pickEndToastKey(getLastWriteWasLocal())));
-    }
-  }, [slotsKey, nodeId, endPick, t, getLastWriteWasLocal]);
+  useEndPickWhenSlotGone(nodeId, vm.slots, getLastWriteWasLocal);
   const startFocusPick = useCanvasStore((s) => s.startFocusPick);
   const onFocus = React.useCallback(() => {
     const session = useCanvasStore.getState().pickSession;
@@ -726,6 +715,7 @@ function GeneratePanelBody({
   // A media chip's words follow the pool, and a new record on every derive
   // would rebuild the prompt slot each time the canvas moves.
   const stableMentionTokens = useContentStable(vm.mentionTokens);
+  const stableStyleImages = useContentStable(vm.styleImages);
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
@@ -785,7 +775,7 @@ function GeneratePanelBody({
       onFocus={onFocus}
       focusPicking={focusPicking}
       styleCap={vm.styleCap}
-      styleImages={vm.styleImages}
+      styleImages={stableStyleImages}
       onStylePick={onStylePick}
       stylePicking={stylePicking}
       onRemoveStyle={onRemoveStyle}
