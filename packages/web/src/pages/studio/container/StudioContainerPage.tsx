@@ -55,6 +55,11 @@ function toContainerProject(p: ProjectSummary): ContainerProject {
     thumbnailUrl: p.thumbnailUrl,
     myRole: p.myRole,
     createdAt: new Date(p.createdAt).toISOString(),
+    archivedAt: p.archivedAt === null ? null : new Date(p.archivedAt).toISOString(),
+    canManageMeta: p.canManageMeta,
+    canDuplicate: p.canDuplicate,
+    canArchive: p.canArchive,
+    canRestore: p.canRestore,
   };
 }
 

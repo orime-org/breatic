@@ -59,7 +59,7 @@ beforeEach(() => {
     myRole: 'owner',
     createdAt: '2026-06-07T00:00:00.000Z',
     updatedAt: '2026-06-07T00:00:00.000Z',
-    deletedAt: null,
+    deletedAt: null, archivedAt: null, canRestore: false,
   });
 });
 

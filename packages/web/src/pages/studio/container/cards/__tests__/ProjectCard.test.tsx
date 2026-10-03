@@ -31,6 +31,11 @@ const project: ContainerProject = {
   myRole: 'owner',
   // Created 30 min ago → en renders a relative "30 minutes ago" label.
   createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+  archivedAt: null,
+  canManageMeta: true,
+  canDuplicate: true,
+  canArchive: false,
+  canRestore: false,
 };
 
 function setup(p: ContainerProject = project) {

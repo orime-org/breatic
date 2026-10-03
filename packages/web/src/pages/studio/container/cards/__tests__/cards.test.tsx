@@ -20,6 +20,11 @@ const OWNED: ContainerProject = {
   thumbnailUrl: null,
   myRole: 'owner',
   createdAt: '2026-06-01T00:00:00.000Z',
+  archivedAt: null,
+  canManageMeta: true,
+  canDuplicate: true,
+  canArchive: false,
+  canRestore: false,
 };
 
 const SHARED_STUDIO: ContainerProject = {
@@ -29,6 +34,11 @@ const SHARED_STUDIO: ContainerProject = {
   thumbnailUrl: null,
   myRole: 'editor',
   createdAt: '2026-06-01T00:00:00.000Z',
+  archivedAt: null,
+  canManageMeta: true,
+  canDuplicate: true,
+  canArchive: false,
+  canRestore: false,
 };
 
 function renderProject(project: ContainerProject) {

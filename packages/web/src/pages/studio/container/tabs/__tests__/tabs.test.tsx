@@ -28,6 +28,11 @@ const STUDIO_VISIBLE: ContainerProject = {
   thumbnailUrl: null,
   myRole: 'viewer',
   createdAt: '2026-06-01T00:00:00.000Z',
+  archivedAt: null,
+  canManageMeta: false,
+  canDuplicate: false,
+  canArchive: false,
+  canRestore: false,
 };
 const NOT_JOINED: ContainerProject = {
   id: 'b',
@@ -36,6 +41,11 @@ const NOT_JOINED: ContainerProject = {
   thumbnailUrl: null,
   myRole: null,
   createdAt: '2026-06-01T00:00:00.000Z',
+  archivedAt: null,
+  canManageMeta: false,
+  canDuplicate: false,
+  canArchive: false,
+  canRestore: false,
 };
 
 describe('ProjectsTab', () => {

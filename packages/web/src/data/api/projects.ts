@@ -26,6 +26,10 @@ export interface ProjectDetail extends ProjectSummary {
   myRole?: ProjectRole;
   /** Soft-delete marker; null for live projects. */
   deletedAt: string | null;
+  /** When the project was archived (read-only for everyone), or null while live. */
+  archivedAt: string | null;
+  /** Whether the caller may restore it: a studio admin, on an archived project. */
+  canRestore: boolean;
 }
 
 /**
@@ -64,6 +68,23 @@ export const projectsApi = {
   },
   duplicate(id: string) {
     return apiPost<ProjectDetail>(`/projects/${id}/duplicate`, {});
+  },
+  /**
+   * `POST /api/v1/projects/:id/archive` — archive the project. Studio admin only.
+   * @param id the bare project uuid.
+   * @returns once the project is archived.
+   */
+  archive(id: string) {
+    return apiPost<{ ok: true }>(`/projects/${id}/archive`, {});
+  },
+  /**
+   * `POST /api/v1/projects/:id/restore` — bring an archived project back.
+   * Studio admin only; refused when the studio has no room for one more.
+   * @param id the bare project uuid.
+   * @returns once the project is live again.
+   */
+  restore(id: string) {
+    return apiPost<{ ok: true }>(`/projects/${id}/restore`, {});
   },
   rename(id: string, name: string) {
     return apiPatch<ProjectDetail>(`/projects/${id}`, { name });
