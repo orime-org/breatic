@@ -392,6 +392,27 @@ test('A12: dragging a column edge widens it, and a wide table scrolls in its own
   expect(frame!.scroll).toBeGreaterThan(frame!.client);
 });
 
+test('A6, A11 and A12: on a wide table scrolled sideways, the row handle stays in the frame and the cell button leaves with its cell', async () => {
+  await openFreshDocument(page);
+  await insertTable(page, 2, 9);
+  await fill(page, ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']);
+  // The caret in the first cell, then the table scrolled until that cell is out of sight.
+  await cell(page, 'c1').click();
+  await expect(page.getByTestId('doc-table-cell-button')).toBeVisible();
+  const frame = page.locator(`${EDITOR} [data-radix-scroll-area-viewport]`).first();
+  await frame.evaluate((viewport) => {
+    viewport.scrollLeft = viewport.scrollWidth;
+  });
+  await expect(page.getByTestId('doc-table-cell-button')).toBeHidden();
+
+  await page.locator(TOP).first().click();
+  await hoverCell(page, 'c8');
+  const handle = await page.getByTestId('doc-table-row-handle').boundingBox();
+  const box = await frame.boundingBox();
+  expect(handle!.x + handle!.width).toBeGreaterThan(box!.x);
+  expect(handle!.x).toBeLessThan(box!.x + 24);
+});
+
 test('A13: the table reads the product tokens in the dark theme', async () => {
   await openFreshDocument(page);
   await smallTable(page);
