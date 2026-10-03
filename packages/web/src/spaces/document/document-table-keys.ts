@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Tab, Shift-Tab, Enter and the side arrows inside a table cell, and Delete
- * over every cell of an empty table.
+ * Tab, Shift-Tab, Enter and the arrows inside a table cell, and Delete over
+ * every cell of an empty table.
  *
  * Tab and Shift-Tab move between cells, and Tab in the last cell adds a row
  * first — the way Google Docs, Notion and Word answer it. Enter breaks the
@@ -19,12 +19,13 @@
  */
 
 import { createExtension } from '@blocknote/core';
-import { TextSelection } from '@tiptap/pm/state';
+import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor } from '@blocknote/core';
-import { wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
+import { cellAt, wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
 import {
   addRowAfter,
+  cellAround,
   CellSelection,
   goToNextCell,
   isInTable,
@@ -34,6 +35,8 @@ import {
 interface KeysEditor {
   readonly prosemirrorView: EditorView;
   removeBlocks: BlockNoteEditor<never, never, never>['removeBlocks'];
+  insertBlocks: BlockNoteEditor<never, never, never>['insertBlocks'];
+  setTextCursorPosition: BlockNoteEditor<never, never, never>['setTextCursorPosition'];
 }
 
 /**
@@ -113,6 +116,38 @@ function collapseInCell(view: EditorView, dir: -1 | 1): boolean {
 }
 
 /**
+ * Opens a line under a table the body ends with, when the caret is on its way
+ * out of it: on the last row going down, at the end of the last cell going
+ * right. Nothing after such a table can take the caret, and the table
+ * plugin's own arrow falls back into the table (`prosemirror-tables` `arrow`,
+ * `dist/index.js:2143-2151`). This is the keyboard's way to the line a click
+ * on the space below the last block opens.
+ * @param editor - The editor.
+ * @param dir - Which arrow.
+ * @returns Whether the key was claimed.
+ */
+function leaveLastTable(editor: KeysEditor, dir: 'down' | 'right'): boolean {
+  const view = editor.prosemirrorView;
+  const { selection } = view.state;
+  const cell = selection.empty ? cellAround(selection.$head) : null;
+  const at = cell === null ? null : cellAt(view.state.doc, cell.pos);
+  if (cell === null || at === null) return false;
+  const lastRow = at.bottom === at.map.height;
+  const onWayOut =
+    dir === 'down'
+      ? lastRow
+      : lastRow && at.right === at.map.width && selection.$head.parentOffset === selection.$head.parent.content.size;
+  if (!onWayOut || !view.endOfTextblock(dir)) return false;
+  // The end of the table's block; past it, the first place a caret can go.
+  const end = cell.after(cell.depth - 2);
+  if (Selection.findFrom(view.state.doc.resolve(end), 1, true) !== null) return false;
+  const [line] = editor.insertBlocks([{ type: 'paragraph' }] as never, at.blockId, 'after');
+  if (line === undefined) return false;
+  editor.setTextCursorPosition(line, 'start');
+  return true;
+}
+
+/**
  * The extension that binds the keys inside a table.
  * @returns The extension, for the assembly to register.
  */
@@ -126,6 +161,8 @@ export const documentTableKeysExtension = createExtension(() => ({
     'Shift-Enter': ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
     Delete: ({ editor }: { editor: KeysEditor }) => deleteWholeTable(editor),
     ArrowLeft: ({ editor }: { editor: KeysEditor }) => collapseInCell(editor.prosemirrorView, -1),
-    ArrowRight: ({ editor }: { editor: KeysEditor }) => collapseInCell(editor.prosemirrorView, 1),
+    ArrowRight: ({ editor }: { editor: KeysEditor }) =>
+      collapseInCell(editor.prosemirrorView, 1) || leaveLastTable(editor, 'right'),
+    ArrowDown: ({ editor }: { editor: KeysEditor }) => leaveLastTable(editor, 'down'),
   },
 }) as never);
