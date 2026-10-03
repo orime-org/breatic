@@ -14,6 +14,9 @@
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
+
+import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 
 /** The editor these commands work on. */
 export type HandleEditor = BlockNoteEditor<never, never, never>;
@@ -90,4 +93,59 @@ function withoutIds(block: PressedBlock): Record<string, unknown> {
  */
 export function deleteRow(editor: HandleEditor, blockId: string): void {
   editor.removeBlocks([blockId]);
+}
+
+/** Which way a block can be indented from where it stands. */
+export interface IndentReach {
+  /** There is a block before it in its group to nest under. */
+  readonly in: boolean;
+  /** It is nested, so it can come out one level. */
+  readonly out: boolean;
+}
+
+/**
+ * Which way a block can be indented: the same two questions BlockNote's
+ * `canNestBlock` and `canUnnestBlock` ask of the caret's block
+ * (`nestBlock.ts:194-208`), asked of the block named here.
+ * @param doc - The document.
+ * @param blockId - The block.
+ * @returns Which way it can go; neither when no block carries the id.
+ */
+export function indentReach(doc: PMNode, blockId: string): IndentReach {
+  let reach: IndentReach = { in: false, out: false };
+  doc.descendants((node, pos) => {
+    if (node.type.name !== 'blockContainer' || node.attrs['id'] !== blockId) {
+      return true;
+    }
+    const $before = doc.resolve(pos);
+    reach = { in: $before.nodeBefore !== null, out: $before.depth > 1 };
+    return false;
+  });
+  return reach;
+}
+
+/**
+ * Indents or outdents the named block, leaving the reader's selection where it
+ * was.
+ *
+ * BlockNote nests whatever `tr.selection` is in (`nestBlock.ts:19,163`), so the
+ * selection is put on the block for the step and the reader's own is mapped
+ * through and put back in the same transaction.
+ * @param editor - The editor to write to.
+ * @param blockId - The block.
+ * @param inward - In one level, or out one level.
+ * @throws {Error} When no block carries the id.
+ */
+export function indentRow(editor: HandleEditor, blockId: string, inward: boolean): void {
+  editor.transact((tr) => {
+    const reader = tr.selection;
+    const written = tr.mapping.maps.length;
+    tr.setSelection(selectionOverBlockContent(tr.doc, blockId));
+    if (inward) {
+      editor.nestBlock();
+    } else {
+      editor.unnestBlock();
+    }
+    tr.setSelection(reader.map(tr.doc, tr.mapping.slice(written)));
+  });
 }
