@@ -1876,6 +1876,14 @@ body {
   background: var(--color-selection);
 }
 
+/* The tint above is a layer over the whole cell (the library's, at z-index 2);
+   the cell's words go above it, so a selected cell reads like selected text:
+   the colour behind the words, the words in their own colour. */
+.doc-body .selectedCell > * {
+  position: relative;
+  z-index: 3;
+}
+
 .doc-body .column-resize-handle {
   background-color: var(--color-ring);
 }
