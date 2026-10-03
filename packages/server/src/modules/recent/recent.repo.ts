@@ -84,6 +84,9 @@ export async function listRecentForUser(
       and(
         eq(projects.id, projectLastOpened.projectId),
         isNull(projects.deletedAt),
+        // An archived project leaves the recent page; the studio admin finds
+        // it on the studio's archived tab.
+        isNull(projects.archivedAt),
       ),
     )
     .innerJoin(

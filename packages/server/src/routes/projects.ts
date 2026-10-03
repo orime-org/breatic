@@ -163,7 +163,7 @@ projects.get("/:id", async (c) => {
   const id = c.req.param("id");
   // A malformed resource key cannot identify a project; never send it to a UUID column.
   if (!z.string().uuid().safeParse(id).success) throw new NotFoundError(t("server.error.not_found"));
-  const { project, myRole } = await projectService.loadForViewer(id, user.id);
+  const { project, myRole, canRestore } = await projectService.loadForViewer(id, user.id);
   const detail: ProjectDetail = {
     id: project.id,
     studioId: project.studioId,
@@ -175,6 +175,8 @@ projects.get("/:id", async (c) => {
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
     deletedAt: project.deletedAt,
+    archivedAt: project.archivedAt,
+    canRestore,
   };
   return c.json({ data: detail });
 });
@@ -283,13 +285,13 @@ const projectUpdateSchema = z
  * operation). v10 §7.2.1.
  * @returns `200` with `{ data: ProjectEntity }`
  */
-membershipScoped.patch(
+projects.patch(
   "/:id",
-  requireRoleOnParam("id", "editor"),
+  validate("param", z.object({ id: z.string().uuid() })),
   validate("json", projectUpdateSchema),
   async (c) => {
     const user = c.get("user");
-    const id = c.req.param("id");
+    const { id } = c.req.valid("param");
     const body = c.req.valid("json");
     const updated = await projectService.update(id, user.id, {
       name: body.name,
@@ -304,18 +306,18 @@ const projectCoverSchema = z.object({ asset_id: z.string().uuid() });
 
 /**
  * `PUT /projects/:id/cover` — point the project's cover at an uploaded
- * picture. Owner-only.
+ * picture. Same gate as a rename, decided in the service.
  * @returns `200` with `{ data: ProjectEntity }`; `404` when the project's
  *   studio holds no live image row with that id
  */
-membershipScoped.put(
+projects.put(
   "/:id/cover",
-  requireRoleOnParam("id", "owner"),
+  validate("param", z.object({ id: z.string().uuid() })),
   validate("json", projectCoverSchema),
   async (c) => {
-    const id = c.req.param("id");
+    const { id } = c.req.valid("param");
     const { asset_id } = c.req.valid("json");
-    const updated = await projectService.setCover(id, asset_id);
+    const updated = await projectService.setCover(id, c.get("user").id, asset_id);
     return c.json({ data: updated });
   },
 );
@@ -323,14 +325,14 @@ membershipScoped.put(
 /**
  * `POST /projects/:id/duplicate` — fork a project into a new one.
  *
- * Requires `viewer`: anyone who can read the source can fork it. The
- * duplicate is owned by the caller (new owner row in
- * `project_members`).
+ * Requires `editor`: the copy carries all of the source's content. The
+ * duplicate's only member is the caller, as its owner; the source's members
+ * are not copied.
  * @returns `201` with `{ data: ProjectEntity }` — the NEW project
  */
 membershipScoped.post(
   "/:id/duplicate",
-  requireRoleOnParam("id", "viewer"),
+  requireRoleOnParam("id", "editor"),
   async (c) => {
     const user = c.get("user");
     const id = c.req.param("id");

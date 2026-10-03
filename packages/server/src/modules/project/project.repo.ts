@@ -16,7 +16,7 @@
  * the `yjs_documents` table.
  */
 
-import { eq, and, isNull, desc, inArray, count, sql } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, desc, inArray, count, sql } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectActivitiesRepo, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
@@ -330,6 +330,12 @@ export async function getProjectById(
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
+/** A studio's project as listed, before the caller's card permissions are added. */
+export type StudioProjectRow = Omit<
+  ProjectSummary,
+  "canManageMeta" | "canDuplicate" | "canArchive" | "canRestore"
+>;
+
 /**
  * List every active project of a studio, each tagged with the viewer's role
  * (the studio container's "projects" tab).
@@ -345,14 +351,17 @@ export async function getProjectById(
  * dropping the project).
  * @param studioId - Studio UUID whose projects to list
  * @param viewerUserId - The viewing user's UUID (resolves `myRole`)
- * @returns The visible project summaries, newest-CREATED first (the studio
- *   container is a catalog: a stable creation order, not a last-activity order
- *   — canvas edits live in Yjs and never bump the project row)
+ * @param archived - List the archived projects instead of the live ones
+ * @returns The live projects newest-CREATED first (the studio container is a
+ *   catalog: a stable creation order, not a last-activity order — canvas edits
+ *   live in Yjs and never bump the project row), or the archived ones
+ *   most-recently-archived first
  */
 export async function listProjectsByStudioForViewer(
   studioId: string,
   viewerUserId: string,
-): Promise<ProjectSummary[]> {
+  archived: boolean,
+): Promise<StudioProjectRow[]> {
   const rows = await db
     .select({
       id: projects.id,
@@ -363,6 +372,7 @@ export async function listProjectsByStudioForViewer(
       myRole: projectMembers.role,
       createdAt: projects.createdAt,
       updatedAt: projects.updatedAt,
+      archivedAt: projects.archivedAt,
     })
     .from(projects)
     .leftJoin(
@@ -374,9 +384,13 @@ export async function listProjectsByStudioForViewer(
       ),
     )
     .where(
-      and(eq(projects.studioId, studioId), isNull(projects.deletedAt)),
+      and(
+        eq(projects.studioId, studioId),
+        isNull(projects.deletedAt),
+        archived ? isNotNull(projects.archivedAt) : isNull(projects.archivedAt),
+      ),
     )
-    .orderBy(desc(projects.createdAt));
+    .orderBy(desc(archived ? projects.archivedAt : projects.createdAt));
 
   return rows.map((row) => ({
     id: row.id,
@@ -387,6 +401,7 @@ export async function listProjectsByStudioForViewer(
     myRole: (row.myRole as ProjectRole | null) ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    archivedAt: row.archivedAt,
   }));
 }
 
@@ -463,7 +478,9 @@ export async function createProject(
  * @param patch.name - New project name
  * @param patch.description - New description; `null` clears it
  * @param patch.thumbnailUrl - New thumbnail URL; `null` clears it
- * @returns The updated project, or `null` if no row matched
+ * The write carries `archived_at IS NULL`, so it lands only on a live project
+ * and serialises with an archive on the same row.
+ * @returns The updated project, or `null` if no live, unarchived row matched
  */
 export async function updateProjectMeta(
   id: string,
@@ -481,7 +498,7 @@ export async function updateProjectMeta(
   const rows = await db
     .update(projects)
     .set(set)
-    .where(and(eq(projects.id, id), isNull(projects.deletedAt)))
+    .where(and(eq(projects.id, id), isNull(projects.deletedAt), isNull(projects.archivedAt)))
     .returning();
   return rows[0] ? toEntity(rows[0]) : null;
 }

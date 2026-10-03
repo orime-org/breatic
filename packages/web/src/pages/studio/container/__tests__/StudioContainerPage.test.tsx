@@ -112,6 +112,11 @@ const PROJECTS: readonly ProjectSummary[] = [
     myRole: 'owner',
     createdAt: new Date('2026-06-07T00:00:00.000Z'),
     updatedAt: new Date('2026-06-07T00:00:00.000Z'),
+    archivedAt: null,
+    canManageMeta: true,
+    canDuplicate: true,
+    canArchive: true,
+    canRestore: false,
   },
 ];
 

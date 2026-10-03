@@ -56,7 +56,8 @@ import type { Refused } from "@server/utils/deferred-decision.js";
 
 /** What the join dialog needs about a project the caller cannot enter. */
 export interface MyJoinRequestView {
-  project: { id: string; name: string; studioSlug: string };
+  /** `archivedAt` set means the project takes no join request; the dialog says so. */
+  project: { id: string; name: string; studioSlug: string; archivedAt: Date | null };
   pendingRequest: { id: string; createdAt: Date } | null;
 }
 
@@ -73,7 +74,7 @@ export interface MyJoinRequestView {
 async function loadForStudioMember(
   projectId: string,
   userId: string,
-): Promise<{ id: string; name: string; studioId: string; studioSlug: string }> {
+): Promise<{ id: string; name: string; studioId: string; studioSlug: string; archivedAt: Date | null }> {
   const project = await projectRepo.getProjectById(projectId);
   if (!project) throw new NotFoundError(t("server.error.not_found"));
   const [role, studio] = await Promise.all([
@@ -81,7 +82,13 @@ async function loadForStudioMember(
     studioRepo.getById(project.studioId),
   ]);
   if (role === null || !studio) throw new NotFoundError(t("server.error.not_found"));
-  return { id: project.id, name: project.name, studioId: project.studioId, studioSlug: studio.slug };
+  return {
+    id: project.id,
+    name: project.name,
+    studioId: project.studioId,
+    studioSlug: studio.slug,
+    archivedAt: project.archivedAt,
+  };
 }
 
 /**
@@ -107,7 +114,12 @@ export async function getMine(projectId: string, userId: string): Promise<MyJoin
   const project = await loadForStudioMember(projectId, userId);
   const pending = await requestsRepo.findLiveFor(projectId, userId);
   return {
-    project: { id: project.id, name: project.name, studioSlug: project.studioSlug },
+    project: {
+      id: project.id,
+      name: project.name,
+      studioSlug: project.studioSlug,
+      archivedAt: project.archivedAt,
+    },
     pendingRequest: pending,
   };
 }

@@ -133,7 +133,7 @@ describe("project.service.listByStudioForViewer — studio members see every pro
   it("returns [] for a non-studio-member without touching the repo", async () => {
     loadStudioRole.mockResolvedValue(null);
 
-    const result = await listByStudioForViewer("s-1", "u-1");
+    const result = await listByStudioForViewer("s-1", "u-1", { archived: false });
 
     expect(result).toEqual([]);
     expect(listRepo).not.toHaveBeenCalled();
@@ -143,9 +143,9 @@ describe("project.service.listByStudioForViewer — studio members see every pro
     loadStudioRole.mockResolvedValue("guest");
     listRepo.mockResolvedValue([]);
 
-    await listByStudioForViewer("s-1", "u-1");
+    await listByStudioForViewer("s-1", "u-1", { archived: false });
 
-    expect(listRepo).toHaveBeenCalledWith("s-1", "u-1");
+    expect(listRepo).toHaveBeenCalledWith("s-1", "u-1", false);
   });
 });
 
@@ -155,16 +155,16 @@ describe("project.service.listByStudioSlug — slug resolution", () => {
     loadStudioRole.mockResolvedValue("guest");
     listRepo.mockResolvedValue([]);
 
-    await listByStudioSlug("acme", "u-1");
+    await listByStudioSlug("acme", "u-1", { archived: false });
 
     expect(getStudioBySlug).toHaveBeenCalledWith("acme");
-    expect(listRepo).toHaveBeenCalledWith("s-7", "u-1");
+    expect(listRepo).toHaveBeenCalledWith("s-7", "u-1", false);
   });
 
   it("throws NotFound for an unknown slug", async () => {
     getStudioBySlug.mockResolvedValue(null);
 
-    await expect(listByStudioSlug("nope", "u-1")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(listByStudioSlug("nope", "u-1", { archived: false })).rejects.toBeInstanceOf(NotFoundError);
     expect(listRepo).not.toHaveBeenCalled();
   });
 });
