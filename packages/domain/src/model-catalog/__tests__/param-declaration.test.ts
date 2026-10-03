@@ -169,6 +169,21 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*style_images.*joins/s);
   });
 
+  it("is refused when a slot joins a pool that does not say how its files are named", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "image",
+        modelWith(
+          {
+            images: { fill: "pool", accepts: "image", type: "list", max_items: 13 },
+            style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, joins: "images", prompt_note: "{list}" },
+          },
+          "i2i",
+        ),
+      ),
+    ).toThrow(/a-model.*style_images.*mention/s);
+  });
+
   it("is refused when a joining slot has no prompt note naming the list", () => {
     expect(() =>
       assertParamDeclarations(

@@ -170,6 +170,9 @@ export function assertParamDeclarations(
         .filter(([, raw]) => (raw as { fill?: unknown } | null)?.fill === "pool")
         .map(([name]) => name),
     );
+    const namedPools = new Set(
+      [...pools].filter((pool) => typeof (params[pool] as { mention?: unknown }).mention === "string"),
+    );
     for (const [param, raw] of Object.entries(params)) {
       const parsed = declarationSchema.safeParse(raw);
       if (!parsed.success) {
@@ -187,7 +190,7 @@ export function assertParamDeclarations(
           faults.push(`${model.name}.${param}: names "${key}", which no parameter declaration has`);
         }
       }
-      for (const fault of faultsOn(parsed.data, { name: param, names, modes, pools })) {
+      for (const fault of faultsOn(parsed.data, { name: param, names, modes, pools, namedPools })) {
         faults.push(`${model.name}.${param}: ${fault}`);
       }
     }
@@ -206,6 +209,7 @@ export function assertParamDeclarations(
  * @param around.names - Every parameter name this model declares.
  * @param around.modes - Every mode this model serves.
  * @param around.pools - The names of this model's pool parameters.
+ * @param around.namedPools - The pools that say how their files are named.
  * @returns One sentence per fault; empty when the declaration holds.
  */
 function faultsOn(
@@ -215,9 +219,10 @@ function faultsOn(
     names: ReadonlySet<string>;
     modes: ReadonlySet<string>;
     pools: ReadonlySet<string>;
+    namedPools: ReadonlySet<string>;
   },
 ): string[] {
-  const { name, names, modes, pools } = around;
+  const { name, names, modes, pools, namedPools } = around;
   const faults: string[] = [];
 
   // No default: a parameter that says nothing would be read as having a
@@ -322,6 +327,9 @@ function faultsOn(
     // The files travel inside that pool, so it has to be one.
     if (!pools.has(declared.joins)) {
       faults.push(`joins "${declared.joins}", which is not one of this model's pools`);
+    } else if (!namedPools.has(declared.joins)) {
+      // The note names the files the way the pool writes its chips.
+      faults.push(`joins "${declared.joins}", whose pool declares no mention to name its files by`);
     }
     // The prompt is the only place the upstream learns what the files are for.
     if (!declared.prompt_note?.includes("{list}")) {

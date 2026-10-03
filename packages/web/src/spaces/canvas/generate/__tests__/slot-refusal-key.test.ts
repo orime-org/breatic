@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { slotRefusalKey } from '@web/spaces/canvas/generate/slots';
 
 describe('slotRefusalKey', () => {
@@ -28,5 +29,11 @@ describe('slotRefusalKey', () => {
     expect(
       slotRefusalKey(AUDIO_SLOTS, ['musicSong'], { refusal: 'sources-missing' }),
     ).toBe('canvas.generatePanel.refuseExecuteNoReference');
+  });
+
+  it('asks for a style image when an empty style slot is what refuses the run (inner#826)', () => {
+    expect(
+      slotRefusalKey(IMAGE_SLOTS, ['style'], { refusal: 'source-missing', slot: 'style_images' }),
+    ).toBe('canvas.generatePanel.errorNoStyleImage');
   });
 });

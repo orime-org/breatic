@@ -65,8 +65,8 @@ export function joinSlotFiles(
     delete out[name];
     if (files.length === 0) continue;
     const pool = usableUrls(out[joins]);
-    const declaredMention = (declared[joins] as JoinFields | undefined)?.mention;
-    const mention = typeof declaredMention === "string" ? declaredMention : "image {n}";
+    // The catalog check holds every joined pool to a mention.
+    const mention = String((declared[joins] as JoinFields | undefined)?.mention ?? "");
     const names = files.map((_, k) => {
       const index = pool.length + k;
       return mention.replace("{n}", String(index + 1)).replace("{i}", String(index));
