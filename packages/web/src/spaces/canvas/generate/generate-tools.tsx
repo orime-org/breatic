@@ -5,11 +5,11 @@
  * The pieces every Generate panel's tool row is built from.
  *
  * The panels' tool rows are made of the same two things: a toggle that
- * enters a canvas pick, and a slot that holds one picked source. They differ
+ * enters a canvas pick, and a slot that holds a picked source. They differ
  * only in WHICH tools they show — reference and focus are on the image and
- * video rows, and the video and audio panels add the source slots their mode
- * needs — so the tools themselves live here and each panel's row just
- * arranges them.
+ * video rows, the video and audio panels add the source slots their mode
+ * needs, and the image panel adds one slot per style image — so the tools
+ * themselves live here and each panel's row just arranges them.
  */
 
 import { X, type LucideIcon } from 'lucide-react';
