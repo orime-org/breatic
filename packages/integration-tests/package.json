@@ -1,0 +1,33 @@
+{
+  "name": "@breatic/integration-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./containers": "./src/test-utils/containers.ts",
+    "./env": "./src/test-utils/env.ts",
+    "./provided-context": {
+      "types": "./src/test-utils/provided-context.d.ts"
+    }
+  },
+  "scripts": {
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@breatic/core": "workspace:*",
+    "@breatic/domain": "workspace:*",
+    "@breatic/shared": "workspace:*",
+    "@hocuspocus/server": "catalog:",
+    "@testcontainers/postgresql": "^11.14.0",
+    "@types/node": "catalog:",
+    "ai": "catalog:",
+    "bullmq": "catalog:",
+    "drizzle-orm": "catalog:",
+    "postgres": "catalog:",
+    "testcontainers": "^11.14.0",
+    "vitest": "catalog:",
+    "yjs": "catalog:"
+  }
+}
