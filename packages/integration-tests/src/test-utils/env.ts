@@ -10,10 +10,10 @@
  * where it's safe to do so — Vitest's setupFiles run before test file
  * modules are evaluated.
  *
- * @breatic/core no longer reads process.env itself; the application
+ * `@breatic/core` no longer reads process.env itself; the application
  * entry injects validated config via initCore(process.env). This setup
  * file only *applies* the env vars (container URLs from inject() + the
- * required fixed vars) — it deliberately does NOT import @breatic/core
+ * required fixed vars) — it deliberately does NOT import `@breatic/core`
  * to call initCore here, so that importing this setup file pulls in no part
  * of the application. Each test that exercises real core calls
  * initCore(process.env) itself (see canvas-native-e2e). Tests

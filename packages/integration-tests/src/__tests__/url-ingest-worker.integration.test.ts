@@ -45,6 +45,7 @@ import {
 } from "@breatic/shared";
 import { assetService } from "@breatic/domain";
 import type { Job } from "bullmq";
+import type { createApp } from "@server/app.js";
 import {
   runUrlIngest,
   type UrlIngestJobData,
@@ -61,7 +62,7 @@ const SOURCE = "https://cdn.test.invalid/clip.mp4";
 const INGEST_SECRET = process.env.INGEST_SHARED_SECRET ?? "test-secret";
 
 let sql: ReturnType<typeof postgres>;
-let app: ReturnType<typeof import("@server/app.js").createApp>;
+let app: ReturnType<typeof createApp>;
 
 beforeAll(async () => {
   sql = postgres(inject("DATABASE_URL"), {

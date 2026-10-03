@@ -85,7 +85,7 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   // env.ts validates process.env at module-load, so core must not be imported
   // until DATABASE_URL etc. point at the freshly-started container. Routing
   // migration through core keeps drizzle-orm a core-only dependency
-  // (CLAUDE.md "@core 内容归属").
+  // (CLAUDE.md, the `@shared` vs `@core` ownership rule).
   console.log("[integration] Running migrations...");
   const { migrateDatabase, migrateYjsDatabase, createTestDb } = await import(
     "@breatic/core"
