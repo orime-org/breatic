@@ -13,7 +13,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { cellAt, deleteRowAt, insertRow } from '@web/spaces/document/document-table-run';
+import { cellAt, deleteRowAt, insertColumn, insertRow, setCellsAttr } from '@web/spaces/document/document-table-run';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -103,6 +103,29 @@ describe('the target cell of a table menu', () => {
     const pos = tableTargetOf(editor.prosemirrorState)!;
     expect(targetText(editor)).toBe('b2');
     expect(cellAt(editor.prosemirrorState.doc, pos)).toMatchObject({ row: 2, col: 1 });
+  });
+
+  it('stays on its cell when a column is added right before it', () => {
+    const editor = open();
+    setTableTarget(editor.prosemirrorView!, cellOf(editor, 'b2'));
+
+    insertColumn(editor, cellOf(editor, 'b2'), 'left');
+
+    expect(targetText(editor)).toBe('b2');
+  });
+
+  it.each([
+    ['fill', 'backgroundColor', 'red'],
+    ['alignment', 'textAlignment', 'center'],
+  ] as const)('stays on its cell when that cell takes a new %s', (_what, name, value) => {
+    // The fill and alignment submenus stay open after a pick, so the next
+    // pick has to reach the same cell.
+    const editor = open();
+    setTableTarget(editor.prosemirrorView!, cellOf(editor, 'b2'));
+
+    setCellsAttr(editor, cellOf(editor, 'b2'), 'cell', name, value);
+
+    expect(targetText(editor)).toBe('b2');
   });
 
   it('is gone when its row is deleted', () => {

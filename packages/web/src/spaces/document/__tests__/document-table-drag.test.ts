@@ -21,7 +21,7 @@ import {
   moveToGap,
   startTableDrag,
 } from '@web/spaces/document/document-table-drag';
-import { insertRow } from '@web/spaces/document/document-table-run';
+import { insertRow, setCellsAttr } from '@web/spaces/document/document-table-run';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -169,6 +169,17 @@ describe('the row a drag started on', () => {
     moveToGap(editor, source.cellPos, 'row', 0);
 
     expect(grid(editor)[0]).toEqual(['a2', 'b2', 'c2']);
+  });
+
+  it('is followed when the cell it started on takes a new fill', () => {
+    const editor = open();
+    startTableDrag(editor.prosemirrorView!, 'row', cellOf(editor, 'a2'));
+
+    setCellsAttr(editor, cellOf(editor, 'a2'), 'cell', 'backgroundColor', 'red');
+    const source = dragSourceOf(editor.prosemirrorState);
+
+    expect(source).not.toBeNull();
+    expect(editor.prosemirrorState.doc.nodeAt(source!.cellPos)?.textContent).toBe('a2');
   });
 
   it('cannot be a row a merged cell spans', () => {
