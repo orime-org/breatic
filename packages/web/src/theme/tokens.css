@@ -331,6 +331,8 @@ html[data-theme='light'] {
 
   /* ---- Border / input / focus ring ---- */
   --color-border: rgba(30, 30, 30, 0.12);
+  /* Content scrolled under the edge of its frame: the black --shadow-md uses. */
+  --color-overflow-shadow: rgba(0, 0, 0, 0.08);
   --color-input: var(--neutral-200);
   /* focus = neutral solid 1px, no glow (translucent rejected: reads dirty). */
   --color-ring: var(--neutral-700);
@@ -572,6 +574,7 @@ html[data-theme='dark'] {
   --color-secondary-foreground: var(--neutral-900);
 
   --color-border: rgba(240, 240, 240, 0.12);
+  --color-overflow-shadow: rgba(0, 0, 0, 0.5);
   --color-input: var(--neutral-400);
 
   --color-primary: var(--neutral-900);

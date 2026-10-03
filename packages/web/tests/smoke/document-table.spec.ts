@@ -526,6 +526,35 @@ test('A6 and A11: a cell cut by the frame of a wide table shows its button and c
   await expect(page.getByTestId('doc-table-cell-align')).toHaveCount(0);
 });
 
+test('A21: a wide table shows an edge on each side that still has more to scroll', async () => {
+  await openFreshDocument(page);
+  await insertTable(page, 2, 9);
+  const frame = page.locator(`${EDITOR} [data-radix-scroll-area-viewport]`).first();
+
+  /**
+   * Which edges of the table frame are drawn, read off the page.
+   * @returns Left and right, each whether it shows.
+   */
+  const edges = async (): Promise<{ left: boolean; right: boolean }> =>
+    page.locator(`${EDITOR} [data-content-type='table']`).first().evaluate((block) => {
+      const shown = (side: string): boolean => {
+        const edge = block.querySelector(`[data-overflow-edge="${side}"]`);
+        return edge !== null && getComputedStyle(edge).opacity === '1' && edge.getBoundingClientRect().width > 0;
+      };
+      return { left: shown('left'), right: shown('right') };
+    });
+
+  await expect.poll(edges).toEqual({ left: false, right: true });
+  await frame.evaluate((viewport) => {
+    viewport.scrollLeft = (viewport.scrollWidth - viewport.clientWidth) / 2;
+  });
+  await expect.poll(edges).toEqual({ left: true, right: true });
+  await frame.evaluate((viewport) => {
+    viewport.scrollLeft = viewport.scrollWidth;
+  });
+  await expect.poll(edges).toEqual({ left: true, right: false });
+});
+
 test('A13: the table reads the product tokens in the dark theme', async () => {
   await openFreshDocument(page);
   await smallTable(page);

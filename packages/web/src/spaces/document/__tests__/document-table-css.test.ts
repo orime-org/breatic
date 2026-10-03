@@ -54,6 +54,18 @@ describe('a table in the body', () => {
     expect(ruleBody('.doc-table-handle')).toContain('pointer-events: auto');
   });
 
+  it('draws the edge of a side with more to scroll in tokens, and lets presses through it (A21)', () => {
+    const edge = ruleBody('.doc-table-overflow-edge');
+    expect(edge).toContain('pointer-events: none');
+    expect(edge).toContain('opacity: 0');
+    expect(ruleBody('.doc-table-overflow-edge[data-on]')).toContain('opacity: 1');
+    for (const side of ['left', 'right']) {
+      const body = ruleBody(`.doc-table-overflow-edge[data-overflow-edge='${side}']`);
+      expect(body).toContain(`border-${side}: 1px solid var(--color-border)`);
+      expect(body).toContain('var(--color-overflow-shadow)');
+    }
+  });
+
   it('draws where a dragged row or column lands the way a dragged block\'s line is drawn', () => {
     for (const [name, shadow] of [
       ['row-before', '0 2px 0'],

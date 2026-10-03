@@ -1858,6 +1858,40 @@ body {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* The edge on a side of a wide table that still has more to scroll (inner#1126
+   A21): a line along the frame and a fade inward. It stops above the room the
+   wrapper keeps for the scrollbar, and takes no presses. */
+@layer components {
+  .doc-table-frame {
+    position: relative;
+  }
+
+  .doc-table-overflow-edge {
+    position: absolute;
+    top: 0;
+    bottom: 0.5rem;
+    width: 12px;
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  .doc-table-overflow-edge[data-on] {
+    opacity: 1;
+  }
+
+  .doc-table-overflow-edge[data-overflow-edge='left'] {
+    left: 0;
+    border-left: 1px solid var(--color-border);
+    background: linear-gradient(to right, var(--color-overflow-shadow), transparent);
+  }
+
+  .doc-table-overflow-edge[data-overflow-edge='right'] {
+    right: 0;
+    border-right: 1px solid var(--color-border);
+    background: linear-gradient(to left, var(--color-overflow-shadow), transparent);
+  }
+}
 .doc-body [data-content-type='table'] .tableWrapper {
   overflow: visible;
   padding: 0 0 0.5rem 0;

@@ -27,7 +27,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 
-import { ScrollArea } from '@web/components/ui/scroll-area';
+import { DocumentTableScroller } from '@web/spaces/document/document-table-scroller';
 
 /** The DOM attribute `quoted` renders as, the same name its propSchema gives it. */
 const QUOTED_ATTRIBUTE = 'data-quoted';
@@ -114,7 +114,8 @@ function applyQuoted(dom: HTMLElement, node: PMNode): void {
 }
 
 /**
- * Moves the library's `.tableWrapper` into a horizontal `ScrollArea`.
+ * Moves the library's `.tableWrapper` into the horizontal frame of
+ * `DocumentTableScroller`.
  *
  * The scroll area is rendered synchronously so the wrapper is in place before
  * ProseMirror first reads the view's DOM.
@@ -132,7 +133,7 @@ function mountScroller(dom: HTMLElement): Root | null {
   const root = createRoot(host);
   flushSync(() => {
     root.render(
-      <ScrollArea scrollbars='horizontal'>
+      <DocumentTableScroller>
         <div
           ref={(slot) => {
             if (slot !== null && wrapper.parentElement !== slot) {
@@ -140,7 +141,7 @@ function mountScroller(dom: HTMLElement): Root | null {
             }
           }}
         />
-      </ScrollArea>,
+      </DocumentTableScroller>,
     );
   });
   return root;
