@@ -255,7 +255,11 @@ function AssetBox({ assets, at, onMove, onClose, copying }: AssetBoxProps): Reac
               size='sm'
               onClick={() => copying.copy(current)}
             >
-              {copied ? <Check aria-hidden='true' /> : <Copy aria-hidden='true' />}
+              {copied ? (
+                <Check className='size-3.5' aria-hidden='true' />
+              ) : (
+                <Copy className='size-3.5' aria-hidden='true' />
+              )}
               {t('chat.action.copy')}
             </Button>
             {copied ? <CopyAnswerLabel side='right' /> : null}
