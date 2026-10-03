@@ -289,8 +289,9 @@ export function renderProductGuide(): string {
       "that connection, and the one you pick appears there, already connected.",
     "- Paste with Cmd/Ctrl+V: a copied node, a file or screenshot, or plain text, which becomes a text node. " +
       "The canvas's keys, this one included, act once the space was the last thing clicked and nothing is being " +
-      "typed in; a picture copied in this chat pastes onto the canvas straight away, with nothing being typed " +
-      "in. After typing in this chat they go to the chat box. To hand them back, click one of the selected " +
+      "typed in. A copied node or a picture copied in this chat pastes onto the canvas even after a click in " +
+      "this chat, as long as nothing is being typed in and no menu or large view is open. After typing in this " +
+      "chat the other keys go to the chat box. To hand them back, click one of the selected " +
       "nodes or the space's tab, which keeps the selection; clicking an empty spot on the canvas also works but " +
       "clears the selection.",
     `- Double-clicking empty canvas does nothing. An empty canvas shows ${quoted(t("canvas.emptyState.title"))} ` +
