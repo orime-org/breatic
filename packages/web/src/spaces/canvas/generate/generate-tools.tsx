@@ -236,8 +236,9 @@ interface SlotToolProps {
  * that told them apart (user 2026-09-06).
  *
  * Clicking a filled one-file slot re-enters the pick (the next selection
- * REPLACES the copy); in a slot holding several, clicking adds one more while
- * there is room and starts nothing once it is full. A ✕ badge at the top-right clears it; the ✕ is a SIBLING button
+ * REPLACES the copy); in a slot holding several, clicking starts a pick in
+ * which each canvas click adds one more (or ends a running one), and starts
+ * nothing once the slot is full. A ✕ badge at the top-right clears it; the ✕ is a SIBLING button
  * positioned over the corner — never nested inside the main button
  * (button-in-button reparents silently). The ✕ stays active even when picking
  * is gated off, so a stale copy can always be removed. The filled button keeps

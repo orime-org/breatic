@@ -159,8 +159,9 @@ export async function estimateCredits(
     }
   }
 
-  // The reader's empty prompt is quoted per thousand characters; a written one
-  // is priced as sent, with any joining slot's note.
+  // An empty prompt stays empty, so a model billed by prompt length can be
+  // quoted per thousand characters below; a written one is priced as sent,
+  // with any joining slot's note.
   const text = (input.prompt ?? "") === "" ? "" : joined.prompt;
   const textPriced = model.takes_prompt && text === "" && billsBy(formulas, "$length", promptField);
 

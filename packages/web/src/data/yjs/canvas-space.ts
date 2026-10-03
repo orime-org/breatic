@@ -957,8 +957,10 @@ export function setNodeSlotValue(
 
 /**
  * Adds one file to a slot that holds several (inner#826: style images). The
- * list is one value, so it is read and written in one transaction; two
- * readers appending at the same moment keep whichever write lands last.
+ * list is one value, so it is read and written in one transaction; when two
+ * readers append at the same moment, each writes a whole list and Yjs keeps
+ * one of them, the same one on every client, so one of the two appends is
+ * lost.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space containing the node.
  * @param nodeId - The generative node whose slot gets the file.
