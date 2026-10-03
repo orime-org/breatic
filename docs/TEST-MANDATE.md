@@ -24,7 +24,7 @@
 | **smoke** | 走一条用户要办成的事,且跨至少两个部件或一次真实往返 | `packages/web/tests/smoke/` |
 | **visual** | 钉一个部件自己的行为 / 位置 / 尺寸 / 颜色 / 时序 | `packages/web/tests/visual/` |
 | **unit** | 不需要真浏览器 | 被测对象同级的 `__tests__/` |
-| **integration**(只测一个包) | 要真依赖(PG / Redis / 回环 socket),被测代码都在一个包里 | 那个包被测对象同级的 `__tests__/` |
+| **integration**(只测一个包) | 要真依赖(PG / Redis / 回环 socket),被测代码都在一个包里 | 那个包自己的 `src/` 下(server 统一放 `src/__tests__/integration/`) |
 | **integration**(跨服务) | 一次运行里驱动 server / worker / collab 中两个以上的代码 | `packages/integration-tests/src/__tests__/` |
 
 **只有一次真实往返才会让那个东西出现在页面上的用例才是 smoke。** 一条用例需要第二个连接只是为了移动一个目标(另一个人在拖、在选),它仍然是 visual —— 被钉住的还是这一端画出来的样子。

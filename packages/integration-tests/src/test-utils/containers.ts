@@ -83,9 +83,9 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   // Run migrations against the fresh PG container before any test runs.
   // Imported dynamically AFTER the env vars above are set: @breatic/core's
   // env.ts validates process.env at module-load, so core must not be imported
-  // until DATABASE_URL etc. point at the freshly-started container. Routing
-  // migration through core keeps drizzle-orm a core-only dependency
-  // (CLAUDE.md, the `@shared` vs `@core` ownership rule).
+  // until DATABASE_URL etc. point at the freshly-started container. The
+  // migrations run through core's own functions, so this file needs no
+  // database driver of its own.
   console.log("[integration] Running migrations...");
   const { migrateDatabase, migrateYjsDatabase, createTestDb } = await import(
     "@breatic/core"

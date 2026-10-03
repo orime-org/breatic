@@ -22,9 +22,9 @@ export default defineConfig({
     // green and never executed.
     include: ["src/**/*.integration.test.ts"],
     // globalSetup lays down the payment configs only this package's suites
-    // read — first, because it is cheap and a run without a price list should
-    // say so before spending a minute pulling images — then starts the
-    // testcontainers BEFORE any test module is imported.
+    // read — first, because it is cheap and a fixture that cannot be copied
+    // fails the run before a minute goes into pulling images — then starts
+    // the testcontainers BEFORE any test module is imported.
     globalSetup: [
       "./src/__tests__/integration/payment-configs.ts",
       "@breatic/integration-tests/containers",
