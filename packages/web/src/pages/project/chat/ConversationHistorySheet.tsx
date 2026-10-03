@@ -35,6 +35,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
+import { formatLocalDay } from '@web/lib/format-day';
 
 /**
  * How the button that opens this list is found from a press landing on it.
@@ -174,7 +175,7 @@ function relativeTime(iso: string, now = Date.now()): RelativeTime {
   if (day < 365) return { key: 'chat.relative.monthsAgo', params: { count: Math.floor(day / 30) } };
   return {
     key: 'chat.relative.isoDate',
-    params: { date: new Date(parsed).toISOString().slice(0, 10) },
+    params: { date: formatLocalDay(parsed) },
   };
 }
 
@@ -296,6 +297,7 @@ function ConversationRowView({
       >
         {renaming ? (
           <input
+            autoComplete='off'
             data-testid='conversation-rename-input'
             ref={box}
             defaultValue={row.title ?? ''}

@@ -87,6 +87,7 @@ export function BasicInfoSection({
           {t('studio.container.settings.name')}
         </Label>
         <Input
+          autoComplete='off'
           id='studio-name'
           value={name}
           maxLength={NAME_MAX}

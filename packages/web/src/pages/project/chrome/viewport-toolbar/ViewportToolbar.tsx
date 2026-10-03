@@ -420,6 +420,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
         <div className='my-1 h-px bg-border' />
         <div className='flex items-center gap-1 px-1 py-1'>
           <input
+            autoComplete='off'
             // eslint-disable-next-line jsx-a11y/no-autofocus -- popover custom-zoom input; users open the popover expecting to type a value immediately
             autoFocus
             type='text'

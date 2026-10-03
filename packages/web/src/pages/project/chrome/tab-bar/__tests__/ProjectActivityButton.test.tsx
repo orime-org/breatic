@@ -379,6 +379,23 @@ describe('activity feed: failure icon + trigger icon (#1820 polish)', () => {
 });
 
 describe('relativeTime', () => {
+  it('dates an entry older than a year by the day of the reader', () => {
+    const real = process.env['TZ'];
+    try {
+      process.env['TZ'] = 'Asia/Shanghai';
+      const now = Date.parse('2026-10-03T00:00:00.000Z');
+      // 23:00 UTC on 2 April 2025 is already 3 April in Shanghai.
+      const then = Date.parse('2025-04-02T23:00:00.000Z');
+      expect(relativeTime(then, now)).toEqual({
+        key: 'activity.relative.isoDate',
+        params: { date: '2025-04-03' },
+      });
+    } finally {
+      if (real === undefined) delete process.env['TZ'];
+      else process.env['TZ'] = real;
+    }
+  });
+
   const NOW = 1_780_900_000_000;
 
   it('buckets minutes / hours / days', () => {

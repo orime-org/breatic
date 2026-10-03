@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
@@ -295,5 +295,29 @@ describe('MembersTab — a11y', () => {
       />,
     );
     await expectNoA11yViolations(container);
+  });
+});
+
+describe('MembersTab — joined date', () => {
+  const REAL_TZ = process.env['TZ'];
+  afterEach(() => {
+    if (REAL_TZ === undefined) delete process.env['TZ'];
+    else process.env['TZ'] = REAL_TZ;
+  });
+
+  it('shows the day the member joined in the timezone of the reader', () => {
+    // 23:00 UTC on 2 April is already 3 April in Shanghai.
+    process.env['TZ'] = 'Asia/Shanghai';
+    renderTab(
+      <MembersTab
+        slug='acme'
+        members={[ADMIN, { ...GUEST, joinedAt: '2026-04-02T23:00:00.000Z' }]}
+        studioRole='admin'
+        studioType='team'
+        pendingInvitations={[]}
+      />,
+    );
+    expect(screen.getByText('2026-04-03')).toBeInTheDocument();
+    expect(screen.queryByText('2026-04-02')).toBeNull();
   });
 });

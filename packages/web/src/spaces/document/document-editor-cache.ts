@@ -212,7 +212,8 @@ export type ShowableEditor = Pick<DocumentEditorHandle, 'editor' | 'surface'>;
 /**
  * Put a document's editor inside a container, mounting it the first time.
  *
- * The surface moves; the editor is never mounted twice. What that costs to get
+ * The surface moves, and the floating UI portal with it; the editor is never
+ * mounted twice. What that costs to get
  * wrong is in the module comment — a rebuilt view, a mismatched transaction,
  * and the old view's plugin views left running.
  *
@@ -233,6 +234,10 @@ export function adoptDocumentEditor(
   if (viewOf(handle.editor) === null) {
     handle.editor.mount(handle.surface);
   }
+  // `mount()` appended the floating UI portal to the container it found the
+  // surface in, and nothing moves it after that. The block strip renders into
+  // it, so a portal left in a previous container leaves the page with it.
+  container.appendChild(handle.editor.portalElement);
 }
 
 /**

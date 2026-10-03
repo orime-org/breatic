@@ -55,6 +55,14 @@ function renderSection(props: {
 }
 
 describe('BasicInfoSection — the submit gate', () => {
+  it('keeps the browser from offering past entries in the name field', () => {
+    renderSection();
+    expect(screen.getByTestId('settings-name')).toHaveAttribute(
+      'autocomplete',
+      'off',
+    );
+  });
+
   it('stays disabled while nothing has changed', () => {
     renderSection();
     expect(screen.getByTestId('settings-save')).toBeDisabled();
