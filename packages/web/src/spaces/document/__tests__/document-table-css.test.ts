@@ -28,6 +28,14 @@ describe('a table in the body', () => {
     expect(ruleBody('.column-resize-handle')).toContain('background-color: var(--color-ring)');
   });
 
+  it('paints a selected cell behind its words, the way selected text is painted', () => {
+    // The library's tint is a layer over the whole cell at z-index 2; the
+    // cell's content goes above it, so the words keep their own colour.
+    const body = ruleBody('.doc-body .selectedCell > *');
+    expect(body).toContain('position: relative');
+    expect(body).toContain('z-index: 3');
+  });
+
   it('gives the library\'s handles no room around the table, since ours float', () => {
     const paddings = declarationsOf('[data-content-type=\'table\'] .tableWrapper', 'padding');
     expect(paddings.map(({ value }) => value)).toEqual(['0']);
