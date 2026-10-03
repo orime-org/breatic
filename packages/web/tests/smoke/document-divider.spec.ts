@@ -15,6 +15,7 @@
 import { test, expect, type Page } from 'playwright/test';
 
 import { openSmokeProject } from '../helpers/project';
+import { pressAndSettle } from '../helpers/editor-keys';
 import { createSpace, deleteSpace } from '../helpers/space';
 
 let page: Page;
@@ -130,38 +131,6 @@ async function theme(p: Page, option: 'dark' | 'system'): Promise<void> {
 const UNDO_CAPTURE_MS = 500;
 
 /**
- * Press a key and wait for the editor to read the browser's selection back
- * (see {@link caretBack}).
- * @param p - The page.
- * @param key - The key.
- */
-async function press(p: Page, key: string): Promise<void> {
-  const before = await p.evaluate(
-    (selector) =>
-      JSON.stringify(
-        (document.querySelector(selector) as unknown as {
-          editor: { state: { selection: { toJSON: () => unknown } } };
-        }).editor.state.selection.toJSON(),
-      ),
-    EDITOR,
-  );
-  await p.keyboard.press(key);
-  await expect
-    .poll(() =>
-      p.evaluate(
-        (selector) =>
-          JSON.stringify(
-            (document.querySelector(selector) as unknown as {
-              editor: { state: { selection: { toJSON: () => unknown } } };
-            }).editor.state.selection.toJSON(),
-          ),
-        EDITOR,
-      ),
-    )
-    .not.toBe(before);
-}
-
-/**
  * Walk the caret back to the head of the line it is on. Arrows rather than
  * Home: on macOS Home scrolls the page and leaves the caret where it was.
  *
@@ -274,19 +243,19 @@ test('the arrows walk onto a divider from either side, and Shift+arrow runs acro
   await sandwich(page);
 
   // Up from the line below lands on the divider itself.
-  await press(page, 'ArrowUp');
+  await pressAndSettle(page, 'ArrowUp');
   await expect.poll(() => band(page)).toMatchObject({ painted: true });
   // Up again to the line above, then down from it lands on the divider again.
-  await press(page, 'ArrowUp');
+  await pressAndSettle(page, 'ArrowUp');
   await expect.poll(async () => (await band(page)).painted).toBe(false);
-  await press(page, 'ArrowDown');
+  await pressAndSettle(page, 'ArrowDown');
   await expect.poll(async () => (await band(page)).painted).toBe(true);
 
   // A range run across it with Shift paints it, and typing replaces it along
   // with the words.
   // Up from the divider lands at the end of the line above.
-  await press(page, 'ArrowUp');
-  await press(page, 'Shift+ArrowDown');
+  await pressAndSettle(page, 'ArrowUp');
+  await pressAndSettle(page, 'Shift+ArrowDown');
   await expect.poll(async () => (await band(page)).painted).toBe(true);
   await page.keyboard.type('Q');
   await expect.poll(() => rows(page)).toEqual(['paragraph:AboveQ']);
