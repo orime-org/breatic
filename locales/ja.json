@@ -1183,7 +1183,20 @@
       },
       "table": {
         "pickSize": "サイズを選択",
-        "size": "{rows} 行 × {cols} 列"
+        "size": "{rows} 行 × {cols} 列",
+        "cellFill": "セルの背景色",
+        "insertRowAbove": "上に行を挿入",
+        "insertRowBelow": "下に行を挿入",
+        "insertColumnLeft": "左に列を挿入",
+        "insertColumnRight": "右に列を挿入",
+        "headerRow": "見出し行",
+        "headerColumn": "見出し列",
+        "deleteRow": "行を削除",
+        "deleteColumn": "列を削除",
+        "addRow": "行を追加",
+        "addColumn": "列を追加",
+        "rowHandle": "行",
+        "columnHandle": "列"
       }
     },
     "readOnlyReconnect": "再接続"

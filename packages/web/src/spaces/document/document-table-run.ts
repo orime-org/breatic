@@ -258,17 +258,83 @@ export function setCellsAttr(
   value: unknown,
 ): void {
   runOnTable(editor, cellPos, (tr, at) => {
-    const rect =
-      scope === 'row'
-        ? { left: 0, right: at.map.width, top: at.top, bottom: at.bottom }
-        : scope === 'column'
-          ? { left: at.left, right: at.right, top: 0, bottom: at.map.height }
-          : at;
-    for (const rel of at.map.cellsInRect(rect)) {
+    for (const rel of at.map.cellsInRect(scopeRect(at, scope))) {
       const cell = at.table.nodeAt(rel);
       if (cell !== null && cell.attrs[name] !== value) {
         tr.setNodeMarkup(at.tableStart + rel, null, { ...cell.attrs, [name]: value });
       }
     }
   });
+}
+
+/**
+ * The value one attribute holds across the row, the column or the one cell,
+ * when every cell there holds the same.
+ * @param doc - The document.
+ * @param cellPos - The cell.
+ * @param scope - Which cells.
+ * @param name - The attribute.
+ * @returns The shared value, or undefined when the cells differ or no cell is there.
+ */
+export function sharedCellAttr(
+  doc: PMNode,
+  cellPos: number,
+  scope: CellScope,
+  name: string,
+): unknown {
+  const at = cellAt(doc, cellPos);
+  if (at === null) return undefined;
+  const values = new Set(
+    at.map.cellsInRect(scopeRect(at, scope)).map((rel) => at.table.nodeAt(rel)?.attrs[name]),
+  );
+  return values.size === 1 ? [...values][0] : undefined;
+}
+
+/**
+ * The rectangle of cells a scope covers.
+ * @param at - The cell.
+ * @param scope - Which cells.
+ * @returns The rectangle.
+ */
+function scopeRect(
+  at: CellAt,
+  scope: CellScope,
+): { left: number; right: number; top: number; bottom: number } {
+  if (scope === 'row') return { left: 0, right: at.map.width, top: at.top, bottom: at.bottom };
+  if (scope === 'column') return { left: at.left, right: at.right, top: 0, bottom: at.map.height };
+  return at;
+}
+
+/**
+ * The position before a cell, from the table block's id and the cell's place
+ * among the nodes — the indices the library's handles report.
+ * @param doc - The document.
+ * @param blockId - The table block's id.
+ * @param rowIndex - The row's index among the table's rows.
+ * @param cellIndex - The cell's index among that row's cells.
+ * @returns The position, or null when no such cell is there.
+ */
+export function cellPosOf(
+  doc: PMNode,
+  blockId: string,
+  rowIndex: number,
+  cellIndex: number,
+): number | null {
+  let found: number | null = null;
+  doc.descendants((node, pos) => {
+    if (found !== null) return false;
+    if (node.type.name !== 'blockContainer' || node.attrs['id'] !== blockId) return true;
+    const table = node.firstChild;
+    if (table?.type.name !== 'table' || rowIndex >= table.childCount) return false;
+    const row = table.child(rowIndex);
+    if (cellIndex >= row.childCount) return false;
+    // Container, table and row each open one level.
+    let at = pos + 1 + 1;
+    for (let r = 0; r < rowIndex; r += 1) at += table.child(r).nodeSize;
+    at += 1;
+    for (let c = 0; c < cellIndex; c += 1) at += row.child(c).nodeSize;
+    found = at;
+    return false;
+  });
+  return found;
 }

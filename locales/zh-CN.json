@@ -1183,7 +1183,20 @@
       },
       "table": {
         "pickSize": "选择行列数",
-        "size": "{rows} 行 × {cols} 列"
+        "size": "{rows} 行 × {cols} 列",
+        "cellFill": "格子底色",
+        "insertRowAbove": "在上方插入行",
+        "insertRowBelow": "在下方插入行",
+        "insertColumnLeft": "在左侧插入列",
+        "insertColumnRight": "在右侧插入列",
+        "headerRow": "表头行",
+        "headerColumn": "表头列",
+        "deleteRow": "删除行",
+        "deleteColumn": "删除列",
+        "addRow": "加一行",
+        "addColumn": "加一列",
+        "rowHandle": "行",
+        "columnHandle": "列"
       }
     },
     "readOnlyReconnect": "重新连接"

@@ -1183,7 +1183,20 @@
       },
       "table": {
         "pickSize": "選擇列數與欄數",
-        "size": "{rows} 列 × {cols} 欄"
+        "size": "{rows} 列 × {cols} 欄",
+        "cellFill": "儲存格底色",
+        "insertRowAbove": "在上方插入列",
+        "insertRowBelow": "在下方插入列",
+        "insertColumnLeft": "在左側插入欄",
+        "insertColumnRight": "在右側插入欄",
+        "headerRow": "標題列",
+        "headerColumn": "標題欄",
+        "deleteRow": "刪除列",
+        "deleteColumn": "刪除欄",
+        "addRow": "新增一列",
+        "addColumn": "新增一欄",
+        "rowHandle": "列",
+        "columnHandle": "欄"
       }
     },
     "readOnlyReconnect": "重新連線"

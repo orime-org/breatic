@@ -1183,7 +1183,20 @@
       },
       "table": {
         "pickSize": "Select a size",
-        "size": "{rows, plural, one {# row} other {# rows}} × {cols, plural, one {# column} other {# columns}}"
+        "size": "{rows, plural, one {# row} other {# rows}} × {cols, plural, one {# column} other {# columns}}",
+        "cellFill": "Cell fill",
+        "insertRowAbove": "Insert row above",
+        "insertRowBelow": "Insert row below",
+        "insertColumnLeft": "Insert column left",
+        "insertColumnRight": "Insert column right",
+        "headerRow": "Header row",
+        "headerColumn": "Header column",
+        "deleteRow": "Delete row",
+        "deleteColumn": "Delete column",
+        "addRow": "Add a row",
+        "addColumn": "Add a column",
+        "rowHandle": "Row",
+        "columnHandle": "Column"
       }
     },
     "readOnlyReconnect": "Reconnect"

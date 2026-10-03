@@ -1183,7 +1183,20 @@
       },
       "table": {
         "pickSize": "크기 선택",
-        "size": "{rows}행 × {cols}열"
+        "size": "{rows}행 × {cols}열",
+        "cellFill": "셀 배경색",
+        "insertRowAbove": "위에 행 삽입",
+        "insertRowBelow": "아래에 행 삽입",
+        "insertColumnLeft": "왼쪽에 열 삽입",
+        "insertColumnRight": "오른쪽에 열 삽입",
+        "headerRow": "머리글 행",
+        "headerColumn": "머리글 열",
+        "deleteRow": "행 삭제",
+        "deleteColumn": "열 삭제",
+        "addRow": "행 추가",
+        "addColumn": "열 추가",
+        "rowHandle": "행",
+        "columnHandle": "열"
       }
     },
     "readOnlyReconnect": "다시 연결"
