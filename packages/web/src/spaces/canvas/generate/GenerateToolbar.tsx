@@ -49,12 +49,20 @@ const NOTHING = (): void => {};
  * candidate rule asks only for a non-empty idle image node. So what a t2i node
  * cannot use is refused on the reference ROW, which dims and says why this
  * mode has no use for it (#1952 / #1986). Focus crops a region into a
- * standalone reference (#1782).
+ * standalone reference (#1782). When the model takes style images, a divider
+ * follows and then the style area: one thumbnail per held image, each with its
+ * own X, and while there is room an add control reading "Style" or n/cap
+ * (inner#826).
  * @param root0 - Component props.
  * @param root0.onReference - Enter the reference-pick mode.
  * @param root0.referenceActive - Whether the reference pick is running.
  * @param root0.onFocus - Enter / exit the focus crop pick.
  * @param root0.focusActive - Whether the focus pick is running.
+ * @param root0.styleCap - How many style images the model takes; undefined draws no style area.
+ * @param root0.styleImages - The node's style images, in pick order.
+ * @param root0.onStylePick - Enter / exit the style pick.
+ * @param root0.styleActive - Whether the style pick is running.
+ * @param root0.onRemoveStyle - Take one style image out.
  * @returns The tool row.
  */
 export const GenerateToolbar = React.memo(function GenerateToolbar({
