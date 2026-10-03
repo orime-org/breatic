@@ -194,6 +194,8 @@ export const documentTabExtension = createExtension(() => {
     key: 'document-tab',
     prosemirrorPlugins: [nudgePlugin()],
     keyboardShortcuts: {
+      // Inside a table Tab moves between cells: `document-table-keys` runs
+      // before this and claims it there.
       Tab: ({ editor }: { editor: TabEditor }) => {
         const view = editor.prosemirrorView;
         const before = view.state.doc;

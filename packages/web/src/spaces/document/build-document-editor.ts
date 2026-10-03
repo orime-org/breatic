@@ -46,6 +46,7 @@ import { documentSelectionPaintExtension } from '@web/spaces/document/document-s
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
+import { documentTableKeysExtension } from '@web/spaces/document/document-table-keys';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
@@ -130,6 +131,7 @@ export function buildDocumentEditor(
       documentEnterExtension(),
       documentSafariImeExtension(),
       documentTabExtension(),
+      documentTableKeysExtension(),
       documentKeyboardMoveExtension(),
       documentTrailingPressExtension(),
       documentQuoteInputExtension(),
