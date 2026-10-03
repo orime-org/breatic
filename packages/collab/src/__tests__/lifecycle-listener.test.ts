@@ -67,8 +67,10 @@ interface ClosedFrame {
 function makeHocuspocus(docNames: string[]): {
   hocuspocus: Hocuspocus;
   closed: ClosedFrame[];
+  reasons: { docName: string; reason: string }[];
 } {
   const closed: ClosedFrame[] = [];
+  const reasons: { docName: string; reason: string }[] = [];
   const documents = new Map<string, { connections: Map<unknown, unknown> }>();
   for (const docName of docNames) {
     // Connection as the KEY, matching the real Document; the value only
@@ -77,14 +79,17 @@ function makeHocuspocus(docNames: string[]): {
     connections.set(
       {
         context: { user: { id: "u1" } },
-        close: ({ code }: { code: number }) => closed.push({ docName, code }),
+        close: ({ code, reason }: { code: number; reason: string }) => {
+          closed.push({ docName, code });
+          reasons.push({ docName, reason });
+        },
       },
       { clients: new Set<number>() },
     );
     documents.set(docName, { connections });
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { hocuspocus: { documents } as any, closed };
+  return { hocuspocus: { documents } as any, closed, reasons };
 }
 
 describe("handleLifecycleEvent", () => {
@@ -130,6 +135,36 @@ describe("handleLifecycleEvent", () => {
     expect(closed).toEqual([
       { docName: `project-${NEW_PID}/meta`, code: 4406 },
     ]);
+  });
+
+  it("project:archived closes every connection of the project with the reason the client re-authenticates on", async () => {
+    const { hocuspocus, reasons } = makeHocuspocus([
+      `project-${PID}/meta`,
+      `project-${PID}/canvas-${NEW_PID}`,
+      `project-${NEW_PID}/meta`, // another project — must be untouched
+    ]);
+
+    await handleLifecycleEvent(hocuspocus, { type: "project:archived", projectId: PID, ts: 1 });
+
+    expect(reasons).toEqual([
+      { docName: `project-${PID}/meta`, reason: "Project archived" },
+      { docName: `project-${PID}/canvas-${NEW_PID}`, reason: "Project archived" },
+    ]);
+    // Archiving keeps every document: nothing is deleted or copied.
+    expect(softDeleteByProjectPrefixMock).not.toHaveBeenCalled();
+    expect(duplicateByProjectPrefixMock).not.toHaveBeenCalled();
+  });
+
+  it("project:restored closes every connection of the project with its own reason", async () => {
+    const { hocuspocus, reasons } = makeHocuspocus([
+      `project-${PID}/meta`,
+      `project-${NEW_PID}/meta`,
+    ]);
+
+    await handleLifecycleEvent(hocuspocus, { type: "project:restored", projectId: PID, ts: 1 });
+
+    expect(reasons).toEqual([{ docName: `project-${PID}/meta`, reason: "Project restored" }]);
+    expect(softDeleteByProjectPrefixMock).not.toHaveBeenCalled();
   });
 
   it("skips an unknown command (no repo call, no kick)", async () => {
