@@ -22,6 +22,7 @@ import type { Selection } from '@tiptap/pm/state';
 
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import { writeToBlocks } from '@web/spaces/document/document-block-run';
+import { cellsUnder, writeCellsAttr } from '@web/spaces/document/document-table-run';
 import {
   blocksUnder,
   rowOf,
@@ -125,9 +126,16 @@ export function runAlignment(
 ): void {
   editor.transact((tr) => {
     const carried = tr.storedMarks;
-    writeToBlocks(tr, alignableUnder(tr.doc, over ?? tr.selection), () => ({
-      props: { textAlignment: alignment },
-    }));
+    // In a table the cells carry the alignment (inner#1126 A9): a cell's line
+    // is not a block of its own.
+    const cells = cellsUnder(tr.doc, over ?? tr.selection);
+    if (cells.length > 0) {
+      writeCellsAttr(tr, cells, 'textAlignment', alignment);
+    } else {
+      writeToBlocks(tr, alignableUnder(tr.doc, over ?? tr.selection), () => ({
+        props: { textAlignment: alignment },
+      }));
+    }
     // A press aimed at a range the reader is not standing in leaves the marks
     // they are carrying where they were. Any step clears them —
     // `prosemirror-state`'s `Transaction.addStep` sets `storedMarks` to null —
@@ -178,6 +186,12 @@ export function alignFace(editor: ToolEditor): AlignFace {
  *   {@link NO_ALIGNABLE_BLOCK}.
  */
 export function alignFaceOver(doc: PMNode, over: Selection): AlignFace {
+  const cells = cellsUnder(doc, over);
+  if (cells.length > 0) {
+    const values = new Set(cells.map((pos) => doc.nodeAt(pos)?.attrs['textAlignment']));
+    const only: unknown = [...values][0];
+    return values.size === 1 && isDrawn(only) ? only : MIXED_ALIGNMENT;
+  }
   const covered = alignableUnder(doc, over);
   if (covered.length === 0) {
     return NO_ALIGNABLE_BLOCK;

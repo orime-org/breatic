@@ -16,18 +16,28 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { EditorState, TextSelection, type Transaction } from '@tiptap/pm/state';
+import {
+  EditorState,
+  TextSelection,
+  type Selection,
+  type Transaction,
+} from '@tiptap/pm/state';
 import {
   addColumn,
   addRow,
+  cellAround,
+  CellSelection,
   columnIsHeader,
   removeColumn,
   removeRow,
+  mergeCells,
   rowIsHeader,
   splitCell,
   TableMap,
   toggleHeader,
 } from '@tiptap/pm/tables';
+
+import { NO_COLOUR } from '@web/spaces/document/document-colour-run';
 
 /** The editor, as far as these commands use it. */
 type TableEditor = BlockNoteEditor<never, never, never>;
@@ -377,4 +387,90 @@ export function cellPosOf(
     return false;
   });
   return found;
+}
+
+/**
+ * The cells a selection covers: every cell of a selection over cells, or the
+ * one cell a text selection sits in from end to end.
+ * @param doc - The document.
+ * @param selection - The selection.
+ * @returns The positions before those cells; none outside a table.
+ */
+export function cellsUnder(doc: PMNode, selection: Selection): number[] {
+  if (selection instanceof CellSelection) {
+    const cells: number[] = [];
+    selection.forEachCell((_cell, pos) => {
+      cells.push(pos);
+    });
+    return cells;
+  }
+  const from = cellAround(selection.$from);
+  const to = cellAround(selection.$to);
+  return from !== null && to !== null && from.pos === to.pos ? [from.pos] : [];
+}
+
+/**
+ * Writes one attribute to the given cells, where it differs.
+ * @param tr - The transaction.
+ * @param cells - The positions before the cells.
+ * @param name - The attribute.
+ * @param value - Its new value.
+ */
+export function writeCellsAttr(
+  tr: Transaction,
+  cells: readonly number[],
+  name: string,
+  value: unknown,
+): void {
+  for (const pos of cells) {
+    const cell = tr.doc.nodeAt(pos);
+    if (cell !== null && cell.attrs[name] !== value) {
+      tr.setNodeMarkup(pos, null, { ...cell.attrs, [name]: value });
+    }
+  }
+}
+
+/**
+ * The fill the cells under the selection share, as the colour panel names it.
+ * @param state - The editor state.
+ * @returns A hue, {@link NO_COLOUR} for none, `undefined` where the cells
+ *   differ or the selection covers no cell.
+ */
+export function cellFillFace(state: EditorState): string | undefined {
+  const cells = cellsUnder(state.doc, state.selection);
+  if (cells.length === 0) return undefined;
+  const fills = new Set(cells.map((pos) => state.doc.nodeAt(pos)?.attrs['backgroundColor']));
+  if (fills.size !== 1) return undefined;
+  const fill = [...fills][0] as string;
+  return fill === 'default' ? NO_COLOUR : fill;
+}
+
+/**
+ * Fills the cells under the selection, or takes their fill off.
+ * @param editor - The editor to write to.
+ * @param hue - The hue, or nothing to take the fill off.
+ */
+export function setCellFill(editor: TableEditor, hue: string | undefined): void {
+  editor.transact((tr) => {
+    writeCellsAttr(tr, cellsUnder(tr.doc, tr.selection), 'backgroundColor', hue ?? 'default');
+  });
+}
+
+/**
+ * Whether the selection is several cells that can be merged into one.
+ * @param state - The editor state.
+ * @returns True when a merge would do something.
+ */
+export function canMergeCells(state: EditorState): boolean {
+  return state.selection instanceof CellSelection && mergeCells(state);
+}
+
+/**
+ * Merges the selected cells into one; their words stay, in reading order.
+ * @param editor - The editor to write to.
+ */
+export function mergeSelectedCells(editor: TableEditor): void {
+  const view = editor.prosemirrorView;
+  if (view === undefined) return;
+  mergeCells(view.state, view.dispatch);
 }
