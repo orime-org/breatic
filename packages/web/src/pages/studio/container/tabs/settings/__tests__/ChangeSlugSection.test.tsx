@@ -287,7 +287,33 @@ describe('ChangeSlugSection — the confirm gate', () => {
     );
 
     fireEvent.click(screen.getByTestId('settings-slug-confirm'));
-    expect(onSave).toHaveBeenCalledWith({ slug: 'acme-renamed' });
+    expect(onSave).toHaveBeenCalledWith(
+      { slug: 'acme-renamed' },
+      expect.any(Function),
+    );
+  });
+
+  it('tells the save whether the field still shows the slug it sent', async () => {
+    const onSave = vi.fn();
+    renderSection({ onSave });
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByTestId('settings-slug-confirm'));
+    const fieldShown = onSave.mock.calls[0][1] as () => boolean;
+    expect(fieldShown()).toBe(true);
+
+    fireEvent.click(screen.getByTestId('settings-slug-cancel'));
+    await waitFor(() =>
+      expect(screen.queryByTestId('settings-slug-dialog')).not.toBeInTheDocument(),
+    );
+    expect(fieldShown()).toBe(false);
+
+    // Reopened, the field is back on the studio's own slug.
+    await openDialog();
+    expect(fieldShown()).toBe(false);
   });
 
   it('shuts the moment ANY settings save goes out, so two cannot ride at once', async () => {

@@ -13,11 +13,10 @@ import { authApi } from '@web/data/api/auth';
 import { ApiException } from '@web/data/api/types';
 import { useCurrentUserStore } from '@web/stores';
 import {
-  recheckSlugTaken,
+  slugFieldShowsConflict,
   useSlugAvailability,
 } from '@web/pages/studio/container/dialogs/use-slug-availability';
-import type { SlugStatus } from '@web/pages/studio/container/dialogs/use-slug-availability';
-import type { SlugError } from '@web/pages/studio/container/dialogs/slug-util';
+import type { SlugCheck } from '@web/pages/studio/container/dialogs/slug-util';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 // Mock only the network-touching `authApi.setupStudio`; keep everything
@@ -40,15 +39,11 @@ vi.mock('@web/data/api/auth', async () => {
 vi.mock('@web/pages/studio/container/dialogs/use-slug-availability');
 
 /**
- * Drive `useSlugAvailability` to a fixed status for the test.
- * @param status - the availability status the mocked hook returns.
- * @param reason - the failure reason, when `status` is `'invalid'` / `'taken'`.
+ * Drive `useSlugAvailability` to a fixed check for the test.
+ * @param check - The check the mocked hook returns.
  */
-function setAvailability(status: SlugStatus, reason?: SlugError): void {
-  vi.mocked(useSlugAvailability).mockReturnValue({
-    status,
-    reason: reason ?? undefined,
-  });
+function setAvailability(check: SlugCheck): void {
+  vi.mocked(useSlugAvailability).mockReturnValue(check);
 }
 
 /**
@@ -81,7 +76,7 @@ describe('SlugSetupPage', () => {
     vi.clearAllMocks();
     // Default to `available` so the form is interactive (submit enabled);
     // individual tests override via `setAvailability`.
-    setAvailability('available');
+    setAvailability({ state: 'valid' });
     // A signed-in but not-yet-onboarded user (the state that reaches
     // this page): personalStudio is null until setup-studio runs.
     useCurrentUserStore.setState({
@@ -108,7 +103,7 @@ describe('SlugSetupPage', () => {
 
   it('shows the default URL helper line when the input is idle', () => {
     // Empty input → idle status → the page shows where the handle will live.
-    setAvailability('idle');
+    setAvailability({ state: 'empty' });
     setup();
     const hint = screen.getByTestId('onboarding-slug-hint');
     expect(hint).toHaveTextContent(
@@ -129,7 +124,7 @@ describe('SlugSetupPage', () => {
 
   it('shows the format error and disables submit when the slug is malformed (no API call)', async () => {
     // The live hook (mocked) reports the local shape failure.
-    setAvailability('invalid', 'format');
+    setAvailability({ state: 'invalid', reason: 'format' });
     const user = userEvent.setup();
     setup();
     await user.type(screen.getByLabelText('Slug'), 'Bad_Slug');
@@ -145,7 +140,7 @@ describe('SlugSetupPage', () => {
   });
 
   it('shows the length error and disables submit when the slug is too short', async () => {
-    setAvailability('invalid', 'length');
+    setAvailability({ state: 'invalid', reason: 'length' });
     const user = userEvent.setup();
     setup();
     await user.type(screen.getByLabelText('Slug'), 'abc');
@@ -156,7 +151,7 @@ describe('SlugSetupPage', () => {
   });
 
   it('shows the reserved/taken error and disables submit for a reserved slug', async () => {
-    setAvailability('invalid', 'reserved');
+    setAvailability({ state: 'invalid', reason: 'reserved' });
     const user = userEvent.setup();
     setup();
     await user.type(screen.getByLabelText('Slug'), 'settings');
@@ -169,7 +164,7 @@ describe('SlugSetupPage', () => {
   });
 
   it('shows the "checking availability" line while the live check is in flight', async () => {
-    setAvailability('checking');
+    setAvailability({ state: 'checking' });
     const user = userEvent.setup();
     setup();
     await user.type(screen.getByLabelText('Slug'), 'pending-handle');
@@ -209,11 +204,13 @@ describe('SlugSetupPage', () => {
     vi.mocked(authApi.setupStudio).mockRejectedValueOnce(
       new ApiException({ status: 409, message: 'slug taken' }),
     );
-    // The real recheck refreshes the cached answer the live hook reads.
-    vi.mocked(recheckSlugTaken).mockImplementationOnce(async () => {
-      setAvailability('taken', 'taken');
-      return true;
-    });
+    // The real re-ask refreshes the cached answer the live hook reads.
+    vi.mocked(slugFieldShowsConflict).mockImplementationOnce(
+      async (_client, _err, _slug, fieldShown) => {
+        setAvailability({ state: 'invalid', reason: 'taken' });
+        return fieldShown();
+      },
+    );
     const user = userEvent.setup();
     setup();
     await user.type(screen.getByLabelText('Slug'), 'taken-handle');
@@ -224,9 +221,11 @@ describe('SlugSetupPage', () => {
         screen.getByText('That Slug is already in use.'),
       ).toBeInTheDocument(),
     );
-    expect(recheckSlugTaken).toHaveBeenCalledWith(
+    expect(slugFieldShowsConflict).toHaveBeenCalledWith(
       expect.any(QueryClient),
+      expect.any(ApiException),
       'taken-handle',
+      expect.any(Function),
     );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByTestId('studio-page')).not.toBeInTheDocument();
@@ -238,7 +237,7 @@ describe('SlugSetupPage', () => {
     vi.mocked(authApi.setupStudio).mockRejectedValueOnce(
       new ApiException({ status: 409, message: 'slug taken' }),
     );
-    vi.mocked(recheckSlugTaken).mockResolvedValueOnce(false);
+    vi.mocked(slugFieldShowsConflict).mockResolvedValueOnce(false);
     const user = userEvent.setup();
     setup();
     await user.type(screen.getByLabelText('Slug'), 'free-handle');

@@ -10,11 +10,12 @@ import userEvent from '@testing-library/user-event';
 import { NewItemDialog } from '@web/pages/studio/container/dialogs/NewItemDialog';
 import { NewStudioDialog } from '@web/pages/studio/container/dialogs/NewStudioDialog';
 import {
-  recheckSlugTaken,
+  slugFieldShowsConflict,
   useSlugAvailability,
 } from '@web/pages/studio/container/dialogs/use-slug-availability';
 import { useCreateStudio } from '@web/pages/studio/container/dialogs/use-create-studio';
 import { ApiException } from '@web/data/api/types';
+import type { SlugCheck } from '@web/pages/studio/container/dialogs/slug-util';
 
 vi.mock('@web/pages/studio/container/dialogs/use-slug-availability');
 vi.mock('@web/pages/studio/container/dialogs/use-create-studio');
@@ -229,16 +230,22 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
   const mockMutate = vi.fn();
 
   /**
-   * Drive `useSlugAvailability` to a fixed status for the test (the hook's own
+   * Drive `useSlugAvailability` to a fixed check for the test (the hook's own
    * race-safety is covered in use-slug-availability.test.tsx).
-   * @param status the availability status to return.
-   * @param reason the failure reason, when applicable.
+   * @param check the check the hook returns.
    */
-  function setAvailability(
-    status: 'idle' | 'invalid' | 'checking' | 'available' | 'taken',
-    reason?: 'format' | 'length' | 'reserved' | 'taken',
-  ): void {
-    vi.mocked(useSlugAvailability).mockReturnValue({ status, reason });
+  function setAvailability(check: SlugCheck): void {
+    vi.mocked(useSlugAvailability).mockReturnValue(check);
+  }
+
+  /**
+   * Answer the 409 re-ask as "taken", deferring to the dialog on whether the
+   * slug field is still on screen to show it.
+   */
+  function slugTakenOnReask(): void {
+    vi.mocked(slugFieldShowsConflict).mockImplementation(
+      async (_client, _err, _slug, fieldShown) => fieldShown(),
+    );
   }
 
   /**
@@ -253,11 +260,12 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
 
   beforeEach(() => {
     mockMutate.mockReset();
+    vi.mocked(slugFieldShowsConflict).mockReset();
     vi.mocked(useCreateStudio).mockReturnValue({
       mutate: mockMutate,
       isPending: false,
     } as unknown as ReturnType<typeof useCreateStudio>);
-    setAvailability('idle');
+    setAvailability({ state: 'empty' });
   });
 
   it('shows the title + name and slug fields, no type radio', () => {
@@ -271,7 +279,7 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
   });
 
   it('shows a checking line while the slug is being verified', () => {
-    setAvailability('checking');
+    setAvailability({ state: 'checking' });
     renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
     expect(screen.getByText('Checking…')).toBeInTheDocument();
   });
@@ -283,9 +291,9 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
     expect(screen.getByLabelText('Slug')).toHaveAttribute('placeholder', 'my-studio');
   });
 
-  it('shows a slug taken by a racing submit on the slug line, not as a form error', async () => {
-    setAvailability('available');
-    vi.mocked(recheckSlugTaken).mockResolvedValue(true);
+  it('leaves a slug taken by a racing submit to the slug line, with no form error', async () => {
+    setAvailability({ state: 'valid' });
+    slugTakenOnReask();
     const user = userEvent.setup();
     renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
     await user.type(screen.getByLabelText('Name'), 'Nova');
@@ -295,13 +303,76 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
     await act(async () => {
       onError(new ApiException({ status: 409, message: 'That slug is already taken.', fromServer: true }));
     });
-    expect(recheckSlugTaken).toHaveBeenCalledWith(expect.anything(), 'nova-lab');
+    expect(slugFieldShowsConflict).toHaveBeenCalledWith(
+      expect.any(QueryClient),
+      expect.any(ApiException),
+      'nova-lab',
+      expect.any(Function),
+    );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('keeps the form error for a taken slug when the dialog was closed before the answer', async () => {
+    setAvailability({ state: 'valid' });
+    slugTakenOnReask();
+    const user = userEvent.setup();
+    const client = new QueryClient();
+    const tree = (open: boolean): ReactElement => (
+      <QueryClientProvider client={client}>
+        <NewStudioDialog open={open} onOpenChange={() => {}} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree(true));
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    const { onError } = mockMutate.mock.calls[0][1];
+    rerender(tree(false));
+    await act(async () => {
+      onError(new ApiException({ status: 409, message: 'That slug is already taken.', fromServer: true }));
+    });
+    rerender(tree(true));
+    expect(screen.getByRole('alert')).toHaveTextContent('That slug is already taken.');
+  });
+
+  it('keeps the form error for a taken slug when the dialog was reopened before the answer', async () => {
+    setAvailability({ state: 'valid' });
+    slugTakenOnReask();
+    const user = userEvent.setup();
+    const client = new QueryClient();
+    const tree = (open: boolean): ReactElement => (
+      <QueryClientProvider client={client}>
+        <NewStudioDialog open={open} onOpenChange={() => {}} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree(true));
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    const { onError } = mockMutate.mock.calls[0][1];
+    // Closing goes through the dialog's own handler, which clears the form.
+    await user.keyboard('{Escape}');
+    rerender(tree(false));
+    rerender(tree(true));
+    await act(async () => {
+      onError(new ApiException({ status: 409, message: 'That slug is already taken.', fromServer: true }));
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('That slug is already taken.');
+  });
+
+  it('holds both fields while the create is out', () => {
+    vi.mocked(useCreateStudio).mockReturnValue({
+      mutate: mockMutate,
+      isPending: true,
+    } as unknown as ReturnType<typeof useCreateStudio>);
+    renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
+    expect(screen.getByLabelText('Name')).toBeDisabled();
+    expect(screen.getByLabelText('Slug')).toBeDisabled();
+  });
+
   it('keeps a 409 that is not about the slug as a form error', async () => {
-    setAvailability('available');
-    vi.mocked(recheckSlugTaken).mockResolvedValue(false);
+    setAvailability({ state: 'valid' });
+    vi.mocked(slugFieldShowsConflict).mockResolvedValue(false);
     const user = userEvent.setup();
     renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
     await user.type(screen.getByLabelText('Name'), 'Nova');
@@ -315,13 +386,13 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
   });
 
   it('shows an available line for a free slug', () => {
-    setAvailability('available');
+    setAvailability({ state: 'valid' });
     renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
     expect(screen.getByText('Slug is available')).toBeInTheDocument();
   });
 
   it('shows taken and keeps Create disabled for a taken slug', async () => {
-    setAvailability('taken', 'taken');
+    setAvailability({ state: 'invalid', reason: 'taken' });
     const user = userEvent.setup();
     renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
     await user.type(screen.getByLabelText('Name'), 'Acme');
@@ -330,7 +401,7 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
   });
 
   it('disables Create until a name is entered AND the slug is available', async () => {
-    setAvailability('available');
+    setAvailability({ state: 'valid' });
     const user = userEvent.setup();
     renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
     // Available slug but no name yet → still disabled.
@@ -340,7 +411,7 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
   });
 
   it('submits the name + slug (no type) when the slug is available', async () => {
-    setAvailability('available');
+    setAvailability({ state: 'valid' });
     const user = userEvent.setup();
     renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
     await user.type(screen.getByLabelText('Name'), 'Nova');

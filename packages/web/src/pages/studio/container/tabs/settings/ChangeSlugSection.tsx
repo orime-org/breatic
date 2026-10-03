@@ -15,10 +15,7 @@ import {
 } from '@web/components/ui/dialog';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
-import {
-  STUDIO_SLUG_BOUNDS,
-  toSlugCheck,
-} from '@web/pages/studio/container/dialogs/slug-util';
+import { STUDIO_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
 import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
 import { DANGER_BUTTON } from '@web/pages/studio/container/tabs/settings/danger-button';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
@@ -45,7 +42,7 @@ interface ChangeSlugSectionProps {
    * to be inferred drives what the button says rather than the gate.
    */
   renaming: boolean;
-  onSave: (patch: UpdateStudioInput) => void;
+  onSave: (patch: UpdateStudioInput, slugFieldShown?: () => boolean) => void;
 }
 
 /**
@@ -94,7 +91,7 @@ export function ChangeSlugSection({
   // Written as "only when available", never as "unless invalid": an emptied
   // field reports neither, it reports `idle`, and a gate phrased the other way
   // walks the user through a destructive confirmation the server then refuses.
-  const canConfirm = changed && availability.status === 'available' && !saving;
+  const canConfirm = changed && availability.state === 'valid' && !saving;
   // The sentence in the header names both ends of the move. Until there is a
   // destination it stays a placeholder: on open both ends hold the same slug,
   // and "the address changes from X to X" is not a thing to greet someone
@@ -110,6 +107,14 @@ export function ChangeSlugSection({
   React.useEffect(() => {
     setSlug(studio.slug);
   }, [studio.slug]);
+
+  // The slug the field shows right now, or null while the dialog is closed;
+  // read after a refused save has been re-asked, by which time either may
+  // have changed.
+  const shownSlugRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    shownSlugRef.current = open ? next : null;
+  }, [open, next]);
 
   const onOpenChange = React.useCallback(
     (nextOpen: boolean): void => {
@@ -133,7 +138,7 @@ export function ChangeSlugSection({
     // a key with nothing cached, and its pending branch replaces the whole tab
     // area. A future change that keeps the old data on screen during that
     // switch would leave this dialog standing open over a successful rename.
-    onSave({ slug: next });
+    onSave({ slug: next }, () => shownSlugRef.current === next);
   }, [next, onSave]);
 
   return (
@@ -173,12 +178,9 @@ export function ChangeSlugSection({
               disabled={saving}
               // The hook answers `available` for the studio's own slug; here
               // that is no news, so the field goes back to its description.
-              check={changed ? toSlugCheck(availability) : { state: 'empty' }}
+              check={changed ? availability : { state: 'empty' }}
               bounds={STUDIO_SLUG_BOUNDS}
-              helper={t('studio.container.dialog.slugHelperStudio', {
-                min: STUDIO_SLUG_BOUNDS.min,
-                max: STUDIO_SLUG_BOUNDS.max,
-              })}
+              helper={t('studio.container.dialog.slugHelperStudio', STUDIO_SLUG_BOUNDS)}
             />
             <ul className='list-disc pl-5 text-xs text-muted-foreground'>
               <li>{t('studio.container.settings.slugChangeLinks')}</li>

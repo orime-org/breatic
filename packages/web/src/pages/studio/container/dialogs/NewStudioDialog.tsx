@@ -18,13 +18,10 @@ import { Label } from '@web/components/ui/label';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
-import {
-  STUDIO_SLUG_BOUNDS,
-  toSlugCheck,
-} from '@web/pages/studio/container/dialogs/slug-util';
+import { STUDIO_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
 import { useCreateStudio } from '@web/pages/studio/container/dialogs/use-create-studio';
 import {
-  recheckSlugTaken,
+  slugFieldShowsConflict,
   useSlugAvailability,
 } from '@web/pages/studio/container/dialogs/use-slug-availability';
 
@@ -60,6 +57,12 @@ export function NewStudioDialog({
   const availability = useSlugAvailability(slug);
   const createStudio = useCreateStudio();
   const queryClient = useQueryClient();
+  // The slug the field shows right now, or null while the dialog is closed;
+  // read after the 409 re-ask returns, by which time either may have changed.
+  const shownSlugRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    shownSlugRef.current = open ? slug.trim() : null;
+  }, [open, slug]);
 
   /** Clear the form back to empty (on close). */
   const reset = (): void => {
@@ -81,13 +84,13 @@ export function NewStudioDialog({
 
   const canSubmit =
     name.trim() !== '' &&
-    availability.status === 'available' &&
+    availability.state === 'valid' &&
     !createStudio.isPending;
 
   /**
-   * Put a refused create where the reader will look for it. A 409 is re-asked
-   * against the slug: when the slug is now taken, the slug line says so on its
-   * own; any other refusal stays under the form.
+   * Put a refused create where the reader will look for it: a slug taken in
+   * the meantime on the slug line while the dialog is open, anything else
+   * under the form.
    * @param err - What the create threw.
    * @param submitted - The trimmed slug that was submitted.
    */
@@ -95,11 +98,15 @@ export function NewStudioDialog({
     err: unknown,
     submitted: string,
   ): Promise<void> => {
-    if (err instanceof ApiException && err.status === 409) {
-      const taken = await recheckSlugTaken(queryClient, submitted).catch(
-        () => false,
-      );
-      if (taken) return;
+    if (
+      await slugFieldShowsConflict(
+        queryClient,
+        err,
+        submitted,
+        () => shownSlugRef.current === submitted,
+      )
+    ) {
+      return;
     }
     setFormError(
       err instanceof ApiException
@@ -147,6 +154,7 @@ export function NewStudioDialog({
                 placeholder={t('studio.container.dialog.namePlaceholderStudio')}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
+                disabled={createStudio.isPending}
                 required
               />
             </div>
@@ -156,12 +164,10 @@ export function NewStudioDialog({
               placeholder={t('studio.container.dialog.slugPlaceholderStudio')}
               value={slug}
               onChange={setSlug}
-              check={toSlugCheck(availability)}
+              disabled={createStudio.isPending}
+              check={availability}
               bounds={STUDIO_SLUG_BOUNDS}
-              helper={t('studio.container.dialog.slugHelperStudio', {
-                min: STUDIO_SLUG_BOUNDS.min,
-                max: STUDIO_SLUG_BOUNDS.max,
-              })}
+              helper={t('studio.container.dialog.slugHelperStudio', STUDIO_SLUG_BOUNDS)}
             />
             {formError ? (
               <p className='text-xs text-status-error-foreground' role='alert'>

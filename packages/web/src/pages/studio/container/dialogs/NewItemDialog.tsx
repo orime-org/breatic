@@ -174,11 +174,10 @@ export function NewItemDialog({
     kind === 'project'
       ? t('studio.container.dialog.newProjectTitle')
       : t('studio.container.dialog.newCollectionTitle');
-  const bounds = { min: ITEM_SLUG_BOUNDS.min, max: ITEM_SLUG_BOUNDS.max };
   const slugHelper =
     kind === 'project'
-      ? t('studio.container.dialog.slugHelperProject', bounds)
-      : t('studio.container.dialog.slugHelperCollection', bounds);
+      ? t('studio.container.dialog.slugHelperProject', ITEM_SLUG_BOUNDS)
+      : t('studio.container.dialog.slugHelperCollection', ITEM_SLUG_BOUNDS);
   const namePlaceholder =
     kind === 'project'
       ? t('studio.container.dialog.namePlaceholder')

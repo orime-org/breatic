@@ -13,12 +13,9 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
 import { FieldError } from '@web/pages/auth/_shared/FieldError';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
+import { STUDIO_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
 import {
-  STUDIO_SLUG_BOUNDS,
-  toSlugCheck,
-} from '@web/pages/studio/container/dialogs/slug-util';
-import {
-  recheckSlugTaken,
+  slugFieldShowsConflict,
   useSlugAvailability,
 } from '@web/pages/studio/container/dialogs/use-slug-availability';
 
@@ -54,7 +51,7 @@ export default function SlugSetupPage(): React.JSX.Element {
   const [formError, setFormError] = React.useState<string | null>(null);
 
   const availability = useSlugAvailability(slug);
-  const canSubmit = availability.status === 'available' && !submitting;
+  const canSubmit = availability.state === 'valid' && !submitting;
 
   /**
    * Create the personal studio from the chosen slug, mirror it into the store
@@ -74,13 +71,10 @@ export default function SlugSetupPage(): React.JSX.Element {
       }
       navigate('/studio', { replace: true });
     } catch (err) {
-      // A slug taken since the live check is shown by the field itself once
-      // the recheck refreshes its answer; anything else goes to the form line.
-      const slugTaken =
-        err instanceof ApiException &&
-        err.status === 409 &&
-        (await recheckSlugTaken(queryClient, trimmed).catch(() => false));
-      if (!slugTaken) {
+      // The field stays on the page holding the submitted slug (it is locked
+      // while submitting), so a slug taken in the meantime is always its to
+      // show; anything else goes to the form line.
+      if (!(await slugFieldShowsConflict(queryClient, err, trimmed, () => true))) {
         setFormError(
           err instanceof ApiException ? err.message : t('auth.onboarding.failed'),
         );
@@ -103,12 +97,9 @@ export default function SlugSetupPage(): React.JSX.Element {
           value={slug}
           onChange={setSlug}
           disabled={submitting}
-          check={toSlugCheck(availability)}
+          check={availability}
           bounds={STUDIO_SLUG_BOUNDS}
-          helper={t('auth.onboarding.helper', {
-            min: STUDIO_SLUG_BOUNDS.min,
-            max: STUDIO_SLUG_BOUNDS.max,
-          })}
+          helper={t('auth.onboarding.helper', STUDIO_SLUG_BOUNDS)}
         />
 
         {formError ? (

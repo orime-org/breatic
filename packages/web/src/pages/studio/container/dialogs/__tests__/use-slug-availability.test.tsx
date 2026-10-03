@@ -15,7 +15,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
+import {
+  slugFieldShowsConflict,
+  useSlugAvailability,
+} from '@web/pages/studio/container/dialogs/use-slug-availability';
+import { ApiException } from '@web/data/api/types';
 import { useDebounce } from '@web/lib/use-debounce';
 import { studiosApi } from '@web/data/api/studios';
 import type { SlugAvailability } from '@web/data/api/studios';
@@ -46,7 +50,7 @@ beforeEach(() => {
 describe('useSlugAvailability', () => {
   it('is idle for an empty slug and never calls the server', () => {
     const { result } = renderHook(() => useSlugAvailability(''), { wrapper });
-    expect(result.current.status).toBe('idle');
+    expect(result.current.state).toBe('empty');
     expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalled();
   });
 
@@ -54,15 +58,13 @@ describe('useSlugAvailability', () => {
     const { result } = renderHook(() => useSlugAvailability('Bad Slug!'), {
       wrapper,
     });
-    expect(result.current.status).toBe('invalid');
-    expect(result.current.reason).toBe('format');
+    expect(result.current).toEqual({ state: 'invalid', reason: 'format' });
     expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalled();
   });
 
   it('is invalid (no request) for a too-short slug', () => {
     const { result } = renderHook(() => useSlugAvailability('abc'), { wrapper });
-    expect(result.current.status).toBe('invalid');
-    expect(result.current.reason).toBe('length');
+    expect(result.current).toEqual({ state: 'invalid', reason: 'length' });
     expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalled();
   });
 
@@ -71,7 +73,7 @@ describe('useSlugAvailability', () => {
     const { result } = renderHook(() => useSlugAvailability('nova-lab'), {
       wrapper,
     });
-    await waitFor(() => expect(result.current.status).toBe('available'));
+    await waitFor(() => expect(result.current.state).toBe('valid'));
   });
 
   it('resolves taken for an existing slug', async () => {
@@ -82,7 +84,7 @@ describe('useSlugAvailability', () => {
     const { result } = renderHook(() => useSlugAvailability('acme-studio'), {
       wrapper,
     });
-    await waitFor(() => expect(result.current.status).toBe('taken'));
+    await waitFor(() => expect(result.current).toEqual({ state: 'invalid', reason: 'taken' }));
   });
 
   it('reflects the CURRENT slug, not a stale in-flight one (race-safe)', async () => {
@@ -105,13 +107,13 @@ describe('useSlugAvailability', () => {
 
     // alpha-two (current) resolves available.
     pending['alpha-two']!({ available: true });
-    await waitFor(() => expect(result.current.status).toBe('available'));
+    await waitFor(() => expect(result.current.state).toBe('valid'));
 
     // The stale alpha-one response arrives LATE — it must not flip the status
     // back to taken, because the hook renders the current slug's query.
     pending['alpha-one']!({ available: false, reason: 'taken' });
     await Promise.resolve();
-    expect(result.current.status).toBe('available');
+    expect(result.current.state).toBe('valid');
   });
 
   it('reports checking while the debounced value lags the live input (skew guard)', () => {
@@ -124,7 +126,7 @@ describe('useSlugAvailability', () => {
     const { result } = renderHook(() => useSlugAvailability('new-slug'), {
       wrapper,
     });
-    expect(result.current.status).toBe('checking');
+    expect(result.current.state).toBe('checking');
   });
 
   // The rename form starts out holding the studio's CURRENT slug. Asking the
@@ -137,7 +139,7 @@ describe('useSlugAvailability', () => {
         () => useSlugAvailability('my-studio', { ownSlug: 'my-studio' }),
         { wrapper },
       );
-      expect(result.current.status).toBe('available');
+      expect(result.current.state).toBe('valid');
       expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalled();
     });
 
@@ -150,7 +152,7 @@ describe('useSlugAvailability', () => {
         () => useSlugAvailability('someone-else', { ownSlug: 'my-studio' }),
         { wrapper },
       );
-      await waitFor(() => expect(result.current.status).toBe('taken'));
+      await waitFor(() => expect(result.current).toEqual({ state: 'invalid', reason: 'taken' }));
       expect(studiosApi.checkSlugAvailable).toHaveBeenCalledWith(
         'someone-else',
         expect.anything(),
@@ -164,7 +166,7 @@ describe('useSlugAvailability', () => {
         () => useSlugAvailability('admin', { ownSlug: 'admin' }),
         { wrapper },
       );
-      expect(result.current.status).toBe('invalid');
+      expect(result.current.state).toBe('invalid');
       expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalled();
     });
 
@@ -176,7 +178,94 @@ describe('useSlugAvailability', () => {
       const { result } = renderHook(() => useSlugAvailability('my-studio'), {
         wrapper,
       });
-      await waitFor(() => expect(result.current.status).toBe('taken'));
+      await waitFor(() => expect(result.current).toEqual({ state: 'invalid', reason: 'taken' }));
     });
+  });
+});
+
+describe('slugFieldShowsConflict', () => {
+  const conflict = new ApiException({ status: 409, message: 'Conflict' });
+
+  /**
+   * Render the live check for a slug on a client the test keeps, and wait
+   * until the field has shown it as free.
+   * @param slug - The slug in the field.
+   * @returns The client and the hook result.
+   */
+  async function fieldShowingFree(slug: string): Promise<{
+    client: QueryClient;
+    result: { current: ReturnType<typeof useSlugAvailability> };
+  }> {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const own = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValueOnce({
+      available: true,
+    });
+    const { result } = renderHook(() => useSlugAvailability(slug), {
+      wrapper: own,
+    });
+    await waitFor(() => expect(result.current.state).toBe('valid'));
+    return { client, result };
+  }
+
+  it('re-asks the server and turns the same field red when the slug was taken', async () => {
+    const { client, result } = await fieldShowingFree('nova-lab');
+    vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValueOnce({
+      available: false,
+      reason: 'taken',
+    });
+    await expect(
+      slugFieldShowsConflict(client, conflict, 'nova-lab', () => true),
+    ).resolves.toBe(true);
+    await waitFor(() =>
+      expect(result.current).toEqual({ state: 'invalid', reason: 'taken' }),
+    );
+  });
+
+  it('leaves the conflict to the caller when the slug is still free', async () => {
+    const { client } = await fieldShowingFree('nova-lab');
+    vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValueOnce({
+      available: true,
+    });
+    await expect(
+      slugFieldShowsConflict(client, conflict, 'nova-lab', () => true),
+    ).resolves.toBe(false);
+  });
+
+  it('leaves a taken slug to the caller once the field is off screen', async () => {
+    const { client } = await fieldShowingFree('nova-lab');
+    vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValueOnce({
+      available: false,
+    });
+    await expect(
+      slugFieldShowsConflict(client, conflict, 'nova-lab', () => false),
+    ).resolves.toBe(false);
+  });
+
+  it('leaves the conflict to the caller when the re-ask fails', async () => {
+    const { client } = await fieldShowingFree('nova-lab');
+    vi.mocked(studiosApi.checkSlugAvailable).mockRejectedValueOnce(
+      new Error('offline'),
+    );
+    await expect(
+      slugFieldShowsConflict(client, conflict, 'nova-lab', () => true),
+    ).resolves.toBe(false);
+  });
+
+  it('does not re-ask for anything other than a 409', async () => {
+    const client = new QueryClient();
+    await expect(
+      slugFieldShowsConflict(
+        client,
+        new ApiException({ status: 500, message: 'boom' }),
+        'nova-lab',
+        () => true,
+      ),
+    ).resolves.toBe(false);
+    expect(studiosApi.checkSlugAvailable).not.toHaveBeenCalled();
   });
 });

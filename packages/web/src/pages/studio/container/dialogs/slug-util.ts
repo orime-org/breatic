@@ -98,27 +98,3 @@ export function validateStudioSlug(
 export function validateItemSlug(value: string): SlugError {
   return validateSlugShape(value, ITEM_SLUG_BOUNDS);
 }
-
-/**
- * The hint-line state for a studio slug's live availability.
- * @param result - The availability status and, when refused, why.
- * @param result.status - Where the live check stands.
- * @param result.reason - Why the slug was refused, when it was.
- * @returns What the slug field shows.
- */
-export function toSlugCheck(result: {
-  status: 'idle' | 'invalid' | 'checking' | 'available' | 'taken';
-  reason?: SlugError;
-}): SlugCheck {
-  switch (result.status) {
-    case 'idle':
-      return { state: 'empty' };
-    case 'checking':
-      return { state: 'checking' };
-    case 'available':
-      return { state: 'valid' };
-    case 'invalid':
-    case 'taken':
-      return { state: 'invalid', reason: result.reason ?? 'taken' };
-  }
-}

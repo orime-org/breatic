@@ -46,9 +46,11 @@ vi.mock('@web/pages/studio/shared/upload-picture', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   uploadPicture,
 }));
-const { recheckSlugTaken } = vi.hoisted(() => ({ recheckSlugTaken: vi.fn() }));
+const { slugFieldShowsConflict } = vi.hoisted(() => ({
+  slugFieldShowsConflict: vi.fn(),
+}));
 vi.mock('@web/pages/studio/container/dialogs/use-slug-availability', () => ({
-  recheckSlugTaken,
+  slugFieldShowsConflict,
 }));
 vi.mock('@web/lib/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -577,39 +579,46 @@ describe('useStudioSettings — a slug save the server refuses with 409', () => 
   const conflict = (): ApiException =>
     new ApiException({ status: 409, message: 'Conflict', fromServer: true });
 
-  it('leaves the slug field to say it is taken, with no toast', async () => {
+  beforeEach(() => {
     vi.mocked(studiosApi.update).mockRejectedValue(conflict());
-    recheckSlugTaken.mockResolvedValue(true);
+    // A taken slug, shown only while the caller says the field is up.
+    slugFieldShowsConflict.mockImplementation(
+      async (_client, _err, _slug, fieldShown: () => boolean) => fieldShown(),
+    );
+  });
+
+  it('leaves a taken slug to the field that shows it, with no toast', async () => {
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
-    result.current.save({ slug: 'acme-renamed' });
+    result.current.save({ slug: 'acme-renamed' }, () => true);
     await waitFor(() =>
-      expect(recheckSlugTaken).toHaveBeenCalledWith(client, 'acme-renamed'),
+      expect(slugFieldShowsConflict).toHaveBeenCalledWith(
+        client,
+        expect.any(ApiException),
+        'acme-renamed',
+        expect.any(Function),
+      ),
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it('still says what went wrong when the slug turns out to be free', async () => {
-    vi.mocked(studiosApi.update).mockRejectedValue(conflict());
-    recheckSlugTaken.mockResolvedValue(false);
+  it('still says what went wrong once the field is gone', async () => {
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
-    result.current.save({ slug: 'acme-renamed' });
+    result.current.save({ slug: 'acme-renamed' }, () => false);
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Conflict'));
   });
 
-  it('still says what went wrong when the recheck itself fails', async () => {
-    vi.mocked(studiosApi.update).mockRejectedValue(conflict());
-    recheckSlugTaken.mockRejectedValue(new Error('offline'));
+  it('still says what went wrong when the conflict is not the slug', async () => {
+    slugFieldShowsConflict.mockResolvedValue(false);
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
-    result.current.save({ slug: 'acme-renamed' });
+    result.current.save({ slug: 'acme-renamed' }, () => true);
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Conflict'));
   });
 
-  it('does not recheck a 409 on a save that left the slug alone', async () => {
-    vi.mocked(studiosApi.update).mockRejectedValue(conflict());
+  it('does not re-ask for a save that left the slug alone', async () => {
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
     result.current.save({ name: 'Acme 2' });
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Conflict'));
-    expect(recheckSlugTaken).not.toHaveBeenCalled();
+    expect(slugFieldShowsConflict).not.toHaveBeenCalled();
   });
 });
