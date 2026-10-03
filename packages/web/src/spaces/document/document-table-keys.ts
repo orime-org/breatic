@@ -132,14 +132,17 @@ function leaveLastTable(editor: KeysEditor, dir: 'down' | 'right'): boolean {
   const cell = selection.empty ? cellAround(selection.$head) : null;
   const at = cell === null ? null : cellAt(view.state.doc, cell.pos);
   if (cell === null || at === null) return false;
-  const lastRow = at.bottom === at.map.height;
+  const { $head } = selection;
+  const lastLine = $head.index(cell.depth + 1) === cell.nodeAfter!.childCount - 1;
+  const lastRow = lastLine && at.bottom === at.map.height;
   const onWayOut =
     dir === 'down'
       ? lastRow
-      : lastRow && at.right === at.map.width && selection.$head.parentOffset === selection.$head.parent.content.size;
+      : lastRow && at.right === at.map.width && $head.parentOffset === $head.parent.content.size;
   if (!onWayOut || !view.endOfTextblock(dir)) return false;
-  // The end of the table's block; past it, the first place a caret can go.
-  const end = cell.after(cell.depth - 2);
+  // The end of the table itself; past it, the first place a caret can go —
+  // a block nested under the table counts.
+  const end = cell.after(cell.depth - 1);
   if (Selection.findFrom(view.state.doc.resolve(end), 1, true) !== null) return false;
   const [line] = editor.insertBlocks([{ type: 'paragraph' }] as never, at.blockId, 'after');
   if (line === undefined) return false;

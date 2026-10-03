@@ -244,6 +244,32 @@ describe('keys in a table cell', () => {
 
       expect(blockTypes(editor)).toEqual(['table', 'paragraph']);
     });
+
+    it.each(['ArrowDown', 'ArrowRight'])('%s on a cell line with another line under it opens nothing', (key) => {
+      // A pasted cell can hold more than one line; the way out is from its last.
+      const editor = open();
+      caretAfter(editor, 'b2');
+      const view = editor.prosemirrorView!;
+      view.dispatch(view.state.tr.split(view.state.selection.from).insertText('more'));
+      caretAfter(editor, 'b2');
+      onEdgeLine(editor);
+
+      press(editor, key);
+
+      expect(blockTypes(editor)).toEqual(['table']);
+    });
+
+    it('opens nothing when the table has a block nested under it', () => {
+      const editor = open();
+      editor.updateBlock(editor.document[0]!, { children: [{ type: 'paragraph', content: 'kid' }] } as never);
+      onEdgeLine(editor);
+      caretAfter(editor, 'b2');
+
+      press(editor, 'ArrowDown');
+
+      expect(blockTypes(editor)).toEqual(['table']);
+      expect((editor.document[0] as unknown as { children: unknown[] }).children).toHaveLength(1);
+    });
   });
 
   it('Tab in the last cell adds a row and moves into its first cell', () => {
