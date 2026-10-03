@@ -10,9 +10,11 @@
  * behind, and reads a table position that goes stale under someone else's
  * edit; it is never started, so its drop handling has nothing to act on.
  *
- * The cell the drag started on is held in plugin state and mapped through
- * every change, so a row someone else adds above it during the drag does not
- * move a different row; when that cell goes, the drag is given up. The drop
+ * The cell the drag started on is held in plugin state and carried through
+ * every change — the reader's own by mapping, a change through Yjs by the
+ * element the cell is bound to (`document-table-cell-name.ts`) — so a row
+ * someone else adds above it during the drag does not move a different row;
+ * when that cell goes, the drag is given up. The drop
  * moves the row or column's own nodes with `moveTableRow` /
  * `moveTableColumn`, marks and all.
  */
@@ -24,7 +26,9 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import type { BlockNoteEditor } from '@blocknote/core';
 
+import { cellNamed, nameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
 import { cellAt, moveLineAt } from '@web/spaces/document/document-table-run';
+import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
 /** Which way a drag moves cells. */
 export type DragOrientation = 'row' | 'column';
@@ -208,11 +212,13 @@ function dropLine(state: EditorState): DecorationSet {
  * @returns The plugin.
  */
 function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
+  // The source cell's Yjs element, as of the last change to the body.
+  let named: CellName | null = null;
   return new Plugin<Drag | null>({
     key: tableDragKey,
     state: {
       init: (): Drag | null => null,
-      apply: (tr, value): Drag | null => {
+      apply: (tr, value, before): Drag | null => {
         const command = tr.getMeta(tableDragKey) as DragCommand | undefined;
         if (command !== undefined) {
           if ('end' in command) return null;
@@ -220,6 +226,10 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
           return value === null ? null : { ...value, gap: command.gap };
         }
         if (value === null || !tr.docChanged) return value;
+        if (fromYjs(tr)) {
+          const found = named === null ? null : cellNamed(before, tr.doc, named);
+          return found === null ? null : { ...value, source: found };
+        }
         const mapped = tr.mapping.mapResult(value.source, 1);
         // The cell the drag started on is gone: the drag has nothing to move.
         if (mapped.deleted || cellAt(tr.doc, mapped.pos) === null) return null;
@@ -247,6 +257,14 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
       page.addEventListener('drop', end);
       page.addEventListener('mousemove', moved);
       return {
+        update: (current, prev): void => {
+          const drag = tableDragKey.getState(current.state) ?? null;
+          if (drag === null) {
+            named = null;
+          } else if (current.state.doc !== prev.doc || tableDragKey.getState(prev)?.source !== drag.source) {
+            named = nameCell(current.state, drag.source);
+          }
+        },
         destroy: (): void => {
           page.removeEventListener('dragend', end);
           page.removeEventListener('drop', end);

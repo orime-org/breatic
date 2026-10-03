@@ -6,9 +6,11 @@
  *
  * A menu stays open while the document changes under it — a collaborator
  * typing above the table, adding a row, deleting one — so the cell is held as
- * a position in plugin state and mapped through every transaction, the way
- * ProseMirror maps decorations. When the cell itself is deleted the target is
- * cleared, and the menu has nothing left to act on. The plugin's `apply` is
+ * a position in plugin state and carried through every transaction: the
+ * reader's own edits by mapping, the way ProseMirror maps decorations, and
+ * changes that come in through Yjs by the element the cell is bound to
+ * (`document-table-cell-name.ts`). When the cell itself is deleted the target
+ * is cleared, and the menu has nothing left to act on. The plugin's `apply` is
  * the one place the target changes; a menu sets and clears it with a meta.
  */
 
@@ -16,7 +18,9 @@ import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { cellNamed, nameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
 import { cellAt } from '@web/spaces/document/document-table-run';
+import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
 /** The position before the target cell, or null when no menu holds one. */
 type Target = number | null;
@@ -29,19 +33,32 @@ const tableTargetKey = new PluginKey<Target>('document-table-target');
  * @returns The plugin.
  */
 function tableTargetPlugin(): Plugin<Target> {
+  // The target's Yjs element, as of the last change to the body.
+  let named: CellName | null = null;
   return new Plugin<Target>({
     key: tableTargetKey,
     state: {
       init: (): Target => null,
-      apply: (tr, value): Target => {
+      apply: (tr, value, before): Target => {
         const set = tr.getMeta(tableTargetKey) as Target | undefined;
         if (set !== undefined) return set;
         if (value === null || !tr.docChanged) return value;
+        if (fromYjs(tr)) return named === null ? null : cellNamed(before, tr.doc, named);
         const mapped = tr.mapping.mapResult(value, 1);
         if (mapped.deleted) return null;
         return cellAt(tr.doc, mapped.pos) === null ? null : mapped.pos;
       },
     },
+    view: () => ({
+      update: (view, prev): void => {
+        const target = tableTargetKey.getState(view.state) ?? null;
+        if (target === null) {
+          named = null;
+        } else if (view.state.doc !== prev.doc || tableTargetKey.getState(prev) !== target) {
+          named = nameCell(view.state, target);
+        }
+      },
+    }),
   });
 }
 
