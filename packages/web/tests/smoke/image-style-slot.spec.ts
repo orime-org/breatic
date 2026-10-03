@@ -85,6 +85,29 @@ async function clickNode(page: Page, nodeId: string): Promise<void> {
 }
 
 /**
+ * How wide a clear button takes clicks: the widest run of points across its
+ * centre line that land on it, probed pixel by pixel outward from the centre.
+ * @param page - A page showing the button.
+ * @param testId - The button's test id.
+ * @returns The width in CSS pixels.
+ */
+async function clearHitSize(page: Page, testId: string): Promise<number> {
+  return page.evaluate((id) => {
+    const el = document.querySelector(`[data-testid="${id}"]`);
+    if (el === null) return 0;
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const hits = (x: number): boolean => el.contains(document.elementFromPoint(x, cy));
+    let left = 0;
+    while (hits(cx - left - 1)) left += 1;
+    let right = 0;
+    while (hits(cx + right + 1)) right += 1;
+    return left + right + 1;
+  }, testId);
+}
+
+/**
  * Catch the next task submit and answer it as queued.
  * @param page - The page that will submit.
  * @returns A reader for the body sent, undefined until it is.
@@ -126,6 +149,10 @@ test('picks up to three style pictures off the canvas and sends them', async ({ 
   await expect(page.getByTestId('generate-style-thumbnail-2')).toBeVisible();
   await expect(add).toHaveCount(0);
   await expect(page.getByTestId('reference-pick-banner')).toHaveCount(0);
+  // Each X takes clicks over at least 24x24 (WCAG 2.2 SC 2.5.8), though it draws 16px.
+  for (const i of [0, 1, 2]) {
+    expect(await clearHitSize(page, `generate-style-clear-${i}`), `clear ${i}`).toBeGreaterThanOrEqual(24);
+  }
   // A full slot has no room, so its thumbnails open no pick.
   await page.getByTestId('generate-tool-style-item-0').click();
   await expect(page.getByTestId('reference-pick-banner')).toHaveCount(0);
