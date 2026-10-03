@@ -235,7 +235,10 @@ export function renderProductGuide(): string {
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
       "circles in the text are sources: hovering one shows it and " +
       "clicking opens it. Pictures found for the reader appear as a row of squares, the last showing a plus and " +
-      "a number when there are more; clicking one opens it large. Under a finished reply are a copy icon and, " +
+      "a number when there are more; clicking one opens it large. Hovering a square shows a copy icon at its " +
+      `top-right corner, and the large view has ${quoted(t("chat.action.copy"))} beside its close button; pasting ` +
+      "the copy onto the canvas with Cmd/Ctrl+V makes a picture node, which shows the picture once it has been " +
+      "fetched into the project. Under a finished reply are a copy icon and, " +
       `when it used sources, a button such as ${quoted(t("chat.sources.count", { count: 3 }))}, which lists ` +
       "them. A reply that did not end normally says so on its last line, with one of these:",
     `  - ${quoted(t("chat.error.turnFailed"))}`,
@@ -286,7 +289,8 @@ export function renderProductGuide(): string {
       "that connection, and the one you pick appears there, already connected.",
     "- Paste with Cmd/Ctrl+V: a copied node, a file or screenshot, or plain text, which becomes a text node. " +
       "The canvas's keys, this one included, act once the space was the last thing clicked and nothing is being " +
-      "typed in; after typing in this chat they go to the chat box. To hand them back, click one of the selected " +
+      "typed in; a picture copied in this chat pastes onto the canvas straight away, with nothing being typed " +
+      "in. After typing in this chat they go to the chat box. To hand them back, click one of the selected " +
       "nodes or the space's tab, which keeps the selection; clicking an empty spot on the canvas also works but " +
       "clears the selection.",
     `- Double-clicking empty canvas does nothing. An empty canvas shows ${quoted(t("canvas.emptyState.title"))} ` +
