@@ -258,6 +258,16 @@ describe("two questions in one step", () => {
     expect(toolErrors["call-1"]).toBe(TURNED_AWAY);
   });
 
+  it("put the second in the reply when the first was refused for its input", async () => {
+    // A call the schema refuses never runs, so it asks nothing: the first
+    // question actually put is the second call's.
+    const { text, toolErrors } = await turnOn(asks([{ options: 5 }, { question: "再定时长？" }]));
+
+    expect(text).toBe("\n\n再定时长？\n\n");
+    expect(toolErrors["call-0"]).toBe(TURNED_AWAY);
+    expect(toolErrors["call-1"]).toBeUndefined();
+  });
+
   it("store the second as turned away, so a reload draws nothing for it either", async () => {
     await turnOn(asks([{ question: "先定节奏？" }, { question: "再定时长？" }]));
 
