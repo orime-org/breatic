@@ -3,7 +3,8 @@
 
 /**
  * inner#1126 A3 and A4: Tab and Shift-Tab move between cells, Tab in the last
- * cell adds a row, and Enter breaks the line inside the cell.
+ * cell adds a row, Enter breaks the line inside the cell, and a side arrow
+ * over selected words in a cell collapses them there.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -147,6 +148,37 @@ describe('keys in a table cell', () => {
     expect(press(editor, 'Tab', true)).toBe(true);
     expect(caretCell(editor)).toBe('a1');
     expect(editor.prosemirrorState.doc.eq(before)).toBe(true);
+  });
+
+  it.each([
+    ['ArrowRight', 'the end', 2],
+    ['ArrowLeft', 'the start', 0],
+  ] as const)('%s over words selected in a cell collapses them to %s, in that cell', (key, _end, offset) => {
+    // The words a Shift-Tab selects reach both edges of the cell, where the
+    // table plugin's own arrow would leave for the next cell.
+    const editor = open();
+    caretAfter(editor, 'b1');
+    press(editor, 'Tab', true);
+    press(editor, 'Tab');
+    expect(editor.prosemirrorState.selection.empty).toBe(false);
+
+    expect(press(editor, key)).toBe(true);
+
+    const { selection } = editor.prosemirrorState;
+    expect(selection.empty).toBe(true);
+    expect(caretCell(editor)).toBe('b1');
+    expect(selection.$head.parentOffset).toBe(offset);
+  });
+
+  it('leaves Shift with an arrow to the editor', () => {
+    const editor = open();
+    caretAfter(editor, 'b1');
+    press(editor, 'Tab', true);
+    const selected = editor.prosemirrorState.selection;
+
+    press(editor, 'ArrowLeft', true);
+
+    expect(editor.prosemirrorState.selection.eq(selected)).toBe(true);
   });
 
   it('Tab in the last cell adds a row and moves into its first cell', () => {
