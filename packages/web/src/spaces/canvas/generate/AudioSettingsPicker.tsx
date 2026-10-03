@@ -515,6 +515,7 @@ function SpeakerNameBox({ label, placeholder, held, onCommit }: SpeakerNameBoxPr
         {label}
       </label>
       <Input
+        autoComplete='off'
         id={id}
         data-testid='generate-audio-speaker-name'
         placeholder={placeholder}

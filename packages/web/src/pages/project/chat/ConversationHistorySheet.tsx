@@ -296,6 +296,7 @@ function ConversationRowView({
       >
         {renaming ? (
           <input
+            autoComplete='off'
             data-testid='conversation-rename-input'
             ref={box}
             defaultValue={row.title ?? ''}

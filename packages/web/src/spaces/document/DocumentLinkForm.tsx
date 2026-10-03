@@ -66,6 +66,7 @@ export function DocumentLinkForm({
     <div className='flex flex-col gap-1.5'>
       <div className='flex items-center gap-1.5'>
         <Input
+          autoComplete='off'
           data-testid='doc-link-input'
           ref={inputRef}
           value={draft}
