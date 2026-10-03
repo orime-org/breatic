@@ -181,6 +181,71 @@ describe('keys in a table cell', () => {
     expect(editor.prosemirrorState.selection.eq(selected)).toBe(true);
   });
 
+  describe('leaving a table the body ends with', () => {
+    /**
+     * Stands in for the browser's answer to "is the caret on the cell's edge
+     * line", which jsdom cannot give: there is no layout to measure.
+     * @param editor - The editor.
+     */
+    function onEdgeLine(editor: Editor): void {
+      editor.prosemirrorView!.endOfTextblock = (): boolean => true;
+    }
+
+    /**
+     * The types of the top-level blocks.
+     * @param editor - The editor.
+     * @returns Them, in order.
+     */
+    function blockTypes(editor: Editor): string[] {
+      return (editor.document as unknown as { type: string }[]).map((b) => b.type);
+    }
+
+    it.each(['ArrowDown', 'ArrowRight'])('%s in the last cell opens a line under it and moves there', (key) => {
+      const editor = open();
+      onEdgeLine(editor);
+      caretAfter(editor, 'b2');
+
+      expect(press(editor, key)).toBe(true);
+
+      expect(blockTypes(editor)).toEqual(['table', 'paragraph']);
+      expect(editor.prosemirrorState.selection.$head.parent.type.name).toBe('paragraph');
+    });
+
+    it('ArrowDown in the last row, not the last cell, opens the line too', () => {
+      const editor = open();
+      onEdgeLine(editor);
+      caretAfter(editor, 'a2');
+
+      press(editor, 'ArrowDown');
+
+      expect(blockTypes(editor)).toEqual(['table', 'paragraph']);
+    });
+
+    it.each([
+      ['ArrowDown', 'a1'],
+      ['ArrowRight', 'a2'],
+    ])('%s from %s, which is not on the way out, opens nothing', (key, cell) => {
+      const editor = open();
+      onEdgeLine(editor);
+      caretAfter(editor, cell);
+
+      press(editor, key);
+
+      expect(blockTypes(editor)).toEqual(['table']);
+    });
+
+    it('opens nothing when a block already follows the table', () => {
+      const editor = open();
+      editor.insertBlocks([{ type: 'paragraph', content: 'after' }] as never, editor.document[0]!, 'after');
+      onEdgeLine(editor);
+      caretAfter(editor, 'b2');
+
+      press(editor, 'ArrowDown');
+
+      expect(blockTypes(editor)).toEqual(['table', 'paragraph']);
+    });
+  });
+
   it('Tab in the last cell adds a row and moves into its first cell', () => {
     const editor = open();
     caretAfter(editor, 'b2');

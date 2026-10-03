@@ -238,6 +238,24 @@ test('A4: Tab and Shift+Tab move between cells, and Tab in the last cell adds a 
   expect(await grids(page)).toEqual([[['a1', 'b1'], ['a2', 'b2!'], ['a3', '']]]);
 });
 
+test('A4: ArrowDown from the last row of a table the body ends with opens a line under it', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.press('Enter');
+  await hoverRow(page, 1);
+  await page.getByTestId('doc-block-plus').click();
+  await page.getByTestId('doc-block-insert-table').hover();
+  await page.getByTestId('doc-table-size-2-2').click();
+  await expect(page.locator(TOP)).toHaveCount(2);
+  await fill(page, ['a1', 'b1', 'a2']);
+
+  await pressAndSettle(page, 'ArrowDown');
+  await page.keyboard.type('below');
+
+  await expect(page.locator(TOP)).toHaveCount(3);
+  await expect(page.locator(TOP).nth(2)).toHaveText('below');
+  expect(await grids(page)).toEqual([[['a1', 'b1'], ['a2', '']]]);
+});
+
 test('A5: the table icon opens the table menu, and dragging it moves the whole table', async () => {
   await openFreshDocument(page);
   await smallTable(page);
