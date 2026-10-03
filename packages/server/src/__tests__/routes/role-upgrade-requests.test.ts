@@ -47,9 +47,6 @@ const SHARE_TOKEN = "s".repeat(64);
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.projectAuthService.loadProjectRole.mockResolvedValue("viewer");
-  // The POST route resolves the owner through the service (prohibition
-  // #1 — routes call services, not repos), so drive the service mock.
-  mocks.projectMembersService.getOwner.mockResolvedValue("u-owner");
   // The real return shape, token and all: a mock that omitted the token would
   // let the route go on leaking it while the test below stayed green.
   mocks.roleUpgradeRequestService.request.mockResolvedValue({
@@ -79,7 +76,7 @@ beforeEach(() => {
 });
 
 describe("POST /projects/:pid/role-upgrade-requests", () => {
-  it("returns 201 + notification when caller is viewer + project has owner", async () => {
+  it("returns 201 when the caller is a viewer, leaving the owner to the service", async () => {
     const app = createApp();
     const res = await app.request(
       `/api/v1/projects/${PID}/role-upgrade-requests`,
@@ -92,7 +89,7 @@ describe("POST /projects/:pid/role-upgrade-requests", () => {
     expect(res.status).toBe(201);
     expect(mocks.roleUpgradeRequestService.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        ownerUserId: "u-owner",
+        requesterUserId: "user-1",
         projectId: PID,
         message: "Please",
       }),
