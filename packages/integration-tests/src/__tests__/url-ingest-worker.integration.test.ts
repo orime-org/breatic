@@ -44,12 +44,11 @@ import {
   type UploadTicketPayload,
 } from "@breatic/shared";
 import { assetService } from "@breatic/domain";
-import type { Hono } from "hono";
 import type { Job } from "bullmq";
 import {
   runUrlIngest,
   type UrlIngestJobData,
-} from "@breatic/worker/src/handlers/url-ingest.js";
+} from "@worker/handlers/url-ingest.js";
 
 try {
   initCore(process.env);
@@ -62,7 +61,7 @@ const SOURCE = "https://cdn.test.invalid/clip.mp4";
 const INGEST_SECRET = process.env.INGEST_SHARED_SECRET ?? "test-secret";
 
 let sql: ReturnType<typeof postgres>;
-let app: Hono;
+let app: ReturnType<typeof import("@server/app.js").createApp>;
 
 beforeAll(async () => {
   sql = postgres(inject("DATABASE_URL"), {
