@@ -256,8 +256,11 @@ projects.post(
 
 // ── Membership-gated writes ────────────────────────────────────────
 //
-// Every route below this point sits behind `requireRoleOnParam('id',
-// minRole)`. The middleware resolves the caller's role on `:id`, rejects
+// Every route registered on `membershipScoped` below sits behind
+// `requireRoleOnParam('id', minRole)`. Rename and cover are registered on
+// `projects` itself: their gate (`canManageMeta`) is decided in the service,
+// since a studio admin who is not on the project may use them. The
+// middleware resolves the caller's role on `:id`, rejects
 // non-members / insufficient roles with 403, and stamps the role on
 // `c.var.role`. (The read path `GET /:id` above is intentionally NOT here —
 // it answers a studio member who is not on the project with 403 and anyone
@@ -281,8 +284,8 @@ const projectUpdateSchema = z
  *
  * PATCH semantic = client sends only fields to change (per the
  * access-permission design D1; aligns with `members.patch` precedent).
- * Requires `editor` (renaming etc. is content editing, not an admin-only
- * operation). v10 §7.2.1.
+ * Gated in the service by `canManageMeta`: the studio's admin, or an editor
+ * or owner of the project; refused on an archived project.
  * @returns `200` with `{ data: ProjectEntity }`
  */
 projects.patch(

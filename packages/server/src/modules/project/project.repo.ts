@@ -280,9 +280,8 @@ export async function restoreProject(id: string, tx: DbTx): Promise<ArchiveOutco
  * Backs the per-studio project ceiling, whose value comes from the tier of
  * that studio's current admin. Archived projects do not count either: archiving
  * frees a slot, and restoring takes one back (the restore checks for room).
- * Soft-deleted projects do not count — the row
- * stays for referential integrity, but the capacity it occupied is released,
- * which is what a person deleting a project expects to have happened.
+ * Soft-deleted projects do not count — the row stays for referential
+ * integrity, but the capacity it occupied is released.
  *
  * A caller inside a transaction MUST pass it. Not for correctness — the studio
  * row is already locked by then, so no other request can have an uncommitted

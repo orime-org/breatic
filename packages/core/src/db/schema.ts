@@ -1630,8 +1630,8 @@ export const skillInstalls = pgTable(
 // ── 17.1 Project Lifecycle Outbox ────────────────────────────────────
 //
 // Transactional outbox bridging the business DB to the separate yjs DB.
-// Since the two databases cannot share a transaction, a project delete /
-// duplicate writes one command row HERE inside the same business tx (so
+// Since the two databases cannot share a transaction, a project duplicate /
+// archive / restore writes one command row HERE inside the same business tx (so
 // the command's existence is atomic with the business write). A relay
 // loop forwards unsent rows to the `project-lifecycle` Redis Stream;
 // collab consumes them and performs the yjs-DB side idempotently. Rows
