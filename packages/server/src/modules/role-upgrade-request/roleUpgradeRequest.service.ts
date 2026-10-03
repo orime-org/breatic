@@ -56,13 +56,12 @@ import {
 } from "@server/utils/deferred-decision.js";
 import type { Refused } from "@server/utils/deferred-decision.js";
 import { projectMembersRepo } from "@breatic/core";
-import { ConflictError } from "@breatic/core";
+import { ConflictError, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { NotificationEntity } from "@breatic/shared";
 
 interface RoleUpgradeRequestInput {
-  ownerUserId: string;
   requesterUserId: string;
   projectId: string;
   projectName: string;
@@ -81,14 +80,20 @@ export interface FiledRequest {
  * File a request: one row in `role_upgrade_requests`, one bell entry for the
  * owner, both in a single transaction.
  *
+ * The owner is read under the project lock, the same lock every owner change
+ * holds while it re-addresses pending requests. Read before the lock, a filing
+ * that raced a transfer would ring the previous owner, after the re-address
+ * that could have moved it had already run.
+ *
  * The two carry the SAME `expires_at`, because they are two projections of one
  * fact and a viewer must never see them disagree. `createPending` reaps any
  * timed-out request on this key first, so a viewer whose earlier request was
  * never answered can file again rather than being locked out by their own
  * silence.
- * @param input - Owner, requester, project, and the optional note.
+ * @param input - Requester, project, and the optional note.
  * @returns The new request's id and the bell entry announcing it.
  * @throws {ConflictError} when this viewer already has a live request here.
+ * @throws {NotFoundError} when the project is gone or has no active owner.
  */
 export async function request(
   input: RoleUpgradeRequestInput,
@@ -97,7 +102,9 @@ export async function request(
   const expiresAt = new Date(Date.now() + getDecisionWindowMs());
   try {
     const filedRequest = await db.transaction<
-      (FiledRequest & { shareToken: string }) | { refusal: "not_found" }
+      | (FiledRequest & { shareToken: string; ownerUserId: string })
+      | { refusal: "not_found" }
+      | { noOwner: true }
     >(async (tx) => {
       // Locks the project for the length of this transaction and refuses if it
       // is already gone. Without it the row commits after the delete cascade
@@ -106,6 +113,8 @@ export async function request(
       if (!(await projectRepo.lockLiveProject(input.projectId, tx))) {
         return { refusal: "not_found" as const };
       }
+      const ownerUserId = await projectMembersRepo.getOwner(input.projectId, tx);
+      if (ownerUserId === null) return { noOwner: true as const };
       const filed = await requestsRepo.createPending({
         projectId: input.projectId,
         requesterUserId: input.requesterUserId,
@@ -124,7 +133,7 @@ export async function request(
         ),
       );
       const notification = await notificationService.createRoleUpgradeRequest({
-        ownerUserId: input.ownerUserId,
+        ownerUserId,
         projectId: input.projectId,
         expiresAt,
         payload: {
@@ -140,9 +149,12 @@ export async function request(
         tx,
       });
       await requestsRepo.attachNotification(requestId, notification.id, tx);
-      return { requestId, notification, shareToken: filed.shareToken };
+      return { requestId, notification, shareToken: filed.shareToken, ownerUserId };
     });
     if ("refusal" in filedRequest) throw refusalError(filedRequest.refusal);
+    if ("noOwner" in filedRequest) {
+      throw new NotFoundError(t("server.project.no_active_owner"));
+    }
 
     // Best-effort email — the bell entry above is the always-delivered path.
     // Without this the owner has to be in the app that week to learn a decision
@@ -153,7 +165,7 @@ export async function request(
         async () => {
           // Resolve the recipient INSIDE the best-effort boundary: a DB read
           // blip must not fail this request, which already committed.
-          const owner = await userRepo.getUserById(input.ownerUserId);
+          const owner = await userRepo.getUserById(filedRequest.ownerUserId);
           if (!owner) return null;
           return buildRoleUpgradeRequestMail({
             locale: owner.locale,
@@ -165,7 +177,7 @@ export async function request(
             decisionLink: decisionLink(origin, filedRequest.shareToken),
           });
         },
-        { userId: input.ownerUserId, subject: "role_upgrade_request" },
+        { userId: filedRequest.ownerUserId, subject: "role_upgrade_request" },
       );
     }
 
