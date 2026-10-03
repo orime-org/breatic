@@ -20,7 +20,7 @@ import {
 } from '@web/data/yjs/canvas-space';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
-import { slotRefusalKey } from '@web/spaces/canvas/generate/slots';
+import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
@@ -483,6 +483,19 @@ function GeneratePanelBody({
     },
     [projectId, spaceId, nodeId],
   );
+  // A running slot pick outlives its slot when the model or mode changes
+  // (locally or by a collaborator): the slot stops rendering while the canvas
+  // keeps writing into it. Same ending as the video panel's.
+  const slotsKey = vm.slots.join(',');
+  React.useEffect(() => {
+    const session = useCanvasStore.getState().pickSession;
+    if (!session || session.nodeId !== nodeId) return;
+    const running = slotForPurpose(session.purpose);
+    if (running !== undefined && running in IMAGE_SLOTS && !slotsKey.split(',').includes(running)) {
+      endPick();
+      toast.warning(t(pickEndToastKey(getLastWriteWasLocal())));
+    }
+  }, [slotsKey, nodeId, endPick, t, getLastWriteWasLocal]);
   const startFocusPick = useCanvasStore((s) => s.startFocusPick);
   const onFocus = React.useCallback(() => {
     const session = useCanvasStore.getState().pickSession;
@@ -618,7 +631,7 @@ function GeneratePanelBody({
       // A refusal the style slot answers for speaks in its words (inner#826).
       const key =
         verdict.slot === IMAGE_SLOTS.style.param
-          ? slotRefusalKey(IMAGE_SLOTS, fresh.styleCap !== undefined ? ['style'] : [], verdict)
+          ? slotRefusalKey(IMAGE_SLOTS, fresh.slots, verdict)
           : poolKindOf(fresh.pool, verdict.slot) !== undefined
             ? 'canvas.generatePanel.errorNoSourceImage'
             : refusalToastKey(verdict.refusal);

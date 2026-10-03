@@ -776,6 +776,7 @@ describe('the style slot (inner#826)', () => {
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [krea] });
     expect(vm.params.style_images).toEqual(['s1', 's2']);
     expect(vm.styleCap).toBe(3);
+    expect(vm.slots).toEqual(['style']);
   });
 
   it('leaves style images out for a model that declares no style slot', () => {
@@ -783,6 +784,7 @@ describe('the style slot (inner#826)', () => {
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [plain] });
     expect(vm.params.style_images).toBeUndefined();
     expect(vm.styleCap).toBeUndefined();
+    expect(vm.slots).toEqual([]);
   });
 
   it('counts a required style slot as missing until an image is in it', () => {

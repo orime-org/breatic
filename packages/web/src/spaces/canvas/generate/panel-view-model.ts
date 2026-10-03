@@ -38,7 +38,7 @@ import {
   type ReferenceUrls,
 } from '@web/spaces/canvas/generate/reference-urls';
 import { asContentView } from '@web/data/yjs/node-view';
-import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
+import { IMAGE_SLOTS, imageSlotsForModel, type ImageSlot } from '@web/spaces/canvas/generate/image-slots';
 import { readSlotPicks } from '@web/spaces/canvas/generate/slots';
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
@@ -56,6 +56,8 @@ export interface GeneratePanelViewModel {
    * the payload, the estimate and the gate all read this one record.
    */
   params: Record<string, unknown>;
+  /** The source slots the current model fills off the canvas in this mode. */
+  slots: readonly ImageSlot[];
   /**
    * How many style images the current model takes in this mode, or undefined
    * when it takes none and the toolbar draws no style area (inner#826).
@@ -192,11 +194,9 @@ export function buildGeneratePanelViewModel(input: {
   // not persist.
   const modelParams = current ? resolveModelSwitch(content, current).params : {};
   // The style slot is the model's to declare, per mode (inner#826).
+  const slots = imageSlotsForModel(current, mode);
   const styleSpec = current?.params[IMAGE_SLOTS.style.param];
-  const styleCap =
-    styleSpec !== undefined && (styleSpec.modes === undefined || styleSpec.modes.includes(mode))
-      ? itemCap(styleSpec)
-      : undefined;
+  const styleCap = styleSpec !== undefined && slots.includes('style') ? itemCap(styleSpec) : undefined;
   const styleImages = readSlotPicks(IMAGE_SLOTS.style, content?.styleImageUrls).map((p) => p.url);
   const sentStyle = styleCap === undefined ? [] : styleImages.slice(0, styleCap);
   const params = sentStyle.length > 0 ? { ...modelParams, [IMAGE_SLOTS.style.param]: sentStyle } : modelParams;
@@ -231,6 +231,7 @@ export function buildGeneratePanelViewModel(input: {
     models,
     model,
     params,
+    slots,
     styleCap,
     styleImages,
     references,

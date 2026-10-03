@@ -363,6 +363,55 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     );
     listSpy.mockRestore();
   });
+
+  // A style pick outlives its slot when the model changes to one without a
+  // style slot (inner#826): the canvas would keep writing pictures the reader
+  // cannot see, and a later switch back would send and bill them.
+  it('ends a running style pick when the model changes to one without a style slot', async () => {
+    const styled: ModelEntry = {
+      ...T2I_MODEL,
+      name: 'styled',
+      params: {
+        ...T2I_MODEL.params,
+        style_images: {
+          description: '',
+          default: null,
+          type: 'list',
+          max_items: 3,
+          fill: 'canvas',
+          accepts: 'image',
+          optional: true,
+        },
+      },
+    };
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(imageCatalog([styled, T2I_MODEL]));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (model: string): React.JSX.Element => (
+      <QueryClientProvider client={client}>
+        <ReactFlow nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]} edges={[]}>
+          <GeneratePanelContainer
+            projectId='p'
+            spaceId='s'
+            nodes={[{ id: 'target', data: { kind: 'image', status: 'idle', mode: 't2i', model } }]}
+            edges={[]}
+            getLastWriteWasLocal={LAST_WRITE_LOCAL}
+          />
+        </ReactFlow>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree('styled'));
+    act(() => {
+      useCanvasStore.getState().openGeneratePanel('target', 'image');
+    });
+    fireEvent.click(await screen.findByTestId('generate-tool-style'));
+    expect(useCanvasStore.getState().pickSession?.purpose).toBe('style');
+    vi.mocked(toast.warning).mockClear();
+
+    rerender(tree('nano-banana'));
+    await waitFor(() => expect(useCanvasStore.getState().pickSession).toBeNull());
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(en.canvas.generatePanel.pickEnded);
+    listSpy.mockRestore();
+  });
 });
 
 // The subscription SET is the behaviour here (#1774 round-4): the panel's only
