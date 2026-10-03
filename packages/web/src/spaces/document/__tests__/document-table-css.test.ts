@@ -30,8 +30,11 @@ describe('a table in the body', () => {
 
   it('paints a selected cell behind its words, the way selected text is painted', () => {
     // The library's tint is a layer over the whole cell at z-index 2; the
-    // cell's content goes above it, so the words keep their own colour.
-    const body = ruleBody('.doc-body .selectedCell > *');
+    // cell's line of words goes above it, so they keep their own colour. Only
+    // the line: the column-resize line is also a child of the cell, and it is
+    // drawn by being absolutely placed.
+    expect(() => ruleBody('.doc-body .selectedCell > *')).toThrow();
+    const body = ruleBody('.doc-body .selectedCell > p');
     expect(body).toContain('position: relative');
     expect(body).toContain('z-index: 3');
   });
