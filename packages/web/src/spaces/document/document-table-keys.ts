@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Tab, Shift-Tab and Enter inside a table cell, and Delete over every cell of
- * an empty table.
+ * Tab, Shift-Tab, Enter and the side arrows inside a table cell, and Delete
+ * over every cell of an empty table.
  *
  * Tab and Shift-Tab move between cells, and Tab in the last cell adds a row
  * first — the way Google Docs, Notion and Word answer it. Enter breaks the
@@ -19,6 +19,7 @@
  */
 
 import { createExtension } from '@blocknote/core';
+import { TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor } from '@blocknote/core';
 import { wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
@@ -94,6 +95,24 @@ function deleteWholeTable(editor: KeysEditor): boolean {
 }
 
 /**
+ * Collapses words selected in a cell to the end the arrow points at, the way
+ * an arrow treats a selection everywhere else in the body. The table plugin's
+ * own arrow leaves for the next cell whenever the selection's head is at the
+ * cell's edge (`prosemirror-tables` `arrow`, `dist/index.js:2140-2143`), and the
+ * words Tab and Shift-Tab select always reach both edges.
+ * @param view - The editor view.
+ * @param dir - -1 for left, 1 for right.
+ * @returns Whether the key was claimed.
+ */
+function collapseInCell(view: EditorView, dir: -1 | 1): boolean {
+  const { selection } = view.state;
+  if (!(selection instanceof TextSelection) || selection.empty || !isInTable(view.state)) return false;
+  const at = dir < 0 ? selection.from : selection.to;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
+  return true;
+}
+
+/**
  * The extension that binds the keys inside a table.
  * @returns The extension, for the assembly to register.
  */
@@ -106,5 +125,7 @@ export const documentTableKeysExtension = createExtension(() => ({
     Enter: ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
     'Shift-Enter': ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
     Delete: ({ editor }: { editor: KeysEditor }) => deleteWholeTable(editor),
+    ArrowLeft: ({ editor }: { editor: KeysEditor }) => collapseInCell(editor.prosemirrorView, -1),
+    ArrowRight: ({ editor }: { editor: KeysEditor }) => collapseInCell(editor.prosemirrorView, 1),
   },
 }) as never);
