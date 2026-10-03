@@ -215,7 +215,7 @@ export const canvasApi = {
    * @param body.space_id - The space the node lives on.
    * @param body.node_id - The node the result goes to, which already exists.
    * @returns The queued task's id.
-   * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 429 / 507.
+   * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 429 / 507, or 500 when the fetch could not be queued.
    */
   ingestUrl(body: {
     url: string;

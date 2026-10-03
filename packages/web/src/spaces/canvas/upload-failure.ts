@@ -92,8 +92,10 @@ const TOAST_KEY: Readonly<
 /**
  * What a refused request to fetch an address into a node says.
  *
- * The refusal arrives before any task row is opened, so the node has no
- * failure of its own to show and a toast is the only place it can be said.
+ * A refusal on the checks (400 / 403 / 429 / 507) arrives before any task row
+ * is opened, so the node has no failure of its own to show and a toast is the
+ * only place it can be said. A failure to queue after the row was opened (500)
+ * also settles that row as failed.
  * @param status - The refusal's HTTP status, when the server answered.
  * @returns The toast's message key.
  */

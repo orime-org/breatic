@@ -235,7 +235,8 @@ export function renderProductGuide(): string {
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
       "circles in the text are sources: hovering one shows it and " +
       "clicking opens it. Pictures found for the reader appear as a row of squares, the last showing a plus and " +
-      "a number when there are more; clicking one opens it large. Hovering a square shows a copy icon at its " +
+      "a number when there are more; clicking one opens it large. Hovering a picture square (not the one with the " +
+      "number) shows a copy icon at its " +
       `top-right corner, and the large view has ${quoted(t("chat.action.copy"))} beside its close button; pasting ` +
       "the copy onto the canvas with Cmd/Ctrl+V makes a picture node, which shows the picture once it has been " +
       "fetched into the project. Under a finished reply are a copy icon and, " +
