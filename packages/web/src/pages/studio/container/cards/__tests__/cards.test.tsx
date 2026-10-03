@@ -76,10 +76,10 @@ describe('ProjectCard (spec §3.3 + invariant 2 governance gating)', () => {
     expect(screen.getByRole('button', MORE)).toBeInTheDocument();
   });
 
-  // The menu holds the cover upload only, which is the owner's (#21) — a
-  // studio admin who does not own the project does not get it either.
-  it('hides the governance menu from a non-owner member', () => {
-    renderProject(SHARED_STUDIO);
+  // Which entries the menu holds is the server's answer; a viewer it grants
+  // nothing to gets no ⋯ at all.
+  it('hides the menu when the server grants the viewer nothing', () => {
+    renderProject({ ...SHARED_STUDIO, myRole: 'viewer', canManageMeta: false, canDuplicate: false });
     expect(screen.queryByRole('button', MORE)).toBeNull();
   });
 

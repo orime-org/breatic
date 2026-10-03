@@ -1347,7 +1347,8 @@
         "members": "Members",
         "credits": "Credits",
         "settings": "Settings",
-        "navLabel": "Studio sections"
+        "navLabel": "Studio sections",
+        "archived": "Archived"
       },
       "works": {
         "emptyHint": "Works are the finished products a project publishes (a complete video, a mini-game…) — your Studio's public face. Once publishing ships, your published works will appear here.",
@@ -1377,7 +1378,25 @@
       "card": {
         "assetCount": "{count} assets",
         "more": "More actions",
-        "createdAt": "Created {time}"
+        "createdAt": "Created {time}",
+        "rename": "Rename",
+        "duplicate": "Duplicate",
+        "archive": "Archive",
+        "restore": "Restore",
+        "archivedBadge": "Archived",
+        "renameTitle": "Rename project",
+        "renameLabel": "Name",
+        "save": "Save",
+        "cancel": "Cancel",
+        "archiveTitle": "Archive “{name}”?",
+        "archiveBody": "Once archived, everyone can only view it, and anyone editing is disconnected. A studio admin can restore it.",
+        "duplicated": "Duplicated as “{name}”",
+        "duplicateFailed": "Couldn't duplicate",
+        "archived": "Archived",
+        "archiveFailed": "Couldn't archive",
+        "restored": "Restored",
+        "restoreFailed": "Couldn't restore",
+        "renameFailed": "Couldn't rename"
       },
       "projects": {
         "new": "New project",
@@ -1559,6 +1578,10 @@
           "storage": "Storage is full. The cover was not uploaded.",
           "upload": "The cover was not changed. Try again."
         }
+      },
+      "archived": {
+        "emptyTitle": "No archived projects",
+        "emptyHint": "Archived projects show up here, and can be restored at any time."
       }
     },
     "rail": {

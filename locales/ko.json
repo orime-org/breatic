@@ -1347,7 +1347,8 @@
         "members": "멤버",
         "credits": "크레딧",
         "settings": "설정",
-        "navLabel": "Studio 섹션"
+        "navLabel": "Studio 섹션",
+        "archived": "보관됨"
       },
       "works": {
         "emptyHint": "Work은 Project에서 발행한 독립 완성물(완성된 동영상 / 미니게임…)로, Studio의 대외적인 얼굴입니다. 발행 기능이 출시되면 발행한 Work이 여기에 표시됩니다.",
@@ -1377,7 +1378,25 @@
       "card": {
         "assetCount": "에셋 {count}개",
         "more": "더보기",
-        "createdAt": "{time}에 생성"
+        "createdAt": "{time}에 생성",
+        "rename": "이름 변경",
+        "duplicate": "복제",
+        "archive": "보관",
+        "restore": "복원",
+        "archivedBadge": "보관됨",
+        "renameTitle": "Project 이름 변경",
+        "renameLabel": "이름",
+        "save": "저장",
+        "cancel": "취소",
+        "archiveTitle": "‘{name}’을(를) 보관할까요?",
+        "archiveBody": "보관하면 모두가 보기만 할 수 있고, 편집 중인 사람은 연결이 끊깁니다. Studio Admin이 복원할 수 있습니다.",
+        "duplicated": "‘{name}’(으)로 복제했습니다",
+        "duplicateFailed": "복제하지 못했습니다",
+        "archived": "보관했습니다",
+        "archiveFailed": "보관하지 못했습니다",
+        "restored": "복원했습니다",
+        "restoreFailed": "복원하지 못했습니다",
+        "renameFailed": "이름을 변경하지 못했습니다"
       },
       "projects": {
         "new": "새 Project",
@@ -1559,6 +1578,10 @@
           "storage": "저장 공간이 가득 찼습니다. 커버가 업로드되지 않았습니다.",
           "upload": "커버를 변경하지 못했습니다. 다시 시도하세요."
         }
+      },
+      "archived": {
+        "emptyTitle": "보관된 Project가 없습니다",
+        "emptyHint": "보관한 Project는 여기에 표시되며 언제든 복원할 수 있습니다."
       }
     },
     "rail": {

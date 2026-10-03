@@ -32,9 +32,9 @@ interface RenameContext {
 /**
  * Rename mutation for a project (the in-project title editor). It optimistically
  * updates the in-project header (`['project', id]`), rolls back + toasts on
- * error, and on success refreshes BOTH the in-project header AND the studio
- * container's projects list so the new name shows after navigating back to the
- * studio. The studio list is keyed `['studio', <slug>, 'projects']`; since
+ * error, and on success refreshes the in-project header, the studio
+ * container's projects lists and the Recent landing, so the new name shows
+ * wherever the project is listed. It also backs the studio card's rename. The studio list is keyed `['studio', <slug>, 'projects']`; since
  * ProjectPage has no slug, it is matched by predicate (#1068 — the previous
  * `['projects', 'list']` key was dead after the studio redesign re-keyed the
  * list, so the rename never refreshed it).
@@ -72,6 +72,8 @@ export function useRenameProject(
       void queryClient.invalidateQueries({
         predicate: (query) => isStudioProjectsListKey(query.queryKey),
       });
+      // The Recent landing shows the name as well.
+      void queryClient.invalidateQueries({ queryKey: ['studios', 'recent'] });
     },
   });
 }

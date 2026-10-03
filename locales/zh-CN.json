@@ -1347,7 +1347,8 @@
         "members": "成员",
         "credits": "积分",
         "settings": "设置",
-        "navLabel": "Studio 分区"
+        "navLabel": "Studio 分区",
+        "archived": "已归档"
       },
       "works": {
         "emptyHint": "Works 是从 Project 发布出来的独立成品(完整视频 / 小游戏…),是 Studio 对外的门面。功能上线后,已发布的成品会在这里展示。",
@@ -1377,7 +1378,25 @@
       "card": {
         "assetCount": "{count} 个素材",
         "more": "更多操作",
-        "createdAt": "创建于 {time}"
+        "createdAt": "创建于 {time}",
+        "rename": "改名",
+        "duplicate": "复制",
+        "archive": "归档",
+        "restore": "恢复",
+        "archivedBadge": "已归档",
+        "renameTitle": "重命名 Project",
+        "renameLabel": "名称",
+        "save": "保存",
+        "cancel": "取消",
+        "archiveTitle": "归档「{name}」？",
+        "archiveBody": "归档后所有人只能查看，正在编辑的人会被断开。Studio Admin 可以恢复。",
+        "duplicated": "已复制为「{name}」",
+        "duplicateFailed": "复制失败",
+        "archived": "已归档",
+        "archiveFailed": "归档失败",
+        "restored": "已恢复",
+        "restoreFailed": "恢复失败",
+        "renameFailed": "改名失败"
       },
       "projects": {
         "new": "新建 Project",
@@ -1559,6 +1578,10 @@
           "storage": "存储空间已满，封面没有上传。",
           "upload": "封面没有更新，请重试。"
         }
+      },
+      "archived": {
+        "emptyTitle": "没有已归档的 Project",
+        "emptyHint": "归档的 Project 会出现在这里，可以随时恢复。"
       }
     },
     "rail": {

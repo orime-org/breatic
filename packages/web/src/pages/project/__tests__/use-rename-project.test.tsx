@@ -74,6 +74,7 @@ describe('useRenameProject (#1068: rename refreshes the studio list)', () => {
     // ['projects','list'] key, leaving this one stale-but-not-invalidated.
     client.setQueryData(['studio', 's1', 'projects'], []);
     client.setQueryData(['project', 'p1'], { name: 'Old Name' });
+    client.setQueryData(['studios', 'recent'], []);
 
     const { result } = renderHook(() => useRenameProject('p1'), {
       wrapper: makeWrapper(client),
@@ -88,8 +89,9 @@ describe('useRenameProject (#1068: rename refreshes the studio list)', () => {
         client.getQueryState(['studio', 's1', 'projects'])?.isInvalidated,
       ).toBe(true);
     });
-    // The in-project detail is refreshed too.
+    // The in-project detail and the Recent landing are refreshed too.
     expect(client.getQueryState(['project', 'p1'])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['studios', 'recent'])?.isInvalidated).toBe(true);
     expect(vi.mocked(projectsApi.rename)).toHaveBeenCalledWith('p1', 'New Name');
   });
 

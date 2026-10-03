@@ -27,6 +27,16 @@ const VISIBILITY_OVERLAY =
   'inline-flex items-center gap-1 rounded-chrome bg-black/45 px-1.5 text-2xs font-semibold leading-5 text-white';
 
 /**
+ * The "archived" overlay on an archived project's card thumbnail, in the same
+ * pill as the collection visibility badge. The card positions it absolutely.
+ * @returns the archived overlay badge.
+ */
+export function ArchivedBadge(): React.JSX.Element {
+  const t = useTranslation();
+  return <span className={VISIBILITY_OVERLAY}>{t('studio.container.card.archivedBadge')}</span>;
+}
+
+/**
  * Collection visibility badge (spec §3.5) — a dark overlay pill that sits on
  * the card thumbnail's top-left (locked mock `.vbadge`): studio-visible, or
  * private with a lock icon. The card positions it absolutely.

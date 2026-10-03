@@ -1347,7 +1347,8 @@
         "members": "メンバー",
         "credits": "クレジット",
         "settings": "設定",
-        "navLabel": "Studio セクション"
+        "navLabel": "Studio セクション",
+        "archived": "アーカイブ済み"
       },
       "works": {
         "emptyHint": "Work は Project から公開する独立した成果物(完成した動画 / ミニゲームなど)で、Studio の対外的な顔です。公開機能が実装されると、公開した Work がここに表示されます。",
@@ -1377,7 +1378,25 @@
       "card": {
         "assetCount": "アセット {count} 個",
         "more": "その他の操作",
-        "createdAt": "{time}に作成"
+        "createdAt": "{time}に作成",
+        "rename": "名前を変更",
+        "duplicate": "複製",
+        "archive": "アーカイブ",
+        "restore": "復元",
+        "archivedBadge": "アーカイブ済み",
+        "renameTitle": "Project の名前を変更",
+        "renameLabel": "名前",
+        "save": "保存",
+        "cancel": "キャンセル",
+        "archiveTitle": "「{name}」をアーカイブしますか？",
+        "archiveBody": "アーカイブすると全員が閲覧のみになり、編集中のユーザーは切断されます。Studio Admin は復元できます。",
+        "duplicated": "「{name}」として複製しました",
+        "duplicateFailed": "複製できませんでした",
+        "archived": "アーカイブしました",
+        "archiveFailed": "アーカイブできませんでした",
+        "restored": "復元しました",
+        "restoreFailed": "復元できませんでした",
+        "renameFailed": "名前を変更できませんでした"
       },
       "projects": {
         "new": "Project を新規作成",
@@ -1559,6 +1578,10 @@
           "storage": "ストレージがいっぱいです。カバーはアップロードされていません。",
           "upload": "カバーを変更できませんでした。もう一度お試しください。"
         }
+      },
+      "archived": {
+        "emptyTitle": "アーカイブ済みの Project はありません",
+        "emptyHint": "アーカイブした Project はここに表示され、いつでも復元できます。"
       }
     },
     "rail": {

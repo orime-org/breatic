@@ -7,9 +7,19 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import { projectsApi } from '@web/data/api/projects';
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+
+vi.mock('@web/data/api/projects', () => ({
+  projectsApi: {
+    rename: vi.fn(() => Promise.resolve({ name: 'Renamed' })),
+    duplicate: vi.fn(() => Promise.resolve({ name: 'Cyberpunk Alley (copy)' })),
+    archive: vi.fn(() => Promise.resolve({ ok: true })),
+    restore: vi.fn(() => Promise.resolve({ ok: true })),
+  },
+}));
 
 vi.mock('@web/data/api/project-join-requests', () => ({
   projectJoinRequestsApi: {
@@ -95,15 +105,89 @@ describe('ProjectCard', () => {
     expect(cover?.querySelector('[data-testid="default-project-cover"]')).toBeNull();
   });
 
-  it('offers the project owner an "Upload cover" entry behind the ⋯ menu', async () => {
+  it('lists rename, cover and duplicate for an owner or editor, and no archive', async () => {
     setup();
     await userEvent.setup().click(screen.getByRole('button', { name: 'More actions' }));
-    expect(await screen.findByRole('menuitem', { name: 'Upload cover' })).toBeInTheDocument();
+    const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
+    expect(items).toEqual(['Rename', 'Upload cover', 'Duplicate']);
   });
 
-  it('shows no ⋯ menu to a member who does not own the project', () => {
-    setup({ ...project, myRole: 'editor' });
+  it('lists rename, cover and archive for a studio admin who is not on the project', async () => {
+    setup({ ...project, myRole: null, canDuplicate: false, canArchive: true });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'More actions' }));
+    const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
+    expect(items).toEqual(['Rename', 'Upload cover', 'Archive']);
+  });
+
+  it('shows no ⋯ menu when the viewer may do none of it', () => {
+    setup({ ...project, myRole: 'viewer', canManageMeta: false, canDuplicate: false });
     expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
+  });
+
+  it('renames through the dialog', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    const field = await screen.findByLabelText('Name');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await user.clear(field);
+    await user.type(field, '  Renamed  ');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(projectsApi.rename).toHaveBeenCalledWith('id-1', 'Renamed');
+    expect(screen.queryByTestId('rename-project-dialog')).toBeNull();
+  });
+
+  it('duplicates straight from the menu', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Duplicate' }));
+    expect(projectsApi.duplicate).toHaveBeenCalledWith('id-1');
+  });
+
+  it('archives only after the confirmation', async () => {
+    const user = userEvent.setup();
+    setup({ ...project, canArchive: true });
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
+    const dialog = await screen.findByTestId('archive-project-dialog');
+    expect(dialog).toHaveTextContent('Archive “Cyberpunk Alley”?');
+    expect(projectsApi.archive).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+    expect(projectsApi.archive).toHaveBeenCalledWith('id-1');
+  });
+
+  describe('an archived card', () => {
+    const archived: ContainerProject = {
+      ...project,
+      archivedAt: '2026-10-01T00:00:00.000Z',
+      canManageMeta: false,
+      canDuplicate: false,
+      canRestore: true,
+    };
+
+    it('carries the archived badge and offers only restore', async () => {
+      const user = userEvent.setup();
+      setup(archived);
+      expect(screen.getByText('Archived')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'More actions' }));
+      const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
+      expect(items).toEqual(['Restore']);
+      await user.click(screen.getByRole('menuitem', { name: 'Restore' }));
+      expect(projectsApi.restore).toHaveBeenCalledWith('id-1');
+    });
+
+    it('still opens for a member', () => {
+      setup(archived);
+      expect(screen.getByRole('link')).toHaveAttribute('href', '/project/cyberpunk-alley-id-1');
+    });
+
+    it('is not clickable for an admin who is not on the project', () => {
+      setup({ ...archived, myRole: null });
+      expect(screen.queryByRole('link')).toBeNull();
+      expect(screen.queryByRole('button', { name: /Cyberpunk Alley/ })).toBeNull();
+    });
   });
 
   it('opens the join dialog in place for a project the viewer is not on', async () => {
