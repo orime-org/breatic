@@ -256,6 +256,24 @@ test('A4: ArrowDown from the last row of a table the body ends with opens a line
   expect(await grids(page)).toEqual([[['a1', 'b1'], ['a2', '']]]);
 });
 
+test('A4: ArrowUp from the first row of a table the body starts with opens a line above it', async () => {
+  await openFreshDocument(page);
+  for (let i = 0; i < 'lead'.length; i += 1) await page.keyboard.press('Backspace');
+  await hoverRow(page, 0);
+  await page.getByTestId('doc-block-plus').click();
+  await page.getByTestId('doc-block-insert-table').hover();
+  await page.getByTestId('doc-table-size-2-2').click();
+  await expect(page.locator(TOP)).toHaveCount(1);
+  await fill(page, ['a1', 'b1']);
+
+  await pressAndSettle(page, 'ArrowUp');
+  await page.keyboard.type('above');
+
+  await expect(page.locator(TOP)).toHaveCount(2);
+  await expect(page.locator(TOP).nth(0)).toHaveText('above');
+  expect(await grids(page)).toEqual([[['a1', 'b1'], ['', '']]]);
+});
+
 test('A5: the table icon opens the table menu, and dragging it moves the whole table', async () => {
   await openFreshDocument(page);
   await smallTable(page);
