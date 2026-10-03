@@ -123,6 +123,13 @@ export async function estimateCredits(
   // judged on the reader's own params: style files joining a pool do not fill
   // the picture a run cannot go without.
   const priced = Object.entries(model.params).filter(([, spec]) => spec.joins === undefined);
+  /**
+   * A param's value in a record, else what the model declares it as.
+   * @param record - The params to read.
+   * @param name - The param's name.
+   * @param spec - Its declaration.
+   * @returns The value, its default, or an empty list for a list param.
+   */
   const valueOf = (record: Record<string, unknown>, name: string, spec: PricedParam): unknown =>
     record[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
   const own: Record<string, unknown> = { ...input.params };
