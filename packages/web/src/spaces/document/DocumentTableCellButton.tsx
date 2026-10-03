@@ -96,14 +96,18 @@ export function DocumentTableCellButton({
       cellPos !== null && isMerged(current.prosemirrorState.doc, cellPos),
   );
 
-  // `hide` reads the cell's clipping ancestors, the table's scroll frame among
-  // them: a cell scrolled out of the frame takes its button with it.
+  // `escaped` reads the cell's clipping ancestors, the table's scroll frame
+  // among them; the padding of the button's own side makes any part of it
+  // past them count, so the corner of a cell cut by the frame shows nothing.
   const { refs, floatingStyles, middlewareData } = useFloating({
     placement: 'top-end',
-    middleware: [offset({ mainAxis: -(BUTTON + INSET), crossAxis: -INSET }), hide()],
+    middleware: [
+      offset({ mainAxis: -(BUTTON + INSET), crossAxis: -INSET }),
+      hide({ strategy: 'escaped', padding: BUTTON }),
+    ],
     whileElementsMounted: autoUpdate,
   });
-  const hidden = middlewareData.hide?.referenceHidden === true;
+  const hidden = middlewareData.hide?.escaped === true;
   const style = React.useMemo<React.CSSProperties>(
     () => (hidden ? { ...floatingStyles, visibility: 'hidden' } : floatingStyles),
     [floatingStyles, hidden],

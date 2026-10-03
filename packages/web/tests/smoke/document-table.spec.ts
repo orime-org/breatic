@@ -448,6 +448,44 @@ test('A6, A11 and A12: on a wide table scrolled sideways, the row handle stays i
   expect(handle!.x).toBeLessThan(box!.x + 24);
 });
 
+test('A6 and A11: a cell cut by the frame of a wide table draws no button or handle past the frame', async () => {
+  await openFreshDocument(page);
+  await insertTable(page, 2, 9);
+  await fill(page, ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']);
+  const frame = page.locator(`${EDITOR} [data-radix-scroll-area-viewport]`).first();
+  const box = (await frame.boundingBox())!;
+  const right = box.x + box.width;
+  // The first cell the frame's right edge cuts, and a point in its visible part.
+  const cut = await frame.evaluate((viewport, edge) => {
+    for (const td of Array.from(viewport.querySelectorAll('tr:first-child td'))) {
+      const r = td.getBoundingClientRect();
+      if (r.left < edge && r.right > edge) return { x: r.left + 8, y: r.top + r.height / 2 };
+    }
+    return null;
+  }, right);
+  expect(cut).not.toBeNull();
+
+  /**
+   * Whether a control is drawn at all, and if so inside the frame.
+   * @param testId - The control.
+   * @returns Whether it stays in the frame.
+   */
+  const inFrame = async (testId: string): Promise<boolean> =>
+    page.getByTestId(testId).evaluate((el, [left, edge]) => {
+      if (getComputedStyle(el).visibility === 'hidden') return true;
+      const r = el.getBoundingClientRect();
+      return r.left >= left && r.right <= edge;
+    }, [box.x, right] as const);
+
+  await page.mouse.click(cut!.x, cut!.y);
+  await expect(page.getByTestId('doc-table-cell-button')).toHaveCount(1);
+  expect(await inFrame('doc-table-cell-button')).toBe(true);
+
+  await page.mouse.move(cut!.x, cut!.y, { steps: 3 });
+  await expect(page.getByTestId('doc-table-col-handle')).toHaveCount(1);
+  expect(await inFrame('doc-table-col-handle')).toBe(true);
+});
+
 test('A13: the table reads the product tokens in the dark theme', async () => {
   await openFreshDocument(page);
   await smallTable(page);
