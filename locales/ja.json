@@ -131,6 +131,8 @@
       "not_cancelling": "このメンバーシップは終了予定ではありません。",
       "change_not_offered": "その変更はご利用いただけません。",
       "change_unconfirmed": "変更は Stripe に送信されましたが、結果を確認できませんでした。もう一度操作する前にお問い合わせください。",
+      "checkout_not_found": "その決済が見つかりません。",
+      "checkout_unconfirmed": "メンバーシップをまだ確認できません。",
       "same_tier": "すでにこのメンバーシップです。",
       "payment_overdue": "このメンバーシップの支払いが遅延しています。",
       "unavailable": "メンバーシップは利用できません。"
@@ -1170,9 +1172,10 @@
       },
       "blockHandle": {
         "dragTip": "ドラッグで移動 · クリックでメニュー",
+        "insertHere": "ここに挿入",
         "duplicate": "このブロックを複製",
         "insertBelow": "下に挿入",
-        "delete": "このブロックを削除"
+        "delete": "ブロックを削除"
       }
     },
     "readOnlyReconnect": "再接続"

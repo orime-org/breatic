@@ -526,7 +526,7 @@ describe("what the guide says", () => {
   });
 
   it("lists the block menu rows in the order the menu shows them", () => {
-    const handle = section("Document spaces").split("Hovering a line")[1]?.split("\n")[0] ?? "";
+    const handle = section("Document spaces").split("Hovering any other line")[1]?.split("\n")[0] ?? "";
     // The rows in the order the menu's own table lists them.
     const rows = webSource("spaces/document/document-block-menu-rows.ts");
     const ids = [...rows.matchAll(/labelKey: '(spaces\.document\.[\w.]+)'/g)].map((m) => m[1] ?? "");

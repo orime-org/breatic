@@ -9,6 +9,7 @@ import { Button } from '@web/components/ui/button';
 import { paymentApi } from '@web/data/api/payment';
 import type { CreditPack } from '@web/data/api/payment';
 import { BuyConfirmDialog } from '@web/features/credits/sections/BuyConfirmDialog';
+import { SectionSkeleton } from '@web/components/section-skeleton';
 import {
   Card,
   Figure,
@@ -17,7 +18,6 @@ import {
   RuleLines,
   Section,
   SectionError,
-  SectionSkeleton,
   formatMoney,
 } from '@web/features/credits/section-chrome';
 import { useTranslation } from '@web/i18n/use-translation';

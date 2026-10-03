@@ -10,8 +10,8 @@
  * is stale. That check has to reach the rows, and collab reaches the ceilings.
  *
  * Writing is one action, not several. A webhook, a redelivery of that same
- * webhook, an event that arrived out of order, and the reconciliation that
- * runs when somebody opens the panel all say the same thing — here is what
+ * webhook, an event that arrived out of order, and Stripe's answer to one of
+ * our own calls all say the same thing — here is what
  * this subscription looks like now — so they all take the same path and it
  * converges on one row per Stripe subscription.
  */
@@ -153,7 +153,7 @@ export async function listSubscriptions(
  * Writes what Stripe currently says about one subscription.
  *
  * Keyed on the Stripe id, so every path that learns the current state — the
- * webhook, a redelivery of it, an out-of-order event, the reconciliation —
+ * webhook, a redelivery of it, an out-of-order event, our own calls —
  * converges on the same row rather than adding one.
  *
  * Every field is overwritten, including the ones being cleared. Leaving a

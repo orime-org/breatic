@@ -131,6 +131,8 @@
       "not_cancelling": "这个会员没有预约结束。",
       "change_not_offered": "这项变更暂不提供。",
       "change_unconfirmed": "变更已提交到 Stripe，但没能确认结果。请先联系我们，不要重复操作。",
+      "checkout_not_found": "找不到这笔结账。",
+      "checkout_unconfirmed": "暂时无法确认你的会员。",
       "same_tier": "你已经在这一档会员。",
       "payment_overdue": "这个会员有一期款项未付。",
       "unavailable": "会员当前不可用。"
@@ -1170,9 +1172,10 @@
       },
       "blockHandle": {
         "dragTip": "拖动换位 · 点击出菜单",
+        "insertHere": "在此插入",
         "duplicate": "复制副本",
         "insertBelow": "在下方插入",
-        "delete": "删除这个块"
+        "delete": "删除块"
       }
     },
     "readOnlyReconnect": "重新连接"

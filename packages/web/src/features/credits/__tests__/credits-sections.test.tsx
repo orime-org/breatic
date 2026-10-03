@@ -270,7 +270,7 @@ async function openOn(
 async function panel(): Promise<HTMLElement> {
   const element = await screen.findByRole('tabpanel');
   await waitFor(() => {
-    expect(element.querySelector('[data-testid="credits-skeleton"]')).toBeNull();
+    expect(element.querySelector('[data-testid="section-skeleton"]')).toBeNull();
   });
   return element;
 }
@@ -718,7 +718,7 @@ describe('the credits overlay, section by section', () => {
       await waitFor(() => {
         expect(fetchCreditLots).toHaveBeenCalled();
       });
-      expect(body.querySelector('[data-testid="credits-skeleton"]')).not.toBeNull();
+      expect(body.querySelector('[data-testid="section-skeleton"]')).not.toBeNull();
       expect(body.querySelector('[role="combobox"]')).toBeNull();
 
       held.release([{ id: 's1', name: 'Alpha', myStudioRole: 'admin' }]);
@@ -726,7 +726,7 @@ describe('the credits overlay, section by section', () => {
         expect(
           screen
             .getByRole('tabpanel')
-            .querySelector('[data-testid="credits-skeleton"]'),
+            .querySelector('[data-testid="section-skeleton"]'),
         ).toBeNull();
       });
     });
@@ -956,7 +956,7 @@ describe('the credits overlay, section by section', () => {
       await openOn('lots');
 
       expect(
-        await screen.findByTestId('credits-skeleton'),
+        await screen.findByTestId('section-skeleton'),
       ).toBeInTheDocument();
     });
 

@@ -131,6 +131,8 @@
       "not_cancelling": "這個會員沒有預約結束。",
       "change_not_offered": "這項變更暫不提供。",
       "change_unconfirmed": "變更已提交到 Stripe，但沒能確認結果。請先聯絡我們，不要重複操作。",
+      "checkout_not_found": "找不到這筆結帳。",
+      "checkout_unconfirmed": "暫時無法確認你的會員。",
       "same_tier": "你已經在這一檔會員。",
       "payment_overdue": "這個會員有一期款項未付。",
       "unavailable": "會員目前無法使用。"
@@ -1170,9 +1172,10 @@
       },
       "blockHandle": {
         "dragTip": "拖曳換位 · 點擊開選單",
+        "insertHere": "在此插入",
         "duplicate": "複製副本",
         "insertBelow": "在下方插入",
-        "delete": "刪除這個區塊"
+        "delete": "刪除區塊"
       }
     },
     "readOnlyReconnect": "重新連線"

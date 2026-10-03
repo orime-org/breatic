@@ -87,6 +87,9 @@ export const mocks = {
   authService: {
     register: vi.fn(),
     loginEmail: vi.fn(),
+    // The session payload is shown with the tier in force; these route tests
+    // drive the payload's shape, so the account passes through unchanged.
+    withTierInForce: vi.fn(async <T>(user: T) => user),
     loginOrCreateGoogle: vi.fn().mockResolvedValue({
       user: { id: "user-1", email: "u@x.com" },
       token: "sess-token",

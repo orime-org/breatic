@@ -20,7 +20,7 @@ import * as React from 'react';
 
 import { DocumentBlockHandle } from '@web/spaces/document/DocumentBlockHandle';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
-import { NO_LIBRARY_OFFSET } from '@web/spaces/document/document-strip-alignment';
+import { stripPlacement } from '@web/spaces/document/document-strip-alignment';
 
 interface DocumentBlockControlsProps {
   /** The editor the strip acts on. */
@@ -43,12 +43,16 @@ export function DocumentBlockControls({
     () => ({ editor, setContentEditableProps: () => undefined }),
     [editor],
   ) as never;
+  const placement = React.useMemo(
+    () => stripPlacement(() => editor.prosemirrorView?.dom),
+    [editor],
+  );
 
   return (
     <BlockNoteContext.Provider value={context}>
       <SideMenuController
         sideMenu={DocumentBlockHandle}
-        floatingUIOptions={NO_LIBRARY_OFFSET}
+        floatingUIOptions={placement}
       />
     </BlockNoteContext.Provider>
   );

@@ -27,7 +27,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
@@ -80,7 +80,6 @@ function subscription(
     currentPeriodEnd: '2026-09-18T00:00:00.000Z',
     cancelAtPeriodEnd: false,
     payableInvoiceUrl: null,
-    reconciled: true,
     ...over,
   };
 }
@@ -183,11 +182,11 @@ describe('MembershipPanel', () => {
     expect(viewport.contains(screen.getByTestId('current-tier-name'))).toBe(false);
     expect(viewport.contains(screen.getByTestId('quota-storage'))).toBe(true);
 
-    // The ceiling goes on the dialog, and its rows are a grid: under a
+    // The height goes on the dialog, and its rows are a grid: under a
     // `max-height` a flex column leaves its items at `height: auto`, the
     // viewport grows to its content and the dialog clips instead of
     // scrolling. Grid tracks are definite either way.
-    expect(dialog.className).toContain('max-h-[calc(100vh-80px)]');
+    expect(dialog.className).toContain('h-[min(1000px,calc(100vh-80px))]');
     expect(dialog.className).toContain('grid-rows-[auto_minmax(0,1fr)]');
   });
 
@@ -772,15 +771,6 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('over-limit-storage')).toBeInTheDocument();
   });
 
-  it('加载中显示骨架，不是 spinner', async () => {
-    membershipMock.mockReturnValue(new Promise(() => {}));
-    setup();
-
-    await waitFor(() => {
-      expect(screen.getByTestId('membership-skeleton')).toBeInTheDocument();
-    });
-  });
-
   it('加载失败显示一行错误文案', async () => {
     membershipMock.mockRejectedValue(new Error('network'));
     setup();
@@ -1071,4 +1061,101 @@ describe('MembershipPanel', () => {
     // 表格外面不再有第二个「各档对比」。
     expect(screen.getAllByText('Compare tiers')).toHaveLength(1);
   });
+});
+
+describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => {
+  /** The class that holds a priced tier's dialog at one height. */
+  const PINNED_PANEL_HEIGHT = 'h-[min(1000px,calc(100vh-80px))]';
+
+  /**
+   * Opens the panel for an account on `tier`, with the answer never arriving.
+   * @param tier - The tier the account was told it is on when it signed in.
+   */
+  function openPending(tier: 'base' | 'pro' | 'self_hosted' | 'enterprise'): void {
+    useCurrentUserStore.getState().setUser({
+      id: 'u-pending',
+      name: 'u-pending',
+      email: 'u-pending@x.test',
+      personalStudio: null,
+      membershipTier: tier,
+    });
+    membershipMock.mockReturnValue(new Promise(() => {}));
+    setup();
+  }
+
+  it('shows the headings and the tier name at once, with bars only where data goes', () => {
+    openPending('pro');
+
+    expect(screen.getByText('Current membership')).toBeInTheDocument();
+    expect(screen.getByText('My allowances')).toBeInTheDocument();
+    expect(screen.getByText('Choose a membership')).toBeInTheDocument();
+    expect(screen.getByTestId('loading-tier-name')).toHaveTextContent('PRO');
+    // One placeholder under the tier name, the two allowance rows drawn as
+    // rows, the tier cards drawn as cards — and no whole-panel placeholder.
+    expect(screen.queryByTestId('section-skeleton')).toBeNull();
+    expect(screen.getAllByTestId('quota-row-skeleton')).toHaveLength(2);
+    expect(screen.getByTestId('current-tier-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('membership-skeleton')).toBeNull();
+  });
+
+  it('holds the billing line only for a tier that is paid for', () => {
+    // A paid tier is followed by its next-charge line once loaded; the free
+    // tier is followed by nothing unless a first payment is still unsettled,
+    // so a row held for it would close up later.
+    openPending('pro');
+    expect(screen.getByTestId('current-tier-line')).toContainElement(
+      screen.getByTestId('current-tier-skeleton'),
+    );
+    cleanup();
+
+    openPending('base');
+    expect(screen.queryByTestId('current-tier-line')).toBeNull();
+    expect(screen.queryByTestId('current-tier-skeleton')).toBeNull();
+  });
+
+  it('draws the tier choice as a period switch and one card per offer', () => {
+    openPending('base');
+
+    const choice = screen.getByTestId('choose-tier-skeleton');
+    expect(within(choice).getByTestId('period-switch-skeleton')).toBeInTheDocument();
+    expect(within(choice).getAllByTestId('tier-card-skeleton')).toHaveLength(4);
+  });
+
+  it.each([
+    ['pro', true],
+    ['base', true],
+    ['enterprise', false],
+    ['self_hosted', false],
+  ] as const)(
+    'pins the dialog to the priced-panel height for %s: %s',
+    (tier, pinned) => {
+      // The loaded panel of a priced tier runs to about 1000px, so the loading
+      // frame takes that height (capped by the viewport) too and nothing moves
+      // when the answer lands. The two unpriced tiers are short either way.
+      openPending(tier);
+      const hasPin = screen.getByRole('dialog').className.includes(
+        PINNED_PANEL_HEIGHT,
+      );
+      expect(hasPin).toBe(pinned);
+    },
+  );
+
+  it('keeps the pinned height once the answer arrives', async () => {
+    membershipMock.mockResolvedValue(answer());
+    setup();
+
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByRole('dialog').className).toContain(PINNED_PANEL_HEIGHT);
+  });
+
+  it.each(['self_hosted', 'enterprise'] as const)(
+    'leaves out the tier table for %s, as the loaded panel does',
+    (tier) => {
+      openPending(tier);
+
+      expect(screen.getByText('My allowances')).toBeInTheDocument();
+      expect(screen.queryByText('Choose a membership')).toBeNull();
+      expect(screen.getAllByTestId('section-skeleton')).toHaveLength(1);
+    },
+  );
 });

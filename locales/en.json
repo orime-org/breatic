@@ -131,6 +131,8 @@
       "not_cancelling": "This membership is not scheduled to end.",
       "change_not_offered": "That change is not on offer.",
       "change_unconfirmed": "Your change reached Stripe, but we could not confirm it. Contact us before trying again.",
+      "checkout_not_found": "That checkout could not be found.",
+      "checkout_unconfirmed": "We could not confirm your membership yet.",
       "same_tier": "You are already on this membership.",
       "payment_overdue": "Payment for this membership is overdue.",
       "unavailable": "Memberships are unavailable."
@@ -1170,6 +1172,7 @@
       },
       "blockHandle": {
         "dragTip": "Drag to move · click for menu",
+        "insertHere": "Insert here",
         "duplicate": "Duplicate block",
         "insertBelow": "Insert below",
         "delete": "Delete block"

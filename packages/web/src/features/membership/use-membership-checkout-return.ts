@@ -8,23 +8,23 @@
  * started from with nothing on screen about what happened. The address is what
  * says a purchase was attempted, and this reads it.
  *
- * What the account now holds is read rather than assumed. Stripe sends the
- * browser home the moment the payment is submitted, which is before the
- * webhook that records it arrives — so the session payload the page just
- * booted with can still name the tier the account was on. Asking the
- * membership endpoint reconciles against Stripe itself, so its answer does not
- * wait on that webhook.
+ * What the account now holds is confirmed rather than assumed. Stripe sends
+ * the browser home the moment the payment is submitted, which is before the
+ * webhook that records it arrives, so this asks the server to confirm the one
+ * checkout the address names (#307).
  */
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 
 import { holdsActionableSubscription } from '@breatic/shared';
 
-import { accountApi } from '@web/data/api/account';
+import { confirmMembershipCheckout } from '@web/data/api/subscription';
+import { membershipQueryKey } from '@web/features/membership/membership-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { refreshCurrentUser } from '@web/stores/current-user';
+import { refreshCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 
 /**
  * Report what a membership checkout came to, once, on the way back from it.
@@ -36,6 +36,8 @@ import { refreshCurrentUser } from '@web/stores/current-user';
 export function useMembershipCheckoutReturn(): void {
   const t = useTranslation();
   const [params, setParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const userId = useCurrentUserStore((s) => s.user?.id ?? null);
   // One arrival is acted on once. The parameters are still in hand until the
   // rewrite below lands a tick later, and a re-render in between must not
   // report the same purchase a second time.
@@ -43,6 +45,7 @@ export function useMembershipCheckoutReturn(): void {
 
   const returned = params.get('membership') === '1';
   const cancelled = params.get('cancelled') === '1';
+  const sessionId = params.get('session_id');
 
   React.useEffect(() => {
     if (!returned || handled.current) return;
@@ -50,31 +53,34 @@ export function useMembershipCheckoutReturn(): void {
 
     const clean = new URLSearchParams(params);
     clean.delete('membership');
+    clean.delete('session_id');
     clean.delete('cancelled');
     setParams(clean, { replace: true });
 
     if (cancelled) return;
 
+    // An address with no checkout named cannot be confirmed, which is the
+    // same unknown as a failed request and gets the same words.
+    if (!sessionId) {
+      toast.error(t('membership.loadFailed'));
+      return;
+    }
+
     void (async () => {
       let membership;
       try {
-        membership = await accountApi.membership();
+        membership = await confirmMembershipCheckout(sessionId);
       } catch {
-        // The purchase may well have gone through; what failed is our reading
-        // of it. Saying it did not would be worse than saying nothing, and
-        // the panel answers the question properly when it is opened.
+        // The purchase may well have gone through; what failed is confirming
+        // it. Saying it did not would be worse than saying nothing. The
+        // webhook still records it, and the panel shows it once that arrives.
         toast.error(t('membership.loadFailed'));
         return;
       }
+      // Opening the panel next reads the confirmed answer straight away.
+      queryClient.setQueryData(membershipQueryKey(userId), membership);
 
       const held = membership.subscription;
-      // The server answers from its stored rows when it could not check with
-      // Stripe, and those say "no subscription" until the webhook lands. That
-      // is the same unknown as a failed request, so it gets the same words.
-      if (held && !held.reconciled) {
-        toast.error(t('membership.loadFailed'));
-        return;
-      }
       if (
         held &&
         holdsActionableSubscription(held.state) &&
@@ -101,5 +107,5 @@ export function useMembershipCheckoutReturn(): void {
 
       toast.error(t('membership.checkout.failed'));
     })();
-  }, [returned, cancelled, params, setParams, t]);
+  }, [returned, cancelled, sessionId, params, setParams, queryClient, userId, t]);
 }

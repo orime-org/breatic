@@ -13,8 +13,10 @@
 
 import { describe, it, expect } from 'vitest';
 
+import type { MiddlewareState } from '@floating-ui/react';
+
 import {
-  NO_LIBRARY_OFFSET,
+  stripPlacement,
   stripOffsetFromRowTop,
 } from '@web/spaces/document/document-strip-alignment';
 
@@ -65,10 +67,57 @@ describe('where the strip stands', () => {
     expect(stripOffsetFromRowTop({ top: 400, height: 0 }, 400, STRIP)).toBe(0);
   });
 
-  it('replaces the library’s table of per-type offsets with nothing', () => {
+  it('replaces the library’s table of per-type offsets', () => {
     // The table is 39 / 27 / 18.5 for headings against a 30px strip — see the
-    // module's own comment. An empty middleware list is what leaves the
-    // carrier on the container's top edge for the strip to measure from.
-    expect(NO_LIBRARY_OFFSET.useFloatingOptions.middleware).toHaveLength(0);
+    // module's own comment. The one middleware left moves the carrier
+    // sideways only, so it stays on the container's top edge for the strip to
+    // measure from.
+    const { middleware } = stripPlacement(() => undefined).useFloatingOptions;
+    expect(middleware.map((m) => m.name)).toEqual(['bodyEdge']);
+  });
+});
+
+/**
+ * Runs the placement's middleware for a carrier floating-ui put at `x`
+ * against a row container whose viewport left edge is `rowLeft`.
+ * @param bodyLeft - The left edge of the body's root block group.
+ * @param rowLeft - The row container's left edge.
+ * @param x - Where floating-ui placed the carrier.
+ * @returns The middleware's whole result, so a y it should not set shows up.
+ */
+async function placeAt(bodyLeft: number, rowLeft: number, x: number): Promise<unknown> {
+  const body = document.createElement('div');
+  const root = document.createElement('div');
+  body.appendChild(root);
+  root.getBoundingClientRect = (): DOMRect => ({ left: bodyLeft }) as DOMRect;
+  const [edge] = stripPlacement(() => body).useFloatingOptions.middleware;
+  // floating-ui's own `rects` are in the carrier's offset-parent coordinates,
+  // so they are set apart from the viewport here: only the reference
+  // element's viewport box may be compared with the body's.
+  const reference = { getBoundingClientRect: (): DOMRect => ({ left: rowLeft }) as DOMRect };
+  const state = {
+    x,
+    rects: { reference: { x: rowLeft - 300 } },
+    elements: { reference },
+  } as unknown as MiddlewareState;
+  const result = await edge.fn(state);
+  return result;
+}
+
+describe('the strip stays on the body\'s left edge (#1097 A13)', () => {
+  it('puts a nested row\'s carrier where a top-level row\'s goes', async () => {
+    // Body at 400, row indented to 448 (two levels), strip 24 wide: the
+    // library's left-start put the carrier at 424.
+    expect(await placeAt(400, 448, 424)).toEqual({ x: 376 });
+  });
+
+  it('leaves a top-level row\'s carrier where it is', async () => {
+    expect(await placeAt(400, 400, 376)).toEqual({ x: 376 });
+  });
+
+  it('leaves the carrier alone while there is no body to measure', async () => {
+    const [edge] = stripPlacement(() => undefined).useFloatingOptions.middleware;
+    const state = { x: 424, rects: { reference: { x: 448 } } } as unknown as MiddlewareState;
+    expect((await edge.fn(state)).x).toBeUndefined();
   });
 });
