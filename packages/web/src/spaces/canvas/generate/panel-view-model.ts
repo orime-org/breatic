@@ -27,7 +27,7 @@ import {
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import { itemCap, missingSources, referenceKinds, referencePool, type ReferencePool } from '@breatic/shared';
+import { missingSources, referenceKinds, referencePool, type ReferencePool } from '@breatic/shared';
 import {
   mentionTokens,
   mentionedReferenceUrls,
@@ -38,8 +38,8 @@ import {
   type ReferenceUrls,
 } from '@web/spaces/canvas/generate/reference-urls';
 import { asContentView } from '@web/data/yjs/node-view';
-import { IMAGE_SLOTS, imageSlotsForModel, type ImageSlot } from '@web/spaces/canvas/generate/image-slots';
-import { readSlotPicks } from '@web/spaces/canvas/generate/slots';
+import { imageSlotsForModel, type ImageSlot } from '@web/spaces/canvas/generate/image-slots';
+import { withStyleImages } from '@web/spaces/canvas/generate/style-picks';
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */
 const EMPTY_SOURCE_IDS: ReadonlySet<string> = new Set();
@@ -195,11 +195,7 @@ export function buildGeneratePanelViewModel(input: {
   const modelParams = current ? resolveModelSwitch(content, current).params : {};
   // The style slot is the model's to declare, per mode (inner#826).
   const slots = imageSlotsForModel(current, mode);
-  const styleSpec = current?.params[IMAGE_SLOTS.style.param];
-  const styleCap = styleSpec !== undefined && slots.includes('style') ? itemCap(styleSpec) : undefined;
-  const styleImages = readSlotPicks(IMAGE_SLOTS.style, content?.styleImageUrls).map((p) => p.url);
-  const sentStyle = styleCap === undefined ? [] : styleImages.slice(0, styleCap);
-  const params = sentStyle.length > 0 ? { ...modelParams, [IMAGE_SLOTS.style.param]: sentStyle } : modelParams;
+  const { styleCap, styleImages, params } = withStyleImages(current, mode, content?.styleImageUrls, modelParams);
 
   const references = deriveReferences(nodeId, nodes, edges, input.textById);
   // t2i generates from scratch and ignores source images (design §2.5): the

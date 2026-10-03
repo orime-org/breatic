@@ -82,6 +82,8 @@ import {
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
+import { useStyleSlot } from '@web/spaces/canvas/generate/use-style-slot';
+import type { ImageSlot } from '@web/spaces/canvas/generate/image-slots';
 import { poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import {
@@ -398,6 +400,7 @@ function VideoGeneratePanelBody({
   // the same treatment: one unstable prop is enough to make both memos below
   // re-render on every frame of a drag.
   const stableSlotThumbnails = useContentStable(vm.slotThumbnails);
+  const stableStyleImages = useContentStable(vm.styleImages);
 
   const onSelectModel = React.useCallback(
     (modelId: string) => {
@@ -612,7 +615,21 @@ function VideoGeneratePanelBody({
     },
     [startSlotPick, endPick, nodeId],
   );
-  useEndPickWhenSlotGone(nodeId, vm.slots, getLastWriteWasLocal);
+  const { stylePicking, onStylePick, onRemoveStyle } = useStyleSlot(
+    projectId,
+    spaceId,
+    nodeId,
+    vm.styleCap,
+    vm.styleImages.length,
+  );
+  // The style area is drawn beside the mode's slots for a model that takes
+  // style images (inner#828), so a model or mode switch can take it away
+  // under a running style pick too.
+  useEndPickWhenSlotGone(
+    nodeId,
+    vm.styleCap === undefined ? vm.slots : [...vm.slots, 'style' satisfies ImageSlot],
+    getLastWriteWasLocal,
+  );
 
   const onRemoveReference = React.useCallback(
     (item: ReferenceRailItem) => {
@@ -1008,6 +1025,11 @@ function VideoGeneratePanelBody({
       activeSlot={activeSlot}
       onPickSlot={onPickSlot}
       onClearSlot={onClearSlot}
+      styleCap={vm.styleCap}
+      styleImages={stableStyleImages}
+      onStylePick={onStylePick}
+      stylePicking={stylePicking}
+      onRemoveStyle={onRemoveStyle}
       executeRefusal={
         evaluateExecute({
           promptText,
