@@ -25,18 +25,41 @@
  */
 
 import * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
+import type { ProjectAccess } from "@core/auth/projectMembers.repo.js";
 import type { ProjectRole } from "@breatic/shared";
 
 /**
- * Resolve the caller's role on a project.
+ * Resolve the role a caller may WRITE with on a project.
+ *
+ * An archived project is read-only for everyone, so every member reads as
+ * viewer there. This is the single point that makes it so: every write gate
+ * (server `requireRole` / `assertAccess`, collab `onAuthenticate`) reads it.
  * @param userId - Authenticated user UUID
  * @param projectId - Project UUID from request input
- * @returns The role, or `null` if the project is missing/deleted or
- *   the user has no active membership
+ * @returns The role (viewer on an archived project), or `null` if the project
+ *   is missing/deleted or the user has no active membership
  */
 export async function loadProjectRole(
   userId: string,
   projectId: string,
 ): Promise<ProjectRole | null> {
-  return projectMembersRepo.getRole(projectId, userId);
+  const access = await projectMembersRepo.getAccess(projectId, userId);
+  if (access === null) return null;
+  return access.archived ? "viewer" : access.role;
+}
+
+/**
+ * Resolve a caller's real role on a project and whether it is archived — what
+ * the project page shows. Never use it to gate a write; that is
+ * {@link loadProjectRole}.
+ * @param userId - Authenticated user UUID
+ * @param projectId - Project UUID from request input
+ * @returns The stored role and archive state, or `null` if the project is
+ *   missing/deleted or the user has no active membership
+ */
+export async function loadProjectAccess(
+  userId: string,
+  projectId: string,
+): Promise<ProjectAccess | null> {
+  return projectMembersRepo.getAccess(projectId, userId);
 }

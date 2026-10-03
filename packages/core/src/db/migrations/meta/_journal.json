@@ -631,6 +631,13 @@
       "when": 1790910794476,
       "tag": "0089_users_terms_acceptance",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1791027197542,
+      "tag": "0090_projects_archive",
+      "breakpoints": true
     }
   ]
 }

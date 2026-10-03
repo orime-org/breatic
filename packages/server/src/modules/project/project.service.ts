@@ -238,11 +238,13 @@ export async function loadForViewer(
   projectId: string,
   userId: string,
 ): Promise<{ project: ProjectEntity; myRole: ProjectRole }> {
-  const role = await projectAuthService.loadProjectRole(userId, projectId);
-  if (role !== null) {
+  // The real role, not the write-capped one: an archived project still shows
+  // its owner as owner; `project.archivedAt` tells the page it is read-only.
+  const access = await projectAuthService.loadProjectAccess(userId, projectId);
+  if (access !== null) {
     const project = await projectRepo.getProjectById(projectId);
     if (!project) throw new NotFoundError(t("server.error.not_found"));
-    return { project, myRole: role };
+    return { project, myRole: access.role };
   }
 
   const project = await projectRepo.getProjectById(projectId);

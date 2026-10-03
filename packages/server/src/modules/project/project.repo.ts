@@ -61,6 +61,7 @@ function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
+    archivedAt: row.archivedAt,
   };
 }
 
@@ -114,9 +115,13 @@ export async function getIdentitiesByProjectIds(
  * `FOR UPDATE` on both sides is what makes them serialise. The delete takes it
  * first thing; a creator takes it and then finds either a live project (and
  * proceeds, with the delete waiting) or a dead one (and refuses).
+ *
+ * An archived project is not live either: it takes no new request, offer or
+ * invite until it is restored, and archiving sweeps the pending ones under
+ * this same row lock.
  * @param id - Project UUID
  * @param tx - The creating transaction; the lock is meaningless without one
- * @returns `true` when the project is still alive and now locked
+ * @returns `true` when the project is neither deleted nor archived, and is now locked
  */
 export async function lockLiveProject(
   id: string,
@@ -125,7 +130,7 @@ export async function lockLiveProject(
   const rows = await tx
     .select({ id: projects.id })
     .from(projects)
-    .where(and(eq(projects.id, id), isNull(projects.deletedAt)))
+    .where(and(eq(projects.id, id), isNull(projects.deletedAt), isNull(projects.archivedAt)))
     .for("update")
     .limit(1);
   return rows.length > 0;

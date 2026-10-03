@@ -41,12 +41,12 @@ function toEntity(
 /**
  * Get the active role for a user on an **active** project, or `null`.
  *
- * The single source of truth for "what may this user do on this
- * project", shared by `loadProjectRole` (server `requireRole`
- * middleware + collab `onAuthenticate`). Both null branches —
- * project missing/soft-deleted, and user-not-a-member — collapse to
- * `null` so a caller surfaces one generic 403 and never leaks
- * project existence to a non-member.
+ * The membership fact as stored — an archived project answers its members'
+ * real roles here. What a user may WRITE goes through `getAccess` and
+ * `loadProjectRole`, which cap an archived project at viewer. Both null
+ * branches — project missing/soft-deleted, and user-not-a-member — collapse
+ * to `null` so a caller surfaces one generic 403 and never leaks project
+ * existence to a non-member.
  *
  * The `projects` inner-join with `projects.deleted_at IS NULL` folds
  * the project-existence guard into the same query. Project soft-delete
@@ -89,6 +89,44 @@ export async function getRole(
     )
     .limit(1);
   return rows[0] ? (rows[0].role as ProjectRole) : null;
+}
+
+/** A member's real role on a live project, and whether that project is archived. */
+export interface ProjectAccess {
+  role: ProjectRole;
+  archived: boolean;
+}
+
+/**
+ * Get a user's role on an active project together with its archive state.
+ *
+ * Same join and the same null collapse as `getRole`; the role is the stored
+ * one. Capping it for an archived project is the caller's decision
+ * (`loadProjectRole` caps, `loadProjectAccess` reports).
+ * @param projectId - Project UUID
+ * @param userId - User UUID
+ * @returns Role and archive state, or null if the project is missing/deleted
+ *   or the user has no active membership
+ */
+export async function getAccess(
+  projectId: string,
+  userId: string,
+): Promise<ProjectAccess | null> {
+  const rows = await db
+    .select({ role: projectMembers.role, archivedAt: projects.archivedAt })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, userId),
+        isNull(projectMembers.deletedAt),
+        isNull(projects.deletedAt),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  return row ? { role: row.role as ProjectRole, archived: row.archivedAt !== null } : null;
 }
 
 /**

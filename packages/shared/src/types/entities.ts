@@ -641,6 +641,8 @@ export interface ProjectEntity {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+  /** When the project was archived, or null while it is live. An archived project is read-only. */
+  archivedAt: Date | null;
 }
 
 /**

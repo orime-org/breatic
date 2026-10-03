@@ -276,6 +276,13 @@ export const projects = pgTable(
       .default("canvas")
       .notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    // Archive (0090, #1222): an archived project is read-only for every
+    // member until its studio's admin restores it. The two move together —
+    // the CHECK `projects_archived_pair` saying so is hand-written in 0090.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archivedByUserId: uuid("archived_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     ...timestamps,
   },
   (table) => [index("projects_studio_id_idx").on(table.studioId, table.deletedAt)],

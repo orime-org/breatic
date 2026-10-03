@@ -36,7 +36,7 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
   const actual = await importActual();
   return {
     ...actual,
-    projectAuthService: { loadProjectRole: vi.fn() },
+    projectAuthService: { loadProjectRole: vi.fn(), loadProjectAccess: vi.fn() },
   };
 });
 
@@ -68,11 +68,12 @@ function makeProject(over: Partial<ProjectEntity> = {}): ProjectEntity {
     createdAt: new Date("2026-06-07T00:00:00Z"),
     updatedAt: new Date("2026-06-07T00:00:00Z"),
     deletedAt: null,
+    archivedAt: null,
     ...over,
   };
 }
 
-const loadProjectRole = vi.mocked(projectAuthService.loadProjectRole);
+const loadProjectAccess = vi.mocked(projectAuthService.loadProjectAccess);
 const loadStudioRole = vi.mocked(studioAuthService.loadStudioRole);
 const getProjectById = vi.mocked(projectRepo.getProjectById);
 const listRepo = vi.mocked(projectRepo.listProjectsByStudioForViewer);
@@ -84,7 +85,7 @@ beforeEach(() => {
 
 describe("project.service.loadForViewer — members enter, studio members are refused", () => {
   it("returns an existing member's role unchanged", async () => {
-    loadProjectRole.mockResolvedValue("editor");
+    loadProjectAccess.mockResolvedValue({ role: "editor", archived: false });
     getProjectById.mockResolvedValue(makeProject());
 
     const result = await loadForViewer("p-1", "u-1");
@@ -95,7 +96,7 @@ describe("project.service.loadForViewer — members enter, studio members are re
   });
 
   it("refuses a studio member who is not on the project with 403", async () => {
-    loadProjectRole.mockResolvedValue(null);
+    loadProjectAccess.mockResolvedValue(null);
     getProjectById.mockResolvedValue(makeProject({ studioId: "s-9" }));
     loadStudioRole.mockResolvedValue("guest");
 
@@ -104,7 +105,7 @@ describe("project.service.loadForViewer — members enter, studio members are re
   });
 
   it("refuses a studio admin who is not on the project with 403 too", async () => {
-    loadProjectRole.mockResolvedValue(null);
+    loadProjectAccess.mockResolvedValue(null);
     getProjectById.mockResolvedValue(makeProject());
     loadStudioRole.mockResolvedValue("admin");
 
@@ -112,7 +113,7 @@ describe("project.service.loadForViewer — members enter, studio members are re
   });
 
   it("hides the project (404) from someone outside the studio", async () => {
-    loadProjectRole.mockResolvedValue(null);
+    loadProjectAccess.mockResolvedValue(null);
     getProjectById.mockResolvedValue(makeProject());
     loadStudioRole.mockResolvedValue(null);
 
@@ -120,7 +121,7 @@ describe("project.service.loadForViewer — members enter, studio members are re
   });
 
   it("throws NotFound for a missing / soft-deleted project", async () => {
-    loadProjectRole.mockResolvedValue(null);
+    loadProjectAccess.mockResolvedValue(null);
     getProjectById.mockResolvedValue(null);
 
     await expect(loadForViewer("p-1", "u-1")).rejects.toBeInstanceOf(NotFoundError);
