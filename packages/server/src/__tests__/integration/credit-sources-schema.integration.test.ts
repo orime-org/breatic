@@ -31,7 +31,7 @@
  *      can vanish leaves lots pointing at nothing; this is the written reason
  *      the soft-delete mandate is waived here.
  *
- * Runs against the testcontainer Postgres started by global-setup.ts, so what
+ * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers, so what
  * it reads is the schema the migration actually produced.
  */
 

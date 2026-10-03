@@ -31,7 +31,7 @@
  *     ordering — the failure the old comment on this query warned about, from
  *     the other direction.
  *
- * Runs against the testcontainer Postgres started by global-setup.ts.
+ * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";

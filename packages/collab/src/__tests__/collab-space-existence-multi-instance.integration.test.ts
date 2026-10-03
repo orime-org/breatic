@@ -40,10 +40,10 @@ import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
 import * as Y from "yjs";
 
 import { initCore, createRedisClient } from "@breatic/core";
-import * as yjsRepo from "@breatic/collab/src/services/yjs-documents.repo.js";
-import { createPersistenceExtension } from "@breatic/collab/src/services/persistence.js";
-import { readProjectSpaceIds } from "@breatic/collab/src/services/project-space-list.js";
-import { createChangeTrackingExtension } from "@breatic/collab/src/services/change-tracking.js";
+import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
+import { createPersistenceExtension } from "@collab/services/persistence.js";
+import { readProjectSpaceIds } from "@collab/services/project-space-list.js";
+import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 
 const PID = "44444444-4444-4444-8444-444444444444";
 const META_DOC = `project-${PID}/meta`;

@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Per-worker setup file for integration tests (runs in the forked worker process).
+ * Per-worker setup file for every package's integration suite (runs in the
+ * forked worker process).
  *
- * Applies the container URLs that globalSetup started into process.env
+ * Applies the container URLs that `containers.ts` started into process.env
  * BEFORE any module is imported by test files. This is the only place
  * where it's safe to do so — Vitest's setupFiles run before test file
  * modules are evaluated.
  *
- * @breatic/core no longer reads process.env itself; the application
+ * `@breatic/core` no longer reads process.env itself; the application
  * entry injects validated config via initCore(process.env). This setup
  * file only *applies* the env vars (container URLs from inject() + the
- * required fixed vars) — it deliberately does NOT import @breatic/core
+ * required fixed vars) — it deliberately does NOT import `@breatic/core`
  * to call initCore here, so that importing this setup file pulls in no part
  * of the application. Each test that exercises real core calls
  * initCore(process.env) itself (see canvas-native-e2e). Tests
@@ -21,19 +22,6 @@
  */
 
 import { inject, afterAll } from "vitest";
-
-// Declare the shape of values provided by globalSetup.setup() via provide().
-// Vitest uses declaration merging on this interface to type inject() calls.
-declare module "vitest" {
-  export interface ProvidedContext {
-    DATABASE_URL: string;
-    YJS_DATABASE_URL: string;
-    REDIS_URL: string;
-    REDIS_QUEUE_URL: string;
-    REDIS_STREAM_URL: string;
-    REDIS_COLLAB_URL: string;
-  }
-}
 
 const urls = inject("DATABASE_URL")
   ? {
@@ -112,20 +100,26 @@ process.env.INGEST_SHARED_SECRET = "integration-suite-ingest-secret";
 // connection, and core is imported lazily inside the hook so that merely
 // loading this setup file still pulls in no part of the application (the
 // property the header above describes).
+//
+// Each close is called inside its own async function. A test file that mocks
+// `@breatic/core` hands back a mock without these exports, and reading one
+// throws; called this way the throw settles like any other close, and such a
+// file opened no real connections to close.
 afterAll(async () => {
   const core = await import("@breatic/core").catch(() => null);
   if (!core) return;
-  await Promise.allSettled([
-    core.closeDb(),
-    core.closeYjsDb(),
-    core.closeRedis(),
-    core.closeQueueRedis(),
-    core.closeStreamRedis(),
-    core.closeCollabRedis(),
+  const closes = [
+    () => core.closeDb(),
+    () => core.closeYjsDb(),
+    () => core.closeRedis(),
+    () => core.closeQueueRedis(),
+    () => core.closeStreamRedis(),
+    () => core.closeCollabRedis(),
     // Nothing in the suite builds queues through core's factories today, so
     // this closes an empty registry. It is here because the list is meant to
     // be "everything core hands out that has to come back" — leaving one out
     // is how the next test to call `createQueue` silently starts leaking.
-    core.closeQueues(),
-  ]);
+    () => core.closeQueues(),
+  ];
+  await Promise.allSettled(closes.map(async (close) => close()));
 });

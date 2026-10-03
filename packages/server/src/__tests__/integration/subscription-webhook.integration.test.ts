@@ -99,7 +99,7 @@ afterAll(async () => {
 // Asked of the same loader the code under test asks, so the suite cannot
 // disagree with the price list it is running against. What that list holds
 // depends on the machine: a developer's own `config/subscription.yaml`, or
-// the fixture `global-setup.ts` lays down when there is none.
+// the fixture `payment-configs.ts` lays down when there is none.
 const PRO_PRICE = getSubscriptionPlan("pro", "month").stripePriceId;
 
 /**

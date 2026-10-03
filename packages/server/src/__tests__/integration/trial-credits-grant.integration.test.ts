@@ -25,7 +25,7 @@
  *      A user who soft-deletes their personal studio and makes another gets
  *      the studio, and no second grant.
  *
- * Runs against the testcontainer Postgres started by global-setup.ts, driving
+ * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers, driving
  * the real `studioService.createPersonalStudio`.
  */
 

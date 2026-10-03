@@ -22,10 +22,10 @@ import {
   db as coreDb,
   projectLifecycleOutbox,
 } from "@breatic/core";
-import * as yjsRepo from "@breatic/collab/src/services/yjs-documents.repo.js";
+import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
-import { startLifecycleListener } from "@breatic/collab/src/services/lifecycle-listener.js";
+import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
 
 initCore(process.env);
 

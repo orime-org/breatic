@@ -46,7 +46,7 @@ import * as studioTransferService from "@server/modules/studio/studioTransfer.se
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 
-// integration-setup.ts injects the container URLs into process.env; the
+// @breatic/integration-tests/env injects the container URLs into process.env; the
 // worker is shared with sibling suites that may have already inited.
 try {
   initCore(process.env);

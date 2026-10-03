@@ -22,7 +22,7 @@
  * The join semantics (WHERE filters) can only be verified against real
  * SQL — a mocked query builder would happily return whatever rows the
  * test stages regardless of the join. So this runs against the
- * testcontainer Postgres started by global-setup.ts. Seeding is done
+ * testcontainer Postgres started by @breatic/integration-tests/containers. Seeding is done
  * with a narrow raw client; the assertions call the real `getRole`
  * (which uses core's env-bound `db`, pointed at the same container).
  *
@@ -51,7 +51,7 @@ import postgres from "postgres";
 import fc from "fast-check";
 import { projectMembersRepo, initCore } from "@breatic/core";
 
-// integration-setup.ts injects the container URLs into process.env but
+// @breatic/integration-tests/env injects the container URLs into process.env but
 // deliberately does not call initCore itself — a setup file runs for
 // every suite, so importing the core barrel there would pull the
 // application into every module graph. Each integration test injects the validated config — so
