@@ -184,6 +184,15 @@ export function buildDocumentEditor(
     // is all this has to say and is how the rest of this product's chrome is
     // drawn.
     dropCursor: { color: false, width: 2 },
+    // Merge and split, a fill colour per cell, and a header row and column.
+    // Cell text colour stays off: a cell's text takes the same text colour
+    // mark every other run does.
+    tables: {
+      splitCells: true,
+      cellBackgroundColor: true,
+      cellTextColor: false,
+      headers: true,
+    },
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
 }

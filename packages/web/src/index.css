@@ -1846,6 +1846,18 @@ body {
   border-top-color: var(--color-border);
 }
 
+/* A table wider than the column scrolls inside its block, in the ScrollArea
+   `document-table-blocknote.tsx` wraps it in. The library's wrapper is a
+   scroller of its own (`overflow-x: auto` from prosemirror-tables), which
+   would put a second, native scrollbar inside ours. */
+.doc-body .doc-table-scroller {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.doc-body [data-content-type='table'] .tableWrapper {
+  overflow: visible;
+}
+
 /* The caret ProseMirror draws in a gap no text caret can stand in — above a
    divider that opens the document, say. The library's own is a fixed black
    that vanishes on the dark theme (#101). */
