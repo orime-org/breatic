@@ -1,0 +1,231 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * inner#1126 A6 and A8: the row and column handles and the plus on the
+ * table's edge, as the reader meets them.
+ */
+
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import * as React from 'react';
+import * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
+import type { Node as PMNode } from '@tiptap/pm/model';
+
+import { documentBodyFragment } from '@breatic/shared';
+
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { insertRow } from '@web/spaces/document/document-table-run';
+import { tableTargetOf } from '@web/spaces/document/document-table-target';
+
+type Editor = ReturnType<typeof buildDocumentEditor>;
+
+const side = vi.hoisted(() => ({
+  editor: undefined as unknown,
+  state: undefined as unknown,
+  frozen: 0,
+  unfrozen: 0,
+}));
+
+vi.mock('@blocknote/react', () => ({
+  useBlockNoteEditor: () => side.editor,
+  useExtension: () => ({
+    freezeHandles: () => {
+      side.frozen += 1;
+    },
+    unfreezeHandles: () => {
+      side.unfrozen += 1;
+    },
+  }),
+  useExtensionState: () => side.state,
+}));
+
+const { DocumentTableHandle, DocumentTableExtend } = await import(
+  '@web/spaces/document/DocumentTableHandles'
+);
+
+const mounted: Editor[] = [];
+
+afterEach(() => {
+  cleanup();
+  mounted.splice(0).forEach((editor) => {
+    editor.unmount();
+  });
+  side.frozen = 0;
+  side.unfrozen = 0;
+});
+
+/**
+ * Opens an editor holding a paragraph and a 2 × 2 table, with the pointer over one cell.
+ * @param rowIndex - The row the pointer is over.
+ * @param colIndex - The column the pointer is over.
+ * @returns The editor.
+ */
+function openOver(rowIndex: number, colIndex: number): Editor {
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  editor.mount(root);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, [
+    { type: 'paragraph', content: 'reader' },
+    {
+      type: 'table',
+      content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] },
+    },
+  ] as never);
+  side.editor = editor;
+  side.state = { show: true, block: editor.document[1], rowIndex, colIndex };
+  return editor;
+}
+
+/**
+ * The table, as cell texts, header cells marked with `#`.
+ * @param editor - The editor.
+ * @returns One array per row.
+ */
+function grid(editor: Editor): string[][] {
+  let table: PMNode | null = null;
+  editor.prosemirrorState.doc.descendants((node) => {
+    if (table === null && node.type.name === 'table') table = node;
+    return table === null;
+  });
+  if (table === null) return [];
+  const rows: string[][] = [];
+  (table as PMNode).forEach((row) => {
+    const cells: string[] = [];
+    row.forEach((cell) => cells.push(`${cell.type.name === 'tableHeader' ? '#' : ''}${cell.textContent}`));
+    rows.push(cells);
+  });
+  return rows;
+}
+
+/**
+ * The open menu's rows.
+ * @param stem - Their test id stem.
+ * @returns Their ids, `(off)` on the greyed ones.
+ */
+function rows(stem: string): string[] {
+  return Array.from(document.querySelectorAll(`[data-testid^="${stem}"]`))
+    .filter((el) => el.getAttribute('role') === 'menuitem')
+    .map((el) => `${el.getAttribute('data-testid')!.replace(stem, '')}${el.getAttribute('aria-disabled') === 'true' ? '(off)' : ''}`);
+}
+
+describe('the row handle (A6)', () => {
+  it('offers the row commands, header only on the first row', () => {
+    openOver(1, 0);
+    render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+
+    expect(rows('doc-table-row-')).toEqual([
+      'insertAbove',
+      'insertBelow',
+      'header(off)',
+      'align',
+      'fill',
+      'delete',
+    ]);
+  });
+
+  it('holds the hovered cell, freezes the handles, and lets go when it closes', () => {
+    const editor = openOver(1, 1);
+    const hide = vi.fn();
+    render(<DocumentTableHandle orientation='row' hideOtherElements={hide} />);
+
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+    const target = tableTargetOf(editor.prosemirrorState);
+    expect(target === null ? null : editor.prosemirrorState.doc.nodeAt(target)?.textContent).toBe('b2');
+    expect(side.frozen).toBe(1);
+    expect(hide).toHaveBeenLastCalledWith(true);
+
+    fireEvent.click(screen.getByTestId('doc-table-row-insertBelow'));
+    expect(grid(editor)).toEqual([['a1', 'b1'], ['a2', 'b2'], ['', '']]);
+    expect(tableTargetOf(editor.prosemirrorState)).toBeNull();
+    expect(side.unfrozen).toBe(1);
+    expect(hide).toHaveBeenLastCalledWith(false);
+  });
+
+  it('deletes the row it was opened on after a row lands above it', () => {
+    const editor = openOver(1, 0);
+    render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+
+    let a1 = -1;
+    editor.prosemirrorState.doc.descendants((node, pos) => {
+      if (a1 < 0 && node.type.name === 'tableCell' && node.textContent === 'a1') a1 = pos;
+      return a1 < 0;
+    });
+    insertRow(editor, a1, 'above');
+    fireEvent.click(screen.getByTestId('doc-table-row-delete'));
+
+    expect(grid(editor)).toEqual([['', ''], ['a1', 'b1']]);
+  });
+
+  it('turns the first row into headers', () => {
+    const editor = openOver(0, 0);
+    render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+
+    fireEvent.click(screen.getByTestId('doc-table-row-header'));
+
+    expect(grid(editor)).toEqual([['#a1', '#b1'], ['a2', 'b2']]);
+  });
+
+  it('lets go of the handles when it leaves while its menu is open', () => {
+    openOver(0, 0);
+    const view = render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+
+    view.unmount();
+
+    expect(side.unfrozen).toBe(1);
+  });
+
+  it('is not there while the reader holds a selection', () => {
+    const editor = openOver(0, 0);
+    const pm = editor.prosemirrorView!;
+    pm.dispatch(pm.state.tr.setSelection(TextSelection.create(pm.state.doc, 2, 4)));
+    render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
+
+    expect(screen.queryByTestId('doc-table-row-handle')).toBeNull();
+  });
+});
+
+describe('the column handle (A6)', () => {
+  it('offers the column commands and deletes the column', () => {
+    const editor = openOver(0, 1);
+    render(<DocumentTableHandle orientation='column' hideOtherElements={() => undefined} />);
+    fireEvent.click(screen.getByTestId('doc-table-col-handle'));
+
+    expect(rows('doc-table-col-')).toEqual([
+      'insertLeft',
+      'insertRight',
+      'header(off)',
+      'align',
+      'fill',
+      'delete',
+    ]);
+
+    fireEvent.click(screen.getByTestId('doc-table-col-delete'));
+    expect(grid(editor)).toEqual([['a1'], ['a2']]);
+  });
+});
+
+describe('the plus on the edge (A8)', () => {
+  it('adds a row and a column', () => {
+    const editor = openOver(0, 0);
+    render(
+      <>
+        <DocumentTableExtend orientation='addOrRemoveRows' hideOtherElements={() => undefined} />
+        <DocumentTableExtend orientation='addOrRemoveColumns' hideOtherElements={() => undefined} />
+      </>,
+    );
+
+    fireEvent.click(screen.getByTestId('doc-table-extend-rows'));
+    fireEvent.click(screen.getByTestId('doc-table-extend-cols'));
+
+    expect(grid(editor)).toEqual([['a1', 'b1', ''], ['a2', 'b2', ''], ['', '', '']]);
+  });
+});
