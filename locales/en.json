@@ -1198,7 +1198,9 @@
         "rowHandle": "Row",
         "columnHandle": "Column",
         "cellMenu": "Cell options",
-        "splitCell": "Split cell"
+        "splitCell": "Split cell",
+        "mergeCells": "Merge cells",
+        "textHighlight": "Highlight"
       }
     },
     "readOnlyReconnect": "Reconnect"

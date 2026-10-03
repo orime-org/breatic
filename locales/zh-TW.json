@@ -1198,7 +1198,9 @@
         "rowHandle": "列",
         "columnHandle": "欄",
         "cellMenu": "儲存格選項",
-        "splitCell": "分割儲存格"
+        "splitCell": "分割儲存格",
+        "mergeCells": "合併儲存格",
+        "textHighlight": "背景（醒目提示文字）"
       }
     },
     "readOnlyReconnect": "重新連線"

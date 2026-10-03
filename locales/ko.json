@@ -1198,7 +1198,9 @@
         "rowHandle": "행",
         "columnHandle": "열",
         "cellMenu": "셀 옵션",
-        "splitCell": "셀 분할"
+        "splitCell": "셀 분할",
+        "mergeCells": "셀 병합",
+        "textHighlight": "배경(텍스트 강조)"
       }
     },
     "readOnlyReconnect": "다시 연결"

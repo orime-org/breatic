@@ -1198,7 +1198,9 @@
         "rowHandle": "行",
         "columnHandle": "列",
         "cellMenu": "セルのオプション",
-        "splitCell": "セルを分割"
+        "splitCell": "セルを分割",
+        "mergeCells": "セルを結合",
+        "textHighlight": "背景（文字のハイライト）"
       }
     },
     "readOnlyReconnect": "再接続"

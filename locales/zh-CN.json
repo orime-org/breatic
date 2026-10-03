@@ -1198,7 +1198,9 @@
         "rowHandle": "行",
         "columnHandle": "列",
         "cellMenu": "格子选项",
-        "splitCell": "拆分单元格"
+        "splitCell": "拆分单元格",
+        "mergeCells": "合并单元格",
+        "textHighlight": "背景（高亮文字）"
       }
     },
     "readOnlyReconnect": "重新连接"

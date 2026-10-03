@@ -296,7 +296,9 @@ export const DocumentColourPanel = React.memo(function DocumentColourPanel({
       {kinds.includes('backgroundColor') ? (
         <>
           <BubbleMenuHeading>
-            {t('spaces.document.commands.fillColor')}
+            {/* Beside a cell fill row the text's own background says which
+                of the two fills it is. */}
+            {t(cell === undefined ? 'spaces.document.commands.fillColor' : 'spaces.document.table.textHighlight')}
           </BubbleMenuHeading>
           <SwatchRow
             testStem={`${idStem}-fill`}
