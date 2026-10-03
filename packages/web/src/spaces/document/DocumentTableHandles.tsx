@@ -102,20 +102,48 @@ const TABLE_LINE_TYPE = 'application/x-doc-table-line';
 /** The delete row's icon, shared with the block handle's menu. */
 const DeleteIcon = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!.Icon;
 
+/** How much of a table each side of its frame hides, in pixels. */
+interface HiddenEdges {
+  readonly left: number;
+  readonly right: number;
+}
+
+/** A table its frame hides nothing of. */
+const NOTHING_HIDDEN: HiddenEdges = { left: 0, right: 0 };
+
 /**
- * How far a table's left edge is scrolled out of its frame. The controller
- * places the row handle at the table's own left edge
- * (`TableHandlesController.tsx:108-122`), which a table scrolled sideways
- * has carried out of sight.
+ * How far a table's edges are scrolled out of its frame. The controller places
+ * the row handle and the two plus buttons against the table's own box
+ * (`TableHandlesController.tsx:108-122,248-300`), which a table scrolled
+ * sideways has carried partly out of sight.
  * @param view - The editor view.
  * @param blockId - The table block's id.
- * @returns The hidden width, 0 when none is hidden.
+ * @returns The hidden widths.
  */
-function hiddenLeftOf(view: EditorView | undefined, blockId: string): number {
+function hiddenEdgesOf(view: EditorView | undefined, blockId: string): HiddenEdges {
   const table = view?.dom.querySelector(`[data-id="${CSS.escape(blockId)}"] table`);
   const frame = table?.closest('[data-radix-scroll-area-viewport]');
-  if (table === null || table === undefined || frame === null || frame === undefined) return 0;
-  return Math.max(0, frame.getBoundingClientRect().left - table.getBoundingClientRect().left);
+  if (table === null || table === undefined || frame === null || frame === undefined) return NOTHING_HIDDEN;
+  const box = table.getBoundingClientRect();
+  const sight = frame.getBoundingClientRect();
+  return { left: Math.max(0, sight.left - box.left), right: Math.max(0, box.right - sight.right) };
+}
+
+/**
+ * The hidden edges of the table the handles are on, read again whenever the
+ * handles' state changes: the controller hides them on a scroll, and this is
+ * read when they next appear.
+ * @param editor - The editor.
+ * @param state - The handles' state.
+ * @returns The hidden widths.
+ */
+function useHiddenEdges(editor: HandleEditor, state: HandlesState | undefined): HiddenEdges {
+  const [edges, setEdges] = React.useState<HiddenEdges>(NOTHING_HIDDEN);
+  React.useLayoutEffect(() => {
+    const next = state === undefined ? NOTHING_HIDDEN : hiddenEdgesOf(editor.prosemirrorView, state.block.id);
+    setEdges((prev) => (prev.left === next.left && prev.right === next.right ? prev : next));
+  }, [editor, state]);
+  return edges;
 }
 
 /** The handle menu's own reading of its target cell. */
@@ -281,13 +309,9 @@ export function DocumentTableHandle({
   }, [onOpenChange]);
   useCloseWhenTargetGone(editor, open, close);
 
-  // The row handle moves back into the frame by the width scrolled out of it;
-  // the controller hides the handles on a scroll and this is read again when
-  // they next appear.
-  const [shift, setShift] = React.useState(0);
-  React.useLayoutEffect(() => {
-    setShift(row && state !== undefined ? hiddenLeftOf(editor.prosemirrorView, state.block.id) : 0);
-  }, [editor, row, state]);
+  // The row handle moves back into the frame by the width scrolled out of it.
+  const hidden = useHiddenEdges(editor, state);
+  const shift = row ? hidden.left : 0;
   const shiftStyle = React.useMemo<React.CSSProperties | undefined>(
     () => (shift > 0 ? { transform: `translateX(${shift}px)` } : undefined),
     [shift],
@@ -368,13 +392,24 @@ export function DocumentTableExtend({ orientation }: TableExtendProps): React.JS
   const state = useExtensionState(TableHandlesExtension) as HandlesState | undefined;
   const holdsSelection = useHoldsSelection(editor);
   const rows = orientation === 'addOrRemoveRows';
+  // The bar under the table spans the part of it in sight; the plus beside it
+  // belongs to its right edge and shows while that edge is in sight.
+  const hidden = useHiddenEdges(editor, state);
+  const clip = React.useMemo<React.CSSProperties | undefined>(
+    () =>
+      rows && (hidden.left > 0 || hidden.right > 0)
+        ? { marginLeft: hidden.left, width: `calc(100% - ${hidden.left + hidden.right}px)` }
+        : undefined,
+    [rows, hidden],
+  );
 
-  if (state === undefined || holdsSelection) return null;
+  if (state === undefined || holdsSelection || (!rows && hidden.right > 0)) return null;
 
   return (
     <Button
       variant={null}
       size={null}
+      style={clip}
       aria-label={t(rows ? 'spaces.document.table.addRow' : 'spaces.document.table.addColumn')}
       data-testid={rows ? 'doc-table-extend-rows' : 'doc-table-extend-cols'}
       className={

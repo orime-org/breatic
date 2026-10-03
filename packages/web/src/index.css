@@ -1849,20 +1849,26 @@ body {
 /* A table wider than the column scrolls inside its block, in the ScrollArea
    `document-table-blocknote.tsx` wraps it in. The library's wrapper is a
    scroller of its own (`overflow-x: auto` from prosemirror-tables), which
-   would put a second, native scrollbar inside ours. */
+   would put a second, native scrollbar inside ours.
+   The wrapper keeps room right of and under the table, inside the frame: the
+   edge plus buttons are drawn there, and the library keeps them up while the
+   pointer is inside the wrapper within 20px of the table's right or bottom
+   edge (`TableHandles.ts:289-310`). The frame's scrollbar lies along the
+   bottom of that room, below the plus, so the way from the last row to the
+   plus does not cross it. The row and column handles float outside the
+   table, so above and left of it there is none. */
 .doc-body .doc-table-scroller {
   flex: 1 1 auto;
   min-width: 0;
 }
 .doc-body [data-content-type='table'] .tableWrapper {
   overflow: visible;
-  padding: 0;
+  padding: 0 1.5rem 1.5rem 0;
 }
 
 /* A table in the product's tokens, both themes (inner#1126 A13). BlockNote
    writes fixed values for each of these — `#ddd` lines, `#c8c8ff66` over a
-   selected cell, `#adf` for the resize line — and its own spacing around the
-   table for handles this build does not draw; ours float beside it. */
+   selected cell, `#adf` for the resize line. */
 .doc-body [data-content-type='table'] td {
   border-color: var(--color-border);
 }
