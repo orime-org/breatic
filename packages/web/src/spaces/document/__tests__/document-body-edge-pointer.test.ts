@@ -754,14 +754,16 @@ describe('a table at an end of the body (inner#1126 A3)', () => {
     content: { type: 'tableContent', rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] },
   };
 
-  it('leaves a Shift+click inside a last table to the text in its cells', () => {
+  it('takes a Shift+click inside a last table to the click', () => {
     const view = open([{ type: 'paragraph', content: 'Above' }, TABLE], 100).prosemirrorView!;
     select(view, textStart(view, 'Above') + 1);
+    const target = textStart(view, 'c3') + 1;
+    pointAt(view, target);
 
-    const event = press(view, 90, { shiftKey: true });
+    press(view, 90, { shiftKey: true });
 
-    expect(event.defaultPrevented).toBe(false);
     expect(view.state.selection).not.toBeInstanceOf(BodyEdgeSelection);
+    expect(view.state.selection.head).toBe(target);
   });
 
   it('takes a Shift+click below a last table to the end', () => {
@@ -775,14 +777,16 @@ describe('a table at an end of the body (inner#1126 A3)', () => {
     expect(view.state.selection.head).toBe(bodyEdgePos(view.state.doc, 'end'));
   });
 
-  it('leaves a Shift+click inside a first table to the text in its cells', () => {
+  it('takes a Shift+click inside a first table to the click', () => {
     const view = open([TABLE, { type: 'paragraph', content: 'Below' }], 100).prosemirrorView!;
     select(view, textStart(view, 'Below') + 1);
+    const target = textStart(view, 'c2') + 1;
+    pointAt(view, target);
 
-    const event = press(view, 10, { shiftKey: true });
+    press(view, 10, { shiftKey: true });
 
-    expect(event.defaultPrevented).toBe(false);
     expect(view.state.selection).not.toBeInstanceOf(BodyEdgeSelection);
+    expect(view.state.selection.head).toBe(target);
   });
 
   it('takes a Shift+click above a first table to the start', () => {
