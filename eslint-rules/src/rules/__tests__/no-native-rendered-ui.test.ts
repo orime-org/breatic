@@ -19,6 +19,8 @@ ruleTester.run("no-native-rendered-ui", noNativeRenderedUi, {
     { code: "export const A = () => <input type='file' />;" },
     { code: "export const A = () => <input type='hidden' />;" },
     { code: "export const A = () => <input type='submit' />;" },
+    // Nothing can be typed into a read-only field, so nothing is offered.
+    { code: "export const A = () => <Input readOnly value={url} />;" },
     // A wrapper forwarding its props leaves the choice to its caller.
     { code: "export const A = (props) => <input type={props.type} {...props} />;" },
     // Our own components, distinguished by the capital letter.
@@ -47,6 +49,11 @@ ruleTester.run("no-native-rendered-ui", noNativeRenderedUi, {
     },
     {
       code: "export const A = () => <Input id='studio-name' value={v} />;",
+      errors: [{ messageId: "browserHistory", data: { control: "Input" } }],
+    },
+    {
+      // Only a literal readOnly settles it; a runtime value may turn editing on.
+      code: "export const A = () => <Input readOnly={locked} value={v} />;",
       errors: [{ messageId: "browserHistory", data: { control: "Input" } }],
     },
     {

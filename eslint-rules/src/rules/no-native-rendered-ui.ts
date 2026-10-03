@@ -124,6 +124,8 @@ export const noNativeRenderedUi = createRule({
           if (attr.type === AST_NODE_TYPES.JSXSpreadAttribute) return;
           if (attr.name.type !== AST_NODE_TYPES.JSXIdentifier) continue;
           if (attr.name.name === "autoComplete") return;
+          // Nothing can be typed into a read-only field, so nothing is offered.
+          if (attr.name.name === "readOnly" && attr.value === null) return;
           if (attr.name.name === "type") {
             type =
               attr.value?.type === AST_NODE_TYPES.Literal &&
