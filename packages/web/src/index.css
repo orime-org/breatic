@@ -1850,20 +1850,17 @@ body {
    `document-table-blocknote.tsx` wraps it in. The library's wrapper is a
    scroller of its own (`overflow-x: auto` from prosemirror-tables), which
    would put a second, native scrollbar inside ours.
-   The wrapper keeps room right of and under the table, inside the frame: the
-   edge plus buttons are drawn there, and the library keeps them up while the
-   pointer is inside the wrapper within 20px of the table's right or bottom
-   edge (`TableHandles.ts:289-310`). The frame's scrollbar lies along the
-   bottom of that room, below the plus, so the way from the last row to the
-   plus does not cross it. The row and column handles float outside the
-   table, so above and left of it there is none. */
+   The wrapper keeps room under the table as tall as that scrollbar, which
+   lies along the bottom of the frame: without it the scrollbar sits over the
+   last row. The row and column handles float outside the table, so the other
+   sides need none. */
 .doc-body .doc-table-scroller {
   flex: 1 1 auto;
   min-width: 0;
 }
 .doc-body [data-content-type='table'] .tableWrapper {
   overflow: visible;
-  padding: 0 1.5rem 1.5rem 0;
+  padding: 0 0 0.5rem 0;
 }
 
 /* A table in the product's tokens, both themes (inner#1126 A13). BlockNote

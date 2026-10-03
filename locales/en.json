@@ -1201,8 +1201,6 @@
         "headerColumn": "Header column",
         "deleteRow": "Delete row",
         "deleteColumn": "Delete column",
-        "addRow": "Add a row",
-        "addColumn": "Add a column",
         "rowHandle": "Row",
         "columnHandle": "Column",
         "cellMenu": "Cell options",

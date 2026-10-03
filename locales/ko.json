@@ -1201,8 +1201,6 @@
         "headerColumn": "머리글 열",
         "deleteRow": "행 삭제",
         "deleteColumn": "열 삭제",
-        "addRow": "행 추가",
-        "addColumn": "열 추가",
         "rowHandle": "행",
         "columnHandle": "열",
         "cellMenu": "셀 옵션",

@@ -152,28 +152,6 @@ export function insertColumn(editor: TableEditor, cellPos: number, side: 'left' 
 }
 
 /**
- * Adds a row at the bottom of the table the cell is in.
- * @param editor - The editor to write to.
- * @param cellPos - Any cell of the table.
- */
-export function appendRow(editor: TableEditor, cellPos: number): void {
-  runOnTable(editor, cellPos, (tr, at) => {
-    addRow(tr, at, at.map.height);
-  });
-}
-
-/**
- * Adds a column at the right of the table the cell is in.
- * @param editor - The editor to write to.
- * @param cellPos - Any cell of the table.
- */
-export function appendColumn(editor: TableEditor, cellPos: number): void {
-  runOnTable(editor, cellPos, (tr, at) => {
-    addColumn(tr, at, at.map.width);
-  });
-}
-
-/**
  * Deletes the rows the cell covers; the whole table when they are all of them.
  *
  * `prosemirror-tables` refuses to delete every row (`deleteRow` returns false

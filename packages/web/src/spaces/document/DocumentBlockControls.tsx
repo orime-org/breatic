@@ -23,18 +23,18 @@ import {
 import * as React from 'react';
 
 import { DocumentBlockHandle } from '@web/spaces/document/DocumentBlockHandle';
-import {
-  DocumentTableExtend,
-  DocumentTableHandle,
-} from '@web/spaces/document/DocumentTableHandles';
+import { DocumentTableHandle } from '@web/spaces/document/DocumentTableHandles';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import { stripPlacement } from '@web/spaces/document/document-strip-alignment';
 
 /**
- * The library's cell handle, left out: ours follows the caret.
+ * A library control the table does without: the cell handle (ours, the cell
+ * button, follows the caret) and the plus along the table's edges (rows and
+ * columns are added from the handles' menus). The controller draws its own
+ * for any it is not handed.
  * @returns Nothing.
  */
-function NoCellHandle(): null {
+function Nothing(): null {
   return null;
 }
 
@@ -70,13 +70,11 @@ export function DocumentBlockControls({
         sideMenu={DocumentBlockHandle}
         floatingUIOptions={placement}
       />
-      {/* A table's row and column handles and its edge plus. The cell button
-          follows the caret rather than the pointer, so it is not handed in
-          here (inner#1126 §5.0). */}
+      {/* A table's row and column handles (inner#1126 §5.0). */}
       <TableHandlesController
         tableHandle={DocumentTableHandle as never}
-        extendButton={DocumentTableExtend as never}
-        tableCellHandle={NoCellHandle}
+        extendButton={Nothing}
+        tableCellHandle={Nothing}
       />
     </BlockNoteContext.Provider>
   );

@@ -1201,8 +1201,6 @@
         "headerColumn": "表头列",
         "deleteRow": "删除行",
         "deleteColumn": "删除列",
-        "addRow": "加一行",
-        "addColumn": "加一列",
         "rowHandle": "行",
         "columnHandle": "列",
         "cellMenu": "格子选项",

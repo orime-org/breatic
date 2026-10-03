@@ -1201,8 +1201,6 @@
         "headerColumn": "見出し列",
         "deleteRow": "行を削除",
         "deleteColumn": "列を削除",
-        "addRow": "行を追加",
-        "addColumn": "列を追加",
         "rowHandle": "行",
         "columnHandle": "列",
         "cellMenu": "セルのオプション",

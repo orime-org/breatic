@@ -661,8 +661,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.docMenu.label": { excluded: REASONS.SCREEN_READER, look: /Three dots at the top right open/ },
   "spaces.document.schemaOutdated.published": { excluded: REASONS.FILLS_A_VALUE },
   "spaces.document.schemaOutdated.risksLead": { described: /warns above the button that/ },
-  "spaces.document.table.addColumn": { excluded: REASONS.SCREEN_READER, look: /one along the right edge adds a column/ },
-  "spaces.document.table.addRow": { excluded: REASONS.SCREEN_READER, look: /A plus along the bottom edge adds a row/ },
   "spaces.document.table.cellMenu": { excluded: REASONS.SCREEN_READER, look: /a small box with a down arrow/ },
   "spaces.document.table.columnHandle": { excluded: REASONS.SCREEN_READER, look: /one above its column/ },
   "spaces.document.table.mergeCells": { excluded: REASONS.SCREEN_READER, look: /a merge icon after the speech bubble/ },

@@ -1201,8 +1201,6 @@
         "headerColumn": "標題欄",
         "deleteRow": "刪除列",
         "deleteColumn": "刪除欄",
-        "addRow": "新增一列",
-        "addColumn": "新增一欄",
         "rowHandle": "列",
         "columnHandle": "欄",
         "cellMenu": "儲存格選項",

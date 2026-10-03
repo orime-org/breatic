@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A table's row and column handles and the plus on its edge (inner#1126 A6,
- * A8), handed to the library's `TableHandlesController` in place of its own,
- * which read a `ComponentsContext` this build does not provide.
+ * A table's row and column handles (inner#1126 A6), handed to the library's
+ * `TableHandlesController` in place of its own, which read a
+ * `ComponentsContext` this build does not provide.
  *
  * The controller places them and reports which row and column the pointer is
  * over; everything else is ours. A handle's menu acts on the cell the menu
@@ -14,7 +14,7 @@
  * position is written on pointer moves only and goes stale under such an edit,
  * so no command reads it.
  *
- * None of the three is on screen while the reader holds a selection: the
+ * Neither is on screen while the reader holds a selection: the
  * bubble bar serves a selection, the way the block handle steps aside for it.
  */
 
@@ -33,7 +33,6 @@ import {
   GripVertical,
   PanelLeft,
   PanelTop,
-  Plus,
 } from 'lucide-react';
 import type { EditorView } from '@tiptap/pm/view';
 import * as React from 'react';
@@ -52,8 +51,6 @@ import { BLOCK_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import { MenuTick } from '@web/spaces/document/document-menu-tick';
 import {
-  appendColumn,
-  appendRow,
   cellAt,
   cellPosOf,
   deleteColumnAt,
@@ -87,12 +84,6 @@ interface TableHandleProps {
   readonly hideOtherElements: (hide: boolean) => void;
 }
 
-/** What the controller hands the edge plus. */
-interface TableExtendProps {
-  readonly orientation: 'addOrRemoveRows' | 'addOrRemoveColumns';
-  readonly hideOtherElements: (hide: boolean) => void;
-}
-
 /**
  * What a drag off a handle carries: nothing to drop anywhere else, a type of
  * its own so a drop target can tell it from text.
@@ -102,48 +93,20 @@ const TABLE_LINE_TYPE = 'application/x-doc-table-line';
 /** The delete row's icon, shared with the block handle's menu. */
 const DeleteIcon = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!.Icon;
 
-/** How much of a table each side of its frame hides, in pixels. */
-interface HiddenEdges {
-  readonly left: number;
-  readonly right: number;
-}
-
-/** A table its frame hides nothing of. */
-const NOTHING_HIDDEN: HiddenEdges = { left: 0, right: 0 };
-
 /**
- * How far a table's edges are scrolled out of its frame. The controller places
- * the row handle and the two plus buttons against the table's own box
- * (`TableHandlesController.tsx:108-122,248-300`), which a table scrolled
- * sideways has carried partly out of sight.
+ * How far a table's left edge is scrolled out of its frame. The controller
+ * places the row handle at the table's own left edge
+ * (`TableHandlesController.tsx:108-122`), which a table scrolled sideways
+ * has carried out of sight.
  * @param view - The editor view.
  * @param blockId - The table block's id.
- * @returns The hidden widths.
+ * @returns The hidden width, 0 when none is hidden.
  */
-function hiddenEdgesOf(view: EditorView | undefined, blockId: string): HiddenEdges {
+function hiddenLeftOf(view: EditorView | undefined, blockId: string): number {
   const table = view?.dom.querySelector(`[data-id="${CSS.escape(blockId)}"] table`);
   const frame = table?.closest('[data-radix-scroll-area-viewport]');
-  if (table === null || table === undefined || frame === null || frame === undefined) return NOTHING_HIDDEN;
-  const box = table.getBoundingClientRect();
-  const sight = frame.getBoundingClientRect();
-  return { left: Math.max(0, sight.left - box.left), right: Math.max(0, box.right - sight.right) };
-}
-
-/**
- * The hidden edges of the table the handles are on, read again whenever the
- * handles' state changes: the controller hides them on a scroll, and this is
- * read when they next appear.
- * @param editor - The editor.
- * @param state - The handles' state.
- * @returns The hidden widths.
- */
-function useHiddenEdges(editor: HandleEditor, state: HandlesState | undefined): HiddenEdges {
-  const [edges, setEdges] = React.useState<HiddenEdges>(NOTHING_HIDDEN);
-  React.useLayoutEffect(() => {
-    const next = state === undefined ? NOTHING_HIDDEN : hiddenEdgesOf(editor.prosemirrorView, state.block.id);
-    setEdges((prev) => (prev.left === next.left && prev.right === next.right ? prev : next));
-  }, [editor, state]);
-  return edges;
+  if (table === null || table === undefined || frame === null || frame === undefined) return 0;
+  return Math.max(0, frame.getBoundingClientRect().left - table.getBoundingClientRect().left);
 }
 
 /** The handle menu's own reading of its target cell. */
@@ -309,9 +272,13 @@ export function DocumentTableHandle({
   }, [onOpenChange]);
   useCloseWhenTargetGone(editor, open, close);
 
-  // The row handle moves back into the frame by the width scrolled out of it.
-  const hidden = useHiddenEdges(editor, state);
-  const shift = row ? hidden.left : 0;
+  // The row handle moves back into the frame by the width scrolled out of it;
+  // the controller hides the handles on a scroll and this is read again when
+  // they next appear.
+  const [shift, setShift] = React.useState(0);
+  React.useLayoutEffect(() => {
+    setShift(row && state !== undefined ? hiddenLeftOf(editor.prosemirrorView, state.block.id) : 0);
+  }, [editor, row, state]);
   const shiftStyle = React.useMemo<React.CSSProperties | undefined>(
     () => (shift > 0 ? { transform: `translateX(${shift}px)` } : undefined),
     [shift],
@@ -377,55 +344,5 @@ export function DocumentTableHandle({
         {open ? <HandleMenuRows editor={editor} row={row} /> : null}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-/**
- * The plus below the table or to its right: one press adds a row or a column.
- * @param props - What the controller hands it.
- * @param props.orientation - Rows or columns.
- * @returns The plus, or null while there is nothing to point at.
- */
-export function DocumentTableExtend({ orientation }: TableExtendProps): React.JSX.Element | null {
-  const t = useTranslation();
-  const editor = useBlockNoteEditor() as unknown as HandleEditor;
-  const state = useExtensionState(TableHandlesExtension) as HandlesState | undefined;
-  const holdsSelection = useHoldsSelection(editor);
-  const rows = orientation === 'addOrRemoveRows';
-  // The bar under the table spans the part of it in sight; the plus beside it
-  // belongs to its right edge and shows while that edge is in sight.
-  const hidden = useHiddenEdges(editor, state);
-  const clip = React.useMemo<React.CSSProperties | undefined>(
-    () =>
-      rows && (hidden.left > 0 || hidden.right > 0)
-        ? { marginLeft: hidden.left, width: `calc(100% - ${hidden.left + hidden.right}px)` }
-        : undefined,
-    [rows, hidden],
-  );
-
-  if (state === undefined || holdsSelection || (!rows && hidden.right > 0)) return null;
-
-  return (
-    <Button
-      variant={null}
-      size={null}
-      style={clip}
-      aria-label={t(rows ? 'spaces.document.table.addRow' : 'spaces.document.table.addColumn')}
-      data-testid={rows ? 'doc-table-extend-rows' : 'doc-table-extend-cols'}
-      className={
-        rows
-          ? 'flex h-4 w-full items-center justify-center rounded-chrome-sm bg-accent text-muted-foreground hover:text-foreground [&_svg]:size-3'
-          : 'flex h-full w-4 items-center justify-center rounded-chrome-sm bg-accent text-muted-foreground hover:text-foreground [&_svg]:size-3'
-      }
-      onClick={() => {
-        // Found by the block's id at the press, which no edit elsewhere moves.
-        const pos = cellPosOf(editor.prosemirrorState.doc, state.block.id, 0, 0);
-        if (pos === null) return;
-        if (rows) appendRow(editor, pos);
-        else appendColumn(editor, pos);
-      }}
-    >
-      <Plus />
-    </Button>
   );
 }
