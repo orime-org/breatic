@@ -96,7 +96,8 @@ export type ToolFailureKind =
   | "user_aborted"
   /**
    * The call was turned away to steer the model: a second question in one
-   * turn, a second media call while one is running, input the SDK refused.
+   * turn, a second media call while one is running, or a call the SDK refused
+   * (input that does not fit the schema, or a tool name that does not exist).
    * Nothing failed; the model reads why and carries on, and the reader is
    * shown nothing.
    */

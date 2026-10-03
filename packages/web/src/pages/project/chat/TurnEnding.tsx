@@ -157,7 +157,7 @@ interface FailedStepsProps {
  * first appeared: two identical lines one above the other tell the reader
  * nothing the second time. A step the reader stopped gets none: the turn's own
  * "Stopped" line already says so. Nor does a step turned away to steer the
- * model -- a second question, a second media call while one runs, input the
+ * model -- a second question, a second media call while one runs, a call the
  * SDK refused -- since nothing failed.
  * @param root0 - The component props.
  * @param root0.message - The message whose tool steps these are.
