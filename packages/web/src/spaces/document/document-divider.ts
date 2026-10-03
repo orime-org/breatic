@@ -53,8 +53,11 @@ const dividerRule = new InputRule(DASHES, (state, _match, start, end) => {
 
   // The regex matches from the head of the line, so `start` is the line's own
   // first position. The line's block sits in a blockContainer; the divider goes
-  // in a container of its own right before it.
+  // in a container of its own right before it. A line that is not a block's own
+  // content — a line in a table cell — has no container of its own, and the
+  // dashes stay text there.
   const containerDepth = $start.depth - 1;
+  if ($start.node(containerDepth).type.name !== 'blockContainer') return null;
   const quoted = line.attrs[QUOTED] === true;
 
   const tr = state.tr.delete(start, end);
