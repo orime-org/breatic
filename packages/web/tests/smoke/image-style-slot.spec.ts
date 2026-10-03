@@ -116,6 +116,8 @@ test('picks up to three style pictures off the canvas and sends them', async ({ 
   await clickNode(page, styles[0]);
   await expect(page.getByTestId('generate-style-thumbnail-0')).toBeVisible();
   await expect(add).toContainText('1/3');
+  // A picture already in the slot is no candidate.
+  await expect(page.locator(`.react-flow__node[data-id="${styles[0]}"]`)).toHaveClass(/canvas-pick-dimmed/);
   await clickNode(page, styles[1]);
   await expect(add).toContainText('2/3');
   await expect(page.getByTestId('reference-pick-banner')).toBeVisible();
@@ -123,6 +125,9 @@ test('picks up to three style pictures off the canvas and sends them', async ({ 
   // The third fills the slot: the add button goes and the pick ends.
   await expect(page.getByTestId('generate-style-thumbnail-2')).toBeVisible();
   await expect(add).toHaveCount(0);
+  await expect(page.getByTestId('reference-pick-banner')).toHaveCount(0);
+  // A full slot has no room, so its thumbnails open no pick.
+  await page.getByTestId('generate-tool-style-item-0').click();
   await expect(page.getByTestId('reference-pick-banner')).toHaveCount(0);
 
   // Removing the middle one leaves the other two in order and offers the add again.
