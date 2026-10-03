@@ -117,7 +117,7 @@ function readerKept(editor: Editor): boolean {
 describe('finding the cell a command acts on', () => {
   it('reads the row and column of a cell', () => {
     const editor = open();
-    expect(cellAt(editor.prosemirrorState.doc, cellOf(editor, 'b2'))).toMatchObject({ row: 1, col: 1 });
+    expect(cellAt(editor.prosemirrorState.doc, cellOf(editor, 'b2'))).toMatchObject({ top: 1, left: 1 });
   });
 
   it('answers nothing for a position that is not a cell', () => {

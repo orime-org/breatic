@@ -59,9 +59,6 @@ export interface CellAt {
   readonly right: number;
   readonly top: number;
   readonly bottom: number;
-  /** Its first row and column. */
-  readonly row: number;
-  readonly col: number;
 }
 
 /** Which part of the table a cell attribute is written to. */
@@ -84,7 +81,7 @@ export function cellAt(doc: PMNode, cellPos: number): CellAt | null {
   const map = TableMap.get(table);
   const rect = map.findCell(cellPos - tableStart);
   const blockId = String($cell.node($cell.depth - 2).attrs['id']);
-  return { table, tableStart, map, blockId, ...rect, row: rect.top, col: rect.left };
+  return { table, tableStart, map, blockId, ...rect };
 }
 
 /**
@@ -310,12 +307,8 @@ export function setCellsAttr(
   value: unknown,
 ): void {
   runOnTable(editor, cellPos, (tr, at) => {
-    for (const rel of at.map.cellsInRect(scopeRect(at, scope))) {
-      const cell = at.table.nodeAt(rel);
-      if (cell !== null && cell.attrs[name] !== value) {
-        tr.setNodeMarkup(at.tableStart + rel, null, { ...cell.attrs, [name]: value });
-      }
-    }
+    const cells = at.map.cellsInRect(scopeRect(at, scope)).map((rel) => at.tableStart + rel);
+    writeCellsAttr(tr, cells, name, value);
   });
 }
 
@@ -486,22 +479,18 @@ export function mergeSelectedCells(editor: TableEditor): void {
 export function wholeEmptyTableSelected(state: EditorState): string | null {
   const { selection } = state;
   if (!(selection instanceof CellSelection)) return null;
+  // Top to bottom and first column to last: the whole table.
+  if (!selection.isRowSelection() || !selection.isColSelection()) return null;
   const at = cellAt(state.doc, selection.$anchorCell.pos);
   if (at === null) return null;
-  let selected = 0;
-  selection.forEachCell(() => {
-    selected += 1;
-  });
-  let cells = 0;
   let empty = true;
   at.table.descendants((node) => {
     const role = node.type.spec['tableRole'] as string | undefined;
     if (role !== 'cell' && role !== 'header_cell') return true;
-    cells += 1;
     if (node.childCount !== 1 || node.firstChild!.childCount !== 0) empty = false;
     return false;
   });
-  return empty && selected === cells ? at.blockId : null;
+  return empty ? at.blockId : null;
 }
 
 /**

@@ -102,7 +102,7 @@ describe('the target cell of a table menu', () => {
 
     const pos = tableTargetOf(editor.prosemirrorState)!;
     expect(targetText(editor)).toBe('b2');
-    expect(cellAt(editor.prosemirrorState.doc, pos)).toMatchObject({ row: 2, col: 1 });
+    expect(cellAt(editor.prosemirrorState.doc, pos)).toMatchObject({ top: 2, left: 1 });
   });
 
   it('stays on its cell when a column is added right before it', () => {
