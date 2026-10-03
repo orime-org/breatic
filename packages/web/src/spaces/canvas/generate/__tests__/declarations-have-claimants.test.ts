@@ -49,6 +49,7 @@ import {
 } from '@web/spaces/canvas/generate/audio-mode-options';
 import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { modelControls } from '@web/spaces/canvas/generate/model-controls';
@@ -189,8 +190,9 @@ const PANEL: Readonly<
   >
 > = {
   image: {
-    // The image panel draws no slot: its sources come through the pool.
-    slots: () => [],
+    // The image panel's one slot is the style area (inner#826); its other
+    // sources come through the pool.
+    slots: () => [IMAGE_SLOTS.style.param],
     controls: [...RATIO_RESOLUTION_PARAMS, ...CAMERA_PARAMS],
   },
   video: {
@@ -349,7 +351,7 @@ describe('what the catalog declares', () => {
     // `image` and two carry `video`, so a map keyed by the param name would
     // keep the last one written and hide a disagreement between them.
     const slotSpecs: Array<{ param: string; accepts: string; testId: string }> = [
-      ...[VIDEO_SLOTS, AUDIO_SLOTS].flatMap((registry) => Object.values(registry)),
+      ...[VIDEO_SLOTS, AUDIO_SLOTS, IMAGE_SLOTS].flatMap((registry) => Object.values(registry)),
     ];
     expect(
       objections('canvas', (_model, param, spec) => {

@@ -73,6 +73,14 @@ const MARKS: Readonly<Record<string, React.JSX.Element>> = {
   meta: (
     <g fill='none' stroke='currentColor' strokeWidth='2.4' strokeLinejoin='round'><path d='M3.6 12c0-4.3 2.4-6.2 4.4-6.2 3.2 0 5.2 4.6 8 9.4 1 1.7 1.9 3 3.1 3 1.2 0 1.3-1.9 1.3-6.2 0-4.3-2.4-6.2-4.4-6.2-3.2 0-5.2 4.6-8 9.4-1 1.7-1.9 3-3.1 3-1.2 0-1.3-1.9-1.3-6.2Z' /></g>
   ),
+  // A four-pointed spark, for Krea.
+  krea: (
+    <path d='M12 2.5c.7 4.6 2.9 6.8 7.5 7.5-4.6.7-6.8 2.9-7.5 7.5-.7-4.6-2.9-6.8-7.5-7.5 4.6-.7 6.8-2.9 7.5-7.5Z' />
+  ),
+  // A letter set in a frame: the lettering Ideogram is known for.
+  ideogram: (
+    <><path fill='none' stroke='currentColor' strokeWidth='2' d='M4 4h16v16H4Z' /><path d='M10.6 10.2h2.8v7h-2.8Z' /><circle cx='12' cy='7.6' r='1.5' /></>
+  ),
   // A pen nib: the vector work Recraft is known for.
   recraft: (
     <><path fillRule='evenodd' d='M12 2.5 18 11 15.6 17.4H8.4L6 11ZM11.2 10.4V14.4H12.8V10.4A1.5 1.5 0 1 0 11.2 10.4Z' /><rect x='8' y='18.6' width='8' height='2.9' rx='1' /></>

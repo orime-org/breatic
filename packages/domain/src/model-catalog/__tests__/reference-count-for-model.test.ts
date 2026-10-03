@@ -79,3 +79,22 @@ describe("violatesReferenceCountForModel (#1735)", () => {
     expect(violatesReferenceCountForModel(undefined, { images: ["a", "b"] })).toBeNull();
   });
 });
+
+// A joining model keeps three of the upstream's images for style (inner#826):
+// a full pool plus a full style slot passes the gate, one more @ does not.
+describe("violatesReferenceCountForModel — a pool a style slot joins", () => {
+  const files = (n: number, tag: string): string[] => Array.from({ length: n }, (_, i) => `${tag}${i}`);
+
+  it.each([
+    ["gpt-image-2.5-sunburst-edit", 13],
+    ["nano-banana-pro-edit-ultra", 11],
+    ["muse-image-edit", 7],
+  ])("passes %s with a full pool and three style images, refuses one more @", (name, pool) => {
+    expect(violatesReferenceCountForModel(name, { images: files(pool, "r"), style_images: files(3, "s") })).toBeNull();
+    expect(violatesReferenceCountForModel(name, { images: files(pool + 1, "r"), style_images: files(3, "s") })).toEqual({
+      field: "images",
+      limit: pool,
+      actual: pool + 1,
+    });
+  });
+});

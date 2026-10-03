@@ -19,7 +19,8 @@ import { allSlotSpecs } from '@web/spaces/canvas/generate/slots';
 describe('slot fields on the node view', () => {
   for (const spec of allSlotSpecs()) {
     it(`carries ${spec.field}`, () => {
-      const pick = spec.storesCover ? { url: `https://cdn/${spec.field}` } : `https://cdn/${spec.field}`;
+      const url = `https://cdn/${spec.field}`;
+      const pick = spec.multiple ? [url] : spec.storesCover ? { url } : url;
       const fields = {
         id: 'n1',
         // The slot fields ride the part every content view shares.

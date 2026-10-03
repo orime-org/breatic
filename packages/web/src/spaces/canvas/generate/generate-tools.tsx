@@ -5,11 +5,11 @@
  * The pieces every Generate panel's tool row is built from.
  *
  * The panels' tool rows are made of the same two things: a toggle that
- * enters a canvas pick, and a slot that holds one picked source. They differ
+ * enters a canvas pick, and a slot that holds a picked source. They differ
  * only in WHICH tools they show — reference and focus are on the image and
- * video rows, and the video and audio panels add the source slots their mode
- * needs — so the tools themselves live here and each panel's row just
- * arranges them.
+ * video rows, the video and audio panels add the source slots their mode
+ * needs, and the image panel adds one slot per style image — so the tools
+ * themselves live here and each panel's row just arranges them.
  */
 
 import { X, type LucideIcon } from 'lucide-react';
@@ -235,8 +235,10 @@ interface SlotToolProps {
  * every slot on a row accepting audio drew the same note over the one word
  * that told them apart (user 2026-09-06).
  *
- * Clicking the filled slot re-enters the pick (the next selection REPLACES the
- * copy). A ✕ badge at the top-right clears it; the ✕ is a SIBLING button
+ * Clicking a filled one-file slot re-enters the pick (the next selection
+ * REPLACES the copy); in a slot holding several, clicking starts a pick in
+ * which each canvas click adds one more (or ends a running one), and starts
+ * nothing once the slot is full. A ✕ badge at the top-right clears it; the ✕ is a SIBLING button
  * positioned over the corner — never nested inside the main button
  * (button-in-button reparents silently). The ✕ stays active even when picking
  * is gated off, so a stale copy can always be removed. The filled button keeps
@@ -375,7 +377,10 @@ export function SlotTool({
           data-testid={clearTestId}
           aria-label={clearLabel}
           onClick={onClear}
-          className='absolute -right-1 -top-1 z-10 flex h-4 w-4 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          // The badge draws 16px; the pseudo-element widens what takes clicks
+          // to 24x24, the minimum target size (WCAG 2.2 SC 2.5.8). Its inset
+          // counts from inside the 1px border: 14 + 2 * 5 = 24.
+          className='absolute -right-1 -top-1 z-10 flex h-4 w-4 after:absolute after:-inset-[5px] items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-2.5 w-2.5' aria-hidden='true' />
         </Button>

@@ -69,6 +69,7 @@ import {
   addEdge,
   addNodeFocusImage,
   addNode,
+  appendNodeSlotItem,
   createGroup,
   expandGroup,
   removeEdge,
@@ -179,7 +180,8 @@ import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
 import { downloadHref } from '@web/data/api/download-href';
 import { triggerDownload } from '@web/lib/download';
 import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
-import { slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
+import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
+import { readSlotPicks, slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
 import {
   computeGroupToolbar,
@@ -2000,6 +2002,15 @@ function CanvasSpaceInner({
         // branches below carry no exhaustive check, so a missing one does not
         // fail the build — it silently wires an EDGE (the reference
         // fallthrough at the end) instead of filling the slot.
+        if (pickedSlot.multiple && session.capacity !== undefined) {
+          // A slot holding several (inner#826): each click adds one and the
+          // pick runs on until the slot is full or the reader exits.
+          const url = pickedSlotUrl(node, pickedSlot.accepts);
+          if (url === null) return;
+          const result = appendNodeSlotItem(projectId, spaceId, target, pickedSlot.field, url, session.capacity);
+          if (result === 'full' || result === 'filled') endPick();
+          return;
+        }
         if (!fillSlot(projectId, spaceId, target, pickedSlot, node)) return;
         // One slot, one pick — the session completes on selection.
         endPick();
@@ -4187,13 +4198,20 @@ function CanvasSpaceInner({
       // of asset — an audio one for voice cloning (#1960 PR2) — dims the
       // right nodes without another branch here.
       const accepts = paintingSlot.accepts;
+      // A slot holding several takes each file once, so what it already holds
+      // is no candidate (inner#826).
+      const targetData = renderNodes.find((n) => n.id === target)?.data as Record<string, unknown> | undefined;
+      const held = new Set(
+        paintingSlot.multiple ? readSlotPicks(paintingSlot, targetData?.[paintingSlot.field]).map((p) => p.url) : [],
+      );
       return paint((node) => {
         const data = node.data as { content?: unknown; status?: unknown };
         return (
           node.id === target ||
           node.type !== accepts ||
           typeof data.content !== 'string' ||
-          data.content.length === 0
+          data.content.length === 0 ||
+          held.has(data.content)
         );
       });
     }

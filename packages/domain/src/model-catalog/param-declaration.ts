@@ -95,7 +95,19 @@ const declarationSchema = z.object({
   // reads (#2156, design §13.2): `{n}` counts the sent list of this kind from
   // 1, `{i}` from 0.
   mention: z.string().optional(),
+  // The upstream takes each entry of this list as an object with the URL
+  // under this key (Krea's `reference: [{ image }]`).
+  item_key: z.string().optional(),
+  // The upstream has no field of its own for this slot: its files are
+  // appended to the named pool and the prompt names them (inner#826).
+  joins: z.string().optional(),
+  // The sentence appended to the prompt for a joining slot; `{list}` becomes
+  // the pool's mention of each appended file.
+  prompt_note: z.string().optional(),
 });
+
+/** How many style images every model takes (user 2026-10-02, inner#826). */
+const STYLE_IMAGES_HELD = 3;
 
 /**
  * Every key a parameter declaration may carry.
@@ -130,6 +142,9 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "value_locales",
   "fields",
   "mention",
+  "item_key",
+  "joins",
+  "prompt_note",
 ]);
 
 /** One parameter's declaration, as these checks read it. */
@@ -150,6 +165,14 @@ export function assertParamDeclarations(
     const params = model.params ?? {};
     const names = new Set(Object.keys(params));
     const modes = new Set(namedModes(model));
+    const pools = new Set(
+      Object.entries(params)
+        .filter(([, raw]) => (raw as { fill?: unknown } | null)?.fill === "pool")
+        .map(([name]) => name),
+    );
+    const namedPools = new Set(
+      [...pools].filter((pool) => typeof (params[pool] as { mention?: unknown }).mention === "string"),
+    );
     for (const [param, raw] of Object.entries(params)) {
       const parsed = declarationSchema.safeParse(raw);
       if (!parsed.success) {
@@ -167,7 +190,7 @@ export function assertParamDeclarations(
           faults.push(`${model.name}.${param}: names "${key}", which no parameter declaration has`);
         }
       }
-      for (const fault of faultsOn(parsed.data, names, modes)) {
+      for (const fault of faultsOn(parsed.data, { name: param, names, modes, pools, namedPools })) {
         faults.push(`${model.name}.${param}: ${fault}`);
       }
     }
@@ -181,15 +204,25 @@ export function assertParamDeclarations(
 /**
  * Everything one declaration says that the model around it denies.
  * @param declared - The declaration to check.
- * @param names - Every parameter name this model declares.
- * @param modes - Every mode this model serves.
+ * @param around - The model around it.
+ * @param around.name - This parameter's own name.
+ * @param around.names - Every parameter name this model declares.
+ * @param around.modes - Every mode this model serves.
+ * @param around.pools - The names of this model's pool parameters.
+ * @param around.namedPools - The pools that say how their files are named.
  * @returns One sentence per fault; empty when the declaration holds.
  */
 function faultsOn(
   declared: ParamDeclaration,
-  names: ReadonlySet<string>,
-  modes: ReadonlySet<string>,
+  around: {
+    name: string;
+    names: ReadonlySet<string>;
+    modes: ReadonlySet<string>;
+    pools: ReadonlySet<string>;
+    namedPools: ReadonlySet<string>;
+  },
 ): string[] {
+  const { name, names, modes, pools, namedPools } = around;
   const faults: string[] = [];
 
   // No default: a parameter that says nothing would be read as having a
@@ -278,11 +311,30 @@ function faultsOn(
     }
   }
 
-  // A slot carries one file: the payload builders write a single string into
-  // it. Raising the cap changes nothing a reader can use, so it is refused
-  // rather than accepted and ignored (#266 is where slots learn to hold more).
-  if (declared.fill === "canvas" && declared.type === "list" && declared.max_items !== 1) {
-    faults.push("a slot carries one file, so a list slot has to declare max_items: 1");
+  // A list slot shows its thumbnails up to its cap and refuses past it, so it
+  // has to state one.
+  if (declared.fill === "canvas" && declared.type === "list" && declared.max_items === undefined) {
+    faults.push("a list slot has to declare max_items, the most files it holds");
+  }
+
+  // Every model holds the same number of style images, so moving between
+  // models never strands one the next model would not send.
+  if (name === "style_images" && declared.max_items !== STYLE_IMAGES_HELD) {
+    faults.push(`style_images holds ${STYLE_IMAGES_HELD} files on every model`);
+  }
+
+  if (declared.joins !== undefined) {
+    // The files travel inside that pool, so it has to be one.
+    if (!pools.has(declared.joins)) {
+      faults.push(`joins "${declared.joins}", which is not one of this model's pools`);
+    } else if (!namedPools.has(declared.joins)) {
+      // The note names the files the way the pool writes its chips.
+      faults.push(`joins "${declared.joins}", whose pool declares no mention to name its files by`);
+    }
+    // The prompt is the only place the upstream learns what the files are for.
+    if (!declared.prompt_note?.includes("{list}")) {
+      faults.push("a joining slot names its files in prompt_note with {list}");
+    }
   }
 
   // A cap counts entries, and only a list has entries. Readers split on this

@@ -902,6 +902,61 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(cls('src-image')).toContain('canvas-pick-selectable');
   });
 
+  // Style pick (inner#826): the slot holds several images, so a click adds one
+  // and the pick keeps going until the slot is full.
+  const styleNodes = (held: string[]) =>
+    mockSpace({
+      nodes: [
+        { id: 'target', type: 'image', position: { x: 0, y: 0 }, data: { kind: 'image', status: 'idle', styleImageUrls: held } },
+        { id: 'src-image', type: 'image', position: { x: 600, y: 0 }, data: { kind: 'image', content: 'https://cdn/x.png', status: 'idle' } },
+      ],
+    });
+  const clickSource = (): void => {
+    const candidate = document.querySelector('.react-flow__node[data-id="src-image"]');
+    act(() => {
+      candidate?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+  };
+
+  it('style pick adds the clicked image and keeps picking while the slot has room', async () => {
+    const append = vi.spyOn(canvasSpace, 'appendNodeSlotItem').mockImplementation(() => 'added');
+    mockUseCanvasSpace.mockReturnValue(styleNodes([]));
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startStylePick('target', 3);
+    });
+    clickSource();
+    await waitFor(() =>
+      expect(append).toHaveBeenCalledWith('p', 's', 'target', 'styleImageUrls', 'https://cdn/x.png', 3),
+    );
+    expect(useCanvasStore.getState().pickSession?.purpose).toBe('style');
+    append.mockRestore();
+  });
+
+  it('style pick ends once the write says the click filled the last place', async () => {
+    const append = vi.spyOn(canvasSpace, 'appendNodeSlotItem').mockImplementation(() => 'filled');
+    mockUseCanvasSpace.mockReturnValue(styleNodes([]));
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startStylePick('target', 3);
+    });
+    clickSource();
+    await waitFor(() => expect(append).toHaveBeenCalled());
+    expect(useCanvasStore.getState().pickSession).toBeNull();
+    append.mockRestore();
+  });
+
+  it('style pick dims a picture the slot already holds', () => {
+    mockUseCanvasSpace.mockReturnValue(styleNodes(['https://cdn/x.png']));
+    renderSpace();
+    act(() => {
+      useCanvasStore.getState().startStylePick('target', 3);
+    });
+    const cls = (id: string): string =>
+      document.querySelector(`.react-flow__node[data-id="${id}"]`)?.className ?? '';
+    expect(cls('src-image')).toContain('canvas-pick-dimmed');
+  });
+
   // The banner is the ONLY on-canvas instruction during a pick, so it has to
   // name the pick that is actually running (#1902 Gate 2): a first-frame pick
   // wearing the reference wording tells the user to do a different thing —

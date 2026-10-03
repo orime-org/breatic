@@ -119,6 +119,15 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { quality: "max", resolution: "4k" }, usd: 1.0 },
   ],
   "recraft-ai/recraft-v4.1-pro/text-to-vector": [{ input: {}, usd: 0.3 }],
+  "recraft-ai/recraft-v4-style/text-to-image": [
+    { input: {}, usd: 0.0385 },
+    { input: { images: urls(2) }, usd: 0.044 },
+  ],
+  "wavespeed-ai/krea-v2-large/text-to-image": [
+    { input: {}, usd: 0.06 },
+    { input: { reference: urls(3) }, usd: 0.065 },
+  ],
+  "ideogram-ai/ideogram-v3-quality": [{ input: {}, usd: 0.09 }],
   "sonilo/v1/text-to-sfx": [{ input: { duration: 60 }, usd: 0.12 }],
   "sonilo/video-to-music": [
     { input: { video: "v" }, durations: { video: [60] }, usd: 0.54 },
@@ -183,7 +192,7 @@ function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
 describe("WaveSpeed pricing contracts in the catalog", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 55 endpoints of the finalized catalog", () => {
+  it("covers exactly the 58 endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 

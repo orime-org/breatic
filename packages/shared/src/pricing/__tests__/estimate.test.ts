@@ -122,7 +122,46 @@ const EDIT_POOL: PricedModel = {
   pricing: { base_price: 0, formula: '{"total_price": 39000 + (($count(images) - 1) * 15000)}', discount_rate: 100 },
 };
 
+const EDIT_WITH_STYLE: PricedModel = {
+  ...EDIT_POOL,
+  params: {
+    images: { fill: "pool", type: "list", default: null, mention: "image {n}" },
+    style_images: {
+      fill: "canvas",
+      type: "list",
+      optional: true,
+      default: null,
+      joins: "images",
+      prompt_note: "Style references: {list}.",
+    },
+  },
+};
+
 describe("estimateCredits", () => {
+  it("counts a joining style slot's files inside the pool they join", async () => {
+    const joined = await estimateCredits(EDIT_WITH_STYLE, { params: { images: ["a"], style_images: ["s1", "s2"] } }, 1);
+    const plain = await estimateCredits(EDIT_POOL, { params: { images: ["a", "s1", "s2"] } }, 1);
+    expect(joined).toEqual(plain);
+  });
+
+  it("prices the prompt as sent, the style note included", async () => {
+    const perChar: PricedModel = {
+      ...EDIT_WITH_STYLE,
+      pricing: { base_price: 0, formula: '{"total_price": $length(prompt) * 10000}', discount_rate: 100 },
+    };
+    const estimate = await estimateCredits(perChar, { params: { images: ["a"], style_images: ["s"] }, prompt: "Hi." }, 1);
+    // "Hi. Style references: image 2." is 30 characters.
+    expect(estimate.credits).toBeCloseTo(30, 6);
+  });
+
+  it("still counts the picture a run cannot go without when only style files fill the pool", async () => {
+    // The panel prices before anything is @-named: three style files plus the
+    // one base picture every edit needs, as a lower bound.
+    const estimate = await estimateCredits(EDIT_WITH_STYLE, { params: { style_images: ["s1", "s2", "s3"] } }, 1);
+    expect(estimate.bound).toBe("at_least");
+    expect(estimate.credits).toBeCloseTo(8.4, 6);
+  });
+
   it("prices the params the reader set, in credits after the discount", async () => {
     const estimate = await estimateCredits(WAN_T2V, { params: { resolution: "1080p", duration: 10 } }, 1);
     expect(estimate.bound).toBe("exact");
