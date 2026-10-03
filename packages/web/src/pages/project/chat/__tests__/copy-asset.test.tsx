@@ -147,6 +147,19 @@ describe('the copy buttons', () => {
     expect(within(box).getByTestId('copy-answer')).toBeInTheDocument();
   });
 
+  it('hangs the first square\'s answer to the right, where the row has room', async () => {
+    // The first square has nothing to its left inside the column, so an
+    // answer hung leftward from its corner is cut off in long-word locales.
+    render(<MessageBubble message={withImages(3)} />);
+
+    await userEvent.click(screen.getAllByTestId('asset-copy')[0] as HTMLElement);
+    const first = await screen.findByTestId('copy-answer');
+    expect(first.className).toContain('left-0');
+
+    await userEvent.click(screen.getAllByTestId('asset-copy')[1] as HTMLElement);
+    await waitFor(() => expect(screen.getByTestId('copy-answer').className).toContain('right-0'));
+  });
+
   it('says it could not copy and can be pressed again', async () => {
     writeText.mockRejectedValueOnce(new Error('denied'));
     render(<MessageBubble message={withImages(1)} />);

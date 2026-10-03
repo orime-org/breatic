@@ -61,7 +61,7 @@ export const AssetRow = React.memo(function AssetRow({
             label={asset.title}
             size={square}
             onOpen={() => setOpenAt(i)}
-            copy={<CopyAssetButton copying={copying} asset={asset} />}
+            copy={<CopyAssetButton copying={copying} asset={asset} first={i === 0} />}
           />
         ))}
         {behind === undefined ? null : (
@@ -173,6 +173,11 @@ interface CopyAssetButtonProps {
   copying: CopyAsset;
   /** The picture it copies. */
   asset: ChatAsset;
+  /**
+   * Whether it sits on the row's first square. Nothing in the column is to
+   * the left of that one, so its answer hangs rightward over the row.
+   */
+  first: boolean;
 }
 
 /**
@@ -183,9 +188,10 @@ interface CopyAssetButtonProps {
  * @param root0 - The component props.
  * @param root0.copying - The row's copy state.
  * @param root0.asset - The picture it copies.
+ * @param root0.first - Whether it sits on the row's first square.
  * @returns The button.
  */
-function CopyAssetButton({ copying, asset }: CopyAssetButtonProps): React.JSX.Element {
+function CopyAssetButton({ copying, asset, first }: CopyAssetButtonProps): React.JSX.Element {
   const t = useTranslation();
   const copied = isCopied(copying, asset);
   return (
@@ -208,7 +214,7 @@ function CopyAssetButton({ copying, asset }: CopyAssetButtonProps): React.JSX.El
           <Copy className='size-3' aria-hidden='true' />
         )}
       </Button>
-      {copied ? <CopyAnswerLabel side='right' /> : null}
+      {copied ? <CopyAnswerLabel side={first ? 'left' : 'right'} /> : null}
     </span>
   );
 }
