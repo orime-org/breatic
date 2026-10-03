@@ -126,7 +126,7 @@ export function stripOffsetFromRowTop(
  * @param row - The row's content element.
  * @returns The box, or undefined when the row shows no line.
  */
-function firstLineOf(row: Element): DOMRect | undefined {
+export function firstLineOf(row: Element): DOMRect | undefined {
   const words = row.firstElementChild ?? row;
   const range = document.createRange();
   range.selectNodeContents(words);

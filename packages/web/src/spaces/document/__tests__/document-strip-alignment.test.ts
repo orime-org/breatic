@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 import type { MiddlewareState } from '@floating-ui/react';
 
 import {
+  firstLineOf,
   stripPlacement,
   stripOffsetFromRowTop,
 } from '@web/spaces/document/document-strip-alignment';
@@ -119,5 +120,19 @@ describe('the strip stays on the body\'s left edge (#1097 A13)', () => {
     const [edge] = stripPlacement(() => undefined).useFloatingOptions.middleware;
     const state = { x: 424, rects: { reference: { x: 448 } } } as unknown as MiddlewareState;
     expect((await edge.fn(state)).x).toBeUndefined();
+  });
+});
+
+describe('the first line of a table (inner#1126 A5)', () => {
+  it('is the table\'s first row, not the whole table', () => {
+    const block = document.createElement('div');
+    block.setAttribute('data-content-type', 'table');
+    block.innerHTML =
+      '<div class="doc-table-scroller"><table><tbody><tr><td><p>a</p></td></tr><tr><td><p>b</p></td></tr></tbody></table></div>';
+    const first = block.querySelector('tr')!;
+    const box = new DOMRect(0, 176, 240, 35);
+    first.getBoundingClientRect = (): DOMRect => box;
+
+    expect(firstLineOf(block)).toBe(box);
   });
 });
