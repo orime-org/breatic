@@ -26,7 +26,7 @@ index 3f484971b5daae6d81b17afb01e238b170d0b03b..334e9e7435a6f26cb85a412782970207
          tr.setMeta(key, val)
        })
 diff --git a/src/plugins/sync-plugin.js b/src/plugins/sync-plugin.js
-index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..2410594769f3ddde2fb8104341c86b18154d028a 100644
+index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..dbf105fcbc04dd73722c6feca638aae6e237fe35 100644
 --- a/src/plugins/sync-plugin.js
 +++ b/src/plugins/sync-plugin.js
 @@ -4,7 +4,7 @@
@@ -104,7 +104,52 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..2410594769f3ddde2fb8104341c86b18
        }
      }
    }
-@@ -730,6 +776,161 @@ export const createNodeFromYElement = (
+@@ -283,19 +329,31 @@ const restoreRelativeSelection = (tr, relSel, binding) => {
+  * @param {ProsemirrorBinding} pmbinding
+  * @param {import('prosemirror-state').EditorState} state
+  */
+-export const getRelativeSelection = (pmbinding, state) => ({
+-  type: /** @type {any} */ (state.selection).jsonID,
+-  anchor: absolutePositionToRelativePosition(
+-    state.selection.anchor,
+-    pmbinding.type,
+-    pmbinding.mapping
+-  ),
+-  head: absolutePositionToRelativePosition(
+-    state.selection.head,
+-    pmbinding.type,
+-    pmbinding.mapping
+-  )
+-})
++export const getRelativeSelection = (pmbinding, state) => {
++  // PATCH: take the two ends from the selection's own JSON, the positions its
++  // `fromJSON` takes back. They are `anchor` and `head` for a text or node
++  // selection, but not for every type: a table's cell selection answers
++  // `anchor` and `head` with the first range, inside one cell, and keeps its
++  // corner cells in its JSON. Named from `anchor` and `head`, the restore
++  // above handed `fromJSON` two positions inside a cell, it refused them, and
++  // the selected cells became a text selection on every remote change.
++  const json = /** @type {any} */ (state.selection).toJSON()
++  const anchor = typeof json.anchor === 'number' ? json.anchor : state.selection.anchor
++  const head = typeof json.head === 'number' ? json.head : state.selection.head
++  return {
++    type: /** @type {any} */ (state.selection).jsonID,
++    anchor: absolutePositionToRelativePosition(
++      anchor,
++      pmbinding.type,
++      pmbinding.mapping
++    ),
++    head: absolutePositionToRelativePosition(
++      head,
++      pmbinding.type,
++      pmbinding.mapping
++    )
++  }
++}
+ 
+ /**
+  * Binding for prosemirror.
+@@ -730,6 +788,161 @@ export const createNodeFromYElement = (
    prevSnapshot,
    computeYChange
  ) => {
@@ -266,7 +311,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..2410594769f3ddde2fb8104341c86b18
    const children = []
    /**
     * @param {Y.XmlElement | Y.XmlText} type
-@@ -1109,7 +1310,25 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1109,7 +1322,25 @@ export const attributesToMarks = (attrs, schema) => {
    const marks = []
    for (const markName in attrs) {
      // remove hashes if necessary
@@ -293,7 +338,7 @@ index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..2410594769f3ddde2fb8104341c86b18
    }
    return marks
  }
-@@ -1121,6 +1340,11 @@ export const attributesToMarks = (attrs, schema) => {
+@@ -1121,6 +1352,11 @@ export const attributesToMarks = (attrs, schema) => {
  const marksToAttributes = (marks, meta) => {
    const pattrs = {}
    marks.forEach((mark) => {
