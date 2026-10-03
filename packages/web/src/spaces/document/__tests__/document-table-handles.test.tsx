@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * inner#1126 A6 and A8: the row and column handles and the plus on the
- * table's edge, as the reader meets them.
+ * inner#1126 A6: the row and column handles, as the reader meets them.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -41,7 +40,7 @@ vi.mock('@blocknote/react', () => ({
   useExtensionState: () => side.state,
 }));
 
-const { DocumentTableHandle, DocumentTableExtend } = await import(
+const { DocumentTableHandle } = await import(
   '@web/spaces/document/DocumentTableHandles'
 );
 
@@ -229,22 +228,5 @@ describe('the column handle (A6)', () => {
 
     fireEvent.click(screen.getByTestId('doc-table-col-delete'));
     expect(grid(editor)).toEqual([['a1'], ['a2']]);
-  });
-});
-
-describe('the plus on the edge (A8)', () => {
-  it('adds a row and a column', () => {
-    const editor = openOver(0, 0);
-    render(
-      <>
-        <DocumentTableExtend orientation='addOrRemoveRows' hideOtherElements={() => undefined} />
-        <DocumentTableExtend orientation='addOrRemoveColumns' hideOtherElements={() => undefined} />
-      </>,
-    );
-
-    fireEvent.click(screen.getByTestId('doc-table-extend-rows'));
-    fireEvent.click(screen.getByTestId('doc-table-extend-cols'));
-
-    expect(grid(editor)).toEqual([['a1', 'b1', ''], ['a2', 'b2', ''], ['', '', '']]);
   });
 });

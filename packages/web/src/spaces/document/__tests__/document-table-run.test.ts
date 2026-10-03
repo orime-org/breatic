@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * inner#1126 §5.0 and A6, A8, A11: every command on a table acts on the cell
+ * inner#1126 §5.0 and A6, A11: every command on a table acts on the cell
  * the menu was opened on, writes in place, and leaves the reader's caret where
  * it was.
  */
@@ -16,8 +16,6 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
-  appendColumn,
-  appendRow,
   cellAt,
   deleteColumnAt,
   deleteRowAt,
@@ -228,19 +226,5 @@ describe('cell attributes off the handles and the cell button (A6, A11)', () => 
     setCellsAttr(editor, cellOf(editor, 'a1'), 'cell', 'backgroundColor', 'blue');
     setCellsAttr(editor, cellOf(editor, 'a1'), 'row', 'backgroundColor', 'blue');
     expect(attrs(editor, 'backgroundColor')[0]).toEqual(['blue', 'blue', 'blue']);
-  });
-});
-
-describe('the plus on the edge (A8)', () => {
-  it('adds a row at the bottom and a column at the right', () => {
-    const editor = open();
-    appendRow(editor, cellOf(editor, 'a1'));
-    appendColumn(editor, cellOf(editor, 'a1'));
-    expect(grid(editor)).toEqual([
-      ['a1', 'b1', 'c1', ''],
-      ['a2', 'b2', 'c2', ''],
-      ['', '', '', ''],
-    ]);
-    expect(readerKept(editor)).toBe(true);
   });
 });

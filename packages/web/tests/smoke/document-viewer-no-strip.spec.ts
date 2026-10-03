@@ -267,7 +267,7 @@ test('a viewer reads a table and gets none of its controls, nor can type in it',
   // The same wait the strip gets above, for controls that would be coming.
   await viewer.waitForTimeout(500);
 
-  await expect(viewer.getByTestId(/^doc-table-(row|col)-handle$|^doc-table-extend-|^doc-table-cell-button$/)).toHaveCount(0);
+  await expect(viewer.getByTestId(/^doc-table-(row|col)-handle$|^doc-table-cell-button$/)).toHaveCount(0);
   await expect(viewer.getByTestId('doc-block-table-handle')).toHaveCount(0);
   await expect(cell).toHaveText(CELL);
 });

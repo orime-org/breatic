@@ -39,13 +39,12 @@ describe('a table in the body', () => {
     expect(body).toContain('z-index: 3');
   });
 
-  it('keeps room right of and under the table for the edge plus buttons, and none above or left of it', () => {
-    // The library keeps the plus buttons up while the pointer is inside the
-    // wrapper within 20px of the table's right or bottom edge; the room is
-    // where that happens, and where the buttons are drawn. The row and column
-    // handles float outside, so the other two sides need none.
+  it('keeps room under the table for its scrollbar, and none on the other sides', () => {
+    // A wide table's scrollbar lies along the bottom of its frame; the room
+    // keeps it under the last row rather than over it. The row and column
+    // handles float outside the table.
     const paddings = declarationsOf('[data-content-type=\'table\'] .tableWrapper', 'padding');
-    expect(paddings.map(({ value }) => value)).toEqual(['0 1.5rem 1.5rem 0']);
+    expect(paddings.map(({ value }) => value)).toEqual(['0 0 0.5rem 0']);
   });
 
   it('draws where a dragged row or column lands the way a dragged block\'s line is drawn', () => {
