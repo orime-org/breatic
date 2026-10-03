@@ -15,6 +15,8 @@
 
 import {
   Copy,
+  IndentDecrease,
+  IndentIncrease,
   MessageSquareText,
   Palette,
   Plus,
@@ -33,6 +35,8 @@ export interface BlockMenuRow {
     | 'insertBelow'
     | 'align'
     | 'color'
+    | 'indent'
+    | 'unindent'
     | 'comment'
     | 'delete';
   /** i18n key for the row's name. */
@@ -95,4 +99,27 @@ export const BLOCK_MENU_ROWS: readonly BlockMenuRow[] = [
     labelKey: 'spaces.document.blockHandle.delete',
     Icon: Trash2,
   },
+];
+
+/**
+ * A row of {@link BLOCK_MENU_ROWS}, by id.
+ * @param id - The row's id.
+ * @returns The row.
+ */
+function rowOf(id: BlockMenuRow['id']): BlockMenuRow {
+  return BLOCK_MENU_ROWS.find((row) => row.id === id)!;
+}
+
+/**
+ * The rows of a table's entry (inner#1126 A5). A table is not a text block,
+ * so the rows that set a block's type, its alignment and its colour have
+ * nothing to act on; indenting takes their place, and delete names what goes.
+ */
+export const TABLE_MENU_ROWS: readonly BlockMenuRow[] = [
+  rowOf('insertBelow'),
+  rowOf('duplicate'),
+  { id: 'indent', labelKey: 'spaces.document.blockHandle.indent', Icon: IndentIncrease },
+  { id: 'unindent', labelKey: 'spaces.document.blockHandle.unindent', Icon: IndentDecrease },
+  rowOf('comment'),
+  { ...rowOf('delete'), labelKey: 'spaces.document.blockHandle.deleteTable' },
 ];

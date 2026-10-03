@@ -1176,7 +1176,10 @@
         "insertHere": "在此插入",
         "duplicate": "複製副本",
         "insertBelow": "在下方插入",
-        "delete": "刪除區塊"
+        "delete": "刪除區塊",
+        "indent": "縮排",
+        "unindent": "取消縮排",
+        "deleteTable": "刪除表格"
       },
       "table": {
         "pickSize": "選擇列數與欄數",

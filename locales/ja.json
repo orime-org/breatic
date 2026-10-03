@@ -1176,7 +1176,10 @@
         "insertHere": "ここに挿入",
         "duplicate": "このブロックを複製",
         "insertBelow": "下に挿入",
-        "delete": "ブロックを削除"
+        "delete": "ブロックを削除",
+        "indent": "インデント",
+        "unindent": "インデント解除",
+        "deleteTable": "表を削除"
       },
       "table": {
         "pickSize": "サイズを選択",

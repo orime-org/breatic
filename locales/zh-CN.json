@@ -1176,7 +1176,10 @@
         "insertHere": "在此插入",
         "duplicate": "复制副本",
         "insertBelow": "在下方插入",
-        "delete": "删除块"
+        "delete": "删除块",
+        "indent": "缩进",
+        "unindent": "取消缩进",
+        "deleteTable": "删除表格"
       },
       "table": {
         "pickSize": "选择行列数",

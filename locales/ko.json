@@ -1176,7 +1176,10 @@
         "insertHere": "여기에 삽입",
         "duplicate": "이 블록 복제",
         "insertBelow": "아래에 삽입",
-        "delete": "블록 삭제"
+        "delete": "블록 삭제",
+        "indent": "들여쓰기",
+        "unindent": "내어쓰기",
+        "deleteTable": "표 삭제"
       },
       "table": {
         "pickSize": "크기 선택",

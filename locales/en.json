@@ -1176,7 +1176,10 @@
         "insertHere": "Insert here",
         "duplicate": "Duplicate block",
         "insertBelow": "Insert below",
-        "delete": "Delete block"
+        "delete": "Delete block",
+        "indent": "Indent",
+        "unindent": "Outdent",
+        "deleteTable": "Delete table"
       },
       "table": {
         "pickSize": "Select a size",

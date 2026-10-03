@@ -18,8 +18,8 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const side = vi.hoisted(() => ({
-  editor: undefined,
-  block: undefined,
+  editor: undefined as unknown,
+  block: undefined as unknown,
 }));
 
 vi.mock('@blocknote/react', () => ({
