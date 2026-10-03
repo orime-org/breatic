@@ -44,6 +44,7 @@ import type { SpaceType } from '@breatic/shared';
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { LoadingOverlay } from '@web/pages/project/chrome/LoadingOverlay';
 import { LoadingScreen } from '@web/components/loading-screen';
+import { ArchivedBanner } from '@web/pages/project/chrome/ArchivedBanner';
 import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
 import {
   LeftFloatingMenu,
@@ -220,7 +221,12 @@ function ProjectWorkspace({
   // Fail-safe default: if `myRole` is missing (glitch / pre-load race),
   // treat the caller as the most-restrictive 'viewer' so chrome affordances
   // stay hidden rather than leaking owner/editor actions (user 2026-06-18).
-  const role = project.myRole ?? 'viewer';
+  const actualRole = project.myRole ?? 'viewer';
+  // An archived project is read-only for every member, whatever their role, so
+  // everything below that gates on the role reads this one value. The real
+  // role only reaches the role tag, which shows it.
+  const archived = project.archivedAt !== null;
+  const role = archived ? 'viewer' : actualRole;
   // Viewer affordance model (access-permission § 6.2, option B): the canvas
   // left creation menu stays visible + disabled (LeftFloatingMenu) and the
   // canvas body is read-only (SpaceOutlet); everything else a viewer cannot
@@ -839,11 +845,16 @@ function ProjectWorkspace({
             data-workspace=''
             data-workspace-disabled={workspaceDisabled || undefined}
           >
+            {archived ? (
+              <ArchivedBanner projectId={projectId} canRestore={project.canRestore} />
+            ) : null}
             <TopBar
               connectionStatus={connectionStatus}
               projectId={projectId}
               projectName={projectName}
               role={role}
+              actualRole={actualRole}
+              archived={archived}
               credits={credits}
               onRename={(next) => renameMutation.mutate(next)}
               members={members}

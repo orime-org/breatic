@@ -956,6 +956,12 @@
       "busy": "An upload or another operation is in progress. Refreshing will interrupt it. We recommend waiting until it finishes.",
       "later": "Later",
       "refresh": "Update"
+    },
+    "archived": {
+      "banner": "This project is archived and can only be viewed",
+      "restore": "Restore",
+      "restored": "Restored",
+      "restoreFailed": "Couldn't restore"
     }
   },
   "common": {

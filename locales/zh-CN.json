@@ -956,6 +956,12 @@
       "busy": "有上传或其他操作正在进行，刷新会中断操作。建议完成后再刷新。",
       "later": "稍后",
       "refresh": "更新"
+    },
+    "archived": {
+      "banner": "该 Project 已归档，只能查看",
+      "restore": "恢复",
+      "restored": "已恢复",
+      "restoreFailed": "恢复失败"
     }
   },
   "common": {

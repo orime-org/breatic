@@ -956,6 +956,12 @@
       "busy": "有上傳或其他操作正在進行，重新整理會中斷操作。建議完成後再重新整理。",
       "later": "稍後",
       "refresh": "更新"
+    },
+    "archived": {
+      "banner": "這個 Project 已封存，只能檢視",
+      "restore": "還原",
+      "restored": "已還原",
+      "restoreFailed": "還原失敗"
     }
   },
   "common": {

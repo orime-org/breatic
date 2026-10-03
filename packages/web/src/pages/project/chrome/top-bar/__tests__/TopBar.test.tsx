@@ -61,6 +61,8 @@ function setup(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
         projectName='Demo'
         // eslint-disable-next-line jsx-a11y/aria-role -- component prop, not a DOM ARIA role
         role='owner'
+        actualRole={overrides.role ?? 'owner'}
+        archived={false}
         credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
         members={MEMBERS}
@@ -96,6 +98,8 @@ describe('TopBar', () => {
         projectName='Demo'
         // eslint-disable-next-line jsx-a11y/aria-role -- component prop, not a DOM ARIA role
         role='owner'
+        actualRole='owner'
+        archived={false}
         credits={{ status: 'ready', value: 42 }}
         onRename={onRename}
       />
@@ -288,5 +292,15 @@ describe('toCreditsReadout', () => {
       status: 'ready',
       value: 4910,
     });
+  });
+});
+
+describe('TopBar on an archived project', () => {
+  it('shows the real role on a tag that takes no clicks, and hides owner actions', () => {
+    setup({ role: 'viewer', actualRole: 'owner', archived: true });
+    const tag = screen.getByTestId('role-tag');
+    expect(tag).toHaveTextContent('Owner');
+    expect(tag.tagName).toBe('SPAN');
+    expect(screen.queryByRole('button', { name: /invite/i })).toBeNull();
   });
 });
