@@ -75,10 +75,28 @@ export interface ProjectDuplicatedLifecycleEvent {
   ts: number;
 }
 
+/** Drop a just-archived project's live connections so they come back read-only. */
+export interface ProjectArchivedLifecycleEvent {
+  type: "project:archived";
+  projectId: string;
+  /** Epoch ms — when the business archive committed. */
+  ts: number;
+}
+
+/** Drop a just-restored project's live connections so they come back writable. */
+export interface ProjectRestoredLifecycleEvent {
+  type: "project:restored";
+  projectId: string;
+  /** Epoch ms — when the business restore committed. */
+  ts: number;
+}
+
 /** Discriminated union of every project-lifecycle command on the stream. */
 export type ProjectLifecycleEvent =
   | ProjectDeletedLifecycleEvent
-  | ProjectDuplicatedLifecycleEvent;
+  | ProjectDuplicatedLifecycleEvent
+  | ProjectArchivedLifecycleEvent
+  | ProjectRestoredLifecycleEvent;
 
 // ── Channel names (single source of truth) ──────────────────────────
 

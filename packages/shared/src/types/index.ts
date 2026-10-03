@@ -251,5 +251,7 @@ export type {
   ActivityNewControlEvent,
   ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
+  ProjectArchivedLifecycleEvent,
+  ProjectRestoredLifecycleEvent,
   ProjectLifecycleEvent,
 } from "@shared/types/redis-events.js";

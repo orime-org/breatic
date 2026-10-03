@@ -394,6 +394,68 @@ export async function duplicate(
 }
 
 /**
+ * Load a live project and require the caller to be its studio's admin.
+ *
+ * The admin check is a plain read taken before any row lock, so it adds no
+ * lock to the orders the archive and restore transactions take.
+ * @param projectId - Project UUID
+ * @param userId - Authenticated user UUID
+ * @returns The project
+ * @throws {NotFoundError} when the project is missing / deleted, or the caller
+ *   is not in its studio (existence is hidden from outsiders)
+ * @throws {ForbiddenError} when the caller is in the studio but not its admin
+ */
+async function requireStudioAdminOf(projectId: string, userId: string): Promise<ProjectEntity> {
+  const project = await projectRepo.getProjectById(projectId);
+  if (!project) throw new NotFoundError(t("server.error.not_found"));
+  const studioRole = await studioAuthService.loadStudioRole(userId, project.studioId);
+  if (studioRole === null) throw new NotFoundError(t("server.error.not_found"));
+  if (studioRole !== "admin") throw new ForbiddenError(t("server.error.forbidden"));
+  return project;
+}
+
+/**
+ * Archive a project. Studio admin only; the project's own owner does not get
+ * to. It becomes read-only for every member until restored.
+ * @param projectId - Project UUID
+ * @param userId - Authenticated user UUID; must be the studio's admin
+ * @throws {NotFoundError} when the project is missing / deleted or hidden from the caller
+ * @throws {ForbiddenError} when the caller is not the studio's admin
+ * @throws {ConflictError} when the project is already archived
+ */
+export async function archive(projectId: string, userId: string): Promise<void> {
+  await requireStudioAdminOf(projectId, userId);
+  const outcome = await db.transaction((tx) => projectRepo.archiveProject(projectId, userId, tx));
+  if (outcome === "missing") throw new NotFoundError(t("server.error.not_found"));
+  if (outcome === "unchanged") throw new ConflictError(t("server.project.already_archived"));
+}
+
+/**
+ * Restore an archived project. Studio admin only, and only while the studio
+ * has room for one more live project — an archived project does not take a
+ * slot, so restoring one takes it back.
+ * @param projectId - Project UUID
+ * @param userId - Authenticated user UUID; must be the studio's admin
+ * @throws {NotFoundError} when the project is missing / deleted or hidden from the caller
+ * @throws {ForbiddenError} when the caller is not the studio's admin
+ * @throws {ConflictError} when the project is not archived, or the studio is
+ *   at its project limit
+ */
+export async function restore(projectId: string, userId: string): Promise<void> {
+  const project = await requireStudioAdminOf(projectId, userId);
+  const outcome = await db.transaction(async (tx) => {
+    if (!(await studioRepo.lockStudio(project.studioId, tx))) return "missing" as const;
+    const { projects_per_studio: limit } = await getLimitsForStudio(project.studioId, tx);
+    if ((await projectRepo.countLiveProjectsInStudio(project.studioId, tx)) >= limit) {
+      throw new ConflictError(t("server.project.restore_limit_reached", { limit }));
+    }
+    return projectRepo.restoreProject(projectId, tx);
+  });
+  if (outcome === "missing") throw new NotFoundError(t("server.error.not_found"));
+  if (outcome === "unchanged") throw new ConflictError(t("server.project.not_archived"));
+}
+
+/**
  * Soft-delete a project after verifying the caller is `owner`.
  *
  * Cascades soft delete to conversations, tasks, node history, member

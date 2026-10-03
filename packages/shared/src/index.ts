@@ -111,6 +111,8 @@ export type {
   ActivityNewControlEvent,
   ProjectDeletedLifecycleEvent,
   ProjectDuplicatedLifecycleEvent,
+  ProjectArchivedLifecycleEvent,
+  ProjectRestoredLifecycleEvent,
   ProjectLifecycleEvent,
   Voice,
   VoicePage,

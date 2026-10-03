@@ -16,7 +16,7 @@
  * the `yjs_documents` table.
  */
 
-import { eq, and, isNull, desc, inArray, count } from "drizzle-orm";
+import { eq, and, isNull, desc, inArray, count, sql } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectActivitiesRepo, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
@@ -136,11 +136,153 @@ export async function lockLiveProject(
   return rows.length > 0;
 }
 
+/** How an archive or restore attempt ended. */
+export type ArchiveOutcome = "done" | "missing" | "unchanged";
+
+/**
+ * Archive a project: stamp it, expire every pending request filed against it,
+ * take their bell entries down, and queue the command that drops its live
+ * connections — one transaction.
+ *
+ * ORDER IS LOAD-BEARING. The project row is locked first, as every path that
+ * files, decides, withdraws or accepts a request against a project locks it
+ * before its request rows. Taking a request table first would close a cycle
+ * with any of them. A request filed concurrently waits on this lock and then
+ * finds the project archived (`lockLiveProject` refuses it), so nothing pending
+ * survives the sweep.
+ *
+ * The requests are expired, not deleted: the project comes back on restore,
+ * and its history should say these lapsed.
+ * @param id - Project UUID
+ * @param byUserId - The studio admin archiving it
+ * @param tx - The enclosing transaction
+ * @returns `done`, `missing` when there is no live project row, or
+ *   `unchanged` when it is already archived
+ */
+export async function archiveProject(
+  id: string,
+  byUserId: string,
+  tx: DbTx,
+): Promise<ArchiveOutcome> {
+  const [row] = await tx
+    .select({ archivedAt: projects.archivedAt })
+    .from(projects)
+    .where(and(eq(projects.id, id), isNull(projects.deletedAt)))
+    .for("update")
+    .limit(1);
+  if (!row) return "missing";
+  if (row.archivedAt !== null) return "unchanged";
+
+  const expire = {
+    status: "expired",
+    decidedAt: null,
+  } as const;
+  const notificationIds: string[] = [];
+  const collect = (rows: { notificationId: string | null }[]): void => {
+    for (const r of rows) if (r.notificationId !== null) notificationIds.push(r.notificationId);
+  };
+
+  collect(
+    await tx
+      .update(roleUpgradeRequests)
+      .set({ ...expire, expiresAt: sql`LEAST(${roleUpgradeRequests.expiresAt}, now())` })
+      .where(
+        and(
+          eq(roleUpgradeRequests.projectId, id),
+          eq(roleUpgradeRequests.status, "pending"),
+          isNull(roleUpgradeRequests.deletedAt),
+        ),
+      )
+      .returning({ notificationId: roleUpgradeRequests.notificationId }),
+  );
+  collect(
+    await tx
+      .update(projectJoinRequests)
+      .set({ ...expire, expiresAt: sql`LEAST(${projectJoinRequests.expiresAt}, now())` })
+      .where(
+        and(
+          eq(projectJoinRequests.projectId, id),
+          eq(projectJoinRequests.status, "pending"),
+          isNull(projectJoinRequests.deletedAt),
+        ),
+      )
+      .returning({ notificationId: projectJoinRequests.notificationId }),
+  );
+  collect(
+    await tx
+      .update(projectTransfers)
+      .set({ ...expire, expiresAt: sql`LEAST(${projectTransfers.expiresAt}, now())` })
+      .where(
+        and(
+          eq(projectTransfers.projectId, id),
+          eq(projectTransfers.status, "pending"),
+          isNull(projectTransfers.deletedAt),
+        ),
+      )
+      .returning({ notificationId: projectTransfers.notificationId }),
+  );
+  collect(
+    await tx
+      .update(projectInvitations)
+      .set({ status: "expired", expiresAt: sql`LEAST(${projectInvitations.expiresAt}, now())` })
+      .where(
+        and(
+          eq(projectInvitations.projectId, id),
+          eq(projectInvitations.status, "pending"),
+          isNull(projectInvitations.deletedAt),
+        ),
+      )
+      .returning({ notificationId: projectInvitations.notificationId }),
+  );
+  // Only these requests' own entries come down; the project's other unread
+  // notifications stay, since the project comes back on restore.
+  for (const notificationId of notificationIds) {
+    await notificationRepo.retire(notificationId, tx);
+  }
+
+  const now = new Date();
+  await tx
+    .update(projects)
+    .set({ archivedAt: now, archivedByUserId: byUserId, updatedAt: now })
+    .where(eq(projects.id, id));
+  await insertOutboxEvent(tx, { type: "project:archived", projectId: id, ts: now.getTime() });
+  return "done";
+}
+
+/**
+ * Restore an archived project and queue the command that drops its live
+ * connections so they come back writable. The caller has already locked the
+ * studio row and checked it has room for one more live project.
+ * @param id - Project UUID
+ * @param tx - The enclosing transaction
+ * @returns `done`, `missing` when there is no live project row, or
+ *   `unchanged` when it is not archived
+ */
+export async function restoreProject(id: string, tx: DbTx): Promise<ArchiveOutcome> {
+  const [row] = await tx
+    .select({ archivedAt: projects.archivedAt })
+    .from(projects)
+    .where(and(eq(projects.id, id), isNull(projects.deletedAt)))
+    .for("update")
+    .limit(1);
+  if (!row) return "missing";
+  if (row.archivedAt === null) return "unchanged";
+  const now = new Date();
+  await tx
+    .update(projects)
+    .set({ archivedAt: null, archivedByUserId: null, updatedAt: now })
+    .where(eq(projects.id, id));
+  await insertOutboxEvent(tx, { type: "project:restored", projectId: id, ts: now.getTime() });
+  return "done";
+}
+
 /**
  * How many live projects a studio currently holds.
  *
  * Backs the per-studio project ceiling, whose value comes from the tier of
- * that studio's current admin. Soft-deleted projects do not count — the row
+ * that studio's current admin. Archived projects do not count either: archiving
+ * frees a slot, and restoring takes one back (the restore checks for room).
+ * Soft-deleted projects do not count — the row
  * stays for referential integrity, but the capacity it occupied is released,
  * which is what a person deleting a project expects to have happened.
  *
@@ -161,7 +303,9 @@ export async function countLiveProjectsInStudio(
   const rows = await (tx ?? db)
     .select({ n: count() })
     .from(projects)
-    .where(and(eq(projects.studioId, studioId), isNull(projects.deletedAt)));
+    .where(
+      and(eq(projects.studioId, studioId), isNull(projects.deletedAt), isNull(projects.archivedAt)),
+    );
   return rows[0]?.n ?? 0;
 }
 
