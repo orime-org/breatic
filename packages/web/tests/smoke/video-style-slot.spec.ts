@@ -129,6 +129,24 @@ test('picks up to three style pictures for a text-to-video model and sends them'
   await expect(page.getByTestId('generate-style-thumbnail-2')).toBeVisible();
   await expect(add).toHaveCount(0);
   await expect(page.getByTestId('reference-pick-banner')).toHaveCount(0);
+  // Each X sits inside its own picture, and what it takes clicks on stops
+  // short of the next picture: a click on the next one's corner is that one's.
+  const misses = await page.evaluate(() => {
+    const box = (id: string): DOMRect => document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
+    const out: string[] = [];
+    for (const i of [0, 1, 2]) {
+      const tile = box(`generate-tool-style-item-${i}`);
+      const x = box(`generate-style-clear-${i}`);
+      if (x.left < tile.left || x.right > tile.right || x.top < tile.top) out.push(`clear ${i} leaves its picture`);
+      if (i < 2) {
+        const next = box(`generate-tool-style-item-${i + 1}`);
+        const hit = document.elementFromPoint(next.left + 2, next.top + 2);
+        if (hit?.closest(`[data-testid="generate-style-clear-${i}"]`)) out.push(`clear ${i} takes clicks on picture ${i + 1}`);
+      }
+    }
+    return out;
+  });
+  expect(misses).toEqual([]);
 
   await page.getByTestId('generate-tool-style-item-1').hover();
   await page.getByTestId('generate-style-clear-1').click();

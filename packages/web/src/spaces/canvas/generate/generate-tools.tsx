@@ -382,8 +382,10 @@ export function SlotTool({
           onClick={onClear}
           // The badge draws 16px; the pseudo-element widens what takes clicks
           // to 24x24, the minimum target size (WCAG 2.2 SC 2.5.8). Its inset
-          // counts from inside the 1px border: 14 + 2 * 5 = 24.
-          className='absolute -right-1 -top-1 z-10 flex h-4 w-4 after:absolute after:-inset-[5px] items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          // counts from inside the 1px border: 14 + 2 * 5 = 24. The badge sits
+          // inside its own tile's corner, so that area ends inside the row gap
+          // and never takes a click meant for the tile beside it.
+          className='absolute right-0.5 top-0.5 z-10 flex h-4 w-4 after:absolute after:-inset-[5px] items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-2.5 w-2.5' aria-hidden='true' />
         </Button>
