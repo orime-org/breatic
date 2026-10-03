@@ -32,4 +32,17 @@ describe('a table in the body', () => {
     const paddings = declarationsOf('[data-content-type=\'table\'] .tableWrapper', 'padding');
     expect(paddings.map(({ value }) => value)).toEqual(['0']);
   });
+
+  it('draws where a dragged row or column lands the way a dragged block\'s line is drawn', () => {
+    for (const [name, shadow] of [
+      ['row-before', '0 2px 0'],
+      ['row-after', '0 -2px 0'],
+      ['column-before', '2px 0 0'],
+      ['column-after', '-2px 0 0'],
+    ]) {
+      expect(ruleBody(`.doc-table-drop-${name}`)).toContain(
+        `box-shadow: inset ${shadow} var(--color-status-selected)`,
+      );
+    }
+  });
 });
