@@ -171,7 +171,7 @@ describe("multi-row FOR UPDATE — locks are taken in key order", () => {
     expect(held).toBe(false);
   });
 
-  it("lockOwnedProjectsInStudio takes the owner's project rows in project_id order", async () => {
+  it("lockOwnedProjectsInStudio takes the owner's project_members rows in project_id order", async () => {
     const tag = `mrlo-${seq++}`;
     const ownerId = randomUUID();
     await insertUser(ownerId, `${tag}-o`);
