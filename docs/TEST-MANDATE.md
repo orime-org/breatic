@@ -24,10 +24,14 @@
 | **smoke** | 走一条用户要办成的事,且跨至少两个部件或一次真实往返 | `packages/web/tests/smoke/` |
 | **visual** | 钉一个部件自己的行为 / 位置 / 尺寸 / 颜色 / 时序 | `packages/web/tests/visual/` |
 | **unit** | 不需要真浏览器 | 被测对象同级的 `__tests__/` |
+| **integration**(只测一个包) | 要真依赖(PG / Redis / 回环 socket),被测代码都在一个包里 | 那个包被测对象同级的 `__tests__/` |
+| **integration**(跨服务) | 一次运行里驱动 server / worker / collab 中两个以上的代码 | `packages/integration-tests/src/__tests__/` |
 
 **只有一次真实往返才会让那个东西出现在页面上的用例才是 smoke。** 一条用例需要第二个连接只是为了移动一个目标(另一个人在拖、在选),它仍然是 visual —— 被钉住的还是这一端画出来的样子。
 
 判定题:**这条用例如果只在一个部件里跑,还成立吗?成立 → visual。**
+
+集成测试要起 PG 和 Redis 时,一律用 `@breatic/integration-tests` 的容器启动(包的 `vitest.integration.config.ts` 把 `@breatic/integration-tests/containers` 挂进 `globalSetup`、`@breatic/integration-tests/env` 挂进 `setupFiles`),不在包里再写一份。判定题:**这条集成测试读到了别的服务的源码吗?读到 → 它住 `packages/integration-tests`。**
 
 ## 2. smoke(做不了必 explicit 说明,不许默默跳)
 

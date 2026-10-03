@@ -31,7 +31,7 @@ breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架�
 
 Frontend stack: see [Tech stack (frontend)](#tech-stack-frontend).
 
-### 8 packages
+### 9 packages
 
 ```
 packages/
@@ -44,6 +44,7 @@ packages/
 ├── worker/   # BullMQ 壳: handlers/(dispatch.ts=4 路分发 + step-deps〔多步上游调用读写的两张表 + 素材的缓存键 + 可灵元素的一句描述〕+ local/{runtime,video} 本地 ffmpeg 执行) + providers/(图片 / 视频 / 音频 / 语音同一条路,全部跑在 WaveSpeed:generate / plan-steps / run-steps / upstream-body〔按 yaml 的 `upstream` 声明拼请求体,`joins` 槽位并进它点名的池子〕/ wavespeed + families/{minimax-speech,nano-banana};three-d/ 自成一路) + 根(index 入口 / voice-samples〔维护样音的人本地跑的入口,生成固定样音地址还缺的样音〕/ mini-tool-registry / bootstrap-config)
 ├── collab/   # Hocuspocus 独立进程: hooks/(auth/meta-write-attempt-log/presence/awareness-identity/presence-wiring/unload-gate〔文档离开内存前的最后一次存盘〕) + services/(persistence〔谁可以写库的唯一决定处〕/store-tracker〔有没有没存下的内容 + 一次性 arm〕/store-loop〔10 秒一轮的定时存盘,唯一的重试机制〕/store-alert/rescue-file〔存不进库时内容落本地,永不自动清理〕/event-stream/space-rpc/task-listener/members-sync/lazy-seed/lifecycle-listener/connection-registry/connection-tracking/space-delete-lock/yjs-documents.repo) + infra/(health-checks · connection-gate〔连接准入:升级阶段从原始对端地址裁决,回环豁免、非回环取 nginx 的 x-real-ip 否则 403;裁决本身随请求头传下去〕 · client-identity〔上面那条规则的纯判定〕 · socket-ceilings〔库里几个「超了就关整条 socket」的上限,从一个声明数推导〕) + 根(index/hocuspocus 装配/config)
 ├── web/      # React app — see the [Frontend](#frontend) part
+├── integration-tests/ # 不构建、不部署:横跨两个以上服务的集成测试(src/__tests__/),加上所有起容器的集成套件共用的容器启动(src/test-utils/:containers 起 PG + Redis 并迁移两个库、env 把地址写进每个测试文件的 process.env)。服务源码按路径别名读,不声明 server / worker / collab
 └── ingest/   # Cloudflare Worker(`wrangler`,不在上面那条依赖链上):浏览器把分片发给它,它转写 R2 的分片上传并边写边算 sha256。**字节也可以不经过任何人的手** —— 交给它一个地址(`POST /fetch`),它自己去拉、边拉边写边算,后端的生成结果和用户提交的外链都走这条。**它也是字节出去的那一端**:`GET|HEAD /download/{key}` 把对象带着 `Content-Disposition: attachment` 答出来,而那个头是浏览器把一个跨域响应收进自己下载列表的唯一途径 —— 桶在它自己的域名上,这个头只能由发字节的人加。
 │              **零常驻状态** —— 一次上传要记住的 R2 `uploadId` 和每片 etag 由发起方持有、每次请求带回来;收尾由我们的 server 发起,它把真实字节数和 hash 答在响应里、不回调我们任何地址(机制见下面的「存储层」)
 config/ skills/ locales/ (git-tracked)
