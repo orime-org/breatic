@@ -74,12 +74,11 @@ import { openCommentDraft } from '@web/spaces/document/document-comment-entries'
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import {
-  insertRowForMenu,
+  insertBelow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
-import { DIVIDER } from '@web/spaces/document/document-divider';
 
 /**
  * How far from the menu's edge its submenus sit.
@@ -263,11 +262,7 @@ export function DocumentBlockMenu({
     (choice: InsertChoice): void => {
       const live = rowNow();
       if (live !== undefined) {
-        if (choice === DIVIDER) {
-          insertRowForMenu(editor, live, [DIVIDER]);
-        } else {
-          runBlockType(editor, choice, insertRowForMenu(editor, live), false);
-        }
+        insertBelow(editor, live, choice);
       }
       close();
     },
