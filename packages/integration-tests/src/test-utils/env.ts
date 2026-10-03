@@ -100,20 +100,26 @@ process.env.INGEST_SHARED_SECRET = "integration-suite-ingest-secret";
 // connection, and core is imported lazily inside the hook so that merely
 // loading this setup file still pulls in no part of the application (the
 // property the header above describes).
+//
+// Each close is called inside its own async function. A test file that mocks
+// `@breatic/core` hands back a mock without these exports, and reading one
+// throws; called this way the throw settles like any other close, and such a
+// file opened no real connections to close.
 afterAll(async () => {
   const core = await import("@breatic/core").catch(() => null);
   if (!core) return;
-  await Promise.allSettled([
-    core.closeDb(),
-    core.closeYjsDb(),
-    core.closeRedis(),
-    core.closeQueueRedis(),
-    core.closeStreamRedis(),
-    core.closeCollabRedis(),
+  const closes = [
+    () => core.closeDb(),
+    () => core.closeYjsDb(),
+    () => core.closeRedis(),
+    () => core.closeQueueRedis(),
+    () => core.closeStreamRedis(),
+    () => core.closeCollabRedis(),
     // Nothing in the suite builds queues through core's factories today, so
     // this closes an empty registry. It is here because the list is meant to
     // be "everything core hands out that has to come back" — leaving one out
     // is how the next test to call `createQueue` silently starts leaking.
-    core.closeQueues(),
-  ]);
+    () => core.closeQueues(),
+  ];
+  await Promise.allSettled(closes.map(async (close) => close()));
 });

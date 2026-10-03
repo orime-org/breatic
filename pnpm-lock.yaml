@@ -39,6 +39,9 @@ catalogs:
     '@openrouter/ai-sdk-provider':
       specifier: ^3.0.0
       version: 3.0.0
+    '@testcontainers/postgresql':
+      specifier: ^11.14.0
+      version: 11.14.0
     '@tiptap/core':
       specifier: 3.29.2
       version: 3.29.2
@@ -141,6 +144,9 @@ catalogs:
     stripe:
       specifier: ^21.0.1
       version: 21.0.1
+    testcontainers:
+      specifier: ^11.14.0
+      version: 11.14.0
     tsup:
       specifier: ^8.5.1
       version: 8.5.1
@@ -301,6 +307,12 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@breatic/integration-tests':
+        specifier: workspace:*
+        version: link:../integration-tests
+      '@testcontainers/postgresql':
+        specifier: 'catalog:'
+        version: 11.14.0
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.1
@@ -310,6 +322,9 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 4.9.0
+      testcontainers:
+        specifier: 'catalog:'
+        version: 11.14.0
       tsup:
         specifier: 'catalog:'
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.23.12)(typescript@5.8.3)(yaml@2.9.0)
@@ -509,7 +524,7 @@ importers:
         specifier: 'catalog:'
         version: 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
       '@testcontainers/postgresql':
-        specifier: ^11.14.0
+        specifier: 'catalog:'
         version: 11.14.0
       '@types/node':
         specifier: 'catalog:'
@@ -527,7 +542,7 @@ importers:
         specifier: 'catalog:'
         version: 3.4.9
       testcontainers:
-        specifier: ^11.14.0
+        specifier: 'catalog:'
         version: 11.14.0
       vitest:
         specifier: 'catalog:'
@@ -609,7 +624,7 @@ importers:
         specifier: 'catalog:'
         version: 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
       '@testcontainers/postgresql':
-        specifier: ^11.14.0
+        specifier: 'catalog:'
         version: 11.14.0
       '@types/mdast':
         specifier: ^4.0.4
@@ -630,7 +645,7 @@ importers:
         specifier: 'catalog:'
         version: 3.4.9
       testcontainers:
-        specifier: ^11.14.0
+        specifier: 'catalog:'
         version: 11.14.0
       tsup:
         specifier: 'catalog:'

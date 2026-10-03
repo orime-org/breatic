@@ -20,13 +20,13 @@
     "@breatic/domain": "workspace:*",
     "@breatic/shared": "workspace:*",
     "@hocuspocus/server": "catalog:",
-    "@testcontainers/postgresql": "^11.14.0",
+    "@testcontainers/postgresql": "catalog:",
     "@types/node": "catalog:",
     "ai": "catalog:",
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",
     "postgres": "catalog:",
-    "testcontainers": "^11.14.0",
+    "testcontainers": "catalog:",
     "vitest": "catalog:",
     "yjs": "catalog:"
   }

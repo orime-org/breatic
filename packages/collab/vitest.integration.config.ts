@@ -10,12 +10,14 @@
  * the timeouts of every other package running beside it. Two of those have
  * already gone red that way while passing on their own.
  *
- * Unlike @breatic/server's integration config, nothing here wants a container.
- * These start their own Hocuspocus on port 0 and talk to it over loopback, so
- * `pnpm --filter @breatic/collab test:integration` needs no Docker, no
- * Postgres and no Redis.
+ * Each suite starts its own Hocuspocus on port 0 and talks to it over
+ * loopback. The ones that persist documents or run two instances also need
+ * Postgres and Redis, which the shared container setup in
+ * `@breatic/integration-tests` starts once for the whole run — so this config
+ * needs Docker, like every package's integration config.
  */
 
+import type {} from "@breatic/integration-tests/provided-context";
 import { defineConfig } from "vitest/config";
 
 import base from "./vitest.config.js";
@@ -25,6 +27,8 @@ export default defineConfig({
   test: {
     ...base.test,
     include: ["src/**/*.integration.test.ts"],
+    globalSetup: ["@breatic/integration-tests/containers"],
+    setupFiles: ["@breatic/integration-tests/env"],
     // The base excludes exactly these. Spreading overwrites rather than
     // concatenating, so the list has to be cleared by hand.
     exclude: [],
