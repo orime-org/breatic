@@ -113,13 +113,13 @@ describe('the copy buttons', () => {
     expect(tokens.filter((t) => t === 'group' || t.startsWith('group-hover:'))).toEqual([]);
   });
 
-  it('is drawn the way the code block draws its corner copy button', () => {
-    // Same job, same look: an outline button the compact control size, with
-    // the icon muted until the copy has happened.
+  it('is drawn the way the code block draws its corner copy button, sized to the square', () => {
+    // Same job, same look: an outline button with the icon muted until the
+    // copy has happened. It stays 18px so it does not crowd a 68px square.
     render(<MessageBubble message={withImages(1)} />);
 
     const tokens = screen.getByTestId('asset-copy').className.split(/\s+/);
-    for (const cls of ['size-[var(--btn-compact)]', 'bg-card', 'text-muted-foreground']) {
+    for (const cls of ['size-[18px]', 'bg-card', 'text-muted-foreground']) {
       expect(tokens).toContain(cls);
     }
   });

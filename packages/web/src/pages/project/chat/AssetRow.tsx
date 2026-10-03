@@ -204,17 +204,18 @@ function CopyAssetButton({ copying, asset, first }: CopyAssetButtonProps): React
         aria-label={t('chat.action.copy')}
         onClick={() => copying.copy(asset)}
         className={cn(
-          // Drawn as the code block's corner copy button is.
-          'size-[var(--btn-compact)] bg-card text-muted-foreground transition-opacity',
+          // Drawn as the code block's corner copy button is, at a size that
+          // leaves a 68px square mostly uncovered.
+          'size-[18px] bg-card text-muted-foreground transition-opacity',
           copied
             ? 'text-foreground'
             : 'opacity-0 pointer-events-none group-hover/asset:opacity-100 group-hover/asset:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto',
         )}
       >
         {copied ? (
-          <Check className='size-3.5' aria-hidden='true' />
+          <Check className='size-3' aria-hidden='true' />
         ) : (
-          <Copy className='size-3.5' aria-hidden='true' />
+          <Copy className='size-3' aria-hidden='true' />
         )}
       </Button>
       {copied ? <CopyAnswerLabel side={first ? 'left' : 'right'} /> : null}
