@@ -484,6 +484,21 @@ export async function duplicate(
 }
 
 /**
+ * Refuse a write to something that belongs to an archived project.
+ *
+ * For the writes gated on who owns a row (a conversation, an attachment)
+ * rather than on the caller's project role — those never pass through
+ * `loadProjectRole`, so its archive cap does not reach them.
+ * @param projectId - The project the written row belongs to, or null when it belongs to none
+ * @throws {ConflictError} when that project is archived
+ */
+export async function assertNotArchived(projectId: string | null): Promise<void> {
+  if (projectId === null) return;
+  const project = await projectRepo.getProjectById(projectId);
+  if (project?.archivedAt != null) throw new ConflictError(t("server.project.archived"));
+}
+
+/**
  * Load a live project and require the caller to be its studio's admin.
  *
  * The admin check is a plain read taken before any row lock, so it adds no

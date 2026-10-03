@@ -328,6 +328,7 @@ export async function getEarlierMessages(
  * @returns The conversation, once it has passed all three checks
  * @throws {NotFoundError} if it is missing, deleted, owned by someone else, or
  *   belongs to a different project
+ * @throws {ConflictError} when the conversation's project is archived
  */
 export async function assertWritable(
   conversationId: string,
@@ -342,6 +343,7 @@ export async function assertWritable(
   ) {
     throw new NotFoundError(t("server.error.not_found"));
   }
+  await projectService.assertNotArchived(conversation.projectId);
   return conversation;
 }
 
@@ -438,11 +440,13 @@ export async function getMessagesForLlm(
  * @param userId - Requesting user UUID
  * @throws {NotFoundError} if conversation does not exist
  * @throws {ForbiddenError} if userId does not match the conversation owner
+ * @throws {ConflictError} when the conversation's project is archived
  */
 export async function deleteConversation(
   conversationId: string,
   userId: string,
 ): Promise<void> {
-  await validateOwnership(conversationId, userId);
+  const conversation = await validateOwnership(conversationId, userId);
+  await projectService.assertNotArchived(conversation.projectId);
   await conversationRepo.softDeleteConversation(conversationId);
 }

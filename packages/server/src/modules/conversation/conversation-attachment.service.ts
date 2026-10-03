@@ -7,6 +7,8 @@
  */
 
 import * as repo from "@server/modules/conversation/conversation-attachment.repo.js";
+import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
+import * as projectService from "@server/modules/project/project.service.js";
 import { ConflictError, NotFoundError, ForbiddenError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { ConversationAttachmentEntity, AssetKind } from "@breatic/shared";
@@ -64,6 +66,7 @@ export async function listByConversation(
  * @param userId - Authenticated caller; must own the attachment
  * @throws {NotFoundError} when the attachment doesn't exist
  * @throws {ForbiddenError} when the caller doesn't own the attachment
+ * @throws {ConflictError} when the conversation's project is archived
  */
 export async function softDelete(id: string, userId: string): Promise<void> {
   const existing = await repo.getById(id);
@@ -76,6 +79,8 @@ export async function softDelete(id: string, userId: string): Promise<void> {
   if (existing.deletedAt) {
     return; // idempotent
   }
+  const conversation = await conversationRepo.getConversation(existing.conversationId);
+  await projectService.assertNotArchived(conversation?.projectId ?? null);
   await repo.softDelete(id);
 }
 
