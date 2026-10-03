@@ -524,9 +524,13 @@ export function renderProductGuide(): string {
     `- Picture panel: tools ${quoted(t("canvas.generatePanel.reference"))} and ` +
       `${quoted(t("canvas.generatePanel.focus"))}. A model that takes style images adds, after a thin divider, ` +
       `a ${quoted(t("canvas.generatePanel.style"))} button: click it, then up to three pictures on the canvas, ` +
-      `while the banner reads ${quoted(t("canvas.generatePanel.selectStyleFromCanvas"))}. Each picked picture ` +
-      "shows as a small picture with an X that takes it out, and while there is room one more place counts " +
-      "them, such as 2/3; clicking it picks more. The pictures are copies, and the run follows their look. A " +
+      `while the banner reads ${quoted(t("canvas.generatePanel.selectStyleFromCanvas"))}; each click adds one ` +
+      "and picking ends by itself with the third. A picture already in the area stays dim and cannot be " +
+      "picked twice. Each picked picture shows as a small picture with an X that takes it out, and while " +
+      "there is room one more place counts them, such as 2/3; clicking it picks more. Once three are in, " +
+      "there is no room: take one out with its X before picking another. The pictures are copies, and the " +
+      "run follows their look. Switching to a model that takes no style images hides the area; the pictures " +
+      "stay on the node and come back with a model that takes them. A " +
       "model built around style images will not run with none and says " +
       `${quoted(t("canvas.generatePanel.errorNoStyleImage"))}. Clicking the settings pill opens ` +
       "whichever of " +
@@ -630,7 +634,7 @@ export function renderProductGuide(): string {
       "and only nodes that fit stay lit. The node's content is copied into the slot and picking ends. A slot " +
       "holding a picture, or a video with a cover, shows that picture in place of its icon and name; a slot " +
       "holding a sound, or a video without a cover, keeps its icon and name and its border stands out more. To " +
-      "replace it, press the filled slot and click another node. If the mode changes while picking and the " +
+      "replace it, press the filled slot and click another node. If the mode or model changes while picking and the " +
       `slot is no longer shown, picking ends with ${quoted(t("canvas.generatePanel.pickEnded"))} ` +
       `(${quoted(t("canvas.generatePanel.pickEndedByPeer"))} when someone else changed it). Pressing the slot again ` +
       `while picking, Esc, or ${quoted(t("canvas.generatePanel.exitSelect"))} in the bar at the top stops picking ` +
