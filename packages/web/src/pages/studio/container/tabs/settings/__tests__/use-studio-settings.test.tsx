@@ -650,6 +650,31 @@ describe('useStudioSettings — a slug save the server refuses with 409', () => 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Boom'));
   });
 
+  it('judges each save with its own field check, even when a later save starts first', async () => {
+    let rejectRename: (err: unknown) => void = () => {};
+    vi.mocked(studiosApi.update)
+      .mockReturnValueOnce(
+        new Promise((_resolve, rej) => {
+          rejectRename = rej;
+        }),
+      )
+      .mockReturnValueOnce(new Promise(() => {}));
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+    result.current.save({ slug: 'acme-renamed' }, () => true);
+    result.current.save({ name: 'Acme 2' });
+    rejectRename(conflict());
+    await waitFor(() =>
+      expect(slugFieldShowsConflict).toHaveBeenCalledWith(
+        client,
+        expect.any(ApiException),
+        'acme-renamed',
+        expect.any(Function),
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it('does not re-ask for a save that left the slug alone', async () => {
     const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
     result.current.save({ name: 'Acme 2' });

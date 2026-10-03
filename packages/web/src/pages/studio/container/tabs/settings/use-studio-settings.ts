@@ -32,6 +32,12 @@ import {
 } from '@web/stores/current-user';
 import type { Studio, StudioDetail, UpdateStudioInput } from '@breatic/shared';
 
+/** One studio edit, with the slug field's check when it changes the slug. */
+interface StudioSave {
+  patch: UpdateStudioInput;
+  slugFieldShown?: () => boolean;
+}
+
 /** The settings tab's write actions and their in-flight state. */
 export interface StudioSettingsActions {
   /**
@@ -143,21 +149,16 @@ export function useStudioSettings(
     [navigate, queryClient, studio.slug, studio.type],
   );
 
-  // The slug field's check for the save in flight. Kept beside the mutation
-  // because its onError has to run even after the settings tab unmounts,
-  // which per-call `mutate` callbacks do not.
-  const slugFieldShownRef = React.useRef<(() => boolean) | undefined>(
-    undefined,
-  );
   const updateMutation = useMutation({
-    mutationFn: (patch: UpdateStudioInput) =>
+    mutationFn: ({ patch }: StudioSave) =>
       studiosApi.update(studio.slug, patch),
     onSuccess: (next) => {
       absorb(next);
       toast.success(t('studio.container.settings.saved'));
     },
-    onError: async (err, patch) => {
-      const slugFieldShown = slugFieldShownRef.current;
+    // On the mutation itself, so it still runs after the settings tab has
+    // unmounted mid-request.
+    onError: async (err, { patch, slugFieldShown }) => {
       const shownByField =
         patch.slug !== undefined &&
         slugFieldShown !== undefined &&
@@ -238,10 +239,8 @@ export function useStudioSettings(
   const { mutate: mutateLeave } = leaveMutation;
 
   const save = React.useCallback(
-    (patch: UpdateStudioInput, slugFieldShown?: () => boolean): void => {
-      slugFieldShownRef.current = slugFieldShown;
-      mutateUpdate(patch);
-    },
+    (patch: UpdateStudioInput, slugFieldShown?: () => boolean): void =>
+      mutateUpdate({ patch, slugFieldShown }),
     [mutateUpdate],
   );
   const uploadAvatar = React.useCallback(
@@ -274,7 +273,7 @@ export function useStudioSettings(
     // running" rather than "something is running". `variables` holds the
     // arguments of the request in flight.
     renaming:
-      updateMutation.isPending && updateMutation.variables?.slug !== undefined,
+      updateMutation.isPending && updateMutation.variables?.patch.slug !== undefined,
     uploadingAvatar: avatarMutation.isPending,
     leaving: leaveMutation.isPending,
     avatarError,

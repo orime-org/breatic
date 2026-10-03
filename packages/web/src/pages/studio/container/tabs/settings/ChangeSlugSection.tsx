@@ -70,7 +70,8 @@ interface ChangeSlugSectionProps {
  * and every one of them defaults to dismissible. An earlier version locked the
  * dialog instead, reasoned from the avatar upload dialog next door; that one
  * locks because closing mid-upload abandons an upload, and a rename has no
- * equivalent, since success navigates away and failure raises a toast.
+ * equivalent, since success navigates away and failure is reported on the slug
+ * line while the dialog shows it, otherwise by a toast.
  * @param props - The studio, the two in-flight flags, and the save handler.
  * @param props.studio - The studio being renamed.
  * @param props.saving - Whether any settings save is in flight.

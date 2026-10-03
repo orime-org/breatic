@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 
-import { studiosApi } from '@web/data/api/studios';
+import { studiosApi, type SlugAvailability } from '@web/data/api/studios';
 import { useDebounce } from '@web/lib/use-debounce';
 import { ApiException } from '@web/data/api/types';
 import {
@@ -45,12 +45,19 @@ function validateLocally(value: string): SlugError {
 }
 
 /**
- * Cache key of one slug's availability answer.
+ * The availability query for one slug, shared by the live check and the 409
+ * re-ask so the re-ask refreshes the very answer the field reads.
  * @param slug - The trimmed slug.
- * @returns The query key.
+ * @returns The query key and fetcher.
  */
-function slugAvailabilityKey(slug: string): readonly unknown[] {
-  return ['studio-slug-available', slug];
+function slugAvailabilityQuery(slug: string): {
+  queryKey: readonly unknown[];
+  queryFn: (context: { signal: AbortSignal }) => Promise<SlugAvailability>;
+} {
+  return {
+    queryKey: ['studio-slug-available', slug],
+    queryFn: ({ signal }) => studiosApi.checkSlugAvailable(slug, signal),
+  };
 }
 
 /**
@@ -84,8 +91,7 @@ export function useSlugAvailability(
   const enabled = slug.length > 0 && localError === null && !isOwn;
 
   const query = useQuery({
-    queryKey: slugAvailabilityKey(slug),
-    queryFn: ({ signal }) => studiosApi.checkSlugAvailable(slug, signal),
+    ...slugAvailabilityQuery(slug),
     enabled,
     staleTime: 30_000,
   });
@@ -144,8 +150,7 @@ export async function slugFieldShowsConflict(
   }
   const taken = await client
     .fetchQuery({
-      queryKey: slugAvailabilityKey(slug),
-      queryFn: ({ signal }) => studiosApi.checkSlugAvailable(slug, signal),
+      ...slugAvailabilityQuery(slug),
       staleTime: 0,
     })
     .then((answer) => !answer.available)
