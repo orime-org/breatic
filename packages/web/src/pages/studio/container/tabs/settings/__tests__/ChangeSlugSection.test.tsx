@@ -425,3 +425,40 @@ describe('ChangeSlugSection — after confirming', () => {
     expect(reopened).toHaveValue(STUDIO.slug);
   });
 });
+
+describe('ChangeSlugSection — the hint under the slug', () => {
+  const HELPER = 'studio.container.dialog.slugHelperStudio';
+
+  it('describes the slug while the field holds the current one', async () => {
+    renderSection();
+    await openDialog();
+    const hint = screen.getByTestId('danger-slug-hint');
+    expect(hint).toHaveTextContent(HELPER);
+    expect(hint).toHaveTextContent('"min":6');
+    expect(hint).not.toHaveTextContent('studio.container.dialog.slugAvailable');
+  });
+
+  it('goes back to the description when the slug is changed back', async () => {
+    renderSection();
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugAvailable',
+      ),
+    );
+    fireEvent.change(input, { target: { value: STUDIO.slug } });
+    expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(HELPER);
+  });
+
+  it('shows a free new slug in green', async () => {
+    renderSection();
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('danger-slug-hint')).toHaveClass(
+        'text-status-success-foreground',
+      ),
+    );
+  });
+});

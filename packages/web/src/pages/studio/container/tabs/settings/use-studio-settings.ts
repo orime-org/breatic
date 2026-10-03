@@ -24,6 +24,7 @@ import {
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { recheckSlugTaken } from '@web/pages/studio/container/dialogs/use-slug-availability';
 import { studioTabPath } from '@web/pages/studio/container/studio-tabs';
 import {
   applyPersonalStudio,
@@ -144,7 +145,19 @@ export function useStudioSettings(
       absorb(next);
       toast.success(t('studio.container.settings.saved'));
     },
-    onError: (err) => toast.error(messageFor(err)),
+    // A 409 on a slug change is usually the slug being taken since the field
+    // last checked. Re-asking refreshes the field's cached answer, so the
+    // field itself turns red and a toast would only say it twice.
+    onError: async (err, patch) => {
+      const slugTaken =
+        err instanceof ApiException &&
+        err.status === 409 &&
+        patch.slug !== undefined &&
+        (await recheckSlugTaken(queryClient, patch.slug).catch(() => false));
+      if (!slugTaken) {
+        toast.error(messageFor(err));
+      }
+    },
   });
 
   const avatarMutation = useMutation({

@@ -15,7 +15,10 @@ import {
 } from '@web/components/ui/dialog';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
-import { STUDIO_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
+import {
+  STUDIO_SLUG_BOUNDS,
+  toSlugCheck,
+} from '@web/pages/studio/container/dialogs/slug-util';
 import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
 import { DANGER_BUTTON } from '@web/pages/studio/container/tabs/settings/danger-button';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
@@ -168,21 +171,14 @@ export function ChangeSlugSection({
               value={slug}
               onChange={setSlug}
               disabled={saving}
-              error={
-                availability.status === 'invalid' ||
-                availability.status === 'taken'
-                  ? (availability.reason ?? null)
-                  : null
-              }
+              // The hook answers `available` for the studio's own slug; here
+              // that is no news, so the field goes back to its description.
+              check={changed ? toSlugCheck(availability) : { state: 'empty' }}
               bounds={STUDIO_SLUG_BOUNDS}
-              helper={t('studio.container.settings.slugHelper')}
-              availability={
-                availability.status === 'checking'
-                  ? 'checking'
-                  : availability.status === 'available' && changed
-                    ? 'available'
-                    : undefined
-              }
+              helper={t('studio.container.dialog.slugHelperStudio', {
+                min: STUDIO_SLUG_BOUNDS.min,
+                max: STUDIO_SLUG_BOUNDS.max,
+              })}
             />
             <ul className='list-disc pl-5 text-xs text-muted-foreground'>
               <li>{t('studio.container.settings.slugChangeLinks')}</li>
