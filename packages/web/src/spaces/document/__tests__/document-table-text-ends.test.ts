@@ -29,10 +29,12 @@ afterEach(() => {
 });
 
 /**
- * Opens an editor on a 2 × 2 table with cells a1 to b2 selected.
+ * Opens an editor on a 2 × 2 table with two corner cells selected.
+ * @param anchor - The cell the selection starts on, by index.
+ * @param head - The cell it ends on, by index.
  * @returns The editor.
  */
-function open(): Editor {
+function open(anchor = 0, head = 3): Editor {
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
   const host = document.createElement('div');
   document.body.appendChild(host);
@@ -50,7 +52,7 @@ function open(): Editor {
     if (node.type.name === 'tableCell') cells.push(pos);
     return true;
   });
-  view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[3]!)));
+  view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[anchor]!, cells[head]!)));
   return editor;
 }
 
@@ -74,11 +76,19 @@ describe('the ends of a selection of cells', () => {
     expect([lineAt(editor, anchor), lineAt(editor, head)]).toEqual(['a1', 'b2']);
   });
 
-  it('leave a caret in text when a panel closes over them', () => {
-    const editor = open();
+  it.each([
+    ['a1 to b2', 0, 3],
+    ['b1 to a2', 1, 2],
+  ])('leave a caret where text would leave one when a panel closes over %s', (_label, anchor, head) => {
+    // As over selected words: closing to the end leaves the caret after the
+    // last words selected, closing to the start before the first, whichever
+    // corner the selection was dragged from.
+    const editor = open(anchor, head);
 
-    const caret = caretAt(editor.prosemirrorState.selection, 1);
+    const end = caretAt(editor.prosemirrorState.selection, 1);
+    const start = caretAt(editor.prosemirrorState.selection, -1);
 
-    expect(lineAt(editor, caret.head)).toBe('b2');
+    expect([lineAt(editor, end.head), end.$head.parentOffset]).toEqual(['b2', 2]);
+    expect([lineAt(editor, start.head), start.$head.parentOffset]).toEqual(['a1', 0]);
   });
 });
