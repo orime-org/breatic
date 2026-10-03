@@ -747,3 +747,51 @@ describe('the space below a trailing block that has no text', () => {
     expect(view.dom.parentElement!.querySelector(selector)).toBe(view.dom.querySelector('.bn-trailing-block'));
   });
 });
+
+describe('a table at an end of the body (inner#1126 A3)', () => {
+  const TABLE = {
+    type: 'table',
+    content: { type: 'tableContent', rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] },
+  };
+
+  it('leaves a Shift+click inside a last table to the text in its cells', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, TABLE], 100).prosemirrorView!;
+    select(view, textStart(view, 'Above') + 1);
+
+    const event = press(view, 90, { shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(view.state.selection).not.toBeInstanceOf(BodyEdgeSelection);
+  });
+
+  it('takes a Shift+click below a last table to the end', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, TABLE], 100).prosemirrorView!;
+    const at = textStart(view, 'Above') + 1;
+    select(view, at);
+
+    press(view, 150, { shiftKey: true });
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect(view.state.selection.head).toBe(bodyEdgePos(view.state.doc, 'end'));
+  });
+
+  it('leaves a Shift+click inside a first table to the text in its cells', () => {
+    const view = open([TABLE, { type: 'paragraph', content: 'Below' }], 100).prosemirrorView!;
+    select(view, textStart(view, 'Below') + 1);
+
+    const event = press(view, 10, { shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(view.state.selection).not.toBeInstanceOf(BodyEdgeSelection);
+  });
+
+  it('takes a Shift+click above a first table to the start', () => {
+    const view = open([TABLE, { type: 'paragraph', content: 'Below' }], 100).prosemirrorView!;
+    select(view, textStart(view, 'Below') + 1);
+
+    press(view, -20, { shiftKey: true });
+
+    expect(view.state.selection).toBeInstanceOf(BodyEdgeSelection);
+    expect(view.state.selection.head).toBe(bodyEdgePos(view.state.doc, 'start'));
+  });
+});
