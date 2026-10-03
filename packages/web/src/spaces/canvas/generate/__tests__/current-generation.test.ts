@@ -40,6 +40,17 @@ const kling = video('kling', ['t2v'], {
   shot_type: { description: '', default: null, values: ['intelligence', 'customize'], fill: 'storyboard' },
 });
 const minimax = video('minimax', ['t2v']);
+const STYLE: ParamDescriptor = {
+  description: '',
+  default: null,
+  type: 'list',
+  max_items: 3,
+  fill: 'canvas',
+  accepts: 'image',
+  optional: true,
+};
+const seedance = video('seedance', ['t2v'], { style_images: STYLE });
+const krea: ModelEntry = { ...video('krea', ['t2i'], { style_images: STYLE }), modality: 'image' };
 const speech: ModelEntry = {
   ...video('speech', ['tts']),
   modality: 'audio',
@@ -62,7 +73,7 @@ const dialogue: ModelEntry = {
     voice_id: { description: '', default: 'Kore', remote_source: 'voices', fill: 'remote' },
   },
 };
-const catalog = { image: [], video: [kling, minimax], audio: [speech, dialogue], tts: [], three_d: [], total: 4, credit_multiplier: 1 } as unknown as ModelCatalog;
+const catalog = { image: [krea], video: [kling, minimax, seedance], audio: [speech, dialogue], tts: [], three_d: [], total: 4, credit_multiplier: 1 } as unknown as ModelCatalog;
 const TWO = [{ speaker: 'A', voice: 'Kore' }, { speaker: 'B', voice: 'Puck' }];
 
 /**
@@ -146,6 +157,39 @@ describe('what a node would run right now', () => {
     );
     expect(now?.params).toMatchObject({ voice_id: 'Puck' });
     expect(now?.params).not.toHaveProperty('speakers');
+  });
+
+  it('sends the style images a video model takes, up to its cap (inner#828)', () => {
+    const now = currentGeneration(
+      'video',
+      { kind: 'video', status: 'idle', mode: 't2v', model: 'seedance', styleImageUrls: ['s1', 's2', 's3', 's4'] } as never,
+      catalog,
+      () => undefined,
+      noVoice,
+    );
+    expect(now?.params.style_images).toEqual(['s1', 's2', 's3']);
+  });
+
+  it('sends the style images an image model takes (inner#826)', () => {
+    const now = currentGeneration(
+      'image',
+      { kind: 'image', status: 'idle', mode: 't2i', model: 'krea', styleImageUrls: ['s1'] } as never,
+      catalog,
+      () => undefined,
+      noVoice,
+    );
+    expect(now?.params.style_images).toEqual(['s1']);
+  });
+
+  it('sends no style images on a model without the slot, though the node keeps them', () => {
+    const now = currentGeneration(
+      'video',
+      { kind: 'video', status: 'idle', mode: 't2v', model: 'minimax', styleImageUrls: ['s1'] } as never,
+      catalog,
+      () => undefined,
+      noVoice,
+    );
+    expect(now?.params.style_images).toBeUndefined();
   });
 
   it('is null without a catalog', () => {
