@@ -31,7 +31,7 @@ interface DangerZoneProps {
   saving: boolean;
   /** Whether a SLUG change in particular is in flight — draws its spinner. */
   renaming: boolean;
-  onSave: (patch: UpdateStudioInput) => void;
+  onSave: (patch: UpdateStudioInput, slugFieldShown?: () => boolean) => void;
 }
 
 /**
@@ -43,18 +43,19 @@ interface DangerZoneProps {
  * | Cell            | Shown when                                |
  * | --------------- | ----------------------------------------- |
  * | Change Slug     | the viewer is the admin, any studio type  |
- * | Transfer/Delete | a TEAM studio, and the viewer is admin    |
+ * | Transfer        | a TEAM studio, and the viewer is admin    |
  * | Leave           | a TEAM studio, and the viewer is not      |
+ *
+ * A studio is never deleted or archived, so there is no delete cell.
  *
  * Changing the slug is gated on the role alone because that is the server's
  * own gate; leaning on "a personal studio has one member" would be inferring
  * the same answer from something that only happens to be true.
  *
- * A personal studio does render this box, holding that one action. Transfer,
- * delete and leave are all meaningless for one — there is nobody to hand it
- * to, deleting it would delete the account's own identity, and you cannot walk
- * out on yourself — but that is a fact about those three actions, not about
- * the box. A personal studio's slug IS its owner's handle, and changing it
+ * A personal studio does render this box, holding that one action. Transfer
+ * and leave are both meaningless for one — there is nobody to hand it to, and
+ * you cannot walk out on yourself — but that is a fact about those two
+ * actions, not about the box. A personal studio's slug IS its owner's handle, and changing it
  * breaks every link to them and frees the name for the next claimant.
  * @param props - The studio, its members, and the leave and save wiring.
  * @param props.studio - The studio being governed.
@@ -101,18 +102,7 @@ export function DangerZone({
       </p>
       <div className='mt-1 flex flex-wrap gap-2.5'>
         {canGovern ? (
-          <>
-            <TransferStudioSection slug={studio.slug} members={members} />
-            <Button
-              type='button'
-              variant={null}
-              size={null}
-              className={DANGER_BUTTON}
-              data-testid='settings-delete'
-            >
-              {t('studio.container.settings.delete')}
-            </Button>
-          </>
+          <TransferStudioSection slug={studio.slug} members={members} />
         ) : null}
         {canChangeSlug ? (
           <ChangeSlugSection

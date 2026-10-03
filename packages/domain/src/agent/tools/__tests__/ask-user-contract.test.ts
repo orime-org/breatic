@@ -16,7 +16,10 @@
  */
 import { describe, it, expect } from "vitest";
 
-import { askUser } from "@domain/agent/tools/ask-user.js";
+import { makeAskUserTool } from "@domain/agent/tools/ask-user.js";
+
+/** One turn's tool; the schema is the same on every one. */
+const askUser = makeAskUserTool();
 import { TOOL_MAP, BASELINE_TOOLS, INTERACTION_TOOLS } from "@domain/agent/tools/index.js";
 
 /** The schema, in the one shape a test can call. */

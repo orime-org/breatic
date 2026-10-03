@@ -427,6 +427,8 @@ export {
   isReaderLine,
   NOTHING_SAID_WHY,
   toolFailureOf,
+  TURNED_AWAY,
+  wireLineOf,
 } from "@shared/agent/tool-failure.js";
 export type {
   FailureLine,

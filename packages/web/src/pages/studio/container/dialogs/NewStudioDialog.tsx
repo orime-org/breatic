@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -19,7 +20,11 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
 import { STUDIO_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
 import { useCreateStudio } from '@web/pages/studio/container/dialogs/use-create-studio';
-import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
+import {
+  slugFieldShowsConflict,
+  useSlugAvailability,
+  useSlugFieldShown,
+} from '@web/pages/studio/container/dialogs/use-slug-availability';
 
 interface NewStudioDialogProps {
   open: boolean;
@@ -31,7 +36,7 @@ interface NewStudioDialogProps {
  * hand-typed fields — display name + globally-unique slug (option C) — with the
  * slug checked live (debounced) via `useSlugAvailability`: the SlugField shows
  * checking / available / format / length / reserved / taken as you type. Submit
- * is gated on a non-empty name + an `available` slug. On submit `useCreateStudio`
+ * is gated on a non-empty name + a `valid` slug. On submit `useCreateStudio`
  * creates the studio, refreshes the rail list and navigates into it; a server
  * error (taken slug lost a race, per-user limit, rate limit) surfaces inline.
  * The personal/team type radio and the synchronous `takenSlugs` set the old stub
@@ -52,6 +57,8 @@ export function NewStudioDialog({
   const [formError, setFormError] = React.useState<string | null>(null);
   const availability = useSlugAvailability(slug);
   const createStudio = useCreateStudio();
+  const queryClient = useQueryClient();
+  const fieldShows = useSlugFieldShown(open, slug);
 
   /** Clear the form back to empty (on close). */
   const reset = (): void => {
@@ -71,27 +78,38 @@ export function NewStudioDialog({
     }
   };
 
-  // Map the live availability status onto the SlugField's error / availability
-  // props (invalid + taken render as a destructive error line; checking +
-  // available render as a muted line).
-  const slugError =
-    availability.status === 'invalid' || availability.status === 'taken'
-      ? (availability.reason ?? null)
-      : null;
-  const slugLive =
-    availability.status === 'checking'
-      ? ('checking' as const)
-      : availability.status === 'available'
-        ? ('available' as const)
-        : undefined;
-
   const canSubmit =
     name.trim() !== '' &&
-    availability.status === 'available' &&
+    availability.state === 'valid' &&
     !createStudio.isPending;
 
   /**
-   * Validate (slug must already be `available`) and create the studio.
+   * Put a refused create where the reader will look for it: a slug taken in
+   * the meantime on the slug line while the dialog is open, anything else
+   * under the form.
+   * @param err - What the create threw.
+   * @param submitted - The trimmed slug that was submitted.
+   */
+  const reportCreateError = async (
+    err: unknown,
+    submitted: string,
+  ): Promise<void> => {
+    if (
+      await slugFieldShowsConflict(queryClient, err, submitted, () =>
+        fieldShows(submitted),
+      )
+    ) {
+      return;
+    }
+    setFormError(
+      err instanceof ApiException
+        ? err.message
+        : t('studio.container.dialog.createStudioError'),
+    );
+  };
+
+  /**
+   * Create the studio once the slug is `valid` and a name is given.
    * @param event the form submit event.
    */
   const submit = (event: React.FormEvent): void => {
@@ -104,12 +122,9 @@ export function NewStudioDialog({
       { name: name.trim(), slug: slug.trim() },
       {
         onSuccess: () => handleOpenChange(false),
-        onError: (err) =>
-          setFormError(
-            err instanceof ApiException
-              ? err.message
-              : t('studio.container.dialog.createStudioError'),
-          ),
+        onError: (err) => {
+          void reportCreateError(err, slug.trim());
+        },
       },
     );
   };
@@ -129,20 +144,23 @@ export function NewStudioDialog({
               <Input
                 id='new-studio-name'
                 autoComplete='off'
+                placeholder={t('studio.container.dialog.namePlaceholderStudio')}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
+                disabled={createStudio.isPending}
                 required
               />
             </div>
             <SlugField
               id='new-studio-slug'
               label={t('studio.container.dialog.slugLabel')}
-              placeholder={t('studio.container.dialog.slugPlaceholder')}
+              placeholder={t('studio.container.dialog.slugPlaceholderStudio')}
               value={slug}
               onChange={setSlug}
-              error={slugError}
+              disabled={createStudio.isPending}
+              check={availability}
               bounds={STUDIO_SLUG_BOUNDS}
-              availability={slugLive}
+              helper={t('studio.container.dialog.slugHelperStudio', STUDIO_SLUG_BOUNDS)}
             />
             {formError ? (
               <p className='text-xs text-status-error-foreground' role='alert'>

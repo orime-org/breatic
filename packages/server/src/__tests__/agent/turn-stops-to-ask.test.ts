@@ -96,7 +96,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   // and a stand-in answering with a bare string drives the drawing path with a
   // shape production cannot produce -- silently, since a reply's text is not
   // what these assertions read.
-  const { askUser } = await import("../../../../domain/src/agent/tools/ask-user.js");
+  const { makeAskUserTool } = await import("../../../../domain/src/agent/tools/ask-user.js");
   const { imageSearch } = await import("../../../../domain/src/agent/tools/image-search.js");
 
   return {
@@ -106,7 +106,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       modelId: "test",
       instructions: "system",
       tools: {
-        ask_user: askUser,
+        ask_user: makeAskUserTool(),
         search_images: imageSearch,
       },
     }),

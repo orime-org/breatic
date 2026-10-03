@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { UIMessage } from 'ai';
-import { ATTACHMENT_DATA_PART } from '@breatic/shared';
+import { ATTACHMENT_DATA_PART, TURNED_AWAY } from '@breatic/shared';
 import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
 
 /**
@@ -298,5 +298,30 @@ describe('what a message carried', () => {
     } as UIMessage);
 
     expect(message.attachments).toBeUndefined();
+  });
+});
+
+describe('a call turned away to steer the model', () => {
+  it('is read off the wire as turned away, with no line to show', () => {
+    // Live, the one error field says so; there is no failureKind on a live
+    // part.
+    const message: UIMessage = {
+      id: 'm-live',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-ask_user',
+          toolCallId: 'call-2',
+          state: 'output-error',
+          input: { question: 'How long?' },
+          errorText: TURNED_AWAY,
+        },
+      ],
+    } as unknown as UIMessage;
+
+    const view = toChatMessage(message, { streaming: false });
+
+    expect(view.toolCalls?.[0]?.failureKind).toBe('turned_away');
+    expect(view.toolCalls?.[0]?.failureKey).toBeUndefined();
   });
 });

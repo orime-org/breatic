@@ -96,15 +96,20 @@ async function run(
  * @returns The model-facing reason and the reader's line.
  */
 async function failureOf(call: Promise<unknown>): Promise<{
+  kind: string;
   forModel: string;
-  readerKey: string;
+  readerKey: string | undefined;
 }> {
   try {
     await call;
   } catch (err) {
     const failure = toolFailureOf(err);
     if (!failure) throw new Error(`not a tool failure: ${String(err)}`);
-    return { forModel: failure.forModel, readerKey: failure.readerKey };
+    return {
+      kind: failure.kind,
+      forModel: failure.forModel,
+      readerKey: "readerKey" in failure ? failure.readerKey : undefined,
+    };
   }
   throw new Error("the call did not fail");
 }
@@ -292,9 +297,11 @@ describe("understand_media — one at a time within a turn", () => {
     const first = call({ url: "https://example.com/a.mp4", question: "What is this?" });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const { forModel } = await failureOf(
+    const { kind, forModel } = await failureOf(
       call({ url: "https://example.com/b.mp4", question: "What is this?" }),
     );
+    // Nothing failed: the model is steered, and the reader is shown nothing.
+    expect(kind).toBe("turned_away");
     // Both halves: why this one was turned away, and what to do about it. And
     // in the past tense — the sentence is stored on the call and read again by
     // every later turn, when nothing is running any more.
@@ -822,16 +829,19 @@ describe("understand_media — what a reader is shown, and what the panel is tol
     ).toBe(FAILURE_LINES.generic);
   });
 
-  it("picks the generic line when this turn is the one holding the gate", async () => {
+  it("shows the reader nothing when this turn is the one holding the gate", async () => {
+    // The call was turned away to steer the model, not failed: there is no
+    // line for it.
     const call = turnCopy();
     understandMediaAtMock.mockImplementation(() => new Promise(() => {}));
     void call({ url: "https://example.com/a.mp4", question: "What is this?" });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(
-      (await failureOf(call({ url: "https://example.com/b.mp4", question: "What is this?" })))
-        .readerKey,
-    ).toBe(FAILURE_LINES.generic);
+    const refused = await failureOf(
+      call({ url: "https://example.com/b.mp4", question: "What is this?" }),
+    );
+    expect(refused.kind).toBe("turned_away");
+    expect(refused.readerKey).toBeUndefined();
   });
 
   it("tells the panel which sentence to show while this one runs", () => {

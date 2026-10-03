@@ -24,6 +24,7 @@ import {
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { slugFieldShowsConflict } from '@web/pages/studio/container/dialogs/use-slug-availability';
 import { studioTabPath } from '@web/pages/studio/container/studio-tabs';
 import {
   applyPersonalStudio,
@@ -31,9 +32,20 @@ import {
 } from '@web/stores/current-user';
 import type { Studio, StudioDetail, UpdateStudioInput } from '@breatic/shared';
 
+/** One studio edit, with the slug field's check when it changes the slug. */
+interface StudioSave {
+  patch: UpdateStudioInput;
+  slugFieldShown?: () => boolean;
+}
+
 /** The settings tab's write actions and their in-flight state. */
 export interface StudioSettingsActions {
-  save: (patch: UpdateStudioInput) => void;
+  /**
+   * Save an edit. A slug change passes whether the slug field holding the sent
+   * slug is still on screen; while it is, a slug taken in the meantime is left
+   * to that field instead of a toast.
+   */
+  save: (patch: UpdateStudioInput, slugFieldShown?: () => boolean) => void;
   uploadAvatar: (image: Blob) => void;
   removeAvatar: () => void;
   leave: () => void;
@@ -138,13 +150,28 @@ export function useStudioSettings(
   );
 
   const updateMutation = useMutation({
-    mutationFn: (patch: UpdateStudioInput) =>
+    mutationFn: ({ patch }: StudioSave) =>
       studiosApi.update(studio.slug, patch),
     onSuccess: (next) => {
       absorb(next);
       toast.success(t('studio.container.settings.saved'));
     },
-    onError: (err) => toast.error(messageFor(err)),
+    // On the mutation itself, so it still runs after the settings tab has
+    // unmounted mid-request.
+    onError: async (err, { patch, slugFieldShown }) => {
+      const shownByField =
+        patch.slug !== undefined &&
+        slugFieldShown !== undefined &&
+        (await slugFieldShowsConflict(
+          queryClient,
+          err,
+          patch.slug,
+          slugFieldShown,
+        ));
+      if (!shownByField) {
+        toast.error(messageFor(err));
+      }
+    },
   });
 
   const avatarMutation = useMutation({
@@ -212,7 +239,8 @@ export function useStudioSettings(
   const { mutate: mutateLeave } = leaveMutation;
 
   const save = React.useCallback(
-    (patch: UpdateStudioInput): void => mutateUpdate(patch),
+    (patch: UpdateStudioInput, slugFieldShown?: () => boolean): void =>
+      mutateUpdate({ patch, slugFieldShown }),
     [mutateUpdate],
   );
   const uploadAvatar = React.useCallback(
@@ -245,7 +273,7 @@ export function useStudioSettings(
     // running" rather than "something is running". `variables` holds the
     // arguments of the request in flight.
     renaming:
-      updateMutation.isPending && updateMutation.variables?.slug !== undefined,
+      updateMutation.isPending && updateMutation.variables?.patch.slug !== undefined,
     uploadingAvatar: avatarMutation.isPending,
     leaving: leaveMutation.isPending,
     avatarError,

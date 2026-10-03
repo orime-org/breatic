@@ -210,7 +210,8 @@ export function renderProductGuide(): string {
       "of the box, above the text, says so.",
     "The plus sign at the bottom left of the box attaches up to " +
       `${String(getAgentConfig().attachment_max_items)} pictures, videos, sounds, PDF, Word (.docx), Excel or ` +
-      "plain text files to the next message. Canvas nodes are handed over with " +
+      "plain text files to the next message; pasting such files into the box (a screenshot, a copied file) " +
+      "attaches them the same way. Canvas nodes are handed over with " +
       `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu; if the model list cannot be read at that moment, nothing is attached and ` +
       `${quoted(t("canvas.generatePanel.catalogUnavailable"))} shows. Each attachment shows as a small ` +
       "chip in the box above the text, with a type and a name and a spinner while it uploads; hovering it " +
