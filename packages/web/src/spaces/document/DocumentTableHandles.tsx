@@ -77,7 +77,7 @@ interface HandlesState {
   readonly rowIndex: number | undefined;
   readonly colIndex: number | undefined;
   /** The hovered cell's box, read when the handles were last placed. */
-  readonly referencePosCell: DOMRect;
+  readonly referencePosCell: DOMRect | undefined;
 }
 
 /** What the controller hands a handle. */
@@ -119,15 +119,21 @@ const IN_PLACE: FramePlace = { shift: 0, hidden: false };
  * @param view - The editor view.
  * @param blockId - The table block's id.
  * @param row - Whether this is the row handle.
- * @param cell - The hovered cell's box, as the controller read it.
+ * @param cell - The hovered cell's box, as the controller read it, if it has.
  * @returns The placement.
  */
-function framePlaceOf(view: EditorView | undefined, blockId: string, row: boolean, cell: DOMRect): FramePlace {
+function framePlaceOf(
+  view: EditorView | undefined,
+  blockId: string,
+  row: boolean,
+  cell: DOMRect | undefined,
+): FramePlace {
   const table = view?.dom.querySelector(`[data-id="${CSS.escape(blockId)}"] table`);
   const frame = table?.closest('[data-radix-scroll-area-viewport]');
   if (table === null || table === undefined || frame === null || frame === undefined) return IN_PLACE;
   const box = frame.getBoundingClientRect();
   if (row) return { shift: Math.max(0, box.left - table.getBoundingClientRect().left), hidden: false };
+  if (cell === undefined) return IN_PLACE;
   const centre = cell.left + cell.width / 2;
   return { shift: 0, hidden: centre - COLUMN_HANDLE_HALF < box.left || centre + COLUMN_HANDLE_HALF > box.right };
 }
