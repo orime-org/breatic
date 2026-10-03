@@ -125,7 +125,7 @@ const EDIT_POOL: PricedModel = {
 const EDIT_WITH_STYLE: PricedModel = {
   ...EDIT_POOL,
   params: {
-    images: { fill: "pool", type: "list", default: null },
+    images: { fill: "pool", type: "list", default: null, mention: "image {n}" },
     style_images: {
       fill: "canvas",
       type: "list",
@@ -142,6 +142,16 @@ describe("estimateCredits", () => {
     const joined = await estimateCredits(EDIT_WITH_STYLE, { params: { images: ["a"], style_images: ["s1", "s2"] } }, 1);
     const plain = await estimateCredits(EDIT_POOL, { params: { images: ["a", "s1", "s2"] } }, 1);
     expect(joined).toEqual(plain);
+  });
+
+  it("prices the prompt as sent, the style note included", async () => {
+    const perChar: PricedModel = {
+      ...EDIT_WITH_STYLE,
+      pricing: { base_price: 0, formula: '{"total_price": $length(prompt) * 10000}', discount_rate: 100 },
+    };
+    const estimate = await estimateCredits(perChar, { params: { images: ["a"], style_images: ["s"] }, prompt: "Hi." }, 1);
+    // "Hi. Style references: image 2." is 30 characters.
+    expect(estimate.credits).toBeCloseTo(30, 6);
   });
 
   it("still counts the picture a run cannot go without when only style files fill the pool", async () => {

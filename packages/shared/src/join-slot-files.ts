@@ -64,7 +64,10 @@ export function joinSlotFiles(
     const files = usableUrls(out[name]);
     delete out[name];
     if (files.length === 0) continue;
-    const pool = usableUrls(out[joins]);
+    // The pool goes as the panel built it, repeats included: the reader's
+    // mention numbers count its entries.
+    const sent = out[joins];
+    const pool = Array.isArray(sent) ? sent.filter((v): v is string => typeof v === "string" && v.length > 0) : [];
     // The catalog check holds every joined pool to a mention.
     const mention = String((declared[joins] as JoinFields | undefined)?.mention ?? "");
     const names = files.map((_, k) => {

@@ -122,13 +122,14 @@ export async function estimateCredits(
   // A required source the reader has not filled stands in as one placeholder,
   // judged on the reader's own params: style files joining a pool do not fill
   // the picture a run cannot go without.
+  const priced = Object.entries(model.params).filter(([, spec]) => spec.joins === undefined);
+  const valueOf = (record: Record<string, unknown>, name: string, spec: PricedParam): unknown =>
+    record[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
   const own: Record<string, unknown> = { ...input.params };
   let unknown = false;
-  for (const [name, spec] of Object.entries(model.params)) {
-    if (spec.joins !== undefined) continue;
+  for (const [name, spec] of priced) {
     const source = spec.fill === "canvas" || spec.fill === "pool";
-    const value = own[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
-    if (source && !isPresent(value) && spec.optional !== true) {
+    if (source && !isPresent(valueOf(own, name, spec)) && spec.optional !== true) {
       own[name] = spec.type === "list" ? [UNPICKED] : UNPICKED;
       if (reads(formulas, spec.upstream ?? name)) unknown = true;
     }
@@ -139,10 +140,9 @@ export async function estimateCredits(
   const params: Record<string, unknown> = { ...joined.params };
   const upstream: Record<string, unknown> = {};
   const durations: Record<string, readonly number[]> = {};
-  for (const [name, spec] of Object.entries(model.params)) {
+  for (const [name, spec] of priced) {
     const field = spec.upstream ?? name;
-    if (spec.joins !== undefined) continue;
-    const value = joined.params[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
+    const value = valueOf(joined.params, name, spec);
     const source = spec.fill === "canvas" || spec.fill === "pool";
     upstream[field] = value;
     if (source && isPresent(value)) {
@@ -152,7 +152,9 @@ export async function estimateCredits(
     }
   }
 
-  const text = input.prompt ?? "";
+  // The reader's empty prompt is quoted per thousand characters; a written one
+  // is priced as sent, with any joining slot's note.
+  const text = (input.prompt ?? "") === "" ? "" : joined.prompt;
   const textPriced = model.takes_prompt && text === "" && billsBy(formulas, "$length", promptField);
 
   // The model's own call is skipped when its source was used before, and so is
