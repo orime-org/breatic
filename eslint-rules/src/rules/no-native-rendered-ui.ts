@@ -18,6 +18,19 @@ const NATIVE_INPUT_TYPES = new Set([
   "range",
 ]);
 
+/** Input types that take no free text, so the browser keeps no history for them. */
+const NO_HISTORY_INPUT_TYPES = new Set([
+  ...NATIVE_INPUT_TYPES,
+  "checkbox",
+  "radio",
+  "file",
+  "hidden",
+  "submit",
+  "button",
+  "reset",
+  "image",
+]);
+
 /** A `<select>` written as markup inside a string. */
 const SELECT_IN_MARKUP = /<select[\s>]/i;
 
@@ -39,6 +52,12 @@ const ALLOW_MARKER = "native-ui:allow";
  * colours. For a creative tool that inconsistency is a product problem, not
  * a cosmetic one: the same file has to look the same to two people on
  * different browsers.
+ *
+ * The same goes for the dropdown of values typed before: a text input with no
+ * `autoComplete` token gets one from the browser, over our UI. Every
+ * free-text `<input>` or `<Input>` states its token — `off` where history
+ * means nothing, the matching token (`email`, `current-password`) where the
+ * browser should fill it.
  *
  * The replacements are self-drawn: a colour picker in a popover, our Slider,
  * our Select, our MediaPlayer. A rare justified exception carries a
@@ -63,6 +82,8 @@ export const noNativeRenderedUi = createRule({
     messages: {
       nativeControl:
         "<{{control}}> is drawn by the browser, so it looks different in every engine. Use the self-drawn equivalent, or justify the exception with a native-ui:allow comment.",
+      browserHistory:
+        "<{{control}}> without autoComplete gets the browser's dropdown of past entries. Set autoComplete='off', or the token for what the browser should fill.",
       nativeInputType:
         "input type=\"{{type}}\" opens a picker the browser or OS draws, which differs per engine. Use the self-drawn equivalent, or justify the exception with a native-ui:allow comment.",
     },
@@ -92,6 +113,36 @@ export const noNativeRenderedUi = createRule({
           node,
           messageId: "nativeControl",
           data: { control: "select" },
+        });
+      },
+      "JSXOpeningElement[name.name=/^(input|Input)$/]"(
+        node: TSESTree.JSXOpeningElement,
+      ): void {
+        let type: string | null = "text";
+        for (const attr of node.attributes) {
+          // Forwarded props carry the caller's own choice.
+          if (attr.type === AST_NODE_TYPES.JSXSpreadAttribute) return;
+          if (attr.name.type !== AST_NODE_TYPES.JSXIdentifier) continue;
+          if (attr.name.name === "autoComplete") return;
+          if (attr.name.name === "type") {
+            type =
+              attr.value?.type === AST_NODE_TYPES.Literal &&
+              typeof attr.value.value === "string"
+                ? attr.value.value
+                : null;
+          }
+        }
+        if (type !== null && NO_HISTORY_INPUT_TYPES.has(type)) return;
+        if (isAllowed(node)) return;
+        context.report({
+          node,
+          messageId: "browserHistory",
+          data: {
+            control:
+              node.name.type === AST_NODE_TYPES.JSXIdentifier
+                ? node.name.name
+                : "input",
+          },
         });
       },
       "JSXOpeningElement[name.name=/^(audio|video)$/]"(
