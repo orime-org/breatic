@@ -25,6 +25,7 @@ import { buildAudioPanelViewModel, withListDefaultVoice } from '@web/spaces/canv
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
+import { withStyleImages } from '@web/spaces/canvas/generate/style-picks';
 import { wireParams } from '@web/spaces/canvas/generate/stand-in';
 import {
   filterAvailableModes,
@@ -80,7 +81,10 @@ export function currentGeneration(
     // stay behind.
     params: wireParams(
       entry,
-      kind === 'audio' ? audioParams(content, models, mode, firstVoiceOf) : resolveModelSwitch(content, entry).params,
+      kind === 'audio'
+        ? audioParams(content, models, mode, firstVoiceOf)
+        // The image and video panels send the style images the model takes.
+        : withStyleImages(entry, mode, content.styleImageUrls, resolveModelSwitch(content, entry).params).params,
     ),
     storyboard: effectiveStoryboardKind(entry.params, storyboardKindOf(mode)),
   };

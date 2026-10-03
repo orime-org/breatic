@@ -787,6 +787,13 @@ describe('the style slot (inner#826)', () => {
     expect(vm.slots).toEqual([]);
   });
 
+  it('draws no style slot when the declaration gives no usable cap', () => {
+    const uncapped = makeModel('uncapped', { params: { style_images: { ...style(true), max_items: 0 } } });
+    const vm = buildVm({ nodeId: 'n1', nodes: [node('n1', imageView({ model: 'uncapped', styleImageUrls: ['s1'] }))], edges: [], models: [uncapped] });
+    expect(vm.styleCap).toBeUndefined();
+    expect(vm.slots).toEqual([]);
+  });
+
   it('counts a required style slot as missing until an image is in it', () => {
     const empty = buildVm({ nodeId: 'n1', nodes: [node('n1', imageView({ model: 'recraft' }))], edges: [], models: [recraft] });
     expect(empty.missing).toEqual([['style_images']]);

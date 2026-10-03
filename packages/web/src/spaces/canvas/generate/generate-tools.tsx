@@ -8,11 +8,12 @@
  * enters a canvas pick, and a slot that holds a picked source. They differ
  * only in WHICH tools they show — reference and focus are on the image and
  * video rows, the video and audio panels add the source slots their mode
- * needs, and the image panel adds one slot per style image — so the tools
- * themselves live here and each panel's row just arranges them.
+ * needs, and the image and video panels add the style area for a model that
+ * takes style images — so the tools themselves live here and each panel's row
+ * just arranges them.
  */
 
-import { X, type LucideIcon } from 'lucide-react';
+import { Plus, X, type LucideIcon } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -22,7 +23,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
+import { useTranslation } from '@web/i18n/use-translation';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
+import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { HoverPreviewKind } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 
@@ -379,12 +382,103 @@ export function SlotTool({
           onClick={onClear}
           // The badge draws 16px; the pseudo-element widens what takes clicks
           // to 24x24, the minimum target size (WCAG 2.2 SC 2.5.8). Its inset
-          // counts from inside the 1px border: 14 + 2 * 5 = 24.
-          className='absolute -right-1 -top-1 z-10 flex h-4 w-4 after:absolute after:-inset-[5px] items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+          // counts from inside the 1px border: 14 + 2 * 5 = 24. The badge sits
+          // inside its own tile's corner, so that area ends inside the row gap
+          // and never takes a click meant for the tile beside it.
+          className='absolute right-0.5 top-0.5 z-10 flex h-4 w-4 after:absolute after:-inset-[5px] items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <X className='h-2.5 w-2.5' aria-hidden='true' />
         </Button>
       ) : null}
     </div>
+  );
+}
+
+/** What the style area draws and how it reports back. */
+export interface StyleAreaProps {
+  /** Test id of the divider in front of the area; each row names its own. */
+  dividerTestId: string;
+  /** How many style images the model takes, or undefined when it takes none. */
+  cap: number | undefined;
+  /** The node's style images, in pick order; the first `cap` are drawn. */
+  images: readonly string[];
+  /** Enter / exit the style pick, which adds one image per click. */
+  onPick: () => void;
+  /** Whether the style pick is running. */
+  active: boolean;
+  /** Take one style image out. */
+  onRemove: (url: string) => void;
+}
+
+/**
+ * The handler the add place's ✕ gets: it holds nothing to clear.
+ */
+const NOTHING = (): void => {};
+
+/**
+ * The style area of a Generate tool row (inner#826, inner#828): a divider,
+ * one thumbnail per held image with its own ✕, and while there is room an
+ * add place — a palette over "Style" while empty, a plus over n/cap once one
+ * is held. Nothing at all for a model that takes no style images.
+ * @param root0 - Component props.
+ * @param root0.dividerTestId - Test id of the divider.
+ * @param root0.cap - How many style images the model takes.
+ * @param root0.images - The node's style images, in pick order.
+ * @param root0.onPick - Enter / exit the style pick.
+ * @param root0.active - Whether the style pick is running.
+ * @param root0.onRemove - Take one style image out.
+ * @returns The area, or null when the model takes no style images.
+ */
+export function StyleArea({
+  dividerTestId,
+  cap,
+  images,
+  onPick,
+  active,
+  onRemove,
+}: StyleAreaProps): React.JSX.Element | null {
+  const t = useTranslation();
+  if (cap === undefined) return null;
+  const spec = STYLE_SLOT;
+  const shown = images.slice(0, cap);
+  return (
+    <>
+      <ToolRowDivider testId={dividerTestId} />
+      {shown.map((url, i) => (
+        <SlotTool
+          key={url}
+          testId={`${spec.testId}-item-${i}`}
+          thumbnailTestId={`${spec.thumbnailTestId}-${i}`}
+          clearTestId={`${spec.clearTestId}-${i}`}
+          Icon={spec.Icon}
+          onPick={onPick}
+          // A running pick adds an image and replaces none, so only the
+          // extra place shows it.
+          active={false}
+          pick={{ kind: 'image', url, thumbnail: url }}
+          onClear={() => onRemove(url)}
+          disabled={false}
+          clearLabel={t(spec.clearLabelKey)}
+          label={t(spec.labelKey)}
+          tip={t(spec.tipKey)}
+        />
+      ))}
+      {shown.length < cap && (
+        <SlotTool
+          testId={spec.testId}
+          thumbnailTestId={spec.thumbnailTestId}
+          clearTestId={spec.clearTestId}
+          Icon={shown.length === 0 ? spec.Icon : Plus}
+          onPick={onPick}
+          active={active}
+          pick={undefined}
+          onClear={NOTHING}
+          disabled={false}
+          clearLabel={t(spec.clearLabelKey)}
+          label={shown.length === 0 ? t(spec.labelKey) : `${shown.length}/${cap}`}
+          tip={t(spec.tipKey)}
+        />
+      )}
+    </>
   );
 }

@@ -162,11 +162,22 @@ models:
         description: "Reference images"
         default: null
         type: "list"
-        max_items: 30
+        # The upstream takes 30 images; 3 of them are kept for the style slot.
+        max_items: 27
         accepts: "image"
         optional: true
         fill: "pool"
         mention: "@image{n}"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        optional: true
+        joins: "images"
+        prompt_note: "Style references: {list}. Apply their style to the result."
       videos:
         upstream: "reference_videos"
         description: "Reference videos"
@@ -603,11 +614,22 @@ models:
         description: "Reference images"
         default: null
         type: "list"
-        max_items: 9
+        # The upstream takes 9 images; 3 of them are kept for the style slot.
+        max_items: 6
         accepts: "image"
         optional: true
         fill: "pool"
         mention: "<Picture {n}>"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        optional: true
+        joins: "images"
+        prompt_note: "Style references: {list}. Apply their style to the result."
       videos:
         upstream: "reference_videos"
         description: "Reference videos"
@@ -659,11 +681,22 @@ models:
         description: "Reference images"
         default: null
         type: "list"
-        max_items: 10
+        # The upstream takes 10 images; 3 of them are kept for the style slot.
+        max_items: 7
         accepts: "image"
         optional: true
         fill: "pool"
         mention: "<IMAGE_REF_{i}>"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        optional: true
+        joins: "images"
+        prompt_note: "Style references: {list}. Apply their style to the result."
       videos:
         upstream: "reference_videos"
         description: "Reference videos"
@@ -733,11 +766,22 @@ models:
         description: "Reference images"
         default: null
         type: "list"
-        max_items: 10
+        # The upstream takes 10 images; 3 of them are kept for the style slot.
+        max_items: 7
         accepts: "image"
         optional: true
         fill: "pool"
         mention: "Image {n}"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        optional: true
+        joins: "images"
+        prompt_note: "Style references: {list}. Apply their style to the result."
       videos:
         upstream: "reference_videos"
         description: "Reference videos"
@@ -787,10 +831,21 @@ models:
         description: "Reference images"
         default: null
         type: "list"
-        max_items: 9
+        # The upstream takes 9 images; 3 of them are kept for the style slot.
+        max_items: 6
         accepts: "image"
         fill: "pool"
         mention: "[Image {n}]"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        optional: true
+        joins: "images"
+        prompt_note: "Style references: {list}. Apply their style to the result."
       resolution:
         description: "Output resolution"
         default: "720p"

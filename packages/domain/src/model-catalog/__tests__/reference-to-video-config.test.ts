@@ -48,11 +48,15 @@ describe("reference-to-video config wiring", () => {
 
   it.each(REF_MODELS)("%s caps each pool where its upstream does", (name, caps) => {
     const params = videoEntry(name).params ?? {};
+    // A style slot joining a pool keeps its places out of that pool's cap
+    // (inner#828), so the two together reach the upstream's.
+    const style = params.style_images;
     for (const [pool, cap] of Object.entries(caps)) {
+      const kept = style?.joins === pool ? (style.max_items ?? 0) : 0;
       expect(params[pool], `${name}.${pool}`).toMatchObject({
         fill: "pool",
         type: "list",
-        max_items: cap,
+        max_items: cap - kept,
         accepts: ACCEPTS[pool],
       });
     }

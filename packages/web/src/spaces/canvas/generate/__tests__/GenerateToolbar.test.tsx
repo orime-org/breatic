@@ -22,6 +22,11 @@ function setup(
       <GenerateToolbar
         onReference={() => {}}
         onFocus={() => {}}
+        styleCap={undefined}
+        styleImages={[]}
+        onStylePick={() => {}}
+        styleActive={false}
+        onRemoveStyle={() => {}}
         {...overrides}
       />
     </TooltipProvider>,
@@ -86,6 +91,11 @@ describe('GenerateToolbar — Reference / Focus are the live tools', () => {
         <GenerateToolbar
           onReference={() => {}}
           onFocus={() => {}}
+          styleCap={undefined}
+          styleImages={[]}
+          onStylePick={() => {}}
+          styleActive={false}
+          onRemoveStyle={() => {}}
         />
       </TooltipProvider>,
     );

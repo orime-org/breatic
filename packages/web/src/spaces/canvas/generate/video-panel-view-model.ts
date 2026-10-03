@@ -28,6 +28,7 @@ import {
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
+import { withStyleImages } from '@web/spaces/canvas/generate/style-picks';
 import {
   mentionDurations,
   mentionTokens,
@@ -85,6 +86,13 @@ export interface VideoPanelViewModel {
    * them (#1904). A mode that collects nothing gets an empty list.
    */
   slots: readonly VideoSlot[];
+  /**
+   * How many style images the model takes in this mode, or undefined when it
+   * takes none and no style area is drawn (inner#828).
+   */
+  styleCap: number | undefined;
+  /** Every style image the node holds, in pick order; at most `styleCap` are sent. */
+  styleImages: readonly string[];
   /**
    * What is currently picked, by slot — for EVERY slot, not just the active
    * mode's. A pick survives a mode switch (user 2026-08-10, either frame can
@@ -329,19 +337,27 @@ export function buildVideoPanelViewModel(input: {
   const mentionTokenMap = sendsReferences
     ? mentionTokens(pool, { references, focusImages, atMentioned, nodes })
     : NO_MENTION_TOKENS;
+  // Resolved from the model's OWN record, the same way a switch resolves it
+  // (#1948). It matters here too: `model` above falls back to the first
+  // offered one when the stored pick has left the catalog, and reconciling
+  // the outgoing model's params against that fallback is the very leak this
+  // slice closes. The records this returns are dropped — rendering reads,
+  // it does not persist.
+  const style = withStyleImages(
+    current,
+    mode,
+    content?.styleImageUrls,
+    current ? resolveModelSwitch(content, current).params : {},
+  );
 
   return {
     model,
-    // Resolved from the model's OWN record, the same way a switch resolves it
-    // (#1948). It matters here too: `model` above falls back to the first
-    // offered one when the stored pick has left the catalog, and reconciling
-    // the outgoing model's params against that fallback is the very leak this
-    // slice closes. The records this returns are dropped — rendering reads,
-    // it does not persist.
-    params: current ? resolveModelSwitch(content, current).params : {},
+    params: style.params,
     nodeStatus: content?.status,
     mode,
     slots,
+    styleCap: style.styleCap,
+    styleImages: style.styleImages,
     slotUrls,
     slotThumbnails: readSlotThumbnails(VIDEO_SLOTS, content),
     references,

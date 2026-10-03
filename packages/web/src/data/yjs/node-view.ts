@@ -114,7 +114,8 @@ interface ContentNodeViewBase extends NodeViewCommon {
    */
   paramsByModel?: Record<string, Record<string, unknown>>;
   /**
-   * Style images of an image node (inner#826, wire `data.styleImageUrls`):
+   * Style images of an image or video node (inner#826, inner#828, wire
+   * `data.styleImageUrls`):
    * pick-time copies in pick order; read through `readSlotPicks`.
    */
   styleImageUrls?: string[];
