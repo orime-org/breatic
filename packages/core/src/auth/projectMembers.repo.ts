@@ -667,6 +667,7 @@ export async function lockOwnedProjectsInStudio(
     .from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
     .where(owned)
+    .orderBy(projectMembers.projectId)
     .for("update", { of: projectMembers });
   return rows.map((r) => r.projectId);
 }

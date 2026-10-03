@@ -264,10 +264,14 @@ export async function lockMemberRole(
  * `deleted_at IS NULL` fail on re-check — and that is correct: a member
  * removed while we waited really is gone.
  *
- * Locking every row also removes the ordering question inside this table.
- * Two callers issuing the same query acquire the same rows in the same
- * order, so they queue instead of deadlocking, and no caller has to reason
- * about which of the admin row and the target row to take first.
+ * Locking every row also removes the ordering question inside this table, as
+ * long as every caller takes them in the same order — hence the `ORDER BY`.
+ * Without it the order is the plan's: two indexes match this condition (the
+ * primary key walks `user_id`, `studio_members_studio_id_idx` walks physical
+ * position), and a role change moves a row's newest version elsewhere on disk,
+ * so two lockers could each hold a row the other wants next. Sorted, they
+ * queue, and no caller has to reason about which of the admin row and the
+ * target row to take first.
  *
  * **Ordering across tables still holds: `studios` → `studio_members` →
  * `studio_credit_debts` → `credit_lots`, with `project_members` a leaf off
@@ -295,6 +299,7 @@ export async function lockMembership(
         isNull(studios.deletedAt),
       ),
     )
+    .orderBy(studioMembers.userId)
     .for("update", { of: studioMembers });
   return rows.map((r) => ({ userId: r.userId, role: r.role as StudioRole }));
 }
