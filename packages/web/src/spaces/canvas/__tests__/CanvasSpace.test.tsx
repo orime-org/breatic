@@ -2459,6 +2459,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     dispatchPaste(serializeNodes([{ type: 'text', position: { x: 0, y: 0 }, content: 'n' }]));
 
     expect(addNode).not.toHaveBeenCalled();
+    expect(useUIStore.getState().activeRegion).toBe('agent');
     agent.remove();
     addNode.mockRestore();
   });
@@ -2480,6 +2481,9 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     dispatchPaste(serializeNodes([{ type: 'text', position: { x: 0, y: 0 }, content: 'n' }]));
 
     expect(addNode).toHaveBeenCalledTimes(1);
+    // The pasted node is selected on the canvas, so undo, delete and Escape
+    // that follow it act there.
+    expect(useUIStore.getState().activeRegion).toBe('space');
     agent.remove();
     addNode.mockRestore();
   });

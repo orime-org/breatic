@@ -13,7 +13,7 @@
  * The turn is real, so the model decides whether to search; a run where it
  * answers in prose instead fails at the row of pictures.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, test, type Locator, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
@@ -58,6 +58,19 @@ async function documentNodes(page: Page): Promise<DocNode[]> {
   );
 }
 
+/**
+ * Asserts a button is still hidden once any opacity transition has run out.
+ *
+ * A transition starts from the old value, so a check made right after the
+ * pointer moves reads 0 even for a button on its way to showing.
+ * @param page - The page.
+ * @param button - The button.
+ */
+async function stillHidden(page: Page, button: Locator): Promise<void> {
+  await page.waitForTimeout(500);
+  await expect(button).toHaveCSS('opacity', '0');
+}
+
 test.beforeEach(async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await openSmokeProject(page);
@@ -79,11 +92,17 @@ test('a copied picture pastes onto the canvas and lands as a stored picture @nee
   await composer.press('Enter');
   await expect(page.getByTestId('asset-row')).toBeVisible({ timeout: 150_000 });
 
-  // The corner button appears on hover and says copied once pressed.
+  // The corner button appears on the hovered square only, and not while the
+  // pointer is on the reply's words.
+  const copies = page.getByTestId('asset-copy');
+  const reply = page.getByTestId('message-bubble').filter({ has: page.getByTestId('asset-row') });
+  await reply.getByTestId('markdown-body').first().hover({ position: { x: 4, y: 4 } });
+  await stillHidden(page, copies.first());
   const square = page.getByTestId('asset-thumb').first();
   await square.hover();
-  const copy = page.getByTestId('asset-copy').first();
+  const copy = copies.first();
   await expect(copy).toHaveCSS('opacity', '1');
+  await stillHidden(page, copies.nth(1));
   await copy.click();
   await expect(page.getByTestId('copy-answer')).toBeVisible();
 
@@ -131,4 +150,14 @@ test('a copied picture pastes onto the canvas and lands as a stored picture @nee
   await expect(boxCopy).toContainText('Copy');
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('asset-box')).toHaveCount(0);
+
+  // A paste made from the agent column hands the keyboard to the canvas, so
+  // the undo that follows takes the pasted node back.
+  const settled = (await documentNodes(page)).length;
+  await square.hover();
+  await copy.click();
+  await page.keyboard.press('ControlOrMeta+V');
+  await expect.poll(async () => (await documentNodes(page)).length, { timeout: 15_000 }).toBe(settled + 1);
+  await page.keyboard.press('ControlOrMeta+Z');
+  await expect.poll(async () => (await documentNodes(page)).length, { timeout: 15_000 }).toBe(settled);
 });

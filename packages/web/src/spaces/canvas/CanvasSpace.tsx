@@ -33,6 +33,7 @@ import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { toast } from '@web/lib/toast';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
+import { claimRegion } from '@web/features/active-region/use-track-active-region';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { canGenerate, newId } from '@breatic/shared';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
@@ -2890,6 +2891,7 @@ function CanvasSpaceInner({
       // A caret in a field is answered by the field or by the browser, so
       // this key is theirs while one is there.
       if (isEditableTarget(event.target as Element | null)) return;
+      claimRegion('space');
 
       // File paste (screenshot / copied file) carries binary in
       // `clipboardData.files` — route it through the upload flow, dropped at
