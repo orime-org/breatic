@@ -6,12 +6,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import SlugSetupPage from '@web/pages/auth/SlugSetupPage';
 import { authApi } from '@web/data/api/auth';
 import { ApiException } from '@web/data/api/types';
 import { useCurrentUserStore } from '@web/stores';
-import { useSlugAvailability } from '@web/pages/studio/container/dialogs/use-slug-availability';
+import {
+  recheckSlugTaken,
+  useSlugAvailability,
+} from '@web/pages/studio/container/dialogs/use-slug-availability';
 import type { SlugStatus } from '@web/pages/studio/container/dialogs/use-slug-availability';
 import type { SlugError } from '@web/pages/studio/container/dialogs/slug-util';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
@@ -63,7 +67,13 @@ function setup(strict = false): ReturnType<typeof render> {
       </Routes>
     </MemoryRouter>
   );
-  return render(strict ? <React.StrictMode>{tree}</React.StrictMode> : tree);
+  const client = new QueryClient();
+  const wrapped = (
+    <QueryClientProvider client={client}>{tree}</QueryClientProvider>
+  );
+  return render(
+    strict ? <React.StrictMode>{wrapped}</React.StrictMode> : wrapped,
+  );
 }
 
 describe('SlugSetupPage', () => {
@@ -87,7 +97,9 @@ describe('SlugSetupPage', () => {
     expect(screen.getByLabelText('Slug')).toBeInTheDocument();
     // When the live check reports `available`, the helper line shows the
     // availability confirmation (it replaces the default URL helper).
-    expect(screen.getByText('Slug is available')).toBeInTheDocument();
+    expect(screen.getByText('Slug is available')).toHaveClass(
+      'text-status-success-foreground',
+    );
     const submit = screen.getByRole('button', { name: 'Continue' });
     expect(submit).toBeInTheDocument();
     // Availability is `available`, so submit is enabled.
@@ -98,7 +110,11 @@ describe('SlugSetupPage', () => {
     // Empty input → idle status → the page shows where the handle will live.
     setAvailability('idle');
     setup();
-    expect(screen.getByText(/Your home will live at/i)).toBeInTheDocument();
+    const hint = screen.getByTestId('onboarding-slug-hint');
+    expect(hint).toHaveTextContent(
+      'Your home will live at /studio/…. 6–39 characters',
+    );
+    expect(hint).toHaveClass('text-muted-foreground');
     // Idle is not `available`, so submit is disabled.
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
   });
@@ -118,8 +134,10 @@ describe('SlugSetupPage', () => {
     setup();
     await user.type(screen.getByLabelText('Slug'), 'Bad_Slug');
     expect(
-      screen.getByText('Lowercase letters, numbers and hyphens only.'),
-    ).toBeInTheDocument();
+      screen.getByText(
+        'Start with a lowercase letter; use only lowercase letters, numbers and single hyphens, not at the end.',
+      ),
+    ).toHaveClass('text-status-error-foreground');
     const submit = screen.getByRole('button', { name: 'Continue' });
     expect(submit).toBeDisabled();
     await user.click(submit);
@@ -155,7 +173,7 @@ describe('SlugSetupPage', () => {
     const user = userEvent.setup();
     setup();
     await user.type(screen.getByLabelText('Slug'), 'pending-handle');
-    expect(screen.getByText('Checking availability…')).toBeInTheDocument();
+    expect(screen.getByText('Checking…')).toBeInTheDocument();
     // Cannot submit while still checking.
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
   });
@@ -187,10 +205,15 @@ describe('SlugSetupPage', () => {
     expect(stored?.avatarUrl).toBeUndefined();
   });
 
-  it('surfaces a 409 conflict as the inline "taken" error (no navigation)', async () => {
+  it('surfaces a 409 on a taken slug as the inline "taken" line (no navigation)', async () => {
     vi.mocked(authApi.setupStudio).mockRejectedValueOnce(
       new ApiException({ status: 409, message: 'slug taken' }),
     );
+    // The real recheck refreshes the cached answer the live hook reads.
+    vi.mocked(recheckSlugTaken).mockImplementationOnce(async () => {
+      setAvailability('taken', 'taken');
+      return true;
+    });
     const user = userEvent.setup();
     setup();
     await user.type(screen.getByLabelText('Slug'), 'taken-handle');
@@ -201,9 +224,28 @@ describe('SlugSetupPage', () => {
         screen.getByText('That Slug is already in use.'),
       ).toBeInTheDocument(),
     );
+    expect(recheckSlugTaken).toHaveBeenCalledWith(
+      expect.any(QueryClient),
+      'taken-handle',
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByTestId('studio-page')).not.toBeInTheDocument();
     // The user's onboarding state is unchanged — still gated.
     expect(useCurrentUserStore.getState().user?.personalStudio).toBeNull();
+  });
+
+  it('shows the server message when a 409 is not about the slug', async () => {
+    vi.mocked(authApi.setupStudio).mockRejectedValueOnce(
+      new ApiException({ status: 409, message: 'slug taken' }),
+    );
+    vi.mocked(recheckSlugTaken).mockResolvedValueOnce(false);
+    const user = userEvent.setup();
+    setup();
+    await user.type(screen.getByLabelText('Slug'), 'free-handle');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('slug taken');
+    expect(screen.queryByTestId('studio-page')).not.toBeInTheDocument();
   });
 
   it('surfaces a non-409 failure as the form-level error line (no navigation)', async () => {
