@@ -26,9 +26,8 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import type { BlockNoteEditor } from '@blocknote/core';
 
-import { cellNamed, nameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
+import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
 import { cellAt, moveLineAt } from '@web/spaces/document/document-table-run';
-import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
 /** Which way a drag moves cells. */
 export type DragOrientation = 'row' | 'column';
@@ -226,14 +225,9 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
           return value === null ? null : { ...value, gap: command.gap };
         }
         if (value === null || !tr.docChanged) return value;
-        if (fromYjs(tr)) {
-          const found = named === null ? null : cellNamed(before, tr.doc, named);
-          return found === null ? null : { ...value, source: found };
-        }
-        const mapped = tr.mapping.mapResult(value.source, 1);
+        const source = followCell(tr, before, value.source, named);
         // The cell the drag started on is gone: the drag has nothing to move.
-        if (mapped.deleted || cellAt(tr.doc, mapped.pos) === null) return null;
-        return { ...value, source: mapped.pos };
+        return source === null ? null : { ...value, source };
       },
     },
     // The handle a drag starts from can leave the page mid-drag (the
@@ -258,12 +252,8 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
       page.addEventListener('mousemove', moved);
       return {
         update: (current, prev): void => {
-          const drag = tableDragKey.getState(current.state) ?? null;
-          if (drag === null) {
-            named = null;
-          } else if (current.state.doc !== prev.doc || tableDragKey.getState(prev)?.source !== drag.source) {
-            named = nameCell(current.state, drag.source);
-          }
+          const source = tableDragKey.getState(current.state)?.source ?? null;
+          named = renameCell(current.state, prev, source, tableDragKey.getState(prev)?.source ?? null, named);
         },
         destroy: (): void => {
           page.removeEventListener('dragend', end);

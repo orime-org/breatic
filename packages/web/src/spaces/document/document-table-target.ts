@@ -18,9 +18,7 @@ import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { cellNamed, nameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
-import { cellAt } from '@web/spaces/document/document-table-run';
-import { fromYjs } from '@web/spaces/document/document-yjs-origin';
+import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
 
 /** The position before the target cell, or null when no menu holds one. */
 type Target = number | null;
@@ -43,20 +41,13 @@ function tableTargetPlugin(): Plugin<Target> {
         const set = tr.getMeta(tableTargetKey) as Target | undefined;
         if (set !== undefined) return set;
         if (value === null || !tr.docChanged) return value;
-        if (fromYjs(tr)) return named === null ? null : cellNamed(before, tr.doc, named);
-        const mapped = tr.mapping.mapResult(value, 1);
-        if (mapped.deleted) return null;
-        return cellAt(tr.doc, mapped.pos) === null ? null : mapped.pos;
+        return followCell(tr, before, value, named);
       },
     },
     view: () => ({
       update: (view, prev): void => {
         const target = tableTargetKey.getState(view.state) ?? null;
-        if (target === null) {
-          named = null;
-        } else if (view.state.doc !== prev.doc || tableTargetKey.getState(prev) !== target) {
-          named = nameCell(view.state, target);
-        }
+        named = renameCell(view.state, prev, target, tableTargetKey.getState(prev) ?? null, named);
       },
     }),
   });
