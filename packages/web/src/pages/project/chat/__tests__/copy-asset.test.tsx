@@ -96,7 +96,21 @@ describe('the copy buttons', () => {
   it('answers a hover on a square with the active border', () => {
     render(<MessageBubble message={withImages(1)} />);
 
-    expect(screen.getByTestId('asset-thumb').className).toContain('hover:border-active-border');
+    expect(screen.getByTestId('asset-thumb').className).toContain('group-hover/asset:border-active-border');
+  });
+
+  it('answers a hover on one square only, not a hover anywhere on the reply', () => {
+    // The reply is a hover group of its own (it reveals the reply's copy), so
+    // a square's hover classes must name the square's group: an unnamed
+    // group-hover matches any hovered ancestor group.
+    render(<MessageBubble message={withImages(2)} />);
+
+    const square = screen.getAllByTestId('asset-thumb')[0] as HTMLElement;
+    const copy = screen.getAllByTestId('asset-copy')[0] as HTMLElement;
+    const cell = square.parentElement as HTMLElement;
+    const tokens = [square, copy, cell].flatMap((el) => el.className.split(/\s+/));
+    expect(cell.className.split(/\s+/)).toContain('group/asset');
+    expect(tokens.filter((t) => t === 'group' || t.startsWith('group-hover:'))).toEqual([]);
   });
 
   it('sits beside the square rather than inside it', () => {

@@ -144,9 +144,10 @@ function AssetSquare({
   // The copy button sits beside the open button rather than inside it: a
   // button in a button is not valid markup, and the outer one would take the
   // inner one's name and keys. The hover belongs to the cell, so it holds
-  // while the pointer is on either of them.
+  // while the pointer is on either of them; the group is named because the
+  // reply around the row is a hover group too.
   return (
-    <div className='group relative shrink-0'>
+    <div className='group/asset relative shrink-0'>
       <Button
         data-testid={testId}
         variant={null}
@@ -156,8 +157,8 @@ function AssetSquare({
         aria-label={label}
         className={cn(
           'relative overflow-hidden rounded-content-sm border border-border bg-muted transition-colors',
-          'group-hover:border-active-border',
-          'after:pointer-events-none after:absolute after:inset-0 after:bg-white/0 after:transition-colors group-hover:after:bg-white/[0.08]',
+          'group-hover/asset:border-active-border',
+          'after:pointer-events-none after:absolute after:inset-0 after:bg-white/0 after:transition-colors group-hover/asset:after:bg-white/[0.08]',
         )}
       >
         <img src={src} alt='' className='size-full object-cover' loading='lazy' />
@@ -205,7 +206,7 @@ function CopyAssetButton({ copying, asset, first }: CopyAssetButtonProps): React
         className={cn(
           'inline-flex size-[18px] items-center justify-center rounded-chrome-sm border border-border bg-background text-foreground transition-opacity',
           !copied &&
-            'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto',
+            'opacity-0 pointer-events-none group-hover/asset:opacity-100 group-hover/asset:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto',
         )}
       >
         {copied ? (
